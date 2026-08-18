@@ -1,0 +1,9 @@
+# CODEOWNERS —— 变更所有权与强制评审
+#
+# OpenAPI 统一网关（specs/changes/openapi-unified-gateway 安全红线 4）：
+# 网关核心与对外契约资产的变更须经平台 owner 评审。
+# 团队确认具体 owner（GitHub 团队或个人 handle）后取消下列注释启用：
+#
+# /server/apps/core/openapi/                      @WeOps-Lab/bklite-platform
+# /server/apps/*/openapi_serializers.py           @WeOps-Lab/bklite-platform
+# /specs/changes/openapi-unified-gateway/         @WeOps-Lab/bklite-platform

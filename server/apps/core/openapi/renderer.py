@@ -275,3 +275,13 @@ def get_external_entry(name: str):
         return None
     normalized, _ = validate_entry(name, entry)
     return normalized
+
+
+def get_external_catalog():
+    """最近快照中有效外部条目的目录信息（_docs 使用，最终一致）。"""
+    catalog = []
+    for name in get_external_services():
+        normalized = get_external_entry(name)
+        if normalized is not None:
+            catalog.append({"name": name, "doc_url": normalized["doc_url"]})
+    return catalog

@@ -43,12 +43,14 @@ def _extract_payload(request):
 
 def _audit(request, identity, response, started_at):
     try:
+        team_ids = getattr(identity, "team_ids", None)
         logger.info(
-            "openapi_access user=%s domain=%s credential=%s method=%s path=%s "
-            "status=%s duration_ms=%d size=%d",
+            "openapi_access user=%s domain=%s credential=%s team=%s method=%s "
+            "path=%s status=%s duration_ms=%d size=%d",
             getattr(identity, "user", "-"),
             getattr(identity, "domain", "-"),
             getattr(identity, "credential_type", "-"),
+            ",".join(str(t) for t in team_ids) if team_ids else "-",
             request.method,
             request.path,
             getattr(response, "status_code", "-"),
@@ -107,6 +109,73 @@ def me_view(request):
 
 
 _FORWARDED_URI_RE = re.compile(r"^/openapi/(?P<version>[a-z0-9]+)/(?P<service>[a-z][a-z0-9-]*)(?:/|$)")
+
+
+def _field_spec(field):
+    """DRF serializer 字段 → 机器可读描述（_docs 最小可行版本，additive-only）。"""
+    from rest_framework.fields import empty
+
+    spec = {
+        "type": type(field).__name__.removesuffix("Field").lower() or "field",
+        "required": bool(field.required),
+    }
+    if field.default is not empty and not callable(field.default):
+        spec["default"] = field.default
+    choices = getattr(field, "choices", None)
+    if choices:
+        spec["choices"] = list(choices)
+    for attr in ("min_value", "max_value"):
+        value = getattr(field, attr, None)
+        if value is not None:
+            spec[attr] = value
+    return spec
+
+
+@api_exempt
+@require_http_methods(["GET"])
+def docs_view(request):
+    """聚合接口目录：内部端点（含 schema 内省）+ 外部服务 doc_url 链接。"""
+    started_at = time.monotonic()
+    identity = None
+    response = None
+    try:
+        try:
+            identity = authenticate_request(request)
+        except AuthenticationFailed as exc:
+            response = fail(ErrorCode.AUTH_INVALID, str(exc) or "authentication failed")
+            return response
+
+        from apps.core.openapi.renderer import get_external_catalog
+
+        internal = {}
+        for endpoint in default_registry.endpoints():
+            internal.setdefault(endpoint.service, []).append(
+                {
+                    "path": endpoint.path,
+                    "method": endpoint.method,
+                    "summary": endpoint.summary,
+                    "inject": endpoint.inject,
+                    "permission": endpoint.permission,
+                    "request_schema": {
+                        name: _field_spec(field)
+                        for name, field in endpoint.serializer_class().fields.items()
+                    },
+                }
+            )
+
+        services = [
+            {"name": name, "kind": "internal", "endpoints": sorted(
+                endpoints, key=lambda item: (item["path"], item["method"])
+            )}
+            for name, endpoints in sorted(internal.items())
+        ] + [
+            {"name": item["name"], "kind": "external", "doc_url": item["doc_url"]}
+            for item in get_external_catalog()
+        ]
+        response = ok({"services": services})
+        return response
+    finally:
+        _audit(request, identity, response, started_at)
 
 
 @api_exempt
