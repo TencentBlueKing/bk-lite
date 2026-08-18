@@ -10,6 +10,8 @@
     "collector",
     "instance_id",
     "message",
+    "timestamp",
+    "collect_timestamp",
     "redis.log.message",
     "redis.log.level",
     "redis.log.pid",

@@ -18,6 +18,19 @@
 - 发布编排必须增加迁移、初始快照/Token、接口探测和最后启动中心 Vector 的顺序控制。
 - 如果正式安装资产位于独立部署仓库或由外部安装脚本生成，应在该仓库同步修改；只发布新的 Server 镜像不会自动完成中心 Vector 切换。
 
+### 2.1 共享热加载边界
+
+中心 Vector 只消费一份完整配置快照。Server 的同一个编译入口按固定顺序组合：
+
+1. 平台固定的时间戳和 `message` 契约；
+2. 用户配置的日志提取器；
+3. VictoriaLogs 存储适配。
+
+时间戳、`message` 和提取器不各自发布局部 Vector 片段。任何一项变化都必须重新编译、校验并原子发布整份快照；失败时保留上一份成功快照。这是防止多个功能的热加载互相覆盖的唯一边界。
+
+完整快照中的 `server_nats` source 必须保持 `log_namespace: true`。否则
+Vector 会把自动 ingest timestamp 混入顶层负载，导致原本没有上游时间的日志也被误识别为存在 `collect_timestamp`。
+
 ## 3. 运维需要接入的接口
 
 ### 3.1 配置读取接口
@@ -28,13 +41,13 @@
 | 路径 | `/api/v1/log/open_api/system_vector/config/` |
 | 认证 | `Authorization: Bearer <部署级 Token>` |
 | 成功响应 | `200 application/yaml` |
-| 响应头 | `X-Config-Checksum`、`X-Config-Generation`、`Cache-Control: no-store` |
+| 响应头 | `X-Config-Checksum`、`X-Config-Generation`、`X-Config-Contract-Version`、`Cache-Control: no-store` |
 | Token 缺失或错误 | `401` |
 | 尚无初始快照 | `503` |
 
 该接口返回 Server 最后一次成功发布的完整原始 YAML。它不会在请求时查询规则或临时编译配置。
 
-`X-Config-Generation` 表示 Server 已发布的配置版本，不表示中心 Vector 已经拉取或应用该版本。
+`X-Config-Generation` 表示 Server 已发布的配置生成次数，不表示中心 Vector 已经拉取或应用该版本。`X-Config-Contract-Version` 表示快照内平台固定逻辑的契约版本；旧快照未带版本声明时返回 `0`。
 
 ### 3.2 Token 初始化和轮换命令
 
@@ -135,7 +148,7 @@ curl --fail-with-body --silent --show-error \
 
 - HTTP 状态为 `200`；
 - 响应体不是空文件，并且是完整 YAML；
-- 存在 `X-Config-Checksum` 和 `X-Config-Generation`；
+- 存在 `X-Config-Checksum`、`X-Config-Generation` 和 `X-Config-Contract-Version`；
 - 使用部署固定的 Vector 0.48 镜像校验响应 YAML 成功。
 
 探测结束后删除临时响应文件。临时文件中不应包含 Token，但可能包含内部拓扑信息，仍应按部署配置处理。
@@ -152,12 +165,15 @@ curl --fail-with-body --silent --show-error \
 
 1. 执行数据库迁移，失败即停止；
 2. 发布并启动新 Server 与 Celery worker；
-3. 使用现有 Token 探测配置接口；
-4. 按需滚动重启中心 Vector。
+3. 若本次版本改变了平台固定 Vector 契约，显式执行 `python manage.py republish_system_vector_config`；
+4. 使用现有 Token 探测配置接口，核对 contract version 和 generation；
+5. 等待中心 Vector 轮询并成功热加载，仅在冷启动验收或运行异常时按需滚动重启。
 
 日常升级不要重复运行 `system_vector_token`。只要部署 Secret 未丢失且探测返回 `200`，就应复用现有 Token。
 
 日志提取规则变化不需要重启中心 Vector。Server 会异步发布新的全局 generation，中心 Vector 每 30 秒拉取并尝试热加载。
+
+`republish_system_vector_config` 不依赖规则变更或 Celery 异步任务：它会同步重新编译当前整份配置并递增 generation。命令失败必须阻断本次发布验收，但不会替换上一份成功快照，也不应放入 Server 启动钩子。
 
 ## 8. Token 主动轮换
 
@@ -208,6 +224,14 @@ Vector has reloaded
 
 如果只回滚业务代码且回滚版本仍提供配置接口，可保留现有 Token、bootstrap 和最后成功快照。
 
+若回滚版本改变了平台固定 Vector 契约，不能只回滚 Server 镜像。在回滚代码和 worker 就绪后，必须用该回滚版本的编译器重新发布完整快照，并确认 Vector 热加载成功。对已包含管理命令的版本执行：
+
+```bash
+python manage.py republish_system_vector_config
+```
+
+若目标老版本尚未包含该命令，但已具备完整快照编译和异步发布能力，可在受控运维任务中调用该版本的 `mark_dirty()` 并等待 Celery 发布；不得在数据库中直接改快照。
+
 如果回滚到不包含该配置接口的旧 Server 版本，必须在停止旧接口前完成以下二选一操作：
 
 1. 恢复中心 Vector 原有的完整静态配置；或
@@ -223,11 +247,14 @@ Vector has reloaded
 - [ ] 无提取规则时配置接口也返回完整 no-op YAML；
 - [ ] 无 Token 和错误 Token 返回 `401`；
 - [ ] 正确 Token 返回 `200 application/yaml`；
-- [ ] 响应包含 checksum 和 generation；
+- [ ] 响应包含 checksum、generation 和 contract version；
 - [ ] 响应 YAML 通过 Vector 0.48 校验；
 - [ ] 中心 Vector 使用 bootstrap 启动并成功连接 Server NATS；
 - [ ] 创建或修改规则后 generation 递增，Celery 成功发布；
 - [ ] 中心 Vector 在 30 秒轮询周期内记录成功 reload；
 - [ ] 发布后的新日志包含预期提取字段；
+- [ ] 新日志的 `timestamp` 为中心 Vector 消费到事件的当前时间；
+- [ ] 上游存在 `timestamp` 时原值原样保留在 `collect_timestamp`，已有 `collect_timestamp` 不被覆盖；
+- [ ] 提取器无法写入或删除 `timestamp` 和 `collect_timestamp`；
 - [ ] 最新生成失败时仍可获取上一份有效快照；
 - [ ] 非默认云区域部署、fusion-collector、webhookd、NodeMgmt 和系统 Telegraf 未发生变化。

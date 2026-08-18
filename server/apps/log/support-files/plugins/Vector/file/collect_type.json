@@ -13,6 +13,7 @@
     "message",
     "source_type",
     "timestamp",
+    "collect_timestamp",
     "instance_id"
   ],
   "display_category": "general"
