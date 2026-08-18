@@ -24,6 +24,7 @@ import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState from '@/app/apm/components/catalog-state';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
+import { useTranslation } from '@/utils/i18n';
 import type {
   ApmNotificationChannel,
   ApmPolicy,
@@ -84,6 +85,7 @@ function toInput(policy: ApmPolicy): ApmPolicyInput {
 }
 
 export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const { token } = theme.useToken();
   const {
@@ -105,6 +107,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const notificationTargets = Form.useWatch('notification_targets', form);
   const [services, setServices] = useState<ApmService[]>([]);
   const [channels, setChannels] = useState<ApmNotificationChannel[]>([]);
+  const [loadedPolicy, setLoadedPolicy] = useState<ApmPolicy | null>(null);
   const [endpointOptions, setEndpointOptions] = useState<string[]>([]);
   const [versionOptions, setVersionOptions] = useState<string[]>([]);
   const [preview, setPreview] = useState<ApmPolicyQueryResult | null>(null);
@@ -115,10 +118,11 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   useEffect(() => {
     if (isLoading) return;
     setLoading(true);
-    Promise.all([getServices(), getNotificationChannels(), policyId ? getPolicy(policyId) : Promise.resolve(null)])
+    Promise.all([getServices({ include_archived: true }), getNotificationChannels(), policyId ? getPolicy(policyId) : Promise.resolve(null)])
       .then(([serviceItems, channelItems, policy]) => {
         setServices(serviceItems);
-        setChannels(channelItems.filter((item) => item.availability === 'available'));
+        setChannels(channelItems);
+        setLoadedPolicy(policy);
         form.setFieldsValue(policy ? toInput(policy) : DEFAULT_VALUES);
       })
       .finally(() => setLoading(false));
@@ -156,7 +160,59 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       });
   }, [environment, getInstances, getServiceRed, serviceId, services]);
 
-  const channelMap = useMemo(() => new Map(channels.map((item) => [item.id, item])), [channels]);
+  const serviceOptions = useMemo(() => {
+    const activeOptions = services
+      .filter((item) => !item.archived_at)
+      .map((item) => ({
+        value: item.id,
+        label: item.namespace ? `${item.namespace} / ${item.name}` : item.name,
+      }));
+    if (!loadedPolicy || activeOptions.some((item) => item.value === loadedPolicy.service_id)) {
+      return activeOptions;
+    }
+    const selectedService = services.find((item) => item.id === loadedPolicy.service_id);
+    const selectedName = selectedService?.namespace
+      ? `${selectedService.namespace} / ${selectedService.name}`
+      : selectedService?.name || `${loadedPolicy.service_namespace} / ${loadedPolicy.service_name}`;
+    return [
+      ...activeOptions,
+      {
+        value: loadedPolicy.service_id,
+        label: t('apm.policies.archivedServiceOption', '{name}（已归档）', { name: selectedName }),
+        disabled: true,
+      },
+    ];
+  }, [loadedPolicy, services, t]);
+
+  const channelOptions = useMemo(() => {
+    const options = channels.map((item) => ({
+      value: item.id,
+      label: item.availability === 'available'
+        ? item.name
+        : t('apm.policies.unavailableChannelOption', '{name}（当前不可用）', { name: item.name }),
+      disabled: item.availability !== 'available',
+    }));
+    for (const target of notificationTargets || []) {
+      if (options.some((item) => item.value === target.channel_id)) continue;
+      const name = target.channel_name || t('apm.events.channel', '渠道 {id}', { id: target.channel_id });
+      options.push({
+        value: target.channel_id,
+        label: t('apm.policies.unavailableChannelOption', '{name}（当前不可用）', { name }),
+        disabled: true,
+      });
+    }
+    return options;
+  }, [channels, notificationTargets, t]);
+
+  const channelRecipientModeMap = useMemo(() => {
+    const map = new Map<number, ApmNotificationChannel['recipient_mode'] | undefined>();
+    channels.forEach((item) => map.set(item.id, item.recipient_mode));
+    (notificationTargets || []).forEach((item) => {
+      if (!map.has(item.channel_id)) map.set(item.channel_id, item.recipient_mode);
+    });
+    return map;
+  }, [channels, notificationTargets]);
+  const hasAvailableChannel = channels.some((item) => item.availability === 'available');
   const previewRows = useMemo(
     () =>
       (preview?.series ?? []).map((point) => ({
@@ -247,7 +303,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   <Select
                     showSearch
                     optionFilterProp="label"
-                    options={services.map((item) => ({ value: item.id, label: `${item.namespace} / ${item.name}` }))}
+                    options={serviceOptions}
                   />
                 </Form.Item>
                 <Form.Item name="environment" label="环境（必选）" rules={[{ required: true, whitespace: true }]}>
@@ -397,19 +453,30 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                 {(fields, { add, remove }) => (
                   <Space direction="vertical" className="w-full">
                     {fields.map((field) => {
-                      const channel = channelMap.get(notificationTargets?.[field.name]?.channel_id);
+                      const recipientMode = channelRecipientModeMap.get(notificationTargets?.[field.name]?.channel_id);
                       return (
                         <div key={field.key} className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_2fr_auto]">
-                          <Form.Item name={[field.name, 'channel_id']} rules={[{ required: true }]}>
+                          <Form.Item
+                            name={[field.name, 'channel_id']}
+                            rules={[
+                              { required: true },
+                              {
+                                validator: async (_, channelId) => {
+                                  if (!channelId || channels.some((item) => item.id === channelId && item.availability === 'available')) return;
+                                  throw new Error(t('apm.policies.invalidRemove', '已失效，保存前请移除'));
+                                },
+                              },
+                            ]}
+                          >
                             <Select
                               placeholder="通知渠道"
-                              options={channels.map((item) => ({ value: item.id, label: item.name }))}
+                              options={channelOptions}
                             />
                           </Form.Item>
                           <Form.Item
                             name={[field.name, 'recipients']}
-                            hidden={channel?.recipient_mode === 'none'}
-                            rules={channel?.recipient_mode === 'none' ? [] : [{ required: true }]}
+                            hidden={recipientMode === 'none'}
+                            rules={recipientMode === 'none' ? [] : [{ required: true }]}
                           >
                             <Select mode="tags" placeholder="接收人" />
                           </Form.Item>
@@ -424,7 +491,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                         </div>
                       );
                     })}
-                    <Button disabled={!channels.length} icon={<PlusOutlined />} onClick={() => add({ recipients: [] })}>
+                    <Button disabled={!hasAvailableChannel} icon={<PlusOutlined />} onClick={() => add({ recipients: [] })}>
                       添加渠道
                     </Button>
                   </Space>

@@ -113,4 +113,47 @@ describe('APM 四步策略编辑器', () => {
     );
     expect(await screen.findByText('真实趋势图')).not.toBeNull();
   });
+
+  it('编辑策略时保留归档服务和不可用渠道的名称', async () => {
+    const user = userEvent.setup();
+    api.getServices.mockResolvedValue([
+      { id: 'svc-active', namespace: 'shop', name: 'catalog', archived_at: null },
+    ]);
+    api.getNotificationChannels.mockResolvedValue([
+      {
+        id: 23,
+        name: '告警中心',
+        channel_type: 'nats',
+        description: '事件副本',
+        delivery_mode: 'alert_event_copy',
+        recipient_mode: 'none',
+        availability: 'unavailable',
+      },
+    ]);
+    api.getPolicy.mockResolvedValue({
+      ...policy,
+      notification_targets: [
+        {
+          channel_id: 23,
+          channel_name: '告警中心',
+          channel_type: 'nats',
+          delivery_mode: 'alert_event_copy',
+          recipient_mode: 'none',
+          recipients: [],
+        },
+      ],
+    });
+
+    renderWithApmIntl(<ApmPolicyEditor policyId="p1" />);
+
+    expect(await screen.findByText('shop / checkout（已归档）')).not.toBeNull();
+    expect(screen.getByText('告警中心（当前不可用）')).not.toBeNull();
+    expect(screen.queryByText('svc-1')).toBeNull();
+    expect(screen.queryByText('23')).toBeNull();
+    expect(api.getServices).toHaveBeenCalledWith({ include_archived: true });
+
+    await user.click(screen.getByRole('button', { name: '保存策略' }));
+    expect(await screen.findByText('已失效，保存前请移除')).not.toBeNull();
+    expect(api.updatePolicy).not.toHaveBeenCalled();
+  });
 });
