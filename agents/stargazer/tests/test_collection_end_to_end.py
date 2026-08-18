@@ -480,6 +480,44 @@ async def test_publish_transient_failure_retries_once_without_recollecting(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("route_name", "path"),
+    [
+        ("vmware", "/monitor/vmware/metrics"),
+        ("qcloud", "/monitor/qcloud/metrics"),
+        ("oceanstor", "/monitor/oceanstor/metrics"),
+        ("windows-wmi", "/monitor/windows/wmi/metrics"),
+        ("host", "/monitor/host/metrics"),
+    ],
+)
+async def test_monitor_auth_enforce_rejects_every_route_before_submit(
+    monkeypatch,
+    route_name,
+    path,
+):
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_MODE", "enforce")
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_TOKEN", "current-token")
+
+    def fail_if_runtime_is_requested():
+        pytest.fail("unauthenticated request reached collection runtime")
+
+    monkeypatch.setattr(
+        monitor_api,
+        "get_collection_application",
+        fail_if_runtime_is_requested,
+    )
+
+    async with http_client(
+        monitor_api.monitor_router,
+        f"e2e-monitor-auth-{route_name}-app",
+    ) as client:
+        rejected = await client.get(path)
+
+    assert rejected.status_code == 401
+    assert rejected.headers["www-authenticate"] == "Bearer"
+
+
+@pytest.mark.asyncio
 async def test_monitor_http_uses_the_same_runtime_and_result_pipeline(
     redis_client, monkeypatch
 ):
@@ -490,6 +528,9 @@ async def test_monitor_http_uses_the_same_runtime_and_result_pipeline(
         redis_client, plugin, published, scheduled
     )
     monkeypatch.setattr(monitor_api, "get_collection_application", lambda: application)
+    monkeypatch.delenv("STARGAZER_MONITOR_AUTH_MODE", raising=False)
+    monkeypatch.delenv("STARGAZER_MONITOR_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("STARGAZER_MONITOR_AUTH_PREVIOUS_TOKEN", raising=False)
     headers = {
         "x-task-id": "e2e-monitor",
         "username": "monitor-user",
@@ -506,8 +547,11 @@ async def test_monitor_http_uses_the_same_runtime_and_result_pipeline(
             "/monitor/vmware/metrics?minutes=5", headers=headers
         )
         await scheduled[0]
+        monkeypatch.setenv("STARGAZER_MONITOR_AUTH_MODE", "enforce")
+        monkeypatch.setenv("STARGAZER_MONITOR_AUTH_TOKEN", "current-token")
         next_cycle = await client.get(
-            "/monitor/vmware/metrics?minutes=5", headers=headers
+            "/monitor/vmware/metrics?minutes=5",
+            headers={**headers, "Authorization": "Bearer current-token"},
         )
 
     assert accepted.status_code == 202
