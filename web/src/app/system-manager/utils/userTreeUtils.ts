@@ -18,6 +18,28 @@ export interface ExtendedTreeDataNode extends TreeDataNode {
 /**
  * Convert API group response to tree data nodes
  */
+/**
+ * Convert page organization tree nodes for GroupTreeSelect.
+ */
+export function toGroupTreeSelectNodes(nodes: ExtendedTreeDataNode[]): Array<{
+  key: number;
+  value: number;
+  title: string;
+  disabled: boolean;
+  children?: ReturnType<typeof toGroupTreeSelectNodes>;
+}> {
+  return nodes.map((node) => ({
+    key: Number(node.key),
+    value: Number(node.key),
+    title: String(node.title ?? ''),
+    disabled: node.hasAuth === false,
+    children: node.children?.length ? toGroupTreeSelectNodes(node.children) : undefined,
+  }));
+}
+
+/**
+ * Convert API group response to tree data nodes
+ */
 export function convertGroupsToTreeData(groups: OriginalGroup[]): ExtendedTreeDataNode[] {
   return groups.map((group) => {
     const currentIsVirtual = group.is_virtual === true;

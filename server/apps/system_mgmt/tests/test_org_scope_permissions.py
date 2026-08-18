@@ -349,6 +349,111 @@ def test_create_user_allows_empty_personal_roles():
 
 
 @pytest.mark.django_db
+def test_import_users_creates_valid_rows_and_reports_conflicts():
+    group = Group.objects.create(name="xlsx-import-group", parent_id=0, is_virtual=False)
+    User.objects.create(
+        username="existing-import-user", password="p", display_name="Existing",
+        email="existing@example.com", group_list=[group.id], role_list=[],
+    )
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "import_users"})
+    request = factory.post(
+        "/system_mgmt/api/user/import_users/",
+        {
+            "group_id": group.id,
+            "file_name": "users.xlsx",
+            "users": [
+                {
+                    "row_number": 2, "username": "new-import-user", "lastName": "New User",
+                    "email": "new@example.com", "phone": "", "timezone": "", "locale": "",
+                },
+                {
+                    "row_number": 3, "username": "existing-import-user", "lastName": "Existing User",
+                    "email": "existing@example.com", "phone": "", "timezone": "Asia/Shanghai", "locale": "zh-Hans",
+                },
+            ],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_request_user([group.id], {"user_group-Add User"}))
+
+    response = view(request)
+    payload = _json_payload(response)
+
+    assert response.status_code == 200
+    assert payload["data"] == {
+        "total_count": 2,
+        "success_count": 1,
+        "failed_count": 1,
+        "failures": [{"row_number": 3, "username": "existing-import-user", "message": "用户名已存在"}],
+    }
+    user = User.objects.get(username="new-import-user")
+    assert user.group_list == [group.id]
+    assert user.role_list == []
+    assert user.timezone == "Asia/Shanghai"
+    assert user.locale == "zh-Hans"
+
+
+@pytest.mark.django_db
+def test_import_users_rejects_archived_group():
+    group = Group.objects.create(name="xlsx-archived-group", parent_id=0, is_virtual=False, is_delete=True)
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "import_users"})
+    request = factory.post(
+        "/system_mgmt/api/user/import_users/",
+        {
+            "group_id": group.id,
+            "file_name": "users.xlsx",
+            "users": [
+                {
+                    "row_number": 2, "username": "archived-import-user", "lastName": "Archived User",
+                    "email": "archived@example.com", "phone": "", "timezone": "", "locale": "",
+                },
+            ],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_request_user([group.id], {"user_group-Add User"}, is_superuser=True))
+
+    response = view(request)
+    payload = _json_payload(response)
+
+    assert response.status_code == 400
+    assert payload["result"] is False
+    assert not User.objects.filter(username="archived-import-user").exists()
+
+
+@pytest.mark.django_db
+def test_import_users_rejects_unauthorized_groups():
+    allowed = Group.objects.create(name="xlsx-import-allowed", parent_id=0, is_virtual=False)
+    other = Group.objects.create(name="xlsx-import-other", parent_id=0, is_virtual=False)
+    factory = APIRequestFactory()
+    view = UserViewSet.as_view({"post": "import_users"})
+    request = factory.post(
+        "/system_mgmt/api/user/import_users/",
+        {
+            "group_id": other.id,
+            "file_name": "users.xlsx",
+            "users": [
+                {
+                    "row_number": 2, "username": "scope-import-user", "lastName": "Scope User",
+                    "email": "scope-import@example.com", "phone": "", "timezone": "", "locale": "",
+                },
+            ],
+        },
+        format="json",
+    )
+    force_authenticate(request, user=_request_user([allowed.id], {"user_group-Add User"}))
+
+    response = view(request)
+    payload = _json_payload(response)
+
+    assert response.status_code == 403
+    assert payload["result"] is False
+    assert not User.objects.filter(username="scope-import-user").exists()
+
+
+@pytest.mark.django_db
 def test_create_user_still_rejects_empty_groups():
     factory = APIRequestFactory()
     view = UserViewSet.as_view({"post": "create_user"})
