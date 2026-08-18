@@ -16,6 +16,10 @@ spec:
     metadata:
       labels:
         app: vector-daemonset
+      annotations:
+        # Static dist copy is directly applyable and keeps Vector default (all paths).
+        # Rendered installs use agents/webhookd/bk-lite-log-collector.yaml placeholders.
+        bklite.io/log-collect-config: "default"
     spec:
       serviceAccount: vector-daemonset
       containers:
