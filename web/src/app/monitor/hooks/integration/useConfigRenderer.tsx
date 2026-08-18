@@ -14,7 +14,7 @@ import { ExclamationCircleFilled, MinusCircleOutlined, PlusOutlined } from '@ant
 import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
-import FieldGuideTip from '@/app/monitor/(pages)/integration/list/detail/configure/fieldGuideTip';
+import FieldGuideTip from '@/components/field-guide-tip';
 import { applyTableChangeHandler } from './tableChangeHandler';
 import { isDependencySatisfied } from './formFieldDependency';
 import {
@@ -42,6 +42,7 @@ const mutexValuesEqual = (left: any, right: any) => {
 export const useConfigRenderer = () => {
   const { t } = useTranslation();
   const FORM_WIDGET_WIDTH_CLASS = 'w-[300px]';
+  const fieldGuideTitle = t('monitor.integrations.fieldGuideTip');
 
   const renderFormField = (fieldConfig: any, mode?: string) => {
     const {
@@ -92,7 +93,7 @@ export const useConfigRenderer = () => {
                 <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-2">
                   <div className="inline-flex min-w-0 items-center text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
                     <span className="truncate">{label}</span>
-                    {tipText ? <FieldGuideTip short={tipText} /> : null}
+                    {tipText ? <FieldGuideTip short={tipText} title={fieldGuideTitle} /> : null}
                   </div>
                   <div className="shrink-0 text-[12px] leading-[18px] text-[var(--color-text-3)]">
                     {t('common.name')} / {t('common.value')}
@@ -275,7 +276,7 @@ export const useConfigRenderer = () => {
       hasGuideTip ? (
         <span className="inline-flex items-center">
           {label}
-          <FieldGuideTip short={guideTip} />
+          <FieldGuideTip short={guideTip} title={fieldGuideTitle} />
         </span>
       ) : (
         label
@@ -574,7 +575,7 @@ export const useConfigRenderer = () => {
       title: guideTip ? (
         <span className="inline-flex items-center">
           <span>{label}</span>
-          <FieldGuideTip short={guideTip} />
+          <FieldGuideTip short={guideTip} title={fieldGuideTitle} />
         </span>
       ) : (
         label

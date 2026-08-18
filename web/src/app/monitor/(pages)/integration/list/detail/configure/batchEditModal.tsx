@@ -76,7 +76,7 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
           widget = (
             <InputNumber
               disabled={isDisabled}
-              style={{ width: '100%' }}
+              className="w-full"
               min={column.widget_props?.min}
               precision={column.widget_props?.precision}
               placeholder={column.widget_props?.placeholder || ''}
@@ -127,9 +127,9 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
       return (
         <div
           key={column.name}
-          style={{ width: 'calc(50% - 8px)', marginBottom: 16 }}
+          className="mb-4 w-[calc(50%-8px)]"
         >
-          <div style={{ marginBottom: 8 }}>
+          <div className="mb-2">
             <Checkbox
               checked={isEnabled}
               onChange={(e) =>
@@ -140,7 +140,7 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
               {column.label}
             </Checkbox>
           </div>
-          <Form.Item name={column.name} style={{ marginBottom: 0 }}>
+          <Form.Item name={column.name} className="mb-0">
             {widget}
           </Form.Item>
         </div>
@@ -207,7 +207,7 @@ const BatchEditModal = forwardRef<ModalRef, BatchEditModalProps>(
         }
       >
         <Form form={form} layout="vertical">
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
+          <div className="flex flex-wrap gap-4">
             {columns.map((column) => renderFormItem(column))}
           </div>
         </Form>
