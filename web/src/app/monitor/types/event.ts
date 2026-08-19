@@ -13,6 +13,7 @@ export interface SelectCardProps {
   value?: (string | number)[];
   onChange?: (value: (string | number)[]) => void;
   cardWidth?: number;
+  showCheckbox?: boolean;
 }
 
 export interface PluginItem {

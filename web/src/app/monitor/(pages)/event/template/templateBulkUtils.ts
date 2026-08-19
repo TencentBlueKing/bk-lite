@@ -1,9 +1,19 @@
+import { LEVEL_MAP } from '@/app/monitor/constants';
+
 export interface PolicyTemplateItem {
   template_key?: string;
   id?: string | number;
   name?: string;
   description?: string;
   metric_name?: string;
+  query_condition?: {
+    type?: string;
+    metric_name?: string;
+    result_name?: string;
+    expression?: string;
+    queries?: Array<{ ref?: string; metric_name?: string }>;
+    [key: string]: any;
+  };
   template_group?: string;
   plugin_id?: string | number;
   plugin_display_name?: string;
@@ -53,10 +63,126 @@ export interface PolicyPreviewItem {
   metricLabel: string;
   assetScopeLabel: string;
   statusLabel: string;
+  statusEnabled: boolean;
 }
 
-export const getTemplateKey = (template: PolicyTemplateItem): string =>
-  String(template.template_key ?? template.id ?? template.name ?? template.metric_name);
+const LEVEL_ORDER = ['critical', 'error', 'warning'] as const;
+
+const LEVEL_LABELS: Record<string, string> = {
+  critical: '严重',
+  error: '错误',
+  warning: '警告',
+};
+
+export interface TemplateThresholdItem {
+  level: string;
+  label: string;
+  method: string;
+  value: string | number;
+  unitSuffix: string;
+  color: string;
+}
+
+export const getTemplateThresholdItems = (
+  template: PolicyTemplateItem
+): TemplateThresholdItem[] => {
+  const thresholds = Array.isArray(template.threshold) ? template.threshold : [];
+  const unitSuffix = formatUnitSuffix(
+    template.threshold_unit || template.calculation_unit || template.metric_unit
+  );
+
+  return thresholds
+    .filter(
+      (item) =>
+        item?.value !== null &&
+        item?.value !== undefined &&
+        item?.value !== ''
+    )
+    .sort((left, right) => {
+      const leftIndex = LEVEL_ORDER.indexOf(
+        left.level as (typeof LEVEL_ORDER)[number]
+      );
+      const rightIndex = LEVEL_ORDER.indexOf(
+        right.level as (typeof LEVEL_ORDER)[number]
+      );
+      return (leftIndex === -1 ? 99 : leftIndex) - (rightIndex === -1 ? 99 : rightIndex);
+    })
+    .map((item) => ({
+      level: item.level,
+      label: LEVEL_LABELS[item.level] || item.level,
+      method: METHOD_LABELS[item.method] || item.method || '>',
+      value: item.value,
+      unitSuffix,
+      color: (LEVEL_MAP[item.level as keyof typeof LEVEL_MAP] as string) || '#475569',
+    }));
+};
+
+const METHOD_LABELS: Record<string, string> = {
+  '>': '>',
+  '<': '<',
+  '=': '=',
+  '!=': '≠',
+  '>=': '≥',
+  '<=': '≤',
+};
+
+const ALGORITHM_LABELS: Record<string, string> = {
+  avg_over_time: 'AVG_OVER_TIME',
+  max_over_time: 'MAX_OVER_TIME',
+  min_over_time: 'MIN_OVER_TIME',
+  sum_over_time: 'SUM_OVER_TIME',
+  count_over_time: 'COUNT_OVER_TIME',
+  last_over_time: 'LAST_OVER_TIME',
+};
+
+const GROUP_ALGORITHM_LABELS: Record<string, string> = {
+  avg: 'AVG',
+  max: 'MAX',
+  min: 'MIN',
+  sum: 'SUM',
+  count: 'COUNT',
+};
+
+const formatUnitSuffix = (unit?: string | null): string => {
+  if (!unit || unit === 'none' || unit === 'short') return '';
+  if (unit === 'percent' || unit === '%') return '%';
+  return unit;
+};
+
+export const formatTemplateAlgorithmSummary = (template: PolicyTemplateItem): string => {
+  const groupAlgorithm = template.group_algorithm
+    ? GROUP_ALGORITHM_LABELS[String(template.group_algorithm).toLowerCase()] ||
+      String(template.group_algorithm).toUpperCase()
+    : '';
+  const algorithm = template.algorithm
+    ? ALGORITHM_LABELS[String(template.algorithm).toLowerCase()] ||
+      String(template.algorithm).toUpperCase()
+    : '';
+  if (groupAlgorithm && algorithm) return `${groupAlgorithm} / ${algorithm}`;
+  return groupAlgorithm || algorithm || '';
+};
+
+export const formatTemplateTriggerSummary = (
+  template: PolicyTemplateItem,
+  triggerCount?: number
+): string => {
+  const count = triggerCount ?? template.trigger_count ?? 1;
+  return `连续 ${count} 个周期触发`;
+};
+
+export const getTemplateTriggerCount = (
+  template: PolicyTemplateItem,
+  triggerCount?: number
+): number => triggerCount ?? template.trigger_count ?? 1;
+
+export const getTemplateKey = (template: PolicyTemplateItem): string => {
+  if (template.template_key) return String(template.template_key);
+  if (template.id !== undefined && template.id !== null && template.id !== '') {
+    return String(template.id);
+  }
+  return [template.plugin_id || '', template.name || '', template.metric_name || '']
+    .join(':');
+};
 
 export const displayAssetName = (asset: BulkAssetItem): string => {
   if (asset.instance_name) return asset.instance_name;
@@ -70,8 +196,59 @@ const getTemplateGroupName = (template: PolicyTemplateItem): string =>
   template.plugin_name ||
   String(template.plugin_id || '--');
 
+export const getTemplateMetricName = (template: PolicyTemplateItem): string =>
+  String(template.metric_name || template.query_condition?.metric_name || '').trim();
+
+export const formatTemplateListName = (
+  template: PolicyTemplateItem,
+  siblings: PolicyTemplateItem[] = []
+): string => {
+  const name = String(template.name || '').trim() || '--';
+  const metric = getTemplateMetricName(template);
+  const sameNameCount = siblings.filter(
+    (item) => String(item.name || '').trim() === String(template.name || '').trim()
+  ).length;
+  if (sameNameCount > 1 && metric) {
+    return `${name}（${metric}）`;
+  }
+  return name;
+};
+
+export const buildDistinctPolicyNames = (
+  templates: PolicyTemplateItem[],
+  namePrefix = ''
+): string[] => {
+  const prefix = namePrefix.trim();
+  const bases = templates.map((template) => {
+    const templateName = String(template.name || template.metric_name || '').trim();
+    const metric = getTemplateMetricName(template);
+    return [prefix, templateName].filter(Boolean).join('-') || metric || '策略';
+  });
+  const baseCounts = bases.reduce<Record<string, number>>((counts, base) => {
+    counts[base] = (counts[base] || 0) + 1;
+    return counts;
+  }, {});
+  const used = new Set<string>();
+  return templates.map((template, index) => {
+    let name = bases[index];
+    const templateName = String(template.name || template.metric_name || '').trim();
+    const metric = getTemplateMetricName(template);
+    if (baseCounts[bases[index]] > 1 && metric && metric !== templateName) {
+      name = `${name}-${metric}`;
+    }
+    let candidate = name;
+    let suffix = 2;
+    while (used.has(candidate)) {
+      candidate = `${name}-${suffix}`;
+      suffix += 1;
+    }
+    used.add(candidate);
+    return candidate;
+  });
+};
+
 export const getMetricLabel = (template: PolicyTemplateItem): string =>
-  `${template.plugin_display_name || template.plugin_name || template.plugin_id || '--'} - ${template.metric_name || '--'}`;
+  `${template.plugin_display_name || template.plugin_name || template.plugin_id || '--'} - ${getTemplateMetricName(template) || '--'}`;
 
 export const groupPolicyTemplates = (
   templates: PolicyTemplateItem[],
@@ -127,32 +304,54 @@ export const canDeleteTemplates = (
   templates: PolicyTemplateItem[]
 ): boolean => templates.length > 0 && !containsBuiltinTemplate(templates);
 
-export const buildAssetScopeLabel = (assets: BulkAssetItem[]): string => {
+type TranslateFn = (
+  id: string,
+  defaultMessage?: string,
+  values?: Record<string, string | number>
+) => string;
+
+export const buildAssetScopeLabel = (
+  assets: BulkAssetItem[],
+  t?: TranslateFn
+): string => {
   if (!assets.length) return '--';
   const assetNames = assets.map(displayAssetName);
+  const previewNames = assetNames.slice(0, 3).join('、');
   if (assetNames.length <= 3) {
-    return `覆盖 ${assetNames.length} 台主机：${assetNames.join('、')}`;
+    return t
+      ? t('monitor.events.coverInstances', '覆盖 {count} 个实例：{names}', {
+          count: assetNames.length,
+          names: previewNames,
+        })
+      : `覆盖 ${assetNames.length} 个实例：${assetNames.join('、')}`;
   }
-  return `覆盖 ${assetNames.length} 台主机：${assetNames.slice(0, 3).join('、')} 等`;
+  return t
+    ? t('monitor.events.coverInstancesMore', '覆盖 {count} 个实例：{names} 等', {
+        count: assetNames.length,
+        names: previewNames,
+      })
+    : `覆盖 ${assetNames.length} 个实例：${previewNames} 等`;
 };
 
 export const buildPolicyPreview = (
   templates: PolicyTemplateItem[],
   assets: BulkAssetItem[],
-  config: BulkConfig
+  config: BulkConfig,
+  t?: TranslateFn
 ): PolicyPreviewItem[] => {
   const prefix = (config.name_prefix || '').trim();
-  const assetScopeLabel = buildAssetScopeLabel(assets);
-  return templates.map((template) => {
-    const policyName = [prefix, template.name].filter(Boolean).join('-');
-    return {
-      key: getTemplateKey(template),
-      name: policyName,
-      metricLabel: getMetricLabel(template),
-      assetScopeLabel,
-      statusLabel: config.enable === false ? '停用' : '启用',
-    };
-  });
+  const assetScopeLabel = buildAssetScopeLabel(assets, t);
+  const policyNames = buildDistinctPolicyNames(templates, prefix);
+  const enabledLabel = t ? t('common.enable', '启用') : '启用';
+  const disabledLabel = t ? t('monitor.events.inactive', '停用') : '停用';
+  return templates.map((template, index) => ({
+    key: getTemplateKey(template),
+    name: policyNames[index],
+    metricLabel: getMetricLabel(template),
+    assetScopeLabel,
+    statusLabel: config.enable === false ? disabledLabel : enabledLabel,
+    statusEnabled: config.enable !== false,
+  }));
 };
 
 export const getPrimaryNoticeType = (
