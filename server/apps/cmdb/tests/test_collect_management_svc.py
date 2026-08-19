@@ -481,3 +481,13 @@ def test_update_only_runs_update(monkeypatch):
     assert result["add"] == {"success": [], "failed": []}
     assert result["delete"] == {"success": [], "failed": []}
     assert len(result["update"]["success"]) == 1
+
+
+def test_manual_update_writes_nothing_when_old_data_empty(monkeypatch):
+    """手动只更新：对账不到已有 CI 时不会新增。扫描生成的采集若没认领 collect_task 就会是这种 0/0。"""
+    fake = FakeGraph(query_entity=lambda _label, c: ([], 0))
+    m = _mgmt(monkeypatch, fake, [], [{"inst_name": "10.0.1.10-switch", "ip_addr": "10.0.1.10"}])
+    result = m.update()
+    assert result["add"] == {"success": [], "failed": []}
+    assert result["update"] == {"success": [], "failed": []}
+    assert m.add_list[0]["inst_name"] == "10.0.1.10-switch"

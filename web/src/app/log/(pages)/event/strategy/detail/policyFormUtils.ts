@@ -86,6 +86,63 @@ export const shouldFetchLogPreview = ({
   logGroups?: React.Key[];
 }) => !!query?.trim() && !!logGroups?.length;
 
+/** 组织变更后，剔除不再属于候选用户列表的已选通知人 */
+export const pruneNoticeUsers = <T extends string | number>(
+  noticeUsers: T[] | undefined,
+  userList: Array<{ id: string | number; username?: string }>
+): T[] => {
+  if (!Array.isArray(noticeUsers) || !noticeUsers.length) {
+    return [];
+  }
+  if (!Array.isArray(userList) || !userList.length) {
+    return [];
+  }
+
+  const allowed = new Set<string>();
+  userList.forEach((user) => {
+    allowed.add(String(user.id));
+    if (user.username) {
+      allowed.add(user.username);
+    }
+  });
+
+  return noticeUsers.filter((item) => allowed.has(String(item)));
+};
+
+/** 邮件渠道从组织用户里选人，组织变更后需要裁掉越界通知人；标签渠道是自由文本，不能按用户列表裁 */
+export const shouldPruneNoticeUsers = ({
+  noticeTypeId,
+  channelList
+}: {
+  noticeTypeId?: string | number;
+  channelList: Array<{ id: string | number; channel_type: string }>;
+}): boolean => {
+  if (noticeTypeId == null || noticeTypeId === '') return false;
+  const selected = channelList.find(
+    (channel) => String(channel.id) === String(noticeTypeId)
+  );
+  return selected?.channel_type === 'email';
+};
+
+/** 开启通知且所选渠道需要通知人时，通知人必填 */
+export const shouldRequireNoticeUsers = ({
+  notice,
+  noticeTypeId,
+  channelList
+}: {
+  notice?: boolean;
+  noticeTypeId?: string | number;
+  channelList: Array<{ id: string | number; channel_type: string }>;
+}): boolean => {
+  if (!notice) return false;
+  if (noticeTypeId == null || noticeTypeId === '') return false;
+  const selected = channelList.find(
+    (channel) => String(channel.id) === String(noticeTypeId)
+  );
+  if (!selected) return false;
+  return selected.channel_type !== 'nats';
+};
+
 export const insertAlertNameVariable = (
   text: string,
   variable: string,

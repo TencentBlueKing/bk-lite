@@ -3,17 +3,8 @@ import asyncio
 import core.collection.result_publisher as result_publisher_module
 import core.infra.nats_utils as nats_utils
 import pytest
-from core.collection.contracts import (
-    CredentialFailureResult,
-    PublishStatus,
-    TargetCollectionResult,
-    build_collection_result_id,
-)
-from core.collection.result_publisher import (
-    BufferedResultPublisher,
-    NatsResultPublisher,
-    PublishShutdownError,
-)
+from core.collection.contracts import CredentialFailureResult, PublishStatus, TargetCollectionResult, build_collection_result_id
+from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher, PublishShutdownError
 from core.collection.runtime import CollectionRequest, RunLease
 
 
@@ -25,9 +16,7 @@ async def test_buffered_publisher_batches_concurrent_target_results():
         async def publish_batch(self, items):
             batches.append(tuple(item[1].target for item in items))
 
-    publisher = BufferedResultPublisher(
-        BatchDelegate(), capacity=3, batch_size=10, flush_interval_seconds=0.01
-    )
+    publisher = BufferedResultPublisher(BatchDelegate(), capacity=3, batch_size=10, flush_interval_seconds=0.01)
     request = CollectionRequest(
         task_id="batch-results",
         plugin_ref="network.config",
@@ -39,9 +28,7 @@ async def test_buffered_publisher_batches_concurrent_target_results():
         *(
             publisher.publish(
                 request,
-                TargetCollectionResult(
-                    target=target, status="success", attempts=1, value="metric 1"
-                ),
+                TargetCollectionResult(target=target, status="success", attempts=1, value="metric 1"),
                 lease,
             )
             for target in request.targets
@@ -61,9 +48,7 @@ async def test_enqueue_returns_receipt_before_slow_delivery_finishes():
         async def publish_batch(self, items):
             await release.wait()
 
-    publisher = BufferedResultPublisher(
-        SlowDelegate(), capacity=1, batch_size=1, flush_interval_seconds=0.01
-    )
+    publisher = BufferedResultPublisher(SlowDelegate(), capacity=1, batch_size=1, flush_interval_seconds=0.01)
     request = CollectionRequest(
         task_id="publish-receipt",
         plugin_ref="network.config",
@@ -73,9 +58,7 @@ async def test_enqueue_returns_receipt_before_slow_delivery_finishes():
 
     receipt = await publisher.enqueue(
         request,
-        TargetCollectionResult(
-            target="10.10.24.1", status="success", attempts=1, value="metric 1"
-        ),
+        TargetCollectionResult(target="10.10.24.1", status="success", attempts=1, value="metric 1"),
         lease,
     )
 
@@ -97,29 +80,21 @@ async def test_queued_receipt_can_be_cancelled_before_transport_and_is_not_deliv
             if "10.10.24.1" in delivered:
                 await release.wait()
 
-    publisher = BufferedResultPublisher(
-        BlockingDelegate(), capacity=2, batch_size=1, flush_interval_seconds=0.01
-    )
+    publisher = BufferedResultPublisher(BlockingDelegate(), capacity=2, batch_size=1, flush_interval_seconds=0.01)
     request = CollectionRequest(
         task_id="cancel-before-delivery",
         plugin_ref="network.config",
         targets=("10.10.24.1", "10.10.24.2"),
     )
-    lease = RunLease(
-        request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a"
-    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
     first = await publisher.enqueue(
         request,
-        TargetCollectionResult(
-            target="10.10.24.1", status="success", attempts=1, value="metric 1"
-        ),
+        TargetCollectionResult(target="10.10.24.1", status="success", attempts=1, value="metric 1"),
         lease,
     )
     second = await publisher.enqueue(
         request,
-        TargetCollectionResult(
-            target="10.10.24.2", status="success", attempts=1, value="metric 1"
-        ),
+        TargetCollectionResult(target="10.10.24.2", status="success", attempts=1, value="metric 1"),
         lease,
     )
     await asyncio.sleep(0)
@@ -162,9 +137,7 @@ async def test_receipt_cancelled_while_connecting_never_calls_nats_publish(monke
         targets=("10.10.24.1",),
         params={"plugin_family": "configuration", "model_id": "network"},
     )
-    lease = RunLease(
-        request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a"
-    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
     receipt = await publisher.enqueue(
         request,
         TargetCollectionResult(
@@ -193,9 +166,7 @@ async def test_shutdown_grace_cancels_hung_writer_and_resolves_receipt():
         async def publish_batch(self, _items):
             await blocked.wait()
 
-    publisher = BufferedResultPublisher(
-        HungDelegate(), capacity=1, batch_size=1, flush_interval_seconds=0.01
-    )
+    publisher = BufferedResultPublisher(HungDelegate(), capacity=1, batch_size=1, flush_interval_seconds=0.01)
     request = CollectionRequest(
         task_id="publisher-shutdown-grace",
         plugin_ref="network.config",
@@ -204,9 +175,7 @@ async def test_shutdown_grace_cancels_hung_writer_and_resolves_receipt():
     lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
     receipt = await publisher.enqueue(
         request,
-        TargetCollectionResult(
-            target="10.10.24.1", status="success", attempts=1, value="metric 1"
-        ),
+        TargetCollectionResult(target="10.10.24.1", status="success", attempts=1, value="metric 1"),
         lease,
     )
 
@@ -236,24 +205,18 @@ async def test_batch_delegate_can_report_one_failed_result_without_poisoning_pee
         async def publish_batch(self, items):
             return {failed_id: TimeoutError("target publish failed")}
 
-    publisher = BufferedResultPublisher(
-        PartialDelegate(), capacity=3, batch_size=3, flush_interval_seconds=0.01
-    )
+    publisher = BufferedResultPublisher(PartialDelegate(), capacity=3, batch_size=3, flush_interval_seconds=0.01)
     receipts = await asyncio.gather(
         *(
             publisher.enqueue(
                 request,
-                TargetCollectionResult(
-                    target=target, status="success", attempts=1, value="metric 1"
-                ),
+                TargetCollectionResult(target=target, status="success", attempts=1, value="metric 1"),
                 lease,
             )
             for target in request.targets
         )
     )
-    outcomes = await asyncio.gather(
-        *(receipt.wait() for receipt in receipts), return_exceptions=True
-    )
+    outcomes = await asyncio.gather(*(receipt.wait() for receipt in receipts), return_exceptions=True)
 
     assert outcomes[0].status == PublishStatus.CONFIRMED
     assert isinstance(outcomes[1], TimeoutError)
@@ -314,14 +277,10 @@ async def test_batch_result_id_changes_between_attempts_with_same_task_target_an
         targets=("10.10.24.1",),
         params={"plugin_family": "configuration", "model_id": "network"},
     )
-    result = TargetCollectionResult(
-        target="10.10.24.1", status="success", attempts=1, value="network_info value=1"
-    )
+    result = TargetCollectionResult(target="10.10.24.1", status="success", attempts=1, value="network_info value=1")
 
     for attempt_id in ("attempt-a", "attempt-b"):
-        lease = RunLease(
-            request.task_id, request.digest, "pod-a", 1, 999999, attempt_id=attempt_id
-        )
+        lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id=attempt_id)
         await publisher.publish_batch(((request, result, lease),))
 
     assert len(result_ids) == 2
@@ -440,9 +399,7 @@ async def test_result_event_failure_logs_original_exception_context(monkeypatch)
     async def fail_result_event(_event):
         raise ConnectionError("redis event unavailable")
 
-    monkeypatch.setattr(
-        result_publisher_module, "logger", RecordingLogger(), raising=False
-    )
+    monkeypatch.setattr(result_publisher_module, "logger", RecordingLogger(), raising=False)
     publisher = NatsResultPublisher(
         metrics_publish_batch=publish_metrics_batch,
         result_event_sink=fail_result_event,
@@ -454,25 +411,19 @@ async def test_result_event_failure_logs_original_exception_context(monkeypatch)
         targets=("10.10.24.1",),
         params={"plugin_family": "configuration", "model_id": "network"},
     )
-    lease = RunLease(
-        request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a"
-    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
 
     await publisher.publish_batch(
         (
             (
                 request,
-                TargetCollectionResult(
-                    target="10.10.24.1", status="success", attempts=1, value="metric 1"
-                ),
+                TargetCollectionResult(target="10.10.24.1", status="success", attempts=1, value="metric 1"),
                 lease,
             ),
         )
     )
 
-    assert logged == [
-        "event=result_event_record_failed task_id=event-failure-log target=10.10.24.1 error_type=ConnectionError"
-    ]
+    assert logged == ["event=result_event_record_failed task_id=event-failure-log target=10.10.24.1 error_type=ConnectionError"]
 
 
 @pytest.mark.asyncio
@@ -510,6 +461,7 @@ async def test_credential_result_event_declares_v2_contract():
     )
 
     assert len(events[0].pop("event_id")) == 64
+    assert events[0].pop("finished_at")
     assert events == [
         {
             "event_version": 2,
@@ -533,6 +485,107 @@ async def test_credential_result_event_declares_v2_contract():
             "event_index": 0,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_credential_result_publishes_to_request_subject():
+    events = []
+    published = []
+
+    async def record_event(event):
+        events.append(event)
+
+    async def publish_credential(result, params, task_id):
+        published.append((dict(result), dict(params), task_id))
+
+    publisher = NatsResultPublisher(
+        result_event_sink=record_event,
+        credential_result_publish=publish_credential,
+    )
+    request = CollectionRequest(
+        task_id="scan-family-run-5",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+        params={
+            "collect_task_id": "5",
+            "credential_result_subject": "receive_scan_credential_result",
+        },
+    )
+    lease = RunLease(
+        task_id=request.task_id,
+        request_digest=request.digest,
+        owner_id="pod-a",
+        fence=3,
+        expires_at=999999,
+        attempt_id="run-attempt-1",
+    )
+
+    await publisher._record_event(
+        request,
+        TargetCollectionResult(
+            target="10.10.24.1",
+            status="success",
+            attempts=1,
+            credential_id="credential-1",
+        ),
+        lease,
+        "result-id",
+    )
+
+    assert len(events) == 1
+    assert len(published) == 1
+    event, params, task_id = published[0]
+    assert task_id == "scan-family-run-5"
+    assert params["credential_result_subject"] == "receive_scan_credential_result"
+    assert event["host"] == "10.10.24.1"
+    assert event["credential_id"] == "credential-1"
+    assert event["collect_task_id"] == "5"
+    assert event["status"] == "success"
+    assert event["finished_at"]
+
+
+@pytest.mark.asyncio
+async def test_credential_result_skips_nats_without_subject():
+    published = []
+
+    async def record_event(event):
+        return None
+
+    async def publish_credential(result, params, task_id):
+        published.append(task_id)
+
+    publisher = NatsResultPublisher(
+        result_event_sink=record_event,
+        credential_result_publish=publish_credential,
+    )
+    request = CollectionRequest(
+        task_id="collect-no-subject",
+        plugin_ref="mysql.config",
+        targets=("10.10.24.1",),
+        params={"collect_task_id": "12"},
+    )
+    lease = RunLease(
+        task_id=request.task_id,
+        request_digest=request.digest,
+        owner_id="pod-a",
+        fence=1,
+        expires_at=999999,
+        attempt_id="run-attempt-1",
+    )
+
+    await publisher._record_event(
+        request,
+        TargetCollectionResult(
+            target="10.10.24.1",
+            status="success",
+            attempts=1,
+            credential_id="credential-1",
+        ),
+        lease,
+        "result-id",
+    )
+
+    assert published == []
 
 
 @pytest.mark.asyncio
@@ -667,9 +720,7 @@ async def test_credential_result_event_omits_empty_aggregate_after_failures():
             status="failed",
             attempts=1,
             error_code="credentials_exhausted",
-            credential_failures=(
-                CredentialFailureResult("credential-1", "capability_denied"),
-            ),
+            credential_failures=(CredentialFailureResult("credential-1", "capability_denied"),),
         ),
         lease,
         "result-id",

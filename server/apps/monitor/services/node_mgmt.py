@@ -2,7 +2,7 @@ from django.db import IntegrityError, models, transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.logger import monitor_logger as logger
-from apps.core.utils.current_team_scope import CurrentTeamDataScope, scope_permission_queryset
+from apps.core.utils.current_team_scope import scope_permission_queryset
 from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.monitor.constants.database import DatabaseConstants
@@ -52,8 +52,10 @@ class InstanceConfigService:
 
     @staticmethod
     def _get_data_scope(actor_context):
-        scope = actor_context.get("data_scope")
-        if not isinstance(scope, CurrentTeamDataScope) or not scope.data_team_ids:
+        from apps.core.utils.current_team_scope import hydrate_actor_context_data_scope
+
+        scope = hydrate_actor_context_data_scope(actor_context)
+        if scope is None or not scope.data_team_ids:
             raise UnauthorizedException("当前组织无可用权限范围")
         return scope
 

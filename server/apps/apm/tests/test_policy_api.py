@@ -97,6 +97,23 @@ def test_error_rate_threshold_is_bounded(apm_api_client):
     assert "thresholds" in response.data
 
 
+def test_policy_persists_no_data_alert_name(apm_api_client):
+    payload = _payload(_service(10))
+    payload.update(
+        {
+            "no_data_after": 5,
+            "no_data_severity": "warning",
+            "no_data_alert_name": "${service} ${metric} 无数据告警",
+        }
+    )
+
+    response = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
+
+    assert response.status_code == 201
+    assert response.data["no_data_alert_name"] == "${service} ${metric} 无数据告警"
+    assert ApmPolicy.objects.get(id=response.data["id"]).no_data_alert_name == "${service} ${metric} 无数据告警"
+
+
 def test_policy_notification_requires_an_explicit_channel(apm_api_client):
     payload = _payload(_service(10))
     payload.update({"notice": True, "notice_type_ids": []})

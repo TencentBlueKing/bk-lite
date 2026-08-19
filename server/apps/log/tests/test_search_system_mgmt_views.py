@@ -16,6 +16,7 @@ from rest_framework.test import APIRequestFactory
 
 from apps.log.models.log_group import SearchCondition
 from apps.log.services.access_scope import LogAccessScope
+from apps.log.utils import system_mgmt as log_system_mgmt
 from apps.log.views.search import LogSearchViewSet, SearchConditionViewSet
 from apps.log.views.system_mgmt import SystemMgmtView
 
@@ -434,6 +435,123 @@ def test_get_user_all_defaults_include_children_false(mocker):
 
     assert response.status_code == 200
     assert rpc.return_value.get_group_users.call_args.kwargs["include_children"] is False
+
+
+class _ActorUser:
+    username = "u"
+    domain = "domain.com"
+    is_superuser = False
+    group_list = [7, 8]
+    is_authenticated = True
+
+
+def test_get_user_all_routes_organization_ids(mocker):
+    captured = {}
+    mocker.patch(
+        "apps.log.views.system_mgmt.SystemMgmtUtils.get_users_by_organizations",
+        staticmethod(
+            lambda actor_context=None, organization_ids=None: captured.update(
+                actor_context=actor_context,
+                organization_ids=organization_ids,
+            )
+            or [{"id": 1, "username": "alice", "display_name": "Alice"}]
+        ),
+    )
+    rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+
+    request = get_req(
+        {"organization_ids": "7,8"},
+        cookies={"current_team": "8"},
+        user=_ActorUser(),
+    )
+    response = SystemMgmtView().get_user_all(request)
+
+    assert response.status_code == 200
+    assert _json(response)["data"] == [{"id": 1, "username": "alice", "display_name": "Alice"}]
+    assert captured["organization_ids"] == "7,8"
+    assert captured["actor_context"]["username"] == "u"
+    assert captured["actor_context"]["current_team"] == 8
+    assert captured["actor_context"]["group_list"] == [7, 8]
+    rpc.return_value.get_group_users.assert_not_called()
+
+
+def test_get_users_by_organizations_unions_strategy_orgs(monkeypatch):
+    from apps.system_mgmt.models import User
+
+    user_a = User.objects.create(
+        username="org-a-user",
+        display_name="A用户",
+        email="a@example.com",
+        password="x",
+        group_list=[7],
+    )
+    user_b = User.objects.create(
+        username="org-b-user",
+        display_name="B用户",
+        email="b@example.com",
+        password="x",
+        group_list=[8],
+    )
+    User.objects.create(
+        username="org-c-user",
+        display_name="C用户",
+        email="c@example.com",
+        password="x",
+        group_list=[9],
+    )
+    User.objects.create(
+        username="disabled-a-user",
+        display_name="停用A用户",
+        email="disabled-a@example.com",
+        password="x",
+        group_list=[7],
+        disabled=True,
+    )
+
+    class _Client:
+        def get_assignable_groups(self, actor_context):
+            return {"result": True, "data": [7, 8, 9]}
+
+    monkeypatch.setattr(log_system_mgmt, "SystemMgmt", _Client)
+
+    users = log_system_mgmt.SystemMgmtUtils.get_users_by_organizations(
+        actor_context={"username": "u", "domain": "domain.com"},
+        organization_ids="7,8",
+    )
+
+    assert {item["id"] for item in users} == {user_a.id, user_b.id}
+
+
+def test_get_users_by_organizations_intersects_assignable(monkeypatch):
+    from apps.system_mgmt.models import User
+
+    user_a = User.objects.create(
+        username="assignable-a-user",
+        display_name="A用户",
+        email="assignable-a@example.com",
+        password="x",
+        group_list=[7],
+    )
+    User.objects.create(
+        username="unassignable-c-user",
+        display_name="C用户",
+        email="unassignable-c@example.com",
+        password="x",
+        group_list=[9],
+    )
+
+    class _Client:
+        def get_assignable_groups(self, actor_context):
+            return {"result": True, "data": [7, 8]}
+
+    monkeypatch.setattr(log_system_mgmt, "SystemMgmt", _Client)
+
+    users = log_system_mgmt.SystemMgmtUtils.get_users_by_organizations(
+        actor_context={"username": "u", "domain": "domain.com"},
+        organization_ids="7,9",
+    )
+
+    assert [item["id"] for item in users] == [user_a.id]
 
 
 def test_search_channel_list_builds_teams_from_team_cookie(mocker):

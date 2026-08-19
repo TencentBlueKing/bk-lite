@@ -5,7 +5,16 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.apm.adapters import InMemoryNotificationDispatcher
-from apps.apm.models import ApmAlert, ApmEvent, ApmEventSnapshot, ApmEventSnapshotPayload, ApmPolicy, ApmService, ApmServiceOrganization
+from apps.apm.models import (
+    ApmAlert,
+    ApmAlertOutbox,
+    ApmEvent,
+    ApmEventSnapshot,
+    ApmEventSnapshotPayload,
+    ApmPolicy,
+    ApmService,
+    ApmServiceOrganization,
+)
 from apps.apm.services import ApmEventSnapshotStore, DjangoApmPolicyService
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult, ServiceRed, ServiceRedPoint
 
@@ -20,13 +29,13 @@ class MetricStore:
         return self.red
 
 
-def _trigger(*, organization=10):
+def _trigger(*, organization=10, suffix=""):
     at = timezone.now().replace(second=0, microsecond=0)
     service = ApmService.objects.create(
         namespace="shop",
         normalized_namespace="shop",
-        name=f"checkout-{organization}",
-        normalized_name=f"checkout-{organization}",
+        name=f"checkout-{organization}{suffix}",
+        normalized_name=f"checkout-{organization}{suffix}",
         first_seen_at=at,
         last_seen_at=at,
     )
@@ -60,9 +69,66 @@ def test_alert_and_snapshot_reads_are_organization_scoped(apm_api_client):
 
     assert listed.status_code == 200
     assert [str(item["id"]) for item in listed.data] == [str(visible.id)]
+    assert listed.data[0]["notification_status"] == "none"
     assert visible_snapshots.status_code == 200
     assert visible_snapshots.data[0]["payload_status"] == "pending"
     assert hidden_snapshots.status_code == 404
+
+
+def test_alert_list_summarizes_notification_delivery_status(apm_api_client):
+    _, alert, _ = _trigger()
+    event = alert.events.get()
+    ApmAlertOutbox.objects.create(
+        event_key="alert-list:delivered",
+        event=event,
+        channel_id=7,
+        channel_name="邮件",
+        channel_type="email",
+        delivery_status=ApmAlertOutbox.DeliveryStatus.DELIVERED,
+    )
+
+    response = apm_api_client.get("/api/v1/apm/alerts/")
+
+    assert response.status_code == 200
+    assert response.data[0]["notification_status"] == "delivered"
+
+
+def test_alert_status_group_filters_list_and_distribution_together(apm_api_client):
+    _, active_alert, at = _trigger(suffix="-active")
+    _, historical_alert, _ = _trigger(suffix="-history")
+    historical_alert.status = ApmAlert.Status.RECOVERED
+    historical_alert.ended_at = at
+    historical_alert.save(update_fields=("status", "ended_at", "updated_at"))
+    time_params = {
+        "started_at": (at - timedelta(minutes=1)).isoformat(),
+        "ended_at": (at + timedelta(minutes=1)).isoformat(),
+    }
+
+    active_list = apm_api_client.get(
+        "/api/v1/apm/alerts/",
+        {**time_params, "status_group": "active"},
+    )
+    history_list = apm_api_client.get(
+        "/api/v1/apm/alerts/",
+        {**time_params, "status_group": "history"},
+    )
+    active_distribution = apm_api_client.get(
+        "/api/v1/apm/alerts/distribution/",
+        {**time_params, "status_group": "active"},
+    )
+    history_distribution = apm_api_client.get(
+        "/api/v1/apm/alerts/distribution/",
+        {**time_params, "status_group": "history"},
+    )
+
+    assert active_list.status_code == 200
+    assert [str(item["id"]) for item in active_list.data] == [str(active_alert.id)]
+    assert history_list.status_code == 200
+    assert [str(item["id"]) for item in history_list.data] == [str(historical_alert.id)]
+    assert active_distribution.status_code == 200
+    assert sum(bucket["error"] for bucket in active_distribution.data) == 1
+    assert history_distribution.status_code == 200
+    assert sum(bucket["error"] for bucket in history_distribution.data) == 1
 
 
 def test_manual_close_appends_canonical_event_and_snapshot(apm_api_client):

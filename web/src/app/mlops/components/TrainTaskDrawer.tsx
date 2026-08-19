@@ -119,7 +119,7 @@ const TrainTaskDrawer = ({ open, onCancel, selectId, activeTag }:
       );
 
       if (!response.ok) {
-        throw new Error(`下载失败: ${response.status}`);
+        throw new Error(`${t('mlops-common.downloadFailed')}: ${response.status}`);
       }
 
       const blob = await response.blob();

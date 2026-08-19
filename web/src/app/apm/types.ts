@@ -468,6 +468,7 @@ export interface ApmPolicyInput {
   recover_after: number;
   no_data_after?: number | null;
   no_data_severity?: ApmPolicySeverity | '';
+  no_data_alert_name?: string;
   comparator?: ApmPolicyComparator;
   threshold?: number | string;
   duration_window?: number;
@@ -574,6 +575,7 @@ export interface ApmAlert {
   metric_type: ApmPolicyMetric;
   severity: ApmPolicySeverity;
   status: 'active' | 'recovered' | 'closed';
+  notification_status?: 'none' | 'pending' | 'delivered' | 'partial' | 'failed';
   current_value: string | null;
   operator: string;
   started_at: string;
@@ -585,6 +587,7 @@ export interface ApmAlert {
 
 export interface ApmAlertQuery {
   status?: ApmAlert['status'];
+  status_group?: 'active' | 'history';
   severity?: ApmPolicySeverity;
   metric_type?: ApmPolicyMetric;
   service_id?: string;

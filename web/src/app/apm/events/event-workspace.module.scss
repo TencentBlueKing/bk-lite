@@ -1,0 +1,724 @@
+.workspace {
+  width: 100%;
+  min-width: 0;
+}
+
+.tabs {
+  margin-bottom: 0;
+}
+
+.filterSection,
+.chartSection,
+.tableSection,
+.policySection {
+  width: 100%;
+  background: var(--color-bg-1);
+}
+
+.filterSection {
+  padding: 10px 20px;
+  margin-bottom: 10px;
+}
+
+.filterTitle {
+  margin-bottom: 10px;
+  color: var(--color-text-1);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.filterRow,
+.filterGroup,
+.timeGroup,
+.policyToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filterRow,
+.policyToolbar {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.filterGroup,
+.timeGroup {
+  gap: 12px;
+}
+
+.filterItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filterLabel {
+  flex: none;
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
+.chartSection {
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.chart {
+  height: 120px;
+  padding: 0 10px;
+}
+
+.alertsWorkspace {
+  min-height: calc(100vh - 146px);
+  padding: 0 0 24px;
+}
+
+.alertsViewTabs {
+  padding: 0 20px;
+  margin: 0 0 10px;
+  background: var(--color-bg-1);
+  border-bottom: 1px solid var(--color-border-1);
+}
+
+.alertsViewTabs :global(.ant-tabs-nav) {
+  min-height: 56px;
+  margin-bottom: 0;
+}
+
+.alertsContent {
+  width: 100%;
+}
+
+.alertsToolbar {
+  display: flex;
+  min-height: 60px;
+  align-items: center;
+  padding: 10px 20px;
+  margin-bottom: 10px;
+  background: var(--color-bg-1);
+}
+
+.alertsToolbarActions,
+.alertsSeveritySummary {
+  display: flex;
+  align-items: center;
+}
+
+.alertsToolbarActions {
+  width: 100%;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.alertsToolbarActions :global(.ant-input-affix-wrapper) {
+  width: 320px;
+  margin-right: auto;
+}
+
+.alertsHistoryTimeSelector {
+  width: 350px;
+}
+
+.alertsHistoryTimeSelector :global(.ant-select),
+.alertsHistoryTimeSelector :global(.ant-picker) {
+  width: 100% !important;
+}
+
+.alertsDistribution {
+  margin-bottom: 10px;
+  overflow: hidden;
+  background: var(--color-bg-1);
+}
+
+.alertsSeveritySummary {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.alertsSeveritySummary :global(.ant-tag) {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.alertsDistributionChart {
+  height: 150px;
+  padding: 0 10px;
+}
+
+.alertsDistributionCollapseTitle {
+  min-height: 44px;
+  padding: 10px 20px !important;
+}
+
+.alertsDistributionCollapseContent {
+  padding: 10px 0 !important;
+}
+
+.alertsTableSection {
+  min-width: 0;
+  padding: 10px 20px 20px;
+  background: var(--color-bg-1);
+}
+
+.alertsTableSection :global(.ant-table-wrapper) {
+  min-width: 0;
+}
+
+.alertTimeCell {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.alertTimeCell :global(.anticon) {
+  color: var(--color-text-4);
+}
+
+.alertTitleLink {
+  display: block !important;
+  width: 100%;
+  min-height: 40px;
+  overflow: hidden;
+  padding: 0 !important;
+  font-weight: 500;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alertServiceCell {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.alertServiceName,
+.alertServiceScope {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alertServiceName {
+  color: var(--color-text-1);
+  font-weight: 500;
+}
+
+.alertServiceScope {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.alertOperatorCell {
+  max-width: 100%;
+}
+
+.alertOperatorCell :global(.ant-avatar) {
+  flex: none;
+  background: var(--color-primary);
+}
+
+.alertOperatorCell :global(.ant-typography) {
+  min-width: 0;
+  margin: 0;
+}
+
+.alertOperationCell :global(.ant-btn) {
+  min-height: 40px;
+}
+
+.tableSection {
+  min-width: 0;
+  padding: 10px 20px 20px;
+}
+
+.policySection {
+  min-height: calc(100vh - 146px);
+  padding: 20px;
+}
+
+.policyToolbar {
+  margin-bottom: 20px;
+}
+
+.policyNameLink,
+.policyServiceName {
+  display: block;
+  overflow: hidden;
+  color: var(--color-text-1);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.policyNameLink:hover {
+  color: var(--color-primary);
+}
+
+.policyServiceCell {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.policyServiceScope {
+  display: block;
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.policyCreatorCell {
+  max-width: 100%;
+}
+
+.policyCreatorCell :global(.ant-avatar) {
+  flex: none;
+  background: var(--color-primary);
+}
+
+.policyCreatorCell :global(.ant-typography) {
+  min-width: 0;
+  margin: 0;
+}
+
+.policyTimeCell {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.policyTimeCell :global(.anticon) {
+  color: var(--color-text-4);
+}
+
+.policyOperationCell :global(.ant-btn) {
+  min-height: 40px;
+}
+
+.editor {
+  width: 100%;
+  min-height: 100%;
+  padding: 16px 20px 0;
+  background: transparent;
+}
+
+.editorTitle {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 40px;
+  margin-bottom: 12px;
+  color: var(--color-text-3);
+  font-size: 14px;
+  gap: 6px;
+}
+
+.editorLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+  padding: 0 0 24px;
+}
+
+.editorMain,
+.editorSide {
+  width: 100%;
+  min-width: 0;
+}
+
+.editorSide {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.stepContent {
+  width: 100%;
+  max-width: 840px;
+  padding: 12px 0 24px;
+}
+
+.stepContent :global(.ant-form-item) {
+  margin-bottom: 18px;
+}
+
+.stepContent :global(.ant-input),
+.stepContent :global(.ant-input-number),
+.stepContent :global(.ant-select) {
+  width: 100%;
+  max-width: 560px;
+}
+
+.numberWithUnit {
+  width: 100%;
+  max-width: 560px;
+}
+
+.numberWithUnit :global(.ant-input-number) {
+  flex: 1;
+  min-width: 0;
+}
+
+.numberUnit {
+  display: inline-flex;
+  min-width: 52px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 11px;
+  color: var(--color-text-2);
+  background: var(--color-fill-1);
+  border: 1px solid var(--color-border);
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+}
+
+.scopeHint {
+  display: block;
+  margin: -6px 0 0 120px;
+  font-size: 12px;
+}
+
+.legacyScopeAlert {
+  max-width: 720px;
+  margin: 12px 0 0 120px;
+}
+
+.editor :global(.ant-steps-item-description) {
+  width: 100%;
+  max-width: none !important;
+  color: var(--color-text-1) !important;
+}
+
+.editor :global(.ant-steps-item-title) {
+  color: var(--color-text-1) !important;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.editor :global(.ant-steps-item-icon) {
+  font-variant-numeric: tabular-nums;
+}
+
+.editor :global(.ant-steps-item-process > .ant-steps-item-container > .ant-steps-item-tail::after) {
+  background: var(--color-border-2);
+}
+
+.thresholdTitle {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.thresholdTable {
+  width: 100%;
+  max-width: 840px;
+  margin-bottom: 24px;
+}
+
+.thresholdTable :global(.ant-table-cell) {
+  vertical-align: middle;
+}
+
+.thresholdTable :global(.ant-select),
+.thresholdTable :global(.ant-input-number) {
+  width: 100%;
+  max-width: none;
+}
+
+.thresholdTable :global(.ant-tag) {
+  min-width: 44px;
+  margin: 0;
+  text-align: center;
+  font-weight: 600;
+}
+
+.conditionRows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.conditionRow,
+.conditionSentence {
+  display: flex;
+  align-items: center;
+}
+
+.conditionRow {
+  min-height: 40px;
+}
+
+.conditionLabel {
+  flex: 0 0 120px;
+  padding-right: 12px;
+  color: var(--color-text-1);
+  text-align: right;
+}
+
+.conditionLabel > span {
+  margin-right: 3px;
+  color: var(--color-fail);
+}
+
+.conditionSentence {
+  flex-wrap: wrap;
+  color: var(--color-text-3);
+  gap: 8px;
+}
+
+.conditionSentence :global(.ant-input-number) {
+  width: 72px;
+}
+
+.conditionSentence :global(.ant-select) {
+  width: 176px;
+}
+
+.noDataAlertName {
+  margin-top: 2px;
+  margin-bottom: 0 !important;
+}
+
+.editorFooter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 0 24px;
+  border-top: 1px solid var(--color-border-1);
+}
+
+.sideSection {
+  min-width: 0;
+}
+
+.sideSection :global(.ant-typography) {
+  margin-top: 0;
+}
+
+.sideSection :global(h2.ant-typography) {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sideSection :global(.ant-table) {
+  background: var(--color-bg-1);
+}
+
+.sideSection :global(.ant-table-cell) {
+  padding: 10px 12px !important;
+}
+
+.sideSection :global(.ant-btn-link) {
+  min-height: 32px;
+  padding: 0;
+}
+
+.variableCode {
+  color: var(--color-primary);
+  font-size: 12px;
+}
+
+.previewHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.previewHeading :global(.ant-typography-secondary) {
+  display: block;
+  font-size: 12px;
+}
+
+.previewValue {
+  margin-top: 16px;
+}
+
+.previewChart {
+  height: 240px;
+  margin-top: 12px;
+}
+
+.previewEmpty {
+  display: flex;
+  min-height: 220px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  border-bottom: 1px solid var(--color-border-1);
+  text-align: center;
+}
+
+@media (min-width: 1280px) {
+  .editorLayout {
+    grid-template-columns: minmax(680px, 860px) minmax(360px, 1fr);
+    gap: 24px;
+  }
+
+  .editorSide {
+    position: sticky;
+    top: 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .filterRow,
+  .policyToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .timeGroup {
+    justify-content: space-between;
+  }
+
+  .tableSection,
+  .filterSection,
+  .policySection {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .alertsViewTabs {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .alertsToolbar,
+  .alertsTableSection {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .alertsDistributionCollapseTitle {
+    padding-right: 16px !important;
+    padding-left: 16px !important;
+  }
+
+  .alertsToolbarActions :global(.ant-input-affix-wrapper) {
+    width: min(100%, 360px);
+  }
+
+  .editor {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .editorLayout {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .scopeHint,
+  .legacyScopeAlert {
+    margin-left: 0;
+  }
+
+  .conditionRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .conditionLabel {
+    flex-basis: auto;
+    padding-right: 0;
+    text-align: left;
+  }
+}
+
+@media (max-width: 640px) {
+  .alertsWorkspace {
+    padding: 0 0 12px;
+  }
+
+  .alertsViewTabs {
+    padding-right: 12px;
+    padding-left: 12px;
+    margin-bottom: 12px;
+  }
+
+  .alertsToolbarActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .alertsToolbarActions :global(.ant-input-affix-wrapper),
+  .alertsToolbarActions :global(.ant-btn),
+  .alertsHistoryTimeSelector {
+    width: 100%;
+  }
+
+  .alertsDistribution {
+    margin-bottom: 8px;
+  }
+
+  .alertsToolbar,
+  .alertsTableSection {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .alertsDistributionCollapseTitle {
+    padding-right: 12px !important;
+    padding-left: 12px !important;
+  }
+
+  .alertsDistributionChart {
+    height: 180px;
+  }
+
+  .alertsSeveritySummary {
+    align-items: flex-start;
+  }
+
+  .editor :global(.ant-form-item-row) {
+    flex-direction: column;
+  }
+
+  .editor :global(.ant-form-item-label) {
+    flex: none !important;
+    max-width: 100%;
+    padding-bottom: 6px;
+    text-align: left;
+  }
+
+  .editor :global(.ant-form-item-label > label) {
+    height: auto;
+  }
+
+  .editor :global(.ant-form-item-control) {
+    flex: 0 0 auto !important;
+    width: 100%;
+    max-width: 100%;
+    min-height: 40px;
+  }
+
+  .thresholdTable :global(.ant-table-cell) {
+    padding: 8px !important;
+  }
+
+  .thresholdTable .numberUnit {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace *,
+  .editor * {
+    scroll-behavior: auto !important;
+  }
+}

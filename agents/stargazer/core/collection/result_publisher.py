@@ -8,12 +8,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
-from core.collection.contracts import (
-    PublishOutcome,
-    PublishStatus,
-    TargetCollectionResult,
-    build_collection_result_id,
-)
+from core.collection.contracts import PublishOutcome, PublishStatus, TargetCollectionResult, build_collection_result_id
 from core.collection.runtime import CollectionRequest, RunLease
 from core.logger import logger
 
@@ -149,9 +144,7 @@ class BufferedResultPublisher:
         if flush_interval_seconds <= 0:
             raise ValueError("flush_interval_seconds must be greater than zero")
         self._delegate = delegate
-        self._queue: asyncio.Queue[_BufferedPublishItem | None] = asyncio.Queue(
-            maxsize=capacity
-        )
+        self._queue: asyncio.Queue[_BufferedPublishItem | None] = asyncio.Queue(maxsize=capacity)
         self._batch_size = int(batch_size)
         self.capacity = int(capacity)
         self._flush_interval_seconds = float(flush_interval_seconds)
@@ -178,9 +171,7 @@ class BufferedResultPublisher:
         enqueue_started = time.monotonic()
         await self._queue.put(item)
         if self._metrics is not None:
-            self._metrics.observe(
-                "publish_queue_wait_seconds", time.monotonic() - enqueue_started
-            )
+            self._metrics.observe("publish_queue_wait_seconds", time.monotonic() - enqueue_started)
         self.peak_queue_depth = max(self.peak_queue_depth, self._queue.qsize())
         return FuturePublishReceipt(completion, state)
 
@@ -205,14 +196,9 @@ class BufferedResultPublisher:
             if not writer.done():
                 writer.cancel()
             await asyncio.gather(writer, return_exceptions=True)
-            self._fail_pending(
-                PublishShutdownError("result publisher shutdown grace expired")
-            )
+            self._fail_pending(PublishShutdownError("result publisher shutdown grace expired"))
             self._discard_queued_items()
-            if (
-                isinstance(asyncio.current_task(), asyncio.Task)
-                and asyncio.current_task().cancelling()
-            ):
+            if isinstance(asyncio.current_task(), asyncio.Task) and asyncio.current_task().cancelling():
                 raise
         except Exception as error:  # writer 异常必须结束所有回执
             self._fail_pending(error)
@@ -232,9 +218,7 @@ class BufferedResultPublisher:
 
     def _ensure_writer(self) -> None:
         if self._writer is None or self._writer.done():
-            self._writer = asyncio.create_task(
-                self._writer_loop(), name="collection-result-publisher"
-            )
+            self._writer = asyncio.create_task(self._writer_loop(), name="collection-result-publisher")
 
     async def _writer_loop(self) -> None:
         while True:
@@ -261,9 +245,7 @@ class BufferedResultPublisher:
             await self._deliver(batch)
 
     async def _deliver(self, batch: list[_BufferedPublishItem]) -> None:
-        tracks_transport_attempts = bool(
-            getattr(self._delegate, "tracks_transport_attempts", False)
-        )
+        tracks_transport_attempts = bool(getattr(self._delegate, "tracks_transport_attempts", False))
         if tracks_transport_attempts:
             batch = [item for item in batch if not item.state.cancelled]
         else:
@@ -279,12 +261,7 @@ class BufferedResultPublisher:
         try:
             if callable(publish_batch):
                 try:
-                    outcomes = await publish_batch(
-                        tuple(
-                            (item.request, item.result, item.lease, item.state)
-                            for item in batch
-                        )
-                    )
+                    outcomes = await publish_batch(tuple((item.request, item.result, item.lease, item.state) for item in batch))
                 except Exception as exc:  # 同批各目标获得独立失败结论
                     for item in batch:
                         if not item.completion.done():
@@ -307,16 +284,11 @@ class BufferedResultPublisher:
                         elif isinstance(outcome, PublishOutcome):
                             item.completion.set_result(outcome)
                         else:
-                            item.completion.set_result(
-                                PublishOutcome(status=PublishStatus.CONFIRMED)
-                            )
+                            item.completion.set_result(PublishOutcome(status=PublishStatus.CONFIRMED))
                 return
 
             outcomes = await asyncio.gather(
-                *(
-                    self._delegate.publish(item.request, item.result, item.lease)
-                    for item in batch
-                ),
+                *(self._delegate.publish(item.request, item.result, item.lease) for item in batch),
                 return_exceptions=True,
             )
             for item, outcome in zip(batch, outcomes):
@@ -325,14 +297,10 @@ class BufferedResultPublisher:
                 if isinstance(outcome, BaseException):
                     item.completion.set_exception(outcome)
                 else:
-                    item.completion.set_result(
-                        PublishOutcome(status=PublishStatus.CONFIRMED)
-                    )
+                    item.completion.set_result(PublishOutcome(status=PublishStatus.CONFIRMED))
         finally:
             if self._metrics is not None:
-                self._metrics.observe(
-                    "publish_flush_duration_seconds", time.monotonic() - flush_started
-                )
+                self._metrics.observe("publish_flush_duration_seconds", time.monotonic() - flush_started)
 
 
 class NatsResultPublisher:
@@ -344,6 +312,7 @@ class NatsResultPublisher:
         metrics_publish: Callable | None = None,
         metrics_publish_batch: Callable | None = None,
         callback_publish: Callable | None = None,
+        credential_result_publish: Callable | None = None,
         result_event_sink: Callable | None = None,
         metrics=None,
         event_max_attempts: int = 2,
@@ -351,6 +320,7 @@ class NatsResultPublisher:
         self._metrics_publish = metrics_publish
         self._metrics_publish_batch = metrics_publish_batch
         self._callback_publish = callback_publish
+        self._credential_result_publish = credential_result_publish
         self._result_event_sink = result_event_sink
         self._metrics = metrics
         self._event_max_attempts = max(1, int(event_max_attempts))
@@ -578,11 +548,15 @@ class NatsResultPublisher:
         lease: RunLease,
         result_id: str,
     ) -> None:
-        if self._result_event_sink is None:
+        should_sink = self._result_event_sink is not None
+        should_publish = bool(str(request.params.get("credential_result_subject") or "").strip())
+        if not should_sink and not should_publish:
             return
+
         credential_failures = tuple(getattr(result, "credential_failures", ()))
         for event_index, failure in enumerate(credential_failures):
-            await self._result_event_sink(
+            await self._emit_credential_event(
+                request,
                 self._build_credential_event(
                     request=request,
                     lease=lease,
@@ -593,13 +567,14 @@ class NatsResultPublisher:
                     error_code=failure.error_code,
                     attempts=result.attempts,
                     event_index=event_index,
-                )
+                ),
             )
 
         if credential_failures and not result.credential_id:
             return
 
-        await self._result_event_sink(
+        await self._emit_credential_event(
+            request,
             self._build_credential_event(
                 request=request,
                 lease=lease,
@@ -610,8 +585,35 @@ class NatsResultPublisher:
                 error_code=result.error_code,
                 attempts=result.attempts,
                 event_index=len(credential_failures),
-            )
+            ),
         )
+
+    async def _emit_credential_event(self, request: CollectionRequest, event: dict) -> None:
+        # Redis 批推路径会在 append 时补 finished_at；实时 NATS 必须自带，
+        # 否则 Server v2 身份校验会拒收（unreachable 例外绕过）。
+        if not str(event.get("finished_at") or "").strip():
+            from datetime import datetime, timezone
+
+            event["finished_at"] = datetime.now(timezone.utc).isoformat(
+                timespec="milliseconds"
+            )
+        if self._result_event_sink is not None:
+            await self._result_event_sink(event)
+        await self._publish_credential_result_if_needed(request, event)
+
+    async def _publish_credential_result_if_needed(
+        self, request: CollectionRequest, event: dict
+    ) -> None:
+        subject = str(request.params.get("credential_result_subject") or "").strip()
+        if not subject:
+            return
+
+        publish = self._credential_result_publish
+        if publish is None:
+            from tasks.utils.nats_helper import publish_credential_result_to_nats
+
+            publish = publish_credential_result_to_nats
+        await publish(event, dict(request.params), request.task_id)
 
     @staticmethod
     def _build_credential_event(
