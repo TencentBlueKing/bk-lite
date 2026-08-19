@@ -272,12 +272,14 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
                 if len(first_record.conversation_content) > 50:
                     title += "..."
 
+                first_time = session.get("first_time")
                 result.append(
                     {
                         "session_id": session_id,
                         "title": title,
                         "bot_id": first_record.bot_id,
                         "source": entry_type,
+                        "updated_at": first_time.isoformat() if first_time else None,
                     }
                 )
                 seen_session_ids.add(session_id)
@@ -300,6 +302,7 @@ class ChatApplicationViewSet(TeamPermissionMixin, viewsets.ReadOnlyModelViewSet)
                     "bot_id": sess.bot_id,
                     "source": sess.source,
                     "created_at": sess.created_at.isoformat() if sess.created_at else None,
+                    "updated_at": sess.updated_at.isoformat() if sess.updated_at else None,
                 }
             )
 
