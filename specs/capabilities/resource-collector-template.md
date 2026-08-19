@@ -5,7 +5,7 @@
 
 #### Scenario: kube-state-metrics resources present
 - **WHEN** the resource collector template is rendered
-- **THEN** the output YAML contains Deployment `kube-state-metrics`, Service `kube-state-metrics`, ClusterRole `kube-state-metrics`, ClusterRoleBinding `kube-state-metrics`, ServiceAccount `kube-state-metrics` in namespace `bk-lite-collector`
+- **THEN** the output YAML contains Deployment `kube-state-metrics`, Service `kube-state-metrics`, ServiceAccount `kube-state-metrics` in namespace `bk-lite-collector`, plus cluster-scoped ClusterRole `bk-lite-kube-state-metrics` and ClusterRoleBinding `bk-lite-kube-state-metrics`
 
 ### Requirement: Resource collector template contains independent telegraf-resource data path
 `bk-lite-resource-collector.yaml` SHALL contain a Deployment `telegraf-resource` that uses `inputs.prometheus` to scrape `kube-state-metrics:8080/metrics`, and `outputs.nats` to send data to NATS (subject `metrics.cloud`).
@@ -45,7 +45,7 @@ All resource-specific components (telegraf, ConfigMap) SHALL use `-resource` suf
 
 #### Scenario: KSM present in metric template
 - **WHEN** the metric collector template is rendered
-- **THEN** the output YAML contains Deployment, Service, ClusterRole, ClusterRoleBinding, ServiceAccount named `kube-state-metrics` in namespace `bk-lite-collector`
+- **THEN** the output YAML contains Deployment, Service, ServiceAccount named `kube-state-metrics` in namespace `bk-lite-collector`, plus cluster-scoped ClusterRole and ClusterRoleBinding named `bk-lite-kube-state-metrics`
 - **THEN** the vmagent-config ConfigMap contains both the `kubernetes-cadvisor` and `kubernetes-kube-state-metrics` scrape jobs
 
 #### Scenario: metric collector deployed alone is fully functional
@@ -55,4 +55,25 @@ All resource-specific components (telegraf, ConfigMap) SHALL use `-resource` suf
 
 #### Scenario: both collectors applied to the same cluster in any order
 - **WHEN** both the metric and resource collector templates are applied to the same cluster, in any order
-- **THEN** the shared KSM (`bk-lite-collector/kube-state-metrics`) carries identical args in every template, so the last-applied copy is equivalent and both pipelines keep working
+- **THEN** the shared KSM (`bk-lite-collector/kube-state-metrics`) and its cluster-scoped RBAC (`bk-lite-kube-state-metrics`) carry identical definitions in every template, so the last-applied copy is equivalent and both pipelines keep working
+
+### Requirement: Cluster-scoped resources are namespaced by name
+Cluster-scoped objects are unique per cluster and `kubectl apply` replaces a
+same-named object wholesale instead of merging it. Every ClusterRole and
+ClusterRoleBinding shipped by `bk-lite-metric-collector.yaml`,
+`bk-lite-resource-collector.yaml`, `bk-lite-log-collector.yaml` and the
+manually-applied copies under `deploy/dist/bk-lite-kubernetes-collector/` SHALL
+be named with a `bk-lite-` prefix, and SHALL NOT carry a `metadata.namespace`
+field. Generic names such as `kube-state-metrics`, `vmagent-role` or
+`vector-daemonset` collide with the monitoring stacks clusters already run
+(kube-prometheus, KubeSphere), silently stripping their permissions.
+
+#### Scenario: BK-Lite collector applied to a cluster that already runs kube-prometheus
+- **WHEN** any K8S collector manifest is applied to a cluster whose own monitoring stack owns ClusterRole/ClusterRoleBinding `kube-state-metrics`
+- **THEN** no BK-Lite object shares a name with it, so the existing binding keeps its subjects and the existing role keeps its rules
+- **THEN** BK-Lite's own RBAC is named `bk-lite-kube-state-metrics`, `bk-lite-vmagent` and `bk-lite-vector-daemonset`
+
+#### Scenario: ClusterRoleBinding subjects stay inside BK-Lite namespaces
+- **WHEN** a BK-Lite ClusterRoleBinding is rendered
+- **THEN** its `roleRef` resolves to a ClusterRole declared in the same manifest
+- **THEN** every subject is a ServiceAccount in a `bk-lite-` prefixed namespace
