@@ -562,6 +562,8 @@
       "snmpTemplateHint": "所有监控对象均可创建自定义 SNMP 模板；没有可复用内置模板时，将使用通用 SNMP 接入配置和示例 OID。",
       "templateDescription": "模版介绍",
       "noConfigData": "暂无配置数据，请检查插件配置",
+      "missingEntryContext": "缺少插件关联的监控对象，无法进入配置",
+      "missingEntryContextDescription": "请重新从集成列表进入；若问题仍然存在，请重新同步插件目录。",
       "reportedOnlyConfigTip": "已检测到该插件上报数据，但当前实例没有可编辑的采集配置。",
       "missingConfigDataTip": "未找到该插件的采集配置内容，请检查配置是否已成功下发。",
       "searchRuleName": "搜索规则名称",

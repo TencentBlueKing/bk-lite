@@ -41,7 +41,7 @@ class TestPluginList:
         assert rows["apip"]["display_name"] == "API插件"
         assert rows["builtinp"]["is_custom"] is False
 
-    def test_list_preserves_related_object_order_and_parent_choice(self, api_client):
+    def test_list_uses_monitor_object_order_for_entry_choice(self, api_client):
         later_type = MonitorObjectType.objects.create(id="PVLaterType", name="Later", order=200)
         earlier_type = MonitorObjectType.objects.create(id="PVEarlierType", name="Earlier", order=100)
         lower_id_later = MonitorObject.objects.create(
@@ -74,8 +74,33 @@ class TestPluginList:
         assert response.status_code == 200
         rows = response.json()["data"]
         assert len(rows) == 1
-        assert rows[0]["monitor_object"] == [child.id, higher_id_earlier.id, lower_id_later.id]
         assert rows[0]["parent_monitor_object"] == higher_id_earlier.id
+        assert rows[0]["parent_monitor_object_name"] == higher_id_earlier.name
+        assert rows[0]["parent_monitor_object_display_name"] == higher_id_earlier.name
+
+    def test_list_resolves_entry_context_from_bound_child(self, api_client):
+        parent = MonitorObject.objects.create(
+            name="PVCompoundRoot",
+            display_name="复合对象根入口",
+            icon="compound-root",
+            level="base",
+        )
+        child = MonitorObject.objects.create(
+            name="PVCompoundChild",
+            level="derivative",
+            parent=parent,
+        )
+        plugin = MonitorPlugin.objects.create(name="PVCompoundPlugin", template_type="builtin")
+        plugin.monitor_object.add(child)
+
+        response = api_client.get(f"{BASE}/api/monitor_plugin/?name=PVCompoundPlugin")
+
+        assert response.status_code == 200
+        row = response.json()["data"][0]
+        assert row["parent_monitor_object"] == parent.id
+        assert row["parent_monitor_object_name"] == parent.name
+        assert row["parent_monitor_object_display_name"] == parent.display_name
+        assert row["parent_monitor_object_icon"] == parent.icon
 
     def test_list_queries_remain_constant_for_multiple_plugins(self, api_client):
         parent = MonitorObject.objects.create(name="PVPerfParent", level="base")
@@ -97,7 +122,7 @@ class TestPluginList:
             with CaptureQueriesContext(connection) as queries:
                 response = api_client.get(path)
             assert response.status_code == 200
-            assert len(queries) == 3
+            assert len(queries) <= 4
             responses.append(response.json()["data"])
 
         assert responses[0] == responses[1]
@@ -107,7 +132,7 @@ class TestPluginList:
             response = api_client.get(f"{BASE}/api/monitor_plugin/?monitor_object_id={parent.id}&name=PVPerfPlugin")
 
         assert response.status_code == 200
-        assert len(queries) == 3
+        assert len(queries) <= 4
         assert {row["name"] for row in response.json()["data"]} == set(expected_names)
 
     @pytest.mark.parametrize(

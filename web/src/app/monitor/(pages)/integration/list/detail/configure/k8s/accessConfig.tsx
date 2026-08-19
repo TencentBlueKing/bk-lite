@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import useApiClient from '@/utils/request';
-import { Form, Input, Select, InputNumber, Button, Radio } from 'antd';
+import { Form, Input, Select, InputNumber, Button, Radio, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import Icon from '@/components/icon';
@@ -17,14 +17,13 @@ import {
   DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
   isValidK8sImageRegistryPrefix,
 } from '@/utils/k8sImageRegistry';
+import { parseIntegrationObjectId } from '@/app/monitor/utils/integrationEntryContext';
 
 const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
   const searchParams = useSearchParams();
-  const objectId = searchParams.get('id')
-    ? Number(searchParams.get('id'))
-    : undefined;
+  const objectId = parseIntegrationObjectId(searchParams.get('id'));
   const { isLoading } = useApiClient();
   const { getCloudRegionList, createK8sInstance, getK8sCommand } =
     useIntegrationApi();
@@ -42,7 +41,9 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   useEffect(() => {
     if (!isLoading) {
       getCloudRegions();
-      getK8sClusters();
+      if (objectId) {
+        getK8sClusters();
+      }
     }
   }, [isLoading]);
 
@@ -89,6 +90,10 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   };
 
   const handleSubmit = async () => {
+    if (!objectId) {
+      message.error(t('monitor.integrations.missingEntryContext'));
+      return;
+    }
     try {
       setSubmitLoading(true);
       const values = await form.validateFields();
@@ -398,7 +403,12 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
 
         {/* 下一步按钮 */}
         <div className="flex justify-end mt-6">
-          <Button type="primary" loading={submitLoading} onClick={handleSubmit}>
+          <Button
+            type="primary"
+            loading={submitLoading}
+            disabled={!objectId}
+            onClick={handleSubmit}
+          >
             {t('common.next')} →
           </Button>
         </div>

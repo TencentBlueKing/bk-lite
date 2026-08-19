@@ -562,6 +562,8 @@
       "snmpTemplateHint": "Custom SNMP templates are available for every monitor object. When no reusable built-in template exists, a generic SNMP configuration with sample OIDs is used.",
       "templateDescription": "Template Description",
       "noConfigData": "No configuration data available, please check plugin settings",
+      "missingEntryContext": "The plugin has no associated monitor object, so configuration cannot be opened",
+      "missingEntryContextDescription": "Open the plugin again from the integration list. If the problem persists, resynchronize the plugin catalog.",
       "reportedOnlyConfigTip": "This plugin is reporting data, but this instance has no editable collection configuration.",
       "missingConfigDataTip": "Collection configuration content was not found. Check whether the configuration was delivered successfully.",
       "searchRuleName": "Search Rule Name",
