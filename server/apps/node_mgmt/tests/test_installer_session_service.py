@@ -108,6 +108,38 @@ def test_windows_remote_session_requires_dedicated_nats_credentials(monkeypatch)
         )
 
 
+@pytest.mark.parametrize(
+    "installer_credentials",
+    [
+        {
+            NodeConstants.NATS_INSTALLER_USERNAME_KEY: "   ",
+            NodeConstants.NATS_INSTALLER_PASSWORD_KEY: "installer-password",
+        },
+        {
+            NodeConstants.NATS_INSTALLER_USERNAME_KEY: "installer",
+            NodeConstants.NATS_INSTALLER_PASSWORD_KEY: "   ",
+        },
+    ],
+)
+def test_strict_session_rejects_blank_installer_credentials(monkeypatch, installer_credentials):
+    _stub_installer_session_dependencies(
+        monkeypatch,
+        {
+            NodeConstants.SERVER_URL_KEY: "https://server.example",
+            NodeConstants.NATS_SERVERS_KEY: "tls://nats.example:4222",
+            "NATS_PROTOCOL": "tls",
+            NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_KEY: NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_STRICT,
+            **installer_credentials,
+        },
+    )
+
+    with pytest.raises(BaseAppException, match="dedicated NATS_INSTALLER"):
+        InstallerSessionService.build_session_config(
+            "token",
+            token_data=_token_data(NodeConstants.LINUX_OS),
+        )
+
+
 def test_windows_remote_session_requires_tls_nats(monkeypatch):
     _stub_installer_session_dependencies(
         monkeypatch,

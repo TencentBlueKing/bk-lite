@@ -88,6 +88,8 @@ class InstallerSessionService:
         # 优先使用安装专用凭据；存量区域默认保留管理员凭据回退，迁移完成后可按区域切到 strict。
         nats_username = envs.get(NodeConstants.NATS_INSTALLER_USERNAME_KEY)
         nats_password = envs.get(NodeConstants.NATS_INSTALLER_PASSWORD_KEY)
+        has_installer_username = bool(str(nats_username or "").strip())
+        has_installer_password = bool(str(nats_password or "").strip())
         credentials_mode_key = NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_KEY
         try:
             installer_credentials_mode = normalize_installer_credentials_mode(
@@ -101,7 +103,7 @@ class InstallerSessionService:
             and token_data.get("install_mode") == "auto"
         )
 
-        if not nats_username or not nats_password:
+        if not has_installer_username or not has_installer_password:
             if (
                 is_windows_remote
                 or installer_credentials_mode == NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_STRICT

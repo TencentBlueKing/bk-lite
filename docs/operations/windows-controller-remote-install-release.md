@@ -162,6 +162,7 @@ ANSIBLE_PAYLOAD_ENCRYPTION_KEY=<由密钥管理系统注入的随机密钥>
 ```text
 server/apps/node_mgmt/migrations/0037_controllertasknode_winrm_fields.py
 server/apps/node_mgmt/migrations/0039_merge_cloudregion_and_winrm.py
+server/apps/node_mgmt/migrations/0044_encrypt_installer_passwords.py
 ```
 
 按现有发布流程执行：
@@ -170,7 +171,7 @@ server/apps/node_mgmt/migrations/0039_merge_cloudregion_and_winrm.py
 python manage.py migrate --no-input
 ```
 
-迁移仅增加 WinRM 配置字段并合并迁移分支，不删除已有字段。不要只发布 Server 代码而跳过迁移，否则创建或执行控制器安装任务时会发生数据库字段错误。
+迁移增加 WinRM 配置字段、合并迁移分支，并以稳定主键游标分批加密存量非空 `NATS_INSTALLER_PASSWORD`。每批在事务内锁定并重读目标行，滚动升级时不会用旧值覆盖并发轮换；失败后可安全重跑并从尚未转为 `secret` 的行继续。不要只发布 Server 代码而跳过迁移，否则创建或执行控制器安装任务时会发生数据库字段错误，存量安装密码也会继续保持明文类型。
 
 ## 7. 目标环境前置条件
 
@@ -232,7 +233,7 @@ bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`
 - [ ] 若发布 onedir 产物，`win_copy.ps1` 位于 `_internal/collections/ansible_collections/ansible/windows/plugins/modules/`，且冻结程序 collection 解析冒烟通过。
 - [ ] 所需云区域至少有一个健康的 Ansible Executor。
 - [ ] 所需云区域已配置 `NATS_PROTOCOL=tls`、可信 NATS 证书和专用 `NATS_INSTALLER_USERNAME/PASSWORD`。
-- [ ] NodeMgmt 的 `0037`、`0038`、`0039` 迁移均已应用。
+- [ ] NodeMgmt 的 `0037`、`0038`、`0039`、`0044` 迁移均已应用；抽查存量 `NATS_INSTALLER_PASSWORD` 已为 `secret`，列表响应仅返回掩码。
 - [ ] Windows 控制器安装和卸载默认使用 5986、HTTPS 和 NTLM，证书校验开关默认关闭并展示风险提示。失败后重试会带入任务节点保存的端口和证书校验状态，并要求重新输入凭据。
 - [ ] 安装执行期间，页面能在 Ansible 任务结束前持续看到下载、解压和服务切换进度，最终回放不产生重复步骤。
 - [ ] 使用测试 Windows 主机完成一次全新远程安装。
