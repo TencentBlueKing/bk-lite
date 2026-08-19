@@ -331,6 +331,37 @@ def test_cmdb_uncredentialed_claims_mysql_by_ip_port(db):
 
 
 @pytest.mark.django_db
+def test_cmdb_uncredentialed_does_not_claim_mysql_on_different_port(db):
+    mysql_object = MonitorObject.objects.create(name="Mysql", display_name="Mysql", level="base")
+    existing = MonitorInstance.objects.create(
+        id="('1_10.0.0.20_3307',)",
+        name="db-other-port",
+        monitor_object=mysql_object,
+        ip="10.0.0.20",
+        cloud_region_id=1,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="mysql-uuid",
+            link_ids={"cmdb_id": "mysql-uuid"},
+            raw={
+                "ip": "10.0.0.20",
+                "cloud_region_id": 1,
+                "port": 3306,
+                "model_id": "mysql",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["ignored"] is True
+    assert result["id"] is None
+    existing.refresh_from_db()
+    assert existing.cmdb_id in (None, "")
+    assert MonitorInstance.objects.filter(cmdb_id="mysql-uuid").count() == 0
+
+
+@pytest.mark.django_db
 def test_cmdb_uncredentialed_does_not_claim_host_as_switch(host_object, db):
     MonitorInstance.objects.create(
         id="('host-same-ip',)",

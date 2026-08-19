@@ -1077,13 +1077,6 @@ class MonitorModuleIngestService:
         if not object_name or not ip:
             return None
         cloud = cls._extract_cloud_region_id(raw)
-        qs = MonitorInstance.objects.filter(
-            ip=ip,
-            is_deleted=False,
-            monitor_object__name=object_name,
-        ).select_related("monitor_object")
-        if cloud is not None:
-            qs = qs.filter(cloud_region_id=cloud)
         if model_id in cls.IP_PORT_CLAIM_MODELS:
             db_type = {"mysql": "mysql", "postgresql": "postgres", "mssql": "mssql"}[model_id]
             port = cls._extract_port(raw, default=DB_DEFAULT_PORTS.get(db_type))
@@ -1096,12 +1089,16 @@ class MonitorModuleIngestService:
             by_pk = cls._find_by_pk(storage_key)
             if by_pk and not by_pk.is_deleted and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
                 return by_pk
-            matches = list(qs[:2])
-            if len(matches) == 1:
-                return matches[0]
             return None
         if model_id not in cls.IP_CLOUD_CLAIM_MODELS:
             return None
+        qs = MonitorInstance.objects.filter(
+            ip=ip,
+            is_deleted=False,
+            monitor_object__name=object_name,
+        ).select_related("monitor_object")
+        if cloud is not None:
+            qs = qs.filter(cloud_region_id=cloud)
         matches = list(qs[:2])
         if len(matches) == 1:
             return matches[0]
