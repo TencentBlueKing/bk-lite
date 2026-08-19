@@ -527,7 +527,7 @@ Content-Type: application/json
   "file_keys": ["job-files/2026/04/30/abc123.rpm"],
   "target_source": "node_mgmt",
   "target_list": [
-    {"node_id": "xxx", "name": "web-01", "ip": "1.2.3.4", "os": "linux", "cloud_region_id": "region-1"}
+    {"node_id": "xxx", "name": "web-01", "ip": "1.2.3.4", "os": "linux"}
   ],
   "target_path": "/tmp/patches/",
   "overwrite_strategy": "overwrite",

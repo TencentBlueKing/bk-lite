@@ -80,6 +80,12 @@ class TestAPISecretAuthBackend:
 
         assert APISecretAuthBackend().authenticate(api_token="inactive-secret") is None
 
+        base_user.is_active = True
+        base_user.save(update_fields=["is_active"])
+        system_user.disabled = False
+        system_user.save(update_fields=["disabled"])
+        assert APISecretAuthBackend().authenticate(api_token="inactive-secret") is not None
+
     def test_valid_token_populates_permissions(self):
         BaseUser.objects.create(username="apiuser", domain="domain.com")
         UserAPISecret.objects.create(username="apiuser", domain="domain.com", api_secret="sec123", team=5)
