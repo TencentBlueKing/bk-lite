@@ -6,8 +6,9 @@ const TEMPLATE_TOKEN = /\{(\w+)\}/g;
 export interface PlatformApplication {
   id: string;
   name: string;
-  botId: string;
-  nodeId: string;
+  /** SkillChannel binding id used by platform/web chat APIs. */
+  channelId: string;
+  skillId?: string;
 }
 
 export interface PlatformSession {
@@ -84,13 +85,17 @@ export function asRecordList(payload: unknown): Record<string, unknown>[] {
 
 export function mapPlatformApplications(rows: Record<string, unknown>[]): PlatformApplication[] {
   return rows
-    .map((item) => ({
-      id: String(item.id ?? ''),
-      name: String(item.app_name ?? item.name ?? ''),
-      botId: String(item.bot ?? item.bot_id ?? ''),
-      nodeId: String(item.node_id ?? ''),
-    }))
-    .filter((item) => item.id && item.botId && item.nodeId);
+    .map((item) => {
+      const id = String(item.id ?? item.channel_id ?? '');
+      const channelId = String(item.channel_id ?? item.id ?? '');
+      const name =
+        String(item.app_name ?? item.skill_name ?? item.name ?? '').trim() ||
+        (id ? `渠道 ${id}` : '');
+      const skillId =
+        item.skill_id === undefined || item.skill_id === null ? undefined : String(item.skill_id);
+      return { id, name, channelId, skillId };
+    })
+    .filter((item) => item.id && item.channelId);
 }
 
 function optionalTime(value: unknown): string | undefined {

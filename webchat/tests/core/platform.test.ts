@@ -19,10 +19,10 @@ import {
 import { normalizeWebChatConfig } from '../../packages/webchat-core/src/config';
 
 const platform = {
-  applicationsUrl: 'https://host.test/apps',
-  sessionsUrl: 'https://host.test/sessions/{botId}/{nodeId}',
-  messagesUrl: 'https://host.test/messages/{sessionId}',
-  chatUrlTemplate: 'https://host.test/chat/{botId}/{nodeId}',
+  applicationsUrl: 'https://host.test/skill_channel/platform/',
+  sessionsUrl: 'https://host.test/conversations/?channel_id={channelId}',
+  messagesUrl: 'https://host.test/messages/?session_id={sessionId}',
+  chatUrlTemplate: 'https://host.test/skill_channel/{channelId}/chat/',
 };
 
 test('platform mode wins over top-level sseUrl when the contract is complete', () => {
@@ -48,12 +48,16 @@ test('normalizeWebChatConfig keeps the named platform contract', () => {
 
 test('fills host URL templates without baking console paths into webchat', () => {
   assert.equal(
-    fillUrlTemplate(platform.chatUrlTemplate, { botId: 12, nodeId: 'web-chat' }),
-    'https://host.test/chat/12/web-chat'
+    fillUrlTemplate(platform.chatUrlTemplate, { channelId: 12 }),
+    'https://host.test/skill_channel/12/chat/'
+  );
+  assert.equal(
+    fillUrlTemplate(platform.sessionsUrl, { channelId: 12 }),
+    'https://host.test/conversations/?channel_id=12'
   );
   assert.equal(
     fillUrlTemplate(platform.messagesUrl, { sessionId: 'session_1' }),
-    'https://host.test/messages/session_1'
+    'https://host.test/messages/?session_id=session_1'
   );
 });
 
@@ -66,17 +70,39 @@ test('unwraps gateway envelopes and paginated lists', () => {
   assert.deepEqual(asRecordList({ items: [{ id: 2 }] }), [{ id: 2 }]);
 });
 
-test('maps applications and restores the last valid app/session', () => {
+test('maps published platform skill channels and restores last selection', () => {
   const apps = mapPlatformApplications([
-    { id: 2, app_name: '配置检查', bot: 9, node_id: 'cfg' },
-    { id: 1, app_name: 'K8s RCA', bot: 8, node_id: 'rca' },
+    {
+      id: 2,
+      skill_id: 20,
+      app_name: '配置检查',
+      skill_name: 'cfg-skill',
+      channel_type: 'platform',
+    },
+    {
+      id: 1,
+      skill_id: 10,
+      skill_name: 'K8s RCA',
+      channel_type: 'platform',
+    },
   ]);
   const sessions = mapPlatformSessions([
     { session_id: 's-new', title: '最新', created_at: '2026-08-18T00:00:00Z' },
     { session_id: 's-old', title: '更早' },
   ]);
 
-  assert.deepEqual(apps[0], { id: '2', name: '配置检查', botId: '9', nodeId: 'cfg' });
+  assert.deepEqual(apps[0], {
+    id: '2',
+    name: '配置检查',
+    channelId: '2',
+    skillId: '20',
+  });
+  assert.deepEqual(apps[1], {
+    id: '1',
+    name: 'K8s RCA',
+    channelId: '1',
+    skillId: '10',
+  });
   assert.equal(sessions[0].updatedAt, '2026-08-18T00:00:00Z');
   assert.equal(sessions[1].updatedAt, undefined);
   assert.equal(lastSessionStorageKey('webchat:platform', 'alice', '7'), 'webchat:platform:alice:7');

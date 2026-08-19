@@ -13,10 +13,10 @@ import {
 } from './visibility';
 
 const PLATFORM = {
-  applicationsUrl: '/api/proxy/opspilot/bot_mgmt/chat_application/?app_type=web_chat&page_size=100',
-  sessionsUrl: '/api/proxy/opspilot/bot_mgmt/chat_application/web_chat_sessions/?bot_id={botId}&node_id={nodeId}',
-  messagesUrl: '/api/proxy/opspilot/bot_mgmt/chat_application/session_messages/?session_id={sessionId}',
-  chatUrlTemplate: '/api/proxy/opspilot/bot_mgmt/execute_chat_flow/{botId}/{nodeId}/',
+  applicationsUrl: '/api/proxy/opspilot/skill_channel/platform/',
+  sessionsUrl: '/api/proxy/opspilot/skill_channel/conversations/?channel_id={channelId}',
+  messagesUrl: '/api/proxy/opspilot/skill_channel/conversations/messages/?session_id={sessionId}',
+  chatUrlTemplate: '/api/proxy/opspilot/skill_channel/{channelId}/chat/',
   interruptUrl: '/api/proxy/opspilot/bot_mgmt/interrupt_chat_flow_execution/',
   approvalUrl: '/api/proxy/opspilot/bot_mgmt/submit_approval/',
   choiceUrl: '/api/proxy/opspilot/bot_mgmt/submit_choice/',

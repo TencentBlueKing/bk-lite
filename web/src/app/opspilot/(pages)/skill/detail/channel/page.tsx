@@ -68,10 +68,10 @@ const SkillChannelPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [skillId, fetchSkillChannels]);
+  }, [skillId]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   const configFields = useMemo(() => CONFIG_FIELDS[channelType] || [], [channelType]);

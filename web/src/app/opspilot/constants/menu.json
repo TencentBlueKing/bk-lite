@@ -74,7 +74,8 @@
           "title": "渠道发布",
           "url": "/opspilot/skill/detail/channel",
           "icon": "channel1",
-          "name": "skill_channel"
+          "name": "skill_channel",
+          "withParentPermission": true
         },
         {
           "title": "Web对话",
@@ -220,7 +221,8 @@
           "title": "Channel Publish",
           "url": "/opspilot/skill/detail/channel",
           "icon": "channel1",
-          "name": "skill_channel"
+          "name": "skill_channel",
+          "withParentPermission": true
         },
         {
           "title": "Web Chat",

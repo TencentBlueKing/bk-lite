@@ -91,7 +91,7 @@ export interface WebChatConfig {
   platform?: PlatformContract;
 }
 
-/** URL templates may include `{botId}`, `{nodeId}`, and `{sessionId}`. */
+/** URL templates may include `{channelId}` and `{sessionId}`. */
 export interface PlatformContract {
   applicationsUrl: string;
   sessionsUrl: string;
