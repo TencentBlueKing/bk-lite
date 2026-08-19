@@ -29,6 +29,7 @@ import {
   type AuthRecoveryEvent,
 } from '@/utils/authRecoveryChannel';
 import {
+  fetchRecoveredAuth,
   getAuthUserIdentity,
   recoverAuthWithRetry,
 } from '@/utils/authRecovery';
@@ -103,6 +104,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const pendingRecoveryRef = useRef<boolean>(false);
   const sessionExpiredOpenRef = useRef<boolean>(false);
   const recoveryPromiseRef = useRef<Promise<boolean> | null>(null);
+  const recoveryEpochRef = useRef(0);
+  const recoveryAbortRef = useRef<AbortController | null>(null);
   const handledRecoveryEventIdsRef = useRef<Set<string>>(new Set());
   const isProtectedContentReadyRef = useRef<boolean>(false);
   const startupAuthCheckIdentityRef = useRef<string | null>(null);
@@ -336,7 +339,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [isCurrentAuthPath, isDashboardRenderRoute]);
 
-  const recoverAuthenticatedSession = useCallback((event?: AuthRecoveryEvent) => {
+  const recoverAuthenticatedSession = useCallback((
+    event?: AuthRecoveryEvent,
+    options?: { replaceInflight?: boolean },
+  ) => {
     if (event && handledRecoveryEventIdsRef.current.has(event.eventId)) {
       return recoveryPromiseRef.current ?? Promise.resolve(true);
     }
@@ -347,15 +353,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       pendingRecoveryRef.current = true;
     }
 
-    if (recoveryPromiseRef.current) {
+    if (recoveryPromiseRef.current && !options?.replaceInflight) {
       return recoveryPromiseRef.current;
     }
+
+    if (options?.replaceInflight) {
+      recoveryAbortRef.current?.abort();
+    }
+
+    const recoveryEpoch = recoveryEpochRef.current + 1;
+    recoveryEpochRef.current = recoveryEpoch;
+    const abortController = new AbortController();
+    recoveryAbortRef.current = abortController;
 
     const recoveryPromise = (async () => {
       try {
         const recoveryResult = await recoverAuthWithRetry(
           expectedRecoveryUserIdentityRef.current,
+          () => fetchRecoveredAuth(fetch, abortController.signal),
         );
+        if (
+          abortController.signal.aborted
+          || recoveryEpoch !== recoveryEpochRef.current
+        ) {
+          return false;
+        }
         if (recoveryResult.status !== 'recovered') {
           if (recoveryResult.status === 'account-changed') {
             pendingRecoveryRef.current = false;
@@ -384,7 +406,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Failed to recover authenticated session:', error);
         return false;
       } finally {
-        recoveryPromiseRef.current = null;
+        if (recoveryPromiseRef.current === recoveryPromise) {
+          recoveryPromiseRef.current = null;
+        }
       }
     })();
 
@@ -413,7 +437,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const handleReloginSuccess = useCallback(() => {
     const event = publishAuthRecovery();
-    void recoverAuthenticatedSession(event);
+    void recoverAuthenticatedSession(event, { replaceInflight: true });
   }, [recoverAuthenticatedSession]);
 
   useEffect(() => {
@@ -510,8 +534,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           pendingRecoveryRef.current = true;
           setIsCheckingAuth(true);
 
-          void recoverAuthenticatedSession().then((recovered) => {
-            if (recovered || isProtectedContentReadyRef.current) {
+          const recovery = recoverAuthenticatedSession();
+          const startupEpoch = recoveryEpochRef.current;
+          void recovery.then((recovered) => {
+            if (
+              recovered
+              || isProtectedContentReadyRef.current
+              || startupEpoch !== recoveryEpochRef.current
+            ) {
               return;
             }
 
