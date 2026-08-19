@@ -7,6 +7,8 @@ call_command 序列 + 错误处理策略（默认失败即中断，启用 contin
 后继续执行并汇总失败）”。
 """
 
+from contextlib import nullcontext
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -16,6 +18,7 @@ import apps.core.management.commands.batch_init as bi
 
 pytestmark = pytest.mark.unit
 _verify_critical_schema = bi.Command._verify_critical_schema
+_any_admin_username_exists = bi.Command._any_admin_username_exists
 
 
 class _Style:
@@ -50,6 +53,11 @@ def calls(monkeypatch):
 @pytest.fixture(autouse=True)
 def _stub_critical_schema_gate(monkeypatch):
     monkeypatch.setattr(bi.Command, "_verify_critical_schema", lambda self: None)
+    monkeypatch.setattr(bi.Command, "_any_admin_username_exists", lambda _self: False)
+    monkeypatch.setattr(bi.transaction, "atomic", nullcontext)
+    monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD", "Managed-Secret-1!")
+    monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_FILE", raising=False)
+    monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING", raising=False)
 
 
 class TestHandleDispatch:
@@ -153,15 +161,73 @@ class TestHandleDispatch:
 
         assert [call[0] for call in calls][-1] == "reconcile_node_mgmt_sync"
 
-    def test_system_mgmt_creates_admin_with_resolved_password(self, calls, monkeypatch):
+    def test_fresh_system_mgmt_without_managed_secret_fails_closed(self, calls, monkeypatch):
         monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
-        cmd = _make_command()
-        cmd.handle(apps="system_mgmt", continue_on_error=False)
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_FILE", raising=False)
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING", raising=False)
+
+        with pytest.raises(CommandError, match="必须配置"):
+            _make_command().handle(apps="system_mgmt", continue_on_error=False)
+
+        assert not [call for call in calls if call[0] == "create_user"]
+
+    def test_fresh_system_mgmt_uses_explicit_managed_secret(self, calls):
+        _make_command().handle(apps="system_mgmt", continue_on_error=False)
+
+        create_user = [call for call in calls if call[0] == "create_user"]
+        assert create_user[0][1] == ("admin", "Managed-Secret-1!")
+        assert create_user[0][2]["update_existing_password"] is False
+        assert "temporary_password" not in create_user[0][2]
+
+    def test_system_mgmt_secret_file_can_migrate_existing_admin(self, calls, monkeypatch, tmp_path):
+        monkeypatch.setattr(bi.Command, "_any_admin_username_exists", lambda _self: True)
+        password_file = tmp_path / "admin-password"
+        password_file.write_text("Generated-Secret-1!\n", encoding="utf-8")
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
+        monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD_FILE", str(password_file))
+        monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING", "true")
+
+        _make_command().handle(apps="system_mgmt", continue_on_error=False)
+
         create_user = [c for c in calls if c[0] == "create_user"]
-        assert len(create_user) == 1
-        _, args, kwargs = create_user[0]
-        assert args == ("admin", "password")
-        assert kwargs.get("is_superuser") is True
+        assert create_user[0][1] == ("admin", "Generated-Secret-1!")
+        assert "temporary_password" not in create_user[0][2]
+        assert create_user[0][2]["update_existing_password"] is True
+
+    def test_existing_admin_without_migration_skips_password_bootstrap(self, calls, monkeypatch, tmp_path):
+        monkeypatch.setattr(bi.Command, "_any_admin_username_exists", lambda _self: True)
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
+        monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD_FILE", str(tmp_path / "missing-secret"))
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING", raising=False)
+
+        _make_command().handle(apps="system_mgmt", continue_on_error=False)
+
+        assert not [call for call in calls if call[0] == "create_user"]
+
+    def test_any_domain_admin_preserves_legacy_noop_without_secret(self, calls, monkeypatch, tmp_path):
+        monkeypatch.setattr(bi.Command, "_any_admin_username_exists", lambda _self: True)
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
+        monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD_FILE", str(tmp_path / "missing-secret"))
+
+        _make_command().handle(apps="system_mgmt", continue_on_error=False)
+
+        assert not [call for call in calls if call[0] == "create_user"]
+
+    def test_admin_existence_check_matches_legacy_cross_domain_scope(self, monkeypatch):
+        calls = []
+        queryset = SimpleNamespace(exists=lambda: calls.append("exists") or True)
+        manager = SimpleNamespace(filter=lambda **kwargs: calls.append(("filter", kwargs)) or queryset)
+        manager.select_for_update = lambda: calls.append("select_for_update") or manager
+        model = SimpleNamespace(objects=manager)
+        monkeypatch.setattr(bi.django_apps, "get_model", lambda *args: calls.append(("get_model", args)) or model)
+
+        assert _any_admin_username_exists() is True
+        assert calls == [
+            ("get_model", ("system_mgmt", "User")),
+            "select_for_update",
+            ("filter", {"username": "admin"}),
+            "exists",
+        ]
 
     def test_system_mgmt_runs_opspilot_legacy_menu_cleanup_before_realm_resource(self, calls):
         cmd = _make_command()
@@ -325,13 +391,68 @@ class TestGetAdminPassword:
         monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD", "  s3cret  ")
         assert bi.Command._get_admin_password() == "s3cret"
 
-    def test_blank_env_falls_back_to_default(self, monkeypatch):
+    def test_blank_env_without_file_fails_closed(self, monkeypatch):
         monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD", "   ")
-        assert bi.Command._get_admin_password() == "password"
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_FILE", raising=False)
+        with pytest.raises(CommandError, match="必须配置"):
+            bi.Command._get_admin_password()
 
-    def test_missing_env_falls_back_to_default(self, monkeypatch):
+    def test_missing_env_reads_secret_file(self, monkeypatch, tmp_path):
         monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
-        assert bi.Command._get_admin_password() == "password"
+        password_file = tmp_path / "admin-password"
+        password_file.write_text("Managed-Secret-1!\n", encoding="utf-8")
+        monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD_FILE", str(password_file))
+        assert bi.Command._get_admin_password() == "Managed-Secret-1!"
+
+    def test_empty_secret_file_fails_closed(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
+        password_file = tmp_path / "admin-password"
+        password_file.write_text("\n", encoding="utf-8")
+        monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD_FILE", str(password_file))
+        with pytest.raises(CommandError, match="不能为空"):
+            bi.Command._get_admin_password()
+
+    def test_oversized_secret_file_fails_closed(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
+        password_file = tmp_path / "admin-password"
+        password_file.write_text("x" * 4097, encoding="utf-8")
+        monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD_FILE", str(password_file))
+        with pytest.raises(CommandError, match="内容过大"):
+            bi.Command._get_admin_password()
+
+    def test_non_utf8_secret_file_fails_with_sanitized_error(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
+        password_file = tmp_path / "admin-password"
+        password_file.write_bytes(b"\xff")
+        monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD_FILE", str(password_file))
+        with pytest.raises(CommandError, match="无法读取.*UnicodeDecodeError"):
+            bi.Command._get_admin_password()
+
+    def test_missing_secret_file_fails_closed_when_password_is_needed(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
+        monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD_FILE", str(tmp_path / "missing-secret"))
+        with pytest.raises(CommandError, match="无法读取"):
+            bi.Command._get_admin_password()
+
+    def test_invalid_migration_switch_fails_closed(self, monkeypatch):
+        monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING", "maybe")
+        with pytest.raises(CommandError, match="仅支持"):
+            bi.Command._should_migrate_admin_password()
+
+    def test_migration_without_managed_password_fails_closed(self, monkeypatch):
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
+        monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_FILE", raising=False)
+        monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING", "true")
+        with pytest.raises(CommandError, match="必须配置"):
+            bi.Command._should_migrate_admin_password()
+
+    def test_dev_password_remains_scoped_to_explicit_make_target(self):
+        makefile = (Path(__file__).resolve().parents[3] / "Makefile").read_text(encoding="utf-8")
+        setup_dev_user = makefile.split("setup-dev-user:", 1)[1].split("\n\n", 1)[0]
+
+        assert "DJANGO_SUPERUSER_PASSWORD=password" in setup_dev_user
+        assert "manage.py createsuperuser --noinput" in setup_dev_user
+        assert "batch_init" not in setup_dev_user
 
 
 class TestPreloadLanguageCache:
