@@ -13,6 +13,7 @@ import { CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import ExcelJS from 'exceljs';
 import { useUserInfoContext } from '@/context/userInfo';
 import {
+  appendOptionSheetsToWorkbook,
   buildOptionSheetDefinitions,
   buildOrganizationOptions,
   findExcelImportColumn,
@@ -391,16 +392,11 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
         t('node-manager.cloudregion.integrations.options'),
         [mainSheet.name]
       );
-      optionSheetDefinitions.forEach((definition) => {
-        const optionsSheet = workbook.addWorksheet(definition.sheetName);
-        definition.options.forEach((option) => optionsSheet.addRow([option]));
-        optionsSheet.getColumn(1).width = 30;
-        optionsSheet.state = definition.state;
-        columnValidations.set(definition.columnIndex + 1, {
-          sheetName: definition.sheetName,
-          options: definition.options
-        });
-      });
+      appendOptionSheetsToWorkbook(workbook, optionSheetDefinitions).forEach(
+        (validation, columnIndex) => {
+          columnValidations.set(columnIndex, validation);
+        }
+      );
       // 为主工作表的数据列添加数据验证
       columns.forEach((column, colIndex) => {
         const columnLetter = String.fromCharCode(65 + colIndex); // A, B, C...

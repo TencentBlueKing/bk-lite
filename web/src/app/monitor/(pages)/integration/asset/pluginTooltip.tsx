@@ -1,4 +1,5 @@
 import React from 'react';
+import { Tag, Tooltip } from 'antd';
 
 export interface CollectorNode {
   id: string;
@@ -13,6 +14,14 @@ interface PluginTooltipContentProps {
   notAssociatedText: string;
   collectMode?: string;
   collectorNodes?: CollectorNode[];
+}
+
+interface PluginTooltipTriggerProps {
+  ariaLabel: string;
+  color: string;
+  onActivate: () => void;
+  title: React.ReactNode;
+  children: React.ReactNode;
 }
 
 export const formatCollectorNodes = (
@@ -59,6 +68,40 @@ const PluginTooltipContent = ({
         )}
       </div>
     </div>
+  );
+};
+
+export const PluginTooltipTrigger = ({
+  ariaLabel,
+  color,
+  onActivate,
+  title,
+  children
+}: PluginTooltipTriggerProps) => {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    onActivate();
+  };
+
+  return (
+    <Tooltip
+      title={title}
+      classNames={{ root: 'asset-tooltip' }}
+      mouseEnterDelay={0}
+    >
+      <Tag
+        role="button"
+        tabIndex={0}
+        aria-label={ariaLabel}
+        color={color}
+        className="cursor-pointer"
+        onClick={onActivate}
+        onKeyDown={handleKeyDown}
+      >
+        {children}
+      </Tag>
+    </Tooltip>
   );
 };
 

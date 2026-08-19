@@ -1,12 +1,24 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import PluginTooltipContent, {
   formatCollectorNodes,
+  PluginTooltipTrigger,
 } from '../pluginTooltip';
 
 afterEach(cleanup);
+
+beforeEach(() => {
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn()
+  });
+});
 
 describe('formatCollectorNodes', () => {
   it('formats one node with stable id and name', () => {
@@ -71,5 +83,48 @@ describe('PluginTooltipContent', () => {
 
     expect(screen.getByText('未关联')).not.toBeNull();
     expect(screen.queryByText('Alpha (node-1)')).toBeNull();
+  });
+});
+
+describe('PluginTooltipTrigger', () => {
+  it('鼠标悬停和键盘聚焦都能展示提示内容', async () => {
+    const user = userEvent.setup();
+    render(
+      <PluginTooltipTrigger
+        ariaLabel="MySQL，正常"
+        color="success"
+        onActivate={vi.fn()}
+        title={<span>采集节点：Alpha (node-1)</span>}
+      >
+        MySQL
+      </PluginTooltipTrigger>
+    );
+    const trigger = screen.getByRole('button', { name: 'MySQL，正常' });
+
+    await user.hover(trigger);
+    expect(await screen.findByText('采集节点：Alpha (node-1)')).toBeTruthy();
+    await user.unhover(trigger);
+    trigger.focus();
+    expect(await screen.findByText('采集节点：Alpha (node-1)')).toBeTruthy();
+  });
+
+  it.each(['Enter', ' '])('%s 键与鼠标点击执行相同动作', (key) => {
+    const onActivate = vi.fn();
+    render(
+      <PluginTooltipTrigger
+        ariaLabel="MySQL，正常"
+        color="success"
+        onActivate={onActivate}
+        title="详情"
+      >
+        MySQL
+      </PluginTooltipTrigger>
+    );
+    const trigger = screen.getByRole('button', { name: 'MySQL，正常' });
+
+    fireEvent.keyDown(trigger, { key });
+    fireEvent.click(trigger);
+
+    expect(onActivate).toHaveBeenCalledTimes(2);
   });
 });

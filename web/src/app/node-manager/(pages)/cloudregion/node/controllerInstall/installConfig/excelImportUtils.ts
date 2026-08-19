@@ -1,4 +1,5 @@
 import type { Group } from '@/types';
+import type ExcelJS from 'exceljs';
 
 export type OrganizationId = string | number;
 
@@ -34,6 +35,11 @@ export interface OptionSheetDefinition {
   options: string[];
   sheetName: string;
   state: 'visible' | 'hidden';
+}
+
+export interface WorkbookOptionValidation {
+  sheetName: string;
+  options: string[];
 }
 
 export interface OrganizationResolutionIssue {
@@ -120,6 +126,24 @@ export const buildOptionSheetDefinitions = (
       }
     ];
   });
+};
+
+export const appendOptionSheetsToWorkbook = (
+  workbook: ExcelJS.Workbook,
+  definitions: OptionSheetDefinition[]
+): Map<number, WorkbookOptionValidation> => {
+  const validations = new Map<number, WorkbookOptionValidation>();
+  definitions.forEach((definition) => {
+    const optionsSheet = workbook.addWorksheet(definition.sheetName);
+    definition.options.forEach((option) => optionsSheet.addRow([option]));
+    optionsSheet.getColumn(1).width = 30;
+    optionsSheet.state = definition.state;
+    validations.set(definition.columnIndex + 1, {
+      sheetName: definition.sheetName,
+      options: definition.options
+    });
+  });
+  return validations;
 };
 
 const normalizeOrganizationPath = (value: string) =>

@@ -2,6 +2,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { countAccessAssets } from '../automaticAssetCount';
+import en from '@/app/monitor/locales/en.json';
+import zh from '@/app/monitor/locales/zh.json';
 
 const columns = [
   { name: 'node_ids', required: true },
@@ -29,6 +31,15 @@ const filledAsset = {
 };
 
 describe('automatic integration access asset count', () => {
+  it('explains the counting rule in both supported languages', () => {
+    expect(zh.monitor.integrations.accessAssetCountHint).toBe(
+      '仅统计必填信息完整的资产'
+    );
+    expect(en.monitor.integrations.accessAssetCountHint).toContain(
+      'complete required information'
+    );
+  });
+
   it('does not count an empty placeholder or a row with defaults only', () => {
     expect(countAccessAssets([{ key: 'empty' }], columns, placeholder)).toBe(0);
     expect(

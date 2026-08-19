@@ -582,6 +582,7 @@
       "excelImportTips": "Only xlsx files can be uploaded, and no more than 20MB",
       "importSuccessCount": "Successfully imported {count} records",
       "accessAssetCount": "Connected assets: {count}",
+      "accessAssetCountHint": "Only assets with complete required information are counted",
       "multipleSupport": "Multiple values supported, separated by commas",
       "downloadTemplate": "Download Template",
       "importData": "Batch Import",

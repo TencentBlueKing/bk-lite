@@ -1079,6 +1079,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               count: accessAssetCount
             })}
           </span>
+          <span className="text-[12px] text-[var(--color-text-3)]">
+            {t('monitor.integrations.accessAssetCountHint')}
+          </span>
         </div>
         <div className="flex gap-[8px]">
           <Button

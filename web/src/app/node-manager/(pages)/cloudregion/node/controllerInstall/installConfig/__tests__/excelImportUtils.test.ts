@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import ExcelJS from 'exceljs';
 import {
+  appendOptionSheetsToWorkbook,
   buildOptionSheetDefinitions,
   buildOrganizationOptions,
   findExcelImportColumn,
@@ -55,6 +57,36 @@ describe('controller install Excel organization options', () => {
         state: 'hidden'
       }
     ]);
+  });
+
+  it('writes full organization paths into a visible workbook sheet', async () => {
+    const workbook = new ExcelJS.Workbook();
+    workbook.addWorksheet('Data');
+    const definitions = buildOptionSheetDefinitions(
+      [{ label: 'Organization', type: 'group_select' }],
+      [
+        { label: 'Headquarters/Platform', name: 'Platform', value: 2 },
+        { label: 'Branch/Platform', name: 'Platform', value: 3 }
+      ],
+      'Options',
+      ['Data']
+    );
+
+    const validations = appendOptionSheetsToWorkbook(workbook, definitions);
+    const serialized = await workbook.xlsx.writeBuffer();
+    const reloaded = new ExcelJS.Workbook();
+    await reloaded.xlsx.load(serialized);
+    const organizationSheet = reloaded.getWorksheet('Organization_Options');
+
+    expect(organizationSheet?.state).toBe('visible');
+    expect(organizationSheet?.getColumn(1).values.slice(1)).toEqual([
+      'Headquarters/Platform',
+      'Branch/Platform'
+    ]);
+    expect(validations.get(1)).toEqual({
+      sheetName: 'Organization_Options',
+      options: ['Headquarters/Platform', 'Branch/Platform']
+    });
   });
 
   it('resolves an exact full organization path to its ID', () => {
