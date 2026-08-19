@@ -13,6 +13,10 @@ import { AccessConfigProps } from '@/app/monitor/types/integration';
 import IntegrationStepCallout, {
   createMonitorK8sStepCalloutPreset,
 } from '@/components/integration-step-callout';
+import {
+  DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
+  isValidK8sImageRegistryPrefix,
+} from '@/utils/k8sImageRegistry';
 
 const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const { t } = useTranslation();
@@ -48,6 +52,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
       form.setFieldsValue({
         accessType: 'existing',
         interval: commandData.interval,
+        image_registry_prefix:
+          commandData.image_registry_prefix || DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
       });
     }
   }, [commandData, form]);
@@ -89,6 +95,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
       const commandParams = {
         cloud_region_id: values.cloud_region_id,
         interval: values.interval,
+        image_registry_prefix: values.image_registry_prefix,
       };
       if (values.accessType === 'new') {
         // 新建资产：先创建实例，再获取命令
@@ -141,6 +148,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         initialValues={{
           accessType: 'new',
           interval: 60,
+          image_registry_prefix: DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
         }}
       >
         {/* 接入配置标题 */}
@@ -304,6 +312,39 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
             </Form.Item>
             <div className="text-[var(--color-text-3)] flex-1">
               {t('monitor.integrations.k8s.cloudRegionDesc')}
+            </div>
+          </div>
+        </Form.Item>
+        <Form.Item
+          label={t('monitor.integrations.k8s.imageRegistryPrefix')}
+          required
+        >
+          <div className="flex items-start gap-4">
+            <Form.Item
+              name="image_registry_prefix"
+              noStyle
+              validateTrigger="onBlur"
+              rules={[
+                { required: true, message: t('common.required') },
+                {
+                  validator: (_, value) =>
+                    isValidK8sImageRegistryPrefix(value)
+                      ? Promise.resolve()
+                      : Promise.reject(
+                        new Error(
+                          t('monitor.integrations.k8s.imageRegistryInvalid')
+                        )
+                      ),
+                },
+              ]}
+            >
+              <Input
+                placeholder={DEFAULT_K8S_IMAGE_REGISTRY_PREFIX}
+                style={{ width: FORM_CONTROL_WIDTH }}
+              />
+            </Form.Item>
+            <div className="text-[var(--color-text-3)] flex-1">
+              {t('monitor.integrations.k8s.imageRegistryPrefixDesc')}
             </div>
           </div>
         </Form.Item>

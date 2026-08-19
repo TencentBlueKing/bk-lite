@@ -54,6 +54,7 @@ Content-Type: application/json
   "nats_username": "admin",
   "nats_password": "secret123",
   "nats_ca": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
+  "image_registry_prefix": "bk-lite.tencentcloudcr.com/bklite",
   "runtime_profile": "standard",
   "host_log_path": "/var/log/pods",
   "docker_container_log_path": "/var/lib/docker/containers"
@@ -70,6 +71,7 @@ Content-Type: application/json
 | nats_username | string | 是 | NATS 用户名 |
 | nats_password | string | 是 | NATS 密码 |
 | nats_ca | string | 是 | NATS CA 证书内容（PEM 格式） |
+| image_registry_prefix | string | 否 | 采集器镜像仓库前缀，默认 `bk-lite.tencentcloudcr.com/bklite`。离线环境可改为已同步同名镜像的私有仓库前缀；不包含协议头、镜像名或 tag |
 | runtime_profile | string | 否 | 日志采集器运行环境预设，枚举值：`standard`（默认，仅挂载 `/var/log`）、`docker`（额外挂载 `/var/lib/docker/containers`）、`custom`（节点 Pod 日志根目录不在默认位置时使用）。仅 `type=log` 时生效 |
 | host_log_path | string | 条件必填 | 节点侧 Kubernetes Pod 日志根目录绝对路径。仅当 `type=log` 且 `runtime_profile=custom` 时必填，容器内会统一挂载到 `/var/log/pods`，建议填写真实的 Pod 日志目录，如 `/var/log/pods` |
 | docker_container_log_path | string | 否 | Docker 容器原始日志目录绝对路径。仅当节点仍使用 Docker 且需要额外挂载容器原始日志目录时填写，常见值为 `/var/lib/docker/containers` |

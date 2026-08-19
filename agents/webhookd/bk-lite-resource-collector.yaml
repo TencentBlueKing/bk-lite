@@ -31,7 +31,7 @@ spec:
       automountServiceAccountToken: true
       containers:
       - name: kube-state-metrics
-        image: bk-lite.tencentcloudcr.com/bklite/kube-state-metrics:2.13.0
+        image: __IMAGE_REGISTRY_PREFIX__/kube-state-metrics:2.13.0
         resources:
           requests:
             memory: 64Mi
@@ -281,7 +281,7 @@ spec:
     spec:
       containers:
         - name: telegraf
-          image: bk-lite.tencentcloudcr.com/bklite/telegraf:1.29.5
+          image: __IMAGE_REGISTRY_PREFIX__/telegraf:1.29.5
           resources:
             requests:
               memory: 128Mi

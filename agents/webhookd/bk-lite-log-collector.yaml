@@ -22,7 +22,7 @@ spec:
       serviceAccount: vector-daemonset
       containers:
         - name: vector
-          image: bk-lite.tencentcloudcr.com/bklite/vector:0.39.0-debian
+          image: __IMAGE_REGISTRY_PREFIX__/vector:0.39.0-debian
           volumeMounts:
             - name: vector-config-volume
               mountPath: /etc/vector/vector.yaml
