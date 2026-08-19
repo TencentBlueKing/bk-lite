@@ -355,6 +355,52 @@ def test_get_source_data_returns_saved_excel_items(api_client, authenticated_use
     }
 
 
+def test_get_source_data_filters_excel_items_by_query_list(api_client, authenticated_user, monkeypatch):
+    authenticated_user.is_superuser = True
+    monkeypatch.setattr(
+        datasource_view.DataSourceAPIModelViewSet,
+        "get_object",
+        lambda self: SimpleNamespace(
+            id=1,
+            name="excel-demo",
+            groups=[1],
+            source_type=DataSourceAPIModel.SOURCE_TYPE_EXCEL,
+            connection_config={},
+            query_config={},
+            params=[],
+        ),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.excel_materialize.load_excel_runtime",
+        lambda instance, limit=100: {
+            "items": [
+                {"name": "官网", "value": 120},
+                {"name": "广告", "value": 96},
+                {"name": "官网投放", "value": 18},
+            ],
+            "warnings": [],
+        },
+    )
+    api_client.cookies["current_team"] = "1"
+
+    response = api_client.post(
+        "/api/v1/operation_analysis/api/data_source/get_source_data/1/",
+        {"query_list": [{"field": "name", "type": "str*", "value": "官网"}]},
+        format="json",
+    )
+    payload = response.json()
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["result"] is True
+    assert payload["data"] == {
+        "data": [
+            {"name": "官网", "value": 120},
+            {"name": "官网投放", "value": 18},
+        ],
+        "warnings": [],
+    }
+
+
 def test_preview_rejects_unsupported_source_type(api_client, authenticated_user):
     authenticated_user.is_superuser = True
     api_client.cookies["current_team"] = "1"

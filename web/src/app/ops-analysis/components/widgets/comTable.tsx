@@ -8,12 +8,10 @@ import React, {
 import { Button, Input, Select, DatePicker, Tooltip, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
-import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 import {
   getOpsChartThemeByMode,
   isScreenChartThemeMode,
@@ -40,6 +38,10 @@ import {
 import { resolveTableCellPresentation } from '@/app/ops-analysis/utils/tableCellStyle';
 import { getScreenWidgetScale } from './shared/screenMetrics';
 import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
+import {
+  applyTableRowFilters,
+  buildTableQueryList,
+} from '@/app/ops-analysis/utils/tableQueryList';
 import { useTableBodyScrollY } from './shared/useTableBodyScrollY';
 import { buildScreenOverlayPopupProps } from '@/app/ops-analysis/utils/screenWidgetTokens';
 import '@/app/ops-analysis/utils/screenOverlayDropdown.scss';
@@ -136,6 +138,10 @@ const ComTable: React.FC<ComTableProps> = ({
       isPaginated: parsed.isPaginated,
     };
   }, [rawData, queryPagination.current, queryPagination.pageSize, supportsPaginationParams]);
+  const displayedTableData = useMemo(
+    () => applyTableRowFilters(tableData, filters),
+    [filters, tableData],
+  );
   const tableScrollY = useTableBodyScrollY({
     containerRef: tableContainerRef,
     hasPagination: isPaginated,
@@ -306,41 +312,7 @@ const ComTable: React.FC<ComTableProps> = ({
       queryParams.page = queryPagination.current;
       queryParams.page_size = queryPagination.pageSize;
     }
-    const queryList: Array<Record<string, any>> = [];
-
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value === null || value === undefined || value === '') {
-        return;
-      }
-
-      if (
-        Array.isArray(value) &&
-        value.length === 2 &&
-        dayjs.isDayjs(value[0]) &&
-        dayjs.isDayjs(value[1])
-      ) {
-        queryList.push({
-          field: key,
-          type: 'time',
-          start: formatOpsRequestTime(value[0]),
-          end: formatOpsRequestTime(value[1]),
-        });
-        return;
-      }
-
-      if (typeof value === 'string') {
-        const text = value.trim();
-        if (!text) {
-          return;
-        }
-        queryList.push({
-          field: key,
-          type: 'str*',
-          value: text,
-        });
-      }
-    });
-
+    const queryList = buildTableQueryList(filters);
     if (queryList.length > 0) {
       queryParams.query_list = queryList;
     }
@@ -472,8 +444,20 @@ const ComTable: React.FC<ComTableProps> = ({
                   placeholder={t('dashboard.searchPlaceholder')}
                   suffix={
                     <SearchOutlined
+                      className="cursor-pointer"
                       style={{
                         color: 'var(--ops-screen-table-muted, var(--color-text-3))',
+                      }}
+                      onClick={() => {
+                        if (!activeKeywordFieldKey) {
+                          return;
+                        }
+                        handleKeywordFilterCommit(
+                          activeKeywordFieldKey,
+                          keywordDrafts[activeKeywordFieldKey]
+                            ?? filters[activeKeywordFieldKey]
+                            ?? '',
+                        );
                       }}
                     />
                   }
@@ -546,7 +530,7 @@ const ComTable: React.FC<ComTableProps> = ({
         <CustomTable
           className={usesScreenTheme ? styles.screenDarkTable : undefined}
           columns={antColumns}
-          dataSource={tableData}
+          dataSource={displayedTableData}
           loading={loading}
           rowKey={(record, index) =>
             record.id || record.key || index?.toString() || '0'
