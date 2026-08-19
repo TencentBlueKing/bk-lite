@@ -1,6 +1,6 @@
 import os
 
-from apps.cmdb.nats.list_instances_auth import prepare_list_instances_rpc_params
+from apps.cmdb.nats.list_instances_auth import list_instances_v3_signing_enabled, prepare_list_instances_rpc_params
 from apps.rpc.base import AppClient, RpcClient
 
 
@@ -24,7 +24,11 @@ class CMDB(object):
         else:
             # list_instances 的业务查询条件也名为 params；它不是 RPC envelope。
             params = {"params": params, **payload_kwargs}
-        if method_name == "list_instances" and str(params.get("protocol_version") or "") == "2":
+        if (
+            method_name == "list_instances"
+            and str(params.get("protocol_version") or "") == "2"
+            and list_instances_v3_signing_enabled()
+        ):
             params = prepare_list_instances_rpc_params(params)
         return self.client.run(method_name, params=params, **transport_kwargs)
 
