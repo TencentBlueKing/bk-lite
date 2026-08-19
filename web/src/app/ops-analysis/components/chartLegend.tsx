@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { resolveOpsChartThemeName } from '@/app/ops-analysis/utils/chartTheme';
+import { shouldEmitLegendReset } from '@/components/chart-legend/selection';
 
 interface LegendItem {
   name: string;
@@ -34,6 +35,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
 
   const [selectedLegend, setSelectedLegend] = useState<string[]>([]);
   const onSelectionChangeRef = useRef(onSelectionChange);
+  const previousLegendKeyRef = useRef<string | null>(null);
   onSelectionChangeRef.current = onSelectionChange;
 
   const legendData = useMemo(
@@ -44,8 +46,12 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   const legendKey = legendData.map((d) => d.name).join('\x00');
 
   useEffect(() => {
-    setSelectedLegend([]);
-    onSelectionChangeRef.current?.({});
+    setSelectedLegend((prev) => (prev.length === 0 ? prev : []));
+    const previousKey = previousLegendKeyRef.current;
+    previousLegendKeyRef.current = legendKey;
+    if (shouldEmitLegendReset(previousKey, legendKey)) {
+      onSelectionChangeRef.current?.({});
+    }
   }, [legendKey]);
 
   const total = useMemo(() => {
