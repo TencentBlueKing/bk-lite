@@ -12,7 +12,7 @@ export interface PolicyTemplateItem {
     result_name?: string;
     expression?: string;
     queries?: Array<{ ref?: string; metric_name?: string }>;
-    [key: string]: any;
+    [key: string]: unknown;
   };
   template_group?: string;
   plugin_id?: string | number;
@@ -20,7 +20,7 @@ export interface PolicyTemplateItem {
   plugin_name?: string;
   template_type?: 'builtin' | 'custom';
   deletable?: boolean;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface TemplateGroup {
@@ -32,10 +32,10 @@ export interface TemplateGroup {
 export interface BulkAssetItem {
   instance_id: string;
   instance_name?: string;
-  organization?: number[] | string[] | number | string | Record<string, any>;
-  organizations?: number[] | string[] | number | string | Record<string, any>;
+  organization?: number[] | string[] | number | string | Record<string, unknown>;
+  organizations?: number[] | string[] | number | string | Record<string, unknown>;
   plugins?: Array<{ id?: string | number; name?: string; display_name?: string }>;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface BulkConfig {
@@ -54,7 +54,7 @@ export interface BulkConfig {
   no_data_recovery_period?: { type: string; value: number };
   no_data_level?: string;
   no_data_alert_name?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface PolicyPreviewItem {
@@ -113,7 +113,9 @@ export const getTemplateThresholdItems = (
       method: METHOD_LABELS[item.method] || item.method || '>',
       value: item.value,
       unitSuffix,
-      color: (LEVEL_MAP[item.level as keyof typeof LEVEL_MAP] as string) || '#475569',
+      color:
+        (LEVEL_MAP[item.level as keyof typeof LEVEL_MAP] as string) ||
+        'var(--color-text-3)',
     }));
 };
 
@@ -162,14 +164,6 @@ export const formatTemplateAlgorithmSummary = (template: PolicyTemplateItem): st
   return groupAlgorithm || algorithm || '';
 };
 
-export const formatTemplateTriggerSummary = (
-  template: PolicyTemplateItem,
-  triggerCount?: number
-): string => {
-  const count = triggerCount ?? template.trigger_count ?? 1;
-  return `连续 ${count} 个周期触发`;
-};
-
 export const getTemplateTriggerCount = (
   template: PolicyTemplateItem,
   triggerCount?: number
@@ -204,14 +198,21 @@ export const formatTemplateListName = (
   siblings: PolicyTemplateItem[] = []
 ): string => {
   const name = String(template.name || '').trim() || '--';
-  const metric = getTemplateMetricName(template);
   const sameNameCount = siblings.filter(
     (item) => String(item.name || '').trim() === String(template.name || '').trim()
   ).length;
-  if (sameNameCount > 1 && metric) {
-    return `${name}（${metric}）`;
-  }
-  return name;
+  if (sameNameCount <= 1) return name;
+  const metric = getTemplateMetricName(template);
+  const plugin = String(
+    template.plugin_display_name || template.plugin_name || template.plugin_id || ''
+  ).trim();
+  const suffix =
+    metric ||
+    plugin ||
+    (template.id !== undefined && template.id !== null && template.id !== ''
+      ? `ID ${template.id}`
+      : '');
+  return suffix ? `${name}（${suffix}）` : name;
 };
 
 export const buildDistinctPolicyNames = (
@@ -220,8 +221,8 @@ export const buildDistinctPolicyNames = (
 ): string[] => {
   const prefix = namePrefix.trim();
   const bases = templates.map((template) => {
-    const templateName = String(template.name || template.metric_name || '').trim();
     const metric = getTemplateMetricName(template);
+    const templateName = String(template.name || metric || '').trim();
     return [prefix, templateName].filter(Boolean).join('-') || metric || '策略';
   });
   const baseCounts = bases.reduce<Record<string, number>>((counts, base) => {
@@ -231,8 +232,8 @@ export const buildDistinctPolicyNames = (
   const used = new Set<string>();
   return templates.map((template, index) => {
     let name = bases[index];
-    const templateName = String(template.name || template.metric_name || '').trim();
     const metric = getTemplateMetricName(template);
+    const templateName = String(template.name || metric || '').trim();
     if (baseCounts[bases[index]] > 1 && metric && metric !== templateName) {
       name = `${name}-${metric}`;
     }

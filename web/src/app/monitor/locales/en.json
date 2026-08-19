@@ -187,7 +187,7 @@
       "sharedConfig": "Shared Settings",
       "confirmTemplateHint": "Confirm the templates to apply. Thresholds, algorithms, and alert levels keep the template defaults.",
       "selectAssetsHint": "Select the assets these templates should cover. Each template creates one policy for all selected assets.",
-      "selectedAssetCount": "Selected {selected} / {total} assets",
+      "selectedAssetCount": "Selected {selected} / {total} instances",
       "assetTruncatedHint": "Showing the first {shown} of {total} instances. Hidden instances cannot be included in this bulk apply.",
       "sharedConfigHint": "Configure only the shared lightweight fields. Thresholds, algorithms, and alert levels keep the template defaults.",
       "createPreview": "Create Preview",

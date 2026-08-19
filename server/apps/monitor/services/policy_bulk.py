@@ -49,6 +49,17 @@ def _merge_asset_organizations(assets: list[dict[str, Any]]) -> list[Any]:
     return organizations
 
 
+def _template_metric_name(template: dict[str, Any]) -> str:
+    """与前端 getTemplateMetricName 对齐：优先顶层 metric_name，再回落到 query_condition。"""
+    metric = str(template.get("metric_name") or "").strip()
+    if metric:
+        return metric
+    query = template.get("query_condition") or {}
+    if isinstance(query, dict):
+        return str(query.get("metric_name") or "").strip()
+    return ""
+
+
 def build_distinct_policy_names(
     templates: list[dict[str, Any]],
     name_prefix: str = "",
@@ -58,8 +69,8 @@ def build_distinct_policy_names(
     metrics: list[str] = []
     template_names: list[str] = []
     for template in templates:
-        template_name = str(template.get("name") or template.get("metric_name") or "").strip()
-        metric = str(template.get("metric_name") or "").strip()
+        metric = _template_metric_name(template)
+        template_name = str(template.get("name") or metric or "").strip()
         base = "-".join(part for part in [prefix, template_name] if part) or metric or "策略"
         bases.append(base)
         metrics.append(metric)

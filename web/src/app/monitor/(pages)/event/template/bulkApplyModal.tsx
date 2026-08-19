@@ -407,7 +407,7 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
               </span>
               {assets.length > 0 && (
                 <span className={templateStyle.selectionBadge}>
-                  {t('monitor.events.selectedAssetCount', '已选 {selected} / {total} 个资产', {
+                  {t('monitor.events.selectedAssetCount', '已选 {selected} / {total} 个实例', {
                     selected: selectedAssetIds.length,
                     total: assets.length
                   })}

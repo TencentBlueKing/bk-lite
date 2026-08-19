@@ -187,7 +187,7 @@
       "sharedConfig": "公共配置",
       "confirmTemplateHint": "确认本次要应用的模版。阈值、算法和告警级别会沿用模版默认配置。",
       "selectAssetsHint": "选择这些模版要覆盖的监控资产。每个模版将创建一条策略，实例范围包含所选全部资产。",
-      "selectedAssetCount": "已选 {selected} / {total} 个资产",
+      "selectedAssetCount": "已选 {selected} / {total} 个实例",
       "assetTruncatedHint": "当前仅展示前 {shown} 条，共 {total} 个实例。未展示的实例无法纳入本次批量应用。",
       "sharedConfigHint": "只配置批量策略共享的轻量项。复杂项如阈值、算法、告警级别继续使用模版默认值。",
       "createPreview": "创建预览",

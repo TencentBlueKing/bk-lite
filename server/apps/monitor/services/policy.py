@@ -288,14 +288,27 @@ class PolicyService:
             ).exclude(key__in=expected_keys).delete()
 
     @staticmethod
+    def _formula_query_ref(index, item):
+        raw_ref = str(item.get("ref") or "").strip()
+        if raw_ref:
+            return raw_ref
+        if index < 26:
+            return chr(ord("a") + index)
+        return f"q{index}"
+
+    @staticmethod
     def _resolve_formula_expression_with_metrics(query):
         expression = str(query.get("expression") or "").strip()
         if not expression:
             return ""
         queries = query.get("queries") or []
+        if not isinstance(queries, list):
+            return expression
         ref_map = {}
         for index, item in enumerate(queries):
-            raw_ref = str(item.get("ref") or "").strip() or chr(ord("a") + index)
+            if not isinstance(item, dict):
+                continue
+            raw_ref = PolicyService._formula_query_ref(index, item)
             metric_name = str(item.get("metric_name") or "").strip() or raw_ref
             ref_map[raw_ref.lower()] = metric_name
         if not ref_map:
@@ -316,16 +329,20 @@ class PolicyService:
     def display_metric_name(config):
         config = config or {}
         query = config.get("query_condition") or {}
+        if not isinstance(query, dict):
+            query = {}
         if query.get("type") == "formula":
             expression = PolicyService._resolve_formula_expression_with_metrics(query)
             result_name = str(query.get("result_name") or "").strip()
             if expression:
                 return f"{result_name}（{expression}）" if result_name else expression
-            names = [
-                str(item.get("metric_name") or "").strip()
-                for item in query.get("queries") or []
-            ]
-            names = [name for name in names if name]
+            names = []
+            for item in query.get("queries") or []:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("metric_name") or "").strip()
+                if name:
+                    names.append(name)
             if names:
                 return " + ".join(names)
             return result_name
@@ -470,10 +487,13 @@ class PolicyService:
             portable.pop(field, None)
         if portable.get("query_condition"):
             portable["query_condition"] = PolicyService._portable_query_condition(portable["query_condition"])
+        # 仅补齐稳定指标名；公式展示串不得写入 metric_name，避免导入/回填按 Metric.name 查找失败
         if not portable.get("metric_name"):
-            metric_name = PolicyService.display_metric_name(portable)
-            if metric_name:
-                portable["metric_name"] = metric_name
+            query = portable.get("query_condition") or {}
+            if isinstance(query, dict) and query.get("type") != "formula":
+                metric_name = str(query.get("metric_name") or "").strip()
+                if metric_name:
+                    portable["metric_name"] = metric_name
         return portable
 
     @staticmethod
