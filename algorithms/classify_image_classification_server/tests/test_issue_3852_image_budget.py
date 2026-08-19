@@ -16,6 +16,11 @@ from classify_image_classification_server.serving.schemas import (
 from classify_image_classification_server.serving.service import MLService
 
 
+@pytest.fixture(autouse=True)
+def _enable_enforcement(monkeypatch):
+    monkeypatch.setenv("MLOPS_PREDICT_IMAGE_BUDGET_MODE", "enforce")
+
+
 def _encode_png(size: tuple[int, int] = (4, 4), mode: str = "RGB") -> tuple[str, int]:
     image = Image.new(mode, size)
     if mode == "RGB":
@@ -118,8 +123,10 @@ def test_request_rejects_data_uri_without_base64_marker():
         PredictRequest(images=[f"data:image/png,{payload}"])
 
 
-def test_request_validation_does_not_materialize_decoded_batch(monkeypatch):
+@pytest.mark.parametrize("mode", ["observe", "enforce"])
+def test_request_validation_does_not_materialize_decoded_batch(monkeypatch, mode):
     payload, _ = _encode_png()
+    monkeypatch.setenv("MLOPS_PREDICT_IMAGE_BUDGET_MODE", mode)
     decoder = MagicMock(side_effect=AssertionError("schema 不应完整解码图片"))
     monkeypatch.setattr(
         api_schema, "base64", SimpleNamespace(b64decode=decoder), raising=False
@@ -130,11 +137,29 @@ def test_request_validation_does_not_materialize_decoded_batch(monkeypatch):
 
 
 @pytest.mark.parametrize("value", ["", "invalid", "0", "-1"])
-def test_invalid_resource_budget_falls_back_to_safe_default(monkeypatch, value):
+def test_invalid_resource_budget_fails_fast(monkeypatch, value):
     payload, _ = _encode_png()
     monkeypatch.setenv("MLOPS_PREDICT_MAX_IMAGE_BYTES", value)
 
-    assert PredictRequest(images=[payload]).images == [payload]
+    with pytest.raises(ValidationError, match="must be a positive integer"):
+        PredictRequest(images=[payload])
+
+
+def test_observe_mode_preserves_legacy_over_budget_and_whitespace(monkeypatch):
+    payload, _ = _encode_png()
+    legacy_payload = f"{payload[:100]}\n{payload[100:]}"
+    monkeypatch.setenv("MLOPS_PREDICT_IMAGE_BUDGET_MODE", "observe")
+    monkeypatch.setenv("MLOPS_PREDICT_MAX_IMAGE_BYTES", str(len(legacy_payload) - 1))
+
+    assert PredictRequest(images=[legacy_payload]).images == [legacy_payload]
+
+
+def test_invalid_budget_mode_fails_fast(monkeypatch):
+    payload, _ = _encode_png()
+    monkeypatch.setenv("MLOPS_PREDICT_IMAGE_BUDGET_MODE", "disabled")
+
+    with pytest.raises(ValidationError, match="must be observe or enforce"):
+        PredictRequest(images=[payload])
 
 
 def test_decode_helper_preserves_legacy_single_argument_call():
@@ -196,6 +221,33 @@ async def test_public_predict_returns_e1000_for_invalid_request():
 
     assert response.success is False
     assert response.error.code == "E1000"
+
+
+@pytest.mark.asyncio
+async def test_public_predict_returns_e1000_for_enforced_budget(monkeypatch):
+    payload, _ = _encode_png()
+    monkeypatch.setenv("MLOPS_PREDICT_MAX_IMAGE_BYTES", str(len(payload) - 1))
+    service = _make_service()
+
+    response = await service.predict([payload])
+
+    assert response.success is False
+    assert response.error.code == "E1000"
+
+
+@pytest.mark.asyncio
+async def test_observe_mode_preserves_legacy_public_predict(monkeypatch):
+    payload, _ = _encode_png()
+    legacy_payload = f"{payload[:100]}\n{payload[100:]}"
+    monkeypatch.setenv("MLOPS_PREDICT_IMAGE_BUDGET_MODE", "observe")
+    monkeypatch.setenv("MLOPS_PREDICT_MAX_IMAGE_BYTES", str(len(legacy_payload) - 1))
+    service = _make_service()
+
+    response = await service.predict([legacy_payload])
+
+    assert response.success is True
+    assert response.results[0].success is True
+    service.model.predict.assert_called_once()
 
 
 @pytest.mark.asyncio

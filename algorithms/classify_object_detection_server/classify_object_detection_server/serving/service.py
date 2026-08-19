@@ -2,6 +2,8 @@
 
 import base64
 import os
+import resource
+import sys
 import time
 from io import BytesIO
 
@@ -14,6 +16,8 @@ from .exceptions import ModelInferenceError
 from .metrics import (
     detection_counter,
     health_check_counter,
+    image_decode_duration,
+    image_process_peak_rss,
     model_load_counter,
     prediction_counter,
     prediction_duration,
@@ -28,7 +32,18 @@ from .schemas import (
     PredictRequest,
     PredictResponse,
 )
-from .schemas.api_schema import get_image_batch_pixel_limit
+from .schemas.api_schema import (
+    get_image_batch_pixel_limit,
+    get_image_budget_mode,
+    observe_image_budget,
+    validate_image_budget_config,
+)
+
+
+def _process_peak_rss_bytes() -> int:
+    """返回进程峰值 RSS；macOS 以字节、Linux 以 KiB 报告。"""
+    peak_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return int(peak_rss if sys.platform == "darwin" else peak_rss * 1024)
 
 
 @bentoml.service(
@@ -56,6 +71,7 @@ class MLService:
     def __init__(self) -> None:
         """初始化服务,加载配置和模型."""
         logger.info("Service instance initializing...")
+        validate_image_budget_config()
         self.config = get_model_config()
         logger.info(f"Config loaded: {self.config}")
 
@@ -104,7 +120,9 @@ class MLService:
             img_data = img_data.split(",", 1)[1]
 
         # 解码base64
-        image_bytes = base64.b64decode(img_data, validate=True)
+        image_bytes = base64.b64decode(
+            img_data, validate=get_image_budget_mode() == "enforce"
+        )
 
         # 加载PIL图片
         image = Image.open(BytesIO(image_bytes))
@@ -116,12 +134,14 @@ class MLService:
 
             # 在像素物化和颜色转换前预留批次预算
             image_pixels = image.width * image.height
+            pixel_limit = get_image_batch_pixel_limit()
             if remaining_pixels is None:
-                remaining_pixels = get_image_batch_pixel_limit()
-            if image_pixels > remaining_pixels:
-                raise ValueError(
-                    f"批次像素量超限：{image_pixels} > 剩余 {remaining_pixels}"
-                )
+                remaining_pixels = pixel_limit
+            cumulative_pixels = pixel_limit - remaining_pixels + image_pixels
+            observe_image_budget("批次像素量", cumulative_pixels, pixel_limit)
+            observe_image_budget(
+                "预计RGB字节量", cumulative_pixels * 3, pixel_limit * 3
+            )
 
             # 验证尺寸
             if max(image.size) > 4096:
@@ -228,6 +248,8 @@ class MLService:
                 decode_errors.append(str(e))
 
         total_decode_time = time.time() - decode_start
+        image_decode_duration.observe(total_decode_time)
+        image_process_peak_rss.observe(_process_peak_rss_bytes())
 
         # 统计有效图片
         valid_indices = [i for i, img in enumerate(decoded_images) if img is not None]
@@ -298,6 +320,10 @@ class MLService:
             # 调用模型预测（返回格式见 YOLOWrapper）
             predictions = self.model.predict(model_input)
             predict_time = time.time() - predict_start
+            prediction_duration.labels(model_source=self.config.source).observe(
+                predict_time
+            )
+            image_process_peak_rss.observe(_process_peak_rss_bytes())
 
             logger.info("✅ Detection completed successfully")
             logger.info(
@@ -307,6 +333,10 @@ class MLService:
 
         except Exception as e:
             predict_time = time.time() - predict_start
+            prediction_duration.labels(model_source=self.config.source).observe(
+                predict_time
+            )
+            image_process_peak_rss.observe(_process_peak_rss_bytes())
             predict_error = str(e)
 
             logger.error(f"❌ Detection failed: {e}", exc_info=True)

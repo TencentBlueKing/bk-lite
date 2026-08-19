@@ -4,22 +4,65 @@ import os
 import re
 from typing import List, Optional
 
+from loguru import logger
 from pydantic import BaseModel, Field, field_validator
+
+from ..metrics import image_budget_exceeded_counter, image_budget_usage
 
 DEFAULT_MAX_IMAGE_BASE64_BYTES = 10 * 1024 * 1024
 DEFAULT_MAX_IMAGE_BATCH_BASE64_BYTES = 96 * 1024 * 1024
 DEFAULT_MAX_IMAGE_BATCH_BYTES = 64 * 1024 * 1024
 DEFAULT_MAX_IMAGE_BATCH_PIXELS = 64 * 1024 * 1024
 _BASE64_PATTERN = re.compile(r"[A-Za-z0-9+/]*={0,2}\Z", re.ASCII)
+_BASE64_ALPHABET = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=")
+_IMAGE_BUDGET_MODES = {"observe", "enforce"}
 
 
 def _get_positive_int_env(name: str, default: int) -> int:
-    """读取正整数资源预算，非法配置安全回退到默认值。"""
-    try:
-        value = int(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
+    """读取正整数资源预算；显式非法配置必须快速失败。"""
+    raw_value = os.getenv(name)
+    if raw_value is None:
         return default
-    return value if value > 0 else default
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a positive integer") from None
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def get_image_budget_mode() -> str:
+    """返回预算模式：observe 保持旧行为，enforce 才拒绝超限请求。"""
+    mode = os.getenv("MLOPS_PREDICT_IMAGE_BUDGET_MODE", "observe").strip().lower()
+    if mode not in _IMAGE_BUDGET_MODES:
+        raise ValueError("MLOPS_PREDICT_IMAGE_BUDGET_MODE must be observe or enforce")
+    return mode
+
+
+def validate_image_budget_config() -> None:
+    """在服务初始化时校验完整预算配置。"""
+    get_image_budget_mode()
+    _get_positive_int_env("MLOPS_PREDICT_MAX_IMAGE_BYTES", DEFAULT_MAX_IMAGE_BASE64_BYTES)
+    _get_positive_int_env(
+        "MLOPS_PREDICT_MAX_IMAGE_BATCH_BASE64_BYTES",
+        DEFAULT_MAX_IMAGE_BATCH_BASE64_BYTES,
+    )
+    _get_positive_int_env("MLOPS_PREDICT_MAX_IMAGE_BATCH_BYTES", DEFAULT_MAX_IMAGE_BATCH_BYTES)
+    get_image_batch_pixel_limit()
+
+
+def observe_image_budget(dimension: str, value: int, limit: int) -> None:
+    """记录资源用量；enforce 模式在超限时拒绝。"""
+    mode = get_image_budget_mode()
+    image_budget_usage.labels(dimension=dimension).observe(value)
+    if value <= limit:
+        return
+    image_budget_exceeded_counter.labels(dimension=dimension, mode=mode).inc()
+    message = f"{dimension}超限：{value} > {limit}"
+    logger.warning(f"图片请求预算观测 mode={mode}: {message}")
+    if mode == "enforce":
+        raise ValueError(message)
 
 
 def get_image_batch_pixel_limit() -> int:
@@ -35,6 +78,20 @@ def _get_base64_decoded_size(value: str) -> int:
         raise ValueError("不是有效的base64编码")
     padding = len(value) - len(value.rstrip("="))
     return len(value) // 4 * 3 - padding
+
+
+def _get_legacy_base64_decoded_size(value: str) -> int:
+    """按旧宽松 Base64 语义估算字节数，不物化解码副本。"""
+    encoded_size = 0
+    padding = 0
+    for character in value:
+        if character not in _BASE64_ALPHABET:
+            continue
+        encoded_size += 1
+        padding = padding + 1 if character == "=" else 0
+    if encoded_size % 4 != 0:
+        raise ValueError("不是有效的base64编码")
+    return encoded_size // 4 * 3 - padding
 
 
 class BoundingBox(BaseModel):
@@ -113,19 +170,16 @@ class PredictRequest(BaseModel):
             "MLOPS_PREDICT_MAX_IMAGE_BATCH_BYTES", DEFAULT_MAX_IMAGE_BATCH_BYTES
         )
         total_encoded_bytes = sum(len(img_data) for img_data in v)
-        if total_encoded_bytes > max_batch_base64_bytes:
-            raise ValueError(
-                f"批次编码量超限：{total_encoded_bytes} > {max_batch_base64_bytes}"
-            )
+        observe_image_budget("批次编码量", total_encoded_bytes, max_batch_base64_bytes)
         total_decoded_bytes = 0
 
         for idx, img_data in enumerate(v):
             if not img_data or len(img_data) < 100:
                 raise ValueError(f"图片 {idx} 数据过短，可能无效")
-            if len(img_data) > max_image_bytes:
-                raise ValueError(
-                    f"图片 {idx} 单图编码量超限：{len(img_data)} > {max_image_bytes}"
-                )
+            try:
+                observe_image_budget("单图编码量", len(img_data), max_image_bytes)
+            except ValueError as exc:
+                raise ValueError(f"图片 {idx} {exc}") from None
 
             if not img_data.isascii():
                 error = (
@@ -140,30 +194,34 @@ class PredictRequest(BaseModel):
             if test_data.startswith("data:"):
                 # 提取base64部分
                 parts = test_data.split(",", 1)
+                if len(parts) != 2:
+                    raise ValueError(f"图片 {idx} Data URI格式错误")
                 header = parts[0].lower()
-                if (
-                    len(parts) != 2
-                    or not header.startswith("data:image/")
+                if get_image_budget_mode() == "enforce" and (
+                    not header.startswith("data:image/")
                     or not header.endswith(";base64")
                 ):
                     raise ValueError(f"图片 {idx} Data URI格式错误")
                 test_data = parts[1]
 
-            if len(test_data) > max_image_bytes:
-                raise ValueError(
-                    f"图片 {idx} 单图编码量超限：{len(test_data)} > {max_image_bytes}"
-                )
-
             try:
-                decoded_size = _get_base64_decoded_size(test_data)
-            except ValueError:
-                raise ValueError(f"图片 {idx} 不是有效的base64编码") from None
+                observe_image_budget("单图Base64编码量", len(test_data), max_image_bytes)
+            except ValueError as exc:
+                raise ValueError(f"图片 {idx} {exc}") from None
+
+            if get_image_budget_mode() == "enforce":
+                try:
+                    decoded_size = _get_base64_decoded_size(test_data)
+                except ValueError:
+                    raise ValueError(f"图片 {idx} 不是有效的base64编码") from None
+            else:
+                try:
+                    decoded_size = _get_legacy_base64_decoded_size(test_data)
+                except ValueError:
+                    raise ValueError(f"图片 {idx} 不是有效的base64编码") from None
 
             total_decoded_bytes += decoded_size
-            if total_decoded_bytes > max_batch_bytes:
-                raise ValueError(
-                    f"批次解码字节量超限：{total_decoded_bytes} > {max_batch_bytes}"
-                )
+            observe_image_budget("批次解码字节量", total_decoded_bytes, max_batch_bytes)
 
         return v
 
