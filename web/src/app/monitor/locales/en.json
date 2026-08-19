@@ -11,6 +11,7 @@
       "activeAlarmsMapTips": "Display a map of the distribution of all active alarms that meet the filtering criteria.",
       "nodataPeriods": ", a 'No Data alert' will be generated.",
       "information": "Information",
+      "dimension": "Dimension",
       "activeAlarms": "Active Alarms",
       "consecutivePeriods": "consecutive periods.",
       "triggerCondition": "Trigger Condition",
