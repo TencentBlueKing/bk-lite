@@ -24,6 +24,13 @@ function commonFilesystemRoot(left, right) {
 const workspaceRoot = enterpriseWebRoot
   ? commonFilesystemRoot(repositoryRoot, enterpriseWebRoot)
   : undefined;
+// 企业版若在仓库内（submodule / junction），common root 就是仓库根。
+// 此时把 turbopack.root 抬到仓库根，PostCSS 会从仓库根 resolve 插件，
+// 找不到 web/node_modules 里的 @tailwindcss/postcss。
+// 仅当企业版源码在仓库外（兄弟目录）时才抬升 Turbopack 根。
+const enterpriseLivesOutsideRepo = Boolean(
+  workspaceRoot && path.resolve(workspaceRoot) !== path.resolve(repositoryRoot)
+);
 
 const nextConfig = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
@@ -42,7 +49,7 @@ const nextConfig = withBundleAnalyzer({
     tsconfigPath: 'tsconfig.build.json',
   },
   outputFileTracingRoot: workspaceRoot,
-  turbopack: workspaceRoot
+  turbopack: enterpriseLivesOutsideRepo
     ? { root: workspaceRoot }
     : undefined,
   experimental: {

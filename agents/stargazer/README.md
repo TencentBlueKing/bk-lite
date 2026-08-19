@@ -31,6 +31,25 @@ uv run python server.py
 Redis 只保存运行租约、凭据 ID 亲和/冷冻和 Deferred callback 上下文，不保存密码、
 Token、community 或私钥。移除持久队列后，Pod 故障丢单依赖下周期用相同请求指纹再次触发。
 
+### Monitor 接口鉴权迁移
+
+`/api/monitor/*` 支持 Bearer Token 鉴权，并通过显式模式分阶段迁移：
+
+```bash
+# 兼容期默认值：保留旧 Telegraf 请求，并记录其鉴权状态
+STARGAZER_MONITOR_AUTH_MODE=legacy
+STARGAZER_MONITOR_AUTH_TOKEN=<current-token>
+# 轮换期可同时接受上一枚 Token
+STARGAZER_MONITOR_AUTH_PREVIOUS_TOKEN=<previous-token>
+```
+
+先在 `legacy` 模式配置当前 Token，再逐个让调用方发送
+`Authorization: Bearer <current-token>`。确认兼容日志中的调用均为 `valid` 后，把模式切为
+`enforce`；此时缺失或错误的凭据返回 `401`，运行时不会创建采集任务。`enforce` 未配置当前或
+上一枚 Token 时失败关闭并返回 `503`。Token 轮换时先把旧值移到 previous、发布新值，确认调用方
+完成切换后再移除 previous。若上线后需要回滚，只需把模式恢复为 `legacy`，旧调用立即恢复，健康
+检查与非 monitor 蓝图不受影响。
+
 ## 并发与超时
 
 目标并发**只从环境变量读取**（代码默认值仅作缺省），改配置重启即可，不必改代码：

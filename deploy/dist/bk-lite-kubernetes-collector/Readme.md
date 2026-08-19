@@ -128,11 +128,52 @@ kubectl logs -n bk-lite-collector -l app=telegraf
 - cadvisor 服务监听端口：8080
 - kube-state-metrics 服务监听端口：8080, 8081
 
-## 卸载
+## 从旧版本升级（重要）
+
+早期版本下发的集群级资源使用了通用名字（ClusterRole / ClusterRoleBinding
+`kube-state-metrics`、`vmagent-role`、`vmagent-role-binding`、`vector-daemonset`）。
+这些名字与集群自带监控栈（kube-prometheus、KubeSphere 等）的默认命名相同，
+`kubectl apply` 会整份覆盖对方而不是合并，导致对方的 kube-state-metrics 丢失
+权限、监控页面无数据。
+
+当前版本已把全部集群级资源改名为 `bk-lite-` 前缀。**改名后旧对象不会被自动
+回收**，从旧版本升级时需要手动清理，否则它们会继续占用集群自带监控栈的名字。
 
 ```bash
-# 删除所有资源
-kubectl delete -f bk-lite-collector.yaml
+# 1. 先确认这些对象确实属于 BK-Lite，再删除
+#    subjects 指向 bk-lite-collector 命名空间的才是 BK-Lite 下发的
+kubectl get clusterrolebinding kube-state-metrics -o yaml
+kubectl get clusterrolebinding vmagent-role-binding -o yaml
+kubectl get clusterrolebinding vector-daemonset -o yaml
+```
+
+```bash
+# 2. 确认无误后删除旧的集群级资源
+kubectl delete clusterrolebinding kube-state-metrics vmagent-role-binding vector-daemonset --ignore-not-found
+kubectl delete clusterrole kube-state-metrics vmagent-role vector-daemonset --ignore-not-found
+```
+
+```bash
+# 3. 应用新版本 manifest
+kubectl apply -f bk-lite-metric-collector.yaml
+kubectl apply -f bk-lite-log-collector.yaml
+```
+
+如果集群里原本就有自己的监控栈，第 2 步删除后需要重新应用该监控栈的 RBAC，
+把被覆盖掉的 ClusterRole / ClusterRoleBinding 恢复回它自己的定义。
+
+## 卸载
+
+集群级资源不属于任何命名空间，删除 namespace 不会连带回收，必须显式删除。
+
+```bash
+# 删除命名空间内的全部资源
+kubectl delete -f bk-lite-metric-collector.yaml --ignore-not-found
+kubectl delete -f bk-lite-log-collector.yaml --ignore-not-found
+
+# 删除集群级资源
+kubectl delete clusterrolebinding bk-lite-kube-state-metrics bk-lite-vmagent bk-lite-vector-daemonset --ignore-not-found
+kubectl delete clusterrole bk-lite-kube-state-metrics bk-lite-vmagent bk-lite-vector-daemonset --ignore-not-found
 
 # 删除 namespace（可选）
 kubectl delete ns bk-lite-collector

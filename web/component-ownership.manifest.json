@@ -187,9 +187,11 @@
     "stories": [
       "charts-family.stories.tsx"
     ],
-    "reverseAppImports": [],
-    "classification": "shared-cross-app",
-    "reason": "consumed transitively by 2 apps",
+    "reverseAppImports": [
+      "ops-analysis"
+    ],
+    "classification": "invalid-reverse-dependency",
+    "reason": "imports app-owned modules from ops-analysis",
     "activeStories": [
       "charts-family.stories.tsx"
     ]
@@ -352,11 +354,13 @@
     "component": "collapse",
     "directApps": [
       "alarm",
+      "apm",
       "log",
       "monitor"
     ],
     "transitiveApps": [
       "alarm",
+      "apm",
       "log",
       "monitor"
     ],
@@ -366,7 +370,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 3 apps",
+    "reason": "consumed transitively by 4 apps",
     "activeStories": [
       "content-family.stories.tsx"
     ]
@@ -375,6 +379,7 @@
     "component": "compact-empty-state",
     "directApps": [
       "alarm",
+      "apm",
       "cmdb",
       "job",
       "log",
@@ -388,6 +393,7 @@
     ],
     "transitiveApps": [
       "alarm",
+      "apm",
       "cmdb",
       "job",
       "log",
@@ -409,7 +415,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 11 apps",
+    "reason": "consumed transitively by 12 apps",
     "activeStories": [
       "cmdb-family.stories.tsx",
       "feedback-family.stories.tsx",
@@ -421,15 +427,12 @@
   },
   {
     "component": "content-drawer",
-    "directApps": [
-      "system-manager"
-    ],
+    "directApps": [],
     "transitiveApps": [
       "(core)",
       "alarm",
       "cmdb",
-      "job",
-      "system-manager"
+      "job"
     ],
     "stories": [
       "content-draw.stories.tsx",
@@ -439,7 +442,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 5 apps",
+    "reason": "consumed transitively by 4 apps",
     "activeStories": [
       "content-family.stories.tsx",
       "feedback-family.stories.tsx",
@@ -1086,6 +1089,7 @@
       "(core)",
       "(root)",
       "alarm",
+      "apm",
       "cmdb",
       "log",
       "mlops",
@@ -1143,7 +1147,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 13 apps",
+    "reason": "consumed transitively by 14 apps",
     "activeStories": [
       "alarm-family.stories.tsx",
       "alarm-integration-guides-family.stories.tsx",
@@ -2059,6 +2063,7 @@
   {
     "component": "search-action-bar",
     "directApps": [
+      "apm",
       "cmdb",
       "mlops",
       "monitor",
@@ -2070,6 +2075,7 @@
     ],
     "transitiveApps": [
       "alarm",
+      "apm",
       "cmdb",
       "mlops",
       "monitor",
@@ -2087,7 +2093,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 9 apps",
+    "reason": "consumed transitively by 10 apps",
     "activeStories": [
       "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
@@ -2627,6 +2633,7 @@
     "component": "time-selector",
     "directApps": [
       "alarm",
+      "apm",
       "log",
       "monitor",
       "ops-analysis",
@@ -2636,6 +2643,7 @@
     ],
     "transitiveApps": [
       "alarm",
+      "apm",
       "log",
       "monitor",
       "ops-analysis",
@@ -2653,7 +2661,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 7 apps",
+    "reason": "consumed transitively by 8 apps",
     "activeStories": [
       "events-family.stories.tsx",
       "integrations-family.stories.tsx",
@@ -2722,6 +2730,7 @@
     ],
     "transitiveApps": [
       "alarm",
+      "apm",
       "cmdb",
       "job",
       "mlops",
@@ -2741,7 +2750,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 10 apps",
+    "reason": "consumed transitively by 11 apps",
     "activeStories": [
       "integrations-family.stories.tsx",
       "job-family.stories.tsx",

@@ -79,7 +79,7 @@ const ReportToolbar: React.FC<ReportToolbarProps> = ({
       <Tooltip title={t('common.fullscreen')}>
         <Button
           type="text"
-          icon={<FullscreenOutlined style={{ fontSize: 16 }} />}
+          icon={<FullscreenOutlined className="text-base" />}
           aria-pressed={isFullscreen}
           aria-label={t('common.fullscreen')}
           onClick={onToggleFullscreen}
@@ -91,7 +91,7 @@ const ReportToolbar: React.FC<ReportToolbarProps> = ({
         <Tooltip title={t('dashboard.exportPdf')}>
           <Button
             type="text"
-            icon={<DownloadOutlined style={{ fontSize: 16 }} />}
+            icon={<DownloadOutlined className="text-base" />}
             loading={exporting}
             aria-label={t('dashboard.exportPdf')}
             onClick={onExportPdf}
@@ -132,7 +132,7 @@ const ReportToolbar: React.FC<ReportToolbarProps> = ({
             <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
               <Button
                 type="text"
-                icon={<SettingOutlined style={{ fontSize: 16 }} aria-hidden="true" />}
+                icon={<SettingOutlined className="text-base" aria-hidden="true" />}
                 aria-label={t('dashboard.configUnifiedFilterFields')}
                 onClick={onOpenFilterConfig}
                 className="rounded-full!"
@@ -164,7 +164,7 @@ const ReportToolbar: React.FC<ReportToolbarProps> = ({
               <Button
                 type="text"
                 aria-label={t('common.edit')}
-                icon={<EditOutlined aria-hidden="true" style={{ fontSize: 16 }} />}
+                icon={<EditOutlined aria-hidden="true" className="text-base" />}
                 disabled={!canEnterEdit}
                 onClick={onToggleEditMode}
                 className="rounded-full!"

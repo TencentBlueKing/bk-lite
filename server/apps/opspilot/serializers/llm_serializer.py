@@ -44,6 +44,7 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
     llm_model_name = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
     skill_params = serializers.SerializerMethodField()
+    skill_package_params = serializers.SerializerMethodField()
 
     def __init__(self, instance=None, data=empty, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)
@@ -81,6 +82,7 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "tools",
             "skill_params",
             "skill_packages",
+            "skill_package_params",
             "temperature",
             "skill_type",
             "is_template",
@@ -127,9 +129,17 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             result.append(item)
         return result
 
+    @staticmethod
+    def get_skill_package_params(instance: LLMSkill):
+        """返回技能包参数，password 类型的 value 掩码为 '******'。"""
+        from apps.opspilot.utils.skill_package_params import mask_package_params
+
+        return mask_package_params(getattr(instance, "skill_package_params", None))
+
 
 class SkillPackageSerializer(AuthSerializer):
     permission_key = "tools"
+    variables = serializers.SerializerMethodField()
 
     class Meta:
         model = SkillPackage
@@ -156,6 +166,7 @@ class SkillPackageSerializer(AuthSerializer):
             "team",
             "is_enabled",
             "permissions",
+            "variables",
         ]
         read_only_fields = [
             "id",
@@ -168,6 +179,14 @@ class SkillPackageSerializer(AuthSerializer):
             "storage_path",
             "manifest",
         ]
+
+    @staticmethod
+    def get_variables(instance: SkillPackage):
+        from apps.opspilot.services.skill_package.runtime import _manifest_with_storage_overlay
+
+        manifest = _manifest_with_storage_overlay(instance)
+        variables = manifest.get("variables") if isinstance(manifest, dict) else None
+        return variables if isinstance(variables, list) else []
 
 
 class SkillRequestLogSerializer(serializers.ModelSerializer):

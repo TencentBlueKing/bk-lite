@@ -12,6 +12,22 @@ from pydantic import BaseModel, Field
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
+from apps.opspilot.metis.llm.common.tool_failure import (  # noqa: F401
+    POLICY_RESULT_MARKER,
+    SKILL_RESULT_MARKER,
+    SKILL_STOP_MARKER,
+    TOOL_FAILURE_AUTHN,
+    TOOL_FAILURE_AUTHZ,
+    TOOL_FAILURE_CONFIG,
+    TOOL_FAILURE_INTERNAL,
+    TOOL_FAILURE_OTHER,
+    classify_tool_failure_kind,
+    is_control_guidance,
+    is_non_replanable_tool_failure,
+    is_policy_guidance,
+    is_skill_policy_guidance,
+    is_tool_result_failure,
+)
 
 
 class ToolExecutionStep(BaseModel):
@@ -139,40 +155,6 @@ def is_context_size_error(exc: BaseException | str) -> bool:
     return any(needle in text for needle in needles)
 
 
-def is_tool_result_failure(content: Any, status: str = "") -> bool:
-    """识别工具硬失败与 JSON 软失败（如 {"error": "..."}）。"""
-    if str(status or "").lower() == "error":
-        return True
-
-    if content is None:
-        return False
-
-    if isinstance(content, dict):
-        err = content.get("error")
-        return bool(err not in (None, "", [], {}))
-
-    text = str(content).strip()
-    if not text:
-        return False
-
-    lowered = text.casefold()
-    if lowered.startswith(("error", "exception")):
-        return True
-
-    if text[0] not in "{[":
-        return False
-
-    try:
-        payload = json.loads(text)
-    except Exception:
-        return False
-
-    if isinstance(payload, dict):
-        err = payload.get("error")
-        return bool(err not in (None, "", [], {}))
-    return False
-
-
 def _truncate_text(text: str, max_chars: int) -> str:
     if max_chars <= 0 or len(text) <= max_chars:
         return text
@@ -274,6 +256,101 @@ def compact_analyze_deployment_tool_content(content: str, max_chars: int) -> str
     return serialized if len(serialized) <= max_chars else _truncate_text(serialized, max_chars)
 
 
+def compact_skill_ok_json_tool_content(content: str, max_chars: int) -> str:
+    """压缩技能包 ``{"ok":true,"data":{"entries":[...]}}`` 结果,优先保住全部条目。
+
+    分步执行默认只留约 1500 字;完整 AD 属性会把列表砍在半截,模型就输出「第 N 条截断」。
+    """
+    if max_chars <= 0 or len(content) <= max_chars:
+        return content
+
+    text = content.strip()
+    # LocalShellBackend 非 0 退出会追加 "Exit code: N"
+    for marker in ("\n\nExit code:", "\nExit code:"):
+        if marker in text:
+            text = text.split(marker, 1)[0].strip()
+
+    try:
+        payload = json.loads(text)
+    except Exception:
+        return _truncate_text(content, max_chars)
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        return _truncate_text(content, max_chars)
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return _truncate_text(content, max_chars)
+    entries = data.get("entries")
+    if not isinstance(entries, list):
+        return _truncate_text(content, max_chars)
+
+    preferred_keys = (
+        "sAMAccountName",
+        "cn",
+        "displayName",
+        "mail",
+        "distinguishedName",
+        "userPrincipalName",
+        "operatingSystem",
+        "objectClass",
+        "userAccountControl",
+        "description",
+    )
+
+    def _slim(entry: Any, keys: tuple[str, ...] | None = None) -> Any:
+        if not isinstance(entry, dict):
+            return entry
+        if keys is None:
+            return {k: entry.get(k) for k in preferred_keys if k in entry and entry.get(k) not in (None, "", [])}
+        return {k: entry.get(k) for k in keys if k in entry and entry.get(k) not in (None, "", [])}
+
+    candidates = [
+        [{**_slim(item)} for item in entries],
+        [_slim(item, ("sAMAccountName", "cn", "displayName", "mail")) for item in entries],
+        [
+            (
+                item.get("sAMAccountName") or item.get("cn") or item.get("displayName") or item.get("distinguishedName")
+                if isinstance(item, dict)
+                else item
+            )
+            for item in entries
+        ],
+    ]
+    for slim_entries in candidates:
+        compact = {
+            "ok": True,
+            "data": {
+                "type": data.get("type"),
+                "query": data.get("query"),
+                "base_dn": data.get("base_dn"),
+                "count": data.get("count", len(entries)),
+                "entries": slim_entries,
+                "_entries_compacted": True,
+            },
+        }
+        serialized = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+        if len(serialized) <= max_chars:
+            return serialized
+    return _truncate_text(
+        json.dumps(
+            {
+                "ok": True,
+                "data": {
+                    "type": data.get("type"),
+                    "query": data.get("query"),
+                    "count": data.get("count", len(entries)),
+                    "entries": candidates[-1][: max(1, max_chars // 40)],
+                    "_entries_compacted": True,
+                    "_truncated": True,
+                },
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ),
+        max_chars,
+    )
+
+
 def compact_planned_execution_messages(
     messages: Sequence[Any],
     *,
@@ -289,6 +366,8 @@ def compact_planned_execution_messages(
             if isinstance(content, str):
                 if tool_name == "analyze_deployment_configurations":
                     new_content = compact_analyze_deployment_tool_content(content, max_tool_chars)
+                elif tool_name in {"execute", "shell"}:
+                    new_content = compact_skill_ok_json_tool_content(content, max_tool_chars)
                 else:
                     new_content = _truncate_text(content, max_tool_chars)
             elif content is None:
@@ -297,6 +376,8 @@ def compact_planned_execution_messages(
                 serialized = json.dumps(content, ensure_ascii=False) if isinstance(content, (dict, list)) else str(content)
                 if tool_name == "analyze_deployment_configurations":
                     new_content = compact_analyze_deployment_tool_content(serialized, max_tool_chars)
+                elif tool_name in {"execute", "shell"}:
+                    new_content = compact_skill_ok_json_tool_content(serialized, max_tool_chars)
                 else:
                     new_content = _truncate_text(serialized, max_tool_chars)
             if new_content is content or new_content == content:

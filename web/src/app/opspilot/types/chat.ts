@@ -22,6 +22,8 @@ export interface PlannedExecutionStepValue {
   total_steps: number;
   objective: string;
   tools?: string[];
+  status?: string;
+  error?: string;
 }
 
 /** DeepAgent 规划阶段状态（非思考内容，仅告诉用户「正在规划」） */

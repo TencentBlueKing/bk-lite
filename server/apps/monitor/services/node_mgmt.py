@@ -302,8 +302,11 @@ class InstanceConfigService:
             if config_obj.file_type == "toml":
                 raw_content = config[content_key]
                 config["content"] = ConfigFormat.toml_to_dict(raw_content)
+                from apps.monitor.utils.disk_fstype_filters import expose_disk_fstype_filters_for_edit
                 from apps.monitor.utils.snmp_ifmib_capability import is_interface_filter_capable_plugin
 
+                # 磁盘 fstype 过滤在 starlark.constants；表单只绑 content.config，需投影回显。
+                config["content"] = expose_disk_fstype_filters_for_edit(config["content"])
                 if (config_obj.collect_type or "").startswith("snmp") and is_interface_filter_capable_plugin(
                     getattr(config_obj, "monitor_plugin", None)
                 ):
@@ -1048,6 +1051,10 @@ class InstanceConfigService:
                     extract_group_metrics_timeout_from_env(env_config),
                     child_interval,
                 )
+            from apps.monitor.utils.disk_fstype_filters import sync_disk_fstype_filters_on_writeback
+
+            # 表单把 disk_*_fstypes 写在 content.config；Telegraf inputs.* 不认，必须挪回 starlark。
+            child_info["content"] = sync_disk_fstype_filters_on_writeback(child_info.get("content"))
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
             if ifmib_capable and content is not None:
                 from apps.monitor.utils.snmp_interface_template import (

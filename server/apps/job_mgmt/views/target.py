@@ -48,6 +48,7 @@ def _get_executor_node(cloud_region_id: int) -> str:
             "page": 1,
             "page_size": 1,
             "skip_permission": True,
+            "legacy_callsite": "job_mgmt.connection_test",
         }
     )
     if not isinstance(result, dict):

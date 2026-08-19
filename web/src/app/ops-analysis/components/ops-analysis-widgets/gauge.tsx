@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import {
   applyValueMapping,
@@ -11,6 +11,7 @@ import {
 } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
 import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import { useGaugeResponsiveLayout } from '@/app/ops-analysis/components/widgets/shared/useGaugeResponsiveLayout';
+import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import ChartSurface from '@/components/chart-surface';
 
 export interface OpsAnalysisGaugeProps {
@@ -100,12 +101,12 @@ const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
     desiredCenterPercent: [50, isCircle ? 56 : 72],
     axisLineWidth: 14,
   });
-
-  useEffect(() => {
-    if (!loading && hasValidContainerSize) {
-      onReady?.(hasData);
-    }
-  }, [hasData, hasValidContainerSize, loading, onReady]);
+  const { onEvents } = useEchartsFinishedReady({
+    loading,
+    isDataReady: hasData,
+    canReportReady: hasValidContainerSize,
+    onReady,
+  });
 
   const option = useMemo(() => {
     const currentValue = clamp(numericValue ?? safeMin, safeMin, safeMax);
@@ -206,6 +207,7 @@ const OpsAnalysisGauge: React.FC<OpsAnalysisGaugeProps> = ({
       <ReactEcharts
         ref={chartRef}
         option={option}
+        onEvents={onEvents}
         style={{ height: '100%', width: '100%' }}
       />
     </ChartSurface>
