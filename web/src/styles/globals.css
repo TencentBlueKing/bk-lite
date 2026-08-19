@@ -12,6 +12,7 @@
    Add a new line here when enterprise routes expand to other modules. */
 @source "../app/system-manager/(pages)/(enterprise)";
 @source "../app/system-manager/(enterprise)";
+@source "../../../webchat/packages/webchat-ui/src";
 
 * {
   scrollbar-width: thin;

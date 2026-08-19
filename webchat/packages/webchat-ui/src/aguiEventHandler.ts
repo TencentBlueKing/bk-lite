@@ -173,10 +173,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
       }
 
       case 'TEXT_MESSAGE_CONTENT': {
-        if (!currentMessageIdRef.current) {
-          console.warn('Received CONTENT without START, ignoring');
-          break;
-        }
+        ensureCurrentMessage();
         streamingContentRef.current += event.delta;
         streamingSegmentContent += event.delta;
         textBatcher.schedule(streamingSegmentContent);

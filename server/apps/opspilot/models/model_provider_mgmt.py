@@ -246,6 +246,8 @@ class LLMSkill(MaintainerInfo):
 
     introduction = models.TextField(blank=True, null=True, default="", verbose_name="介绍")
     team = models.JSONField(default=list, verbose_name="分组")
+    # 使用组织：平台/Web/嵌入式对话准入；不变式 team ⊆ usage_team（与 Bot 对齐）。
+    usage_team = models.JSONField(default=list, verbose_name="使用组织")
 
     show_think = models.BooleanField(default=True)
     tools = models.JSONField(default=list)
