@@ -2,6 +2,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.monitor.models import MonitorObject, MonitorPlugin, PolicyTemplate
+from apps.system_mgmt.models import Group
 
 pytestmark = pytest.mark.django_db
 BASE = "/api/v1/monitor/api/monitor_policy"
@@ -9,19 +10,22 @@ BASE = "/api/v1/monitor/api/monitor_policy"
 
 @pytest.fixture(autouse=True)
 def template_permissions(mocker):
+    team = Group.objects.create(name="TemplateViewTeam", parent_id=0)
+    other_team = Group.objects.create(name="TemplateViewOtherTeam", parent_id=0)
     mocker.patch(
         "apps.core.utils.current_team_scope.SystemMgmt.get_authorized_groups_scoped",
-        return_value={"result": True, "data": [1]},
+        return_value={"result": True, "data": [team.id]},
     )
     mocker.patch(
         "apps.core.utils.current_team_scope.SystemMgmt.get_assignable_groups",
-        return_value={"result": True, "data": [1]},
+        return_value={"result": True, "data": [team.id]},
     )
     mocker.patch(
         "apps.monitor.views.monitor_policy.get_permission_rules",
-        return_value={"team": [1], "instance": []},
+        return_value={"team": [team.id], "instance": []},
     )
     mocker.patch("apps.system_mgmt.middleware.error_log_middleware.write_error_log_async")
+    return team, other_team
 
 
 def _catalog():
@@ -31,8 +35,9 @@ def _catalog():
     return monitor_object, plugin
 
 
-def test_save_list_and_delete_custom_template(api_client):
-    api_client.cookies["current_team"] = "1"
+def test_save_list_and_delete_custom_template(api_client, template_permissions):
+    team, _ = template_permissions
+    api_client.cookies["current_team"] = str(team.id)
     monitor_object, plugin = _catalog()
     response = api_client.post(
         f"{BASE}/template/save/",
@@ -45,7 +50,7 @@ def test_save_list_and_delete_custom_template(api_client):
                 "alert_name": "CPU 告警",
                 "query_condition": {"type": "pmq", "query": "up"},
                 "schedule": {"type": "min", "value": 5},
-                "organizations": [1],
+                "organizations": [team.id],
                 "source": {"type": "instance", "values": ["host-a"]},
             },
         },
@@ -53,7 +58,7 @@ def test_save_list_and_delete_custom_template(api_client):
     )
     assert response.status_code == 200, response.content
     template = PolicyTemplate.objects.get(template_type="custom")
-    assert template.organization == 1
+    assert template.organization == team.id
     assert "organizations" not in template.config
     assert "source" not in template.config
 
@@ -74,8 +79,9 @@ def test_save_list_and_delete_custom_template(api_client):
     assert not PolicyTemplate.objects.filter(id=template.id).exists()
 
 
-def test_bulk_delete_rejects_builtin_template(api_client):
-    api_client.cookies["current_team"] = "1"
+def test_bulk_delete_rejects_builtin_template(api_client, template_permissions):
+    team, _ = template_permissions
+    api_client.cookies["current_team"] = str(team.id)
     monitor_object, plugin = _catalog()
     template = PolicyTemplate.objects.create(
         key="builtin:view-test",
@@ -95,8 +101,9 @@ def test_bulk_delete_rejects_builtin_template(api_client):
     assert PolicyTemplate.objects.filter(id=template.id).exists()
 
 
-def test_bulk_delete_with_builtin_is_atomic_and_keeps_custom_template(api_client):
-    api_client.cookies["current_team"] = "1"
+def test_bulk_delete_with_builtin_is_atomic_and_keeps_custom_template(api_client, template_permissions):
+    team, _ = template_permissions
+    api_client.cookies["current_team"] = str(team.id)
     monitor_object, plugin = _catalog()
     builtin = PolicyTemplate.objects.create(
         key="builtin:mixed-delete",
@@ -109,9 +116,9 @@ def test_bulk_delete_with_builtin_is_atomic_and_keeps_custom_template(api_client
     )
     custom = PolicyTemplate.objects.create(
         key="custom-mixed-delete",
-        scope_key="custom:1",
+        scope_key=f"custom:{team.id}",
         template_type="custom",
-        organization=1,
+        organization=team.id,
         monitor_object=monitor_object,
         plugin=plugin,
         name="自定义模板",
@@ -128,15 +135,16 @@ def test_bulk_delete_with_builtin_is_atomic_and_keeps_custom_template(api_client
     assert PolicyTemplate.objects.filter(id__in=[builtin.id, custom.id]).count() == 2
 
 
-def test_custom_templates_are_strictly_isolated_from_other_projects(api_client):
-    api_client.cookies["current_team"] = "1"
+def test_custom_templates_are_strictly_isolated_from_other_projects(api_client, template_permissions):
+    team, other_team = template_permissions
+    api_client.cookies["current_team"] = str(team.id)
     api_client.cookies["include_children"] = "1"
     monitor_object, plugin = _catalog()
     visible = PolicyTemplate.objects.create(
         key="custom-visible",
-        scope_key="custom:1",
+        scope_key=f"custom:{team.id}",
         template_type="custom",
-        organization=1,
+        organization=team.id,
         monitor_object=monitor_object,
         plugin=plugin,
         name="当前项目模板",
@@ -144,9 +152,9 @@ def test_custom_templates_are_strictly_isolated_from_other_projects(api_client):
     )
     hidden = PolicyTemplate.objects.create(
         key="custom-hidden",
-        scope_key="custom:2",
+        scope_key=f"custom:{other_team.id}",
         template_type="custom",
-        organization=2,
+        organization=other_team.id,
         monitor_object=monitor_object,
         plugin=plugin,
         name="子项目模板",
@@ -173,11 +181,12 @@ def test_custom_templates_are_strictly_isolated_from_other_projects(api_client):
     assert {item["id"] for item in listed.json()["data"]} == {visible.id}
     assert exported.status_code != 200
     assert deleted.status_code != 200
-    assert PolicyTemplate.objects.filter(id=hidden.id, organization=2).exists()
+    assert PolicyTemplate.objects.filter(id=hidden.id, organization=other_team.id).exists()
 
 
-def test_save_requires_current_team_operate_permission(api_client, mocker):
-    api_client.cookies["current_team"] = "1"
+def test_save_requires_current_team_operate_permission(api_client, mocker, template_permissions):
+    team, _ = template_permissions
+    api_client.cookies["current_team"] = str(team.id)
     monitor_object, plugin = _catalog()
     mocker.patch(
         "apps.monitor.views.monitor_policy.get_permission_rules",
@@ -199,8 +208,9 @@ def test_save_requires_current_team_operate_permission(api_client, mocker):
     assert not PolicyTemplate.objects.filter(name="无权限模板").exists()
 
 
-def test_export_then_import_prompts_before_overwrite(api_client):
-    api_client.cookies["current_team"] = "1"
+def test_export_then_import_prompts_before_overwrite(api_client, template_permissions):
+    team, _ = template_permissions
+    api_client.cookies["current_team"] = str(team.id)
     monitor_object, plugin = _catalog()
     builtin = PolicyTemplate.objects.create(
         key="builtin:view-export",
