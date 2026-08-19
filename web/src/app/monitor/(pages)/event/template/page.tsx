@@ -327,22 +327,27 @@ const Template: React.FC = () => {
           />
         </div>
         <div className={templateStyle.cardBody}>
-          <div className={templateStyle.cardTitle} title={item.name || '--'}>
-            {item.name || '--'}
+          <div className={templateStyle.cardTitle}>
+            <Tooltip title={item.name || '--'} mouseEnterDelay={0.3}>
+              <span className={templateStyle.cardTitleInner}>
+                <span className={templateStyle.cardTitleText}>{item.name || '--'}</span>
+                <span
+                  className={`${templateStyle.cardTypeBadge} ${
+                    item.template_type === 'custom'
+                      ? templateStyle.cardCustomBadge
+                      : templateStyle.cardBuiltinBadge
+                  }`}
+                >
+                  {item.template_type === 'custom' ? '自定义' : '内置'}
+                </span>
+              </span>
+            </Tooltip>
           </div>
           {metricName ? (
             <div className={templateStyle.cardMetric} title={metricName}>
               {metricName}
             </div>
           ) : null}
-          <div className={templateStyle.cardMeta}>
-            <Tag
-              className={templateStyle.cardTypeTag}
-              color={item.template_type === 'custom' ? 'blue' : 'default'}
-            >
-              {item.template_type === 'custom' ? '自定义' : '内置'}
-            </Tag>
-          </div>
           <div className={templateStyle.cardDescription} title={item.description || '--'}>
             {item.description || '--'}
           </div>
