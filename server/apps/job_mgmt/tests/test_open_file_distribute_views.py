@@ -36,7 +36,7 @@ def tenant():
         api_secret=UserAPISecret.hash_api_secret(token),
         team=team.id,
     )
-    other_user = User.objects.create(username="other_file_app", domain="test.com")
+    other_user = User.objects.create(username=user.username, domain="other.test.com")
     SystemUser.objects.create(username=other_user.username, domain=other_user.domain, group_list=[other_team.id])
     other_token = UserAPISecret.generate_api_secret()
     UserAPISecret.objects.create(
@@ -105,6 +105,8 @@ def test_api_tenant_can_distribute_own_file(tenant):
     assert execution.created_by == tenant.user.username
     assert execution.updated_by == tenant.user.username
     assert execution.executor_user == tenant.user.username
+    assert execution.domain == tenant.user.domain
+    assert execution.updated_by_domain == tenant.user.domain
     mock_check.assert_called_once_with("/tmp/patches/", [tenant.team.id])
     assert mock_audit.call_args.args[1] == tenant.user.username
     assert "request_sha256=%s" in mock_audit.call_args.args[0]
@@ -120,6 +122,7 @@ def test_api_tenant_cannot_distribute_other_tenant_file(tenant):
     assert response.json()["code"] == "TEAM_OUT_OF_SCOPE"
     _assert_no_side_effects(mock_delay)
     assert mock_rejection_audit.call_args.args[1] == tenant.other_user.username
+    assert mock_rejection_audit.call_args.args[2] == tenant.other_user.domain
     assert tenant.file.file_key in mock_rejection_audit.call_args.args[4]
 
 

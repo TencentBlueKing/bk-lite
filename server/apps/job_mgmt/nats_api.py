@@ -346,6 +346,7 @@ def _run_file_distribute(data: dict):
     callback_subject = data.get("callback_subject")
     actor = data.get("actor") or {}
     actor_name = actor.get("user") or "api"
+    actor_domain = actor.get("domain") or "domain.com"
 
     if not name:
         return {"result": False, "message": "name 不能为空"}
@@ -402,6 +403,8 @@ def _run_file_distribute(data: dict):
         executor_user=actor_name,
         created_by=actor_name,
         updated_by=actor_name,
+        domain=actor_domain,
+        updated_by_domain=actor_domain,
     )
 
     # 触发异步执行（Celery Worker）
