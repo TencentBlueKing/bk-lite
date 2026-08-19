@@ -3,6 +3,7 @@ import json
 from copy import deepcopy
 from unittest.mock import Mock
 
+import pytest
 from django.conf import settings
 
 from apps.cmdb.nats import nats as cmdb_nats
@@ -11,8 +12,11 @@ from apps.rpc.cmdb import CMDB
 from nats_client.handlers import nats_handler
 from nats_client.utils import parse_arguments
 
+pytestmark = pytest.mark.unit
 
-def test_list_instances_rpc_upgrades_v2_to_signed_v3_without_mutating_input():
+
+def test_list_instances_rpc_upgrades_v2_to_signed_v3_without_mutating_input(monkeypatch):
+    monkeypatch.setenv("CMDB_NATS_LIST_INSTANCES_SIGN_V3", "true")
     rpc = CMDB(is_local_client=True)
     rpc.client = Mock()
     rpc.client.run.return_value = {"count": 0, "items": []}
@@ -32,6 +36,30 @@ def test_list_instances_rpc_upgrades_v2_to_signed_v3_without_mutating_input():
     prepared = rpc.client.run.call_args.kwargs["params"]
     assert prepared["protocol_version"] == "3"
     authorize_list_instances_params(prepared)
+
+
+def test_list_instances_rpc_preserves_v2_by_default_for_mixed_version_deploy(monkeypatch):
+    monkeypatch.delenv("CMDB_NATS_LIST_INSTANCES_SIGN_V3", raising=False)
+    rpc = CMDB(is_local_client=True)
+    rpc.client = Mock()
+
+    rpc.list_instances(protocol_version="2", model_id="host", organization_ids=[1])
+
+    assert rpc.client.run.call_args.kwargs["params"]["protocol_version"] == "2"
+    assert "_auth" not in rpc.client.run.call_args.kwargs["params"]
+
+
+def test_list_instances_rpc_can_roll_back_from_v3_to_v2(monkeypatch):
+    rpc = CMDB(is_local_client=True)
+    rpc.client = Mock()
+    kwargs = {"protocol_version": "2", "model_id": "host", "organization_ids": [1]}
+    monkeypatch.setenv("CMDB_NATS_LIST_INSTANCES_SIGN_V3", "true")
+    rpc.list_instances(**kwargs)
+    monkeypatch.setenv("CMDB_NATS_LIST_INSTANCES_SIGN_V3", "false")
+    rpc.list_instances(**kwargs)
+
+    assert rpc.client.run.call_args_list[0].kwargs["params"]["protocol_version"] == "3"
+    assert rpc.client.run.call_args_list[1].kwargs["params"] == kwargs
 
 
 def test_list_instances_rpc_preserves_non_v2_failure_contract():
@@ -60,6 +88,7 @@ def test_remote_rpc_v2_upgrade_reaches_real_dispatcher_as_valid_v3(monkeypatch):
     monkeypatch.setattr(cmdb_nats.InstanceManage, "instance_list", instance_list)
     monkeypatch.setattr("apps.rpc.base.nats_client.request", request)
     monkeypatch.setenv("IS_LOCAL_RPC", "0")
+    monkeypatch.setenv("CMDB_NATS_LIST_INSTANCES_SIGN_V3", "true")
 
     result = CMDB().list_instances(
         protocol_version="2",

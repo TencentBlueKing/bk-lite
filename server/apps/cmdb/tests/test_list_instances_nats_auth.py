@@ -1,4 +1,5 @@
 from copy import deepcopy
+from datetime import datetime, timezone
 from unittest.mock import Mock
 
 import pytest
@@ -7,6 +8,8 @@ from django.test import override_settings
 
 from apps.cmdb.nats import nats as cmdb_nats
 from apps.cmdb.nats import list_instances_auth as auth
+
+pytestmark = pytest.mark.unit
 
 
 def _v2_params():
@@ -41,6 +44,15 @@ def test_prepare_rpc_params_upgrades_v2_without_mutating_input():
     assert original == before
     assert prepared["protocol_version"] == "3"
     assert prepared[auth.LIST_INSTANCES_AUTH_FIELD]
+    auth.authorize_list_instances_params(prepared)
+
+
+def test_prepare_rpc_params_uses_nats_transport_json_semantics():
+    original = {**_v2_params(), "params": [{"field": "created_at", "type": "datetime", "value": datetime(2026, 8, 19, tzinfo=timezone.utc)}]}
+
+    prepared = auth.prepare_list_instances_rpc_params(original)
+
+    assert prepared["params"][0]["value"] == "2026-08-19T00:00:00Z"
     auth.authorize_list_instances_params(prepared)
 
 
@@ -148,6 +160,18 @@ def test_handler_accepts_valid_v3_and_preserves_query_contract(monkeypatch):
         creator="",
         permission_map={},
     )
+
+
+def test_repeated_valid_v3_query_is_read_only_and_repeatable(monkeypatch):
+    instance_list = Mock(return_value=([{"inst_uuid": "u1"}], 1))
+    monkeypatch.setattr(cmdb_nats.InstanceManage, "instance_list", instance_list)
+    prepared = auth.prepare_list_instances_rpc_params(_v2_params())
+
+    first = cmdb_nats.list_instances(prepared)
+    second = cmdb_nats.list_instances(prepared)
+
+    assert first == second == {"count": 1, "items": [{"inst_uuid": "u1"}]}
+    assert instance_list.call_count == 2
 
 
 @pytest.mark.parametrize("mutation", ["missing", "tampered", "expired", "audience", "operation", "params"])

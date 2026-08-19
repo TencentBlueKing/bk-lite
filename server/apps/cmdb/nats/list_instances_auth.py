@@ -1,20 +1,23 @@
 """CMDB ``list_instances`` NATS 迁移期短时签名。
 
-Server RPC 把 v2 自动升级为签名 v3。原始 v2 默认继续兼容，可通过
-``CMDB_NATS_LIST_INSTANCES_ALLOW_LEGACY_V2=false`` 在观测清零后关闭；回滚时可
-临时重新打开。密钥轮换沿用 Django ``SECRET_KEY_FALLBACKS``，旧密钥至少保留一个
-签名最大年龄后再删除。
+Server RPC 可通过 ``CMDB_NATS_LIST_INSTANCES_SIGN_V3=true`` 把 v2 升级为签名
+v3；该开关默认关闭，确保双读版本先完成滚动部署。原始 v2 默认继续兼容，可通过
+``CMDB_NATS_LIST_INSTANCES_ALLOW_LEGACY_V2=false`` 在观测清零后关闭；回滚时先关闭
+发送侧 v3，再临时重新打开 v2。密钥轮换沿用 Django ``SECRET_KEY_FALLBACKS``，旧
+密钥至少保留一个签名最大年龄后再删除。
 
 该签名只证明调用方持有 Server 应用密钥，不代表 NATS broker publisher 身份，也不
 替代后续的主体拆分与 subject ACL 收紧。
 """
 
+import json
 import os
 import threading
 import time
 from copy import deepcopy
 
 from django.core import signing
+from django.core.serializers.json import DjangoJSONEncoder
 
 from apps.core.logger import cmdb_logger as logger
 
@@ -23,6 +26,7 @@ LIST_INSTANCES_OPERATION = "list_instances"
 LIST_INSTANCES_AUTH_FIELD = "_auth"
 LIST_INSTANCES_SIGNING_SALT = "bk-lite.cmdb.list-instances.v3"
 LIST_INSTANCES_AUTH_MAX_AGE_SECONDS = 300
+LIST_INSTANCES_SIGN_V3_ENV = "CMDB_NATS_LIST_INSTANCES_SIGN_V3"
 LIST_INSTANCES_LEGACY_ENV = "CMDB_NATS_LIST_INSTANCES_ALLOW_LEGACY_V2"
 LIST_INSTANCES_LEGACY_OBSERVATION_INTERVAL_SECONDS = 300
 
@@ -33,6 +37,18 @@ _legacy_next_observation_at = 0.0
 
 def _legacy_v2_enabled() -> bool:
     return os.getenv(LIST_INSTANCES_LEGACY_ENV, "true").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def list_instances_v3_signing_enabled() -> bool:
+    """仅在双读 handler 全部就绪后开启发送侧 v3。"""
+
+    return os.getenv(LIST_INSTANCES_SIGN_V3_ENV, "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _normalize_transport_params(params: dict) -> dict:
+    """按 NATS 的 DjangoJSONEncoder 语义规范化签名参数。"""
+
+    return json.loads(json.dumps(params, cls=DjangoJSONEncoder))
 
 
 def _observe_legacy_v2_use() -> None:
@@ -55,7 +71,7 @@ def prepare_list_instances_rpc_params(params: dict) -> dict:
     if not isinstance(params, dict) or str(params.get("protocol_version") or "") != "2":
         raise ValueError("only list_instances protocol v2 can be upgraded")
 
-    prepared = deepcopy(params)
+    prepared = _normalize_transport_params(deepcopy(params))
     prepared["protocol_version"] = "3"
     claims = {
         "aud": LIST_INSTANCES_AUDIENCE,
