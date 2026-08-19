@@ -66,12 +66,11 @@ export async function fetchPlatformApplications(
 
 export async function fetchPlatformSessions(
   contract: PlatformContract,
-  app: Pick<PlatformApplication, 'botId' | 'nodeId'>,
+  app: Pick<PlatformApplication, 'channelId'>,
   init: PlatformRequestInit
 ): Promise<PlatformSession[]> {
   const url = fillUrlTemplate(contract.sessionsUrl, {
-    botId: app.botId,
-    nodeId: app.nodeId,
+    channelId: app.channelId,
   });
   const payload = await fetchPlatformJson(url, init);
   return mapPlatformSessions(asRecordList(payload));

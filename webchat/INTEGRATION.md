@@ -38,17 +38,17 @@ export default function Home() {
 
 If both `platform` and `sseUrl` are provided, **platform mode wins** and `sseUrl` is ignored. Single-bot embeds that only pass `sseUrl` still use the floating button.
 
-### Step 2b: Platform assistant (switch among the user's chat apps)
+### Step 2b: Platform assistant (switch among permitted published skills)
 
-The host injects URLs. WebChat does not hardcode console paths. URL templates may include `{botId}`, `{nodeId}`, and `{sessionId}`. Chat requests send `session_id` in the JSON body. Platform mode is a full-height right overlay that does not push page layout; it starts collapsed as a FAB.
+The host injects URLs. WebChat does not hardcode console paths. URL templates may include `{channelId}` and `{sessionId}`. Chat requests send `session_id` in the JSON body. Platform mode is a full-height right overlay that does not push page layout; it starts collapsed as a FAB. For OpsPilot, point `applicationsUrl` at the enabled **platform** skill channels the current team may use.
 
 ```jsx
 <PlatformChat
   platform={{
-    applicationsUrl: 'https://host.example/apps?app_type=web_chat',
-    sessionsUrl: 'https://host.example/sessions?bot_id={botId}&node_id={nodeId}',
-    messagesUrl: 'https://host.example/messages?session_id={sessionId}',
-    chatUrlTemplate: 'https://host.example/chat/{botId}/{nodeId}',
+    applicationsUrl: 'https://host.example/skill_channel/platform/',
+    sessionsUrl: 'https://host.example/skill_channel/conversations/?channel_id={channelId}',
+    messagesUrl: 'https://host.example/skill_channel/conversations/messages/?session_id={sessionId}',
+    chatUrlTemplate: 'https://host.example/skill_channel/{channelId}/chat/',
     interruptUrl: 'https://host.example/interrupt',
     approvalUrl: 'https://host.example/approval',
     choiceUrl: 'https://host.example/choice',

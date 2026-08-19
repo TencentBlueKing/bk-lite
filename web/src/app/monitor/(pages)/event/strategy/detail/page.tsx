@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Spin, Button, Form, message, Steps } from 'antd';
+import { Spin, Button, Form, Input, message, Steps } from 'antd';
 import useApiClient from '@/utils/request';
+import OperateModal from '@/components/operate-modal';
 import useMonitorApi from '@/app/monitor/api';
 import {
   fetchAllMetricsGroups,
@@ -122,10 +123,28 @@ const StrategyOperation = () => {
   const type = searchParams.get('type') || '';
   const detailId = searchParams.get('id');
   const detailName = searchParams.get('name') || '--';
+  const isCreateFlow = ['builtIn', 'add'].includes(type);
   const { getGroupIds, ready: objectConfigReady } = useObjectConfigInfo(monitorName);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [templateSaving, setTemplateSaving] = useState<boolean>(false);
+  const [templateSavedOnce, setTemplateSavedOnce] = useState(false);
+  const [templateConfirmVisible, setTemplateConfirmVisible] = useState(false);
+  const [templateMetaDefaults, setTemplateMetaDefaults] = useState({
+    name: '',
+    description: '',
+  });
+  const [templateMetaForm] = Form.useForm<{ name: string; description: string }>();
+  const pendingTemplateConfigRef = useRef<StrategyFields | null>(null);
+  const templateSubmittingRef = useRef(false);
+  // create 流程：从当前页面“保存模版”成功后，只允许创建 1 次（需要重新进入页面才能再创建）。
+  // 用 ref 做同步锁，避免后端请求已完成但弹窗尚未完全关闭前出现重复请求。
+  const templateSavedOnceRef = useRef(false);
+
+  useEffect(() => {
+    if (!templateConfirmVisible) return;
+    templateMetaForm.setFieldsValue(templateMetaDefaults);
+  }, [templateConfirmVisible, templateMetaDefaults, templateMetaForm]);
   const [source, setSource] = useState<SourceFeild>({
     type: '',
     values: []
@@ -1020,6 +1039,11 @@ const StrategyOperation = () => {
   };
 
   const saveTemplate = async () => {
+    if (templateSubmittingRef.current || templateSaving) return;
+    if (isCreateFlow && (templateSavedOnce || templateSavedOnceRef.current)) {
+      message.info(t('monitor.events.templateAlreadySaved', '当前策略已保存为模版'));
+      return;
+    }
     const trapTemplate = isTrap(form.getFieldValue);
     const templateFields = [
       'name',
@@ -1044,16 +1068,71 @@ const StrategyOperation = () => {
       ...validated,
     });
     if (!params) return;
+    pendingTemplateConfigRef.current = params;
+    const defaultName = String(params.name || validated.name || '').trim();
+    setTemplateMetaDefaults({
+      name: defaultName,
+      description: defaultName,
+    });
+    setTemplateConfirmVisible(true);
+  };
+
+  const resetTemplateConfirm = () => {
+    setTemplateConfirmVisible(false);
+    pendingTemplateConfigRef.current = null;
+    templateMetaForm.resetFields();
+  };
+
+  const closeTemplateConfirm = () => {
+    if (templateSubmittingRef.current) return;
+    resetTemplateConfirm();
+  };
+
+  const confirmSaveTemplate = async (options?: { exitAfterSave?: boolean }) => {
+    if (templateSubmittingRef.current || templateSaving) return;
+    if (isCreateFlow && (templateSavedOnce || templateSavedOnceRef.current)) {
+      message.info(t('monitor.events.templateAlreadySaved', '当前策略已保存为模版'));
+      return;
+    }
+    const config = pendingTemplateConfigRef.current;
+    if (!config) return;
+    let meta: { name: string; description: string };
     try {
-      setTemplateSaving(true);
+      meta = await templateMetaForm.validateFields();
+    } catch {
+      return;
+    }
+    const name = String(meta.name || '').trim();
+    if (!name) {
+      templateMetaForm.setFields([
+        {
+          name: 'name',
+          errors: [t('common.required')],
+        },
+      ]);
+      return;
+    }
+    templateSubmittingRef.current = true;
+    setTemplateSaving(true);
+    try {
       await savePolicyTemplate({
         monitor_object: monitorObjId,
-        plugin: params.collect_type,
-        name: params.name,
-        config: params,
+        plugin: config.collect_type,
+        name,
+        description: String(meta.description ?? ''),
+        config,
       });
-      message.success('模版保存成功');
+      message.success(t('monitor.events.saveTemplateSuccess', '模版保存成功'));
+      if (isCreateFlow) {
+        templateSavedOnceRef.current = true;
+        setTemplateSavedOnce(true);
+      }
+      resetTemplateConfirm();
+      if (options?.exitAfterSave) {
+        goBack();
+      }
     } finally {
+      templateSubmittingRef.current = false;
       setTemplateSaving(false);
     }
   };
@@ -1256,13 +1335,16 @@ const StrategyOperation = () => {
           >
             {t('common.confirm')}
           </Button>
-          <Button
-            loading={templateSaving}
-            onClick={() => void saveTemplate()}
-          >
-            保存模版
-          </Button>
-          <Button onClick={goBack}>{t('common.cancel')}</Button>
+            {isCreateFlow && templateSavedOnce ? (
+            <Button onClick={goBack}>{t('common.back')}</Button>
+          ) : (
+            <>
+              <Button loading={templateSaving} onClick={() => void saveTemplate()}>
+                {t('monitor.events.saveTemplate', '保存模版')}
+              </Button>
+              <Button onClick={goBack}>{t('common.cancel')}</Button>
+            </>
+          )}
         </div>
       </div>
       <SelectAssets
@@ -1271,6 +1353,60 @@ const StrategyOperation = () => {
         objects={objects}
         onSuccess={onChooseAssets}
       />
+      <OperateModal
+        title={t('monitor.events.saveTemplate', '保存模版')}
+        open={templateConfirmVisible}
+        onCancel={closeTemplateConfirm}
+        maskClosable={!templateSaving}
+        closable={!templateSaving}
+        footer={
+          <div>
+            {isCreateFlow ? (
+              <Button
+                className="mr-[10px]"
+                loading={templateSaving}
+                disabled={templateSaving}
+                onClick={() => void confirmSaveTemplate({ exitAfterSave: true })}
+              >
+                {t('monitor.events.saveAndExit', '保存并退出')}
+              </Button>
+            ) : null}
+            <Button
+              className="mr-[10px]"
+              type="primary"
+              loading={templateSaving}
+              disabled={templateSaving}
+              onClick={() => void confirmSaveTemplate()}
+            >
+              {isCreateFlow ? t('monitor.events.saveAndContinue', '保存并继续') : t('common.confirm')}
+            </Button>
+            <Button disabled={templateSaving} onClick={closeTemplateConfirm}>
+              {t('common.cancel')}
+            </Button>
+          </div>
+        }
+      >
+        <Form
+          form={templateMetaForm}
+          layout="vertical"
+          preserve={false}
+          initialValues={templateMetaDefaults}
+        >
+          <Form.Item
+            label={t('monitor.integrations.templateName')}
+            name="name"
+            rules={[{ required: true, whitespace: true, message: t('common.required') }]}
+          >
+            <Input maxLength={100} />
+          </Form.Item>
+          <Form.Item
+            label={t('monitor.integrations.templateDescription')}
+            name="description"
+          >
+            <Input.TextArea rows={4} />
+          </Form.Item>
+        </Form>
+      </OperateModal>
     </Spin>
   );
 };

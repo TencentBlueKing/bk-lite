@@ -110,7 +110,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
-  const [view, setView] = useState<DockView>('sessions');
+  const [view, setView] = useState<DockView>('chat');
   const [collapsed, setCollapsed] = useState(() => readDockCollapsed(storage, collapsedKey));
   const [draft, setDraft] = useState('');
   const [kickoffMessage, setKickoffMessage] = useState<string | undefined>();
@@ -164,13 +164,12 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   }, [platform, requestInit, storage, storageKey]);
 
   const currentAppId = currentApp?.id;
-  const currentBotId = currentApp?.botId;
-  const currentNodeId = currentApp?.nodeId;
+  const currentChannelId = currentApp?.channelId;
 
   useEffect(() => {
     let cancelled = false;
     async function loadSessions() {
-      if (!currentAppId || !currentBotId || !currentNodeId) {
+      if (!currentAppId || !currentChannelId) {
         setSessions([]);
         setSessionId(null);
         setMessages([]);
@@ -179,14 +178,14 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
       try {
         const nextSessions = await fetchPlatformSessions(
           platform,
-          { botId: currentBotId, nodeId: currentNodeId },
+          { channelId: currentChannelId },
           requestInit
         );
         if (cancelled) return;
         setSessions(nextSessions);
         const stored = readLastSelection(storage, storageKey);
         const resolved = resolvePlatformSelection(
-          [{ id: currentAppId, name: '', botId: currentBotId, nodeId: currentNodeId }],
+          [{ id: currentAppId, name: '', channelId: currentChannelId }],
           nextSessions,
           stored
         );
@@ -206,7 +205,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     return () => {
       cancelled = true;
     };
-  }, [currentAppId, currentBotId, currentNodeId, persistSelection, platform, requestInit, storage, storageKey]);
+  }, [currentAppId, currentChannelId, persistSelection, platform, requestInit, storage, storageKey]);
 
   const isDraftSession =
     !!sessionId &&
@@ -255,8 +254,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
 
   const chatUrl = currentApp
     ? fillUrlTemplate(platform.chatUrlTemplate, {
-        botId: currentApp.botId,
-        nodeId: currentApp.nodeId,
+        channelId: currentApp.channelId,
       })
     : undefined;
 
@@ -275,7 +273,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     setAppMenuOpen(false);
     setMessages([]);
     setMessagesLoading(true);
-    setView('sessions');
+    setView('chat');
   }, []);
 
   const handleSelectSession = useCallback((id: string) => {
@@ -359,7 +357,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
           ) : (
             <button
               type="button"
-              title="切换应用"
+              title="切换智能体"
               onClick={() => setAppMenuOpen((open) => !open)}
               className="flex min-w-0 flex-1 items-center gap-1 border-none bg-transparent p-0 text-left text-sm font-semibold"
               style={{ color: WC.onPrimary }}
@@ -435,10 +433,10 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
           style={{ background: WC.page, color: WC.muted }}
         >
           <p className="text-sm font-medium" style={{ color: WC.botText }}>
-            当前团队还没有对话应用
+            当前团队还没有可对话的智能体
           </p>
           <p className="mt-2 text-xs leading-[18px]">
-            有查看权限，但还没发布 web_chat 应用。去 Studio 加上 Web 对话节点并发布。
+            需要在智能体详情开通并启用「平台」渠道，且当前组织在使用组织内。
           </p>
         </div>
       ) : view === 'sessions' ? (
