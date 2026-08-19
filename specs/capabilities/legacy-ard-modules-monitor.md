@@ -43,7 +43,7 @@
   - `management/commands/create_monitor_instance.py:14,21`：YAML 驱动的监控实例创建入口，支持输入/输出文件参数，调用 `InstanceConfigService` 创建或更新实例配置（命令说明见同目录 `create_monitor_instance.md:5`）。
 - NATS【已实现/已存在】：`nats/monitor.py` 注册大量 handler，经 `apps/rpc/monitor.py` 暴露并被 operation_analysis、opspilot 消费：
   - 创建类（`monitor.py`）：`create_monitor_object_type` / `create_monitor_object` / `create_monitor_plugin` / `create_metric_group` / `create_metric` / `create_monitor_policy`。
-  - 策略维护类：`search_monitor_policies`（按名称、调用方组织范围查询，上限 200）/ `delete_monitor_policy`（身份闸 + 组织可见性，清理 PeriodicTask / PolicyOrganization / 策略）。
+  - 策略维护类：`search_monitor_policies`（按名称、调用方组织范围查询，上限 200；**策略名允许重名，可返回多条并带 `count`，写操作须用 `policy_id`**）/ `delete_monitor_policy`（身份闸 + 组织可见性，清理 PeriodicTask / PolicyOrganization / 策略）。
   - 查询类：`monitor_objects` / `monitor_object_instance_count` / `monitor_metrics` / `monitor_object_instances` / `query_monitor_data_by_metric` / `monitor_instance_metrics` / `query_monitor_alert_segments` / `query_latest_active_alerts` / `mm_query_range` / `mm_query` / `get_monitor_statistics`。
     - `query_monitor_data_by_metric` 以“监控对象 + 指标名”查询时，会对所有匹配的插件指标定义分别执行 PromQL 并合并序列；每条序列附加 `metric_id` 和 `monitor_plugin`（`id/name/display_name/template_id/template_type/collector/collect_type`）以标识来源，同时保留原 VictoriaMetrics 外层返回结构。
   - 权限授权类：`_get_authorized_monitor_instances` 等内部辅助（`monitor.py:491-...`）；`nats/permission.py:7,33` 另注册 `get_monitor_module_data` / `get_monitor_module_list`，按组织过滤实例/策略/条件。
