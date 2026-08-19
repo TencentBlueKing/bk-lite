@@ -16,7 +16,7 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 class TeamResolveMixin:
     """从请求解析用户归属团队（API-Secret 或会话 cookie）。
 
-    供开放接口（``OpenFileUploadView`` / ``OpenFileDeleteView`` / ``OpenFileDistributeView`` /
+    供开放接口（``OpenFileUploadView`` / ``OpenFileDeleteView`` /
     ``OpenScriptExecuteView`` / ``OpenJobStatusView`` / ``OpenJobDetailView``，
     APIView + API-Secret 鉴权）复用：按团队归属上传文件、校验删除权限、执行作业与查询状态。
 

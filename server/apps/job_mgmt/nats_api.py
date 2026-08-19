@@ -1,13 +1,16 @@
 """Job Management NATS API - 用于数据权限规则"""
 
+import os
+
 import nats_client
 from apps.core.logger import job_logger as logger
+from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Script, Target
+from apps.job_mgmt.openapi_serializers import FileDistributeRequestSerializer
 from apps.job_mgmt.services.ansible_callback_service import handle_ansible_task_callback
-from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.celery_dispatch import dispatch_celery_task
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_cancellation_service import (
@@ -16,11 +19,14 @@ from apps.job_mgmt.services.execution_cancellation_service import (
     request_execution_cancel,
 )
 from apps.job_mgmt.services.nats_module_service import get_module_data, get_module_list
+from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_script_task
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
+from apps.node_mgmt.models import Node
 from apps.system_mgmt.nats.common import _verify_token
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 def _validate_callback_config(callback_type: str, callback_url: str, callback_subject: str, tag: str):
@@ -290,6 +296,21 @@ def job_script_execute(data: dict):
 
 @nats_client.register
 def job_file_distribute(data: dict):
+    """旧版 NATS 文件分发入口；默认兼容，支持显式退役与即时回滚。"""
+    if os.getenv("JOB_FILE_DISTRIBUTE_NATS_ENABLED", "1").strip().lower() not in {"1", "true", "yes", "on"}:
+        logger.warning("[job_file_distribute] legacy NATS entry disabled")
+        return {"result": False, "message": "旧版 NATS 文件分发入口已停用，请迁移至 OpenAPI 网关"}
+
+    logger.info(
+        "[job_file_distribute] legacy NATS call: team=%s, file_count=%s, target_count=%s",
+        data.get("team"),
+        len(data.get("file_keys") or []),
+        len(data.get("target_list") or []),
+    )
+    return _run_file_distribute(data)
+
+
+def _run_file_distribute(data: dict):
     """
     文件分发（NATS 开放接口）
 
@@ -385,6 +406,87 @@ def job_file_distribute(data: dict):
         return {"result": False, "message": "任务调度服务暂不可用，请稍后重试"}
 
     return {"result": True, "data": {"task_id": execution.id}}
+
+
+def _validate_openapi_distribute_scope(file_keys, target_source, target_list, authorized_team_ids):
+    """校验网关文件与目标均属于可信身份绑定组织。"""
+    files = list(DistributionFile.objects.filter(file_key__in=file_keys))
+    if len({item.file_key for item in files}) != len(set(file_keys)) or any(
+        not is_team_authorized(item.team, authorized_team_ids) for item in files
+    ):
+        return "部分文件不存在、已过期或无权访问该组织的文件"
+
+    id_field = "target_id" if target_source == "manual" else "node_id"
+    target_ids = [item.get(id_field) for item in target_list]
+    if any(not target_id for target_id in target_ids) or len(set(target_ids)) != len(target_ids):
+        return f"目标列表必须包含唯一的 {id_field}"
+
+    if target_source == "manual":
+        targets = list(Target.objects.filter(id__in=target_ids))
+        authorized = len(targets) == len(target_ids) and all(
+            is_team_authorized(item.team, authorized_team_ids) for item in targets
+        )
+    else:
+        authorized = (
+            Node.objects.filter(
+                id__in=target_ids,
+                nodeorganization__organization__in=authorized_team_ids,
+            )
+            .distinct()
+            .count()
+            == len(target_ids)
+        )
+    if not authorized:
+        return "部分目标不存在或无权访问该组织的目标"
+    return None
+
+
+@openapi_expose(
+    path="job-mgmt/file-distribute",
+    method="POST",
+    schema=FileDistributeRequestSerializer,
+    inject="team_list",
+    summary="提交文件分发作业（组织口径：API 令牌绑定组织精确匹配，不级联子组织）",
+)
+def openapi_file_distribute(
+    name,
+    file_keys,
+    target_source,
+    target_list,
+    target_path,
+    overwrite_strategy,
+    timeout,
+    *,
+    team=None,
+):
+    """经统一网关绑定可信组织后复用旧 NATS 文件分发实现。"""
+    authorized_team_ids = normalize_team(team)
+    authorized_team_id = next(iter(authorized_team_ids), None)
+    if len(authorized_team_ids) != 1 or not GroupUtils.active_queryset(id=authorized_team_id).exists():
+        return {"result": False, "message": "用户未关联活动团队"}
+
+    scope_error = _validate_openapi_distribute_scope(file_keys, target_source, target_list, authorized_team_ids)
+    if scope_error:
+        return {"result": False, "message": scope_error}
+
+    result = _run_file_distribute(
+        {
+            "name": name,
+            "file_keys": file_keys,
+            "target_source": target_source,
+            "target_list": target_list,
+            "target_path": target_path,
+            "overwrite_strategy": overwrite_strategy,
+            "timeout": timeout,
+            "team": [authorized_team_id],
+            # 新入口暂不接受调用方控制的出站回调；调用方通过查询接口获取结果。
+            "callback_type": CallbackType.WEB,
+            "callback_url": "",
+        }
+    )
+    if not result.get("result"):
+        return result
+    return result.get("data") or {}
 
 
 @nats_client.register

@@ -16,7 +16,7 @@
 | 查询作业详情 | REST `GET /api/v1/job_mgmt/api/open/job_detail/{task_id}` | Api-Authorization | 同步，返回执行详情与状态 |
 | 文件上传 | REST `POST /api/v1/job_mgmt/api/open/upload_file` | Api-Authorization | 同步，返回 file_id + file_key |
 | 文件删除 | REST `DELETE /api/v1/job_mgmt/api/open/delete_file` | Api-Authorization | 同步，删除文件 |
-| 文件分发（推荐） | REST `POST /api/v1/job_mgmt/api/open/distribute_file` | Api-Authorization | 异步，团队由 Secret 绑定 |
+| 文件分发（推荐） | OpenAPI `POST /openapi/v1/job-mgmt/file-distribute` | Authorization Bearer | 异步，团队由 Secret 绑定 |
 | 文件分发（旧版） | NATS `bklite.job_file_distribute` | 无 | 迁移兼容，异步返回 task_id |
 | 批量查询状态 | NATS `bklite.job_status_batch_query` | 无 | 同步 |
 | 查询作业详情 | NATS `bklite.job_detail_query` | 无 | 同步 |
@@ -26,9 +26,10 @@
 ### NATS 接口
 NATS subject 前缀由 `NATS_NAMESPACE` 配置决定（默认 `bklite`）。
 
-旧版 `job_file_distribute` 暂时保留供存量调用迁移和紧急回滚；新接入必须使用带 API Secret 鉴权的 REST 文件分发
-接口。可按 listener 的 subject 日志观测旧调用，清零后再关闭并退役旧 subject。NATS 接口仍按现有契约信任内网
-通道，因此请求自行声明的 `team` 不能作为可信调用者身份。
+旧版 `job_file_distribute` 暂时保留供存量调用迁移和紧急回滚；新接入必须使用统一 OpenAPI 网关。
+listener subject 日志用于流量计数，NATS 连接审计用于识别存量调用方；已知调用全部迁移且观测窗口归零后，设
+`JOB_FILE_DISTRIBUTE_NATS_ENABLED=0` 拒绝旧入口。若新路径异常，置回 `1` 即可回滚，不回滚已签发 Secret 和网关审计。
+NATS 旧入口仍按现有契约信任内网通道，请求自报 `team` 不是可信身份。
 
 ### REST 接口
 使用 `UserAPISecret` 的 `api_secret` 作为 token：
@@ -56,17 +57,17 @@ Api-Authorization: <api_secret>
        │─────────────────────────────────────────────────────▶│
        │◀─────────────────── { task_id } ─────────────────────│
        │                                                      │
-       │  3. POST /api/v1/job_mgmt/api/open/distribute_file   │
-       │     Api-Authorization + { file_keys, ... }           │
+       │  3. POST /openapi/v1/job-mgmt/file-distribute        │
+       │     Authorization: Bearer + { file_keys, ... }       │
        │─────────────────────────────────────────────────────▶│
        │◀─────────────────── { task_id } ─────────────────────│
        │                                                      │
        │          ... 等待执行 ...                             │
        │                                                      │
-       │  4. HTTP POST callback_url (server → 第三方)          │
+       │  4. NATS: bklite.job_detail_query (查询结果)           │
        │◀─────────────── { task_id, status } ─────────────────│
        │                                                      │
-       │  5. NATS: bklite.job_detail_query (可选，获取详情)     │
+       │  5. 未完成时可按 task_id 重复查询                │
        │─────────────────────────────────────────────────────▶│
        │◀─────────── { execution_results, ... } ──────────────│
 ```
@@ -512,13 +513,12 @@ Content-Type: application/json
 
 ### 6. 文件分发
 
-**REST Endpoint（推荐）**: `POST /api/v1/job_mgmt/api/open/distribute_file`
+**OpenAPI Endpoint（推荐）**: `POST /openapi/v1/job-mgmt/file-distribute`
 
-**鉴权**: `Api-Authorization: <api_secret>`
+**鉴权**: `Authorization: Bearer <api_secret>`
 
-服务端使用 API Secret 绑定的活动团队执行，并忽略请求自行声明的 `team`。旧版 NATS subject
-`bklite.job_file_distribute` 在迁移窗口内保持原请求与响应契约；回滚时调用方可临时切回旧 subject，不需要回滚已签发
-的 API Secret。
+服务端使用 API Secret 绑定的唯一活动团队执行。请求 schema 不接受 `team`，也不接受调用方控制的
+`callback_url` / `callback_subject`；结果通过作业状态查询获取。网关审计记录凭据主体、团队、路径与结果。
 
 **Request:**
 ```json
@@ -531,8 +531,7 @@ Content-Type: application/json
   ],
   "target_path": "/tmp/patches/",
   "overwrite_strategy": "overwrite",
-  "timeout": 600,
-  "callback_url": "http://patch-mgmt:8080/api/callback/task_done"
+  "timeout": 600
 }
 ```
 
@@ -547,10 +546,7 @@ Content-Type: application/json
 | target_path | string | 是 | 目标机器上的存放路径 |
 | overwrite_strategy | string | 否 | `overwrite`（默认）或 `skip` |
 | timeout | int | 否 | 超时秒数，默认 600 |
-| team | array | 否 | REST 接口忽略该字段；旧版 NATS subject 仍要求提供 |
-| callback_url | string | 否 | 任务完成回调地址 |
-
-> ⚠️ **团队隔离**：REST 接口仅允许分发 API Secret 绑定活动团队的文件。请求自行声明的 `team` 不能扩大权限；跨团队文件、无归属历史文件与不存在文件都会被拒绝，且不会创建或派发作业。
+> ⚠️ **团队隔离**：网关接口仅允许分发 API Secret 绑定活动团队的文件与目标。跨团队、无归属、不存在或格式非法的输入都会在创建作业和派发 Celery 任务前被拒绝。
 
 **Response:** 同脚本执行
 

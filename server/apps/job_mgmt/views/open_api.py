@@ -1,7 +1,6 @@
 """作业管理开放接口（第三方 App 调用）"""
 
 import os
-from collections.abc import Mapping
 from datetime import datetime, timedelta
 
 from asgiref.sync import async_to_sync
@@ -14,11 +13,10 @@ from rest_framework.views import APIView
 
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.models import DistributionFile, JobExecution
-from apps.job_mgmt.nats_api import job_detail_query, job_file_distribute, job_list, job_script_execute, job_status_batch_query
+from apps.job_mgmt.nats_api import job_detail_query, job_list, job_script_execute, job_status_batch_query
 from apps.job_mgmt.utils.team_authz import is_team_authorized
 from apps.job_mgmt.views.mixins import TeamResolveMixin
 from apps.node_mgmt.utils.s3 import delete_s3_file, upload_file_to_s3
-from apps.system_mgmt.utils.group_utils import GroupUtils
 
 # 文件过期天数：默认值与上下限
 DEFAULT_EXPIRE_DAYS = 7
@@ -295,33 +293,6 @@ class OpenScriptExecuteView(TeamResolveMixin, APIView):
             )
             logger.warning("Open script execute failed: team=%s, message=%s", user_team, message)
             return Response({"detail": "脚本执行失败"}, status=http_status)
-        return Response(result.get("data") or {}, status=status.HTTP_201_CREATED)
-
-
-class OpenFileDistributeView(TeamResolveMixin, APIView):
-    """使用 API Secret 绑定团队的开放文件分发入口。"""
-
-    def post(self, request):
-        user_team, error_response = _resolve_open_team(self, request)
-        if error_response:
-            return error_response
-        if not GroupUtils.active_queryset(id=user_team).exists():
-            return Response({"detail": "用户未关联活动团队"}, status=status.HTTP_400_BAD_REQUEST)
-        if not isinstance(request.data, Mapping):
-            return Response({"detail": "请求数据必须为 JSON 对象"}, status=status.HTTP_400_BAD_REQUEST)
-
-        payload = dict(request.data)
-        payload["team"] = [user_team]
-        result = job_file_distribute(payload)
-        if not result.get("result"):
-            message = result.get("message") or "文件分发失败"
-            http_status = (
-                status.HTTP_503_SERVICE_UNAVAILABLE
-                if "调度服务" in message
-                else status.HTTP_400_BAD_REQUEST
-            )
-            logger.warning("Open file distribute failed: team=%s, message=%s", user_team, message)
-            return Response({"detail": "文件分发失败"}, status=http_status)
         return Response(result.get("data") or {}, status=status.HTTP_201_CREATED)
 
 

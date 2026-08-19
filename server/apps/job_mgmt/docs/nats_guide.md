@@ -154,12 +154,15 @@ print(limited_detail)
 
 ## 5. 注意事项
 
-- NATS 接口无需鉴权，信任内网通道。确保 NATS Server 不对外暴露；新文件分发调用必须改用带
-  `Api-Authorization` 的 REST `POST /api/v1/job_mgmt/api/open/distribute_file`，不要新增旧版 NATS 调用。
+- NATS 接口无需鉴权，信任内网通道。确保 NATS Server 不对外暴露；新文件分发调用必须改用
+  `Authorization: Bearer <api_secret>` 的统一网关 `POST /openapi/v1/job-mgmt/file-distribute`，不要新增旧版 NATS 调用。
+- 迁移窗口内保持 `JOB_FILE_DISTRIBUTE_NATS_ENABLED=1`（默认），结合 listener subject 日志与 NATS 连接审计
+  盘点调用方。流量归零后置 `0` 拒绝旧入口；若新路径异常，立即置回 `1` 回滚。
 - `namespace` 必须与 BK-Lite Server 配置一致（默认 `bklite`），否则消息无法路由。
 - 超时建议设为 30-60 秒，脚本执行类接口只是创建任务（快速返回），实际执行异步进行。
 - 如果 NATS Server 配置了认证（用户名/密码/token），连接时需传入对应参数：
   ```python
   nc = await nats.connect("nats://user:password@localhost:4222")
   ```
-- 文件上传、删除及新文件分发使用 REST 接口，见 [open_api.md](./open_api.md) 中对应章节。
+- 文件上传、删除使用存量 REST 接口；新文件分发使用统一 OpenAPI 网关，见
+  [open_api.md](./open_api.md) 中对应章节。

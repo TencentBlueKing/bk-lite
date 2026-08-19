@@ -16,7 +16,6 @@ from apps.job_mgmt.views import (
 )
 from apps.job_mgmt.views.open_api import (
     OpenFileDeleteView,
-    OpenFileDistributeView,
     OpenFileUploadView,
     OpenJobDetailView,
     OpenJobListView,
@@ -56,7 +55,6 @@ router.register(r"api/distribution_file", DistributionFileViewSet, basename="dis
 urlpatterns = router.urls + [
     path("api/open/upload_file", OpenFileUploadView.as_view(), name="open_upload_file"),
     path("api/open/delete_file", OpenFileDeleteView.as_view(), name="open_delete_file"),
-    path("api/open/distribute_file", OpenFileDistributeView.as_view(), name="open_distribute_file"),
     path("api/open/job_list", OpenJobListView.as_view(), name="open_job_list"),
     path("api/open/script_execute", OpenScriptExecuteView.as_view(), name="open_script_execute"),
     path("api/open/job_status", OpenJobStatusView.as_view(), name="open_job_status"),
