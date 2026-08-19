@@ -1,5 +1,6 @@
 import React from 'react';
 import { cleanup, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
@@ -92,4 +93,35 @@ describe('APM SLO 列表布局', () => {
     expect(explicitColumnWidths).not.toContain('width: 220px;');
     expect(explicitColumnWidths).not.toContain('width: 210px;');
   }, 10_000);
+
+  it('编辑归档服务的 SLO 时展示服务名称而不是 UUID', async () => {
+    const user = userEvent.setup();
+    api.getServices.mockResolvedValue([]);
+    api.getSlos.mockResolvedValue([
+      {
+        id: 'slo-legacy',
+        name: '旧服务可用性',
+        service_id: 'service-archived',
+        environment: 'legacy',
+        endpoint: '',
+        sli_type: 'availability',
+        objective: '99.90',
+        evaluation_window: 'rolling30d',
+        is_enabled: false,
+        service_namespace: 'legacy-shop',
+        service_name: 'legacy-api',
+        latency_threshold_ms: null,
+        current_rate: null,
+        budget_remaining: null,
+        data_state: 'no_data',
+      },
+    ]);
+
+    renderWithApmIntl(<ApmSloPage />);
+    await user.click(await screen.findByRole('button', { name: '编辑' }));
+
+    expect(await screen.findByText('legacy-shop / legacy-api（已归档）')).not.toBeNull();
+    expect(screen.queryByText('service-archived')).toBeNull();
+    expect(api.getServices).toHaveBeenCalledWith({ include_archived: true });
+  });
 });

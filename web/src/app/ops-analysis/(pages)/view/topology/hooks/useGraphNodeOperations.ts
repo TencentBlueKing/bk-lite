@@ -438,7 +438,11 @@ export const useGraphNodeOperations = ({
       logoIcon: values.logoIcon || editingNode.logoIcon,
       logoUrl: values.logoUrl || editingNode.logoUrl,
       valueConfig: {
+        ...valueConfig,
         compare: values.compare ?? valueConfig?.compare,
+        ...(values.compareMode != null
+          ? { compareMode: values.compareMode }
+          : {}),
         selectedFields: values.selectedFields || valueConfig?.selectedFields,
         chartType: values.chartType || valueConfig?.chartType,
         dataSource: values.dataSource || valueConfig?.dataSource,

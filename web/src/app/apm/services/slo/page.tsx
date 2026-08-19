@@ -126,7 +126,7 @@ export default function ApmSloPage() {
   const load = useCallback(async () => {
     setState('loading');
     try {
-      const [sloItems, serviceItems] = await Promise.all([getSlos(), getServices()]);
+      const [sloItems, serviceItems] = await Promise.all([getSlos(), getServices({ include_archived: true })]);
       setRows(sloItems);
       setServices(serviceItems);
       setState(sloItems.length ? 'ready' : 'empty');
@@ -139,14 +139,38 @@ export default function ApmSloPage() {
     void load();
   }, [load]);
 
-  const serviceOptions = useMemo(() => services.map((service) => ({
-    value: service.id,
-    label: service.namespace ? `${service.namespace} / ${service.name}` : service.name,
-  })), [services]);
+  const editingRow = useMemo(
+    () => editingId ? rows.find((row) => row.id === editingId) : undefined,
+    [editingId, rows],
+  );
+  const activeServices = useMemo(
+    () => services.filter((service) => !service.archived_at),
+    [services],
+  );
+  const serviceOptions = useMemo(() => {
+    const options = activeServices.map((service) => ({
+      value: service.id,
+      label: service.namespace ? `${service.namespace} / ${service.name}` : service.name,
+    }));
+    if (!editingRow || options.some((option) => option.value === editingRow.service_id)) return options;
+    const selectedService = services.find((service) => service.id === editingRow.service_id);
+    const selectedName = selectedService?.namespace
+      ? `${selectedService.namespace} / ${selectedService.name}`
+      : selectedService?.name || `${editingRow.service_namespace} / ${editingRow.service_name}`;
+    return [
+      ...options,
+      {
+        value: editingRow.service_id,
+        label: t('apm.slo.archivedServiceOption', '{name}（已归档）', { name: selectedName }),
+        disabled: true,
+      },
+    ];
+  }, [activeServices, editingRow, services, t]);
 
-  const environmentOptions = useMemo(() => Array.from(new Set(services.flatMap((service) =>
-    service.environment_views.map((view) => view.environment).filter(Boolean)
-  ))).sort().map((value) => ({ value, label: value })), [services]);
+  const environmentOptions = useMemo(() => Array.from(new Set([
+    ...activeServices.flatMap((service) => service.environment_views.map((view) => view.environment).filter(Boolean)),
+    ...(editingRow?.environment ? [editingRow.environment] : []),
+  ])).sort().map((value) => ({ value, label: value })), [activeServices, editingRow]);
   const pageRows = useMemo(
     () => rows.slice((page - 1) * pageSize, page * pageSize),
     [page, pageSize, rows],
@@ -159,7 +183,7 @@ export default function ApmSloPage() {
   };
 
   const openCreateDrawer = () => {
-    const firstService = services[0];
+    const firstService = activeServices[0];
     setEditingId(null);
     form.setFieldsValue({
       name: '',
@@ -190,7 +214,6 @@ export default function ApmSloPage() {
   };
 
   const submit = async (values: SloFormValues) => {
-    const editingRow = editingId ? rows.find((row) => row.id === editingId) : undefined;
     const payload: ApmSloInput = {
       ...values,
       is_enabled: editingRow?.is_enabled ?? true,

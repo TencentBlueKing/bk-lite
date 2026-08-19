@@ -55,10 +55,7 @@ class ExecutionTaskBaseService(object):
                 return None, []
 
             if execution.status != ExecutionStatus.PENDING:
-                logger.info(
-                    f"[{self.task_name}] 任务已离开待执行状态，不再进入执行: "
-                    f"execution_id={self.execution_id}, status={execution.status}"
-                )
+                logger.info(f"[{self.task_name}] 任务已离开待执行状态，不再进入执行: " f"execution_id={self.execution_id}, status={execution.status}")
                 return None, []
 
             target_list = execution.target_list or []
@@ -295,7 +292,8 @@ class ExecutionTaskBaseService(object):
             if shell_interpreter in ANSIBLE_SHELL_EXECUTABLES:
                 extra_vars["ansible_shell_executable"] = f"/bin/{shell_interpreter}"
             else:
-                module_args = build_heredoc_command(shell_interpreter, script_content)
+                command_interpreter = f"{shell_interpreter} -u" if script_type == ScriptType.PYTHON else shell_interpreter
+                module_args = build_heredoc_command(command_interpreter, script_content)
 
         # 调用 Ansible Executor
         executor = AnsibleExecutor(ansible_node_id)
@@ -309,6 +307,8 @@ class ExecutionTaskBaseService(object):
             extra_vars=extra_vars if extra_vars else None,
             stream_log_topic=build_stream_topic(execution.id, "ansible"),
             execution_id=str(execution.id),
+            stream_remote_output=module in {"shell", "win_shell"},
+            stream_remote_type=script_type if module == "win_shell" else None,
         )
 
         logger.info(f"[{task_name}] Ansible 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
@@ -328,7 +328,16 @@ class ExecutionTaskBaseService(object):
             ValueError: 未找到可用的 Ansible 执行节点
         """
         node_mgmt = NodeMgmt()
-        result = node_mgmt.node_list({"cloud_region_id": cloud_region_id, "is_container": True, "page": 1, "page_size": 1, "skip_permission": True})
+        result = node_mgmt.node_list(
+            {
+                "cloud_region_id": cloud_region_id,
+                "is_container": True,
+                "page": 1,
+                "page_size": 1,
+                "skip_permission": True,
+                "legacy_callsite": "job_mgmt.execution",
+            }
+        )
         if not isinstance(result, dict):
             raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的 Ansible 执行节点")
         nodes = result.get("nodes", [])

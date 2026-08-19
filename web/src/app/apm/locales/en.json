@@ -396,6 +396,8 @@
       "systemManager": "System Management",
       "goConfigureChannels": "Go to System Management to configure channels",
       "invalidRemove": "Invalid. Remove before saving",
+      "archivedServiceOption": "{name} (archived)",
+      "unavailableChannelOption": "{name} (currently unavailable)",
       "userUnavailable": "User {id} (currently unavailable)"
     },
     "services": {
@@ -550,7 +552,8 @@
       "list": "SLO list",
       "disabledTag": "Disabled",
       "evalError": "Evaluation error",
-      "thresholdMs": "Threshold {ms} ms"
+      "thresholdMs": "Threshold {ms} ms",
+      "archivedServiceOption": "{name} (archived)"
     },
     "topology": {
       "title": "Service topology",

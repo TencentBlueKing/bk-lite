@@ -12,6 +12,7 @@ import { resolveSnmpInterfaceFilterMode } from './snmpInterfaceFilterMode';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
+import { normalizePasswordFields } from '@/components/password/normalizePasswordWhitespace';
 
 /**
  * 兜底：把 formFields 中非必填且用户未填的字段补齐。
@@ -371,10 +372,21 @@ export const usePluginFromJson = () => {
               return acc;
             }, {}) || {},
           getParams: (row: any, tableConfig: any) => {
-            const filledRow = fillOptionalFormFields(row, formFields);
+            const normalizedRow = normalizePasswordFields(
+              row,
+              formFields,
+              { includeReadOnly: true }
+            ).values;
+            const normalizedDataSource = (tableConfig.dataSource || []).map(
+              (item: Record<string, unknown>) =>
+                normalizePasswordFields(item, config.table_columns, {
+                  includeReadOnly: true
+                }).values
+            );
+            const filledRow = fillOptionalFormFields(normalizedRow, formFields);
             return DataMapper.transformAutoRequest(
               filledRow,
-              tableConfig.dataSource || [],
+              normalizedDataSource,
               {
                 config_type: config.config_type,
                 collect_type: config.collect_type,

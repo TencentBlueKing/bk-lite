@@ -17,7 +17,7 @@
 
 ## 接缝
 
-- `GET/PUT /monitor/api/monitor_object/{id}/view_column_preference/`
+- `GET/PUT /monitor/api/monitor_object/{id}/view_column_preference/`，存储为用户习惯 `view.columnPreference.{id}`
 - 前端 `resolveViewColumns(availableColumns, savedFieldKeys)` 纯函数
 
 ## 验证

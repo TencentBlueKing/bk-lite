@@ -15,6 +15,8 @@ REQUIRED_CMDB_UUID_STAGES = (
     "subscriptions",
     "subscription_snapshots",
     "followed_assets",
+    "custom_reporting_pending",
+    "custom_reporting_cleanup",
     "collect_tasks",
     "collect_instances",
     "collect_result_snapshots",

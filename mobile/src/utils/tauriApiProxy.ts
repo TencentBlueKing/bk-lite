@@ -4,7 +4,7 @@
  */
 
 import { getUserInfoSync } from './secureStorage';
-import { getCurrentTeamCookie, resolveDefaultCurrentTeamId } from './teamCookie';
+import { getCurrentTeamCookie, getIncludeChildrenCookie, resolveDefaultCurrentTeamId } from './teamCookie';
 
 export interface ApiRequest {
   url: string;
@@ -177,24 +177,27 @@ export function resolveCurrentTeamForNativeProxy(): CurrentTeamResolution {
   };
 }
 
-function appendCurrentTeamCookie(headers: Record<string, string>) {
-  const currentTeam = resolveCurrentTeamForNativeProxy();
-  if (!currentTeam.value) {
-    return;
-  }
-
+function upsertCookie(headers: Record<string, string>, name: string, value: string) {
   const cookieHeaderKey = Object.keys(headers).find((key) => key.toLowerCase() === 'cookie');
-  const currentTeamCookie = `current_team=${encodeURIComponent(currentTeam.value)}`;
+  const nextPair = `${name}=${encodeURIComponent(value)}`;
 
   if (cookieHeaderKey) {
     const existingCookie = headers[cookieHeaderKey];
-    if (!existingCookie.includes('current_team=')) {
-      headers[cookieHeaderKey] = `${existingCookie}; ${currentTeamCookie}`;
+    if (!existingCookie.includes(`${name}=`)) {
+      headers[cookieHeaderKey] = `${existingCookie}; ${nextPair}`;
     }
     return;
   }
 
-  headers.Cookie = currentTeamCookie;
+  headers.Cookie = headers.Cookie ? `${headers.Cookie}; ${nextPair}` : nextPair;
+}
+
+function appendCurrentTeamCookie(headers: Record<string, string>) {
+  const currentTeam = resolveCurrentTeamForNativeProxy();
+  if (currentTeam.value) {
+    upsertCookie(headers, 'current_team', currentTeam.value);
+  }
+  upsertCookie(headers, 'include_children', getIncludeChildrenCookie() ? '1' : '0');
 }
 
 /**

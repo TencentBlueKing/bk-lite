@@ -1,6 +1,6 @@
 import os
 
-from apps.rpc.base import RpcClient, AppClient, BaseOperationAnaRpc
+from apps.rpc.base import AppClient, BaseOperationAnaRpc, RpcClient
 
 
 class Monitor(object):
@@ -65,6 +65,14 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
     def create_monitor_policy(self, data: dict, **kwargs):
         """创建监控告警策略"""
         return self.client.run("create_monitor_policy", data=data, **kwargs)
+
+    def search_monitor_policies(self, name: str, **kwargs):
+        """按名称查询监控告警策略（允许同名多条；写操作请用 policy_id）。"""
+        return self.client.run("search_monitor_policies", name=name, **kwargs)
+
+    def delete_monitor_policy(self, policy_id, **kwargs):
+        """删除监控告警策略"""
+        return self.client.run("delete_monitor_policy", policy_id=policy_id, **kwargs)
 
     def monitor_objects(self, **kwargs):
         """查询监控对象列表"""

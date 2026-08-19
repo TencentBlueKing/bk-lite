@@ -15,6 +15,8 @@ export interface K8sCommandData {
   runtime_profile?: 'standard' | 'docker' | 'custom';
   host_log_path?: string;
   docker_container_log_path?: string;
+  namespace_patterns?: string;
+  pod_patterns?: string;
 }
 
 const K8sConfiguration: React.FC = () => {

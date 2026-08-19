@@ -23,6 +23,7 @@ def resolve_node_target(host_value, team) -> dict:
     query = {
         "ip": host_value,
         "skip_permission": True,
+        "legacy_callsite": "alerts.target_resolver",
         "organization_ids": list(team),
         "page": 1,
         "page_size": 50,

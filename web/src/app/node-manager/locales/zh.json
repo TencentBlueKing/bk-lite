@@ -43,6 +43,9 @@
         "searchPlaceholder": "请输入配置类型"
       },
       "node": {
+        "batchEditOrganizations": "批量修改组织",
+        "batchEditOrganizationsHint": "将为已选择的 {count} 个节点统一替换所属组织。",
+        "batchEdit": "批量编辑",
         "installCollector": "安装组件",
         "node": "节点",
         "sidecarVersionDes": "请选择当前操作系统和 CPU 架构（{architecture}）对应的控制器版本。",

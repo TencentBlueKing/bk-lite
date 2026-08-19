@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { InfiniteScroll } from 'antd-mobile';
-import { SearchOutline } from 'antd-mobile-icons';
 import { useRouter } from 'next/navigation';
 import MobilePageHeader from '@/components/mobile-page-header';
 import MobilePullToRefresh from '@/components/mobile-pull-to-refresh';
@@ -26,7 +25,6 @@ import {
   writeMobileViewSnapshot,
 } from '@/navigation/mobile-view-cache';
 import { shouldShowListPagination } from '@/utils/listPagination';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/todo/todo.module.css';
 
@@ -54,9 +52,9 @@ function TabLabel({
 
 export default function TodoPage() {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
+  const { organizationScope } = useAuth();
   const router = useRouter();
-  const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
+  const cacheScope = organizationScope;
   const initialSnapshot = useRef(readMobileViewSnapshot<TodoRootViewState>(cacheScope, 'todo-root'));
   const shouldRevalidate = useRef(
     Boolean(initialSnapshot.current) && isMobileViewStale(cacheScope, 'todo-root'),
@@ -122,9 +120,14 @@ export default function TodoPage() {
   return (
     <MobileTabShell activeTab="todo">
       <main className={styles.page}>
-        <MobilePageHeader title={t('todo.title')} actions={[{
-          href: '/todo/search', icon: <SearchOutline aria-hidden="true" />, label: t('todo.searchAlerts'),
-        }]} />
+        <MobilePageHeader
+          title={t('todo.title')}
+          showOrganization
+          searchEntry={{
+            href: '/todo/search',
+            placeholder: t('todo.searchAlerts'),
+          }}
+        />
         <MobileSegmentTabs
           activeKey={controller.activeView}
           onChange={(key) => controller.setActiveView(key as TodoViewKey)}

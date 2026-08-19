@@ -3454,6 +3454,7 @@ aliyun = [
     { name = "aliyun-python-sdk-slb" },
     { name = "aliyun-python-sdk-vpc" },
     { name = "oss2" },
+    { name = "six" },
 ]
 huawei = [
     { name = "esdk-obs-python" },
@@ -3601,6 +3602,7 @@ requires-dist = [
     { name = "sanic-ext", specifier = "==23.12.0" },
     { name = "scrapli", extras = ["asyncssh"], specifier = ">=2025.1.30" },
     { name = "scrapli-community", specifier = ">=2025.1.30" },
+    { name = "six", marker = "extra == 'aliyun'", specifier = "==1.17.0" },
     { name = "tencentcloud-sdk-python", marker = "extra == 'qcloud'", specifier = "==3.0.948" },
     { name = "tracerite", specifier = "==1.1.3" },
     { name = "ujson", marker = "extra == 'qingyun'", specifier = "==5.4.0" },

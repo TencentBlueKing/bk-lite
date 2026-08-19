@@ -16,10 +16,12 @@ import { useLevelList } from '@/app/monitor/hooks';
 import { OBJECT_DEFAULT_ICON, LEVEL_MAP } from '@/app/monitor/constants';
 import Permission from '@/components/permission';
 import { formatUserDisplayName } from '@/utils/userDisplay';
+import { getPolicySecondaryContext } from '@/app/monitor/utils/policyDisplayName';
 
 interface InformationProps extends TableDataItem {
   eventData?: TableDataItem[];
   chartUnit?: string | null;
+  chartXAxisDomain?: [number, number] | null;
 }
 
 const Information: React.FC<InformationProps> = ({
@@ -29,7 +31,8 @@ const Information: React.FC<InformationProps> = ({
   userList,
   onClose,
   trapData,
-  chartUnit
+  chartUnit,
+  chartXAxisDomain
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -148,7 +151,25 @@ const Information: React.FC<InformationProps> = ({
           )}
         </Descriptions.Item>
         <Descriptions.Item label={t('monitor.events.strategyName')}>
-          {formData.policy?.name || '--'}
+          {(() => {
+            const monitorObj = objects.find(
+              (item: ObjectItem) => item.id === formData.policy?.monitor_object
+            );
+            const secondary = getPolicySecondaryContext({
+              ...formData.policy,
+              monitor_object_display_name: monitorObj?.display_name || monitorObj?.name
+            });
+            return (
+              <div>
+                <div>{formData.policy?.name || '--'}</div>
+                {secondary ? (
+                  <div className="mt-0.5 text-[12px] leading-4 text-[var(--color-text-3)]">
+                    {secondary}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })()}
         </Descriptions.Item>
         {formData.status === 'closed' && (
           <Descriptions.Item label={t('monitor.events.alertEndTime')}>
@@ -232,6 +253,14 @@ const Information: React.FC<InformationProps> = ({
                 }
                 unit={chartUnit || ''}
                 metric={formData.metric}
+                xAxisDomain={
+                  formData.alert_type === 'no_data'
+                    ? chartXAxisDomain || undefined
+                    : undefined
+                }
+                gapFit={
+                  formData.alert_type === 'no_data' ? 'plot' : 'samples'
+                }
               />
             </div>
           </div>

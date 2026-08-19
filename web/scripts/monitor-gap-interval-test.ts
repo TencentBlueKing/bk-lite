@@ -332,6 +332,19 @@ assert.deepEqual(
   getRenderedGapIntervals(
     [
       { time: 0, value1: 1 },
+      { time: 72, value1: 2 },
+      { time: 216, value1: 3 },
+    ],
+    [{ start: 72, end: 216, duration: 144, align: 'exact' }]
+  ),
+  [{ start: 72, end: 216, duration: 144, align: 'exact' }],
+  'exact gaps must not use dashboard sample-midpoint alignment'
+);
+
+assert.deepEqual(
+  getRenderedGapIntervals(
+    [
+      { time: 0, value1: 1 },
       { time: 75, value1: 1 },
       { time: 150, value1: Number.NaN },
       { time: 225, value1: Number.NaN },

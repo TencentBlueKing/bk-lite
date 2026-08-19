@@ -97,6 +97,8 @@ class AdhocRequest:
     private_key_content: str | None = None
     private_key_passphrase: str | None = None
     host_credentials: list[dict[str, Any]] | None = None
+    stream_remote_output: bool = False
+    stream_remote_type: str | None = None
 
 
 @dataclass
@@ -160,6 +162,10 @@ def to_adhoc_request(payload: dict[str, Any]) -> AdhocRequest:
     if private_key_passphrase is not None and not isinstance(private_key_passphrase, str):
         raise ValueError("private_key_passphrase must be string")
 
+    stream_remote_type = str(payload.get("stream_remote_type") or "").strip().lower()
+    if stream_remote_type and stream_remote_type not in {"bat", "powershell"}:
+        raise ValueError("stream_remote_type must be bat or powershell")
+
     return AdhocRequest(
         inventory=inventory,
         inventory_content=inventory_content,
@@ -173,6 +179,8 @@ def to_adhoc_request(payload: dict[str, Any]) -> AdhocRequest:
         private_key_content=private_key_content,
         private_key_passphrase=private_key_passphrase,
         host_credentials=host_credentials,
+        stream_remote_output=payload.get("stream_remote_output") is True,
+        stream_remote_type=stream_remote_type or None,
     )
 
 
@@ -768,6 +776,8 @@ def prepare_adhoc_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
             private_key_content=None,
             private_key_passphrase=None,
             host_credentials=None,
+            stream_remote_output=payload.stream_remote_output,
+            stream_remote_type=payload.stream_remote_type,
         )
     )
     return cmd, workspace
@@ -1034,7 +1044,7 @@ class LineEventStreamer:
 StreamPublish = Callable[[str, bytes], Awaitable[None]]
 
 
-def _build_stream_log_payload(execution_id: str, line: str) -> bytes:
+def build_stream_log_payload(execution_id: str, line: str) -> bytes:
     payload = {
         "execution_id": execution_id,
         "stream": "stdout",
@@ -1069,7 +1079,7 @@ async def run_command(
     async def _publish_line(line: str) -> None:
         # Streaming is best-effort: a publish failure must never break the run.
         try:
-            data = _build_stream_log_payload(execution_id, line)
+            data = build_stream_log_payload(execution_id, line)
             await stream_publish(stream_log_topic, data)
         except Exception as publish_err:  # noqa: BLE001 - intentionally swallowed
             logger.warning("stream log publish failed: %s", publish_err)

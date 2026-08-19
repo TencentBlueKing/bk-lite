@@ -382,6 +382,7 @@ export const createRoom3DScene = (
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     alpha: true,
+    preserveDrawingBuffer: true,
   });
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -838,6 +839,14 @@ export const createRoom3DScene = (
   renderer.domElement.addEventListener("pointerleave", handlePointerLeave);
   renderer.domElement.addEventListener("click", handleClick);
 
+  const handlePreparePrint = () => {
+    if (disposed) {
+      return;
+    }
+    renderer.render(scene, camera);
+  };
+  window.addEventListener("bk-dashboard-prepare-print", handlePreparePrint);
+
   const resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(mountNode);
   window.addEventListener("resize", handleWindowResize);
@@ -856,6 +865,7 @@ export const createRoom3DScene = (
       intersectionObserver?.disconnect();
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleWindowResize);
+      window.removeEventListener("bk-dashboard-prepare-print", handlePreparePrint);
       pixelRatioMediaQuery?.removeEventListener(
         "change",
         handlePixelRatioChange,

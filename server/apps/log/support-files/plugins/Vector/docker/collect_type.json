@@ -19,7 +19,8 @@
     "message",
     "source_type",
     "stream",
-    "timestamp"
+    "timestamp",
+    "collect_timestamp"
   ],
   "display_category": "container"
 }

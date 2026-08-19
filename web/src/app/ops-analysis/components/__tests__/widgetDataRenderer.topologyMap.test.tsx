@@ -20,7 +20,7 @@ vi.mock('@/utils/i18n', () => ({
 }));
 
 vi.mock('@/app/ops-analysis/context/common', () => ({
-  useOpsAnalysis: () => ({ canvasDataSourceLookupStatus: 'ready' }),
+  useOpsAnalysis: () => ({ canvasDataSourceLookupStatus: 'ready', dataSources: [] }),
 }));
 
 vi.mock('@/app/ops-analysis/api/dataSource', () => ({

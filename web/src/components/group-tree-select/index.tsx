@@ -10,6 +10,7 @@ import type { CascadeNode } from '@/components/multi-cascade-panel';
 import { useTranslation } from '@/utils/i18n';
 
 const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
+  treeData,
   value = [],
   onChange,
   placeholder,
@@ -34,8 +35,11 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
   const lockedSet = useMemo(() => new Set<number>(lockedIds), [lockedIds]);
 
   const treeSelectData = useMemo(() => {
+    if (treeData !== undefined) {
+      return treeData;
+    }
     return convertGroupTreeToTreeSelectData(groupTree);
-  }, [groupTree]);
+  }, [treeData, groupTree]);
 
   // 根据 filterByRootId 过滤树数据
   const filteredTreeData = useMemo(() => {

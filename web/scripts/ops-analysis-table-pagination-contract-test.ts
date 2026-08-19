@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 
 import {
+  areTableQueryParamsEquivalent,
   buildTableQueryParams,
+  serializeTableQueryKey,
   supportsServerPagination,
 } from '../src/app/ops-analysis/utils/tablePagination';
 import { parseTableLikeData } from '../src/app/ops-analysis/components/widgets/shared/tableLikeData';
@@ -114,6 +116,25 @@ assert.deepEqual(
   }),
   { page: 1, page_size: 20 },
   '表格请求组装入口应为分页数据源补齐默认分页参数',
+);
+
+assert.equal(
+  serializeTableQueryKey({}, pagedParams),
+  serializeTableQueryKey({ page: 1, page_size: 20 }, pagedParams),
+  '空查询与默认分页必须视为同一次请求，避免挂载后再打一遍',
+);
+assert.equal(
+  areTableQueryParamsEquivalent({}, { page: 1, page_size: 20 }, pagedParams),
+  true,
+);
+assert.equal(
+  areTableQueryParamsEquivalent(
+    { page: 1, page_size: 20 },
+    { page: 2, page_size: 20 },
+    pagedParams,
+  ),
+  false,
+  '真实翻页仍应视为新查询',
 );
 
 const showcaseWrappedButUnpaged = parseShowcaseTableLikeData(

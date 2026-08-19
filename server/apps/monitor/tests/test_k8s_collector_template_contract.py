@@ -79,8 +79,7 @@ def test_webhookd_vmagent_scrapes_kube_state_metrics():
     """webhookd 下发版 vmagent 必须包含 KSM 抓取 job，否则监控 K8s 对象实例发现断供。"""
     jobs = vmagent_scrape_jobs(WEBHOOKD_METRIC)
     assert KSM_JOB_NAME in jobs, (
-        f"webhookd 版 vmagent-config 缺少 '{KSM_JOB_NAME}' 抓取 job：监控链路将没有 "
-        f"{REMOTE_WRITE_PREFIX}kube_* 指标，Pod/Node 等监控实例无法被发现"
+        f"webhookd 版 vmagent-config 缺少 '{KSM_JOB_NAME}' 抓取 job：监控链路将没有 " f"{REMOTE_WRITE_PREFIX}kube_* 指标，Pod/Node 等监控实例无法被发现"
     )
 
 
@@ -145,11 +144,18 @@ def test_vmagent_ksm_discovery_matches_ksm_pod_metadata():
 
 
 def test_ksm_stack_present_in_all_ksm_templates():
-    """三份模板都必须自带完整 KSM 资源栈：metric-only / resource-only / 双装任意组合都功能完整。"""
+    """三份模板都必须自带完整 KSM 资源栈：metric-only / resource-only / 双装任意组合都功能完整。
+
+    命名空间内资源沿用 kube-state-metrics；集群级资源（ClusterRole/ClusterRoleBinding）
+    全集群唯一，必须带 bk-lite- 前缀，否则会与集群自带监控栈同名对象互相覆盖。
+    """
     for template in KSM_TEMPLATES:
         docs = load_docs(template)
-        for kind in ("Deployment", "Service", "ServiceAccount", "ClusterRole", "ClusterRoleBinding"):
+        for kind in ("Deployment", "Service", "ServiceAccount"):
             assert find_docs(docs, kind, "kube-state-metrics"), f"{template} 缺少 kube-state-metrics {kind}"
+        for kind in ("ClusterRole", "ClusterRoleBinding"):
+            assert find_docs(docs, kind, "bk-lite-kube-state-metrics"), f"{template} 缺少 bk-lite-kube-state-metrics {kind}"
+            assert not find_docs(docs, kind, "kube-state-metrics"), f"{template} 的 {kind} 使用了会与集群自带监控栈撞名的裸名"
 
 
 def test_ksm_args_identical_across_templates():

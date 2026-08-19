@@ -89,7 +89,24 @@ def test_normalize_screen_keeps_unified_filters():
 def test_normalize_report_fills_sections():
     out = vs.normalize_canvas_view_sets_for_storage({}, ObjectType.REPORT)
 
-    assert out == {"time_range": None, "sections": []}
+    assert out == {"schema_version": 1, "filters": [], "sections": []}
+
+
+def test_normalize_report_rejects_unregistered_component_type():
+    with pytest.raises(ValueError, match="sections\\[0\\].valueConfig.chartType"):
+        vs.normalize_canvas_view_sets_for_storage(
+            {
+                "schema_version": 1,
+                "filters": [],
+                "sections": [
+                    {
+                        "id": "chart-1",
+                        "valueConfig": {"chartType": "line", "dataSource": 1},
+                    }
+                ],
+            },
+            ObjectType.REPORT,
+        )
 
 
 def test_normalize_architecture_fills_keys():
@@ -164,12 +181,29 @@ def test_rewrite_datasource_refs_in_screen_items():
 
 def test_rewrite_datasource_refs_in_report_sections():
     view_sets = {
-        "time_range": None,
-        "sections": [{"valueConfig": {"dataSource": 6, "chartType": "table"}}],
+        "schema_version": 1,
+        "filters": [
+            {
+                "id": "billing_period__dateRange",
+                "key": "billing_period",
+                "name": "账期",
+                "type": "dateRange",
+                "order": 0,
+                "enabled": True,
+            }
+        ],
+        "sections": [
+            {
+                "id": "report-table",
+                "valueConfig": {"dataSource": "ds::report", "chartType": "table"},
+            }
+        ],
     }
-    out = vs.rewrite_canvas_view_sets_refs_for_storage(view_sets, ObjectType.REPORT, {6: "ds::report"})
+    out = vs.rewrite_canvas_view_sets_refs_for_storage(view_sets, ObjectType.REPORT, {"ds::report": 6})
 
-    assert out["sections"][0]["valueConfig"]["dataSource"] == "ds::report"
+    assert out["schema_version"] == 1
+    assert out["filters"][0]["key"] == "billing_period"
+    assert out["sections"][0]["valueConfig"]["dataSource"] == 6
 
 
 def test_rewrite_datasource_refs_for_yaml_architecture():
@@ -334,7 +368,7 @@ def test_export_canvas_screen_and_report_sections():
         name="report-a",
         groups=[1],
         created_by="s",
-        view_sets={"time_range": None, "sections": []},
+        view_sets={"schema_version": 1, "filters": [], "sections": []},
     )
 
     screen_result = ExportService.export_objects(ScopeType.CANVAS.value, ObjectType.SCREEN.value, [screen.id])
@@ -402,6 +436,25 @@ def test_export_excel_new_model_strips_imported_items_and_keeps_transform():
     assert "imported_items" not in payload["query_config"]
     assert payload["query_config"].get("sheet_name") == "Sheet1"
     assert payload["transform_config"]["enabled"] is True
+
+
+@pytest.mark.django_db
+def test_export_datasource_canonicalizes_blank_date_range_value():
+    ds = DataSourceAPIModel.objects.create(
+        name="云资源账单明细",
+        rest_api="cmdb/get_cloud_resource_cost_bill_detail",
+        created_by="s",
+        updated_by="s",
+        params=[
+            {"name": "department", "type": "string", "value": "", "filterType": "filter"},
+            {"name": "billing_period", "type": "dateRange", "value": "", "filterType": "filter"},
+        ],
+    )
+
+    payload = ExportService.convert_datasource_to_yaml(ds)
+
+    assert payload["params"][0]["value"] == ""
+    assert payload["params"][1]["value"] is None
 
 
 @pytest.mark.django_db

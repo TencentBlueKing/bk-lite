@@ -7,6 +7,7 @@ from apps.cmdb.models.ipam_models import IPAMReconcileRun, IPAMReconcileSource  
 from apps.cmdb.models.node_mgmt_sync import *  # noqa
 from apps.cmdb.models.operation import *  # noqa
 from apps.cmdb.models.public_enum_library import *  # noqa
+from apps.cmdb.models.scan_model import *  # noqa
 from apps.cmdb.models.show_field import *  # noqa
 from apps.cmdb.models.subscription_delivery import *  # noqa
 from apps.cmdb.models.subscription_rule import *  # noqa

@@ -86,7 +86,7 @@ const OpsAnalysisMetricValue: React.FC<OpsAnalysisMetricValueProps> = ({
   return (
     <AutoFitMetricValue
       {...props}
-      className={`flex h-full w-full items-center ${className}`.trim()}
+      className={`flex h-full w-full ${className || 'items-center'}`.trim()}
       minFontSize={toCanvasPixels(minVisibleFontSize, scale)}
       gap={resolveGap}
       resolveFontSize={resolveFontSize}

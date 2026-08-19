@@ -24,6 +24,7 @@ from apps.operation_analysis.constants.import_export import (
 )
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
 from apps.operation_analysis.models.models import Architecture, Dashboard, NetworkTopology, Report, Screen, Topology
+from apps.operation_analysis.schemas.import_export_schema import normalize_date_range_param_values
 from apps.operation_analysis.services.import_export.view_sets import (
     normalize_canvas_view_sets_for_storage,
     normalize_canvas_view_sets_for_yaml,
@@ -128,10 +129,7 @@ class ExportService:
 
         # 共享连接展开为可导入的脱敏内联配置，不导出 connection_id。
         if ds.connection_id:
-            from apps.operation_analysis.services.data_connection.resolver import (
-                ConnectionResolveError,
-                resolve_datasource_connection,
-            )
+            from apps.operation_analysis.services.data_connection.resolver import ConnectionResolveError, resolve_datasource_connection
 
             try:
                 connection_config = resolve_datasource_connection(ds)
@@ -167,7 +165,7 @@ class ExportService:
                 "desc": ds.desc or "",
                 # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 "is_active": ds.is_active,
-                "params": ds.params or [],
+                "params": normalize_date_range_param_values(ds.params or []),
                 "tags": tag_names,
                 "chart_type": ds.chart_type or [],
                 "field_schema": ds.field_schema or [],

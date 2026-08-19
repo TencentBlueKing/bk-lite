@@ -12,16 +12,23 @@ import json
 import os
 import time
 import traceback
+from collections import deque
 from typing import Any, Dict, Iterable, Iterator
 
 from core.collection.contracts import StructuredMetricsPayload
-from core.infra.nats_utils import NatsLinesPublishError, nats_publish, nats_publish_lines
+from core.infra.nats_utils import (
+    NatsLinesPublishError,
+    nats_publish,
+    nats_publish_lines,
+)
 from influxdb_client import Point, WritePrecision
 from sanic.log import logger
 
 MAX_NATS_LINES_PER_FLUSH = 1000
 MAX_NATS_BYTES_PER_FLUSH = 900_000
 MAX_NATS_LINE_BYTES = 900_000
+MAX_NATS_LINES_PER_RESULT = 100_000
+MAX_NATS_BYTES_PER_RESULT = 64 * 1024 * 1024
 
 
 class MetricsPublishError(RuntimeError):
@@ -34,6 +41,8 @@ class MetricsPublishError(RuntimeError):
         delivery_detected: bool,
         attempts: int,
         reason: str,
+        attempted_count: int | None = None,
+        attempted_indices: tuple[int, ...] = (),
     ):
         self.task_id = task_id
         self.subject = subject
@@ -42,6 +51,10 @@ class MetricsPublishError(RuntimeError):
         self.delivery_detected = delivery_detected
         self.attempts = attempts
         self.reason = reason
+        self.attempted_count = (
+            success_count if attempted_count is None else int(attempted_count)
+        )
+        self.attempted_indices = attempted_indices
         super().__init__(
             f"metrics publish incomplete: task_id={task_id}, subject={subject}, "
             f"success={success_count}/{total_lines}, delivery_detected={delivery_detected}, "
@@ -53,11 +66,18 @@ def _has_confirmed_delivery(delivered_count: int) -> bool:
     return delivered_count > 0
 
 
-async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_id: str) -> int:
+async def _publish_lines_with_retry(
+    subject: str, influx_lines: list[str], task_id: str, *, before_publish=None
+) -> int:
     """执行一次 NATS 发布；重试由目标执行器统一管理。"""
     total_lines = len(influx_lines)
     try:
-        success_count = await nats_publish_lines(subject, influx_lines)
+        if before_publish is None:
+            success_count = await nats_publish_lines(subject, influx_lines)
+        else:
+            success_count = await nats_publish_lines(
+                subject, influx_lines, before_publish=before_publish
+            )
     except NatsLinesPublishError as error:
         raise MetricsPublishError(
             task_id=task_id,
@@ -66,7 +86,9 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
             success_count=0,
             delivery_detected=bool(error.delivery_detected),
             attempts=1,
-            reason=type(error).__name__,
+            reason=type(error.error).__name__,
+            attempted_count=error.attempted_count_before_failure,
+            attempted_indices=tuple(getattr(error, "attempted_indices", ())),
         ) from error
     except Exception as error:
         # 普通异常无法证明服务端未收到，按不确定投递处理，避免重复数据。
@@ -78,10 +100,16 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
             delivery_detected=True,
             attempts=1,
             reason=type(error).__name__,
+            attempted_count=total_lines,
         ) from error
 
-    logger.info(f"[NATS Helper] Metrics publish task_id={task_id} subject={subject} " f"success_count={success_count} total_lines={total_lines}")
-    if success_count == total_lines:
+    logger.info(
+        f"[NATS Helper] Metrics publish task_id={task_id} subject={subject} "
+        f"success_count={success_count} total_lines={total_lines}"
+    )
+    skipped_count = len(getattr(before_publish, "skipped_indices", ()))
+    expected_count = total_lines - skipped_count
+    if success_count == expected_count:
         return success_count
     raise MetricsPublishError(
         task_id=task_id,
@@ -91,10 +119,38 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
         delivery_detected=_has_confirmed_delivery(success_count),
         attempts=1,
         reason=f"publish incomplete ({success_count}/{total_lines})",
+        attempted_count=success_count,
     )
 
 
-async def publish_callback_to_nats(result: Dict[str, Any], params: Dict[str, Any], task_id: str):
+class PublishCancelledBeforeDeliveryError(RuntimeError):
+    delivery_detected = False
+
+
+class MetricResultTooLargeError(ValueError):
+    error_code = "result_too_large"
+
+
+class _DeliveryAttemptFilter:
+    def __init__(self, line_result_ids, attempt_states) -> None:
+        self._line_result_ids = line_result_ids
+        self._attempt_states = attempt_states
+        self.skipped_indices: set[int] = set()
+        self.cancelled_result_ids: set[str] = set()
+
+    def __call__(self, index: int) -> bool:
+        result_id = self._line_result_ids[index]
+        state = self._attempt_states.get(result_id)
+        if state is None or state.mark_delivery_started():
+            return True
+        self.skipped_indices.add(index)
+        self.cancelled_result_ids.add(result_id)
+        return False
+
+
+async def publish_callback_to_nats(
+    result: Dict[str, Any], params: Dict[str, Any], task_id: str
+):
     callback_subject = params.get("callback_subject")
     if not callback_subject:
         logger.warning(f"[NATS Helper] callback_subject missing for task {task_id}")
@@ -113,11 +169,15 @@ async def publish_callback_to_nats(result: Dict[str, Any], params: Dict[str, Any
         await nats_publish(subject, payload)
         logger.info(f"[NATS Helper] Published callback to {subject} for task {task_id}")
     except Exception as err:
-        logger.error(f"[NATS Helper] Failed to publish callback for task {task_id}: {err}\n{traceback.format_exc()}")
+        logger.error(
+            f"[NATS Helper] Failed to publish callback for task {task_id}: {err}\n{traceback.format_exc()}"
+        )
         raise
 
 
-async def publish_credential_result_to_nats(result: Dict[str, Any], params: Dict[str, Any], task_id: str):
+async def publish_credential_result_to_nats(
+    result: Dict[str, Any], params: Dict[str, Any], task_id: str
+):
     callback_subject = params.get("credential_result_subject")
     if not callback_subject:
         return
@@ -127,13 +187,19 @@ async def publish_credential_result_to_nats(result: Dict[str, Any], params: Dict
     payload = {"args": [], "kwargs": {"data": dict(result or {})}}
     try:
         await nats_publish(subject, payload)
-        logger.info(f"[NATS Helper] Published credential result to {subject} for task {task_id}")
+        logger.info(
+            f"[NATS Helper] Published credential result to {subject} for task {task_id}"
+        )
     except Exception as err:
-        logger.error(f"[NATS Helper] Failed to publish credential result for task {task_id}: {err}\n{traceback.format_exc()}")
+        logger.error(
+            f"[NATS Helper] Failed to publish credential result for task {task_id}: {err}\n{traceback.format_exc()}"
+        )
         raise
 
 
-async def publish_metrics_to_nats(ctx: Dict, metrics_data: str, params: Dict[str, Any], task_id: str) -> int:
+async def publish_metrics_to_nats(
+    ctx: Dict, metrics_data: str, params: Dict[str, Any], task_id: str
+) -> int:
     """
     将采集结果推送到 NATS 的 metrics 主题
 
@@ -150,7 +216,9 @@ async def publish_metrics_to_nats(ctx: Dict, metrics_data: str, params: Dict[str
     metric_topic_prefix = os.getenv("NATS_METRIC_TOPIC", "metrics")
 
     # 获取任务类型（monitor_type 或 plugin_name）
-    task_type = params.get("monitor_type") or params.get("plugin_name", params.get("model_id", "unknown"))
+    task_type = params.get("monitor_type") or params.get(
+        "plugin_name", params.get("model_id", "unknown")
+    )
 
     # 构建 subject: {prefix}.{task_type}
     # 例如: metrics.vmware, metrics.mysql, metrics.host 等
@@ -161,40 +229,242 @@ async def publish_metrics_to_nats(ctx: Dict, metrics_data: str, params: Dict[str
     chunks = iter(_iter_line_chunks(_iter_metrics_to_influx(metrics_data, params)))
     while chunk := await asyncio.to_thread(next, chunks, None):
         success_count += await _publish_lines_with_retry(subject, chunk, task_id)
-    logger.info(f"[NATS Helper] Successfully published {success_count} metrics " f"to '{subject}' for task {task_id}")
+    logger.info(
+        f"[NATS Helper] Successfully published {success_count} metrics "
+        f"to '{subject}' for task {task_id}"
+    )
     return success_count
 
 
-async def publish_metrics_batch_to_nats(entries, *, metrics=None) -> dict[str, BaseException | None]:
-    """逐目标流式编码发布，并按 collection_result_id 返回独立结果。"""
+async def publish_metrics_batch_to_nats(
+    entries, *, metrics=None
+) -> dict[str, BaseException | None]:
+    """按 (task_id, subject) 公平轮转微批，并逐目标返回结果。"""
     outcomes: dict[str, BaseException | None] = {}
     metric_topic_prefix = os.getenv("NATS_METRIC_TOPIC", "metrics")
+    lane_entries: dict[tuple[str, str], list[tuple[Any, Dict[str, Any], str, str]]] = {}
     for index, (_ctx, metrics_data, params, task_id) in enumerate(entries):
-        result_id = str(params.get("collection_result_id") or f"{task_id}:legacy:{index}")
+        result_id = str(
+            params.get("collection_result_id") or f"{task_id}:legacy:{index}"
+        )
         outcomes[result_id] = None
-        task_type = params.get("monitor_type") or params.get("plugin_name", params.get("model_id", "unknown"))
+        task_type = params.get("monitor_type") or params.get(
+            "plugin_name", params.get("model_id", "unknown")
+        )
         subject = f"{metric_topic_prefix}.{task_type}"
-        delivered_lines = 0
-        try:
-            chunks = iter(_iter_line_chunks(_iter_metrics_to_influx(metrics_data, params)))
-            while chunk := await asyncio.to_thread(next, chunks, None):
-                delivered_lines += await _publish_lines_with_retry(subject, chunk, str(task_id))
-                if metrics is not None:
-                    metrics.increment("publish_lines_total", len(chunk))
-                    metrics.increment("publish_bytes_total", sum(len(line.encode("utf-8")) for line in chunk))
-        except Exception as error:  # noqa: BLE001 - 编码/传输失败只影响当前目标
-            if delivered_lines and not bool(getattr(error, "delivery_detected", False)):
-                error = MetricsPublishError(
-                    task_id=str(task_id),
-                    subject=subject,
-                    total_lines=delivered_lines,
-                    success_count=delivered_lines,
-                    delivery_detected=True,
-                    attempts=1,
-                    reason=type(error).__name__,
-                )
-            outcomes[result_id] = error
+        lane_entries.setdefault((str(task_id), subject), []).append(
+            (metrics_data, params, str(task_id), result_id)
+        )
+
+    lanes = deque(
+        _SubjectPublishLane(subject, grouped_entries, outcomes, metrics=metrics)
+        for (_task_id, subject), grouped_entries in lane_entries.items()
+    )
+    while lanes:
+        lane = lanes.popleft()
+        if await lane.publish_round():
+            lanes.append(lane)
     return outcomes
+
+
+class _SubjectPublishLane:
+    """一个 task/subject lane；每轮每个目标最多发送一个 chunk。"""
+
+    def __init__(self, subject, entries, outcomes, *, metrics=None) -> None:
+        self.subject = subject
+        self.outcomes = outcomes
+        self.metrics = metrics
+        self.delivered_result_ids: set[str] = set()
+        self.failed_result_ids: set[str] = set()
+        self.attempt_states = {
+            result_id: params.get("_publish_attempt_state")
+            for _metrics_data, params, _task_id, result_id in entries
+            if params.get("_publish_attempt_state") is not None
+        }
+        self.states = deque(
+            {
+                "chunks": None,
+                "metrics_data": metrics_data,
+                "params": params,
+                "task_id": task_id,
+                "result_id": result_id,
+                "validated": False,
+                "line_count": 0,
+                "byte_count": 0,
+            }
+            for metrics_data, params, task_id, result_id in entries
+        )
+
+    @staticmethod
+    def _next_state_chunk(state):
+        if not state["validated"]:
+            _validate_metric_result(state["metrics_data"], state["params"])
+            state["validated"] = True
+        if state["chunks"] is None:
+            state["chunks"] = iter(
+                _iter_line_chunks(
+                    _iter_metrics_to_influx(state["metrics_data"], state["params"])
+                )
+            )
+        return next(state["chunks"], None)
+
+    async def publish_round(self) -> bool:
+        selected = [self.states.popleft() for _ in range(min(50, len(self.states)))]
+        buffered_lines: list[str] = []
+        buffered_result_ids: list[str] = []
+        buffered_bytes = 0
+        buffered_task_id = ""
+        continuing_states = []
+
+        async def flush_buffer() -> None:
+            nonlocal buffered_lines, buffered_result_ids, buffered_bytes, buffered_task_id
+            if not buffered_lines:
+                return
+            lines = buffered_lines
+            line_result_ids = tuple(buffered_result_ids)
+            result_ids = tuple(dict.fromkeys(line_result_ids))
+            task_id = buffered_task_id
+            buffered_lines = []
+            buffered_result_ids = []
+            buffered_bytes = 0
+            buffered_task_id = ""
+            attempt_filter = _DeliveryAttemptFilter(
+                line_result_ids, self.attempt_states
+            )
+            try:
+                if self.attempt_states:
+                    await _publish_lines_with_retry(
+                        self.subject,
+                        lines,
+                        task_id,
+                        before_publish=attempt_filter,
+                    )
+                else:
+                    await _publish_lines_with_retry(self.subject, lines, task_id)
+            except Exception as error:  # noqa: BLE001 - 仅归因当前有界 chunk
+                attempted_indices = tuple(getattr(error, "attempted_indices", ()))
+                attempted_count = max(
+                    0, min(len(lines), int(getattr(error, "attempted_count", 0)))
+                )
+                if self.metrics is not None:
+                    metric_name = (
+                        "publish_flush_failure_total"
+                        if attempted_count
+                        else "publish_connect_failure_total"
+                    )
+                    self.metrics.increment(metric_name)
+                    reason = str(getattr(error, "reason", type(error).__name__)).lower()
+                    if "timeout" in reason:
+                        self.metrics.increment("publish_delivery_timeout_total")
+                if attempted_indices:
+                    touched_result_ids = {
+                        line_result_ids[index] for index in attempted_indices
+                    }
+                else:
+                    touched_result_ids = (
+                        set(line_result_ids[:attempted_count])
+                        if attempted_count
+                        else set()
+                    )
+                for result_id in result_ids:
+                    if result_id in attempt_filter.cancelled_result_ids:
+                        self.outcomes[result_id] = PublishCancelledBeforeDeliveryError(
+                            "publish cancelled before NATS delivery"
+                        )
+                        continue
+                    delivery_detected = (
+                        result_id in self.delivered_result_ids
+                        or result_id in touched_result_ids
+                    )
+                    self.outcomes[result_id] = MetricsPublishError(
+                        task_id=task_id,
+                        subject=self.subject,
+                        total_lines=len(lines),
+                        success_count=0,
+                        delivery_detected=delivery_detected,
+                        attempts=1,
+                        reason=type(error).__name__,
+                        attempted_count=attempted_count if delivery_detected else 0,
+                        attempted_indices=attempted_indices,
+                    )
+                self.failed_result_ids.update(result_ids)
+                return
+            for result_id in attempt_filter.cancelled_result_ids:
+                self.outcomes[result_id] = PublishCancelledBeforeDeliveryError(
+                    "publish cancelled before NATS delivery"
+                )
+                self.failed_result_ids.add(result_id)
+            delivered_ids = tuple(
+                result_id
+                for result_id in result_ids
+                if result_id not in attempt_filter.cancelled_result_ids
+            )
+            self.delivered_result_ids.update(delivered_ids)
+            if self.metrics is not None:
+                delivered_line_indices = (
+                    set(range(len(lines))) - attempt_filter.skipped_indices
+                )
+                delivered_bytes = sum(
+                    len(lines[index].encode("utf-8"))
+                    for index in delivered_line_indices
+                )
+                self.metrics.increment(
+                    "publish_lines_total", len(delivered_line_indices)
+                )
+                self.metrics.increment("publish_bytes_total", delivered_bytes)
+                self.metrics.observe("publish_chunk_lines", len(delivered_line_indices))
+                self.metrics.observe("publish_chunk_bytes", delivered_bytes)
+                self.metrics.observe("publish_targets_per_chunk", len(delivered_ids))
+
+        for offset in range(0, len(selected), 4):
+            group = selected[offset : offset + 4]
+            started = time.monotonic()
+            chunks = await asyncio.gather(
+                *(asyncio.to_thread(self._next_state_chunk, state) for state in group),
+                return_exceptions=True,
+            )
+            if self.metrics is not None:
+                self.metrics.observe(
+                    "publish_encode_duration_seconds", time.monotonic() - started
+                )
+            for state, chunk in zip(group, chunks):
+                task_id = state["task_id"]
+                result_id = state["result_id"]
+                error = chunk if isinstance(chunk, BaseException) else None
+                if error is not None:
+                    self.outcomes[result_id] = error
+                    self.failed_result_ids.add(result_id)
+                    continue
+                if chunk is None:
+                    continue
+                chunk_bytes = sum(len(line.encode("utf-8")) for line in chunk)
+                state["line_count"] += len(chunk)
+                state["byte_count"] += chunk_bytes
+                if buffered_lines and (
+                    len(buffered_lines) + len(chunk) > MAX_NATS_LINES_PER_FLUSH
+                    or buffered_bytes + chunk_bytes > MAX_NATS_BYTES_PER_FLUSH
+                ):
+                    await flush_buffer()
+                if result_id in self.failed_result_ids:
+                    continue
+                if not buffered_lines:
+                    buffered_task_id = task_id
+                buffered_lines.extend(chunk)
+                buffered_result_ids.extend([result_id] * len(chunk))
+                buffered_bytes += chunk_bytes
+                if (
+                    len(buffered_lines) >= MAX_NATS_LINES_PER_FLUSH
+                    or buffered_bytes >= MAX_NATS_BYTES_PER_FLUSH
+                ):
+                    await flush_buffer()
+                continuing_states.append(state)
+        await flush_buffer()
+        self.states.extend(
+            state
+            for state in continuing_states
+            if state["result_id"] not in self.failed_result_ids
+        )
+        return bool(self.states)
 
 
 def _iter_line_chunks(
@@ -211,7 +481,7 @@ def _iter_line_chunks(
     for line in lines:
         line_bytes = len(line.encode("utf-8"))
         if line_bytes > MAX_NATS_LINE_BYTES:
-            raise ValueError("metric line exceeds NATS payload limit")
+            raise MetricResultTooLargeError("metric line exceeds NATS payload limit")
         if chunk and (len(chunk) >= max_lines or chunk_bytes + line_bytes > max_bytes):
             yield chunk
             chunk = []
@@ -220,6 +490,22 @@ def _iter_line_chunks(
         chunk_bytes += line_bytes
     if chunk:
         yield chunk
+
+
+def _validate_metric_result(metrics_data, params: Dict[str, Any]) -> None:
+    """发送前完整扫描一次结果，保证单目标超限不会产生部分投递。"""
+    line_count = 0
+    byte_count = 0
+    for line in _iter_metrics_to_influx(metrics_data, params):
+        line_bytes = len(line.encode("utf-8"))
+        if line_bytes > MAX_NATS_LINE_BYTES:
+            raise ValueError("metric line exceeds NATS payload limit")
+        line_count += 1
+        byte_count += line_bytes
+        if line_count > MAX_NATS_LINES_PER_RESULT:
+            raise MetricResultTooLargeError("metric result exceeds line limit")
+        if byte_count > MAX_NATS_BYTES_PER_RESULT:
+            raise MetricResultTooLargeError("metric result exceeds byte limit")
 
 
 def _convert_metrics_to_influx(metrics_data, params: Dict[str, Any]) -> list[str]:
@@ -233,14 +519,19 @@ def _iter_metrics_to_influx(metrics_data, params: Dict[str, Any]) -> Iterator[st
     yield from _iter_prometheus_to_influx(str(metrics_data), params)
 
 
-def convert_structured_metrics_to_influx(payload: StructuredMetricsPayload, params: Dict[str, Any]) -> list[str]:
+def convert_structured_metrics_to_influx(
+    payload: StructuredMetricsPayload, params: Dict[str, Any]
+) -> list[str]:
     """把结构化配置采集结果直接编码为既有 Influx Line Protocol。"""
     return list(_iter_structured_metrics_to_influx(payload, params))
 
 
-def _iter_structured_metrics_to_influx(payload: StructuredMetricsPayload, params: Dict[str, Any]) -> Iterator[str]:
+def _iter_structured_metrics_to_influx(
+    payload: StructuredMetricsPayload, params: Dict[str, Any]
+) -> Iterator[str]:
     common_tags = _build_common_tags(params)
-    timestamp_ns = int(time.time() * 1000) * 1_000_000
+    timestamp_ms = int(params.get("_publish_timestamp_ms") or time.time() * 1000)
+    timestamp_ns = timestamp_ms * 1_000_000
     for model_id, items in payload.data.items():
         if not isinstance(items, (list, tuple)):
             continue
@@ -263,7 +554,9 @@ def _iter_structured_metrics_to_influx(payload: StructuredMetricsPayload, params
             yield point.to_line_protocol()
 
 
-def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> list:  # noqa: C901
+def convert_prometheus_to_influx(
+    prometheus_data: str, params: Dict[str, Any]
+) -> list:  # noqa: C901
     """
     将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
 
@@ -290,7 +583,9 @@ def convert_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -
     return list(_iter_prometheus_to_influx(prometheus_data, params))
 
 
-def _iter_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> Iterator[str]:  # noqa: C901
+def _iter_prometheus_to_influx(
+    prometheus_data: str, params: Dict[str, Any]
+) -> Iterator[str]:  # noqa: C901
     if not prometheus_data or not prometheus_data.strip():
         return
 
@@ -316,11 +611,15 @@ def _iter_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> 
             continue
 
         try:
-            converted = _prometheus_line_to_influx(line, common_tags, metric_types, current_type)
+            converted = _prometheus_line_to_influx(
+                line, common_tags, metric_types, current_type
+            )
             if converted is not None:
                 yield converted
         except Exception as e:
-            logger.debug(f"[NATS Helper] Failed to parse line: {line[:100]}, error: {e}")
+            logger.debug(
+                f"[NATS Helper] Failed to parse line: {line[:100]}, error: {e}"
+            )
 
 
 def _iter_prometheus_logical_lines(prometheus_data: str) -> Iterator[str]:
@@ -393,9 +692,16 @@ def _prometheus_line_to_influx(
     for tag_key, tag_value in all_tags.items():
         point.tag(tag_key, tag_value)
 
-    field_name = metric_types.get(metric_name, current_type if current_type else "value")
+    field_name = metric_types.get(
+        metric_name, current_type if current_type else "value"
+    )
     try:
-        point.field(field_name, float(value_str) if "." in value_str or "e" in value_str.lower() else int(value_str))
+        point.field(
+            field_name,
+            float(value_str)
+            if "." in value_str or "e" in value_str.lower()
+            else int(value_str),
+        )
     except ValueError:
         point.field(field_name, value_str)
 
@@ -448,7 +754,9 @@ def _parse_prometheus_labels(label_str: str) -> Dict[str, str]:
             idx += 1
 
         if idx >= length or label_str[idx] != "=":
-            logger.debug(f"[NATS Helper] Incomplete label segment near key '{key}' in '{label_str}'")
+            logger.debug(
+                f"[NATS Helper] Incomplete label segment near key '{key}' in '{label_str}'"
+            )
             break
 
         idx += 1  # skip '='
@@ -458,7 +766,9 @@ def _parse_prometheus_labels(label_str: str) -> Dict[str, str]:
             idx += 1
 
         if idx >= length or label_str[idx] != '"':
-            logger.debug(f"[NATS Helper] Missing opening quote for key '{key}' in '{label_str}'")
+            logger.debug(
+                f"[NATS Helper] Missing opening quote for key '{key}' in '{label_str}'"
+            )
             break
 
         idx += 1  # skip opening quote
@@ -508,7 +818,9 @@ def _decode_prometheus_value(raw_value: str) -> str:
 
 
 def _clean_common_tag_value(value) -> str:
-    return " ".join(str(value).replace("\r", " ").replace("\n", " ").replace("\t", " ").split())
+    return " ".join(
+        str(value).replace("\r", " ").replace("\n", " ").replace("\t", " ").split()
+    )
 
 
 def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
@@ -552,6 +864,7 @@ def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
         "collection_target",
         "collection_plugin_ref",
         "collection_result_id",
+        "collect_status",
     ):
         if params.get(identity_key) not in (None, ""):
             tags[identity_key] = params[identity_key]

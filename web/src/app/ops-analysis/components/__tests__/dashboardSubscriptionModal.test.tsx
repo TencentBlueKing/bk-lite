@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { message } from 'antd';
 
@@ -208,6 +208,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.clearAllMocks();
 });
 
@@ -265,6 +266,50 @@ describe('DashboardSubscriptionModal', () => {
       expect(api.createSubscription).toHaveBeenCalledWith({
         dashboard: 8,
         name: '日报',
+        recipient_email: 'ops@example.com',
+        email_channel: 11,
+        status: 'active',
+        schedule_type: null,
+        schedule_hour: null,
+        schedule_minute: null,
+        schedule_weekday: null,
+        schedule_day_of_month: null,
+        timezone: null,
+        applied_filter_values: {},
+      });
+    });
+  });
+
+  it('creates a report subscription with resource_type and resource_id', async () => {
+    const user = userEvent.setup();
+    render(
+      <DashboardSubscriptionModal
+        open
+        resourceType="report"
+        resourceId={7}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: '创建订阅' }),
+    );
+    await user.type(screen.getByLabelText('订阅名称'), '报表日报');
+    await user.type(screen.getByLabelText('接收邮箱'), 'ops@example.com');
+    await selectEmailChannel(user);
+    await user.click(
+      screen.getByRole('button', { name: /保\s*存/ }),
+    );
+
+    await waitFor(() => {
+      expect(api.listSubscriptions).toHaveBeenCalledWith({
+        resourceType: 'report',
+        resourceId: 7,
+      });
+      expect(api.createSubscription).toHaveBeenCalledWith({
+        resource_type: 'report',
+        resource_id: 7,
+        name: '报表日报',
         recipient_email: 'ops@example.com',
         email_channel: 11,
         status: 'active',
@@ -484,37 +529,12 @@ describe('DashboardSubscriptionModal', () => {
         expect.any(String),
       );
     });
+    expect(api.getExecution).not.toHaveBeenCalled();
     expect(screen.queryByText(/测试执行已创建/)).toBeNull();
     expect(screen.queryByRole('button', { name: '刷新状态' })).toBeNull();
   });
 
-  it('shows an error when querying execution status fails', async () => {
-    api.listSubscriptions.mockResolvedValue([makeSubscription()]);
-    api.getExecution.mockRejectedValueOnce(new Error('boom'));
-    const user = userEvent.setup();
-    render(
-      <DashboardSubscriptionModal
-        open
-        dashboardId={8}
-        onClose={vi.fn()}
-      />,
-    );
-
-    await user.click(
-      await screen.findByRole('button', { name: '立即测试' }),
-    );
-    await waitFor(() => {
-      expect(api.getExecution).toHaveBeenCalledWith(10);
-    }, { timeout: 3000 });
-    expect(await screen.findByText('查询执行状态失败')).not.toBeNull();
-  });
-
   it('shows a failed execution with error semantics', async () => {
-    api.listSubscriptions.mockResolvedValue([makeSubscription()]);
-    api.getExecution.mockResolvedValueOnce({
-      id: 10,
-      status: 'failed',
-    });
     api.listSubscriptions
       .mockResolvedValueOnce([makeSubscription()])
       .mockResolvedValue([
@@ -811,5 +831,92 @@ describe('DashboardSubscriptionModal', () => {
     expect(
       await screen.findByRole('button', { name: '立即测试' }),
     ).toHaveProperty('disabled', false);
+  });
+
+  it('polls the subscription list while an execution is in flight without querying execution detail', async () => {
+    vi.useFakeTimers();
+    const running = makeSubscription({
+      latest_manual_test_execution: makeExecutionSummary({
+        status: 'running',
+        trigger_type: 'manual_test',
+        scheduled_time_utc: null,
+      }),
+    });
+    api.listSubscriptions.mockResolvedValue([running]);
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(api.listSubscriptions).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '立即测试' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(api.listSubscriptions).toHaveBeenCalledTimes(2);
+    expect(api.getExecution).not.toHaveBeenCalled();
+  });
+
+  it('skips a list poll while the previous silent refresh is still in flight', async () => {
+    vi.useFakeTimers();
+    const running = makeSubscription({
+      latest_manual_test_execution: makeExecutionSummary({
+        status: 'running',
+        trigger_type: 'manual_test',
+        scheduled_time_utc: null,
+      }),
+    });
+    let releasePoll: (value: DashboardSubscription[]) => void = () => undefined;
+    api.listSubscriptions
+      .mockResolvedValueOnce([running])
+      .mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            releasePoll = resolve;
+          }),
+      );
+    render(
+      <DashboardSubscriptionModal
+        open
+        dashboardId={8}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(api.listSubscriptions).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(api.listSubscriptions).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(api.listSubscriptions).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      releasePoll([running]);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(api.listSubscriptions).toHaveBeenCalledTimes(3);
+    expect(api.getExecution).not.toHaveBeenCalled();
   });
 });

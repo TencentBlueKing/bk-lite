@@ -36,6 +36,8 @@
     "winlog.process.thread.id",
     "log.level",
     "message",
+    "timestamp",
+    "collect_timestamp",
     "host.name",
     "host.ip",
     "geoip.continent_name",

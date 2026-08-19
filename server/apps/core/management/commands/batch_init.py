@@ -207,6 +207,8 @@ class Command(BaseCommand):
     def _init_patch_mgmt(self):
         """补丁管理本地内置数据初始化。"""
         self.stdout.write("补丁管理资源初始化...")
+        # 权限资源已由前序 system_mgmt 初始化创建；补丁专属迁移失败必须阻断启动。
+        call_command("migrate_patch_settings_split")
         try:
             call_command("init_patch_sources")
         except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动

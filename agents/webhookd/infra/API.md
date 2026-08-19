@@ -73,6 +73,8 @@ Content-Type: application/json
 | runtime_profile | string | 否 | 日志采集器运行环境预设，枚举值：`standard`（默认，仅挂载 `/var/log`）、`docker`（额外挂载 `/var/lib/docker/containers`）、`custom`（节点 Pod 日志根目录不在默认位置时使用）。仅 `type=log` 时生效 |
 | host_log_path | string | 条件必填 | 节点侧 Kubernetes Pod 日志根目录绝对路径。仅当 `type=log` 且 `runtime_profile=custom` 时必填，容器内会统一挂载到 `/var/log/pods`，建议填写真实的 Pod 日志目录，如 `/var/log/pods` |
 | docker_container_log_path | string | 否 | Docker 容器原始日志目录绝对路径。仅当节点仍使用 Docker 且需要额外挂载容器原始日志目录时填写，常见值为 `/var/lib/docker/containers` |
+| namespace_patterns | string[] | 否 | 仅 `type=log` 时生效。采集 Namespace 通配列表，语法为 glob（`*` / `?`），仅允许小写字母、数字、`-`、`.`、`*`、`?`。留空或省略表示全部 Namespace |
+| pod_patterns | string[] | 否 | 仅 `type=log` 时生效。采集 Pod 名称通配列表，规则同 `namespace_patterns`。与 Namespace 为「且」关系；两者都空时不下发 `include_paths_glob_patterns`，保持全量采集 |
 
 **成功响应**:
 ```json
@@ -196,6 +198,8 @@ curl -s -X POST \
 - `docker`: 挂载 `/var/log` 和 `/var/lib/docker/containers`
 - `custom`: 将节点侧 `host_log_path` 挂载到容器内 `/var/log/pods`，并按需附加 `docker_container_log_path`
 
+日志采集范围由 `namespace_patterns` 与 `pod_patterns` 渲染为 Vector `include_paths_glob_patterns`。任一维度变化都会改写 DaemonSet Pod 模板 annotation `bklite.io/log-collect-config`，使 `kubectl apply` 触发滚动重启。
+
 可直接用于 `kubectl apply -f` 部署。
 
 ---
@@ -214,6 +218,7 @@ curl -s -X POST \
 3. **nats_ca 格式**: 需要完整的 PEM 格式证书
 4. **Content-Type**: 请求必须设置 `Content-Type: application/json`
 5. **runtime_profile=custom**: 必须同时提供节点侧 `host_log_path`，且路径必须为绝对路径；该目录应为 Kubernetes Pod 日志根目录，渲染后会在容器内映射为 `/var/log/pods`
+6. **namespace_patterns / pod_patterns**: 仅 `type=log` 时生效；单维最多 50 项，笛卡尔积展开后最多 200 条。不支持正则、排除列表或 Label 选择器
 
 ---
 

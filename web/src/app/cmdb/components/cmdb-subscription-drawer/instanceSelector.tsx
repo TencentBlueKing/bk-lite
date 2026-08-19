@@ -17,6 +17,7 @@ import type {
   FilterType,
   InstancesFilter,
 } from './types';
+import { toCmdbInstanceOptions } from '@/app/cmdb/utils/instanceOption';
 import styles from './instanceSelector.module.scss';
 
 type ConditionOperator = 'contains' | 'equals' | 'includes' | 'range';
@@ -420,12 +421,7 @@ const InstanceSelector: React.FC<InstanceSelectorProps> = ({
       .then((data: any) => {
         const insts = Array.isArray(data?.insts) ? data.insts : [];
         setInstanceOptions(
-          insts
-            .map((item: any) => ({
-              value: Number(item?._id),
-              label: item?.inst_name || item?.name || item?.ip_addr || String(item?._id || ''),
-            }))
-            .filter((item: { label: string; value: number }) => item.label && !Number.isNaN(item.value)),
+          toCmdbInstanceOptions(insts).map(({ label, value }) => ({ label, value })),
         );
       })
       .catch(() => {

@@ -653,7 +653,7 @@ export default function LibraryPage() {
               </Button>
             </Dropdown>
           </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/settings"><Button icon={<CloudDownloadOutlined />} onClick={handleImportSearch}>{t('patchManager.libraryPage.syncIngest')}</Button></PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/settings/sources"><Button icon={<CloudDownloadOutlined />} onClick={handleImportSearch}>{t('patchManager.libraryPage.syncIngest')}</Button></PermissionWrapper>
           {activeTab === 'win' && (
             <PermissionWrapper requiredPermissions={['Add']}><Button icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>{t('patchManager.libraryPage.addPatch')}</Button></PermissionWrapper>
           )}
@@ -773,7 +773,7 @@ export default function LibraryPage() {
         footer={
           <Space>
             <Button onClick={closeImportDrawer}>{t('patchManager.cancel')}</Button>
-            <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/settings">
+            <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/settings/sources">
               <Button type="primary" loading={candidateActionLoading} disabled={candidateSelection.keys.length === 0} icon={<CloudDownloadOutlined />} onClick={handleImportSubmit}>{t('patchManager.libraryPage.batchIngest', undefined, { count: candidateSelection.keys.length })}</Button>
             </PermissionWrapper>
           </Space>

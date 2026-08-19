@@ -56,12 +56,13 @@ CMDB 是平台统一的资产与配置数据中心，围绕模型定义、资产
 |---|---|---|---|
 | 基础属性查看 | 查看实例基础属性与关联关系；机柜/设备模型含内置布局字段（row/col/u_count/rack_u_start/u_size），在基础信息编辑，影响机房机柜视图渲染 | — | GA |
 | 轻量拓扑 | 以实例为中心查看拓扑，支持按节点继续展开 | 默认先返回首批关系层级，再按需展开下一层 | GA |
-| 应用资源总览 | 对应用系统查看下属应用、资源拓扑、资源分组明细与导出 | 仅应用系统模型开放；资源明细按当前节点选择范围导出 | GA |
+| IP 地址视图手工登记 | 在子网 IP 视图登记分配状态、IP 类型、使用人、IP 状态、MAC 与描述 | 可分配且无台账不落库、已有台账则删除；其他状态按是否已有台账创建或更新；仅接受子网内且非网络号/广播地址的 IP，创建关联失败不遗留孤立记录；手工台账不被自动发现或自动对账覆盖 | GA |
+| 应用资源总览 | 对应用系统查看下属应用、资源拓扑、资源分组明细与导出 | 仅应用系统模型开放；支持按名称搜索定位节点，并在选中或悬停时聚焦其相邻关系；资源明细按当前节点选择范围导出 | GA |
 | 变更记录查看 | 查看实例相关变更记录 | — | GA |
 | 配置文件版本 | 查看配置文件列表、版本历史、内容与版本差异（Diff） | 仅面向已启用配置采集并采集到的实例；仅可读取内容的版本支持查看与对比 | GA |
 
 相关 PRD：[[legacy-prd-cmdb-资产.md#3.8 资产详情 · 应用资源总览]]；相关架构：[[legacy-ard-modules-cmdb.md#3. 接口【已实现/已存在】]]
-> 证据来源：server/apps/cmdb/views/instance.py:999-1143　|　同步基线：83091efe　|　【已实现】
+> 证据来源：server/apps/cmdb/services/ipam_edit.py:81-88，server/apps/cmdb/services/ipam_edit.py:104-245，server/apps/cmdb/services/ipam_discovery.py:260-270，server/apps/cmdb/services/ipam_reconcile.py:250-259，server/apps/cmdb/services/ipam_reconcile.py:277-288，server/apps/cmdb/views/instance.py:1287-1540，web/src/app/cmdb/(pages)/assetData/detail/relationships/applicationResourceOverview/index.tsx:749-1261　|　同步基线：b98b782a7　|　【已实现】
 
 ### 4. 资产检索与视图
 
@@ -71,9 +72,13 @@ CMDB 是平台统一的资产与配置数据中心，围绕模型定义、资产
 | 按模型统计 | 检索结果先按模型汇总命中数，再进入单模型分页查看 | 不依赖单一模型入口 | GA |
 | 常用筛选保存 | 用户保存常用筛选条件并按模型复用 | 保存于用户个人配置，非浏览器本地临时记录 | GA |
 | 资产视图 | 按模型统计资产数量并提供快速跳转入口 | — | GA |
-| 机房俯视平面图 | 以 row/col 网格展示机房内机柜的物理位置、类型与 U 位占用率；同格冲突标记返回，未定位机柜单独成列不丢弃 | 只读；冲突仅标记不阻断；利用率口径：(u_count - free_u) / u_count，free_u 以去重占用数计；须有 asset_info-View 权限；类型字段同时返回 `datacenter_type` 枚举 id 与可读名称（如「计算」「网络」「存储」等），由后端依据 `rack` 模型的 `datacenter_type` 枚举属性解析，缺值时仅返回 id；来源 `room_layout/<model_id>/<inst_id>` 端点（server/apps/cmdb/views/instance.py:1030-1050，server/apps/cmdb/services/rack_room.py:162-198） | GA |
+| 机房俯视平面图 | 以 row/col 网格展示机房内机柜的物理位置、类型与 U 位占用率；可在格位新建或放置已有机柜，也可移出布局 | 移出仅解除当前机房关联并清空位置，不删除机柜；同格冲突、已归属其他机房、已在当前布局及无操作权限均阻断放置；未定位机柜单独成列不丢弃 | GA |
 | 机房 3D 布局取数（供大屏消费） | 3D 大屏组件消费机房布局取数接口，返回 row/col/U 占用与设备摘要；类型字段同时返回 `datacenter_type` 枚举 id 与可读名称 `rack_type_name`（计算/网络/存储/安全/其他/未分类），无值时不带 `rack_type_name` | 只读；经 NATS `get_room3d_layout` 暴露（server/apps/cmdb/nats/nats.py:939-1050）；`rack_id`/`rack_name` 字段源统一为 `item['rack_id']` / `item['rack_name']`，`instance_name` 缺失时 fallback 到 `rack_id`；供运营分析 3D 大屏图例与机柜顶贴图渲染 | GA |
-| 机柜正视 U 图 | 展示机柜内设备的 U 位排布（u_start/u_end）、越界与重叠标记，以及空闲 U 汇总（free_u/max_free_u） | 只读；越界/重叠仅标记不阻断；未分配 U 位设备单独成列不丢弃；须有 asset_info-View 权限；来源 `rack_layout/<model_id>/<inst_id>` 端点（server/apps/cmdb/views/instance.py:1052-1072，server/apps/cmdb/services/rack_room.py:146-159） | GA |
+| 机柜正视 U 图 | 展示机柜内设备的 U 位排布（u_start/u_end）、越界与重叠标记，以及空闲 U 汇总（free_u/max_free_u）；可在 U 位新建或放置已有设备，也可移出布局 | 移出仅解除当前机柜关联并清空起始 U 位，不删除设备；U 位重叠/越界、已归属其他机柜、已在当前布局、不可放置模型及无操作权限均阻断放置 | GA |
+| 网络设备拓扑跳数 | 网络设备拓扑按选定跳数加载，并可在边界节点继续展开 | 支持 1、2、3 跳；后端限制在允许的跳数范围内 | GA |
+
+相关 PRD：[[legacy-prd-cmdb-资产.md#3.6.1 资产详情 · IP 地址视图与物理布局]]、[[legacy-prd-cmdb-资产.md#3.7 资产详情 · 关联关系]]；相关架构：[[legacy-ard-modules-cmdb.md#2. 数据模型与存储【已实现/已存在】]]。
+> 证据来源：server/apps/cmdb/services/rack_room_edit.py:303-441，server/apps/cmdb/views/instance.py:1542-1750，web/src/app/cmdb/(pages)/assetData/detail/relationships/networkTopo.tsx:346-536　|　同步基线：b98b782a7　|　【已实现】
 
 ### 5. 自动发现（采集）
 
@@ -139,7 +144,9 @@ CMDB 是平台统一的资产与配置数据中心，围绕模型定义、资产
 
 字段类型与枚举的单选/多选模式在创建后保持稳定，不支持直接切换。删除模型前必须先清理其实例与关系。配置文件版本能力只面向已采集到的配置文件，且只有可读取内容的版本才支持内容查看与对比。资产详情展示的是轻量拓扑，按需逐层展开，而非一次性加载全量关系。实例导入、批量更新、批量删除均受组织权限约束。订阅规则的管理边界严格按组织范围隔离。
 
-机房俯视平面图与机柜正视 U 图均为只读视图，不提供编辑入口；冲突（同格/越界/重叠）仅标记、不阻断写入。布局数据的渲染依赖实例上的内置字段（rack 模型：`row`/`col`/`u_count`；设备模型：`rack_u_start`/`u_size`），字段缺失时对应实例归入"未定位"列单独展示，不被丢弃。两个布局端点均须持有 `asset_info-View` 权限，并按调用方用户的组织范围过滤机柜/设备实例。Neo4j 搜索/过滤路径已参数化（`FORMAT_TYPE_PARAMS` + `ParameterCollector`，server/apps/cmdb/graph/neo4j.py:301），该路径 Cypher 注入风险已消除；写入与按 id 取详情等路径仍为 f-string 拼接（`:197`、`:408`），参数化为局部加固、未覆盖全部查询。
+机房俯视平面图与机柜正视 U 图支持放置与移出：冲突（同格/越界/重叠）、其他容器归属、已在当前布局、不可放置模型及权限不足均阻断放置；移出不删除实例。布局数据的渲染依赖实例上的内置字段（rack 模型：`row`/`col`/`u_count`；设备模型：`rack_u_start`/`u_size`），字段缺失时对应实例归入"未定位"列单独展示，不被丢弃。IP 手工登记遵循“可分配”状态的删除/不落库规则，其他状态创建或更新，并校验子网边界及子网-IP 关联。具体产品规则以 [[legacy-prd-cmdb-资产.md#3.6.1 资产详情 · IP 地址视图与物理布局]] 为准。Neo4j 搜索/过滤路径已参数化（`FORMAT_TYPE_PARAMS` + `ParameterCollector`，server/apps/cmdb/graph/neo4j.py:301），该路径 Cypher 注入风险已消除；写入与按 id 取详情等路径仍为 f-string 拼接（`:197`、`:408`），参数化为局部加固、未覆盖全部查询。
+
+> 证据来源：server/apps/cmdb/services/ipam_edit.py:81-245，server/apps/cmdb/services/rack_room_edit.py:303-441，server/apps/cmdb/views/instance.py:1452-1750　|　同步基线：b98b782a7　|　【已实现】
 
 ## 四、平台协同
 

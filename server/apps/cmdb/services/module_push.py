@@ -37,7 +37,11 @@ def causation_id_for(source_module: str, source_id: str, target: str) -> str:
 
 
 class CmdbToMonitorPushService:
-    """将 CMDB 实例推送到监控（显式或创建钩子；信封不带凭据）。"""
+    """将 CMDB 实例推送到监控（显式或创建钩子）。
+
+    对外只经 Monitor().ingest_from_source；调用方不直连监控内部 ingest 实现。
+    公开资产页 push_instance 信封不带凭据；扫描等特权路径走 push_with_credential。
+    """
 
     @classmethod
     def push_instance(
@@ -75,6 +79,115 @@ class CmdbToMonitorPushService:
         }
 
     @classmethod
+    def push_with_credential(
+        cls,
+        instance: dict[str, Any],
+        *,
+        credential: dict[str, Any],
+        actor_scope: dict[str, Any],
+        actor_context: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """显式带凭据推送（扫描清单等）：仍只调 Monitor.ingest_from_source。
+
+        凭据只进 raw.credential，不进 link_ids；allow_credential_create 由本入口置位。
+        成功后回写 CI monitor_id。公开资产页不得走本方法。
+        """
+        if not isinstance(credential, dict) or not credential:
+            raise ValueError("credential is required for credential push")
+
+        cmdb_id, aliases = cmdb_link_identity(instance)
+        if not cmdb_id:
+            raise ValueError(f"CMDB instance missing inst_uuid: {instance.get('_id') or instance.get('inst_uuid')}")
+
+        node_id = cls._normalize_optional_str(instance.get("node_id"))
+        envelope = cls._build_envelope(instance, cmdb_id=cmdb_id, aliases=aliases, node_id=node_id)
+        raw = dict(envelope.get("raw") or {})
+        # 扫描等调用方可能已把 model_id / 端口 / 云区域写在 instance 上；合并进 raw。
+        for key in (
+            "model_id",
+            "object_type",
+            "device_type",
+            "port",
+            "snmp_port",
+            "cloud",
+            "cloud_region_id",
+            "cloud_name",
+            "cloud_region_name",
+            "ip",
+            "ip_addr",
+            "name",
+            "inst_name",
+            "organization",
+            "organization_ids",
+            "os_type",
+            "operating_system",
+        ):
+            value = instance.get(key)
+            if value not in (None, "", []):
+                raw[key] = value
+        raw["credential"] = {key: value for key, value in credential.items() if key != "_client_id"}
+        envelope["raw"] = raw
+
+        allowed_org_ids = list(actor_scope.get("allowed_org_ids") or [])
+        operator = actor_scope.get("operator") or ""
+        # 特权路径：打开 allow_credential_create；公开 push_instance 不传此字段。
+        payload = {
+            **envelope,
+            "allowed_org_ids": allowed_org_ids,
+            "operator": operator,
+            "allow_credential_create": True,
+        }
+        if actor_context is not None:
+            from apps.core.utils.current_team_scope import actor_context_to_wire
+
+            wired = actor_context_to_wire(actor_context)
+            if wired is not None:
+                payload["actor_context"] = wired
+
+        logger.info(
+            "[CmdbToMonitorPush] credential push cmdb_id=%s model_id=%s",
+            cmdb_id,
+            raw.get("model_id"),
+        )
+        result = Monitor().ingest_from_source(**payload)
+        if not isinstance(result, dict):
+            result = {"id": result}
+
+        if result.get("ignored") or result.get("conflict") or result.get("collect_error"):
+            logger.warning(
+                "[CmdbToMonitorPush] credential push not applied cmdb_id=%s "
+                "ignored=%s conflict=%s collect_error=%s id=%s "
+                "(若连远端共享 NATS：设 IS_LOCAL_RPC=1 并重启 Server)",
+                cmdb_id,
+                result.get("ignored"),
+                result.get("conflict"),
+                result.get("collect_error"),
+                result.get("id"),
+            )
+
+        monitor_id = result.get("id")
+        if (
+            monitor_id
+            and not result.get("ignored")
+            and not result.get("conflict")
+            and not result.get("collect_error")
+            and instance.get("_id") not in (None, "")
+        ):
+            instance = cls._backfill_monitor_id(
+                instance,
+                str(monitor_id),
+                operator=operator,
+                allowed_org_ids=allowed_org_ids,
+            )
+
+        return {
+            "cmdb_id": cmdb_id,
+            "node_id": node_id,
+            "monitor_result": result,
+            "instance": instance,
+        }
+
+    @classmethod
     def best_effort_notify_on_host_create(
         cls,
         instance: dict[str, Any],
@@ -109,22 +222,18 @@ class CmdbToMonitorPushService:
             except Exception:
                 logger.exception("[CmdbIoC] notify node failed cmdb_id=%s", cmdb_id)
 
-            # 2) 监控：无凭据，有则关联 / 无则 ignored
+            # 2) 监控：无凭据，有则关联 / 无则 ignored（经监控对外 ingest 入口）
             try:
-                from apps.monitor.services.module_ingest import MonitorModuleIngestService
-
                 envelope = cls._build_envelope(
                     result,
                     cmdb_id=cmdb_id,
                     aliases=aliases,
                     node_id=cls._normalize_optional_str(result.get("node_id")),
                 )
-                monitor_result = MonitorModuleIngestService.ingest(
-                    {
-                        **envelope,
-                        "allowed_org_ids": scope["allowed_org_ids"],
-                        "operator": scope["operator"],
-                    }
+                monitor_result = Monitor().ingest_from_source(
+                    **envelope,
+                    allowed_org_ids=scope["allowed_org_ids"],
+                    operator=scope["operator"],
                 )
                 if not isinstance(monitor_result, dict):
                     monitor_result = {"id": monitor_result}
@@ -254,7 +363,10 @@ class CmdbToMonitorPushService:
         try:
             from apps.cmdb.services.module_ingest import ensure_model_monitor_id_attr
 
-            ensure_model_monitor_id_attr("host", username=operator or "admin")
+            ensure_model_monitor_id_attr(
+                str(result.get("model_id") or "host"),
+                username=operator or "admin",
+            )
             updated = InstanceManage.instance_update(
                 user_groups=[],
                 roles=[],
@@ -332,7 +444,8 @@ class CmdbToMonitorPushService:
             "operating_system": instance.get("os_type"),
             "model_id": instance.get("model_id") or "host",
         }
-        # 明确不携带 credential：创建钩子 / 显式推送默认只关联，凭据路径另行扩展
+        # 明确不携带 credential：公开 push_instance / 创建钩子只关联；
+        # 带凭据路径由 push_with_credential 另行写入 raw.credential。
         return {k: v for k, v in raw.items() if v not in (None, "", [])}
 
     @staticmethod
@@ -434,15 +547,10 @@ class CmdbToMonitorPushService:
             logger.exception("[CmdbIoC] delete notify node failed cmdb_id=%s", cmdb_id)
 
         try:
-            from apps.monitor.services.module_ingest import MonitorModuleIngestService
-
             payload = {
                 **base,
                 "causation_id": causation_id_for(MODULE_NAME, cmdb_id, TARGET_MONITOR),
             }
-            try:
-                MonitorModuleIngestService.ingest(payload)
-            except Exception:
-                Monitor().ingest_from_source(**payload)
+            Monitor().ingest_from_source(**payload)
         except Exception:
             logger.exception("[CmdbIoC] delete notify monitor failed cmdb_id=%s", cmdb_id)

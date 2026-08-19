@@ -2,6 +2,7 @@ import useApiClient from '@/utils/request';
 import type {
   ChangeUserStatusParams,
   ChangeUserStatusResponse,
+  UserImportResult,
 } from '@/app/system-manager/types/user';
 
 export const useUserApi = () => {
@@ -37,6 +38,9 @@ export const useUserApi = () => {
   async function changeUserStatus(params: ChangeUserStatusParams) {
     return await post<ChangeUserStatusResponse>(`/system_mgmt/user/change_status/`, params)
   }
+  async function importUsers(params: { group_id: number; file_name: string; users: any[] }) {
+    return await post<UserImportResult>(`/system_mgmt/user/import_users/`, params)
+  }
   return {
     getUsersList,
     getOrgTree,
@@ -48,5 +52,6 @@ export const useUserApi = () => {
     deleteUser,
     setUserPassword,
     changeUserStatus,
+    importUsers,
   }
 }

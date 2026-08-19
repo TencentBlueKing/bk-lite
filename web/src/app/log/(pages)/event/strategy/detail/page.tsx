@@ -3,10 +3,10 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Spin, Button, Form, message, Steps, Tag } from 'antd';
 import useApiClient from '@/utils/request';
 import useLogEventApi from '@/app/log/api/event';
+import useLogApi from '@/app/log/api';
 import { useTranslation } from '@/utils/i18n';
 import { StrategyFields, ChannelItem } from '@/app/log/types/event';
 import { FilterItem } from '@/app/log/types/integration';
-import { useCommon } from '@/app/log/context/common';
 import strategyStyle from '../index.module.scss';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -18,10 +18,14 @@ import AlertConditionsForm from './alertConditionsForm';
 import NotificationForm from './notificationForm';
 import AlertNameVariables from './alertNameVariables';
 import LogPreview from './logPreview';
+import usePolicyFieldCatalog from './usePolicyFieldCatalog';
 import {
   buildStrategyPayload,
   getDefaultShowFields,
-  getLockedPolicyType
+  getLockedPolicyType,
+  pruneNoticeUsers,
+  shouldPruneNoticeUsers,
+  shouldRequireNoticeUsers
 } from './policyFormUtils';
 import {
   getCreatePolicyType,
@@ -33,12 +37,11 @@ const StrategyOperation = () => {
   const { isLoading } = useApiClient();
   const { getSystemChannelList, getPolicy, createPolicy, updatePolicy } =
     useLogEventApi();
-  const { getLogStreams, getFields } = useLogIntegrationApi();
-  const commonContext = useCommon();
+  const { getAllUsers } = useLogApi();
+  const { getLogStreams } = useLogIntegrationApi();
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
   const router = useRouter();
-  const userList: UserItem[] = commonContext?.userList || [];
   const userContext = useUserInfoContext();
   const currentGroup = useRef(userContext?.selectedGroup);
   const groupId = [currentGroup?.current?.id || ''];
@@ -54,12 +57,23 @@ const StrategyOperation = () => {
   const [term, setTerm] = useState<string | null>(null);
   const [formData, setFormData] = useState<StrategyFields>({});
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
-  const [fieldList, setFieldList] = useState<string[]>([]);
   const [streamList, setStreamList] = useState<ListItem[]>([]);
+  const [noticeUserList, setNoticeUserList] = useState<UserItem[]>([]);
+  const [noticeUserLoadKey, setNoticeUserLoadKey] = useState('');
   const previewQuery = Form.useWatch('query', form);
   const previewLogGroups = Form.useWatch('log_groups', form);
   const previewShowFields = Form.useWatch('show_fields', form);
   const alertGroupBy = Form.useWatch('group_by', form);
+  const organizations = Form.useWatch('organizations', form);
+  const organizationKey = useMemo(() => {
+    return (Array.isArray(organizations) ? organizations : [])
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item) && item > 0)
+      .sort((a, b) => a - b)
+      .join(',');
+  }, [organizations]);
+  const { fields: fieldList, loading: fieldListLoading } =
+    usePolicyFieldCatalog(previewLogGroups);
 
   const isEdit = useMemo(() => type === 'edit', [type]);
   const createAlertType = useMemo(
@@ -93,7 +107,6 @@ const StrategyOperation = () => {
       }
       setPageLoading(true);
       Promise.all([
-        getAllFields(),
         getChannelList(),
         getGroups(),
         detailId && getStragyDetail()
@@ -126,17 +139,142 @@ const StrategyOperation = () => {
     dealDetail(formData);
   }, [canInitializeForm, isEdit, formData, channelList, lockedAlertType]);
 
+  // 通知人候选按策略所属组织渲染；邮件渠道在组织变更后自动剔除越界已选通知人
+  useEffect(() => {
+    const applyPrunedNoticeUsers = (
+      pruned: Array<string | number>
+    ) => {
+      form.setFieldValue('notice_users', pruned);
+      if (
+        shouldRequireNoticeUsers({
+          notice: form.getFieldValue('notice'),
+          noticeTypeId: form.getFieldValue('notice_type_id'),
+          channelList
+        }) &&
+        pruned.length === 0
+      ) {
+        Promise.resolve().then(() => {
+          form.validateFields(['notice_users']).catch(() => undefined);
+        });
+      }
+    };
+
+    const maybePruneNoticeUsers = (
+      current: Array<string | number>,
+      userList: UserItem[]
+    ) => {
+      if (
+        !shouldPruneNoticeUsers({
+          noticeTypeId: form.getFieldValue('notice_type_id'),
+          channelList
+        })
+      ) {
+        return;
+      }
+      const pruned = pruneNoticeUsers(current, userList);
+      if (
+        pruned.length !== current.length ||
+        pruned.some((item, index) => String(item) !== String(current[index]))
+      ) {
+        applyPrunedNoticeUsers(pruned);
+      } else if (
+        pruned.length === 0 &&
+        shouldRequireNoticeUsers({
+          notice: form.getFieldValue('notice'),
+          noticeTypeId: form.getFieldValue('notice_type_id'),
+          channelList
+        })
+      ) {
+        Promise.resolve().then(() => {
+          form.validateFields(['notice_users']).catch(() => undefined);
+        });
+      }
+    };
+
+    const orgIds = organizationKey
+      ? organizationKey.split(',').map((item) => Number(item))
+      : [];
+
+    if (!orgIds.length) {
+      setNoticeUserList([]);
+      setNoticeUserLoadKey('');
+      const current = form.getFieldValue('notice_users') || [];
+      if (Array.isArray(current) && current.length) {
+        maybePruneNoticeUsers(current, []);
+      } else if (
+        shouldRequireNoticeUsers({
+          notice: form.getFieldValue('notice'),
+          noticeTypeId: form.getFieldValue('notice_type_id'),
+          channelList
+        })
+      ) {
+        Promise.resolve().then(() => {
+          form.validateFields(['notice_users']).catch(() => undefined);
+        });
+      }
+      return;
+    }
+
+    let cancelled = false;
+    getAllUsers(orgIds)
+      .then((users) => {
+        if (cancelled) return;
+        const list = Array.isArray(users) ? users : [];
+        setNoticeUserList(list);
+        setNoticeUserLoadKey(organizationKey);
+        const current = form.getFieldValue('notice_users') || [];
+        if (Array.isArray(current)) {
+          maybePruneNoticeUsers(current, list);
+        }
+      })
+      .catch(() => {
+        // 拉取失败时不改动已选通知人，避免误清空
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationKey, form, channelList]);
+
+  // dealDetail 可能再次用详情里的 notice_users 覆盖表单，候选就绪后需再裁一次
+  useEffect(() => {
+    if (!organizationKey || noticeUserLoadKey !== organizationKey) {
+      return;
+    }
+    if (
+      !shouldPruneNoticeUsers({
+        noticeTypeId: form.getFieldValue('notice_type_id'),
+        channelList
+      })
+    ) {
+      return;
+    }
+    const current = form.getFieldValue('notice_users') || [];
+    const pruned = pruneNoticeUsers(current, noticeUserList);
+    if (
+      Array.isArray(current) &&
+      (pruned.length !== current.length ||
+        pruned.some((item, index) => String(item) !== String(current[index])))
+    ) {
+      form.setFieldValue('notice_users', pruned);
+      if (
+        shouldRequireNoticeUsers({
+          notice: form.getFieldValue('notice'),
+          noticeTypeId: form.getFieldValue('notice_type_id'),
+          channelList
+        }) &&
+        pruned.length === 0
+      ) {
+        Promise.resolve().then(() => {
+          form.validateFields(['notice_users']).catch(() => undefined);
+        });
+      }
+    }
+  }, [formData, noticeUserList, noticeUserLoadKey, organizationKey, form, channelList]);
+
   const getChannelList = async () => {
     const data = await getSystemChannelList();
     setChannelList(data);
-  };
-
-  const getAllFields = async () => {
-    const data = await getFields({
-      query: form.getFieldValue('query') || '*',
-      log_groups: form.getFieldValue('log_groups') || []
-    });
-    setFieldList(data || []);
   };
 
   const getGroups = async () => {
@@ -301,6 +439,8 @@ const StrategyOperation = () => {
                         conditions={conditions}
                         term={term}
                         fieldList={fieldList}
+                        fieldListLoading={fieldListLoading}
+                        logGroups={previewLogGroups || []}
                         streamList={streamList}
                         onUnitChange={handleUnitChange}
                         onPeriodUnitChange={handlePeriodUnitChange}
@@ -315,7 +455,7 @@ const StrategyOperation = () => {
                     description: (
                       <NotificationForm
                         channelList={channelList}
-                        userList={userList}
+                        userList={noticeUserList}
                         onLinkToSystemManage={linkToSystemManage}
                       />
                     ),
