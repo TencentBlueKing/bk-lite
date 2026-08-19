@@ -1,11 +1,15 @@
 import time
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import SidecarEnv
+from apps.node_mgmt.services.installer_credentials import (
+    INVALID_INSTALLER_CREDENTIALS_MODE_MESSAGE,
+    normalize_installer_credentials_mode,
+)
 from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
@@ -81,18 +85,32 @@ class InstallerSessionService:
 
         nats_servers = envs.get(NodeConstants.NATS_SERVERS_KEY)
 
-        # Prefer dedicated installer credentials; fall back to admin credentials with warning
+        # 优先使用安装专用凭据；存量区域默认保留管理员凭据回退，迁移完成后可按区域切到 strict。
         nats_username = envs.get(NodeConstants.NATS_INSTALLER_USERNAME_KEY)
         nats_password = envs.get(NodeConstants.NATS_INSTALLER_PASSWORD_KEY)
+        has_installer_username = bool(str(nats_username or "").strip())
+        has_installer_password = bool(str(nats_password or "").strip())
+        credentials_mode_key = NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_KEY
+        try:
+            installer_credentials_mode = normalize_installer_credentials_mode(
+                envs.get(credentials_mode_key),
+                allow_missing=credentials_mode_key not in envs,
+            )
+        except ValueError:
+            raise BaseAppException(INVALID_INSTALLER_CREDENTIALS_MODE_MESSAGE)
         is_windows_remote = (
             token_data["os"] == NodeConstants.WINDOWS_OS
             and token_data.get("install_mode") == "auto"
         )
 
-        if not nats_username or not nats_password:
-            if is_windows_remote:
-                raise BaseAppException(
-                    "Windows remote installation requires dedicated NATS_INSTALLER_USERNAME/PASSWORD credentials"
+        if not has_installer_username or not has_installer_password:
+            if (
+                is_windows_remote
+                or installer_credentials_mode == NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_STRICT
+            ):
+                install_context = "Windows remote installation" if is_windows_remote else "Installer session in strict mode"
+                raise ValidationAppException(
+                    f"{install_context} requires dedicated NATS_INSTALLER_USERNAME/PASSWORD credentials"
                 )
             # Fallback to admin credentials (legacy deployments)
             logger.warning(

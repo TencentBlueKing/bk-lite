@@ -37,7 +37,7 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 - Ansible Executor 必须与目标节点同云区域且 `ansibleexecutor_linux` 采集器健康；找不到时快速失败，不跨区域兜底。
 - `ansible.windows` 固定为 3.7.0，与仓库现有 `ansible-core==2.18.6` 组合构建，避免部署时自动获取不兼容的新版本。
 - 实时事件 subject 只接受由 Server 生成的 32 位小写十六进制 execution ID；安装器 NATS 用户仅需 `installer.progress.>` 发布权限，发布失败降级到终态 stdout，不阻断安装。
-- Windows 远程安装会话只下发专用 `NATS_INSTALLER_USERNAME/PASSWORD`，且要求 `NATS_PROTOCOL=tls`；不得回退管理员账号或通过明文 NATS 传输凭据。Windows GUI 手动安装保留原有兼容策略。
+- Windows 远程安装会话只下发专用 `NATS_INSTALLER_USERNAME/PASSWORD`，且要求 `NATS_PROTOCOL=tls`；不得回退管理员账号或通过明文 NATS 传输凭据。Windows GUI 手动安装默认保留原有兼容策略；云区域显式启用 `NATS_INSTALLER_CREDENTIALS_MODE=strict` 后，GUI 手动安装也必须拒绝管理员账号回退。
 
 ## Component Boundary
 
@@ -81,7 +81,7 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 - 执行结束后目标临时目录不存在会话 URL 文件和本次 bootstrap 文件。
 - 新包校验失败不得停止旧服务；新服务启动失败必须恢复旧目录和旧服务。仅当无法确认失败的新服务已经停止时，允许安全降级为保留原目录备份并明确标记“需要人工恢复”，不得继续自动重试或强行覆盖在用目录。
 - 下载和解压超过资源边界时快速失败，不修改现有安装。
-- Linux 远程安装入口、认证和执行链路与 Windows 手动 GUI 安装行为保持不变；共享安装引擎统一执行下载和解压资源边界。
+- Linux 远程安装入口、认证和执行链路默认与 Windows 手动 GUI 安装行为保持不变；云区域显式启用 `NATS_INSTALLER_CREDENTIALS_MODE=strict` 时，两者都在缺少专用安装凭据时失败关闭。共享安装引擎统一执行下载和解压资源边界。
 
 ## Out Of Scope
 
