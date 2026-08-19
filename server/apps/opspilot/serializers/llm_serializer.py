@@ -44,6 +44,7 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
     llm_model_name = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
     skill_params = serializers.SerializerMethodField()
+    usage_team_name = serializers.SerializerMethodField()
     skill_package_params = serializers.SerializerMethodField()
 
     def __init__(self, instance=None, data=empty, **kwargs):
@@ -78,6 +79,7 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "conversation_window_size",
             "introduction",
             "team",
+            "usage_team",
             "show_think",
             "tools",
             "skill_params",
@@ -95,6 +97,7 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             # 只读派生字段（保持现有读取输出不变）
             "permissions",
             "team_name",
+            "usage_team_name",
             "llm_model_name",
             "is_pinned",
         ]
@@ -116,6 +119,9 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
     def get_is_pinned(self, instance: LLMSkill) -> bool:
         """获取当前用户对此 LLMSkill 的置顶状态"""
         return instance.id in self.pinned_skill_ids
+
+    def get_usage_team_name(self, instance: LLMSkill):
+        return [self.group_map.get(i) for i in (instance.usage_team or []) if i in self.group_map]
 
     @staticmethod
     def get_skill_params(instance: LLMSkill):

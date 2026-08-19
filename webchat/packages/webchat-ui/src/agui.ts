@@ -59,7 +59,22 @@ export interface IgnoredEventResult {
   type: 'ignored';
 }
 
-export type AGUIProcessResult = AGUIEventResult | LegacyMessageResult | IgnoredEventResult;
+export interface CustomProtocolEvent {
+  type: 'CUSTOM';
+  name: string;
+  value: unknown;
+}
+
+export interface CustomEventResult {
+  type: 'custom-event';
+  event: CustomProtocolEvent;
+}
+
+export type AGUIProcessResult =
+  | AGUIEventResult
+  | LegacyMessageResult
+  | IgnoredEventResult
+  | CustomEventResult;
 
 const SUPPORTED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   EventType.TEXT_MESSAGE_START,
@@ -148,6 +163,14 @@ export class AGUIHandler {
 
     if (this.isEventRecord(data)) {
       const eventType = data.type;
+      if (eventType === 'CUSTOM' && typeof data.name === 'string') {
+        const customEvent: CustomProtocolEvent = {
+          type: 'CUSTOM',
+          name: data.name,
+          value: data.value,
+        };
+        return { type: 'custom-event', event: customEvent };
+      }
       const event = this.parseAGUIEvent(data);
       if (event) {
         this.events$.next(event);

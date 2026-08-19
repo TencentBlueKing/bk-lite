@@ -57,8 +57,10 @@ from apps.opspilot.services.builtin_tools import (
 )
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
 from apps.opspilot.services.mcp_client import MCPClient
+from apps.opspilot.services.skill_channel_service import sync_skill_channel_usage_teams
 from apps.opspilot.services.skill_package.importer import DEFAULT_SKILL_PACKAGE_ROOT, SkillPackageImporter
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
+from apps.opspilot.services.usage_team import merge_usage_team
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
 from apps.opspilot.utils.pin_mixin import PinMixin
@@ -106,6 +108,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             "conversation_window_size",
             "introduction",
             "team",
+            "usage_team",
             "show_think",
             "tools",
             "skill_params",
@@ -157,6 +160,9 @@ class LLMViewSet(PinMixin, AuthViewSet):
         params["team"] = params.get("team", []) or [int(request.COOKIES.get("current_team"))]
         # 校验用户是否有目标组织的权限
         self._validate_org_field_permission(request, params["team"])
+        usage_team = params.get("usage_team") or []
+        self._validate_org_field_permission(request, [org for org in usage_team if org not in params["team"]])
+        params["usage_team"] = merge_usage_team(params["team"], usage_team)
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
         if validate_msg:
             message = (
@@ -197,6 +203,38 @@ class LLMViewSet(PinMixin, AuthViewSet):
         log_operation(request, "create", "opspilot", f"新增智能体: {skill_name}")
         return response
 
+    @staticmethod
+    def _normalize_skill_param_passwords(params, instance: LLMSkill) -> None:
+        old_skill_params = {p.get("key"): p for p in (instance.skill_params or [])}
+        for item in params.get("skill_params", []):
+            if item.get("type") != "password":
+                continue
+            if item.get("value") == "******":
+                old_param = old_skill_params.get(item.get("key"))
+                if old_param:
+                    item["value"] = old_param["value"]
+            else:
+                EncryptMixin.encrypt_field("value", item)
+
+    @staticmethod
+    def _normalize_skill_package_params_for_update(request, params, instance: LLMSkill):
+        """校验并合并 skill_package_params；失败返回 JsonResponse，成功返回 None。"""
+        if "skill_package_params" not in params:
+            return None
+        try:
+            validated = validate_package_params(params.get("skill_package_params"))
+            params["skill_package_params"] = merge_package_params(validated, instance.skill_package_params or {})
+        except ValueError as exc:
+            return JsonResponse({"result": False, "message": str(exc)})
+        param_names = []
+        for items in (params.get("skill_package_params") or {}).values():
+            for item in items or []:
+                if isinstance(item, dict) and item.get("key"):
+                    param_names.append(str(item["key"]))
+        if param_names:
+            log_operation(request, "update", "opspilot", f"编辑智能体技能包参数: {instance.name} 变量: {','.join(param_names)}")
+        return None
+
     @HasPermission("skill_setting-Edit")
     def update(self, request, *args, **kwargs):
         instance: LLMSkill = self.get_object()
@@ -233,6 +271,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
         if "team" in params:
             delete_team = [i for i in instance.team if i not in params["team"]]
             self.delete_rules(instance.id, delete_team)
+            self._validate_org_field_permission(request, [org for org in params["team"] if org not in instance.team])
+        if "usage_team" in params:
+            extra_orgs = [org for org in (params["usage_team"] or []) if org not in (params.get("team") or instance.team)]
+            self._validate_org_field_permission(request, extra_orgs)
         if "llm_model" in params:
             params["llm_model_id"] = params.pop("llm_model")
         for tool in params.get("tools", []):
@@ -240,43 +282,51 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 if i.get("type") == "password":
                     EncryptMixin.decrypt_field("value", i)
                     EncryptMixin.encrypt_field("value", i)
-        # 处理 skill_params 中 password 类型的加密/保留
-        old_skill_params = {p.get("key"): p for p in (instance.skill_params or [])}
-        for item in params.get("skill_params", []):
-            if item.get("type") == "password":
-                if item.get("value") == "******":
-                    old_param = old_skill_params.get(item.get("key"))
-                    if old_param:
-                        item["value"] = old_param["value"]
-                else:
-                    EncryptMixin.encrypt_field("value", item)
-        if "skill_package_params" in params:
-            try:
-                validated = validate_package_params(params.get("skill_package_params"))
-                params["skill_package_params"] = merge_package_params(validated, instance.skill_package_params or {})
-            except ValueError as exc:
-                return JsonResponse({"result": False, "message": str(exc)})
-            param_names = []
-            for items in (params.get("skill_package_params") or {}).values():
-                for item in items or []:
-                    if isinstance(item, dict) and item.get("key"):
-                        param_names.append(str(item["key"]))
-            if param_names:
-                log_operation(request, "update", "opspilot", f"编辑智能体技能包参数: {instance.name} 变量: {','.join(param_names)}")
+        self._normalize_skill_param_passwords(params, instance)
+        package_params_error = self._normalize_skill_package_params_for_update(request, params, instance)
+        if package_params_error is not None:
+            return package_params_error
         # F017: 仅允许写入显式白名单内的字段，杜绝把任意 request.data 键
         # 盲目 setattr 到模型（mass-assignment）。受保护字段（id/created_by/
         # domain/is_builtin 等）即便随请求传入也被忽略。
         for key in self.UPDATABLE_SKILL_FIELDS:
             if key in params and hasattr(instance, key):
                 setattr(instance, key, params[key])
+        # 使用组织不变式：显式传 usage_team，或仅改 team 时重新并入。
+        if "usage_team" in params or "team" in params:
+            instance.usage_team = merge_usage_team(instance.team, instance.usage_team)
         instance.updated_by = request.user.username
         instance.save()
+        sync_skill_channel_usage_teams(instance)
         # wiki_knowledge_bases 是 ManyToMany,Django 禁止直接 setattr 赋值,需在保存后用 set() 持久化关联。
         # 否则智能体选择的 Wiki 知识库不会入库(保存后刷新即丢失)。
         if "wiki_knowledge_bases" in params:
             instance.wiki_knowledge_bases.set(params.get("wiki_knowledge_bases") or [])
         log_operation(request, "update", "opspilot", f"编辑智能体: {instance.name}")
         return JsonResponse({"result": True})
+
+    @HasPermission("skill_setting-Edit")
+    @action(methods=["POST"], detail=True)
+    def authorize_usage_team(self, request, pk=None):
+        """授权使用组织：与 Bot.authorize_usage_team 对齐；变更后同步到所有渠道组副本。"""
+        obj: LLMSkill = self.get_object()
+        if not request.user.is_superuser:
+            current_team = self._validate_current_team_permission(request)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, obj, current_team, include_children=include_children)
+            if not has_permission:
+                msg = self.loader.get("error.permission_update_denied") if self.loader else "You do not have permission to update this instance"
+                return JsonResponse({"result": False, "message": msg})
+        requested = request.data.get("usage_team", []) or []
+        extra_orgs = [org for org in requested if org not in obj.team]
+        self._validate_org_field_permission(request, extra_orgs)
+        obj.usage_team = merge_usage_team(obj.team, requested)
+        obj.updated_by = request.user.username
+        obj.save(update_fields=["usage_team", "updated_by"])
+        sync_skill_channel_usage_teams(obj)
+        response = JsonResponse({"result": True, "data": {"usage_team": obj.usage_team}})
+        log_operation(request, "update", "opspilot", f"授权使用组织: {obj.name}")
+        return response
 
     @staticmethod
     def create_error_stream_response(error_message):
