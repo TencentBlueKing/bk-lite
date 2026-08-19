@@ -7,7 +7,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.job_mgmt.models import Target
+from apps.job_mgmt.models import Target, TargetTeamConcurrentUpdateError
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.views import target as target_views
 
@@ -66,6 +66,19 @@ class TestBuildSshTestFailureMessage:
     def test_merges_fallbacks(self):
         msg = target_views._build_ssh_test_failure_message({}, "err-detail", "stdout-detail")
         assert isinstance(msg, str) and msg
+
+
+@pytest.mark.unit
+def test_update_maps_concurrent_team_change_to_client_error():
+    view = target_views.TargetViewSet()
+    with patch(
+        "apps.core.utils.viewset_utils.AuthViewSet.update",
+        side_effect=TargetTeamConcurrentUpdateError("Target.team 已被并发修改，请刷新后重试"),
+    ):
+        response = view.update(SimpleNamespace())
+
+    assert response.status_code == 400
+    assert "刷新后重试" in response.data["detail"]
 
 
 # ----------------------------- HTTP ----------------------------- #

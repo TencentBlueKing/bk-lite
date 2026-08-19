@@ -27,4 +27,9 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.job_mgmt.tests.test_open_file_distribute_views::test_api_tenant_cannot_distribute_other_tenant_file",
         "apps.job_mgmt.tests.test_open_file_distribute_views::test_forged_team_is_rejected_without_side_effects",
     ],
+    "job-mgmt/targets-v2": [
+        "apps.job_mgmt.tests.test_open_file_distribute_views::test_target_list_v2_tenant_reads_only_own_targets",
+        "apps.job_mgmt.tests.test_open_file_distribute_views::test_target_list_v2_other_tenant_cannot_read_first_tenant_targets",
+        "apps.job_mgmt.tests.test_open_file_distribute_views::test_target_list_v2_rejects_forged_team",
+    ],
 }

@@ -419,9 +419,7 @@ def _run_file_distribute(data: dict, *, trusted_actor=None):
 def _validate_openapi_distribute_scope(file_keys, target_source, target_list, authorized_team_ids):
     """校验网关文件与目标均属于可信身份绑定组织。"""
     files = list(DistributionFile.objects.filter(file_key__in=file_keys))
-    if len({item.file_key for item in files}) != len(set(file_keys)) or any(
-        not is_team_authorized(item.team, authorized_team_ids) for item in files
-    ):
+    if len({item.file_key for item in files}) != len(set(file_keys)) or any(not is_team_authorized(item.team, authorized_team_ids) for item in files):
         return "部分文件不存在、已过期或无权访问该组织的文件"
 
     id_field = "target_id" if target_source == "manual" else "node_id"
@@ -431,19 +429,12 @@ def _validate_openapi_distribute_scope(file_keys, target_source, target_list, au
 
     if target_source == "manual":
         targets = list(Target.objects.filter(id__in=target_ids))
-        authorized = len(targets) == len(target_ids) and all(
-            is_team_authorized(item.team, authorized_team_ids) for item in targets
-        )
+        authorized = len(targets) == len(target_ids) and all(is_team_authorized(item.team, authorized_team_ids) for item in targets)
     else:
-        authorized = (
-            Node.objects.filter(
-                id__in=target_ids,
-                nodeorganization__organization__in=authorized_team_ids,
-            )
-            .distinct()
-            .count()
-            == len(target_ids)
-        )
+        authorized = Node.objects.filter(
+            id__in=target_ids,
+            nodeorganization__organization__in=authorized_team_ids,
+        ).distinct().count() == len(target_ids)
     if not authorized:
         return "部分目标不存在或无权访问该组织的目标"
     return None
@@ -478,8 +469,7 @@ def openapi_file_distribute(
     if scope_error:
         id_field = "target_id" if target_source == "manual" else "node_id"
         logger.warning(
-            "[openapi_file_distribute] scope rejected: user=%s domain=%s team=%s file_keys=%s "
-            "target_source=%s target_ids=%s reason=%s",
+            "[openapi_file_distribute] scope rejected: user=%s domain=%s team=%s file_keys=%s " "target_source=%s target_ids=%s reason=%s",
             (user_info or {}).get("user", ""),
             (user_info or {}).get("domain", ""),
             authorized_team_id,
@@ -624,11 +614,7 @@ def job_task_terminate(data=None, task_id=None, **kwargs):
                 task_id = int(normalized_task_id)
             except ValueError:
                 task_id = None
-    if (
-        isinstance(task_id, bool)
-        or not isinstance(task_id, int)
-        or not 1 <= task_id <= 2**63 - 1
-    ):
+    if isinstance(task_id, bool) or not isinstance(task_id, int) or not 1 <= task_id <= 2**63 - 1:
         return {"result": False, "message": "task_id 必须为正整数或其字符串形式"}
     if not caller_token:
         return {"result": False, "message": "caller_token 不能为空"}

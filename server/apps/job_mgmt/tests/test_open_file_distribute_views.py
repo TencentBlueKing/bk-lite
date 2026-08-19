@@ -11,12 +11,13 @@ from rest_framework.test import APIClient
 from apps.base.models import User, UserAPISecret
 from apps.job_mgmt.models import DistributionFile, JobExecution, Target
 from apps.node_mgmt.models import CloudRegion, Node, NodeOrganization
-from apps.system_mgmt.models import Group
+from apps.system_mgmt.models import Group, Menu, Role
 from apps.system_mgmt.models import User as SystemUser
 
 pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 URL = "/openapi/v1/job-mgmt/file-distribute"
+TARGET_LIST_V2_URL = "/openapi/v1/job-mgmt/targets-v2"
 
 
 @pytest.fixture
@@ -30,6 +31,18 @@ def tenant():
         domain=user.domain,
         group_list=[team.id],
     )
+    target_menu, _ = Menu.objects.get_or_create(
+        name="target-View",
+        app="job",
+        defaults={"display_name": "Target View", "url": "", "menu_type": "button"},
+    )
+    target_role, _ = Role.objects.update_or_create(
+        name="openapi-target-reader",
+        app="job",
+        defaults={"menu_list": [target_menu.id]},
+    )
+    system_user.role_list = [target_role.id]
+    system_user.save(update_fields=["role_list"])
     token = UserAPISecret.generate_api_secret()
     UserAPISecret.objects.create(
         username=user.username,
@@ -38,7 +51,12 @@ def tenant():
         team=team.id,
     )
     other_user = User.objects.create(username=user.username, domain="other.test.com")
-    SystemUser.objects.create(username=other_user.username, domain=other_user.domain, group_list=[other_team.id])
+    other_system_user = SystemUser.objects.create(
+        username=other_user.username,
+        domain=other_user.domain,
+        group_list=[other_team.id],
+        role_list=[target_role.id],
+    )
     other_token = UserAPISecret.generate_api_secret()
     UserAPISecret.objects.create(
         username=other_user.username,
@@ -53,6 +71,7 @@ def tenant():
         team=team.id,
     )
     target = Target.objects.create(name="web-01", ip="10.0.0.1", team=[team.id])
+    other_target = Target.objects.create(name="db-01", ip="10.0.0.2", team=[other_team.id])
     return SimpleNamespace(
         team=team,
         other_team=other_team,
@@ -61,8 +80,10 @@ def tenant():
         token=token,
         other_token=other_token,
         other_user=other_user,
+        other_system_user=other_system_user,
         file=file,
         target=target,
+        other_target=other_target,
     )
 
 
@@ -241,3 +262,87 @@ def test_rejects_uncontrolled_callback_without_side_effects(tenant):
     assert response.status_code == 400
     assert response.json()["code"] == "SCHEMA_INVALID"
     _assert_no_side_effects(mock_delay)
+
+
+def test_target_list_v2_tenant_reads_only_own_targets(tenant, monkeypatch):
+    monkeypatch.setenv("JOB_TARGET_LIST_V2_ENABLED", "true")
+
+    response = APIClient().post(TARGET_LIST_V2_URL, {"page_size": 100}, format="json", **_auth(tenant))
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert [item["target_id"] for item in data["items"]] == [tenant.target.id]
+    assert data["has_more"] is False
+    assert data["next_cursor"] is None
+
+
+def test_target_list_v2_other_tenant_cannot_read_first_tenant_targets(tenant, monkeypatch):
+    monkeypatch.setenv("JOB_TARGET_LIST_V2_ENABLED", "true")
+
+    response = APIClient().post(TARGET_LIST_V2_URL, {"page_size": 100}, format="json", **_other_auth(tenant))
+
+    assert response.status_code == 200
+    ids = [item["target_id"] for item in response.json()["data"]["items"]]
+    assert ids == [tenant.other_target.id]
+    assert tenant.target.id not in ids
+
+
+def test_target_list_v2_rejects_forged_team(tenant, monkeypatch):
+    monkeypatch.setenv("JOB_TARGET_LIST_V2_ENABLED", "true")
+
+    response = APIClient().post(
+        TARGET_LIST_V2_URL,
+        {"page_size": 20, "team": tenant.other_team.id},
+        format="json",
+        **_auth(tenant),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+def test_target_list_v2_is_disabled_by_default(tenant, monkeypatch):
+    monkeypatch.delenv("JOB_TARGET_LIST_V2_ENABLED", raising=False)
+
+    response = APIClient().post(TARGET_LIST_V2_URL, {}, format="json", **_auth(tenant))
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "BUSINESS_REJECTED"
+
+
+def test_target_list_v2_rejects_disabled_jwt_identity(tenant, monkeypatch):
+    import os
+
+    import jwt
+
+    from apps.system_mgmt.nats.common import _build_jwt_payload
+
+    monkeypatch.setenv("JOB_TARGET_LIST_V2_ENABLED", "true")
+    tenant.system_user.disabled = True
+    tenant.system_user.save(update_fields=["disabled"])
+    token = jwt.encode(
+        _build_jwt_payload(tenant.system_user.id),
+        key=os.environ["SECRET_KEY"],
+        algorithm="HS256",
+    )
+
+    response = APIClient().post(
+        TARGET_LIST_V2_URL,
+        {},
+        format="json",
+        HTTP_AUTHORIZATION=f"Bearer {token}",
+    )
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "AUTH_INVALID"
+
+
+def test_target_list_v2_rejects_archived_api_token_team_as_out_of_scope(tenant, monkeypatch):
+    monkeypatch.setenv("JOB_TARGET_LIST_V2_ENABLED", "true")
+    tenant.team.is_delete = True
+    tenant.team.save(update_fields=["is_delete"])
+
+    response = APIClient().post(TARGET_LIST_V2_URL, {}, format="json", **_auth(tenant))
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "TEAM_OUT_OF_SCOPE"

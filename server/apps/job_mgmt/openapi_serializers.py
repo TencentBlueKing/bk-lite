@@ -51,3 +51,13 @@ class FileDistributeRequestSerializer(OpenAPIRequestSerializer):
         if errors:
             raise serializers.ValidationError({"target_list": errors})
         return attrs
+
+
+class TargetListV2RequestSerializer(OpenAPIRequestSerializer):
+    """统一网关目标列表 v2 请求；调用方身份与团队只由网关注入。"""
+
+    name = serializers.CharField(required=False, allow_blank=True, max_length=128, default="")
+    ip = serializers.CharField(required=False, allow_blank=True, max_length=45, default="")
+    os_type = serializers.ChoiceField(required=False, allow_blank=True, choices=["", "linux", "windows"], default="")
+    page_size = serializers.IntegerField(required=False, min_value=1, max_value=100, default=20)
+    cursor = serializers.IntegerField(required=False, min_value=1, allow_null=True, default=None)
