@@ -1,5 +1,4 @@
 [[inputs.net_response]]
-    startup_error_behavior = "retry"
     protocol = "tcp"
     address = "{% if ':' in host %}[{{ host }}]{% else %}{{ host }}{% endif %}:{{ port }}"
     timeout = "{{ timeout | default(5) }}s"

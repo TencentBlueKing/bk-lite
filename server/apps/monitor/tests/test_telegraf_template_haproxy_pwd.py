@@ -187,8 +187,8 @@ def test_unrelated_fields_intact(ctrl, template_text):
     )
     _, cfg = _render(ctrl, template_text, context)
 
-    # [[inputs.haproxy]] 顶层字段保留
-    assert cfg["startup_error_behavior"] == "retry"
+    # [[inputs.haproxy]] 顶层字段保留（startup_error_behavior 已移除：Telegraf 1.29.5 不支持）
+    assert "startup_error_behavior" not in cfg
     assert cfg["keep_field_names"] is True
     assert cfg["interval"] == "30s"
 

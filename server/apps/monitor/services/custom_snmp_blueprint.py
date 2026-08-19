@@ -19,7 +19,6 @@ DEFAULT_CUSTOM_SNMP_COLLECT_SNIPPET = """# [[inputs.snmp.field]]
 
 DEFAULT_CUSTOM_SNMP_CHILD_TEMPLATE = (
     """[[inputs.snmp]]
-    startup_error_behavior = "retry"
     interval = "{{ interval }}s"
     agents = ["udp://{{ ip }}:{{ port }}"]
 {% if version == 2 %}

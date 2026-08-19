@@ -133,7 +133,6 @@ DEFAULT_PULL_UI_TEMPLATE = {
 
 
 DEFAULT_PULL_CHILD_TEMPLATE = """[[inputs.prometheus]]
-    startup_error_behavior = "retry"
     urls = ["{{ server_url }}"]
     interval = "{{ interval }}s"
     timeout = "{{ interval }}s"

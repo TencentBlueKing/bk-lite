@@ -1,5 +1,4 @@
 [[inputs.mysql]]
-    startup_error_behavior = "retry"
     servers = ["{{ username }}:${PASSWORD__{{ config_id }}}@tcp({{ host }}:{{ port }})/?tls=false"]
     metric_version = 2
     interval = "{{ interval }}s"
@@ -9,7 +8,6 @@
     gather_user_statistics = false
     gather_innodb_metrics = true
     gather_slave_status = true
-    gather_replica_status = false
     gather_binary_logs = true
     gather_global_variables = true
     gather_table_schema = false

@@ -3,7 +3,6 @@
 {% set _minio_auth_type = auth_type | default("public", true) %}
 {% set _minio_extensions = metric_extensions | default(["bucket"]) %}
 [[inputs.prometheus]]
-    startup_error_behavior = "retry"
     urls = [
 {% if _minio_metrics_version == "v3" %}
         "{{ _minio_scheme }}://{{ host }}:{{ port }}/minio/metrics/v3/api/requests",

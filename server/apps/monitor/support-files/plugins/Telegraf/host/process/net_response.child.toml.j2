@@ -1,7 +1,6 @@
 {% if ports %}
 {% for port in ports %}
 [[inputs.net_response]]
-    startup_error_behavior = "retry"
     protocol = "tcp"
     address = "127.0.0.1:{{ port }}"
     timeout = "5s"

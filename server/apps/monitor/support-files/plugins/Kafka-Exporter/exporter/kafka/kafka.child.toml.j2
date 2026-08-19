@@ -1,5 +1,4 @@
 [[inputs.prometheus]]
-    startup_error_behavior = "retry"
     urls = ["http://127.0.0.1:${LISTEN_PORT__{{ config_id }}}/metrics"]
     interval = "{{ interval }}s"
     timeout = "{{ interval }}s"
