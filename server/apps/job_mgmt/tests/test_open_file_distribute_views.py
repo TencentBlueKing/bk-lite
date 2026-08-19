@@ -23,7 +23,8 @@ URL = "/openapi/v1/job-mgmt/file-distribute"
 def tenant():
     team = Group.objects.create(name="trusted-team")
     other_team = Group.objects.create(name="other-team")
-    user = User.objects.create(username="file_app", domain="test.com")
+    username = "trusted-file-app-" + "x" * 83
+    user = User.objects.create(username=username, domain="test.com")
     system_user = SystemUser.objects.create(
         username=user.username,
         domain=user.domain,
@@ -102,8 +103,8 @@ def test_api_tenant_can_distribute_own_file(tenant):
     assert response.status_code == 200
     execution = JobExecution.objects.get(id=response.json()["data"]["task_id"])
     assert execution.team == [tenant.team.id]
-    assert execution.created_by == tenant.user.username
-    assert execution.updated_by == tenant.user.username
+    assert execution.created_by == tenant.user.username[:32]
+    assert execution.updated_by == tenant.user.username[:32]
     assert execution.executor_user == tenant.user.username
     assert execution.domain == tenant.user.domain
     assert execution.updated_by_domain == tenant.user.domain

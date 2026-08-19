@@ -233,6 +233,7 @@ class TestJobFileDistribute:
             "target_list": [{"node_id": "n1", "name": "h1", "ip": "1.1.1.1", "os": "linux", "cloud_region_id": "r1"}],
             "target_path": "/tmp/",
             "team": [1],
+            "actor": {"user": "forged", "domain": "evil.example"},
         }
         with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_path") as mock_check, patch(
             "apps.job_mgmt.nats_api.distribute_files_task.delay", side_effect=ConnectionError("broker unavailable")
@@ -244,6 +245,9 @@ class TestJobFileDistribute:
         execution = JobExecution.objects.get(name="dispatch-failed-file")
         assert execution.status == ExecutionStatus.FAILED
         assert execution.celery_task_id == ""
+        assert execution.created_by == "api"
+        assert execution.executor_user == "api"
+        assert execution.domain == "domain.com"
 
     def test_empty_file_ids(self):
         from apps.job_mgmt.nats_api import job_file_distribute

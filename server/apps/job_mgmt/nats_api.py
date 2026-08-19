@@ -310,7 +310,7 @@ def job_file_distribute(data: dict):
     return _run_file_distribute(data)
 
 
-def _run_file_distribute(data: dict):
+def _run_file_distribute(data: dict, *, trusted_actor=None):
     """
     文件分发（NATS 开放接口）
 
@@ -344,7 +344,7 @@ def _run_file_distribute(data: dict):
     callback_type = data.get("callback_type", CallbackType.WEB)
     callback_url = data.get("callback_url")
     callback_subject = data.get("callback_subject")
-    actor = data.get("actor") or {}
+    actor = trusted_actor if isinstance(trusted_actor, dict) else {}
     actor_name = actor.get("user") or "api"
     actor_domain = actor.get("domain") or "domain.com"
 
@@ -401,8 +401,10 @@ def _run_file_distribute(data: dict):
         callback_url=callback_url,
         callback_subject=callback_subject,
         executor_user=actor_name,
-        created_by=actor_name,
-        updated_by=actor_name,
+        # 通用 MaintainerInfo 字段历史上限为 32；完整可信身份保存在
+        # executor_user + domain，维护人列仅作兼容投影，避免合法长账号落库失败。
+        created_by=actor_name[:32],
+        updated_by=actor_name[:32],
         domain=actor_domain,
         updated_by_domain=actor_domain,
     )
@@ -498,11 +500,11 @@ def openapi_file_distribute(
             "overwrite_strategy": overwrite_strategy,
             "timeout": timeout,
             "team": [authorized_team_id],
-            "actor": user_info or {},
             # 新入口暂不接受调用方控制的出站回调；调用方通过查询接口获取结果。
             "callback_type": CallbackType.WEB,
             "callback_url": "",
-        }
+        },
+        trusted_actor=user_info,
     )
     if not result.get("result"):
         return result
