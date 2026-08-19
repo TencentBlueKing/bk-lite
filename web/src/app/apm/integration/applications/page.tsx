@@ -200,9 +200,9 @@ export default function ApmApplicationsPage() {
         open={drawerOpen}
         title={editing ? t('apm.applications.edit', '编辑应用') : t('apm.applications.create', '创建应用')}
         width="min(480px, 100vw)"
-        styles={{ body: { maxHeight: 'calc(100vh - 150px)', overflowY: 'auto' } }}
-        extra={(
-          <Space>
+        styles={{ body: { overflowY: 'auto' } }}
+        footer={(
+          <Space className="flex w-full justify-end">
             <Button disabled={submitting} onClick={() => setDrawerOpen(false)}>{t('common.cancel', '取消')}</Button>
             <Button form="apm-application-form" htmlType="submit" loading={submitting} type="primary">
               {editing ? t('common.save', '保存') : t('common.create', '创建')}

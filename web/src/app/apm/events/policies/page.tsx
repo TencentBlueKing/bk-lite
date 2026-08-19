@@ -26,10 +26,14 @@ function formatDateTime(value: string | null | undefined) {
   return value ? dayjs(value).format('YYYY-MM-DD HH:mm') : '--';
 }
 
-function getLatestExecutionAt(policy: ApmPolicy) {
-  return [policy.state?.last_succeeded_at, policy.state?.last_failed_at]
-    .filter((value): value is string => Boolean(value))
-    .sort((left, right) => dayjs(right).valueOf() - dayjs(left).valueOf())[0];
+function formatExecutionTime(policy: ApmPolicy) {
+  const failedAt = policy.state?.last_failed_at;
+  const succeededAt = policy.state?.last_succeeded_at;
+  const failed = failedAt && (!succeededAt || dayjs(failedAt).isAfter(succeededAt));
+  if (failed) {
+    return { label: `评估失败 ${formatDateTime(failedAt)}`, failed: true };
+  }
+  return { label: formatDateTime(succeededAt), failed: false };
 }
 
 export default function ApmPolicyListPage() {
@@ -118,12 +122,17 @@ export default function ApmPolicyListPage() {
     {
       title: t('apm.policies.executionTime', '执行时间'),
       width: APM_TABLE_COLUMN_WIDTHS.timestamp,
-      render: (_, item) => (
-        <span className={styles.policyTimeCell}>
-          <ClockCircleOutlined aria-hidden="true" />
-          {formatDateTime(getLatestExecutionAt(item))}
-        </span>
-      ),
+      render: (_, item) => {
+        const execution = formatExecutionTime(item);
+        return (
+          <span className={styles.policyTimeCell}>
+            <ClockCircleOutlined aria-hidden="true" />
+            <Typography.Text type={execution.failed ? 'warning' : undefined}>
+              {execution.label}
+            </Typography.Text>
+          </span>
+        );
+      },
     },
     {
       title: '启停',

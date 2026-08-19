@@ -4,6 +4,7 @@ from apps.apm.services.catalog import DjangoTelemetryCatalogService
 from apps.apm.services.dashboard import ApmDashboardService
 from apps.apm.services.deliveries import DeliveryStateConflict, DjangoNotificationDeliveryService
 from apps.apm.services.events import DjangoApmEventReader
+from apps.apm.services.metric_snapshots import ApmAlertMetricSnapshotStore
 from apps.apm.services.integration_configuration import DjangoIntegrationConfigurationService
 from apps.apm.services.issues import DjangoTelemetryIssueService
 from apps.apm.services.notifications import NotificationChannelDirectory
@@ -18,6 +19,7 @@ __all__ = [
     "DjangoIntegrationConfigurationService",
     "DjangoApmAlertService",
     "ApmEventSnapshotStore",
+    "ApmAlertMetricSnapshotStore",
     "DjangoTelemetryIssueService",
     "DjangoApmApplicationService",
     "ApmDashboardService",

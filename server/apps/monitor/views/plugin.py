@@ -73,23 +73,42 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
     )
 
     @staticmethod
-    def _parent_prefetch():
-        # 一次 Prefetch 把「父监控对象」(parent__isnull=True) 全部拉到内存,
-        # 缓存到 plugin.parent_objects(to_attr),供下面两个消费者复用:
-        #   1. serializer.get_parent_monitor_object  — 取第一个父对象 id
-        #   2. 本视图 — 拼 id -> obj 字典,供 result['parent_object_display_name'] 用
+    def _entry_context_prefetch():
+        # 一次 Prefetch 拉取插件关联对象及其父对象，既覆盖正常的根对象绑定，
+        # 也兼容存量复合插件只绑定派生对象的情况。
         return Prefetch(
             "monitor_object",
-            queryset=MonitorObject.objects.filter(parent__isnull=True),
-            to_attr="parent_objects",
+            queryset=MonitorObject.objects.select_related("parent", "type", "parent__type"),
+            to_attr="entry_context_objects",
         )
+
+    @staticmethod
+    def _filter_visible_entry_plugins(queryset):
+        """隐藏入口对象时，不再向集成列表暴露对应插件。
+
+        未绑定对象的存量插件保持原有可查询行为；已绑定插件只有在根对象可见时
+        才能作为接入入口。额外校验关联对象自身可见性，兼容级联可见性落地前
+        可能存在的父子状态不一致数据。
+        """
+        return queryset.filter(
+            Q(monitor_object__isnull=True)
+            | Q(
+                monitor_object__is_visible=True,
+                monitor_object__parent__isnull=True,
+            )
+            | Q(
+                monitor_object__is_visible=True,
+                monitor_object__parent__is_visible=True,
+            )
+        ).distinct()
 
     @staticmethod
     def _build_parent_obj_by_id(plugins) -> dict:
         parent_obj_by_id: dict = {}
         for plugin in plugins:
-            for obj in getattr(plugin, "parent_objects", []):
-                parent_obj_by_id[obj.id] = obj
+            parent = MonitorPluginSerializer.get_parent_monitor_object_instance(plugin)
+            if parent is not None:
+                parent_obj_by_id[parent.id] = parent
         return parent_obj_by_id
 
     @classmethod
@@ -112,6 +131,8 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
                 | Q(description__icontains=kw)
                 | Q(monitor_object__parent__isnull=True, monitor_object__display_name__icontains=kw)
                 | Q(monitor_object__parent__isnull=True, monitor_object__name__icontains=kw)
+                | Q(monitor_object__parent__display_name__icontains=kw)
+                | Q(monitor_object__parent__name__icontains=kw)
             ).values_list("id", flat=True)
         )
 
@@ -167,19 +188,28 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
             parent_id = result.get("parent_monitor_object")
             parent_obj = parent_obj_by_id.get(parent_id) if parent_id is not None else None
             if parent_obj is not None:
-                result["parent_object_display_name"] = parent_obj.display_name or parent_obj.name
+                parent_display_name = parent_obj.display_name or parent_obj.name
+                result["parent_monitor_object_name"] = parent_obj.name
+                result["parent_monitor_object_display_name"] = parent_display_name
+                result["parent_monitor_object_icon"] = parent_obj.icon
+                result["parent_object_display_name"] = parent_display_name
             else:
+                result["parent_monitor_object_name"] = ""
+                result["parent_monitor_object_display_name"] = ""
+                result["parent_monitor_object_icon"] = ""
                 result["parent_object_display_name"] = ""
         return results
 
     def _serialize_and_enrich(self, queryset, lan):
-        plugins = list(queryset.prefetch_related("monitor_object", self._parent_prefetch()))
+        plugins = list(queryset.prefetch_related(self._entry_context_prefetch()))
         results = self.get_serializer(plugins, many=True).data
         parent_obj_by_id = self._build_parent_obj_by_id(plugins)
         return self._enrich_plugin_results(results, lan, parent_obj_by_id)
 
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset()).order_by("id")
+        queryset = self._filter_visible_entry_plugins(
+            self.filter_queryset(self.get_queryset())
+        ).order_by("id")
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
 
         keyword = (request.query_params.get("keyword") or request.query_params.get("name") or "").strip()

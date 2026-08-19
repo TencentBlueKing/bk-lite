@@ -876,14 +876,14 @@ function AlertsList() {
  *  - 头部:LevelTag + 状态 + 度量 + 标题
  *  - 元信息行:服务/端点/版本/规则/触发时间
  *  - Tabs:告警 | 事件
- *  - 告警 tab:对齐 monitor Information(Descriptions + 触发时快照图 + 关闭按钮)
+ *  - 告警 tab:对齐 monitor Information(Descriptions + 告警指标快照图 + 关闭按钮)
  *  - 事件 tab:对齐 monitor(热力图 + 简单时间轴列表,只展示该告警关联的事件)
  * ============================================================ */
 
 /**
  * 告警 tab 内容(对齐 monitor Information)
  *  - Descriptions 2 列带边框(时间/级别/首次告警时间/告警信息/资产类型/资产/资产组/策略名/通知/操作人/通知人)
- *  - 触发时快照图(告警前后窗口折线图,带阈值线)
+ *  - 告警指标快照图(每次策略扫描一个点,带阈值线)
  *  - 关闭告警按钮(status==='new' 可用)
  */
 function AlertTabContent({ alert: a }: { alert: EnrichedAlert }) {
@@ -979,7 +979,7 @@ function AlertTabContent({ alert: a }: { alert: EnrichedAlert }) {
         </Button>
       </div>
 
-      {/* 触发时快照图(对齐 monitor LineChart) */}
+      {/* 告警指标快照图(对齐 monitor 每次策略扫描的判定快照) */}
       <div
         style={{
           ...surfaceCardStyle,
@@ -988,9 +988,9 @@ function AlertTabContent({ alert: a }: { alert: EnrichedAlert }) {
         }}
       >
         <Title level={5} style={{ margin: 0, marginBottom: 4 }}>
-          触发时快照
+          告警指标快照
           <Text type="secondary" style={{ fontSize: 11, fontWeight: 400, marginLeft: 8 }}>
-            告警前后 1 小时 · {METRIC_LABEL[a.metric]}({METRIC_UNIT[a.metric]})
+            每点一次策略扫描 · 检测频率 1m · {METRIC_LABEL[a.metric]}({METRIC_UNIT[a.metric]})
           </Text>
         </Title>
         <div style={{ height: 220, position: 'relative' }}>
@@ -1002,8 +1002,8 @@ function AlertTabContent({ alert: a }: { alert: EnrichedAlert }) {
 }
 
 /**
- * 触发时快照图(SVG 自绘,告警前后 1 小时)
- * 折线 + 阈值线 + 触发点标红
+ * 告警指标快照图(SVG 自绘,每点一次策略扫描)
+ * 评估值折线 + 当时阈值线 + 生命周期事件点
  */
 function SnapshotLineChart({
   metric,
@@ -1012,7 +1012,7 @@ function SnapshotLineChart({
   metric: AlertMetric;
   threshold: string;
 }) {
-  // mock 60 个数据点(告警前 30 + 告警后 30,每点 1 分钟)
+  // mock 60 次告警生命周期评估(每点 1 分钟)
   const points = React.useMemo(() => {
     const arr: { x: number; y: number }[] = [];
     const th = Number(threshold);
@@ -1022,16 +1022,16 @@ function SnapshotLineChart({
       metric === 'p99' ? 320 :
       180;
     for (let i = 0; i < 60; i += 1) {
-      // 告警前稳定,告警时(i=30)飙升,告警后慢慢回落
+      // 从触发开始持续异常，随后回落并恢复。
       let v: number;
-      if (i < 25) {
-        v = baseline + Math.sin(i * 0.3) * 8 + (i % 4) * 2;
-      } else if (i < 32) {
-        v = baseline + (i - 25) * 18 + Math.random() * 10;
-      } else if (i < 45) {
-        v = th * 1.4 + (Math.random() - 0.5) * 30;
+      if (i < 12) {
+        v = th * 1.35 + Math.sin(i * 0.6) * th * 0.05;
+      } else if (i < 38) {
+        v = th * 1.18 + Math.sin(i * 0.4) * th * 0.08;
+      } else if (i < 48) {
+        v = th * 1.18 - ((i - 38) / 10) * (th * 1.18 - baseline);
       } else {
-        v = baseline * 1.2 + (i - 45) * 4 + (Math.random() - 0.5) * 8;
+        v = baseline + Math.sin(i * 0.4) * baseline * 0.05;
       }
       arr.push({ x: i, y: v });
     }
@@ -1072,16 +1072,16 @@ function SnapshotLineChart({
           </g>
         );
       })}
-      {/* 告警时段背景(30-45) */}
+      {/* 活跃告警时段背景 */}
       <rect
-        x={toX(30)}
+        x={toX(0)}
         y={PAD_T}
-        width={toX(45) - toX(30)}
+        width={toX(48) - toX(0)}
         height={chartH}
         fill={`${TOKENS.danger}10`}
       />
-      <text x={toX(37.5)} y={PAD_T + 12} textAnchor="middle" fontSize={10} fill={TOKENS.danger}>
-        告警时段
+      <text x={toX(24)} y={PAD_T + 12} textAnchor="middle" fontSize={10} fill={TOKENS.danger}>
+        活跃告警
       </text>
       {/* 阈值线 */}
       <line
@@ -1099,14 +1099,14 @@ function SnapshotLineChart({
       {/* 面积 + 折线 */}
       <path d={areaD} fill={`${TOKENS.primary}15`} />
       <path d={pathD} fill="none" stroke={TOKENS.primary} strokeWidth={1.5} />
-      {/* 触发点 */}
-      <circle cx={toX(30)} cy={toY(points[30].y)} r={4} fill={TOKENS.danger} stroke="#fff" strokeWidth={2} />
+      {/* 触发事件点 */}
+      <circle cx={toX(0)} cy={toY(points[0].y)} r={4} fill={TOKENS.danger} stroke="#fff" strokeWidth={2} />
       {/* X 轴标签 */}
-      {[-30, -20, -10, 0, 10, 20, 30].map((offset, i) => {
-        const x = toX(30 + offset);
+      {[0, 10, 20, 30, 40, 50, 59].map((offset, i) => {
+        const x = toX(offset);
         return (
           <text key={i} x={x} y={H - 6} textAnchor="middle" fontSize={10} fill={TOKENS.textTertiary}>
-            {offset === 0 ? '触发' : `${offset > 0 ? '+' : ''}${offset}m`}
+            {offset === 0 ? '触发' : `+${offset}m`}
           </text>
         );
       })}

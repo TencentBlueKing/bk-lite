@@ -25,11 +25,6 @@ const policy = {
   recover_after: 3,
   no_data_after: null,
   no_data_severity: '' as const,
-  comparator: 'gt' as const,
-  threshold: '500',
-  duration_window: 5,
-  recovery_window: 3,
-  severity: 'warning' as const,
   notification_targets: [],
   is_enabled: true,
   state: {
@@ -96,6 +91,21 @@ describe('APM 策略列表', () => {
     expect(screen.queryByRole('columnheader', { name: '端点 / 版本' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '告警条件' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '状态' })).toBeNull();
+  });
+
+  it('最近评估失败时不把失败显示成普通执行时间', async () => {
+    api.getPolicies.mockResolvedValue([
+      {
+        ...policy,
+        state: {
+          ...policy.state,
+          last_succeeded_at: '2026-08-14T01:00:00Z',
+          last_failed_at: '2026-08-14T02:10:00Z',
+        },
+      },
+    ]);
+    renderWithApmIntl(<ApmPoliciesPage />);
+    expect(await screen.findByText(/评估失败/)).not.toBeNull();
   });
 
   it('新建和编辑使用独立路由，启停只保留在列表', async () => {

@@ -1,8 +1,9 @@
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.utils.k8s_image_registry import build_kubectl_install_command
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.services.infra import InfraService
-from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
@@ -24,9 +25,7 @@ class ManualCollectService:
             return
         flow_only_fields = sorted(cls.FLOW_ONLY_FIELDS.intersection(data))
         if flow_only_fields:
-            raise ValidationAppException(
-                f"Use flow_asset for flow asset fields: {', '.join(flow_only_fields)}"
-            )
+            raise ValidationAppException(f"Use flow_asset for flow asset fields: {', '.join(flow_only_fields)}")
 
     @staticmethod
     def check_collect_status(object_id, instance_id) -> bool:
@@ -64,7 +63,7 @@ class ManualCollectService:
         """
         为手动采集实例子对象创建分组规则
         """
-        rule_ids = InstanceConfigService.create_default_rule(
+        InstanceConfigService.create_default_rule(
             monitor_object_id,
             instance_id,
             organization_ids,
@@ -102,7 +101,11 @@ class ManualCollectService:
         return {"instance_id": instance_id}
 
     @staticmethod
-    def generate_install_command(instance_id: str, cloud_region_id: str) -> str:
+    def generate_install_command(
+        instance_id: str,
+        cloud_region_id: str,
+        image_registry_prefix: str | None = None,
+    ) -> str:
         """
         生成 Kubernetes 安装命令
 
@@ -125,15 +128,16 @@ class ManualCollectService:
             raise BaseAppException(f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}")
 
         # 调用 InfraService 生成限时令牌
-        token = InfraService.generate_install_token(cluster_name, cloud_region_id)
+        token = InfraService.generate_install_token(
+            cluster_name,
+            cloud_region_id,
+            image_registry_prefix,
+        )
 
         # 构造完整的 API URL（使用 open_api 前缀，统一开放 API 路由风格）
         api_url = f"{server_url.rstrip('/')}/api/v1/monitor/open_api/infra/render/"
 
-        # 构造 curl 命令，使用令牌而不是直接传递参数
-        # 添加 -k 参数跳过 SSL 证书验证（针对自签名证书或内网环境）
-        install_command = f"curl -sSLk -X POST -H 'Content-Type: application/json' {api_url} -d '{{\"token\":\"{token}\"}}' | kubectl apply -f -"
-        return install_command
+        return build_kubectl_install_command(api_url, token)
 
     @staticmethod
     def get_install_config(data: dict) -> str:

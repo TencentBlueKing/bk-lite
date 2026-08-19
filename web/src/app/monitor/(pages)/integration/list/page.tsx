@@ -19,7 +19,6 @@ import { getIconByObjectName, getPluginBrandIcon } from '@/app/monitor/utils/com
 import { useRouter } from 'next/navigation';
 import {
   ModalRef,
-  TableDataItem,
   TreeItem,
   TreeSortData,
   ObjectItem,
@@ -45,6 +44,10 @@ import {
 } from '@/app/monitor/utils/monitorObjectCache';
 import { unwrapMonitorPluginList } from '@/app/monitor/utils/monitorPluginList';
 import { invalidateMonitorPluginCache } from '@/app/monitor/utils/monitorPluginCache';
+import {
+  buildIntegrationConfigureUrl,
+  resolveIntegrationEntryContext
+} from '@/app/monitor/utils/integrationEntryContext';
 
 const { confirm } = Modal;
 
@@ -373,26 +376,18 @@ const Integration = () => {
   };
 
   const linkToDetial = (app: ObjectItem) => {
-    const parentObject: any = objects.find(
-      (item) => sameMonitorId(item.id, app.parent_monitor_object)
-    );
-    const objectInfo = parentObject || {};
-    if (objectInfo.id) {
-      objectInfo.icon = objectInfo.icon || OBJECT_DEFAULT_ICON;
+    const result = resolveIntegrationEntryContext(app, objects);
+    if (!result.ok) {
+      message.error(t('monitor.integrations.missingEntryContext'));
+      return;
     }
-    const row: TableDataItem = {
-      id: objectInfo.id || '',
-      icon: getPluginBrandIcon(app?.name) || objectInfo.icon || OBJECT_DEFAULT_ICON,
-      name: objectInfo.name || '',
-      plugin_name: app?.name,
-      plugin_id: app?.id,
-      template_type: app?.template_type,
-      plugin_display_name: app?.display_name,
-      plugin_description: app?.display_description || '--'
-    };
-    const params = new URLSearchParams(row);
-    const targetUrl = `/monitor/integration/list/detail/configure?${params.toString()}`;
-    router.push(targetUrl);
+    const icon = getPluginBrandIcon(app.name) || result.context.objectIcon;
+    router.push(
+      buildIntegrationConfigureUrl(
+        { ...result.context, objectIcon: icon },
+        OBJECT_DEFAULT_ICON
+      )
+    );
   };
 
   const onAppClick = (app: ObjectItem) => {
@@ -521,6 +516,7 @@ const Integration = () => {
                             </h2>
                             <Tag className="mt-[4px]">
                               {parentObject?.display_name ||
+                                app.parent_monitor_object_display_name ||
                                 app.collect_type ||
                                 '--'}
                             </Tag>

@@ -226,6 +226,11 @@ export interface ObjectItem {
   type: string;
   plugin_name?: string;
   plugin_id?: number;
+  parent_monitor_object?: number | string | null;
+  parent_monitor_object_name?: string;
+  parent_monitor_object_display_name?: string;
+  parent_monitor_object_icon?: string;
+  parent_object_display_name?: string;
   display_description?: string;
   description: string;
   display_name?: string;

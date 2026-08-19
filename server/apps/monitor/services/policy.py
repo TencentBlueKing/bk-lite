@@ -12,16 +12,15 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorObject, MonitorPlugin, PolicyTemplate
 from apps.monitor.models.monitor_metrics import Metric
-
 
 ARCHIVE_FORMAT = "bk-lite-monitor-policy-templates"
 ARCHIVE_SCHEMA_VERSION = 1
 MAX_ARCHIVE_BYTES = 10 * 1024 * 1024
 MAX_ARCHIVE_FILES = 100
+MAX_ARCHIVE_TEMPLATES = MAX_ARCHIVE_FILES - 1
 MAX_UNCOMPRESSED_BYTES = 20 * 1024 * 1024
 MAX_TEMPLATE_BYTES = 2 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 100
@@ -36,14 +35,10 @@ class PolicyService:
     @staticmethod
     def build_builtin_key(object_name, plugin_name, template):
         explicit_key = str(template.get("key") or "").strip()
-        identity = explicit_key or str(
-            template.get("name") or template.get("alert_name") or template.get("metric_name") or ""
-        ).strip()
+        identity = explicit_key or str(template.get("name") or template.get("alert_name") or template.get("metric_name") or "").strip()
         if not identity:
             raise BaseAppException("内置策略模板缺少 name")
-        digest = hashlib.sha256(
-            f"{object_name}\0{plugin_name}\0{identity}".encode("utf-8")
-        ).hexdigest()[:24]
+        digest = hashlib.sha256(f"{object_name}\0{plugin_name}\0{identity}".encode("utf-8")).hexdigest()[:24]
         return f"builtin:{digest}"
 
     @staticmethod
@@ -74,12 +69,7 @@ class PolicyService:
             for raw_template in templates:
                 if not isinstance(raw_template, dict):
                     raise BaseAppException(f"{object_name}/{plugin_name} 包含非法模板")
-                name = str(
-                    raw_template.get("name")
-                    or raw_template.get("alert_name")
-                    or raw_template.get("metric_name")
-                    or ""
-                ).strip()
+                name = str(raw_template.get("name") or raw_template.get("alert_name") or raw_template.get("metric_name") or "").strip()
                 if not name:
                     raise BaseAppException(f"{object_name}/{plugin_name} 的模板缺少 name")
                 key = PolicyService.build_builtin_key(object_name, plugin_name, raw_template)
@@ -116,67 +106,19 @@ class PolicyService:
 
     @staticmethod
     def sync_builtin_policy_templates(documents):
-        parsed_by_pair = {}
-        failed_pairs = set()
-        for data in documents:
-            pair = None
-            try:
-                pair = PolicyService._extract_builtin_pair(data)
-                items = PolicyService._normalize_builtin_documents([data])
-            except Exception as exc:
-                if pair is None:
-                    logger.warning(
-                        "跳过无法识别的策略文档，不影响其它内置模板: %s: %s",
-                        type(exc).__name__,
-                        exc,
-                    )
-                else:
-                    failed_pairs.add(pair)
-                    logger.warning(
-                        "跳过策略文档 %s/%s，保留该对象对上一次模板: %s: %s",
-                        pair[0],
-                        pair[1],
-                        type(exc).__name__,
-                        exc,
-                    )
-                continue
-            if pair in failed_pairs:
-                continue
-            if pair in parsed_by_pair:
-                failed_pairs.add(pair)
-                parsed_by_pair.pop(pair, None)
-                logger.warning("内置策略模板重复定义: %s/%s，跳过该对象对以避免误删", pair[0], pair[1])
-                continue
-            parsed_by_pair[pair] = items
-        for pair in failed_pairs:
-            parsed_by_pair.pop(pair, None)
-
-        object_names = {pair[0] for pair in parsed_by_pair}
-        plugin_names = {pair[1] for pair in parsed_by_pair}
+        normalized = PolicyService._normalize_builtin_documents(documents)
+        object_names = {item["object_name"] for item in normalized}
+        plugin_names = {item["plugin_name"] for item in normalized}
         objects = {item.name: item for item in MonitorObject.objects.filter(name__in=object_names)}
         plugins = {item.name: item for item in MonitorPlugin.objects.filter(name__in=plugin_names)}
-        ready_pairs = {}
-        for pair, items in parsed_by_pair.items():
-            object_name, plugin_name = pair
-            if object_name not in objects or plugin_name not in plugins:
-                logger.warning(
-                    "跳过策略文档，监控对象或插件不存在: %s/%s",
-                    object_name,
-                    plugin_name,
-                )
-                continue
-            ready_pairs[pair] = items
+        missing_objects = sorted(object_names - objects.keys())
+        missing_plugins = sorted(plugin_names - plugins.keys())
+        if missing_objects:
+            raise BaseAppException(f"监控对象不存在: {', '.join(missing_objects)}")
+        if missing_plugins:
+            raise BaseAppException(f"监控插件不存在: {', '.join(missing_plugins)}")
 
-        if not ready_pairs:
-            logger.warning("没有可对账的有效内置策略文档，保留上一次有效内置模板")
-            return {"created_count": 0, "updated_count": 0, "deleted_count": 0}
-
-        normalized = [item for items in ready_pairs.values() for item in items]
         expected_keys = {item["key"] for item in normalized}
-        pair_ids = {
-            (objects[object_name].id, plugins[plugin_name].id)
-            for object_name, plugin_name in ready_pairs
-        }
         existing = {
             template.key: template
             for template in PolicyTemplate.objects.filter(
@@ -219,21 +161,14 @@ class PolicyService:
                 current.updated_at = now
                 to_update.append(current)
             if to_create:
-                PolicyTemplate.objects.bulk_create(
-                    to_create, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE
-                )
+                PolicyTemplate.objects.bulk_create(to_create, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
             if to_update:
                 PolicyTemplate.objects.bulk_update(
                     to_update,
                     ["name", "description", "config", "monitor_object", "plugin"],
                     batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE,
                 )
-            stale_ids = [
-                template.id
-                for template in existing.values()
-                if (template.monitor_object_id, template.plugin_id) in pair_ids
-                and template.key not in expected_keys
-            ]
+            stale_ids = [template.id for template in existing.values() if template.key not in expected_keys]
             deleted_count = 0
             if stale_ids:
                 deleted_count, _ = PolicyTemplate.objects.filter(id__in=stale_ids).delete()
@@ -372,30 +307,30 @@ class PolicyService:
             "plugin_name": template.plugin.name,
             "plugin_display_name": template.plugin.display_name or template.plugin.name,
             "plugin_collector": template.plugin.collector,
-            "template_group": f"{template.monitor_object.display_name or template.monitor_object.name}（{template.plugin.display_name or template.plugin.name}）",
+            "template_group": (
+                f"{template.monitor_object.display_name or template.monitor_object.name}" f"（{template.plugin.display_name or template.plugin.name}）"
+            ),
         }
 
     @staticmethod
     def get_policy_templates(monitor_object_name, organization=None):
-        query = PolicyTemplate.objects.select_related("monitor_object", "plugin").filter(
-            monitor_object__name=monitor_object_name
-        )
+        query = PolicyTemplate.objects.select_related("monitor_object", "plugin").filter(monitor_object__name=monitor_object_name)
         if organization is None:
             query = query.filter(template_type=PolicyTemplate.TYPE_BUILTIN)
         else:
             query = query.filter(
-                Q(template_type=PolicyTemplate.TYPE_BUILTIN)
-                | Q(template_type=PolicyTemplate.TYPE_CUSTOM, organization=organization)
+                Q(template_type=PolicyTemplate.TYPE_BUILTIN) | Q(template_type=PolicyTemplate.TYPE_CUSTOM, organization=organization)
             )
         return [PolicyService.serialize_template(item) for item in query.order_by("plugin__name", "name", "id")]
 
     @staticmethod
     def get_policy_templates_monitor_object(organization=None):
         query = PolicyTemplate.objects.all()
-        if organization is not None:
+        if organization is None:
+            query = query.filter(template_type=PolicyTemplate.TYPE_BUILTIN)
+        else:
             query = query.filter(
-                Q(template_type=PolicyTemplate.TYPE_BUILTIN)
-                | Q(template_type=PolicyTemplate.TYPE_CUSTOM, organization=organization)
+                Q(template_type=PolicyTemplate.TYPE_BUILTIN) | Q(template_type=PolicyTemplate.TYPE_CUSTOM, organization=organization)
             )
         return list(query.values_list("monitor_object_id", flat=True).distinct())
 
@@ -407,10 +342,7 @@ class PolicyService:
             metric_ids = [item.get("metric_id") for item in query.get("queries") or []]
         elif query.get("metric_id"):
             metric_ids = [query.get("metric_id")]
-        metrics = {
-            item.id: item
-            for item in Metric.objects.select_related("monitor_plugin").filter(id__in=metric_ids)
-        }
+        metrics = {item.id: item for item in Metric.objects.select_related("monitor_plugin").filter(id__in=metric_ids)}
         if len(metrics) != len(set(metric_ids)):
             raise BaseAppException("模板引用的指标不存在")
 
@@ -521,6 +453,10 @@ class PolicyService:
 
     @staticmethod
     def parse_selection_keys(keys):
+        if not isinstance(keys, list):
+            raise BaseAppException("模板标识必须是列表")
+        if len(keys) > MAX_ARCHIVE_TEMPLATES:
+            raise BaseAppException(f"单次最多操作 {MAX_ARCHIVE_TEMPLATES} 个模板")
         ids = []
         for key in keys:
             try:
@@ -535,9 +471,7 @@ class PolicyService:
     @staticmethod
     def get_selected_templates(keys, organization):
         ids = PolicyService.parse_selection_keys(keys)
-        templates = list(
-            PolicyTemplate.objects.select_related("monitor_object", "plugin").filter(id__in=ids)
-        )
+        templates = list(PolicyTemplate.objects.select_related("monitor_object", "plugin").filter(id__in=ids))
         if len(templates) != len(set(ids)):
             raise BaseAppException("模板不存在")
         templates_by_id = {item.id: item for item in templates}
@@ -632,6 +566,8 @@ class PolicyService:
                 template_items = manifest.get("templates")
                 if not isinstance(template_items, list) or not template_items:
                     raise BaseAppException("manifest.json 缺少模板清单")
+                if len(template_items) > MAX_ARCHIVE_TEMPLATES:
+                    raise BaseAppException(f"单次最多导入 {MAX_ARCHIVE_TEMPLATES} 个模板")
                 payloads = []
                 for item in template_items:
                     if not isinstance(item, dict):
@@ -667,9 +603,7 @@ class PolicyService:
                 monitor_object = MonitorObject.objects.get(name=payload.get("monitor_object"))
                 plugin = MonitorPlugin.objects.get(name=payload.get("plugin"), monitor_object=monitor_object)
             except (MonitorObject.DoesNotExist, MonitorPlugin.DoesNotExist) as exc:
-                raise BaseAppException(
-                    f"模板 {name} 引用的监控对象或插件不存在"
-                ) from exc
+                raise BaseAppException(f"模板 {name} 引用的监控对象或插件不存在") from exc
             if authorize_monitor_object:
                 authorize_monitor_object(monitor_object.id)
             if key in package_keys:

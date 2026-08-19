@@ -378,7 +378,7 @@ const Template: React.FC = () => {
             value={searchKeyword}
             onChange={(event) => setSearchKeyword(event.target.value)}
           />
-          <div className={`${templateStyle.toolbarActions} gap-2`}>
+          <div className="flex items-center gap-2">
             <Upload
               accept=".zip,application/zip"
               showUploadList={false}
