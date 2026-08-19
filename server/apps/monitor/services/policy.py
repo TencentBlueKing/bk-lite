@@ -2,6 +2,7 @@ import copy
 import hashlib
 import io
 import json
+import re
 import uuid
 import zipfile
 from pathlib import PurePosixPath
@@ -287,8 +288,72 @@ class PolicyService:
             ).exclude(key__in=expected_keys).delete()
 
     @staticmethod
+    def _formula_query_ref(index, item):
+        raw_ref = str(item.get("ref") or "").strip()
+        if raw_ref:
+            return raw_ref
+        if index < 26:
+            return chr(ord("a") + index)
+        return f"q{index}"
+
+    @staticmethod
+    def _resolve_formula_expression_with_metrics(query):
+        expression = str(query.get("expression") or "").strip()
+        if not expression:
+            return ""
+        queries = query.get("queries") or []
+        if not isinstance(queries, list):
+            return expression
+        ref_map = {}
+        for index, item in enumerate(queries):
+            if not isinstance(item, dict):
+                continue
+            raw_ref = PolicyService._formula_query_ref(index, item)
+            metric_name = str(item.get("metric_name") or "").strip() or raw_ref
+            ref_map[raw_ref.lower()] = metric_name
+        if not ref_map:
+            return expression
+        pattern = re.compile(
+            r"\b(?:"
+            + "|".join(re.escape(ref) for ref in sorted(ref_map, key=len, reverse=True))
+            + r")\b",
+            re.IGNORECASE,
+        )
+
+        def _replace(match):
+            return ref_map.get(match.group(0).lower(), match.group(0))
+
+        return pattern.sub(_replace, expression)
+
+    @staticmethod
+    def display_metric_name(config):
+        config = config or {}
+        query = config.get("query_condition") or {}
+        if not isinstance(query, dict):
+            query = {}
+        if query.get("type") == "formula":
+            expression = PolicyService._resolve_formula_expression_with_metrics(query)
+            result_name = str(query.get("result_name") or "").strip()
+            if expression:
+                return f"{result_name}（{expression}）" if result_name else expression
+            names = []
+            for item in query.get("queries") or []:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("metric_name") or "").strip()
+                if name:
+                    names.append(name)
+            if names:
+                return " + ".join(names)
+            return result_name
+        if config.get("metric_name"):
+            return str(config["metric_name"]).strip()
+        return str(query.get("metric_name") or "").strip()
+
+    @staticmethod
     def serialize_template(template):
         config = copy.deepcopy(template.config or {})
+        metric_name = PolicyService.display_metric_name(config)
         return {
             **config,
             "id": template.id,
@@ -298,6 +363,7 @@ class PolicyService:
             "deletable": template.template_type == PolicyTemplate.TYPE_CUSTOM,
             "name": template.name,
             "description": template.description or "--",
+            "metric_name": metric_name,
             "trigger_count": config.get("trigger_count", 1),
             "monitor_object_id": template.monitor_object_id,
             "monitor_object_name": template.monitor_object.name,
@@ -421,6 +487,13 @@ class PolicyService:
             portable.pop(field, None)
         if portable.get("query_condition"):
             portable["query_condition"] = PolicyService._portable_query_condition(portable["query_condition"])
+        # 仅补齐稳定指标名；公式展示串不得写入 metric_name，避免导入/回填按 Metric.name 查找失败
+        if not portable.get("metric_name"):
+            query = portable.get("query_condition") or {}
+            if isinstance(query, dict) and query.get("type") != "formula":
+                metric_name = str(query.get("metric_name") or "").strip()
+                if metric_name:
+                    portable["metric_name"] = metric_name
         return portable
 
     @staticmethod
@@ -430,13 +503,6 @@ class PolicyService:
             plugin = MonitorPlugin.objects.get(id=plugin_id, monitor_object=monitor_object)
         except (MonitorObject.DoesNotExist, MonitorPlugin.DoesNotExist) as exc:
             raise BaseAppException("监控对象或插件不存在") from exc
-        if PolicyTemplate.objects.filter(
-            scope_key=f"custom:{organization}",
-            monitor_object=monitor_object,
-            plugin=plugin,
-            name=name,
-        ).exists():
-            raise BaseAppException(f"自定义模版已存在: {name}")
         return PolicyTemplate.objects.create(
             key=str(uuid.uuid4()),
             scope_key=f"custom:{organization}",
@@ -590,7 +656,6 @@ class PolicyService:
         prepared = []
         conflicts = []
         package_keys = set()
-        package_names = set()
         for payload in payloads:
             key = str(payload.get("key") or "").strip()
             name = str(payload.get("name") or "").strip()
@@ -607,29 +672,17 @@ class PolicyService:
                 ) from exc
             if authorize_monitor_object:
                 authorize_monitor_object(monitor_object.id)
-            natural_key = (monitor_object.id, plugin.id, name)
-            if key in package_keys or natural_key in package_names:
+            if key in package_keys:
                 raise BaseAppException(f"ZIP 包内模板重复: {name}")
             package_keys.add(key)
-            package_names.add(natural_key)
             config = PolicyService.portable_config(payload["config"])
             PolicyService._runtime_query_condition(config.get("query_condition"), monitor_object)
             payload["config"] = config
-            by_key = PolicyTemplate.objects.filter(
+            existing = PolicyTemplate.objects.filter(
                 template_type=PolicyTemplate.TYPE_CUSTOM,
                 organization=organization,
                 key=key,
             ).first()
-            by_name = PolicyTemplate.objects.filter(
-                template_type=PolicyTemplate.TYPE_CUSTOM,
-                organization=organization,
-                monitor_object=monitor_object,
-                plugin=plugin,
-                name=name,
-            ).first()
-            if by_key and by_name and by_key.id != by_name.id:
-                raise BaseAppException(f"模板 {name} 的 key 与名称分别命中不同记录")
-            existing = by_key or by_name
             if existing:
                 conflicts.append({"id": existing.id, "name": existing.name})
             prepared.append((payload, monitor_object, plugin, existing))
