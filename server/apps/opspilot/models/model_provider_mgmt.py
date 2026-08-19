@@ -251,6 +251,7 @@ class LLMSkill(MaintainerInfo):
     tools = models.JSONField(default=list)
     skill_params = models.JSONField(default=list, verbose_name="技能参数")
     skill_packages = models.JSONField(default=list, verbose_name="技能包")
+    skill_package_params = models.JSONField(default=dict, verbose_name="技能包参数")
 
     temperature = models.FloatField(default=0.7, verbose_name="温度")
     skill_type = models.IntegerField(
