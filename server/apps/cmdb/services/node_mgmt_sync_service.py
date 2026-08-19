@@ -129,7 +129,10 @@ class NodeMgmtSyncService:
     MAX_EXISTING_HOSTS = _get_positive_int_env("CMDB_NODE_MGMT_MAX_EXISTING_HOSTS", 100_000)
     MAX_EXISTING_HOST_BYTES = _get_positive_int_env("CMDB_NODE_MGMT_MAX_EXISTING_HOST_BYTES", 128 * 1024 * 1024)
     EXISTING_HOST_PAGE_SIZE = _get_positive_int_env("CMDB_NODE_MGMT_EXISTING_HOST_PAGE_SIZE", 500)
-    SYSTEM_NODE_QUERY = {"skip_permission": True}
+    SYSTEM_NODE_QUERY = {
+        "skip_permission": True,
+        "legacy_callsite": "cmdb.node_sync",
+    }
     RAW_DATA_FIELDS = RAW_DATA_FIELDS
     RAW_DATA_METRIC_MODEL_IDS = RAW_DATA_METRIC_MODEL_IDS
     RAW_TEXT_LIMITS = RAW_TEXT_LIMITS
