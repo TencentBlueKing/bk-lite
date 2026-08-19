@@ -14,7 +14,10 @@ from apps.monitor.tasks.services.policy_scan.event_alert_manager import (
     EventAlertManager,
 )
 from apps.monitor.tasks.services.policy_scan.snapshot_recorder import SnapshotRecorder
-from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.dimension import (
+    normalize_instance_identity,
+    parse_instance_id,
+)
 from apps.core.logger import celery_logger as logger
 
 
@@ -99,10 +102,33 @@ class MonitorPolicyScan:
         )
         return {b.metric_instance_id: b.monitor_instance_id for b in baselines}
 
+    @staticmethod
+    def _expand_instance_source_values(source_values):
+        """兼容逻辑 ID 与存储键，避免单维对象（如 K8s Cluster）扫不到实例。
+
+        页面/过滤器常给出 prod-cluster，库中主键却是 "('prod-cluster',)"。
+        Docker Container 这类多维对象两种写法本来一致，扩键是幂等的。
+        """
+        expanded = []
+        seen = set()
+        for value in source_values or []:
+            candidates = [str(value)]
+            try:
+                candidates.append(
+                    normalize_instance_identity(value)["storage_instance_key"]
+                )
+            except ValueError:
+                pass
+            for key in candidates:
+                if key and key not in seen:
+                    seen.add(key)
+                    expanded.append(key)
+        return expanded
+
     def _get_instance_list_by_source(self, source_type, source_values):
         """根据来源类型获取实例列表"""
         if source_type == "instance":
-            return source_values
+            return self._expand_instance_source_values(source_values)
 
         if source_type == "organization":
             return list(
