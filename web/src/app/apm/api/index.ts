@@ -12,6 +12,7 @@ import type {
   ApmEvent,
   ApmEventQuery,
   ApmAlert,
+  ApmAlertMetricSnapshot,
   ApmAlertQuery,
   ApmEventSnapshot,
   ApmHealth,
@@ -257,11 +258,16 @@ const useApmApi = () => {
     [get]
   );
 
-  const getAlertSnapshots = useCallback(
+  const getEventEvidence = useCallback(
     (alertId: string, eventId?: string) =>
-      get<ApmEventSnapshot[]>(`/apm/alerts/${alertId}/snapshots/`, {
+      get<ApmEventSnapshot[]>(`/apm/alerts/${alertId}/event-evidence/`, {
         params: eventId ? { event_id: eventId } : {},
       }),
+    [get]
+  );
+
+  const getAlertSnapshots = useCallback(
+    (alertId: string) => get<ApmAlertMetricSnapshot>(`/apm/alerts/${alertId}/snapshots/`),
     [get]
   );
 
@@ -333,6 +339,7 @@ const useApmApi = () => {
     getAlerts,
     getAlertDistribution,
     getAlertSnapshots,
+    getEventEvidence,
     closeAlert,
     getNotificationChannels,
     getNotificationDeliveries,

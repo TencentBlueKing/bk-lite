@@ -388,11 +388,6 @@
   font-size: 12px;
 }
 
-.legacyScopeAlert {
-  max-width: 720px;
-  margin: 12px 0 0 120px;
-}
-
 .editor :global(.ant-steps-item-description) {
   width: 100%;
   max-width: none !important;
@@ -622,8 +617,7 @@
     padding-left: 0;
   }
 
-  .scopeHint,
-  .legacyScopeAlert {
+  .scopeHint {
     margin-left: 0;
   }
 

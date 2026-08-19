@@ -9,7 +9,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.apm.models import ApmAlert, ApmAlertOutbox, ApmEvent, ApmPolicy, ApmPolicyState, ApmPolicyTargetState, ApmServiceInstance
+from apps.apm.models import ApmAlert, ApmAlertOutbox, ApmEvent, ApmPolicy, ApmPolicyTargetState, ApmServiceInstance
 from apps.apm.services.contracts import (
     MetricDataState,
     MetricStore,
@@ -20,6 +20,7 @@ from apps.apm.services.contracts import (
     PublishResult,
     ServiceMetricQuery,
 )
+from apps.apm.services.metric_snapshots import ApmAlertMetricSnapshotStore
 from apps.apm.services.snapshots import ApmEventSnapshotStore
 
 SEVERITY_LEVEL = {
@@ -39,7 +40,6 @@ class DjangoApmPolicyService:
         self.notification_dispatcher = notification_dispatcher
 
     def save_policy(self, policy: ApmPolicy) -> ApmPolicy:
-        ApmPolicyState.objects.get_or_create(policy=policy)
         return policy
 
     @staticmethod
@@ -73,14 +73,6 @@ class DjangoApmPolicyService:
     @staticmethod
     def _thresholds(policy: ApmPolicy) -> list[dict[str, str]]:
         thresholds = list(policy.thresholds or [])
-        if not thresholds:
-            thresholds = [
-                {
-                    "severity": policy.severity,
-                    "comparator": policy.comparator,
-                    "value": str(policy.threshold),
-                }
-            ]
         rank = {"critical": 0, "error": 1, "warning": 2}
         return sorted(thresholds, key=lambda item: rank[str(item["severity"])])
 
@@ -96,6 +88,35 @@ class DjangoApmPolicyService:
                     value,
                 )
             ),
+            None,
+        )
+
+    @classmethod
+    def _evaluation_threshold(
+        cls,
+        policy: ApmPolicy,
+        state: ApmPolicyTargetState,
+        result: PolicyQueryResult,
+    ):
+        if result.threshold:
+            return dict(result.threshold)
+        if result.data_state == MetricDataState.NO_DATA:
+            if (
+                state.status == ApmPolicyTargetState.Status.NORMAL
+                and policy.no_data_after
+                and policy.no_data_severity
+                and state.consecutive_no_data + 1 >= policy.no_data_after
+            ):
+                return {
+                    "severity": policy.no_data_severity,
+                    "comparator": "no_data",
+                    "value": "",
+                }
+            return None
+        if state.status != ApmPolicyTargetState.Status.ACTIVE or not state.current_severity:
+            return None
+        return next(
+            (threshold for threshold in cls._thresholds(policy) if str(threshold["severity"]) == state.current_severity),
             None,
         )
 
@@ -160,7 +181,7 @@ class DjangoApmPolicyService:
         version: str | None = None,
     ) -> PolicyQueryResult:
         target_endpoint, target_version = (endpoint, version) if endpoint is not None else self._targets(policy)[0]
-        window = max(policy.metric_window or policy.duration_window, 1)
+        window = max(policy.metric_window, 1)
         red = self.metric_store.service_red(
             ServiceMetricQuery(
                 service_namespace=policy.service.namespace,
@@ -212,7 +233,6 @@ class DjangoApmPolicyService:
                 ApmPolicyTargetState.objects.filter(policy=policy, target_key=target_key).exclude(evaluation_cursor=cursor).update(
                     last_failed_at=timezone.now()
                 )
-                ApmPolicyState.objects.filter(policy=policy).update(last_failed_at=timezone.now())
                 raise
 
             with transaction.atomic():
@@ -224,17 +244,31 @@ class DjangoApmPolicyService:
                 )
                 if not locked_policy.is_enabled or state.evaluation_cursor == cursor or locked_policy.updated_at != policy.updated_at:
                     continue
-                self._advance_target(locked_policy, state, result, evaluated_at)
+                active_alert = ApmAlert.objects.filter(external_id=state.active_alert_id).first() if state.active_alert_id else None
+                evaluation_threshold = self._evaluation_threshold(
+                    locked_policy,
+                    state,
+                    result,
+                )
+                event_snapshot = self._advance_target(locked_policy, state, result, evaluated_at)
+                alert = event_snapshot.alert if event_snapshot is not None else active_alert
+                if alert is not None:
+                    ApmAlertMetricSnapshotStore.record(
+                        alert=alert,
+                        event=event_snapshot.event if event_snapshot is not None else None,
+                        policy=locked_policy,
+                        result=result,
+                        threshold=evaluation_threshold,
+                    )
                 state.evaluation_cursor = cursor
                 state.last_succeeded_at = evaluated_at
                 state.last_failed_at = None
                 state.save()
-                self._sync_legacy_state(locked_policy, evaluated_at, cursor)
 
     def _advance_target(self, policy, state, result, evaluated_at):
         threshold = dict(result.threshold) if result.threshold else None
-        trigger_after = policy.trigger_after if policy.thresholds else policy.duration_window
-        recover_after = policy.recover_after if policy.thresholds else policy.recovery_window
+        trigger_after = policy.trigger_after
+        recover_after = policy.recover_after
         if result.data_state == MetricDataState.NO_DATA:
             state.consecutive_hits = 0
             state.consecutive_recoveries = 0
@@ -319,19 +353,6 @@ class DjangoApmPolicyService:
     @staticmethod
     def _severity_rank(severity):
         return {"critical": 0, "error": 1, "warning": 2, "": 99}[severity]
-
-    @staticmethod
-    def _sync_legacy_state(policy, evaluated_at, cursor):
-        legacy, _ = ApmPolicyState.objects.select_for_update().get_or_create(policy=policy)
-        active = policy.target_states.filter(status=ApmPolicyTargetState.Status.ACTIVE).order_by("id").first()
-        legacy.status = ApmPolicyState.Status.ACTIVE if active else ApmPolicyState.Status.NORMAL
-        legacy.external_alert_id = active.active_alert_id if active else ""
-        legacy.evaluation_cursor = cursor
-        legacy.last_succeeded_at = evaluated_at
-        legacy.last_failed_at = None
-        legacy.consecutive_hits = active.consecutive_hits if active else 0
-        legacy.consecutive_recoveries = active.consecutive_recoveries if active else 0
-        legacy.save()
 
     @staticmethod
     def _record_event(
@@ -459,24 +480,23 @@ class DjangoApmPolicyService:
                 "version": state.version,
             },
         }
-        if policy.notice:
-            for target in policy.notification_targets.order_by("channel_id", "id"):
-                recipients = [] if target.recipient_mode == "none" else list(target.recipients)
-                ApmAlertOutbox.objects.get_or_create(
-                    event_key=f"{event_id}:channel:{target.channel_id}",
-                    defaults={
-                        "event": event,
-                        "channel_id": target.channel_id,
-                        "channel_name": target.channel_name,
-                        "channel_type": target.channel_type,
-                        "delivery_mode": target.delivery_mode,
-                        "receivers": recipients,
-                        "recipients": recipients,
-                        "title": title,
-                        "body": description,
-                        "payload": payload,
-                    },
-                )
+        for target in policy.notification_targets.order_by("channel_id", "id"):
+            recipients = [] if target.recipient_mode == "none" else list(target.recipients)
+            ApmAlertOutbox.objects.get_or_create(
+                event_key=f"{event_id}:channel:{target.channel_id}",
+                defaults={
+                    "event": event,
+                    "channel_id": target.channel_id,
+                    "channel_name": target.channel_name,
+                    "channel_type": target.channel_type,
+                    "delivery_mode": target.delivery_mode,
+                    "receivers": recipients,
+                    "recipients": recipients,
+                    "title": title,
+                    "body": description,
+                    "payload": payload,
+                },
+            )
         return snapshot
 
     @staticmethod

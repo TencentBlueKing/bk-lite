@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ApmAlertsPage from '../page';
@@ -75,10 +75,38 @@ const snapshot = {
     threshold: { severity: 'error' as const, comparator: 'gt' as const, value: '0.1' },
     series: [
       { timestamp: '2026-08-14T01:59:00Z', value: 0.08 },
+      { timestamp: '2026-08-14T01:59:20Z', value: 0.1 },
+      { timestamp: '2026-08-14T01:59:40Z', value: 0.12 },
       { timestamp: event.occurred_at, value: 0.2 },
     ],
   },
   retention_expires_at: '2026-11-12T02:00:00Z',
+};
+const metricSnapshot = {
+  unit: 'ratio',
+  aggregation: 'avg' as const,
+  evaluation_interval: 1,
+  metric_window: 5,
+  snapshots: [
+    {
+      type: 'event' as const,
+      snapshot_time: '2026-08-14T02:00:00Z',
+      event_id: 'evt-1',
+      event_time: '2026-08-14T02:00:00Z',
+      value: '0.2',
+      threshold: { severity: 'error' as const, comparator: 'gt' as const, value: '0.1' },
+      data_state: 'available' as const,
+    },
+    {
+      type: 'info' as const,
+      snapshot_time: '2026-08-14T02:01:00Z',
+      event_id: null,
+      event_time: null,
+      value: '0.18',
+      threshold: { severity: 'error' as const, comparator: 'gt' as const, value: '0.1' },
+      data_state: 'available' as const,
+    },
+  ],
 };
 
 const api = {
@@ -86,6 +114,7 @@ const api = {
   getAlertDistribution: vi.fn(),
   getAlerts: vi.fn(),
   getAlertSnapshots: vi.fn(),
+  getEventEvidence: vi.fn(),
   getNotificationDeliveries: vi.fn(),
   isLoading: false,
 };
@@ -121,15 +150,42 @@ beforeEach(() => {
         ? [{ time: recoveredAlert.ended_at, critical: 0, error: 0, warning: 1 }]
         : [],
   ));
-  api.getAlertSnapshots.mockResolvedValue([snapshot]);
+  api.getAlertSnapshots.mockResolvedValue(metricSnapshot);
+  api.getEventEvidence.mockResolvedValue([snapshot]);
   api.getNotificationDeliveries.mockResolvedValue([]);
+  api.closeAlert.mockResolvedValue(undefined);
 });
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
 
-describe('APM Alert 与 Event Snapshot', () => {
+describe('APM 告警指标快照与事件原始数据', () => {
+  it('只通过显式详情入口打开告警详情', async () => {
+    renderWithApmIntl(<ApmAlertsPage />);
+    const serviceCell = await screen.findByText('checkout');
+    const alertRow = serviceCell.closest('tr');
+
+    expect(alertRow).not.toBeNull();
+    fireEvent.click(alertRow!);
+    expect(screen.queryByRole('dialog', { name: 'checkout 错误率升高' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '详情' }));
+    expect(await screen.findByRole('dialog', { name: 'checkout 错误率升高' })).not.toBeNull();
+  });
+
+  it('从列表人工关闭告警时不会意外打开告警详情', async () => {
+    renderWithApmIntl(<ApmAlertsPage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '关闭' }));
+
+    expect(screen.queryByRole('dialog', { name: 'checkout 错误率升高' })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: /^确\s*定$/ }));
+    await waitFor(() => expect(api.closeAlert).toHaveBeenCalledWith('a1'));
+
+    expect(screen.queryByRole('dialog', { name: 'checkout 错误率升高' })).toBeNull();
+  });
+
   it('使用 Alert 聚合接口展示活跃告警和分布', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmAlertsPage />);
@@ -217,9 +273,38 @@ describe('APM Alert 与 Event Snapshot', () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmAlertsPage />);
     await user.click(await screen.findByRole('button', { name: 'checkout 错误率升高' }));
-    await user.click(await screen.findByRole('tab', { name: '事件快照' }));
-    expect(await screen.findByText('评估值 / 当时阈值 / 事件发生点')).not.toBeNull();
-    expect(screen.getByText('正在展示所选事件发生时的持久化快照，不会重新查询当前策略。')).not.toBeNull();
-    await waitFor(() => expect(api.getAlertSnapshots).toHaveBeenCalledWith('a1', 'evt-1'));
+    await user.click(await screen.findByRole('tab', { name: '事件原始数据' }));
+    expect(await screen.findByText('原始指标 / 当时阈值 / 事件发生点')).not.toBeNull();
+    expect(screen.getByText('正在展示所选事件发生时的原始指标证据，不会重新查询当前策略。')).not.toBeNull();
+    await waitFor(() => expect(api.getEventEvidence).toHaveBeenCalledWith('a1', 'evt-1'));
+    const snapshotChart = chartRender.mock.calls.find(
+      ([props]) => props.series[0]?.name === '原始指标',
+    )?.[0];
+    const sameMinuteLabels = snapshot.payload.series.slice(0, 3).map(
+      (point) => snapshotChart.getXLabel(point),
+    );
+
+    expect(sameMinuteLabels).toHaveLength(3);
+    expect(new Set(sameMinuteLabels).size).toBe(3);
+    expect(sameMinuteLabels.every((label) => /^\d{2}:\d{2}:\d{2}$/.test(label))).toBe(true);
+  });
+
+  it('告警主图按策略扫描展示告警指标快照', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApmAlertsPage />);
+
+    await user.click(await screen.findByRole('button', { name: 'checkout 错误率升高' }));
+
+    expect(await screen.findByText('评估值 / 当时阈值 / 生命周期事件')).not.toBeNull();
+    await waitFor(() => expect(api.getAlertSnapshots).toHaveBeenCalledWith('a1'));
+    const lifecycleChart = chartRender.mock.calls.find(
+      ([props]) => props.series[2]?.name === '生命周期事件',
+    )?.[0];
+    expect(lifecycleChart.data).toEqual([
+      expect.objectContaining({ timestamp: metricSnapshot.snapshots[0].snapshot_time, value: 0.2, event: 0.2 }),
+      expect.objectContaining({ timestamp: metricSnapshot.snapshots[1].snapshot_time, value: 0.18, event: null }),
+    ]);
+    expect(lifecycleChart.getXLabel(lifecycleChart.data[0])).toMatch(/^\d{2}:\d{2}$/);
+    expect(screen.getByText('检测频率 1 分钟 · 指标窗口 5 分钟 · 聚合方式 avg')).not.toBeNull();
   });
 });

@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.apm.models import ApmApplication, ApmPolicy, ApmService, ApmServiceInstance, ApmSlo
+from apps.apm.models import ApmApplication, ApmPolicy, ApmPolicyTargetState, ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services.status import catalog_status
 
 
@@ -385,16 +385,6 @@ class ApmPolicySerializer(serializers.ModelSerializer):
     service_id = serializers.UUIDField(required=False)
     service_namespace = serializers.CharField(source="service.namespace", read_only=True)
     service_name = serializers.CharField(source="service.name", read_only=True)
-    notice_type_ids = serializers.ListField(
-        child=serializers.IntegerField(min_value=1),
-        required=False,
-        allow_empty=True,
-    )
-    notice_users = serializers.ListField(
-        child=serializers.CharField(max_length=150),
-        required=False,
-        allow_empty=True,
-    )
     notification_targets = ApmPolicyNotificationTargetSerializer(many=True, required=False)
     thresholds = ApmPolicyThresholdSerializer(many=True, required=False, min_length=1, max_length=3)
     endpoints = serializers.ListField(
@@ -434,14 +424,6 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "no_data_after",
             "no_data_severity",
             "no_data_alert_name",
-            "comparator",
-            "threshold",
-            "duration_window",
-            "recovery_window",
-            "severity",
-            "notice",
-            "notice_type_ids",
-            "notice_users",
             "notification_targets",
             "is_enabled",
             "state",
@@ -457,11 +439,6 @@ class ApmPolicySerializer(serializers.ModelSerializer):
             "trigger_after": {"min_value": 1, "max_value": 60},
             "recover_after": {"min_value": 1, "max_value": 60},
             "no_data_after": {"min_value": 1, "max_value": 60, "allow_null": True},
-            "comparator": {"required": False},
-            "threshold": {"required": False},
-            "duration_window": {"required": False, "min_value": 1, "max_value": 1440},
-            "recovery_window": {"required": False, "min_value": 1, "max_value": 1440},
-            "severity": {"required": False},
         }
 
     def to_internal_value(self, data):
@@ -471,15 +448,16 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         return super().to_internal_value(data)
 
     def get_state(self, obj):
-        state = getattr(obj, "state", None)
-        if state is None:
-            return None
+        states = list(obj.target_states.all())
+        active = next((state for state in states if state.status == ApmPolicyTargetState.Status.ACTIVE), None)
+        last_succeeded_at = max((state.last_succeeded_at for state in states if state.last_succeeded_at), default=None)
+        last_failed_at = max((state.last_failed_at for state in states if state.last_failed_at), default=None)
         return {
-            "status": state.status,
-            "consecutive_hits": state.consecutive_hits,
-            "consecutive_recoveries": state.consecutive_recoveries,
-            "last_succeeded_at": state.last_succeeded_at,
-            "last_failed_at": state.last_failed_at,
+            "status": "active" if active else "normal",
+            "consecutive_hits": active.consecutive_hits if active else 0,
+            "consecutive_recoveries": active.consecutive_recoveries if active else 0,
+            "last_succeeded_at": last_succeeded_at,
+            "last_failed_at": last_failed_at,
         }
 
     def validate(self, attrs):
@@ -495,24 +473,9 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         if thresholds is None:
             thresholds = list(getattr(self.instance, "thresholds", []) or [])
         if not thresholds:
-            legacy_threshold = attrs.get("threshold", getattr(self.instance, "threshold", None))
-            legacy_comparator = attrs.get("comparator", getattr(self.instance, "comparator", None))
-            legacy_severity = attrs.get("severity", getattr(self.instance, "severity", None))
-            if legacy_threshold is None or legacy_comparator is None or legacy_severity is None:
-                raise serializers.ValidationError({"thresholds": "至少配置一条告警阈值。"})
-            thresholds = [{"severity": legacy_severity, "comparator": legacy_comparator, "value": legacy_threshold}]
+            raise serializers.ValidationError({"thresholds": "至少配置一条告警阈值。"})
         normalized_thresholds = self._validate_thresholds(thresholds, metric_type)
         attrs["thresholds"] = normalized_thresholds
-        primary = normalized_thresholds[-1]
-        attrs.setdefault("comparator", primary["comparator"])
-        attrs.setdefault("threshold", Decimal(primary["value"]))
-        attrs.setdefault("severity", primary["severity"])
-
-        attrs.setdefault("metric_window", attrs.get("duration_window", getattr(self.instance, "metric_window", 5)))
-        attrs.setdefault("trigger_after", getattr(self.instance, "trigger_after", 1))
-        attrs.setdefault("recover_after", attrs.get("recovery_window", getattr(self.instance, "recover_after", 3)))
-        attrs.setdefault("duration_window", attrs["metric_window"])
-        attrs.setdefault("recovery_window", attrs["recover_after"])
 
         endpoints = attrs.get("endpoints", list(getattr(self.instance, "endpoints", []) or []))
         attrs["endpoints"] = list(dict.fromkeys(item.strip() for item in endpoints))
@@ -535,23 +498,11 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         )
         attrs["no_data_alert_name"] = str(no_data_alert_name).strip()
 
-        notice = attrs.get("notice", getattr(self.instance, "notice", False))
-        notice_type_ids = attrs.get(
-            "notice_type_ids",
-            getattr(self.instance, "notice_type_ids", []),
-        )
         notification_targets = attrs.get("notification_targets")
-        existing_targets = list(self.instance.notification_targets.values_list("channel_id", flat=True)) if self.instance is not None else []
-        if notice and not notice_type_ids and not notification_targets and not existing_targets:
-            raise serializers.ValidationError({"notification_targets": "启用通知时至少选择一个渠道。"})
         if notification_targets is not None:
             channel_ids = [target["channel_id"] for target in notification_targets]
             if len(channel_ids) != len(set(channel_ids)):
                 raise serializers.ValidationError({"notification_targets": "同一通知渠道不能重复选择。"})
-        if "notice_type_ids" in attrs:
-            attrs["notice_type_ids"] = sorted(set(notice_type_ids))
-        if "notice_users" in attrs:
-            attrs["notice_users"] = list(dict.fromkeys(attrs["notice_users"]))
         return attrs
 
     @staticmethod
@@ -585,20 +536,6 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         if not valid:
             raise serializers.ValidationError({"thresholds": "多级阈值必须按严重、错误、警告保持单调。"})
         return normalized
-
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-        targets = list(instance.notification_targets.all())
-        if targets:
-            data["notice_type_ids"] = [target.channel_id for target in targets]
-            recipients = []
-            for target in targets:
-                for recipient in target.recipients:
-                    if recipient not in recipients:
-                        recipients.append(recipient)
-            data["notice_users"] = recipients
-        return data
-
 
 class ApmDashboardQuerySerializer(serializers.Serializer):
     window = serializers.ChoiceField(

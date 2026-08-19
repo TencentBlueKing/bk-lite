@@ -294,14 +294,6 @@ class ApmPolicy(AuditedModel):
     no_data_after = models.PositiveIntegerField(null=True, blank=True)
     no_data_severity = models.CharField(max_length=16, choices=Severity.choices, blank=True, default="")
     no_data_alert_name = models.CharField(max_length=512, blank=True, default="")
-    comparator = models.CharField(max_length=8, choices=Comparator.choices)
-    threshold = models.DecimalField(max_digits=20, decimal_places=6)
-    duration_window = models.PositiveIntegerField()
-    recovery_window = models.PositiveIntegerField()
-    severity = models.CharField(max_length=16, choices=Severity.choices)
-    notice = models.BooleanField(default=False)
-    notice_type_ids = models.JSONField(default=list)
-    notice_users = models.JSONField(default=list)
     is_enabled = models.BooleanField(default=True, db_index=True)
 
     class Meta:
@@ -342,25 +334,6 @@ class ApmPolicyNotificationTarget(AuditedModel):
                 name="apm_policy_notification_target_unique",
             )
         ]
-
-
-class ApmPolicyState(AuditedModel):
-    class Status(models.TextChoices):
-        NORMAL = "normal", "正常"
-        ACTIVE = "active", "告警"
-
-    policy = models.OneToOneField(ApmPolicy, on_delete=models.CASCADE, related_name="state")
-    evaluation_cursor = models.CharField(max_length=512, blank=True, default="")
-    consecutive_hits = models.PositiveIntegerField(default=0)
-    consecutive_recoveries = models.PositiveIntegerField(default=0)
-    status = models.CharField(max_length=16, choices=Status.choices, default=Status.NORMAL)
-    last_succeeded_at = models.DateTimeField(null=True, blank=True)
-    last_failed_at = models.DateTimeField(null=True, blank=True)
-    external_alert_id = models.CharField(max_length=256, blank=True, default="")
-
-    class Meta:
-        verbose_name = "APM 策略状态"
-        verbose_name_plural = "APM 策略状态"
 
 
 class ApmPolicyTargetState(AuditedModel):
@@ -463,6 +436,26 @@ class ApmEvent(AuditedModel):
         verbose_name = "APM 告警事件"
         verbose_name_plural = "APM 告警事件"
         ordering = ("-occurred_at", "-id")
+
+
+class ApmAlertMetricSnapshot(AuditedModel):
+    """一个告警对应一份按策略扫描追加的指标快照集合。"""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    alert = models.OneToOneField(
+        ApmAlert,
+        on_delete=models.CASCADE,
+        related_name="metric_snapshot",
+    )
+    unit = models.CharField(max_length=32, blank=True, default="")
+    aggregation = models.CharField(max_length=16, choices=ApmPolicy.Aggregation.choices)
+    evaluation_interval = models.PositiveIntegerField()
+    metric_window = models.PositiveIntegerField()
+    snapshots = models.JSONField(default=list, verbose_name="快照数据集合")
+
+    class Meta:
+        verbose_name = "APM 告警指标快照"
+        verbose_name_plural = "APM 告警指标快照"
 
 
 class ApmEventSnapshot(AuditedModel):

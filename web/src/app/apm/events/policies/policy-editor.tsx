@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeftOutlined, DeleteOutlined } from '@ant-design/icons';
 import {
-  Alert,
   Button,
   Form,
   Input,
@@ -371,7 +370,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   );
 
   const selectedScope = decodeServiceScope(serviceScope ?? '');
-  const hasLegacyVersionScope = Boolean(loadedPolicy && loadedPolicy.version_mode !== 'all');
   const thresholdUnit = metricType === 'error_rate' ? '%' : metricType === 'p95' || metricType === 'p99' ? 'ms' : '次/秒';
   const previewRows = useMemo(
     () =>
@@ -629,14 +627,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
           <Typography.Text type="secondary" className={styles.scopeHint}>
             环境已并入服务范围；版本固定为全部版本。
           </Typography.Text>
-          {hasLegacyVersionScope ? (
-            <Alert
-              className={styles.legacyScopeAlert}
-              type="info"
-              showIcon
-              message="当前历史策略含版本范围，保存时继续保留；更换服务后自动切换为全部版本。"
-            />
-          ) : null}
         </div>
       ),
     },

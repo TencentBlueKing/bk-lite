@@ -10,7 +10,7 @@ from apps.apm.models import (
     ApmEvent,
     ApmPolicy,
     ApmPolicyNotificationTarget,
-    ApmPolicyState,
+    ApmPolicyTargetState,
     ApmService,
     ApmServiceOrganization,
 )
@@ -60,14 +60,9 @@ def policy():
         service=service,
         environment="production",
         metric_type=ApmPolicy.MetricType.ERROR_RATE,
-        comparator=ApmPolicy.Comparator.GREATER_THAN,
-        threshold="0.050000",
-        duration_window=2,
-        recovery_window=2,
-        severity=ApmPolicy.Severity.ERROR,
-        notice=True,
-        notice_type_ids=[7],
-        notice_users=["on-call"],
+        thresholds=[{"severity": "error", "comparator": "gt", "value": "0.050000"}],
+        trigger_after=2,
+        recover_after=2,
     )
     ApmPolicyNotificationTarget.objects.create(
         policy=policy,
@@ -91,11 +86,12 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     service.evaluate(policy.id, evaluated_at=started_at + timedelta(minutes=1))
     service.evaluate(policy.id, evaluated_at=started_at + timedelta(minutes=1))
 
-    state = ApmPolicyState.objects.get(policy=policy)
-    assert state.status == ApmPolicyState.Status.ACTIVE
+    state = ApmPolicyTargetState.objects.get(policy=policy)
+    assert state.status == ApmPolicyTargetState.Status.ACTIVE
     assert state.consecutive_hits == 0
     assert ApmAlert.objects.filter(status=ApmAlert.Status.ACTIVE).count() == 1
     assert ApmEvent.objects.filter(action=ApmEvent.Action.TRIGGERED).count() == 1
+    assert len(ApmAlert.objects.get().metric_snapshot.snapshots) == 1
     assert ApmAlertOutbox.objects.count() == 1
     trigger = ApmAlertOutbox.objects.get()
     assert trigger.channel_id == 7
@@ -105,7 +101,7 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     assert "shop/checkout" in trigger.body
     assert trigger.payload["action"] == "triggered"
     assert trigger.payload["organizations"] == [10]
-    assert trigger.payload["external_id"] == state.external_alert_id
+    assert trigger.payload["external_id"] == state.active_alert_id
 
     metric_store.red = ServiceRed(20, 0.01, 100, 150)
     service.evaluate(policy.id, evaluated_at=started_at + timedelta(minutes=2))
@@ -114,10 +110,11 @@ def test_evaluation_creates_one_idempotent_trigger_and_one_recovery(policy):
     state.refresh_from_db()
     events = list(ApmAlertOutbox.objects.order_by("created_at"))
     alert = ApmAlert.objects.get()
-    assert state.status == ApmPolicyState.Status.NORMAL
-    assert state.external_alert_id == ""
+    assert state.status == ApmPolicyTargetState.Status.NORMAL
+    assert state.active_alert_id == ""
     assert alert.status == ApmAlert.Status.RECOVERED
     assert alert.events.count() == 2
+    assert len(alert.metric_snapshot.snapshots) == 3
     assert [event.payload["action"] for event in events] == ["triggered", "recovered"]
     assert events[0].payload["external_id"] == events[1].payload["external_id"]
 
@@ -155,24 +152,27 @@ def test_metric_failure_keeps_last_state_and_produces_no_event(policy):
     service = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
     evaluated_at = timezone.now().replace(second=0, microsecond=0)
     service.evaluate(policy.id, evaluated_at=evaluated_at)
-    before = ApmPolicyState.objects.get(policy=policy)
+    before = ApmPolicyTargetState.objects.get(policy=policy)
+    before_status = before.status
+    before_hits = before.consecutive_hits
+    before_cursor = before.evaluation_cursor
     metric_store.error = RuntimeError("victoriatraces unavailable")
 
     with pytest.raises(RuntimeError, match="victoriatraces unavailable"):
         service.evaluate(policy.id, evaluated_at=evaluated_at + timedelta(minutes=1))
 
-    after = ApmPolicyState.objects.get(policy=policy)
-    assert after.status == before.status
-    assert after.consecutive_hits == before.consecutive_hits
-    assert after.evaluation_cursor == before.evaluation_cursor
+    after = ApmPolicyTargetState.objects.get(policy=policy)
+    assert after.status == before_status
+    assert after.consecutive_hits == before_hits
+    assert after.evaluation_cursor == before_cursor
     assert after.last_failed_at is not None
     assert ApmAlertOutbox.objects.count() == 0
     assert ApmEvent.objects.count() == 0
 
 
 def test_firing_policy_does_not_recover_when_metric_window_has_no_samples(policy):
-    policy.duration_window = 1
-    policy.recovery_window = 1
+    policy.trigger_after = 1
+    policy.recover_after = 1
     policy.save()
     metric_store = MutableMetricStore(ServiceRed(20, 0.10, 100, 150))
     service = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
@@ -182,9 +182,9 @@ def test_firing_policy_does_not_recover_when_metric_window_has_no_samples(policy
     metric_store.red = ServiceRed(None, None, None, None)
     service.evaluate(policy.id, evaluated_at=evaluated_at + timedelta(minutes=1))
 
-    state = ApmPolicyState.objects.get(policy=policy)
+    state = ApmPolicyTargetState.objects.get(policy=policy)
     alert = ApmAlert.objects.get()
-    assert state.status == ApmPolicyState.Status.ACTIVE
+    assert state.status == ApmPolicyTargetState.Status.ACTIVE
     assert state.consecutive_recoveries == 0
     assert state.evaluation_cursor.endswith((evaluated_at + timedelta(minutes=1)).isoformat())
     assert alert.status == ApmAlert.Status.ACTIVE
@@ -247,9 +247,8 @@ def test_terminal_delivery_failure_does_not_retry_and_eight_retryable_failures_s
 )
 def test_policy_metric_types_use_controlled_red_values(policy, metric_type, red, expected):
     policy.metric_type = metric_type
-    policy.comparator = ApmPolicy.Comparator.LESS_THAN_OR_EQUAL
-    policy.threshold = expected
-    policy.duration_window = 1
+    policy.thresholds = [{"severity": "error", "comparator": "lte", "value": str(expected)}]
+    policy.metric_window = 1
     policy.save()
     metric_store = MutableMetricStore(red)
     service = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
@@ -263,9 +262,8 @@ def test_policy_metric_types_use_controlled_red_values(policy, metric_type, red,
 
 def test_no_traffic_policy_treats_missing_request_samples_as_zero(policy):
     policy.metric_type = ApmPolicy.MetricType.NO_TRAFFIC
-    policy.comparator = ApmPolicy.Comparator.LESS_THAN_OR_EQUAL
-    policy.threshold = 0
-    policy.duration_window = 1
+    policy.thresholds = [{"severity": "error", "comparator": "lte", "value": "0"}]
+    policy.metric_window = 1
     policy.save()
     service = DjangoApmPolicyService(
         MutableMetricStore(ServiceRed(None, None, None, None)),

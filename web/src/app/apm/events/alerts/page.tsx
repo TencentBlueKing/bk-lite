@@ -36,6 +36,7 @@ import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 import { ALERT_LEVEL_COLORS, OBSERVABILITY_SERIES_COLORS } from '@/constants/observabilityChart';
 import type {
   ApmAlert,
+  ApmAlertMetricSnapshot,
   ApmAlertEvent,
   ApmAlertQuery,
   ApmEventSnapshot,
@@ -92,6 +93,7 @@ export default function ApmAlertsPage() {
     getAlertDistribution,
     getAlerts,
     getAlertSnapshots,
+    getEventEvidence,
     getNotificationDeliveries,
     isLoading: authLoading,
   } = useApmApi();
@@ -108,10 +110,14 @@ export default function ApmAlertsPage() {
   const [submittedKeyword, setSubmittedKeyword] = useState('');
   const [selected, setSelected] = useState<ApmAlert | null>(null);
   const [selectedEvent, setSelectedEvent] = useState<ApmAlertEvent | null>(null);
-  const [snapshot, setSnapshot] = useState<ApmEventSnapshot | null>(null);
+  const [eventEvidence, setEventEvidence] = useState<ApmEventSnapshot | null>(null);
+  const [metricSnapshot, setMetricSnapshot] = useState<ApmAlertMetricSnapshot | null>(null);
+  const [metricSnapshotLoading, setMetricSnapshotLoading] = useState(false);
+  const [metricSnapshotError, setMetricSnapshotError] = useState<CatalogStateKind | null>(null);
   const [deliveries, setDeliveries] = useState<ApmNotificationDelivery[]>([]);
-  const [snapshotLoading, setSnapshotLoading] = useState(false);
+  const [eventEvidenceLoading, setEventEvidenceLoading] = useState(false);
   const loadSequence = useRef(0);
+  const snapshotLoadSequence = useRef(0);
 
   const load = useCallback(() => {
     if (authLoading) return;
@@ -164,24 +170,54 @@ export default function ApmAlertsPage() {
   const chooseEvent = useCallback(
     (alert: ApmAlert, event: ApmAlertEvent) => {
       setSelectedEvent(event);
-      setSnapshot(null);
+      setEventEvidence(null);
       setDeliveries([]);
-      setSnapshotLoading(true);
+      setEventEvidenceLoading(true);
       Promise.all([
-        getAlertSnapshots(alert.id, event.event_id),
+        getEventEvidence(alert.id, event.event_id),
         getNotificationDeliveries({ event_id: event.event_id }),
       ])
         .then(([snapshots, deliveryItems]) => {
-          setSnapshot(snapshots[0] ?? null);
+          setEventEvidence(snapshots[0] ?? null);
           setDeliveries(deliveryItems);
         })
-        .finally(() => setSnapshotLoading(false));
+        .finally(() => setEventEvidenceLoading(false));
     },
-    [getAlertSnapshots, getNotificationDeliveries],
+    [getEventEvidence, getNotificationDeliveries],
   );
 
+  const resetDrawerState = useCallback(() => {
+    snapshotLoadSequence.current += 1;
+    setSelected(null);
+    setSelectedEvent(null);
+    setEventEvidence(null);
+    setMetricSnapshot(null);
+    setMetricSnapshotError(null);
+    setMetricSnapshotLoading(false);
+    setEventEvidenceLoading(false);
+    setDeliveries([]);
+  }, []);
+
   const openDrawer = (alert: ApmAlert) => {
+    const snapshotSequence = snapshotLoadSequence.current + 1;
+    snapshotLoadSequence.current = snapshotSequence;
     setSelected(alert);
+    setMetricSnapshot(null);
+    setMetricSnapshotError(null);
+    setMetricSnapshotLoading(true);
+    getAlertSnapshots(alert.id)
+      .then((snapshot) => {
+        if (snapshotSequence !== snapshotLoadSequence.current) return;
+        setMetricSnapshot(snapshot);
+      })
+      .catch((error) => {
+        if (snapshotSequence === snapshotLoadSequence.current) {
+          setMetricSnapshotError(catalogErrorKind(error));
+        }
+      })
+      .finally(() => {
+        if (snapshotSequence === snapshotLoadSequence.current) setMetricSnapshotLoading(false);
+      });
     const event = alert.events.at(-1) ?? null;
     if (event) chooseEvent(alert, event);
   };
@@ -190,9 +226,7 @@ export default function ApmAlertsPage() {
     await closeAlert(alert.id);
     message.success('告警已关闭');
     if (selected?.id === alert.id) {
-      setSelected(null);
-      setSelectedEvent(null);
-      setSnapshot(null);
+      resetDrawerState();
     }
     load();
   };
@@ -207,15 +241,13 @@ export default function ApmAlertsPage() {
     setAllAlerts([]);
     setDistribution([]);
     setState('loading');
-    setSelected(null);
-    setSelectedEvent(null);
-    setSnapshot(null);
+    resetDrawerState();
   };
 
   const chartRows = useMemo(() => {
-    const series = snapshot?.payload?.series ?? [];
-    const threshold = snapshot?.evaluation_snapshot.threshold;
-    const eventAt = new Date(snapshot?.occurred_at ?? 0).getTime();
+    const series = eventEvidence?.payload?.series ?? [];
+    const threshold = eventEvidence?.evaluation_snapshot.threshold;
+    const eventAt = new Date(eventEvidence?.occurred_at ?? 0).getTime();
     let closest = -1;
     let distance = Number.POSITIVE_INFINITY;
     series.forEach((point, index) => {
@@ -229,9 +261,29 @@ export default function ApmAlertsPage() {
       timestamp: point.timestamp,
       value: point.value,
       threshold: threshold == null ? null : Number(threshold),
-      event: index === closest ? point.value : null,
+      event:
+        index === closest && eventEvidence?.evaluation_snapshot.value != null
+          ? Number(eventEvidence.evaluation_snapshot.value)
+          : null,
     }));
-  }, [snapshot]);
+  }, [eventEvidence]);
+  const snapshotTimeFormat = useMemo(() => {
+    const minuteLabels = chartRows.map((row) => dayjs(row.timestamp).format('HH:mm'));
+    return new Set(minuteLabels).size < minuteLabels.length ? 'HH:mm:ss' : 'HH:mm';
+  }, [chartRows]);
+  const metricSnapshotRows = useMemo(
+    () => (metricSnapshot?.snapshots ?? []).map((item) => ({
+      timestamp: item.snapshot_time,
+      value: item.value == null ? null : Number(item.value),
+      threshold: item.threshold == null || item.threshold.value === '' ? null : Number(item.threshold.value),
+      event: item.type === 'event' ? Number(item.value ?? item.threshold?.value ?? 0) : null,
+    })),
+    [metricSnapshot],
+  );
+  const metricSnapshotTimeFormat = useMemo(() => {
+    const days = new Set(metricSnapshotRows.map((row) => dayjs(row.timestamp).format('YYYY-MM-DD')));
+    return days.size > 1 ? 'MM-DD HH:mm' : 'HH:mm';
+  }, [metricSnapshotRows]);
 
   const columns: TableColumnsType<ApmAlert> = [
     {
@@ -478,17 +530,6 @@ export default function ApmAlertsPage() {
                 columns={columns}
                 dataSource={alerts}
                 pagination={{ pageSize: 20 }}
-                onRow={(item) => ({
-                  className: 'cursor-pointer',
-                  tabIndex: 0,
-                  onClick: () => openDrawer(item),
-                  onKeyDown: (event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      openDrawer(item);
-                    }
-                  },
-                })}
                 scroll={{ x: 1248 }}
               />
             ) : (
@@ -500,11 +541,7 @@ export default function ApmAlertsPage() {
       <Drawer
         width={880}
         open={Boolean(selected)}
-        onClose={() => {
-          setSelected(null);
-          setSelectedEvent(null);
-          setSnapshot(null);
-        }}
+        onClose={resetDrawerState}
         title={selected?.title}
         extra={
           selected?.status === 'active' ? (
@@ -558,6 +595,63 @@ export default function ApmAlertsPage() {
                         },
                       ]}
                     />
+                    <Typography.Title level={5}>告警指标快照</Typography.Title>
+                    {metricSnapshotLoading ? (
+                      <CatalogState kind="loading" />
+                    ) : metricSnapshotError ? (
+                      <CatalogState
+                        kind={metricSnapshotError}
+                        onRetry={() => openDrawer(selected)}
+                      />
+                    ) : metricSnapshotRows.length && metricSnapshot ? (
+                      <Space direction="vertical" size="small" className="w-full">
+                        <Typography.Text type="secondary">
+                          检测频率 {metricSnapshot.evaluation_interval} 分钟 · 指标窗口{' '}
+                          {metricSnapshot.metric_window} 分钟 · 聚合方式 {metricSnapshot.aggregation}
+                        </Typography.Text>
+                        <div
+                          className="h-72"
+                          role="img"
+                          aria-label="告警生命周期内每次策略评估值与当时阈值"
+                        >
+                          <TimeSeriesComposedChart
+                            data={metricSnapshotRows}
+                            xDataKey="timestamp"
+                            getXLabel={(item) => dayjs(String(item.timestamp)).format(metricSnapshotTimeFormat)}
+                            xAxisBoundaryGap={false}
+                            series={[
+                              {
+                                name: '评估值',
+                                type: 'line',
+                                dataKey: 'value',
+                                color: OBSERVABILITY_SERIES_COLORS[0],
+                                showArea: true,
+                                areaOpacity: 0.24,
+                                smooth: false,
+                                lineWidth: 1,
+                              },
+                              {
+                                name: '当时阈值',
+                                type: 'line',
+                                dataKey: 'threshold',
+                                color: ALERT_LEVEL_COLORS[selected.severity],
+                                lineWidth: 1,
+                              },
+                              {
+                                name: '生命周期事件',
+                                type: 'line',
+                                dataKey: 'event',
+                                color: token.colorWarning,
+                                showSymbol: true,
+                                lineWidth: 0,
+                              },
+                            ]}
+                          />
+                        </div>
+                      </Space>
+                    ) : (
+                      <CatalogState kind="empty" description="暂无告警指标快照" />
+                    )}
                     <Typography.Title level={5}>生命周期事件</Typography.Title>
                     <Timeline
                       items={selected.events.map((event) => ({
@@ -585,28 +679,28 @@ export default function ApmAlertsPage() {
               },
               {
                 key: 'snapshot',
-                label: '事件快照',
-                children: snapshotLoading ? (
+                label: '事件原始数据',
+                children: eventEvidenceLoading ? (
                   <CatalogState kind="loading" />
-                ) : snapshot ? (
+                ) : eventEvidence ? (
                   <Space direction="vertical" size="middle" className="w-full">
                     <AntAlert
                       showIcon
                       type={
-                        snapshot.payload_status === 'available'
+                        eventEvidence.payload_status === 'available'
                           ? 'success'
-                          : snapshot.payload_status === 'expired'
+                          : eventEvidence.payload_status === 'expired'
                             ? 'warning'
                             : 'info'
                       }
                       message={
-                        snapshot.payload_status === 'expired'
+                        eventEvidence.payload_status === 'expired'
                           ? '遥测保留期已过；以下语义快照仍永久可读，指标序列已按保留策略清理。'
-                          : snapshot.payload_status === 'unavailable'
+                          : eventEvidence.payload_status === 'unavailable'
                             ? '指标序列对象暂不可用；APM Event 与语义证据已持久化，后台将有界重试。'
-                            : snapshot.payload_status === 'pending'
+                            : eventEvidence.payload_status === 'pending'
                               ? '语义快照已持久化，指标序列正在异步写入对象存储。'
-                              : '正在展示所选事件发生时的持久化快照，不会重新查询当前策略。'
+                              : '正在展示所选事件发生时的原始指标证据，不会重新查询当前策略。'
                       }
                     />
                     <Typography.Title level={5}>
@@ -617,16 +711,16 @@ export default function ApmAlertsPage() {
                     <div
                       className="h-72"
                       role="img"
-                      aria-label={`事件 ${snapshot.event_id} 趋势，评估值 ${snapshot.evaluation_snapshot.value ?? '无数据'}，当时阈值 ${snapshot.evaluation_snapshot.threshold ?? '无'}`}
+                      aria-label={`事件 ${eventEvidence.event_id} 趋势，评估值 ${eventEvidence.evaluation_snapshot.value ?? '无数据'}，当时阈值 ${eventEvidence.evaluation_snapshot.threshold ?? '无'}`}
                     >
                       <TimeSeriesComposedChart
                         data={chartRows}
                         xDataKey="timestamp"
-                        getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')}
+                        getXLabel={(item) => dayjs(String(item.timestamp)).format(snapshotTimeFormat)}
                         xAxisBoundaryGap={false}
                         series={[
                           {
-                            name: '评估值',
+                            name: '原始指标',
                             type: 'line',
                             dataKey: 'value',
                             color: OBSERVABILITY_SERIES_COLORS[0],
@@ -639,7 +733,7 @@ export default function ApmAlertsPage() {
                             name: '当时阈值',
                             type: 'line',
                             dataKey: 'threshold',
-                            color: ALERT_LEVEL_COLORS[snapshot.evaluation_snapshot.severity ?? 'critical'],
+                            color: ALERT_LEVEL_COLORS[eventEvidence.evaluation_snapshot.severity ?? 'critical'],
                             lineWidth: 1,
                           },
                           {
@@ -658,13 +752,13 @@ export default function ApmAlertsPage() {
                       size="small"
                       column={2}
                       items={[
-                        { key: 'schema', label: 'Schema', children: `v${snapshot.schema_version}` },
-                        { key: 'event', label: 'event_id', children: snapshot.event_id },
-                        { key: 'value', label: '评估值', children: snapshot.evaluation_snapshot.value ?? '无数据' },
+                        { key: 'schema', label: 'Schema', children: `v${eventEvidence.schema_version}` },
+                        { key: 'event', label: 'event_id', children: eventEvidence.event_id },
+                        { key: 'value', label: '评估值', children: eventEvidence.evaluation_snapshot.value ?? '无数据' },
                         {
                           key: 'condition',
                           label: '当时条件',
-                          children: `${snapshot.evaluation_snapshot.comparator ?? '—'} ${snapshot.evaluation_snapshot.threshold ?? '—'} ${snapshot.evaluation_snapshot.unit ?? ''}`,
+                          children: `${eventEvidence.evaluation_snapshot.comparator ?? '—'} ${eventEvidence.evaluation_snapshot.threshold ?? '—'} ${eventEvidence.evaluation_snapshot.unit ?? ''}`,
                         },
                         {
                           key: 'policy',
@@ -672,7 +766,7 @@ export default function ApmAlertsPage() {
                           span: 2,
                           children: (
                             <pre className="whitespace-pre-wrap text-xs">
-                              {JSON.stringify(snapshot.policy_snapshot, null, 2)}
+                              {JSON.stringify(eventEvidence.policy_snapshot, null, 2)}
                             </pre>
                           ),
                         },
@@ -682,7 +776,7 @@ export default function ApmAlertsPage() {
                           span: 2,
                           children: (
                             <pre className="whitespace-pre-wrap text-xs">
-                              {JSON.stringify(snapshot.object_snapshot, null, 2)}
+                              {JSON.stringify(eventEvidence.object_snapshot, null, 2)}
                             </pre>
                           ),
                         },
@@ -692,7 +786,7 @@ export default function ApmAlertsPage() {
                           span: 2,
                           children: (
                             <pre className="whitespace-pre-wrap text-xs">
-                              {JSON.stringify(snapshot.trace_context, null, 2)}
+                              {JSON.stringify(eventEvidence.trace_context, null, 2)}
                             </pre>
                           ),
                         },
@@ -715,7 +809,7 @@ export default function ApmAlertsPage() {
                     )}
                   </Space>
                 ) : (
-                  <CatalogState kind="empty" description="所选事件没有可读快照" />
+                  <CatalogState kind="empty" description="所选事件没有可读原始数据" />
                 ),
               },
             ]}

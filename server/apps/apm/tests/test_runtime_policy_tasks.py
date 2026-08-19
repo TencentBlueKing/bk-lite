@@ -27,11 +27,9 @@ def _policy(enabled=True):
         service=service,
         environment="prod",
         metric_type="error_rate",
-        comparator="gt",
-        threshold="0.1",
-        duration_window=1,
-        recovery_window=1,
-        severity="error",
+        thresholds=[{"severity": "error", "comparator": "gt", "value": "0.1"}],
+        trigger_after=1,
+        recover_after=1,
         is_enabled=enabled,
     )
 

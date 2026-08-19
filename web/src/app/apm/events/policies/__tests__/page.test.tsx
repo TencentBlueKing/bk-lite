@@ -25,11 +25,6 @@ const policy = {
   recover_after: 3,
   no_data_after: null,
   no_data_severity: '' as const,
-  comparator: 'gt' as const,
-  threshold: '500',
-  duration_window: 5,
-  recovery_window: 3,
-  severity: 'warning' as const,
   notification_targets: [],
   is_enabled: true,
   state: {
