@@ -8,6 +8,10 @@ Status: approved for implementation (COMPLETE-PLAN-2026-08-06.md); code convergi
 `MAX_ACTIVE_RUNS=16`、`MAX_ACTIVE_TARGETS=150`、`TARGET_TASK_WINDOW=150`；单目标发布失败不得取消
 同 Run 其他目标，Run 汇总为 `completed_with_errors`。
 
+2026-08-17 结果发布补充锁定：发布状态、成功/失败结果微批、超时拆分、NATS 重连与
+Redis 结果事件隔离以同目录 `nats-result-publishing-final-plan-2026-08-17.md` 为准；该文档替代
+2026-08-14 方案中的结果发布和单一 `PUBLISH_TIMEOUT` 设计，不改变 `16/150/150` 全局容量结论。
+
 ## 摘要
 
 Stargazer 移除 ARQ 队列与 Worker，改由 Sanic 承载一个统一的异步采集运行时。

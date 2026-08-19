@@ -12,13 +12,7 @@ import sys
 import pytest
 from rest_framework import status
 
-from apps.patch_mgmt.constants import (
-    ComplianceStatus,
-    GovernanceTaskStatus,
-    GovernanceTaskType,
-    OSType,
-    PatchSourceType,
-)
+from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType, OSType, PatchSourceType
 from apps.patch_mgmt.models import (
     BaselineRequirement,
     GovernanceTask,
@@ -41,6 +35,7 @@ DASHBOARD_STATS_URL = f"{_BASE}/api/dashboard/stats/"
 
 
 # ── PatchSource ViewSet ────────────────────────────────────────────────────────
+
 
 @pytest.mark.django_db
 class TestPatchSourceViewApi:
@@ -69,9 +64,7 @@ class TestPatchSourceViewApi:
             ("auth_password", {"auth_user": "svc-wsus"}),
         ],
     )
-    def test_create_wsus_requires_winrm_credentials(
-        self, su_client, missing_field, payload
-    ):
+    def test_create_wsus_requires_winrm_credentials(self, su_client, missing_field, payload):
         resp = su_client.post(
             PATCH_SOURCE_URL,
             {
@@ -108,9 +101,7 @@ class TestPatchSourceViewApi:
         assert source.get_auth_password() == "plain-secret"
 
     def test_retrieve_api_returns_source(self, su_client):
-        src = PatchSource.objects.create(
-            name="WSUS-01", source_type=PatchSourceType.WSUS, team=[1]
-        )
+        src = PatchSource.objects.create(name="WSUS-01", source_type=PatchSourceType.WSUS, team=[1])
         resp = su_client.get(f"{PATCH_SOURCE_URL}{src.id}/")
         assert resp.status_code == status.HTTP_200_OK
         assert resp.data["name"] == "WSUS-01"
@@ -155,12 +146,8 @@ class TestPatchSourceViewApi:
         assert resp.data["connectivity_status"] == "connected"
         assert probe.call_args.args[0].pk is None
 
-    def test_unsaved_wsus_connectivity_requires_winrm_credentials(
-        self, su_client, mocker
-    ):
-        probe = mocker.patch(
-            "apps.patch_mgmt.views.patch_source.probe_source"
-        )
+    def test_unsaved_wsus_connectivity_requires_winrm_credentials(self, su_client, mocker):
+        probe = mocker.patch("apps.patch_mgmt.views.patch_source.probe_source")
 
         resp = su_client.post(
             f"{PATCH_SOURCE_URL}test_connectivity/",
@@ -176,9 +163,7 @@ class TestPatchSourceViewApi:
         assert "auth_password" in resp.data
         probe.assert_not_called()
 
-    def test_edit_form_test_reuses_saved_password_without_mutating_source(
-        self, su_client, mocker
-    ):
+    def test_edit_form_test_reuses_saved_password_without_mutating_source(self, su_client, mocker):
         from apps.core.mixinx import EncryptMixin
 
         credentials = {"auth_password": "saved-secret"}
@@ -209,9 +194,7 @@ class TestPatchSourceViewApi:
         source.refresh_from_db()
         assert source.auth_user == "old-user"
 
-    def test_edit_form_test_reuses_saved_password_when_request_sends_blank(
-        self, su_client, mocker
-    ):
+    def test_edit_form_test_reuses_saved_password_when_request_sends_blank(self, su_client, mocker):
         from apps.core.mixinx import EncryptMixin
 
         credentials = {"auth_password": "saved-secret"}
@@ -245,9 +228,7 @@ class TestPatchSourceViewApi:
         tested = probe.call_args.args[0]
         assert tested.get_auth_password() == "saved-secret"
 
-    def test_edit_form_save_reuses_saved_password_when_request_sends_blank(
-        self, su_client, mocker
-    ):
+    def test_edit_form_save_reuses_saved_password_when_request_sends_blank(self, su_client, mocker):
         from apps.core.mixinx import EncryptMixin
 
         credentials = {"auth_password": "saved-secret"}
@@ -260,9 +241,7 @@ class TestPatchSourceViewApi:
             auth_password=credentials["auth_password"],
             team=[1],
         )
-        enqueue = mocker.patch(
-            "apps.patch_mgmt.tasks.check_patch_source_connectivity.delay"
-        )
+        enqueue = mocker.patch("apps.patch_mgmt.tasks.check_patch_source_connectivity.delay")
 
         resp = su_client.put(
             f"{PATCH_SOURCE_URL}{source.id}/",
@@ -283,9 +262,7 @@ class TestPatchSourceViewApi:
         assert source.get_auth_password() == "saved-secret"
         enqueue.assert_not_called()
 
-    def test_metadata_only_update_keeps_connectivity_and_does_not_probe(
-        self, su_client, mocker
-    ):
+    def test_metadata_only_update_keeps_connectivity_and_does_not_probe(self, su_client, mocker):
         source = PatchSource.objects.create(
             name="YUM-Old",
             source_type=PatchSourceType.YUM_REPO,
@@ -311,9 +288,7 @@ class TestPatchSourceViewApi:
         assert source.connectivity_status == "connected"
         probe.assert_not_called()
 
-    def test_connection_update_resets_connectivity_and_enqueues_probe(
-        self, su_client, mocker
-    ):
+    def test_connection_update_resets_connectivity_and_enqueues_probe(self, su_client, mocker):
         source = PatchSource.objects.create(
             name="YUM",
             source_type=PatchSourceType.YUM_REPO,
@@ -351,9 +326,7 @@ class TestPatchSourceViewApi:
         resp = su_client.post(PATCH_SOURCE_URL, data, format="json")
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_linux_preview_does_not_require_wsus_dependency(
-        self, su_client, mocker, monkeypatch
-    ):
+    def test_linux_preview_does_not_require_wsus_dependency(self, su_client, mocker, monkeypatch):
         source = PatchSource.objects.create(
             name="YUM-Test",
             source_type=PatchSourceType.YUM_REPO,
@@ -420,9 +393,7 @@ class TestPatchSourceViewApi:
         assert resp.data["total"] == 1
         assert [item["name"] for item in resp.data["items"]] == ["kernel"]
 
-    def test_wsus_preview_missing_dependency_returns_400(
-        self, su_client, monkeypatch
-    ):
+    def test_wsus_preview_missing_dependency_returns_400(self, su_client, monkeypatch):
         source = PatchSource.objects.create(
             name="WSUS-Test",
             source_type=PatchSourceType.WSUS,
@@ -445,13 +416,9 @@ class TestPatchSourceViewApi:
         assert "error" in resp.data
 
     def test_catalog_actions_are_removed(self, su_client):
-        source = PatchSource.objects.create(
-            name="WSUS", source_type=PatchSourceType.WSUS, url="http://wsus.example.com", team=[1]
-        )
+        source = PatchSource.objects.create(name="WSUS", source_type=PatchSourceType.WSUS, url="http://wsus.example.com", team=[1])
 
-        search_resp = su_client.post(
-            f"{PATCH_SOURCE_URL}{source.id}/catalog_search/", {"query": "KB5072653"}, format="json"
-        )
+        search_resp = su_client.post(f"{PATCH_SOURCE_URL}{source.id}/catalog_search/", {"query": "KB5072653"}, format="json")
         ingest_resp = su_client.post(
             f"{PATCH_SOURCE_URL}{source.id}/catalog_ingest/",
             {"entry": {"update_id": "obsolete"}},
@@ -463,25 +430,20 @@ class TestPatchSourceViewApi:
 
     def test_set_enabled_returns_200(self, su_client):
         """启停切换 action 不能因 serializer 缺 context 报 500。"""
-        src = PatchSource.objects.create(
-            name="YUM-Test", source_type=PatchSourceType.YUM_REPO, is_enabled=False, team=[1]
-        )
-        resp = su_client.post(
-            f"{PATCH_SOURCE_URL}{src.id}/set_enabled/", {"is_enabled": True}, format="json"
-        )
+        src = PatchSource.objects.create(name="YUM-Test", source_type=PatchSourceType.YUM_REPO, is_enabled=False, team=[1])
+        resp = su_client.post(f"{PATCH_SOURCE_URL}{src.id}/set_enabled/", {"is_enabled": True}, format="json")
         assert resp.status_code == status.HTTP_200_OK
         assert resp.data["is_enabled"] is True
 
     def test_set_enabled_requires_bool(self, su_client):
         """is_enabled 缺失返回 400。"""
-        src = PatchSource.objects.create(
-            name="YUM-Test2", source_type=PatchSourceType.YUM_REPO, team=[1]
-        )
+        src = PatchSource.objects.create(name="YUM-Test2", source_type=PatchSourceType.YUM_REPO, team=[1])
         resp = su_client.post(f"{PATCH_SOURCE_URL}{src.id}/set_enabled/", {}, format="json")
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
 
 
 # ── Patch Library ViewSet ──────────────────────────────────────────────────────
+
 
 @pytest.mark.django_db
 class TestPatchViewApi:
@@ -522,8 +484,10 @@ class TestPatchViewApi:
 
         p = Patch.objects.create(title="KB5034441", os_type=OSType.WINDOWS, team=[1])
         WindowsPatchDetail.objects.create(
-            patch=p, kb_number="KB5034441",
-            product_list=["Windows Server 2019"], architectures=["x64"],
+            patch=p,
+            kb_number="KB5034441",
+            product_list=["Windows Server 2019"],
+            architectures=["x64"],
         )
         request = request_factory.get("/")
         request.user = authenticated_user
@@ -539,8 +503,12 @@ class TestPatchViewApi:
 
         p = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
         LinuxPatchDetail.objects.create(
-            patch=p, pkg_name="openssl", pkg_version="1.1.1k-7",
-            distro_name="centos", os_version_range=">=7", repo_type="yum",
+            patch=p,
+            pkg_name="openssl",
+            pkg_version="1.1.1k-7",
+            distro_name="centos",
+            os_version_range=">=7",
+            repo_type="yum",
         )
         request = request_factory.get("/")
         request.user = authenticated_user
@@ -593,6 +561,7 @@ class TestPatchViewApi:
 
 
 # ── PatchTarget ViewSet ────────────────────────────────────────────────────────
+
 
 @pytest.mark.django_db
 class TestPatchTargetViewApi:
@@ -674,6 +643,37 @@ class TestPatchTargetViewApi:
         assert resp.status_code == status.HTTP_200_OK
         assert resp.data["has_pending_reboot"] is True
 
+    def test_retrieve_api_does_not_block_actions_for_expired_waiting_task(self, su_client):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        target = PatchTarget.objects.create(name="stale-waiting-host", ip="10.0.0.36", team=[1])
+        task = GovernanceTask.objects.create(
+            name="stale-waiting-assessment",
+            task_type=GovernanceTaskType.ASSESS,
+            status=GovernanceTaskStatus.PENDING,
+            target_list=[target.id],
+            team=[1],
+        )
+        host = GovernanceTaskHost.objects.create(
+            task=task,
+            target_id=target.id,
+            target_name=target.name,
+            target_ip=target.ip,
+            stage="waiting",
+        )
+        GovernanceTaskHost.objects.filter(pk=host.pk).update(created_at=timezone.now() - timedelta(minutes=6))
+
+        resp = su_client.get(f"{PATCH_TARGET_URL}{target.id}/")
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert resp.data["has_active_task"] is False
+        task.refresh_from_db()
+        host.refresh_from_db()
+        assert task.status == GovernanceTaskStatus.PENDING
+        assert host.stage == "waiting"
+
     def test_malformed_input_invalid_ip_returns_400(self, su_client):
         """malformed_input: 非法 IP 地址"""
         data = {"name": "bad-host", "ip": "not_an_ip", "os_type": OSType.LINUX, "team": [1]}
@@ -703,6 +703,33 @@ class TestPatchTargetViewApi:
         assert resp.data["code"] == "target_has_active_task"
         assert resp.data["message"]
         assert PatchTarget.objects.filter(pk=target.id).exists()
+
+    def test_destroy_api_reconciles_expired_waiting_task_before_delete(self, su_client):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        target = PatchTarget.objects.create(name="stale-delete-host", ip="10.0.0.37", team=[1])
+        task = GovernanceTask.objects.create(
+            name="stale-delete-assessment",
+            task_type=GovernanceTaskType.ASSESS,
+            status=GovernanceTaskStatus.PENDING,
+            target_list=[target.id],
+            team=[1],
+        )
+        host = GovernanceTaskHost.objects.create(
+            task=task,
+            target_id=target.id,
+            target_name=target.name,
+            target_ip=target.ip,
+            stage="waiting",
+        )
+        GovernanceTaskHost.objects.filter(pk=host.pk).update(created_at=timezone.now() - timedelta(minutes=6))
+
+        resp = su_client.delete(f"{PATCH_TARGET_URL}{target.id}/")
+
+        assert resp.status_code == status.HTTP_200_OK
+        assert not PatchTarget.objects.filter(pk=target.id).exists()
 
     def test_destroy_api_rejects_target_with_pending_reboot_binding(self, su_client):
         target = PatchTarget.objects.create(name="pending-host", ip="10.0.0.32", team=[1])
@@ -810,6 +837,7 @@ class TestPatchTargetViewApi:
 
 # ── Dashboard ──────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.django_db
 class TestPatchDashboardViewApi:
     def test_stats_api_returns_200(self, su_client):
@@ -860,11 +888,7 @@ class TestPatchDashboardViewApi:
         resp = su_client.get(DASHBOARD_STATS_URL)
 
         assert resp.status_code == status.HTTP_200_OK
-        unknown = next(
-            item
-            for item in resp.data["compliance_distribution"]
-            if item["filter"] == "unknown"
-        )
+        unknown = next(item for item in resp.data["compliance_distribution"] if item["filter"] == "unknown")
         assert unknown["label"] == "无法判定"
 
     def test_superuser_dashboard_includes_all_target_roots(self, su_client):
@@ -946,13 +970,7 @@ class TestRiskViewApi:
         from django.utils import timezone
 
         from apps.patch_mgmt.constants import ComplianceStatus, RequirementAssessmentStatus
-        from apps.patch_mgmt.models import (
-            BaselineRequirement,
-            HostBaselineBinding,
-            HostComplianceSnapshot,
-            PatchBaseline,
-            WindowsPatchDetail,
-        )
+        from apps.patch_mgmt.models import BaselineRequirement, HostBaselineBinding, HostComplianceSnapshot, PatchBaseline, WindowsPatchDetail
 
         target = PatchTarget.objects.create(name="web-01", ip="10.0.0.1", os_type=OSType.WINDOWS, team=[1])
         patch = Patch.objects.create(title="Security Update", os_type=OSType.WINDOWS, severity="critical", team=[1])
@@ -994,9 +1012,7 @@ class TestRiskViewApi:
     def test_risk_remediate_creates_install_task(self, su_client, mocker):
         from apps.patch_mgmt.models import GovernanceTask
 
-        trigger = mocker.patch(
-            "apps.patch_mgmt.services.governance_service._trigger_async"
-        )
+        trigger = mocker.patch("apps.patch_mgmt.services.governance_service._trigger_async")
         target, patch, _baseline = self._setup()
         resp = su_client.post(
             f"{RISK_URL}remediate/",
@@ -1057,9 +1073,7 @@ class TestRiskViewApi:
         from apps.patch_mgmt.constants import RequirementAssessmentStatus
         from apps.patch_mgmt.models import HostComplianceSnapshot
 
-        trigger = mocker.patch(
-            "apps.patch_mgmt.services.governance_service._trigger_async"
-        )
+        trigger = mocker.patch("apps.patch_mgmt.services.governance_service._trigger_async")
         target, patch, _baseline = self._setup()
         HostComplianceSnapshot.objects.filter(
             binding__target=target,
@@ -1192,9 +1206,7 @@ class TestRiskViewApi:
     def test_risk_reboot_accepts_pending_reboot_host(self, su_client, mocker):
         from apps.patch_mgmt.models import GovernanceTask
 
-        trigger = mocker.patch(
-            "apps.patch_mgmt.services.governance_service._trigger_async"
-        )
+        trigger = mocker.patch("apps.patch_mgmt.services.governance_service._trigger_async")
         target, patch, _baseline = self._setup()
         self._mark_pending_reboot(target, patch)
 
@@ -1205,9 +1217,7 @@ class TestRiskViewApi:
         )
         assert preview.status_code == status.HTTP_200_OK
         assert preview.data["target_ids"] == [target.id]
-        assert [(item["host_id"], item["patch_id"]) for item in preview.data["items"]] == [
-            (target.id, patch.id)
-        ]
+        assert [(item["host_id"], item["patch_id"]) for item in preview.data["items"]] == [(target.id, patch.id)]
 
         resp = su_client.post(
             f"{RISK_URL}reboot/",
@@ -1370,9 +1380,7 @@ class TestGovernanceTaskViewApi:
         assert data["progress"] == "1 / 1"
 
     def test_create_assess_task_without_name_succeeds(self, su_client, mocker):
-        trigger = mocker.patch(
-            "apps.patch_mgmt.services.governance_service._trigger_async"
-        )
+        trigger = mocker.patch("apps.patch_mgmt.services.governance_service._trigger_async")
         target = PatchTarget.objects.create(name="web-01", ip="10.0.0.1", os_type=OSType.WINDOWS, team=[1])
         resp = su_client.post(
             GOVERNANCE_URL,
@@ -1383,10 +1391,45 @@ class TestGovernanceTaskViewApi:
         assert "id" in resp.data
         trigger.assert_called_once_with(resp.data["id"])
 
-    def test_manual_verify_task_is_rejected(self, su_client):
-        target = PatchTarget.objects.create(
-            name="web-verify", ip="10.0.0.9", os_type=OSType.WINDOWS, team=[1]
+    def test_create_assess_reconciles_expired_waiting_task(self, su_client, mocker):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        trigger = mocker.patch("apps.patch_mgmt.services.governance_service._trigger_async")
+        target = PatchTarget.objects.create(name="retry-stale-host", ip="10.0.0.38", team=[1])
+        stale_task = GovernanceTask.objects.create(
+            name="stale-assessment",
+            task_type=GovernanceTaskType.ASSESS,
+            status=GovernanceTaskStatus.PENDING,
+            target_list=[target.id],
+            team=[1],
         )
+        stale_host = GovernanceTaskHost.objects.create(
+            task=stale_task,
+            target_id=target.id,
+            target_name=target.name,
+            target_ip=target.ip,
+            stage="waiting",
+        )
+        GovernanceTaskHost.objects.filter(pk=stale_host.pk).update(created_at=timezone.now() - timedelta(minutes=6))
+
+        resp = su_client.post(
+            GOVERNANCE_URL,
+            {"task_type": "assess", "target_list": [target.id], "execution_mode": "now"},
+            format="json",
+        )
+
+        assert resp.status_code == status.HTTP_201_CREATED
+        stale_task.refresh_from_db()
+        stale_host.refresh_from_db()
+        assert stale_task.status == GovernanceTaskStatus.FAILED
+        assert stale_host.stage == "failed"
+        assert stale_host.error_code == "historical_dispatch_timeout"
+        trigger.assert_called_once_with(resp.data["id"])
+
+    def test_manual_verify_task_is_rejected(self, su_client):
+        target = PatchTarget.objects.create(name="web-verify", ip="10.0.0.9", os_type=OSType.WINDOWS, team=[1])
 
         resp = su_client.post(
             GOVERNANCE_URL,
@@ -1399,15 +1442,9 @@ class TestGovernanceTaskViewApi:
 
     @staticmethod
     def _make_cancel_task(*, task_status, stages):
-        from apps.patch_mgmt.constants import GovernanceTaskStatus
         from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
 
-        targets = [
-            PatchTarget.objects.create(
-                name=f"host-{index}", ip=f"10.20.0.{index}", team=[1]
-            )
-            for index in range(1, len(stages) + 1)
-        ]
+        targets = [PatchTarget.objects.create(name=f"host-{index}", ip=f"10.20.0.{index}", team=[1]) for index in range(1, len(stages) + 1)]
         task = GovernanceTask.objects.create(
             name="cancel-test",
             task_type="install",
@@ -1525,16 +1562,10 @@ class TestGovernanceTaskViewApi:
         assert resp.data["detail"]
 
     def test_task_detail_includes_baseline_requirements(self, su_client):
-        from apps.patch_mgmt.models import (
-            GovernanceTask,
-            GovernanceTaskHost,
-            HostBaselineBinding,
-            HostComplianceSnapshot,
-            Patch,
-            PatchBaseline,
-        )
-        from apps.patch_mgmt.models.baseline import BaselineRequirement
         from django.utils import timezone
+
+        from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, HostBaselineBinding, HostComplianceSnapshot, Patch, PatchBaseline
+        from apps.patch_mgmt.models.baseline import BaselineRequirement
 
         target = PatchTarget.objects.create(name="web-01", ip="10.0.0.1", os_type=OSType.LINUX, team=[1])
         baseline = PatchBaseline.objects.create(name="linux-baseline", os_type=OSType.LINUX, team=[1])
@@ -1556,9 +1587,7 @@ class TestGovernanceTaskViewApi:
             patch_list=[patch.id],
             team=[1],
         )
-        GovernanceTaskHost.objects.create(
-            task=task, target_id=target.id, target_name=target.name, target_ip=target.ip
-        )
+        GovernanceTaskHost.objects.create(task=task, target_id=target.id, target_name=target.name, target_ip=target.ip)
 
         resp = su_client.get(f"{GOVERNANCE_URL}{task.id}/")
         assert resp.status_code == status.HTTP_200_OK
@@ -1599,11 +1628,7 @@ class TestBaselineViewApi:
         assert [item["id"] for item in resp.data] == [linux_baseline.id]
 
     def test_requirements_api_returns_windows_version_and_arch(self, su_client):
-        from apps.patch_mgmt.models import (
-            BaselineRequirement,
-            PatchBaseline,
-            WindowsPatchDetail,
-        )
+        from apps.patch_mgmt.models import BaselineRequirement, PatchBaseline, WindowsPatchDetail
 
         baseline = PatchBaseline.objects.create(
             name="Windows Server 基线",
@@ -1630,7 +1655,7 @@ class TestBaselineViewApi:
         assert resp.data[0]["patch_arch"] == "x64, arm64"
 
     def test_bind_hosts_to_baseline(self, su_client):
-        from apps.patch_mgmt.models import PatchBaseline, HostBaselineBinding
+        from apps.patch_mgmt.models import HostBaselineBinding, PatchBaseline
 
         target = PatchTarget.objects.create(name="web-01", ip="10.0.0.1", os_type=OSType.WINDOWS, team=[1])
         baseline = PatchBaseline.objects.create(name="Win2019", os_type=OSType.WINDOWS, team=[1])

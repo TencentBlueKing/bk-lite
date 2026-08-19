@@ -1,11 +1,16 @@
-export type OpsAnalysisWidgetSurface = 'dashboard' | 'screen';
+export type OpsAnalysisWidgetSurface = 'dashboard' | 'screen' | 'report';
 
 const SCREEN_ONLY_CHART_TYPES = new Set(['room3D']);
+export const REPORT_CHART_TYPES: ReadonlySet<string> = new Set(['table', 'eventTable']);
 
 export const isChartTypeSupportedOnSurface = (
   chartType: string,
   surface: OpsAnalysisWidgetSurface = 'dashboard',
 ) => {
+  if (surface === 'report') {
+    return REPORT_CHART_TYPES.has(chartType);
+  }
+
   if (SCREEN_ONLY_CHART_TYPES.has(chartType)) {
     return surface === 'screen';
   }

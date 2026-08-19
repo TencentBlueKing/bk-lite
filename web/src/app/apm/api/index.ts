@@ -230,7 +230,11 @@ const useApmApi = () => {
   );
 
   const previewPolicy = useCallback(
-    (payload: ApmPolicyInput) => post<ApmPolicyQueryResult>('/apm/policies/preview/', payload),
+    (payload: ApmPolicyInput, suppressErrorNotification = false) => post<ApmPolicyQueryResult>(
+      '/apm/policies/preview/',
+      payload,
+      suppressErrorNotification ? { suppressErrorNotification: true } : undefined,
+    ),
     [post]
   );
 
@@ -245,7 +249,7 @@ const useApmApi = () => {
   );
 
   const getAlertDistribution = useCallback(
-    (params: Pick<ApmAlertQuery, 'started_at' | 'ended_at'>) =>
+    (params: Pick<ApmAlertQuery, 'started_at' | 'ended_at' | 'status_group'>) =>
       get<Array<{ time: string; critical: number; error: number; warning: number }>>(
         '/apm/alerts/distribution/',
         { params }

@@ -80,6 +80,12 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   };
 
   useEffect(() => {
+    if (surface === 'report' && selectorMode !== 'dataSource') {
+      setSelectorMode('dataSource');
+    }
+  }, [selectorMode, surface]);
+
+  useEffect(() => {
     const fetchTags = async () => {
       try {
         setTagsLoading(true);
@@ -207,24 +213,26 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
       styles={{ body: { height: '56vh', overflow: 'hidden' } }}
     >
       <div className={styles.selector}>
-        <div className={styles.modeBar}>
-          <button
-            type="button"
-            className={`${styles.modeButton} ${selectorMode === 'dataSource' ? styles.activeModeButton : ''}`}
-            onClick={() => handleModeChange('dataSource')}
-          >
-            <DatabaseOutlined />
-            {t('dashboard.dataComponents')}
-          </button>
-          <button
-            type="button"
-            className={`${styles.modeButton} ${selectorMode === 'sceneWidget' ? styles.activeModeButton : ''}`}
-            onClick={() => handleModeChange('sceneWidget')}
-          >
-            <ApartmentOutlined />
-            {t('dashboard.sceneComponents')}
-          </button>
-        </div>
+        {surface !== 'report' && (
+          <div className={styles.modeBar}>
+            <button
+              type="button"
+              className={`${styles.modeButton} ${selectorMode === 'dataSource' ? styles.activeModeButton : ''}`}
+              onClick={() => handleModeChange('dataSource')}
+            >
+              <DatabaseOutlined />
+              {t('dashboard.dataComponents')}
+            </button>
+            <button
+              type="button"
+              className={`${styles.modeButton} ${selectorMode === 'sceneWidget' ? styles.activeModeButton : ''}`}
+              onClick={() => handleModeChange('sceneWidget')}
+            >
+              <ApartmentOutlined />
+              {t('dashboard.sceneComponents')}
+            </button>
+          </div>
+        )}
 
         <div className={styles.content}>
           <div className={styles.categoryPane}>

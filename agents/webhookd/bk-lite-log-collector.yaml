@@ -16,6 +16,8 @@ spec:
     metadata:
       labels:
         app: vector-daemonset
+      annotations:
+        bklite.io/log-collect-config: "__LOG_COLLECT_CONFIG_HASH__"
     spec:
       serviceAccount: vector-daemonset
       containers:
@@ -156,6 +158,7 @@ data:
           node_labels: "node_labels"
         extra_field_selector: ""
         extra_label_selector: ""
+__INCLUDE_PATHS_GLOB_PATTERNS__
         max_read_bytes: 2048
         max_line_bytes: 32768
         fingerprint_lines: 1

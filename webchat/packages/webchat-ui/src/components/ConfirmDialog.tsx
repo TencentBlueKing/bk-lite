@@ -1,4 +1,5 @@
 import React from 'react';
+import { WC } from '../chrome';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -8,7 +9,6 @@ interface ConfirmDialogProps {
   onCancel: () => void;
   confirmText?: string;
   cancelText?: string;
-  confirmButtonClass?: string;
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
@@ -19,23 +19,32 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onCancel,
   confirmText = '确定',
   cancelText = '取消',
-  confirmButtonClass = 'bg-red-600 hover:bg-red-700',
 }) => {
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50"
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: WC.overlay }}
       onClick={onCancel}
     >
       <div
-        className="bg-white rounded-lg shadow-xl p-6 max-w-sm mx-4"
+        className="mx-4 max-w-sm rounded-lg p-6"
+        style={{
+          background: WC.white,
+          border: `1px solid ${WC.botBorder}`,
+          boxShadow: WC.shadow,
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start gap-3 mb-4">
-          <div className="flex-shrink-0 w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+        <div className="mb-4 flex items-start gap-3">
+          <div
+            className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full"
+            style={{ background: WC.warningBg }}
+          >
             <svg
-              className="w-6 h-6 text-orange-600"
+              className="h-6 w-6"
+              style={{ color: WC.warning }}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -49,20 +58,26 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             </svg>
           </div>
           <div className="flex-1">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
-            <p className="text-sm text-gray-600">{message}</p>
+            <h3 className="mb-2 text-lg font-semibold" style={{ color: WC.botText }}>
+              {title}
+            </h3>
+            <p className="text-sm" style={{ color: WC.muted }}>
+              {message}
+            </p>
           </div>
         </div>
         <div className="flex justify-end gap-3">
           <button
             onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            className="rounded-lg px-4 py-2 text-sm font-medium"
+            style={{ background: WC.page, color: WC.botText }}
           >
             {cancelText}
           </button>
           <button
             onClick={onConfirm}
-            className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors ${confirmButtonClass}`}
+            className="rounded-lg px-4 py-2 text-sm font-medium"
+            style={{ background: WC.fail, color: WC.onPrimary }}
           >
             {confirmText}
           </button>

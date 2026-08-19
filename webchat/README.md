@@ -104,6 +104,8 @@ export default function App() {
 }
 ```
 
+`sseUrl` is the single-bot floating embed. To switch among the signed-in user's chat applications, pass a `platform` contract (or mount `PlatformChat`) instead — see `INTEGRATION.md`. Platform mode is a full-height right overlay (FAB when closed); only `sseUrl` keeps the 384×650 float.
+
 ### 方式三：CDN 引入（推荐生产环境）
 
 ### 方式三：CDN 引入（推荐生产环境）

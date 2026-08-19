@@ -207,6 +207,8 @@ def test_mark_and_detect_runtime_done_stage():
 
 def test_new_pg_leftover_stages_are_required():
     assert "subscription_snapshots" in REQUIRED_CMDB_UUID_STAGES
+    assert "custom_reporting_pending" in REQUIRED_CMDB_UUID_STAGES
+    assert "custom_reporting_cleanup" in REQUIRED_CMDB_UUID_STAGES
     assert "collect_instances" in REQUIRED_CMDB_UUID_STAGES
     assert "collect_result_snapshots" in REQUIRED_CMDB_UUID_STAGES
     assert "operation_snapshots" in REQUIRED_CMDB_UUID_STAGES

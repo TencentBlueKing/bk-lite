@@ -4,7 +4,6 @@
 两个客户端的方法名 + 参数转发契约。替换 self.client 为记录器，不触达真实 NATS。
 """
 import pydantic.root_model  # noqa
-
 import pytest
 
 from apps.rpc.monitor import Monitor, MonitorOperationAnaRpc
@@ -99,6 +98,24 @@ def test_create_metric(ana_rpc):
 def test_create_monitor_policy(ana_rpc):
     ana_rpc.create_monitor_policy({"pol": 1})
     assert _last(ana_rpc.client) == ("create_monitor_policy", (), {"data": {"pol": 1}})
+
+
+def test_search_monitor_policies(ana_rpc):
+    ana_rpc.search_monitor_policies("demo-host-cpu-high", user_info={"team": 1})
+    assert _last(ana_rpc.client) == (
+        "search_monitor_policies",
+        (),
+        {"name": "demo-host-cpu-high", "user_info": {"team": 1}},
+    )
+
+
+def test_delete_monitor_policy(ana_rpc):
+    ana_rpc.delete_monitor_policy(9, user_info={"team": 1})
+    assert _last(ana_rpc.client) == (
+        "delete_monitor_policy",
+        (),
+        {"policy_id": 9, "user_info": {"team": 1}},
+    )
 
 
 def test_monitor_objects(ana_rpc):

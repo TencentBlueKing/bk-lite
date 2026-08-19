@@ -798,7 +798,7 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                     serving_data["container_info"] = {
                         "status": "error",
                         "state": "unknown",
-                        "message": "webhookd 未返回此容器状态",
+                        "message": mlops_message(request, "error.webhookd_container_status_missing"),
                     }
 
             if updates:
@@ -813,7 +813,7 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                     **old_info,
                     "status": "error",
                     "_query_failed": True,
-                    "_error": str(e),
+                    "_error": mlops_exception_message(request, e),
                 }
 
         return response
@@ -908,7 +908,7 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                             else {
                                 "status": "error",
                                 "id": container_id,
-                                "message": "无法查询容器状态",
+                                "message": mlops_message(request, "error.container_status_query_failed"),
                             }
                         )
 
@@ -917,17 +917,17 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
 
                         response.data["container_info"] = container_info
                         response.data["message"] = mlops_message(request, "message.serving_created_existing_container_synced")
-                        response.data["warning"] = "容器已存在，已同步容器信息"
+                        response.data["warning"] = mlops_message(request, "message.container_already_exists_synced")
                     except WebhookError:
                         serving.container_info = {
                             "status": "error",
-                            "message": f"容器已存在但同步状态失败: {error_msg}",
+                            "message": mlops_message(request, "error.serving_container_sync_failed", detail=mlops_exception_message(request, e)),
                         }
                         serving.save(update_fields=["container_info"])
                         response.data["container_info"] = serving.container_info
                         response.data["message"] = mlops_message(request, "message.serving_created_start_failed_generic")
                 else:
-                    serving.container_info = {"status": "error", "message": error_msg}
+                    serving.container_info = {"status": "error", "message": mlops_exception_message(request, e)}
                     serving.save(update_fields=["container_info"])
                     response.data["container_info"] = serving.container_info
                     response.data["message"] = mlops_message(
@@ -1057,7 +1057,7 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                 response.data["message"] = mlops_message(
                     request, "message.serving_updated_restart_failed", detail=mlops_exception_message(request, e)
                 )
-                response.data["warning"] = "请手动调用 start 接口重新启动服务"
+                response.data["warning"] = mlops_message(request, "message.serving_restart_manually")
 
         return response
 

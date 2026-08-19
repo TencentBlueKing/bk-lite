@@ -101,7 +101,7 @@ def _report_section(key="report::report-a", name="report-a", **over):
         "name": name,
         "desc": "",
         "other": {},
-        "view_sets": {"time_range": None, "sections": []},
+        "view_sets": {"schema_version": 1, "filters": [], "sections": []},
         "refs": {"datasource_keys": [], "namespace_keys": []},
     }
     base.update(over)
@@ -558,7 +558,66 @@ def test_import_screen_and_report_into_target_directory():
     assert screen.view_sets["viewport"]["width"] == 1920
     assert report.directory_id == directory.id
     assert report.groups == [3]
-    assert report.view_sets == {"time_range": None, "sections": []}
+    assert report.view_sets == {"schema_version": 1, "filters": [], "sections": []}
+
+
+def test_yaml_report_view_sets_accept_portable_datasource_keys():
+    datasource_key = "report-source::api/table"
+    report = _report_section(
+        view_sets={
+            "schema_version": 1,
+            "filters": [],
+            "sections": [
+                {
+                    "id": "report-table",
+                    "valueConfig": {
+                        "dataSource": datasource_key,
+                        "chartType": "table",
+                        "name": "账单表",
+                    },
+                }
+            ],
+        }
+    )
+
+    doc = _doc(reports=[report])
+
+    assert doc.reports[0].view_sets["sections"][0]["valueConfig"]["dataSource"] == datasource_key
+
+
+@pytest.mark.django_db
+def test_import_report_rewrites_datasource_key_before_view_sets_validation():
+    from apps.operation_analysis.models.models import Report
+
+    datasource_key = "report-source::api/table"
+    report = _report_section(
+        view_sets={
+            "schema_version": 1,
+            "filters": [],
+            "sections": [
+                {
+                    "id": "report-table",
+                    "valueConfig": {
+                        "dataSource": datasource_key,
+                        "chartType": "table",
+                        "name": "账单表",
+                    },
+                }
+            ],
+        },
+        refs={"datasource_keys": [datasource_key], "namespace_keys": []},
+    )
+    doc = _doc(
+        datasources=[_ds_section(key=datasource_key, chart_type=["table"])],
+        reports=[report],
+    )
+
+    result = _service(doc).execute()
+
+    assert result["success"] is True
+    imported = Report.objects.get(name="report-a")
+    datasource = DataSourceAPIModel.objects.get(name="ds-a")
+    assert imported.view_sets["sections"][0]["valueConfig"]["dataSource"] == datasource.id
 
 
 @pytest.mark.django_db

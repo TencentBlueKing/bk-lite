@@ -25,6 +25,14 @@
 - **登录路由**（`urls.py:11-32`）：`api/login`、`api/verify_otp_login`、`api/wechat_login`、`api/get_domain_list`、`api/get_wechat_settings`、`api/get_bk_settings`、`api/generate_qr_code`、`api/verify_otp_code`、`api/reset_pwd`、`api/login_info`、`api/get_client`、`api/get_my_client`、`api/get_client_detail`、`api/get_user_menus`、`api/get_all_groups`、`api/logout`，外加 router 注册的 `api/user_group`（`UserGroupViewSet`）。
 - **批量初始化的关键性分层**：`batch_init` 在运行目标模块初始化前，先校验权限服务依赖的关键 schema；运营分析依次初始化默认命名空间、默认分组和内置画布资源，其中命名空间失败仅在可预期的命令错误场景降级，内置画布同步失败可告警后继续。补丁内置源也属于可重建资源，失败不阻断启动，后续可单独重试。跨模块初始化职责以 [[legacy-ard-modules-operation-analysis.md#模块 ARD：Operation Analysis（运营分析）]] 与 [[patch-management-architecture.md#模块 ARD：Patch Management（补丁管理）]] 为准，不在此重复业务资源定义。
 
+### CMDB 实例 UUID 清洗的启动期 / 运行期边界【已实现】
+
+CMDB 实例 UUID 清洗属于非关键、可重建的运行期收敛能力。`batch_init` 只幂等写入每 5 分钟的 `PeriodicTask` 登记，并 best-effort 投递一次运行期任务；启动期不执行 `apply` 或 `verify`，也不等待 Celery Worker 或 Beat。Worker 在运行期完成实际清洗与校验，失败记录告警并由周期任务重试，不阻断 Supervisor 启动。
+
+此边界新增了启动期数据库 `PeriodicTask` 写入及一次 Broker producer 投递，但两者均不构成 Worker / Beat 就绪的硬依赖。周期任务注册或首次投递失败时仅记录告警；注册未成功时须依赖重跑 `batch_init` 再次登记，不能将失败升级为启动门禁。
+
+> 证据来源：server/apps/core/management/commands/batch_init.py:125-149，server/apps/cmdb/tasks/uuid_migration.py:21-25,58-69,72-108，docs/operations/server-startup-dependencies.md:111-134　|　同步基线：b98b782a7　|　【已实现】
+
 > 证据来源：server/apps/core/management/commands/batch_init.py:29-30,99-106,162-174,193-200　|　同步基线：d2769559　|　【已实现】
 
 ## rpc —— NATS RPC 网关【已实现/已存在】
@@ -44,6 +52,9 @@
 ## 风险 / 待确认
 - 两套权限解析逻辑（`core.backends._get_user_all_roles`（`backends.py:131`）与 `system_mgmt.nats_api.get_user_all_roles`（`nats_api.py:63`）函数名不同但职责重叠）需保持一致【已实现，技术债】。
 - `AppClient` 本进程回退与 NATS 远程调用的切换条件 `IS_LOCAL_RPC` 为已实现的明确开关：`cmdb`、`monitor`、`opspilot` 等客户端读 env `IS_LOCAL_RPC`（默认 `'0'`），`=='1'` 时用 `AppClient` 本进程导入对应 app 的 nats handler 模块，否则用 `RpcClient` 走 NATS；构造函数另留 `is_local_client` 参数可强制本进程。例外：`system_mgmt.py` 固定走 `AppClient` 本进程导入 `apps.system_mgmt.nats_api`。【已实现，证据 `rpc/cmdb.py:8-10`、`rpc/monitor.py:8-9`、`rpc/opspilot.py:8-10`、`rpc/system_mgmt.py:1,4,6`】
+- CMDB UUID 首次任务 producer 的底层重试策略及其是否会拉长 `batch_init` 启动门禁，当前代码未在该调用边界显式限定，需确认。【待确认】
+
+> 证据来源：server/apps/core/management/commands/batch_init.py:136-149，server/config/components/celery.py:13-29　|　同步基线：b98b782a7　|　【待确认】
 
 ## 2026-07-01 Code-ARD 校准
 - `[base_core_rpc#20260701-027]` 修正 UserAPISecret：ARD 区分一次性返回 64 位明文 token、数据库 `sha256$` 摘要存储、旧明文兼容查找与 `max_length=80` 字段事实。

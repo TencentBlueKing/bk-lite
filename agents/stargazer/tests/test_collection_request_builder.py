@@ -7,7 +7,10 @@ def test_request_rejects_target_count_above_configured_limit(monkeypatch):
     with pytest.raises(ValueError, match="exceeds MAX_TARGETS_PER_RUN"):
         build_collection_request(
             task_id="too-many",
-            params={"model_id": "mysql", "targets": ["10.0.0.1", "10.0.0.2", "10.0.0.3"]},
+            params={
+                "model_id": "mysql",
+                "targets": ["10.0.0.1", "10.0.0.2", "10.0.0.3"],
+            },
         )
 
 
@@ -85,6 +88,29 @@ def test_monitor_builder_uses_the_same_request_contract():
     assert request.params["plugin_family"] == "monitor"
     assert request.targets == ("10.10.24.3",)
     assert request.credentials[0]["username"] == "administrator"
+    assert "password" not in request.params
+
+
+def test_vmware_legacy_hostname_header_becomes_the_network_target():
+    request = build_collection_request(
+        task_id="vmware-hostname-header",
+        params={
+            "model_id": "vmware_vc",
+            "plugin_name": "vmware_info",
+            "executor_type": "protocol",
+            "hostname": "10.10.16.254",
+            "port": "443",
+            "ssl": "false",
+            "username": "readonly",
+            "password": "secret",
+            "tags": {"instance_id": "cmdb_6"},
+        },
+    )
+
+    assert request.targets == ("10.10.16.254",)
+    assert request.params["target_is_logical"] is False
+    assert request.params["hostname"] == "10.10.16.254"
+    assert request.credentials[0]["username"] == "readonly"
     assert "password" not in request.params
 
 

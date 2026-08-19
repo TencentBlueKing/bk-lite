@@ -2,7 +2,9 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.base.models import User
+from apps.core.user_habit import column_preference_habit_key
 from apps.monitor.models.monitor_object import MonitorObject
+from apps.monitor.models.user_habit import UserHabit
 
 
 pytestmark = pytest.mark.django_db
@@ -24,6 +26,11 @@ def test_user_can_save_and_reload_columns_for_monitor_object(api_client, monitor
     assert saved.json()["data"] == {"field_keys": field_keys, "fixed_field_keys": []}
     assert loaded.status_code == 200
     assert loaded.json()["data"] == {"field_keys": field_keys, "fixed_field_keys": []}
+    habit = UserHabit.objects.get(
+        user__username="testuser",
+        habit_key=column_preference_habit_key(monitor_object.id),
+    )
+    assert habit.habit_value == {"field_keys": field_keys, "fixed_field_keys": []}
 
 
 def test_builtin_object_allows_personal_column_preferences(api_client, monitor_object):

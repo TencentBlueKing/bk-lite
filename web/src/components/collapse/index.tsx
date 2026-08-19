@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect, ReactNode } from 'react';
 import {
   CaretRightOutlined,

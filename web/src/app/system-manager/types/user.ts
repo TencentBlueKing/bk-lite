@@ -40,6 +40,19 @@ interface ChangeUserStatusResponse {
   skipped: ChangeUserStatusSkippedItem[];
 }
 
+interface UserImportFailure {
+  row_number: number;
+  username: string;
+  message: string;
+}
+
+interface UserImportResult {
+  total_count: number;
+  success_count: number;
+  failed_count: number;
+  failures: UserImportFailure[];
+}
+
 interface Access {
   manageGroupMembership: boolean;
   view: boolean;
@@ -83,6 +96,8 @@ export type {
   ChangeUserStatusResponse,
   ChangeUserStatusSkippedItem,
   TableRowSelection,
+  UserImportFailure,
+  UserImportResult,
   TransmitUserData,
   UserDataType,
   UserStatus,

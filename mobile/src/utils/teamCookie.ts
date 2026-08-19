@@ -41,17 +41,52 @@ export function resolveDefaultCurrentTeamId(userInfo: LoginUserInfo | null): str
   return firstGroup === undefined ? null : getGroupId(firstGroup);
 }
 
-export function getCurrentTeamCookie(): string | null {
+function readCookie(name: string): string | null {
   if (typeof document === 'undefined') {
     return null;
   }
 
-  const currentTeam = document.cookie
+  const prefix = `${name}=`;
+  const match = document.cookie
     .split(';')
     .map((cookie) => cookie.trim())
-    .find((cookie) => cookie.startsWith('current_team='));
+    .find((cookie) => cookie.startsWith(prefix));
 
-  return currentTeam ? decodeURIComponent(currentTeam.split('=')[1] || '') : null;
+  return match ? decodeURIComponent(match.slice(prefix.length) || '') : null;
+}
+
+function writeCookie(name: string, value: string): void {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  // Align with Web include_children persistence (js-cookie expires: 365).
+  const maxAge = 60 * 60 * 24 * 365;
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+}
+
+function expireCookie(name: string): void {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
+}
+
+export function getCurrentTeamCookie(): string | null {
+  return readCookie('current_team');
+}
+
+export function setCurrentTeamCookie(teamId: string): void {
+  writeCookie('current_team', teamId);
+}
+
+export function getIncludeChildrenCookie(): boolean {
+  return readCookie('include_children') === '1';
+}
+
+export function setIncludeChildrenCookie(includeChildren: boolean): void {
+  writeCookie('include_children', includeChildren ? '1' : '0');
 }
 
 function isKnownGroupId(userInfo: LoginUserInfo | null, teamId: string): boolean {
@@ -74,13 +109,10 @@ export function syncCurrentTeamCookie(userInfo: LoginUserInfo | null): void {
     return;
   }
 
-  document.cookie = `current_team=${encodeURIComponent(teamId)}; path=/; SameSite=Lax`;
+  setCurrentTeamCookie(teamId);
 }
 
 export function clearCurrentTeamCookie(): void {
-  if (typeof document === 'undefined') {
-    return;
-  }
-
-  document.cookie = 'current_team=; path=/; max-age=0; SameSite=Lax';
+  expireCookie('current_team');
+  expireCookie('include_children');
 }

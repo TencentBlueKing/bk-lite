@@ -143,13 +143,17 @@
   {
     "component": "chart-empty-state",
     "directApps": [
+      "alarm",
       "log",
+      "mlops",
       "monitor",
       "ops-analysis"
     ],
     "transitiveApps": [
+      "alarm",
       "apm",
       "log",
+      "mlops",
       "monitor",
       "ops-analysis"
     ],
@@ -161,7 +165,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 4 apps",
+    "reason": "consumed transitively by 6 apps",
     "activeStories": [
       "apm-events-pages.stories.tsx",
       "charts-family.stories.tsx",
@@ -373,21 +377,27 @@
       "alarm",
       "cmdb",
       "job",
+      "log",
+      "mlops",
       "monitor",
       "node-manager",
       "ops-analysis",
       "opspilot",
-      "patch-manager"
+      "patch-manager",
+      "system-manager"
     ],
     "transitiveApps": [
       "alarm",
       "cmdb",
       "job",
+      "log",
+      "mlops",
       "monitor",
       "node-manager",
       "ops-analysis",
       "opspilot",
-      "patch-manager"
+      "patch-manager",
+      "system-manager"
     ],
     "stories": [
       "cmdb-family.stories.tsx",
@@ -399,7 +409,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 8 apps",
+    "reason": "consumed transitively by 11 apps",
     "activeStories": [
       "cmdb-family.stories.tsx",
       "feedback-family.stories.tsx",
@@ -411,12 +421,15 @@
   },
   {
     "component": "content-drawer",
-    "directApps": [],
+    "directApps": [
+      "system-manager"
+    ],
     "transitiveApps": [
       "(core)",
       "alarm",
       "cmdb",
-      "job"
+      "job",
+      "system-manager"
     ],
     "stories": [
       "content-draw.stories.tsx",
@@ -426,7 +439,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 4 apps",
+    "reason": "consumed transitively by 5 apps",
     "activeStories": [
       "content-family.stories.tsx",
       "feedback-family.stories.tsx",
@@ -818,6 +831,26 @@
     ]
   },
   {
+    "component": "field-guide-tip",
+    "directApps": [
+      "log",
+      "monitor"
+    ],
+    "transitiveApps": [
+      "log",
+      "monitor"
+    ],
+    "stories": [
+      "integration-onboarding-family.stories.tsx"
+    ],
+    "reverseAppImports": [],
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps",
+    "activeStories": [
+      "integration-onboarding-family.stories.tsx"
+    ]
+  },
+  {
     "component": "filter-toolbar",
     "directApps": [
       "apm",
@@ -879,17 +912,19 @@
   {
     "component": "form-setting-row",
     "directApps": [
+      "log",
       "monitor"
     ],
     "transitiveApps": [
+      "log",
       "monitor"
     ],
     "stories": [
       "integration-onboarding-family.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "shared-primitive",
-    "reason": "primitive allowlist: 将无业务语义的表单控件与说明文本并排编排",
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps",
     "activeStories": [
       "integration-onboarding-family.stories.tsx"
     ]
@@ -1677,7 +1712,6 @@
   {
     "component": "page-header-shell",
     "directApps": [
-      "alarm",
       "ops-analysis"
     ],
     "transitiveApps": [

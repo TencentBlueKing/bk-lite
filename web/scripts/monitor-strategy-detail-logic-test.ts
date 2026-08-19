@@ -11,6 +11,7 @@ import {
   getThresholdUnitOnCalculationUnitChange,
   getThresholdUnitOptions,
   getValidThresholdUnitOptions,
+  insertAlertNameVariableAtCursor,
   isVacantThresholdUnit,
   pruneNoticeUsers,
   resolveFormulaResultUnit,
@@ -733,6 +734,34 @@ assert.equal(
     channelList: [{ id: 1, channel_type: 'email' }],
   }),
   false
+);
+
+assert.deepEqual(
+  insertAlertNameVariableAtCursor(
+    'SCP宿主机 ${resource_name}磁盘使用率过高',
+    '${value}',
+    'SCP宿主机 ${resource_name}'.length,
+    'SCP宿主机 ${resource_name}'.length
+  ),
+  {
+    value: 'SCP宿主机 ${resource_name}${value}磁盘使用率过高',
+    cursor: 'SCP宿主机 ${resource_name}${value}'.length,
+  }
+);
+assert.deepEqual(insertAlertNameVariableAtCursor('告警', '${level}', 0, 0), {
+  value: '${level}告警',
+  cursor: '${level}'.length,
+});
+assert.deepEqual(insertAlertNameVariableAtCursor('告警', '${level}'), {
+  value: '告警${level}',
+  cursor: '告警${level}'.length,
+});
+assert.deepEqual(
+  insertAlertNameVariableAtCursor('api告警', '${metric_name}', 3, 4),
+  {
+    value: 'api${metric_name}警',
+    cursor: 3 + '${metric_name}'.length,
+  }
 );
 
 console.log('monitor-strategy-detail logic validation passed');

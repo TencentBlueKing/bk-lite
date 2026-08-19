@@ -117,7 +117,7 @@ Status: implemented
 - 每条规则在当前事件上独立判断条件和源字段。前序成功输出立即进入事件，后序规则可以读取；多条规则写同一普通字段时后写覆盖前写。
 - 源字段不存在时跳过当前规则。除 `copy` 外需要文本输入的动作在源值不是字符串时跳过；解析函数返回错误、split 下标不存在、JSON 不是对象、regex/regex_replace 无匹配或 kv 没有可写键时，本事件上的当前规则执行结果为失败。跳过或失败都继续下一规则。
 - Vector remap 必须使用可失败调用的结果/错误分支，不使用会中断 transform 的 bang 调用；transform 设置 `drop_on_error: false`。条件不匹配、单规则失败和全部规则失败都保留当前事件，并继续进入 VictoriaLogs sink。
-- `instance_id`、`source_type`、`timestamp` 以及旧正文别名 `_msg`、`log_message`、`raw_message`、`trap_message` 是保护字段。任何源删除路径、目标路径、regex 默认/映射输出或 kv 映射输出以保护字段为根时，保存即拒绝；kv/json/regex 的动态根合并在运行时再次移除这些根字段。用户输入绝不能覆盖或删除原保护值，也不能重新引入完整正文别名。
+- `instance_id`、`source_type`、`timestamp`、`collect_timestamp` 以及旧正文别名 `_msg`、`log_message`、`raw_message`、`trap_message` 是保护字段。任何源删除路径、目标路径、regex 默认/映射输出或 kv 映射输出以保护字段为根时，保存即拒绝；kv/json/regex 的动态根合并在运行时再次移除这些根字段。用户输入绝不能覆盖或删除原保护值，也不能重新引入完整正文别名。
 - 保护字段与 `message` 均不能作为删除源字段的目标。`message` 可以被 `regex_replace` 显式覆盖以支持脱敏，但不能删除。目标为空的 `regex_replace` 与 `delete_source=true` 组合无意义，必须拒绝。
 - `delete_source=true` 只在当前规则确认至少一个经过路径安全检查的预期输出成功写入后执行。条件不匹配、源缺失、类型不适用、解析失败或没有输出时，源字段保持不变。
 - 字段路径、实例 ID、字符串、分隔符、replacement 与 regex 必须由编译器按其目标语法转义，不能直接拼接。规则名称等展示文本不进入 VRL 注释，避免换行或注释注入。
@@ -277,7 +277,7 @@ Status: implemented
 9. 同一实例最多 20 条，实例内名称和连续顺序唯一；并发创建不会突破限制；残缺、重复、跨实例调序整体失败且顺序不变。
 10. 六类提取动作、八类条件操作符、任意嵌套属性路径、前序输出供后序读取、普通字段后写覆盖均使用同一批表驱动样例，并在 Python 预览与 Vector 0.48 两端得到相同结果。
 11. 用户条件在当前动作前的事件快照上求值且不能绕过实例硬匹配；缺字段、条件不匹配、类型不适用、单条/全部解析失败不丢事件且不阻断后续规则；删除源字段只在成功后发生。
-12. `instance_id`、`source_type`、`timestamp` 不能被覆盖或删除；保存时拒绝 source 与任一已知输出路径相等或存在祖先/后代重叠，动态多输出动作在无法穷尽输出时不允许删除 source；`message` 不能删除但可显式 regex_replace 覆盖。
+12. `instance_id`、`source_type`、`timestamp`、`collect_timestamp` 不能被覆盖或删除；保存时拒绝 source 与任一已知输出路径相等或存在祖先/后代重叠，动态多输出动作在无法穷尽输出时不允许删除 source；`message` 不能删除但可显式 regex_replace 覆盖。
 13. Vector 0.48 bootstrap 只包含 HTTP provider，30 秒轮询、Bearer 头和 `config_format: yaml`，不含 `interpolate_env`；首次 401/503 导致启动失败并由容器重试。
 14. Vector 0.48 在有效远程配置更新时重载新拓扑；运行中网络失败或坏响应保留当前拓扑。Server 不发布未通过编译校验的 generation。
 15. UI 对所有采集类型显示实例抽屉入口，无规则不预置；新增/编辑弹窗、完整调序、历史预览、全局四状态、只读权限、失败重试和“已发布非已应用”文案可观察。

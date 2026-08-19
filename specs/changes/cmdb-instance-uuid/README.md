@@ -10,6 +10,7 @@
 | [ACCEPTANCE.md](./ACCEPTANCE.md) | §13 验收证据与复跑命令 |
 | [FRONTEND_HANDOFF.md](./FRONTEND_HANDOFF.md) | 前端对接说明（本阶段不改 Web） |
 | [DEFER.md](./DEFER.md) | 前端实现延期 / 旧 worktree / 未交付项 |
+| [FOLLOWUP_REMEDIATION_PLAN.md](./FOLLOWUP_REMEDIATION_PLAN.md) | 2026-08-17 当前代码复核后的四条改造链路及关注资产/OA 迁移验收方案（**待确认**） |
 
 运维与架构：
 

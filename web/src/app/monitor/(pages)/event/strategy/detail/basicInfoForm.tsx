@@ -6,11 +6,12 @@ import GroupTreeSelector from '@/components/group-tree-select';
 import { StrategyFields, SourceFeild } from '@/app/monitor/types/event';
 import { useScheduleList } from '@/app/monitor/hooks/event';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
+import { insertAlertNameVariableAtCursor } from './strategyDetailUtils';
 
 const { Option } = Select;
 
 export interface BasicInfoFormRef {
-  focusAlertName: () => void;
+  insertVariable: (variable: string) => void;
 }
 
 interface BasicInfoFormProps {
@@ -23,11 +24,47 @@ interface BasicInfoFormProps {
 
 const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
   ({ source, unit, onOpenInstModal, onUnitChange, isTrap }, ref) => {
+    const form = Form.useFormInstance<StrategyFields>();
     const alertNameInputRef = useRef<InputRef>(null);
+    const alertNameSelectionRef = useRef<{ start: number; end: number } | null>(
+      null
+    );
+
+    const saveAlertNameSelection = (target?: EventTarget | null) => {
+      const input =
+        (target instanceof HTMLInputElement ? target : null) ||
+        alertNameInputRef.current?.input ||
+        null;
+      if (!input) return;
+      alertNameSelectionRef.current = {
+        start: input.selectionStart ?? 0,
+        end: input.selectionEnd ?? 0
+      };
+    };
 
     useImperativeHandle(ref, () => ({
-      focusAlertName: () => {
-        alertNameInputRef.current?.focus();
+      insertVariable: (variable: string) => {
+        const input = alertNameInputRef.current?.input;
+        const currentValue = String(form.getFieldValue('alert_name') || '');
+        const isFocused = !!input && document.activeElement === input;
+        const selection = isFocused
+          ? {
+              start: input.selectionStart ?? currentValue.length,
+              end: input.selectionEnd ?? currentValue.length
+            }
+          : alertNameSelectionRef.current;
+        const { value, cursor } = insertAlertNameVariableAtCursor(
+          currentValue,
+          variable,
+          selection?.start,
+          selection?.end
+        );
+        form.setFieldsValue({ alert_name: value });
+        alertNameSelectionRef.current = { start: cursor, end: cursor };
+        requestAnimationFrame(() => {
+          alertNameInputRef.current?.focus();
+          alertNameInputRef.current?.setSelectionRange(cursor, cursor);
+        });
       }
     }));
     const { t } = useTranslation();
@@ -76,6 +113,9 @@ const BasicInfoForm = forwardRef<BasicInfoFormRef, BasicInfoFormProps>(
               ref={alertNameInputRef}
               placeholder={t('monitor.events.alertName')}
               className="w-full"
+              onSelect={(event) => saveAlertNameSelection(event.target)}
+              onKeyUp={(event) => saveAlertNameSelection(event.target)}
+              onClick={(event) => saveAlertNameSelection(event.target)}
             />
           </Form.Item>
           <div className="text-[var(--color-text-3)] mt-[10px]">

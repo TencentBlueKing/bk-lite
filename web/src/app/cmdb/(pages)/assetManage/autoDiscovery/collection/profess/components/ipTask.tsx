@@ -15,6 +15,8 @@ import { formatTaskValues } from '../hooks/formatTaskValues';
 import { useInstanceApi } from '@/app/cmdb/api';
 import { Form, Spin, Alert, Radio, Input, Modal, Select } from 'antd';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
+import { toIpTaskSubnetOptions } from './ipTaskOptions';
+import type { IpTaskSubnetOption } from './ipTaskOptions';
 
 // IP discovery: input_method = 2 (SUBNET)
 const IP_TASK_INPUT_METHOD = 2;
@@ -49,7 +51,7 @@ const IP_TASK_INITIAL_VALUES = {
  *   - a dotted-decimal mask string (e.g. "255.255.255.0")
  * Returns NaN when the value cannot be parsed.
  */
-function maskToPrefixlen(mask: string | number | undefined | null): number {
+function maskToPrefixlen(mask: unknown): number {
   if (mask === undefined || mask === null || mask === '') return NaN;
   const n = Number(mask);
   // Already a plain prefix length
@@ -77,19 +79,20 @@ function maskToPrefixlen(mask: string | number | undefined | null): number {
  * The raw instance may be nested under an `origin` key when coming from
  * the subnetOptions list. Falls back to 256 (/24) when no field is found.
  */
-function computeTotalAddressCount(subnets: any[]): number {
+function computeTotalAddressCount(
+  subnets: readonly IpTaskSubnetOption[]
+): number {
   return subnets.reduce((total, s) => {
-    // Unwrap origin if the option object wraps the raw instance
-    const raw = s.origin ?? s;
+    const raw = s.origin;
 
     // Prefer explicit subnet_size capacity field
-    const size = Number(raw.subnet_size ?? s.subnet_size);
+    const size = Number(raw.subnet_size);
     if (!Number.isNaN(size) && size > 0) {
       return total + size;
     }
 
     // Derive from subnet_mask (dotted-decimal or prefix-length)
-    const mask = raw.subnet_mask ?? s.subnet_mask;
+    const mask = raw.subnet_mask;
     const prefixlen = maskToPrefixlen(mask);
     if (!Number.isNaN(prefixlen) && prefixlen >= 0 && prefixlen <= 32) {
       return total + Math.pow(2, 32 - prefixlen);
@@ -116,12 +119,12 @@ const IpTask: React.FC<IpTaskFormProps> = ({
   const { model_id: modelId } = modelItem;
 
   // Subnet multi-select state
-  const [subnetOptions, setSubnetOptions] = useState<
-    { label: string; value: number; prefixlen?: number; origin?: any }[]
-  >([]);
+  const [subnetOptions, setSubnetOptions] = useState<IpTaskSubnetOption[]>([]);
   const [subnetLoading, setSubnetLoading] = useState(false);
-  const [selectedSubnetIds, setSelectedSubnetIds] = useState<number[]>([]);
-  const [selectedSubnetMeta, setSelectedSubnetMeta] = useState<any[]>([]);
+  const [selectedSubnetUuids, setSelectedSubnetUuids] = useState<string[]>([]);
+  const [selectedSubnetMeta, setSelectedSubnetMeta] = useState<
+    IpTaskSubnetOption[]
+  >([]);
   const [pendingSubmit, setPendingSubmit] = useState<null | (() => void)>(null);
 
   useEffect(() => {
@@ -137,13 +140,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
         page_size: 10000,
       });
       if (!isActive()) return;
-      const opts = (res.insts || []).map((s: any) => ({
-        label: s.inst_name || s.subnet_address || s._id,
-        value: Number(s._id),
-        prefixlen: s.prefixlen ?? s.prefix_len,
-        origin: s,
-      }));
-      setSubnetOptions(opts);
+      setSubnetOptions(toIpTaskSubnetOptions(res.insts || []));
     } catch (err) {
       if (isActive()) {
         console.error('Failed to fetch subnets:', err);
@@ -163,14 +160,14 @@ const IpTask: React.FC<IpTaskFormProps> = ({
     };
   }, [fetchSubnets]);
 
-  // Keep selectedSubnetMeta in sync with selectedSubnetIds for address counting
+  // Keep selectedSubnetMeta in sync with selectedSubnetUuids for address counting
   useEffect(() => {
-    const meta = selectedSubnetIds.map((id) => {
-      const opt = subnetOptions.find((o) => o.value === id);
-      return opt ?? { value: id };
+    const meta = selectedSubnetUuids.map((instUuid) => {
+      const opt = subnetOptions.find((o) => o.value === instUuid);
+      return opt ?? { label: instUuid, value: instUuid, origin: {} };
     });
     setSelectedSubnetMeta(meta);
-  }, [selectedSubnetIds, subnetOptions]);
+  }, [selectedSubnetUuids, subnetOptions]);
 
   const {
     form,
@@ -210,7 +207,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
         task_type: 'ip',
         input_method: IP_TASK_INPUT_METHOD,
         instances: {
-          subnet_ids: selectedSubnetIds,
+          subnet_uuids: selectedSubnetUuids,
           scan_method: scanMethod,
           ports,
         },
@@ -230,11 +227,11 @@ const IpTask: React.FC<IpTaskFormProps> = ({
 
   // Build initial form values for copy/edit
   const buildFormValues = (values: any, isCopy: boolean) => {
-    // Restore subnet_ids from instances field
-    const subnetIds: number[] = Array.isArray(values.instances?.subnet_ids)
-      ? values.instances.subnet_ids
+    // Restore subnet_uuids from instances field
+    const subnetUuids: string[] = Array.isArray(values.instances?.subnet_uuids)
+      ? values.instances.subnet_uuids
       : [];
-    setSelectedSubnetIds(subnetIds);
+    setSelectedSubnetUuids(subnetUuids);
 
     const cycleFields = getCycleFormValues(values);
     const cleanupFields = getCleanupFormValues(values);
@@ -247,7 +244,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
       accessPointId: values.access_point?.[0]?.id,
       scanMethod: values.instances?.scan_method || 'icmp',
       tcpPorts: (values.instances?.ports || [22, 80, 443, 3389]).join(','),
-      subnetIds,
+      subnetUuids,
     };
   };
 
@@ -266,7 +263,6 @@ const IpTask: React.FC<IpTaskFormProps> = ({
       }
     };
     initForm();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId, copyTaskData]);
 
   const scanMethodValue = Form.useWatch('scanMethod', form);
@@ -303,12 +299,12 @@ const IpTask: React.FC<IpTaskFormProps> = ({
           {/* Subnet multi-select */}
           <Form.Item
             label={t('Collection.IPTask.chooseSubnet')}
-            name="subnetIds"
+            name="subnetUuids"
             required
             rules={[
               {
                 validator: () => {
-                  if (selectedSubnetIds.length === 0) {
+                  if (selectedSubnetUuids.length === 0) {
                     return Promise.reject(
                       new Error(
                         t('common.inputMsg') + t('Collection.IPTask.chooseSubnet')
@@ -324,10 +320,10 @@ const IpTask: React.FC<IpTaskFormProps> = ({
               mode="multiple"
               loading={subnetLoading}
               options={subnetOptions}
-              value={selectedSubnetIds}
-              onChange={(ids: number[]) => {
-                setSelectedSubnetIds(ids);
-                form.setFieldValue('subnetIds', ids);
+              value={selectedSubnetUuids}
+              onChange={(instUuids: string[]) => {
+                setSelectedSubnetUuids(instUuids);
+                form.setFieldValue('subnetUuids', instUuids);
               }}
               placeholder={t('common.selectTip')}
               showSearch

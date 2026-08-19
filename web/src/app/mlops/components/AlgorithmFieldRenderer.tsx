@@ -1,5 +1,6 @@
 import React from 'react';
 import { Form, Input, InputNumber, Select, Switch, Divider } from 'antd';
+import { useTranslation } from '@/utils/i18n';
 import type { AlgorithmConfig, FieldConfig, GroupConfig } from '@/app/mlops/types/task';
 import { get } from 'lodash';
 
@@ -13,6 +14,8 @@ export const AlgorithmFieldRenderer: React.FC<AlgorithmFieldRendererProps> = ({
   config,
   formValues,
 }) => {
+  const { t } = useTranslation();
+
   /**
    * 检查字段是否应该显示（基于 dependencies）
    * dependencies 格式：[['path', 'to', 'field1'], ['path', 'to', 'field2']]
@@ -38,7 +41,7 @@ export const AlgorithmFieldRenderer: React.FC<AlgorithmFieldRendererProps> = ({
     const commonProps = {
       name: field.name,
       label: field.label,
-      rules: field.required ? [{ required: true, message: `请输入${field.label}` }] : undefined,
+      rules: field.required ? [{ required: true, message: `${t('algorithmConfig.pleaseInput')}${field.label}` }] : undefined,
       tooltip: field.tooltip,
       initialValue: field.defaultValue,
       layout: (field.layout === 'horizontal' ? 'horizontal' : undefined) as any,

@@ -7,6 +7,10 @@ import pytest
 from apps.cmdb.constants.constants import CollectInputMethod
 from apps.cmdb.services.ipam_discovery import extract_subnet_discovery_params
 
+SUBNET_UUID_1 = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+SUBNET_UUID_2 = "8fe27a46-1fc0-41df-8db4-8d817e164291"
+SUBNET_UUID_3 = "d2555d42-4085-4c57-8686-935ea64dd959"
+
 pytestmark = pytest.mark.unit
 
 
@@ -20,27 +24,33 @@ def _make_task(instances=None, params=None):
 
 
 class TestExtractSubnetDiscoveryParams:
-    def test_从params提取subnet_ids(self):
-        task = _make_task(params={"subnet_ids": [1, 2, 3], "scan_method": "tcp", "ports": [22, 80]})
+    def test_从params提取subnet_uuids(self):
+        task = _make_task(params={"subnet_uuids": [SUBNET_UUID_1, SUBNET_UUID_2], "scan_method": "tcp", "ports": [22, 80]})
         subnet_ids, scan_method, ports = extract_subnet_discovery_params(task)
-        assert subnet_ids == [1, 2, 3]
+        assert subnet_ids == [SUBNET_UUID_1, SUBNET_UUID_2]
         assert scan_method == "tcp"
         assert ports == [22, 80]
 
-    def test_从历史instances提取subnet_ids(self):
-        task = _make_task(instances={"subnet_ids": [5], "scan_method": "icmp", "ports": None})
+    def test_从instances提取subnet_uuids(self):
+        task = _make_task(instances={"subnet_uuids": [SUBNET_UUID_3], "scan_method": "icmp", "ports": None})
         subnet_ids, scan_method, ports = extract_subnet_discovery_params(task)
-        assert subnet_ids == [5]
+        assert subnet_ids == [SUBNET_UUID_3]
         assert scan_method == "icmp"
         assert ports is None
 
+    def test_存量subnet_ids仅供后端内部只读映射(self):
+        task = _make_task(instances={"subnet_ids": [5], "scan_method": "icmp"})
+        subnet_refs, scan_method, _ = extract_subnet_discovery_params(task)
+        assert subnet_refs == [5]
+        assert scan_method == "icmp"
+
     def test_params优先于instances(self):
         task = _make_task(
-            instances={"subnet_ids": [1], "scan_method": "icmp"},
-            params={"subnet_ids": [2], "scan_method": "tcp", "ports": [443]},
+            instances={"subnet_uuids": [SUBNET_UUID_1], "scan_method": "icmp"},
+            params={"subnet_uuids": [SUBNET_UUID_2], "scan_method": "tcp", "ports": [443]},
         )
         subnet_ids, scan_method, ports = extract_subnet_discovery_params(task)
-        assert subnet_ids == [2]
+        assert subnet_ids == [SUBNET_UUID_2]
         assert scan_method == "tcp"
         assert ports == [443]
 

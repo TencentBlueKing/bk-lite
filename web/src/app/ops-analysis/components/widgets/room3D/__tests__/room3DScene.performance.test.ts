@@ -410,6 +410,28 @@ describe("room3D scene rendering", () => {
       "powerPreference",
       "high-performance",
     );
+    expect(testState.rendererOptions).toMatchObject({
+      preserveDrawingBuffer: true,
+    });
+    controller.dispose();
+  });
+
+  it("redraws the preserved buffer when print preparation starts", () => {
+    const controller = createController();
+    for (let frame = 0; frame < 120; frame += 1) {
+      if (!runNextFrame(frame * (1000 / 60))) {
+        break;
+      }
+    }
+    const idleRenders = testState.render.mock.calls.length;
+
+    window.dispatchEvent(
+      new CustomEvent("bk-dashboard-prepare-print", {
+        detail: { phase: "prepare-print" },
+      }),
+    );
+
+    expect(testState.render.mock.calls.length).toBe(idleRenders + 1);
     controller.dispose();
   });
 

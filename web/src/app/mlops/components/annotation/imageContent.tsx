@@ -134,7 +134,7 @@ const ImageContent = () => {
       );
       
       if (!response.ok) {
-        throw new Error(`下载失败: ${response.status}`);
+        throw new Error(`${t('mlops-common.downloadFailed')}: ${response.status}`);
       }
       
       const zipBlob = await response.blob();

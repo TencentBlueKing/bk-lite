@@ -1,6 +1,5 @@
 # server/apps/job_mgmt/tests/test_execution_views_stream.py
 import asyncio
-import json
 from unittest.mock import patch
 
 import pytest
@@ -22,16 +21,21 @@ def _grant_permission(authenticated_user):
 def _collect(resp):
     async def _run():
         return [c.decode() if isinstance(c, bytes) else c async for c in resp.streaming_content]
+
     return asyncio.run(_run())
 
 
 def _make_execution(status, results=None):
     return JobExecution.objects.create(
-        name="t", job_type=JobType.SCRIPT, status=status,
+        name="t",
+        job_type=JobType.SCRIPT,
+        status=status,
         target_source=TargetSource.MANUAL,
         target_list=[{"target_id": 5, "name": "h1", "ip": "1.1.1.1"}],
-        execution_results=results or [], team=[1],
-        created_by="testuser", updated_by="testuser",
+        execution_results=results or [],
+        team=[1],
+        created_by="testuser",
+        updated_by="testuser",
     )
 
 
@@ -49,15 +53,33 @@ def test_stream_terminal_execution_returns_snapshot(api_client):
     assert chunks[-1] == "data: [DONE]\n\n"
 
 
+def test_stream_accepts_event_stream_content_negotiation(api_client):
+    execution = _make_execution(
+        ExecutionStatus.SUCCESS,
+        results=[{"target_key": "5", "stdout": "browser-out", "stderr": ""}],
+    )
+    url = f"/api/v1/job_mgmt/api/execution/{execution.id}/stream/"
+
+    resp = api_client.get(url, HTTP_ACCEPT="text/event-stream")
+
+    assert resp.status_code == 200
+    assert isinstance(resp, StreamingHttpResponse)
+    assert resp["Content-Type"].startswith("text/event-stream")
+    chunks = _collect(resp)
+    assert any("browser-out" in chunk for chunk in chunks)
+    assert chunks[-1] == "data: [DONE]\n\n"
+
+
 def test_stream_running_execution_uses_live_generator(api_client):
     execution = _make_execution(ExecutionStatus.RUNNING)
 
     async def _fake_gen(*_a, **_k):
-        yield "data: {\"line\": \"live\"}\n\n"
+        yield 'data: {"line": "live"}\n\n'
         yield "data: [DONE]\n\n"
 
-    with patch("apps.job_mgmt.views.execution.stream_execution_events", side_effect=lambda *a, **k: _fake_gen()), \
-         patch("apps.job_mgmt.views.execution.ensure_stream_sync") as mock_ensure:
+    with patch("apps.job_mgmt.views.execution.stream_execution_events", side_effect=lambda *a, **k: _fake_gen()), patch(
+        "apps.job_mgmt.views.execution.ensure_stream_sync"
+    ) as mock_ensure:
         url = f"/api/v1/job_mgmt/api/execution/{execution.id}/stream/"
         resp = api_client.get(url)
         assert isinstance(resp, StreamingHttpResponse)
@@ -73,8 +95,9 @@ def test_stream_running_execution_survives_ensure_stream_failure(api_client):
     async def _fake_gen(*_a, **_k):
         yield "data: [DONE]\n\n"
 
-    with patch("apps.job_mgmt.views.execution.stream_execution_events", side_effect=lambda *a, **k: _fake_gen()), \
-         patch("apps.job_mgmt.views.execution.ensure_stream_sync", side_effect=Exception("js down")):
+    with patch("apps.job_mgmt.views.execution.stream_execution_events", side_effect=lambda *a, **k: _fake_gen()), patch(
+        "apps.job_mgmt.views.execution.ensure_stream_sync", side_effect=Exception("js down")
+    ):
         url = f"/api/v1/job_mgmt/api/execution/{execution.id}/stream/"
         resp = api_client.get(url)
         assert isinstance(resp, StreamingHttpResponse)  # 不抛 500
