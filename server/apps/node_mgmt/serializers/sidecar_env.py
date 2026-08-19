@@ -7,10 +7,18 @@ from apps.node_mgmt.services.installer_credentials import normalize_installer_cr
 from rest_framework import serializers
 
 
-class InstallerCredentialsModeValidationMixin:
+class InstallerEnvironmentValidationMixin:
     def validate(self, attrs):
         attrs = super().validate(attrs)
         key = attrs.get("key", getattr(self.instance, "key", None))
+        if key == NodeConstants.NATS_INSTALLER_PASSWORD_KEY:
+            value = attrs.get("value")
+            if value == EnvVariableConstants.SECRET_MASK and self.instance:
+                attrs.pop("value", None)
+            elif "value" in attrs and not value:
+                raise serializers.ValidationError({"value": "NATS_INSTALLER_PASSWORD must not be empty"})
+            attrs["type"] = EnvVariableConstants.TYPE_SECRET
+
         if key != NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_KEY:
             return attrs
 
@@ -22,14 +30,17 @@ class InstallerCredentialsModeValidationMixin:
         return attrs
 
 
-class SidecarEnvSerializer(InstallerCredentialsModeValidationMixin, serializers.ModelSerializer):
+class SidecarEnvSerializer(InstallerEnvironmentValidationMixin, serializers.ModelSerializer):
     class Meta:
         model = SidecarEnv
         fields = ['id', 'key', 'value', 'description', 'type']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        if instance.type == EnvVariableConstants.TYPE_SECRET:
+        if (
+            instance.type == EnvVariableConstants.TYPE_SECRET
+            or instance.key == NodeConstants.NATS_INSTALLER_PASSWORD_KEY
+        ):
             data['value'] = EnvVariableConstants.SECRET_MASK
         return data
 
@@ -52,7 +63,7 @@ class SidecarEnvSerializer(InstallerCredentialsModeValidationMixin, serializers.
         return value
 
 
-class EnvVariableCreateSerializer(InstallerCredentialsModeValidationMixin, serializers.ModelSerializer):
+class EnvVariableCreateSerializer(InstallerEnvironmentValidationMixin, serializers.ModelSerializer):
     cloud_region_id = serializers.PrimaryKeyRelatedField(queryset=CloudRegion.objects.all(), source='cloud_region')
 
     class Meta:
@@ -67,7 +78,7 @@ class EnvVariableCreateSerializer(InstallerCredentialsModeValidationMixin, seria
         return super().create(validated_data)
 
 
-class EnvVariableUpdateSerializer(InstallerCredentialsModeValidationMixin, serializers.ModelSerializer):
+class EnvVariableUpdateSerializer(InstallerEnvironmentValidationMixin, serializers.ModelSerializer):
     class Meta:
         model = SidecarEnv
         fields = ['key', 'value', 'description']
