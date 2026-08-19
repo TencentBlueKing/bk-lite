@@ -93,6 +93,21 @@ describe('APM 策略列表', () => {
     expect(screen.queryByRole('columnheader', { name: '状态' })).toBeNull();
   });
 
+  it('最近评估失败时不把失败显示成普通执行时间', async () => {
+    api.getPolicies.mockResolvedValue([
+      {
+        ...policy,
+        state: {
+          ...policy.state,
+          last_succeeded_at: '2026-08-14T01:00:00Z',
+          last_failed_at: '2026-08-14T02:10:00Z',
+        },
+      },
+    ]);
+    renderWithApmIntl(<ApmPoliciesPage />);
+    expect(await screen.findByText(/评估失败/)).not.toBeNull();
+  });
+
   it('新建和编辑使用独立路由，启停只保留在列表', async () => {
     renderWithApmIntl(<ApmPoliciesPage />);
     expect(await screen.findByText('结账接口 P95 过慢')).not.toBeNull();

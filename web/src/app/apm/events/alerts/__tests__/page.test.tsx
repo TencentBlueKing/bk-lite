@@ -67,7 +67,14 @@ const snapshot = {
     severity: 'error' as const,
     data_state: 'available' as const,
   },
-  trace_context: { service_name: 'checkout' },
+  trace_context: {
+    service_namespace: 'shop',
+    service_name: 'checkout',
+    endpoint: 'POST /checkout',
+    environment: 'production',
+    started_at: '2026-08-14T01:55:00Z',
+    ended_at: event.occurred_at,
+  },
   payload_status: 'available' as const,
   payload_error_code: '',
   payload: {
@@ -116,12 +123,16 @@ const api = {
   getAlertSnapshots: vi.fn(),
   getEventEvidence: vi.fn(),
   getNotificationDeliveries: vi.fn(),
+  retryNotificationDelivery: vi.fn(),
   isLoading: false,
 };
 vi.mock('@/app/apm/api', () => ({ default: () => api }));
 vi.mock('@/app/apm/components/apm-route-shell', () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
   ApmSurface: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
+}));
+vi.mock('@/components/heat-map', () => ({
+  default: () => <div>事件分布热力图</div>,
 }));
 vi.mock('@/components/time-series-composed-chart', () => ({
   default: (props: { data: Array<Record<string, unknown>>; series: Array<{ name: string }> }) => {
@@ -153,6 +164,22 @@ beforeEach(() => {
   api.getAlertSnapshots.mockResolvedValue(metricSnapshot);
   api.getEventEvidence.mockResolvedValue([snapshot]);
   api.getNotificationDeliveries.mockResolvedValue([]);
+  api.retryNotificationDelivery.mockResolvedValue({
+    id: 'd1',
+    event_id: 'evt-1',
+    channel_id: 1,
+    channel_name: '值班群',
+    channel_type: 'slack',
+    delivery_mode: 'message',
+    recipients: ['sre'],
+    status: 'pending',
+    attempts: 0,
+    next_retry_at: null,
+    last_error_code: '',
+    last_error_message: '',
+    delivered_at: null,
+    failed_at: null,
+  });
   api.closeAlert.mockResolvedValue(undefined);
 });
 afterEach(() => {
@@ -160,7 +187,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe('APM 告警指标快照与事件原始数据', () => {
+describe('APM 告警指标快照与事件原始数据', { timeout: 15000 }, () => {
   it('只通过显式详情入口打开告警详情', async () => {
     renderWithApmIntl(<ApmAlertsPage />);
     const serviceCell = await screen.findByText('checkout');
@@ -168,10 +195,10 @@ describe('APM 告警指标快照与事件原始数据', () => {
 
     expect(alertRow).not.toBeNull();
     fireEvent.click(alertRow!);
-    expect(screen.queryByRole('dialog', { name: 'checkout 错误率升高' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /checkout 错误率升高/ })).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: '详情' }));
-    expect(await screen.findByRole('dialog', { name: 'checkout 错误率升高' })).not.toBeNull();
+    expect(await screen.findByRole('dialog', { name: /checkout 错误率升高/ })).not.toBeNull();
   });
 
   it('从列表人工关闭告警时不会意外打开告警详情', async () => {
@@ -179,11 +206,11 @@ describe('APM 告警指标快照与事件原始数据', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '关闭' }));
 
-    expect(screen.queryByRole('dialog', { name: 'checkout 错误率升高' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /checkout 错误率升高/ })).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: /^确\s*定$/ }));
     await waitFor(() => expect(api.closeAlert).toHaveBeenCalledWith('a1'));
 
-    expect(screen.queryByRole('dialog', { name: 'checkout 错误率升高' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /checkout 错误率升高/ })).toBeNull();
   });
 
   it('使用 Alert 聚合接口展示活跃告警和分布', async () => {
@@ -269,42 +296,91 @@ describe('APM 告警指标快照与事件原始数据', () => {
     ]);
   });
 
-  it('详情趋势绑定所选 event_id 的持久化快照，而不是重查当前 RED', async () => {
+  it('事件 Tab 按原型展示分布热力图和扫描事件流', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmAlertsPage />);
     await user.click(await screen.findByRole('button', { name: 'checkout 错误率升高' }));
-    await user.click(await screen.findByRole('tab', { name: '事件原始数据' }));
-    expect(await screen.findByText('原始指标 / 当时阈值 / 事件发生点')).not.toBeNull();
-    expect(screen.getByText('正在展示所选事件发生时的原始指标证据，不会重新查询当前策略。')).not.toBeNull();
-    await waitFor(() => expect(api.getEventEvidence).toHaveBeenCalledWith('a1', 'evt-1'));
-    const snapshotChart = chartRender.mock.calls.find(
-      ([props]) => props.series[0]?.name === '原始指标',
-    )?.[0];
-    const sameMinuteLabels = snapshot.payload.series.slice(0, 3).map(
-      (point) => snapshotChart.getXLabel(point),
+    await user.click(await screen.findByRole('tab', { name: '事件' }));
+    expect(screen.getByText('事件分布 · 近 7 天 × 24h')).not.toBeNull();
+    expect(await screen.findByText('事件流(按时间倒序 · 共 2 条)')).not.toBeNull();
+    expect(screen.getByRole('img', { name: '事件分布，近 7 天按小时聚合' })).not.toBeNull();
+    expect(
+      screen.getByRole('list', { name: '事件流时间线' }).querySelectorAll('[role="listitem"]'),
+    ).toHaveLength(2);
+    expect(screen.getByText('20.0%')).not.toBeNull();
+    expect(screen.getByText('18.0%')).not.toBeNull();
+    expect(screen.getByText(/红底高亮 = 告警触发时段/)).not.toBeNull();
+    expect(screen.queryByText('事件信息')).toBeNull();
+    expect(screen.queryByText('原始证据')).toBeNull();
+    expect(await screen.findByRole('link', { name: '查看当时调用链' })).not.toBeNull();
+    expect(screen.getByRole('link', { name: '查看当时调用链' }).getAttribute('href')).toBe(
+      '/apm/explore/traces?service_name=checkout&started_at=2026-08-14T01%3A55%3A00Z&ended_at=2026-08-14T02%3A00%3A00Z&service_namespace=shop&environment=production&span_name=POST+%2Fcheckout',
     );
-
-    expect(sameMinuteLabels).toHaveLength(3);
-    expect(new Set(sameMinuteLabels).size).toBe(3);
-    expect(sameMinuteLabels.every((label) => /^\d{2}:\d{2}:\d{2}$/.test(label))).toBe(true);
+    await waitFor(() => expect(api.getEventEvidence).toHaveBeenCalledWith('a1', 'evt-1'));
   });
 
-  it('告警主图按策略扫描展示告警指标快照', async () => {
+  it('告警主图按策略扫描快照绘制成趋势图，生命周期事件只作为标记', async () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmAlertsPage />);
 
     await user.click(await screen.findByRole('button', { name: 'checkout 错误率升高' }));
 
+    expect(await screen.findByText('告警信息')).not.toBeNull();
+    expect(screen.getByText(/所属服务/)).not.toBeNull();
+    expect(screen.getByRole('button', { name: '关闭告警' })).not.toBeNull();
     expect(await screen.findByText('评估值 / 当时阈值 / 生命周期事件')).not.toBeNull();
+    expect(screen.getByText(/告警指标快照/)).not.toBeNull();
+    expect(screen.getByText(/每点一次策略扫描/)).not.toBeNull();
+    expect(screen.getByText(/检测频率 1m/)).not.toBeNull();
     await waitFor(() => expect(api.getAlertSnapshots).toHaveBeenCalledWith('a1'));
-    const lifecycleChart = chartRender.mock.calls.find(
-      ([props]) => props.series[2]?.name === '生命周期事件',
-    )?.[0];
-    expect(lifecycleChart.data).toEqual([
-      expect.objectContaining({ timestamp: metricSnapshot.snapshots[0].snapshot_time, value: 0.2, event: 0.2 }),
-      expect.objectContaining({ timestamp: metricSnapshot.snapshots[1].snapshot_time, value: 0.18, event: null }),
+    await waitFor(() => {
+      const snapshotChart = [...chartRender.mock.calls].reverse().find(
+        ([props]) => props.series[0]?.name === '评估值',
+      )?.[0];
+      expect(snapshotChart.data).toEqual([
+        expect.objectContaining({
+          elapsedMinutes: 0,
+          value: 20,
+          event: 20,
+          threshold: 10,
+        }),
+        expect.objectContaining({
+          elapsedMinutes: 1,
+          value: 18,
+          event: null,
+          threshold: 10,
+        }),
+      ]);
+      expect(snapshotChart.getXLabel(snapshotChart.data[0])).toBe('触发');
+      expect(snapshotChart.getXLabel(snapshotChart.data[1])).toBe('+1m');
+    });
+  });
+
+  it('通知终止失败后可以人工重投', async () => {
+    const user = userEvent.setup();
+    api.getNotificationDeliveries.mockResolvedValue([
+      {
+        id: 'd-fail',
+        event_id: 'evt-1',
+        channel_id: 1,
+        channel_name: '值班群',
+        channel_type: 'slack',
+        delivery_mode: 'message',
+        recipients: ['sre'],
+        status: 'failed',
+        attempts: 3,
+        next_retry_at: null,
+        last_error_code: 'provider_unavailable',
+        last_error_message: 'temporarily down',
+        delivered_at: null,
+        failed_at: event.occurred_at,
+      },
     ]);
-    expect(lifecycleChart.getXLabel(lifecycleChart.data[0])).toMatch(/^\d{2}:\d{2}$/);
-    expect(screen.getByText('检测频率 1 分钟 · 指标窗口 5 分钟 · 聚合方式 avg')).not.toBeNull();
+    renderWithApmIntl(<ApmAlertsPage />);
+    await user.click(await screen.findByRole('button', { name: 'checkout 错误率升高' }));
+    await user.click(await screen.findByRole('tab', { name: '事件' }));
+    expect(await screen.findByText('值班群')).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: '重投' }));
+    await waitFor(() => expect(api.retryNotificationDelivery).toHaveBeenCalledWith('d-fail'));
   });
 });

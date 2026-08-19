@@ -6,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path: string) => readFileSync(join(webRoot, path), 'utf8');
 
-const events = read('src/app/apm/events/alerts/page.tsx');
+const events = [
+  read('src/app/apm/events/alerts/page.tsx'),
+  read('src/app/apm/events/alerts/alert-detail-drawer.tsx'),
+].join('\n');
 const policies = read('src/app/apm/events/policies/page.tsx');
 const legacyEvents = read('src/app/apm/events/page.tsx');
 const legacyPolicies = read('src/app/apm/policies/page.tsx');
@@ -20,14 +23,20 @@ assert.match(events, /getAlertDistribution/, '告警页应提供真实事件分�
 assert.match(events, /搜索告警标题 \/ 服务 \/ 规则/, '告警页应支持原型中的快捷搜索');
 assert.match(events, /Drawer/, '告警页必须提供详情抽屉');
 assert.match(events, /openDrawer|setSelected/, '告警行必须可打开详情');
-assert.match(events, /Timeline/, '告警详情必须提供事件时间线');
+assert.match(events, /生命周期事件/, '告警详情必须提供生命周期事件时间线');
+assert.match(events, /事件分布 · 近 7 天/, '事件 Tab 必须展示事件分布');
+assert.match(events, /事件流\(按时间倒序/, '事件 Tab 必须按原型展示事件流');
+assert.match(events, /告警指标快照/, '告警 Tab 必须展示告警指标快照图');
+assert.match(events, /每点一次策略扫描/, '告警主图必须按告警周期内的策略扫描快照绘制');
+assert.match(events, /snapshot_time/, '告警主图横轴必须使用快照扫描时间');
+assert.match(events, /retryNotificationDelivery/, '终止失败的通知必须能人工重投');
+assert.match(events, /查看当时调用链/, '事件证据必须提供冻结窗口的调用链入口');
 assert.match(events, /getNotificationDeliveries/, '通知投递必须作为独立记录读取');
 assert.match(events, /getAlertSnapshots\(alert\.id\)/, '告警主趋势必须读取 Alert 级指标快照');
 assert.match(events, /getEventEvidence\(alert\.id, event\.event_id\)/, '事件原始数据必须绑定所选 event_id');
 assert.doesNotMatch(events, /getServiceRed/, '告警详情不得重查当前 RED 冒充历史快照');
 assert.match(events, /服务 \/ 端点/, '告警列表必须展示服务和端点身份');
 assert.match(events, /当时阈值/, '告警详情必须展示事件发生时阈值线');
-assert.match(events, /事件发生点/, '告警详情必须展示事件发生点');
 assert.match(events, /width=\{880\}/, '详情抽屉必须使用 880px 宽度');
 assert.match(events, /TimeSelector/, '历史告警应复用 Monitor/Log 的时间范围下拉框');
 assert.match(events, /onlyTimeSelect/, '历史告警的时间控件不应重复展示刷新周期');
