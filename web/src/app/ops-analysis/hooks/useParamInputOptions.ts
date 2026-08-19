@@ -52,6 +52,10 @@ export const useParamInputOptions = (
   configRef.current = inputConfig;
   const enabled = runtime.enabled ?? true;
   const inputKey = getParamInputConfigKey(inputConfig);
+  const knownSourcesKey = (loaderOptions?.knownDataSources ?? [])
+    .map((item) => `${item.id}:${item.rest_api ?? ''}`)
+    .sort()
+    .join(',');
   const getSynchronousState = (): ParamInputOptionsState => {
     if (!inputConfig || inputConfig.control === 'input') return { status: 'idle', options: [] };
     if (inputConfig.optionsSource.type === 'static') {
@@ -64,6 +68,7 @@ export const useParamInputOptions = (
     key: inputKey,
     state: getSynchronousState(),
   }));
+  const knownSourcesKeyRef = useRef(knownSourcesKey);
 
   useEffect(() => {
     if (!enabled) {
@@ -71,6 +76,10 @@ export const useParamInputOptions = (
         loaderRef.current!.reset();
       }
       return undefined;
+    }
+    if (knownSourcesKeyRef.current !== knownSourcesKey) {
+      knownSourcesKeyRef.current = knownSourcesKey;
+      loaderRef.current!.reset();
     }
     let active = true;
     const load = loaderRef.current!.load(configRef.current);
@@ -83,7 +92,7 @@ export const useParamInputOptions = (
     return () => {
       active = false;
     };
-  }, [enabled, inputKey]);
+  }, [enabled, inputKey, knownSourcesKey]);
 
   const state = resolved.key === inputKey ? resolved.state : getSynchronousState();
   return {

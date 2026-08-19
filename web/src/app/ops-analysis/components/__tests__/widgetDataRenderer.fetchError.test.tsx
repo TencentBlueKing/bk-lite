@@ -50,7 +50,7 @@ vi.mock('@/utils/i18n', () => ({
 }));
 
 vi.mock('@/app/ops-analysis/context/common', () => ({
-  useOpsAnalysis: () => ({ canvasDataSourceLookupStatus: 'ready' }),
+  useOpsAnalysis: () => ({ canvasDataSourceLookupStatus: 'ready', dataSources: [] }),
 }));
 
 vi.mock('@/app/ops-analysis/api/dataSource', async () => {
@@ -146,6 +146,31 @@ const topNDatasource: DatasourceItem = {
   source_type: 'rest_api',
   params: [switchParam],
   chart_type: ['topN'],
+};
+
+const room3dSwitchParam: ParamItem = {
+  ...switchParam,
+  value: '',
+  inputConfig: {
+    control: 'select',
+    componentSwitch: true,
+    optionsSource: {
+      type: 'dynamic',
+      sourceRef: { type: 'rest_api', value: 'cmdb/get_room_list' },
+      valueField: 'inst_uuid',
+      labelField: 'inst_name',
+    },
+  },
+};
+
+const room3dDatasource: DatasourceItem = {
+  ...pieDatasource,
+  id: 88,
+  name: 'CMDB 3D机房布局',
+  source_type: 'nats',
+  params: [room3dSwitchParam],
+  chart_type: ['room3D'],
+  namespaces: [],
 };
 
 afterEach(() => {
@@ -1167,5 +1192,61 @@ describe('WidgetWrapper component switch options runtime', () => {
     expect(screen.queryByText(businessError)).toBeNull();
     expect(testState.fetchCompareData).toHaveBeenCalled();
     expect(testState.messageError).not.toHaveBeenCalled();
+  });
+
+  it('reports empty, not failed, when room3D switch options are empty', async () => {
+    testState.optionState = { status: 'error', options: [] };
+    const onRenderStatus = vi.fn();
+
+    render(
+      <WidgetWrapper
+        dashboardId="screen-room3d"
+        widgetId="builtin-room3d-main"
+        chartType="room3D"
+        config={{ dataSource: room3dDatasource.id, dataSourceParams: [room3dSwitchParam] }}
+        dataSource={room3dDatasource}
+        onRenderStatus={onRenderStatus}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onRenderStatus).toHaveBeenCalledWith({
+        widgetId: 'builtin-room3d-main',
+        status: 'empty',
+      });
+    });
+    expect(onRenderStatus).not.toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'failed' }),
+    );
+    expect(testState.fetchCompareData).not.toHaveBeenCalled();
+  });
+
+  it('still reports failed when room3D switch options fail to load', async () => {
+    testState.optionState = {
+      status: 'error',
+      options: [],
+      errorMessage: '机房列表加载失败',
+    };
+    const onRenderStatus = vi.fn();
+
+    render(
+      <WidgetWrapper
+        dashboardId="screen-room3d"
+        widgetId="builtin-room3d-main"
+        chartType="room3D"
+        config={{ dataSource: room3dDatasource.id, dataSourceParams: [room3dSwitchParam] }}
+        dataSource={room3dDatasource}
+        onRenderStatus={onRenderStatus}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onRenderStatus).toHaveBeenCalledWith({
+        widgetId: 'builtin-room3d-main',
+        status: 'failed',
+        error: '机房列表加载失败',
+      });
+    });
+    expect(testState.fetchCompareData).not.toHaveBeenCalled();
   });
 });

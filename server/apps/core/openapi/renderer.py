@@ -170,7 +170,7 @@ def render_traefik_config(entries: dict, internal_services=()):
         logger.warning("OPENAPI_AUTH_ADDRESS 未配置，不渲染任何外部服务路由（fail-closed）")
         for name in entries:
             report["skipped"][name] = "auth address unconfigured"
-        return {"http": {"routers": {}, "middlewares": {}, "services": {}}}, report
+        return _pack({}, {}, {}), report
 
     # 全局中间件：入站身份头清除（红线 1）与 ForwardAuth
     middlewares["openapi-clear-headers"] = {
@@ -214,7 +214,12 @@ def render_traefik_config(entries: dict, internal_services=()):
             middlewares[inject] = {
                 "headers": {
                     "customRequestHeaders": {
-                        "X-BK-Gateway-Auth": normalized["secrets"]["shared_secret"]
+                        "X-BK-Gateway-Auth": normalized["secrets"]["shared_secret"],
+                        # 清除调用方的平台凭据：信任头模式下上游按注入的身份头
+                        # 识别用户，不需要也不应看到调用方的 API 令牌 / JWT——
+                        # 否则半可信上游可凭其冒充调用方回调平台。
+                        # service-token 模式天然覆盖该头，无此问题。
+                        "Authorization": "",
                     }
                 }
             }
@@ -247,8 +252,28 @@ def render_traefik_config(entries: dict, internal_services=()):
             }
         report["rendered"].append(name)
 
-    config = {"http": {"routers": routers, "middlewares": middlewares, "services": services}}
-    return config, report
+    return _pack(routers, middlewares, services), report
+
+
+def _pack(routers, middlewares, services):
+    """组装动态配置，省略空小节。
+
+    Traefik 的动态配置解码器不接受空 map：整份配置里出现 "routers": {} 会以
+    `routers cannot be a standalone element` 整份拒绝（连同其中合法的
+    middlewares 一起失效）。未注册任何外部服务是常态（首次部署即如此），
+    因此空小节必须省略而非置空；三者皆空时返回 {"http": {}}。
+    真机验证：.149 HA 栈曾因此让 http provider 配置持续被拒。
+    """
+    if not routers:
+        # 无路由时全局中间件没有任何引用方，整份省略；避免下发只含孤立
+        # 中间件的配置，也规避空 map 触发的解码拒绝
+        return {"http": {}}
+    http = {"routers": routers}
+    if middlewares:
+        http["middlewares"] = middlewares
+    if services:
+        http["services"] = services
+    return {"http": http}
 
 
 def refresh_snapshot(internal_services=()):
@@ -258,7 +283,7 @@ def refresh_snapshot(internal_services=()):
         if entries is None:
             if _snapshot["config"] is None:
                 logger.warning("openapi_registry 不可达且无历史快照，返回空配置")
-                return {"http": {"routers": {}, "middlewares": {}, "services": {}}}
+                return _pack({}, {}, {})
             logger.warning("openapi_registry 不可达，沿用最近一次成功快照")
             return _snapshot["config"]
 

@@ -10,6 +10,7 @@
 | 长期业务与工程事实 | `specs/capabilities/` |
 | 后端编码与高风险规则 | `specs/capabilities/backend-engineering.md` |
 | 安全、可靠性与质量红线 | `specs/capabilities/{platform-security,platform-reliability,engineering-quality}.md` |
+| 对外 API 暴露与网关规范 | `specs/capabilities/openapi-gateway.md` |
 | 当前跨会话变更 | `specs/changes/<feature>/spec.md` |
 | UI 与组件约定 | `DESIGN.md`、`web/DESIGN.md`、`web/COMPONENT_GOVERNANCE.md` |
 | 开发、验证与运行命令 | `DEVELOP.md` |
@@ -58,6 +59,7 @@
 - 数据库访问使用 Django ORM，禁止 raw SQL、`.raw()`、`RawSQL`、`cursor.execute`。
 - `server/apps/<app>/` 引入日志统一用 `from apps.core.logger import {app_name}_logger as logger`（见 `server/apps/core/logger.py`），禁止 `loguru` 或就地 `logging.getLogger`。
 - 非关键、可重建的外部资源失败不得阻断服务启动。
+- 新增对外 API 一律经 OpenAPI 网关暴露（内部函数用 `@openapi_expose`，外部服务写 KV 注册表），不得新增散落的 `open_api` 端点或对外端口；暴露端点必须附双租户测试并登记。见 `specs/capabilities/openapi-gateway.md`。
 - 向目标主机下发或执行操作必须有资源边界、幂等/回滚和相应测试。
 - Web 改动优先复用 Ant Design、现有组件和 Storybook；共享抽象必须已有多个真实使用方。
   视觉与布局细则见上文「Web UI 硬约束」，勿每次通读 `web/DESIGN.md`。

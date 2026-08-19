@@ -11,6 +11,29 @@ class ChannelChoices(models.TextChoices):
     GITLAB = ("gitlab", _("GitLab"))
 
 
+class SkillChannelChoices(models.TextChoices):
+    """智能体独立发布渠道类型（与 ChatFlow 入口类型对齐，另增 platform）。"""
+
+    PLATFORM = ("platform", _("Platform"))
+    WEB_CHAT = ("web_chat", _("Web Chat"))
+    EMBEDDED_CHAT = ("embedded_chat", _("Embedded Chat"))
+    ENTERPRISE_WECHAT = ("enterprise_wechat", _("Enterprise WeChat"))
+    ENTERPRISE_WECHAT_AIBOT = ("enterprise_wechat_aibot", _("Enterprise WeChat AI Bot"))
+    DINGTALK = ("dingtalk", _("Ding Talk"))
+    WECHAT_OFFICIAL = ("wechat_official", _("WeChat Official Account"))
+
+
+# 这些渠道对话时不校验 BK-Lite 组织（尚未做用户/组织同步）。
+SKILL_CHANNEL_SKIP_ORG_CHECK = frozenset(
+    {
+        SkillChannelChoices.ENTERPRISE_WECHAT,
+        SkillChannelChoices.ENTERPRISE_WECHAT_AIBOT,
+        SkillChannelChoices.DINGTALK,
+        SkillChannelChoices.WECHAT_OFFICIAL,
+    }
+)
+
+
 class BotTypeChoice(models.IntegerChoices):
     PILOT = (1, _("Pilot"))
     LOBE = (2, _("LobeChat"))

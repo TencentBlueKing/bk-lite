@@ -12,7 +12,7 @@ import { BrowserTaskReceivedData } from '@/app/opspilot/types/global';
 export interface ToolCallInfo {
   name: string;
   args: string;
-  status: 'calling' | 'completed';
+  status: 'calling' | 'completed' | 'error';
   result?: string;
   browserTaskReceived?: BrowserTaskReceivedData;
 }
@@ -316,8 +316,11 @@ export const syncActiveToolCallPanel = (toolId: string, info: ToolCallInfo) => {
     const statusIcon = toolItem.querySelector('.tool-call-status-icon');
     if (statusIcon) {
       const isCalling = info.status === 'calling';
+      const isError = info.status === 'error';
       if (isCalling) {
         statusIcon.innerHTML = `<span style="display: inline-block; width: 10px; height: 10px; border: 1.5px solid #1677ff; border-top-color: transparent; border-radius: 50%; animation: tool-spin 0.8s linear infinite;"></span>`;
+      } else if (isError) {
+        statusIcon.innerHTML = `<span style="color: var(--color-error); font-size: 12px;">✕</span>`;
       } else {
         statusIcon.innerHTML = `<span style="color: #52c41a; font-size: 12px;">✓</span>`;
       }
@@ -389,12 +392,15 @@ export const closeActiveToolCallPanel = (_toolId?: string) => {
  */
 const renderToolItem = (id: string, info: ToolCallInfo): string => {
   const isCalling = info.status === 'calling';
+  const isError = info.status === 'error';
   const summary = extractSummary(info.args, info.name);
 
   // 状态图标
   const statusIcon = isCalling
     ? `<span style="display: inline-block; width: 10px; height: 10px; border: 1.5px solid #1677ff; border-top-color: transparent; border-radius: 50%; animation: tool-spin 0.8s linear infinite;"></span>`
-    : `<span style="color: #52c41a; font-size: 12px;">✓</span>`;
+    : isError
+      ? `<span style="color: var(--color-error); font-size: 12px;">✕</span>`
+      : `<span style="color: #52c41a; font-size: 12px;">✓</span>`;
 
   // 概要显示（调用目的）- 放在工具名右边
   let summaryHtml = summary 
@@ -561,7 +567,8 @@ export const renderToolCallCard = (id: string, info: ToolCallInfo): string => {
  */
 const dedupeToolCallsBySignature = (entries: Array<[string, ToolCallInfo]>): Array<[string, ToolCallInfo]> => {
   const sigToEntry = new Map<string, [string, ToolCallInfo]>();
-  const completeness = (info: ToolCallInfo) => (info.status === 'completed' ? 1 : 0) + (info.result ? 1 : 0);
+  const completeness = (info: ToolCallInfo) =>
+    (info.status === 'completed' || info.status === 'error' ? 1 : 0) + (info.result ? 1 : 0);
 
   for (const [id, info] of entries) {
     const sig = `${info.name}::${info.args || ''}`;
@@ -582,7 +589,10 @@ export const renderAllToolCalls = (toolCalls: Map<string, ToolCallInfo>, isStrea
 
   const toolsArray = dedupeToolCallsBySignature(Array.from(toolCalls.entries()));
   const totalCount = toolsArray.length;
-  const completedCount = toolsArray.filter(([, info]) => info.status === 'completed').length;
+  const completedCount = toolsArray.filter(
+    ([, info]) => info.status === 'completed' || info.status === 'error'
+  ).length;
+  const hasError = toolsArray.some(([, info]) => info.status === 'error');
   const hasRunning = completedCount < totalCount;
 
   // 如果传入了 isStreaming 参数，使用它；否则根据工具状态判断
@@ -591,7 +601,9 @@ export const renderAllToolCalls = (toolCalls: Map<string, ToolCallInfo>, isStrea
   // 组头部状态图标
   const groupStatusIcon = hasRunning
     ? `<span style="display: inline-block; width: 10px; height: 10px; border: 1.5px solid #1677ff; border-top-color: transparent; border-radius: 50%; animation: tool-spin 0.8s linear infinite;"></span>`
-    : `<span style="color: #52c41a; font-size: 12px;">✓</span>`;
+    : hasError
+      ? `<span style="color: var(--color-error); font-size: 12px;">✕</span>`
+      : `<span style="color: #52c41a; font-size: 12px;">✓</span>`;
 
   // 渲染所有工具项
   const toolItems = toolsArray.map(([id, info]) => renderToolItem(id, info)).join('');

@@ -8,6 +8,7 @@ from apps.mlops.models.timeseries_predict import (
     TimeSeriesRuntimeCleanupIntent,
     TimeSeriesRuntimeGuard,
 )
+from apps.mlops.utils.i18n import mlops_message_for_locale
 
 from .conftest import create_train_job
 
@@ -112,7 +113,9 @@ def test_predict_timeout_reports_configured_budget(mlops_api_client, mlops_user,
     )
 
     assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT
-    assert response.data["error"] == "预测请求超时（超过 80 秒）"
+    assert response.data["error"] == mlops_message_for_locale(
+        "en", "error.serving_prediction_timeout_exceeded", seconds=80
+    )
 
 
 def test_predict_preserves_algorithm_error_contract(mlops_api_client, mlops_user, monkeypatch):
@@ -267,7 +270,7 @@ def test_update_restores_old_service_when_new_container_fails(
     )
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert response.data["message"] == "新服务启动失败，已恢复旧配置与旧服务"
+    assert response.data["message"] == mlops_message_for_locale("en", "message.new_serving_start_failed_old_restored")
     assert runtime_events == [
         ("remove", f"TimeseriesPredict_Serving_{serving.id}"),
         ("serve", f"TimeseriesPredict_Serving_{serving.id}"),
@@ -1541,7 +1544,9 @@ def test_update_reconciles_remove_timeout_before_restoring_old_runtime(
     )
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert response.data["message"] == "配置已回滚，并在对账确认旧服务已删除后恢复旧服务"
+    assert response.data["message"] == mlops_message_for_locale(
+        "en", "message.config_rolled_back_old_service_restored_after_delete"
+    )
     assert len(serve_calls) == 1
     assert serve_calls[0][0][2] == "models:/timeseries/latest"
     serving.refresh_from_db()
@@ -1665,7 +1670,9 @@ def test_update_remove_timeout_with_failed_status_check_is_not_marked_running(
     )
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert response.data["message"] == "配置已回滚，但旧服务删除结果未知"
+    assert response.data["message"] == mlops_message_for_locale(
+        "en", "message.config_rolled_back_old_service_delete_unknown"
+    )
     assert unexpected_serve_calls == []
     serving.refresh_from_db()
     assert serving.model_version == "latest"
@@ -1715,7 +1722,9 @@ def test_update_remove_timeout_rejects_foreign_not_found_status(
     )
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert response.data["message"] == "配置已回滚，但旧服务删除结果未知"
+    assert response.data["message"] == mlops_message_for_locale(
+        "en", "message.config_rolled_back_old_service_delete_unknown"
+    )
     assert unexpected_serve_calls == []
     serving.refresh_from_db()
     assert serving.model_version == "latest"
@@ -1771,7 +1780,9 @@ def test_update_does_not_restore_old_service_until_failed_runtime_is_removed(
     )
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert response.data["message"] == "新服务启动失败，旧配置已恢复但运行时残留未清理"
+    assert response.data["message"] == mlops_message_for_locale(
+        "en", "message.new_serving_start_failed_residue_uncleared"
+    )
     assert len(remove_calls) == 2
     assert len(serve_calls) == 1
     serving.refresh_from_db()

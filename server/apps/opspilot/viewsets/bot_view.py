@@ -17,6 +17,7 @@ from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, UserPin
 from apps.opspilot.serializers import BotSerializer
 from apps.opspilot.services.memory_write_buffer_service import find_memory_write_nodes_to_flush
 from apps.opspilot.services.nats_channel_sync import cleanup_opspilot_nats_channels_for_bot, sync_opspilot_nats_channels_for_bot
+from apps.opspilot.services.usage_team import merge_usage_team as _merge_usage_team
 from apps.opspilot.tasks import flush_memory_write_cache_for_node
 from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
@@ -42,15 +43,6 @@ def _schedule_memory_write_cache_flush(workflow: BotWorkFlow, old_flow_json, new
             title=config.get("title", "") or f"自动记忆-{node_id}",
             model_id=config.get("llmModel"),
         )
-
-
-def _merge_usage_team(team, usage_team):
-    """保证不变式 team ⊆ usage_team：管理组织恒在使用组织内、去重、保持顺序（管理组织在前）。"""
-    merged = list(team or [])
-    for org in usage_team or []:
-        if org not in merged:
-            merged.append(org)
-    return merged
 
 
 class BotFilter(FilterSet):

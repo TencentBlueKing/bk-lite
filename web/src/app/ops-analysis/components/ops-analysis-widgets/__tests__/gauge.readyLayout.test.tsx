@@ -8,6 +8,7 @@ interface GaugeSeriesOption {
 }
 
 let lastOption: { series?: GaugeSeriesOption[] } | null = null;
+let lastOnEvents: { finished?: () => void } | null = null;
 let mockContainerSize = { width: 320, height: 320 };
 
 const resizeCallbacks = new Map<Element, ResizeObserverCallback>();
@@ -55,8 +56,18 @@ beforeAll(() => {
 
 vi.mock('echarts-for-react', () => {
   const MockEcharts = React.forwardRef(
-    ({ option }: { option: { series?: GaugeSeriesOption[] } }, ref) => {
+    (
+      {
+        option,
+        onEvents,
+      }: {
+        option: { series?: GaugeSeriesOption[] };
+        onEvents?: { finished?: () => void };
+      },
+      ref,
+    ) => {
       lastOption = option;
+      lastOnEvents = onEvents ?? null;
       React.useImperativeHandle(ref, () => ({
         getEchartsInstance: () => ({ resize: vi.fn() }),
       }));
@@ -94,6 +105,7 @@ vi.mock('@/components/chart-surface', () => {
 afterEach(() => {
   cleanup();
   lastOption = null;
+  lastOnEvents = null;
   mockContainerSize = { width: 320, height: 320 };
   resizeCallbacks.clear();
 });
@@ -123,6 +135,12 @@ const renderReportGauge = (size: { width: number; height: number }) => {
     resizeCallbacks.forEach((callback) => {
       callback([], {} as ResizeObserver);
     });
+  });
+
+  expect(onReady).not.toHaveBeenCalled();
+
+  act(() => {
+    lastOnEvents?.finished?.();
   });
 
   return { onReady, getSplitNumberAtReady: () => splitNumberAtReady };

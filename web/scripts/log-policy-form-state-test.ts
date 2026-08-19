@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   buildAlertNameVariables,
   buildLogPreviewSearchParams,
@@ -7,7 +10,10 @@ import {
   getDefaultShowFields,
   getLockedPolicyType,
   insertAlertNameVariable,
-  shouldFetchLogPreview
+  pruneNoticeUsers,
+  shouldFetchLogPreview,
+  shouldPruneNoticeUsers,
+  shouldRequireNoticeUsers
 } from '../src/app/log/(pages)/event/strategy/detail/policyFormUtils';
 import {
   buildStrategyDetailUrl,
@@ -191,5 +197,82 @@ const existingTimingPayload = buildStrategyPayload(
 
 assert.deepEqual(existingTimingPayload.schedule, { type: 'hour', value: 2 });
 assert.deepEqual(existingTimingPayload.period, { type: 'min', value: 30 });
+
+const here = dirname(fileURLToPath(import.meta.url));
+const strategyDetailSource = readFileSync(
+  join(here, '../src/app/log/(pages)/event/strategy/detail/page.tsx'),
+  'utf8'
+);
+const logApiSource = readFileSync(
+  join(here, '../src/app/log/api/index.ts'),
+  'utf8'
+);
+assert.match(
+  logApiSource,
+  /organization_ids: organizationIds\.join\(','\)/,
+  '通知人接口必须把策略所属组织传给后端'
+);
+assert.match(
+  strategyDetailSource,
+  /getAllUsers\(orgIds\)/,
+  '通知人列表必须按策略所属组织拉取'
+);
+assert.match(
+  strategyDetailSource,
+  /pruneNoticeUsers/,
+  '组织变更后必须自动剔除越界通知人'
+);
+
+assert.deepEqual(
+  pruneNoticeUsers([1, '2', 3], [
+    { id: 1, username: 'a' },
+    { id: 2, username: 'b' }
+  ]),
+  [1, '2']
+);
+assert.deepEqual(pruneNoticeUsers([1, 2], []), []);
+assert.deepEqual(pruneNoticeUsers(undefined, [{ id: 1 }]), []);
+
+const emailChannel = [{ id: 2, channel_type: 'email' }];
+const natsChannel = [{ id: 3, channel_type: 'nats' }];
+const webhookChannel = [{ id: 4, channel_type: 'custom_webhook' }];
+
+assert.equal(
+  shouldPruneNoticeUsers({ noticeTypeId: 2, channelList: emailChannel }),
+  true
+);
+assert.equal(
+  shouldPruneNoticeUsers({ noticeTypeId: 4, channelList: webhookChannel }),
+  false
+);
+assert.equal(
+  shouldPruneNoticeUsers({ noticeTypeId: 3, channelList: natsChannel }),
+  false
+);
+
+assert.equal(
+  shouldRequireNoticeUsers({
+    notice: true,
+    noticeTypeId: 2,
+    channelList: emailChannel
+  }),
+  true
+);
+assert.equal(
+  shouldRequireNoticeUsers({
+    notice: true,
+    noticeTypeId: 3,
+    channelList: natsChannel
+  }),
+  false
+);
+assert.equal(
+  shouldRequireNoticeUsers({
+    notice: false,
+    noticeTypeId: 2,
+    channelList: emailChannel
+  }),
+  false
+);
 
 console.log('log-policy-form-state validation passed');

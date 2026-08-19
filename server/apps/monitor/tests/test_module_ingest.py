@@ -2,17 +2,9 @@
 
 import pytest
 
-from apps.monitor.models import (
-    MonitorInstance,
-    MonitorInstanceOrganization,
-    MonitorObject,
-    MonitorPlugin,
-    MonitorPluginConfigTemplate,
-)
-from apps.monitor.services.module_ingest import (
-    DEFAULT_HOST_COLLECT_MODULES,
-    MonitorModuleIngestService,
-)
+from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorPlugin, MonitorPluginConfigTemplate
+from apps.monitor.services.module_ingest import DEFAULT_HOST_COLLECT_MODULES, MonitorModuleIngestService
+from apps.monitor.utils.dimension import build_safe_instance_id, normalize_instance_identity
 from apps.node_mgmt.services.module_push_contract import LINK_CONFLICT
 
 
@@ -72,6 +64,45 @@ def mock_peer_notify(mocker):
     )
 
 
+def _create_named_plugin(name, *, monitor_object, collect_type, config_type, instance_fact_bindings=None):
+    plugin = MonitorPlugin.objects.create(
+        name=name,
+        collector="Telegraf",
+        collect_type=collect_type,
+        instance_fact_bindings=instance_fact_bindings or [],
+    )
+    plugin.monitor_object.add(monitor_object)
+    MonitorPluginConfigTemplate.objects.create(
+        plugin=plugin,
+        type=config_type,
+        config_type="child",
+        file_type="toml",
+        content="# test",
+    )
+    return plugin
+
+
+def _ip_fact_binding(field: str) -> list[dict]:
+    return [
+        {
+            "fact": "asset.ip",
+            "value_type": "ip",
+            "resolver": "input",
+            "options": {"field": field},
+        }
+    ]
+
+
+@pytest.fixture
+def host_remote_plugin(host_object):
+    return _create_named_plugin(
+        "Host Remote",
+        monitor_object=host_object,
+        collect_type="http",
+        config_type="host",
+    )
+
+
 def _params(**overrides):
     base = {
         "source_module": "node_mgmt",
@@ -99,15 +130,32 @@ def _params(**overrides):
     return base
 
 
+def _network_storage_key(cloud, ip):
+    return normalize_instance_identity(build_safe_instance_id(cloud, ip))["storage_instance_key"]
+
+
+def test_network_device_storage_key_uses_monitor_identity_adapter():
+    from apps.monitor.services.node_mgmt import InstanceConfigService
+
+    raw_id = "1_switch_snmp_10.0.0.100"
+    key = MonitorModuleIngestService._storage_key_after_onboarding(
+        model_id="switch",
+        raw_instance_id=raw_id,
+        cloud=1,
+        ip="10.0.0.100",
+    )
+    prepared = InstanceConfigService._prepare_network_device_identity_instances([{"instance_id": raw_id, "ip": "10.0.0.100", "cloud_region_id": 1}])
+    assert key == prepared[0]["storage_instance_key"]
+    assert key != normalize_instance_identity(raw_id)["storage_instance_key"]
+
+
 @pytest.mark.django_db
 def test_requires_auth_scope(host_object):
     with pytest.raises(ValueError, match="authorization"):
         MonitorModuleIngestService.ingest(_params(allowed_org_ids=[]))
 
     with pytest.raises(ValueError, match="authorization"):
-        MonitorModuleIngestService.ingest(
-            {k: v for k, v in _params().items() if k != "allowed_org_ids"}
-        )
+        MonitorModuleIngestService.ingest({k: v for k, v in _params().items() if k != "allowed_org_ids"})
 
 
 @pytest.mark.django_db
@@ -117,9 +165,7 @@ def test_monitor_ingest_merges_by_node_id(host_object):
     assert first["updated"] is False
     assert first["id"]
 
-    second = MonitorModuleIngestService.ingest(
-        _params(raw={"name": "host-1-renamed", "ip": "10.0.0.2"})
-    )
+    second = MonitorModuleIngestService.ingest(_params(raw={"name": "host-1-renamed", "ip": "10.0.0.2"}))
     assert second["updated"] is True
     assert second["created"] is False
     assert second["id"] == first["id"]
@@ -129,9 +175,7 @@ def test_monitor_ingest_merges_by_node_id(host_object):
     assert inst.node_id == "n1"
     assert inst.name == "host-1-renamed"
     assert str(inst.ip) == "10.0.0.2"
-    assert MonitorInstanceOrganization.objects.filter(
-        monitor_instance=inst, organization=1
-    ).exists()
+    assert MonitorInstanceOrganization.objects.filter(monitor_instance=inst, organization=1).exists()
 
 
 @pytest.mark.django_db
@@ -175,10 +219,8 @@ def test_cmdb_push_without_credential_does_not_create(host_object, mock_collect_
 
 
 @pytest.mark.django_db
-def test_cmdb_push_unadapted_object_with_credential_does_not_create(
-    host_object, mock_collect_apply
-):
-    """适配范围外（如 switch）即使带凭据也不创建，只做关联。"""
+def test_cmdb_push_unadapted_object_with_credential_does_not_create(host_object, mock_collect_apply):
+    """全局开关关闭时，适配范围内对象带凭据仍不创建（扫描须显式 allow_credential_create）。"""
     result = MonitorModuleIngestService.ingest(
         _params(
             source_module="cmdb",
@@ -255,9 +297,7 @@ def test_monitor_ingest_claims_by_ip_cloud_when_ids_miss(host_object):
         cloud_region_id=1,
     )
 
-    result = MonitorModuleIngestService.ingest(
-        _params(link_ids={"node_id": "n-new"}, raw={"name": "from-node", "ip": "10.0.0.1"})
-    )
+    result = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-new"}, raw={"name": "from-node", "ip": "10.0.0.1"}))
 
     assert result["updated"] is True
     assert result["id"] == existing.id
@@ -278,9 +318,7 @@ def test_monitor_ingest_ip_cloud_conflict_when_bound_to_other_node(host_object):
         node_id="other-node",
     )
 
-    result = MonitorModuleIngestService.ingest(
-        _params(link_ids={"node_id": "n-new"}, raw={"ip": "10.0.0.1"})
-    )
+    result = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-new"}, raw={"ip": "10.0.0.1"}))
 
     assert result["conflict"] == LINK_CONFLICT
     assert result["created"] is False
@@ -339,9 +377,7 @@ def test_lifecycle_retire_soft_deactivates_without_hard_delete(host_object):
 
 @pytest.mark.django_db
 def test_lifecycle_from_cmdb_only_clears_cmdb_id(host_object):
-    created = MonitorModuleIngestService.ingest(
-        _params(link_ids={"node_id": "n-unlink", "cmdb_id": "77"})
-    )
+    created = MonitorModuleIngestService.ingest(_params(link_ids={"node_id": "n-unlink", "cmdb_id": "77"}))
     inst = MonitorInstance.objects.get(id=created["id"])
     assert inst.cmdb_id == "77"
     assert inst.node_id == "n-unlink"
@@ -390,9 +426,7 @@ def test_lifecycle_idempotent_when_already_retired(host_object):
 
 
 @pytest.mark.django_db
-def test_node_push_create_applies_default_host_collect(
-    host_object, host_plugin, mock_collect_apply
-):
+def test_node_push_create_applies_default_host_collect(host_object, host_plugin, mock_collect_apply):
     result = MonitorModuleIngestService.ingest(_params())
 
     assert result["created"] is True
@@ -403,7 +437,13 @@ def test_node_push_create_applies_default_host_collect(
     assert payload["collect_type"] == "host"
     assert payload["monitor_object_id"] == host_object.id
     assert [c["type"] for c in payload["configs"]] == [
-        "cpu", "disk", "diskio", "mem", "net", "processes", "system",
+        "cpu",
+        "disk",
+        "diskio",
+        "mem",
+        "net",
+        "processes",
+        "system",
     ]
     assert all(c["interval"] == 60 for c in payload["configs"])
     instance_payload = payload["instances"][0]
@@ -428,9 +468,7 @@ def test_node_push_existing_does_not_apply_collect(host_object, mock_collect_app
     )
     mock_collect_apply.reset_mock()
 
-    second = MonitorModuleIngestService.ingest(
-        _params(raw={"name": "renamed", "ip": "10.0.0.2"})
-    )
+    second = MonitorModuleIngestService.ingest(_params(raw={"name": "renamed", "ip": "10.0.0.2"}))
 
     assert second["updated"] is True
     mock_collect_apply.assert_not_called()
@@ -447,9 +485,7 @@ def test_node_push_collect_failure_does_not_keep_instance(host_object, mock_coll
 
 
 @pytest.mark.django_db
-def test_node_push_selects_host_plugin_by_name_not_smallest_id(
-    host_object, host_plugin, mock_collect_apply
-):
+def test_node_push_selects_host_plugin_by_name_not_smallest_id(host_object, host_plugin, mock_collect_apply):
     host_plugin.delete()
     decoy = MonitorPlugin.objects.create(
         name="Process",
@@ -491,9 +527,7 @@ def test_node_push_fails_when_host_plugin_missing(host_object, host_plugin):
 
 @pytest.mark.django_db
 def test_node_push_fails_when_host_templates_incomplete(host_object, host_plugin):
-    MonitorPluginConfigTemplate.objects.filter(
-        plugin=host_plugin, type="cpu"
-    ).delete()
+    MonitorPluginConfigTemplate.objects.filter(plugin=host_plugin, type="cpu").delete()
 
     with pytest.raises(ValueError, match="missing templates"):
         MonitorModuleIngestService.ingest(_params())
@@ -524,9 +558,7 @@ def test_cmdb_credential_create_disabled_by_default(host_object, mock_collect_ap
 
 
 @pytest.mark.django_db
-def test_cmdb_push_with_credential_creates_remote_instance(
-    host_object, mock_collect_apply, mocker, monkeypatch
-):
+def test_cmdb_push_with_credential_creates_remote_instance(host_object, host_remote_plugin, mock_collect_apply, mocker, monkeypatch):
     monkeypatch.setattr(
         "apps.monitor.services.module_ingest.CMDB_CREDENTIAL_CREATE_ENABLED",
         True,
@@ -537,7 +569,7 @@ def test_cmdb_push_with_credential_creates_remote_instance(
         "nodes": [{"id": "container-1", "cloud_region_id": 1}],
     }
 
-    def _fake_onboarding(payload):
+    def _fake_onboarding(payload, actor_context=None):
         MonitorInstance.objects.create(
             id="('1_os_10.0.0.9',)",
             name=payload["instances"][0]["instance_name"],
@@ -569,6 +601,7 @@ def test_cmdb_push_with_credential_creates_remote_instance(
     assert "collect_error" not in result
     payload = mock_collect_apply.call_args.args[0]
     assert payload["collect_type"] == "http"
+    assert payload["monitor_plugin_id"] == host_remote_plugin.id
     assert payload["instances"][0]["node_ids"] == ["container-1"]
     assert payload["instances"][0]["instance_id"] == "1_os_10.0.0.9"
     config = payload["configs"][0]
@@ -584,9 +617,7 @@ def test_cmdb_push_with_credential_creates_remote_instance(
 
 
 @pytest.mark.django_db
-def test_cmdb_push_with_private_key_credential_maps_env_fields(
-    host_object, mock_collect_apply, mocker, monkeypatch
-):
+def test_cmdb_push_with_private_key_credential_maps_env_fields(host_object, host_remote_plugin, mock_collect_apply, mocker, monkeypatch):
     monkeypatch.setattr(
         "apps.monitor.services.module_ingest.CMDB_CREDENTIAL_CREATE_ENABLED",
         True,
@@ -597,7 +628,7 @@ def test_cmdb_push_with_private_key_credential_maps_env_fields(
         "nodes": [{"id": "container-1", "cloud_region_id": 1}],
     }
 
-    def _fake_onboarding(payload):
+    def _fake_onboarding(payload, actor_context=None):
         MonitorInstance.objects.create(
             id="('1_os_10.0.0.10',)",
             name=payload["instances"][0]["instance_name"],
@@ -618,6 +649,7 @@ def test_cmdb_push_with_private_key_credential_maps_env_fields(
                 "organization_ids": [1],
                 "credential": {
                     "username": "ops",
+                    "authType": "privateKey",
                     "private_key": "-----BEGIN KEY-----",
                     "passphrase": "pp",
                 },
@@ -632,9 +664,7 @@ def test_cmdb_push_with_private_key_credential_maps_env_fields(
 
 
 @pytest.mark.django_db
-def test_cmdb_push_with_credential_falls_back_without_container_node(
-    host_object, mock_collect_apply, mocker, monkeypatch
-):
+def test_cmdb_push_with_credential_fails_without_container_node(host_object, host_remote_plugin, mock_collect_apply, mocker, monkeypatch):
     monkeypatch.setattr(
         "apps.monitor.services.module_ingest.CMDB_CREDENTIAL_CREATE_ENABLED",
         True,
@@ -642,25 +672,23 @@ def test_cmdb_push_with_credential_falls_back_without_container_node(
     node_mgmt = mocker.patch("apps.monitor.services.module_ingest.NodeMgmt")
     node_mgmt.return_value.node_list.return_value = {"count": 0, "nodes": []}
 
-    result = MonitorModuleIngestService.ingest(
-        _params(
-            source_module="cmdb",
-            source_id="44",
-            link_ids={"cmdb_id": "44"},
-            raw={
-                "name": "no-collector",
-                "ip": "10.0.0.11",
-                "organization_ids": [1],
-                "credential": {"username": "root", "password": "x"},
-            },
+    with pytest.raises(ValueError, match="container"):
+        MonitorModuleIngestService.ingest(
+            _params(
+                source_module="cmdb",
+                source_id="44",
+                link_ids={"cmdb_id": "44"},
+                raw={
+                    "name": "no-collector",
+                    "ip": "10.0.0.11",
+                    "organization_ids": [1],
+                    "credential": {"username": "root", "password": "x"},
+                },
+            )
         )
-    )
 
-    assert result["created"] is True
-    assert "container" in result["collect_error"]
     mock_collect_apply.assert_not_called()
-    inst = MonitorInstance.objects.get(id=result["id"])
-    assert inst.cmdb_id == "44"
+    assert MonitorInstance.objects.count() == 0
 
 
 @pytest.mark.django_db
@@ -698,3 +726,579 @@ def test_monitor_create_auto_links_matching_node(host_object, mock_collect_apply
     node.refresh_from_db()
     assert node.monitor_id == inst.id
     mock_collect_apply.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_allow_credential_create_mysql_builds_database_config(host_object, mock_collect_apply, mocker, db):
+    mysql_object = MonitorObject.objects.create(name="Mysql", display_name="MySQL", level="base")
+    mysql_plugin = _create_named_plugin(
+        "Mysql",
+        monitor_object=mysql_object,
+        collect_type="database",
+        config_type="mysql",
+        instance_fact_bindings=_ip_fact_binding("host"),
+    )
+    node_mgmt = mocker.patch("apps.monitor.services.module_ingest.NodeMgmt")
+    node_mgmt.return_value.node_list.return_value = {
+        "count": 1,
+        "nodes": [{"id": "container-1", "cloud_region_id": 1}],
+    }
+
+    def _fake_onboarding(payload, actor_context=None):
+        MonitorInstance.objects.create(
+            id="('1_10.0.0.20_3306',)",
+            name=payload["instances"][0]["instance_name"],
+            monitor_object_id=payload["monitor_object_id"],
+        )
+
+    mock_collect_apply.side_effect = _fake_onboarding
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="db-1",
+            link_ids={"cmdb_id": "db-1"},
+            allow_credential_create=True,
+            raw={
+                "name": "mysql-1",
+                "ip": "10.0.0.20",
+                "port": 3306,
+                "model_id": "mysql",
+                "cloud_region_id": 1,
+                "organization_ids": [1],
+                "credential": {"username": "monitor", "password": "db-secret"},
+            },
+        )
+    )
+
+    assert result["created"] is True
+    payload = mock_collect_apply.call_args.args[0]
+    assert payload["collect_type"] == "database"
+    assert payload["monitor_object_id"] == mysql_object.id
+    assert payload["monitor_plugin_id"] == mysql_plugin.id
+    assert payload["instances"][0]["ip"] == "10.0.0.20"
+    assert payload["instances"][0]["host"] == "10.0.0.20"
+    config = payload["configs"][0]
+    assert config["type"] == "mysql"
+    assert config["host"] == "10.0.0.20"
+    assert config["ENV_PASSWORD"] == "db-secret"
+    assert MonitorInstance.objects.get(id="('1_10.0.0.20_3306',)").cmdb_id == "db-1"
+
+
+@pytest.mark.django_db
+def test_allow_credential_create_switch_uses_snmp_collect_type(host_object, mock_collect_apply, mocker, db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="交换机", level="base")
+    switch_plugin = _create_named_plugin(
+        "Switch SNMP General",
+        monitor_object=switch_object,
+        collect_type="snmp",
+        config_type="switch",
+    )
+    node_mgmt = mocker.patch("apps.monitor.services.module_ingest.NodeMgmt")
+    node_mgmt.return_value.node_list.return_value = {
+        "count": 1,
+        "nodes": [{"id": "container-1", "cloud_region_id": 1}],
+    }
+
+    storage_key = _network_storage_key(1, "10.0.0.100")
+
+    def _fake_onboarding(payload, actor_context=None):
+        MonitorInstance.objects.create(
+            id=storage_key,
+            name=payload["instances"][0]["instance_name"],
+            monitor_object_id=payload["monitor_object_id"],
+        )
+
+    mock_collect_apply.side_effect = _fake_onboarding
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="sw-1",
+            link_ids={"cmdb_id": "sw-1"},
+            allow_credential_create=True,
+            raw={
+                "name": "sw-1",
+                "ip": "10.0.0.100",
+                "model_id": "switch",
+                "cloud_region_id": 1,
+                "organization_ids": [1],
+                "credential": {"version": "v2", "community": "public"},
+            },
+        )
+    )
+
+    assert result["created"] is True
+    assert result["id"] == storage_key
+    payload = mock_collect_apply.call_args.args[0]
+    assert payload["collect_type"] == "snmp"
+    assert payload["monitor_object_id"] == switch_object.id
+    assert payload["monitor_plugin_id"] == switch_plugin.id
+    assert payload["instances"][0]["ip"] == "10.0.0.100"
+    assert payload["instances"][0]["cloud_region_id"] == 1
+    assert payload["configs"][0]["community"] == "public"
+    assert payload["configs"][0]["version"] == 2
+    assert payload["configs"][0]["type"] == "switch"
+    assert payload["configs"][0]["timeout"] == 10
+    inst = MonitorInstance.objects.get(id=storage_key)
+    assert inst.cmdb_id == "sw-1"
+    assert inst.ip == "10.0.0.100"
+    assert inst.cloud_region_id == 1
+
+
+@pytest.mark.django_db
+def test_allow_credential_create_router_uses_router_config_type(host_object, mock_collect_apply, mocker, db):
+    router_object = MonitorObject.objects.create(name="Router", display_name="路由器", level="base")
+    router_plugin = _create_named_plugin(
+        "Router SNMP General",
+        monitor_object=router_object,
+        collect_type="snmp",
+        config_type="router",
+    )
+    node_mgmt = mocker.patch("apps.monitor.services.module_ingest.NodeMgmt")
+    node_mgmt.return_value.node_list.return_value = {
+        "count": 1,
+        "nodes": [{"id": "container-1", "cloud_region_id": 1}],
+    }
+
+    storage_key = _network_storage_key(1, "10.0.0.101")
+
+    def _fake_onboarding(payload, actor_context=None):
+        MonitorInstance.objects.create(
+            id=storage_key,
+            name=payload["instances"][0]["instance_name"],
+            monitor_object_id=payload["monitor_object_id"],
+        )
+
+    mock_collect_apply.side_effect = _fake_onboarding
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="rt-1",
+            link_ids={"cmdb_id": "rt-1"},
+            allow_credential_create=True,
+            raw={
+                "name": "rt-1",
+                "ip": "10.0.0.101",
+                "model_id": "router",
+                "cloud_region_id": 1,
+                "organization_ids": [1],
+                "credential": {"version": "v2", "community": "public"},
+            },
+        )
+    )
+
+    assert result["created"] is True
+    assert result["id"] == storage_key
+    payload = mock_collect_apply.call_args.args[0]
+    assert payload["monitor_plugin_id"] == router_plugin.id
+    assert payload["instances"][0]["instance_id"] == "1_router_snmp_10.0.0.101"
+    assert payload["instances"][0]["instance_type"] == "router"
+    assert payload["instances"][0]["ip"] == "10.0.0.101"
+    assert payload["configs"][0]["type"] == "router"
+    inst = MonitorInstance.objects.get(id=storage_key)
+    assert inst.cmdb_id == "rt-1"
+    assert inst.ip == "10.0.0.101"
+
+
+@pytest.mark.django_db
+def test_network_device_reuses_existing_safe_instance_without_recreate(host_object, mock_collect_apply, mocker, db):
+    """已有采集配置的实例：只补链路字段，不再次走接入。"""
+    from apps.monitor.models import CollectConfig
+
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="交换机", level="base")
+    switch_plugin = _create_named_plugin(
+        "Switch SNMP General",
+        monitor_object=switch_object,
+        collect_type="snmp",
+        config_type="switch",
+    )
+    node_mgmt = mocker.patch("apps.monitor.services.module_ingest.NodeMgmt")
+    node_mgmt.return_value.node_list.return_value = {
+        "count": 1,
+        "nodes": [{"id": "container-1", "cloud_region_id": 1}],
+    }
+    storage_key = _network_storage_key(1, "10.0.0.100")
+    MonitorInstance.objects.create(
+        id=storage_key,
+        name="10.0.0.100-switch",
+        monitor_object=switch_object,
+    )
+    CollectConfig.objects.create(
+        id="cfg-sw-1",
+        monitor_instance_id=storage_key,
+        monitor_plugin=switch_plugin,
+        collector="Telegraf",
+        collect_type="snmp",
+        config_type="switch",
+        is_child=True,
+        file_type="toml",
+    )
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="sw-1",
+            link_ids={"cmdb_id": "sw-1"},
+            allow_credential_create=True,
+            raw={
+                "name": "sw-from-cmdb",
+                "ip": "10.0.0.100",
+                "model_id": "switch",
+                "cloud_region_id": 1,
+                "organization_ids": [1],
+                "credential": {"version": "v2", "community": "public"},
+            },
+        )
+    )
+
+    assert result["created"] is True
+    assert result["id"] == storage_key
+    mock_collect_apply.assert_not_called()
+    inst = MonitorInstance.objects.get(id=storage_key)
+    assert inst.cmdb_id == "sw-1"
+    assert inst.ip == "10.0.0.100"
+    assert inst.cloud_region_id == 1
+    assert inst.name == "sw-from-cmdb"
+
+
+@pytest.mark.django_db
+def test_network_device_empty_shell_reonboards_and_uses_cmdb_name(host_object, mock_collect_apply, mocker, db):
+    """空壳（无采集配置）必须补接入，并用 CMDB 实例名覆盖乱码/安全 ID 名。"""
+    from apps.monitor.models import CollectConfig
+    from apps.monitor.utils.dimension import build_safe_instance_id
+
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="交换机", level="base")
+    switch_plugin = _create_named_plugin(
+        "Switch SNMP General",
+        monitor_object=switch_object,
+        collect_type="snmp",
+        config_type="switch",
+    )
+    node_mgmt = mocker.patch("apps.monitor.services.module_ingest.NodeMgmt")
+    node_mgmt.return_value.node_list.return_value = {
+        "count": 1,
+        "nodes": [{"id": "container-1", "cloud_region_id": 1}],
+    }
+    storage_key = _network_storage_key(1, "10.0.0.100")
+    garbled = build_safe_instance_id(1, "10.0.0.100")
+    MonitorInstance.objects.create(
+        id=storage_key,
+        name=garbled,
+        monitor_object=switch_object,
+    )
+
+    def _fake_onboarding(payload, actor_context=None):
+        inst = MonitorInstance.objects.get(id=storage_key)
+        inst.name = payload["instances"][0]["instance_name"]
+        inst.save(update_fields=["name", "updated_at"])
+        CollectConfig.objects.get_or_create(
+            id="cfg-sw-reonboard",
+            defaults={
+                "monitor_instance_id": storage_key,
+                "monitor_plugin": switch_plugin,
+                "collector": "Telegraf",
+                "collect_type": "snmp",
+                "config_type": "switch",
+                "is_child": True,
+                "file_type": "toml",
+            },
+        )
+
+    mock_collect_apply.side_effect = _fake_onboarding
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="sw-1",
+            link_ids={"cmdb_id": "sw-1"},
+            allow_credential_create=True,
+            raw={
+                "name": "10.0.0.100-switch",
+                "inst_name": "10.0.0.100-switch",
+                "ip": "10.0.0.100",
+                "model_id": "switch",
+                "cloud_region_id": 1,
+                "organization_ids": [1],
+                "credential": {"version": "v2", "community": "public"},
+            },
+        )
+    )
+
+    assert result["created"] is True
+    assert result["id"] == storage_key
+    mock_collect_apply.assert_called_once()
+    assert mock_collect_apply.call_args.args[0]["instances"][0]["instance_name"] == "10.0.0.100-switch"
+    inst = MonitorInstance.objects.get(id=storage_key)
+    assert inst.name == "10.0.0.100-switch"
+    assert inst.cmdb_id == "sw-1"
+    assert CollectConfig.objects.filter(monitor_instance_id=storage_key).exists()
+
+
+@pytest.mark.django_db
+def test_existing_by_cmdb_empty_shell_still_applies_collect(host_object, mock_collect_apply, mocker, db):
+    """已按 cmdb_id 命中的空壳：带凭据推送仍须补采集，不能只 update 名称。"""
+    from apps.monitor.models import CollectConfig
+
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="交换机", level="base")
+    switch_plugin = _create_named_plugin(
+        "Switch SNMP General",
+        monitor_object=switch_object,
+        collect_type="snmp",
+        config_type="switch",
+    )
+    node_mgmt = mocker.patch("apps.monitor.services.module_ingest.NodeMgmt")
+    node_mgmt.return_value.node_list.return_value = {
+        "count": 1,
+        "nodes": [{"id": "container-1", "cloud_region_id": 1}],
+    }
+    storage_key = _network_storage_key(1, "10.0.0.100")
+    MonitorInstance.objects.create(
+        id=storage_key,
+        name="MTox-garbled",
+        monitor_object=switch_object,
+        cmdb_id="sw-1",
+        ip="10.0.0.100",
+        cloud_region_id=1,
+    )
+
+    def _fake_onboarding(payload, actor_context=None):
+        inst = MonitorInstance.objects.get(id=storage_key)
+        inst.name = payload["instances"][0]["instance_name"]
+        inst.save(update_fields=["name", "updated_at"])
+        CollectConfig.objects.get_or_create(
+            id="cfg-sw-by-cmdb",
+            defaults={
+                "monitor_instance_id": storage_key,
+                "monitor_plugin": switch_plugin,
+                "collector": "Telegraf",
+                "collect_type": "snmp",
+                "config_type": "switch",
+                "is_child": True,
+                "file_type": "toml",
+            },
+        )
+
+    mock_collect_apply.side_effect = _fake_onboarding
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="sw-1",
+            link_ids={"cmdb_id": "sw-1"},
+            allow_credential_create=True,
+            raw={
+                "name": "sw-from-cmdb",
+                "ip": "10.0.0.100",
+                "model_id": "switch",
+                "cloud_region_id": 1,
+                "organization_ids": [1],
+                "credential": {"version": "v2", "community": "public"},
+            },
+        )
+    )
+
+    assert result["updated"] is True
+    assert result["id"] == storage_key
+    mock_collect_apply.assert_called_once()
+    inst = MonitorInstance.objects.get(id=storage_key)
+    assert inst.name == "sw-from-cmdb"
+    assert CollectConfig.objects.filter(monitor_instance_id=storage_key).exists()
+
+
+@pytest.mark.django_db
+def test_existing_by_cmdb_with_collect_skips_repeat_credential_push(host_object, mock_collect_apply, mocker, db):
+    """已有 cmdb_id 且已有采集：带凭据重复推送应 skipped，不再走接入页。"""
+    from apps.monitor.models import CollectConfig
+
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="交换机", level="base")
+    switch_plugin = _create_named_plugin(
+        "Switch SNMP General",
+        monitor_object=switch_object,
+        collect_type="snmp",
+        config_type="switch",
+    )
+    storage_key = _network_storage_key(1, "10.0.0.100")
+    MonitorInstance.objects.create(
+        id=storage_key,
+        name="sw-from-cmdb",
+        monitor_object=switch_object,
+        cmdb_id="sw-1",
+        ip="10.0.0.100",
+        cloud_region_id=1,
+    )
+    CollectConfig.objects.create(
+        id="cfg-sw-skip",
+        monitor_instance_id=storage_key,
+        monitor_plugin=switch_plugin,
+        collector="Telegraf",
+        collect_type="snmp",
+        config_type="switch",
+        is_child=True,
+        file_type="toml",
+    )
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="sw-1",
+            link_ids={"cmdb_id": "sw-1"},
+            allow_credential_create=True,
+            raw={
+                "name": "sw-from-cmdb",
+                "ip": "10.0.0.100",
+                "model_id": "switch",
+                "cloud_region_id": 1,
+                "organization_ids": [1],
+                "credential": {"version": "v2", "community": "public"},
+            },
+        )
+    )
+
+    assert result["skipped"] is True
+    assert result["created"] is False
+    assert result["updated"] is False
+    assert result["id"] == storage_key
+    mock_collect_apply.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_allow_credential_create_influxdb_maps_token_to_env_password(host_object, mock_collect_apply, mocker, db):
+    influx_object = MonitorObject.objects.create(name="InfluxDB", display_name="InfluxDB", level="base")
+    influx_plugin = _create_named_plugin(
+        "InfluxDB",
+        monitor_object=influx_object,
+        collect_type="database",
+        config_type="influxdb",
+        instance_fact_bindings=_ip_fact_binding("server"),
+    )
+    node_mgmt = mocker.patch("apps.monitor.services.module_ingest.NodeMgmt")
+    node_mgmt.return_value.node_list.return_value = {
+        "count": 1,
+        "nodes": [{"id": "container-1", "cloud_region_id": 1}],
+    }
+
+    def _fake_onboarding(payload, actor_context=None):
+        MonitorInstance.objects.create(
+            id="('1_10.0.0.30',)",
+            name=payload["instances"][0]["instance_name"],
+            monitor_object_id=payload["monitor_object_id"],
+        )
+
+    mock_collect_apply.side_effect = _fake_onboarding
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="inf-1",
+            link_ids={"cmdb_id": "inf-1"},
+            allow_credential_create=True,
+            raw={
+                "name": "influx-1",
+                "ip": "10.0.0.30",
+                "model_id": "influxdb",
+                "cloud_region_id": 1,
+                "organization_ids": [1],
+                "credential": {
+                    "scheme": "https",
+                    "port": 8086,
+                    "token": "op-token",
+                    "_client_id": "should-not-leak",
+                },
+            },
+        )
+    )
+
+    assert result["created"] is True
+    payload = mock_collect_apply.call_args.args[0]
+    assert payload["monitor_plugin_id"] == influx_plugin.id
+    assert payload["instances"][0]["ip"] == "10.0.0.30"
+    assert payload["instances"][0]["server"] == "10.0.0.30"
+    config = payload["configs"][0]
+    assert config["type"] == "influxdb"
+    assert config["server"] == "https://10.0.0.30:8086/debug/vars"
+    assert config["ENV_PASSWORD"] == "op-token"
+    assert "_client_id" not in config
+
+
+@pytest.mark.django_db
+def test_allow_credential_create_mssql_uses_1433_in_instance_id(host_object, mock_collect_apply, mocker, db):
+    mssql_object = MonitorObject.objects.create(name="MSSQL", display_name="MSSQL", level="base")
+    mssql_plugin = _create_named_plugin(
+        "MSSQL",
+        monitor_object=mssql_object,
+        collect_type="database",
+        config_type="mssql",
+        instance_fact_bindings=_ip_fact_binding("host"),
+    )
+    node_mgmt = mocker.patch("apps.monitor.services.module_ingest.NodeMgmt")
+    node_mgmt.return_value.node_list.return_value = {
+        "count": 1,
+        "nodes": [{"id": "container-1", "cloud_region_id": 1}],
+    }
+
+    def _fake_onboarding(payload, actor_context=None):
+        MonitorInstance.objects.create(
+            id="('1_10.0.0.40_1433',)",
+            name=payload["instances"][0]["instance_name"],
+            monitor_object_id=payload["monitor_object_id"],
+        )
+
+    mock_collect_apply.side_effect = _fake_onboarding
+
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="ms-1",
+            link_ids={"cmdb_id": "ms-1"},
+            allow_credential_create=True,
+            raw={
+                "name": "mssql-1",
+                "ip": "10.0.0.40",
+                "model_id": "mssql",
+                "cloud_region_id": 1,
+                "organization_ids": [1],
+                "credential": {"username": "sa", "password": "secret", "port": 1433},
+            },
+        )
+    )
+
+    assert result["created"] is True
+    payload = mock_collect_apply.call_args.args[0]
+    assert payload["monitor_plugin_id"] == mssql_plugin.id
+    assert payload["instances"][0]["instance_id"] == "1_10.0.0.40_1433"
+    assert payload["instances"][0]["host"] == "10.0.0.40"
+    assert payload["configs"][0]["port"] == 1433
+
+
+@pytest.mark.django_db
+def test_allow_credential_create_without_named_plugin_does_not_create_shell(host_object, mock_collect_apply, mocker, db):
+    MonitorObject.objects.create(name="Mysql", display_name="MySQL", level="base")
+    node_mgmt = mocker.patch("apps.monitor.services.module_ingest.NodeMgmt")
+    node_mgmt.return_value.node_list.return_value = {
+        "count": 1,
+        "nodes": [{"id": "container-1", "cloud_region_id": 1}],
+    }
+
+    with pytest.raises(ValueError, match="Mysql"):
+        MonitorModuleIngestService.ingest(
+            _params(
+                source_module="cmdb",
+                source_id="db-missing-plugin",
+                link_ids={"cmdb_id": "db-missing-plugin"},
+                allow_credential_create=True,
+                raw={
+                    "name": "mysql-1",
+                    "ip": "10.0.0.20",
+                    "port": 3306,
+                    "model_id": "mysql",
+                    "cloud_region_id": 1,
+                    "organization_ids": [1],
+                    "credential": {"username": "monitor", "password": "db-secret"},
+                },
+            )
+        )
+
+    mock_collect_apply.assert_not_called()
+    assert MonitorInstance.objects.count() == 0

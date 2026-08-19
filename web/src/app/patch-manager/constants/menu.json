@@ -38,7 +38,11 @@
       "title": "设置",
       "icon": "settings-fill",
       "url": "/patch-manager/settings",
-      "name": "patch_source"
+      "name": "patch_settings",
+      "children": [
+        { "title": "补丁源", "url": "/patch-manager/settings/sources", "name": "patch_source" },
+        { "title": "扫描设置", "url": "/patch-manager/settings/scan", "name": "patch_scan_setting" }
+      ]
     }
   ],
   "en": [
@@ -80,7 +84,11 @@
       "title": "Settings",
       "icon": "settings-fill",
       "url": "/patch-manager/settings",
-      "name": "patch_source"
+      "name": "patch_settings",
+      "children": [
+        { "title": "Patch Sources", "url": "/patch-manager/settings/sources", "name": "patch_source" },
+        { "title": "Scan Settings", "url": "/patch-manager/settings/scan", "name": "patch_scan_setting" }
+      ]
     }
   ]
 }

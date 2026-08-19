@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { ToolCall } from '../contentChunks';
+import { WC } from '../chrome';
 
 export type { ToolCall };
 
@@ -11,7 +12,7 @@ export const ToolCallDisplay: React.FC<ToolCallDisplayProps> = ({ toolCalls }) =
   if (toolCalls.length === 0) return null;
 
   return (
-    <div className="flex flex-row flex-wrap items-center gap-2">
+    <div className="mt-2 flex flex-row flex-wrap items-center gap-2">
       {toolCalls.map((tool) => (
         <ToolCallTag key={tool.id} tool={tool} />
       ))}
@@ -32,14 +33,12 @@ const ToolCallTag: React.FC<ToolCallTagProps> = ({ tool }) => {
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
-      <div className="inline-flex items-center gap-1.5 bg-green-50 text-green-700 px-3 py-1 rounded-full text-xs font-medium border border-green-200">
-        <span className="inline-flex items-center gap-1">
-          <span>🛠️</span>
-          <span>{tool.name}</span>
-        </span>
+      <div className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium" style={{ background: WC.toolBg, color: WC.toolText, borderColor: WC.toolBorder }}>
+        <span>{tool.name}</span>
         {tool.status === 'running' ? (
           <svg 
-            className="animate-spin h-3 w-3 text-green-600" 
+            className="h-3 w-3 animate-spin"
+            style={{ color: WC.toolText }} 
             xmlns="http://www.w3.org/2000/svg" 
             fill="none" 
             viewBox="0 0 24 24"
@@ -60,7 +59,8 @@ const ToolCallTag: React.FC<ToolCallTagProps> = ({ tool }) => {
           </svg>
         ) : (
           <svg 
-            className="h-3 w-3 text-green-600" 
+            className="h-3 w-3"
+            style={{ color: WC.toolText }} 
             xmlns="http://www.w3.org/2000/svg" 
             viewBox="0 0 20 20" 
             fill="currentColor"
@@ -77,14 +77,19 @@ const ToolCallTag: React.FC<ToolCallTagProps> = ({ tool }) => {
       {/* Tooltip */}
       {showTooltip && tool.result && (
         <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 z-50 w-max max-w-xs">
-          <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg">
-            <div className="font-semibold mb-1">执行结果:</div>
-            <div className="text-gray-200 max-h-40 overflow-y-auto whitespace-pre-wrap break-words">
+          <div
+            className="rounded-lg px-3 py-2 text-xs"
+            style={{ background: WC.botText, color: WC.white, boxShadow: WC.shadow }}
+          >
+            <div className="mb-1 font-semibold">执行结果:</div>
+            <div className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words opacity-85">
               {formatResult(tool.result)}
             </div>
           </div>
-          {/* Arrow */}
-          <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent border-t-gray-900" />
+          <div
+            className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-l-4 border-r-4 border-t-4 border-l-transparent border-r-transparent"
+            style={{ borderTopColor: WC.botText }}
+          />
         </div>
       )}
     </div>

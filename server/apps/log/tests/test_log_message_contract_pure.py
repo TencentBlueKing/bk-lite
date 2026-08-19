@@ -31,6 +31,17 @@ def test_all_builtin_collect_types_declare_one_canonical_message_field():
 
 
 @pytest.mark.unit
+def test_all_builtin_collect_types_declare_server_and_upstream_timestamp_fields():
+    collect_type_files = sorted(PLUGIN_ROOT.glob("*/*/collect_type.json"))
+
+    assert len(collect_type_files) == 18
+    for path in collect_type_files:
+        attrs = json.loads(path.read_text())["attrs"]
+        assert attrs.count("timestamp") == 1, path
+        assert attrs.count("collect_timestamp") == 1, path
+
+
+@pytest.mark.unit
 def test_builtin_collectors_do_not_emit_legacy_full_message_copies():
     paths = [
         REPOSITORY_ROOT / "agents/webhookd/bk-lite-log-collector.yaml",
@@ -73,6 +84,8 @@ def test_system_vector_normalizer_supports_mixed_collector_versions_without_reta
 
     assert ".message = del(._msg)" in source
     assert ".message = del(.trap_message)" in source
+    assert ".source_type = %vector.source_type" in source
+    assert ".subject = %nats.subject" in source
     for field in LEGACY_MESSAGE_FIELDS:
         assert f"del(.{field})" in source
     assert "encode_json(.)" not in source

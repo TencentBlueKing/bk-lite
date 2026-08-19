@@ -231,7 +231,7 @@ API 令牌由系统管理「API 密钥」页面自助生成（`UserAPISecretView
     path="patch-mgmt/module-data",
     method="GET",
     schema=ModuleDataQuerySerializer,   # 必填，fail-closed
-    permission="patch_mgmt-View",       # 缺省时仅要求认证
+    permission="patch_target-View",     # 缺省时仅要求认证；须与 permission_app 配对
     inject="team_list",                 # 全集式；cmdb 锚点式取 "user_info"
 )
 def get_patch_mgmt_module_data(module, child_module, page, page_size,

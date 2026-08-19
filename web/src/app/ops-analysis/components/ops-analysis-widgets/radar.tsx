@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import ChartSurface from '@/components/chart-surface';
 import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
@@ -7,6 +7,7 @@ import {
   randomColorForLegend,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
+import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import {
   normalizeRadarRange,
   resolveRadarSeriesData,
@@ -41,12 +42,11 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
     [config?.selectedFields, radarConfig, rawData],
   );
   const hasData = radarSeries.indicatorLabels.length > 0;
-
-  useEffect(() => {
-    if (!loading) {
-      onReady?.(hasData);
-    }
-  }, [hasData, loading, onReady]);
+  const { onEvents } = useEchartsFinishedReady({
+    loading,
+    isDataReady: hasData,
+    onReady,
+  });
 
   const option = useMemo(
     () => ({
@@ -121,7 +121,11 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
         </div>
       ) : null}
       <div className="min-h-0 flex-1">
-        <ReactEcharts option={option} style={{ height: '100%', width: '100%' }} />
+        <ReactEcharts
+          option={option}
+          onEvents={onEvents}
+          style={{ height: '100%', width: '100%' }}
+        />
       </div>
     </ChartSurface>
   );

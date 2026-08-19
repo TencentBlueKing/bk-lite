@@ -1,3 +1,5 @@
+import os
+import secrets
 import time
 from typing import Any, Callable
 
@@ -13,6 +15,81 @@ from core.collection.request_identity import build_request_task_id_from_request
 monitor_router = Blueprint("monitor", url_prefix="/monitor")
 
 _PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+_MONITOR_AUTH_MODES = {"legacy", "enforce"}
+
+
+def _bearer_token(request) -> str:
+    authorization = str(request.headers.get("authorization") or "").strip()
+    scheme, separator, token = authorization.partition(" ")
+    if not separator or scheme.lower() != "bearer":
+        return ""
+    return token.strip()
+
+
+def _configured_monitor_tokens() -> tuple[str, ...]:
+    return tuple(
+        token
+        for token in (
+            os.getenv("STARGAZER_MONITOR_AUTH_TOKEN", "").strip(),
+            os.getenv("STARGAZER_MONITOR_AUTH_PREVIOUS_TOKEN", "").strip(),
+        )
+        if token
+    )
+
+
+async def authenticate_monitor_request(request):
+    """为 monitor 蓝图提供可滚动、可回滚的 Bearer 认证边界。"""
+    mode = os.getenv("STARGAZER_MONITOR_AUTH_MODE", "legacy").strip().lower()
+    configured_tokens = _configured_monitor_tokens()
+    provided_token = _bearer_token(request)
+    token_matches = bool(provided_token) and any(
+        secrets.compare_digest(provided_token, token)
+        for token in configured_tokens
+    )
+
+    if mode == "legacy":
+        auth_status = (
+            "valid"
+            if token_matches
+            else "invalid"
+            if provided_token and configured_tokens
+            else "missing"
+        )
+        logger.warning(
+            "event=monitor_auth_legacy_request auth_status=%s path=%s",
+            auth_status,
+            request.path,
+        )
+        return None
+
+    if mode not in _MONITOR_AUTH_MODES or not configured_tokens:
+        logger.error(
+            "event=monitor_auth_misconfigured mode=%s token_configured=%s",
+            mode,
+            bool(configured_tokens),
+        )
+        return response.json(
+            {"error": "monitor authentication unavailable"},
+            status=503,
+        )
+
+    if not token_matches:
+        logger.warning(
+            "event=monitor_auth_rejected path=%s credential_present=%s",
+            request.path,
+            bool(provided_token),
+        )
+        return response.json(
+            {"error": "unauthorized"},
+            status=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return None
+
+
+@monitor_router.middleware("request")
+async def _authenticate_monitor_blueprint_request(request):
+    return await authenticate_monitor_request(request)
 
 
 async def _submit_monitor_request(request, task_params: dict) -> dict:

@@ -58,7 +58,8 @@ def test_good_entry_full_structure(env):
     assert auth["authResponseHeaders"] == ["X-BK-User", "X-BK-Team", "X-On-Behalf-Of"]
 
     inject = http["middlewares"]["openapi-itsm-inject"]["headers"]["customRequestHeaders"]
-    assert inject == {"X-BK-Gateway-Auth": "s3cret"}
+    # 注入共享密钥的同时必须清除调用方的平台凭据，避免上游拿到 API 令牌后冒充调用方
+    assert inject == {"X-BK-Gateway-Auth": "s3cret", "Authorization": ""}
 
     assert http["middlewares"]["openapi-itsm-strip-v1"]["stripPrefix"]["prefixes"] == [
         "/openapi/v1/itsm"
@@ -115,7 +116,7 @@ def test_bad_entries_skipped(env, mutation, reason_part):
     config, report = render_one(entry)
     assert report["rendered"] == []
     assert reason_part in report["skipped"]["itsm"]
-    assert config["http"]["routers"] == {}
+    assert "routers" not in config["http"]
 
 
 def test_disabled_entry_skipped_quietly(env):
@@ -167,8 +168,24 @@ def test_missing_allowlist_rejects_everything(env, monkeypatch):
 def test_missing_auth_address_renders_nothing(env, monkeypatch):
     monkeypatch.delenv("OPENAPI_AUTH_ADDRESS")
     config, report = render_one(dict(GOOD))
-    assert config["http"]["routers"] == {}
+    assert "routers" not in config["http"]
     assert report["skipped"]["itsm"] == "auth address unconfigured"
+
+
+def test_empty_sections_are_omitted_not_empty_maps(env):
+    """Traefik 解码器拒绝空 map：出现 "routers": {} 会整份配置被拒
+    （`routers cannot be a standalone element`），连合法的 middlewares 一起失效。
+    未注册外部服务是常态，故空小节必须省略。回归自 .149 HA 真机验证。
+    """
+    config, report = renderer.render_traefik_config({}, ())
+    assert report["rendered"] == []
+    assert config == {"http": {}}
+    for section in ("routers", "middlewares", "services"):
+        assert section not in config["http"], f"{section} 为空时必须省略而非置为 {{}}"
+
+    # 有条目被跳过时同样不得残留空 map
+    skipped_config, _ = render_one(dict(GOOD, enabled=False))
+    assert skipped_config == {"http": {}}
 
 
 def test_gateway_versions_default_active(env):

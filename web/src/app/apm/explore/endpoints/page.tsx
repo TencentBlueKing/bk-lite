@@ -7,7 +7,6 @@ import {
   Alert,
   Button,
   Drawer,
-  Empty,
   Input,
   Radio,
   Select,
@@ -19,6 +18,7 @@ import {
 } from 'antd';
 import dayjs from 'dayjs';
 import FilterToolbar from '@/components/filter-toolbar';
+import CompactEmptyState from '@/components/compact-empty-state';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -552,7 +552,7 @@ export default function ApmEndpointsPage() {
                   ]}
                 />
               ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('apm.explore.noSampleTraces', '暂无匹配样本 Trace')} />
+                <CompactEmptyState description={t('apm.explore.noSampleTraces', '暂无匹配样本 Trace')} />
               )}
             </div>
             <Typography.Text type="secondary" className="!text-xs">

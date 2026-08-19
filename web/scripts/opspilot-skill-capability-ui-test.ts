@@ -84,6 +84,8 @@ assert.doesNotMatch(skillSettingsSource, /selectedSkillAssetKey[^s]/, 'agent set
 assert.match(skillSettingsSource, /skill_packages:/, 'saving or testing an agent should include selected packages');
 assert.match(skillSettingsSource, /openSkillPicker/, 'agent settings should use a searchable package picker');
 assert.match(skillSettingsSource, /handleConfirmSkillPicker/, 'agent settings should confirm multiple selected packages from the picker');
+assert.match(skillSettingsSource, /withResolvedVariables|resolvePackageVariables/, 'agent settings should pre-read declared skill package variables');
+assert.match(skillSettingsSource, /mergeDeclaredParams/, 'selecting a package should seed declared variable rows');
 assert.match(skillSettingsSource, /handleRemoveSkillAsset/, 'agent settings should remove selected packages');
 assert.match(skillSettingsSource, /type="jinengpeixun"/, 'agent settings should use the same skill package icon as the tool skill tab');
 assert.match(skillSettingsSource, /未选择/, 'agent settings should make an empty skill selection explicit');

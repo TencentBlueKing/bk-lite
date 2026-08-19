@@ -328,7 +328,16 @@ class ExecutionTaskBaseService(object):
             ValueError: 未找到可用的 Ansible 执行节点
         """
         node_mgmt = NodeMgmt()
-        result = node_mgmt.node_list({"cloud_region_id": cloud_region_id, "is_container": True, "page": 1, "page_size": 1, "skip_permission": True})
+        result = node_mgmt.node_list(
+            {
+                "cloud_region_id": cloud_region_id,
+                "is_container": True,
+                "page": 1,
+                "page_size": 1,
+                "skip_permission": True,
+                "legacy_callsite": "job_mgmt.execution",
+            }
+        )
         if not isinstance(result, dict):
             raise ValueError(f"云区域 {cloud_region_id} 下未找到可用的 Ansible 执行节点")
         nodes = result.get("nodes", [])

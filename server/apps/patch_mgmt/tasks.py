@@ -342,6 +342,7 @@ def execute_governance_task(task_id: int) -> None:
     from apps.patch_mgmt.config import CHAIN_TIMEOUT, get_host_task_limits
     from apps.patch_mgmt.constants import GovernanceTaskStatus
     from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost, PatchTarget
+    from apps.patch_mgmt.services.governance_convergence import reconcile_stale_history
     from apps.patch_mgmt.services.patch_execution_service import _finalize_task_status
 
     try:
@@ -350,6 +351,8 @@ def execute_governance_task(task_id: int) -> None:
         logger.error("[execute_governance_task] 任务不存在: task_id=%s", task_id)
         return
 
+    reconcile_stale_history(limit=1000, target_ids=task.target_list)
+    task.refresh_from_db()
     if task.status not in (GovernanceTaskStatus.PENDING,):
         logger.info(
             "[execute_governance_task] 任务非待执行状态: task_id=%s status=%s",
@@ -632,10 +635,11 @@ def watch_governance_timeouts() -> None:
     for task in GovernanceTask.objects.filter(pk__in=changed_task_ids):
         _finalize_task_status(task)
 
-    # 独立收敛父任务与子任务的终态不一致；没有子结果的刚启动任务不在此误收口。
+    # 只收敛已被父 worker 领取的任务；PENDING -> RUNNING 只能由父任务入口完成，
+    # 否则巡检会让仍在 Celery 队列中的父任务误以为已启动并跳过子任务派发。
     inconsistent_tasks = (
         GovernanceTask.objects.filter(
-            status__in=GovernanceTaskStatus.ACTIVE_STATES,
+            status=GovernanceTaskStatus.RUNNING,
             host_results__isnull=False,
         )
         .distinct()

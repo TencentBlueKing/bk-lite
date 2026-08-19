@@ -52,9 +52,7 @@ def _collect_request(headers):
         (SubmissionStatus.BUSY, 429),
     ],
 )
-async def test_configuration_http_maps_runtime_admission_status(
-    monkeypatch, submission_status, http_status
-):
+async def test_configuration_http_maps_runtime_admission_status(monkeypatch, submission_status, http_status):
     app = Application(submission_status, fence=4)
     monkeypatch.setattr(collect_api, "get_collection_application", lambda: app)
 
@@ -64,9 +62,7 @@ async def test_configuration_http_maps_runtime_admission_status(
         "cmdbhosts": "10.10.24.1,10.10.24.2",
     }
     request = _request(headers=headers)
-    expected_task_id = build_request_task_id(
-        "GET", "/api/collect/collect_info", "", headers
-    )
+    expected_task_id = build_request_task_id("GET", "/api/collect/collect_info", "", headers)
 
     result = await collect_api._submit_collection_run(
         request,
@@ -121,9 +117,7 @@ async def test_vmware_legacy_http_headers_use_hostname_not_instance_id(monkeypat
         ("aliyun", "aliyun_info", "cmdb_7"),
     ),
 )
-async def test_cloud_http_headers_keep_instance_id_as_logical_target(
-    monkeypatch, model_id, plugin_name, instance_id
-):
+async def test_cloud_http_headers_keep_instance_id_as_logical_target(monkeypatch, model_id, plugin_name, instance_id):
     app = Application(SubmissionStatus.ACCEPTED, fence=1)
     monkeypatch.setattr(collect_api, "get_collection_application", lambda: app)
 
@@ -162,9 +156,7 @@ async def test_monitor_http_uses_request_fingerprint_as_task_id(monkeypatch):
         "password": "secret",
     }
     request = _request(path="/api/monitor/windows_wmi/metrics", headers=headers)
-    expected_task_id = build_request_task_id(
-        "GET", "/api/monitor/windows_wmi/metrics", "", headers
-    )
+    expected_task_id = build_request_task_id("GET", "/api/monitor/windows_wmi/metrics", "", headers)
 
     result = await monitor_api._submit_monitor_request(
         request,
@@ -184,6 +176,120 @@ async def test_monitor_http_uses_request_fingerprint_as_task_id(monkeypatch):
     }
     assert app.requests[0].plugin_ref == "windows_wmi.monitor"
     assert app.requests[0].task_id != "monitor-task-1"
+
+
+@pytest.mark.asyncio
+async def test_monitor_auth_legacy_mode_preserves_existing_request(monkeypatch):
+    app = Application(SubmissionStatus.ACCEPTED, fence=8)
+    monkeypatch.setattr(monitor_api, "get_collection_application", lambda: app)
+    monkeypatch.delenv("STARGAZER_MONITOR_AUTH_MODE", raising=False)
+    monkeypatch.delenv("STARGAZER_MONITOR_AUTH_TOKEN", raising=False)
+    monkeypatch.delenv("STARGAZER_MONITOR_AUTH_PREVIOUS_TOKEN", raising=False)
+
+    request = _request(
+        path="/api/monitor/host/metrics",
+        headers={
+            "host": "10.10.24.8",
+            "username": "operator",
+            "password": "not-a-real-secret",
+            "ansible_node_id": "node-1",
+        },
+    )
+
+    assert await monitor_api.authenticate_monitor_request(request) is None
+    result = await monitor_api.host_metrics(request)
+
+    assert result.status == 202
+    assert len(app.requests) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "authorization",
+    [None, "Bearer wrong-token", "Basic current-token"],
+)
+async def test_monitor_auth_enforce_rejects_missing_or_invalid_token_without_submit(
+    monkeypatch,
+    authorization,
+):
+    app = Application(SubmissionStatus.ACCEPTED, fence=8)
+    monkeypatch.setattr(monitor_api, "get_collection_application", lambda: app)
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_MODE", "enforce")
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_TOKEN", "current-token")
+    headers = {"authorization": authorization} if authorization else {}
+
+    result = await monitor_api.authenticate_monitor_request(_request(path="/api/monitor/host/metrics", headers=headers))
+
+    assert result.status == 401
+    assert result.headers["www-authenticate"] == "Bearer"
+    assert app.requests == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("token", ["current-token", "previous-token"])
+async def test_monitor_auth_enforce_accepts_current_and_previous_token(
+    monkeypatch,
+    token,
+):
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_MODE", "enforce")
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_TOKEN", "current-token")
+    monkeypatch.setenv(
+        "STARGAZER_MONITOR_AUTH_PREVIOUS_TOKEN",
+        "previous-token",
+    )
+
+    result = await monitor_api.authenticate_monitor_request(
+        _request(
+            path="/api/monitor/host/metrics",
+            headers={"authorization": f"Bearer {token}"},
+        )
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mode", "token"),
+    [("enforce", ""), ("unsupported", "current-token")],
+)
+async def test_monitor_auth_misconfiguration_fails_closed(monkeypatch, mode, token):
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_MODE", mode)
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_TOKEN", token)
+    monkeypatch.delenv("STARGAZER_MONITOR_AUTH_PREVIOUS_TOKEN", raising=False)
+
+    result = await monitor_api.authenticate_monitor_request(
+        _request(
+            path="/api/monitor/host/metrics",
+            headers={"authorization": "Bearer current-token"},
+        )
+    )
+
+    assert result.status == 503
+
+
+@pytest.mark.asyncio
+async def test_monitor_auth_rollback_logs_metadata_without_token(monkeypatch):
+    messages = []
+    monkeypatch.setattr(
+        monitor_api.logger,
+        "warning",
+        lambda template, *args: messages.append(template % args),
+    )
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_MODE", "enforce")
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_TOKEN", "current-token-secret")
+    request = _request(
+        path="/api/monitor/host/metrics",
+        headers={"authorization": "Bearer rejected-token-secret"},
+    )
+
+    assert (await monitor_api.authenticate_monitor_request(request)).status == 401
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_MODE", "legacy")
+    assert await monitor_api.authenticate_monitor_request(request) is None
+
+    assert "current-token-secret" not in str(messages)
+    assert "rejected-token-secret" not in str(messages)
+    assert any("auth_status=invalid" in message for message in messages)
 
 
 @pytest.mark.asyncio
@@ -245,11 +351,5 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
     assert "stargazer_collection_run_first_schedule_wait_seconds_p99 0.02" in body
     assert "stargazer_collection_job_node_info_lookup_rpc_total 1" in body
     assert "stargazer_collection_job_node_info_lookup_found_total 140" in body
-    assert (
-        "stargazer_collection_job_node_info_lookup_duration_seconds_p99 0.085"
-        in body
-    )
-    assert (
-        'stargazer_collection_execution_mode_success_total{execution_mode="async"} 119'
-        in body
-    )
+    assert "stargazer_collection_job_node_info_lookup_duration_seconds_p99 0.085" in body
+    assert 'stargazer_collection_execution_mode_success_total{execution_mode="async"} 119' in body

@@ -67,7 +67,7 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
         return self.client.run("create_monitor_policy", data=data, **kwargs)
 
     def search_monitor_policies(self, name: str, **kwargs):
-        """按名称查询监控告警策略"""
+        """按名称查询监控告警策略（允许同名多条；写操作请用 policy_id）。"""
         return self.client.run("search_monitor_policies", name=name, **kwargs)
 
     def delete_monitor_policy(self, policy_id, **kwargs):

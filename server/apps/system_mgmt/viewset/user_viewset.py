@@ -4,6 +4,8 @@ import uuid
 
 from django.contrib.auth.hashers import make_password
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import F, Q
 from django.http import JsonResponse
@@ -514,6 +516,95 @@ class UserViewSet(ViewSetUtils):
         if initial_password_active:
             return JsonResponse({"result": True, "data": {"email_sent": True}})
         return JsonResponse({"result": True})
+
+    @action(detail=False, methods=["POST"])
+    @HasPermission("user_group-Add User")
+    def import_users(self, request):
+        """同步导入同一组织的本地用户，不授予个人角色。"""
+        loader = self._get_loader(request)
+        group_id = request.data.get("group_id")
+        rows = request.data.get("users")
+        file_name = str(request.data.get("file_name") or "")
+        if not isinstance(rows, list) or not rows:
+            return JsonResponse({"result": False, "message": "没有可导入的用户数据"}, status=400)
+        if len(rows) > 500:
+            return JsonResponse({"result": False, "message": "单次最多导入 500 名用户"}, status=400)
+
+        group_error = _validate_selected_groups([group_id], loader)
+        if group_error:
+            return JsonResponse({"result": False, "message": group_error}, status=400)
+        groups, _ = _normalize_group_ids([group_id])
+        scope_error = self._validate_group_scope_for_request(request, groups, loader)
+        if scope_error:
+            return scope_error
+        group = GroupUtils.active_queryset().filter(id=groups[0]).first()
+        if group is None:
+            return JsonResponse(
+                {"result": False, "message": loader.get("error.invalid_group_ids", "Invalid group IDs: {ids}").format(ids=groups)},
+                status=400,
+            )
+
+        settings = dict(SystemSettings.objects.filter(
+            key__in=["user_create_initial_password_enabled", "user_create_initial_password_hash"]
+        ).values_list("key", "value"))
+        initial_password_enabled = settings.get("user_create_initial_password_enabled") == "1"
+        initial_password_hash = settings.get("user_create_initial_password_hash", "")
+        if initial_password_enabled and not initial_password_hash:
+            return JsonResponse({"result": False, "message": "本地用户初始密码未配置"}, status=400)
+
+        failures = []
+        successful_usernames = set()
+        for index, row in enumerate(rows, start=2):
+            row_number = row.get("row_number", index) if isinstance(row, dict) else index
+            username = str(row.get("username", "")).strip() if isinstance(row, dict) else ""
+            failure = None
+            if not isinstance(row, dict):
+                failure = "数据格式不正确"
+            elif not all(str(row.get(field, "")).strip() for field in ("username", "lastName", "email")):
+                failure = "缺少必填字段"
+            elif username in successful_usernames or User.objects.filter(username=username, domain="domain.com").exists():
+                failure = "用户名已存在"
+            elif not self._is_valid_phone(row.get("phone", "")):
+                failure = "手机号格式不正确"
+            else:
+                try:
+                    validate_email(str(row["email"]).strip())
+                except ValidationError:
+                    failure = "邮箱格式不正确"
+
+            if failure:
+                failures.append({"row_number": row_number, "username": username, "message": failure})
+                continue
+
+            try:
+                with transaction.atomic():
+                    User.objects.create(
+                        user_id=str(uuid.uuid4()), username=username,
+                        display_name=str(row["lastName"]).strip(), email=str(row["email"]).strip(),
+                        phone=str(row.get("phone", "")).strip() or None, disabled=False,
+                        locale=str(row.get("locale", "")).strip() or "zh-Hans",
+                        timezone=str(row.get("timezone", "")).strip() or "Asia/Shanghai",
+                        group_list=groups, role_list=[], temporary_pwd=initial_password_enabled,
+                        password=initial_password_hash if initial_password_enabled else make_password(None),
+                    )
+                successful_usernames.add(username)
+            except Exception:
+                logger.exception("用户导入失败 username=%s", username)
+                failures.append({"row_number": row_number, "username": username, "message": "创建用户失败"})
+
+        result = {
+            "total_count": len(rows),
+            "success_count": len(successful_usernames),
+            "failed_count": len(failures),
+            "failures": failures,
+        }
+        log_operation(
+            request, "create", "system-manager",
+            f"导入用户：组织“{group.name}”，文件“{file_name}”，共 {len(rows)} 条，成功 {len(successful_usernames)} 条，失败 {len(failures)} 条",
+            target_type="organization", target_id=group.id,
+            detail={"scenario": "user_xlsx_import", "organization_name": group.name, "file_name": file_name, **result},
+        )
+        return JsonResponse({"result": True, "data": result})
 
     @action(detail=False, methods=["POST"])
     @HasPermission("user_group-Edit User")

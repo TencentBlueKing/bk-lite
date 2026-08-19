@@ -12,10 +12,12 @@ import json
 import pytest
 from rest_framework.parsers import JSONParser
 from rest_framework.request import Request
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIClient, APIRequestFactory
 
+from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.log.models.log_group import SearchCondition
 from apps.log.services.access_scope import LogAccessScope
+from apps.log.utils import system_mgmt as log_system_mgmt
 from apps.log.views.search import LogSearchViewSet, SearchConditionViewSet
 from apps.log.views.system_mgmt import SystemMgmtView
 
@@ -27,6 +29,12 @@ factory = APIRequestFactory()
 class _User:
     username = "tester"
     is_authenticated = True
+
+
+class _ScopedUser(_User):
+    domain = "domain.com"
+    is_superuser = True
+    group_list = [{"id": "8"}, {"id": 9}, {"id": "invalid"}]
 
 
 def _drf(wsgi_request, cookies=None, user=None):
@@ -436,24 +444,189 @@ def test_get_user_all_defaults_include_children_false(mocker):
     assert rpc.return_value.get_group_users.call_args.kwargs["include_children"] is False
 
 
-def test_search_channel_list_builds_teams_from_team_cookie(mocker):
+class _ActorUser:
+    username = "u"
+    domain = "domain.com"
+    is_superuser = False
+    group_list = [7, 8]
+    is_authenticated = True
+
+
+def test_get_user_all_routes_organization_ids(mocker):
+    captured = {}
+    mocker.patch(
+        "apps.log.views.system_mgmt.SystemMgmtUtils.get_users_by_organizations",
+        staticmethod(
+            lambda actor_context=None, organization_ids=None: captured.update(
+                actor_context=actor_context,
+                organization_ids=organization_ids,
+            )
+            or [{"id": 1, "username": "alice", "display_name": "Alice"}]
+        ),
+    )
     rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+
+    request = get_req(
+        {"organization_ids": "7,8"},
+        cookies={"current_team": "8"},
+        user=_ActorUser(),
+    )
+    response = SystemMgmtView().get_user_all(request)
+
+    assert response.status_code == 200
+    assert _json(response)["data"] == [{"id": 1, "username": "alice", "display_name": "Alice"}]
+    assert captured["organization_ids"] == "7,8"
+    assert captured["actor_context"]["username"] == "u"
+    assert captured["actor_context"]["current_team"] == 8
+    assert captured["actor_context"]["group_list"] == [7, 8]
+    rpc.return_value.get_group_users.assert_not_called()
+
+
+def test_get_users_by_organizations_unions_strategy_orgs(monkeypatch):
+    from apps.system_mgmt.models import User
+
+    user_a = User.objects.create(
+        username="org-a-user",
+        display_name="A用户",
+        email="a@example.com",
+        password="x",
+        group_list=[7],
+    )
+    user_b = User.objects.create(
+        username="org-b-user",
+        display_name="B用户",
+        email="b@example.com",
+        password="x",
+        group_list=[8],
+    )
+    User.objects.create(
+        username="org-c-user",
+        display_name="C用户",
+        email="c@example.com",
+        password="x",
+        group_list=[9],
+    )
+    User.objects.create(
+        username="disabled-a-user",
+        display_name="停用A用户",
+        email="disabled-a@example.com",
+        password="x",
+        group_list=[7],
+        disabled=True,
+    )
+
+    class _Client:
+        def get_assignable_groups(self, actor_context):
+            return {"result": True, "data": [7, 8, 9]}
+
+    monkeypatch.setattr(log_system_mgmt, "SystemMgmt", _Client)
+
+    users = log_system_mgmt.SystemMgmtUtils.get_users_by_organizations(
+        actor_context={"username": "u", "domain": "domain.com"},
+        organization_ids="7,8",
+    )
+
+    assert {item["id"] for item in users} == {user_a.id, user_b.id}
+
+
+def test_get_users_by_organizations_intersects_assignable(monkeypatch):
+    from apps.system_mgmt.models import User
+
+    user_a = User.objects.create(
+        username="assignable-a-user",
+        display_name="A用户",
+        email="assignable-a@example.com",
+        password="x",
+        group_list=[7],
+    )
+    User.objects.create(
+        username="unassignable-c-user",
+        display_name="C用户",
+        email="unassignable-c@example.com",
+        password="x",
+        group_list=[9],
+    )
+
+    class _Client:
+        def get_assignable_groups(self, actor_context):
+            return {"result": True, "data": [7, 8]}
+
+    monkeypatch.setattr(log_system_mgmt, "SystemMgmt", _Client)
+
+    users = log_system_mgmt.SystemMgmtUtils.get_users_by_organizations(
+        actor_context={"username": "u", "domain": "domain.com"},
+        organization_ids="7,9",
+    )
+
+    assert [item["id"] for item in users] == [user_a.id]
+
+
+def test_search_channel_list_uses_scoped_rpc_with_authenticated_actor(mocker):
+    rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+    rpc.return_value.search_channel_list_scoped.return_value = {"data": [{"id": "ch"}]}
     rpc.return_value.search_channel_list.return_value = {"data": [{"id": "ch"}]}
 
-    request = get_req({"channel_type": "email"}, cookies={"current_team": "8"})
+    request = get_req(
+        {"channel_type": "email"},
+        cookies={"current_team": "8", "include_children": "1"},
+        user=_ScopedUser(),
+    )
     response = SystemMgmtView().search_channel_list(request)
 
     assert response.status_code == 200
     assert _json(response)["data"] == [{"id": "ch"}]
-    rpc.return_value.search_channel_list.assert_called_once_with(
-        channel_type="email", teams=[8], include_children=False
+    rpc.return_value.search_channel_list_scoped.assert_called_once_with(
+        {
+            "username": "tester",
+            "domain": "domain.com",
+            "current_team": 8,
+            "include_children": True,
+            "is_superuser": True,
+            "group_list": [8, 9],
+        },
+        channel_type="email",
+        teams=None,
+        include_children=True,
     )
+    rpc.return_value.search_channel_list.assert_not_called()
 
 
-def test_search_channel_list_teams_none_without_team_cookie(mocker):
+def test_search_channel_list_missing_team_fails_closed(mocker):
     rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
-    rpc.return_value.search_channel_list.return_value = {"data": []}
 
-    SystemMgmtView().search_channel_list(get_req())
+    response = SystemMgmtView().search_channel_list(get_req(user=_User()))
 
-    assert rpc.return_value.search_channel_list.call_args.kwargs["teams"] is None
+    assert response.status_code == 200
+    assert _json(response)["data"] == []
+    rpc.return_value.search_channel_list.assert_not_called()
+    rpc.return_value.search_channel_list_scoped.assert_not_called()
+
+
+def test_search_channel_list_invalid_team_fails_closed(mocker):
+    rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+    client = APIClient()
+    client.force_authenticate(user=_User())
+    client.cookies["current_team"] = "invalid"
+
+    response = client.get("/api/v1/log/system_mgmt/search_channel_list/")
+
+    assert response.status_code == ValidationAppException.STATUS_CODE
+    assert _json(response)["message"] == "current_team 参数非法"
+    rpc.return_value.search_channel_list.assert_not_called()
+    rpc.return_value.search_channel_list_scoped.assert_not_called()
+
+
+def test_search_channel_list_preserves_scoped_failure_message(mocker):
+    rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+    rpc.return_value.search_channel_list_scoped.return_value = {
+        "result": False,
+        "message": "current_team 对应组织已归档或不存在",
+    }
+    client = APIClient()
+    client.force_authenticate(user=_ScopedUser())
+    client.cookies["current_team"] = "8"
+
+    response = client.get("/api/v1/log/system_mgmt/search_channel_list/")
+
+    assert response.status_code == 403
+    assert _json(response)["message"] == "current_team 对应组织已归档或不存在"

@@ -131,6 +131,7 @@ def test_no_data_event_has_snapshot_and_does_not_fabricate_a_metric_value(multil
     multilevel_policy.trigger_after = 1
     multilevel_policy.no_data_after = 2
     multilevel_policy.no_data_severity = "critical"
+    multilevel_policy.no_data_alert_name = "${service} 无数据告警"
     multilevel_policy.save()
     metric_store = MutableMetricStore(ServiceRed(None, None, None, None))
     evaluator = DjangoApmPolicyService(metric_store, InMemoryNotificationDispatcher())
@@ -143,6 +144,7 @@ def test_no_data_event_has_snapshot_and_does_not_fabricate_a_metric_value(multil
     state = ApmPolicyTargetState.objects.get(policy=multilevel_policy)
     assert event.action == ApmEvent.Action.TRIGGERED
     assert event.value is None
+    assert event.snapshot.policy_snapshot["no_data_alert_name"] == "${service} 无数据告警"
     assert state.status == ApmPolicyTargetState.Status.ACTIVE
     assert event.snapshot.evaluation_snapshot["data_state"] == "no_data"
     assert event.snapshot.evaluation_snapshot["value"] is None

@@ -89,6 +89,7 @@ interface DashboardProps {
   getDashboardDetailOverride?: (id: string | number) => Promise<any>;
   renderMode?: boolean;
   renderFilterValues?: Record<string, FilterValue>;
+  renderDataSourceIds?: number[];
 }
 
 export interface DashboardRef {
@@ -102,6 +103,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     getDashboardDetailOverride,
     renderMode = false,
     renderFilterValues,
+    renderDataSourceIds,
   }, ref) => {
     const { t } = useTranslation();
     const { data: session } = useSession();
@@ -215,11 +217,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
         return syncCanvasResources({
           source: nextWidgetLayout,
-          getDataSourceIds: collectDashboardDataSourceIds,
+          getDataSourceIds: (layout) => Array.from(new Set([
+            ...collectDashboardDataSourceIds(layout),
+            ...(renderDataSourceIds || []),
+          ])),
           getNamespaceIds: collectDashboardNamespaceIds,
         });
       },
-      [syncCanvasResources],
+      [renderDataSourceIds, syncCanvasResources],
     );
 
     const {

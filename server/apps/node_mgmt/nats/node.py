@@ -1,37 +1,58 @@
+import threading
 import uuid
 
-from django.db import connection, transaction
-from django.db import IntegrityError
+from django.db import IntegrityError, connection, transaction
 
 import nats_client
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
+from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.safe_template import build_sandboxed_env
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
-from apps.node_mgmt.models import CloudRegion, SidecarEnv
-from apps.node_mgmt.services.node import NodeService
-from apps.node_mgmt.services.installer import InstallerService
-from apps.node_mgmt.services.cloudregion import RegionService
-from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
-from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
-
-from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.node_mgmt.models import (
-    CollectorConfiguration,
     ChildConfig,
+    CloudRegion,
     Collector,
+    CollectorConfiguration,
     Node,
     NodeCollectorConfiguration,
     NodeOrganization,
+    SidecarEnv,
 )
-from apps.node_mgmt.services.sidecar_cache import (
-    invalidate_bulk_child_config_etags,
-    invalidate_bulk_config_node_etags,
+from apps.node_mgmt.services.cloudregion import RegionService
+from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.services.sidecar_cache import invalidate_bulk_child_config_etags, invalidate_bulk_config_node_etags
+from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+
+LEGACY_NODE_LIST_CALLSITES = frozenset(
+    {
+        "alerts.target_resolver",
+        "cmdb.node_sync",
+        "job_mgmt.connection_test",
+        "job_mgmt.execution",
+        "stargazer.node_info",
+    }
 )
-from apps.core.utils.crypto.aes_crypto import AESCryptor
+_observed_legacy_node_list_callsites: set[str] = set()
+_legacy_node_list_observation_lock = threading.Lock()
+
+
+def _observe_legacy_node_list_callsite(declared_callsite: str) -> None:
+    with _legacy_node_list_observation_lock:
+        if declared_callsite in _observed_legacy_node_list_callsites:
+            return
+        _observed_legacy_node_list_callsites.add(declared_callsite)
+
+    logger.warning(
+        "legacy node_list skip_permission used; declared_callsite=%s authorization_source=untrusted_payload",
+        declared_callsite,
+    )
 
 
 class NatsService:
@@ -57,7 +78,7 @@ class NatsService:
         )
         return NatsService._resolve_collector_from_candidates(node, collectors)
 
-    def _ensure_parent_configs_for_child_configs(self, configs: list):
+    def _ensure_parent_configs_for_child_configs(self, configs: list):  # noqa: C901
         if not configs:
             return
 
@@ -121,9 +142,7 @@ class NatsService:
                 default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
                 config_template = collector.default_config.get(default_sidecar_mode)
                 if not config_template:
-                    raise BaseAppException(
-                        f"节点 {node.id} 的采集器 {collector.name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量"
-                    )
+                    raise BaseAppException(f"节点 {node.id} 的采集器 {collector.name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量")
 
                 if node.node_type == ControllerConstants.NODE_TYPE_CONTAINER:
                     add_config = collector.default_config.get("add_config", "")
@@ -181,9 +200,7 @@ class NatsService:
             raise BaseAppException(f"批量创建采集器父配置失败: {error}") from error
         created_configs = {
             item["name"]: item
-            for item in CollectorConfiguration.objects.select_for_update()
-            .filter(name__in=expected_by_name)
-            .values("id", "name", "collector_id")
+            for item in CollectorConfiguration.objects.select_for_update().filter(name__in=expected_by_name).values("id", "name", "collector_id")
         }
         conflicting_config_ids = {
             created_configs[config_name]["id"]
@@ -228,9 +245,7 @@ class NatsService:
                             NodeCollectorConfiguration.objects.select_for_update()
                             .filter(
                                 node_id__in=[association.node_id for association in associations_to_create],
-                                collector_config_id__in=[
-                                    association.collector_config_id for association in associations_to_create
-                                ],
+                                collector_config_id__in=[association.collector_config_id for association in associations_to_create],
                             )
                             .values_list("node_id", "collector_config_id")
                         )
@@ -540,9 +555,7 @@ class NatsService:
                 ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
             except IntegrityError as e:
                 sample_ids = [config.id for config in node_objs[:3]]
-                raise BaseAppException(
-                    f"批量创建子配置失败，可能存在重复子配置ID或无效父配置关联: count={len(node_objs)}, sample_ids={sample_ids}, error={e}"
-                ) from e
+                raise BaseAppException(f"批量创建子配置失败，可能存在重复子配置ID或无效父配置关联: count={len(node_objs)}, sample_ids={sample_ids}, error={e}") from e
             except Exception as e:
                 sample_ids = [config.id for config in node_objs[:3]]
                 raise BaseAppException(f"批量创建子配置失败: count={len(node_objs)}, sample_ids={sample_ids}, error={e}") from e
@@ -770,6 +783,11 @@ def node_list(query_data: dict):
     is_container = query_data.get("is_container")
     permission_data = query_data.get("permission_data", {})
     skip_permission = query_data.get("skip_permission", False)
+    if skip_permission:
+        declared_callsite = query_data.get("legacy_callsite")
+        if not isinstance(declared_callsite, str) or declared_callsite not in LEGACY_NODE_LIST_CALLSITES:
+            declared_callsite = "unknown"
+        _observe_legacy_node_list_callsite(declared_callsite)
     return NodeService.get_node_list(
         organization_ids,
         cloud_region_id,
