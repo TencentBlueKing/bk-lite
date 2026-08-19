@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import api.collect as collect_api
+import api.health as health_api
 import api.monitor as monitor_api
 import httpx
 import pytest
@@ -515,6 +516,51 @@ async def test_monitor_auth_enforce_rejects_every_route_before_submit(
 
     assert rejected.status_code == 401
     assert rejected.headers["www-authenticate"] == "Bearer"
+
+
+@pytest.mark.asyncio
+async def test_monitor_auth_enforce_does_not_affect_other_blueprints(
+    redis_client,
+    monkeypatch,
+):
+    published = []
+    scheduled = []
+    application, _preflight = build_application(
+        redis_client,
+        RecordingPlugin(),
+        published,
+        scheduled,
+    )
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_MODE", "enforce")
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_TOKEN", "current-token")
+    app = Sanic("e2e-monitor-auth-blueprint-scope-app")
+    app.config.AUTO_EXTEND = False
+    app.config.TOUCHUP = False
+    app.blueprint(
+        [
+            monitor_api.monitor_router,
+            collect_api.collect_router,
+            health_api.health_router,
+        ]
+    )
+    app.asgi = True
+    await app._startup()
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://stargazer.test",
+    ) as client:
+        assert (await client.get("/monitor/host/metrics")).status_code == 401
+        assert (await client.get("/health/")).status_code == 200
+        accepted = await client.get(
+            "/collect/collect_info",
+            headers=configuration_request("e2e-auth-blueprint-scope"),
+        )
+
+    assert accepted.status_code == 202
+    assert len(scheduled) == 1
+    await scheduled[0]
 
 
 @pytest.mark.asyncio

@@ -279,6 +279,30 @@ async def test_monitor_auth_misconfiguration_fails_closed(monkeypatch, mode, tok
 
 
 @pytest.mark.asyncio
+async def test_monitor_auth_rollback_logs_metadata_without_token(monkeypatch):
+    messages = []
+    monkeypatch.setattr(
+        monitor_api.logger,
+        "warning",
+        lambda template, *args: messages.append(template % args),
+    )
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_MODE", "enforce")
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_TOKEN", "current-token-secret")
+    request = _request(
+        path="/api/monitor/host/metrics",
+        headers={"authorization": "Bearer rejected-token-secret"},
+    )
+
+    assert (await monitor_api.authenticate_monitor_request(request)).status == 401
+    monkeypatch.setenv("STARGAZER_MONITOR_AUTH_MODE", "legacy")
+    assert await monitor_api.authenticate_monitor_request(request) is None
+
+    assert "current-token-secret" not in str(messages)
+    assert "rejected-token-secret" not in str(messages)
+    assert any("auth_status=invalid" in message for message in messages)
+
+
+@pytest.mark.asyncio
 async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
     class RuntimeApplication:
         async def stats(self):

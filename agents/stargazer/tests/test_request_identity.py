@@ -72,6 +72,25 @@ def test_noise_headers_alone_do_not_change_identity():
     assert left == right
 
 
+def test_monitor_authorization_rotation_does_not_change_identity():
+    business = {"host": "10.0.0.1", "username": "root", "password": "secret"}
+    task_ids = {
+        build_request_task_id(
+            "GET",
+            "/api/monitor/host/metrics",
+            "",
+            {**business, **authorization},
+        )
+        for authorization in (
+            {},
+            {"Authorization": "Bearer current-token"},
+            {"Authorization": "Bearer previous-token"},
+        )
+    }
+
+    assert len(task_ids) == 1
+
+
 def test_path_difference_changes_identity():
     headers = {"host": "10.0.0.1"}
     collect = build_request_task_id("GET", "/api/collect/collect_info", "", headers)
