@@ -28,6 +28,73 @@ class FlowGraphMixin:
     """
 
     # ---- 解析与拓扑 ----
+    @staticmethod
+    def _is_valid_graph_id(value: Any) -> bool:
+        return isinstance(value, str) and bool(value.strip())
+
+    @classmethod
+    def _normalize_flow_structure(cls, flow_json: Any) -> tuple[List[str], Dict[str, List[Dict[str, Any]]]]:
+        """返回结构错误和可安全建图的执行视图，不改写持久化配置。"""
+        if not isinstance(flow_json, dict):
+            return ["流程数据必须是对象"], {"nodes": [], "edges": []}
+
+        errors: List[str] = []
+        raw_nodes = flow_json.get("nodes", [])
+        raw_edges = flow_json.get("edges", [])
+
+        if not isinstance(raw_nodes, list):
+            errors.append("nodes 必须是数组")
+            raw_nodes = []
+        if not isinstance(raw_edges, list):
+            errors.append("edges 必须是数组")
+            raw_edges = []
+
+        nodes = []
+        node_ids = set()
+        for index, node in enumerate(raw_nodes, start=1):
+            if not isinstance(node, dict):
+                errors.append(f"节点 {index} 必须是对象")
+                continue
+            node_id = node.get("id")
+            if not cls._is_valid_graph_id(node_id):
+                errors.append(f"节点 {index} 缺少有效 id")
+                continue
+            node_type = node.get("type")
+            if not isinstance(node_type, str):
+                errors.append(f"节点 {index} 的 type 必须是字符串")
+                continue
+            if not node_type.strip():
+                errors.append(f"节点 {index} 缺少有效 type")
+                continue
+            if node_id in node_ids:
+                errors.append(f"节点 {index} 的 id 重复: {node_id}")
+                continue
+            node_ids.add(node_id)
+            nodes.append(node)
+
+        edges = []
+        for index, edge in enumerate(raw_edges, start=1):
+            if not isinstance(edge, dict):
+                errors.append(f"边 {index} 必须是对象")
+                continue
+            source = edge.get("source")
+            target = edge.get("target")
+            if not cls._is_valid_graph_id(source):
+                errors.append(f"边 {index} 缺少有效 source")
+                continue
+            if not cls._is_valid_graph_id(target):
+                errors.append(f"边 {index} 缺少有效 target")
+                continue
+            if source not in node_ids:
+                errors.append(f"边 {index} 的 source 未引用现有节点: {source}")
+                continue
+            if target not in node_ids:
+                errors.append(f"边 {index} 的 target 未引用现有节点: {target}")
+                continue
+            edges.append(edge)
+
+        return errors, {"nodes": nodes, "edges": edges}
+
     def _parse_nodes(self, flow_json: Dict[str, Any]) -> List[Dict[str, Any]]:
         """解析节点定义"""
         return flow_json.get("nodes", [])
