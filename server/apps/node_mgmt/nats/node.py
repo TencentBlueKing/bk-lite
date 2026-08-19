@@ -34,6 +34,8 @@ from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.config_write_scope import (
     assert_config_ids_unmanaged,
     assert_managed_config_owner,
+    config_ids_managed,
+    config_write_scope_enforcement_enabled,
     verify_config_write_scope,
 )
 
@@ -59,6 +61,18 @@ def _observe_legacy_node_list_callsite(declared_callsite: str) -> None:
     logger.warning(
         "legacy node_list skip_permission used; declared_callsite=%s authorization_source=untrusted_payload",
         declared_callsite,
+    )
+
+
+def _guard_legacy_config_write(ids, *, is_child):
+    if not config_ids_managed(ids, is_child=is_child):
+        return
+    if config_write_scope_enforcement_enabled():
+        assert_config_ids_unmanaged(ids, is_child=is_child)
+    logger.warning(
+        "legacy managed config write observed; is_child=%s config_count=%s",
+        is_child,
+        len(ids),
     )
 
 
@@ -983,7 +997,7 @@ def update_child_config_content(data: dict):
     id = data.get("id")
     content = data.get("content")
     env_config = data.get("env_config")
-    assert_config_ids_unmanaged([id], is_child=True)
+    _guard_legacy_config_write([id], is_child=True)
     NatsService().update_child_config_content(id, content, env_config)
 
 
@@ -1011,7 +1025,7 @@ def update_config_content(data: dict):
     id = data.get("id")
     content = data.get("content")
     env_config = data.get("env_config")
-    assert_config_ids_unmanaged([id], is_child=False)
+    _guard_legacy_config_write([id], is_child=False)
     NatsService().update_config_content(id, content, env_config)
 
 
@@ -1027,7 +1041,7 @@ def update_config_content_scoped(token: str):
 @nats_client.register
 def delete_child_configs(ids: list):
     """删除实例子配置"""
-    assert_config_ids_unmanaged(ids, is_child=True)
+    _guard_legacy_config_write(ids, is_child=True)
     NatsService().delete_child_configs(ids)
 
 
@@ -1043,7 +1057,7 @@ def delete_child_configs_scoped(token: str):
 @nats_client.register
 def delete_configs(ids: list):
     """删除实例子配置"""
-    assert_config_ids_unmanaged(ids, is_child=False)
+    _guard_legacy_config_write(ids, is_child=False)
     NatsService().delete_configs(ids)
 
 

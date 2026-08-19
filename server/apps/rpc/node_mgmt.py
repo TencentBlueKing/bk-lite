@@ -1,6 +1,6 @@
 import os
 
-from apps.node_mgmt.utils.config_write_scope import build_config_write_scope
+from apps.node_mgmt.utils.config_write_scope import build_config_write_scope, config_write_scope_signing_enabled
 from apps.rpc.base import AppClient, RpcClient
 
 
@@ -156,7 +156,7 @@ class NodeMgmt(object):
         :param content: 子配置内容
         """
         payload = {"id": id, "content": content, "env_config": env_config}
-        if source_app:
+        if source_app and config_write_scope_signing_enabled():
             scope = build_config_write_scope(source_app, "update_child", payload)
             return_data = self.client.run("update_child_config_content_scoped", scope)
         else:
@@ -178,7 +178,7 @@ class NodeMgmt(object):
         :param content: 配置内容
         """
         payload = {"id": id, "content": content, "env_config": env_config}
-        if source_app:
+        if source_app and config_write_scope_signing_enabled():
             scope = build_config_write_scope(source_app, "update", payload)
             return_data = self.client.run("update_config_content_scoped", scope)
         else:
@@ -189,7 +189,7 @@ class NodeMgmt(object):
         """
         :param ids: 子配置ID列表
         """
-        if source_app:
+        if source_app and config_write_scope_signing_enabled():
             scope = build_config_write_scope(source_app, "delete_child", {"ids": ids})
             return_data = self.client.run("delete_child_configs_scoped", scope)
         else:
@@ -200,7 +200,7 @@ class NodeMgmt(object):
         """
         :param ids: 配置ID列表
         """
-        if source_app:
+        if source_app and config_write_scope_signing_enabled():
             scope = build_config_write_scope(source_app, "delete", {"ids": ids})
             return_data = self.client.run("delete_configs_scoped", scope)
         else:

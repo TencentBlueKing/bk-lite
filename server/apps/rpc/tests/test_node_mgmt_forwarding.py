@@ -132,6 +132,7 @@ def test_update_child_config_content_组装字典(node):
 
 
 def test_update_child_config_content_带source_app改走签名范围接口(node, monkeypatch):
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SCOPE_SIGNING_ENABLED", "true")
     monkeypatch.setattr(
         "apps.rpc.node_mgmt.build_config_write_scope",
         lambda source_app, operation, payload: f"token:{source_app}:{operation}:{payload['id']}",
@@ -157,6 +158,7 @@ def test_update_config_content_默认env_config为None(node):
 
 
 def test_update_config_content_带source_app改走签名范围接口(node, monkeypatch):
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SCOPE_SIGNING_ENABLED", "true")
     monkeypatch.setattr(
         "apps.rpc.node_mgmt.build_config_write_scope",
         lambda source_app, operation, payload: f"token:{source_app}:{operation}:{payload['id']}",
@@ -178,6 +180,7 @@ def test_delete_child_configs_转发(node):
 
 
 def test_delete_child_configs_带source_app改走签名范围接口(node, monkeypatch):
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SCOPE_SIGNING_ENABLED", "true")
     monkeypatch.setattr(
         "apps.rpc.node_mgmt.build_config_write_scope",
         lambda source_app, operation, payload: f"token:{source_app}:{operation}:{payload['ids'][0]}",
@@ -199,6 +202,7 @@ def test_delete_configs_转发(node):
 
 
 def test_delete_configs_带source_app改走签名范围接口(node, monkeypatch):
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SCOPE_SIGNING_ENABLED", "true")
     monkeypatch.setattr(
         "apps.rpc.node_mgmt.build_config_write_scope",
         lambda source_app, operation, payload: f"token:{source_app}:{operation}:{payload['ids'][0]}",
@@ -212,6 +216,14 @@ def test_delete_configs_带source_app改走签名范围接口(node, monkeypatch)
         ("token:monitor:delete:2",),
         {},
     )
+
+
+def test_source_app_keeps_legacy_subject_until_signing_is_enabled(node, monkeypatch):
+    monkeypatch.delenv("NODE_CONFIG_WRITE_SCOPE_SIGNING_ENABLED", raising=False)
+
+    node.delete_configs([2], source_app="monitor")
+
+    assert _last(node.client) == ("delete_configs", ([2],), {})
 
 
 def test_collectors_import_方法名为import_collectors(node):

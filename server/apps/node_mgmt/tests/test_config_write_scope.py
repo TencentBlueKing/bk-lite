@@ -14,6 +14,12 @@ from apps.rpc.node_mgmt import NodeMgmt
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def _enable_config_write_scope(monkeypatch):
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SCOPE_SIGNING_ENABLED", "true")
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SCOPE_ENFORCEMENT_ENABLED", "true")
+
+
 def _log_config(config_id, *, is_child=False):
     collect_type = LogCollectType.objects.create(name=f"type-{config_id}", collector="Vector")
     instance = LogCollectInstance.objects.create(id=f"instance-{config_id}", name="日志实例", collect_type=collect_type)
@@ -155,6 +161,24 @@ def test_legacy_update_rejects_managed_config_before_write(monkeypatch):
     assert calls == []
 
 
+def test_legacy_managed_update_shadow_mode_allows_and_observes(monkeypatch):
+    config = _log_config("shadow-log-owned")
+    calls = []
+    warnings = []
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SCOPE_ENFORCEMENT_ENABLED", "false")
+    monkeypatch.setattr(node_nats.logger, "warning", lambda *args: warnings.append(args))
+    monkeypatch.setattr(
+        node_nats.NatsService,
+        "update_config_content",
+        lambda _self, config_id, content, env_config: calls.append((config_id, content, env_config)),
+    )
+
+    node_nats.update_config_content({"id": config.id, "content": "content"})
+
+    assert calls == [(config.id, "content", None)]
+    assert warnings == [("legacy managed config write observed; is_child=%s config_count=%s", False, 1)]
+
+
 def test_legacy_native_update_tolerates_uninstalled_owner_apps(monkeypatch):
     calls = []
     monkeypatch.setattr(
@@ -171,6 +195,42 @@ def test_legacy_native_update_tolerates_uninstalled_owner_apps(monkeypatch):
     node_nats.update_config_content({"id": "node-native", "content": "content"})
 
     assert calls == [("node-native", "content", None)]
+
+
+def test_scoped_update_tolerates_uninstalled_source_owner_model(monkeypatch):
+    original_get_model = config_write_scope.apps.get_model
+    calls = []
+
+    def get_model(app_label, model_name):
+        if app_label == "log":
+            raise LookupError("app not installed")
+        return original_get_model(app_label, model_name)
+
+    monkeypatch.setattr(config_write_scope.apps, "get_model", get_model)
+    monkeypatch.setattr(
+        node_nats.NatsService,
+        "update_config_content",
+        lambda _self, config_id, content, env_config: calls.append((config_id, content, env_config)),
+    )
+
+    NodeMgmt(is_local_client=True).update_config_content("modular-log", "content", source_app="log")
+
+    assert calls == [("modular-log", "content", None)]
+
+
+def test_scoped_update_rejects_installed_other_owner_when_source_model_is_uninstalled(monkeypatch):
+    config = _monitor_config("known-monitor-owner")
+    original_get_model = config_write_scope.apps.get_model
+
+    def get_model(app_label, model_name):
+        if app_label == "log":
+            raise LookupError("app not installed")
+        return original_get_model(app_label, model_name)
+
+    monkeypatch.setattr(config_write_scope.apps, "get_model", get_model)
+
+    with pytest.raises(BaseAppException, match="配置归属校验失败"):
+        NodeMgmt(is_local_client=True).update_config_content(config.id, "content", source_app="log")
 
 
 def test_legacy_native_delete_is_preserved_when_owner_apps_are_installed(monkeypatch):
@@ -324,3 +384,27 @@ def test_scope_ttl_invalid_value_falls_back_and_is_bounded(monkeypatch, raw_valu
     monkeypatch.setenv("NODE_CONFIG_WRITE_SCOPE_MAX_AGE_SECONDS", raw_value)
 
     assert config_write_scope._max_age_seconds() == expected
+
+
+def test_dedicated_signing_key_rotation_accepts_configured_fallback(monkeypatch):
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SIGNING_KEY", "old-key")
+    token = config_write_scope.build_config_write_scope("log", "update", {"id": "rotating"})
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SIGNING_KEY", "new-key")
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SIGNING_KEY_FALLBACKS", '["old-key"]')
+
+    source_app, payload = config_write_scope.verify_config_write_scope(token, "update")
+
+    assert source_app == "log"
+    assert payload == {"id": "rotating"}
+
+
+def test_dedicated_signing_key_rotation_old_replica_accepts_future_key(monkeypatch):
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SIGNING_KEY", "new-key")
+    token = config_write_scope.build_config_write_scope("monitor", "delete", {"ids": ["rotating"]})
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SIGNING_KEY", "old-key")
+    monkeypatch.setenv("NODE_CONFIG_WRITE_SIGNING_KEY_FALLBACKS", '["new-key"]')
+
+    source_app, payload = config_write_scope.verify_config_write_scope(token, "delete")
+
+    assert source_app == "monitor"
+    assert payload == {"ids": ["rotating"]}
