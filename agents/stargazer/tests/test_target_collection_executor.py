@@ -16,6 +16,7 @@ from core.collection.credential_policy import (
 )
 from core.collection.executor import TargetCollectionExecutor, TargetWorkerBudget
 from core.collection.metrics import CollectionMetrics
+from core.collection.plugins import UnifiedPluginFactory
 from core.collection.result_publisher import (
     BufferedResultPublisher,
     NatsResultPublisher,
@@ -89,9 +90,7 @@ class RecordingReachablePreflight:
 
 class PinnedReachablePreflight:
     async def check(self, target, request, *, timeout_seconds, plan=None):
-        return PreflightResult(
-            status=PreflightStatus.REACHABLE, connect_host="10.0.0.8"
-        )
+        return PreflightResult(status=PreflightStatus.REACHABLE, connect_host="10.0.0.8")
 
 
 class FirstTargetBrokenPreflight:
@@ -99,6 +98,112 @@ class FirstTargetBrokenPreflight:
         if target == "10.10.24.1":
             raise RuntimeError("unexpected target failure")
         return PreflightResult(status=PreflightStatus.REACHABLE)
+
+
+@pytest.mark.asyncio
+async def test_job_node_info_loads_after_preflight_before_probe_and_collect_service():
+    order = []
+
+    class OrderedPreflight:
+        async def check(self, target, request, *, timeout_seconds, plan=None):
+            order.append("preflight")
+            return PreflightResult(
+                status=PreflightStatus.REACHABLE,
+                connect_host=target,
+            )
+
+    async def load(ips, **_context):
+        order.append("node_info")
+        return [{"id": "node-1", "ip": ips[0], "operating_system": "linux"}]
+
+    class Service:
+        def __init__(self, params):
+            assert params["node_info"]["id"] == "node-1"
+            order.append("service")
+
+        async def probe(self):
+            order.append("probe")
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+
+        async def collect(self):
+            order.append("collect")
+            return 'host{collect_status="success"} 1'
+
+    request = CollectionRequest(
+        task_id="job-node-info-order",
+        plugin_ref="host.config",
+        targets=("10.0.0.1",),
+        credentials=({"credential_id": "credential-1"},),
+        params={
+            "plugin_family": "configuration",
+            "model_id": "host",
+            "executor_type": "job",
+            "collect_task_id": 91,
+        },
+    )
+    plugin = UnifiedPluginFactory(
+        configuration_service_factory=Service,
+        configuration_node_info_loader=load,
+    ).resolve(request)
+    executor = TargetCollectionExecutor(
+        preflight=OrderedPreflight(),
+        access_probe=plugin,
+        plugin=plugin,
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+    await plugin.close()
+
+    assert summary.collection_succeeded == 1
+    assert order == [
+        "preflight",
+        "node_info",
+        "service",
+        "probe",
+        "service",
+        "collect",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_all_preflight_failures_do_not_start_job_node_info_lookup():
+    async def unexpected_load(*_args, **_kwargs):
+        raise AssertionError("node info lookup must wait for an eligible target")
+
+    request = CollectionRequest(
+        task_id="job-no-eligible-target",
+        plugin_ref="host.config",
+        targets=("10.0.0.1", "10.0.0.2"),
+        credentials=({"credential_id": "credential-1"},),
+        params={
+            "plugin_family": "configuration",
+            "model_id": "host",
+            "executor_type": "job",
+            "collect_task_id": 91,
+        },
+    )
+    plugin = UnifiedPluginFactory(
+        configuration_service_factory=lambda params: params,
+        configuration_node_info_loader=unexpected_load,
+    ).resolve(request)
+    executor = TargetCollectionExecutor(
+        preflight=UnreachablePreflight(),
+        access_probe=plugin,
+        plugin=plugin,
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=2, target_task_window=2),
+    )
+
+    summary = await executor.execute(
+        request,
+        RunLease(request.task_id, request.digest, "pod-a", 1, 999999),
+    )
+    await plugin.close()
+
+    assert summary.unreachable == 2
 
 
 @pytest.mark.asyncio
@@ -335,9 +440,7 @@ async def test_slow_publish_does_not_hold_target_collection_window():
             await release.wait()
 
     plugin = RecordingPlugin()
-    publisher = BufferedResultPublisher(
-        SlowDelegate(), capacity=2, batch_size=2, flush_interval_seconds=0.01
-    )
+    publisher = BufferedResultPublisher(SlowDelegate(), capacity=2, batch_size=2, flush_interval_seconds=0.01)
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
         plugin=plugin,
@@ -574,10 +677,7 @@ async def test_credentials_rotate_inside_target_and_success_gets_affinity():
     ]
     assert publisher.results[0][1].credential_id == "credential-3"
     assert publisher.results[0][1].attempts == 3
-    assert [
-        (failure.credential_id, failure.error_code)
-        for failure in publisher.results[0][1].credential_failures
-    ] == [
+    assert [(failure.credential_id, failure.error_code) for failure in publisher.results[0][1].credential_failures] == [
         ("credential-1", "unauthorized"),
         ("credential-2", "authentication_failed"),
     ]
@@ -686,9 +786,7 @@ async def test_protocol_no_response_stops_after_default_attempt_limit():
         task_id="collect-no-response-limit",
         plugin_ref="snmp.config",
         targets=("10.10.24.1",),
-        credentials=tuple(
-            {"credential_id": f"credential-{index}"} for index in range(1, 6)
-        ),
+        credentials=tuple({"credential_id": f"credential-{index}"} for index in range(1, 6)),
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -798,9 +896,7 @@ async def test_access_probe_failure_logs_target_and_credential_id(monkeypatch):
         task_id="probe-log",
         plugin_ref="network.config",
         targets=("10.10.69.240",),
-        credentials=(
-            {"credential_id": "cred-snmp-1", "community": "secret-community"},
-        ),
+        credentials=({"credential_id": "cred-snmp-1", "community": "secret-community"},),
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -902,9 +998,7 @@ async def test_access_probe_timeout_rotates_to_next_credential():
         (AccessProbeStatus.RATE_LIMITED, "rate_limited", "deferred"),
     ],
 )
-async def test_target_scoped_access_probe_result_stops_credential_rotation(
-    probe_status, error_code, result_status
-):
+async def test_target_scoped_access_probe_result_stops_credential_rotation(probe_status, error_code, result_status):
     publisher = RecordingPublisher()
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
@@ -974,10 +1068,9 @@ async def test_capability_denied_probe_cools_credential_without_collecting():
 
     assert summary.failed == 1
     assert publisher.results[0][1].error_code == "credentials_exhausted"
-    assert [
-        (failure.credential_id, failure.error_code)
-        for failure in publisher.results[0][1].credential_failures
-    ] == [("credential-1", "capability_denied")]
+    assert [(failure.credential_id, failure.error_code) for failure in publisher.results[0][1].credential_failures] == [
+        ("credential-1", "capability_denied")
+    ]
     assert await credential_policy.eligible_credentials(request, "10.10.24.1") == ()
 
 
@@ -1332,9 +1425,7 @@ async def test_total_timeout_cancels_queued_result_without_false_unknown_or_late
         targets=("10.10.24.1", "10.10.24.2"),
         credentials=({"credential_id": "c1"},),
     )
-    lease = RunLease(
-        request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a"
-    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
         plugin=RecordingPlugin(),
@@ -1372,9 +1463,7 @@ async def test_safe_publish_retry_reuses_identical_encoded_error_payload(monkeyp
 
     class FailingCollectionPlugin:
         async def collect(self, target, credential, context):
-            return CollectOutcome(
-                status=CollectOutcomeStatus.FAILED, error_code="collection_failed"
-            )
+            return CollectOutcome(status=CollectOutcomeStatus.FAILED, error_code="collection_failed")
 
     publisher = BufferedResultPublisher(
         NatsResultPublisher(metrics_publish_batch=publish_metrics_batch),
@@ -1388,16 +1477,12 @@ async def test_safe_publish_retry_reuses_identical_encoded_error_payload(monkeyp
         credentials=({"credential_id": "c1"},),
         params={"plugin_family": "configuration", "model_id": "network"},
     )
-    lease = RunLease(
-        request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a"
-    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
         plugin=FailingCollectionPlugin(),
         publisher=publisher,
-        settings=TargetExecutorSettings(
-            max_active_targets=1, target_task_window=1, publish_max_attempts=2
-        ),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1, publish_max_attempts=2),
     )
 
     summary = await executor.execute(request, lease)
