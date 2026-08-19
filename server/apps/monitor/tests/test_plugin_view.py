@@ -102,6 +102,46 @@ class TestPluginList:
         assert row["parent_monitor_object_display_name"] == parent.display_name
         assert row["parent_monitor_object_icon"] == parent.icon
 
+    def test_list_hides_plugins_whose_entry_object_is_invisible(self, api_client):
+        hidden_parent = MonitorObject.objects.create(
+            name="PVHiddenEntryRoot",
+            level="base",
+            is_visible=False,
+        )
+        stale_visible_child = MonitorObject.objects.create(
+            name="PVHiddenEntryChild",
+            level="derivative",
+            parent=hidden_parent,
+            is_visible=True,
+        )
+        hidden_plugin = MonitorPlugin.objects.create(
+            name="PVHiddenEntryPlugin",
+            template_type="builtin",
+        )
+        hidden_plugin.monitor_object.add(stale_visible_child)
+
+        visible_parent = MonitorObject.objects.create(
+            name="PVVisibleEntryRoot",
+            level="base",
+            is_visible=True,
+        )
+        visible_plugin = MonitorPlugin.objects.create(
+            name="PVVisibleEntryPlugin",
+            template_type="builtin",
+        )
+        visible_plugin.monitor_object.add(visible_parent)
+
+        response = api_client.get(f"{BASE}/api/monitor_plugin/?name=PVVisibleEntry")
+
+        assert response.status_code == 200
+        rows = response.json()["data"]
+        assert [row["name"] for row in rows] == [visible_plugin.name]
+
+        response = api_client.get(f"{BASE}/api/monitor_plugin/?name=PVHiddenEntry")
+
+        assert response.status_code == 200
+        assert response.json()["data"] == []
+
     def test_list_queries_remain_constant_for_multiple_plugins(self, api_client):
         parent = MonitorObject.objects.create(name="PVPerfParent", level="base")
         expected_names = []

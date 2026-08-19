@@ -83,6 +83,26 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         )
 
     @staticmethod
+    def _filter_visible_entry_plugins(queryset):
+        """隐藏入口对象时，不再向集成列表暴露对应插件。
+
+        未绑定对象的存量插件保持原有可查询行为；已绑定插件只有在根对象可见时
+        才能作为接入入口。额外校验关联对象自身可见性，兼容级联可见性落地前
+        可能存在的父子状态不一致数据。
+        """
+        return queryset.filter(
+            Q(monitor_object__isnull=True)
+            | Q(
+                monitor_object__is_visible=True,
+                monitor_object__parent__isnull=True,
+            )
+            | Q(
+                monitor_object__is_visible=True,
+                monitor_object__parent__is_visible=True,
+            )
+        ).distinct()
+
+    @staticmethod
     def _build_parent_obj_by_id(plugins) -> dict:
         parent_obj_by_id: dict = {}
         for plugin in plugins:
@@ -187,7 +207,9 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         return self._enrich_plugin_results(results, lan, parent_obj_by_id)
 
     def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset()).order_by("id")
+        queryset = self._filter_visible_entry_plugins(
+            self.filter_queryset(self.get_queryset())
+        ).order_by("id")
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
 
         keyword = (request.query_params.get("keyword") or request.query_params.get("name") or "").strip()
