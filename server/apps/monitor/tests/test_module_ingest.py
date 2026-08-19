@@ -199,7 +199,40 @@ def test_monitor_ingest_by_cmdb_id_updates_existing(host_object):
     assert again["id"] == existing.id
     assert MonitorInstance.objects.filter(is_deleted=False).count() == 1
     existing.refresh_from_db()
-    assert existing.name == "from-cmdb-2"
+    assert existing.name == "from-cmdb"
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_hit_links_ids_without_renaming(host_object):
+    existing = MonitorInstance.objects.create(
+        id="('stock-host',)",
+        name="keep-my-name",
+        monitor_object=host_object,
+        ip="10.0.0.42",
+        cloud_region_id=1,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+            link_ids={"cmdb_id": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e", "node_id": "n-host"},
+            raw={
+                "name": "cmdb-name-must-not-win",
+                "ip": "10.0.0.42",
+                "cloud_region_id": 1,
+                "model_id": "host",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == existing.id
+    assert result["ignored"] is False
+    assert result.get("conflict") in (None, "")
+    existing.refresh_from_db()
+    assert existing.name == "keep-my-name"
+    assert existing.cmdb_id == "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    assert existing.node_id == "n-host"
+    assert str(existing.ip) == "10.0.0.42"
 
 
 @pytest.mark.django_db
@@ -267,7 +300,7 @@ def test_cmdb_push_unadapted_object_still_links_existing(host_object, mock_colle
     assert result["id"] == existing.id
     mock_collect_apply.assert_not_called()
     existing.refresh_from_db()
-    assert existing.name == "sw-renamed"
+    assert existing.name == "old-sw"
 
 
 @pytest.mark.django_db

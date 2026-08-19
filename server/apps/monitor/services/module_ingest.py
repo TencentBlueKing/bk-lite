@@ -198,6 +198,13 @@ class MonitorModuleIngestService:
             allow_cred = bool(params.get("allow_credential_create"))
             # 默认 False：节点/资产页推送不得突然建监控；仅扫描等显式 allow_credential_create 打开。
             create_enabled = CMDB_CREDENTIAL_CREATE_ENABLED or allow_cred
+            if source_module == "cmdb" and not create_enabled:
+                return cls._link_association_ids(
+                    existing,
+                    node_id=node_id,
+                    cmdb_id=cmdb_id,
+                    operator=operator,
+                )
             has_collect = CollectConfig.objects.filter(monitor_instance_id=existing.id).exists()
             # 已按 cmdb_id/node_id 命中的空壳：扫描带凭据推送仍须补采集，不能只 update。
             needs_cmdb_collect = (
@@ -267,6 +274,49 @@ class MonitorModuleIngestService:
             allow_credential_create=bool(params.get("allow_credential_create")),
             actor_context=actor_context,
         )
+
+    @classmethod
+    def _is_cmdb_create_enabled(cls, params: dict[str, Any]) -> bool:
+        return bool(CMDB_CREDENTIAL_CREATE_ENABLED or params.get("allow_credential_create"))
+
+    @classmethod
+    def _link_association_ids(
+        cls,
+        instance: MonitorInstance,
+        *,
+        node_id: str | None,
+        cmdb_id: str | None,
+        operator: str,
+    ) -> dict[str, Any]:
+        if instance.is_deleted:
+            return IngestResult(id=None, ignored=True).as_dict()
+        bound_node = cls._normalize_optional_str(instance.node_id)
+        bound_cmdb = cls._normalize_optional_str(instance.cmdb_id)
+        if node_id and bound_node and bound_node != node_id:
+            return IngestResult(id=instance.id, conflict=LINK_CONFLICT, created=False, updated=False, claimed=False).as_dict()
+        if cmdb_id and bound_cmdb and bound_cmdb != cmdb_id:
+            return IngestResult(id=instance.id, conflict=LINK_CONFLICT, created=False, updated=False, claimed=False).as_dict()
+        update_fields: list[str] = []
+        claimed = False
+        if node_id and bound_node != node_id:
+            instance.node_id = node_id
+            update_fields.append("node_id")
+            claimed = True
+        if cmdb_id and bound_cmdb != cmdb_id:
+            instance.cmdb_id = cmdb_id
+            update_fields.append("cmdb_id")
+            claimed = True
+        if operator:
+            instance.updated_by = operator
+            update_fields.append("updated_by")
+        if update_fields:
+            instance.save(update_fields=update_fields + ["updated_at"])
+        return IngestResult(
+            id=instance.id,
+            created=False,
+            updated=not claimed,
+            claimed=claimed,
+        ).as_dict()
 
     # ----- 创建场景分流：按来源模块决定是否建资产 / 套用采集模板 -----
 
