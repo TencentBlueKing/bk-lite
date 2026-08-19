@@ -1,6 +1,8 @@
 """Issue #3125 legacy node_list 观测首片的跨模块契约测试。"""
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
 from unittest.mock import patch
 
 import pytest
@@ -71,6 +73,25 @@ def test_legacy_observation_is_bounded_per_normalized_callsite(monkeypatch, capl
     assert any("declared_callsite=unknown" in message for message in messages)
 
 
+def test_legacy_observation_logs_once_under_concurrency(monkeypatch, caplog):
+    monkeypatch.setattr(nats_node, "_observed_legacy_node_list_callsites", set(), raising=False)
+    monkeypatch.setattr(nats_node.NodeService, "get_node_list", lambda *args: {"nodes": []})
+    caplog.set_level(logging.WARNING, logger="node")
+    barrier = Barrier(8)
+
+    def call_node_list(_):
+        barrier.wait()
+        nats_node.node_list({"skip_permission": True, "legacy_callsite": "cmdb.node_sync"})
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(call_node_list, range(8)))
+
+    messages = [record.getMessage() for record in caplog.records if "legacy node_list skip_permission" in record.getMessage()]
+    assert messages == [
+        "legacy node_list skip_permission used; declared_callsite=cmdb.node_sync authorization_source=untrusted_payload"
+    ]
+
+
 def test_regular_node_list_keeps_behavior_without_legacy_observation(monkeypatch, caplog):
     expected_result = {"count": 0, "nodes": []}
     captured = {}
@@ -103,6 +124,25 @@ def test_job_connection_test_declares_legacy_callsite():
 
     query = node_mgmt.return_value.node_list.call_args.args[0]
     assert query["legacy_callsite"] == "job_mgmt.connection_test"
+
+
+def test_job_connection_payload_keeps_legacy_consumer_contract():
+    """新生产者可由不识别 legacy_callsite 的旧 handler 按原契约消费。"""
+    with patch.object(target_views, "NodeMgmt") as node_mgmt:
+        node_mgmt.return_value.node_list.return_value = {"nodes": [{"id": "executor-1"}]}
+        target_views._get_executor_node(3)
+
+    query = node_mgmt.return_value.node_list.call_args.args[0]
+    with patch.object(nats_node.NodeService, "get_node_list", return_value={"nodes": [{"id": "executor-1"}]}) as service:
+        result = nats_node.NodeService.get_node_list(
+            query.get("organization_ids"), query.get("cloud_region_id"), query.get("name"), query.get("ip"),
+            query.get("os"), query.get("page", 1), query.get("page_size", 10), query.get("is_active"),
+            query.get("is_manual"), query.get("is_container"), query.get("permission_data", {}),
+            query.get("skip_permission", False),
+        )
+
+    assert result == {"nodes": [{"id": "executor-1"}]}
+    assert service.call_args.args == (None, 3, None, None, None, 1, 1, None, None, True, {}, True)
 
 
 def test_job_execution_declares_legacy_callsite():
