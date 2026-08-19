@@ -50,6 +50,29 @@ const templates = [
   },
 ];
 
+const templatePageSource = readFileSync(
+  new URL('../src/app/monitor/(pages)/event/template/page.tsx', import.meta.url),
+  'utf8'
+);
+const searchPosition = templatePageSource.indexOf('<Input');
+const importPosition = templatePageSource.indexOf('<Upload', searchPosition);
+const bulkPosition = templatePageSource.indexOf('<Dropdown', importPosition);
+assert.ok(searchPosition >= 0 && searchPosition < importPosition);
+assert.ok(importPosition < bulkPosition);
+assert.match(templatePageSource, /disabled: !selectedTemplateKeys\.length \|\| containsBuiltin/);
+assert.match(templatePageSource, /内置模版不可删除/);
+
+const strategyPageSource = readFileSync(
+  new URL('../src/app/monitor/(pages)/event/strategy/detail/page.tsx', import.meta.url),
+  'utf8'
+);
+const confirmPosition = strategyPageSource.indexOf("{t('common.confirm')}");
+const saveTemplatePosition = strategyPageSource.indexOf('保存模版', confirmPosition);
+const cancelPosition = strategyPageSource.indexOf("{t('common.cancel')}", saveTemplatePosition);
+assert.ok(confirmPosition >= 0 && confirmPosition < saveTemplatePosition);
+assert.ok(saveTemplatePosition < cancelPosition);
+assert.match(strategyPageSource, /validateFields\(templateFields\)/);
+
 const groups = groupPolicyTemplates(templates);
 assert.deepEqual(groups.map((group) => ({
   name: group.name,

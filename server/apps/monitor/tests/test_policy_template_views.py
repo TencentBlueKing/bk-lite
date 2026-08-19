@@ -3,7 +3,6 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 
 from apps.monitor.models import MonitorObject, MonitorPlugin, PolicyTemplate
 
-
 pytestmark = pytest.mark.django_db
 BASE = "/api/v1/monitor/api/monitor_policy"
 
@@ -94,6 +93,87 @@ def test_bulk_delete_rejects_builtin_template(api_client):
     )
     assert response.status_code != 200
     assert PolicyTemplate.objects.filter(id=template.id).exists()
+
+
+def test_bulk_delete_with_builtin_is_atomic_and_keeps_custom_template(api_client):
+    api_client.cookies["current_team"] = "1"
+    monitor_object, plugin = _catalog()
+    builtin = PolicyTemplate.objects.create(
+        key="builtin:mixed-delete",
+        scope_key="builtin",
+        template_type="builtin",
+        monitor_object=monitor_object,
+        plugin=plugin,
+        name="内置模板",
+        config={},
+    )
+    custom = PolicyTemplate.objects.create(
+        key="custom-mixed-delete",
+        scope_key="custom:1",
+        template_type="custom",
+        organization=1,
+        monitor_object=monitor_object,
+        plugin=plugin,
+        name="自定义模板",
+        config={},
+    )
+
+    response = api_client.post(
+        f"{BASE}/template/bulk_delete/",
+        {"keys": [f"custom:{custom.id}", f"builtin:{builtin.id}"]},
+        format="json",
+    )
+
+    assert response.status_code != 200
+    assert PolicyTemplate.objects.filter(id__in=[builtin.id, custom.id]).count() == 2
+
+
+def test_custom_templates_are_strictly_isolated_from_other_projects(api_client):
+    api_client.cookies["current_team"] = "1"
+    api_client.cookies["include_children"] = "1"
+    monitor_object, plugin = _catalog()
+    visible = PolicyTemplate.objects.create(
+        key="custom-visible",
+        scope_key="custom:1",
+        template_type="custom",
+        organization=1,
+        monitor_object=monitor_object,
+        plugin=plugin,
+        name="当前项目模板",
+        config={},
+    )
+    hidden = PolicyTemplate.objects.create(
+        key="custom-hidden",
+        scope_key="custom:2",
+        template_type="custom",
+        organization=2,
+        monitor_object=monitor_object,
+        plugin=plugin,
+        name="子项目模板",
+        config={},
+    )
+
+    listed = api_client.post(
+        f"{BASE}/template/",
+        {"monitor_object_name": monitor_object.name},
+        format="json",
+    )
+    exported = api_client.post(
+        f"{BASE}/template/export/",
+        {"keys": [f"custom:{hidden.id}"]},
+        format="json",
+    )
+    deleted = api_client.post(
+        f"{BASE}/template/bulk_delete/",
+        {"keys": [f"custom:{hidden.id}"]},
+        format="json",
+    )
+
+    assert listed.status_code == 200
+    assert {item["id"] for item in listed.json()["data"]} == {visible.id}
+    assert exported.status_code != 200
+    assert deleted.status_code != 200
+    assert PolicyTemplate.objects.filter(id=hidden.id, organization=2).exists()
 
 
 def test_save_requires_current_team_operate_permission(api_client, mocker):

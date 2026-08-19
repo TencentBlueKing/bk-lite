@@ -1,10 +1,12 @@
 import io
+import json
 import zipfile
 from types import SimpleNamespace
 
 import pytest
 from django.db import IntegrityError, transaction
 
+from apps.monitor.management.services import policy_migrate
 from apps.monitor.models import Metric, MetricGroup, MonitorObject, MonitorPlugin, PolicyTemplate
 from apps.monitor.services.policy import PolicyService
 
@@ -22,6 +24,14 @@ def _document(names):
     return {
         "object": "TemplateHost",
         "plugin": "TemplatePlugin",
+        "templates": [{"name": name, "metric_name": name.lower()} for name in names],
+    }
+
+
+def _document_for(object_name, plugin_name, names):
+    return {
+        "object": object_name,
+        "plugin": plugin_name,
         "templates": [{"name": name, "metric_name": name.lower()} for name in names],
     }
 
@@ -52,6 +62,56 @@ def test_builtin_sync_is_idempotent_and_never_touches_custom_templates():
     assert PolicyTemplate.objects.get(id=custom.id).template_type == "custom"
 
 
+def test_builtin_sync_removes_templates_when_a_complete_document_is_removed():
+    monitor_object, plugin = _catalog()
+    other_object = MonitorObject.objects.create(name="TemplateDatabase", level="base")
+    other_plugin = MonitorPlugin.objects.create(name="TemplateDatabasePlugin", collector="Telegraf")
+    other_plugin.monitor_object.add(other_object)
+
+    PolicyService.sync_builtin_policy_templates(
+        [
+            _document(["CPU"]),
+            _document_for(other_object.name, other_plugin.name, ["Connections"]),
+        ]
+    )
+    result = PolicyService.sync_builtin_policy_templates([_document(["CPU"])])
+
+    assert result["deleted_count"] == 1
+    assert set(PolicyTemplate.objects.filter(template_type="builtin").values_list("name", flat=True)) == {"CPU"}
+    assert PolicyTemplate.objects.filter(monitor_object=monitor_object, plugin=plugin, name="CPU").exists()
+
+
+def test_builtin_sync_rejects_the_whole_snapshot_before_writing_when_any_document_is_invalid():
+    _catalog()
+    PolicyService.sync_builtin_policy_templates([_document(["CPU"])])
+
+    with pytest.raises(Exception, match="templates 必须是列表"):
+        PolicyService.sync_builtin_policy_templates(
+            [
+                _document(["Memory"]),
+                {"object": "BrokenObject", "plugin": "BrokenPlugin", "templates": None},
+            ]
+        )
+
+    assert set(PolicyTemplate.objects.filter(template_type="builtin").values_list("name", flat=True)) == {"CPU"}
+
+
+def test_migrate_policy_preserves_the_whole_snapshot_when_any_file_cannot_be_read(tmp_path, mocker):
+    valid_file = tmp_path / "valid-policy.json"
+    valid_file.write_text(json.dumps(_document(["CPU"])), encoding="utf-8")
+    missing_file = tmp_path / "missing-policy.json"
+    mocker.patch.object(
+        policy_migrate,
+        "find_files_by_pattern",
+        side_effect=[[str(valid_file), str(missing_file)], []],
+    )
+    sync = mocker.patch.object(policy_migrate.PolicyService, "sync_builtin_policy_templates")
+
+    policy_migrate.migrate_policy()
+
+    sync.assert_not_called()
+
+
 def test_builtin_and_custom_with_same_name_can_coexist():
     monitor_object, plugin = _catalog()
     PolicyService.sync_builtin_policy_templates([_document(["CPU"])])
@@ -68,6 +128,11 @@ def test_builtin_and_custom_with_same_name_can_coexist():
 
     templates = PolicyService.get_policy_templates("TemplateHost", organization=7)
     assert {item["template_type"] for item in templates} == {"builtin", "custom"}
+    assert PolicyService.get_policy_templates_monitor_object() == [monitor_object.id]
+
+    PolicyTemplate.objects.filter(template_type="builtin").delete()
+
+    assert PolicyService.get_policy_templates_monitor_object() == []
 
 
 def test_custom_template_requires_project_but_builtin_must_not_have_one():
@@ -179,6 +244,13 @@ def test_import_rejects_oversized_manifest_file():
     buffer.seek(0)
     with pytest.raises(Exception, match="单个文件"):
         PolicyService.import_archive(buffer, organization=7, user=_user())
+
+
+def test_template_selection_rejects_non_list_and_unbounded_batches():
+    with pytest.raises(Exception, match="必须是列表"):
+        PolicyService.get_selected_templates("builtin:1", organization=7)
+    with pytest.raises(Exception, match="单次最多操作 99 个模板"):
+        PolicyService.get_selected_templates([f"builtin:{item}" for item in range(1, 101)], organization=7)
 
 
 def test_formula_config_is_stored_portably_and_resolved_for_runtime():
