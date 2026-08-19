@@ -215,7 +215,7 @@ class PatchBaselineListSerializer(PatchPermissionSerializer):
             ComplianceStatus.NON_COMPLIANT: (serializer_message(self, "status.compliance.non_compliant", "Non-compliant"), "error", "non_compliant"),
             ComplianceStatus.PENDING: (serializer_message(self, "status.compliance.pending", "Pending assessment"), "default", "pending"),
             ComplianceStatus.EVALUATING: (serializer_message(self, "status.compliance.evaluating", "Assessing"), "processing", "evaluating"),
-            ComplianceStatus.FAILED: (serializer_message(self, "status.compliance.failed", "Assessment failed"), "default", "failed"),
+            ComplianceStatus.FAILED: (serializer_message(self, "status.compliance.failed", "Assessment failed"), "warning", "failed"),
             ComplianceStatus.UNKNOWN: (serializer_message(self, "status.compliance.unknown", "Assessment unknown"), "warning", "unknown"),
             ComplianceStatus.NOT_APPLICABLE: (
                 serializer_message(self, "status.compliance.not_applicable", "Not applicable"),
