@@ -1,4 +1,4 @@
-"""跨模块推送写入监控：按 node_id → cmdb_id → ip+cloud 归并 upsert。
+"""跨模块推送写入监控：按 node_id → cmdb_id → 对象类型身份归并 upsert。
 
 节点来源创建/补采集必须命中 Host + Telegraf 主机模板；找不到或套用失败则整次失败。
 """
@@ -94,6 +94,9 @@ HOST_REMOTE_CONFIG_TYPE = "host"
 class MonitorModuleIngestService:
     """接收 node_mgmt / CMDB 等模块推送的 ingest envelope，写入 MonitorInstance。"""
 
+    IP_CLOUD_CLAIM_MODELS = frozenset({"host", "switch", "router", "firewall", "loadbalance", "physcial_server", "influxdb"})
+    IP_PORT_CLAIM_MODELS = frozenset({"mysql", "postgresql", "mssql"})
+
     @classmethod
     def ingest(cls, params: dict[str, Any]) -> dict[str, Any]:
         allowed_org_ids = params.get("allowed_org_ids")
@@ -167,29 +170,24 @@ class MonitorModuleIngestService:
 
         existing = by_node or by_cmdb
         if not existing:
-            ip = cls._extract_ip(raw)
-            cloud = cls._extract_cloud_region_id(raw)
-            # ip+cloud 归并只用于 Host，避免交换机 / 库与主机同 IP 被合并。
-            if ip and cloud is not None and cls._resolve_cmdb_model_id(raw) == "host":
-                by_ip = cls._find_by_ip_cloud(ip, cloud)
-                if by_ip:
-                    bound_node_id = cls._normalize_optional_str(by_ip.node_id)
-                    if node_id and bound_node_id and bound_node_id != node_id:
-                        logger.warning(
-                            "[MonitorModuleIngest] link_conflict ip=%s cloud=%s " "existing_node_id=%s incoming_node_id=%s",
-                            ip,
-                            cloud,
-                            bound_node_id,
-                            node_id,
-                        )
-                        return IngestResult(
-                            id=by_ip.id,
-                            conflict=LINK_CONFLICT,
-                            created=False,
-                            updated=False,
-                            claimed=False,
-                        ).as_dict()
-                    existing = by_ip
+            by_identity = cls._find_by_type_identity(raw)
+            if by_identity:
+                bound_node_id = cls._normalize_optional_str(by_identity.node_id)
+                if node_id and bound_node_id and bound_node_id != node_id:
+                    logger.warning(
+                        "[MonitorModuleIngest] link_conflict identity " "existing_node_id=%s incoming_node_id=%s instance_id=%s",
+                        bound_node_id,
+                        node_id,
+                        by_identity.id,
+                    )
+                    return IngestResult(
+                        id=by_identity.id,
+                        conflict=LINK_CONFLICT,
+                        created=False,
+                        updated=False,
+                        claimed=False,
+                    ).as_dict()
+                existing = by_identity
 
         if existing:
             source_module = str(params.get("source_module") or "")
@@ -1072,17 +1070,46 @@ class MonitorModuleIngestService:
         return MonitorInstance.objects.filter(cmdb_id__in=candidates, is_deleted=False).select_related("monitor_object").first()
 
     @classmethod
-    def _find_by_ip_cloud(cls, ip: str, cloud: int) -> MonitorInstance | None:
-        return (
-            MonitorInstance.objects.filter(
+    def _find_by_type_identity(cls, raw: dict[str, Any]) -> MonitorInstance | None:
+        model_id = cls._resolve_cmdb_model_id(raw)
+        object_name = CMDB_MODEL_TO_MONITOR_OBJECT.get(model_id)
+        ip = cls._extract_ip(raw)
+        if not object_name or not ip:
+            return None
+        cloud = cls._extract_cloud_region_id(raw)
+        qs = MonitorInstance.objects.filter(
+            ip=ip,
+            is_deleted=False,
+            monitor_object__name=object_name,
+        ).select_related("monitor_object")
+        if cloud is not None:
+            qs = qs.filter(cloud_region_id=cloud)
+        if model_id in cls.IP_PORT_CLAIM_MODELS:
+            db_type = {"mysql": "mysql", "postgresql": "postgres", "mssql": "mssql"}[model_id]
+            port = cls._extract_port(raw, default=DB_DEFAULT_PORTS.get(db_type))
+            storage_key = cls._storage_key_after_onboarding(
+                model_id=model_id,
+                raw_instance_id=f"{cloud or 0}_{ip}_{port}",
+                cloud=cloud if cloud is not None else 0,
                 ip=ip,
-                cloud_region_id=cloud,
-                is_deleted=False,
-                monitor_object__name=HOST_OBJECT_NAME,
             )
-            .select_related("monitor_object")
-            .first()
-        )
+            by_pk = cls._find_by_pk(storage_key)
+            if by_pk and not by_pk.is_deleted and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
+                return by_pk
+            matches = list(qs[:2])
+            if len(matches) == 1:
+                return matches[0]
+            return None
+        if model_id not in cls.IP_CLOUD_CLAIM_MODELS:
+            return None
+        matches = list(qs[:2])
+        if len(matches) == 1:
+            return matches[0]
+        return None
+
+    @classmethod
+    def _find_by_ip_cloud(cls, ip: str, cloud: int) -> MonitorInstance | None:
+        return cls._find_by_type_identity({"ip": ip, "cloud_region_id": cloud, "model_id": "host"})
 
     @classmethod
     def _resolve_monitor_object(cls, raw: dict[str, Any]) -> MonitorObject:

@@ -270,6 +270,89 @@ def test_cmdb_uncredentialed_hit_stays_link_only_when_create_switch_on(host_obje
 
 
 @pytest.mark.django_db
+def test_cmdb_uncredentialed_claims_switch_by_ip_cloud(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="交换机", level="base")
+    existing = MonitorInstance.objects.create(
+        id="('sw-1',)",
+        name="core-sw",
+        monitor_object=switch_object,
+        ip="10.0.0.100",
+        cloud_region_id=1,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="sw-uuid",
+            link_ids={"cmdb_id": "sw-uuid"},
+            raw={
+                "name": "cmdb-sw",
+                "ip": "10.0.0.100",
+                "cloud_region_id": 1,
+                "model_id": "switch",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == existing.id
+    existing.refresh_from_db()
+    assert existing.cmdb_id == "sw-uuid"
+    assert existing.name == "core-sw"
+    assert existing.node_id in (None, "")
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_claims_mysql_by_ip_port(db):
+    mysql_object = MonitorObject.objects.create(name="Mysql", display_name="Mysql", level="base")
+    existing = MonitorInstance.objects.create(
+        id="('1_10.0.0.20_3306',)",
+        name="db-prod",
+        monitor_object=mysql_object,
+        ip="10.0.0.20",
+        cloud_region_id=1,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="mysql-uuid",
+            link_ids={"cmdb_id": "mysql-uuid"},
+            raw={
+                "ip": "10.0.0.20",
+                "cloud_region_id": 1,
+                "port": 3306,
+                "model_id": "mysql",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == existing.id
+    existing.refresh_from_db()
+    assert existing.cmdb_id == "mysql-uuid"
+    assert existing.name == "db-prod"
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_does_not_claim_host_as_switch(host_object, db):
+    MonitorInstance.objects.create(
+        id="('host-same-ip',)",
+        name="a-host",
+        monitor_object=host_object,
+        ip="10.0.0.100",
+        cloud_region_id=1,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="sw-uuid",
+            link_ids={"cmdb_id": "sw-uuid"},
+            raw={"ip": "10.0.0.100", "cloud_region_id": 1, "model_id": "switch", "organization_ids": [1]},
+        )
+    )
+    assert result["ignored"] is True
+    assert result["id"] is None
+    assert MonitorInstance.objects.filter(cmdb_id="sw-uuid").count() == 0
+
+
+@pytest.mark.django_db
 def test_cmdb_push_without_credential_does_not_create(host_object, mock_collect_apply):
     result = MonitorModuleIngestService.ingest(
         _params(
