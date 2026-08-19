@@ -110,12 +110,12 @@ class TestHandleDispatch:
         cmd.handle(apps="monitor", continue_on_error=False)
         assert [c[0] for c in calls] == ["plugin_init"]
 
-    def test_patch_mgmt_initializes_builtin_patch_sources(self, calls):
+    def test_patch_mgmt_migrates_settings_before_initializing_builtin_sources(self, calls):
         cmd = _make_command()
 
         cmd.handle(apps="patch_mgmt", continue_on_error=False)
 
-        assert [c[0] for c in calls] == ["init_patch_sources"]
+        assert [c[0] for c in calls] == ["migrate_patch_settings_split", "init_patch_sources"]
 
     def test_multiple_apps_dispatched_in_order(self, calls):
         cmd = _make_command()
@@ -144,6 +144,7 @@ class TestHandleDispatch:
         assert "plugin_init" in names
         assert "node_init" in names
         assert "log_init" in names
+        assert names.index("init_realm_resource") < names.index("migrate_patch_settings_split")
 
     def test_cmdb_reconciles_node_sync_as_last_init_step(self, calls):
         cmd = _make_command()
@@ -188,8 +189,29 @@ class TestErrorHandlingPolicy:
 
         cmd.handle(apps="patch_mgmt,node_mgmt", continue_on_error=False)
 
-        assert calls == ["init_patch_sources", "node_init"]
+        assert calls == ["migrate_patch_settings_split", "init_patch_sources", "node_init"]
         assert any("WARN:内置补丁源初始化跳过（RuntimeError）: patch source seed failed" in message for message in cmd.stdout.messages)
+
+    def test_patch_settings_migration_failure_blocks_patch_initialization(self, monkeypatch):
+        calls = []
+
+        def fake_call_command(name, *args, **kwargs):
+            calls.append(name)
+            if name == "migrate_patch_settings_split":
+                raise RuntimeError("patch permission migration failed")
+
+        monkeypatch.setattr(bi, "call_command", fake_call_command)
+        monkeypatch.setattr(
+            bi,
+            "preload_language_cache",
+            lambda *args, **kwargs: {"loaded": [], "skipped": [], "failed": []},
+        )
+        cmd = _make_command()
+
+        with pytest.raises(RuntimeError, match="patch permission migration failed"):
+            cmd.handle(apps="patch_mgmt,node_mgmt", continue_on_error=False)
+
+        assert calls == ["migrate_patch_settings_split"]
 
     def test_invalid_default_namespace_config_warns_and_continues_operation_analysis_init(self, monkeypatch):
         calls = []
