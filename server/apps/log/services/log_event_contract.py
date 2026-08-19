@@ -12,7 +12,24 @@ STORAGE_MESSAGE_FIELD = "_msg"
 LEGACY_MESSAGE_FIELDS = ("_msg", "log_message", "raw_message", "trap_message")
 
 
-NORMALIZE_EVENT_VRL = r'''
+NORMALIZE_TIMESTAMP_VRL = r'''
+# timestamp 只表示中心系统 Vector 从 Server NATS 消费到事件的时间。
+# 上游时间保持原值移动到 collect_timestamp；已经归一化过的事件保留最早的采集时间。
+# NATS source 开启 namespace 后元数据不再混入负载；只显式恢复已有的可检索来源字段。
+if exists(%vector.source_type) { .source_type = %vector.source_type }
+if exists(%nats.subject) { .subject = %nats.subject }
+if exists(.timestamp) {
+  if !exists(.collect_timestamp) {
+    .collect_timestamp = del(.timestamp)
+  } else {
+    del(.timestamp)
+  }
+}
+.timestamp = now()
+'''.strip()
+
+
+NORMALIZE_MESSAGE_VRL = r'''
 # 混合版本兼容：SNMP 的 trap_message 是去掉 syslog 头后的正文，优先于旧 raw message。
 _collect_type = if exists(.collect_type) && is_string(.collect_type) { string!(.collect_type) } else { "" }
 if _collect_type == "snmp_trap" && exists(.trap_message) && !is_null(.trap_message) {
@@ -55,6 +72,11 @@ del(.log_message)
 del(.raw_message)
 del(.trap_message)
 '''.strip()
+
+
+# 系统 Vector 的平台归一化模块由互不覆盖字段的内部片段组成；对配置编译器仍只暴露
+# 一个稳定接口和一个 normalize_event transform。
+NORMALIZE_EVENT_VRL = "\n\n".join((NORMALIZE_TIMESTAMP_VRL, NORMALIZE_MESSAGE_VRL))
 
 
 PREPARE_VICTORIA_LOGS_VRL = r'''

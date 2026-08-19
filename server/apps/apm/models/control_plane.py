@@ -293,6 +293,7 @@ class ApmPolicy(AuditedModel):
     recover_after = models.PositiveIntegerField(default=3)
     no_data_after = models.PositiveIntegerField(null=True, blank=True)
     no_data_severity = models.CharField(max_length=16, choices=Severity.choices, blank=True, default="")
+    no_data_alert_name = models.CharField(max_length=512, blank=True, default="")
     comparator = models.CharField(max_length=8, choices=Comparator.choices)
     threshold = models.DecimalField(max_digits=20, decimal_places=6)
     duration_window = models.PositiveIntegerField()

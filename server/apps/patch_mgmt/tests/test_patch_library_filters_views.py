@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework import status
 
-from apps.patch_mgmt.constants import OSType, PatchSourceType
+from apps.patch_mgmt.constants import ComplianceStatus, OSType, PatchSourceType
 from apps.patch_mgmt.models import (
     BaselineRequirement,
     HostBaselineBinding,
@@ -147,3 +147,32 @@ def test_baseline_list_returns_latest_host_assessment_time(su_client):
     assert response.status_code == status.HTTP_200_OK
     item = next(row for row in response.data if row["id"] == baseline.id)
     assert parse_datetime(item["last_evaluated_at"]) == latest.replace(microsecond=0)
+
+
+@pytest.mark.django_db
+def test_baseline_list_uses_warning_color_for_failed_assessment(su_client):
+    baseline = PatchBaseline.objects.create(
+        name="failed assessment baseline",
+        os_type=OSType.WINDOWS,
+        team=[1],
+    )
+    target = PatchTarget.objects.create(
+        name="failed assessment host",
+        ip="10.0.0.30",
+        os_type=OSType.WINDOWS,
+        team=[1],
+    )
+    HostBaselineBinding.objects.create(
+        baseline=baseline,
+        target=target,
+        compliance_status=ComplianceStatus.FAILED,
+        last_evaluated_at=timezone.now(),
+    )
+
+    response = su_client.get(f"{BASE}/baseline/?page_size=-1")
+
+    assert response.status_code == status.HTTP_200_OK
+    item = next(row for row in response.data if row["id"] == baseline.id)
+    failed = next(entry for entry in item["compliance_distribution"] if entry["filter"] == ComplianceStatus.FAILED)
+    assert failed["count"] == 1
+    assert failed["color"] == "warning"

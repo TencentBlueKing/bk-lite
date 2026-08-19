@@ -157,6 +157,12 @@
           "name": "auto_discovery",
           "children": [
             {
+              "title": "扫描",
+              "icon": "shujumoxingguanli",
+              "url": "/cmdb/assetManage/autoDiscovery/scan",
+              "name": "auto_collection"
+            },
+            {
               "title": "采集",
               "icon": "shujumoxingguanli",
               "url": "/cmdb/assetManage/autoDiscovery/collection",
@@ -348,6 +354,12 @@
           "url": "/cmdb/assetManage/autoDiscovery",
           "name": "auto_discovery",
           "children": [
+            {
+              "title": "Scan",
+              "icon": "shujumoxingguanli",
+              "url": "/cmdb/assetManage/autoDiscovery/scan",
+              "name": "auto_collection"
+            },
             {
               "title": "Collection",
               "icon": "shujumoxingguanli",

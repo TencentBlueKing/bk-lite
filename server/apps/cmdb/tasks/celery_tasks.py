@@ -10,7 +10,6 @@ from uuid import uuid4
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
-from django.db import transaction
 from django.db.models import Q
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import is_aware, now
@@ -43,11 +42,7 @@ _NODE_MGMT_RAW_METRIC_TYPES = {
 
 def _bound_node_mgmt_raw_data(instance: CollectModels, format_data):
     """在节点同步结果持久化前裁剪逐行指标，同时保留裁剪前真实计数。"""
-    if (
-        not instance.is_system
-        or not str(instance.system_code or "").startswith("node_mgmt_sync_host_collect_")
-        or not isinstance(format_data, dict)
-    ):
+    if not instance.is_system or not str(instance.system_code or "").startswith("node_mgmt_sync_host_collect_") or not isinstance(format_data, dict):
         return {}
     raw_rows = format_data.get("__raw_data__", [])
     if not isinstance(raw_rows, list):
@@ -78,13 +73,8 @@ def _bound_node_mgmt_raw_data(instance: CollectModels, format_data):
             if latest_metric_time is None or metric_time > latest_metric_time:
                 latest_metric_time = metric_time
         safe_row = sanitize_node_mgmt_raw_data_item(row)
-        encoded_size = len(
-            json.dumps(safe_row, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode()
-        )
-        if (
-            len(retained) < _NODE_MGMT_RAW_DATA_MAX_ROWS
-            and retained_bytes + encoded_size <= _NODE_MGMT_RAW_DATA_MAX_BYTES
-        ):
+        encoded_size = len(json.dumps(safe_row, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode())
+        if len(retained) < _NODE_MGMT_RAW_DATA_MAX_ROWS and retained_bytes + encoded_size <= _NODE_MGMT_RAW_DATA_MAX_BYTES:
             retained.append(safe_row)
             retained_bytes += encoded_size
     format_data["__raw_data__"] = retained
@@ -113,12 +103,8 @@ def _read_bounded_int_env(name: str, default: int, minimum: int, maximum: int) -
     return bounded_value
 
 
-PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES = _read_bounded_int_env(
-    "CMDB_PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES", 3, 0, 10
-)
-PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS = _read_bounded_int_env(
-    "CMDB_PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS", 10, 1, 3600
-)
+PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES = _read_bounded_int_env("CMDB_PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES", 3, 0, 10)
+PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS = _read_bounded_int_env("CMDB_PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS", 10, 1, 3600)
 PUBLIC_ENUM_SNAPSHOT_RETRY_MAX_SECONDS = 3600
 
 
@@ -326,9 +312,7 @@ def _decide_collect_exec_status(collect_digest, raw_data, pc_summary=None):
     data_total = sum(collect_digest.get(k, 0) for k in data_keys)
     data_error = sum(collect_digest.get(f"{k}_error", 0) for k in data_keys)
     data_success = data_total - data_error
-    any_failure = any(
-        collect_digest.get(f"{k}_error", 0) > 0 for k in ("add", "update", "delete", "association")
-    )
+    any_failure = any(collect_digest.get(f"{k}_error", 0) > 0 for k in ("add", "update", "delete", "association"))
     collect_success = collect_digest.get("collect_success", 0)
     collect_failed = collect_digest.get("collect_failed", 0)
     if isinstance(pc_summary, dict):
@@ -388,8 +372,7 @@ def trigger_first_collection(self, task_id, expected_fingerprint, reason):
     fingerprint_short = current_fingerprint[:12]
     if current_fingerprint != expected_fingerprint:
         logger.info(
-            "[FirstCollection] 跳过过期配置 task_id=%s fingerprint=%s reason=%s "
-            "cycle=%s attempt=%s elapsed_ms=%s result=stale",
+            "[FirstCollection] 跳过过期配置 task_id=%s fingerprint=%s reason=%s " "cycle=%s attempt=%s elapsed_ms=%s result=stale",
             task_id,
             fingerprint_short,
             reason,
@@ -425,8 +408,7 @@ def trigger_first_collection(self, task_id, expected_fingerprint, reason):
 
         countdown = 10 * (2**retry_number)
         logger.warning(
-            "[FirstCollection] 可重试失败 task_id=%s fingerprint=%s reason=%s "
-            "cycle=%s attempt=%s elapsed_ms=%s error_type=%s",
+            "[FirstCollection] 可重试失败 task_id=%s fingerprint=%s reason=%s " "cycle=%s attempt=%s elapsed_ms=%s error_type=%s",
             task_id,
             fingerprint_short,
             reason,
@@ -438,8 +420,7 @@ def trigger_first_collection(self, task_id, expected_fingerprint, reason):
         raise self.retry(exc=exc, countdown=countdown)
     except StargazerCollectPermanentError as exc:
         logger.warning(
-            "[FirstCollection] 永久失败 task_id=%s fingerprint=%s reason=%s "
-            "cycle=%s attempt=%s elapsed_ms=%s error_type=%s",
+            "[FirstCollection] 永久失败 task_id=%s fingerprint=%s reason=%s " "cycle=%s attempt=%s elapsed_ms=%s error_type=%s",
             task_id,
             fingerprint_short,
             reason,
@@ -451,8 +432,7 @@ def trigger_first_collection(self, task_id, expected_fingerprint, reason):
         return {"status": "failed", "task_id": task_id, "reason": reason}
 
     logger.info(
-        "[FirstCollection] 已接收 task_id=%s fingerprint=%s reason=%s "
-        "cycle=%s attempt=%s elapsed_ms=%s result=%s",
+        "[FirstCollection] 已接收 task_id=%s fingerprint=%s reason=%s " "cycle=%s attempt=%s elapsed_ms=%s result=%s",
         task_id,
         fingerprint_short,
         reason,
@@ -573,14 +553,7 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
                 collect_digest["traceback"] = exec_traceback_excerpt
         elif config_file_pending:
             collect_digest["message"] = "配置文件采集已触发，等待回传中"
-        elif (
-            len(raw_data) == 0
-            and not pc_summary
-            and not (
-                collect_digest.get("raw_host", 0)
-                or collect_digest.get("raw_process", 0)
-            )
-        ):
+        elif len(raw_data) == 0 and not pc_summary and not (collect_digest.get("raw_host", 0) or collect_digest.get("raw_process", 0)):
             collect_digest["message"] = "未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置"
             instance.exec_status = CollectRunStatusType.ERROR
         else:
@@ -597,10 +570,7 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
             # - 否则只要存在任意失败(含 association) → PARTIAL_SUCCESS（部分成功，需运维感知）
             # - 全部成功 → 保持 SUCCESS
             # 注：association 失败不单独升级为 ERROR（目标实例未采到等场景常见且非致命）。
-            has_unretained_node_metrics = bool(
-                collect_digest.get("raw_host", 0)
-                or collect_digest.get("raw_process", 0)
-            )
+            has_unretained_node_metrics = bool(collect_digest.get("raw_host", 0) or collect_digest.get("raw_process", 0))
             decided = _decide_collect_exec_status(
                 collect_digest,
                 raw_data,
@@ -723,10 +693,7 @@ def sync_cmdb_display_fields_task(self, data: dict):
     from apps.cmdb.display_field.sync import refresh_display_sync_data
     from apps.cmdb.services.unique_write_lock import UniqueWriteLockService
 
-    logger.info(
-        f"[SyncCMDBDisplayFields] 开始同步 CMDB _display 字段, "
-        f"组织数: {len(data.get('organizations', []))}, 用户数: {len(data.get('users', []))}"
-    )
+    logger.info(f"[SyncCMDBDisplayFields] 开始同步 CMDB _display 字段, " f"组织数: {len(data.get('organizations', []))}, 用户数: {len(data.get('users', []))}")
 
     try:
         # 同步域使用稳定的数据库租约跨进程串行。租期长于任务硬时限，进程崩溃后可过期接管；
@@ -738,10 +705,7 @@ def sync_cmdb_display_fields_task(self, data: dict):
             for attempt in range(2):
                 try:
                     result = DisplayFieldSynchronizer.sync_all(refresh_display_sync_data(data))
-                    logger.info(
-                        f"[SyncCMDBDisplayFields] 同步完成, 组织更新实例数: {result.get('organizations', 0)}, "
-                        f"用户更新实例数: {result.get('users', 0)}"
-                    )
+                    logger.info(f"[SyncCMDBDisplayFields] 同步完成, 组织更新实例数: {result.get('organizations', 0)}, " f"用户更新实例数: {result.get('users', 0)}")
                     return {
                         "result": True,
                         "message": "CMDB display fields synced successfully",
@@ -794,9 +758,7 @@ def execute_collect_tool_debug_task(debug_id: str, payload: dict, service_name: 
 
 
 @shared_task(bind=True, max_retries=PUBLIC_ENUM_SNAPSHOT_MAX_RETRIES)
-def sync_public_enum_library_snapshots_task(
-    self, library_id: str, trigger: str, operator: str | None = None
-) -> dict:
+def sync_public_enum_library_snapshots_task(self, library_id: str, trigger: str, operator: str | None = None) -> dict:
     from apps.cmdb.services.public_enum_library import sync_library_snapshots
 
     logger.info(f"[SyncPublicEnumSnapshots] task started library_id={library_id}, trigger={trigger}, operator={operator}")
@@ -810,9 +772,7 @@ def sync_public_enum_library_snapshots_task(
         f"model_id={item.get('model_id')}, error_type={item.get('error_type', 'UnknownError')}, error={item.get('error', '')}"
         for item in result.get("failed_items", [])
     )
-    error = RuntimeError(
-        f"公共枚举快照同步存在失败项: library_id={library_id}, failed_count={failed_count}, failures=[{failure_summary}]"
-    )
+    error = RuntimeError(f"公共枚举快照同步存在失败项: library_id={library_id}, failed_count={failed_count}, failures=[{failure_summary}]")
     if retry_number >= self.max_retries:
         logger.error(
             "[SyncPublicEnumSnapshots] retries exhausted library_id=%s, failed_count=%s, attempts=%s, failures=%s",
@@ -828,8 +788,7 @@ def sync_public_enum_library_snapshots_task(
         PUBLIC_ENUM_SNAPSHOT_RETRY_BASE_SECONDS * (2**retry_number),
     )
     logger.warning(
-        "[SyncPublicEnumSnapshots] retry partial failure library_id=%s, "
-        "failed_count=%s, attempt=%s, countdown=%s",
+        "[SyncPublicEnumSnapshots] retry partial failure library_id=%s, " "failed_count=%s, attempt=%s, countdown=%s",
         library_id,
         failed_count,
         retry_number + 1,
@@ -971,3 +930,17 @@ def recover_change_record_mirror_outbox_task() -> dict:
     dispatched = ChangeRecordMirrorService.recover_ready()
     logger.info("[ChangeRecordMirror] 周期补偿派发完成: dispatched=%s", dispatched)
     return {"dispatched": dispatched}
+
+
+@shared_task(bind=True, name="apps.cmdb.tasks.celery_tasks.trigger_scan_execution")
+def trigger_scan_execution(self, execution_id):
+    from apps.cmdb.services.scan_trigger_service import trigger_scan_execution as run_trigger
+
+    return run_trigger(execution_id)
+
+
+@shared_task(bind=True, name="apps.cmdb.tasks.celery_tasks.finalize_scan_execution")
+def finalize_scan_execution(self, execution_id, claim_token):
+    from apps.cmdb.services.scan_trigger_service import poll_scan_finalize
+
+    return poll_scan_finalize(execution_id, claim_token)

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tag } from 'antd';
+import { Checkbox, Tag } from 'antd';
 import Icon from '@/components/icon';
 import { CardItem, SelectCardProps } from '@/app/monitor/types/event';
 
@@ -11,7 +11,8 @@ const SelectCard: React.FC<SelectCardProps> = ({
   data = [],
   value = [],
   onChange,
-  cardWidth
+  cardWidth,
+  showCheckbox = false
 }) => {
   const handleCardClick = (item: CardItem) => {
     const currentValue = value || [];
@@ -44,13 +45,19 @@ const SelectCard: React.FC<SelectCardProps> = ({
                 ? getColorWithOpacity('--color-primary', 0.04)
                 : undefined
             }}
-            className={`bg-[var(--color-bg-1)] border-2 ${
+            className={`relative bg-[var(--color-bg-1)] border-2 ${
               isSelected
                 ? 'border-[var(--color-primary)] shadow-[0_8px_24px_rgba(0,112,243,0.2)]'
                 : 'border-transparent'
             } shadow-md transition-all duration-300 ease-in-out rounded-lg p-3 cursor-pointer group hover:shadow-lg`}
           >
-            <div className="flex gap-3 h-full">
+            {showCheckbox ? (
+              <Checkbox
+                checked={isSelected}
+                className="pointer-events-none absolute right-2 top-2"
+              />
+            ) : null}
+            <div className={`flex gap-3 h-full ${showCheckbox ? 'pr-6' : ''}`}>
               {item.icon && (
                 <Icon
                   type={item.icon}

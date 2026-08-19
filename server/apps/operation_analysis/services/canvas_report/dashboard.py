@@ -1,9 +1,8 @@
 from copy import deepcopy
 
 from apps.operation_analysis.models.models import Dashboard
-from apps.operation_analysis.services.canvas_report.types import (
-    RESOURCE_TYPE_DASHBOARD,
-)
+from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD
+from apps.operation_analysis.services.named_option_datasources import expand_widget_manifest_with_named_option_datasources
 
 
 def build_dashboard_widget_manifest(view_sets: list) -> list[dict]:
@@ -49,7 +48,7 @@ class DashboardCanvasReportAdapter:
         return Dashboard.objects.get(pk=resource_id)
 
     def build_manifest(self, resource: Dashboard) -> list[dict]:
-        return build_dashboard_widget_manifest(resource.view_sets or [])
+        return expand_widget_manifest_with_named_option_datasources(build_dashboard_widget_manifest(resource.view_sets or []))
 
     def load_filters(self, resource: Dashboard):
         return deepcopy(resource.filters)
@@ -64,7 +63,7 @@ class DashboardCanvasReportAdapter:
             "view_sets": view_sets,
             "filters": self.load_filters(resource),
             "other": deepcopy(resource.other),
-            "widget_manifest": build_dashboard_widget_manifest(view_sets),
+            "widget_manifest": expand_widget_manifest_with_named_option_datasources(build_dashboard_widget_manifest(view_sets)),
         }
 
     def render_route_key(self) -> str:
@@ -81,9 +80,7 @@ class DashboardCanvasReportAdapter:
         team_id: int,
         include_children: bool = False,
     ) -> bool:
-        from apps.operation_analysis.services.canvas_report.permissions import (
-            can_view_canvas,
-        )
+        from apps.operation_analysis.services.canvas_report.permissions import can_view_canvas
 
         return can_view_canvas(
             user,
@@ -100,9 +97,7 @@ class DashboardCanvasReportAdapter:
         actor: str,
         actor_domain: str = "",
     ) -> int:
-        from apps.operation_analysis.services.subscription_service import (
-            DashboardSubscriptionService,
-        )
+        from apps.operation_analysis.services.subscription_service import DashboardSubscriptionService
 
         return DashboardSubscriptionService.terminate_for_dashboard_deletion(
             resource,

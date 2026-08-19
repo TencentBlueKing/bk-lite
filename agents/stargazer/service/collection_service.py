@@ -479,6 +479,7 @@ class CollectionService:
                 query["organization_ids"] = [organization_id]
             else:
                 query["skip_permission"] = True
+                query["legacy_callsite"] = "stargazer.node_info"
 
             exec_params = {"args": [query], "kwargs": {}}
             subject = f"{self.namespace}.node_list"

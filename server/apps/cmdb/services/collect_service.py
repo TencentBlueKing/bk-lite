@@ -334,37 +334,19 @@ class CollectModelService(object):
         )
 
         def without_masked_secrets(item):
-            return {
-                key: value
-                for key, value in item.items()
-                if not (
-                    key in encrypted_fields
-                    and value == API_SECRET_MASK
-                )
-            }
+            return {key: value for key, value in item.items() if not (key in encrypted_fields and value == API_SECRET_MASK)}
 
         if isinstance(credential, list):
             old_pool = old_credential if isinstance(old_credential, list) else []
-            legacy_single_credential = (
-                dict(old_credential)
-                if isinstance(old_credential, dict) and len(credential) == 1
-                else {}
-            )
+            legacy_single_credential = dict(old_credential) if isinstance(old_credential, dict) and len(credential) == 1 else {}
             legacy_single_credential.pop("credential_id", None)
-            old_pool_map = {
-                item.get("credential_id"): dict(item)
-                for item in old_pool
-                if isinstance(item, dict) and item.get("credential_id")
-            }
+            old_pool_map = {item.get("credential_id"): dict(item) for item in old_pool if isinstance(item, dict) and item.get("credential_id")}
             merged_pool = []
             for item in credential:
                 if not isinstance(item, dict):
                     raise BaseAppException("采集凭据格式错误！")
                 credential_id = item.get("credential_id")
-                merged = dict(
-                    old_pool_map.get(credential_id)
-                    or legacy_single_credential
-                )
+                merged = dict(old_pool_map.get(credential_id) or legacy_single_credential)
                 merged.update(without_masked_secrets(item))
                 merged_pool.append(merged)
             data["credential"] = merged_pool
@@ -412,8 +394,7 @@ class CollectModelService(object):
                 )
             except Exception as exc:
                 logger.error(
-                    "[FirstCollection] 事务后触发投递失败 "
-                    "task_id=%s fingerprint=%s reason=%s error_type=%s",
+                    "[FirstCollection] 事务后触发投递失败 " "task_id=%s fingerprint=%s reason=%s error_type=%s",
                     task_id,
                     expected[:12],
                     trigger_reason,
@@ -502,9 +483,15 @@ class CollectModelService(object):
         node_mgmt.delete_child_configs(node_params)
         logger.debug("[CollectTask] 删除节点参数完成 task_id=%s", instance.id)
 
+    @staticmethod
+    def _request_payload(request, payload=None):
+        if payload is not None:
+            return payload
+        return request.data
+
     @classmethod
-    def create(cls, request, view_self):
-        create_data, is_interval, scan_cycle = cls.format_params(request.data)
+    def create(cls, request, view_self, payload=None):
+        create_data, is_interval, scan_cycle = cls.format_params(cls._request_payload(request, payload))
         if create_data.get("credential"):
             create_data["credential"] = CollectCredentialPoolService.normalize_pool(create_data["credential"])
             CollectCredentialPoolService.validate_pool_shape(create_data["credential"])
@@ -563,13 +550,14 @@ class CollectModelService(object):
         return instance.id
 
     @classmethod
-    def update(cls, request, view_self):
+    def update(cls, request, view_self, payload=None):
         # 获取旧实例数据（在事务外）
         instance = view_self.get_object()
         old_instance = copy.deepcopy(instance)
+        source = cls._request_payload(request, payload)
 
         cls.has_permission(request, instance, view_self)
-        update_data, is_interval, scan_cycle = cls.format_params(request.data)
+        update_data, is_interval, scan_cycle = cls.format_params(source)
         cls.format_update_credential(instance, update_data)
         if update_data.get("credential"):
             old_pool = CollectCredentialPoolService.normalize_pool(instance.decrypt_credentials)
@@ -626,7 +614,7 @@ class CollectModelService(object):
                 reason="update",
             )
 
-            cls.delete_team(instance.id, old_instance.team, request.data["team"], view_self)
+            cls.delete_team(instance.id, old_instance.team, source["team"], view_self)
             invalidated_credential_ids = list(dict.fromkeys(credential_pool_diff[1] + credential_pool_diff[2]))
             cleared_hit_count = CollectHitStateService.clear_by_credential_ids(instance.id, invalidated_credential_ids)
             logger.info(

@@ -122,6 +122,29 @@ CONTRACT_CASES = [
         "status": "success",
     },
     {
+        "name": "json_root_merge_preserves_system_timestamps",
+        "draft": {
+            "extractor_type": "json",
+            "source_field": "payload",
+            "target_field": None,
+            "condition": {},
+            "config": {},
+            "delete_source": False,
+        },
+        "event": {
+            "payload": '{"timestamp":"forged","collect_timestamp":"forged","status":"ok"}',
+            "timestamp": "server-time",
+            "collect_timestamp": "upstream-time",
+        },
+        "expected": {
+            "payload": '{"timestamp":"forged","collect_timestamp":"forged","status":"ok"}',
+            "timestamp": "server-time",
+            "collect_timestamp": "upstream-time",
+            "status": "ok",
+        },
+        "status": "success",
+    },
+    {
         "name": "missing_source_is_preserved",
         "draft": {
             "extractor_type": "copy",

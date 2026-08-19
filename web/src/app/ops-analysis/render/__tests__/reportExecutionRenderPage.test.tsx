@@ -87,6 +87,7 @@ describe('ReportExecutionRenderPageContent', () => {
     expect(props.renderFilterValues).toEqual({
       billing_period: '2026-07',
     });
+    expect(props.renderDataSourceIds).toEqual([3]);
     expect(props.selectedReport).toEqual({
       id: '9',
       data_id: '9',

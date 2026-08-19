@@ -96,7 +96,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: vector-daemonset
+  name: bk-lite-vector-daemonset
 rules:
   - apiGroups: [""]
     resources: ["pods", "namespaces", "nodes"]
@@ -108,11 +108,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: vector-daemonset
+  name: bk-lite-vector-daemonset
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: vector-daemonset
+  name: bk-lite-vector-daemonset
 subjects:
   - kind: ServiceAccount
     name: vector-daemonset

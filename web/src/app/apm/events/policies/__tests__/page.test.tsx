@@ -74,11 +74,35 @@ afterEach(() => {
 });
 
 describe('APM 策略列表', () => {
+  it('按原型展示策略名称、服务、审计时间和启停操作列', async () => {
+    renderWithApmIntl(<ApmPoliciesPage />);
+    await screen.findByText('结账接口 P95 过慢');
+
+    expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
+      '策略名称',
+      '服务',
+      '创建人',
+      '创建时间',
+      '执行时间',
+      '启停',
+      '操作',
+    ]);
+    expect(screen.getByText('checkout')).not.toBeNull();
+    expect(screen.getByText('POST /checkout')).not.toBeNull();
+    expect(screen.getByText('admin')).not.toBeNull();
+    expect(screen.getByText(/2026-08-11/)).not.toBeNull();
+    expect(screen.getByText(/2026-08-14/)).not.toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '环境' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '端点 / 版本' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '告警条件' })).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '状态' })).toBeNull();
+  });
+
   it('新建和编辑使用独立路由，启停只保留在列表', async () => {
     renderWithApmIntl(<ApmPoliciesPage />);
     expect(await screen.findByText('结账接口 P95 过慢')).not.toBeNull();
     expect(screen.getByRole('link', { name: /新建策略/ }).getAttribute('href')).toBe('/apm/events/policies/new');
-    expect(screen.getByRole('button', { name: '编辑策略' }).closest('a')?.getAttribute('href')).toBe(
+    expect(screen.getByRole('button', { name: '结账接口 P95 过慢：编辑策略' }).closest('a')?.getAttribute('href')).toBe(
       '/apm/events/policies/policy-1',
     );
     expect(screen.queryByRole('dialog')).toBeNull();

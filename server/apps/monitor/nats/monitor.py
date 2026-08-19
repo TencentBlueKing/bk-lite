@@ -690,20 +690,31 @@ def create_monitor_policy(data: dict, *args, **kwargs):
 
 @nats_client.register
 def search_monitor_policies(*args, **kwargs):
-    """按名称查询调用方组织范围内的告警策略。"""
+    """按名称查询调用方组织范围内的告警策略。
+
+    策略 name 允许重名：可能返回多条（上限 200）。调用方不得假定唯一；
+    删除/更新等写操作必须使用返回结果中的 policy id（见 delete_monitor_policy）。
+    """
     user_info = kwargs.get("user_info")
     identity_error = _require_authenticated_actor(user_info)
     if identity_error:
         return identity_error
     name = str(kwargs.get("name") or (args[0] if args else "") or "").strip()
     if not name:
-        return {"result": False, "data": [], "message": "name 不能为空"}
+        return {"result": False, "data": [], "message": "name 不能为空", "count": 0}
     org_ids = _nats_caller_org_ids(user_info)
     if not org_ids:
-        return {"result": False, "data": [], "message": "缺少用户或组织信息"}
+        return {"result": False, "data": [], "message": "缺少用户或组织信息", "count": 0}
     queryset = MonitorPolicy.objects.filter(name=name, policyorganization__organization__in=list(org_ids)).distinct().order_by("id")[:200]
     serializer = MonitorPolicySerializer(queryset, many=True)
-    return {"result": True, "data": serializer.data, "message": ""}
+    data = serializer.data
+    count = len(data)
+    message_parts = []
+    if count > 1:
+        message_parts.append(f"同名策略共 {count} 条，请使用 policy_id 操作，勿假定唯一")
+    if count >= 200:
+        message_parts.append("结果已截断至上限 200 条，请缩小范围或改用 policy_id")
+    return {"result": True, "data": data, "message": "；".join(message_parts), "count": count}
 
 
 @nats_client.register

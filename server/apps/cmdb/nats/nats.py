@@ -48,11 +48,13 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.module_ingest import CmdbModuleIngestService
 from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
+from apps.cmdb.openapi_serializers import CmdbModuleDataQuerySerializer
 from apps.cmdb.services.region_resource_overview import build_region_resource_items, extract_region_options
 from apps.cmdb.utils.base import get_default_group_id
 from apps.cmdb.utils.config_file_path import validate_absolute_path
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
+from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.time_util import parse_rfc3339_utc
 from apps.core.utils.trend_granularity import resolve_trend_group_by_from_range
@@ -333,6 +335,13 @@ def _format_asset_instances_response(model_id, instances):
 
 
 @nats_client.register
+@openapi_expose(
+    path="cmdb/module-data",
+    method="GET",
+    schema=CmdbModuleDataQuerySerializer,
+    inject="user_info",
+    summary="cmdb 实例模块数据（组织口径：以锚点做子树级联展开，锚点须为直属组织）",
+)
 def get_cmdb_module_data(module, child_module, page, page_size, group_id, user_info=None):
     """
     获取cmdb模块实例数据
@@ -1099,6 +1108,29 @@ def receive_collect_credential_result(data: dict):
             result.get("credential_id") or "",
         )
 
+    return result
+
+
+@nats_client.register
+def receive_scan_credential_result(data: dict):
+    """接收扫描一枪的凭据结果；与采集 receive_collect_credential_result 隔离。"""
+    from apps.cmdb.services.scan_credential_result_service import ScanCredentialResultService
+
+    payload = data or {}
+    if not isinstance(payload, dict):
+        logger.warning(
+            "Received invalid scan credential result event, type=%s",
+            type(payload).__name__,
+        )
+        return ScanCredentialResultService.process_result(payload, parse_datetime=_parse_nats_datetime)
+
+    result = ScanCredentialResultService.process_batch(payload, parse_datetime=_parse_nats_datetime)
+    logger.info(
+        "Processed scan credential result, result=%s task_id=%s host=%s",
+        result.get("result", False),
+        payload.get("collect_task_id") or result.get("task_id") or "",
+        payload.get("host") or "",
+    )
     return result
 
 
