@@ -233,6 +233,40 @@ def test_cmdb_uncredentialed_hit_links_ids_without_renaming(host_object):
     assert existing.cmdb_id == "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
     assert existing.node_id == "n-host"
     assert str(existing.ip) == "10.0.0.42"
+    assert not MonitorInstanceOrganization.objects.filter(monitor_instance=existing).exists()
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_hit_stays_link_only_when_create_switch_on(host_object, monkeypatch):
+    monkeypatch.setattr(
+        "apps.monitor.services.module_ingest.CMDB_CREDENTIAL_CREATE_ENABLED",
+        True,
+    )
+    existing = MonitorInstance.objects.create(
+        id="('stock-host-flag-on',)",
+        name="keep-my-name",
+        monitor_object=host_object,
+        ip="10.0.0.43",
+        cloud_region_id=1,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="flag-on-cmdb",
+            link_ids={"cmdb_id": "flag-on-cmdb"},
+            raw={
+                "name": "cmdb-name-must-not-win",
+                "ip": "10.0.0.43",
+                "cloud_region_id": 1,
+                "model_id": "host",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == existing.id
+    existing.refresh_from_db()
+    assert existing.name == "keep-my-name"
+    assert existing.cmdb_id == "flag-on-cmdb"
 
 
 @pytest.mark.django_db

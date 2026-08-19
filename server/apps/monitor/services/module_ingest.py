@@ -198,7 +198,7 @@ class MonitorModuleIngestService:
             allow_cred = bool(params.get("allow_credential_create"))
             # 默认 False：节点/资产页推送不得突然建监控；仅扫描等显式 allow_credential_create 打开。
             create_enabled = CMDB_CREDENTIAL_CREATE_ENABLED or allow_cred
-            if source_module == "cmdb" and not create_enabled:
+            if source_module == "cmdb" and not (create_enabled and credential):
                 return cls._link_association_ids(
                     existing,
                     node_id=node_id,
@@ -274,10 +274,6 @@ class MonitorModuleIngestService:
             allow_credential_create=bool(params.get("allow_credential_create")),
             actor_context=actor_context,
         )
-
-    @classmethod
-    def _is_cmdb_create_enabled(cls, params: dict[str, Any]) -> bool:
-        return bool(CMDB_CREDENTIAL_CREATE_ENABLED or params.get("allow_credential_create"))
 
     @classmethod
     def _link_association_ids(
