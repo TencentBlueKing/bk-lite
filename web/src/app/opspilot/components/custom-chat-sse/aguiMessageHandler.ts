@@ -51,10 +51,14 @@ import {
   attachToolCallToCurrentStep,
   createPlannedExecutionState,
   finalizePlannedExecutionSteps,
+  isFailedPlannedStepStatus,
   isToolAssignedToPlannedStep,
   PlannedExecutionState,
 } from './plannedExecutionState';
 import type { PlannedExecutionStatusValue, PlannedExecutionStepValue } from '@/app/opspilot/types/chat';
+import { isToolResultErrorContent } from './toolResultStatus';
+
+export { isToolResultErrorContent } from './toolResultStatus';
 
 export interface MessageUpdateFn {
   (updater: (prevMessages: CustomChatMessage[]) => CustomChatMessage[]): void;
@@ -140,14 +144,16 @@ const isStructuredConfigAnalysisReport = (
 
 export const finalizePendingToolCalls = (
   toolCalls: Map<string, ToolCallInfo>,
-  fallbackResult: string
+  fallbackResult: string,
+  options?: { status?: 'completed' | 'error' }
 ): boolean => {
   let changed = false;
+  const nextStatus = options?.status ?? 'completed';
   toolCalls.forEach((toolCall) => {
     if (toolCall.status !== 'calling') {
       return;
     }
-    toolCall.status = 'completed';
+    toolCall.status = nextStatus;
     if (!toolCall.result) {
       toolCall.result = fallbackResult;
     }
@@ -215,6 +221,7 @@ export class AGUIMessageHandler {
       objective: step.objective,
       status: step.status,
       toolCallIds: [...step.toolCallIds],
+      error: step.error,
     }));
   }
 
@@ -459,6 +466,22 @@ export class AGUIMessageHandler {
       };
     }
     this.plannedExecutionState = applyPlannedExecutionStep(this.plannedExecutionState, value);
+    // 凭据/配置失败收口时，把仍 calling 的本步工具标成 error，避免流结束补成绿色「已完成」
+    if (value?.phase === 'end' && isFailedPlannedStepStatus(value.status)) {
+      const step = this.plannedExecutionState.steps.find(
+        (item) => item.step_index === Number(value.step_index)
+      );
+      const errorText =
+        (typeof value.error === 'string' && value.error.trim()) ||
+        step?.error ||
+        '步骤因凭据、权限或配置失败已中止';
+      for (const toolCallId of step?.toolCallIds || []) {
+        const toolCall = this.toolCallsRef.get(toolCallId);
+        if (!toolCall || toolCall.status !== 'calling') continue;
+        toolCall.status = 'error';
+        toolCall.result = errorText;
+      }
+    }
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
@@ -505,7 +528,7 @@ export class AGUIMessageHandler {
   handleToolCallResult(toolCallId: string, content: string) {
     const toolCall = this.toolCallsRef.get(toolCallId);
     if (toolCall) {
-      toolCall.status = 'completed';
+      toolCall.status = isToolResultErrorContent(content) ? 'error' : 'completed';
       toolCall.result = content;
       this.syncAttachmentDownloadFromToolResult(toolCallId, toolCall.name, content);
 

@@ -66,6 +66,7 @@ from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_t
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.prompt_utils import merge_skill_params
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
+from apps.opspilot.utils.skill_package_params import annotate_packages_missing_params, merge_package_params, validate_package_params
 from apps.opspilot.utils.sse_chat import create_error_stream_response, stream_chat
 from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
 from apps.system_mgmt.utils.network_whitelist_error import build_network_whitelist_error_payload
@@ -112,6 +113,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             "tools",
             "skill_params",
             "skill_packages",
+            "skill_package_params",
             "temperature",
             "skill_type",
             "is_template",
@@ -180,9 +182,19 @@ class LLMViewSet(PinMixin, AuthViewSet):
         for item in params.get("skill_params", []):
             if item.get("type") == "password":
                 EncryptMixin.encrypt_field("value", item)
+        if "skill_package_params" in params:
+            try:
+                validated = validate_package_params(params.get("skill_package_params"))
+                params["skill_package_params"] = merge_package_params(validated, {})
+            except ValueError as exc:
+                return JsonResponse({"result": False, "message": str(exc)})
         serializer = self.get_serializer(data=params)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
+        instance = getattr(serializer, "instance", None)
+        if instance is not None and "skill_package_params" in params:
+            instance.skill_package_params = params["skill_package_params"]
+            instance.save(update_fields=["skill_package_params"])
         headers = self.get_success_headers(serializer.data)
         response = Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
         skill_name = response.data.get("name") if isinstance(response.data, dict) else None
@@ -190,6 +202,38 @@ class LLMViewSet(PinMixin, AuthViewSet):
             skill_name = request.data.get("name", "")
         log_operation(request, "create", "opspilot", f"新增智能体: {skill_name}")
         return response
+
+    @staticmethod
+    def _normalize_skill_param_passwords(params, instance: LLMSkill) -> None:
+        old_skill_params = {p.get("key"): p for p in (instance.skill_params or [])}
+        for item in params.get("skill_params", []):
+            if item.get("type") != "password":
+                continue
+            if item.get("value") == "******":
+                old_param = old_skill_params.get(item.get("key"))
+                if old_param:
+                    item["value"] = old_param["value"]
+            else:
+                EncryptMixin.encrypt_field("value", item)
+
+    @staticmethod
+    def _normalize_skill_package_params_for_update(request, params, instance: LLMSkill):
+        """校验并合并 skill_package_params；失败返回 JsonResponse，成功返回 None。"""
+        if "skill_package_params" not in params:
+            return None
+        try:
+            validated = validate_package_params(params.get("skill_package_params"))
+            params["skill_package_params"] = merge_package_params(validated, instance.skill_package_params or {})
+        except ValueError as exc:
+            return JsonResponse({"result": False, "message": str(exc)})
+        param_names = []
+        for items in (params.get("skill_package_params") or {}).values():
+            for item in items or []:
+                if isinstance(item, dict) and item.get("key"):
+                    param_names.append(str(item["key"]))
+        if param_names:
+            log_operation(request, "update", "opspilot", f"编辑智能体技能包参数: {instance.name} 变量: {','.join(param_names)}")
+        return None
 
     @HasPermission("skill_setting-Edit")
     def update(self, request, *args, **kwargs):
@@ -238,16 +282,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 if i.get("type") == "password":
                     EncryptMixin.decrypt_field("value", i)
                     EncryptMixin.encrypt_field("value", i)
-        # 处理 skill_params 中 password 类型的加密/保留
-        old_skill_params = {p.get("key"): p for p in (instance.skill_params or [])}
-        for item in params.get("skill_params", []):
-            if item.get("type") == "password":
-                if item.get("value") == "******":
-                    old_param = old_skill_params.get(item.get("key"))
-                    if old_param:
-                        item["value"] = old_param["value"]
-                else:
-                    EncryptMixin.encrypt_field("value", item)
+        self._normalize_skill_param_passwords(params, instance)
+        package_params_error = self._normalize_skill_package_params_for_update(request, params, instance)
+        if package_params_error is not None:
+            return package_params_error
         # F017: 仅允许写入显式白名单内的字段，杜绝把任意 request.data 键
         # 盲目 setattr 到模型（mass-assignment）。受保护字段（id/created_by/
         # domain/is_builtin 等）即便随请求传入也被忽略。
@@ -358,6 +396,9 @@ class LLMViewSet(PinMixin, AuthViewSet):
             # 透传技能绑定的 Wiki 知识库,触发 format_chat_server_kwargs 的检索增强;
             # 否则智能体对话不会引用知识库内容,易凭 LLM 自身知识作答(幻觉)。
             params["wiki_kb_ids"] = list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True))
+            error_message = self._prepare_skill_package_params(params, skill_obj)
+            if error_message:
+                return self.create_error_stream_response(error_message)
             self._apply_skill_packages_to_params(params, skill_obj)
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
 
@@ -438,6 +479,9 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["browser_use_force_task"] = True
             # 同 execute:透传 Wiki 知识库以触发检索增强,避免智能体不查知识库而凭空作答。
             params["wiki_kb_ids"] = list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True))
+            error_message = self._prepare_skill_package_params(params, skill_obj)
+            if error_message:
+                return self.create_error_stream_response(error_message)
             self._apply_skill_packages_to_params(params, skill_obj)
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
 
@@ -463,8 +507,29 @@ class LLMViewSet(PinMixin, AuthViewSet):
     def _tool_names(tools):
         return {tool.get("name") for tool in (tools or []) if isinstance(tool, dict) and tool.get("name")}
 
+    @staticmethod
+    def _prepare_skill_package_params(params, skill_obj: LLMSkill) -> str | None:
+        """合并测试面板未保存值与库中密文。失败返回错误文案。"""
+        stored = getattr(skill_obj, "skill_package_params", None) or {}
+        if "skill_package_params" not in params:
+            if stored:
+                params["skill_package_params_overlay"] = stored
+            return None
+        try:
+            validated = validate_package_params(params.get("skill_package_params"))
+            merged = merge_package_params(validated, stored)
+        except ValueError as exc:
+            return str(exc)
+        params["skill_package_params"] = merged
+        params["skill_package_params_overlay"] = merged
+        return None
+
     def _apply_skill_packages_to_params(self, params, skill_obj: LLMSkill):
         skill_packages = hydrate_skill_packages(getattr(skill_obj, "skill_packages", []) or [])
+        configured = params.get("skill_package_params")
+        if configured is None:
+            configured = getattr(skill_obj, "skill_package_params", None) or {}
+        skill_packages = annotate_packages_missing_params(skill_packages, configured)
         base_prompt = params.get("skill_prompt") or skill_obj.skill_prompt or ""
         skill_prompt, matched_skill_packages = build_skill_package_prompt(
             base_prompt=base_prompt,

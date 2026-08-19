@@ -22,7 +22,7 @@ def noop_reverse(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("opspilot", "0070_alter_wikidecisionrule_action"),
+        ("opspilot", "0071_llmskill_skill_package_params"),
     ]
 
     operations = [
