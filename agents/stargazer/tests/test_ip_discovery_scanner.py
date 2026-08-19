@@ -21,7 +21,7 @@ async def _make_true():
 
 
 class TestScanner:
-    @pytest.mark.parametrize("port", [-1, 0, 65536])
+    @pytest.mark.parametrize("port", [-1, 0, 65536, 22.5, True, "not-a-port"])
     def test_拒绝超出tcp端口值域的端口(self, port):
         with pytest.raises(ValueError, match="port must be between 1 and 65535"):
             IPDiscoveryScanner(
@@ -38,12 +38,12 @@ class TestScanner:
             {
                 "model_id": "ip",
                 "scan_method": "tcp",
-                "ports": [1, "22", 65535],
+                "ports": [1, " 22 ", "+443", 65535],
                 "targets": ["10.0.1.10"],
             }
         )
 
-        assert scanner.ports == [1, 22, 65535]
+        assert scanner.ports == [1, 22, 443, 65535]
 
     def test_拒绝超过运行目标上限的子网(self, monkeypatch):
         monkeypatch.setenv("MAX_TARGETS_PER_RUN", "2")
