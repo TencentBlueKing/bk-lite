@@ -115,3 +115,11 @@ def test_skill_result_guidance_argparse_usage_tells_exact_retry():
     assert "--query" in hint
     assert "--attrs" in hint
     assert "禁止 read_file" in hint
+
+
+def test_skill_result_guidance_forbids_retry_on_auth_failure():
+    cmd = "python3 /skills/ad-domain-ops/scripts/ad_search.py --query '*' --type user"
+    text = '{"ok":false,"error":"invalid credentials"}'
+    hint = skill_execute_result_guidance(cmd, text, 1)
+    assert "禁止重试" in hint
+    assert "最多修正参数" not in hint

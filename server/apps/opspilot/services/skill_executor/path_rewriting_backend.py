@@ -39,6 +39,7 @@ from typing import Any
 from deepagents.backends.protocol import SandboxBackendProtocol
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.common.tool_failure import unrecoverable_skill_result_hint
 
 # 匹配 ``/skills/`` 开头、连续路径字符(不含 shell 特殊字符)的子串
 _SKILLS_PATH_PATTERN = re.compile(r"/skills/[^\s'\"\|;&<>(){}\\`$?!*]*")
@@ -402,7 +403,7 @@ def skill_execute_result_guidance(
     skills_root: str = "/skills",
     available_scripts: list[str] | None = None,
 ) -> str:
-    """技能脚本 execute 后给模型的停手提示：成功(含空结果)不重试，失败最多改参一次。"""
+    """技能脚本 execute 后给模型的停手提示：成功(含空结果)不重试；凭据类失败禁止重试。"""
     if not _SKILL_SCRIPT_CMD_RE.search(command or ""):
         return ""
     summary = _summarize_execute_output(text or "", exit_code)
@@ -427,6 +428,9 @@ def skill_execute_result_guidance(
             "立刻再 execute 一次，必须带 --query 和 --attrs（不要用 --field）："
             'python3 /skills/ad-domain-ops/scripts/ad_search.py --query "*" --type user --limit 10 --attrs sAMAccountName'
         )
+    unrecoverable = unrecoverable_skill_result_hint(text or "")
+    if unrecoverable:
+        return unrecoverable
     return f"{_SKILL_RESULT_HINT_MARKER} 脚本失败。" "最多修正参数后重试 1 次；不要靠反复 read_file/探测变量绕过。" "仍失败则把错误原样反馈用户。"
 
 

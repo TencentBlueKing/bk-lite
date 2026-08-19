@@ -197,6 +197,50 @@ def test_skill_guard_allows_one_script_retry_after_failure():
     assert "不要再用" in denied_ls.content
 
 
+def test_skill_guard_stops_immediately_on_auth_script_failure():
+    """凭据失败与业务工具同一套分型：第一次 execute 后禁止再跑脚本。"""
+    guard = SkillExecutionGuardMiddleware(enabled=True)
+    fail = ToolMessage(
+        content='{"ok":false,"error":"invalid credentials"}\n[OPSPILOT_SKILL_RESULT] 脚本失败。最多修正参数后重试 1 次。',
+        tool_call_id="e1",
+        name="execute",
+    )
+    called = {"n": 0}
+
+    def handler(req):
+        called["n"] += 1
+        return "EXECUTED"
+
+    retry = SimpleNamespace(
+        tool_call={
+            "name": "execute",
+            "args": {"command": "python3 /skills/ad-domain-ops/scripts/ad_search.py --query '*' --attrs sAMAccountName"},
+            "id": "e2",
+        },
+        state={"messages": [fail]},
+    )
+    denied = guard.wrap_tool_call(retry, handler)
+    assert called["n"] == 0
+    assert "不要再调用工具" in denied.content or "OPSPILOT_SKILL_STOP" in denied.content
+
+
+def test_tool_exception_middleware_returns_error_tool_message():
+    from apps.opspilot.metis.llm.middleware.tool_runtime import ToolExceptionAsResultMiddleware
+
+    middleware = ToolExceptionAsResultMiddleware()
+
+    def boom(_req):
+        raise Exception("无法加载 Kubernetes 配置: Invalid base64-encoded string. 请检查 kubeconfig 配置内容或集群连接。")
+
+    req = SimpleNamespace(tool_call={"name": "diagnose_kubernetes_pod_issues", "id": "c1", "args": {}})
+    result = middleware.wrap_tool_call(req, boom)
+    assert isinstance(result, ToolMessage)
+    assert result.status == "error"
+    assert result.tool_call_id == "c1"
+    assert "无法加载 Kubernetes 配置" in result.content
+    assert "Invalid base64" in result.content
+
+
 def test_dynamic_tool_visibility_exposes_step_tools_plus_always_on_fs():
     diagnose = _tool("diagnose_kubernetes_pod_issues")
     logs = _tool("get_kubernetes_pod_logs")
@@ -586,6 +630,72 @@ def test_is_tool_result_failure_detects_json_error_payload():
         "[OPSPILOT_POLICY] 工具 delete_pod 当前不可用。只调用本步骤可见的业务工具。",
         status="error",
     )
+
+
+def test_classify_tool_failure_kind_separates_auth_from_retryable():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        TOOL_FAILURE_AUTHN,
+        TOOL_FAILURE_AUTHZ,
+        TOOL_FAILURE_CONFIG,
+        TOOL_FAILURE_INTERNAL,
+        TOOL_FAILURE_OTHER,
+        classify_tool_failure_kind,
+        is_non_replanable_tool_failure,
+    )
+    from apps.opspilot.metis.llm.common.tool_failure import unrecoverable_skill_result_hint
+
+    assert classify_tool_failure_kind('{"error": "获取Pod列表失败: (401)\\nReason: Unauthorized"}') == TOOL_FAILURE_AUTHN
+    assert classify_tool_failure_kind("无法加载 Kubernetes 配置: invalid certificate") == TOOL_FAILURE_AUTHN
+    assert classify_tool_failure_kind('{"error": "获取Deployment列表失败: (403)\\nReason: Forbidden"}') == TOOL_FAILURE_AUTHZ
+    assert (
+        classify_tool_failure_kind(
+            {"error": "connection_failed", "message": "无法连接 Kubernetes 集群"},
+            status="success",
+        )
+        == TOOL_FAILURE_CONFIG
+    )
+    assert classify_tool_failure_kind("MySQL host is required", status="error") == TOOL_FAILURE_CONFIG
+    assert classify_tool_failure_kind("Failed to decrypt field 'value': InvalidToken", status="error") == TOOL_FAILURE_CONFIG
+    assert (
+        classify_tool_failure_kind(
+            "AttributeError: 'NoneType' object has no attribute 'items'",
+            status="error",
+        )
+        == TOOL_FAILURE_INTERNAL
+    )
+    assert classify_tool_failure_kind('{"error": "Pod x 在命名空间 y 中不存在"}') == TOOL_FAILURE_OTHER
+    assert classify_tool_failure_kind("connection refused", status="error") == TOOL_FAILURE_OTHER
+    assert classify_tool_failure_kind("namespace is required", status="error") == TOOL_FAILURE_OTHER
+    assert classify_tool_failure_kind('{"phase": "Running"}') == TOOL_FAILURE_OTHER
+    assert is_non_replanable_tool_failure('{"error": "401 Unauthorized"}')
+    assert is_non_replanable_tool_failure('{"error": "403 Forbidden"}')
+    assert is_non_replanable_tool_failure('{"error": "connection_failed"}')
+    assert is_non_replanable_tool_failure("CredentialValidationError: Redis host/url is required")
+    assert is_non_replanable_tool_failure("AttributeError: 'NoneType' object has no attribute 'metadata'", status="error")
+    assert not is_non_replanable_tool_failure('{"error": "Pod x 在命名空间 y 中不存在"}')
+    assert not is_non_replanable_tool_failure("connection refused", status="error")
+    assert not is_non_replanable_tool_failure("namespace is required", status="error")
+    assert not is_non_replanable_tool_failure(
+        "[OPSPILOT_POLICY] 工具 delete_pod 当前不可用。只调用本步骤可见的业务工具。",
+        status="error",
+    )
+    skill_auth = '{"ok":false,"error":"invalid credentials"}\n[OPSPILOT_SKILL_RESULT] 脚本失败。最多修正参数后重试 1 次。'
+    skill_auth_stop = '{"ok":false,"error":"invalid credentials"}\n' "[OPSPILOT_SKILL_RESULT] 连接、凭据、权限或脚本实现失败，禁止重试。" "把错误原样告诉用户并结束，不要改参，不要 read_file。"
+    skill_timeout = "timed out\n[OPSPILOT_SKILL_RESULT] 脚本失败。最多修正参数后重试 1 次。"
+    skill_missing = "[OPSPILOT_SKILL_RESULT] 脚本不存在，不要 ls/glob/read_file。请直接改跑：python3 /skills/ad-domain-ops/scripts/ad_search.py"
+    skill_args = "[OPSPILOT_SKILL_RESULT] 参数错误，禁止 read_file。立刻再 execute 一次"
+    assert classify_tool_failure_kind(skill_auth) == TOOL_FAILURE_AUTHN
+    assert is_non_replanable_tool_failure(skill_auth)
+    assert classify_tool_failure_kind(skill_auth_stop) == TOOL_FAILURE_AUTHN
+    assert is_non_replanable_tool_failure(skill_auth_stop)
+    assert classify_tool_failure_kind(skill_timeout) == TOOL_FAILURE_OTHER
+    assert not is_non_replanable_tool_failure(skill_timeout)
+    assert not is_non_replanable_tool_failure(skill_missing, status="error")
+    assert not is_non_replanable_tool_failure(skill_args, status="error")
+    hint = unrecoverable_skill_result_hint('{"ok":false,"error":"invalid credentials"}')
+    assert hint is not None and "禁止重试" in hint
+    assert unrecoverable_skill_result_hint("timed out") is None
+    assert unrecoverable_skill_result_hint('{"ok":false,"error":{"code":6,"message":"Cannot reach"}}') is None
 
 
 def test_compact_planned_execution_messages_truncates_tool_and_ai_text():

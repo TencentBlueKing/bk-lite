@@ -81,6 +81,7 @@ from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS,
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
     SkillExecutionGuardMiddleware,
+    ToolExceptionAsResultMiddleware,
     ToolResultCompactionMiddleware,
     ToolVisibilityMiddleware,
     is_progressive_tools_enabled,
@@ -3062,7 +3063,9 @@ class ToolsNodes(BasicNode):
             "必须使用下列真实脚本路径，禁止发明文件名。"
             "直接 execute 查询，例如："
             'python3 /skills/ad-domain-ops/scripts/ad_search.py --query "*" --type user --limit 10 --attrs sAMAccountName。'
-            "脚本 ok=true（含空结果）后立即用一张表回答并结束本步。\n"
+            "脚本 ok=true（含空结果）后立即用一张表回答并结束本步。"
+            "401、凭据无效、连接失败、解密失败或脚本 AttributeError 等实现异常时不要重试，把错误原样告诉用户并结束本步。"
+            "403 仅在可换查询范围时最多改参 1 次，否则把权限错误告诉用户。\n"
             f"可用脚本：\n{hint_lines}"
         )
 
@@ -3073,7 +3076,9 @@ class ToolsNodes(BasicNode):
             "【工具执行】只调用本步骤计划/可见工具。"
             "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
             "工具已返回结构化结果（含空列表）即终态，不要把空当失败反复换参。"
-            "仅当结果带明确 error 时最多改参重试 1 次，然后把错误原样告诉用户。"
+            "401、kubeconfig 无效、连接参数缺失或解密失败时不要改参重试，把错误原样告诉用户并结束本步。"
+            "工具抛出 AttributeError/TypeError 等实现异常时不要重试，把错误告诉用户。"
+            "403 仅在可换 namespace 或实例时最多改参 1 次，否则把权限错误告诉用户。"
             "工具成功后用一两句话直接回答用户并结束本步，禁止再写第二份重复说明。"
         )
 
@@ -3197,12 +3202,17 @@ class ToolsNodes(BasicNode):
             """DeepAgent 包装节点 - 返回完整消息列表以支持实时 SSE 流式输出"""
             # 惰性导入：避免 apps.opspilot.metis.llm.agent.__init__ → deep_agent → node 循环依赖
             from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+                TOOL_FAILURE_AUTHZ,
+                TOOL_FAILURE_CONFIG,
+                TOOL_FAILURE_INTERNAL,
                 USE_SKILLS_TOOL_NAME,
                 CompletedExecutionStep,
                 ToolExecutionPlan,
                 ToolExecutionPlanner,
                 ToolPlanningError,
+                classify_tool_failure_kind,
                 is_context_size_error,
+                is_non_replanable_tool_failure,
                 is_tool_result_failure,
             )
 
@@ -3471,6 +3481,7 @@ class ToolsNodes(BasicNode):
             runtime_middleware = [
                 visibility_middleware,
                 skill_guard,
+                ToolExceptionAsResultMiddleware(),
                 ToolResultCompactionMiddleware(),
                 limit_middleware,
             ]
@@ -3571,7 +3582,9 @@ class ToolsNodes(BasicNode):
                         continue
                     status = str(getattr(message, "status", "") or "").lower()
                     content = message.content
-                    if is_tool_result_failure(content, status):
+                    # 技能脚本失败带 [OPSPILOT_SKILL_RESULT]，不算 is_tool_result_failure，
+                    # 但仍按与业务工具同一套分型收口凭据/配置/实现异常。
+                    if is_non_replanable_tool_failure(content, status) or is_tool_result_failure(content, status):
                         tool_name = str(getattr(message, "name", "") or "未知工具")
                         return f"工具 {tool_name} 执行失败: {str(content)[:800]}"
                 return ""
@@ -3673,6 +3686,45 @@ class ToolsNodes(BasicNode):
                     }
                     step_finished = False
                     replanned = False
+
+                    def _non_replanable_status(failure_text: str) -> str:
+                        kind = classify_tool_failure_kind(failure_text)
+                        if kind == TOOL_FAILURE_AUTHZ:
+                            return "failed_permission"
+                        if kind == TOOL_FAILURE_CONFIG:
+                            return "failed_config"
+                        if kind == TOOL_FAILURE_INTERNAL:
+                            return "failed_internal"
+                        return "failed_auth"
+
+                    async def _abort_unrecoverable_step(failure_text: str, extra_messages: List[BaseMessage] | None = None) -> None:
+                        nonlocal agent_state, step_finished
+                        logger.warning(
+                            "DeepAgent 步骤因凭据/权限/配置失败，跳过重规划并收口: %s",
+                            failure_text[:400],
+                        )
+                        completed_steps.append(
+                            CompletedExecutionStep(
+                                objective=step.objective,
+                                result=_step_summary(extra_messages or []) or failure_text[:400],
+                            )
+                        )
+                        await _emit_step_boundary(
+                            "planned_execution_step",
+                            {
+                                "phase": "end",
+                                "step_index": step_index,
+                                "total_steps": total_steps,
+                                "objective": step.objective,
+                                "tools": list(step.tools),
+                                "status": _non_replanable_status(failure_text),
+                                "error": failure_text[:800],
+                            },
+                        )
+                        agent_state = _compact_agent_state_with_summaries(overflow=False)
+                        pending_steps.clear()
+                        step_finished = True
+
                     while not step_finished:
                         try:
                             step_result = await deep_agent.ainvoke(
@@ -3706,6 +3758,9 @@ class ToolsNodes(BasicNode):
                                 )
                                 agent_state = _compact_agent_state_with_summaries(overflow=True)
                                 step_finished = True
+                                break
+                            if is_non_replanable_tool_failure(failure):
+                                await _abort_unrecoverable_step(failure)
                                 break
                             if replan_count >= 2:
                                 raise
@@ -3811,6 +3866,9 @@ class ToolsNodes(BasicNode):
                                 )
                                 agent_state = _compact_agent_state_with_summaries(overflow=True)
                                 step_finished = True
+                                break
+                            if is_non_replanable_tool_failure(failure):
+                                await _abort_unrecoverable_step(failure, extra_messages=step_messages)
                                 break
                             if replan_count >= 2:
                                 raise ToolPlanningError(failure)

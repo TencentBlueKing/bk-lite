@@ -12,6 +12,22 @@ from pydantic import BaseModel, Field
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
+from apps.opspilot.metis.llm.common.tool_failure import (  # noqa: F401
+    POLICY_RESULT_MARKER,
+    SKILL_RESULT_MARKER,
+    SKILL_STOP_MARKER,
+    TOOL_FAILURE_AUTHN,
+    TOOL_FAILURE_AUTHZ,
+    TOOL_FAILURE_CONFIG,
+    TOOL_FAILURE_INTERNAL,
+    TOOL_FAILURE_OTHER,
+    classify_tool_failure_kind,
+    is_control_guidance,
+    is_non_replanable_tool_failure,
+    is_policy_guidance,
+    is_skill_policy_guidance,
+    is_tool_result_failure,
+)
 
 
 class ToolExecutionStep(BaseModel):
@@ -137,68 +153,6 @@ def is_context_size_error(exc: BaseException | str) -> bool:
         "too many tokens",
     )
     return any(needle in text for needle in needles)
-
-
-POLICY_RESULT_MARKER = "[OPSPILOT_POLICY]"
-SKILL_RESULT_MARKER = "[OPSPILOT_SKILL_RESULT]"
-SKILL_STOP_MARKER = "[OPSPILOT_SKILL_STOP]"
-
-_POLICY_GUIDANCE_MARKERS = (
-    POLICY_RESULT_MARKER,
-    SKILL_STOP_MARKER,
-    SKILL_RESULT_MARKER,
-    "当前不可用。不要用 read_file",
-    "不要用 read_file/ls/grep 扫技能包",
-)
-
-
-def is_policy_guidance(content: Any) -> bool:
-    """可见性拦截 / 停手提示：不是工具硬失败，不应触发外层重规划。"""
-    text = str(content or "")
-    if not text:
-        return False
-    return any(marker in text for marker in _POLICY_GUIDANCE_MARKERS)
-
-
-def is_skill_policy_guidance(content: Any) -> bool:
-    """兼容旧名。"""
-    return is_policy_guidance(content)
-
-
-def is_tool_result_failure(content: Any, status: str = "") -> bool:
-    """识别工具硬失败与 JSON 软失败（如 {"error": "..."}）。"""
-    if is_policy_guidance(content):
-        return False
-    if str(status or "").lower() == "error":
-        return True
-
-    if content is None:
-        return False
-
-    if isinstance(content, dict):
-        err = content.get("error")
-        return bool(err not in (None, "", [], {}))
-
-    text = str(content).strip()
-    if not text:
-        return False
-
-    lowered = text.casefold()
-    if lowered.startswith(("error", "exception")):
-        return True
-
-    if text[0] not in "{[":
-        return False
-
-    try:
-        payload = json.loads(text)
-    except Exception:
-        return False
-
-    if isinstance(payload, dict):
-        err = payload.get("error")
-        return bool(err not in (None, "", [], {}))
-    return False
 
 
 def _truncate_text(text: str, max_chars: int) -> str:

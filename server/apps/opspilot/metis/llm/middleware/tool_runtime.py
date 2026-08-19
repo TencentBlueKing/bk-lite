@@ -12,9 +12,9 @@ from langchain_core.tools import BaseTool
 from apps.opspilot.metis.llm.agent.tool_execution_planner import (
     _DEFAULT_PLANNED_AI_TEXT_CHARS,
     _DEFAULT_PLANNED_TOOL_RESULT_CHARS,
-    POLICY_RESULT_MARKER,
     compact_planned_execution_messages,
 )
+from apps.opspilot.metis.llm.common.tool_failure import POLICY_RESULT_MARKER, is_non_replanable_tool_failure
 
 # 兼容旧导入路径（实现见 planned_execution_limits）。
 from apps.opspilot.metis.llm.middleware.planned_execution_limits import (  # noqa: F401
@@ -242,8 +242,27 @@ class SkillExecutionGuardMiddleware(AgentMiddleware):
         self.enabled = enabled
         self.max_script_attempts = max(1, int(max_script_attempts))
 
-    def _terminal(self, script_ok: int, script_fail: int, last_kind: SkillHistoryKind | None) -> bool:
+    def _has_unrecoverable_script_failure(self, messages: Sequence[Any] | None) -> bool:
+        for message in messages or []:
+            if not isinstance(message, ToolMessage):
+                continue
+            if str(getattr(message, "name", "") or "") != "execute":
+                continue
+            status = str(getattr(message, "status", "") or "")
+            if is_non_replanable_tool_failure(message.content, status):
+                return True
+        return False
+
+    def _terminal(
+        self,
+        script_ok: int,
+        script_fail: int,
+        last_kind: SkillHistoryKind | None,
+        messages: Sequence[Any] | None = None,
+    ) -> bool:
         if script_ok >= 1:
+            return True
+        if self._has_unrecoverable_script_failure(messages):
             return True
         if script_fail >= self.max_script_attempts:
             return True
@@ -254,7 +273,7 @@ class SkillExecutionGuardMiddleware(AgentMiddleware):
             return request
         messages = _request_messages(request)
         script_ok, script_fail, last_kind = inspect_skill_execution_history(messages)
-        if not self._terminal(script_ok, script_fail, last_kind):
+        if not self._terminal(script_ok, script_fail, last_kind, messages):
             return request
         if not any(_SKILL_STOP_MARKER in str(getattr(message, "content", "") or "") for message in messages):
             messages = messages + [HumanMessage(content=_SKILL_STOP_HINT)]
@@ -268,7 +287,7 @@ class SkillExecutionGuardMiddleware(AgentMiddleware):
         call_id = str(call.get("id") or "")
         messages = _request_messages(request)
         script_ok, script_fail, last_kind = inspect_skill_execution_history(messages)
-        terminal = self._terminal(script_ok, script_fail, last_kind)
+        terminal = self._terminal(script_ok, script_fail, last_kind, messages)
 
         if name in PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS:
             return ToolMessage(
@@ -332,6 +351,38 @@ class SkillExecutionGuardMiddleware(AgentMiddleware):
         if denied is not None:
             return denied
         return await handler(request)
+
+
+class ToolExceptionAsResultMiddleware(AgentMiddleware):
+    """工具抛异常时写成 ToolMessage，保证 AG-UI 能收到 TOOL_CALL_RESULT。
+
+    kubeconfig 解析失败等会在工具内 raise；若不拦截，ainvoke 直接崩掉，前端只能把
+    挂起的 TOOL_CALL_START 收成「已完成但未收到结果」，看起来像成功。
+    """
+
+    def _error_message(self, request: Any, exc: BaseException) -> ToolMessage:
+        call = getattr(request, "tool_call", None) or {}
+        name = str(call.get("name") or "unknown")
+        call_id = str(call.get("id") or "")
+        text = str(exc).strip() or f"{type(exc).__name__}: tool execution failed"
+        return ToolMessage(
+            content=text[:2000],
+            tool_call_id=call_id,
+            name=name,
+            status="error",
+        )
+
+    def wrap_tool_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
+        try:
+            return handler(request)
+        except Exception as exc:
+            return self._error_message(request, exc)
+
+    async def awrap_tool_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
+        try:
+            return await handler(request)
+        except Exception as exc:
+            return self._error_message(request, exc)
 
 
 class ToolResultCompactionMiddleware(AgentMiddleware):

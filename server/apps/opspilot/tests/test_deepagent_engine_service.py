@@ -859,6 +859,168 @@ class TestBuildDeepagentNodes:
         replan_prompt = "\n".join(str(message.content) for message in captured["planner_calls"][1])
         assert "不存在" in replan_prompt
 
+    def test_auth_tool_error_aborts_remaining_steps_without_replan(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("diagnose_kubernetes_pod_issues"),
+            _tool("validate_probe_configuration"),
+        ]
+        req = _request(user_message="定位 Pod 告警")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "定位 Pod 告警",
+                    "steps": [
+                        {
+                            "objective": "诊断 Pod",
+                            "tools": ["diagnose_kubernetes_pod_issues"],
+                        },
+                        {
+                            "objective": "验证探针配置",
+                            "tools": ["validate_probe_configuration"],
+                        },
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": '{"error": "获取Pod列表失败: (401)\\nReason: Unauthorized"}',
+                        "status": "success",
+                        "name": "diagnose_kubernetes_pod_issues",
+                    }
+                },
+                agent_reply="kubeconfig 鉴权失败，请检查 Token 或证书后重试。",
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["diagnose_kubernetes_pod_issues"],
+        ]
+        assert len(captured["planner_calls"]) == 1
+        joined = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
+        assert "401" in joined or "鉴权" in joined or "Unauthorized" in joined
+
+    def test_permission_tool_error_aborts_without_replan(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("list_kubernetes_deployments"),
+            _tool("analyze_deployment_configurations"),
+        ]
+        req = _request(user_message="检查部署配置")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "检查部署配置",
+                    "steps": [
+                        {
+                            "objective": "列出 Deployment",
+                            "tools": ["list_kubernetes_deployments"],
+                        },
+                        {
+                            "objective": "分析配置",
+                            "tools": ["analyze_deployment_configurations"],
+                        },
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": '{"error": "获取Deployment列表失败: (403)\\nReason: Forbidden"}',
+                        "status": "success",
+                        "name": "list_kubernetes_deployments",
+                    }
+                },
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["list_kubernetes_deployments"],
+            [],
+        ]
+        assert len(captured["planner_calls"]) == 1
+
+    def test_internal_tool_exception_aborts_without_replan(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("list_kubernetes_nodes"),
+            _tool("diagnose_kubernetes_pod_issues"),
+        ]
+        req = _request(user_message="列出节点")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "列出节点",
+                    "steps": [
+                        {"objective": "列出节点", "tools": ["list_kubernetes_nodes"]},
+                        {
+                            "objective": "诊断 Pod",
+                            "tools": ["diagnose_kubernetes_pod_issues"],
+                        },
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": "AttributeError: 'NoneType' object has no attribute 'items'",
+                        "status": "error",
+                        "name": "list_kubernetes_nodes",
+                    }
+                },
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["list_kubernetes_nodes"],
+            [],
+        ]
+        assert len(captured["planner_calls"]) == 1
+
+    def test_skill_auth_error_aborts_remaining_steps_without_replan(self):
+        node = ToolsNodes()
+        node.all_tools = []
+        req = _request(user_message="查 AD 用户")
+        captured = {}
+        pkgs = [{"name": "ad-domain-ops", "package_id": "ad-domain-ops", "description": "AD"}]
+        fake_backend = MagicMock()
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
+            ToolsNodes, "_resolve_skill_packages", return_value=pkgs
+        ), patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查 AD 用户",
+                    "steps": [
+                        {"objective": "查用户", "tools": ["__use_skills__"]},
+                        {"objective": "查组", "tools": ["__use_skills__"]},
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": ('{"ok":false,"error":"invalid credentials"}\n' "[OPSPILOT_SKILL_RESULT] 脚本失败。最多修正参数后重试 1 次。"),
+                        "status": "success",
+                        "name": "execute",
+                    }
+                },
+                agent_reply="LDAP 凭据无效，请检查技能包连接配置后重试。",
+            )
+
+        assert captured["visible_tool_calls"] == [["execute"]]
+        assert len(captured["planner_calls"]) == 1
+        joined = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
+        assert "invalid credentials" in joined or "凭据" in joined
+
     def test_wires_skills_and_approval_when_configured(self):
         node = ToolsNodes()
         node.all_tools = [_tool("shell")]
@@ -1042,6 +1204,7 @@ def test_plan_is_skills_only_and_step_guidance():
     assert "禁止发明" in guidance
     assert "--help" in guidance
     assert "管道" in guidance
+    assert "不要重试" in guidance or "凭据" in guidance
 
 
 def test_planned_tool_step_guidance_is_policy_not_skill_scan():

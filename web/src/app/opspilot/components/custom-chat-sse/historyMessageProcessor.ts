@@ -21,8 +21,10 @@ import {
   attachToolCallToCurrentStep,
   createPlannedExecutionState,
   finalizePlannedExecutionSteps,
+  isFailedPlannedStepStatus,
   isToolAssignedToPlannedStep,
 } from './plannedExecutionState';
+import { isToolResultErrorContent } from './toolResultStatus';
 import type { PlannedExecutionStepValue } from '@/app/opspilot/types/chat';
 
 const escapeNewlinesInStrings = (raw: string) => {
@@ -443,7 +445,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
           const tool = toolCalls.get(msg.toolCallId);
           if (tool) {
             tool.result = msg.content || '';
-            tool.status = 'completed';
+            tool.status = isToolResultErrorContent(tool.result) ? 'error' : 'completed';
             if (tool.name === 'generate_attachment_file') {
               try {
                 const parsed = parseAttachmentToolResult(msg.content || '{}');
@@ -538,6 +540,22 @@ const buildFromEvents = (events: any[], finalize = true) => {
             plannedExecutionState,
             msg.value as PlannedExecutionStepValue
           );
+          const stepValue = msg.value as PlannedExecutionStepValue;
+          if (stepValue.phase === 'end' && isFailedPlannedStepStatus(stepValue.status)) {
+            const step = plannedExecutionState.steps.find(
+              (item) => item.step_index === Number(stepValue.step_index)
+            );
+            const errorText =
+              (typeof stepValue.error === 'string' && stepValue.error.trim()) ||
+              step?.error ||
+              '步骤因凭据、权限或配置失败已中止';
+            for (const toolCallId of step?.toolCallIds || []) {
+              const tool = toolCalls.get(toolCallId);
+              if (!tool || tool.status !== 'calling') continue;
+              tool.status = 'error';
+              tool.result = errorText;
+            }
+          }
         }
         break;
 
@@ -582,6 +600,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
         objective: step.objective,
         status: step.status,
         toolCallIds: [...step.toolCallIds],
+        error: step.error,
       }))
       : undefined;
 
@@ -597,7 +616,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
     plannedExecutionSteps,
     isStreamingTools: finalize ? false : Boolean(plannedExecutionSteps?.some((s) => s.status === 'running')),
     toolCalls: toolCalls.size > 0 ? Array.from(toolCalls.entries()).map(([id, info]) => ({
-      id, name: info.name, args: info.args, status: info.status as 'calling' | 'completed', result: info.result
+      id, name: info.name, args: info.args, status: info.status as 'calling' | 'completed' | 'error', result: info.result
     })) : undefined
   };
 };
@@ -659,7 +678,7 @@ export const processHistoryMessageWithExtras = (
   reportFileDownloads?: ReportFileDownload[];
   plannedExecutionSteps?: PlannedExecutionStepView[];
   isStreamingTools?: boolean;
-  toolCalls?: Array<{ id: string; name: string; args: string; status: 'calling' | 'completed'; result?: string }>;
+  toolCalls?: Array<{ id: string; name: string; args: string; status: 'calling' | 'completed' | 'error'; result?: string }>;
 } => {
   if (role !== 'bot') {
     return {
