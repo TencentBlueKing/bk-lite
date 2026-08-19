@@ -203,6 +203,38 @@ class LLMViewSet(PinMixin, AuthViewSet):
         log_operation(request, "create", "opspilot", f"新增智能体: {skill_name}")
         return response
 
+    @staticmethod
+    def _normalize_skill_param_passwords(params, instance: LLMSkill) -> None:
+        old_skill_params = {p.get("key"): p for p in (instance.skill_params or [])}
+        for item in params.get("skill_params", []):
+            if item.get("type") != "password":
+                continue
+            if item.get("value") == "******":
+                old_param = old_skill_params.get(item.get("key"))
+                if old_param:
+                    item["value"] = old_param["value"]
+            else:
+                EncryptMixin.encrypt_field("value", item)
+
+    @staticmethod
+    def _normalize_skill_package_params_for_update(request, params, instance: LLMSkill):
+        """校验并合并 skill_package_params；失败返回 JsonResponse，成功返回 None。"""
+        if "skill_package_params" not in params:
+            return None
+        try:
+            validated = validate_package_params(params.get("skill_package_params"))
+            params["skill_package_params"] = merge_package_params(validated, instance.skill_package_params or {})
+        except ValueError as exc:
+            return JsonResponse({"result": False, "message": str(exc)})
+        param_names = []
+        for items in (params.get("skill_package_params") or {}).values():
+            for item in items or []:
+                if isinstance(item, dict) and item.get("key"):
+                    param_names.append(str(item["key"]))
+        if param_names:
+            log_operation(request, "update", "opspilot", f"编辑智能体技能包参数: {instance.name} 变量: {','.join(param_names)}")
+        return None
+
     @HasPermission("skill_setting-Edit")
     def update(self, request, *args, **kwargs):
         instance: LLMSkill = self.get_object()
@@ -250,29 +282,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 if i.get("type") == "password":
                     EncryptMixin.decrypt_field("value", i)
                     EncryptMixin.encrypt_field("value", i)
-        # 处理 skill_params 中 password 类型的加密/保留
-        old_skill_params = {p.get("key"): p for p in (instance.skill_params or [])}
-        for item in params.get("skill_params", []):
-            if item.get("type") == "password":
-                if item.get("value") == "******":
-                    old_param = old_skill_params.get(item.get("key"))
-                    if old_param:
-                        item["value"] = old_param["value"]
-                else:
-                    EncryptMixin.encrypt_field("value", item)
-        if "skill_package_params" in params:
-            try:
-                validated = validate_package_params(params.get("skill_package_params"))
-                params["skill_package_params"] = merge_package_params(validated, instance.skill_package_params or {})
-            except ValueError as exc:
-                return JsonResponse({"result": False, "message": str(exc)})
-            param_names = []
-            for items in (params.get("skill_package_params") or {}).values():
-                for item in items or []:
-                    if isinstance(item, dict) and item.get("key"):
-                        param_names.append(str(item["key"]))
-            if param_names:
-                log_operation(request, "update", "opspilot", f"编辑智能体技能包参数: {instance.name} 变量: {','.join(param_names)}")
+        self._normalize_skill_param_passwords(params, instance)
+        package_params_error = self._normalize_skill_package_params_for_update(request, params, instance)
+        if package_params_error is not None:
+            return package_params_error
         # F017: 仅允许写入显式白名单内的字段，杜绝把任意 request.data 键
         # 盲目 setattr 到模型（mass-assignment）。受保护字段（id/created_by/
         # domain/is_builtin 等）即便随请求传入也被忽略。

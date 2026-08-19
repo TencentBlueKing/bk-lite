@@ -44,8 +44,8 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
     llm_model_name = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
     skill_params = serializers.SerializerMethodField()
-    skill_package_params = serializers.SerializerMethodField()
     usage_team_name = serializers.SerializerMethodField()
+    skill_package_params = serializers.SerializerMethodField()
 
     def __init__(self, instance=None, data=empty, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)

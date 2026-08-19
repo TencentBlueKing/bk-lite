@@ -57,6 +57,7 @@ const turbopackWebchatAliases = hasWebchatSource
       ])
     )
   : undefined;
+const turbopackRoot = enterpriseLivesOutsideRepo ? workspaceRoot : undefined;
 
 const nextConfig = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
@@ -75,9 +76,9 @@ const nextConfig = withBundleAnalyzer({
     tsconfigPath: 'tsconfig.build.json',
   },
   outputFileTracingRoot: workspaceRoot,
-  turbopack: (enterpriseLivesOutsideRepo || turbopackWebchatAliases)
+  turbopack: (turbopackRoot || turbopackWebchatAliases)
     ? {
-        ...(enterpriseLivesOutsideRepo ? { root: workspaceRoot } : {}),
+        ...(turbopackRoot ? { root: turbopackRoot } : {}),
         ...(turbopackWebchatAliases ? { resolveAlias: turbopackWebchatAliases } : {}),
       }
     : undefined,
