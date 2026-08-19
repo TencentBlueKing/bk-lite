@@ -10,6 +10,7 @@ from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.core.utils.crypto.password_crypto import PasswordCrypto
 from apps.operation_analysis.constants.constants import SECRET_KEY
+from apps.operation_analysis.services.credential_write_policy import validate_credential_write_key
 
 
 class NamespacePasswordDecryptionError(ValueError):
@@ -44,6 +45,7 @@ class NameSpace(MaintainerInfo, TimeInfo):
         if not raw_password:
             return raw_password
 
+        validate_credential_write_key(SECRET_KEY)
         crypto = PasswordCrypto(SECRET_KEY)
         return crypto.encrypt(raw_password)
 
