@@ -4,6 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
+EnvironmentFile=-/etc/fusion-collectors/environment
 ExecStart=/opt/fusion-collectors/collector-sidecar -c /opt/fusion-collectors/sidecar.yml
 User=root
 Group=root

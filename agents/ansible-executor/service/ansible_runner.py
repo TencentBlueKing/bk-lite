@@ -437,10 +437,28 @@ def _mask_sensitive_inventory_content(content: str) -> str:
     return masked
 
 
-def _get_password_auth_ssh_common_args(item: dict[str, Any]) -> str:
+def _get_explicit_ssh_common_args(item: dict[str, Any]) -> str | None:
     explicit_args = item.get("ansible_ssh_common_args") or item.get("ssh_common_args")
     if explicit_args:
         return str(explicit_args)
+    return None
+
+
+def _validate_known_hosts_file(known_hosts_file: str) -> None:
+    path = Path(known_hosts_file)
+    try:
+        if not stat.S_ISREG(path.stat().st_mode):
+            raise ValueError(f"{_SSH_KNOWN_HOSTS_FILE_ENV} must reference a readable regular file")
+        with path.open("rb"):
+            pass
+    except OSError as exc:
+        raise ValueError(f"{_SSH_KNOWN_HOSTS_FILE_ENV} must reference a readable regular file ({type(exc).__name__})") from exc
+
+
+def _get_password_auth_ssh_common_args(item: dict[str, Any]) -> str:
+    explicit_args = _get_explicit_ssh_common_args(item)
+    if explicit_args:
+        return explicit_args
 
     known_hosts_file = os.getenv(_SSH_KNOWN_HOSTS_FILE_ENV, "").strip()
     if known_hosts_file:
@@ -663,6 +681,15 @@ def _extract_meaningful_output(raw_output: str) -> str:
 def _build_host_credentials_inventory(workspace: Path, host_credentials: list[dict[str, Any]]) -> str:
     lines: list[str] = []
     legacy_password_ssh_host_count = 0
+    known_hosts_file = os.getenv(_SSH_KNOWN_HOSTS_FILE_ENV, "").strip()
+    if known_hosts_file and any(
+        item.get("password")
+        and str(item.get("connection", "")).strip().lower() == "ssh"
+        and not _get_explicit_ssh_common_args(item)
+        for item in host_credentials
+    ):
+        _validate_known_hosts_file(known_hosts_file)
+
     for idx, item in enumerate(host_credentials):
         host = str(item.get("host", "")).strip()
         parts = [host]
@@ -696,7 +723,7 @@ def _build_host_credentials_inventory(workspace: Path, host_credentials: list[di
             if str(connection).strip().lower() == "ssh":
                 ssh_common_args = _get_password_auth_ssh_common_args(item)
                 parts.append(f"ansible_ssh_common_args={_quote_inventory_value(ssh_common_args)}")
-                explicit_args = item.get("ansible_ssh_common_args") or item.get("ssh_common_args")
+                explicit_args = _get_explicit_ssh_common_args(item)
                 if not explicit_args and ssh_common_args == _LEGACY_PASSWORD_SSH_COMMON_ARGS:
                     legacy_password_ssh_host_count += 1
 

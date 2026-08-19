@@ -353,7 +353,9 @@ def test_host_credentials_inventory_password_with_hash_survives_shlex_parsing(tm
 
 
 def test_host_credentials_inventory_uses_configured_known_hosts_for_password_ssh(tmp_path, monkeypatch):
-    monkeypatch.setenv("SSH_KNOWN_HOSTS_FILE", "/etc/ansible-executor/known_hosts")
+    known_hosts_file = tmp_path / "known_hosts"
+    known_hosts_file.write_text("", encoding="utf-8")
+    monkeypatch.setenv("SSH_KNOWN_HOSTS_FILE", str(known_hosts_file))
 
     inventory = _build_host_credentials_inventory(
         tmp_path,
@@ -369,9 +371,39 @@ def test_host_credentials_inventory_uses_configured_known_hosts_for_password_ssh
     )
 
     assert "StrictHostKeyChecking=yes" in inventory
-    assert "UserKnownHostsFile=/etc/ansible-executor/known_hosts" in inventory
+    assert f"UserKnownHostsFile={known_hosts_file}" in inventory
     assert "StrictHostKeyChecking=no" not in inventory
     assert "UserKnownHostsFile=/dev/null" not in inventory
+
+
+def test_host_credentials_inventory_rejects_missing_configured_known_hosts(tmp_path, monkeypatch):
+    monkeypatch.setenv("SSH_KNOWN_HOSTS_FILE", str(tmp_path / "missing-known-hosts"))
+
+    with pytest.raises(ValueError, match=r"SSH_KNOWN_HOSTS_FILE.*FileNotFoundError"):
+        _build_host_credentials_inventory(
+            tmp_path,
+            [{"host": "10.0.0.8", "user": "root", "password": "credential", "connection": "ssh"}],
+        )
+
+
+def test_host_credentials_inventory_rejects_unreadable_configured_known_hosts(tmp_path, monkeypatch):
+    known_hosts_file = tmp_path / "known_hosts"
+    known_hosts_file.write_text("", encoding="utf-8")
+    original_open = type(known_hosts_file).open
+
+    def denied_open(path, *args, **kwargs):
+        if path == known_hosts_file:
+            raise PermissionError("denied by test")
+        return original_open(path, *args, **kwargs)
+
+    monkeypatch.setenv("SSH_KNOWN_HOSTS_FILE", str(known_hosts_file))
+    monkeypatch.setattr(type(known_hosts_file), "open", denied_open)
+
+    with pytest.raises(ValueError, match=r"SSH_KNOWN_HOSTS_FILE.*PermissionError"):
+        _build_host_credentials_inventory(
+            tmp_path,
+            [{"host": "10.0.0.8", "user": "root", "password": "credential", "connection": "ssh"}],
+        )
 
 
 def test_host_credentials_inventory_explicit_ssh_args_override_configured_known_hosts(tmp_path, monkeypatch):
