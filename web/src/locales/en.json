@@ -350,6 +350,15 @@
         "queryStatusFailed": "Failed to query authentication status.",
         "startFailed": "Failed to start authentication.",
         "popupBlocked": "Unable to open the authentication page. Please allow new tabs and try again."
+      },
+      "result": {
+        "titleSuccess": "Authentication complete",
+        "titleCancelled": "Authentication cancelled",
+        "titleExpired": "Authentication expired",
+        "titleFailed": "Authentication failed",
+        "defaultMessage": "The original sign-in tab will continue. You can close this tab.",
+        "closeTab": "Close this tab",
+        "closeFailed": "The browser could not close this tab automatically. Please close it yourself. The original sign-in tab will continue."
       }
     },
     "languageToggle": {
