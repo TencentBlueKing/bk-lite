@@ -1,4 +1,5 @@
 [[inputs.diskio]]
+    startup_error_behavior = "retry"
     interval = "{{ interval }}s"
     [inputs.diskio.tags]
         instance_id = "{{ instance_id }}"

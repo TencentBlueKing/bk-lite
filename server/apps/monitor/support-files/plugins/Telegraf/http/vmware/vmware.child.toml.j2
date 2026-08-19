@@ -1,4 +1,5 @@
 [[inputs.prometheus]]
+    startup_error_behavior = "retry"
     urls = ["${STARGAZER_URL}/api/monitor/{{ instance_type }}/metrics"]
     interval = "{{ interval | default(60, true) }}s"
     timeout = "{{ timeout | default(60, true) }}s"

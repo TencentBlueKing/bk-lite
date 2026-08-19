@@ -1,4 +1,5 @@
 [[inputs.haproxy]]
+    startup_error_behavior = "retry"
     servers = ["{{ url }}"]
     {% if username %}
     username = "{{ username }}"

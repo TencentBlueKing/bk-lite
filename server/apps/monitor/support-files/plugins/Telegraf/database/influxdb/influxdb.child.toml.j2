@@ -1,4 +1,5 @@
 [[inputs.influxdb]]
+    startup_error_behavior = "retry"
     urls = ["{{ server }}"]
     interval = "{{ interval }}s"
     {% if username %}

@@ -1,4 +1,5 @@
 [[inputs.http_response]]
+    startup_error_behavior = "retry"
     urls = ["{{ request_url | default(url, true) }}"]
     interval = "{{ interval }}s"
     insecure_skip_verify = {{ insecure_skip_verify | default(false, true) | lower }}
