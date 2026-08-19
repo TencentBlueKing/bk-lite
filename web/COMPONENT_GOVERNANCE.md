@@ -380,6 +380,15 @@ Agent 日常入口：根 `CLAUDE.md` / `AGENTS.md`「Web UI 硬约束」；**勿
 - 样式：shared tip 正文改为 className；K8s 采集/接入表单宽 `w-[300px]`；Monitor `batchEditModal` 双列布局 Tailwind。`GroupTreeSelect` 仍走组件 `style` 契约；图表 tooltip / 机柜画布 / 动态图标尺寸不迁。
 - 门禁：`pnpm check:component-ownership` 通过（113 records；Node v24.18.0）。
 
+### 合并最新 master 后事件驱动(2026-08 Cycle 27)
+
+- 快进合并 `origin/master`（`ffb17f781` → `8bf11504a`，约 86 提交），无冲突。
+- CompactEmptyState：`apm-route-shell`、Monitor 指标目录空态、APM 服务错误 Trace 空态、explore endpoints 样本 Trace 空态。
+- 样式：`reportToolbar` 图标字号 → `text-base`；`singleValueSettingsSection` 控件宽 → Tailwind（保留 AntD `dropdownStyle` 滚动契约）；触摸处 `text-gray-400` → token。
+- 门禁修复：`chart-legend` 测试去掉对 `@/app/ops-analysis` 的反向引用（ops 图例契约留在 app-local）。
+- 显式不迁：带 CTA 的 Empty（应用筛选清除、报表添加组件、SLO 配置）；订阅/List 表内 emptyText；图表 legend / auto-fit 动态尺寸；ops-analysis `chartLegend` 仍为 app-local（含 scale/主题语义）。
+- 门禁：`pnpm check:component-ownership`。
+
 ### 已知 Storybook 构建阻塞
 
 - Node 24 全量 `pnpm build-storybook` 在 webpack `WasmHash._updateWithBuffer` 崩溃(#0125)。MoreActionsDropdown 的 Storybook 契约暂时以单文件 + 定向 ESLint 保障。

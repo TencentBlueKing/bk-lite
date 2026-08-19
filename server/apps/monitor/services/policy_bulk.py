@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 
 from apps.monitor.utils.unit_converter import UnitConverter
@@ -48,6 +49,51 @@ def _merge_asset_organizations(assets: list[dict[str, Any]]) -> list[Any]:
     return organizations
 
 
+def _template_metric_name(template: dict[str, Any]) -> str:
+    """与前端 getTemplateMetricName 对齐：优先顶层 metric_name，再回落到 query_condition。"""
+    metric = str(template.get("metric_name") or "").strip()
+    if metric:
+        return metric
+    query = template.get("query_condition") or {}
+    if isinstance(query, dict):
+        return str(query.get("metric_name") or "").strip()
+    return ""
+
+
+def build_distinct_policy_names(
+    templates: list[dict[str, Any]],
+    name_prefix: str = "",
+) -> list[str]:
+    prefix = (name_prefix or "").strip()
+    bases: list[str] = []
+    metrics: list[str] = []
+    template_names: list[str] = []
+    for template in templates:
+        metric = _template_metric_name(template)
+        template_name = str(template.get("name") or metric or "").strip()
+        base = "-".join(part for part in [prefix, template_name] if part) or metric or "策略"
+        bases.append(base)
+        metrics.append(metric)
+        template_names.append(template_name)
+
+    base_counts = Counter(bases)
+    used: set[str] = set()
+    names: list[str] = []
+    for index, base in enumerate(bases):
+        name = base
+        metric = metrics[index]
+        if base_counts[base] > 1 and metric and metric != template_names[index]:
+            name = f"{name}-{metric}"
+        candidate = name
+        suffix = 2
+        while candidate in used:
+            candidate = f"{name}-{suffix}"
+            suffix += 1
+        used.add(candidate)
+        names.append(candidate)
+    return names
+
+
 def build_bulk_policy_payloads(
     *,
     monitor_object_id: int,
@@ -59,13 +105,13 @@ def build_bulk_policy_payloads(
     name_prefix = (config.get("name_prefix") or "").strip()
     instance_ids = [str(asset["instance_id"]) for asset in assets]
     organizations = _merge_asset_organizations(assets)
-    for template in templates:
+    policy_names = build_distinct_policy_names(templates, name_prefix)
+    for template, policy_name in zip(templates, policy_names):
         group_algorithm, algorithm = normalize_template_algorithms(template)
         metric_unit = template.get("metric_unit") or ""
         default_calculation_unit = normalize_default_calculation_unit(metric_unit)
         group_by = config.get("group_by") or template.get("group_by") or ["instance_id"]
         template_name = template.get("name") or template.get("metric_name") or ""
-        policy_name = "-".join(part for part in [name_prefix, template_name] if part)
         enable_alerts = config.get("enable_alerts") or ["threshold"]
         payload = {
             "name": policy_name,

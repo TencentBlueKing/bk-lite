@@ -162,15 +162,18 @@ class CollectionApplication:
     ) -> None:
         self.settings = settings or CollectionApplicationSettings()
         self._redis = redis_client
+        self._metrics = CollectionMetrics()
         if plugin_factory is None:
             from service.collection_service import CollectionService
+            from service.node_info_loader import load_node_infos
 
             plugin_factory = UnifiedPluginFactory(
-                configuration_service_factory=CollectionService
+                configuration_service_factory=CollectionService,
+                configuration_node_info_loader=load_node_infos,
+                metrics=self._metrics,
             )
         self._plugin_factory = plugin_factory
         self._preflight = preflight or AsyncProtocolPreflight()
-        self._metrics = CollectionMetrics()
         if publisher is None:
             from core.infra.credential_state_cache import CredentialStateCache
 
@@ -349,7 +352,19 @@ class CollectionApplication:
             plan=plan,
             scheduler=self._scheduler,
         )
-        return await executor.execute(request, lease)
+        try:
+            return await executor.execute(request, lease)
+        finally:
+            close_plugin = getattr(plugin, "close", None)
+            if callable(close_plugin):
+                try:
+                    await close_plugin()
+                except Exception:  # noqa: BLE001 - 清理失败不覆盖 Run 原始结果
+                    logger.exception(
+                        "event=collection_plugin_close_failed task_id=%s plugin_ref=%s",
+                        request.task_id,
+                        request.plugin_ref,
+                    )
 
     async def stats(self) -> dict:
         redis_ok = False

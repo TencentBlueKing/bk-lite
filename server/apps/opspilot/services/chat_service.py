@@ -643,6 +643,10 @@ class ChatService:
         # 用于 backend 物化,绕开 substring 匹配丢包。
         if kwargs.get("enabled_skill_packages") is not None:
             extra_config["enabled_skill_packages"] = kwargs.get("enabled_skill_packages") or []
+        if kwargs.get("skill_id") is not None:
+            extra_config["skill_id"] = kwargs.get("skill_id")
+        if kwargs.get("skill_package_params_overlay") is not None:
+            extra_config["skill_package_params_overlay"] = kwargs.get("skill_package_params_overlay")
 
         if kwargs["skill_type"] != SkillTypeChoices.KNOWLEDGE_TOOL:
             ChatService._process_tools_and_extra_config(kwargs, chat_kwargs, extra_config)

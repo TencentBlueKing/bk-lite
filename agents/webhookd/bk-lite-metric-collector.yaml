@@ -98,8 +98,7 @@ automountServiceAccountToken: false
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kube-state-metrics
-  namespace: bk-lite-collector
+  name: bk-lite-kube-state-metrics
   labels:
     app.kubernetes.io/component: exporter
     app.kubernetes.io/name: kube-state-metrics
@@ -228,8 +227,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kube-state-metrics
-  namespace: bk-lite-collector
+  name: bk-lite-kube-state-metrics
   labels:
     app.kubernetes.io/component: exporter
     app.kubernetes.io/name: kube-state-metrics
@@ -237,7 +235,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kube-state-metrics
+  name: bk-lite-kube-state-metrics
 subjects:
 - kind: ServiceAccount
   name: kube-state-metrics
@@ -500,8 +498,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: vmagent-role
-  namespace: bk-lite-collector
+  name: bk-lite-vmagent
 rules:
 - apiGroups: [""]
   resources:
@@ -517,12 +514,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: vmagent-role-binding
-  namespace: bk-lite-collector
+  name: bk-lite-vmagent
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: vmagent-role
+  name: bk-lite-vmagent
 subjects:
 - kind: ServiceAccount
   name: vmagent

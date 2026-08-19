@@ -27,6 +27,10 @@ import MarkdownRenderer from "@/components/markdown";
 import { useWikiApi } from "@/app/opspilot/api/wiki";
 import { LlmModel } from "@/app/opspilot/types/skill";
 import { WikiKnowledgeBase } from "@/app/opspilot/types/wiki";
+import {
+  getModelOptionText,
+  renderModelOptionLabel,
+} from "@/app/opspilot/utils/modelOption";
 
 type SectionKey = "basic" | "purpose" | "danger";
 
@@ -318,9 +322,11 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         >
           <Select
             placeholder={t("wiki.llmModelPlaceholder")}
+            optionFilterProp="title"
             options={llmModels.map((m) => ({
               value: m.id,
-              label: m.name,
+              label: renderModelOptionLabel(m),
+              title: getModelOptionText(m),
               disabled: !m.enabled,
             }))}
           />
@@ -333,9 +339,11 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           <Select
             allowClear
             placeholder={t("wiki.visionModelPlaceholder")}
+            optionFilterProp="title"
             options={llmModels.map((m) => ({
               value: m.id,
-              label: m.name,
+              label: renderModelOptionLabel(m),
+              title: getModelOptionText(m),
               disabled: !m.enabled,
             }))}
           />

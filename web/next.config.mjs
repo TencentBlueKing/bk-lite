@@ -24,6 +24,40 @@ function commonFilesystemRoot(left, right) {
 const workspaceRoot = enterpriseWebRoot
   ? commonFilesystemRoot(repositoryRoot, enterpriseWebRoot)
   : undefined;
+// 企业版若在仓库内（submodule / junction），common root 就是仓库根。
+// 此时把 turbopack.root 抬到仓库根，PostCSS 会从仓库根 resolve 插件，
+// 找不到 web/node_modules 里的 @tailwindcss/postcss。
+// 仅当企业版源码在仓库外（兄弟目录）时才抬升 Turbopack 根。
+const enterpriseLivesOutsideRepo = Boolean(
+  workspaceRoot && path.resolve(workspaceRoot) !== path.resolve(repositoryRoot)
+);
+
+const webchatUiEmbed = path.resolve(repositoryRoot, 'webchat/packages/webchat-ui/src/embed.ts');
+const webchatCoreSrc = path.resolve(repositoryRoot, 'webchat/packages/webchat-core/src/index.ts');
+const hasWebchatSource = fs.existsSync(webchatUiEmbed);
+
+// Turbopack treats alias values starting with `/` as server-relative to `turbopack.root`,
+// not filesystem paths. Keep webpack on absolute paths; give Turbopack cwd-relative ones.
+function toTurbopackAlias(absolutePath) {
+  const relative = path.relative(process.cwd(), absolutePath).split(path.sep).join('/');
+  return relative.startsWith('.') ? relative : `./${relative}`;
+}
+
+const webpackWebchatAliases = hasWebchatSource
+  ? {
+      '@webchat/ui': webchatUiEmbed,
+      '@webchat/core': webchatCoreSrc,
+    }
+  : undefined;
+const turbopackWebchatAliases = hasWebchatSource
+  ? Object.fromEntries(
+      Object.entries(webpackWebchatAliases).map(([key, absolutePath]) => [
+        key,
+        toTurbopackAlias(absolutePath),
+      ])
+    )
+  : undefined;
+const turbopackRoot = enterpriseLivesOutsideRepo ? workspaceRoot : undefined;
 
 const nextConfig = withBundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
@@ -37,14 +71,26 @@ const nextConfig = withBundleAnalyzer({
     implementation: 'sass-embedded',
   },
   staticPageGenerationTimeout: 300,
-  transpilePackages: ['@antv/g6', '@antv/xflow'],
+  transpilePackages: ['@antv/g6', '@antv/xflow', '@webchat/ui', '@webchat/core', '@ag-ui/core'],
   typescript: {
     tsconfigPath: 'tsconfig.build.json',
   },
   outputFileTracingRoot: workspaceRoot,
-  turbopack: workspaceRoot
-    ? { root: workspaceRoot }
+  turbopack: (turbopackRoot || turbopackWebchatAliases)
+    ? {
+        ...(turbopackRoot ? { root: turbopackRoot } : {}),
+        ...(turbopackWebchatAliases ? { resolveAlias: turbopackWebchatAliases } : {}),
+      }
     : undefined,
+  webpack: (config) => {
+    if (webpackWebchatAliases) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        ...webpackWebchatAliases,
+      };
+    }
+    return config;
+  },
   experimental: {
     externalDir: true,
     // 16.0.x 稳定版仅允许 Dev 缓存；ForBuild 需 canary / ≥16.3 才可显式开启

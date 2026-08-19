@@ -11,7 +11,7 @@ export interface PlannedStepToolCall {
   id: string;
   name: string;
   args: string;
-  status: 'calling' | 'completed';
+  status: 'calling' | 'completed' | 'error';
   result?: string;
 }
 
@@ -22,6 +22,7 @@ interface PlannedExecutionStepsProps {
 }
 
 const statusLabel = (status: PlannedExecutionStepData['status'], isStreaming: boolean) => {
+  if (status === 'failed') return '失败';
   if (status === 'running' && isStreaming) return '执行中';
   if (status === 'done') return '已完成';
   return '执行中';
@@ -57,7 +58,7 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
           next.add(step.step_index);
           changed = true;
         }
-        if (!shouldOpen && next.has(step.step_index) && step.status === 'done') {
+        if (!shouldOpen && next.has(step.step_index) && (step.status === 'done' || step.status === 'failed')) {
           next.delete(step.step_index);
           changed = true;
         }
@@ -70,7 +71,8 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
 
   const toolById = new Map(toolCalls.map((tool) => [tool.id, tool]));
   const totalSteps = Math.max(...steps.map((step) => step.total_steps), steps.length);
-  const doneCount = steps.filter((step) => step.status === 'done').length;
+  const doneCount = steps.filter((step) => step.status === 'done' || step.status === 'failed').length;
+  const failedCount = steps.filter((step) => step.status === 'failed').length;
   const running = steps.find((step) => step.status === 'running');
 
   const toggleStep = (stepIndex: number) => {
@@ -95,7 +97,9 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
         <span className="text-xs text-[var(--color-text-3)] tabular-nums">
           {isStreaming
             ? `步骤 ${running?.step_index ?? doneCount}/${totalSteps}`
-            : `已完成 ${doneCount} 步`}
+            : failedCount > 0
+              ? `完成 ${doneCount} 步 · ${failedCount} 步失败`
+              : `已完成 ${doneCount} 步`}
         </span>
       </div>
 
@@ -106,6 +110,7 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
             .map((id) => toolById.get(id))
             .filter((tool): tool is PlannedStepToolCall => Boolean(tool));
           const isActive = step.status === 'running' && isStreaming;
+          const isFailed = step.status === 'failed';
 
           return (
             <div key={step.step_index} className="rounded-md">
@@ -131,7 +136,13 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
                 </span>
                 <span
                   className="shrink-0 text-xs"
-                  style={{ color: isActive ? 'var(--color-primary-6)' : 'var(--color-text-4)' }}
+                  style={{
+                    color: isFailed
+                      ? 'var(--color-error)'
+                      : isActive
+                        ? 'var(--color-primary-6)'
+                        : 'var(--color-text-4)',
+                  }}
                 >
                   {statusLabel(step.status, isStreaming)}
                 </span>

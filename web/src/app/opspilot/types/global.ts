@@ -91,15 +91,16 @@ export interface PlannedExecutionStepView {
   step_index: number;
   total_steps: number;
   objective: string;
-  status: 'running' | 'done';
+  status: 'running' | 'done' | 'failed';
   toolCallIds: string[];
+  error?: string;
 }
 
 export interface PlannedStepToolCallView {
   id: string;
   name: string;
   args: string;
-  status: 'calling' | 'completed';
+  status: 'calling' | 'completed' | 'error';
   result?: string;
 }
 

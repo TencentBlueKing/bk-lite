@@ -139,7 +139,7 @@ assert.deepEqual(preview.map((item) => item.name), [
   '批量策略-内存使用率过高',
 ]);
 assert.equal(preview[0].metricLabel, 'Host Remote - cpu_usage_total');
-assert.equal(preview[0].assetScopeLabel, '覆盖 2 台主机：host-a、host-b');
+assert.equal(preview[0].assetScopeLabel, '覆盖 2 个实例：host-a、host-b');
 assert.equal(preview[0].statusLabel, '启用');
 
 const payload = buildBulkApplyPayload({

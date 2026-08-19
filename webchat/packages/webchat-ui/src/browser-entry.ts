@@ -3,6 +3,7 @@
  * This file creates a global WebChat object for script injection
  */
 
+import './styles/tailwind.css';
 import './styles/chat.css';
 import './styles/floating-button.css';
 import { Chat } from './Chat';

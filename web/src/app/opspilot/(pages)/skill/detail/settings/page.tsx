@@ -10,9 +10,16 @@ import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
 import CompactEmptyState from '@/components/compact-empty-state';
 import SearchActionBar from '@/components/search-action-bar';
 import PermissionWrapper from '@/components/permission';
-import { SkillPackage } from '@/app/opspilot/types/skill';
+import { SkillPackage, SkillPackageParam } from '@/app/opspilot/types/skill';
 import { SelectTool } from '@/app/opspilot/types/tool';
 import ToolSelector from '@/app/opspilot/components/skill/toolSelector';
+import SkillPackageParamsModal, {
+  countFilledParams,
+  listMissingRequiredParams,
+  mergeDeclaredParams,
+  resolvePackageVariables,
+  withResolvedVariables,
+} from '@/app/opspilot/components/skill/skillPackageParamsModal';
 import EditablePasswordField from '@/components/dynamic-form/editPasswordField';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
@@ -66,6 +73,9 @@ const SkillSettingsPage: React.FC = () => {
   const [isSkillPickerOpen, setIsSkillPickerOpen] = useState(false);
   const [skillPickerKeyword, setSkillPickerKeyword] = useState('');
   const [draftSkillAssetKeys, setDraftSkillAssetKeys] = useState<string[]>([]);
+  const [skillPackageParams, setSkillPackageParams] = useState<Record<string, SkillPackageParam[]>>({});
+  const [editingSkillPackage, setEditingSkillPackage] = useState<SkillPackage | null>(null);
+  const [pendingRemoveAsset, setPendingRemoveAsset] = useState<SkillPackage | null>(null);
 
   const syncSkillParamsFromPrompt = useCallback((promptText: string) => {
     const validRegex = /\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}/g;
@@ -122,6 +132,7 @@ const SkillSettingsPage: React.FC = () => {
         setSelectedTools(normalizeMonitorToolConfigs(data.tools as SelectTool[]));
         setToolEnabled(!!data.tools.length);
         setSelectedSkillAssetKeys((data.skill_packages || []).map((pkg: SkillPackage) => getPackageKey(pkg)));
+        setSkillPackageParams(data.skill_package_params || {});
 
         setSkillPermissions(data.permissions || []);
       } catch (error) {
@@ -139,7 +150,7 @@ const SkillSettingsPage: React.FC = () => {
           fetchSkillPackages({ is_enabled: 1 }),
         ]);
         setLlmModels(llmModelsData as { id: number; name: string; enabled: boolean; llm_model_type: string; vendor_name?: string; }[]);
-        setAvailableSkillAssets(skillPackageData.items || []);
+        setAvailableSkillAssets((skillPackageData.items || []).map(withResolvedVariables));
         fetchKnowledgeBases()
           .then(setWikiKbs)
           .catch(() => undefined);
@@ -179,6 +190,7 @@ const SkillSettingsPage: React.FC = () => {
         enable_query_rewrite: values.enable_query_rewrite,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
         wiki_knowledge_bases: values.wiki_knowledge_bases || [],
+        skill_package_params: skillPackageParams,
         skill_packages: effectiveSkillCapabilityProfiles.map((pkg) => ({
           id: pkg.id,
           package_id: pkg.package_id,
@@ -192,7 +204,14 @@ const SkillSettingsPage: React.FC = () => {
       };
       setSaveLoading(true);
       await saveSkillDetail(id, payload);
-      message.success(t('common.saveSuccess'));
+      const missingOnSave = effectiveSkillCapabilityProfiles.flatMap((pkg) =>
+        listMissingRequiredParams(pkg, skillPackageParams[pkg.package_id]).map((name) => `${pkg.name} / ${name}`)
+      );
+      if (missingOnSave.length > 0) {
+        message.warning(t('skill.skillPackageParams.saveWarning', '以下技能包缺少必填变量，运行时将不可用：{names}', { names: missingOnSave.join('；') }));
+      } else {
+        message.success(t('common.saveSuccess'));
+      }
       refreshSkillInfo();
     } catch (error) {
       console.error(t('common.saveFailed'), error);
@@ -257,6 +276,7 @@ const SkillSettingsPage: React.FC = () => {
         enable_suggest: values.enable_suggest,
         enable_query_rewrite: values.enable_query_rewrite,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
+        skill_package_params: skillPackageParams,
         skill_packages: effectiveSkillCapabilityProfiles.map((pkg) => ({
           id: pkg.id,
           package_id: pkg.package_id,
@@ -338,11 +358,52 @@ const SkillSettingsPage: React.FC = () => {
 
   const handleConfirmSkillPicker = () => {
     setSelectedSkillAssetKeys(draftSkillAssetKeys);
+    // 新挂载的包立刻按声明预填空行，避免打开弹窗时看起来像「0 个内置参数」
+    setSkillPackageParams((prev) => {
+      const next = { ...prev };
+      for (const key of draftSkillAssetKeys) {
+        const pkg = availableSkillAssets.find((item) => getPackageKey(item) === key);
+        if (!pkg?.package_id) continue;
+        const existing = next[pkg.package_id];
+        if (existing && existing.length > 0) continue;
+        const declared = resolvePackageVariables(pkg);
+        if (!declared.length) continue;
+        next[pkg.package_id] = mergeDeclaredParams(withResolvedVariables(pkg), existing || []);
+      }
+      return next;
+    });
     setIsSkillPickerOpen(false);
   };
 
-  const handleRemoveSkillAsset = (assetKey: string) => {
+  const handleRemoveSkillAsset = (asset: SkillPackage) => {
+    if (countFilledParams(skillPackageParams[asset.package_id]) === 0) {
+      setSelectedSkillAssetKeys((prev) => prev.filter((key) => key !== getPackageKey(asset)));
+      if (asset.package_id) {
+        setSkillPackageParams((prev) => {
+          if (!(asset.package_id in prev)) return prev;
+          const next = { ...prev };
+          delete next[asset.package_id];
+          return next;
+        });
+      }
+      return;
+    }
+    setPendingRemoveAsset(asset);
+  };
+
+  const confirmRemoveSkillAsset = (dropParams: boolean) => {
+    if (!pendingRemoveAsset) return;
+    const assetKey = getPackageKey(pendingRemoveAsset);
+    const packageId = pendingRemoveAsset.package_id;
     setSelectedSkillAssetKeys((prev) => prev.filter((key) => key !== assetKey));
+    if (dropParams && packageId) {
+      setSkillPackageParams((prev) => {
+        const next = { ...prev };
+        delete next[packageId];
+        return next;
+      });
+    }
+    setPendingRemoveAsset(null);
   };
 
   const toggleDraftSkillAsset = (assetKey: string, checked: boolean) => {
@@ -365,20 +426,49 @@ const SkillSettingsPage: React.FC = () => {
           <span className="col-span-full text-xs text-[var(--color-text-4)]">未选择</span>
         ) : (
           effectiveSkillCapabilityProfiles.map((asset) => {
-            const assetKey = getPackageKey(asset);
+            const resolvedAsset = withResolvedVariables(asset);
+            const assetKey = getPackageKey(resolvedAsset);
+            const params = skillPackageParams[resolvedAsset.package_id] || [];
+            const missing = listMissingRequiredParams(resolvedAsset, params);
+            const filled = countFilledParams(params);
+            const declaredCount = resolvePackageVariables(resolvedAsset).length;
+            const hasIssue = missing.length > 0;
+            const hint = declaredCount > 0
+              ? t('skill.skillPackageParams.buttonHint', '技能包声明 {declared} 项，已配置 {filled} 项', { declared: declaredCount, filled })
+              : t('skill.skillPackageParams.buttonHintCustom', '自定义变量 {filled} 项', { filled });
             return (
               <div
                 key={assetKey}
-                className="flex w-full items-center justify-between rounded-md border border-[var(--color-border)] bg-[var(--color-bg-1)] px-4 py-2"
+                className="flex w-full flex-col rounded-md border border-[var(--color-border)] bg-[var(--color-bg-1)] px-4 py-2"
               >
-                <div className="flex min-w-0 items-center">
-                  <Icon type="jinengpeixun" className="mr-1 shrink-0 text-xl" />
-                  <span className="truncate text-sm font-medium text-[var(--color-text-1)]">{asset.name}</span>
+                <div className="flex w-full items-center justify-between">
+                  <div className="flex min-w-0 items-center">
+                    <Icon type="jinengpeixun" className="mr-1 shrink-0 text-xl" />
+                    <span className="truncate text-sm font-medium text-[var(--color-text-1)]">{resolvedAsset.name}</span>
+                  </div>
+                  <div className="ml-3 flex shrink-0 items-center gap-1">
+                    <Button
+                      type="link"
+                      size="small"
+                      className={hasIssue ? 'px-1 text-orange-500' : 'px-1'}
+                      title={hasIssue ? t('skill.skillPackageParams.missingRequired', '缺少必填变量：{names}', { names: missing.join('、') }) : hint}
+                      onClick={() => setEditingSkillPackage(resolvedAsset)}
+                    >
+                      {hasIssue
+                        ? t('skill.skillPackageParams.buttonMissing', '变量 缺 {count} 项必填', { count: missing.length })
+                        : t('skill.skillPackageParams.button', '变量 {count}', { count: filled })}
+                    </Button>
+                    <DeleteOutlined
+                      className="cursor-pointer text-[var(--color-text-3)] transition-colors hover:text-[var(--color-primary)]"
+                      onClick={() => handleRemoveSkillAsset(asset)}
+                    />
+                  </div>
                 </div>
-                <DeleteOutlined
-                  className="ml-3 cursor-pointer text-[var(--color-text-3)] transition-colors hover:text-[var(--color-primary)]"
-                  onClick={() => handleRemoveSkillAsset(assetKey)}
-                />
+                {hasIssue && (
+                  <div className="mt-1 text-xs text-orange-500">
+                    {t('skill.skillPackageParams.missingRequired', '缺少必填变量：{names}', { names: missing.join('、') })}
+                  </div>
+                )}
               </div>
             );
           })
@@ -455,6 +545,50 @@ const SkillSettingsPage: React.FC = () => {
   return (
     <div className="relative">
       {renderSkillPickerModal()}
+      <SkillPackageParamsModal
+        open={!!editingSkillPackage}
+        pkg={editingSkillPackage}
+        items={editingSkillPackage ? (skillPackageParams[editingSkillPackage.package_id] || []) : []}
+        onCancel={() => setEditingSkillPackage(null)}
+        onOk={(nextItems) => {
+          if (editingSkillPackage?.package_id) {
+            setSkillPackageParams((prev) => ({
+              ...prev,
+              [editingSkillPackage.package_id]: nextItems,
+            }));
+          }
+          setEditingSkillPackage(null);
+        }}
+      />
+      <Modal
+        title={t('skill.skillPackageParams.removeTitle')}
+        open={!!pendingRemoveAsset}
+        onCancel={() => setPendingRemoveAsset(null)}
+        footer={[
+          <Button key="cancel" onClick={() => setPendingRemoveAsset(null)}>
+            {t('common.cancel')}
+          </Button>,
+          <Button key="keep" onClick={() => confirmRemoveSkillAsset(false)}>
+            {t('skill.skillPackageParams.removeKeep')}
+          </Button>,
+          <Button key="drop" type="primary" danger onClick={() => confirmRemoveSkillAsset(true)}>
+            {t('skill.skillPackageParams.removeDrop')}
+          </Button>,
+        ]}
+      >
+        {pendingRemoveAsset && (
+          <p>
+            {t(
+              'skill.skillPackageParams.removeContent',
+              '确认从本智能体移除 {name}？该技能包下已配置 {count} 个变量。',
+              {
+                name: pendingRemoveAsset.name,
+                count: countFilledParams(skillPackageParams[pendingRemoveAsset.package_id]),
+              },
+            )}
+          </p>
+        )}
+      </Modal>
       {allLoading && (
         <div className="absolute inset-0 min-h-[500px] bg-opacity-50 z-50 flex items-center justify-center">
           <Spin spinning={allLoading} />

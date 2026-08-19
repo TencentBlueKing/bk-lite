@@ -6,7 +6,7 @@ interface ToolCallData {
   id: string;
   name: string;
   args: string;
-  status: 'calling' | 'completed';
+  status: 'calling' | 'completed' | 'error';
   result?: string;
 }
 
@@ -81,6 +81,7 @@ const ToolItem: React.FC<{ tool: ToolCallData }> = ({ tool }) => {
   const hasDetail = !!(tool.args && tool.args !== '{}') || !!tool.result;
   const argsFormatted = formatJson(tool.args);
   const isCalling = tool.status === 'calling';
+  const isError = tool.status === 'error';
 
   return (
     <div className="pl-5">
@@ -94,6 +95,8 @@ const ToolItem: React.FC<{ tool: ToolCallData }> = ({ tool }) => {
         <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
           {isCalling ? (
             <ToolSpinner />
+          ) : isError ? (
+            <span className="text-xs text-[var(--color-error)]">✕</span>
           ) : (
             <span className="text-xs text-[var(--color-success)]">✓</span>
           )}
@@ -137,9 +140,10 @@ const ToolItem: React.FC<{ tool: ToolCallData }> = ({ tool }) => {
 
 const ToolCallGroup: React.FC<ToolCallGroupProps> = ({ toolCalls, isStreaming }) => {
   const [expanded, setExpanded] = useState(false);
-  const completedCount = toolCalls.filter(t => t.status === 'completed').length;
+  const finishedCount = toolCalls.filter(t => t.status === 'completed' || t.status === 'error').length;
+  const hasError = toolCalls.some(t => t.status === 'error');
   const totalCount = toolCalls.length;
-  const hasRunning = completedCount < totalCount;
+  const hasRunning = finishedCount < totalCount;
   const shouldAutoExpand = isStreaming || hasRunning;
 
   const isExpanded = shouldAutoExpand || expanded;
@@ -157,6 +161,8 @@ const ToolCallGroup: React.FC<ToolCallGroupProps> = ({ toolCalls, isStreaming })
         <span className="inline-flex items-center">
           {hasRunning ? (
             <ToolSpinner />
+          ) : hasError ? (
+            <span className="text-xs text-[var(--color-error)]">✕</span>
           ) : (
             <span className="text-xs text-[var(--color-success)]">✓</span>
           )}

@@ -16,6 +16,7 @@ import { useLevelList } from '@/app/monitor/hooks';
 import { OBJECT_DEFAULT_ICON, LEVEL_MAP } from '@/app/monitor/constants';
 import Permission from '@/components/permission';
 import { formatUserDisplayName } from '@/utils/userDisplay';
+import { getPolicySecondaryContext } from '@/app/monitor/utils/policyDisplayName';
 import { buildAlertDimensionDisplayItems } from './alertDimensionUtils';
 
 interface InformationProps extends TableDataItem {
@@ -178,7 +179,25 @@ const Information: React.FC<InformationProps> = ({
           )}
         </Descriptions.Item>
         <Descriptions.Item label={t('monitor.events.strategyName')}>
-          {formData.policy?.name || '--'}
+          {(() => {
+            const monitorObj = objects.find(
+              (item: ObjectItem) => item.id === formData.policy?.monitor_object
+            );
+            const secondary = getPolicySecondaryContext({
+              ...formData.policy,
+              monitor_object_display_name: monitorObj?.display_name || monitorObj?.name
+            });
+            return (
+              <div>
+                <div>{formData.policy?.name || '--'}</div>
+                {secondary ? (
+                  <div className="mt-0.5 text-[12px] leading-4 text-[var(--color-text-3)]">
+                    {secondary}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })()}
         </Descriptions.Item>
         {formData.status === 'closed' && (
           <Descriptions.Item label={t('monitor.events.alertEndTime')}>

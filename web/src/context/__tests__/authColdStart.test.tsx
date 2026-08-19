@@ -157,6 +157,53 @@ describe('AuthProvider protected content lifecycle', () => {
     expect(mocks.recoverAuthWithRetry).toHaveBeenCalledTimes(2);
   });
 
+  it('does not let an in-flight expired probe swallow a successful relogin', async () => {
+    let resolveStaleProbe: ((value: typeof validRecovery | { status: 'unavailable' }) => void) | undefined;
+    const staleProbe = new Promise<typeof validRecovery | { status: 'unavailable' }>((resolve) => {
+      resolveStaleProbe = resolve;
+    });
+
+    mocks.recoverAuthWithRetry
+      .mockImplementationOnce(() => staleProbe)
+      .mockResolvedValueOnce(validRecovery);
+
+    render(
+      <AuthProvider>
+        <BusinessPage />
+      </AuthProvider>,
+    );
+
+    await waitFor(() => {
+      expect(mocks.recoverAuthWithRetry).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      emitSessionExpired({ reason: 'test-stale-probe-during-relogin', status: 401 });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('common.sessionExpiredTitle')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'complete-login' }));
+
+    await waitFor(() => {
+      expect(mocks.recoverAuthWithRetry).toHaveBeenCalledTimes(2);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('business-page')).toBeTruthy();
+    });
+    expect(screen.queryByText('common.sessionExpiredTitle')).toBeNull();
+
+    await act(async () => {
+      resolveStaleProbe?.({ status: 'unavailable' });
+    });
+
+    expect(screen.getByText('business-page')).toBeTruthy();
+    expect(screen.queryByText('common.sessionExpiredTitle')).toBeNull();
+  });
+
   it('keeps an already mounted page and its draft during reauthentication', async () => {
     mocks.recoverAuthWithRetry.mockResolvedValue(validRecovery);
 

@@ -23,9 +23,15 @@ function commonFilesystemRoot(left, right) {
 }
 
 const expectedRoot = commonFilesystemRoot(repositoryRoot, enterpriseRoot);
+const enterpriseLivesOutsideRepo =
+  path.resolve(expectedRoot) !== path.resolve(repositoryRoot);
 
 assert.equal(config.outputFileTracingRoot, expectedRoot);
-assert.equal(config.turbopack?.root, expectedRoot);
+if (enterpriseLivesOutsideRepo) {
+  assert.equal(config.turbopack?.root, expectedRoot);
+} else {
+  assert.equal(config.turbopack?.root, undefined);
+}
 
 const enterpriseRelativePath = path.relative(expectedRoot, enterpriseRoot);
 assert.ok(

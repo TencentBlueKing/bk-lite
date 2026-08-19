@@ -89,6 +89,14 @@
             "Test",
             "Mark"
           ]
+        },
+        {
+          "id": "skill_channel",
+          "name": "Agent Channel Publish",
+          "operation": [
+            "View",
+            "Edit"
+          ]
         }
       ]
     },
@@ -155,6 +163,7 @@
         "provide_list-View",
         "skill_list-View",
         "skill_setting-View",
+        "skill_channel-View",
         "memory_list-View"
       ]
     }

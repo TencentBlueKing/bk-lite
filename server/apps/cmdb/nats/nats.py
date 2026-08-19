@@ -1112,6 +1112,29 @@ def receive_collect_credential_result(data: dict):
 
 
 @nats_client.register
+def receive_scan_credential_result(data: dict):
+    """接收扫描一枪的凭据结果；与采集 receive_collect_credential_result 隔离。"""
+    from apps.cmdb.services.scan_credential_result_service import ScanCredentialResultService
+
+    payload = data or {}
+    if not isinstance(payload, dict):
+        logger.warning(
+            "Received invalid scan credential result event, type=%s",
+            type(payload).__name__,
+        )
+        return ScanCredentialResultService.process_result(payload, parse_datetime=_parse_nats_datetime)
+
+    result = ScanCredentialResultService.process_batch(payload, parse_datetime=_parse_nats_datetime)
+    logger.info(
+        "Processed scan credential result, result=%s task_id=%s host=%s",
+        result.get("result", False),
+        payload.get("collect_task_id") or result.get("task_id") or "",
+        payload.get("host") or "",
+    )
+    return result
+
+
+@nats_client.register
 def sync_display_fields(organizations=None, users=None):
     """
     同步组织/用户的 _display 字段

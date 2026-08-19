@@ -19,6 +19,7 @@ from langchain_core.messages import HumanMessage
 from apps.opspilot.metis.llm.chain.node import ToolsNodes
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
+    SkillExecutionGuardMiddleware,
     ToolVisibilityMiddleware,
     is_progressive_tools_enabled,
 )
@@ -167,8 +168,30 @@ class TestSkillBackendSources:
         finally:
             os.environ.pop("DB_PASSWORD", None)
         assert "DB_PASSWORD" not in env
-        assert set(env).issubset({"PATH", "LANG", "LC_ALL", "TMPDIR", "HOME", "KUBECONFIG"})
+        allowed = {"PATH", "LANG", "LC_ALL", "TMPDIR", "HOME", "KUBECONFIG"}
+        allowed.update(n._WINDOWS_SOCKET_ENV_KEYS)
+        assert set(env).issubset(allowed)
         assert env["TMPDIR"] == "/tmp/run-xyz"
+        if os.name == "nt":
+            assert env.get("SystemRoot")
+            assert "SYSTEMROOT" not in env
+            assert env.get("TEMP") == "/tmp/run-xyz"
+            assert env.get("TMP") == "/tmp/run-xyz"
+            path_entries = env["PATH"].split(os.pathsep)
+            assert any(p.lower().endswith("\\system32") or p.lower().endswith("/system32") for p in path_entries)
+
+    def test_sandbox_env_can_create_socket(self):
+        """精简沙箱 env 必须能初始化套接字。Windows 缺 SystemRoot 会 WinError 10106。"""
+        n = ToolsNodes()
+        env = n._sandbox_env(os.path.abspath("/tmp/run-socket"))
+        completed = subprocess.run(
+            [sys.executable, "-c", "import socket; socket.socket().close()"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert completed.returncode == 0, completed.stderr
 
     def test_cleanup_sandbox_removes_dir(self):
         import tempfile
@@ -183,13 +206,14 @@ class TestSkillBackendSources:
     def test_sandbox_prefers_runtime_python_when_parent_path_only_has_system_python(self):
         n = ToolsNodes()
 
-        with patch.dict(os.environ, {"PATH": "/usr/bin:/bin"}):
+        with patch.dict(os.environ, {"PATH": os.pathsep.join(["/usr/bin", "/bin"])}):
             env = n._sandbox_env("/tmp/run-python-path")
 
-        path_entries = env["PATH"].split(":")
+        path_entries = env["PATH"].split(os.pathsep)
         assert path_entries[0] == os.path.dirname(sys.executable)
+        python_cmd = "python" if os.name == "nt" else "python3"
         completed = subprocess.run(
-            ["python3", "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
+            [python_cmd, "-c", "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"],
             env=env,
             capture_output=True,
             text=True,
@@ -253,6 +277,7 @@ class TestBuildDeepagentNodes:
         plan_payloads=None,
         failing_agent_calls=(),
         direct_reply_content=None,
+        agent_reply=None,
     ):
         gb = _FakeGraphBuilder()
 
@@ -293,7 +318,7 @@ class TestBuildDeepagentNodes:
             else:
                 captured.setdefault("visible_tool_calls", []).append([tool.name for tool in captured["create_kwargs"]["tools"]])
             call_index = len(captured["visible_tool_calls"])
-            appended_messages = [AIMessage(content=f"执行结果 {call_index}")]
+            appended_messages = [AIMessage(content=agent_reply or f"执行结果 {call_index}")]
             if call_index in failing_agent_calls:
                 from langchain_core.messages import ToolMessage
 
@@ -445,7 +470,13 @@ class TestBuildDeepagentNodes:
         assert kwargs["backend"] is fake_backend
         assert kwargs["skills"] == ["/skills/"]
         visibility = next(m for m in kwargs["middleware"] if isinstance(m, ToolVisibilityMiddleware))
-        assert "read_file" in visibility._always_visible_tools
+        # 纯技能步不再常驻整套 FS（避免每轮 ~7k schema），但必须把 execute
+        # 放进 always_visible（仅 discard hidden 不够，allow_unregistered=False）。
+        assert "read_file" not in visibility._always_visible_tools
+        assert "execute" not in visibility._hidden_tools
+        assert "execute" in visibility._always_visible_tools
+        skill_guard = next(m for m in kwargs["middleware"] if isinstance(m, SkillExecutionGuardMiddleware))
+        assert skill_guard.enabled is True
 
     def test_context_overflow_skips_current_step_and_continues_remaining(self):
         node = ToolsNodes()
@@ -828,6 +859,168 @@ class TestBuildDeepagentNodes:
         replan_prompt = "\n".join(str(message.content) for message in captured["planner_calls"][1])
         assert "不存在" in replan_prompt
 
+    def test_auth_tool_error_aborts_remaining_steps_without_replan(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("diagnose_kubernetes_pod_issues"),
+            _tool("validate_probe_configuration"),
+        ]
+        req = _request(user_message="定位 Pod 告警")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "定位 Pod 告警",
+                    "steps": [
+                        {
+                            "objective": "诊断 Pod",
+                            "tools": ["diagnose_kubernetes_pod_issues"],
+                        },
+                        {
+                            "objective": "验证探针配置",
+                            "tools": ["validate_probe_configuration"],
+                        },
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": '{"error": "获取Pod列表失败: (401)\\nReason: Unauthorized"}',
+                        "status": "success",
+                        "name": "diagnose_kubernetes_pod_issues",
+                    }
+                },
+                agent_reply="kubeconfig 鉴权失败，请检查 Token 或证书后重试。",
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["diagnose_kubernetes_pod_issues"],
+        ]
+        assert len(captured["planner_calls"]) == 1
+        joined = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
+        assert "401" in joined or "鉴权" in joined or "Unauthorized" in joined
+
+    def test_permission_tool_error_aborts_without_replan(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("list_kubernetes_deployments"),
+            _tool("analyze_deployment_configurations"),
+        ]
+        req = _request(user_message="检查部署配置")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "检查部署配置",
+                    "steps": [
+                        {
+                            "objective": "列出 Deployment",
+                            "tools": ["list_kubernetes_deployments"],
+                        },
+                        {
+                            "objective": "分析配置",
+                            "tools": ["analyze_deployment_configurations"],
+                        },
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": '{"error": "获取Deployment列表失败: (403)\\nReason: Forbidden"}',
+                        "status": "success",
+                        "name": "list_kubernetes_deployments",
+                    }
+                },
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["list_kubernetes_deployments"],
+            [],
+        ]
+        assert len(captured["planner_calls"]) == 1
+
+    def test_internal_tool_exception_aborts_without_replan(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("list_kubernetes_nodes"),
+            _tool("diagnose_kubernetes_pod_issues"),
+        ]
+        req = _request(user_message="列出节点")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "列出节点",
+                    "steps": [
+                        {"objective": "列出节点", "tools": ["list_kubernetes_nodes"]},
+                        {
+                            "objective": "诊断 Pod",
+                            "tools": ["diagnose_kubernetes_pod_issues"],
+                        },
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": "AttributeError: 'NoneType' object has no attribute 'items'",
+                        "status": "error",
+                        "name": "list_kubernetes_nodes",
+                    }
+                },
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["list_kubernetes_nodes"],
+            [],
+        ]
+        assert len(captured["planner_calls"]) == 1
+
+    def test_skill_auth_error_aborts_remaining_steps_without_replan(self):
+        node = ToolsNodes()
+        node.all_tools = []
+        req = _request(user_message="查 AD 用户")
+        captured = {}
+        pkgs = [{"name": "ad-domain-ops", "package_id": "ad-domain-ops", "description": "AD"}]
+        fake_backend = MagicMock()
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
+            ToolsNodes, "_resolve_skill_packages", return_value=pkgs
+        ), patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查 AD 用户",
+                    "steps": [
+                        {"objective": "查用户", "tools": ["__use_skills__"]},
+                        {"objective": "查组", "tools": ["__use_skills__"]},
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": ('{"ok":false,"error":"invalid credentials"}\n' "[OPSPILOT_SKILL_RESULT] 脚本失败。最多修正参数后重试 1 次。"),
+                        "status": "success",
+                        "name": "execute",
+                    }
+                },
+                agent_reply="LDAP 凭据无效，请检查技能包连接配置后重试。",
+            )
+
+        assert captured["visible_tool_calls"] == [["execute"]]
+        assert len(captured["planner_calls"]) == 1
+        joined = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
+        assert "invalid credentials" in joined or "凭据" in joined
+
     def test_wires_skills_and_approval_when_configured(self):
         node = ToolsNodes()
         node.all_tools = [_tool("shell")]
@@ -930,6 +1123,29 @@ class TestBuildDeepagentNodes:
             [],
         ]
 
+    def test_planned_execution_skips_summary_when_step_already_showed_table(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("execute")]
+        req = _request(user_message="查询域控前10个用户")
+        captured = {}
+        table = "已成功查询\n\n| 序号 | sAMAccountName |\n| --- | --- |\n| 1 | Administrator |"
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            result = self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "查用户",
+                    "steps": [{"objective": "调用 AD 技能包", "tools": ["execute"]}],
+                },
+                agent_reply=table,
+            )
+
+        assert len(captured["ainvoke_messages"]) == 1
+        assert len(result["messages"]) == 1
+        assert result["messages"][0].content == table
+
     def test_progressive_disabled_skips_planner_and_binds_all_tools(self, monkeypatch):
         monkeypatch.setenv("OPSPILOT_DEEPAGENT_PROGRESSIVE_TOOLS", "0")
         assert is_progressive_tools_enabled() is False
@@ -948,3 +1164,68 @@ class TestBuildDeepagentNodes:
         assert not any(isinstance(item, ToolVisibilityMiddleware) for item in middleware)
         assert len(captured["ainvoke_messages"]) == 1
         assert captured["ainvoke_messages"][0][0].content == "排查 pod 崩溃"
+
+
+def test_planned_step_already_answered_detects_markdown_table():
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    table = "已成功查询\n\n| 序号 | sAMAccountName |\n| --- | --- |\n| 1 | Administrator |"
+    assert ToolsNodes._planned_step_already_answered([AIMessage(content=table)]) is True
+    assert ToolsNodes._planned_step_already_answered([AIMessage(content="执行结果 1")]) is False
+    assert ToolsNodes._planned_step_already_answered([ToolMessage(content=table, tool_call_id="t1")]) is False
+
+
+def test_planned_step_already_answered_detects_tool_sentence():
+    from langchain_core.messages import AIMessage
+
+    answer = "当前时间是 **2026-08-18 17:54:29**（默认时区：Asia/Shanghai）。"
+    tool_call = AIMessage(content="", tool_calls=[{"id": "1", "name": "get_current_time", "args": {}}])
+    assert ToolsNodes._planned_step_already_answered([tool_call, AIMessage(content=answer)]) is True
+    assert ToolsNodes._planned_step_already_answered([tool_call]) is False
+
+
+def test_plan_is_skills_only_and_step_guidance():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep
+
+    skills_only = ToolExecutionPlan(
+        goal="查 AD",
+        steps=[ToolExecutionStep(objective="跑技能", tools=["__use_skills__"])],
+    )
+    mixed = ToolExecutionPlan(
+        goal="查 AD",
+        steps=[ToolExecutionStep(objective="跑技能", tools=["__use_skills__", "shell"])],
+    )
+    assert ToolsNodes._plan_is_skills_only(skills_only) is True
+    assert ToolsNodes._plan_is_skills_only(mixed) is False
+    guidance = ToolsNodes._skill_only_step_guidance([{"package_id": "ad-domain-ops"}])
+    assert "禁止 echo" in guidance or "禁止" in guidance
+    assert "/skills/ad-domain-ops/scripts/" in guidance
+    assert "一张表" in guidance
+    assert "禁止发明" in guidance
+    assert "--help" in guidance
+    assert "管道" in guidance
+    assert "不要重试" in guidance or "凭据" in guidance
+
+
+def test_planned_tool_step_guidance_is_policy_not_skill_scan():
+    guidance = ToolsNodes._planned_tool_step_guidance()
+    assert "【工具执行】" in guidance
+    assert "未计划工具" in guidance
+    assert "空列表" in guidance
+    assert "重规划" in guidance
+    assert "第二份" in guidance
+    assert "execute" not in guidance
+    assert "扫技能包" not in guidance
+
+
+def test_skill_only_step_guidance_lists_real_scripts(tmp_path):
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "ad_search.py").write_text("# search\n", encoding="utf-8")
+    (scripts / "_lib.py").write_text("# private\n", encoding="utf-8")
+    guidance = ToolsNodes._skill_only_step_guidance(
+        [{"package_id": "ad-domain-ops", "extracted_root": tmp_path}],
+    )
+    assert "python3 /skills/ad-domain-ops/scripts/ad_search.py" in guidance
+    assert "_lib.py" not in guidance
+    assert "query_users.py" not in guidance

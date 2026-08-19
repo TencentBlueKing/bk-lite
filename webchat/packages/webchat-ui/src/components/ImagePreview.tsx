@@ -1,4 +1,5 @@
 import React from 'react';
+import { WC } from '../chrome';
 
 interface ImagePreviewProps {
   src: string;
@@ -9,13 +10,15 @@ interface ImagePreviewProps {
 export const ImagePreview: React.FC<ImagePreviewProps> = ({ src, alt, onClose }) => {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ background: WC.overlay }}
       onClick={onClose}
     >
-      <div className="relative max-w-[90vw] max-h-[90vh]">
+      <div className="relative max-h-[90vh] max-w-[90vw]">
         <button
           onClick={onClose}
-          className="absolute -top-10 right-0 text-white hover:text-gray-300 text-2xl font-bold"
+          className="absolute -top-10 right-0 text-2xl font-bold"
+          style={{ color: WC.onPrimary }}
         >
           ✕
         </button>
