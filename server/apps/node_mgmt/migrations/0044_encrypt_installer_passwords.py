@@ -34,6 +34,8 @@ def encrypt_installer_passwords(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
+    atomic = False
+
     dependencies = [("node_mgmt", "0043_alter_controllertasknode_password")]
 
     operations = [

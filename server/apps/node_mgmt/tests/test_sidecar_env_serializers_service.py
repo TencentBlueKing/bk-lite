@@ -1,9 +1,8 @@
 from importlib import import_module
-from types import SimpleNamespace
 
 import pytest
-from django.apps import apps as django_apps
 from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.database import EnvVariableConstants
@@ -98,6 +97,35 @@ def test_installer_credentials_reject_blank_values(cloud_region, value):
         assert serializer.errors["value"]
 
 
+def test_installer_username_create_requires_value(cloud_region):
+    serializer = EnvVariableCreateSerializer(
+        data={
+            "key": NodeConstants.NATS_INSTALLER_USERNAME_KEY,
+            "type": EnvVariableConstants.TYPE_TEXT,
+            "description": "installer credential",
+            "cloud_region_id": cloud_region.id,
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert serializer.errors["value"] == ["NATS_INSTALLER_USERNAME must not be blank"]
+
+
+def test_installer_username_partial_update_keeps_existing_value(cloud_region):
+    env = SidecarEnv.objects.create(
+        key=NodeConstants.NATS_INSTALLER_USERNAME_KEY,
+        value="installer-user",
+        type=EnvVariableConstants.TYPE_TEXT,
+        cloud_region=cloud_region,
+    )
+    serializer = SidecarEnvSerializer(instance=env, data={"description": "updated"}, partial=True)
+
+    assert serializer.is_valid(), serializer.errors
+    serializer.save()
+    env.refresh_from_db()
+    assert env.value == "installer-user"
+
+
 def test_renaming_plaintext_variable_to_installer_password_requires_new_value(cloud_region):
     env = SidecarEnv.objects.create(
         key="LEGACY_VARIABLE",
@@ -138,25 +166,30 @@ def test_updating_legacy_plaintext_installer_password_encrypts_existing_value(cl
     assert AESCryptor().decode(env.value) == "legacy-plaintext"
 
 
-def test_installer_password_migration_resumes_across_failed_batches(cloud_region, monkeypatch):
-    env = SidecarEnv.objects.create(
+@pytest.mark.django_db(transaction=True)
+def test_installer_password_migration_resumes_across_failed_batches(monkeypatch):
+    migration = import_module("apps.node_mgmt.migrations.0044_encrypt_installer_passwords")
+    old_target = [("node_mgmt", "0043_alter_controllertasknode_password")]
+    new_target = [("node_mgmt", "0044_encrypt_installer_passwords")]
+    executor = MigrationExecutor(connection)
+    executor.migrate(old_target)
+    old_apps = executor.loader.project_state(old_target).apps
+    old_region_model = old_apps.get_model("node_mgmt", "CloudRegion")
+    old_env_model = old_apps.get_model("node_mgmt", "SidecarEnv")
+    first_region = old_region_model.objects.create(name="installer-credentials-migration-1")
+    second_region = old_region_model.objects.create(name="installer-credentials-migration-2")
+    env = old_env_model.objects.create(
         key=NodeConstants.NATS_INSTALLER_PASSWORD_KEY,
         value="legacy-plaintext",
         type=EnvVariableConstants.TYPE_TEXT,
-        cloud_region=cloud_region,
+        cloud_region=first_region,
     )
-    assert InstallerSessionService._get_cloud_region_env(cloud_region.id)[env.key] == "legacy-plaintext"
-    assert SidecarEnvSerializer(env).data["value"] == EnvVariableConstants.SECRET_MASK
-
-    migration = import_module("apps.node_mgmt.migrations.0044_encrypt_installer_passwords")
-    second_region = CloudRegion.objects.create(name="installer-credentials-mode-region-2")
-    second_env = SidecarEnv.objects.create(
+    second_env = old_env_model.objects.create(
         key=NodeConstants.NATS_INSTALLER_PASSWORD_KEY,
         value="second-legacy-plaintext",
         type=EnvVariableConstants.TYPE_TEXT,
         cloud_region=second_region,
     )
-    schema_editor = SimpleNamespace(connection=connection)
     real_cryptor = migration.AESCryptor
 
     class FailSecondBatchCryptor:
@@ -172,21 +205,24 @@ def test_installer_password_migration_resumes_across_failed_batches(cloud_region
     monkeypatch.setattr(migration, "BATCH_SIZE", 1)
     monkeypatch.setattr(migration, "AESCryptor", FailSecondBatchCryptor)
     with pytest.raises(RuntimeError, match="second batch failure"):
-        migration.encrypt_installer_passwords(django_apps, schema_editor)
+        MigrationExecutor(connection).migrate(new_target)
     env.refresh_from_db()
     first_ciphertext = env.value
     second_env.refresh_from_db()
 
     assert env.type == EnvVariableConstants.TYPE_SECRET
     assert AESCryptor().decode(env.value) == "legacy-plaintext"
-    assert InstallerSessionService._get_cloud_region_env(cloud_region.id)[env.key] == "legacy-plaintext"
     assert second_env.type == EnvVariableConstants.TYPE_TEXT
     assert second_env.value == "second-legacy-plaintext"
+    assert ("node_mgmt", "0044_encrypt_installer_passwords") not in MigrationExecutor(
+        connection
+    ).loader.applied_migrations
 
     monkeypatch.setattr(migration, "AESCryptor", real_cryptor)
-    migration.encrypt_installer_passwords(django_apps, schema_editor)
+    MigrationExecutor(connection).migrate(new_target)
     env.refresh_from_db()
     second_env.refresh_from_db()
     assert env.value == first_ciphertext
     assert second_env.type == EnvVariableConstants.TYPE_SECRET
     assert AESCryptor().decode(second_env.value) == "second-legacy-plaintext"
+    assert InstallerSessionService._get_cloud_region_env(first_region.id)[env.key] == "legacy-plaintext"
