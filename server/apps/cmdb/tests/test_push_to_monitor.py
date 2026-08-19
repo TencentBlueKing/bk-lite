@@ -3,8 +3,8 @@
 import pytest
 
 from apps.cmdb.services.module_push import CmdbToMonitorPushService
-from apps.monitor.models import MonitorInstance, MonitorObject
-from apps.monitor.services.module_ingest import MonitorModuleIngestService
+from apps.monitor.models import MonitorInstance, MonitorObject, MonitorPlugin, MonitorPluginConfigTemplate
+from apps.monitor.services.module_ingest import DEFAULT_HOST_COLLECT_MODULES, MonitorModuleIngestService
 
 INST_UUID = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
 
@@ -12,6 +12,25 @@ INST_UUID = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
 @pytest.fixture
 def host_object(db):
     return MonitorObject.objects.create(name="Host", display_name="主机", level="base")
+
+
+@pytest.fixture
+def host_plugin(host_object):
+    plugin = MonitorPlugin.objects.create(
+        name="Host",
+        collector="Telegraf",
+        collect_type="host",
+    )
+    plugin.monitor_object.add(host_object)
+    for module in DEFAULT_HOST_COLLECT_MODULES:
+        MonitorPluginConfigTemplate.objects.create(
+            plugin=plugin,
+            type=module,
+            config_type="child",
+            file_type="toml",
+            content="# test",
+        )
+    return plugin
 
 
 def _cmdb_instance(**overrides):
@@ -33,7 +52,7 @@ def _cmdb_instance(**overrides):
 @pytest.mark.django_db
 def test_cmdb_ingest_create_hook_notifies_peers_without_creating_monitor_asset(mocker):
     """CMDB 主机创建钩子会通知监控，但无凭据时监控不得新建资产。"""
-    monitor_ingest = mocker.patch("apps.monitor.services.module_ingest.MonitorModuleIngestService.ingest")
+    monitor_ingest = mocker.patch("apps.cmdb.services.module_push.Monitor").return_value.ingest_from_source
     monitor_ingest.return_value = {
         "id": None,
         "created": False,
@@ -57,7 +76,7 @@ def test_cmdb_ingest_create_hook_notifies_peers_without_creating_monitor_asset(m
         allowed_org_ids=[1],
     )
     assert monitor_ingest.call_count == 1
-    envelope = monitor_ingest.call_args.args[0]
+    envelope = monitor_ingest.call_args.kwargs
     assert envelope["link_ids"]["cmdb_id"] == INST_UUID
     assert envelope["link_ids"]["cmdb_id_aliases"] == ["88"]
     assert "credential" not in (envelope.get("raw") or {})
@@ -66,7 +85,7 @@ def test_cmdb_ingest_create_hook_notifies_peers_without_creating_monitor_asset(m
 
 
 @pytest.mark.django_db
-def test_explicit_push_with_node_id_merges_on_monitor(mocker, host_object):
+def test_explicit_push_with_node_id_merges_on_monitor(mocker, host_object, host_plugin):
     mocker.patch(
         "apps.cmdb.services.module_push.InstanceManage.query_entity_by_uuid",
         return_value=_cmdb_instance(node_id="n-shared"),
@@ -145,11 +164,20 @@ def test_explicit_push_without_node_id_uses_cmdb_id(mocker, host_object):
 
 
 @pytest.mark.django_db
-def test_explicit_push_with_credential_creates(mocker, host_object, monkeypatch):
-    """扩展点：打开凭据创建开关后，CMDB 带凭据可建远程资产。"""
-    monkeypatch.setattr(
-        "apps.monitor.services.module_ingest.CMDB_CREDENTIAL_CREATE_ENABLED",
-        True,
+def test_explicit_push_with_credential_creates(mocker, host_object):
+    """特权入口 push_with_credential：经 Monitor.ingest_from_source 带凭据建远程资产。"""
+    remote_plugin = MonitorPlugin.objects.create(
+        name="Host Remote",
+        collector="Telegraf",
+        collect_type="http",
+    )
+    remote_plugin.monitor_object.add(host_object)
+    MonitorPluginConfigTemplate.objects.create(
+        plugin=remote_plugin,
+        type="host",
+        config_type="child",
+        file_type="toml",
+        content="# test",
     )
     node_mgmt = mocker.patch("apps.monitor.services.module_ingest.NodeMgmt")
     node_mgmt.return_value.node_list.return_value = {
@@ -157,7 +185,7 @@ def test_explicit_push_with_credential_creates(mocker, host_object, monkeypatch)
         "nodes": [{"id": "container-1", "cloud_region_id": 1}],
     }
 
-    def _fake_onboarding(payload):
+    def _fake_onboarding(payload, actor_context=None):
         MonitorInstance.objects.create(
             id="('1_os_10.0.0.42',)",
             name=payload["instances"][0]["instance_name"],
@@ -168,29 +196,30 @@ def test_explicit_push_with_credential_creates(mocker, host_object, monkeypatch)
         "apps.monitor.services.node_mgmt.InstanceConfigService.create_monitor_instance_by_node_mgmt",
         side_effect=_fake_onboarding,
     )
-
-    # 凭据需经 CmdbToMonitorPushService 信封；当前信封未带凭据，直接测 ingest 路径
-    result = MonitorModuleIngestService.ingest(
-        {
-            "source_module": "cmdb",
-            "source_id": INST_UUID,
-            "event_type": "upsert",
-            "occurred_at": "2026-08-05T00:00:00Z",
-            "raw": {
-                "ip": "10.0.0.42",
-                "name": "host-from-cmdb",
-                "cloud_region_id": 1,
-                "organization_ids": [1],
-                "credential": {"username": "root", "password": "s3cret"},
-            },
-            "link_ids": {"cmdb_id": INST_UUID},
-            "allowed_org_ids": [1],
-            "operator": "alice",
-        }
+    mocker.patch(
+        "apps.monitor.services.module_ingest.MonitorModuleIngestService._best_effort_notify_peers_on_create",
+        return_value=None,
     )
+    mocker.patch(
+        "apps.cmdb.services.module_push.Monitor"
+    ).return_value.ingest_from_source.side_effect = lambda **kwargs: MonitorModuleIngestService.ingest(kwargs)
+    backfill = mocker.patch(
+        "apps.cmdb.services.module_push.CmdbToMonitorPushService._backfill_monitor_id",
+        side_effect=lambda instance, monitor_id, **kwargs: {**instance, "monitor_id": monitor_id},
+    )
+
+    push = CmdbToMonitorPushService.push_with_credential(
+        _cmdb_instance(),
+        credential={"username": "root", "password": "s3cret"},
+        actor_scope={"allowed_org_ids": [1], "operator": "alice"},
+    )
+    result = push["monitor_result"]
     assert result["created"] is True
+    assert result["id"] == "('1_os_10.0.0.42',)"
     inst = MonitorInstance.objects.get(id="('1_os_10.0.0.42',)")
     assert inst.cmdb_id == INST_UUID
+    backfill.assert_called_once()
+    assert backfill.call_args.args[1] == "('1_os_10.0.0.42',)"
 
 
 @pytest.mark.django_db

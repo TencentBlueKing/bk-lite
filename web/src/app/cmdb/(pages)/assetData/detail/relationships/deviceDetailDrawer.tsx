@@ -68,7 +68,7 @@ const DeviceDetailDrawer: React.FC<Props> = ({
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
      
-  }, [open, device?.inst_uuid, device?.inst_id]);
+  }, [open, device?.inst_uuid]);
 
   const jump = () => {
     if (!device) return;
@@ -92,11 +92,16 @@ const DeviceDetailDrawer: React.FC<Props> = ({
       content: t('Model.layoutUnplaceDeviceContent'),
       okButtonProps: { danger: true },
       onOk: async () => {
+        const instUuid = resolveCmdbInstUuid(device.inst_uuid);
+        if (!instUuid) {
+          message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+          return;
+        }
         await saveRackRoomLayout(
           buildUnplacePayload({
             scope: 'rack',
             containerInstUuid,
-            instUuid: device.inst_uuid || device.inst_id,
+            instUuid,
           })
         );
         message.success(t('successfullyDisassociated'));

@@ -38,6 +38,16 @@
         "file": "文件",
         "allApps": "全部应用"
     },
+    "organization": {
+        "switch": "切换组织",
+        "select": "选择组织",
+        "search": "搜索组织",
+        "includeSubgroups": "包含子组数据",
+        "empty": "没有匹配的组织",
+        "current": "当前组织",
+        "expand": "展开",
+        "collapse": "收起"
+    },
     "refresh": {
         "pulling": "下拉刷新",
         "canRelease": "释放立即刷新",

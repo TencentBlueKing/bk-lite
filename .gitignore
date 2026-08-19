@@ -79,6 +79,7 @@ docs/superpowers/
 # 本机开发底座与热同步脚本（不进入生产交付）
 /deploy/local/
 /scripts/
+/examples/
 /web/scripts/sync_lite_web_build.sh
 /server/scripts/sync_lite_server_apps.sh
 

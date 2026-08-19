@@ -24,6 +24,7 @@ const OperateModal: React.FC<CustomModalProps> = ({
   destroyOnHidden,
   ...modalProps
 }) => {
+  const shouldDestroyOnHidden = destroyOnHidden ?? destroyOnClose;
   return (
     <Modal
       styles={{ body: { overflowY: 'auto', maxHeight: 'calc(80vh - 108px)' } }}
@@ -57,7 +58,10 @@ const OperateModal: React.FC<CustomModalProps> = ({
       footer={footer}
       centered={centered}
       maskClosable={maskClosable}
-      destroyOnHidden={destroyOnHidden ?? destroyOnClose}
+      // 默认预挂载，供 useEffect + setFieldsValue 的编辑弹窗首次打开回填。
+      // 若调用方要靠 destroyOnHidden + initialValues 重挂载（如节点配置），则不能预挂载，否则会锁死空表单。
+      forceRender={!shouldDestroyOnHidden}
+      destroyOnHidden={shouldDestroyOnHidden}
       {...modalProps}
     />
   );

@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from apps.core.logger import log_logger as logger
 from apps.log.models import LogExtractor, SystemVectorConfigState
-from apps.log.services.log_extractor.compiler import compile_system_vector_config
+from apps.log.services.log_extractor.compiler import compile_system_vector_config, get_system_vector_config_contract_version
 
 GLOBAL_SCOPE = "global"
 _SENSITIVE_TEXT = re.compile(r"(?i)(bearer\s+|token[=: ]+|secret[=: ]+|password[=: ]+)([^\s,;]+)")
@@ -20,6 +20,7 @@ class PublishedSnapshot:
     content: str
     checksum: str
     generation: int
+    contract_version: int
 
 
 def _sanitize(value: str) -> str:
@@ -74,6 +75,25 @@ def mark_dirty() -> int:
         state.save(update_fields=("desired_generation", "status", "last_error", "updated_at"))
         transaction.on_commit(lambda: _enqueue(generation))
         return generation
+
+
+def republish_current_config() -> PublishedSnapshot:
+    """同步发布当前完整配置，供版本升级和回滚后的显式运维操作使用。"""
+    with transaction.atomic():
+        state = _get_locked_state()
+        state.desired_generation += 1
+        state.status = SystemVectorConfigState.Status.PENDING
+        state.last_error = ""
+        generation = state.desired_generation
+        state.save(update_fields=("desired_generation", "status", "last_error", "updated_at"))
+
+    result = publish_generation(generation)
+    if result != "published":
+        raise RuntimeError(f"中心 Vector 完整配置重新发布失败：{result}")
+    snapshot = get_published_snapshot()
+    if not snapshot or snapshot.generation != generation:
+        raise RuntimeError("中心 Vector 完整配置重新发布后未取得对应快照")
+    return snapshot
 
 
 def publish_generation(generation: int) -> str:
@@ -157,7 +177,12 @@ def get_published_snapshot() -> PublishedSnapshot | None:
     state = SystemVectorConfigState.objects.filter(scope=GLOBAL_SCOPE).only("published_content", "published_checksum", "published_generation").first()
     if not state or not state.published_content:
         return None
-    return PublishedSnapshot(state.published_content, state.published_checksum, state.published_generation)
+    return PublishedSnapshot(
+        state.published_content,
+        state.published_checksum,
+        state.published_generation,
+        get_system_vector_config_contract_version(state.published_content),
+    )
 
 
 def get_publication_status() -> dict:
@@ -195,7 +220,12 @@ def retry_publication() -> int | None:
 def ensure_initial_snapshot() -> PublishedSnapshot:
     state = SystemVectorConfigState.objects.filter(scope=GLOBAL_SCOPE).first()
     if state and state.published_content:
-        return PublishedSnapshot(state.published_content, state.published_checksum, state.published_generation)
+        return PublishedSnapshot(
+            state.published_content,
+            state.published_checksum,
+            state.published_generation,
+            get_system_vector_config_contract_version(state.published_content),
+        )
     with transaction.atomic():
         state = _get_locked_state()
         if not state.published_content and state.desired_generation == 0:

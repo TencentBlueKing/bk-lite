@@ -10,11 +10,18 @@ from core.collection.contracts import (
     PreflightStatus,
     TargetExecutorSettings,
 )
-from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
+from core.collection.credential_policy import (
+    CredentialPolicy,
+    InMemoryCredentialStateStore,
+)
 from core.collection.executor import TargetCollectionExecutor, TargetWorkerBudget
 from core.collection.metrics import CollectionMetrics
-from core.collection.result_publisher import BufferedResultPublisher
+from core.collection.result_publisher import (
+    BufferedResultPublisher,
+    NatsResultPublisher,
+)
 from core.collection.runtime import CollectionRequest, RunLease
+from tasks.utils import metrics_helper
 
 
 class UnreachablePreflight:
@@ -82,7 +89,9 @@ class RecordingReachablePreflight:
 
 class PinnedReachablePreflight:
     async def check(self, target, request, *, timeout_seconds, plan=None):
-        return PreflightResult(status=PreflightStatus.REACHABLE, connect_host="10.0.0.8")
+        return PreflightResult(
+            status=PreflightStatus.REACHABLE, connect_host="10.0.0.8"
+        )
 
 
 class FirstTargetBrokenPreflight:
@@ -90,6 +99,123 @@ class FirstTargetBrokenPreflight:
         if target == "10.10.24.1":
             raise RuntimeError("unexpected target failure")
         return PreflightResult(status=PreflightStatus.REACHABLE)
+
+
+@pytest.mark.asyncio
+async def test_preflight_failure_detail_logs_are_bounded_per_run(monkeypatch):
+    logged = []
+
+    def capture(message, *args):
+        logged.append(message % args if args else message)
+
+    monkeypatch.setattr("core.collection.executor.logger.warning", capture)
+    monkeypatch.setattr("core.collection.executor.logger.info", capture)
+    executor = TargetCollectionExecutor(
+        preflight=UnreachablePreflight(),
+        plugin=RecordingPlugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=25, target_task_window=25),
+    )
+    request = CollectionRequest(
+        task_id="bounded-failure-logs",
+        plugin_ref="network.config",
+        targets=tuple(f"10.10.69.{index}" for index in range(25)),
+        credentials=(),
+        params={"model_id": "network"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    target_details = [item for item in logged if "event=target_unreachable" in item]
+    run_summaries = [item for item in logged if "event=collection_run_summary" in item]
+    assert summary.unreachable == 25
+    assert len(target_details) == 20
+    assert all("plugin_ref=network.config" in item for item in target_details)
+    assert all("model_id=network" in item for item in target_details)
+    assert len(run_summaries) == 1
+    assert "unreachable=25" in run_summaries[0]
+
+
+@pytest.mark.asyncio
+async def test_plugin_failure_has_central_searchable_log_without_secret(monkeypatch):
+    logged = []
+
+    def capture(message, *args):
+        logged.append(message % args if args else message)
+
+    class BrokenPlugin:
+        async def collect(self, target, credential, context):
+            raise RuntimeError("password=must-not-be-logged")
+
+    monkeypatch.setattr("core.collection.executor.logger.warning", capture)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=BrokenPlugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    request = CollectionRequest(
+        task_id="vmware-plugin-failure-log",
+        plugin_ref="vmware_vc.config",
+        targets=("10.10.16.254",),
+        credentials=({"credential_id": "credential-1", "password": "secret"},),
+        params={"model_id": "vmware_vc"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    failures = [item for item in logged if "event=plugin_collection_failed" in item]
+    assert summary.failed == 1
+    assert len(failures) == 1
+    assert "task_id=vmware-plugin-failure-log" in failures[0]
+    assert "plugin_ref=vmware_vc.config" in failures[0]
+    assert "model_id=vmware_vc" in failures[0]
+    assert "target=10.10.16.254" in failures[0]
+    assert "credential_id=credential-1" in failures[0]
+    assert "error_code=plugin_error" in failures[0]
+    assert "detail=RuntimeError" in failures[0]
+    assert "must-not-be-logged" not in failures[0]
+    assert "secret" not in failures[0]
+
+
+@pytest.mark.asyncio
+async def test_plugin_failure_detail_logs_are_bounded_per_run(monkeypatch):
+    logged = []
+
+    def capture(message, *args):
+        logged.append(message % args if args else message)
+
+    class FailingPlugin:
+        async def collect(self, target, credential, context):
+            return CollectOutcome(
+                status=CollectOutcomeStatus.FAILED,
+                error_code="plugin_timeout",
+            )
+
+    monkeypatch.setattr("core.collection.executor.logger.warning", capture)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=FailingPlugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=25, target_task_window=25),
+    )
+    request = CollectionRequest(
+        task_id="bounded-plugin-failure-logs",
+        plugin_ref="network.config",
+        targets=tuple(f"10.10.69.{index}" for index in range(25)),
+        credentials=({"credential_id": "credential-1"},),
+        params={"model_id": "network"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    failures = [item for item in logged if "event=plugin_collection_failed" in item]
+    assert summary.failed == 25
+    assert len(failures) == 1
+    assert "failed_targets=25" in failures[0]
 
 
 @pytest.mark.asyncio
@@ -209,7 +335,9 @@ async def test_slow_publish_does_not_hold_target_collection_window():
             await release.wait()
 
     plugin = RecordingPlugin()
-    publisher = BufferedResultPublisher(SlowDelegate(), capacity=2, batch_size=2, flush_interval_seconds=0.01)
+    publisher = BufferedResultPublisher(
+        SlowDelegate(), capacity=2, batch_size=2, flush_interval_seconds=0.01
+    )
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
         plugin=plugin,
@@ -446,7 +574,10 @@ async def test_credentials_rotate_inside_target_and_success_gets_affinity():
     ]
     assert publisher.results[0][1].credential_id == "credential-3"
     assert publisher.results[0][1].attempts == 3
-    assert [(failure.credential_id, failure.error_code) for failure in publisher.results[0][1].credential_failures] == [
+    assert [
+        (failure.credential_id, failure.error_code)
+        for failure in publisher.results[0][1].credential_failures
+    ] == [
         ("credential-1", "unauthorized"),
         ("credential-2", "authentication_failed"),
     ]
@@ -555,7 +686,9 @@ async def test_protocol_no_response_stops_after_default_attempt_limit():
         task_id="collect-no-response-limit",
         plugin_ref="snmp.config",
         targets=("10.10.24.1",),
-        credentials=tuple({"credential_id": f"credential-{index}"} for index in range(1, 6)),
+        credentials=tuple(
+            {"credential_id": f"credential-{index}"} for index in range(1, 6)
+        ),
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -665,7 +798,9 @@ async def test_access_probe_failure_logs_target_and_credential_id(monkeypatch):
         task_id="probe-log",
         plugin_ref="network.config",
         targets=("10.10.69.240",),
-        credentials=({"credential_id": "cred-snmp-1", "community": "secret-community"},),
+        credentials=(
+            {"credential_id": "cred-snmp-1", "community": "secret-community"},
+        ),
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -767,7 +902,9 @@ async def test_access_probe_timeout_rotates_to_next_credential():
         (AccessProbeStatus.RATE_LIMITED, "rate_limited", "deferred"),
     ],
 )
-async def test_target_scoped_access_probe_result_stops_credential_rotation(probe_status, error_code, result_status):
+async def test_target_scoped_access_probe_result_stops_credential_rotation(
+    probe_status, error_code, result_status
+):
     publisher = RecordingPublisher()
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
@@ -837,9 +974,10 @@ async def test_capability_denied_probe_cools_credential_without_collecting():
 
     assert summary.failed == 1
     assert publisher.results[0][1].error_code == "credentials_exhausted"
-    assert [(failure.credential_id, failure.error_code) for failure in publisher.results[0][1].credential_failures] == [
-        ("credential-1", "capability_denied")
-    ]
+    assert [
+        (failure.credential_id, failure.error_code)
+        for failure in publisher.results[0][1].credential_failures
+    ] == [("credential-1", "capability_denied")]
     assert await credential_policy.eligible_credentials(request, "10.10.24.1") == ()
 
 
@@ -1082,6 +1220,46 @@ async def test_publish_succeeds_on_second_attempt():
 
 
 @pytest.mark.asyncio
+async def test_result_event_failure_does_not_turn_confirmed_nats_publish_into_unknown():
+    async def publish_metrics_batch(entries):
+        return {entry[2]["collection_result_id"]: None for entry in entries}
+
+    async def fail_result_event(_event):
+        raise ConnectionError("redis unavailable")
+
+    publisher = BufferedResultPublisher(
+        NatsResultPublisher(
+            metrics_publish_batch=publish_metrics_batch,
+            result_event_sink=fail_result_event,
+        ),
+        capacity=1,
+        batch_size=1,
+        flush_interval_seconds=0.01,
+    )
+    request = CollectionRequest(
+        task_id="collect-event-failure",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+        credentials=({"credential_id": "c1"},),
+        params={"plugin_family": "configuration", "model_id": "network"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=RecordingPlugin(),
+        publisher=publisher,
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+
+    summary = await executor.execute(request, lease)
+    await publisher.shutdown()
+
+    assert summary.publish_event_failed == 1
+    assert summary.publish_unknown == 0
+    assert summary.has_errors is True
+
+
+@pytest.mark.asyncio
 async def test_publish_retry_shares_one_end_to_end_deadline():
     plugin = RecordingPlugin()
     publish_started = None
@@ -1117,6 +1295,8 @@ async def test_publish_retry_shares_one_end_to_end_deadline():
             max_active_targets=1,
             target_task_window=1,
             publish_guard_seconds=0.05,
+            publish_queue_timeout_seconds=0.05,
+            publish_total_timeout_seconds=0.05,
             publish_max_attempts=2,
         ),
     )
@@ -1128,6 +1308,103 @@ async def test_publish_retry_shares_one_end_to_end_deadline():
     assert elapsed < 0.065
     assert summary.publish_unknown == 1
     assert metrics.snapshot()["publish_timeout_total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_total_timeout_cancels_queued_result_without_false_unknown_or_late_delivery():
+    release = asyncio.Event()
+    delivered = []
+
+    class BlockingBatchDelegate:
+        async def publish_batch(self, items):
+            delivered.extend(item[1].target for item in items)
+            await release.wait()
+
+    publisher = BufferedResultPublisher(
+        BlockingBatchDelegate(),
+        capacity=2,
+        batch_size=1,
+        flush_interval_seconds=0.01,
+    )
+    request = CollectionRequest(
+        task_id="collect-queued-total-timeout",
+        plugin_ref="network.config",
+        targets=("10.10.24.1", "10.10.24.2"),
+        credentials=({"credential_id": "c1"},),
+    )
+    lease = RunLease(
+        request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a"
+    )
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=RecordingPlugin(),
+        publisher=publisher,
+        settings=TargetExecutorSettings(
+            max_active_targets=2,
+            target_task_window=2,
+            publish_queue_timeout_seconds=0.1,
+            publish_total_timeout_seconds=0.02,
+            publish_max_attempts=1,
+        ),
+    )
+
+    summary = await executor.execute(request, lease)
+    release.set()
+    await publisher.shutdown()
+
+    assert summary.publish_unknown == 1
+    assert summary.publish_failed == 1
+    assert delivered == ["10.10.24.1"]
+
+
+@pytest.mark.asyncio
+async def test_safe_publish_retry_reuses_identical_encoded_error_payload(monkeypatch):
+    payloads = []
+    clock = iter((1000.0, 2000.0, 3000.0))
+    monkeypatch.setattr(metrics_helper.time, "time", lambda: next(clock))
+
+    async def publish_metrics_batch(entries):
+        payloads.append(entries[0][1])
+        result_id = entries[0][2]["collection_result_id"]
+        if len(payloads) == 1:
+            return {result_id: DefinitelyNotPublishedError("connection unavailable")}
+        return {result_id: None}
+
+    class FailingCollectionPlugin:
+        async def collect(self, target, credential, context):
+            return CollectOutcome(
+                status=CollectOutcomeStatus.FAILED, error_code="collection_failed"
+            )
+
+    publisher = BufferedResultPublisher(
+        NatsResultPublisher(metrics_publish_batch=publish_metrics_batch),
+        capacity=1,
+        batch_size=1,
+    )
+    request = CollectionRequest(
+        task_id="collect-stable-retry-payload",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+        credentials=({"credential_id": "c1"},),
+        params={"plugin_family": "configuration", "model_id": "network"},
+    )
+    lease = RunLease(
+        request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a"
+    )
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=FailingCollectionPlugin(),
+        publisher=publisher,
+        settings=TargetExecutorSettings(
+            max_active_targets=1, target_task_window=1, publish_max_attempts=2
+        ),
+    )
+
+    summary = await executor.execute(request, lease)
+    await publisher.shutdown()
+
+    assert summary.publish_succeeded == 1
+    assert payloads[0] == payloads[1]
 
 
 @pytest.mark.asyncio

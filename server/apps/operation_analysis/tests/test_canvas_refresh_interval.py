@@ -8,7 +8,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.operation_analysis.constants.canvas_refresh import DEFAULT_CANVAS_REFRESH_INTERVAL_MS, normalize_canvas_refresh_interval
 from apps.operation_analysis.constants.import_export import ObjectType
-from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, NetworkTopology, Screen, Topology
+from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, NetworkTopology, Report, Screen, Topology
 from apps.operation_analysis.schemas.import_export_schema import DashboardItem, NetworkTopologyItem
 from apps.operation_analysis.services.import_export.export_service import ExportService
 from apps.operation_analysis.views import view as view_module
@@ -180,6 +180,34 @@ def test_screen_and_topology_accept_refresh_interval(authenticated_user):
 
 
 @pytest.mark.django_db
+def test_report_accepts_refresh_interval_without_view_sets(authenticated_user):
+    user = _superuser(authenticated_user)
+    directory = _directory()
+    report = Report.objects.create(
+        name="周期报表",
+        groups=[1],
+        directory=directory,
+        created_by="testuser",
+        view_sets={"schema_version": 1, "filters": [], "sections": []},
+    )
+    request = _request(
+        "patch",
+        f"/report/{report.id}/",
+        user,
+        data={"refresh_interval": 60000},
+    )
+    response = view_module.ReportModelViewSet.as_view({"patch": "partial_update"})(
+        request,
+        pk=str(report.id),
+    )
+    payload = _render(response)
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["data"]["refresh_interval"] == 60000
+    report.refresh_from_db()
+    assert report.refresh_interval == 60000
+
+
+@pytest.mark.django_db
 def test_network_topology_put_config_does_not_reset_refresh_interval(authenticated_user):
     user = _superuser(authenticated_user)
     directory = _directory()
@@ -216,6 +244,21 @@ def test_export_dashboard_yaml_includes_refresh_interval():
         refresh_interval=60000,
     )
     yaml_obj = ExportService.convert_canvas_to_yaml(dashboard, ObjectType.DASHBOARD, {}, {})
+    assert yaml_obj["refresh_interval"] == 60000
+
+
+@pytest.mark.django_db
+def test_export_report_yaml_includes_refresh_interval():
+    directory = _directory()
+    report = Report.objects.create(
+        name="导出间隔报表",
+        groups=[1],
+        directory=directory,
+        created_by="testuser",
+        refresh_interval=60000,
+        view_sets={"schema_version": 1, "filters": [], "sections": []},
+    )
+    yaml_obj = ExportService.convert_canvas_to_yaml(report, ObjectType.REPORT, {}, {})
     assert yaml_obj["refresh_interval"] == 60000
 
 
@@ -261,6 +304,14 @@ def test_share_payload_includes_refresh_interval_for_runtime_canvases():
         created_by="testuser",
         refresh_interval=300000,
     )
+    report = Report.objects.create(
+        name="分享间隔报表",
+        groups=[1],
+        directory=directory,
+        created_by="testuser",
+        refresh_interval=60000,
+        view_sets={"schema_version": 1, "filters": [], "sections": []},
+    )
     architecture = Architecture.objects.create(
         name="分享架构",
         groups=[1],
@@ -278,9 +329,11 @@ def test_share_payload_includes_refresh_interval_for_runtime_canvases():
     )
 
     dashboard_payload = _serialize_shared_resource(type("Principal", (), {"resource_type": "dashboard", "resource": dashboard})())
+    report_payload = _serialize_shared_resource(type("Principal", (), {"resource_type": "report", "resource": report})())
     architecture_payload = _serialize_shared_resource(type("Principal", (), {"resource_type": "architecture", "resource": architecture})())
     network_payload = _serialize_shared_resource(type("Principal", (), {"resource_type": "networkTopology", "resource": network})())
 
     assert dashboard_payload["refresh_interval"] == 300000
+    assert report_payload["refresh_interval"] == 60000
     assert "refresh_interval" not in architecture_payload
     assert network_payload["refresh_interval"] == 600000

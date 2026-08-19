@@ -15,8 +15,7 @@ export interface TopoData {
 }
   
 export interface NodeData {
-  inst_uuid?: string;
-  _id?: number | string;
+  inst_uuid: string;
   model_id: string;
   inst_name: string;
   asst_id?: string;

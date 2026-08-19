@@ -11,6 +11,9 @@ API_VERSION = "v1"
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("i18n/", include("django.conf.urls.i18n")),
+    # OpenAPI 统一网关（specs/changes/openapi-unified-gateway）：
+    # 顶层静态挂载以获得干净的 /openapi/v1/ 前缀，不走下方 api/v1/<app>/ 动态循环
+    path("openapi/v1/", include("apps.core.openapi.urls")),
 ]
 
 for app_config in apps.get_app_configs():

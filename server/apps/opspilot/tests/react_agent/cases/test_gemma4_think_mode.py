@@ -151,6 +151,65 @@ class TestGemmaOpenAIClientThinkMode:
         assert "chat_template_kwargs" not in mock_llm.extra_body
 
 
+class TestDeepSeekV4FlashThinkMode:
+    """deepseek-v4-flash：官方 thinking.type + 网关 enable_thinking 双写。"""
+
+    @patch("apps.opspilot.metis.llm.common.llm_client_factory.ChatOpenAI")
+    def test_v4_flash_show_think_false_disables_both_toggles(self, mock_cls):
+        mock_llm = MagicMock()
+        mock_llm.extra_body = None
+        mock_cls.return_value = mock_llm
+
+        request = BasicLLMRequest(
+            model="deepseek-v4-flash",
+            openai_api_key="sk-test",
+            openai_api_base="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            extra_config={"show_think": False},
+        )
+        LLMClientFactory._create_openai_client(request, disable_stream=False)
+
+        assert mock_llm.extra_body["thinking"] == {"type": "disabled"}
+        assert mock_llm.extra_body["enable_thinking"] is False
+
+    @patch("apps.opspilot.metis.llm.common.llm_client_factory.ChatOpenAI")
+    def test_v4_flash_show_think_true_enables_both_toggles(self, mock_cls):
+        mock_llm = MagicMock()
+        mock_llm.extra_body = None
+        mock_cls.return_value = mock_llm
+
+        request = BasicLLMRequest(
+            model="deepseek-v4-flash",
+            openai_api_key="sk-test",
+            extra_config={"show_think": True},
+        )
+        LLMClientFactory._create_openai_client(request, disable_stream=False)
+
+        assert mock_llm.extra_body["thinking"] == {"type": "enabled"}
+        assert mock_llm.extra_body["enable_thinking"] is True
+
+    @patch("apps.opspilot.metis.llm.common.llm_client_factory.OpenAI")
+    def test_v4_flash_isolated_call_disables_both_toggles(self, mock_openai_cls):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "ok"
+        mock_client.chat.completions.create.return_value = mock_response
+        mock_openai_cls.return_value = mock_client
+
+        request = BasicLLMRequest(
+            model="deepseek-v4-flash",
+            openai_api_key="sk-test",
+            openai_api_base="https://api.deepseek.com",
+        )
+        LLMClientFactory._invoke_isolated_openai(request, [HumanMessage(content="hi")])
+
+        call_kwargs = mock_client.chat.completions.create.call_args[1]
+        assert call_kwargs["extra_body"] == {
+            "thinking": {"type": "disabled"},
+            "enable_thinking": False,
+        }
+
+
 class TestGemmaIsolatedCallDisablesThinking:
     """_invoke_isolated_openai passes chat_template_kwargs.enable_thinking=False for Gemma."""
 

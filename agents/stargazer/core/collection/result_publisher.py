@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Callable, Mapping
 
-from core.collection.contracts import TargetCollectionResult, build_collection_result_id
+from core.collection.contracts import PublishOutcome, PublishStatus, TargetCollectionResult, build_collection_result_id
 from core.collection.runtime import CollectionRequest, RunLease
+from core.logger import logger
 
 CREDENTIAL_RESULT_EVENT_VERSION = 2
 CREDENTIAL_FAILURE_ERROR_CODES = frozenset(
@@ -29,20 +30,77 @@ class _BufferedPublishItem:
     request: CollectionRequest
     result: TargetCollectionResult
     lease: RunLease
-    completion: asyncio.Future[None]
+    completion: asyncio.Future[PublishOutcome | None]
+    state: _PublishAttemptState
+
+
+class _PublishAttemptState:
+    """跟踪结果是否仍可在触达 transport 前安全撤销。"""
+
+    def __init__(self, completion: asyncio.Future[PublishOutcome | None]) -> None:
+        self._completion = completion
+        self._processing = False
+        self._delivery_started = False
+        self._cancelled = False
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancelled
+
+    @property
+    def delivery_started(self) -> bool:
+        return self._delivery_started
+
+    def mark_processing(self) -> bool:
+        if self._cancelled:
+            return False
+        self._processing = True
+        return True
+
+    def mark_delivery_started(self) -> bool:
+        if self._cancelled:
+            return False
+        self._processing = True
+        self._delivery_started = True
+        return True
+
+    def cancel_if_unattempted(self) -> bool:
+        if self._processing or self._delivery_started or self._cancelled:
+            return False
+        self._cancelled = True
+        if not self._completion.done():
+            self._completion.set_result(
+                PublishOutcome(
+                    status=PublishStatus.RETRYABLE_FAILED,
+                    error_code="publish_cancelled_before_delivery",
+                )
+            )
+        return True
 
 
 class FuturePublishReceipt:
     """发布队列回执；队列接纳与最终投递确认相互独立。"""
 
-    def __init__(self, completion: asyncio.Future[None]) -> None:
+    def __init__(
+        self,
+        completion: asyncio.Future[PublishOutcome | None],
+        state: _PublishAttemptState | None = None,
+    ) -> None:
         self._completion = completion
+        self._state = state or _PublishAttemptState(completion)
 
     def done(self) -> bool:
         return self._completion.done()
 
-    async def wait(self) -> None:
-        await self._completion
+    async def wait(self):
+        return await asyncio.shield(self._completion)
+
+    def cancel_if_unattempted(self) -> bool:
+        return self._state.cancel_if_unattempted()
+
+    @property
+    def delivery_started(self) -> bool:
+        return self._state.delivery_started
 
 
 class PublishShutdownError(RuntimeError):
@@ -62,7 +120,9 @@ class ImmediateResultPublishQueue:
             self._sink.publish(request, result, lease),
             name=f"result-publish:{request.task_id}:{result.target}",
         )
-        return FuturePublishReceipt(completion)
+        state = _PublishAttemptState(completion)
+        state.mark_delivery_started()
+        return FuturePublishReceipt(completion, state)
 
 
 class BufferedResultPublisher:
@@ -74,7 +134,7 @@ class BufferedResultPublisher:
         *,
         capacity: int,
         batch_size: int = 50,
-        flush_interval_seconds: float = 0.01,
+        flush_interval_seconds: float = 0.02,
         metrics=None,
     ) -> None:
         if capacity <= 0:
@@ -91,7 +151,7 @@ class BufferedResultPublisher:
         self._metrics = metrics
         self._writer: asyncio.Task | None = None
         self._closed = False
-        self._pending: set[asyncio.Future[None]] = set()
+        self._pending: set[asyncio.Future[PublishOutcome | None]] = set()
         self.peak_queue_depth = 0
 
     @property
@@ -103,16 +163,17 @@ class BufferedResultPublisher:
             raise RuntimeError("result publisher is closed")
         loop = asyncio.get_running_loop()
         completion = loop.create_future()
+        state = _PublishAttemptState(completion)
         self._pending.add(completion)
         completion.add_done_callback(self._pending.discard)
-        item = _BufferedPublishItem(request, result, lease, completion)
+        item = _BufferedPublishItem(request, result, lease, completion, state)
         self._ensure_writer()
         enqueue_started = time.monotonic()
         await self._queue.put(item)
         if self._metrics is not None:
             self._metrics.observe("publish_queue_wait_seconds", time.monotonic() - enqueue_started)
         self.peak_queue_depth = max(self.peak_queue_depth, self._queue.qsize())
-        return FuturePublishReceipt(completion)
+        return FuturePublishReceipt(completion, state)
 
     async def publish(self, request, result, lease) -> None:
         receipt = await self.enqueue(request, result, lease)
@@ -164,6 +225,8 @@ class BufferedResultPublisher:
             first = await self._queue.get()
             if first is None:
                 return
+            if first.state.cancelled:
+                continue
             batch = [first]
             deadline = asyncio.get_running_loop().time() + self._flush_interval_seconds
             while len(batch) < self._batch_size:
@@ -177,10 +240,18 @@ class BufferedResultPublisher:
                 if item is None:
                     await self._deliver(batch)
                     return
-                batch.append(item)
+                if not item.state.cancelled:
+                    batch.append(item)
             await self._deliver(batch)
 
     async def _deliver(self, batch: list[_BufferedPublishItem]) -> None:
+        tracks_transport_attempts = bool(getattr(self._delegate, "tracks_transport_attempts", False))
+        if tracks_transport_attempts:
+            batch = [item for item in batch if not item.state.cancelled]
+        else:
+            batch = [item for item in batch if item.state.mark_processing()]
+        if not batch:
+            return
         flush_started = time.monotonic()
         if self._metrics is not None:
             self._metrics.increment("publish_batch_total")
@@ -190,7 +261,7 @@ class BufferedResultPublisher:
         try:
             if callable(publish_batch):
                 try:
-                    outcomes = await publish_batch(tuple((item.request, item.result, item.lease) for item in batch))
+                    outcomes = await publish_batch(tuple((item.request, item.result, item.lease, item.state) for item in batch))
                 except Exception as exc:  # 同批各目标获得独立失败结论
                     for item in batch:
                         if not item.completion.done():
@@ -205,12 +276,15 @@ class BufferedResultPublisher:
                             plugin_ref=item.request.plugin_ref,
                             target=item.result.target,
                             fence=item.lease.fence,
+                            attempt_id=item.lease.attempt_id,
                         )
                         outcome = per_result.get(result_id)
                         if isinstance(outcome, BaseException):
                             item.completion.set_exception(outcome)
+                        elif isinstance(outcome, PublishOutcome):
+                            item.completion.set_result(outcome)
                         else:
-                            item.completion.set_result(None)
+                            item.completion.set_result(PublishOutcome(status=PublishStatus.CONFIRMED))
                 return
 
             outcomes = await asyncio.gather(
@@ -223,44 +297,59 @@ class BufferedResultPublisher:
                 if isinstance(outcome, BaseException):
                     item.completion.set_exception(outcome)
                 else:
-                    item.completion.set_result(None)
+                    item.completion.set_result(PublishOutcome(status=PublishStatus.CONFIRMED))
         finally:
             if self._metrics is not None:
                 self._metrics.observe("publish_flush_duration_seconds", time.monotonic() - flush_started)
 
 
 class NatsResultPublisher:
+    tracks_transport_attempts = True
+
     def __init__(
         self,
         *,
         metrics_publish: Callable | None = None,
         metrics_publish_batch: Callable | None = None,
         callback_publish: Callable | None = None,
+        credential_result_publish: Callable | None = None,
         result_event_sink: Callable | None = None,
         metrics=None,
+        event_max_attempts: int = 2,
     ) -> None:
         self._metrics_publish = metrics_publish
         self._metrics_publish_batch = metrics_publish_batch
         self._callback_publish = callback_publish
+        self._credential_result_publish = credential_result_publish
         self._result_event_sink = result_event_sink
         self._metrics = metrics
+        self._event_max_attempts = max(1, int(event_max_attempts))
 
-    async def publish_batch(self, items) -> dict[str, BaseException | None]:
-        outcomes: dict[str, BaseException | None] = {}
+    # fmt: off
+    async def publish_batch(  # noqa: C901
+        self, items
+    ) -> dict[str, BaseException | PublishOutcome | None]:
+        # fmt: on
+        outcomes: dict[str, BaseException | PublishOutcome | None] = {}
         metrics_entries = []
         metric_events = []
         non_metrics = []
-        for request, result, lease in items:
+        for item in items:
+            request, result, lease = item[:3]
+            attempt_state = item[3] if len(item) > 3 else None
             if result.status == "deferred" or request.params.get("callback_subject"):
-                non_metrics.append((request, result, lease))
+                non_metrics.append((request, result, lease, attempt_state))
                 continue
             result_id = build_collection_result_id(
                 task_id=request.task_id,
                 plugin_ref=request.plugin_ref,
                 target=result.target,
                 fence=lease.fence,
+                attempt_id=lease.attempt_id,
             )
-            params = self._result_params(request, result, lease, result_id)
+            params = self._result_params(
+                request, result, lease, result_id, attempt_state=attempt_state
+            )
             metrics = result.value
             if not metrics or result.status not in {"success", "deferred"}:
                 metrics = self._error_metrics(request, result, params)
@@ -270,7 +359,9 @@ class NatsResultPublisher:
 
         if metrics_entries:
             metrics_publish_batch = self._metrics_publish_batch
-            using_default_batch = metrics_publish_batch is None and self._metrics_publish is None
+            using_default_batch = (
+                metrics_publish_batch is None and self._metrics_publish is None
+            )
             if using_default_batch:
                 from tasks.utils.nats_helper import publish_metrics_batch_to_nats
 
@@ -278,16 +369,33 @@ class NatsResultPublisher:
             if metrics_publish_batch is not None:
                 try:
                     if using_default_batch:
-                        batch_outcomes = await metrics_publish_batch(tuple(metrics_entries), metrics=self._metrics)
+                        batch_outcomes = await metrics_publish_batch(
+                            tuple(metrics_entries), metrics=self._metrics
+                        )
                     else:
-                        batch_outcomes = await metrics_publish_batch(tuple(metrics_entries))
+                        batch_outcomes = await metrics_publish_batch(
+                            tuple(metrics_entries)
+                        )
                 except Exception as error:  # noqa: BLE001 - 返回逐目标失败，不抛整批
                     for _request, _result, _lease, result_id in metric_events:
                         outcomes[result_id] = error
                 else:
                     if isinstance(batch_outcomes, Mapping):
                         for result_id, outcome in batch_outcomes.items():
-                            if result_id in outcomes and isinstance(outcome, BaseException):
+                            if result_id not in outcomes:
+                                continue
+                            if isinstance(outcome, ValueError):
+                                outcomes[result_id] = PublishOutcome(
+                                    status=PublishStatus.PERMANENT_FAILED,
+                                    error_code=str(
+                                        getattr(
+                                            outcome,
+                                            "error_code",
+                                            "metrics_encode_failed",
+                                        )
+                                    ),
+                                )
+                            elif isinstance(outcome, BaseException):
                                 outcomes[result_id] = outcome
             else:
                 individual_outcomes = await asyncio.gather(
@@ -301,23 +409,57 @@ class NatsResultPublisher:
                 if outcomes[result_id] is not None:
                     continue
                 try:
-                    await self._record_event(request, result, lease, result_id)
-                except Exception as error:  # noqa: BLE001 - 事件记录按目标归因
-                    outcomes[result_id] = error
+                    await self._record_event_with_retry(
+                        request, result, lease, result_id
+                    )
+                except Exception as error:  # noqa: BLE001 - 事件记录按目标归因并保留原始上下文
+                    logger.exception(
+                        "event=result_event_record_failed task_id=%s target=%s error_type=%s",
+                        request.task_id,
+                        result.target,
+                        type(error).__name__,
+                    )
+                    outcomes[result_id] = PublishOutcome(
+                        status=PublishStatus.EVENT_FAILED,
+                        error_code="result_event_record_failed",
+                    )
 
         if non_metrics:
+
+            async def publish_non_metric(request, result, lease, attempt_state):
+                if (
+                    attempt_state is not None
+                    and not attempt_state.mark_delivery_started()
+                ):
+                    return PublishOutcome(
+                        status=PublishStatus.RETRYABLE_FAILED,
+                        error_code="publish_cancelled_before_delivery",
+                    )
+                await self.publish(request, result, lease)
+                return None
+
             non_metric_outcomes = await asyncio.gather(
-                *(self.publish(request, result, lease) for request, result, lease in non_metrics),
+                *(
+                    publish_non_metric(request, result, lease, attempt_state)
+                    for request, result, lease, attempt_state in non_metrics
+                ),
                 return_exceptions=True,
             )
-            for (request, result, lease), outcome in zip(non_metrics, non_metric_outcomes):
+            for (request, result, lease, _attempt_state), outcome in zip(
+                non_metrics, non_metric_outcomes
+            ):
                 result_id = build_collection_result_id(
                     task_id=request.task_id,
                     plugin_ref=request.plugin_ref,
                     target=result.target,
                     fence=lease.fence,
+                    attempt_id=lease.attempt_id,
                 )
-                outcomes[result_id] = outcome if isinstance(outcome, BaseException) else None
+                outcomes[result_id] = (
+                    outcome
+                    if isinstance(outcome, (BaseException, PublishOutcome))
+                    else None
+                )
         return outcomes
 
     async def publish(
@@ -334,7 +476,7 @@ class NatsResultPublisher:
             attempt_id=lease.attempt_id,
         )
         if result.status == "deferred":
-            await self._record_event(request, result, lease, result_id)
+            await self._record_event_with_retry(request, result, lease, result_id)
             return
         params = self._result_params(request, result, lease, result_id)
         if params.get("callback_subject"):
@@ -354,7 +496,7 @@ class NatsResultPublisher:
                 }
             )
             await callback_publish(payload, params, request.task_id)
-            await self._record_event(request, result, lease, result_id)
+            await self._record_event_with_retry(request, result, lease, result_id)
             return
 
         metrics_publish = self._metrics_publish
@@ -366,10 +508,22 @@ class NatsResultPublisher:
         if not metrics or result.status not in {"success", "deferred"}:
             metrics = self._error_metrics(request, result, params)
         await metrics_publish({}, metrics, params, request.task_id)
-        await self._record_event(request, result, lease, result_id)
+        await self._record_event_with_retry(request, result, lease, result_id)
+
+    async def _record_event_with_retry(self, request, result, lease, result_id) -> None:
+        for attempt in range(self._event_max_attempts):
+            try:
+                await self._record_event(request, result, lease, result_id)
+                return
+            except Exception:  # noqa: BLE001 - 稳定 event_id 允许仅重试幂等事件
+                if attempt + 1 >= self._event_max_attempts:
+                    raise
+                await asyncio.sleep(0)
 
     @staticmethod
-    def _result_params(request, result, lease, result_id) -> dict:
+    def _result_params(
+        request, result, lease, result_id, *, attempt_state=None
+    ) -> dict:
         params = dict(request.params)
         params.update(
             {
@@ -379,8 +533,12 @@ class NatsResultPublisher:
                 "collection_target": result.target,
                 "collection_plugin_ref": request.plugin_ref,
                 "collection_result_id": result_id,
+                "collect_status": result.status,
+                "_publish_timestamp_ms": result.publish_timestamp_ms,
             }
         )
+        if attempt_state is not None:
+            params["_publish_attempt_state"] = attempt_state
         return params
 
     async def _record_event(
@@ -390,11 +548,15 @@ class NatsResultPublisher:
         lease: RunLease,
         result_id: str,
     ) -> None:
-        if self._result_event_sink is None:
+        should_sink = self._result_event_sink is not None
+        should_publish = bool(str(request.params.get("credential_result_subject") or "").strip())
+        if not should_sink and not should_publish:
             return
+
         credential_failures = tuple(getattr(result, "credential_failures", ()))
         for event_index, failure in enumerate(credential_failures):
-            await self._result_event_sink(
+            await self._emit_credential_event(
+                request,
                 self._build_credential_event(
                     request=request,
                     lease=lease,
@@ -405,13 +567,14 @@ class NatsResultPublisher:
                     error_code=failure.error_code,
                     attempts=result.attempts,
                     event_index=event_index,
-                )
+                ),
             )
 
         if credential_failures and not result.credential_id:
             return
 
-        await self._result_event_sink(
+        await self._emit_credential_event(
+            request,
             self._build_credential_event(
                 request=request,
                 lease=lease,
@@ -422,8 +585,35 @@ class NatsResultPublisher:
                 error_code=result.error_code,
                 attempts=result.attempts,
                 event_index=len(credential_failures),
-            )
+            ),
         )
+
+    async def _emit_credential_event(self, request: CollectionRequest, event: dict) -> None:
+        # Redis 批推路径会在 append 时补 finished_at；实时 NATS 必须自带，
+        # 否则 Server v2 身份校验会拒收（unreachable 例外绕过）。
+        if not str(event.get("finished_at") or "").strip():
+            from datetime import datetime, timezone
+
+            event["finished_at"] = datetime.now(timezone.utc).isoformat(
+                timespec="milliseconds"
+            )
+        if self._result_event_sink is not None:
+            await self._result_event_sink(event)
+        await self._publish_credential_result_if_needed(request, event)
+
+    async def _publish_credential_result_if_needed(
+        self, request: CollectionRequest, event: dict
+    ) -> None:
+        subject = str(request.params.get("credential_result_subject") or "").strip()
+        if not subject:
+            return
+
+        publish = self._credential_result_publish
+        if publish is None:
+            from tasks.utils.nats_helper import publish_credential_result_to_nats
+
+            publish = publish_credential_result_to_nats
+        await publish(event, dict(request.params), request.task_id)
 
     @staticmethod
     def _build_credential_event(
@@ -439,8 +629,14 @@ class NatsResultPublisher:
         event_index: int,
     ) -> dict:
         success = status == "success"
-        failure_kind = "credential" if status == "failed" and error_code in CREDENTIAL_FAILURE_ERROR_CODES else "task"
-        event_identity = "\0".join((result_id, str(event_index), credential_id, status, error_code))
+        failure_kind = (
+            "credential"
+            if status == "failed" and error_code in CREDENTIAL_FAILURE_ERROR_CODES
+            else "task"
+        )
+        event_identity = "\0".join(
+            (result_id, str(event_index), credential_id, status, error_code)
+        )
         collect_task_id = request.params.get("collect_task_id") or request.task_id
         return {
             "event_id": hashlib.sha256(event_identity.encode("utf-8")).hexdigest(),

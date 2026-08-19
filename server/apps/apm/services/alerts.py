@@ -6,7 +6,7 @@ from django.db import transaction
 from django.db.models import Count, Q, QuerySet
 from django.db.models.functions import TruncHour
 
-from apps.apm.models import ApmAlert, ApmEvent, ApmEventSnapshot, ApmPolicyTargetState
+from apps.apm.models import ApmAlert, ApmAlertOutbox, ApmEvent, ApmEventSnapshot, ApmPolicyTargetState
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult
 from apps.apm.services.policies import DjangoApmPolicyService
 from apps.core.utils.viewset_utils import build_json_membership_query
@@ -29,6 +29,7 @@ class DjangoApmAlertService:
         started_at: datetime,
         ended_at: datetime,
         status: str | None = None,
+        status_group: str | None = None,
         severity: str | None = None,
         metric_type: str | None = None,
         service_id=None,
@@ -41,6 +42,12 @@ class DjangoApmAlertService:
         )
         if status:
             queryset = queryset.filter(status=status)
+        if status_group == "active":
+            queryset = queryset.filter(status=ApmAlert.Status.ACTIVE)
+        elif status_group == "history":
+            queryset = queryset.filter(
+                status__in=(ApmAlert.Status.RECOVERED, ApmAlert.Status.CLOSED)
+            )
         if severity:
             queryset = queryset.filter(severity=severity)
         if metric_type:
@@ -57,8 +64,21 @@ class DjangoApmAlertService:
             )
         return [self.serialize(alert) for alert in queryset.order_by("-last_event_at", "-id")[:limit]]
 
-    def distribution(self, *, organization_id: int, started_at: datetime, ended_at: datetime) -> list[dict]:
+    def distribution(
+        self,
+        *,
+        organization_id: int,
+        started_at: datetime,
+        ended_at: datetime,
+        status_group: str | None = None,
+    ) -> list[dict]:
         event_queryset = ApmEvent.objects.all()
+        if status_group == "active":
+            event_queryset = event_queryset.filter(alert__status=ApmAlert.Status.ACTIVE)
+        elif status_group == "history":
+            event_queryset = event_queryset.filter(
+                alert__status__in=(ApmAlert.Status.RECOVERED, ApmAlert.Status.CLOSED)
+            )
         rows = (
             event_queryset.filter(build_json_membership_query(event_queryset, "organizations", [organization_id]))
             .filter(occurred_at__gte=started_at, occurred_at__lte=ended_at)
@@ -77,6 +97,24 @@ class DjangoApmAlertService:
     @staticmethod
     def serialize(alert: ApmAlert) -> dict:
         events = list(alert.events.all())
+        outboxes_prefetched = all("outbox_entries" in getattr(event, "_prefetched_objects_cache", {}) for event in events)
+        if outboxes_prefetched:
+            delivery_statuses = [delivery.delivery_status for event in events for delivery in event.outbox_entries.all()]
+        else:
+            delivery_statuses = list(
+                ApmAlertOutbox.objects.filter(event__alert=alert).values_list("delivery_status", flat=True)
+            )
+        status_set = set(delivery_statuses)
+        if not status_set:
+            notification_status = "none"
+        elif status_set == {ApmAlertOutbox.DeliveryStatus.DELIVERED}:
+            notification_status = "delivered"
+        elif ApmAlertOutbox.DeliveryStatus.DELIVERED in status_set:
+            notification_status = "partial"
+        elif ApmAlertOutbox.DeliveryStatus.PENDING in status_set:
+            notification_status = "pending"
+        else:
+            notification_status = "failed"
         return {
             "id": alert.id,
             "external_id": alert.external_id,
@@ -92,6 +130,7 @@ class DjangoApmAlertService:
             "metric_type": alert.metric_type,
             "severity": alert.severity,
             "status": alert.status,
+            "notification_status": notification_status,
             "current_value": alert.current_value,
             "operator": alert.operator,
             "started_at": alert.started_at,

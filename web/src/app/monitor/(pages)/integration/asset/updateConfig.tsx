@@ -20,9 +20,12 @@ import {
 } from '@/app/monitor/hooks/integration/snmpFilterMutex';
 import { getSnmpInterfaceFilterModePatch } from '@/app/monitor/hooks/integration/snmpInterfaceFilterMode';
 import { getIfmibSnapshotEnabled } from '../list/detail/configure/ifmibDeploymentState';
+import { normalizePasswordFields } from '@/components/password/normalizePasswordWhitespace';
 
 interface PluginFormField {
   name?: string;
+  type?: string;
+  editable?: boolean;
   default_value?: unknown;
 }
 
@@ -126,6 +129,21 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   };
 
   const handleSubmit = () => {
+    const touchedPasswordFields = (currentConfig?.form_fields || []).filter(
+      (field) =>
+        field.type === 'password' &&
+        field.editable !== false &&
+        typeof field.name === 'string' &&
+        form.isFieldTouched(field.name)
+    );
+    const normalizedForm = normalizePasswordFields(
+      form.getFieldsValue(true),
+      touchedPasswordFields
+    );
+    if (normalizedForm.changedFields.length) {
+      form.setFieldsValue(normalizedForm.values);
+      message.warning(t('common.passwordWhitespaceTrimmed'));
+    }
     form.validateFields().then((values) => {
       const mutexErrors = getSnmpFilterMutexConflicts(values, t);
       if (mutexErrors.length) {

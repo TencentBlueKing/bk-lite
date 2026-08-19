@@ -80,6 +80,21 @@
   flex-direction: column;
 }
 
+.followedPanel,
+.workbenchPanel {
+  background: var(--color-bg);
+}
+
+.followedPanel .scroll,
+.workbenchPanel .scroll {
+  background: var(--color-bg);
+}
+
+.followedPanel .refreshContent,
+.workbenchPanel .refreshContent {
+  background: var(--color-bg);
+}
+
 .listChrome {
   background: var(--color-bg);
   border-bottom: 1px solid var(--color-border-1);

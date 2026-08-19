@@ -1,0 +1,77 @@
+import { useCallback } from 'react';
+import useApiClient from '@/utils/request';
+
+export const useScanApi = () => {
+  const { get, post, put, del } = useApiClient();
+
+  const getScanList = useCallback(
+    (params?: Record<string, unknown>) => get('/cmdb/api/scan/', { params }),
+    [get]
+  );
+
+  const getScanDetail = useCallback(
+    (scanId: number | string) => get(`/cmdb/api/scan/${scanId}/`),
+    [get]
+  );
+
+  const createScan = useCallback(
+    (params: Record<string, unknown>) => post('/cmdb/api/scan/', params),
+    [post]
+  );
+
+  const updateScan = useCallback(
+    (scanId: number | string, params: Record<string, unknown>) =>
+      put(`/cmdb/api/scan/${scanId}/`, params),
+    [put]
+  );
+
+  const deleteScan = useCallback(
+    (scanId: number | string) => del(`/cmdb/api/scan/${scanId}/`),
+    [del]
+  );
+
+  const executeScan = useCallback(
+    (scanId: number | string) => post(`/cmdb/api/scan/${scanId}/exec/`),
+    [post]
+  );
+
+  const getScanExecution = useCallback(
+    (executionId: number | string) => get(`/cmdb/api/scan/executions/${executionId}/`),
+    [get]
+  );
+
+  const getScanHits = useCallback(
+    (executionId: number | string, params?: Record<string, unknown>) =>
+      get(`/cmdb/api/scan/executions/${executionId}/hits/`, { params }),
+    [get]
+  );
+
+  const generateCollect = useCallback(
+    (executionId: number | string, hitIds: number[]) =>
+      post(`/cmdb/api/scan/executions/${executionId}/generate_collect/`, {
+        hit_ids: hitIds,
+      }),
+    [post]
+  );
+
+  const pushMonitor = useCallback(
+    (executionId: number | string, hitIds: number[]) =>
+      post(`/cmdb/api/scan/executions/${executionId}/push_monitor/`, {
+        hit_ids: hitIds,
+      }),
+    [post]
+  );
+
+  return {
+    getScanList,
+    getScanDetail,
+    createScan,
+    updateScan,
+    deleteScan,
+    executeScan,
+    getScanExecution,
+    getScanHits,
+    generateCollect,
+    pushMonitor,
+  };
+};

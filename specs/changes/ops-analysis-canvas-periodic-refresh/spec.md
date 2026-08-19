@@ -26,7 +26,7 @@ Status: done
 
 ## Implementation Decisions
 
-- 本期只覆盖仪表盘、大屏、拓扑图、网络拓扑。架构图和报表没有运行态取数，不做周期刷新。
+- 本期只覆盖仪表盘、大屏、拓扑图、网络拓扑。架构图没有运行态取数，不做周期刷新。报表周期刷新与 YAML `refresh_interval` 由 [`ops-analysis-report-canvas-toolbar`](../ops-analysis-report-canvas-toolbar/spec.md) 覆盖。
 - 工具栏统一复用现有时间选择器的「仅刷新」形态：左边手动刷新，右边频率。档位固定为关 / 1m / 5m / 10m，不新增 30 秒或其他自定义秒数。仪表盘、大屏用这组控件替换现在的单独刷新图标。
 - 频率是画布级运行设置，不是组件配置，也不进布局 JSON。四种画布都用同一字段 `refresh_interval`。
 - `refresh_interval` 存毫秒，合法值只有：
@@ -46,7 +46,7 @@ type CanvasRefreshIntervalMs = 0 | 60000 | 300000 | 600000;
 - `refresh_interval` 的字段级 PATCH 不得被其它不涉及刷新频率的旧状态 / full-save 意外覆盖。仪表盘、大屏、拓扑图布局保存走 `PUT` 且 payload 不含该字段；模型字段一旦带 `default=0`，DRF 非 partial `PUT` 可能把省略字段写成默认值。本期用最小修复（序列化在 update 时省略该字段的 default，和/或 PATCH 成功后同步 canonical client state），不为这一字段改整套保存架构。网络拓扑布局保存走 `PUT .../config/` 只换 `view_sets`，不碰该字段；目录侧栏元数据编辑走 `PATCH` 且不含该字段。
 - 无编辑权限、分享会话、内置画布：用 saved 值作为 effective 初值开定时器；改下拉只改本次会话，不请求写回。内置画布初始化会删掉重建，因此内置对象上的频率也不写回。
 - 分享详情对四种画布都返回 `refresh_interval`。分享页露出与工作台相同的刷新控件，并按 **effective**（初值=saved）自动刷。网络拓扑分享态现在把这组控件藏掉了，本期要露出来。
-- YAML 导入导出带上 `refresh_interval`。缺字段或非法值（含旧秒语义 `60`）当 `0`，不让整包失败。可选字段，不为此单独升 YAML schema 主版本。架构图、报表 YAML 不增加该字段。仓库当前导出从未写出该字段；DB 存量 `60` 用 data migration 写成 `0`，不要在运行期长期 `60 => 0` 猜版本。仓库没有独立的画布复制 API，「复制」即同一套 YAML/导入字段契约。
+- YAML 导入导出带上 `refresh_interval`。缺字段或非法值（含旧秒语义 `60`）当 `0`，不让整包失败。可选字段，不为此单独升 YAML schema 主版本。架构图 YAML 不增加该字段。报表 YAML 的 `refresh_interval` 见 [`ops-analysis-report-canvas-toolbar`](../ops-analysis-report-canvas-toolbar/spec.md)。仓库当前导出从未写出该字段；DB 存量 `60` 用 data migration 写成 `0`，不要在运行期长期 `60 => 0` 猜版本。仓库没有独立的画布复制 API，「复制」即同一套 YAML/导入字段契约。
 - 周期刷新只重拉运行态数据：仪表盘/大屏组件查询、拓扑图单值与图表节点、网络拓扑指标与连线状态。不重新加载画布布局、组件配置、节点位置，不重置筛选和命名空间草稿。编辑态同样继续刷数，但不得覆盖正在编辑的配置表单或侧栏草稿。
 - 刷新原因要在取数路径上显式区分，不能再用「同一次 reload」同时表达手动和周期：
 
@@ -113,7 +113,7 @@ type CanvasRefreshIntervalMs = 0 | 60000 | 300000 | 600000;
 
 ## Out of Scope
 
-- 架构图、报表的周期刷新。
+- 架构图的周期刷新。报表周期刷新见 [`ops-analysis-report-canvas-toolbar`](../ops-analysis-report-canvas-toolbar/spec.md)。
 - 把频率做成组件级设置，或开放任意秒数。
 - 内置画布上持久化用户改过的频率。
 - 秒级推送、WebSocket、后端推数。

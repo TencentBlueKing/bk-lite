@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.core.utils.serializers import AuthSerializer
+from apps.operation_analysis.common.datasource_security import LEGACY_RAW_MONITOR_QUERY_ERROR, is_legacy_raw_monitor_query
 from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDER, is_sensitive_field_name
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
@@ -208,7 +209,20 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         attrs = validate_datasource_connection_binding(attrs, self.instance)
-        source_type = attrs.get("source_type", getattr(self.instance, "source_type", None))
+        source_type = attrs.get(
+            "source_type",
+            getattr(self.instance, "source_type", DataSourceAPIModel.SOURCE_TYPE_NATS),
+        )
+        rest_api = attrs.get("rest_api", getattr(self.instance, "rest_api", ""))
+        keeps_existing_legacy_route = bool(
+            self.instance
+            and source_type == self.instance.source_type
+            and rest_api == self.instance.rest_api
+            and is_legacy_raw_monitor_query(source_type=source_type, rest_api=rest_api)
+        )
+        if is_legacy_raw_monitor_query(source_type=source_type, rest_api=rest_api) and not keeps_existing_legacy_route:
+            raise serializers.ValidationError({"rest_api": LEGACY_RAW_MONITOR_QUERY_ERROR})
+
         transform_config = attrs.get(
             "transform_config",
             getattr(self.instance, "transform_config", {}) if self.instance else {},
@@ -293,6 +307,7 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
 
         schedule_resubmit_excel_from_saved_source(updated.id)
         return updated
+
 
 class DataSourceBriefSerializer(BaseFormatTimeSerializer, AuthSerializer):
     permission_key = "datasource"

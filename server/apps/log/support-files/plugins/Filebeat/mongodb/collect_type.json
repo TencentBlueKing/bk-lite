@@ -10,6 +10,8 @@
     "collector",
     "instance_id",
     "message",
+    "timestamp",
+    "collect_timestamp",
     "mongodb.log.message",
     "mongodb.log.severity",
     "mongodb.log.component",

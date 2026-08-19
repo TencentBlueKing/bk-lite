@@ -2,6 +2,10 @@ import { IntegrationLogInstance } from '@/app/log/types/integration';
 import { TableDataItem } from '@/app/log/types';
 import { useRedisFilebeatFormItems } from '../../common/redisFilebeatFormItems';
 import { cloneDeep } from 'lodash';
+import { normalizePasswordWhitespace } from '@/components/password/normalizePasswordWhitespace';
+
+const normalizeRedisPassword = (value: unknown) =>
+  typeof value === 'string' ? normalizePasswordWhitespace(value).value : '';
 
 export const useRedisFilebeatConfig = () => {
   const commonFormItems = useRedisFilebeatFormItems();
@@ -45,7 +49,7 @@ export const useRedisFilebeatConfig = () => {
               log_paths: row.log?.paths || [],
               slowlog_enabled: !!row.slowlog?.enabled,
               slowlog_hosts: row.slowlog?.hosts || [],
-              slowlog_password: row.slowlog?.password || ''
+              slowlog_password: normalizeRedisPassword(row.slowlog?.password)
             };
 
             return {

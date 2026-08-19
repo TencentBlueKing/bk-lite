@@ -611,7 +611,13 @@ class BasicNode:
         request = config["configurable"]["graph_request"]
         user_message = request.user_message
         trace_id = config["configurable"].get("trace_id", "unknown")
-        logger.info(f"[{trace_id}] user_message_node 开始执行, " f"original_user_message(完整, len={len(user_message)})=<{user_message!r}>")
+        preview = _safe_log_preview(user_message, max_len=20)
+        logger.info(
+            "[%s] user_message_node 开始执行, original_user_message(len=%s, preview=%r)",
+            trace_id,
+            len(user_message or ""),
+            preview,
+        )
 
         # 如果启用问题改写功能
         if config["configurable"]["graph_request"].enable_query_rewrite:
@@ -619,14 +625,23 @@ class BasicNode:
                 rewritten_message = self._rewrite_query(request, config)
                 if rewritten_message and rewritten_message.strip():
                     user_message = rewritten_message
-                    self.log(config, f"问题改写完成: {request.user_message} -> {user_message}")
+                    self.log(
+                        config,
+                        f"问题改写完成: {_safe_log_preview(request.user_message, 20)!r} -> {_safe_log_preview(user_message, 20)!r}",
+                    )
             except Exception as e:
                 logger.warning("问题改写失败，使用原始问题: %r", e)
                 user_message = request.user_message
 
         state["messages"].append(HumanMessage(content=user_message))
         request.graph_user_message = user_message
-        logger.info(f"[{trace_id}] user_message_node 执行结束, appended_user_message={user_message[:200]!r}, message_count={len(state['messages'])}")
+        logger.info(
+            "[%s] user_message_node 执行结束, appended_user_message(len=%s, preview=%r), message_count=%s",
+            trace_id,
+            len(user_message or ""),
+            _safe_log_preview(user_message, 20),
+            len(state["messages"]),
+        )
         return state
 
     def chat_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
@@ -3140,6 +3155,18 @@ class ToolsNodes(BasicNode):
                         planning_question = str(message.content or "").strip()
                         break
 
+            async def _emit_planned_execution_status(phase: str, **payload: Any) -> None:
+                """规划阶段心跳：让前端显示「正在规划」而非长时间空白。"""
+                try:
+                    await adispatch_custom_event(
+                        "planned_execution_status",
+                        {"phase": phase, **payload},
+                        config=config,
+                    )
+                except Exception as emit_exc:
+                    logger.debug("规划状态事件派发跳过: %s (%s)", phase, emit_exc)
+
+            await _emit_planned_execution_status("planning")
             try:
                 plan = await planner.plan(
                     planning_question,
@@ -3155,6 +3182,13 @@ class ToolsNodes(BasicNode):
                     planning_exc,
                 )
                 plan = ToolExecutionPlan(goal=planning_question, steps=[])
+                await _emit_planned_execution_status("idle", reason="planning_failed")
+            else:
+                await _emit_planned_execution_status(
+                    "planned",
+                    step_count=len(plan.steps),
+                    goal=str(plan.goal or "")[:200],
+                )
 
             planned_tool_names = list(dict.fromkeys(tool_name for step in plan.steps for tool_name in step.tools))
             logger.info(
@@ -3174,6 +3208,7 @@ class ToolsNodes(BasicNode):
 
             # 空计划（含已启用技能包的寒暄）：跳过 DeepAgent/FS，轻量直答。
             if self._should_use_lightweight_after_empty_plan(plan):
+                await _emit_planned_execution_status("idle", reason="empty_plan")
                 light_system = self._build_lightweight_system_prompt(
                     getattr(graph_request, "system_message_prompt", "") or "",
                     skills_available=has_skill_packages,
@@ -3449,6 +3484,7 @@ class ToolsNodes(BasicNode):
                             if replan_count >= 2:
                                 raise
                             replan_count += 1
+                            await _emit_planned_execution_status("replanning", replan_count=replan_count)
                             replacement = await planner.plan(
                                 planning_question,
                                 tools,
@@ -3461,6 +3497,11 @@ class ToolsNodes(BasicNode):
                             _ensure_skill_runtime_for_plan(replacement)
                             pending_steps = list(replacement.steps)
                             total_steps = len(completed_steps) + len(pending_steps)
+                            await _emit_planned_execution_status(
+                                "planned",
+                                step_count=len(pending_steps),
+                                replan_count=replan_count,
+                            )
                             logger.warning(
                                 "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
                                 replan_count,
@@ -3548,6 +3589,7 @@ class ToolsNodes(BasicNode):
                             if replan_count >= 2:
                                 raise ToolPlanningError(failure)
                             replan_count += 1
+                            await _emit_planned_execution_status("replanning", replan_count=replan_count)
                             replacement = await planner.plan(
                                 planning_question,
                                 tools,
@@ -3560,6 +3602,11 @@ class ToolsNodes(BasicNode):
                             _ensure_skill_runtime_for_plan(replacement)
                             pending_steps = list(replacement.steps)
                             total_steps = len(completed_steps) + len(pending_steps)
+                            await _emit_planned_execution_status(
+                                "planned",
+                                step_count=len(pending_steps),
+                                replan_count=replan_count,
+                            )
                             logger.warning(
                                 "DeepAgent 当前及后续步骤已重规划: count=%s, failure=%s, steps=%s",
                                 replan_count,

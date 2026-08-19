@@ -59,6 +59,7 @@ import {
   generateSearchId,
   getMetricsMapKey,
   extractDimensionLabelValues,
+  normalizeMonitorEntityId,
   resolveInitialPlugin,
   resolveMetricDimensionLabels,
   resolveMetricSelection
@@ -89,6 +90,8 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
     const initialPluginId = searchParams.get('plugin_id');
     const initialInstanceId = searchParams.get('instance_id');
     const initialMetricId = searchParams.get('metric_id');
+    const normalizedInitialObjectId = normalizeMonitorEntityId(initialObjectId);
+    const normalizedInitialPluginId = normalizeMonitorEntityId(initialPluginId);
     const [queryGroups, setQueryGroups] = useState<QueryGroup[]>([
       {
         id: generateSearchId(),
@@ -229,7 +232,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       // 应用 URL 参数到初始查询组
       if (
         !urlParamsApplied &&
-        (initialObjectId || initialInstanceId || initialMetricId)
+        (normalizedInitialObjectId || initialInstanceId || initialMetricId)
       ) {
         setQueryGroups((prev) => {
           const first = prev[0];
@@ -237,8 +240,8 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
           return [
             {
               ...first,
-              object: initialObjectId ? +initialObjectId : first.object,
-              plugin: initialPluginId || first.plugin,
+              object: normalizedInitialObjectId ?? first.object,
+              plugin: normalizedInitialPluginId ?? first.plugin,
               instanceIds: initialInstanceId
                 ? [initialInstanceId]
                 : first.instanceIds,
@@ -255,11 +258,11 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
           ];
         });
         setUrlParamsApplied(true);
-        if (initialObjectId) {
+        if (normalizedInitialObjectId) {
           getPlugins(
-            +initialObjectId,
+            normalizedInitialObjectId,
             queryGroups[0].id,
-            initialPluginId,
+            normalizedInitialPluginId,
             Boolean(initialMetricId && !/^\d+$/.test(initialMetricId)),
             initialMetricId && !/^\d+$/.test(initialMetricId)
               ? initialMetricId
@@ -346,8 +349,8 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
         }
         setPluginsMap((prev) => ({ ...prev, [key]: plugins }));
         const selectedPlugin =
-          preferredPluginId ||
-          resolveInitialPlugin(plugins) ||
+          normalizeMonitorEntityId(preferredPluginId) ??
+          resolveInitialPlugin(plugins) ??
           (allowFirstPluginFallback ? plugins[0]?.id : null);
         if (groupId && selectedPlugin) {
           updateQueryGroup(groupId, { plugin: selectedPlugin });
@@ -584,50 +587,53 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
       );
     };
 
-    const handleObjectChange = (groupId: string, objectId: React.Key) => {
+    const handleObjectChange = (groupId: string, objectId: unknown) => {
+      const normalizedObjectId = normalizeMonitorEntityId(objectId);
+      if (normalizedObjectId === null) return;
       setSelectedMetricMap((prev) => {
         const next = { ...prev };
         delete next[groupId];
         return next;
       });
       updateQueryGroup(groupId, {
-        object: objectId,
+        object: normalizedObjectId,
         plugin: null,
         instanceIds: [],
         metric: null,
         legacyMetricName: null,
         conditions: []
       });
-      if (objectId) {
-        getPlugins(objectId, groupId);
+      if (normalizedObjectId) {
+        getPlugins(normalizedObjectId, groupId);
       }
     };
 
     const handlePluginChange = (
       groupId: string,
-      pluginId: React.Key | null
+      pluginId: unknown
     ) => {
       const group = queryGroups.find((g) => g.id === groupId);
       if (!group) return;
+      const normalizedPluginId = normalizeMonitorEntityId(pluginId);
       setSelectedMetricMap((prev) => {
         const next = { ...prev };
         delete next[groupId];
         return next;
       });
       updateQueryGroup(groupId, {
-        plugin: pluginId,
+        plugin: normalizedPluginId,
         instanceIds: [],
         metric: null,
         legacyMetricName: null,
         conditions: []
       });
-      if (group.object && pluginId) {
-        getMetrics(group.object, pluginId, groupId);
-        getInstList(group.object, pluginId);
+      if (group.object && normalizedPluginId) {
+        getMetrics(group.object, normalizedPluginId, groupId);
+        getInstList(group.object, normalizedPluginId);
       }
     };
 
-    const handleMetricChange = (groupId: string, metricId: React.Key) => {
+    const handleMetricChange = (groupId: string, metricId: unknown) => {
       const group = queryGroups.find((g) => g.id === groupId);
       if (!group) return;
       const dataKey = getMetricsMapKey(group.object, group.plugin);
@@ -635,12 +641,13 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
         (item) => item.child || []
       );
       const metrics = [...searchMetrics, ...(metricsMap[dataKey] || [])];
-      const target = resolveMetricSelection(metrics, metricId);
+      const normalizedMetricId = normalizeMonitorEntityId(metricId);
+      const target = resolveMetricSelection(metrics, normalizedMetricId);
       if (target) {
         setSelectedMetricMap((prev) => ({ ...prev, [groupId]: target }));
       }
       updateQueryGroup(groupId, {
-        metric: target?.id || metricId,
+        metric: target?.id ?? normalizedMetricId,
         legacyMetricName: null,
         conditions: []
       });
@@ -1011,7 +1018,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                     .toLowerCase()
                     .includes(input.toLowerCase())
                 }
-                onChange={(val) => handleObjectChange(group.id, String(val))}
+                onChange={(val) => handleObjectChange(group.id, val)}
               >
                 {objects.map((item) => (
                   <Option
@@ -1046,7 +1053,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                     label: item.display_name || item.name || String(item.id),
                     value: item.id
                   }))}
-                  onChange={(val) => handlePluginChange(group.id, String(val))}
+                  onChange={(val) => handlePluginChange(group.id, val)}
                 />
               </div>
             )}
@@ -1106,7 +1113,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                     handleMetricSearch(group, '');
                   }
                 }}
-                onChange={(val) => handleMetricChange(group.id, String(val))}
+                onChange={(val) => handleMetricChange(group.id, val)}
               />
             </div>
             {/* 汇聚方法 */}

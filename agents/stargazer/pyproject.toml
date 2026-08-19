@@ -56,6 +56,7 @@ dev = [
 ]
 
 aliyun = [
+    "six==1.17.0",
     "aliyun-python-sdk-cms==7.0.3",
     "aliyun-python-sdk-ecs==4.24.8",
     "aliyun-python-sdk-ram==2.0.7",
