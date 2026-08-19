@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   Form,
@@ -14,7 +14,8 @@ import {
   Steps,
   Switch,
   Table,
-  Tag
+  Tag,
+  Typography
 } from 'antd';
 import { DeleteOutlined } from '@ant-design/icons';
 import useMonitorApi from '@/app/monitor/api';
@@ -28,7 +29,9 @@ import {
   buildBulkApplyPayload,
   buildPolicyPreview,
   BulkAssetItem,
+  BulkAssetPaginationState,
   BulkConfig,
+  changeBulkAssetPage,
   displayAssetName,
   getAssetCollectionTemplateLabels,
   getAssetOrganizationText,
@@ -36,7 +39,9 @@ import {
   getPrimaryNoticeType,
   getTemplateKey,
   normalizeBulkConfig,
-  PolicyTemplateItem
+  PolicyTemplateItem,
+  reconcileBulkAssetSelection,
+  resetBulkAssetPageForSearch
 } from './templateBulkUtils';
 import templateStyle from './index.module.scss';
 import { formatUserName } from '@/utils/userDisplay';
@@ -76,6 +81,12 @@ const noDataLevelOptions = [
   { label: '错误', value: 'error' },
   { label: '警告', value: 'warning' }
 ];
+
+const defaultAssetPagination: BulkAssetPaginationState = {
+  current: 1,
+  pageSize: 8,
+  total: 0
+};
 
 const getChannelIcon = (channelType: string): string => {
   const iconMap: Record<string, string> = {
@@ -131,28 +142,90 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
   const [currentStep, setCurrentStep] = useState(0);
   const [templates, setTemplates] = useState<PolicyTemplateItem[]>([]);
   const [assets, setAssets] = useState<BulkAssetItem[]>([]);
-  const [selectedAssetIds, setSelectedAssetIds] = useState<React.Key[]>([]);
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
+  const [selectedAssets, setSelectedAssets] = useState<BulkAssetItem[]>([]);
+  const [assetSearchInput, setAssetSearchInput] = useState('');
+  const [assetNameQuery, setAssetNameQuery] = useState('');
+  const [assetPagination, setAssetPagination] = useState<BulkAssetPaginationState>(
+    defaultAssetPagination
+  );
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
   const [userList, setUserList] = useState<UserItem[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [config, setConfig] = useState<BulkConfig>(defaultConfig);
+  const assetAbortControllerRef = useRef<AbortController | null>(null);
+  const assetRequestIdRef = useRef(0);
+
+  const invalidateAssetRequest = () => {
+    assetAbortControllerRef.current?.abort();
+    assetRequestIdRef.current += 1;
+  };
 
   useEffect(() => {
-    if (!visible) return;
+    invalidateAssetRequest();
+    if (!visible) {
+      setLoadingAssets(false);
+      return;
+    }
     setCurrentStep(0);
     setTemplates(selectedTemplates);
+    setAssets([]);
     setSelectedAssetIds([]);
+    setSelectedAssets([]);
+    setAssetSearchInput('');
+    setAssetNameQuery('');
+    setAssetPagination(defaultAssetPagination);
     setConfig(defaultConfig);
     form.setFieldsValue(defaultConfig);
-    loadAssets();
     loadNotificationOptions();
   }, [visible, monitorObjectId]);
 
-  const selectedAssets = useMemo(
-    () => assets.filter((asset) => selectedAssetIds.includes(asset.instance_id)),
-    [assets, selectedAssetIds]
-  );
+  useEffect(() => {
+    if (!visible || !monitorObjectId) return;
+
+    assetAbortControllerRef.current?.abort();
+    const abortController = new AbortController();
+    assetAbortControllerRef.current = abortController;
+    const requestId = ++assetRequestIdRef.current;
+
+    const loadAssets = async () => {
+      setLoadingAssets(true);
+      try {
+        const data = await getInstanceListByPrimaryObject({
+          id: monitorObjectId,
+          name: assetNameQuery,
+          page: assetPagination.current,
+          page_size: assetPagination.pageSize
+        }, {
+          signal: abortController.signal
+        });
+        if (requestId !== assetRequestIdRef.current) return;
+        const list = Array.isArray(data) ? data : data?.results || data?.items || [];
+        const total = Array.isArray(data)
+          ? data.length
+          : data?.count ?? data?.total ?? list.length;
+        setAssets(list);
+        setAssetPagination((prev) => ({ ...prev, total }));
+      } catch {
+        // 请求层统一呈现非取消错误；此处仅防止中止请求形成未处理 Promise。
+      } finally {
+        if (requestId === assetRequestIdRef.current) {
+          setLoadingAssets(false);
+        }
+      }
+    };
+
+    void loadAssets();
+    return () => abortController.abort();
+  }, [
+    visible,
+    monitorObjectId,
+    assetNameQuery,
+    assetPagination.current,
+    assetPagination.pageSize,
+    getInstanceListByPrimaryObject
+  ]);
 
   const previewItems = useMemo(
     () => buildPolicyPreview(templates, selectedAssets, config),
@@ -171,22 +244,6 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
     [channelList]
   );
 
-  const loadAssets = async () => {
-    if (!monitorObjectId) return;
-    setLoadingAssets(true);
-    try {
-      const data = await getInstanceListByPrimaryObject({
-        id: monitorObjectId,
-        page: 1,
-        page_size: 1000
-      });
-      const list = Array.isArray(data) ? data : data?.items || data?.results || [];
-      setAssets(list);
-    } finally {
-      setLoadingAssets(false);
-    }
-  };
-
   const loadNotificationOptions = async () => {
     const [channels, users] = await Promise.all([
       getSystemChannelList(),
@@ -199,6 +256,55 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
   const handleRemoveTemplate = (template: PolicyTemplateItem) => {
     const key = getTemplateKey(template);
     setTemplates((prev) => prev.filter((item) => getTemplateKey(item) !== key));
+  };
+
+  const handleAssetSelectionChange = (nextSelectedAssetIds: React.Key[]) => {
+    const normalizedIds = nextSelectedAssetIds.map(String);
+    setSelectedAssetIds(normalizedIds);
+    setSelectedAssets((previousSelectedAssets) =>
+      reconcileBulkAssetSelection(
+        previousSelectedAssets,
+        assets,
+        normalizedIds
+      ).selectedAssets
+    );
+  };
+
+  const handleAssetSearch = (value: string) => {
+    const normalizedValue = value.trim();
+    setAssetSearchInput(normalizedValue);
+    if (normalizedValue === assetNameQuery && assetPagination.current === 1) {
+      return;
+    }
+    invalidateAssetRequest();
+    setAssetNameQuery(normalizedValue);
+    setAssetPagination(resetBulkAssetPageForSearch);
+  };
+
+  const handleAssetSearchInputChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const value = event.target.value;
+    setAssetSearchInput(value);
+    if (!value) {
+      if (assetNameQuery || assetPagination.current !== 1) {
+        invalidateAssetRequest();
+      }
+      setAssetNameQuery('');
+      setAssetPagination(resetBulkAssetPageForSearch);
+    }
+  };
+
+  const handleAssetPageChange = (page: number, pageSize: number) => {
+    const nextPagination = changeBulkAssetPage(assetPagination, page, pageSize);
+    if (
+      nextPagination.current === assetPagination.current &&
+      nextPagination.pageSize === assetPagination.pageSize
+    ) {
+      return;
+    }
+    invalidateAssetRequest();
+    setAssetPagination(nextPagination);
   };
 
   const handleValuesChange = (_: Partial<BulkConfig>, values: BulkConfig) => {
@@ -264,11 +370,17 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
   };
 
   const handleClose = () => {
+    invalidateAssetRequest();
     form.resetFields();
     setCurrentStep(0);
     setTemplates([]);
     setAssets([]);
     setSelectedAssetIds([]);
+    setSelectedAssets([]);
+    setAssetSearchInput('');
+    setAssetNameQuery('');
+    setAssetPagination(defaultAssetPagination);
+    setLoadingAssets(false);
     setConfig(defaultConfig);
     onClose();
   };
@@ -344,15 +456,37 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
             <div className={templateStyle.stepHint}>
               选择这些模版要覆盖的监控资产。每个模版将创建一条策略，实例范围包含所选全部资产。
             </div>
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <Input.Search
+                allowClear
+                className="w-[320px]"
+                placeholder="请输入资产名称"
+                value={assetSearchInput}
+                onChange={handleAssetSearchInputChange}
+                onSearch={handleAssetSearch}
+              />
+              <Typography.Text type="secondary">
+                已选择 {selectedAssetIds.length} 个资产
+              </Typography.Text>
+            </div>
             <Table
               className={templateStyle.assetTable}
               rowKey="instance_id"
               loading={loadingAssets}
               dataSource={assets}
-              pagination={{ pageSize: 8, showSizeChanger: false }}
+              pagination={{
+                current: assetPagination.current,
+                pageSize: assetPagination.pageSize,
+                total: assetPagination.total,
+                showSizeChanger: true,
+                pageSizeOptions: ['8', '20', '50', '100'],
+                showTotal: (total) => `共 ${total} 个资产`,
+                onChange: handleAssetPageChange
+              }}
               rowSelection={{
                 selectedRowKeys: selectedAssetIds,
-                onChange: setSelectedAssetIds
+                preserveSelectedRowKeys: true,
+                onChange: handleAssetSelectionChange
               }}
               columns={[
                 {

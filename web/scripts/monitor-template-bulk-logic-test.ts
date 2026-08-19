@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 import {
   buildBulkApplyPayload,
   buildPolicyPreview,
+  changeBulkAssetPage,
   clearTemplateSelection,
   canDeleteTemplates,
   containsBuiltinTemplate,
@@ -11,6 +14,8 @@ import {
   getPrimaryNoticeType,
   groupPolicyTemplates,
   normalizeBulkConfig,
+  reconcileBulkAssetSelection,
+  resetBulkAssetPageForSearch,
   selectTemplateGroup,
   toggleTemplateSelection,
 } from '../src/app/monitor/(pages)/event/template/templateBulkUtils';
@@ -198,6 +203,90 @@ assert.deepEqual(
     ],
   }),
   ['Host Remote', 'Telegraf', '13']
+);
+
+const firstAssetPage = [
+  { instance_id: 'host-a', instance_name: 'host-a' },
+  { instance_id: 'host-b', instance_name: 'host-b' },
+];
+const secondAssetPage = [
+  { instance_id: 'host-c', instance_name: 'host-c' },
+  { instance_id: 'host-d', instance_name: 'host-d' },
+];
+
+const firstPageSelection = reconcileBulkAssetSelection(
+  [],
+  firstAssetPage,
+  ['host-a']
+);
+const crossPageSelection = reconcileBulkAssetSelection(
+  firstPageSelection.selectedAssets,
+  secondAssetPage,
+  ['host-a', 'host-c']
+);
+assert.deepEqual(crossPageSelection.selectedAssetIds, ['host-a', 'host-c']);
+assert.deepEqual(
+  crossPageSelection.selectedAssets.map((asset) => asset.instance_id),
+  ['host-a', 'host-c']
+);
+
+// 翻页或切换搜索结果本身不会触发选择变更，已选缓存仍包含完整记录。
+assert.deepEqual(
+  crossPageSelection.selectedAssets.map((asset) => asset.instance_id),
+  ['host-a', 'host-c']
+);
+const selectionAfterCancel = reconcileBulkAssetSelection(
+  crossPageSelection.selectedAssets,
+  firstAssetPage,
+  ['host-c']
+);
+assert.deepEqual(selectionAfterCancel.selectedAssetIds, ['host-c']);
+assert.deepEqual(
+  selectionAfterCancel.selectedAssets.map((asset) => asset.instance_id),
+  ['host-c']
+);
+
+const assetPagination = { current: 3, pageSize: 8, total: 64 };
+assert.deepEqual(changeBulkAssetPage(assetPagination, 4, 8), {
+  current: 4,
+  pageSize: 8,
+  total: 64,
+});
+assert.deepEqual(changeBulkAssetPage(assetPagination, 3, 20), {
+  current: 1,
+  pageSize: 20,
+  total: 64,
+});
+assert.deepEqual(resetBulkAssetPageForSearch(assetPagination), {
+  current: 1,
+  pageSize: 8,
+  total: 64,
+});
+
+const bulkApplyModalSource = readFileSync(
+  resolve('src/app/monitor/(pages)/event/template/bulkApplyModal.tsx'),
+  'utf8'
+);
+assert.match(bulkApplyModalSource, /name: assetNameQuery/, '资产搜索应传递 name 参数');
+assert.match(
+  bulkApplyModalSource,
+  /page_size: assetPagination\.pageSize/,
+  '资产请求应使用受控的每页数量'
+);
+assert.doesNotMatch(
+  bulkApplyModalSource,
+  /page_size:\s*1000/,
+  '资产列表不应再受 1000 条硬上限约束'
+);
+assert.match(
+  bulkApplyModalSource,
+  /preserveSelectedRowKeys: true/,
+  '资产表格应保留跨页选择状态'
+);
+assert.match(
+  bulkApplyModalSource,
+  /requestId !== assetRequestIdRef\.current/,
+  '旧资产请求响应不应覆盖新查询'
 );
 
 console.log('monitor-template-bulk logic validation passed');
