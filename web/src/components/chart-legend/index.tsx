@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import type { ChartLegendSelection } from './selection';
+import { shouldEmitLegendReset, type ChartLegendSelection } from './selection';
 
 export type { ChartLegendSelection } from './selection';
 
@@ -45,6 +45,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
 }) => {
   const [selectedLegend, setSelectedLegend] = useState<string[]>([]);
   const onSelectionChangeRef = useRef(onSelectionChange);
+  const previousLegendKeyRef = useRef<string | null>(null);
   onSelectionChangeRef.current = onSelectionChange;
 
   const legendData = useMemo(
@@ -54,8 +55,12 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   const legendKey = legendData.map((item) => item.name).join('\x00');
 
   useEffect(() => {
-    setSelectedLegend([]);
-    onSelectionChangeRef.current?.({});
+    setSelectedLegend((prev) => (prev.length === 0 ? prev : []));
+    const previousKey = previousLegendKeyRef.current;
+    previousLegendKeyRef.current = legendKey;
+    if (shouldEmitLegendReset(previousKey, legendKey)) {
+      onSelectionChangeRef.current?.({});
+    }
   }, [legendKey]);
 
   const total = useMemo(() => {

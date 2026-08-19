@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useCallback, useState } from 'react';
+import React, { useRef, useCallback, useMemo, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Spin } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
@@ -10,6 +10,7 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '@/app/ops-analysis/components/chartLegend';
+import { isSameChartLegendSelection } from '@/components/chart-legend/selection';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
 import type {
   ScreenRenderContext,
@@ -19,6 +20,7 @@ import {
   getScreenWidgetScale,
   scaleScreenMetric,
 } from './shared/screenMetrics';
+import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
 
 interface OsPieProps {
@@ -39,35 +41,40 @@ const OsPie: React.FC<OsPieProps> = ({
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
   const usesScreenChartTheme = isScreenChartThemeMode(config?.chartThemeMode);
-  const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
-  const chartColors = usesScreenChartTheme
-    ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
-    : randomColorForLegend(themeName);
+  const chartTheme = useMemo(
+    () => getOpsChartThemeByMode(config?.chartThemeMode),
+    [config?.chartThemeMode],
+  );
+  const chartColors = useMemo(
+    () =>
+      usesScreenChartTheme
+        ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
+        : randomColorForLegend(themeName),
+    [config?.chartThemeMode, themeName, usesScreenChartTheme],
+  );
   const widgetScale = getScreenWidgetScale(screenRenderContext);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
 
   const handleLegendChange = useCallback((selected: Record<string, boolean>) => {
-    setLegendSelected(selected);
+    setLegendSelected((prev) =>
+      isSameChartLegendSelection(prev, selected) ? prev : selected,
+    );
   }, []);
 
-  const transformData = (rawData: any) => {
-    return ChartDataTransformer.transformToPieData(rawData);
-  };
-
-  const chartData = transformData(rawData);
+  const chartData = useMemo(
+    () => ChartDataTransformer.transformToPieData(rawData),
+    [rawData],
+  );
   const isDataReady = chartData.some(
     (item) => Number.isFinite(item.value) && item.value > 0,
   );
   const showLegend = isDataReady;
-
-  useEffect(() => {
-    if (!loading) {
-      if (onReady) {
-        onReady(isDataReady);
-      }
-    }
-  }, [isDataReady, loading, onReady]);
-  const option: any = {
+  const { onEvents } = useEchartsFinishedReady({
+    loading,
+    isDataReady,
+    onReady,
+  });
+  const option = useMemo(() => ({
     color: chartColors,
     animation: true,
     calculable: true,
@@ -162,7 +169,15 @@ const OsPie: React.FC<OsPieProps> = ({
         data: chartData || [],
       },
     ],
-  };
+  }), [
+    chartColors,
+    chartData,
+    chartTheme,
+    config,
+    legendSelected,
+    screenRenderContext,
+    usesScreenChartTheme,
+  ]);
 
   if (loading) {
     return (
@@ -184,6 +199,7 @@ const OsPie: React.FC<OsPieProps> = ({
           ref={chartRef}
           option={option}
           notMerge={true}
+          onEvents={onEvents}
           style={{ height: '100%', width: '100%' }}
         />
       </div>

@@ -23,8 +23,9 @@ export const validateTopologyMapWidgetData = (
 /**
  * Whether this payload will eventually call onReady(true).
  * handleRendererReady keeps status at loading when the renderer reports empty
- * but this is true — that wait is only valid for async layout (topologyMap /
- * room3D with racks). Sync empty UIs must return false here or reports hang.
+ * but this is true — that wait is only valid for async paint (topologyMap /
+ * room3D first frame, pie/gauge/radar animation finished). Sync empty UIs must
+ * return false here or reports hang.
  */
 export const hasRenderableChartData = (
   chartType: string | undefined,
