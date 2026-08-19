@@ -28,6 +28,7 @@ import {
 } from 'antd';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
+import CompactEmptyState from '@/components/compact-empty-state';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
@@ -706,7 +707,7 @@ export default function ApmServiceDetailPage() {
                   </div>
                 ) : (
                   <ApmSurface className="py-16 text-center">
-                    <Empty description={t('apm.serviceDetail.noErrorTraces', '当前时间窗暂无错误 Trace')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    <CompactEmptyState description={t('apm.serviceDetail.noErrorTraces', '当前时间窗暂无错误 Trace')} />
                   </ApmSurface>
                 ),
               },

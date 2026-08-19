@@ -8,7 +8,6 @@ import {
   message,
   Spin,
   Segmented,
-  Empty,
   Pagination,
   Tag
 } from 'antd';
@@ -17,6 +16,7 @@ import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import metricStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
+import CompactEmptyState from '@/components/compact-empty-state';
 import CustomTable from '@/components/custom-table';
 import {
   ColumnItem,
@@ -38,11 +38,11 @@ import {
 import { cloneDeep } from 'lodash';
 import { buildIfmibMetricView, getDefaultMetricGroupOpenState } from './ifmibMetricView';
 
-type ObjectTabOption = {
+interface ObjectTabOption {
   label: React.ReactNode;
   value: string;
   title?: string;
-};
+}
 
 const ObjectTabLabel = ({
   icon,
@@ -667,7 +667,7 @@ const Configure = () => {
               </div>
             ))
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('common.noData')} />
           )}
         </div>
       </Spin>

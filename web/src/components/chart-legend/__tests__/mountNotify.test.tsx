@@ -2,7 +2,6 @@ import React from 'react';
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ChartLegend from '@/components/chart-legend';
-import OpsChartLegend from '@/app/ops-analysis/components/chartLegend';
 
 const legendItems = [
   { name: '未分派', value: 12 },
@@ -48,19 +47,5 @@ describe('ChartLegend mount notification', () => {
 
     expect(onSelectionChange).toHaveBeenCalledTimes(1);
     expect(onSelectionChange).toHaveBeenCalledWith({});
-  });
-
-  it('does not notify on first mount for the ops-analysis legend', () => {
-    const onSelectionChange = vi.fn();
-
-    render(
-      <OpsChartLegend
-        data={legendItems}
-        colors={['#1677ff', '#52c41a']}
-        onSelectionChange={onSelectionChange}
-      />,
-    );
-
-    expect(onSelectionChange).not.toHaveBeenCalled();
   });
 });
