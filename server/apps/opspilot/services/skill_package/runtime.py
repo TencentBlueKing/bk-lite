@@ -11,7 +11,7 @@ from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
 # SKILL.md frontmatter 提取正则(与 importer._split_frontmatter 保持一致)
 _SKILL_MD_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*(?:\n|$)", re.DOTALL)
 # 策略字段:由 SKILL.md frontmatter / skill.yaml 决定,覆盖 DB manifest
-_STRATEGY_FIELDS = ("capabilities", "reports", "workflows")
+_STRATEGY_FIELDS = ("capabilities", "reports", "workflows", "variables")
 _DOMAIN_MATCH_ALIASES = (
     (
         ("kubernetes", "k8s"),
@@ -97,6 +97,9 @@ def build_skill_package_prompt(
         if _package_match_key(package) in matched_ids:
             matched_packages.append(_package_summary(package, missing_tools))
         missing_notice = f"\n- 缺少依赖工具：{'、'.join(missing_tools)}" if missing_tools else ""
+        missing_params = _as_list(package.get("missing_params"))
+        if missing_params:
+            missing_notice += f"\n- 缺少必填变量：{'、'.join(missing_params)}，本包不可用"
         description = _compact_package_description(package)
         blocks.append(
             "\n".join(
@@ -207,6 +210,7 @@ def hydrate_skill_packages(skill_packages: Any) -> list[dict[str, Any]]:
                 "capabilities": manifest.get("capabilities", []),
                 "reports": manifest.get("reports", {}),
                 "workflows": manifest.get("workflows", {}),
+                "variables": manifest.get("variables", []),
                 "skill_markdown": stored.skill_markdown,
             }
         )
@@ -216,12 +220,16 @@ def hydrate_skill_packages(skill_packages: Any) -> list[dict[str, Any]]:
         # 仅当 storage_path 非空时添加,空字符串保持后向兼容(走旧 dict 路径)。
         storage_path_text = str(getattr(stored, "storage_path", "") or "")
         if storage_path_text:
+            disk_markdown = _skill_markdown_from_storage(storage_path_text)
+            if disk_markdown:
+                snapshot["skill_markdown"] = disk_markdown
             extracted_root = Path(storage_path_text) / "extracted"
             snapshot["extracted_root"] = extracted_root
             asset_roots: dict[str, Path | None] = {}
-            for asset_dir in ("scripts", "references", "assets"):
-                sub = extracted_root / asset_dir
-                asset_roots[asset_dir] = sub if sub.is_dir() else None
+            if extracted_root.is_dir():
+                for child in extracted_root.iterdir():
+                    if child.is_dir():
+                        asset_roots[child.name] = child
             snapshot["asset_roots"] = asset_roots
         hydrated.append(snapshot)
     return hydrated
@@ -280,6 +288,23 @@ def _manifest_with_storage_overlay(stored_package) -> dict[str, Any]:
                             manifest[key] = frontmatter[key]
 
     return manifest
+
+
+def _skill_markdown_from_storage(storage_path: str) -> str:
+    """读 extracted/SKILL.md 正文,供物化热生效;失败或空文件返回空串走 DB。"""
+    skill_md_path = Path(storage_path) / "extracted" / "SKILL.md"
+    if not skill_md_path.is_file():
+        return ""
+    try:
+        skill_md = skill_md_path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    if not skill_md.strip():
+        return ""
+    match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)(.*)$", skill_md, re.DOTALL)
+    if match:
+        return match.group(2).lstrip()
+    return skill_md
 
 
 def _match_score(package: dict[str, Any], message: str) -> int:

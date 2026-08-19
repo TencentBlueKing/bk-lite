@@ -134,7 +134,8 @@ def test_apply_skill_packages_keeps_report_capabilities_scoped_to_matched(mocker
 
     assert params["matched_skill_packages"] == []
     assert params["skill_package_capabilities"] == []
-    assert params["enabled_skill_packages"] == skill.skill_packages
+    assert [pkg["id"] for pkg in params["enabled_skill_packages"]] == ["kubernetes-specialist"]
+    assert params["enabled_skill_packages"][0]["missing_params"] == []
 
 
 def _execution_skill():
@@ -590,3 +591,18 @@ def test_skill_package_cleanup_storage_path_empty_string_is_noop(tmp_path, mocke
 
     result = SkillPackageViewSet._cleanup_storage_path("")
     assert result is False
+
+
+def test_prepare_skill_package_params_copies_stored_when_request_omits_field():
+    stored = {"ad-domain-ops": [{"key": "AD_HOST", "value": "enc", "type": "text"}]}
+    skill = SimpleNamespace(skill_package_params=stored)
+    params = {}
+    assert LLMViewSet._prepare_skill_package_params(params, skill) is None
+    assert params["skill_package_params_overlay"] is stored
+
+
+def test_prepare_skill_package_params_skips_overlay_when_stored_empty():
+    skill = SimpleNamespace(skill_package_params={})
+    params = {}
+    assert LLMViewSet._prepare_skill_package_params(params, skill) is None
+    assert "skill_package_params_overlay" not in params
