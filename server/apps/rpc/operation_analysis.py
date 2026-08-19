@@ -23,7 +23,7 @@ class OperationAnalysisRPC:
             page_size=kwargs.get("page_size"),
             group_id=kwargs.get("group_id"),
         )
-        return_data = self.client.run("get_operation_analysis_module_data", **kwargs)
+        return_data = self.client.run("get_operation_analysis_module_data_v2", **kwargs)
         return return_data
 
     def get_module_list(self, **kwargs):

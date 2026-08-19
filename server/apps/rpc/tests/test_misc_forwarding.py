@@ -447,7 +447,7 @@ def test_op_ana_get_module_data(op_ana):
 
     call_type, method_name, args, kwargs = _last(op_ana.client)
     token = kwargs.pop("_internal_auth")
-    assert (call_type, method_name, args, kwargs) == ("run", "get_operation_analysis_module_data", (), params)
+    assert (call_type, method_name, args, kwargs) == ("run", "get_operation_analysis_module_data_v2", (), params)
     verify_module_data_request(token, **params)
 
 
