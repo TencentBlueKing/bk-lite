@@ -8,7 +8,7 @@
 |------|------|------|------|
 | 查询节点列表 | NATS `bklite.node_list` | 无 | 同步，分页返回节点 |
 | 查询目标列表 | NATS `bklite.job_target_list` | 无 | 同步，分页返回目标 |
-| 查询目标列表 v2 | NATS `bklite.job_target_list_v2` | `caller_token` | 同步，有上界键集分页 |
+| 查询目标列表 v2 | OpenAPI `POST /openapi/v1/job-mgmt/targets-v2` | Authorization Bearer | 同步，有上界键集分页 |
 | 作业列表 | NATS `bklite.job_list` | 无 | 同步，返回脚本库与 Playbook 及参数定义 |
 | 作业列表 | REST `GET /api/v1/job_mgmt/api/open/job_list` | Api-Authorization | 同步，执行前获取作业背景信息 |
 | 脚本执行 | NATS `bklite.job_script_execute` | 无 | 异步，返回 task_id |
@@ -257,16 +257,15 @@ Query：
 
 ### 2.1 查询目标列表 v2（推荐）
 
-**NATS Subject**: `bklite.job_target_list_v2`
+**OpenAPI**: `POST /openapi/v1/job-mgmt/targets-v2`
 
-v2 根据 `caller_token` 的团队权限在数据库内过滤目标，再使用按 `target_id` 降序的键集分页。每页最多返回 100 条，不支持 `page_size=-1`。部署可用 `JOB_TARGET_LIST_V2_MAX_PAGE_SIZE` 在 1-100 内下调上限；非法值或超过 100 时恢复为 100。
+v2 由统一网关验证 Bearer 凭据、审计请求并注入不可伪造的授权团队，业务层在数据库内过滤目标，再使用按 `target_id` 降序的键集分页。调用方不得提交 `team`、`caller_token` 或其他身份字段。每页最多返回 100 条，不支持 `page_size=-1`。部署可用 `JOB_TARGET_LIST_V2_MAX_PAGE_SIZE` 在 1-100 内下调上限；非法值或超过 100 时恢复为 100。
 
-v2 默认关闭。滚动发布时，须先完成新版本部署并确认旧进程全部退出，再运行 `python manage.py reconcile_target_team_memberships --apply`，随后运行同命令的 `--check` 模式确认零漂移，最后设置 `JOB_TARGET_LIST_V2_ENABLED=true` 并滚动重启。未完成校验前不得启用，以避免迁移回填期间的旧进程写入造成授权投影漂移。
+v2 默认关闭。滚动发布时，须先完成新版本部署并确认旧进程全部退出，再运行 `python manage.py reconcile_target_team_memberships --apply`，随后运行同命令的 `--check` 模式确认零漂移，最后设置 `JOB_TARGET_LIST_V2_ENABLED=true` 并滚动重启。未完成校验前不得启用，以避免迁移回填期间的旧进程写入造成授权投影漂移。回滚时先将该开关恢复为 `false` 并确认所有实例停止接收 v2 请求，再回滚应用；投影表是可重建数据，不影响保留的 v1 读路径。若必须回退 migration，仅在 v2 已停用且旧版本已全部恢复后执行反向迁移；重新发布时再次按上述顺序回填与校验。
 
 **Request:**
 ```json
 {
-  "caller_token": "<bklite_token>",
   "name": "web",
   "ip": "10.0",
   "os_type": "linux",
@@ -277,7 +276,6 @@ v2 默认关闭。滚动发布时，须先完成新版本部署并确认旧进�
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| caller_token | string | 是 | BK-Lite 用户会话 token，用于确定可见团队 |
 | name | string | 否 | 按名称模糊搜索 |
 | ip | string | 否 | 按 IP 模糊搜索 |
 | os_type | string | 否 | `linux` 或 `windows` |

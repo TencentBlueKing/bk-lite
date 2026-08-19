@@ -1,5 +1,7 @@
 """目标管理模型"""
 
+from copy import deepcopy
+
 from django.db import models, transaction
 from django_minio_backend import MinioBackend
 
@@ -10,6 +12,10 @@ from apps.job_mgmt.utils.team_authz import normalize_authorized_team_ids, normal
 
 # SSH 密钥文件存储 bucket
 SSH_KEY_BUCKET = "job-mgmt-private"
+
+
+class TargetTeamConcurrentUpdateError(ValueError):
+    """目标团队在当前实例加载后已被其他事务修改。"""
 
 
 def ssh_key_upload_path(instance, filename):
@@ -27,8 +33,9 @@ class TargetQuerySet(models.QuerySet):
         if "team" not in kwargs:
             return super().update(**kwargs)
         with transaction.atomic():
-            target_ids = list(self.select_for_update().values_list("id", flat=True))
-            updated = super().update(**kwargs)
+            target_ids = list(self.select_for_update().order_by("id").values_list("id", flat=True))
+            locked_targets = self.filter(id__in=target_ids)
+            updated = super(TargetQuerySet, locked_targets).update(**kwargs)
             target_teams = list(self.model._base_manager.filter(id__in=target_ids).values_list("id", "team"))
             _replace_target_team_memberships(target_teams)
             return updated
@@ -110,16 +117,36 @@ class Target(TimeInfo, MaintainerInfo):
     def __str__(self):
         return f"{self.name}({self.ip})"
 
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        if "team" in field_names:
+            instance._loaded_team = deepcopy(instance.team)
+        return instance
+
     def save(self, *args, **kwargs):
         """将目标主体与团队授权投影作为同一事务提交。"""
         update_fields = kwargs.get("update_fields")
         with transaction.atomic():
             if self.pk and not self._state.adding:
-                type(self).objects.select_for_update().filter(pk=self.pk).exists()
+                locked_team = type(self).objects.select_for_update().values_list("team", flat=True).get(pk=self.pk)
+                loaded_team = getattr(self, "_loaded_team", locked_team)
+                if locked_team != loaded_team and (update_fields is None or "team" in update_fields):
+                    if self.team != loaded_team:
+                        raise TargetTeamConcurrentUpdateError("Target.team 已被并发修改，请刷新后重试")
+                    self.team = locked_team
             result = super().save(*args, **kwargs)
             if update_fields is None or "team" in update_fields:
                 _replace_target_team_memberships([(self.pk, self.team)])
+            self._loaded_team = deepcopy(self.team)
             return result
+
+    def refresh_from_db(self, *args, **kwargs):
+        result = super().refresh_from_db(*args, **kwargs)
+        fields = kwargs.get("fields")
+        if fields is None or "team" in fields:
+            self._loaded_team = deepcopy(self.team)
+        return result
 
     @property
     def is_manual_credential(self) -> bool:
