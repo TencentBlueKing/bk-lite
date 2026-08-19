@@ -20,11 +20,20 @@ class InstallerEnvironmentValidationMixin:
         if key == NodeConstants.NATS_INSTALLER_PASSWORD_KEY:
             value = attrs.get("value")
             if value == EnvVariableConstants.SECRET_MASK and self.instance:
-                attrs.pop("value", None)
+                if self.instance.type == EnvVariableConstants.TYPE_SECRET:
+                    attrs.pop("value", None)
+                elif str(self.instance.value or "").strip():
+                    attrs["value"] = self.instance.value
+                else:
+                    raise serializers.ValidationError({"value": "A new NATS_INSTALLER_PASSWORD value is required"})
             elif "value" in attrs and not str(value or "").strip():
                 raise serializers.ValidationError({"value": "NATS_INSTALLER_PASSWORD must not be blank"})
             elif "value" not in attrs and getattr(self.instance, "key", None) != key:
                 raise serializers.ValidationError({"value": "A new NATS_INSTALLER_PASSWORD value is required"})
+            elif "value" not in attrs and self.instance.type != EnvVariableConstants.TYPE_SECRET:
+                if not str(self.instance.value or "").strip():
+                    raise serializers.ValidationError({"value": "A new NATS_INSTALLER_PASSWORD value is required"})
+                attrs["value"] = self.instance.value
             attrs["type"] = EnvVariableConstants.TYPE_SECRET
 
         if key != NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_KEY:

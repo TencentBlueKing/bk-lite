@@ -115,6 +115,29 @@ def test_renaming_plaintext_variable_to_installer_password_requires_new_value(cl
     assert serializer.errors["value"] == ["A new NATS_INSTALLER_PASSWORD value is required"]
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"description": "updated without password"},
+        {"value": EnvVariableConstants.SECRET_MASK},
+    ],
+)
+def test_updating_legacy_plaintext_installer_password_encrypts_existing_value(cloud_region, payload):
+    env = SidecarEnv.objects.create(
+        key=NodeConstants.NATS_INSTALLER_PASSWORD_KEY,
+        value="legacy-plaintext",
+        type=EnvVariableConstants.TYPE_TEXT,
+        cloud_region=cloud_region,
+    )
+    serializer = SidecarEnvSerializer(instance=env, data=payload, partial=True)
+
+    assert serializer.is_valid(), serializer.errors
+    serializer.save()
+    env.refresh_from_db()
+    assert env.type == EnvVariableConstants.TYPE_SECRET
+    assert AESCryptor().decode(env.value) == "legacy-plaintext"
+
+
 def test_installer_password_migration_resumes_across_failed_batches(cloud_region, monkeypatch):
     env = SidecarEnv.objects.create(
         key=NodeConstants.NATS_INSTALLER_PASSWORD_KEY,
