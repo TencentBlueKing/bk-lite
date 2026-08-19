@@ -353,6 +353,31 @@ def test_cmdb_uncredentialed_does_not_claim_host_as_switch(host_object, db):
 
 
 @pytest.mark.django_db
+def test_cmdb_uncredentialed_skips_deleted_instance(host_object):
+    MonitorInstance.objects.create(
+        id="('gone',)",
+        name="deleted",
+        monitor_object=host_object,
+        ip="10.0.0.8",
+        cloud_region_id=1,
+        is_deleted=True,
+        cmdb_id="gone-uuid",
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="gone-uuid",
+            link_ids={"cmdb_id": "gone-uuid"},
+            raw={"ip": "10.0.0.8", "cloud_region_id": 1, "model_id": "host"},
+        )
+    )
+    assert result["ignored"] is True
+    assert result["id"] is None
+    inst = MonitorInstance.objects.get(id="('gone',)")
+    assert inst.is_deleted is True
+
+
+@pytest.mark.django_db
 def test_cmdb_push_without_credential_does_not_create(host_object, mock_collect_apply):
     result = MonitorModuleIngestService.ingest(
         _params(
