@@ -508,6 +508,8 @@
         "fieldValidationFailed": "字段校验失败",
         "importData": "批量导入",
         "parseExcelFailed": "解析Excel文件失败",
+        "organizationUnknown": "第 {row} 行：{field} 中的组织“{value}”不存在",
+        "organizationAmbiguous": "第 {row} 行：{field} 中的组织名称“{value}”不唯一，请填写完整组织路径",
         "importSuccess": "导入成功",
         "options": "选项",
         "noDataToImport": "暂无可导入数据",

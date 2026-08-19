@@ -508,6 +508,8 @@
         "fieldValidationFailed": "Field validation failed",
         "importData": "Batch Import",
         "parseExcelFailed": "Failed to parse Excel file",
+        "organizationUnknown": "Row {row}: organization \"{value}\" in {field} does not exist",
+        "organizationAmbiguous": "Row {row}: organization name \"{value}\" in {field} is ambiguous; enter the full organization path",
         "importSuccess": "Import successful",
         "options": "Options",
         "noDataToImport": "No data to import",

@@ -12,7 +12,13 @@ import OperateModal from '@/components/operate-drawer';
 import { CloudUploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import ExcelJS from 'exceljs';
 import { useUserInfoContext } from '@/context/userInfo';
-import { convertGroupTreeToTreeSelectData } from '@/utils';
+import {
+  buildOptionSheetDefinitions,
+  buildOrganizationOptions,
+  findExcelImportColumn,
+  resolveOrganizationCell
+} from './excelImportUtils';
+import type { OrganizationOption } from './excelImportUtils';
 
 interface ExcelImportModalProps {
   onSuccess: (data: any[]) => void;
@@ -42,36 +48,13 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
     const userContext = useUserInfoContext();
 
     // 默认从 userContext 获取组织列表
-    const defaultGroupList = useMemo(() => {
-      if (!userContext?.groupTree) return [];
-      const treeSelectData = convertGroupTreeToTreeSelectData(
-        userContext.groupTree
-      );
-      // 递归提取所有组织节点，包含完整路径
-      const flattenTree = (nodes: any[], parentPath = ''): any[] => {
-        return nodes.reduce((acc: any[], node: any) => {
-          const currentPath = parentPath
-            ? `${parentPath} / ${node.label}`
-            : node.label;
-          const current = {
-            value: node.value,
-            label: currentPath,
-          };
-          if (node.children && node.children.length > 0) {
-            return [
-              ...acc,
-              current,
-              ...flattenTree(node.children, currentPath),
-            ];
-          }
-          return [...acc, current];
-        }, []);
-      };
-      return flattenTree(treeSelectData);
-    }, [userContext?.groupTree]);
+    const defaultGroupList = useMemo(
+      () => buildOrganizationOptions(userContext?.groupTree || []),
+      [userContext?.groupTree]
+    );
 
     // 优先使用传入的 groupList,否则使用默认值
-    const groupList =
+    const groupList: OrganizationOption[] =
       groupListProp.length > 0 ? groupListProp : defaultGroupList;
 
     useImperativeHandle(ref, () => ({
@@ -169,7 +152,7 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
           firstSheet.getRow(1).eachCell((cell) => {
             headers.push(cell.value?.toString() || '');
           });
-          const rows: any[][] = [];
+          const rows: Array<{ cells: any[]; rowNumber: number }> = [];
           for (let i = 2; i <= firstSheet.rowCount; i++) {
             const row: any[] = [];
             firstSheet
@@ -177,43 +160,62 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
               .eachCell({ includeEmpty: true }, (cell, colNumber) => {
                 row[colNumber - 1] = cell.value;
               });
-            rows.push(row);
+            rows.push({ cells: row, rowNumber: i });
           }
           // 将数据转换为对象数组
+          const organizationIssues: Array<{
+            field: string;
+            reason: 'unknown' | 'ambiguous';
+            rowNumber: number;
+            value: string;
+          }> = [];
           const parsedRows = rows
-            .filter((row) => row.some((cell) => cell !== null && cell !== ''))
-            .map((row) => {
+            .filter(({ cells }) =>
+              cells.some((cell) => cell !== null && cell !== '')
+            )
+            .map(({ cells: row, rowNumber }) => {
               const rowData: any = {};
               headers.forEach((header, index) => {
-                // 去掉表头中的后缀提示，如 "(支持多个，用逗号分隔)"
-                const cleanHeader = header
-                  .replace(/\s*\([^)]*\)\s*$/, '')
-                  .trim();
-                // 特殊处理：如果表头是"密码"，直接匹配到password字段
-                if (index === headers.length - 1) {
-                  const passwordColumn = columns.find(
-                    (col) => col.name === 'password'
-                  );
-                  if (passwordColumn) {
-                    const cellValue = row[index];
-                    rowData.password = transformCellValue(
-                      cellValue,
-                      passwordColumn
-                    );
-                  }
-                  return;
-                }
-                const column = columns.find(
-                  (col) =>
-                    col.excel_label === cleanHeader || col.label === cleanHeader
-                );
+                const column = findExcelImportColumn(header, columns);
                 if (column) {
                   const cellValue = row[index];
+                  if (column.type === 'group_select') {
+                    const resolution = resolveOrganizationCell(
+                      cellValue,
+                      groupList
+                    );
+                    rowData[column.name] = resolution.ids;
+                    resolution.issues.forEach((issue) => {
+                      organizationIssues.push({
+                        ...issue,
+                        field: column.label,
+                        rowNumber
+                      });
+                    });
+                    return;
+                  }
                   rowData[column.name] = transformCellValue(cellValue, column);
                 }
               });
               return rowData;
             });
+          if (organizationIssues.length > 0) {
+            const issue = organizationIssues[0];
+            const errorMessage = t(
+              issue.reason === 'ambiguous'
+                ? 'node-manager.cloudregion.integrations.organizationAmbiguous'
+                : 'node-manager.cloudregion.integrations.organizationUnknown',
+              '',
+              {
+                field: issue.field,
+                row: issue.rowNumber,
+                value: issue.value
+              }
+            );
+            message.error(errorMessage);
+            onError(new Error(errorMessage));
+            return;
+          }
           setParsedData(parsedRows);
           onHandleSuccess('Ok');
         } catch (error) {
@@ -319,17 +321,6 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
       switch (column.type) {
         case 'inputNumber':
           return typeof value === 'number' ? value : Number(value);
-        case 'group_select':
-          // 处理组织选择（默认多选）
-          const groupValues = String(value?.text || value)
-            .split(',')
-            .map((v) => v.trim());
-          return groupValues
-            .map((v) => {
-              const group = groupList.find((g: any) => g.label === v);
-              return group ? group.value : null;
-            })
-            .filter(Boolean);
         case 'select':
           // 处理下拉选择
           const isMultiple = column.widget_props?.mode === 'multiple';
@@ -391,34 +382,24 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
         number,
         { sheetName: string; options: string[] }
       > = new Map();
-      // 为每个有选项的列处理数据验证
-      columns.forEach((col, index) => {
-        // 设置列宽
+      columns.forEach((_, index) => {
         mainSheet.getColumn(index + 1).width = 25;
-        let options: string[] = [];
-        let sheetName = '';
-        if (col.type === 'group_select') {
-          options = groupList.map((g: any) => g.label);
-          if (options.length > 0) {
-            sheetName = `${col.label}_${t(
-              'node-manager.cloudregion.integrations.options'
-            )}`;
-          }
-        } else if (col.type === 'select' && col.widget_props?.options) {
-          options = col.widget_props.options.map((opt: any) => opt.label);
-          if (options.length > 0) {
-            sheetName = `${col.label}_${t(
-              'node-manager.cloudregion.integrations.options'
-            )}`;
-          }
-        }
-        if (options.length > 0 && sheetName) {
-          const optionsSheet = workbook.addWorksheet(sheetName);
-          options.forEach((opt) => optionsSheet.addRow([opt]));
-          optionsSheet.getColumn(1).width = 30;
-          optionsSheet.state = 'hidden';
-          columnValidations.set(index + 1, { sheetName, options });
-        }
+      });
+      const optionSheetDefinitions = buildOptionSheetDefinitions(
+        columns,
+        groupList,
+        t('node-manager.cloudregion.integrations.options'),
+        [mainSheet.name]
+      );
+      optionSheetDefinitions.forEach((definition) => {
+        const optionsSheet = workbook.addWorksheet(definition.sheetName);
+        definition.options.forEach((option) => optionsSheet.addRow([option]));
+        optionsSheet.getColumn(1).width = 30;
+        optionsSheet.state = definition.state;
+        columnValidations.set(definition.columnIndex + 1, {
+          sheetName: definition.sheetName,
+          options: definition.options
+        });
       });
       // 为主工作表的数据列添加数据验证
       columns.forEach((column, colIndex) => {
