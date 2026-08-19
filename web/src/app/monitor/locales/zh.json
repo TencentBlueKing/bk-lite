@@ -578,6 +578,7 @@
       "optionsSuffix": "选项",
       "excelImportTips": "只能上传xlsx文件,且不超过20MB",
       "importSuccessCount": "成功导入 {count} 条数据",
+      "accessAssetCount": "接入资产数：{count}",
       "multipleSupport": "支持多个，用逗号分隔",
       "downloadTemplate": "下载模板",
       "importData": "批量导入",
