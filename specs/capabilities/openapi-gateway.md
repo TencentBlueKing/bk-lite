@@ -30,7 +30,8 @@
   `OpenAPIRequestSerializer` / `PaginatedRequestSerializer`。
   - ❌ 复用内部业务 serializer——内部迭代改字段会静默破坏对外契约；❌ `fields = "__all__"`。
 - ✅ **service 段命名 `^[a-z][a-z0-9-]{0,31}$`**：应用目录名含下划线时须转写（`patch_mgmt` → `patch-mgmt`）。
-- ✅ **`inject` 按函数已有的组织参数协议选**：`team_list`（函数收授权组织集合，不级联）或
+- ✅ **`inject` 按函数已有的组织参数协议选**：`team_list`（函数收授权组织集合，不级联）、
+  `team_list_with_user`（同样注入组织集合，并额外注入只含可信 `user`/`domain` 的 `user_info`，用于持久化审计）或
   `user_info`（函数自查 `group_list` 并级联；serializer 必须声明字面名 `team` 的锚点字段，
   `team`/`include_children` 会被抽取合并进 `user_info`，不再作为独立参数下传）。
 - ✅ **多分支函数只暴露已做组织过滤的分支**：用 `ChoiceField` 的 `choices` 收窄，其余分支自然 400。

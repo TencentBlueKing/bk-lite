@@ -22,4 +22,9 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.core.openapi.tests.test_gateway::test_jwt_anchor_passthrough",
         "apps.core.openapi.tests.test_gateway::test_jwt_missing_anchor_rejected",
     ],
+    "job-mgmt/file-distribute": [
+        "apps.job_mgmt.tests.test_open_file_distribute_views::test_api_tenant_can_distribute_own_file",
+        "apps.job_mgmt.tests.test_open_file_distribute_views::test_api_tenant_cannot_distribute_other_tenant_file",
+        "apps.job_mgmt.tests.test_open_file_distribute_views::test_forged_team_is_rejected_without_side_effects",
+    ],
 }

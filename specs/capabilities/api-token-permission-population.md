@@ -70,6 +70,14 @@
 - **AND** 仅保留基础用户或 API Secret 时 SHALL NOT 通过 API Token 认证
 - **AND** 同名同域用户重建后 SHALL 使用更高的新代际
 
+#### Scenario: 停用主体立即失效
+
+- **WHEN** API Secret 对应的基础用户被设为 inactive，或系统用户被设为 disabled
+- **THEN** 所有使用该 API Secret 的入口 SHALL 拒绝认证，不再沿用历史权限缓存
+- **AND** 恢复基础用户 active 且系统用户 enabled 后，原有合法 API Secret SHALL 可继续使用，无需迁移密钥或调用协议
+- **AND** 发布前 SHALL 盘点停用主体；如发现仍在使用的历史自动化，应先恢复其主体状态或迁移至活动服务账号
+- **AND** 回滚 SHALL 通过回滚应用版本恢复旧认证行为，不涉及数据迁移；不得删除或重写既有 API Secret
+
 #### Scenario: Web Token 授权上下文
 
 - **WHEN** Web Token 鉴权读取或写入 `token_info` 授权上下文缓存

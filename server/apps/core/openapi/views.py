@@ -5,6 +5,7 @@
 不信任任何入站头，也不假设流量必经 Traefik（安全红线 2 纵深防御）。
 """
 
+import hashlib
 import hmac
 import json
 import os
@@ -17,11 +18,7 @@ from django.views.decorators.http import require_http_methods
 from apps.core.logger import openapi_logger as logger
 from apps.core.openapi.dispatcher import dispatch
 from apps.core.openapi.envelope import ErrorCode, fail, ok
-from apps.core.openapi.identity import (
-    CREDENTIAL_JWT,
-    AuthenticationFailed,
-    authenticate_request,
-)
+from apps.core.openapi.identity import AuthenticationFailed, authenticate_request
 from apps.core.openapi.registry import default_registry
 from apps.core.utils.exempt import api_exempt
 
@@ -44,9 +41,10 @@ def _extract_payload(request):
 def _audit(request, identity, response, started_at):
     try:
         team_ids = getattr(identity, "team_ids", None)
+        request_digest = hashlib.sha256(request.body or b"").hexdigest()
         logger.info(
             "openapi_access user=%s domain=%s credential=%s team=%s method=%s "
-            "path=%s status=%s duration_ms=%d size=%d",
+            "path=%s status=%s duration_ms=%d size=%d request_sha256=%s",
             getattr(identity, "user", "-"),
             getattr(identity, "domain", "-"),
             getattr(identity, "credential_type", "-"),
@@ -56,6 +54,7 @@ def _audit(request, identity, response, started_at):
             getattr(response, "status_code", "-"),
             int((time.monotonic() - started_at) * 1000),
             len(getattr(response, "content", b"") or b""),
+            request_digest,
         )
     except Exception:  # 审计日志绝不影响主流程
         logger.exception("openapi audit logging failed")

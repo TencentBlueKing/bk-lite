@@ -197,6 +197,22 @@ class TestJobScriptExecute:
 @pytest.mark.unit
 @pytest.mark.django_db
 class TestJobFileDistribute:
+    def test_legacy_entry_can_be_disabled_and_reenabled_without_side_effects(self, monkeypatch):
+        from apps.job_mgmt.models import JobExecution
+        from apps.job_mgmt.nats_api import job_file_distribute
+
+        monkeypatch.setenv("JOB_FILE_DISTRIBUTE_NATS_ENABLED", "0")
+        result = job_file_distribute({"name": "disabled-legacy"})
+
+        assert result["result"] is False
+        assert "OpenAPI" in result["message"]
+        assert not JobExecution.objects.filter(name="disabled-legacy").exists()
+
+        monkeypatch.setenv("JOB_FILE_DISTRIBUTE_NATS_ENABLED", "1")
+        result = job_file_distribute({})
+        assert result["result"] is False
+        assert "name" in result["message"]
+
     def test_dispatch_failure_marks_execution_failed(self):
         from django.utils import timezone
 
@@ -217,6 +233,7 @@ class TestJobFileDistribute:
             "target_list": [{"node_id": "n1", "name": "h1", "ip": "1.1.1.1", "os": "linux", "cloud_region_id": "r1"}],
             "target_path": "/tmp/",
             "team": [1],
+            "actor": {"user": "forged", "domain": "evil.example"},
         }
         with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_path") as mock_check, patch(
             "apps.job_mgmt.nats_api.distribute_files_task.delay", side_effect=ConnectionError("broker unavailable")
@@ -228,6 +245,9 @@ class TestJobFileDistribute:
         execution = JobExecution.objects.get(name="dispatch-failed-file")
         assert execution.status == ExecutionStatus.FAILED
         assert execution.celery_task_id == ""
+        assert execution.created_by == "api"
+        assert execution.executor_user == "api"
+        assert execution.domain == "domain.com"
 
     def test_empty_file_ids(self):
         from apps.job_mgmt.nats_api import job_file_distribute
