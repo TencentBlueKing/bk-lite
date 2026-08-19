@@ -10,6 +10,7 @@ from pathlib import Path
 from django.apps import apps as django_apps
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
 
 from apps.core.utils.loader import preload_language_cache
 
@@ -110,14 +111,20 @@ class Command(BaseCommand):
     def _init_system_mgmt(self):
         """系统管理资源初始化"""
         self.stdout.write("系统管理资源初始化...")
-        migrate_existing_password = self._should_migrate_admin_password()
-        should_bootstrap_password = not self._admin_exists() or migrate_existing_password
-        if should_bootstrap_password:
-            admin_password = self._get_admin_password()
         call_command("cleanup_opspilot_legacy_knowledge_menus")
         call_command("init_realm_resource")
         call_command("init_login_settings")
-        if should_bootstrap_password:
+        self._bootstrap_admin()
+        call_command("init_custom_menu")
+        call_command("init_bk_login_settings")
+        call_command("clean_group_data")
+
+    def _bootstrap_admin(self) -> None:
+        migrate_existing_password = self._should_migrate_admin_password()
+        with transaction.atomic():
+            if self._any_admin_username_exists() and not migrate_existing_password:
+                return
+            admin_password = self._get_admin_password()
             call_command(
                 "create_user",
                 "admin",
@@ -126,14 +133,13 @@ class Command(BaseCommand):
                 is_superuser=True,
                 update_existing_password=migrate_existing_password,
             )
-        call_command("init_custom_menu")
-        call_command("init_bk_login_settings")
-        call_command("clean_group_data")
 
     @staticmethod
-    def _admin_exists() -> bool:
+    def _any_admin_username_exists() -> bool:
         user_model = django_apps.get_model("system_mgmt", "User")
-        return user_model.objects.filter(username="admin", domain="domain.com").exists()
+        # create_user 历史上对任意域的同名用户均 no-op；这里保持同一存量判定，
+        # 避免仅有外域 admin 的合法升级环境被新 Secret 门禁意外阻断。
+        return user_model.objects.select_for_update().filter(username="admin").exists()
 
     @staticmethod
     def _has_managed_admin_password() -> bool:
