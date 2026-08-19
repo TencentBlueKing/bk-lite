@@ -59,6 +59,7 @@ def tenant():
         system_user=system_user,
         token=token,
         other_token=other_token,
+        other_user=other_user,
         file=file,
         target=target,
     )
@@ -101,17 +102,25 @@ def test_api_tenant_can_distribute_own_file(tenant):
     assert response.status_code == 200
     execution = JobExecution.objects.get(id=response.json()["data"]["task_id"])
     assert execution.team == [tenant.team.id]
+    assert execution.created_by == tenant.user.username
+    assert execution.updated_by == tenant.user.username
+    assert execution.executor_user == tenant.user.username
     mock_check.assert_called_once_with("/tmp/patches/", [tenant.team.id])
     assert mock_audit.call_args.args[1] == tenant.user.username
+    assert "request_sha256=%s" in mock_audit.call_args.args[0]
 
 
 def test_api_tenant_cannot_distribute_other_tenant_file(tenant):
-    with patch("apps.job_mgmt.nats_api.distribute_files_task.delay") as mock_delay:
+    with patch("apps.job_mgmt.nats_api.distribute_files_task.delay") as mock_delay, patch(
+        "apps.job_mgmt.nats_api.logger.warning"
+    ) as mock_rejection_audit:
         response = APIClient().post(URL, _body(tenant), format="json", **_other_auth(tenant))
 
     assert response.status_code == 403
     assert response.json()["code"] == "TEAM_OUT_OF_SCOPE"
     _assert_no_side_effects(mock_delay)
+    assert mock_rejection_audit.call_args.args[1] == tenant.other_user.username
+    assert tenant.file.file_key in mock_rejection_audit.call_args.args[4]
 
 
 def test_rejects_target_outside_api_secret_team(tenant):

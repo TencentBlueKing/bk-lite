@@ -344,6 +344,8 @@ def _run_file_distribute(data: dict):
     callback_type = data.get("callback_type", CallbackType.WEB)
     callback_url = data.get("callback_url")
     callback_subject = data.get("callback_subject")
+    actor = data.get("actor") or {}
+    actor_name = actor.get("user") or "api"
 
     if not name:
         return {"result": False, "message": "name 不能为空"}
@@ -397,8 +399,9 @@ def _run_file_distribute(data: dict):
         callback_type=callback_type,
         callback_url=callback_url,
         callback_subject=callback_subject,
-        created_by="api",
-        updated_by="api",
+        executor_user=actor_name,
+        created_by=actor_name,
+        updated_by=actor_name,
     )
 
     # 触发异步执行（Celery Worker）
@@ -445,7 +448,7 @@ def _validate_openapi_distribute_scope(file_keys, target_source, target_list, au
     path="job-mgmt/file-distribute",
     method="POST",
     schema=FileDistributeRequestSerializer,
-    inject="team_list",
+    inject="team_list_with_user",
     summary="提交文件分发作业（组织口径：API 令牌绑定组织精确匹配，不级联子组织）",
 )
 def openapi_file_distribute(
@@ -458,6 +461,7 @@ def openapi_file_distribute(
     timeout,
     *,
     team=None,
+    user_info=None,
 ):
     """经统一网关绑定可信组织后复用旧 NATS 文件分发实现。"""
     authorized_team_ids = normalize_team(team)
@@ -467,6 +471,18 @@ def openapi_file_distribute(
 
     scope_error = _validate_openapi_distribute_scope(file_keys, target_source, target_list, authorized_team_ids)
     if scope_error:
+        id_field = "target_id" if target_source == "manual" else "node_id"
+        logger.warning(
+            "[openapi_file_distribute] scope rejected: user=%s domain=%s team=%s file_keys=%s "
+            "target_source=%s target_ids=%s reason=%s",
+            (user_info or {}).get("user", ""),
+            (user_info or {}).get("domain", ""),
+            authorized_team_id,
+            file_keys,
+            target_source,
+            [item.get(id_field) for item in target_list],
+            scope_error,
+        )
         return {"result": False, "message": scope_error}
 
     result = _run_file_distribute(
@@ -479,6 +495,7 @@ def openapi_file_distribute(
             "overwrite_strategy": overwrite_strategy,
             "timeout": timeout,
             "team": [authorized_team_id],
+            "actor": user_info or {},
             # 新入口暂不接受调用方控制的出站回调；调用方通过查询接口获取结果。
             "callback_type": CallbackType.WEB,
             "callback_url": "",
