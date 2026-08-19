@@ -5,23 +5,54 @@
 .screenDarkFilters {
   :global(.ant-select-selector),
   :global(.ant-input),
-  :global(.ant-picker) {
+  :global(.ant-input-affix-wrapper),
+  :global(.ant-input-css-var),
+  :global(.ant-picker),
+  :global(.ant-select) {
+    --ant-color-text: var(--ops-screen-table-text) !important;
+    --ant-color-text-placeholder: var(--ops-screen-table-muted) !important;
+    --ant-color-text-quaternary: var(--ops-screen-table-muted) !important;
+    --ant-color-icon: var(--ops-screen-table-muted) !important;
     color: var(--ops-screen-table-text) !important;
     background: var(--ops-screen-table-control-bg) !important;
     border-color: var(--ops-screen-table-border) !important;
     box-shadow: none !important;
   }
 
+  :global(.ant-input-affix-wrapper input),
+  :global(.ant-input-affix-wrapper .ant-input),
+  :global(.ant-picker-input > input) {
+    color: var(--ops-screen-table-text) !important;
+    background: transparent !important;
+  }
+
   :global(.ant-select-selection-placeholder),
   :global(.ant-input::placeholder),
-  :global(.ant-picker-input > input::placeholder) {
+  :global(.ant-input::-webkit-input-placeholder),
+  :global(.ant-input-affix-wrapper input::placeholder),
+  :global(.ant-input-affix-wrapper input::-webkit-input-placeholder),
+  :global(.ant-picker-input > input::placeholder),
+  :global(.ant-picker-input > input::-webkit-input-placeholder) {
     color: var(--ops-screen-table-muted) !important;
+    -webkit-text-fill-color: var(--ops-screen-table-muted) !important;
+    opacity: 1 !important;
   }
 
   :global(.ant-select-arrow),
   :global(.ant-picker-suffix),
-  :global(.ant-input-suffix) {
+  :global(.ant-picker-separator),
+  :global(.ant-picker-clear),
+  :global(.ant-input-suffix),
+  :global(.ant-input-clear-icon) {
     color: var(--ops-screen-table-muted) !important;
+  }
+
+  :global(.ant-input-affix-wrapper:hover),
+  :global(.ant-input-affix-wrapper-focused),
+  :global(.ant-picker:hover),
+  :global(.ant-picker-focused) {
+    background: var(--ops-screen-table-control-bg) !important;
+    border-color: var(--ops-screen-table-border) !important;
   }
 }
 

@@ -127,4 +127,22 @@ describe('ComCardList layout branch', () => {
     expect(accent?.style.color).toBe('rgb(240, 160, 0)');
     expect(accent?.style.backgroundColor).toBe('rgba(240, 160, 0, 0.16)');
   });
+
+  it('remaps dashboard color tokens when rendered in a screen theme', () => {
+    const { container } = render(
+      <ComCardList
+        rawData={records}
+        config={{
+          ...titleConfig,
+          chartThemeMode: 'screen-dark',
+        }}
+      />,
+    );
+
+    const root = container.firstElementChild as HTMLElement;
+    expect(root.style.getPropertyValue('--color-text-1')).toBe('#e8eef7');
+    expect(root.style.getPropertyValue('--color-bg')).toBe(
+      'rgba(91, 143, 249, 0.08)',
+    );
+  });
 });

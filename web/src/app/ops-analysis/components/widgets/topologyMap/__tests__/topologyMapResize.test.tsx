@@ -235,4 +235,19 @@ describe('TopologyMap live widget resize', () => {
     await waitFor(() => expect(testState.graphs).toHaveLength(2));
     expect(testState.graphs[1].fitCount).toBe(1);
   });
+
+  it('remaps dashboard color tokens for screen-dark', async () => {
+    const view = render(
+      <TopologyMap
+        rawData={payload}
+        config={{ chartThemeMode: 'screen-dark' }}
+      />,
+    );
+    await waitFor(() => expect(testState.graphs).toHaveLength(1));
+    const root = view.container.firstElementChild as HTMLElement;
+    expect(root.style.getPropertyValue('--color-text-1')).toBe('#e8eef7');
+    expect(root.style.getPropertyValue('--color-bg-1')).toBe(
+      'rgba(13, 40, 68, 0.66)',
+    );
+  });
 });

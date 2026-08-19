@@ -267,6 +267,7 @@ const TopNRuntimeDimensionPreview: React.FC<{
               options={options}
               value={runtimeParamValue}
               onChange={setRuntimeParamValue}
+              chartThemeMode={chartThemeMode}
             />
           </div>
         </div>

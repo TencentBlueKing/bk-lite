@@ -2,6 +2,7 @@ import React from 'react';
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ChartLegend from '@/components/chart-legend';
+import OpsChartLegend from '@/app/ops-analysis/components/chartLegend';
 
 const legendItems = [
   { name: '未分派', value: 12 },
@@ -47,5 +48,41 @@ describe('ChartLegend mount notification', () => {
 
     expect(onSelectionChange).toHaveBeenCalledTimes(1);
     expect(onSelectionChange).toHaveBeenCalledWith({});
+  });
+
+  it('does not notify on first mount for the ops-analysis legend', () => {
+    const onSelectionChange = vi.fn();
+
+    render(
+      <OpsChartLegend
+        data={legendItems}
+        colors={['#1677ff', '#52c41a']}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
+
+    expect(onSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it('uses a screen-aware hover token with dashboard fill fallback', () => {
+    const { container } = render(
+      <ChartLegend
+        data={legendItems}
+        colors={['#1677ff', '#52c41a']}
+      />,
+    );
+    const opsView = render(
+      <OpsChartLegend
+        data={legendItems}
+        colors={['#1677ff', '#52c41a']}
+      />,
+    );
+
+    expect(container.querySelector('button')?.className).toContain(
+      '--chart-legend-hover-bg,var(--color-fill-2)',
+    );
+    expect(opsView.container.querySelector('div.cursor-pointer')?.className).toContain(
+      '--chart-legend-hover-bg,var(--color-fill-2)',
+    );
   });
 });

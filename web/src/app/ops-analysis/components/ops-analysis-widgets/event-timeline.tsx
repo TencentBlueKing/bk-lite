@@ -6,6 +6,7 @@ import {
   DEFAULT_EVENT_TIMELINE_MAX_ITEMS,
   parseEventTimelineItems,
 } from '@/app/ops-analysis/utils/eventTimeline';
+import { buildScreenContentTokenStyle } from '@/app/ops-analysis/utils/screenWidgetTokens';
 import { useTranslation } from '@/utils/i18n';
 
 export interface OpsAnalysisEventTimelineProps {
@@ -31,6 +32,7 @@ const OpsAnalysisEventTimeline: React.FC<OpsAnalysisEventTimelineProps> = ({
   onReady,
 }) => {
   const { t } = useTranslation();
+  const screenContentStyle = buildScreenContentTokenStyle(config?.chartThemeMode);
   const timelineConfig = config?.eventTimeline;
   const parsed = parseEventTimelineItems(rawData, {
     sortOrder: timelineConfig?.sortOrder,
@@ -45,13 +47,14 @@ const OpsAnalysisEventTimeline: React.FC<OpsAnalysisEventTimelineProps> = ({
   }, [hasData, loading, onReady]);
 
   return (
-    <ChartSurface
-      loading={loading}
-      hasData={hasData}
-      containerClassName="flex h-full min-h-0 w-full flex-col p-3"
-      loadingClassName="flex h-full w-full items-center justify-center"
-      emptyClassName="flex h-full w-full items-center justify-center"
-    >
+    <div className="h-full min-h-0 w-full" style={screenContentStyle}>
+      <ChartSurface
+        loading={loading}
+        hasData={hasData}
+        containerClassName="flex h-full min-h-0 w-full flex-col p-3"
+        loadingClassName="flex h-full w-full items-center justify-center"
+        emptyClassName="flex h-full w-full items-center justify-center"
+      >
       {parsed.truncated ? (
         <Alert
           type="warning"
@@ -77,7 +80,21 @@ const OpsAnalysisEventTimeline: React.FC<OpsAnalysisEventTimelineProps> = ({
               ) : null}
               <div className="flex items-center gap-2 text-xs text-(--color-text-3)">
                 <span>{item.time}</span>
-                {item.category ? <Tag bordered={false}>{item.category}</Tag> : null}
+                {item.category ? (
+                  <Tag
+                    bordered={false}
+                    style={
+                      screenContentStyle
+                        ? {
+                          color: 'var(--color-text-1)',
+                          background: 'var(--color-primary-bg-active)',
+                        }
+                        : undefined
+                    }
+                  >
+                    {item.category}
+                  </Tag>
+                ) : null}
               </div>
               <div className="mt-1 text-sm font-medium text-(--color-text-1)">
                 {item.link ? (
@@ -97,7 +114,8 @@ const OpsAnalysisEventTimeline: React.FC<OpsAnalysisEventTimelineProps> = ({
           ))}
         </div>
       </div>
-    </ChartSurface>
+      </ChartSurface>
+    </div>
   );
 };
 

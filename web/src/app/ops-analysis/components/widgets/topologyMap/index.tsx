@@ -22,11 +22,14 @@ import {
   buildTopologyMapStructureSignature,
 } from './topologyMapViewerSession';
 import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
+import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import { buildScreenContentTokenStyle } from '@/app/ops-analysis/utils/screenWidgetTokens';
 import styles from './topologyMap.module.scss';
 
 interface TopologyMapProps {
   rawData: unknown;
   loading?: boolean;
+  config?: ValueConfig;
   onReady?: (hasData?: boolean) => void;
   onError?: (message: string) => void;
 }
@@ -54,10 +57,12 @@ const resolvePopoverPosition = (event: MouseEvent, container: HTMLElement) => {
 const TopologyMap: React.FC<TopologyMapProps> = ({
   rawData,
   loading = false,
+  config,
   onReady,
   onError,
 }) => {
   const { t } = useTranslation();
+  const screenContentStyle = buildScreenContentTokenStyle(config?.chartThemeMode);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<Graph | null>(null);
@@ -253,7 +258,7 @@ const TopologyMap: React.FC<TopologyMapProps> = ({
   }
 
   return (
-    <div ref={rootRef} className={styles.root}>
+    <div ref={rootRef} className={styles.root} style={screenContentStyle}>
       <div ref={hostRef} className={styles.canvas} />
       <div className={styles.toolbar}>
         <Tooltip title={t('dashboard.topologyMapFit')}>

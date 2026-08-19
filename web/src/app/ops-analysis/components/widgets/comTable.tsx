@@ -41,6 +41,8 @@ import { resolveTableCellPresentation } from '@/app/ops-analysis/utils/tableCell
 import { getScreenWidgetScale } from './shared/screenMetrics';
 import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
 import { useTableBodyScrollY } from './shared/useTableBodyScrollY';
+import { buildScreenOverlayPopupProps } from '@/app/ops-analysis/utils/screenWidgetTokens';
+import '@/app/ops-analysis/utils/screenOverlayDropdown.scss';
 
 const { RangePicker } = DatePicker;
 const DEFAULT_CELL_MAX_WIDTH = 260;
@@ -84,6 +86,9 @@ const ComTable: React.FC<ComTableProps> = ({
     });
   const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const screenTableTheme = getOpsChartThemeByMode(config?.chartThemeMode);
+  const screenOverlayPopupProps = buildScreenOverlayPopupProps(
+    config?.chartThemeMode,
+  );
   const widgetScale = getScreenWidgetScale(screenRenderContext);
   const screenTableStyle = useMemo(() => {
     if (!usesScreenTheme) return undefined;
@@ -439,6 +444,7 @@ const ComTable: React.FC<ComTableProps> = ({
                   label: field.label || field.key,
                   value: field.key,
                 }))}
+                {...screenOverlayPopupProps}
               />
               {activeSearchField?.inputType === 'time_range' ? (
                 <RangePicker
@@ -459,12 +465,17 @@ const ComTable: React.FC<ComTableProps> = ({
                     setQueryPagination((prev) => ({ ...prev, current: 1 }));
                   }}
                   showTime
+                  {...screenOverlayPopupProps}
                 />
               ) : (
                 <Input
                   placeholder={t('dashboard.searchPlaceholder')}
                   suffix={
-                    <SearchOutlined style={{ color: 'var(--color-text-3)' }} />
+                    <SearchOutlined
+                      style={{
+                        color: 'var(--ops-screen-table-muted, var(--color-text-3))',
+                      }}
+                    />
                   }
                   value={
                     activeKeywordFieldKey
@@ -549,6 +560,7 @@ const ComTable: React.FC<ComTableProps> = ({
                 total: pagination.total,
                 showSizeChanger: {
                   getPopupContainer: () => document.body,
+                  ...screenOverlayPopupProps,
                 },
                 showQuickJumper: true,
                 showTotal: (total) =>

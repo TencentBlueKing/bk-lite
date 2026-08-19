@@ -29,6 +29,8 @@ import styles from '../comTable.module.scss';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
 import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
 import { useTableBodyScrollY } from '../shared/useTableBodyScrollY';
+import { buildScreenOverlayPopupProps } from '@/app/ops-analysis/utils/screenWidgetTokens';
+import '@/app/ops-analysis/utils/screenOverlayDropdown.scss';
 const DEFAULT_CELL_MAX_WIDTH = 260;
 
 interface EventTableProps {
@@ -64,6 +66,9 @@ const EventTable: React.FC<EventTableProps> = ({
     });
   const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const screenTableTheme = getOpsChartThemeByMode(config?.chartThemeMode);
+  const screenOverlayPopupProps = buildScreenOverlayPopupProps(
+    config?.chartThemeMode,
+  );
   const widgetScale = getScreenWidgetScale(screenRenderContext);
   const screenTableStyle = useMemo(() => {
     if (!usesScreenTheme) return undefined;
@@ -219,6 +224,7 @@ const EventTable: React.FC<EventTableProps> = ({
                 total: pagination.total,
                 showSizeChanger: {
                   getPopupContainer: () => document.body,
+                  ...screenOverlayPopupProps,
                 },
                 showQuickJumper: true,
                 showTotal: (total) =>

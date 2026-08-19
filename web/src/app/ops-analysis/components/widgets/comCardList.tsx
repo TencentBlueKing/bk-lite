@@ -8,6 +8,7 @@ import {
 } from '@/app/ops-analysis/utils/cardList';
 import { useTranslation } from '@/utils/i18n';
 import { CardListAccent } from './cardListAccent';
+import { buildScreenContentTokenStyle } from '@/app/ops-analysis/utils/screenWidgetTokens';
 
 interface ComCardListProps {
   rawData: unknown;
@@ -23,6 +24,7 @@ const ComCardList: React.FC<ComCardListProps> = ({
   onReady,
 }) => {
   const { t } = useTranslation();
+  const screenContentStyle = buildScreenContentTokenStyle(config?.chartThemeMode);
   const cardListConfig = config?.cardList;
   const parsed = parseCardListItems(rawData, {
     ...cardListConfig,
@@ -40,13 +42,14 @@ const ComCardList: React.FC<ComCardListProps> = ({
   }, [hasData, loading, onReady]);
 
   return (
-    <ChartSurface
-      loading={loading}
-      hasData={hasData}
-      containerClassName="flex h-full min-h-0 w-full flex-col p-3"
-      loadingClassName="flex h-full w-full items-center justify-center"
-      emptyClassName="flex h-full w-full items-center justify-center"
-    >
+    <div className="h-full min-h-0 w-full" style={screenContentStyle}>
+      <ChartSurface
+        loading={loading}
+        hasData={hasData}
+        containerClassName="flex h-full min-h-0 w-full flex-col p-3"
+        loadingClassName="flex h-full w-full items-center justify-center"
+        emptyClassName="flex h-full w-full items-center justify-center"
+      >
       {parsed.truncated ? (
         <Alert
           type="warning"
@@ -111,7 +114,8 @@ const ComCardList: React.FC<ComCardListProps> = ({
           ))}
         </div>
       </div>
-    </ChartSurface>
+      </ChartSurface>
+    </div>
   );
 };
 

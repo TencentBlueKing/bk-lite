@@ -64,6 +64,7 @@ import WidgetErrorState from "@/app/ops-analysis/components/widgetErrorState";
 import WidgetState from "@/app/ops-analysis/components/widget-state";
 import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widgetHeaderRuntimeSlot";
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
+import { buildScreenContentTokenStyle } from "@/app/ops-analysis/utils/screenWidgetTokens";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
 import {
   areTableQueryParamsEquivalent,
@@ -484,6 +485,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       value={runtimeParamValue as string | number | undefined}
       onChange={handleRuntimeParamChange}
       block={!headerRuntimeSlot}
+      chartThemeMode={config?.chartThemeMode}
     />
   ) : null;
   const runtimeHeaderControl =
@@ -1218,7 +1220,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     return (
       <>
         {runtimeHeaderControl}
-        <div style={{ position: "relative", height: "100%" }}>
+        <div
+          style={{
+            position: "relative",
+            height: "100%",
+            ...buildScreenContentTokenStyle(config?.chartThemeMode),
+          }}
+        >
           <WidgetRenderer
             chartType={chartType}
             rawData={null}
@@ -1300,7 +1308,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   return (
     <>
       {runtimeHeaderControl}
-      <div style={{ position: "relative", height: "100%" }}>
+      <div
+        style={{
+          position: "relative",
+          height: "100%",
+          ...buildScreenContentTokenStyle(config?.chartThemeMode),
+        }}
+      >
         <WidgetRenderer
           chartType={chartType}
           rawData={rawData}

@@ -3,6 +3,13 @@
 import React from 'react';
 import { Segmented, Select } from 'antd';
 import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/dataSource';
+import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
+import { isScreenChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
+import {
+  buildScreenContentTokenStyle,
+  buildScreenOverlayPopupProps,
+} from '@/app/ops-analysis/utils/screenWidgetTokens';
+import '@/app/ops-analysis/utils/screenOverlayDropdown.scss';
 import styles from './componentParamSwitchControl.module.scss';
 
 interface ComponentParamSwitchControlProps {
@@ -11,6 +18,7 @@ interface ComponentParamSwitchControlProps {
   value?: string | number;
   onChange?: (value: string | number) => void;
   block?: boolean;
+  chartThemeMode?: OpsChartThemeMode;
 }
 
 const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = ({
@@ -19,7 +27,12 @@ const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = 
   value,
   onChange,
   block = false,
+  chartThemeMode,
 }) => {
+  const usesScreenTheme = isScreenChartThemeMode(chartThemeMode);
+  const screenControlStyle = buildScreenContentTokenStyle(chartThemeMode);
+  const screenOverlayPopupProps = buildScreenOverlayPopupProps(chartThemeMode);
+
   if (!inputConfig || inputConfig.control === 'input' || !options.length || value === undefined) {
     return null;
   }
@@ -29,6 +42,7 @@ const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = 
       <Segmented
         block={block}
         className={`min-w-max ${styles.control}`}
+        style={screenControlStyle}
         options={options}
         value={value}
         onChange={(nextValue) => onChange?.(nextValue as string | number)}
@@ -39,7 +53,9 @@ const ComponentParamSwitchControl: React.FC<ComponentParamSwitchControlProps> = 
   if (inputConfig.control === 'select') {
     return (
       <Select
-        className={`min-w-32 ${styles.control}`}
+        className={`min-w-32 ${styles.control}${usesScreenTheme ? ` ${styles.screenControl}` : ''}`}
+        style={screenControlStyle}
+        {...screenOverlayPopupProps}
         options={options}
         value={value}
         onChange={(nextValue) => onChange?.(nextValue)}
