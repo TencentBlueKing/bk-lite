@@ -220,3 +220,22 @@ test('normalizes the documented legacy RUN_FINISHED event for typed consumers', 
   subscription.unsubscribe();
   handler.destroy();
 });
+
+test('surfaces CUSTOM protocol events for host HITL handlers', () => {
+  const handler = new AGUIHandler();
+  const result = handler.processSSEData({
+    type: 'CUSTOM',
+    name: 'approval_request',
+    value: { tool_name: 'restart_pod' },
+  });
+
+  assert.deepEqual(result, {
+    type: 'custom-event',
+    event: {
+      type: 'CUSTOM',
+      name: 'approval_request',
+      value: { tool_name: 'restart_pod' },
+    },
+  });
+  handler.destroy();
+});

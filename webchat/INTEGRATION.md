@@ -36,6 +36,34 @@ export default function Home() {
 }
 ```
 
+If both `platform` and `sseUrl` are provided, **platform mode wins** and `sseUrl` is ignored. Single-bot embeds that only pass `sseUrl` still use the floating button.
+
+### Step 2b: Platform assistant (switch among permitted published skills)
+
+The host injects URLs. WebChat does not hardcode console paths. URL templates may include `{channelId}` and `{sessionId}`. Chat requests send `session_id` in the JSON body. Platform mode is a full-height right overlay that does not push page layout; it starts collapsed as a FAB. For OpsPilot, point `applicationsUrl` at the enabled **platform** skill channels the current team may use.
+
+```jsx
+<PlatformChat
+  platform={{
+    applicationsUrl: 'https://host.example/skill_channel/platform/',
+    sessionsUrl: 'https://host.example/skill_channel/conversations/?channel_id={channelId}',
+    messagesUrl: 'https://host.example/skill_channel/conversations/messages/?session_id={sessionId}',
+    chatUrlTemplate: 'https://host.example/skill_channel/{channelId}/chat/',
+    interruptUrl: 'https://host.example/interrupt',
+    approvalUrl: 'https://host.example/approval',
+    choiceUrl: 'https://host.example/choice',
+    credentials: 'include',
+  }}
+  apiKey={token}
+  userId="alice"
+  teamId="7"
+/>
+```
+
+Mount `PlatformChat` as an overlay sibling of the page (not inside the main flex row). `FloatingButton` with a platform contract uses the same overlay; `FloatingButton` with only `sseUrl` stays a 384×650 float.
+
+Missing list permission should return HTTP 403; the overlay hides. An empty application list still shows the overlay with an empty state.
+
 ### Step 3: Create SSE Backend Endpoint
 
 ```typescript
