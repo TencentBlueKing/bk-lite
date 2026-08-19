@@ -1,36 +1,35 @@
 import uuid
+from collections import defaultdict
 
-from django.db import connection, transaction
-from django.db import IntegrityError
+from django.db import IntegrityError, connection, transaction
+from django.db.models import F
 
 import nats_client
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
+from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.safe_template import build_sandboxed_env
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
-from apps.node_mgmt.models import CloudRegion, SidecarEnv
-from apps.node_mgmt.services.node import NodeService
-from apps.node_mgmt.services.installer import InstallerService
-from apps.node_mgmt.services.cloudregion import RegionService
-from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
-from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
-
-from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.models import (
-    CollectorConfiguration,
     ChildConfig,
+    CloudRegion,
     Collector,
+    CollectorConfiguration,
     Node,
     NodeCollectorConfiguration,
     NodeOrganization,
+    SidecarEnv,
 )
-from apps.node_mgmt.services.sidecar_cache import (
-    invalidate_bulk_child_config_etags,
-    invalidate_bulk_config_node_etags,
-)
-from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.node_mgmt.services.cloudregion import RegionService
+from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.services.sidecar_cache import invalidate_bulk_child_config_etags, invalidate_bulk_config_node_etags
+from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
 
 class NatsService:
@@ -56,7 +55,7 @@ class NatsService:
         )
         return NatsService._resolve_collector_from_candidates(node, collectors)
 
-    def _ensure_parent_configs_for_child_configs(self, configs: list):
+    def _ensure_parent_configs_for_child_configs(self, configs: list):  # noqa: C901
         if not configs:
             return
 
@@ -120,9 +119,7 @@ class NatsService:
                 default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
                 config_template = collector.default_config.get(default_sidecar_mode)
                 if not config_template:
-                    raise BaseAppException(
-                        f"节点 {node.id} 的采集器 {collector.name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量"
-                    )
+                    raise BaseAppException(f"节点 {node.id} 的采集器 {collector.name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量")
 
                 if node.node_type == ControllerConstants.NODE_TYPE_CONTAINER:
                     add_config = collector.default_config.get("add_config", "")
@@ -180,9 +177,7 @@ class NatsService:
             raise BaseAppException(f"批量创建采集器父配置失败: {error}") from error
         created_configs = {
             item["name"]: item
-            for item in CollectorConfiguration.objects.select_for_update()
-            .filter(name__in=expected_by_name)
-            .values("id", "name", "collector_id")
+            for item in CollectorConfiguration.objects.select_for_update().filter(name__in=expected_by_name).values("id", "name", "collector_id")
         }
         conflicting_config_ids = {
             created_configs[config_name]["id"]
@@ -227,9 +222,7 @@ class NatsService:
                             NodeCollectorConfiguration.objects.select_for_update()
                             .filter(
                                 node_id__in=[association.node_id for association in associations_to_create],
-                                collector_config_id__in=[
-                                    association.collector_config_id for association in associations_to_create
-                                ],
+                                collector_config_id__in=[association.collector_config_id for association in associations_to_create],
                             )
                             .values_list("node_id", "collector_config_id")
                         )
@@ -539,9 +532,7 @@ class NatsService:
                 ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
             except IntegrityError as e:
                 sample_ids = [config.id for config in node_objs[:3]]
-                raise BaseAppException(
-                    f"批量创建子配置失败，可能存在重复子配置ID或无效父配置关联: count={len(node_objs)}, sample_ids={sample_ids}, error={e}"
-                ) from e
+                raise BaseAppException(f"批量创建子配置失败，可能存在重复子配置ID或无效父配置关联: count={len(node_objs)}, sample_ids={sample_ids}, error={e}") from e
             except Exception as e:
                 sample_ids = [config.id for config in node_objs[:3]]
                 raise BaseAppException(f"批量创建子配置失败: count={len(node_objs)}, sample_ids={sample_ids}, error={e}") from e
@@ -571,6 +562,41 @@ class NatsService:
             }
             for config in child_configs
         ]
+
+    def get_child_config_nodes_by_ids(self, ids: list, organization_ids: list):
+        """批量解析子配置绑定的采集节点，并限定在调用方已授权的组织范围。"""
+        if not isinstance(ids, (list, tuple, set)) or not isinstance(organization_ids, (list, tuple, set)):
+            return []
+        normalized_ids = sorted({str(config_id) for config_id in ids if config_id not in (None, "")})
+        if not normalized_ids or not organization_ids:
+            return []
+        try:
+            normalized_organization_ids = _normalize_organization_ids(organization_ids)
+        except BaseAppException:
+            return []
+
+        rows = (
+            ChildConfig.objects.filter(
+                id__in=normalized_ids,
+                collector_config__nodes__nodeorganization__organization__in=normalized_organization_ids,
+            )
+            .values(
+                "id",
+                node_id=F("collector_config__nodes__id"),
+                node_name=F("collector_config__nodes__name"),
+            )
+            .order_by("id", "node_name", "node_id")
+            .distinct()
+        )
+        nodes_by_config = defaultdict(list)
+        for row in rows:
+            nodes_by_config[row["id"]].append(
+                {
+                    "id": row["node_id"],
+                    "name": row["node_name"],
+                }
+            )
+        return [{"id": config_id, "nodes": nodes_by_config[config_id]} for config_id in sorted(nodes_by_config)]
 
     def get_configs_by_ids(self, ids: list):
         """根据配置ID列表获取配置对象"""
@@ -839,6 +865,12 @@ def batch_add_node_config(configs: list):
 def get_child_configs_by_ids(ids: list):
     """根据ID获取子配置"""
     return NatsService().get_child_configs_by_ids(ids)
+
+
+@nats_client.register
+def get_child_config_nodes_by_ids(ids: list, organization_ids: list):
+    """按子配置 ID 批量获取授权组织范围内的采集节点。"""
+    return NatsService().get_child_config_nodes_by_ids(ids, organization_ids)
 
 
 @nats_client.register

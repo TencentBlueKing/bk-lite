@@ -53,6 +53,7 @@ import { cloneDeep } from 'lodash';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { buildAssetViewUrl } from './viewRoute';
+import PluginTooltipContent from './pluginTooltip';
 
 type TableRowSelection<T extends object = object> =
   TableProps<T>['rowSelection'];
@@ -165,9 +166,23 @@ const Asset = () => {
                 const timeText = plugin.time
                   ? convertToLocalizedTime(plugin.time)
                   : '--';
-                const tooltipTitle = `${statusText} - ${t(
-                  'monitor.integrations.lastReportTime'
-                )}：${timeText}`;
+                const tooltipTitle = (
+                  <PluginTooltipContent
+                    statusText={statusText}
+                    lastReportTimeLabel={t(
+                      'monitor.integrations.lastReportTime'
+                    )}
+                    timeText={timeText}
+                    collectionNodeLabel={t(
+                      'monitor.integrations.collectionNode'
+                    )}
+                    notAssociatedText={t(
+                      'monitor.integrations.notAssociated'
+                    )}
+                    collectMode={plugin.collect_mode}
+                    collectorNodes={plugin.collector_nodes}
+                  />
+                );
 
                 return (
                   <>

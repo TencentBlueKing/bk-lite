@@ -394,6 +394,7 @@
       "ipDes": "监控的目标主机的 IP 地址，用于标识数据收集的来源。",
       "color": "颜色",
       "collectionNode": "采集节点",
+      "notAssociated": "未关联",
       "publishPortDes": "程序运行时监听的特定端口，负责接收来自外部的请求和连接",
       "dataTypeDes": "定义数据在计算机中存储、处理及传输时的格式与规则",
       "username": "用户名",

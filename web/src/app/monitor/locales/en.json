@@ -394,6 +394,7 @@
       "ipDes": "The IP address of the target host being monitored is used to identify the source of data collection.",
       "color": "Color",
       "collectionNode": "Collection Node",
+      "notAssociated": "Not linked",
       "publishPortDes": "The specific port that the program listens on during runtime, responsible for receiving requests and connections from external sources.",
       "dataTypeDes": "Define the format and rules for storing, processing, and transmitting data in a computer",
       "username": "Username",
