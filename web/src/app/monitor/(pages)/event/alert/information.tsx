@@ -16,6 +16,7 @@ import { useLevelList } from '@/app/monitor/hooks';
 import { OBJECT_DEFAULT_ICON, LEVEL_MAP } from '@/app/monitor/constants';
 import Permission from '@/components/permission';
 import { formatUserDisplayName } from '@/utils/userDisplay';
+import { buildAlertDimensionDisplayItems } from './alertDimensionUtils';
 
 interface InformationProps extends TableDataItem {
   eventData?: TableDataItem[];
@@ -42,6 +43,10 @@ const Information: React.FC<InformationProps> = ({
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const dimensionItems = buildAlertDimensionDisplayItems(
+    formData.metric?.dimensions,
+    formData.dimensions
+  );
 
   const checkDetail = (row: TableDataItem) => {
     const monitorItem = objects.find(
@@ -121,8 +126,31 @@ const Information: React.FC<InformationProps> = ({
             ? convertToLocalizedTime(formData.start_event_time)
             : '--'}
         </Descriptions.Item>
-        <Descriptions.Item label={t('monitor.events.information')} span={3}>
-          {formData.content || '--'}
+        <Descriptions.Item label={t('monitor.events.alertName')} span={3}>
+          <div className="min-w-0 break-all whitespace-pre-wrap">
+            {formData.content || '--'}
+          </div>
+        </Descriptions.Item>
+        <Descriptions.Item label={t('monitor.events.dimension')} span={3}>
+          {dimensionItems.length ? (
+            <div className="flex min-w-0 flex-col gap-1">
+              {dimensionItems.map((item) => (
+                <div
+                  key={item.key}
+                  className="flex min-w-0 items-start gap-2"
+                >
+                  <span className="max-w-[40%] shrink-0 break-words text-[var(--color-text-3)]">
+                    {item.label}:
+                  </span>
+                  <span className="min-w-0 break-all whitespace-pre-wrap">
+                    {item.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            '--'
+          )}
         </Descriptions.Item>
         <Descriptions.Item label={t('monitor.events.assetType')}>
           {objects.find(
