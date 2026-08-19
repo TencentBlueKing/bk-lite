@@ -590,7 +590,7 @@ export default function AlertDetailDrawer({
                   <Descriptions.Item label="所属版本">
                     {alert.version || '--'}
                   </Descriptions.Item>
-                  <Descriptions.Item label="所属对象" span={2}>
+                  <Descriptions.Item label="所属对象">
                     <Space size={4} direction="vertical" className={styles.alertDetailObject}>
                       {alert.service_id ? (
                         <Link className={styles.alertDetailMetaLink} href={`/apm/services/${alert.service_id}`}>
@@ -606,7 +606,7 @@ export default function AlertDetailDrawer({
                       ) : null}
                     </Space>
                   </Descriptions.Item>
-                  <Descriptions.Item label="关联规则" span={2}>
+                  <Descriptions.Item label="关联规则">
                     <span className={styles.alertDetailRule}>
                       <Link href={`/apm/events/policies/${alert.policy_id}`}>
                         {alert.policy_name}
