@@ -110,6 +110,190 @@ def test_get_node_list_filters_by_name_ip_os(setup):
 
 
 @pytest.mark.django_db
+def test_get_nodes_by_ips_returns_exact_minimal_nodes_in_organization(setup):
+    region, _collector, node = setup
+    NodeOrganization.objects.create(node=node, organization=42)
+    similarly_named = Node.objects.create(
+        id="node-svc-similar",
+        name="similar",
+        ip="10.1.1.10",
+        operating_system="linux",
+        collector_configuration_directory="/etc",
+        cloud_region=region,
+    )
+    NodeOrganization.objects.create(node=similarly_named, organization=42)
+    other_organization = Node.objects.create(
+        id="node-svc-other-org",
+        name="other-org",
+        ip="10.1.1.2",
+        operating_system="windows",
+        collector_configuration_directory="C:/collector",
+        cloud_region=region,
+    )
+    NodeOrganization.objects.create(node=other_organization, organization=7)
+
+    result = NodeService.get_nodes_by_ips(
+        ["10.1.1.1", "10.1.1.2", "10.1.1.1"],
+        organization_ids=[42],
+        cloud_region_id=region.id,
+    )
+
+    assert result == {
+        "nodes": [
+            {
+                "id": node.id,
+                "ip": "10.1.1.1",
+                "operating_system": "linux",
+            }
+        ]
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("ips", ["10.1.1.1", ["not-an-ip"], [None]])
+def test_get_nodes_by_ips_rejects_invalid_input(ips):
+    with pytest.raises(BaseAppException):
+        NodeService.get_nodes_by_ips(ips, skip_permission=True)
+
+
+@pytest.mark.django_db
+def test_get_nodes_by_ips_rejects_oversized_batch(monkeypatch):
+    monkeypatch.setattr(NodeService, "NODE_LIST_PAGE_SIZE_MAX", 2)
+
+    with pytest.raises(BaseAppException, match="单次最多查询 2 个 IP"):
+        NodeService.get_nodes_by_ips(
+            ["10.0.0.1", "10.0.0.2", "10.0.0.3"],
+            skip_permission=True,
+        )
+
+
+@pytest.mark.django_db
+def test_get_nodes_by_ips_does_not_accept_truthy_skip_permission(setup):
+    result = NodeService.get_nodes_by_ips(
+        ["10.1.1.1"],
+        skip_permission="true",
+    )
+
+    assert result == {"nodes": []}
+
+
+def test_get_nodes_by_ips_nats_handler_forwards_bounded_query(monkeypatch):
+    from apps.node_mgmt.nats import node as node_nats
+
+    captured = {}
+
+    def query(ips, **context):
+        captured.update(ips=ips, context=context)
+        return {"nodes": []}
+
+    monkeypatch.setattr(NodeService, "get_nodes_by_ips", query)
+    monkeypatch.setattr(node_nats, "_collect_task_organization_ids", lambda _task_id: [42])
+
+    result = node_nats.get_nodes_by_ips(
+        {
+            "ips": ["10.0.0.1"],
+            "collect_task_id": 91,
+            "cloud_region_id": 7,
+        }
+    )
+
+    assert result == {"nodes": []}
+    assert captured == {
+        "ips": ["10.0.0.1"],
+        "context": {
+            "organization_ids": [42],
+            "cloud_region_id": 7,
+        },
+    }
+
+
+def test_get_nodes_by_ips_nats_handler_rejects_non_object_query():
+    from apps.node_mgmt.nats import node as node_nats
+
+    with pytest.raises(BaseAppException, match="query_data 必须是对象"):
+        node_nats.get_nodes_by_ips(["10.0.0.1"])
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        {"ips": ["10.0.0.1"]},
+        {"ips": ["10.0.0.1"], "collect_task_id": 91, "organization_ids": [42]},
+        {"ips": ["10.0.0.1"], "collect_task_id": 91, "skip_permission": True},
+        {"ips": ["10.0.0.1"], "collect_task_id": 91, "permission_data": {}},
+        {"ips": ["10.0.0.1"], "collect_task_id": 91, "unexpected": True},
+    ],
+)
+def test_get_nodes_by_ips_nats_handler_rejects_unscoped_or_privileged_query(query):
+    from apps.node_mgmt.nats import node as node_nats
+
+    with pytest.raises(BaseAppException):
+        node_nats.get_nodes_by_ips(query)
+
+
+def test_get_nodes_by_ips_nats_handler_rejects_unknown_collect_task(monkeypatch):
+    from apps.node_mgmt.nats import node as node_nats
+
+    def reject(_task_id):
+        raise BaseAppException("Job 采集任务不存在")
+
+    monkeypatch.setattr(node_nats, "_collect_task_organization_ids", reject)
+    with pytest.raises(BaseAppException, match="Job 采集任务不存在"):
+        node_nats.get_nodes_by_ips({"ips": ["10.0.0.1"], "collect_task_id": 999999})
+
+
+def test_get_nodes_by_ips_nats_handler_rejects_oversized_input(monkeypatch):
+    from apps.node_mgmt.nats import node as node_nats
+
+    monkeypatch.setattr(NodeService, "NODE_LIST_PAGE_SIZE_MAX", 2)
+
+    with pytest.raises(BaseAppException, match="单次必须查询 1 到 2 个 IP"):
+        node_nats.get_nodes_by_ips(
+            {
+                "ips": ["10.0.0.1"] * 3,
+                "collect_task_id": 91,
+            }
+        )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("driver_type", "team", "error"),
+    [
+        ("job", [42], None),
+        ("protocol", [42], "Job 采集任务不存在"),
+        ("job", [], "Job 采集任务缺少组织范围"),
+    ],
+)
+def test_collect_task_organization_scope_comes_from_trusted_task_record(driver_type, team, error):
+    from apps.cmdb.models import CollectModels
+    from apps.node_mgmt.nats import node as node_nats
+
+    task = CollectModels.objects.create(
+        name=f"node-info-scope-{driver_type}-{len(team)}",
+        task_type="host",
+        driver_type=driver_type,
+        model_id="host",
+        cycle_value_type="",
+        team=team,
+    )
+
+    if error:
+        with pytest.raises(BaseAppException, match=error):
+            node_nats._collect_task_organization_ids(task.id)
+    else:
+        assert node_nats._collect_task_organization_ids(task.id) == [42]
+
+
+@pytest.mark.django_db
+def test_get_nodes_by_ips_rejects_raw_oversized_input_before_deduplication(monkeypatch):
+    monkeypatch.setattr(NodeService, "NODE_LIST_PAGE_SIZE_MAX", 2)
+
+    with pytest.raises(BaseAppException, match="单次最多查询 2 个 IP"):
+        NodeService.get_nodes_by_ips(["10.0.0.1"] * 3, skip_permission=True)
+
+
+@pytest.mark.django_db
 def test_get_nodes_with_child_config_returns_only_matching_assignments(setup):
     region, collector, node = setup
     other_node = Node.objects.create(

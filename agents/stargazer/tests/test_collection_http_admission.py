@@ -213,6 +213,9 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
                 "plugin_timeout_total": 4,
                 "result_publish_failure_total": 2,
                 "lease_takeover_total": 1,
+                "job_node_info_lookup_rpc_total": 1,
+                "job_node_info_lookup_found_total": 140,
+                "job_node_info_lookup_duration_seconds_p99": 0.085,
             }
 
     monkeypatch.setattr(
@@ -240,6 +243,12 @@ async def test_health_metrics_expose_capacity_and_event_loop_lag(monkeypatch):
     assert "stargazer_collection_publish_queue_depth 12" in body
     assert "stargazer_collection_publish_batch_size_p99 50" in body
     assert "stargazer_collection_run_first_schedule_wait_seconds_p99 0.02" in body
+    assert "stargazer_collection_job_node_info_lookup_rpc_total 1" in body
+    assert "stargazer_collection_job_node_info_lookup_found_total 140" in body
+    assert (
+        "stargazer_collection_job_node_info_lookup_duration_seconds_p99 0.085"
+        in body
+    )
     assert (
         'stargazer_collection_execution_mode_success_total{execution_mode="async"} 119'
         in body

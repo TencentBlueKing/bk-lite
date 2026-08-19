@@ -123,6 +123,15 @@ class RecordingPlugin:
         return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value=value)
 
 
+class ClosableRecordingPlugin(RecordingPlugin):
+    def __init__(self):
+        super().__init__()
+        self.close_calls = 0
+
+    async def close(self):
+        self.close_calls += 1
+
+
 class PluginFactory:
     def __init__(self, plugin):
         self.plugin = plugin
@@ -412,6 +421,27 @@ async def test_configuration_http_to_redis_plugin_nats_and_next_cycle_resubmit(
         "10.10.24.2",
     }
     await scheduled[1]
+
+
+@pytest.mark.asyncio
+async def test_collection_run_closes_run_scoped_plugin(redis_client, monkeypatch):
+    published = []
+    scheduled = []
+    plugin = ClosableRecordingPlugin()
+    application, _preflight = build_application(
+        redis_client, plugin, published, scheduled
+    )
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
+
+    async with http_client(collect_api.collect_router, "e2e-plugin-close-app") as client:
+        accepted = await client.get(
+            "/collect/collect_info",
+            headers=configuration_request("e2e-plugin-close"),
+        )
+        await scheduled[0]
+
+    assert accepted.status_code == 202
+    assert plugin.close_calls == 1
 
 
 @pytest.mark.asyncio

@@ -18,6 +18,7 @@ from apps.node_mgmt.tasks.installer import install_collector as install_collecto
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.node_mgmt.models import (
     CollectorConfiguration,
     ChildConfig,
@@ -783,6 +784,63 @@ def node_list(query_data: dict):
         permission_data,
         skip_permission,
     )
+
+
+@nats_client.register
+def get_nodes_by_ips(query_data: dict):
+    """按 IP 集合查询 Job 执行所需的最小节点信息。"""
+    if not isinstance(query_data, dict):
+        raise BaseAppException("query_data 必须是对象")
+    if any(key in query_data for key in ("organization_ids", "permission_data", "skip_permission")):
+        raise BaseAppException("不允许通过消息参数覆盖节点查询权限")
+    _validate_node_info_query_shape(query_data)
+    organization_ids = _collect_task_organization_ids(query_data.get("collect_task_id"))
+    return NodeService.get_nodes_by_ips(
+        query_data.get("ips"),
+        organization_ids=organization_ids,
+        cloud_region_id=query_data.get("cloud_region_id"),
+    )
+
+
+def _validate_node_info_query_shape(query_data):
+    allowed_keys = {
+        "ips",
+        "collect_task_id",
+        "cloud_region_id",
+    }
+    if set(query_data) - allowed_keys:
+        raise BaseAppException("节点查询包含未知参数")
+    ips = query_data.get("ips")
+    if not isinstance(ips, list):
+        raise BaseAppException("ips 必须是 IP 列表")
+    if not ips or len(ips) > NodeService.NODE_LIST_PAGE_SIZE_MAX:
+        raise BaseAppException(f"单次必须查询 1 到 {NodeService.NODE_LIST_PAGE_SIZE_MAX} 个 IP")
+    if any(not isinstance(ip, str) or not ip.strip() or len(ip) > 64 for ip in ips):
+        raise BaseAppException("ips 只能包含有界非空 IP 字符串")
+
+
+def _collect_task_organization_ids(collect_task_id):
+    """从服务端可信任务记录解析组织范围，不信任 RPC 消息体中的组织字段。"""
+    if type(collect_task_id) not in (int, str):
+        raise BaseAppException("collect_task_id 参数非法")
+    try:
+        task_id = int(str(collect_task_id).strip())
+    except (TypeError, ValueError) as error:
+        raise BaseAppException("collect_task_id 参数非法") from error
+    if task_id <= 0:
+        raise BaseAppException("collect_task_id 参数非法")
+
+    from apps.cmdb.models import CollectModels
+
+    task = CollectModels.objects.filter(id=task_id, driver_type="job").only("team").first()
+    if task is None:
+        raise BaseAppException("Job 采集任务不存在")
+    if not task.team:
+        raise BaseAppException("Job 采集任务缺少组织范围")
+    organization_ids = list(_normalize_organization_ids(task.team))
+    if not organization_ids:
+        raise BaseAppException("Job 采集任务缺少组织范围")
+    return organization_ids
 
 
 @nats_client.register

@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from core.collection.contracts import AccessProbeResult, AccessProbeStatus, CollectOutcomeStatus, StructuredMetricsPayload, TargetCollectionContext
 from core.collection.plugins import ConfigurationCollectionPlugin, MonitorCollectionPlugin, UnifiedPluginFactory
@@ -39,6 +41,61 @@ async def test_configuration_plugin_exposes_credential_protocol_probe():
     assert captured["host"] == "10.10.24.1"
     assert captured["credential_id"] == "credential-1"
     assert captured["timeout"] == 5
+
+
+@pytest.mark.asyncio
+async def test_job_plugin_injects_run_node_info_before_service_probe_and_collect():
+    captured = []
+
+    class Lookup:
+        async def get(self, target, *, connect_host=""):
+            assert target == "10.10.24.9"
+            assert connect_host == "10.10.24.9"
+            return {
+                "id": "node-9",
+                "ip": "10.10.24.9",
+                "operating_system": "linux",
+            }
+
+    class Service:
+        def __init__(self, params):
+            captured.append(dict(params))
+
+        async def probe(self):
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+
+        async def collect(self):
+            return 'host{collect_status="success"} 1'
+
+    plugin = ConfigurationCollectionPlugin(
+        service_factory=Service,
+        node_info_lookup=Lookup(),
+    )
+    context = TargetCollectionContext(
+        task_id="job-node-info",
+        plugin_ref="host.config",
+        fence=1,
+        params={
+            "model_id": "host",
+            "executor_type": "job",
+            "_validated_connect_host": "10.10.24.9",
+        },
+    )
+
+    await plugin.probe(
+        "10.10.24.9",
+        {"credential_id": "credential-1"},
+        context,
+        timeout_seconds=5,
+    )
+    await plugin.collect(
+        "10.10.24.9",
+        {"credential_id": "credential-1"},
+        context,
+    )
+
+    assert len(captured) == 2
+    assert all(params["node_info"]["id"] == "node-9" for params in captured)
 
 
 @pytest.mark.asyncio
@@ -264,3 +321,150 @@ def test_factory_routes_configuration_and_monitor_to_one_contract():
 
     assert isinstance(factory.resolve(configuration), ConfigurationCollectionPlugin)
     assert isinstance(factory.resolve(monitor), MonitorCollectionPlugin)
+
+
+@pytest.mark.asyncio
+async def test_factory_scopes_one_node_info_batch_to_one_job_run():
+    targets = tuple(f"10.20.0.{index}" for index in range(1, 101))
+    load_calls = []
+
+    async def load(ips, **_context):
+        load_calls.append(tuple(ips))
+        return [{"id": f"node-{ip}", "ip": ip, "operating_system": "linux"} for ip in ips]
+
+    class Service:
+        def __init__(self, params):
+            self.params = params
+
+        async def collect(self):
+            assert self.params["node_info"]["ip"] == self.params["host"]
+            return 'host{collect_status="success"} 1'
+
+    request = CollectionRequest(
+        task_id="job-run-100",
+        plugin_ref="host.config",
+        targets=targets,
+        params={
+            "plugin_family": "configuration",
+            "model_id": "host",
+            "executor_type": "job",
+            "collect_task_id": 91,
+        },
+    )
+    plugin = UnifiedPluginFactory(
+        configuration_service_factory=Service,
+        configuration_node_info_loader=load,
+    ).resolve(request)
+    context = TargetCollectionContext(
+        task_id=request.task_id,
+        plugin_ref=request.plugin_ref,
+        fence=1,
+        params=request.params,
+    )
+
+    await asyncio.gather(*(plugin.collect(target, {"credential_id": "credential-1"}, context) for target in targets))
+    close = getattr(plugin, "close", None)
+    if close is not None:
+        await close()
+
+    assert load_calls == [targets]
+
+
+@pytest.mark.asyncio
+async def test_job_probe_and_collect_credentials_reuse_one_run_lookup():
+    calls = 0
+
+    async def load(ips, **_context):
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0)
+        return [{"id": "node-1", "ip": ips[0], "operating_system": "linux"}]
+
+    class Service:
+        def __init__(self, params):
+            assert params["node_info"]["id"] == "node-1"
+
+        async def probe(self):
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+
+        async def collect(self):
+            return 'host{collect_status="success"} 1'
+
+    request = CollectionRequest(
+        task_id="job-credentials",
+        plugin_ref="host.config",
+        targets=("10.0.0.1",),
+        params={
+            "plugin_family": "configuration",
+            "model_id": "host",
+            "executor_type": "job",
+            "collect_task_id": 91,
+        },
+    )
+    plugin = UnifiedPluginFactory(
+        configuration_service_factory=Service,
+        configuration_node_info_loader=load,
+    ).resolve(request)
+    context = TargetCollectionContext(
+        task_id=request.task_id,
+        plugin_ref=request.plugin_ref,
+        fence=1,
+        params=request.params,
+    )
+
+    await asyncio.gather(
+        plugin.probe("10.0.0.1", {"credential_id": "one"}, context, timeout_seconds=5),
+        plugin.probe("10.0.0.1", {"credential_id": "two"}, context, timeout_seconds=5),
+    )
+    await plugin.collect("10.0.0.1", {"credential_id": "two"}, context)
+    close = getattr(plugin, "close", None)
+    if close is not None:
+        await close()
+
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"plugin_family": "configuration", "executor_type": "protocol"},
+        {"plugin_family": "configuration", "executor_type": "job"},
+        {"plugin_family": "monitor", "monitor_type": "host"},
+    ],
+)
+async def test_non_job_or_unscoped_request_does_not_load_job_node_info(params):
+    async def unexpected_load(*_args, **_kwargs):
+        raise AssertionError("node info loader must not be called")
+
+    class Service:
+        def __init__(self, _params):
+            pass
+
+        async def collect(self):
+            return 'host{collect_status="success"} 1'
+
+    request = CollectionRequest(
+        task_id="not-scoped-job",
+        plugin_ref="host.config",
+        targets=("10.0.0.1",),
+        params=params,
+    )
+    plugin = UnifiedPluginFactory(
+        configuration_service_factory=Service,
+        configuration_node_info_loader=unexpected_load,
+    ).resolve(request)
+    if params["plugin_family"] == "configuration":
+        await plugin.collect(
+            "10.0.0.1",
+            {"credential_id": "one"},
+            TargetCollectionContext(
+                task_id=request.task_id,
+                plugin_ref=request.plugin_ref,
+                fence=1,
+                params=request.params,
+            ),
+        )
+    close = getattr(plugin, "close", None)
+    if close is not None:
+        await close()

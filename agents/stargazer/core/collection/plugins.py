@@ -16,6 +16,7 @@ from core.collection.contracts import (
     StructuredMetricsPayload,
     TargetCollectionContext,
 )
+from core.collection.node_info_lookup import RunNodeInfoLookup
 from core.collection.runtime import CollectionRequest
 
 
@@ -24,10 +25,16 @@ class ConfigurationCollectionPlugin:
 
     supports_access_probe = True
 
-    def __init__(self, service_factory: Callable | None = None) -> None:
+    def __init__(
+        self,
+        service_factory: Callable | None = None,
+        *,
+        node_info_lookup=None,
+    ) -> None:
         if service_factory is None:
             raise ValueError("configuration plugin requires service_factory " "(inject at composition root; core must not import service)")
         self._service_factory = service_factory
+        self._node_info_lookup = node_info_lookup
 
     async def probe(
         self,
@@ -38,6 +45,7 @@ class ConfigurationCollectionPlugin:
         timeout_seconds: float,
     ) -> AccessProbeResult:
         params = _target_params(target, credential, context)
+        await self._prepare_job_params(target, params)
         try:
             configured_timeout = float(params.get("timeout", timeout_seconds))
         except (TypeError, ValueError):
@@ -52,6 +60,7 @@ class ConfigurationCollectionPlugin:
         context: TargetCollectionContext,
     ) -> CollectOutcome:
         params = _target_params(target, credential, context)
+        await self._prepare_job_params(target, params)
         params["_runtime_structured_metrics"] = True
         metrics = await self._service_factory(params).collect()
         error = _extract_collection_error(metrics)
@@ -61,6 +70,24 @@ class ConfigurationCollectionPlugin:
                 value=metrics,
             )
         return _failure_outcome(error, value=metrics)
+
+    async def close(self) -> None:
+        if self._node_info_lookup is not None:
+            await self._node_info_lookup.close()
+
+    async def _prepare_job_params(self, target: str, params: dict[str, Any]) -> None:
+        params.pop("node_info", None)
+        if str(params.get("executor_type") or "").lower() != "job":
+            return
+        if self._node_info_lookup is None:
+            return
+        connect_host = str(params.get("connect_ip") or params.get("host") or "")
+        node_info = await self._node_info_lookup.get(
+            target,
+            connect_host=connect_host,
+        )
+        if node_info:
+            params["node_info"] = dict(node_info)
 
 
 class MonitorCollectionPlugin:
@@ -150,18 +177,40 @@ class UnifiedPluginFactory:
         self,
         monitor_collector_factories=None,
         configuration_service_factory: Callable | None = None,
+        configuration_node_info_loader: Callable | None = None,
+        metrics=None,
     ) -> None:
         if monitor_collector_factories is None:
             monitor_collector_factories = _load_enterprise_collector_factories()
         self._monitor_collector_factories = dict(monitor_collector_factories or {})
         self._configuration_service_factory = configuration_service_factory
+        self._configuration_node_info_loader = configuration_node_info_loader
+        self._metrics = metrics
 
     def resolve(self, request: CollectionRequest) -> CollectionPlugin:
         family = str(request.params.get("plugin_family") or "configuration")
         if family == "monitor":
             return MonitorCollectionPlugin(self._monitor_collector_factories)
         if family == "configuration":
-            return ConfigurationCollectionPlugin(self._configuration_service_factory)
+            node_info_lookup = None
+            if (
+                self._configuration_node_info_loader is not None
+                and str(request.params.get("executor_type") or "").lower() == "job"
+                and not request.params.get("target_is_logical")
+                and request.params.get("collect_task_id") not in (None, "")
+            ):
+                node_info_lookup = RunNodeInfoLookup(
+                    task_id=request.task_id,
+                    targets=request.targets,
+                    loader=self._configuration_node_info_loader,
+                    metrics=self._metrics,
+                    collect_task_id=request.params.get("collect_task_id"),
+                    cloud_region_id=request.params.get("cloud_region_id"),
+                )
+            return ConfigurationCollectionPlugin(
+                self._configuration_service_factory,
+                node_info_lookup=node_info_lookup,
+            )
         raise ValueError(f"unsupported plugin_family: {family}")
 
 
