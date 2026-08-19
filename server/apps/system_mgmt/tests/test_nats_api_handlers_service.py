@@ -448,6 +448,105 @@ def test_search_channel_list_filters_by_team_and_type():
     assert "c1" in names and "c2" not in names
 
 
+def test_search_channel_list_scoped_without_actor_returns_empty():
+    Channel.objects.create(
+        name="hidden-without-actor",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="d",
+        team=[7],
+    )
+
+    result = nats_api.search_channel_list_scoped(None, teams=[7])
+
+    assert result == {"result": True, "data": []}
+
+
+def test_search_channel_list_scoped_intersects_requested_teams_with_persisted_user_scope():
+    allowed_group = Group.objects.create(name="channel-scope-allowed", parent_id=0)
+    forbidden_group = Group.objects.create(name="channel-scope-forbidden", parent_id=0)
+    actor = User.objects.create(
+        username="channel-scope-user",
+        domain="domain.com",
+        password="x",
+        group_list=[allowed_group.id],
+    )
+    Channel.objects.create(
+        name="allowed-channel",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="allowed",
+        team=[allowed_group.id],
+    )
+    Channel.objects.create(
+        name="forbidden-channel",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="forbidden",
+        team=[forbidden_group.id],
+    )
+
+    result = nats_api.search_channel_list_scoped(
+        {
+            "username": actor.username,
+            "domain": actor.domain,
+            "current_team": allowed_group.id,
+            "is_superuser": True,
+        },
+        teams=[allowed_group.id, forbidden_group.id],
+    )
+
+    assert [channel["name"] for channel in result["data"]] == ["allowed-channel"]
+
+
+def test_search_channel_list_scoped_include_children_returns_only_authorized_descendants():
+    parent = Group.objects.create(name="channel-scope-parent", parent_id=0)
+    authorized_child = Group.objects.create(name="channel-scope-authorized-child", parent_id=parent.id)
+    unauthorized_child = Group.objects.create(name="channel-scope-unauthorized-child", parent_id=parent.id)
+    actor = User.objects.create(
+        username="channel-scope-child-user",
+        domain="domain.com",
+        password="x",
+        group_list=[parent.id, authorized_child.id],
+    )
+    Channel.objects.create(
+        name="parent-channel",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="parent",
+        team=[parent.id],
+    )
+    Channel.objects.create(
+        name="authorized-child-channel",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="authorized-child",
+        team=[authorized_child.id],
+    )
+    Channel.objects.create(
+        name="unauthorized-child-channel",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="unauthorized-child",
+        team=[unauthorized_child.id],
+    )
+
+    result = nats_api.search_channel_list_scoped(
+        {
+            "username": actor.username,
+            "domain": actor.domain,
+            "current_team": parent.id,
+        },
+        teams=None,
+        include_children=True,
+    )
+
+    assert {channel["name"] for channel in result["data"]} == {
+        "parent-channel",
+        "authorized-child-channel",
+    }
+
+
 @pytest.mark.skipif(
     connection.vendor == "sqlite",
     reason="现有 Channel.team JSON contains 查询只支持生产 PostgreSQL",
