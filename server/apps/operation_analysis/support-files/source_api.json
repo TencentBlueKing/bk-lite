@@ -273,6 +273,13 @@
             "value": "",
             "alias_name": "实例ID",
             "filterType": "params"
+        },
+        {
+            "name": "instance_ids",
+            "type": "string",
+            "value": "",
+            "alias_name": "实例ID列表",
+            "filterType": "params"
         }
     ]
 },
@@ -548,6 +555,28 @@
     "chart_type": [],
     "params": [],
     "field_schema": []
+},
+{
+    "key": "CMDB 实例监控ID映射::cmdb/get_monitor_ids_by_inst_uuids",
+    "name": "CMDB 实例监控ID映射",
+    "desc": "按实例 UUID 批量返回关联的监控实例 ID，供网络状态拓扑叠色使用，本身不直接出图",
+    "rest_api": "cmdb/get_monitor_ids_by_inst_uuids",
+    "tag": ["cmdb"],
+    "chart_type": [],
+    "params": [
+        {
+            "name": "inst_uuids",
+            "type": "string",
+            "value": "",
+            "alias_name": "实例UUID列表",
+            "filterType": "params"
+        }
+    ],
+    "field_schema": [
+        {"key": "inst_uuid", "title": "实例UUID", "value_type": "string", "description": "CMDB 实例 UUID"},
+        {"key": "model_id", "title": "模型ID", "value_type": "string", "description": "CMDB 模型 ID"},
+        {"key": "monitor_id", "title": "监控实例ID", "value_type": "string", "description": "未关联时为空字符串"}
+    ]
 },
 {
         "key": "CMDB 变更趋势::cmdb/get_change_trend",

@@ -90,7 +90,7 @@
 .popoverLayer {
   position: absolute;
   z-index: 5;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .contextLayer {
@@ -182,6 +182,11 @@
 .critical {
   background: #fef2f2;
   color: #dc2626;
+}
+
+.unknown {
+  background: #f3f4f6;
+  color: #9aa4b2;
 }
 
 .contextMenu {

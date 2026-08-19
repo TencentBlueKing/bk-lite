@@ -77,7 +77,7 @@ interface NetworkTopologyX6CanvasProps {
     edgeId: string,
     vertices: Array<{ x: number; y: number }>,
   ) => void;
-  onNodeClick?: (nodeId: string) => void;
+  onNodeClick?: (nodeId: string, event?: MouseEvent) => void;
   onNodeMouseEnter?: (nodeId: string, event: MouseEvent) => void;
   onNodeMouseMove?: (nodeId: string, event: MouseEvent) => void;
   onNodeMouseLeave?: (nodeId: string) => void;
@@ -742,7 +742,8 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
       ensureGraphPanning(graph);
       applyGraphInteracting(graph, nodeMovable);
     };
-    const handleNodeClick = ({ node }: { node: any }) => onNodeClick?.(String(node.id));
+    const handleNodeClick = ({ node, e }: { node: any; e?: MouseEvent }) =>
+      onNodeClick?.(String(node.id), e);
     const handleNodeEnter = ({ node, e }: { node: any; e: MouseEvent }) => onNodeMouseEnter?.(String(node.id), e);
     const handleNodeMove = ({ node, e }: { node: any; e: MouseEvent }) => onNodeMouseMove?.(String(node.id), e);
     const handleNodeLeave = ({ node }: { node: any }) => onNodeMouseLeave?.(String(node.id));

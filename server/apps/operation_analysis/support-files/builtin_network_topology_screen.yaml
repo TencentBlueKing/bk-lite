@@ -1,0 +1,65 @@
+# 运营分析 网络状态拓扑内置大屏
+
+meta:
+  schema_version: 1.1.0
+  exported_at: '2026-07-09T00:00:00+08:00'
+  source:
+    organization_id: 0
+  object_counts:
+    dashboards: 0
+    topologies: 0
+    screens: 1
+    reports: 0
+    architectures: 0
+    datasources: 0
+    namespaces: 0
+
+dashboards: []
+topologies: []
+architectures: []
+reports: []
+datasources: []
+namespaces: []
+
+screens:
+  - key: screen::网络状态拓扑大屏_内置
+    name: 网络状态拓扑大屏_内置
+    desc: 以交换机 220 为中心展示 CMDB 网络关系并叠加监控中心活跃告警的内置大屏示例。
+    other: {}
+    view_sets:
+      items:
+        - h: 900
+          w: 1600
+          x: 160
+          y: 90
+          id: network-topology-builtin-main
+          type: widget
+          title: 网络状态拓扑总览
+          zIndex: 1
+          chartType: networkStatusTopology
+          valueConfig:
+            chartType: networkStatusTopology
+            sceneWidgetType: networkStatusTopology
+            networkStatusTopology:
+              modelId: switch
+              instId: '220'
+              depth: 2
+            appearance:
+              frame: panel
+      viewport:
+        theme: screen-tech-blue
+        width: 1920
+        height: 1080
+        background:
+          key: tech-grid
+          type: builtIn
+      decorations:
+        title: 网络状态拓扑大屏
+        showClock: false
+        showTitle: true
+      filters: []
+    refs:
+      datasource_keys:
+        - CMDB 实例监控ID映射::cmdb/get_monitor_ids_by_inst_uuids
+        - 监控活跃告警::monitor/query_latest_active_alerts
+      namespace_keys: []

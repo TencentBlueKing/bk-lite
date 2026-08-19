@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HandledRequestError } from '@/utils/request';
 
 const testState = vi.hoisted(() => ({
@@ -10,12 +10,37 @@ const testState = vi.hoisted(() => ({
   translate: (key: string) => key,
 }));
 
+const overlayState = vi.hoisted(() => ({
+  getSourceDataByApiId: vi.fn(),
+  getDataSourceBriefList: vi.fn(),
+  dataSources: [
+    { id: 31, rest_api: 'cmdb/get_monitor_ids_by_inst_uuids', is_build_in: true },
+    { id: 32, rest_api: 'monitor/query_latest_active_alerts', is_build_in: true },
+  ],
+  shareMode: false,
+}));
+
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({ t: testState.translate }),
 }));
 
 vi.mock('@/app/ops-analysis/context/shareMode', () => ({
-  useShareMode: () => false,
+  useShareMode: () => overlayState.shareMode,
+}));
+
+vi.mock('@/app/ops-analysis/context/common', () => ({
+  useOpsAnalysis: () => ({
+    dataSources: overlayState.dataSources,
+  }),
+}));
+
+vi.mock('@/app/ops-analysis/api/dataSource', () => ({
+  useDataSourceApi: () => ({
+    getSourceDataByApiId: (...args: unknown[]) =>
+      overlayState.getSourceDataByApiId(...args),
+    getDataSourceBriefList: (...args: unknown[]) =>
+      overlayState.getDataSourceBriefList(...args),
+  }),
 }));
 
 vi.mock('@/app/ops-analysis/components/widget-viewport', () => ({
@@ -51,12 +76,56 @@ vi.mock('@/app/cmdb/components/networkTopology', () => ({
   NetworkTopologyX6Canvas: ({
     data,
     toolbar,
+    onNodeClick,
+    onNodeContextMenu,
+    onNodeMouseEnter,
+    onNodeMouseLeave,
   }: {
-    data: { nodes?: Array<{ id: string }> };
+    data: { nodes?: Array<{ id: string; status?: string }> };
     toolbar?: { onRefresh?: () => void };
+    onNodeClick?: (nodeId: string, event?: MouseEvent) => void;
+    onNodeContextMenu?: (nodeId: string, event: MouseEvent) => void;
+    onNodeMouseEnter?: (nodeId: string, event: MouseEvent) => void;
+    onNodeMouseLeave?: (nodeId: string) => void;
   }) => (
     <div data-testid="status-topo-canvas">
       {(data.nodes || []).map((node) => node.id).join(',')}
+      {(data.nodes || []).map((node) => (
+        <span key={`st-${node.id}`} data-testid={`status-topo-status-${node.id}`}>
+          {node.status || 'none'}
+        </span>
+      ))}
+      {(data.nodes || []).map((node) => (
+        <button
+          key={`node-${node.id}`}
+          type="button"
+          data-testid={`status-topo-node-${node.id}`}
+          onClick={(event) => onNodeClick?.(node.id, event.nativeEvent)}
+          onMouseEnter={(event) => onNodeMouseEnter?.(node.id, event.nativeEvent)}
+          onMouseLeave={() => onNodeMouseLeave?.(node.id)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            onNodeContextMenu?.(node.id, {
+              preventDefault: () => undefined,
+              offsetX: 12,
+              offsetY: 12,
+            } as MouseEvent);
+          }}
+        >
+          {`node-${node.id}`}
+        </button>
+      ))}
+      {(data.nodes || []).map((node) => (
+        <button
+          key={`badge-${node.id}`}
+          type="button"
+          className="status-topo-alert-badge"
+          data-testid={`status-topo-badge-${node.id}`}
+          onClick={(event) => onNodeClick?.(node.id, event.nativeEvent)}
+        >
+          {`badge-${node.id}`}
+        </button>
+      ))}
       <button
         type="button"
         data-testid="status-topo-refresh"
@@ -77,7 +146,9 @@ vi.mock('../statusTopologyGraph', () => ({
   STATUS_TOPOLOGY_PALETTE_DARK: {},
   STATUS_TOPOLOGY_PALETTE_LIGHT: {},
   STATUS_TOPOLOGY_VISUAL: {},
-  isStatusTopologyIconHoverTarget: () => false,
+  isStatusTopologyIconHoverTarget: () => true,
+  isStatusTopologyBadgeTarget: (event: MouseEvent) =>
+    Boolean((event.target as HTMLElement | null)?.classList?.contains('status-topo-alert-badge')),
   ensureStatusTopologyNodeRegistered: vi.fn(),
   buildStatusTopologyX6GraphData: ({
     nodes,
@@ -90,6 +161,22 @@ vi.mock('../statusTopologyGraph', () => ({
 }));
 
 import NetworkStatusTopology from '../index';
+
+beforeAll(() => {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      dispatchEvent: () => false,
+    }),
+  });
+});
 
 const widgetConfig = {
   networkStatusTopology: {
@@ -104,6 +191,105 @@ const successPayload = {
   nodes: [{ id: 'core-1', model_id: 'switch', name: 'Core' }],
   links: [],
 };
+
+const defaultOverlaySources = [
+  { id: 31, rest_api: 'cmdb/get_monitor_ids_by_inst_uuids', is_build_in: true },
+  { id: 32, rest_api: 'monitor/query_latest_active_alerts', is_build_in: true },
+];
+
+const defaultGetSourceDataByApiId = (
+  id: number,
+  params?: Record<string, unknown>,
+) => {
+  if (id === 31) {
+    const uuids = Array.isArray(params?.inst_uuids)
+      ? (params?.inst_uuids as string[])
+      : [];
+    return Promise.resolve({
+      data: {
+        items: uuids.map((inst_uuid) => ({
+          inst_uuid,
+          model_id: 'switch',
+          monitor_id: '',
+        })),
+      },
+      warnings: [],
+    });
+  }
+  return Promise.resolve({
+    data: { count: 0, max_level: null, items: [], instance_summaries: [] },
+    warnings: [],
+  });
+};
+
+const overlayParamsFor = (id: number) =>
+  overlayState.getSourceDataByApiId.mock.calls
+    .filter(([calledId]) => calledId === id)
+    .map(([, params]) => params);
+
+const mockMonitoredCriticalOverlay = () => {
+  overlayState.getSourceDataByApiId.mockImplementation(
+    (id: number, params?: Record<string, unknown>) => {
+      if (id === 31) {
+        return Promise.resolve({
+          data: {
+            items: [{ inst_uuid: 'core-1', model_id: 'switch', monitor_id: 'mon-core' }],
+          },
+          warnings: [],
+        });
+      }
+      if (params?.limit === 1) {
+        return Promise.resolve({
+          data: {
+            count: 5,
+            max_level: 'critical',
+            items: [{
+              id: 'stale-item',
+              content: 'should-not-appear',
+              level: 'critical',
+              alert_type: 'threshold',
+              start_event_time: '2020-01-01T00:00:00Z',
+            }],
+            instance_summaries: [{
+              instance_id: 'mon-core',
+              count: 5,
+              max_level: 'critical',
+            }],
+          },
+          warnings: [],
+        });
+      }
+      return Promise.resolve({
+        data: {
+          count: 5,
+          max_level: 'critical',
+          items: [{
+            id: 'a1',
+            content: 'cpu high',
+            level: 'critical',
+            alert_type: 'threshold',
+            start_event_time: '2026-08-19T01:00:00Z',
+          }],
+          instance_summaries: [{
+            instance_id: 'mon-core',
+            count: 5,
+            max_level: 'critical',
+          }],
+        },
+        warnings: [],
+      });
+    },
+  );
+};
+
+beforeEach(() => {
+  overlayState.dataSources = [...defaultOverlaySources];
+  overlayState.shareMode = false;
+  overlayState.getSourceDataByApiId.mockReset();
+  overlayState.getDataSourceBriefList.mockReset();
+  overlayState.getSourceDataByApiId.mockImplementation(defaultGetSourceDataByApiId);
+  overlayState.getDataSourceBriefList.mockResolvedValue([]);
+});
 
 afterEach(() => {
   cleanup();
@@ -547,3 +733,325 @@ describe('networkStatusTopology owner requests', () => {
     expect(screen.getByTestId('status-topo-canvas').textContent).toContain('latest-1');
   });
 });
+
+describe('networkStatusTopology monitor overlay', () => {
+  it('fetches mapping then monitor summaries after topology success', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+    overlayState.getSourceDataByApiId.mockImplementation(
+      (id: number) => {
+        if (id === 31) {
+          return Promise.resolve({
+            data: {
+              items: [{ inst_uuid: 'core-1', model_id: 'switch', monitor_id: 'mon-core' }],
+            },
+            warnings: [],
+          });
+        }
+        return Promise.resolve({
+          data: {
+            count: 0,
+            max_level: null,
+            items: [],
+            instance_summaries: [{ instance_id: 'mon-core', count: 0, max_level: null }],
+          },
+          warnings: [],
+        });
+      },
+    );
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(overlayParamsFor(31)).toEqual([{ inst_uuids: ['core-1'] }]);
+    });
+    await waitFor(() => {
+      expect(overlayParamsFor(32)).toEqual([{ instance_ids: ['mon-core'], limit: 1 }]);
+    });
+    expect(overlayState.getDataSourceBriefList).not.toHaveBeenCalled();
+  });
+
+  it('shows unmonitored copy in the popover instead of 0', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-canvas').textContent).toContain('core-1');
+    });
+    await waitFor(() => {
+      expect(overlayParamsFor(31).length).toBeGreaterThan(0);
+    });
+
+    fireEvent.mouseEnter(screen.getByTestId('status-topo-node-core-1'));
+    const alertsLine = await screen.findByTestId('status-topo-popover-alerts');
+    expect(alertsLine.textContent).toContain('dashboard.networkTopoUnmonitored');
+    expect(alertsLine.textContent).not.toMatch(/\b0\b/);
+  });
+
+  it('keeps topology nodes and retries overlay only when NATS overlay fails', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+    overlayState.getSourceDataByApiId
+      .mockRejectedValueOnce(new Error('nats down'))
+      .mockImplementation(defaultGetSourceDataByApiId);
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-canvas').textContent).toContain('core-1');
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-overlay-error')).toBeTruthy();
+    });
+    expect(screen.getByText('dashboard.networkTopoStatusLoadFailed')).toBeTruthy();
+    expect(screen.getByTestId('status-topo-status-core-1').textContent).toBe('unknown');
+    expect(testState.getNetworkStatusTopology).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(
+      within(screen.getByTestId('status-topo-overlay-error')).getByRole('button'),
+    );
+    await waitFor(() => {
+      expect(overlayState.getSourceDataByApiId.mock.calls.length).toBeGreaterThan(1);
+    });
+    expect(testState.getNetworkStatusTopology).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the alert modal with a fresh limit-10 query from the context menu', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+    mockMonitoredCriticalOverlay();
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+    await waitFor(() => {
+      expect(overlayParamsFor(32)).toContainEqual({
+        instance_ids: ['mon-core'],
+        limit: 1,
+      });
+    });
+
+    fireEvent.contextMenu(screen.getByTestId('status-topo-node-core-1'));
+    fireEvent.click(screen.getByText('dashboard.networkTopoViewAlerts'));
+
+    await waitFor(() => {
+      expect(overlayParamsFor(32)).toContainEqual({
+        instance_ids: ['mon-core'],
+        limit: 10,
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByText('cpu high')).toBeTruthy();
+    });
+    expect(screen.queryByText('should-not-appear')).toBeNull();
+    expect(screen.getByText(/dashboard.networkTopoLatestItems/)).toBeTruthy();
+  });
+
+  it('disables instance detail in share mode but still allows viewing alerts', async () => {
+    overlayState.shareMode = true;
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+    mockMonitoredCriticalOverlay();
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+    await waitFor(() => {
+      expect(overlayParamsFor(32)).toContainEqual({
+        instance_ids: ['mon-core'],
+        limit: 1,
+      });
+    });
+
+    fireEvent.contextMenu(screen.getByTestId('status-topo-node-core-1'));
+    expect(
+      screen.getByText('dashboard.networkTopoInstanceDetail').closest('button'),
+    ).toHaveProperty('disabled', true);
+    const viewAlerts = screen.getByText('dashboard.networkTopoViewAlerts').closest('button');
+    expect(viewAlerts).toHaveProperty('disabled', false);
+
+    fireEvent.click(viewAlerts as HTMLButtonElement);
+    await waitFor(() => {
+      expect(overlayParamsFor(32)).toContainEqual({
+        instance_ids: ['mon-core'],
+        limit: 10,
+      });
+    });
+  });
+
+  it('calls onReady when topology has nodes without waiting for overlay', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+    overlayState.getSourceDataByApiId.mockImplementation(
+      () => new Promise(() => undefined),
+    );
+    const onReady = vi.fn();
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+        onReady={onReady}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(onReady).toHaveBeenCalledWith(true);
+    });
+    expect(screen.getByTestId('status-topo-canvas').textContent).toContain('core-1');
+    expect(overlayParamsFor(32)).toEqual([]);
+  });
+
+  it('shows 0 for monitored quiet nodes and does not open the alert modal', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+    overlayState.getSourceDataByApiId.mockImplementation(
+      (id: number) => {
+        if (id === 31) {
+          return Promise.resolve({
+            data: {
+              items: [{ inst_uuid: 'core-1', model_id: 'switch', monitor_id: 'mon-core' }],
+            },
+            warnings: [],
+          });
+        }
+        return Promise.resolve({
+          data: {
+            count: 0,
+            max_level: null,
+            items: [],
+            instance_summaries: [{ instance_id: 'mon-core', count: 0, max_level: null }],
+          },
+          warnings: [],
+        });
+      },
+    );
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-status-core-1').textContent).toBe('normal');
+    });
+
+    fireEvent.mouseEnter(screen.getByTestId('status-topo-node-core-1'));
+    const alertsLine = await screen.findByTestId('status-topo-popover-alerts');
+    expect(alertsLine.textContent).toMatch(/\b0\b/);
+    expect(alertsLine.querySelector('button')).toBeNull();
+
+    fireEvent.contextMenu(screen.getByTestId('status-topo-node-core-1'));
+    expect(
+      screen.getByText('dashboard.networkTopoViewAlerts').closest('button'),
+    ).toHaveProperty('disabled', true);
+
+    fireEvent.click(screen.getByTestId('status-topo-badge-core-1'));
+    expect(overlayParamsFor(32).some((params) => params?.limit === 10)).toBe(false);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('opens the alert modal from the badge with a fresh limit-10 query', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+    mockMonitoredCriticalOverlay();
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-status-core-1').textContent).toBe('critical');
+    });
+
+    fireEvent.click(screen.getByTestId('status-topo-badge-core-1'));
+    await waitFor(() => {
+      expect(overlayParamsFor(32)).toContainEqual({
+        instance_ids: ['mon-core'],
+        limit: 10,
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByText('cpu high')).toBeTruthy();
+    });
+    expect(screen.queryByText('should-not-appear')).toBeNull();
+  });
+
+  it('keeps the popover open across the icon gap so the alert count can be clicked', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+    mockMonitoredCriticalOverlay();
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-status-core-1').textContent).toBe('critical');
+    });
+
+    fireEvent.mouseEnter(screen.getByTestId('status-topo-node-core-1'));
+    await screen.findByTestId('status-topo-popover-alerts');
+    fireEvent.mouseLeave(screen.getByTestId('status-topo-node-core-1'));
+    fireEvent.mouseEnter(screen.getByTestId('status-topo-popover-layer'));
+    fireEvent.click(
+      within(screen.getByTestId('status-topo-popover-alerts')).getByRole('button'),
+    );
+
+    await waitFor(() => {
+      expect(overlayParamsFor(32)).toContainEqual({
+        instance_ids: ['mon-core'],
+        limit: 10,
+      });
+    });
+  });
+
+  it('does not load the unauthenticated data-source brief list in share mode', async () => {
+    overlayState.shareMode = true;
+    overlayState.dataSources = [];
+    testState.getNetworkStatusTopology.mockResolvedValue(successPayload);
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-overlay-error')).toBeTruthy();
+    });
+    expect(overlayState.getDataSourceBriefList).not.toHaveBeenCalled();
+    expect(screen.getByTestId('status-topo-status-core-1').textContent).toBe('unknown');
+  });
+});
+

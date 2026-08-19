@@ -61,6 +61,7 @@ export const STATUS_TOPOLOGY_VISUAL = {
     warning: '#f5b544',
     error: '#ff4d4f',
     critical: '#ff4d4f',
+    unknown: '#9aa4b2',
   },
 } as const;
 
@@ -85,6 +86,7 @@ const STATUS_COLOR_MAP: Record<string, string> = {
   warning: STATUS_TOPOLOGY_VISUAL.status.warning,
   error: STATUS_TOPOLOGY_VISUAL.status.error,
   critical: STATUS_TOPOLOGY_VISUAL.status.critical,
+  unknown: STATUS_TOPOLOGY_VISUAL.status.unknown,
 };
 
 const OPACITY_ATTR_DIMMED = Object.freeze({ opacity: 0.22 });
@@ -94,6 +96,8 @@ const toOpacityAttrs = (dimmed: boolean) => (dimmed ? OPACITY_ATTR_DIMMED : OPAC
 /** SVG 属性：比 style.pointerEvents 更稳，避免穿透到 inherit:rect 的全尺寸 body */
 const PE_NONE = Object.freeze({ 'pointer-events': 'none' as const });
 const PE_ALL = Object.freeze({ 'pointer-events': 'visiblePainted' as const });
+
+export const STATUS_TOPOLOGY_ALERT_BADGE_CLASS = 'status-topo-alert-badge';
 
 /**
  * 节点浮层只应在 icon（SVG image）上触发；名称/类型文字目标一律忽略。
@@ -108,6 +112,20 @@ export const isStatusTopologyIconHoverTarget = (event: MouseEvent) => {
   const path =
     typeof event.composedPath === 'function' ? event.composedPath() : [];
   return path.some((node) => isImageEl(node));
+};
+
+const isStatusTopologyBadgeElement = (node: EventTarget | null) => {
+  if (!node || typeof (node as Element).classList?.contains !== 'function') {
+    return false;
+  }
+  return (node as Element).classList.contains(STATUS_TOPOLOGY_ALERT_BADGE_CLASS);
+};
+
+export const isStatusTopologyBadgeTarget = (event: MouseEvent) => {
+  if (isStatusTopologyBadgeElement(event.target)) return true;
+  const path =
+    typeof event.composedPath === 'function' ? event.composedPath() : [];
+  return path.some((node) => isStatusTopologyBadgeElement(node));
 };
 
 const NODE_WIDTH = STATUS_TOPOLOGY_VISUAL.nodeWidth;
@@ -177,8 +195,16 @@ export const ensureStatusTopologyNodeRegistered = () => {
         { tagName: 'rect', selector: 'edgeHull' },
         { tagName: 'circle', selector: 'iconRing' },
         { tagName: 'image', selector: 'img' },
-        { tagName: 'circle', selector: 'alertBadge' },
-        { tagName: 'text', selector: 'alertBadgeText' },
+        {
+          tagName: 'circle',
+          selector: 'alertBadge',
+          className: STATUS_TOPOLOGY_ALERT_BADGE_CLASS,
+        },
+        {
+          tagName: 'text',
+          selector: 'alertBadgeText',
+          className: STATUS_TOPOLOGY_ALERT_BADGE_CLASS,
+        },
         { tagName: 'text', selector: 'lbl' },
         { tagName: 'text', selector: 'subLbl' },
       ],
@@ -237,6 +263,7 @@ export const ensureStatusTopologyNodeRegistered = () => {
           stroke: '#fff',
           strokeWidth: 2,
           opacity: 0,
+          class: STATUS_TOPOLOGY_ALERT_BADGE_CLASS,
           ...PE_NONE,
         },
         // 与 CMDB 可用实现一致：用 refX/refY + text，不要用 textWrap
@@ -249,6 +276,7 @@ export const ensureStatusTopologyNodeRegistered = () => {
           fontWeight: 800,
           fill: '#fff',
           opacity: 0,
+          class: STATUS_TOPOLOGY_ALERT_BADGE_CLASS,
           ...PE_NONE,
         },
         lbl: {
@@ -329,6 +357,9 @@ export const buildStatusTopologyX6GraphData = ({
     const alertCount = Number(node.alertCount || 0);
     const statusColor = STATUS_COLOR_MAP[node.status || 'normal'] || STATUS_COLOR_MAP.normal;
     const badgeOpacity = alertCount ? (dimmed ? 0.22 : 1) : 0;
+    const badgeHit = alertCount > 0
+      ? { ...PE_ALL, cursor: 'pointer' as const }
+      : PE_NONE;
     const badgeText = alertCount > 99 ? '99+' : alertCount > 0 ? String(alertCount) : '';
     const nameText = truncateLabel(String(node.name || node.id || ''), 18);
     const typeText = truncateLabel(String(node.subtitle || node.modelId || ''), 18);
@@ -389,7 +420,8 @@ export const buildStatusTopologyX6GraphData = ({
           stroke: '#ffffff',
           strokeWidth: 2,
           opacity: badgeOpacity,
-          ...PE_NONE,
+          class: STATUS_TOPOLOGY_ALERT_BADGE_CLASS,
+          ...badgeHit,
         },
         alertBadgeText: {
           refX: BADGE_CX,
@@ -401,7 +433,8 @@ export const buildStatusTopologyX6GraphData = ({
           fontSize: badgeText === '99+' ? 9 : STATUS_TOPOLOGY_VISUAL.badgeFontSize,
           fontWeight: 800,
           opacity: badgeOpacity,
-          ...PE_NONE,
+          class: STATUS_TOPOLOGY_ALERT_BADGE_CLASS,
+          ...badgeHit,
         },
         lbl: {
           refX: 0.5,

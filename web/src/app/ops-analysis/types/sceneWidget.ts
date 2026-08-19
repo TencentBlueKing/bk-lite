@@ -36,18 +36,21 @@ export interface NetworkStatusTopologyConfig {
   linkVertices?: Record<string, NetworkStatusTopologyPoint[]>;
 }
 
-export type NetworkNodeStatus = 'normal' | 'warning' | 'error' | 'critical';
+export type NetworkNodeStatus = 'normal' | 'warning' | 'error' | 'critical' | 'unknown';
 
 export interface NetworkStatusTopologyNode {
   id: string;
   model_id: string;
   name: string;
   hop: number;
-  status: NetworkNodeStatus;
+  /** 叠色后写入；场景结构接口不再返回 */
+  status?: NetworkNodeStatus;
   severity?: 'warning' | 'error' | 'critical' | null;
-  color?: 'green' | 'yellow' | 'red';
-  pulse: boolean;
-  alert_count: number;
+  color?: 'green' | 'yellow' | 'red' | 'gray';
+  pulse?: boolean;
+  alert_count?: number;
+  /** 叠色内部字段，供告警弹框使用，不展示 */
+  monitor_id?: string;
   icon?: string;
   resource_type?: string;
   resource_id?: string;
