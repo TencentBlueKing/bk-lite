@@ -6,10 +6,14 @@ import type {
 export const NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS = [
   'cmdb/get_monitor_ids_by_inst_uuids',
   'monitor/query_latest_active_alerts',
+  'monitor/query_latest_interface_metrics',
 ] as const;
 
-const [CMDB_OVERLAY_REST_API, MONITOR_OVERLAY_REST_API] =
-  NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS;
+const [
+  CMDB_OVERLAY_REST_API,
+  MONITOR_OVERLAY_REST_API,
+  INTERFACE_OVERLAY_REST_API,
+] = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS;
 
 export interface OverlayDataSource {
   id: number;
@@ -66,12 +70,14 @@ const pickUniqueRestApiId = (
 
 export function pickOverlayDataSourceIds(
   sources: OverlayDataSource[],
-): { cmdbId?: number; monitorId?: number } {
+): { cmdbId?: number; monitorId?: number; interfaceId?: number } {
   const cmdbId = pickUniqueRestApiId(sources, CMDB_OVERLAY_REST_API);
   const monitorId = pickUniqueRestApiId(sources, MONITOR_OVERLAY_REST_API);
+  const interfaceId = pickUniqueRestApiId(sources, INTERFACE_OVERLAY_REST_API);
   return {
     ...(cmdbId !== undefined ? { cmdbId } : {}),
     ...(monitorId !== undefined ? { monitorId } : {}),
+    ...(interfaceId !== undefined ? { interfaceId } : {}),
   };
 }
 

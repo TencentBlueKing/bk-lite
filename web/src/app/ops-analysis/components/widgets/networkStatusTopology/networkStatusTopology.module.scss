@@ -99,29 +99,29 @@
 }
 
 .popover {
-  min-width: 188px;
-  padding: 10px 12px;
+  min-width: 16em;
+  padding: 0.8em 0.9em;
   border: 1px solid rgba(213, 226, 242, 0.96);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 16px 34px rgba(39, 67, 104, 0.16);
   color: #253244;
-  font-size: 12px;
-  line-height: 18px;
+  font-size: 1em;
+  line-height: 1.45;
   backdrop-filter: blur(8px);
 }
 
 .popHeader {
   display: flex;
-  gap: 8px;
+  gap: 0.5em;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 0.55em;
 }
 
 .popTitle {
   overflow: hidden;
-  font-size: 13px;
+  font-size: 1.12em;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -129,17 +129,18 @@
 
 .popLine {
   display: flex;
-  gap: 6px;
+  gap: 0.45em;
   align-items: center;
-  margin-top: 4px;
+  margin-top: 0.35em;
   color: #607086;
+  font-size: 1em;
 }
 
 .popSectionTitle {
-  margin-top: 8px;
-  margin-bottom: 2px;
+  margin-top: 0.5em;
+  margin-bottom: 0.15em;
   color: #8797aa;
-  font-size: 11px;
+  font-size: 0.9em;
   font-weight: 600;
 }
 
@@ -154,7 +155,7 @@
 .portCount {
   flex: none;
   color: #607086;
-  font-size: 11px;
+  font-size: 0.9em;
   font-weight: 500;
 }
 
@@ -165,11 +166,11 @@
 
 .statusPill {
   flex: none;
-  padding: 1px 7px;
+  padding: 0.15em 0.5em;
   border-radius: 999px;
   background: #ecfdf5;
   color: #047857;
-  font-size: 11px;
+  font-size: 0.78em;
   font-weight: 600;
 }
 

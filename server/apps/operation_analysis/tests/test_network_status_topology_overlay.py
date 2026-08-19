@@ -11,7 +11,7 @@ from apps.operation_analysis.services.network_status_topology_overlay import (
 
 pytestmark = pytest.mark.django_db
 
-CMDB_API, MONITOR_API = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
+CMDB_API, MONITOR_API = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS[:2]
 
 
 def _ds(rest_api, *, builtin=True, ds_id=None, name=None):

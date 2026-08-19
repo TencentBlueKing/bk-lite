@@ -24,7 +24,7 @@ namespaces: []
 screens:
   - key: screen::网络状态拓扑大屏_内置
     name: 网络状态拓扑大屏_内置
-    desc: 以交换机 220 为中心展示 CMDB 网络关系并叠加监控中心活跃告警的内置大屏示例。
+    desc: 按勾选的网络设备展示 CMDB 关联并叠加监控中心活跃告警的内置大屏示例。
     other: {}
     view_sets:
       items:
@@ -41,9 +41,8 @@ screens:
             chartType: networkStatusTopology
             sceneWidgetType: networkStatusTopology
             networkStatusTopology:
-              modelId: switch
-              instId: '220'
-              depth: 2
+              instUuids: []
+              nodeLimit: 100
             appearance:
               frame: panel
       viewport:
@@ -62,4 +61,5 @@ screens:
       datasource_keys:
         - CMDB 实例监控ID映射::cmdb/get_monitor_ids_by_inst_uuids
         - 监控活跃告警::monitor/query_latest_active_alerts
+        - 监控接口最新指标::monitor/query_latest_interface_metrics
       namespace_keys: []

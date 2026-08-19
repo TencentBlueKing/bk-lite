@@ -282,7 +282,7 @@ def test_extract_canvas_dependencies_empty():
 def test_extract_canvas_dependencies_includes_topology_overlay_without_datasource():
     from apps.operation_analysis.services.network_status_topology_overlay import NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
 
-    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
+    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS[:2]
     cmdb = DataSourceAPIModel.objects.create(
         name="export-overlay-cmdb",
         rest_api=cmdb_api,

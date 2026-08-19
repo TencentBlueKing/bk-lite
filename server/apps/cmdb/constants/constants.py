@@ -1,7 +1,7 @@
 # 模型分类标签
 import os
-
 from enum import Enum
+
 from apps.cmdb.utils.time_util import parse_cmdb_time
 
 
@@ -61,6 +61,9 @@ NETWORK_INTERFACE_BELONG_ASST = "belong"
 NETWORK_TOPO_DEFAULT_HOP = 2
 NETWORK_TOPO_MAX_HOP = 4
 NETWORK_TOPO_NODE_LIMIT = 100
+# 运营分析网络状态拓扑闭集：默认勾选上限与系统硬顶（不改变编辑页 BFS 的 100）
+NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES = 100
+NETWORK_STATUS_TOPOLOGY_MAX_NODES = 200
 
 
 class ModelConstraintKey(BaseEnum):
@@ -384,7 +387,7 @@ COLLECT_OBJ_TREE = [
                 "desc": "通过 Netmiko 采集网络设备配置命令输出并归档为配置文件版本",
                 "icon": "config_file",
                 "encrypted_fields": ["password", "enable_password"],
-            }
+            },
         ],
     },
     {
@@ -860,10 +863,7 @@ SSH_CREDENTIAL_MODEL_IDS = {
 }
 for _collect_group in COLLECT_OBJ_TREE:
     for _collect_object in _collect_group.get("children", []):
-        if (
-            _collect_object.get("type") == CollectDriverTypes.JOB
-            and _collect_object.get("model_id") in SSH_CREDENTIAL_MODEL_IDS
-        ):
+        if _collect_object.get("type") == CollectDriverTypes.JOB and _collect_object.get("model_id") in SSH_CREDENTIAL_MODEL_IDS:
             _collect_object.update(
                 credential_protocol="ssh",
                 credential_kind="host_account",
@@ -875,10 +875,7 @@ for _collect_group in COLLECT_OBJ_TREE:
 VICTORIAMETRICS_HOST = os.getenv("VICTORIAMETRICS_HOST", "")
 
 STARGAZER_URL = os.getenv("STARGAZER_URL", "http://stargazer:8083")
-CMDB_FIRST_COLLECTION_ENABLED = (
-    os.getenv("CMDB_FIRST_COLLECTION_ENABLED", "true").strip().lower()
-    in {"1", "true", "yes", "on"}
-)
+CMDB_FIRST_COLLECTION_ENABLED = os.getenv("CMDB_FIRST_COLLECTION_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
 # ===== 实例权限 =====
 PERMISSION_INSTANCES = "instances"  # 实例
 PERMISSION_TASK = "task"  # 采集任务

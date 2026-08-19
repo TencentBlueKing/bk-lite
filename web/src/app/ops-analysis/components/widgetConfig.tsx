@@ -20,6 +20,8 @@ import {
   Select,
   Segmented,
   Tooltip,
+  Checkbox,
+  InputNumber,
   message,
 } from 'antd';
 import { QuestionCircleOutlined, SwapOutlined } from '@ant-design/icons';
@@ -65,6 +67,7 @@ import { TopNSettingsSection } from './widgetConfig/sections/topNSettingsSection
 import { GaugeSettingsSection } from './widgetConfig/sections/gaugeSettingsSection';
 import { RadarSettingsSection } from './widgetConfig/sections/radarSettingsSection';
 import { CardListSettingsSection } from './widgetConfig/sections/cardListSettingsSection';
+import { ThresholdColorListField } from './widgetConfig/sections/thresholdColorListField';
 import { resolveCardListSettingsRemountKey } from './widgetConfig/utils/cardListSettingsRemountKey';
 import {
   buildDisplayColumnsFromSchema,
@@ -80,12 +83,17 @@ import {
   type WidgetConfigFormValues,
 } from './widgetConfig/utils/submitConfig';
 import { useNetworkStatusTopologyConfig } from './widgetConfig/hooks/useNetworkStatusTopologyConfig';
+import { NetworkStatusTopologyDeviceList } from './widgetConfig/sections/networkStatusTopologyDeviceList';
 import {
   canConfigureScreenWidgetFrame,
   getDefaultScreenWidgetAppearance,
   resolveScreenWidgetAppearance,
 } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
 import { ensurePrometheusQueryRequired } from '@/app/ops-analysis/utils/dataSourceParamContract';
+import {
+  NETWORK_STATUS_TOPOLOGY_MAX_NODE_LIMIT,
+  networkStatusTopologySelectionExceedsLimit,
+} from '@/app/ops-analysis/utils/networkStatusTopologyLayout';
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
@@ -248,6 +256,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     enabled: isNetworkStatusTopology,
     form,
   });
+  const networkTopoNodeLimit = Form.useWatch(
+    ['networkStatusTopology', 'nodeLimit'],
+    form,
+  );
 
   const singleValueConfig = useSingleValueConfig({
     form,
@@ -292,9 +304,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               : undefined,
           dataSource: undefined,
           networkStatusTopology: {
-            modelId: '',
-            instUuid: '',
-            depth: 2,
+            instUuids: [],
+            nodeLimit: 100,
+            linkTrafficDisplays: ['inbound', 'outbound'],
           },
           params: {},
           dataSourceParams: [],
@@ -600,9 +612,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
     if (isSceneWidget) {
       const networkStatusTopology = valueConfig?.networkStatusTopology || {
-        modelId: '',
-        instUuid: '',
-        depth: 2,
+        instUuids: [],
+        nodeLimit: 100,
       };
       setSelectedDataSource(undefined);
       setFilterBindings({});
@@ -613,7 +624,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         chartType: 'networkStatusTopology',
         sceneWidgetType: 'networkStatusTopology',
         dataSource: undefined,
-        networkStatusTopology,
+        networkStatusTopology: {
+          ...networkStatusTopology,
+          linkTrafficDisplays: Array.isArray(networkStatusTopology.linkTrafficDisplays)
+            ? networkStatusTopology.linkTrafficDisplays
+            : ['inbound', 'outbound'],
+        },
       });
       // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
       markFormPristine(form);
@@ -1020,9 +1036,16 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         const existingTopology = widgetItem?.valueConfig?.networkStatusTopology;
         const formTopology = values.networkStatusTopology;
         values.networkStatusTopology = {
-          modelId: formTopology?.modelId || existingTopology?.modelId || '',
-          instUuid: formTopology?.instUuid || existingTopology?.instUuid || '',
-          depth: formTopology?.depth || existingTopology?.depth || 2,
+          instUuids: formTopology?.instUuids || existingTopology?.instUuids || [],
+          nodeLimit: formTopology?.nodeLimit ?? existingTopology?.nodeLimit ?? 100,
+          linkTrafficDisplays:
+            formTopology?.linkTrafficDisplays ?? existingTopology?.linkTrafficDisplays,
+          inboundTrafficThresholds:
+            formTopology?.inboundTrafficThresholds ??
+            existingTopology?.inboundTrafficThresholds,
+          outboundTrafficThresholds:
+            formTopology?.outboundTrafficThresholds ??
+            existingTopology?.outboundTrafficThresholds,
           layoutMode: formTopology?.layoutMode ?? existingTopology?.layoutMode,
           layoutByMode:
             formTopology?.layoutByMode ?? existingTopology?.layoutByMode,
@@ -1086,7 +1109,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     <Drawer
       title={t('dashboard.viewConfig')}
       placement="right"
-      width={700}
+      width={isNetworkStatusTopology ? 760 : 700}
       open={open}
       maskClosable={false}
       onClose={handleClose}
@@ -1123,59 +1146,91 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           {isNetworkStatusTopology ? (
             <>
               <Form.Item
-                label={t('dashboard.networkTopoModel')}
-                name={['networkStatusTopology', 'modelId']}
-                rules={[{ required: true, message: t('dashboard.selectModel') }]}
-                tooltip={t('dashboard.networkTopoModelHelp')}
+                label={t('dashboard.networkTopoDevices')}
+                name={['networkStatusTopology', 'instUuids']}
+                dependencies={[['networkStatusTopology', 'nodeLimit']]}
+                rules={[
+                  { required: true, message: t('dashboard.networkTopoSelectDevicesRequired') },
+                  {
+                    validator: async (_, value) => {
+                      if (
+                        networkStatusTopologySelectionExceedsLimit(
+                          value,
+                          form.getFieldValue(['networkStatusTopology', 'nodeLimit']),
+                        )
+                      ) {
+                        throw new Error(t('dashboard.networkTopoSelectionExceedsLimit'));
+                      }
+                    },
+                  },
+                ]}
+                tooltip={t('dashboard.networkTopoDevicesHelp')}
               >
-                <Select
-                  showSearch
-                  loading={networkTopologyConfig.modelsLoading}
-                  placeholder={t('dashboard.selectModel')}
-                  options={networkTopologyConfig.modelOptions}
-                  optionFilterProp="label"
-                  notFoundContent={
-                    networkTopologyConfig.modelsLoading
-                      ? undefined
-                      : t('dashboard.networkTopoNoSupportedModel')
-                  }
-                  onChange={networkTopologyConfig.handleModelChange}
-                />
-              </Form.Item>
-              <Form.Item
-                label={t('dashboard.networkTopoInstance')}
-                name={['networkStatusTopology', 'instUuid']}
-                rules={[{ required: true, message: t('dashboard.selectInstance') }]}
-                tooltip={t('dashboard.networkTopoInstanceHelp')}
-              >
-                <Select
-                  showSearch
-                  loading={networkTopologyConfig.instancesLoading}
-                  placeholder={t('dashboard.selectInstance')}
-                  options={networkTopologyConfig.instanceOptions}
-                  filterOption={false}
-                  disabled={!networkTopologyConfig.sceneModelId}
-                  notFoundContent={
-                    networkTopologyConfig.instancesLoading
-                      ? t('common.loading')
-                      : t('dashboard.noData')
-                  }
+                <NetworkStatusTopologyDeviceList
+                  nodeLimit={networkTopoNodeLimit}
+                  listedOptions={networkTopologyConfig.instanceOptions}
+                  instanceTotal={networkTopologyConfig.instanceTotal}
+                  instancePage={networkTopologyConfig.instancePage}
+                  instancePageSize={networkTopologyConfig.instancePageSize}
+                  instanceKeyword={networkTopologyConfig.instanceKeyword}
+                  instancesLoading={networkTopologyConfig.instancesLoading}
+                  modelsLoading={networkTopologyConfig.modelsLoading}
+                  modelFilter={networkTopologyConfig.modelFilter}
+                  modelOptions={networkTopologyConfig.modelOptions}
+                  onModelFilterChange={networkTopologyConfig.handleModelFilterChange}
                   onSearch={networkTopologyConfig.handleInstanceSearch}
-                  onPopupScroll={networkTopologyConfig.handleInstancePopupScroll}
+                  onPageChange={networkTopologyConfig.handleInstancePageChange}
                 />
               </Form.Item>
               <Form.Item
-                label={t('dashboard.expandDepth')}
-                name={['networkStatusTopology', 'depth']}
-                initialValue={2}
+                label={t('dashboard.networkTopoNodeLimit')}
+                name={['networkStatusTopology', 'nodeLimit']}
+                initialValue={100}
+                tooltip={t('dashboard.networkTopoNodeLimitHelp')}
               >
-                <Select
+                <InputNumber
+                  min={1}
+                  max={NETWORK_STATUS_TOPOLOGY_MAX_NODE_LIMIT}
+                  precision={0}
+                  className="w-full"
+                />
+              </Form.Item>
+              <Form.Item
+                label={t('dashboard.networkTopoLinkTraffic')}
+                name={['networkStatusTopology', 'linkTrafficDisplays']}
+                initialValue={['inbound', 'outbound']}
+              >
+                <Checkbox.Group
                   options={[
-                    { label: '1', value: 1 },
-                    { label: '2', value: 2 },
-                    { label: '3', value: 3 },
-                    { label: '4', value: 4 },
+                    {
+                      label: t('dashboard.networkTopoLinkTrafficInbound'),
+                      value: 'inbound',
+                    },
+                    {
+                      label: t('dashboard.networkTopoLinkTrafficOutbound'),
+                      value: 'outbound',
+                    },
                   ]}
+                />
+              </Form.Item>
+              <Form.Item
+                name={['networkStatusTopology', 'inboundTrafficThresholds']}
+                noStyle
+              >
+                <ThresholdColorListField
+                  t={t}
+                  label={t('dashboard.networkTopoLinkTrafficInboundThresholds')}
+                  extra={t('dashboard.networkTopoTrafficThresholdHint')}
+                />
+              </Form.Item>
+              <Form.Item
+                name={['networkStatusTopology', 'outboundTrafficThresholds']}
+                noStyle
+              >
+                <ThresholdColorListField
+                  t={t}
+                  label={t('dashboard.networkTopoLinkTrafficOutboundThresholds')}
+                  extra={t('dashboard.networkTopoTrafficThresholdHint')}
                 />
               </Form.Item>
             </>

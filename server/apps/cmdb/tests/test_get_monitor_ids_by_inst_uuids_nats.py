@@ -1,4 +1,4 @@
-from apps.cmdb.constants.constants import NETWORK_TOPO_NODE_LIMIT
+from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_MAX_NODES
 from apps.cmdb.nats import nats as N
 
 USER_INFO = {"user": "alice", "domain": "domain.com", "team": 1, "include_children": False}
@@ -6,7 +6,7 @@ USER_INFO = {"user": "alice", "domain": "domain.com", "team": 1, "include_childr
 
 def test_get_monitor_ids_rejects_more_than_node_limit():
     result = N.get_monitor_ids_by_inst_uuids(
-        inst_uuids=[f"00000000-0000-4000-8000-{i:012d}" for i in range(NETWORK_TOPO_NODE_LIMIT + 1)],
+        inst_uuids=[f"00000000-0000-4000-8000-{i:012d}" for i in range(NETWORK_STATUS_TOPOLOGY_MAX_NODES + 1)],
         user_info=USER_INFO,
     )
     assert result["result"] is False

@@ -88,7 +88,7 @@ def test_dashboard_adapter_expands_topology_overlay_without_datasource(authentic
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
     from apps.operation_analysis.services.network_status_topology_overlay import NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
 
-    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
+    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS[:2]
     cmdb = DataSourceAPIModel.objects.create(
         name="adapter-overlay-cmdb",
         rest_api=cmdb_api,

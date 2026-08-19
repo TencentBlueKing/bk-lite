@@ -1,46 +1,55 @@
 from typing import Any
 
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import ValidationError
 
-from apps.cmdb.constants.constants import NETWORK_TOPO_NODE_LIMIT, VIEW
+from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES, NETWORK_STATUS_TOPOLOGY_MAX_NODES
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
-from apps.cmdb.views.instance import InstanceViewSet
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import operation_analysis_logger as logger
 
 
 class NetworkStatusTopologyService:
+    CLOSED_SET_ERROR = "设备列表包含无效或不允许的网络设备，请重新配置"
+
     @classmethod
-    def build(cls, request, model_id: str, inst_uuid: str, depth: int) -> dict[str, Any]:
-        topology = cls._get_cmdb_topology(request, model_id, inst_uuid, depth)
-        center = topology.get("center") or {}
+    def build(cls, request, inst_uuids: list[str], node_limit: int | None = None) -> dict[str, Any]:
+        limit = int(node_limit or NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES)
+        if limit < 1 or limit > NETWORK_STATUS_TOPOLOGY_MAX_NODES:
+            raise ValidationError({"node_limit": f"node_limit 必须在 1 到 {NETWORK_STATUS_TOPOLOGY_MAX_NODES} 之间"})
+        unique = [str(value) for value in inst_uuids if str(value).strip()]
+        if not unique or len(unique) > limit:
+            raise ValidationError({"inst_uuids": cls.CLOSED_SET_ERROR})
+
+        topology = cls._get_cmdb_topology(request, unique)
         return {
-            "center_id": str(center.get("id") or inst_uuid),
-            "center_model_id": str(center.get("model_id") or model_id),
             "nodes": topology.get("nodes", []),
             "links": topology.get("links", []),
-            "truncated": bool(topology.get("truncated", False)),
-            "node_limit": NETWORK_TOPO_NODE_LIMIT,
+            "truncated": False,
+            "node_limit": limit,
         }
 
-    @staticmethod
-    def _get_cmdb_topology(request, model_id: str, inst_uuid: str, depth: int) -> dict[str, Any]:
-        instance = InstanceManage.query_entity_by_uuid(inst_uuid)
-        if not instance:
-            raise NotFound("实例不存在")
+    @classmethod
+    def _get_cmdb_topology(cls, request, inst_uuids: list[str]) -> dict[str, Any]:
+        entities = InstanceManage.query_entity_by_uuids(inst_uuids)
+        if len(entities) != len(inst_uuids):
+            raise ValidationError({"inst_uuids": cls.CLOSED_SET_ERROR})
 
-        instance_view = InstanceViewSet()
-        permission_error = instance_view.require_instance_permission(request, instance, operator=VIEW)
-        if permission_error:
-            raise PermissionDenied("抱歉！您没有此实例的权限")
+        permission_maps: dict[str, dict] = {}
+        for entity in entities:
+            model_id = str(entity.get("model_id") or "")
+            if model_id and model_id not in permission_maps:
+                permission_maps[model_id] = CmdbRulesFormatUtil.format_user_groups_permissions(
+                    request=request,
+                    model_id=model_id,
+                )
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request,
-            model_id=instance["model_id"],
-        )
-        return InstanceManage.network_topology_by_uuid(
-            inst_uuid,
-            instance["model_id"],
-            depth=depth,
-            permission_map=permissions_map,
-            user=request.user,
-        )
+        try:
+            return InstanceManage.network_topology_among_uuids(
+                inst_uuids,
+                permission_maps=permission_maps,
+                user=request.user,
+            )
+        except BaseAppException as exc:
+            logger.info("network status topology closed set rejected: %s", exc)
+            raise ValidationError({"inst_uuids": cls.CLOSED_SET_ERROR}) from exc

@@ -5,11 +5,9 @@ import { Empty, Alert, Button, Modal, Spin, Table } from 'antd';
 import type { Graph } from '@antv/x6';
 import {
   NetworkTopologyX6Canvas,
-  layoutNetworkTopology,
 } from '@/app/cmdb/components/networkTopology';
 import type {
   NetworkTopologyLayoutMode,
-  NetworkTopologyLink,
   NetworkTopologyNode,
 } from '@/app/cmdb/components/networkTopology';
 import { useTranslation } from '@/utils/i18n';
@@ -18,7 +16,6 @@ import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useNetworkStatusTopologyApi } from '@/app/ops-analysis/api/networkStatusTopology';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
-import { isValidCmdbInstanceUuid } from '@/app/ops-analysis/utils/cmdbInstanceUuid';
 import type {
   NetworkStatusTopologyConfig,
   NetworkStatusTopologyLink,
@@ -45,7 +42,10 @@ import {
   buildPersistedNetworkStatusTopologyConfig,
   canPersistNetworkStatusTopologyLayout,
   cellPositionToLayoutPoint,
+  hasNetworkStatusTopologyDeviceSelection,
+  normalizeNetworkStatusTopologyInstUuids,
   normalizeNetworkStatusTopologyLayoutMode,
+  normalizeNetworkStatusTopologyNodeLimit,
   patchLayoutByMode,
   pruneNetworkStatusTopologyLayout,
   resetNetworkStatusTopologyLayout,
@@ -57,10 +57,12 @@ import {
   getLinkEndpoints,
   getLinkId,
 } from './graphModel';
+import { packClosedSetLayout } from './closedSetLayout';
 import { assignParallelOffsets } from './parallelEdges';
 import {
   buildStatusTopologyX6GraphData,
   ensureStatusTopologyNodeRegistered,
+  getStatusTopologyPortHoverEnd,
   isStatusTopologyIconHoverTarget,
   isStatusTopologyBadgeTarget,
   STATUS_TOPOLOGY_NODE_SHAPE,
@@ -69,13 +71,33 @@ import {
   STATUS_TOPOLOGY_VISUAL,
 } from './statusTopologyGraph';
 import type { StatusTopologyPositionedLink } from './statusTopologyGraph';
-import { resolveNodePopoverPosition } from './popoverPosition';
+import {
+  EDGE_POPOVER_ESTIMATE,
+  NODE_POPOVER_ESTIMATE,
+  nextGraphScale,
+  resolveEdgePopoverPosition,
+  resolveNodePopoverPosition,
+  scalePopoverChrome,
+  scalePopoverEstimate,
+} from './popoverPosition';
 import {
   applyMonitorOverlay,
   canOpenAlertModal,
   pickOverlayDataSourceIds,
   type OverlayDataSource,
 } from './overlayModel';
+import {
+  applyLinkRuntime,
+  buildPortTrafficLines,
+  formatBandwidth,
+  formatByteRate,
+  formatPacketRate,
+  normalizeLinkTrafficDisplays,
+  type InterfaceMetricItem,
+  type LinkRuntime,
+  type PortMatchReason,
+  type PortRuntime,
+} from './linkRuntimeModel';
 import { useWidgetViewport } from '@/app/ops-analysis/components/widget-viewport';
 import styles from './networkStatusTopology.module.scss';
 import { useDashboardRuntimeScheduler } from '@/app/ops-analysis/context/dashboardRuntimeScheduler';
@@ -117,6 +139,21 @@ const openUrl = (url: string) => {
   window.open(url, '_blank', 'noopener,noreferrer');
 };
 
+const getPortMatchReasonKey = (reason: PortMatchReason) => {
+  if (reason === 'unmonitored') return 'dashboard.networkTopoUnmonitored';
+  if (reason === 'unmatched') return 'dashboard.networkTopoPortUnmatched';
+  if (reason === 'query_failed') return 'dashboard.networkTopoPortQueryFailed';
+  return '';
+};
+
+const getPortOperLabelKey = (kind: PortRuntime['operKind']) => {
+  if (kind === 'up') return 'dashboard.networkTopoPortOperUp';
+  if (kind === 'down') return 'dashboard.networkTopoPortOperDown';
+  return 'dashboard.networkTopoStatusUnknown';
+};
+
+const displayMetric = (value: string) => value || '--';
+
 const getStatusLabelKey = (status?: string) => {
   if (status === 'critical') return 'dashboard.networkTopoStatusCritical';
   if (status === 'error') return 'dashboard.networkTopoStatusCritical';
@@ -139,22 +176,53 @@ const toCanvasNode = (
   icon: typeof node.icon === 'string' ? node.icon : '',
 });
 
+const isLinkRuntime = (value: unknown): value is LinkRuntime => {
+  const row = asRecord(value);
+  return Boolean(row && asRecord(row.source) && asRecord(row.target));
+};
+
 const toCanvasLink = (
   link: NetworkStatusTopologyLink,
   nodeNameMap: Map<string, string>,
-): NetworkTopologyLink => {
+  trafficDisplays: ReturnType<typeof normalizeLinkTrafficDisplays>,
+  trafficStyle?: {
+    inboundThresholds?: NetworkStatusTopologyConfig['inboundTrafficThresholds'];
+    outboundThresholds?: NetworkStatusTopologyConfig['outboundTrafficThresholds'];
+    defaultFill?: string;
+  },
+): StatusTopologyPositionedLink => {
   const endpoints = getLinkEndpoints(link);
   const sourceName = nodeNameMap.get(endpoints.source);
   const targetName = nodeNameMap.get(endpoints.target);
-  const sourcePort = link.source_port || link.source_inst_name;
-  const targetPort = link.target_port || link.target_inst_name;
+  const sourcePort = stripDevicePrefix(
+    String(link.sourcePort || link.source_port || link.source_inst_name || ''),
+    sourceName,
+  );
+  const targetPort = stripDevicePrefix(
+    String(link.targetPort || link.target_port || link.target_inst_name || ''),
+    targetName,
+  );
+  const runtime = isLinkRuntime(link.runtime) ? link.runtime : undefined;
+  const trafficOptions = {
+    inboundThresholds: trafficStyle?.inboundThresholds,
+    outboundThresholds: trafficStyle?.outboundThresholds,
+    defaultFill: trafficStyle?.defaultFill,
+  };
 
   return {
     id: getLinkId(link),
     source: endpoints.source,
     target: endpoints.target,
-    sourcePort: stripDevicePrefix(sourcePort, sourceName),
-    targetPort: stripDevicePrefix(targetPort, targetName),
+    sourcePort,
+    targetPort,
+    disconnected: runtime?.status === 'down',
+    connectStatus: runtime?.status,
+    sourceTrafficLines: runtime
+      ? buildPortTrafficLines(runtime.source, trafficDisplays, trafficOptions)
+      : [],
+    targetTrafficLines: runtime
+      ? buildPortTrafficLines(runtime.target, trafficDisplays, trafficOptions)
+      : [],
   };
 };
 
@@ -173,6 +241,45 @@ const asRecord = (value: unknown): Record<string, unknown> | null => (
 );
 
 const asList = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
+
+const parseInterfaceItems = (data: unknown): InterfaceMetricItem[] =>
+  asList(asRecord(data)?.items).flatMap((item) => {
+    const row = asRecord(item);
+    if (!row || typeof row.instance_id !== 'string' || typeof row.ifDescr !== 'string') {
+      return [];
+    }
+    const metricsRow = asRecord(row.metrics) || {};
+    const metrics: Record<string, number> = {};
+    Object.entries(metricsRow).forEach(([key, value]) => {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) metrics[key] = numeric;
+    });
+    return [{
+      instance_id: row.instance_id,
+      ifDescr: row.ifDescr,
+      metrics,
+    }];
+  });
+
+const attachLinkRuntime = (
+  structure: NetworkStatusTopologyResponse,
+  nodes: NetworkStatusTopologyNode[],
+  items: InterfaceMetricItem[],
+  queryFailed = false,
+) => {
+  const nodeNameMap = new Map(
+    nodes.map((node) => [String(node.id), node.name || String(node.id)]),
+  );
+  const links = (structure.links || []).map((link) => {
+    const canvas = toCanvasLink(link, nodeNameMap, []);
+    return {
+      ...link,
+      sourcePort: canvas.sourcePort,
+      targetPort: canvas.targetPort,
+    };
+  });
+  return applyLinkRuntime({ links, nodes, items, queryFailed });
+};
 
 const parseOverlayMappings = (data: unknown) =>
   asList(asRecord(data)?.items).flatMap((item) => {
@@ -230,8 +337,8 @@ const paintNodesUnknown = (nodes: NetworkStatusTopologyNode[]) =>
 const OVERLAY_HOVER_LEAVE_DELAY_MS = 160;
 
 const overlaySourceIdsReady = (
-  ids: { cmdbId?: number; monitorId?: number },
-): ids is { cmdbId: number; monitorId: number } =>
+  ids: { cmdbId?: number; monitorId?: number; interfaceId?: number },
+): ids is { cmdbId: number; monitorId: number; interfaceId?: number } =>
   ids.cmdbId != null && ids.monitorId != null;
 
 const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
@@ -274,6 +381,8 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   >({});
   const [selectedNodeId, setSelectedNodeId] = useState('');
   const graphRef = useRef<Graph | null>(null);
+  const graphScaleListenerRef = useRef<(() => void) | null>(null);
+  const graphScaleTargetRef = useRef<Graph | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const fetchIdRef = useRef(0);
   const inflightCountRef = useRef(0);
@@ -285,14 +394,21 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   runtimeActiveRef.current = runtimeActive;
   const runtimePriorityRef = useRef(runtimePriority);
   runtimePriorityRef.current = runtimePriority;
+  const [graphScale, setGraphScale] = useState(1);
   const [hoverNodeId, setHoverNodeId] = useState('');
+  const [hoverPort, setHoverPort] = useState<{
+    linkId: string;
+    end: 'source' | 'target';
+  } | null>(null);
   const [hoverPoint, setHoverPoint] = useState({ x: 0, y: 0 });
   const hoverNodeIdRef = useRef('');
+  const hoverPortRef = useRef<{ linkId: string; end: 'source' | 'target' } | null>(null);
   const hoverLeaveTimerRef = useRef<number | null>(null);
   const alertModalFetchRef = useRef(0);
   const [contextNodeId, setContextNodeId] = useState('');
   const [contextPoint, setContextPoint] = useState({ x: 0, y: 0 });
   const [overlayError, setOverlayError] = useState('');
+  const [interfaceError, setInterfaceError] = useState('');
   const [alertModalNodeId, setAlertModalNodeId] = useState('');
   const [alertItems, setAlertItems] = useState<OverlayAlertItem[]>([]);
   const [alertModalCount, setAlertModalCount] = useState(0);
@@ -300,11 +416,20 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const [alertModalError, setAlertModalError] = useState('');
   const structureRef = useRef<NetworkStatusTopologyResponse | null>(null);
   const overlayGenerationRef = useRef(0);
-  const overlaySourceIdsRef = useRef<{ cmdbId?: number; monitorId?: number }>({});
+  const overlaySourceIdsRef = useRef<{
+    cmdbId?: number;
+    monitorId?: number;
+    interfaceId?: number;
+  }>({});
   const originalNodeMapRef = useRef<Map<string, NetworkStatusTopologyNode>>(new Map());
 
   const topoConfig = config?.networkStatusTopology;
-  const hasValidInstanceUuid = isValidCmdbInstanceUuid(topoConfig?.instUuid);
+  const selectedInstUuids = useMemo(
+    () => normalizeNetworkStatusTopologyInstUuids(topoConfig?.instUuids),
+    [Array.isArray(topoConfig?.instUuids) ? topoConfig.instUuids.join(',') : ''],
+  );
+  const nodeLimit = normalizeNetworkStatusTopologyNodeLimit(topoConfig?.nodeLimit);
+  const hasDeviceSelection = hasNetworkStatusTopologyDeviceSelection(topoConfig);
   /** 画布编辑态且非分享：几何写回草稿，随页面保存落库 */
   const canPersistLayout = canPersistNetworkStatusTopologyLayout({
     layoutEditable,
@@ -334,7 +459,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     // 拓扑查询身份变化时清空查看态临时摆放
     setEphemeralPositions({});
     setViewLayoutMode(null);
-  }, [topoConfig?.modelId, topoConfig?.instUuid, topoConfig?.depth]);
+  }, [topoConfig?.instUuids, topoConfig?.nodeLimit]);
 
   const emitLayoutChange = useCallback(
     (next: NetworkStatusTopologyConfig) => {
@@ -345,9 +470,12 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
 
   const resolveOverlaySourceIds = useCallback(async () => {
     let ids = overlaySourceIdsRef.current;
-    if (overlaySourceIdsReady(ids)) return ids;
+    if (overlaySourceIdsReady(ids) && ids.interfaceId != null) return ids;
     ids = pickOverlayDataSourceIds(dataSourcesRef.current || []);
-    if (!overlaySourceIdsReady(ids) && !shareModeRef.current) {
+    if (
+      (!overlaySourceIdsReady(ids) || ids.interfaceId == null)
+      && !shareModeRef.current
+    ) {
       const brief = await getDataSourceBriefListRef.current({ page_size: -1 });
       ids = pickOverlayDataSourceIds([
         ...(dataSourcesRef.current || []),
@@ -373,6 +501,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       || overlayGeneration !== overlayGenerationRef.current
     );
     setOverlayError('');
+    setInterfaceError('');
     try {
       const ids = await resolveOverlaySourceIdsRef.current();
       if (isStale()) return;
@@ -402,23 +531,57 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
         summaries = parseOverlaySummaries(monitorResult.data);
       }
       if (isStale()) return;
+      const overlaidNodes = applyMonitorOverlay({
+        nodes: structure.nodes || [],
+        mappings,
+        summaries,
+      });
+      let interfaceItems: InterfaceMetricItem[] = [];
+      let interfaceQueryFailed = false;
+      if (monitorIds.length) {
+        if (ids.interfaceId == null) {
+          interfaceQueryFailed = true;
+        } else {
+          try {
+            const interfaceResult = await getSourceDataByApiIdRef.current(
+              ids.interfaceId,
+              { instance_ids: monitorIds },
+            );
+            if (isStale()) return;
+            interfaceItems = parseInterfaceItems(interfaceResult.data);
+          } catch (err) {
+            if (isStale()) return;
+            console.error('network status topology interface runtime failed:', err);
+            interfaceQueryFailed = true;
+          }
+        }
+      }
+      if (isStale()) return;
       setData({
         ...structure,
-        nodes: applyMonitorOverlay({
-          nodes: structure.nodes || [],
-          mappings,
-          summaries,
-        }),
+        nodes: overlaidNodes,
+        links: attachLinkRuntime(
+          structure,
+          overlaidNodes,
+          interfaceItems,
+          interfaceQueryFailed,
+        ),
       });
       setOverlayError('');
+      setInterfaceError(
+        interfaceQueryFailed ? t('dashboard.networkTopoInterfaceLoadFailed') : '',
+      );
     } catch (err) {
       if (isStale()) return;
       console.error('network status topology overlay failed:', err);
+      const unknownNodes = paintNodesUnknown(structure.nodes || []);
       setData({
         ...structure,
-        nodes: paintNodesUnknown(structure.nodes || []),
+        nodes: unknownNodes,
+        links: attachLinkRuntime(structure, unknownNodes, [], false),
       });
       setOverlayError(t('dashboard.networkTopoStatusLoadFailed'));
+      setInterfaceError('');
     }
   }, [t]);
   const fetchOverlayRef = useRef(fetchOverlay);
@@ -426,19 +589,19 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
 
   const fetchData = useCallback(async (options?: { force?: boolean }) => {
     if (!runtimeActiveRef.current) return;
-    if (!topoConfig?.modelId || !hasValidInstanceUuid) {
+    if (!hasDeviceSelection) {
       structureRef.current = null;
       overlaySourceIdsRef.current = {};
       setOverlayError('');
+      setInterfaceError('');
       setData(null);
       setError(t('dashboard.networkTopoMissingConfig'));
       onReadyRef.current?.(false);
       return;
     }
     const request = {
-      model_id: topoConfig.modelId,
-      inst_uuid: topoConfig.instUuid,
-      depth: topoConfig.depth || 2,
+      inst_uuids: selectedInstUuids,
+      node_limit: nodeLimit,
     };
     const physicalKey = `scene:${refreshKey ?? '0'}:${JSON.stringify(request)}`;
     if (!options?.force && fulfilledRequestKeyRef.current === physicalKey) return;
@@ -484,6 +647,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       structureRef.current = structure;
       overlayGenerationRef.current += 1;
       setOverlayError('');
+      setInterfaceError('');
       setData({
         ...structure,
         nodes: paintNodesUnknown(structure.nodes),
@@ -510,6 +674,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
         structureRef.current = null;
         overlaySourceIdsRef.current = {};
         setOverlayError('');
+        setInterfaceError('');
         setData(null);
         setError(getRequestErrorMessage(err, t('dashboard.networkTopoLoadFailed')));
         onReadyRef.current?.(false);
@@ -523,14 +688,13 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     }
     // API hooks return fresh function references; fetching is driven by widget config.
   }, [
-    hasValidInstanceUuid,
+    hasDeviceSelection,
+    nodeLimit,
     refreshKey,
     runtimeOwnerId,
     runtimeScheduler,
+    selectedInstUuids,
     t,
-    topoConfig?.depth,
-    topoConfig?.instUuid,
-    topoConfig?.modelId,
   ]);
 
   const handleExplicitRefresh = useCallback(() => {
@@ -575,6 +739,14 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   );
   originalNodeMapRef.current = originalNodeMap;
 
+  const originalLinkMap = useMemo(
+    () =>
+      new Map(
+        (data?.links || []).map((link) => [getLinkId(link), link]),
+      ),
+    [data?.links],
+  );
+
   const nodeNameMap = useMemo(
     () =>
       new Map(
@@ -591,10 +763,49 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     [data?.nodes],
   );
 
+  const trafficDisplays = useMemo(
+    () => normalizeLinkTrafficDisplays(topoConfig?.linkTrafficDisplays),
+    [topoConfig?.linkTrafficDisplays],
+  );
+  const popoverLayerChrome = useMemo(
+    () => scalePopoverChrome(graphScale),
+    [graphScale],
+  );
+  const nodePopoverSize = useMemo(
+    () => scalePopoverEstimate(NODE_POPOVER_ESTIMATE, graphScale),
+    [graphScale],
+  );
+  const edgePopoverSize = useMemo(
+    () => scalePopoverEstimate(EDGE_POPOVER_ESTIMATE, graphScale),
+    [graphScale],
+  );
+
+  const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
+  const topologyPalette = (() => {
+    if (config?.chartThemeMode === 'screen-dark') return STATUS_TOPOLOGY_PALETTE_DARK;
+    if (config?.chartThemeMode === 'screen-light') return STATUS_TOPOLOGY_PALETTE_LIGHT;
+    return resolveOpsChartThemeName() === 'dark'
+      ? STATUS_TOPOLOGY_PALETTE_DARK
+      : STATUS_TOPOLOGY_PALETTE_LIGHT;
+  })();
+
   const canvasLinks = useMemo(
     () =>
-      (data?.links || []).map((link) => toCanvasLink(link, nodeNameMap)),
-    [data?.links, nodeNameMap],
+      (data?.links || []).map((link) =>
+        toCanvasLink(link, nodeNameMap, trafficDisplays, {
+          inboundThresholds: topoConfig?.inboundTrafficThresholds,
+          outboundThresholds: topoConfig?.outboundTrafficThresholds,
+          defaultFill: topologyPalette.portLabelFill,
+        }),
+      ),
+    [
+      data?.links,
+      nodeNameMap,
+      trafficDisplays,
+      topoConfig?.inboundTrafficThresholds,
+      topoConfig?.outboundTrafficThresholds,
+      topologyPalette.portLabelFill,
+    ],
   );
 
   const parallelLinks = useMemo(
@@ -621,20 +832,38 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     [faultPath.linkIds],
   );
   const hasFaultPath = faultNodeIds.size > 0 || faultLinkIds.size > 0;
-  const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
-  const topologyPalette = (() => {
-    if (config?.chartThemeMode === 'screen-dark') return STATUS_TOPOLOGY_PALETTE_DARK;
-    if (config?.chartThemeMode === 'screen-light') return STATUS_TOPOLOGY_PALETTE_LIGHT;
-    return resolveOpsChartThemeName() === 'dark'
-      ? STATUS_TOPOLOGY_PALETTE_DARK
-      : STATUS_TOPOLOGY_PALETTE_LIGHT;
-  })();
 
   const bringNodesAboveEdges = useCallback((graph: Graph | null) => {
     if (!graph) return;
     graph.getEdges().forEach((edge) => edge.toBack());
     graph.getNodes().forEach((node) => node.toFront());
   }, []);
+
+  const handleGraphReady = useCallback((graph: Graph | null) => {
+    const listener = graphScaleListenerRef.current;
+    const owned = graphScaleTargetRef.current;
+    if (owned && listener) {
+      owned.off('scale', listener);
+    }
+    graphScaleListenerRef.current = null;
+    graphScaleTargetRef.current = null;
+
+    graphRef.current = graph;
+    bringNodesAboveEdges(graph);
+
+    if (!graph) {
+      setGraphScale(1);
+      return;
+    }
+
+    const syncScale = () => {
+      setGraphScale((prev) => nextGraphScale(Number(graph.zoom()), prev));
+    };
+    graphScaleListenerRef.current = syncScale;
+    graphScaleTargetRef.current = graph;
+    graph.on('scale', syncScale);
+    syncScale();
+  }, [bringNodesAboveEdges]);
 
   const activeModeGeometry = useMemo(
     () => resolveLayoutGeometry(topoConfig, layoutMode),
@@ -643,12 +872,10 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
 
   const layout = useMemo(
     () => {
-      const computed = layoutNetworkTopology({
+      const computed = packClosedSetLayout({
         nodes: canvasNodes,
         links: parallelLinks,
-        centerId: String(data?.center_id || topoConfig?.instUuid || ''),
         mode: layoutMode,
-        fitToViewport: false,
       });
       const mergedPositions = canPersistLayout
         ? activeModeGeometry.nodePositions
@@ -662,11 +889,9 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       activeModeGeometry.nodePositions,
       canPersistLayout,
       canvasNodes,
-      data?.center_id,
       ephemeralPositions,
       layoutMode,
       parallelLinks,
-      topoConfig?.instUuid,
     ],
   );
   const graphData = useMemo(
@@ -678,6 +903,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
         const withOffset = parallelById.get(link.id);
         return {
           ...link,
+          ...(withOffset || {}),
           parallelOffset: withOffset?.parallelOffset ?? 0,
           vertices: activeModeGeometry.linkVertices?.[link.id],
         };
@@ -736,6 +962,12 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     if (!structure?.nodes?.length) return;
     void fetchOverlayRef.current(structure, fetchIdRef.current);
   }, []);
+
+  const handleInterfaceRetry = useCallback(() => {
+    const structure = structureRef.current;
+    if (!structure?.nodes?.length || overlayError) return;
+    void fetchOverlayRef.current(structure, fetchIdRef.current);
+  }, [overlayError]);
 
   const fetchAlertItems = useCallback(async (monitorId: string) => {
     const requestId = ++alertModalFetchRef.current;
@@ -819,9 +1051,8 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
         linkIds,
       );
       emitLayoutChange({
-        modelId: topoConfig.modelId,
-        instUuid: topoConfig.instUuid,
-        depth: topoConfig.depth || 2,
+        instUuids: selectedInstUuids,
+        nodeLimit,
         ...pruned,
       });
     },
@@ -831,6 +1062,8 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       emitLayoutChange,
       layoutMode,
       onTopologyLayoutChange,
+      selectedInstUuids,
+      nodeLimit,
       topoConfig,
     ],
   );
@@ -911,7 +1144,9 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     hoverLeaveTimerRef.current = window.setTimeout(() => {
       hoverLeaveTimerRef.current = null;
       hoverNodeIdRef.current = '';
+      hoverPortRef.current = null;
       setHoverNodeId('');
+      setHoverPort(null);
     }, OVERLAY_HOVER_LEAVE_DELAY_MS);
   }, [cancelHoverLeave]);
 
@@ -928,14 +1163,44 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
         graphRef.current,
         nodeId,
         canvasRef.current,
-        undefined,
+        nodePopoverSize,
         viewportScale,
       );
       if (next) setHoverPoint(next);
     }
     hoverNodeIdRef.current = nodeId;
+    hoverPortRef.current = null;
     setHoverNodeId(nodeId);
-  }, [cancelHoverLeave, scheduleClearNodeHover, viewportScale]);
+    setHoverPort(null);
+  }, [cancelHoverLeave, nodePopoverSize, scheduleClearNodeHover, viewportScale]);
+
+  const updatePortHover = useCallback((linkId: string, event: MouseEvent) => {
+    const end = getStatusTopologyPortHoverEnd(event);
+    if (!end) {
+      if (hoverPortRef.current?.linkId === linkId) {
+        scheduleClearNodeHover();
+      }
+      return;
+    }
+    cancelHoverLeave();
+    const hoverKey = `${linkId}:${end}`;
+    const currentKey = hoverPortRef.current
+      ? `${hoverPortRef.current.linkId}:${hoverPortRef.current.end}`
+      : '';
+    hoverPortRef.current = { linkId, end };
+    hoverNodeIdRef.current = '';
+    if (currentKey !== hoverKey) {
+      const next = resolveEdgePopoverPosition(
+        event,
+        canvasRef.current,
+        edgePopoverSize,
+        viewportScale,
+      );
+      if (next) setHoverPoint(next);
+      setHoverPort({ linkId, end });
+    }
+    setHoverNodeId('');
+  }, [cancelHoverLeave, edgePopoverSize, scheduleClearNodeHover, viewportScale]);
 
   const clearNodeHover = useCallback(() => {
     scheduleClearNodeHover();
@@ -996,6 +1261,65 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     [openAlertModal, originalNodeMap, t],
   );
 
+  const renderPortPopover = useCallback(
+    (runtime: LinkRuntime, end: 'source' | 'target') => {
+      const port = runtime[end];
+      const reasonKey = getPortMatchReasonKey(port.matchReason);
+      if (reasonKey) {
+        return (
+          <div className={styles.popover} data-testid="status-topo-port-popover">
+            <div className={styles.popHeader}>
+              <span className={styles.popTitle}>{port.portName || '--'}</span>
+            </div>
+            <div className={styles.popLine}>
+              <strong className={styles.noAlertText}>{t(reasonKey)}</strong>
+            </div>
+          </div>
+        );
+      }
+      const inbound = formatByteRate(port.inbound);
+      const outbound = formatByteRate(port.outbound);
+      return (
+        <div className={styles.popover} data-testid="status-topo-port-popover">
+          <div className={styles.popHeader}>
+            <span className={styles.popTitle}>{port.portName || port.ifDescr || '--'}</span>
+          </div>
+          <div className={styles.popLine}>
+            <span>{t('dashboard.networkTopoPortOperStatus')}:</span>
+            <strong>{t(getPortOperLabelKey(port.operKind))}</strong>
+          </div>
+          <div className={styles.popLine}>
+            <span>{t('dashboard.networkTopoPortBandwidth')}:</span>
+            <strong>{displayMetric(formatBandwidth(port))}</strong>
+          </div>
+          <div className={styles.popLine}>
+            <span>{t('dashboard.networkTopoPortTraffic')}:</span>
+            <strong>
+              {`${t('dashboard.networkTopoPortInbound')} ${displayMetric(inbound)} / ${t('dashboard.networkTopoPortOutbound')} ${displayMetric(outbound)}`}
+            </strong>
+          </div>
+          <div className={styles.popLine}>
+            <span>{t('dashboard.networkTopoPortInErrors')}:</span>
+            <strong>{displayMetric(formatPacketRate(port.inErrors))}</strong>
+          </div>
+          <div className={styles.popLine}>
+            <span>{t('dashboard.networkTopoPortOutErrors')}:</span>
+            <strong>{displayMetric(formatPacketRate(port.outErrors))}</strong>
+          </div>
+          <div className={styles.popLine}>
+            <span>{t('dashboard.networkTopoPortInDiscards')}:</span>
+            <strong>{displayMetric(formatPacketRate(port.inDiscards))}</strong>
+          </div>
+          <div className={styles.popLine}>
+            <span>{t('dashboard.networkTopoPortOutDiscards')}:</span>
+            <strong>{displayMetric(formatPacketRate(port.outDiscards))}</strong>
+          </div>
+        </div>
+      );
+    },
+    [t],
+  );
+
   const renderContextMenu = useCallback(
     (node: NetworkTopologyNode, closeMenu: () => void) => {
       const originalNode = originalNodeMap.get(node.id);
@@ -1041,8 +1365,12 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   );
 
   const hoverCanvasNode = canvasNodes.find((node) => node.id === hoverNodeId);
+  const hoverLink = hoverPort
+    ? originalLinkMap.get(hoverPort.linkId)
+    : undefined;
+  const hoverLinkRuntime = isLinkRuntime(hoverLink?.runtime) ? hoverLink.runtime : null;
   const contextCanvasNode = canvasNodes.find((node) => node.id === contextNodeId);
-  const isMissingConfig = !topoConfig?.modelId || !hasValidInstanceUuid;
+  const isMissingConfig = !hasDeviceSelection;
   const alertModalNode = originalNodeMap.get(alertModalNodeId);
   const alertModalTitle = alertModalNode
     ? `${alertModalNode.name || alertModalNode.id} · ${t('dashboard.networkTopoPopoverAlerts')} ${alertModalCount}（${t('dashboard.networkTopoLatestItems', undefined, { n: alertItems.length })}）`
@@ -1087,10 +1415,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
           edgeVerticesEditable={canPersistLayout}
           fitViewOptions={{ padding: 48, maxScale: 1.08 }}
           fitViewKey={fitViewKey}
-          onGraphReady={(graph) => {
-            if (graphRef) graphRef.current = graph;
-            bringNodesAboveEdges(graph);
-          }}
+          onGraphReady={handleGraphReady}
           onNodeMoved={handleNodeMoved}
           onEdgeVerticesChanged={handleEdgeVerticesChanged}
           toolbar={{
@@ -1132,7 +1457,9 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
             setSelectedNodeId('');
             cancelHoverLeave();
             hoverNodeIdRef.current = '';
+            hoverPortRef.current = null;
             setHoverNodeId('');
+            setHoverPort(null);
             closeContextMenu();
           }}
           onBlankContextMenu={() => closeContextMenu()}
@@ -1147,6 +1474,8 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
           onNodeMouseEnter={updateNodeHover}
           onNodeMouseMove={updateNodeHover}
           onNodeMouseLeave={clearNodeHover}
+          onEdgeMouseEnter={updatePortHover}
+          onEdgeMouseLeave={clearNodeHover}
           onNodeContextMenu={(nodeId, event) => {
             setContextNodeId(nodeId);
             setContextPoint({ x: event.offsetX + 8, y: event.offsetY + 8 });
@@ -1205,11 +1534,47 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
           />
         </div>
       )}
-      {hoverCanvasNode && !contextNodeId && (
+      {!overlayError && interfaceError && graphData.nodes.length > 0 && (
+        <div
+          className="absolute top-3 right-3 z-[8] max-w-[min(420px,72%)]"
+          data-testid="status-topo-interface-error"
+        >
+          <Alert
+            type="error"
+            showIcon
+            message={t('dashboard.networkTopoInterfaceLoadFailed')}
+            action={(
+              <Button size="small" onClick={handleInterfaceRetry}>
+                {t('dashboard.networkTopoRefresh')}
+              </Button>
+            )}
+          />
+        </div>
+      )}
+      {hoverLinkRuntime && hoverPort && !contextNodeId && (
+        <div
+          className={styles.popoverLayer}
+          data-testid="status-topo-port-popover-layer"
+          style={{
+            left: hoverPoint.x,
+            top: hoverPoint.y,
+            fontSize: popoverLayerChrome.fontSize,
+          }}
+          onMouseEnter={cancelHoverLeave}
+          onMouseLeave={scheduleClearNodeHover}
+        >
+          {renderPortPopover(hoverLinkRuntime, hoverPort.end)}
+        </div>
+      )}
+      {hoverCanvasNode && !hoverPort && !contextNodeId && (
         <div
           className={styles.popoverLayer}
           data-testid="status-topo-popover-layer"
-          style={{ left: hoverPoint.x, top: hoverPoint.y }}
+          style={{
+            left: hoverPoint.x,
+            top: hoverPoint.y,
+            fontSize: popoverLayerChrome.fontSize,
+          }}
           onMouseEnter={cancelHoverLeave}
           onMouseLeave={scheduleClearNodeHover}
         >

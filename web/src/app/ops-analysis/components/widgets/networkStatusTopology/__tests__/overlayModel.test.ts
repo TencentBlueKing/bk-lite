@@ -24,6 +24,16 @@ describe('pickOverlayDataSourceIds', () => {
     ).toEqual({ cmdbId: 31, monitorId: 32 });
   });
 
+  it('returns the interface metrics source when it is unique', () => {
+    expect(
+      pickOverlayDataSourceIds([
+        { id: 31, rest_api: 'cmdb/get_monitor_ids_by_inst_uuids' },
+        { id: 32, rest_api: 'monitor/query_latest_active_alerts' },
+        { id: 33, rest_api: 'monitor/query_latest_interface_metrics' },
+      ]),
+    ).toEqual({ cmdbId: 31, monitorId: 32, interfaceId: 33 });
+  });
+
   it('prefers the unique builtin when a rest_api is duplicated', () => {
     expect(
       pickOverlayDataSourceIds([

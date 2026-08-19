@@ -190,6 +190,7 @@ class TestLocalRpcOverlayHandlers:
         [
             ("cmdb", "get_monitor_ids_by_inst_uuids", "apps.cmdb.nats.nats"),
             ("monitor", "query_latest_active_alerts", "apps.monitor.nats.monitor"),
+            ("monitor", "query_latest_interface_metrics", "apps.monitor.nats.monitor"),
         ],
     )
     def test_overlay_apis_use_app_client_when_is_local_rpc(self, monkeypatch, namespace, path, module):

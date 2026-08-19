@@ -1046,7 +1046,7 @@ def test_allowed_share_query_keys_include_overlay_when_canvas_has_topology(dashb
     )
     from apps.operation_analysis.services.share_service import allowed_share_query_keys
 
-    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
+    cmdb_api, monitor_api, interface_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
     cmdb = DataSourceAPIModel.objects.create(
         name="share-overlay-cmdb",
         rest_api=cmdb_api,
@@ -1061,11 +1061,20 @@ def test_allowed_share_query_keys_include_overlay_when_canvas_has_topology(dashb
         created_by="alice",
         updated_by="alice",
     )
+    interface_ds = DataSourceAPIModel.objects.create(
+        name="share-overlay-interface",
+        rest_api=interface_api,
+        is_build_in=True,
+        created_by="alice",
+        updated_by="alice",
+    )
     dashboard.view_sets = [{"valueConfig": {"chartType": "networkStatusTopology"}}]
     dashboard.save(update_fields=["view_sets"])
 
     allowed = allowed_share_query_keys(dashboard=dashboard, data_source_id=cmdb.id)
     assert NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS <= allowed
+    interface_allowed = allowed_share_query_keys(dashboard=dashboard, data_source_id=interface_ds.id)
+    assert NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS <= interface_allowed
 
 
 @pytest.mark.django_db
@@ -1077,7 +1086,7 @@ def test_allowed_share_query_keys_exclude_overlay_when_canvas_has_no_topology(da
     )
     from apps.operation_analysis.services.share_service import allowed_share_query_keys
 
-    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
+    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS[:2]
     cmdb = DataSourceAPIModel.objects.create(
         name="share-overlay-cmdb-no-topo",
         rest_api=cmdb_api,

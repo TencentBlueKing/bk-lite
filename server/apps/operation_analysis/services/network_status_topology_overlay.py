@@ -6,6 +6,7 @@ NETWORK_STATUS_TOPOLOGY_CHART_TYPE = "networkStatusTopology"
 NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS = (
     "cmdb/get_monitor_ids_by_inst_uuids",
     "monitor/query_latest_active_alerts",
+    "monitor/query_latest_interface_metrics",
 )
 NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS = frozenset({"inst_uuids", "instance_ids", "instance_id", "limit"})
 

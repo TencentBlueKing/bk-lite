@@ -284,6 +284,41 @@
     ]
 },
 {
+    "key": "监控接口最新指标::monitor/query_latest_interface_metrics",
+    "name": "监控接口最新指标",
+    "desc": "按监控实例批量查询接口最新 IF-MIB 值，响应含 instance_id、ifDescr 与固定指标集合",
+    "rest_api": "monitor/query_latest_interface_metrics",
+    "tag": [
+        "monitor"
+    ],
+    "chart_type": [
+        "table"
+    ],
+    "field_schema": [
+        {
+            "key": "instance_id",
+            "title": "实例ID",
+            "value_type": "string",
+            "description": "监控实例ID"
+        },
+        {
+            "key": "ifDescr",
+            "title": "接口名称",
+            "value_type": "string",
+            "description": "IF-MIB ifDescr"
+        }
+    ],
+    "params": [
+        {
+            "name": "instance_ids",
+            "type": "string",
+            "value": "",
+            "alias_name": "实例ID列表",
+            "filterType": "params"
+        }
+    ]
+},
+{
         "key": "今日告警状态总览::alert/get_alert_today_status_summary",
 "name": "今日产生关闭与当前处理中",
     "desc": "今日新产生与关闭的告警数，以及当前处理中告警数；前两项为今日口径，处理中为当前快照",

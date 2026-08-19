@@ -764,9 +764,8 @@ def test_render_session_allows_frozen_network_status_topology(
                     "valueConfig": {
                         "sceneWidgetType": "networkStatusTopology",
                         "networkStatusTopology": {
-                            "modelId": "router",
-                            "instUuid": allowed_inst_uuid,
-                            "depth": 4,
+                            "instUuids": [allowed_inst_uuid],
+                            "nodeLimit": 100,
                         },
                     },
                 }
@@ -794,9 +793,8 @@ def test_render_session_allows_frozen_network_status_topology(
         factory.post(
             "/api/v1/operation_analysis/api/scene_widgets/network_status_topology/",
             {
-                "model_id": "router",
-                "inst_uuid": allowed_inst_uuid,
-                "depth": 4,
+                "inst_uuids": [allowed_inst_uuid],
+                "node_limit": 100,
             },
             format="json",
         ),
@@ -807,9 +805,8 @@ def test_render_session_allows_frozen_network_status_topology(
             factory.post(
                 "/api/v1/operation_analysis/api/scene_widgets/network_status_topology/",
                 {
-                    "model_id": "router",
-                    "inst_uuid": denied_inst_uuid,
-                    "depth": 4,
+                    "inst_uuids": [denied_inst_uuid],
+                    "node_limit": 100,
                 },
                 format="json",
             ),
@@ -824,7 +821,7 @@ def test_render_session_allows_overlay_datasource_query_for_topology_manifest(
     from apps.operation_analysis.services.network_status_topology_overlay import NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
 
     monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
-    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
+    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS[:2]
     cmdb = DataSourceAPIModel.objects.create(
         name="render-overlay-cmdb",
         rest_api=cmdb_api,

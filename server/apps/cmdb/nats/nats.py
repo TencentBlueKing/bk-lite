@@ -1533,7 +1533,7 @@ def get_room_list(user_info=None, **kwargs):
 
 @nats_client.register
 def get_monitor_ids_by_inst_uuids(inst_uuids=None, user_info=None, **kwargs):
-    from apps.cmdb.constants.constants import NETWORK_TOPO_NODE_LIMIT
+    from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_MAX_NODES
     from apps.cmdb.services.instance_identity import normalize_inst_uuid
 
     raw = inst_uuids if inst_uuids is not None else kwargs.get("inst_uuids")
@@ -1553,11 +1553,11 @@ def get_monitor_ids_by_inst_uuids(inst_uuids=None, user_info=None, **kwargs):
         seen.add(normalized)
         unique.append(normalized)
 
-    if len(unique) > NETWORK_TOPO_NODE_LIMIT:
+    if len(unique) > NETWORK_STATUS_TOPOLOGY_MAX_NODES:
         return {
             "result": False,
             "data": {"items": []},
-            "message": f"inst_uuids 不能超过 {NETWORK_TOPO_NODE_LIMIT}",
+            "message": f"inst_uuids 不能超过 {NETWORK_STATUS_TOPOLOGY_MAX_NODES}",
         }
 
     if not unique:

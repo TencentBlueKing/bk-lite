@@ -43,6 +43,7 @@ from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, Mon
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
+from apps.monitor.services.interface_metrics_query import InterfaceMetricsQueryError, normalize_instance_ids, query_interface_metric_items
 from apps.monitor.services.metrics import Metrics
 from apps.monitor.services.network_device_resource_top import NetworkDeviceResourceTopService
 from apps.monitor.services.network_device_resource_top import validate_metric_type as validate_network_metric_type
@@ -1384,6 +1385,38 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
         },
         "message": "",
     }
+
+
+@nats_client.register
+def query_latest_interface_metrics(instance_ids=None, *args, **kwargs):
+    """Return latest IF-MIB values per instance_id + ifDescr for authorized instances."""
+    user_info = kwargs.get("user_info") or {}
+    try:
+        requested_ids = normalize_instance_ids(instance_ids)
+    except InterfaceMetricsQueryError as exc:
+        return {"result": False, "data": {"items": []}, "message": str(exc)}
+
+    if not requested_ids:
+        return {"result": True, "data": {"items": []}, "message": ""}
+
+    _, _, _, scope_ids, _, scope_error = _get_nats_actor_scope(user_info)
+    if scope_error:
+        return scope_error
+
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if error:
+        return error
+
+    allowed_ids = [item for item in requested_ids if item in authorized_instances]
+    if not allowed_ids:
+        return {"result": True, "data": {"items": []}, "message": ""}
+
+    try:
+        items = query_interface_metric_items(VictoriaMetricsAPI(), allowed_ids)
+    except Exception:
+        logger.exception("query_latest_interface_metrics failed")
+        return {"result": False, "data": {"items": []}, "message": "接口指标查询失败"}
+    return {"result": True, "data": {"items": items}, "message": ""}
 
 
 @nats_client.register

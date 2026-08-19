@@ -16,8 +16,7 @@ class SceneWidgetViewSet(ViewSet):
         data = serializer.validated_data
         result = NetworkStatusTopologyService.build(
             request=request,
-            model_id=data["model_id"],
-            inst_uuid=str(data["inst_uuid"]),
-            depth=data["depth"],
+            inst_uuids=[str(value) for value in data["inst_uuids"]],
+            node_limit=data["node_limit"],
         )
         return Response(result)

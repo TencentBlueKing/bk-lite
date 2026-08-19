@@ -16,6 +16,7 @@ const overlayState = vi.hoisted(() => ({
   dataSources: [
     { id: 31, rest_api: 'cmdb/get_monitor_ids_by_inst_uuids', is_build_in: true },
     { id: 32, rest_api: 'monitor/query_latest_active_alerts', is_build_in: true },
+    { id: 33, rest_api: 'monitor/query_latest_interface_metrics', is_build_in: true },
   ],
   shareMode: false,
 }));
@@ -80,13 +81,26 @@ vi.mock('@/app/cmdb/components/networkTopology', () => ({
     onNodeContextMenu,
     onNodeMouseEnter,
     onNodeMouseLeave,
+    onEdgeMouseEnter,
+    onEdgeMouseLeave,
   }: {
-    data: { nodes?: Array<{ id: string; status?: string }> };
+    data: {
+      nodes?: Array<{ id: string; status?: string }>;
+      links?: Array<{
+        id: string;
+        sourcePort?: string;
+        disconnected?: boolean;
+        connectStatus?: 'up' | 'down' | 'unknown';
+        sourceTrafficLines?: Array<string | { text?: string }>;
+      }>;
+    };
     toolbar?: { onRefresh?: () => void };
     onNodeClick?: (nodeId: string, event?: MouseEvent) => void;
     onNodeContextMenu?: (nodeId: string, event: MouseEvent) => void;
     onNodeMouseEnter?: (nodeId: string, event: MouseEvent) => void;
     onNodeMouseLeave?: (nodeId: string) => void;
+    onEdgeMouseEnter?: (edgeId: string, event: MouseEvent) => void;
+    onEdgeMouseLeave?: (edgeId: string) => void;
   }) => (
     <div data-testid="status-topo-canvas">
       {(data.nodes || []).map((node) => node.id).join(',')}
@@ -126,6 +140,31 @@ vi.mock('@/app/cmdb/components/networkTopology', () => ({
           {`badge-${node.id}`}
         </button>
       ))}
+      {(data.links || []).map((link) => (
+        <div key={link.id} data-testid={`status-topo-link-${link.id}`}>
+          <span data-testid={`status-topo-link-${link.id}-status`}>
+            {link.connectStatus || (link.disconnected ? 'down' : 'unknown')}
+          </span>
+          {link.disconnected ? (
+            <span data-testid={`status-topo-link-${link.id}-cross`}>X</span>
+          ) : null}
+          <span data-testid={`status-topo-link-${link.id}-source-traffic`}>
+            {(link.sourceTrafficLines || [])
+              .map((line) => (typeof line === 'string' ? line : line?.text || ''))
+              .join('|')}
+          </span>
+          <button
+            type="button"
+            className="status-topo-port-label"
+            data-port-end="source"
+            data-testid={`status-topo-port-${link.id}-source`}
+            onMouseEnter={(event) => onEdgeMouseEnter?.(link.id, event.nativeEvent)}
+            onMouseLeave={() => onEdgeMouseLeave?.(link.id)}
+          >
+            {link.sourcePort || 'port'}
+          </button>
+        </div>
+      ))}
       <button
         type="button"
         data-testid="status-topo-refresh"
@@ -135,9 +174,15 @@ vi.mock('@/app/cmdb/components/networkTopology', () => ({
       </button>
     </div>
   ),
-  layoutNetworkTopology: ({ nodes }: { nodes: Array<{ id: string }> }) => ({
+  layoutNetworkTopology: ({
+    nodes,
+    links,
+  }: {
+    nodes: Array<{ id: string }>;
+    links?: Array<{ id: string }>;
+  }) => ({
     nodes: nodes.map((node) => ({ ...node, x: 0, y: 0 })),
-    links: [],
+    links: links || [],
   }),
 }));
 
@@ -149,14 +194,23 @@ vi.mock('../statusTopologyGraph', () => ({
   isStatusTopologyIconHoverTarget: () => true,
   isStatusTopologyBadgeTarget: (event: MouseEvent) =>
     Boolean((event.target as HTMLElement | null)?.classList?.contains('status-topo-alert-badge')),
+  getStatusTopologyPortHoverEnd: (event: MouseEvent) => {
+    const el = event.target as HTMLElement | null;
+    if (!el?.classList?.contains('status-topo-port-label')) return null;
+    const end = el.getAttribute('data-port-end');
+    return end === 'source' || end === 'target' ? end : null;
+  },
   ensureStatusTopologyNodeRegistered: vi.fn(),
   buildStatusTopologyX6GraphData: ({
     nodes,
+    links,
   }: {
     nodes: Array<{ id: string }>;
+    links?: Array<{ id: string }>;
   }) => ({
     nodes,
     edges: [],
+    links: links || [],
   }),
 }));
 
@@ -180,9 +234,8 @@ beforeAll(() => {
 
 const widgetConfig = {
   networkStatusTopology: {
-    modelId: 'switch',
-    instUuid: '123e4567-e89b-42d3-a456-426614174000',
-    depth: 2,
+    instUuids: ['123e4567-e89b-42d3-a456-426614174000'],
+    nodeLimit: 100,
   },
 };
 
@@ -195,6 +248,7 @@ const successPayload = {
 const defaultOverlaySources = [
   { id: 31, rest_api: 'cmdb/get_monitor_ids_by_inst_uuids', is_build_in: true },
   { id: 32, rest_api: 'monitor/query_latest_active_alerts', is_build_in: true },
+  { id: 33, rest_api: 'monitor/query_latest_interface_metrics', is_build_in: true },
 ];
 
 const defaultGetSourceDataByApiId = (
@@ -213,6 +267,12 @@ const defaultGetSourceDataByApiId = (
           monitor_id: '',
         })),
       },
+      warnings: [],
+    });
+  }
+  if (id === 33) {
+    return Promise.resolve({
+      data: { items: [] },
       warnings: [],
     });
   }
@@ -235,6 +295,12 @@ const mockMonitoredCriticalOverlay = () => {
           data: {
             items: [{ inst_uuid: 'core-1', model_id: 'switch', monitor_id: 'mon-core' }],
           },
+          warnings: [],
+        });
+      }
+      if (id === 33) {
+        return Promise.resolve({
+          data: { items: [] },
           warnings: [],
         });
       }
@@ -310,6 +376,10 @@ describe('networkStatusTopology owner requests', () => {
     await waitFor(() => {
       expect(testState.getNetworkStatusTopology).toHaveBeenCalledTimes(1);
     });
+    expect(testState.getNetworkStatusTopology).toHaveBeenCalledWith({
+      inst_uuids: ['123e4567-e89b-42d3-a456-426614174000'],
+      node_limit: 100,
+    });
 
     rerender(
       <NetworkStatusTopology
@@ -369,23 +439,15 @@ describe('networkStatusTopology owner requests', () => {
   });
 
   it.each([
-    undefined,
-    '',
-    'undefined',
-    'legacy-id',
-    '123e4567-e89b-12d3-a456-426614174000',
-    '123E4567-E89B-42D3-A456-426614174000',
+    { instUuids: undefined, modelId: 'switch', instUuid: '123e4567-e89b-42d3-a456-426614174000', depth: 2 },
+    { instUuids: [] },
   ])(
-    'does not request topology for invalid instUuid %s',
-    async (instUuid) => {
+    'does not request topology when device list is missing',
+    async (topology) => {
       render(
         <NetworkStatusTopology
           config={{
-            networkStatusTopology: {
-              modelId: 'switch',
-              instUuid,
-              depth: 2,
-            },
+            networkStatusTopology: topology,
           }}
           refreshKey="0"
           refreshCause="initial"
@@ -773,6 +835,9 @@ describe('networkStatusTopology monitor overlay', () => {
     await waitFor(() => {
       expect(overlayParamsFor(32)).toEqual([{ instance_ids: ['mon-core'], limit: 1 }]);
     });
+    await waitFor(() => {
+      expect(overlayParamsFor(33)).toEqual([{ instance_ids: ['mon-core'] }]);
+    });
     expect(overlayState.getDataSourceBriefList).not.toHaveBeenCalled();
   });
 
@@ -1052,6 +1117,302 @@ describe('networkStatusTopology monitor overlay', () => {
     });
     expect(overlayState.getDataSourceBriefList).not.toHaveBeenCalled();
     expect(screen.getByTestId('status-topo-status-core-1').textContent).toBe('unknown');
+  });
+});
+
+describe('networkStatusTopology link runtime', () => {
+  const linkedPayload = {
+    center_id: 'core-1',
+    nodes: [
+      { id: 'core-1', model_id: 'switch', name: 'Core' },
+      { id: 'acc-1', model_id: 'switch', name: 'Acc' },
+    ],
+    links: [{
+      id: 'l1',
+      source: 'core-1',
+      target: 'acc-1',
+      source_port: 'Gi0/1',
+      target_port: 'Gi0/2',
+    }],
+  };
+
+  const quietSummaries = {
+    data: {
+      count: 0,
+      max_level: null,
+      items: [],
+      instance_summaries: [
+        { instance_id: 'mon-core', count: 0, max_level: null },
+        { instance_id: 'mon-acc', count: 0, max_level: null },
+      ],
+    },
+    warnings: [],
+  };
+
+  const mockLinkedOverlay = (options?: {
+    items?: Array<Record<string, unknown>>;
+    interfaceFail?: boolean;
+  }) => {
+    overlayState.getSourceDataByApiId.mockImplementation((id: number) => {
+      if (id === 31) {
+        return Promise.resolve({
+          data: {
+            items: [
+              { inst_uuid: 'core-1', model_id: 'switch', monitor_id: 'mon-core' },
+              { inst_uuid: 'acc-1', model_id: 'switch', monitor_id: 'mon-acc' },
+            ],
+          },
+          warnings: [],
+        });
+      }
+      if (id === 33) {
+        if (options?.interfaceFail) {
+          return Promise.reject(new Error('interface nats down'));
+        }
+        return Promise.resolve({
+          data: { items: options?.items || [] },
+          warnings: [],
+        });
+      }
+      return Promise.resolve(quietSummaries);
+    });
+  };
+
+  it('marks a down port with a cross and inbound traffic under the name', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(linkedPayload);
+    mockLinkedOverlay({
+      items: [
+        {
+          instance_id: 'mon-core',
+          ifDescr: 'GigabitEthernet0/1',
+          metrics: {
+            interface_ifOperStatus: 1,
+            interface_ifHCInOctets: 8,
+          },
+        },
+        {
+          instance_id: 'mon-acc',
+          ifDescr: 'GigabitEthernet0/2',
+          metrics: { interface_ifOperStatus: 2 },
+        },
+      ],
+    });
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-link-l1-cross')).toBeTruthy();
+    });
+    expect(screen.getByTestId('status-topo-link-l1-status').textContent).toBe('down');
+    expect(screen.getByTestId('status-topo-link-l1-source-traffic').textContent).toContain('↓');
+    expect(screen.getByTestId('status-topo-status-core-1').textContent).toBe('normal');
+  });
+
+  it('marks a fully up link without a cross', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(linkedPayload);
+    mockLinkedOverlay({
+      items: [
+        {
+          instance_id: 'mon-core',
+          ifDescr: 'GigabitEthernet0/1',
+          metrics: { interface_ifOperStatus: 1, interface_ifHCInOctets: 8 },
+        },
+        {
+          instance_id: 'mon-acc',
+          ifDescr: 'GigabitEthernet0/2',
+          metrics: { interface_ifOperStatus: 1, interface_ifHCOutOctets: 3 },
+        },
+      ],
+    });
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-link-l1-status').textContent).toBe('up');
+    });
+    expect(screen.queryByTestId('status-topo-link-l1-cross')).toBeNull();
+  });
+
+  it('does not invent traffic or a cross when the port name does not match', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(linkedPayload);
+    mockLinkedOverlay({
+      items: [{
+        instance_id: 'mon-core',
+        ifDescr: 'Eth1/1',
+        metrics: { interface_ifOperStatus: 2 },
+      }],
+    });
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-link-l1')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('status-topo-link-l1-cross')).toBeNull();
+    expect(screen.getByTestId('status-topo-link-l1-status').textContent).toBe('unknown');
+    expect(screen.getByTestId('status-topo-link-l1-source-traffic').textContent).toBe('');
+
+    fireEvent.mouseEnter(screen.getByTestId('status-topo-port-l1-source'));
+    const popover = await screen.findByTestId('status-topo-port-popover');
+    expect(popover.textContent).toContain('dashboard.networkTopoPortUnmatched');
+  });
+
+  it('hides always-on traffic when both checkboxes are cleared but still paints a down cross', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(linkedPayload);
+    mockLinkedOverlay({
+      items: [
+        {
+          instance_id: 'mon-core',
+          ifDescr: 'GigabitEthernet0/1',
+          metrics: { interface_ifOperStatus: 2, interface_ifHCInOctets: 8 },
+        },
+        {
+          instance_id: 'mon-acc',
+          ifDescr: 'GigabitEthernet0/2',
+          metrics: { interface_ifOperStatus: 1 },
+        },
+      ],
+    });
+
+    render(
+      <NetworkStatusTopology
+        config={{
+          networkStatusTopology: {
+            ...widgetConfig.networkStatusTopology,
+            linkTrafficDisplays: [],
+          },
+        }}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-link-l1-cross')).toBeTruthy();
+    });
+    expect(screen.getByTestId('status-topo-link-l1-source-traffic').textContent).toBe('');
+  });
+
+  it('keeps node overlay and retries only interface runtime when that query fails', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(linkedPayload);
+    mockLinkedOverlay({ interfaceFail: true });
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-interface-error')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('status-topo-overlay-error')).toBeNull();
+    expect(screen.getByTestId('status-topo-status-core-1').textContent).toBe('normal');
+    expect(screen.queryByTestId('status-topo-link-l1-cross')).toBeNull();
+
+    overlayState.getSourceDataByApiId.mockImplementation((id: number) => {
+      if (id === 31) {
+        return Promise.resolve({
+          data: {
+            items: [
+              { inst_uuid: 'core-1', model_id: 'switch', monitor_id: 'mon-core' },
+              { inst_uuid: 'acc-1', model_id: 'switch', monitor_id: 'mon-acc' },
+            ],
+          },
+          warnings: [],
+        });
+      }
+      if (id === 33) {
+        return Promise.resolve({ data: { items: [] }, warnings: [] });
+      }
+      return Promise.resolve(quietSummaries);
+    });
+
+    fireEvent.click(
+      within(screen.getByTestId('status-topo-interface-error')).getByRole('button'),
+    );
+    await waitFor(() => {
+      expect(overlayParamsFor(33).length).toBeGreaterThan(1);
+    });
+    expect(screen.getByTestId('status-topo-status-core-1').textContent).toBe('normal');
+  });
+
+  it('does not query interfaces when overlay mapping fails', async () => {
+    testState.getNetworkStatusTopology.mockResolvedValue(linkedPayload);
+    overlayState.getSourceDataByApiId.mockRejectedValue(new Error('overlay down'));
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status-topo-overlay-error')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('status-topo-interface-error')).toBeNull();
+    expect(overlayParamsFor(33)).toEqual([]);
+    expect(screen.getByTestId('status-topo-status-core-1').textContent).toBe('unknown');
+    expect(screen.queryByTestId('status-topo-link-l1-cross')).toBeNull();
+
+    fireEvent.mouseEnter(screen.getByTestId('status-topo-port-l1-source'));
+    const popover = await screen.findByTestId('status-topo-port-popover');
+    expect(popover.textContent).toContain('dashboard.networkTopoUnmonitored');
+  });
+
+  it('still loads interface runtime in share mode', async () => {
+    overlayState.shareMode = true;
+    testState.getNetworkStatusTopology.mockResolvedValue(linkedPayload);
+    mockLinkedOverlay({
+      items: [
+        {
+          instance_id: 'mon-core',
+          ifDescr: 'GigabitEthernet0/1',
+          metrics: { interface_ifOperStatus: 1, interface_ifHCInOctets: 8 },
+        },
+        {
+          instance_id: 'mon-acc',
+          ifDescr: 'GigabitEthernet0/2',
+          metrics: { interface_ifOperStatus: 1 },
+        },
+      ],
+    });
+
+    render(
+      <NetworkStatusTopology
+        config={widgetConfig}
+        refreshKey="0"
+        refreshCause="initial"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(overlayParamsFor(33)).toEqual([{ instance_ids: ['mon-core', 'mon-acc'] }]);
+    });
+    expect(screen.getByTestId('status-topo-link-l1-source-traffic').textContent).toContain('↓');
+    expect(overlayState.getDataSourceBriefList).not.toHaveBeenCalled();
   });
 });
 
