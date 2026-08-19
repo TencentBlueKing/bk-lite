@@ -554,7 +554,7 @@ export default function AllAssetsPanel({
   const displayName = selectedModel?.name || modelName || selectedModelId;
 
   return (
-    <div className={styles.allPanel}>
+    <div className={`${styles.allPanel} ${inWorkbench ? styles.workbenchPanel : ''}`}>
       {catalogStatus === 'ready' && inWorkbench && selectedClassification && (
         <div className={styles.listChrome}>
           {classificationModels.length > 0 ? (

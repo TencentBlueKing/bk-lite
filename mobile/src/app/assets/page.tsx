@@ -323,7 +323,7 @@ function AssetsPageContent() {
             onWorkbenchMetaChange={setAllTabMeta}
           />
         ) : (
-          <div className={styles.allPanel}>
+          <div className={`${styles.allPanel} ${styles.followedPanel}`}>
             <div
               className={styles.scroll}
               ref={scrollRef}
