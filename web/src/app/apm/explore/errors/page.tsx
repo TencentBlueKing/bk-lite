@@ -3,11 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Alert, Button, Select, Space, Tag, Typography } from 'antd';
-import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
-import { formatLatency, formatRelativeTime } from '@/app/apm/components/metric-format';
+import { formatDateTime, formatLatency, formatRelativeTime } from '@/app/apm/components/metric-format';
 import type { ApmIssue, ApmService } from '@/app/apm/types';
 import FilterToolbar from '@/components/filter-toolbar';
 import { useTranslation } from '@/utils/i18n';
@@ -66,7 +65,7 @@ function IssueDetails({ issue }: { issue: ApmIssue }) {
               >
                 <span className="font-mono text-xs">{sample.endpoint}</span>
                 <span className="text-xs text-[var(--color-text-3)]">
-                  {formatLatency(sample.duration_ms)} · {dayjs(sample.started_at).format('YYYY-MM-DD HH:mm:ss')}
+                  {formatLatency(sample.duration_ms, false, t)} · {formatDateTime(sample.started_at)}
                 </span>
               </Link>
             ))}
@@ -134,7 +133,7 @@ export default function ApmErrorsPage() {
                       <Space wrap>
                         <Tag color="error">{t('apm.errors.occurrences', '{count} 次', { count: issue.occurrences })}</Tag>
                         <Tag>{t('apm.errors.affectedTraces', '{count} 条 Trace', { count: issue.affected_traces })}</Tag>
-                        <Typography.Text type="secondary" className="!text-xs">{formatRelativeTime(issue.last_seen_at)}</Typography.Text>
+                        <Typography.Text type="secondary" className="!text-xs">{formatRelativeTime(issue.last_seen_at, t)}</Typography.Text>
                       </Space>
                     </div>
                     <IssueDetails issue={issue} />
