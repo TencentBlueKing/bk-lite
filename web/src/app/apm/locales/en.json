@@ -185,6 +185,8 @@
       "aggregateAnalysis": "Aggregation analysis",
       "unnamed": "(Unnamed)",
       "unsetParen": "(Unset)",
+      "entryService": "Entry service",
+      "traceId": "Trace ID",
       "entryTrace": "Entry service / Trace ID",
       "resource": "Resource",
       "totalDuration": "Total duration",
@@ -498,6 +500,7 @@
       "description": "Define service reliability objectives and track attainment rate and error budget.",
       "empty": "No SLOs yet. Create an objective to start tracking service reliability.",
       "refresh": "Refresh SLO",
+      "searchPlaceholder": "Search name / service / endpoint",
       "edit": "Edit SLO",
       "create": "Create SLO",
       "updated": "SLO updated",
@@ -583,6 +586,7 @@
       "dependency": "Dependencies",
       "observedTraces": "Observed Traces",
       "anomalyOnly": "Anomalies only",
+      "healthLegend": "Node health legend",
       "legendHint": "Observed data is a bounded query result within the time window. Click a node to open service details."
     },
     "instances": {

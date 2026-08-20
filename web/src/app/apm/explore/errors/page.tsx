@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Alert, Button, Card, Collapse, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Select, Space, Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -17,7 +17,64 @@ type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d';
 const RANGE_MS: Record<TimeRange, number> = { '15m': 900000, '1h': 3600000, '4h': 14400000, '1d': 86400000, '7d': 604800000 };
 
 function Distribution({ items }: { items: ApmIssue['version_distribution'] }) {
-  return <Space wrap size={[6, 6]}>{items.map((item) => <Tag key={item.value} bordered={false}>{item.value} · {item.count} ({item.percent}%)</Tag>)}</Space>;
+  if (!items.length) return <span className="text-xs text-[var(--color-text-3)]">—</span>;
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--color-text-2)]">
+      {items.map((item) => (
+        <span key={item.value}>
+          <span className="font-mono">{item.value}</span>
+          <span className="text-[var(--color-text-3)]"> · {item.count} ({item.percent}%)</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function IssueDetails({ issue }: { issue: ApmIssue }) {
+  const { t } = useTranslation();
+  return (
+    <details>
+      <summary className="cursor-pointer select-none text-sm text-[var(--color-text-2)] hover:text-[var(--color-text-1)]">
+        {t('apm.errors.issueDetails', '完整堆栈与分布')}
+      </summary>
+      <div className="mt-3 flex flex-col gap-4">
+        {issue.stacktrace ? (
+          <pre className="m-0 max-h-80 overflow-auto whitespace-pre-wrap font-mono text-xs leading-5 text-[var(--color-text-2)]">
+            {issue.stacktrace}
+          </pre>
+        ) : (
+          <p className="m-0 text-xs text-[var(--color-text-3)]">{t('apm.errors.noStacktrace', '遥测中未携带异常堆栈')}</p>
+        )}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <div className="text-xs text-[var(--color-text-3)]">{t('apm.errors.versionDistribution', '版本分布')}</div>
+            <Distribution items={issue.version_distribution} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <div className="text-xs text-[var(--color-text-3)]">{t('apm.errors.endpointDistribution', '端点分布')}</div>
+            <Distribution items={issue.endpoint_distribution} />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <div className="text-xs text-[var(--color-text-3)]">{t('apm.errors.sampleTraces', '样本调用链')}</div>
+          <div className="flex flex-col gap-1">
+            {issue.sample_traces.map((sample) => (
+              <Link
+                key={`${sample.trace_id}:${sample.span_id}`}
+                href={`/apm/explore/traces/${sample.trace_id}`}
+                className="flex flex-wrap items-center justify-between gap-2 text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+              >
+                <span className="font-mono text-xs">{sample.endpoint}</span>
+                <span className="text-xs text-[var(--color-text-3)]">
+                  {formatLatency(sample.duration_ms)} · {dayjs(sample.started_at).format('YYYY-MM-DD HH:mm:ss')}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+    </details>
+  );
 }
 
 export default function ApmErrorsPage() {
@@ -55,36 +112,43 @@ export default function ApmErrorsPage() {
   return (
     <ApmRouteShell title={t('apm.errors.title', '错误分析')} description={t('apm.errors.description', '按真实异常语义聚类 Error Span，并下钻版本、端点和样本 Trace。')}>
       <ApmSurface>
-        <FilterToolbar align="start" spacing="flush" className="mb-4">
-          <Select className="w-52" allowClear showSearch optionFilterProp="label" placeholder={t('apm.errors.allServices', '全部服务')} value={serviceId} options={services.map((service) => ({ value: service.id, label: `${service.namespace} / ${service.name}` }))} onChange={setServiceId} />
-          <Select className="w-44" allowClear showSearch placeholder={t('apm.errors.allEnvironments', '全部环境')} value={environment} options={environments.map((value) => ({ value, label: value || t('apm.common.unset', '未设置') }))} onChange={setEnvironment} />
-          <Select<TimeRange> className="w-28" value={timeRange} options={(Object.keys(RANGE_MS) as TimeRange[]).map((value) => ({ value, label: value }))} onChange={setTimeRange} />
-        </FilterToolbar>
-        {truncated ? <Alert className="mb-4" showIcon type="info" message={t('apm.errors.boundedHint', '结果按时间窗和游标有界展示，可继续加载更早样本。')} /> : null}
-        {state === 'ready' ? (
-          <div className="flex flex-col gap-4">
-            {!items.length ? <CatalogState kind="empty" description={t('apm.errors.emptyPage', '当前游标页没有可见 Issue，可继续加载更早样本。')} /> : null}
-            {items.map((issue) => (
-              <Card key={issue.fingerprint} size="small">
-                <div className="flex flex-col gap-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0"><Typography.Text strong className="block !text-base">{issue.exception_type}</Typography.Text><Typography.Paragraph className="!mb-0 break-words !text-sm">{issue.message}</Typography.Paragraph><Typography.Text type="secondary" className="!text-xs">{issue.service_namespace} / {issue.service_name} · {issue.environment || t('apm.common.unset', '未设置')}</Typography.Text></div>
-                    <Space wrap><Tag color="error">{t('apm.errors.occurrences', '{count} 次', { count: issue.occurrences })}</Tag><Tag>{t('apm.errors.affectedTraces', '{count} 条 Trace', { count: issue.affected_traces })}</Tag><Typography.Text type="secondary" className="!text-xs">{formatRelativeTime(issue.last_seen_at)}</Typography.Text></Space>
-                  </div>
-                  <Collapse size="small" items={[{ key: 'details', label: t('apm.errors.issueDetails', '完整堆栈与分布'), children: (
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <div className="lg:col-span-2"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.errors.stacktrace', '完整堆栈')}</Typography.Text><pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded bg-[var(--color-code-block-bg)] p-3 font-mono text-xs">{issue.stacktrace || t('apm.errors.noStacktrace', '遥测中未携带异常堆栈')}</pre></div>
-                      <div><Typography.Text strong>{t('apm.errors.versionDistribution', '版本分布')}</Typography.Text><div className="mt-2"><Distribution items={issue.version_distribution} /></div></div>
-                      <div><Typography.Text strong>{t('apm.errors.endpointDistribution', '端点分布')}</Typography.Text><div className="mt-2"><Distribution items={issue.endpoint_distribution} /></div></div>
-                      <div className="lg:col-span-2"><Typography.Text strong>{t('apm.errors.sampleTraces', '样本调用链')}</Typography.Text><div className="mt-2 flex flex-col gap-2">{issue.sample_traces.map((sample) => <Link key={`${sample.trace_id}:${sample.span_id}`} href={`/apm/explore/traces/${sample.trace_id}`} className="flex flex-wrap items-center justify-between gap-2 rounded border border-[var(--color-border-1)] px-3 py-2"><span className="font-mono text-xs">{sample.endpoint}</span><span className="text-xs text-[var(--color-text-3)]">{formatLatency(sample.duration_ms)} · {dayjs(sample.started_at).format('YYYY-MM-DD HH:mm:ss')}</span></Link>)}</div></div>
+        <div className="flex flex-col gap-4">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+            <Select className="w-52" allowClear showSearch optionFilterProp="label" placeholder={t('apm.errors.allServices', '全部服务')} value={serviceId} options={services.map((service) => ({ value: service.id, label: `${service.namespace} / ${service.name}` }))} onChange={setServiceId} />
+            <Select className="w-44" allowClear showSearch placeholder={t('apm.errors.allEnvironments', '全部环境')} value={environment} options={environments.map((value) => ({ value, label: value || t('apm.common.unset', '未设置') }))} onChange={setEnvironment} />
+            <Select<TimeRange> className="w-28" value={timeRange} options={(Object.keys(RANGE_MS) as TimeRange[]).map((value) => ({ value, label: value }))} onChange={setTimeRange} />
+          </FilterToolbar>
+          {truncated ? <Alert showIcon type="info" message={t('apm.errors.boundedHint', '结果按时间窗和游标有界展示，可继续加载更早样本。')} /> : null}
+          {state === 'ready' ? (
+            <div className="flex flex-col gap-4">
+              {!items.length ? <CatalogState kind="empty" description={t('apm.errors.emptyPage', '当前游标页没有可见 Issue，可继续加载更早样本。')} /> : null}
+              <div className="divide-y divide-[var(--color-border)]">
+                {items.map((issue) => (
+                  <article key={issue.fingerprint} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <Typography.Text strong className="block !text-base">{issue.exception_type}</Typography.Text>
+                        <Typography.Paragraph className="!mb-0 break-words !text-sm">{issue.message}</Typography.Paragraph>
+                        <Typography.Text type="secondary" className="!text-xs">{issue.service_namespace} / {issue.service_name} · {issue.environment || t('apm.common.unset', '未设置')}</Typography.Text>
+                      </div>
+                      <Space wrap>
+                        <Tag color="error">{t('apm.errors.occurrences', '{count} 次', { count: issue.occurrences })}</Tag>
+                        <Tag>{t('apm.errors.affectedTraces', '{count} 条 Trace', { count: issue.affected_traces })}</Tag>
+                        <Typography.Text type="secondary" className="!text-xs">{formatRelativeTime(issue.last_seen_at)}</Typography.Text>
+                      </Space>
                     </div>
-                  ) }]} />
-                </div>
-              </Card>
-            ))}
-            {nextCursor ? <Button loading={loadingMore} onClick={() => load(nextCursor)}>{t('apm.common.loadMore', '加载更多')}</Button> : null}
-          </div>
-        ) : state === 'empty' ? <CatalogState kind="empty" description={t('apm.errors.empty', '当前权限和时间窗内没有错误 Issue。')} /> : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => load()} />}
+                    <IssueDetails issue={issue} />
+                  </article>
+                ))}
+              </div>
+              {nextCursor ? <Button loading={loadingMore} onClick={() => load(nextCursor)}>{t('apm.common.loadMore', '加载更多')}</Button> : null}
+            </div>
+          ) : state === 'empty' ? (
+            <CatalogState kind="empty" description={t('apm.errors.empty', '当前权限和时间窗内没有错误 Issue。')} />
+          ) : (
+            <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => load()} />
+          )}
+        </div>
       </ApmSurface>
     </ApmRouteShell>
   );

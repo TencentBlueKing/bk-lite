@@ -307,21 +307,26 @@ export default function ApmServiceDetailPage() {
 
   const traceColumns: TableColumnsType<ApmTraceSummary> = [
     {
-      title: t('apm.explore.entryTrace', '入口服务 / Trace ID'),
-      key: 'identity',
+      title: t('apm.explore.entryService', '入口服务'),
+      key: 'service',
       render: (_, item) => (
-        <Space direction="vertical" size={2}>
-          <Space size={6}>
-            <HealthDot level={item.status === 'error' ? 1 : 5} />
-            <span className="text-sm font-medium">{item.service_name}</span>
-          </Space>
-          <Link
-            href={`/apm/explore/traces/${item.trace_id}`}
-            className="font-mono text-xs text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
-          >
-            {item.trace_id}
-          </Link>
-        </Space>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <HealthDot level={item.status === 'error' ? 1 : 5} />
+          <span className="truncate text-sm font-medium">{item.service_name}</span>
+        </span>
+      ),
+    },
+    {
+      title: t('apm.explore.traceId', 'Trace ID'),
+      dataIndex: 'trace_id',
+      width: APM_TABLE_COLUMN_WIDTHS.traceId,
+      render: (value: string) => (
+        <Link
+          href={`/apm/explore/traces/${value}`}
+          className="block truncate font-mono text-xs text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
+        >
+          {value}
+        </Link>
       ),
     },
     {

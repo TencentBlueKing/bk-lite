@@ -101,7 +101,7 @@ describe('APM 接入实例目录', () => {
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
 
-    expect(columnWidths).toEqual(['', '', '', '112px', '112px', '168px', '168px', '96px', '160px', '88px']);
+    expect(columnWidths).toEqual(['', '', '', '112px', '112px', '168px', '168px', '96px', '160px', '96px']);
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
       '实例 ID',
       '服务',

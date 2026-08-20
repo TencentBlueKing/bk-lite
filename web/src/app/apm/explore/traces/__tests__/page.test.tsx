@@ -83,6 +83,21 @@ beforeEach(() => {
   });
 });
 
+function spanItem(overrides: Record<string, unknown>) {
+  return {
+    trace_id: 'trace-1',
+    started_at: '2026-08-06T02:00:00Z',
+    duration_ms: 20,
+    service_namespace: 'shop',
+    environment: 'local',
+    instance_id: 'pod-a',
+    status: 'ok',
+    http_method: 'GET',
+    http_status_code: '200',
+    ...overrides,
+  };
+}
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -93,6 +108,9 @@ describe('APM 调用链探索', () => {
     renderWithApmIntl(<ApmTracesPage />);
 
     expect((await screen.findAllByText('POST /pay')).length).toBeGreaterThan(0);
+    expect(screen.getByRole('columnheader', { name: '入口服务' })).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Trace ID' })).not.toBeNull();
+    expect(screen.queryByRole('columnheader', { name: '入口服务 / Trace ID' })).toBeNull();
     expect(screen.getByText('快速筛选')).not.toBeNull();
     expect(screen.getByText('耗时分布')).not.toBeNull();
     expect(screen.getByText(/traces\/s/)).not.toBeNull();
@@ -122,5 +140,101 @@ describe('APM 调用链探索', () => {
       limit: 50,
     })));
     expect(screen.getByText('快速筛选')).not.toBeNull();
+  });
+
+  it('明细列表分页展示，避免一次铺开全部命中', async () => {
+    search = '';
+    api.getSpans.mockResolvedValue({
+      items: Array.from({ length: 25 }, (_, index) => ({
+        trace_id: `trace-${index}`,
+        span_id: `span-${index}`,
+        started_at: '2026-08-06T02:00:00Z',
+        duration_ms: 20 + index,
+        service_namespace: 'shop',
+        service_name: 'checkout',
+        environment: 'prod',
+        instance_id: 'pod-a',
+        status: 'ok' as const,
+        name: `SPAN ${index}`,
+        kind: 'server',
+        http_method: 'POST',
+        http_status_code: '200',
+      })),
+      next_cursor: 'cursor-2',
+    });
+
+    renderWithApmIntl(<ApmTracesPage />);
+
+    expect(await screen.findByText('SPAN 0')).not.toBeNull();
+    expect(screen.getByText('SPAN 19')).not.toBeNull();
+    expect(screen.queryByText('SPAN 20')).toBeNull();
+    expect(screen.getByText('共 25 条')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '加载更多' })).toBeNull();
+  });
+
+  it('点击空的耗时输入框不会立刻查询', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithApmIntl(<ApmTracesPage />);
+    await screen.findAllByText('POST /pay');
+    const callsAfterReady = api.getTraces.mock.calls.length;
+
+    await user.click(screen.getByPlaceholderText('max'));
+    await user.click(screen.getByPlaceholderText('min'));
+
+    expect(api.getTraces.mock.calls.length).toBe(callsAfterReady);
+  });
+
+  it('耗时筛选在输入数值并确认后才收窄当前命中', async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithApmIntl(<ApmTracesPage />);
+    await screen.findAllByText('POST /pay');
+    const callsAfterReady = api.getTraces.mock.calls.length;
+
+    const max = screen.getByPlaceholderText('max');
+    await user.click(max);
+    await user.keyboard('200');
+    expect(screen.getByText(/命中 2 条/)).not.toBeNull();
+
+    await user.keyboard('{Enter}');
+    expect(await screen.findByText(/命中 1 条/)).not.toBeNull();
+    expect(screen.getAllByText('POST /pay')).toHaveLength(1);
+    expect(api.getTraces.mock.calls.length).toBe(callsAfterReady);
+    expect(api.getTraces).not.toHaveBeenCalledWith(expect.objectContaining({
+      max_duration_ms: 200,
+    }));
+  });
+
+  it('快速筛选按当前命中收窄，不会重新填满查询窗口', async () => {
+    search = '';
+    api.getSpans.mockResolvedValue({
+      items: [
+        spanItem({ span_id: 's1', service_name: 'demo-storefront', name: 'GET /products', kind: 'server' }),
+        spanItem({ span_id: 's2', service_name: 'demo-storefront', name: 'GET /products', kind: 'SERVER' }),
+        spanItem({ span_id: 's3', service_name: 'demo-storefront', name: 'GET /products', kind: 'server' }),
+        spanItem({ span_id: 's4', service_name: 'demo-catalog', name: 'GET /stock', kind: 'client' }),
+        spanItem({ span_id: 's5', service_name: 'demo-catalog', name: 'GET /stock', kind: 'client' }),
+        spanItem({ span_id: 's6', service_name: 'demo-inventory', name: 'SELECT featured', kind: 'internal', status: 'error' }),
+      ],
+      next_cursor: null,
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderWithApmIntl(<ApmTracesPage />);
+
+    expect(await screen.findByText(/命中 6 条/)).not.toBeNull();
+    const callsAfterReady = api.getSpans.mock.calls.length;
+
+    await user.click(screen.getByRole('checkbox', { name: /client/i }));
+    expect(await screen.findByText(/命中 2 条/)).not.toBeNull();
+    expect(screen.getAllByText('GET /stock')).toHaveLength(2);
+    expect(screen.queryByText('GET /products')).toBeNull();
+    expect(api.getSpans.mock.calls.length).toBe(callsAfterReady);
+
+    await user.click(screen.getByRole('checkbox', { name: /client/i }));
+    expect(await screen.findByText(/命中 6 条/)).not.toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /demo-storefront/ }));
+    expect(await screen.findByText(/命中 3 条/)).not.toBeNull();
+    expect(screen.queryByText('GET /stock')).toBeNull();
+    expect(api.getSpans.mock.calls.length).toBe(callsAfterReady);
   });
 });
