@@ -20,6 +20,7 @@ const translations: Record<string, string> = {
   'node-manager.cloudregion.node.installerSuggestionFileBusy': 'localized file-busy guidance',
   'node-manager.cloudregion.node.installerSuggestionClockSkew': 'localized clock-skew guidance',
   'node-manager.cloudregion.node.installerStepClockCheck': 'Check node clock',
+  'node-manager.cloudregion.node.installerStepStopService': 'Stop controller service',
   'node-manager.cloudregion.node.installerSuggestionExtract': 'localized extract fallback',
   'node-manager.cloudregion.node.installerSummaryNoEvents': 'installer details missing',
   'node-manager.cloudregion.node.installerSummaryNoReportConnectivityTimeout': 'installer no report timeout guidance',
@@ -135,6 +136,7 @@ assert.deepEqual(clockSkewGuidance.context, [
   'Maximum Clock Skew: 300'
 ]);
 assert.equal(getInstallerStepLabel(t, 'clock_check'), 'Check node clock');
+assert.equal(getInstallerStepLabel(t, 'stop_service'), 'Stop controller service');
 
 const fallbackResult = normalizeInstallerResult({
   steps: [
