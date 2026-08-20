@@ -77,3 +77,19 @@ field. Generic names such as `kube-state-metrics`, `vmagent-role` or
 - **WHEN** a BK-Lite ClusterRoleBinding is rendered
 - **THEN** its `roleRef` resolves to a ClusterRole declared in the same manifest
 - **THEN** every subject is a ServiceAccount in a `bk-lite-` prefixed namespace
+
+### Requirement: Collector workloads tolerate control-plane NoSchedule
+DaemonSets and Deployments in `bk-lite-metric-collector.yaml`,
+`bk-lite-resource-collector.yaml`, `bk-lite-log-collector.yaml`, the dist
+copies, and the K3S metric manifest SHALL include a toleration
+`{operator: Exists, effect: NoSchedule}`. Control-plane nodes (and single-node
+clusters) default to `node-role.kubernetes.io/control-plane:NoSchedule`;
+without this toleration the collectors stay Pending and metrics or logs for
+those nodes are empty.
+
+#### Scenario: Apply onto a tainted control-plane node
+- **WHEN** the collector is applied to a cluster whose schedulable node has
+  `node-role.kubernetes.io/control-plane:NoSchedule`
+- **THEN** cadvisor, telegraf-daemonset, kube-state-metrics, vmagent,
+  telegraf-deployment, telegraf-resource and vector-daemonset are not left
+  Pending due to an untolerated taint

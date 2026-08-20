@@ -83,6 +83,10 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux
       serviceAccountName: kube-state-metrics
+      # 控制平面默认 NoSchedule；单节点集群否则采集 Pod 全部 Pending
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -283,6 +287,10 @@ spec:
         prometheus.io/path: '/metrics'
     spec:
       serviceAccountName: cadvisor
+      # 控制平面默认 NoSchedule；不上这台节点则该节点 cadvisor 指标为空
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
       containers:
       - name: cadvisor
         image: __IMAGE_REGISTRY_PREFIX__/cadvisor:0.56.2
@@ -356,6 +364,10 @@ spec:
       labels:
         app: telegraf-daemonset
     spec:
+      # 控制平面默认 NoSchedule；不上这台节点则该节点主机指标为空
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
       containers:
         - name: telegraf
           image: __IMAGE_REGISTRY_PREFIX__/telegraf:1.29.5
@@ -408,6 +420,10 @@ spec:
       labels:
         app: telegraf
     spec:
+      # 控制平面默认 NoSchedule；单节点集群否则 remote_write 接收端 Pending
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
       containers:
         - name: telegraf
           image: __IMAGE_REGISTRY_PREFIX__/telegraf:1.29.5
@@ -463,6 +479,10 @@ spec:
         app: vmagent
     spec:
       serviceAccountName: vmagent
+      # 控制平面默认 NoSchedule；单节点集群否则 vmagent Pending
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
       containers:
         - name: vmagent
           image: __IMAGE_REGISTRY_PREFIX__/vmagent
