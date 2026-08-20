@@ -26,7 +26,7 @@ def test_provider_manifest_public_dict_includes_connection_template():
                     "key": "user_sync",
                     "name": "User Sync",
                     "adapter_key": "demo.user_sync",
-                    "adapter_path": "apps.system_mgmt.providers.adapters.base.BaseUserSyncAdapter",
+                    "adapter_path": "apps.system_mgmt.providers.base.BaseUserSyncAdapter",
                     "connection_template": [
                         {"key": "user_sync_api_url", "label": "User Sync API URL", "required": True},
                     ],
@@ -97,7 +97,7 @@ def test_provider_manifest_rejects_duplicate_connection_field_keys():
                         "key": "user_sync",
                         "name": "User Sync",
                         "adapter_key": "demo.user_sync",
-                        "adapter_path": "apps.system_mgmt.providers.adapters.base.BaseUserSyncAdapter",
+                        "adapter_path": "apps.system_mgmt.providers.base.BaseUserSyncAdapter",
                         "connection_template": [
                             {"key": "shared_url", "label": "User Sync URL"},
                         ],
@@ -131,7 +131,7 @@ def test_provider_manifest_public_dict_includes_business_templates():
                     "key": "user_sync",
                     "name": "User Sync",
                     "adapter_key": "demo.user_sync",
-                    "adapter_path": "apps.system_mgmt.providers.adapters.base.BaseUserSyncAdapter",
+                    "adapter_path": "apps.system_mgmt.providers.base.BaseUserSyncAdapter",
                     "business_template": "user_sync_form",
                 }
             ],
@@ -155,7 +155,7 @@ def test_provider_manifest_rejects_dangling_business_template():
                         "key": "user_sync",
                         "name": "User Sync",
                         "adapter_key": "demo.user_sync",
-                        "adapter_path": "apps.system_mgmt.providers.adapters.base.BaseUserSyncAdapter",
+                        "adapter_path": "apps.system_mgmt.providers.base.BaseUserSyncAdapter",
                         "business_template": "nonexistent_key",
                     }
                 ],
@@ -221,7 +221,7 @@ def test_template_field_manifest_supports_input_mode():
                     "key": "user_sync",
                     "name": "User Sync",
                     "adapter_key": "demo.user_sync",
-                    "adapter_path": "apps.system_mgmt.providers.adapters.base.BaseUserSyncAdapter",
+                    "adapter_path": "apps.system_mgmt.providers.base.BaseUserSyncAdapter",
                     "business_template": "user_sync_form",
                 }
             ],
@@ -234,14 +234,14 @@ def test_template_field_manifest_supports_input_mode():
 
 
 def test_ad_manifest_declares_login_auth_and_user_sync():
-    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+    from apps.system_mgmt.providers.builtin.ad import PROVIDER_MANIFEST
 
     assert PROVIDER_MANIFEST.key == "ad"
     assert [cap.key for cap in PROVIDER_MANIFEST.capabilities] == ["login_auth", "user_sync"]
 
 
 def test_ad_user_sync_root_dn_is_manual_input():
-    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+    from apps.system_mgmt.providers.builtin.ad import PROVIDER_MANIFEST
 
     template = PROVIDER_MANIFEST.business_templates["user_sync_form"]
     root_field = next(field for group in template.groups for field in group.fields if field.key == "root_dn")
@@ -250,7 +250,7 @@ def test_ad_user_sync_root_dn_is_manual_input():
 
 
 def test_ad_user_sync_manifest_exposes_directory_query_parameters():
-    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+    from apps.system_mgmt.providers.builtin.ad import PROVIDER_MANIFEST
 
     template = PROVIDER_MANIFEST.business_templates["user_sync_form"]
     field_map = {field.key: field for group in template.groups for field in group.fields}
@@ -263,7 +263,7 @@ def test_ad_user_sync_manifest_exposes_directory_query_parameters():
 
 
 def test_feishu_user_sync_manifest_does_not_expose_fetch_child_toggle():
-    from apps.system_mgmt.providers.manifests.feishu import PROVIDER_MANIFEST
+    from apps.system_mgmt.providers.builtin.feishu import PROVIDER_MANIFEST
 
     template = PROVIDER_MANIFEST.business_templates["user_sync_form"]
     field_keys = [field.key for group in template.groups for field in group.fields]
@@ -278,7 +278,7 @@ def test_capability_contract_only_validates_root_dn_for_ad_user_sync():
     not raise when the source carries only {"root_dn": "OU=A,DC=x,DC=y"}.
     The root_dn non-empty rule must remain in force (asserted separately).
     """
-    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+    from apps.system_mgmt.providers.builtin.ad import PROVIDER_MANIFEST
     from apps.system_mgmt.services.capability_contract_service import (
         validate_user_sync_contract,
     )
@@ -298,7 +298,7 @@ def test_capability_contract_only_validates_root_dn_for_ad_user_sync():
 
 
 def test_ad_user_sync_contract_allows_custom_ldap_attribute_mapping():
-    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+    from apps.system_mgmt.providers.builtin.ad import PROVIDER_MANIFEST
     from apps.system_mgmt.services.capability_contract_service import (
         validate_user_sync_contract,
     )
@@ -312,7 +312,7 @@ def test_ad_user_sync_contract_allows_custom_ldap_attribute_mapping():
 
 
 def test_user_sync_contract_does_not_treat_available_fields_as_a_field_existence_check():
-    from apps.system_mgmt.providers.manifests.feishu import PROVIDER_MANIFEST
+    from apps.system_mgmt.providers.builtin.feishu import PROVIDER_MANIFEST
     from apps.system_mgmt.services.capability_contract_service import (
         validate_user_sync_contract,
     )
@@ -334,7 +334,7 @@ def test_capability_contract_still_rejects_empty_root_dn_for_ad_user_sync():
     serializer. We keep this assertion as documentation that the rule
     continues to exist at the serializer layer and we are not deleting it.
     """
-    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+    from apps.system_mgmt.providers.builtin.ad import PROVIDER_MANIFEST
 
     template = PROVIDER_MANIFEST.business_templates["user_sync_form"]
     root_field = next(
@@ -350,7 +350,7 @@ def test_ad_login_auth_connection_template_includes_base_dn_required():
     base_dn 是 LDAP search 操作必需的 search_base（RFC 4511 §4.5.1.2），
     不是应用层冗余字段。本测试保证未来不再被一并删除。
     """
-    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+    from apps.system_mgmt.providers.builtin.ad import PROVIDER_MANIFEST
 
     login_auth_capability = next(
         capability for capability in PROVIDER_MANIFEST.capabilities if capability.key == "login_auth"

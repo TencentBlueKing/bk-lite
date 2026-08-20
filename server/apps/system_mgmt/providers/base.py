@@ -1,6 +1,6 @@
-from apps.core.logger import logger
+from apps.system_mgmt.providers.log import logger
 
-from ..runtime import CapabilityExecutionResult
+from .runtime import CapabilityExecutionResult
 
 
 class BaseCapabilityAdapter:

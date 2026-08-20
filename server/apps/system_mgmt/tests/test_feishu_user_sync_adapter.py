@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from apps.system_mgmt.providers.adapters.feishu import FeishuUserSyncAdapter
+from apps.system_mgmt.providers.builtin.feishu.adapters.user_sync import FeishuUserSyncAdapter
 
 
 class _FeishuResponse:
@@ -59,9 +59,9 @@ def test_list_departments_builds_visible_forest_from_paginated_scopes():
         raise AssertionError(url)
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.list_departments(
             {},
             "feishu",
@@ -109,10 +109,10 @@ def test_list_departments_builds_visible_forest_from_paginated_scopes():
 
 def test_list_departments_returns_empty_list_for_empty_scopes():
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get",
         return_value=_FeishuResponse(data={"department_ids": [], "has_more": False}, request_id="scope-empty"),
     ) as get:
         result = FeishuUserSyncAdapter.list_departments({}, "feishu", "user_sync")
@@ -126,13 +126,13 @@ def test_list_departments_returns_empty_list_for_empty_scopes():
 
 def test_list_departments_exposes_stage_timings_for_department_options():
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get",
         return_value=_FeishuResponse(data={"department_ids": [], "has_more": False}),
     ), patch(
-        "apps.system_mgmt.providers.adapters.feishu.time.perf_counter",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.time.perf_counter",
         side_effect=[
             100.0,
             100.1,
@@ -181,9 +181,9 @@ def test_list_departments_fetches_authorized_root_children_concurrently():
         raise AssertionError(url)
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.list_departments({}, "feishu", "user_sync")
 
     assert result.success is True
@@ -204,9 +204,9 @@ def test_list_departments_ignores_synthetic_scope_roots():
         raise AssertionError(url)
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.list_departments({}, "feishu", "user_sync")
 
     assert result.success is True
@@ -233,9 +233,9 @@ def test_list_departments_breaks_parent_cycles_without_losing_nodes():
         raise AssertionError(url)
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.list_departments({}, "feishu", "user_sync")
 
     assert result.success is True
@@ -270,9 +270,9 @@ def test_list_departments_breaks_only_cycle_entry_edge_for_chain_entering_cycle(
         raise AssertionError(url)
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.list_departments({}, "feishu", "user_sync")
 
     assert result.success is True
@@ -295,8 +295,8 @@ def test_sync_users_rejects_invalid_inherited_root_before_contact_request(root_d
     source = SimpleNamespace(name="飞书测试", business_config={"root_department_id": root_department_id})
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
-    ) as fetch_token, patch("apps.system_mgmt.providers.adapters.feishu.requests.get") as get:
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
+    ) as fetch_token, patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get") as get:
         result = FeishuUserSyncAdapter.sync_users({}, "feishu", "user_sync", source=source)
 
     assert result.success is False
@@ -334,9 +334,9 @@ def test_sync_users_includes_users_in_recursively_discovered_departments():
         return _FeishuResponse(users[department_id])
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.sync_users({}, "feishu", "user_sync", source=source)
 
     assert result.success is True
@@ -365,9 +365,9 @@ def test_sync_users_deduplicates_users_returned_by_multiple_departments():
         )
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.sync_users({}, "feishu", "user_sync", source=source)
 
     assert result.success is True

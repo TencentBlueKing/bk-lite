@@ -1,19 +1,8 @@
-import re
-
-from ldap3.core.exceptions import LDAPBindError
-
-from apps.core.logger import logger
+from apps.system_mgmt.providers.log import logger
+from apps.system_mgmt.providers.base import BaseUserSyncAdapter
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 
-from .base import BaseLoginAuthAdapter, BaseUserSyncAdapter
-from .common.ldap import (
-    bind_user_dn,
-    build_connection_config,
-    get_ldap_scalar,
-    probe_root_dse,
-    search_entries,
-    search_single_user,
-)
+from . import client
 
 
 def _get_sync_user_attributes(source) -> list[str]:
@@ -21,165 +10,6 @@ def _get_sync_user_attributes(source) -> list[str]:
     field_mapping = getattr(source, "field_mapping", None) or {}
     mapped_attributes = [str(attribute).strip() for attribute in field_mapping.values() if str(attribute or "").strip()]
     return list(dict.fromkeys([*mapped_attributes, "distinguishedName"]))
-
-
-def _get_ldap_result_code(error: Exception) -> str:
-    """Extract an LDAP result code without exposing the raw server response."""
-    match = re.search(r"(?:ldap\s+)?result\s+(\d+)|-\s*(\d+)\s*-", str(error), re.IGNORECASE)
-    if match is None:
-        return ""
-    return match.group(1) or match.group(2) or ""
-
-
-def _build_ad_connection_failure(error: Exception) -> CapabilityExecutionResult:
-    if isinstance(error, LDAPBindError):
-        return CapabilityExecutionResult.failed_result(
-            "AD connection credentials were rejected",
-            code="provider.auth_failed",
-            detail="LDAP bind rejected the configured credentials",
-            external_code=_get_ldap_result_code(error),
-        )
-
-    return CapabilityExecutionResult.failed_result(
-        "AD connection test failed",
-        code="provider.request_failed",
-        detail="LDAP connection request failed",
-    )
-
-
-class ADBaseConnectionAdapter:
-    @classmethod
-    def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
-        try:
-            connection_config = build_connection_config(config, require_base_dn=False)
-            if not all([connection_config.connection_url, connection_config.bind_dn, connection_config.bind_password]):
-                return CapabilityExecutionResult.failed_result(
-                    "AD connection configuration is incomplete",
-                    code="provider.invalid_config",
-                )
-            probe_root_dse(connection_config)
-        except Exception as error:
-            return _build_ad_connection_failure(error)
-        return CapabilityExecutionResult.success_result("AD base connection is ready")
-
-
-class ADLoginAuthAdapter(BaseLoginAuthAdapter):
-    capability_key = "login_auth"
-
-    @classmethod
-    def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
-        try:
-            connection_config = build_connection_config(config)
-            if not all(
-                [
-                    connection_config.connection_url,
-                    connection_config.bind_dn,
-                    connection_config.bind_password,
-                ]
-            ):
-                return CapabilityExecutionResult.failed_result(
-                    "AD connection configuration is incomplete",
-                    code="provider.invalid_config",
-                )
-
-            probe_root_dse(connection_config)
-        except Exception as error:
-            return _build_ad_connection_failure(error)
-
-        return CapabilityExecutionResult.success_result("AD login capability is ready")
-
-    @classmethod
-    def authenticate(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
-        username = str(kwargs.get("username") or "").strip()
-        password = kwargs.get("password") or ""
-        if not username or not password:
-            return CapabilityExecutionResult.failed_result(
-                "AD login request is missing required parameters",
-                code="provider.invalid_config",
-                field="username" if not username else "password",
-            )
-
-        identity_field = str((config or {}).get("login_auth_identity_field") or "sAMAccountName").strip() or "sAMAccountName"
-        if identity_field not in {"sAMAccountName", "userPrincipalName"}:
-            return CapabilityExecutionResult.failed_result(
-                "AD login identity field is invalid",
-                code="provider.invalid_config",
-                field="login_auth_identity_field",
-            )
-
-        binding = kwargs.get("binding")
-        external_match_field = str(getattr(binding, "external_field", "") or "").strip()
-        attributes = list(
-            dict.fromkeys(attribute for attribute in [identity_field, external_match_field, "distinguishedName"] if attribute)
-        )
-
-        try:
-            connection_config = build_connection_config(config)
-            user = search_single_user(connection_config, identity_field, username, attributes)
-            if not user:
-                return CapabilityExecutionResult.failed_result(
-                    "AD user not found",
-                    code="provider.auth_failed",
-                    field=identity_field,
-                )
-
-            distinguished_name = get_ldap_scalar(user.get("distinguishedName"))
-            if not distinguished_name:
-                return CapabilityExecutionResult.failed_result(
-                    "AD user distinguishedName is missing",
-                    code="provider.invalid_response",
-                    field="distinguishedName",
-                )
-
-            bind_user_dn(connection_config, distinguished_name, password)
-        except ValueError as error:
-            return CapabilityExecutionResult.failed_result(
-                f"AD login_auth configuration error: {error}",
-                code="provider.invalid_config",
-                field=identity_field,
-            )
-        except LDAPBindError as error:
-            if "invalidcredentials" in str(error).lower():
-                return CapabilityExecutionResult.failed_result(
-                    "AD authentication failed",
-                    code="provider.auth_failed",
-                    field=identity_field,
-                )
-            logger.debug(f"AD authenticate bind failed: error_type={type(error).__name__}")
-            return CapabilityExecutionResult.failed_result(
-                "AD authentication failed",
-                code="provider.auth_failed",
-                field=identity_field,
-            )
-        except Exception as error:
-            logger.debug(f"AD authenticate failed: error_type={type(error).__name__}")
-            return CapabilityExecutionResult.failed_result(
-                "AD authentication failed",
-                code="provider.auth_failed",
-                field=identity_field,
-            )
-
-        external_user = {
-            "sAMAccountName": get_ldap_scalar(user.get("sAMAccountName")),
-            "userPrincipalName": get_ldap_scalar(user.get("userPrincipalName")),
-            "name": get_ldap_scalar(user.get("displayName")) or get_ldap_scalar(user.get("sAMAccountName")) or username,
-            "email": get_ldap_scalar(user.get("mail")),
-            "mobile": (
-                get_ldap_scalar(user.get("mobile"))
-                or get_ldap_scalar(user.get("telephoneNumber"))
-                or get_ldap_scalar(user.get("mobilePhone"))
-            ),
-            "distinguishedName": distinguished_name,
-        }
-        if external_match_field:
-            external_user[external_match_field] = get_ldap_scalar(user.get(external_match_field))
-
-        return CapabilityExecutionResult.success_result(
-            "AD login authenticated",
-            payload={
-                "external_user": external_user
-            },
-        )
 
 
 class ADUserSyncAdapter(BaseUserSyncAdapter):
@@ -191,7 +21,7 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
     @classmethod
     def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
         try:
-            connection_config = build_connection_config(config)
+            connection_config = client.build_connection_config(config)
             if not all(
                 [
                     connection_config.connection_url,
@@ -204,9 +34,9 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
                     code="provider.invalid_config",
                 )
 
-            probe_root_dse(connection_config)
+            client.probe_root_dse(connection_config)
         except Exception as error:
-            return _build_ad_connection_failure(error)
+            return client._build_ad_connection_failure(error)
 
         return CapabilityExecutionResult.success_result("AD user sync capability is ready")
 
@@ -239,7 +69,7 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
         )
 
         try:
-            connection_config = build_connection_config(config)
+            connection_config = client.build_connection_config(config)
             if not all(
                 [
                     connection_config.connection_url,
@@ -252,14 +82,14 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
                     code="provider.invalid_config",
                 )
 
-            user_entries = search_entries(
+            user_entries = client.search_entries(
                 connection_config,
                 root_dn,
                 cls._build_object_search_filter(user_object_class, user_filter),
                 _get_sync_user_attributes(source),
                 paged_size=100,
             )
-            organization_entries = search_entries(
+            organization_entries = client.search_entries(
                 connection_config,
                 root_dn,
                 cls._build_object_class_filter(organization_object_class),
@@ -313,14 +143,14 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
     @staticmethod
     def _normalize_sync_user(user_entry: dict) -> dict:
         return {
-            "sAMAccountName": get_ldap_scalar(user_entry.get("sAMAccountName")),
-            "userPrincipalName": get_ldap_scalar(user_entry.get("userPrincipalName")),
-            "displayName": get_ldap_scalar(user_entry.get("displayName")) or get_ldap_scalar(user_entry.get("sAMAccountName")),
-            "mail": get_ldap_scalar(user_entry.get("mail")),
-            "telephoneNumber": get_ldap_scalar(user_entry.get("telephoneNumber")),
-            "mobile": get_ldap_scalar(user_entry.get("mobile")),
-            "mobilePhone": get_ldap_scalar(user_entry.get("mobilePhone")),
-            "distinguishedName": get_ldap_scalar(user_entry.get("distinguishedName")),
+            "sAMAccountName": client.get_ldap_scalar(user_entry.get("sAMAccountName")),
+            "userPrincipalName": client.get_ldap_scalar(user_entry.get("userPrincipalName")),
+            "displayName": client.get_ldap_scalar(user_entry.get("displayName")) or client.get_ldap_scalar(user_entry.get("sAMAccountName")),
+            "mail": client.get_ldap_scalar(user_entry.get("mail")),
+            "telephoneNumber": client.get_ldap_scalar(user_entry.get("telephoneNumber")),
+            "mobile": client.get_ldap_scalar(user_entry.get("mobile")),
+            "mobilePhone": client.get_ldap_scalar(user_entry.get("mobilePhone")),
+            "distinguishedName": client.get_ldap_scalar(user_entry.get("distinguishedName")),
         }
 
     @classmethod
@@ -343,7 +173,7 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
     def _build_organization_group_entries(cls, organization_entries: list[dict], root_dn: str) -> list[dict]:
         group_list = []
         for entry in organization_entries:
-            department_dn = get_ldap_scalar(entry.get("distinguishedName"))
+            department_dn = client.get_ldap_scalar(entry.get("distinguishedName"))
             if not department_dn or department_dn == root_dn:
                 continue
             group_list.append(

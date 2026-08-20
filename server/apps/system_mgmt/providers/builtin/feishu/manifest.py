@@ -4,16 +4,16 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "feishu",
         "base_connection_adapter_key": "feishu.base_connection",
-        "base_connection_adapter_path": "apps.system_mgmt.providers.adapters.feishu.FeishuBaseConnectionAdapter",
+        "base_connection_adapter_path": "apps.system_mgmt.providers.builtin.feishu.adapters.base_connection.FeishuBaseConnectionAdapter",
         "name": "Feishu",
         "description": "Built-in Feishu integration provider for Phase 1.",
         "instance_templates": {
             "base_connection": {
-                "title": "基础连接",
+                "title": "Base Connection",
                 "groups": [
                     {
                         "key": "credentials",
-                        "title": "应用凭证",
+                        "title": "App credentials",
                         "fields": [
                             {
                                 "key": "app_id",
@@ -36,11 +36,11 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                     },
                     {
                         "key": "endpoints",
-                        "title": "公共接口",
+                        "title": "Public endpoints",
                         "fields": [
                             {
                                 "key": "tenant_access_token_url",
-                                "label": "租户访问令牌地址",
+                                "label": "Tenant access token URL",
                                 "field_type": "string",
                                 "required": False,
                                 "default": "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
@@ -52,26 +52,26 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
         },
         "business_templates": {
             "login_auth_form": {
-                "title": "登录认证配置",
+                "title": "Login authentication",
                 "groups": [
                     {
                         "key": "mapping",
-                        "title": "字段映射",
+                        "title": "Field mapping",
                         "fields": [
-                            {"key": "display_name", "label": "显示名称", "field_type": "string", "required": True},
-                            {"key": "icon", "label": "图标", "field_type": "string", "required": False},
-                            {"key": "description", "label": "描述", "field_type": "string", "required": False},
-                            {"key": "external_field", "label": "外部字段", "field_type": "string", "required": True},
-                            {"key": "platform_field", "label": "平台字段", "field_type": "select", "required": True},
+                            {"key": "display_name", "label": "Display name", "field_type": "string", "required": True},
+                            {"key": "icon", "label": "Icon", "field_type": "string", "required": False},
+                            {"key": "description", "label": "Description", "field_type": "string", "required": False},
+                            {"key": "external_field", "label": "External field", "field_type": "string", "required": True},
+                            {"key": "platform_field", "label": "Platform field", "field_type": "select", "required": True},
                             {
                                 "key": "unmatched_user_action",
-                                "label": "未匹配用户处理方式",
+                                "label": "Unmatched user action",
                                 "field_type": "select",
                                 "required": True,
                             },
                             {
                                 "key": "default_group_name",
-                                "label": "默认用户组名称",
+                                "label": "Default user group name",
                                 "field_type": "string",
                                 "required": False,
                             },
@@ -82,22 +82,22 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "default_external_match_field": "user_id",
             },
             "user_sync_form": {
-                "title": "用户同步配置",
+                "title": "User sync",
                 "groups": [
                     {
                         "key": "pull",
-                        "title": "拉取配置",
+                        "title": "Pull settings",
                         "fields": [
                             {
                                 "key": "root_department_id",
-                                "label": "根部门 ID",
+                                "label": "Root department ID",
                                 "field_type": "string",
                                 "required": True,
                                 "input_mode": "department_select",
                             },
                             {
                                 "key": "department_id_type",
-                                "label": "部门 ID 类型",
+                                "label": "Department ID type",
                                 "field_type": "select",
                                 "required": True,
                                 "default": "department_id",
@@ -108,7 +108,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                             },
                             {
                                 "key": "user_id_type",
-                                "label": "用户 ID 类型",
+                                "label": "User ID type",
                                 "field_type": "select",
                                 "required": True,
                                 "default": "user_id",
@@ -124,19 +124,19 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "available_external_fields": ["user_id", "open_id", "name", "email", "mobile", "department_ids"],
             },
             "im_notification_form": {
-                "title": "IM 通知配置",
+                "title": "IM notification",
                 "groups": [
                     {
                         "key": "send",
-                        "title": "发送配置",
+                        "title": "Send settings",
                         "fields": [
                             {
                                 "key": "mapping_strategy",
-                                "label": "映射策略",
+                                "label": "Mapping strategy",
                                 "field_type": "select",
                                 "required": True,
                             },
-                            {"key": "message_type", "label": "消息类型", "field_type": "select", "required": True},
+                            {"key": "message_type", "label": "Message type", "field_type": "select", "required": True},
                         ],
                     }
                 ],
@@ -154,25 +154,25 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "Login Auth",
                 "description": "Feishu login authentication capability.",
                 "adapter_key": "feishu.login_auth",
-                "adapter_path": "apps.system_mgmt.providers.adapters.feishu.FeishuLoginAuthAdapter",
+                "adapter_path": "apps.system_mgmt.providers.builtin.feishu.adapters.login_auth.FeishuLoginAuthAdapter",
                 "connection_template": [
                     {
                         "key": "login_auth_authorize_url",
-                        "label": "授权地址",
+                        "label": "Authorization URL",
                         "field_type": "string",
                         "required": False,
                         "default": "https://accounts.feishu.cn/open-apis/authen/v1/authorize",
                     },
                     {
                         "key": "login_auth_access_token_url",
-                        "label": "访问令牌地址",
+                        "label": "Access token URL",
                         "field_type": "string",
                         "required": False,
                         "default": "https://open.feishu.cn/open-apis/authen/v1/access_token",
                     },
                     {
                         "key": "login_auth_user_info_url",
-                        "label": "用户信息地址",
+                        "label": "User info URL",
                         "field_type": "string",
                         "required": False,
                         "default": "https://open.feishu.cn/open-apis/authen/v1/user_info",
@@ -185,32 +185,32 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "User Sync",
                 "description": "Feishu user synchronization capability.",
                 "adapter_key": "feishu.user_sync",
-                "adapter_path": "apps.system_mgmt.providers.adapters.feishu.FeishuUserSyncAdapter",
+                "adapter_path": "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync.FeishuUserSyncAdapter",
                 "connection_template": [
                     {
                         "key": "user_sync_scopes_url",
-                        "label": "授权范围接口地址",
+                        "label": "Authorized scopes URL",
                         "field_type": "string",
                         "required": False,
                         "default": "https://open.feishu.cn/open-apis/contact/v3/scopes",
                     },
                     {
                         "key": "user_sync_departments_batch_url",
-                        "label": "部门批量查询接口地址",
+                        "label": "Department batch query URL",
                         "field_type": "string",
                         "required": False,
                         "default": "https://open.feishu.cn/open-apis/contact/v3/departments/batch",
                     },
                     {
                         "key": "user_sync_departments_url",
-                        "label": "部门接口地址",
+                        "label": "Department URL",
                         "field_type": "string",
                         "required": False,
                         "default": "https://open.feishu.cn/open-apis/contact/v3/departments/{department_id}/children",
                     },
                     {
                         "key": "user_sync_users_url",
-                        "label": "用户接口地址",
+                        "label": "User URL",
                         "field_type": "string",
                         "required": False,
                         "default": "https://open.feishu.cn/open-apis/contact/v3/users",
@@ -223,18 +223,18 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "IM Notification",
                 "description": "Feishu per-user IM notification capability.",
                 "adapter_key": "feishu.im_notification",
-                "adapter_path": "apps.system_mgmt.providers.adapters.feishu.FeishuIMNotificationAdapter",
+                "adapter_path": "apps.system_mgmt.providers.builtin.feishu.adapters.im_notification.FeishuIMNotificationAdapter",
                 "connection_template": [
                     {
                         "key": "im_notification_users_url",
-                        "label": "用户接口地址",
+                        "label": "User URL",
                         "field_type": "string",
                         "required": False,
                         "default": "https://open.feishu.cn/open-apis/contact/v3/users",
                     },
                     {
                         "key": "im_notification_send_message_url",
-                        "label": "发送消息接口地址",
+                        "label": "Send message URL",
                         "field_type": "string",
                         "required": False,
                         "default": "https://open.feishu.cn/open-apis/im/v1/messages",
@@ -247,7 +247,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "IM Group",
                 "description": "Feishu group collaboration capability.",
                 "adapter_key": "feishu.im_group",
-                "adapter_path": "apps.system_mgmt.providers.adapters.feishu.FeishuIMGroupAdapter",
+                "adapter_path": "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.FeishuIMGroupAdapter",
                 "connection_template": [],
             },
         ],

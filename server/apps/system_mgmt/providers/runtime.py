@@ -3,7 +3,7 @@ from typing import Any
 from nanoid import generate
 from pydantic import BaseModel, Field
 
-from apps.core.logger import logger
+from apps.core.logger import system_mgmt_logger as logger
 
 from .registry import get_capability_adapter_registry, get_provider_registry
 

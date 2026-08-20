@@ -7,7 +7,7 @@ import pytest
 from django.db import IntegrityError, transaction
 
 from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstance, User
-from apps.system_mgmt.providers.adapters.feishu import FeishuIMNotificationAdapter
+from apps.system_mgmt.providers.builtin.feishu.adapters.im_notification import FeishuIMNotificationAdapter
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 from apps.system_mgmt.services.im_notification_service import (
     CHANNEL_STATUS_NEEDS_RESYNC,
@@ -247,9 +247,9 @@ def test_feishu_send_message_serializes_multiline_text_content():
             return {"code": 0}
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_notification._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.post", return_value=FakeResponse()) as mock_post:
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.im_notification.requests.post", return_value=FakeResponse()) as mock_post:
         result = FeishuIMNotificationAdapter.send_message(
             config={},
             provider_key="feishu",

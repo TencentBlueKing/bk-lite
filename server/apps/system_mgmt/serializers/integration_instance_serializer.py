@@ -6,6 +6,7 @@ from apps.core.services.login_auth_request_service import get_login_auth_callbac
 from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices
 from apps.system_mgmt.providers import get_provider_registry
+from apps.system_mgmt.providers.pack_i18n import resolve_provider_copy, request_locale
 from apps.system_mgmt.services.capability_contract_service import validate_integration_capability_state
 
 
@@ -20,15 +21,18 @@ class IntegrationInstanceSerializer(UsernameSerializer):
         model = IntegrationInstance
         fields = "__all__"
 
+    def _request_locale(self):
+        return request_locale(self.context.get("request"))
+
     def get_provider(self, obj):
         manifest = get_provider_registry().get(obj.provider_key)
         if manifest is None:
             return {"key": obj.provider_key, "name": obj.provider_key}
-        return {"key": manifest.key, "name": manifest.name}
+        name, _ = resolve_provider_copy(manifest, self._request_locale())
+        return {"key": manifest.key, "name": name}
 
     def get_display_name(self, obj):
-        manifest = get_provider_registry().get(obj.provider_key)
-        provider_name = manifest.name if manifest else obj.provider_key
+        provider_name = self.get_provider(obj)["name"]
         return f"{obj.name}({provider_name})"
 
     def get_login_auth_callback_url(self, obj):

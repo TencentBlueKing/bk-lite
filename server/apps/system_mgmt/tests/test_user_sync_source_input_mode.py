@@ -75,14 +75,14 @@ def test_mode_resolver_reads_manual_input_from_manifest():
                     "key": "user_sync",
                     "name": "User Sync",
                     "adapter_key": "demo_manual.user_sync",
-                    "adapter_path": "apps.system_mgmt.providers.adapters.base.BaseUserSyncAdapter",
+                    "adapter_path": "apps.system_mgmt.providers.base.BaseUserSyncAdapter",
                     "business_template": "user_sync_form",
                 }
             ],
         }
     )
     from apps.system_mgmt.providers.registry import get_provider_registry, get_capability_adapter_registry
-    from apps.system_mgmt.providers.adapters.base import BaseUserSyncAdapter
+    from apps.system_mgmt.providers.base import BaseUserSyncAdapter
     from apps.system_mgmt.providers.loader import load_builtin_providers
 
     load_builtin_providers()
@@ -109,7 +109,7 @@ def test_ad_root_dn_uses_manual_input_mode():
 @pytest.fixture
 def manual_input_instance(db):
     from apps.system_mgmt.providers.registry import get_provider_registry, get_capability_adapter_registry
-    from apps.system_mgmt.providers.adapters.base import BaseUserSyncAdapter
+    from apps.system_mgmt.providers.base import BaseUserSyncAdapter
     from apps.system_mgmt.providers.loader import load_builtin_providers
     from apps.system_mgmt.providers.schemas import ProviderManifest
 
@@ -142,7 +142,7 @@ def manual_input_instance(db):
                     "key": "user_sync",
                     "name": "User Sync",
                     "adapter_key": "test_manual.user_sync",
-                    "adapter_path": "apps.system_mgmt.providers.adapters.base.BaseUserSyncAdapter",
+                    "adapter_path": "apps.system_mgmt.providers.base.BaseUserSyncAdapter",
                     "business_template": "user_sync_form",
                 }
             ],

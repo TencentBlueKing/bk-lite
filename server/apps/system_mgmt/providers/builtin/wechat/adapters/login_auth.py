@@ -2,33 +2,17 @@ from urllib.parse import urlencode
 
 import requests
 
-from apps.core.logger import logger
+from apps.system_mgmt.providers.log import logger
+from apps.system_mgmt.providers.base import BaseLoginAuthAdapter
+from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 
-from .base import BaseLoginAuthAdapter
-from ..runtime import CapabilityExecutionResult
-
-WECHAT_TIMEOUT = 10
-WECHAT_AUTHORIZE_URL = "https://open.weixin.qq.com/connect/qrconnect"
-WECHAT_ACCESS_TOKEN_URL = "https://api.weixin.qq.com/sns/oauth2/access_token"
-WECHAT_USER_INFO_URL = "https://api.weixin.qq.com/sns/userinfo"
-
-
-def _get_config_value(config: dict, key: str, default: str):
-    return (config or {}).get(key) or default
-
-
-class WechatBaseConnectionAdapter:
-    @classmethod
-    def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
-        app_id = (config or {}).get("app_id", "")
-        app_secret = (config or {}).get("app_secret", "")
-        if not app_id or not app_secret:
-            return CapabilityExecutionResult.failed_result(
-                "WeChat app_id or app_secret is missing",
-                code="provider.invalid_config",
-                field="app_id" if not app_id else "app_secret",
-            )
-        return CapabilityExecutionResult.success_result("WeChat base configuration is complete")
+from .client import (
+    WECHAT_ACCESS_TOKEN_URL,
+    WECHAT_AUTHORIZE_URL,
+    WECHAT_USER_INFO_URL,
+    _get,
+    _get_config_value,
+)
 
 
 class WechatLoginAuthAdapter(BaseLoginAuthAdapter):
@@ -95,15 +79,14 @@ class WechatLoginAuthAdapter(BaseLoginAuthAdapter):
         user_info_url = _get_config_value(config, "login_auth_user_info_url", WECHAT_USER_INFO_URL)
 
         try:
-            token_response = requests.get(
+            token_response = _get(
                 access_token_url,
-                params={
+                {
                     "appid": app_id,
                     "secret": app_secret,
                     "code": auth_code,
                     "grant_type": "authorization_code",
                 },
-                timeout=WECHAT_TIMEOUT,
             )
             token_data = token_response.json()
         except requests.Timeout:
@@ -127,18 +110,17 @@ class WechatLoginAuthAdapter(BaseLoginAuthAdapter):
             return CapabilityExecutionResult.failed_result("WeChat login token is missing", code="provider.invalid_response")
 
         try:
-            user_response = requests.get(
+            # 微信 userinfo 实际返回 UTF-8 JSON，但响应头可能误标为 text/plain，
+            # 需在解析前覆盖 requests 推断出的 ISO-8859-1 编码，避免昵称乱码。
+            user_response = _get(
                 user_info_url,
-                params={
+                {
                     "access_token": access_token,
                     "openid": openid,
                     "lang": "zh_CN",
                 },
-                timeout=WECHAT_TIMEOUT,
+                encoding="utf-8",
             )
-            # 微信 userinfo 实际返回 UTF-8 JSON，但响应头可能误标为 text/plain，
-            # 需在解析前覆盖 requests 推断出的 ISO-8859-1 编码，避免昵称乱码。
-            user_response.encoding = "utf-8"
             user_data = user_response.json()
         except requests.Timeout:
             return CapabilityExecutionResult.failed_result("WeChat user info request timed out", code="provider.timeout", retryable=True)

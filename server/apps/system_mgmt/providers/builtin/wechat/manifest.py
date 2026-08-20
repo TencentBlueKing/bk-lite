@@ -4,16 +4,16 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "wechat",
         "base_connection_adapter_key": "wechat.base_connection",
-        "base_connection_adapter_path": "apps.system_mgmt.providers.adapters.wechat.WechatBaseConnectionAdapter",
+        "base_connection_adapter_path": "apps.system_mgmt.providers.builtin.wechat.adapters.base_connection.WechatBaseConnectionAdapter",
         "name": "WeChat",
         "description": "Built-in WeChat integration provider for login auth.",
         "instance_templates": {
             "base_connection": {
-                "title": "基础连接",
+                "title": "Base Connection",
                 "groups": [
                     {
                         "key": "credentials",
-                        "title": "应用凭证",
+                        "title": "App credentials",
                         "fields": [
                             {
                                 "key": "app_id",
@@ -38,19 +38,19 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
         },
         "business_templates": {
             "login_auth_form": {
-                "title": "登录认证配置",
+                "title": "Login authentication",
                 "groups": [
                     {
                         "key": "mapping",
-                        "title": "字段映射",
+                        "title": "Field mapping",
                         "fields": [
-                            {"key": "display_name", "label": "显示名称", "field_type": "string", "required": True},
-                            {"key": "icon", "label": "图标", "field_type": "string", "required": False},
-                            {"key": "description", "label": "描述", "field_type": "string", "required": False},
-                            {"key": "external_field", "label": "外部字段", "field_type": "string", "required": True},
-                            {"key": "platform_field", "label": "平台字段", "field_type": "select", "required": True},
-                            {"key": "unmatched_user_action", "label": "未匹配用户处理方式", "field_type": "select", "required": True},
-                            {"key": "default_group_name", "label": "默认用户组名称", "field_type": "string", "required": False},
+                            {"key": "display_name", "label": "Display name", "field_type": "string", "required": True},
+                            {"key": "icon", "label": "Icon", "field_type": "string", "required": False},
+                            {"key": "description", "label": "Description", "field_type": "string", "required": False},
+                            {"key": "external_field", "label": "External field", "field_type": "string", "required": True},
+                            {"key": "platform_field", "label": "Platform field", "field_type": "select", "required": True},
+                            {"key": "unmatched_user_action", "label": "Unmatched user action", "field_type": "select", "required": True},
+                            {"key": "default_group_name", "label": "Default user group name", "field_type": "string", "required": False},
                         ],
                     }
                 ],
@@ -64,25 +64,25 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                 "name": "Login Auth",
                 "description": "WeChat login authentication capability.",
                 "adapter_key": "wechat.login_auth",
-                "adapter_path": "apps.system_mgmt.providers.adapters.wechat.WechatLoginAuthAdapter",
+                "adapter_path": "apps.system_mgmt.providers.builtin.wechat.adapters.login_auth.WechatLoginAuthAdapter",
                 "connection_template": [
                     {
                         "key": "login_auth_authorize_url",
-                        "label": "授权地址",
+                        "label": "Authorization URL",
                         "field_type": "string",
                         "required": False,
                         "default": "https://open.weixin.qq.com/connect/qrconnect",
                     },
                     {
                         "key": "login_auth_access_token_url",
-                        "label": "访问令牌地址",
+                        "label": "Access token URL",
                         "field_type": "string",
                         "required": False,
                         "default": "https://api.weixin.qq.com/sns/oauth2/access_token",
                     },
                     {
                         "key": "login_auth_user_info_url",
-                        "label": "用户信息地址",
+                        "label": "User info URL",
                         "field_type": "string",
                         "required": False,
                         "default": "https://api.weixin.qq.com/sns/userinfo",

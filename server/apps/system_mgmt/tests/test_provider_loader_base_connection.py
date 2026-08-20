@@ -1,8 +1,8 @@
 from apps.system_mgmt.providers import loader
-from apps.system_mgmt.providers.adapters.ad import ADBaseConnectionAdapter
-from apps.system_mgmt.providers.adapters.feishu import FeishuBaseConnectionAdapter
-from apps.system_mgmt.providers.adapters.wecom import WeComBaseConnectionAdapter
-from apps.system_mgmt.providers.adapters.wechat import WechatBaseConnectionAdapter
+from apps.system_mgmt.providers.builtin.ad.adapters.base_connection import ADBaseConnectionAdapter
+from apps.system_mgmt.providers.builtin.feishu.adapters.base_connection import FeishuBaseConnectionAdapter
+from apps.system_mgmt.providers.builtin.wecom.adapters.base_connection import WeComBaseConnectionAdapter
+from apps.system_mgmt.providers.builtin.wechat.adapters.base_connection import WechatBaseConnectionAdapter
 from apps.system_mgmt.providers.registry import capability_adapter_registry
 
 

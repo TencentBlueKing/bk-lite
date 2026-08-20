@@ -5,8 +5,9 @@ from unittest.mock import patch
 import pytest
 from ldap3.core.exceptions import LDAPBindError
 
-from apps.system_mgmt.providers.adapters.ad import ADLoginAuthAdapter, ADUserSyncAdapter
-from apps.system_mgmt.providers.adapters.common.ldap import build_connection_config, resolve_ldap_server_target
+from apps.system_mgmt.providers.builtin.ad.adapters.login_auth import ADLoginAuthAdapter
+from apps.system_mgmt.providers.builtin.ad.adapters.user_sync import ADUserSyncAdapter
+from apps.system_mgmt.providers.common.ldap import build_connection_config, resolve_ldap_server_target
 
 
 pytestmark = pytest.mark.unit
@@ -24,8 +25,8 @@ def _base_config():
     }
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.bind_user_dn")
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.bind_user_dn")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_login_auth_searches_single_user_and_binds_password(mock_search_single_user, mock_bind_user_dn):
     mock_search_single_user.return_value = {
         "sAMAccountName": "alice",
@@ -49,8 +50,8 @@ def test_ad_login_auth_searches_single_user_and_binds_password(mock_search_singl
     mock_bind_user_dn.assert_called_once()
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.bind_user_dn")
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.bind_user_dn")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_login_auth_requests_identity_match_and_dn_attributes(mock_search_single_user, mock_bind_user_dn):
     mock_search_single_user.return_value = {
         "sAMAccountName": "alice",
@@ -76,8 +77,8 @@ def test_ad_login_auth_requests_identity_match_and_dn_attributes(mock_search_sin
     assert result.payload["external_user"]["mail"] == "alice@example.com"
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.bind_user_dn")
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.bind_user_dn")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_login_auth_unwraps_single_value_lists(mock_search_single_user, mock_bind_user_dn):
     mock_search_single_user.return_value = {
         "sAMAccountName": ["alice"],
@@ -104,7 +105,7 @@ def test_ad_login_auth_unwraps_single_value_lists(mock_search_single_user, mock_
     )
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_login_auth_fails_when_search_returns_multiple_users(mock_search_single_user):
     mock_search_single_user.side_effect = ValueError("multiple")
 
@@ -122,7 +123,7 @@ def test_ad_login_auth_fails_when_search_returns_multiple_users(mock_search_sing
     assert "multiple" in result.errors[0].message
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_login_auth_fails_when_user_not_found(mock_search_single_user):
     mock_search_single_user.return_value = None
 
@@ -138,9 +139,9 @@ def test_ad_login_auth_fails_when_user_not_found(mock_search_single_user):
     assert result.errors[0].field == "sAMAccountName"
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.logger")
-@patch("apps.system_mgmt.providers.adapters.ad.bind_user_dn")
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.login_auth.logger")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.bind_user_dn")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_login_auth_invalid_credentials_are_treated_as_auth_failure_without_exception_log(
     mock_search_single_user,
     mock_bind_user_dn,
@@ -167,8 +168,8 @@ def test_ad_login_auth_invalid_credentials_are_treated_as_auth_failure_without_e
     mock_logger.warning.assert_not_called()
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.logger")
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.login_auth.logger")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_authenticate_logs_unexpected_failure_without_raw_exception(mock_search_single_user, mock_logger):
     mock_search_single_user.side_effect = RuntimeError(
         "ldap://private.example?bind_password=private-secret"
@@ -188,8 +189,8 @@ def test_ad_authenticate_logs_unexpected_failure_without_raw_exception(mock_sear
     assert "RuntimeError" in str(mock_logger.debug.call_args_list)
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.logger")
-@patch("apps.system_mgmt.providers.adapters.ad.search_entries")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.user_sync.logger")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
 def test_ad_user_sync_logs_failure_without_raw_exception(mock_search_entries, mock_logger):
     mock_search_entries.side_effect = RuntimeError(
         "ldap://private.example?bind_password=private-secret"
@@ -209,7 +210,7 @@ def test_ad_user_sync_logs_failure_without_raw_exception(mock_search_entries, mo
     assert "RuntimeError" in str(mock_logger.debug.call_args_list)
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.search_entries")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
 def test_ad_user_sync_returns_payload_compatible_with_existing_field_mapping(mock_search_entries):
     mock_search_entries.side_effect = [
         [
@@ -261,7 +262,7 @@ def test_ad_user_sync_returns_payload_compatible_with_existing_field_mapping(moc
     assert mock_search_entries.call_args_list[1].args[2] == "(objectClass=organizationalUnit)"
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.search_entries")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
 def test_ad_user_sync_uses_default_directory_query_parameters(mock_search_entries):
     mock_search_entries.side_effect = [[], []]
 
@@ -289,7 +290,7 @@ def test_ad_user_sync_requires_root_dn():
     assert result.errors[0].field == "root_dn"
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
 def test_ad_connection_tests_use_root_dse_probe(mock_probe_root_dse):
     login_result = ADLoginAuthAdapter.test_connection(
         config=_base_config(),
@@ -307,9 +308,12 @@ def test_ad_connection_tests_use_root_dse_probe(mock_probe_root_dse):
     assert mock_probe_root_dse.call_count == 2
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.logger")
-@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
-def test_ad_connection_test_returns_failure_without_adapter_error_log(mock_probe_root_dse, mock_logger):
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.user_sync.logger")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.login_auth.logger")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
+def test_ad_connection_test_returns_failure_without_adapter_error_log(
+    mock_probe_root_dse, mock_login_logger, mock_sync_logger
+):
     mock_probe_root_dse.side_effect = RuntimeError("connection refused")
 
     login_result = ADLoginAuthAdapter.test_connection(
@@ -325,10 +329,11 @@ def test_ad_connection_test_returns_failure_without_adapter_error_log(mock_probe
 
     assert login_result.success is False
     assert sync_result.success is False
-    mock_logger.exception.assert_not_called()
+    mock_login_logger.exception.assert_not_called()
+    mock_sync_logger.exception.assert_not_called()
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
 def test_ad_connection_test_exposes_sanitized_ldap_bind_diagnostics(mock_probe_root_dse):
     mock_probe_root_dse.side_effect = LDAPBindError("LDAP result 49: invalidCredentials")
 
@@ -345,8 +350,8 @@ def test_ad_connection_test_exposes_sanitized_ldap_bind_diagnostics(mock_probe_r
     assert result.errors[0].detail == "LDAP bind rejected the configured credentials"
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
-@patch("apps.system_mgmt.providers.adapters.ad.build_connection_config")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.build_connection_config")
 def test_ad_user_sync_test_connection_succeeds_without_base_dn(
     mock_build_connection_config,
     mock_probe_root_dse,
@@ -365,8 +370,8 @@ def test_ad_user_sync_test_connection_succeeds_without_base_dn(
     assert result.success is True
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
-@patch("apps.system_mgmt.providers.adapters.ad.build_connection_config")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.build_connection_config")
 def test_ad_login_auth_test_connection_succeeds_without_base_dn(
     mock_build_connection_config,
     mock_probe_root_dse,
@@ -451,7 +456,7 @@ def test_ad_authenticate_returns_invalid_config_when_base_dn_missing():
 # ---------------------------------------------------------------------------
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.search_entries")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
 def test_ad_user_sync_requests_only_mapped_external_fields(mock_search_entries):
     """用户同步不请求未被当前源映射的可选 LDAP 字段。"""
     mock_search_entries.side_effect = [
