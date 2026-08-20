@@ -77,7 +77,7 @@ interface NetworkTopologyX6CanvasProps {
     edgeId: string,
     vertices: Array<{ x: number; y: number }>,
   ) => void;
-  onNodeClick?: (nodeId: string) => void;
+  onNodeClick?: (nodeId: string, event?: MouseEvent) => void;
   onNodeMouseEnter?: (nodeId: string, event: MouseEvent) => void;
   onNodeMouseMove?: (nodeId: string, event: MouseEvent) => void;
   onNodeMouseLeave?: (nodeId: string) => void;
@@ -637,8 +637,10 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
   );
   const onNodeMovedRef = useRef(onNodeMoved);
   const onEdgeVerticesChangedRef = useRef(onEdgeVerticesChanged);
+  const onGraphReadyRef = useRef(onGraphReady);
   onNodeMovedRef.current = onNodeMoved;
   onEdgeVerticesChangedRef.current = onEdgeVerticesChanged;
+  onGraphReadyRef.current = onGraphReady;
 
   useEffect(() => {
     ensureNetworkTopologyDeviceNodeRegistered();
@@ -664,7 +666,7 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
   useEffect(() => {
     if (!graph) return undefined;
     if (graphRef) graphRef.current = graph;
-    onGraphReady?.(graph);
+    onGraphReadyRef.current?.(graph);
     applyGraphInteracting(graph, nodeMovable);
     ensureGraphPanning(graph);
     if (!graph.getPlugin('export')) {
@@ -673,9 +675,9 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
     syncEdgeVertexTools(graph, edgeVerticesEditable);
     return () => {
       if (graphRef) graphRef.current = null;
-      onGraphReady?.(null);
+      onGraphReadyRef.current?.(null);
     };
-  }, [graph, graphRef, nodeMovable, edgeVerticesEditable, onGraphReady]);
+  }, [graph, graphRef, nodeMovable, edgeVerticesEditable]);
 
   useEffect(() => {
     if (!graph) return undefined;
@@ -742,7 +744,8 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
       ensureGraphPanning(graph);
       applyGraphInteracting(graph, nodeMovable);
     };
-    const handleNodeClick = ({ node }: { node: any }) => onNodeClick?.(String(node.id));
+    const handleNodeClick = ({ node, e }: { node: any; e?: MouseEvent }) =>
+      onNodeClick?.(String(node.id), e);
     const handleNodeEnter = ({ node, e }: { node: any; e: MouseEvent }) => onNodeMouseEnter?.(String(node.id), e);
     const handleNodeMove = ({ node, e }: { node: any; e: MouseEvent }) => onNodeMouseMove?.(String(node.id), e);
     const handleNodeLeave = ({ node }: { node: any }) => onNodeMouseLeave?.(String(node.id));
@@ -870,13 +873,16 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
     });
   }, [toolbar?.exportFileName]);
 
+  const onGraphReadyRef = useRef(onGraphReady);
+  onGraphReadyRef.current = onGraphReady;
+
   const handleGraphReady = useCallback(
     (graph: Graph | null) => {
       internalGraphRef.current = graph;
       if (graphRef) graphRef.current = graph;
-      onGraphReady?.(graph);
+      onGraphReadyRef.current?.(graph);
     },
-    [graphRef, onGraphReady],
+    [graphRef],
   );
 
   const toolbarLabels = toolbar?.labels || {};

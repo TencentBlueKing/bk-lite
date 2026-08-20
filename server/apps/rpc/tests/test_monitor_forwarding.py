@@ -174,3 +174,12 @@ def test_query_latest_active_alerts(ana_rpc):
     qd = {"limit": 5}
     ana_rpc.query_latest_active_alerts(qd)
     assert _last(ana_rpc.client) == ("query_latest_active_alerts", (), {"query_data": qd})
+
+
+def test_query_latest_interface_metrics(ana_rpc):
+    ana_rpc.query_latest_interface_metrics(["mon-1", "mon-2"])
+    assert _last(ana_rpc.client) == (
+        "query_latest_interface_metrics",
+        (),
+        {"instance_ids": ["mon-1", "mon-2"]},
+    )

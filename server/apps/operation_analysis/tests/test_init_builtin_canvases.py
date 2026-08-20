@@ -14,6 +14,7 @@ from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.models.models import Dashboard, Directory, Screen, Topology
 
 BUILTIN_CANVASES_PATH = Path(__file__).resolve().parents[1] / "support-files" / "builtin_canvases.yaml"
+NETWORK_TOPOLOGY_SCREEN_PATH = Path(__file__).resolve().parents[1] / "support-files" / "builtin_network_topology_screen.yaml"
 SOURCE_API_PATH = Path(__file__).resolve().parents[1] / "support-files" / "source_api.json"
 
 
@@ -214,6 +215,25 @@ def test_all_builtin_canvas_datasource_references_resolve_after_merge():
 
     assert referenced_keys <= available_keys
     assert configured_keys <= available_keys
+
+
+@pytest.mark.unit
+def test_builtin_network_topology_screen_refs_monitor_overlay_datasources():
+    payload = yaml.safe_load(NETWORK_TOPOLOGY_SCREEN_PATH.read_text(encoding="utf-8"))
+    source_api = json.loads(SOURCE_API_PATH.read_text(encoding="utf-8"))
+    screens = {item["key"]: item for item in payload["screens"]}
+    screen = screens["screen::网络状态拓扑大屏_内置"]
+    overlay_keys = {
+        "CMDB 实例监控ID映射::cmdb/get_monitor_ids_by_inst_uuids",
+        "监控活跃告警::monitor/query_latest_active_alerts",
+        "监控接口最新指标::monitor/query_latest_interface_metrics",
+    }
+    assert set(screen["refs"]["datasource_keys"]) == overlay_keys
+    widget = screen["view_sets"]["items"][0]
+    assert widget["valueConfig"]["networkStatusTopology"]["instUuids"] == []
+    assert widget["valueConfig"]["networkStatusTopology"]["nodeLimit"] == 100
+    available_keys = {item.get("key") or f'{item["name"]}::{item["rest_api"]}' for item in source_api}
+    assert overlay_keys <= available_keys
 
 
 def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():

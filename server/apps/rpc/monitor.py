@@ -215,3 +215,11 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
         monitor_obj_id 为可选，用于收窄到指定监控对象。
         """
         return self.client.run("query_latest_active_alerts", query_data=query_data, **kwargs)
+
+    def query_latest_interface_metrics(self, instance_ids=None, **kwargs):
+        """按监控实例批量查询接口最新 IF-MIB 值（含 ifDescr）。"""
+        return self.client.run(
+            "query_latest_interface_metrics",
+            instance_ids=instance_ids,
+            **kwargs,
+        )

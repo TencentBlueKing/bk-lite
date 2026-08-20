@@ -43,6 +43,7 @@ from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, Mon
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
+from apps.monitor.services.interface_metrics_query import InterfaceMetricsQueryError, normalize_instance_ids, query_interface_metric_items
 from apps.monitor.services.metrics import Metrics
 from apps.monitor.services.network_device_resource_top import NetworkDeviceResourceTopService
 from apps.monitor.services.network_device_resource_top import validate_metric_type as validate_network_metric_type
@@ -1219,6 +1220,125 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
     }
 
 
+_MONITOR_ALERT_LEVEL_RANK = {
+    "critical": 3,
+    "error": 2,
+    "warning": 1,
+}
+
+
+def _monitor_alert_level_rank(level) -> int:
+    if level in (None, ""):
+        return 0
+    return _MONITOR_ALERT_LEVEL_RANK.get(str(level).strip().lower(), 1)
+
+
+def _max_monitor_alert_level(levels) -> Optional[str]:
+    best_level = None
+    best_rank = 0
+    for level in levels:
+        rank = _monitor_alert_level_rank(level)
+        if rank > best_rank:
+            best_rank = rank
+            best_level = str(level).strip().lower()
+    return best_level
+
+
+def _parse_latest_active_alerts_query(query_data):
+    limit = _normalize_positive_int(query_data.get("limit", 10), "limit", default=10)
+    if limit > 100:
+        raise ValueError("limit 不能大于 100")
+    instance_ids = query_data.get("instance_ids", [])
+    if instance_ids in (None, ""):
+        instance_ids = []
+    if not isinstance(instance_ids, list):
+        raise ValueError("instance_ids 必须是列表")
+    instance_ids = [str(instance_id) for instance_id in instance_ids if instance_id]
+    instance_id = query_data.get("instance_id")
+    if instance_id:
+        instance_ids.append(str(instance_id))
+    return (
+        limit,
+        instance_ids,
+        _normalize_filter_values(query_data.get("level"), "level"),
+        _normalize_filter_values(query_data.get("alert_type"), "alert_type"),
+    )
+
+
+def _resolve_latest_active_alert_instances(monitor_obj_id, user_info, scope_ids):
+    if monitor_obj_id:
+        try:
+            MonitorObject.objects.get(id=monitor_obj_id)
+        except MonitorObject.DoesNotExist:
+            return None, {"result": False, "data": [], "message": "监控对象不存在"}
+        permission, error = _get_monitor_instance_permission(monitor_obj_id, user_info)
+        if error:
+            return None, error
+        authorized_qs = (
+            _get_authorized_instance_queryset(permission, scope_ids)
+            .filter(
+                monitor_object_id=monitor_obj_id,
+                is_deleted=False,
+                is_active=True,
+            )
+            .select_related("monitor_object")
+        )
+        return {str(instance.id): instance for instance in authorized_qs}, None
+    return _get_authorized_monitor_instances(user_info, scope_ids)
+
+
+def _filter_requested_alert_instances(authorized_instances, instance_ids):
+    authorized_instance_ids = set(authorized_instances.keys())
+    requested_instance_ids = list(dict.fromkeys(instance_ids))
+    if requested_instance_ids:
+        filtered_instance_ids = [instance for instance in requested_instance_ids if instance in authorized_instance_ids]
+        if not filtered_instance_ids:
+            return None, None, {"result": False, "data": [], "message": "没有权限访问指定的实例"}
+        return set(filtered_instance_ids), filtered_instance_ids, None
+    if not authorized_instances:
+        return (
+            None,
+            None,
+            {
+                "result": True,
+                "data": {"count": 0, "max_level": None, "items": [], "instance_summaries": []},
+                "message": "",
+            },
+        )
+    return authorized_instance_ids, [], None
+
+
+def _build_latest_active_alert_items(queryset, authorized_instances, limit):
+    items = []
+    for alert in queryset.order_by("-start_event_time", "-created_at")[:limit]:
+        item = _build_monitor_alert_segment(alert)
+        instance = authorized_instances.get(str(alert.monitor_instance_id))
+        item["monitor_obj_id"] = str(instance.monitor_object_id) if instance else None
+        item["monitor_object_name"] = (
+            (instance.monitor_object.display_name or instance.monitor_object.name) if instance and instance.monitor_object else None
+        )
+        item["end_event_time"] = None
+        items.append(item)
+    return items
+
+
+def _build_active_alert_instance_summaries(queryset, filtered_instance_ids):
+    if not filtered_instance_ids:
+        return []
+    levels_by_instance = {}
+    for row in queryset.values("monitor_instance_id", "level"):
+        instance_id = str(row["monitor_instance_id"])
+        levels_by_instance.setdefault(instance_id, []).append(row["level"])
+    return [
+        {
+            "instance_id": instance_id,
+            "count": len(levels_by_instance.get(instance_id, [])),
+            "max_level": _max_monitor_alert_level(levels_by_instance.get(instance_id, [])),
+        }
+        for instance_id in filtered_instance_ids
+    ]
+
+
 @nats_client.register
 def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwargs):
     if query_data is None:
@@ -1232,20 +1352,7 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
     user_info = kwargs.get("user_info", {})
 
     try:
-        limit = _normalize_positive_int(query_data.get("limit", 10), "limit", default=10)
-        if limit > 100:
-            raise ValueError("limit 不能大于 100")
-        instance_ids = query_data.get("instance_ids", [])
-        if instance_ids in (None, ""):
-            instance_ids = []
-        if not isinstance(instance_ids, list):
-            raise ValueError("instance_ids 必须是列表")
-        instance_ids = [str(instance_id) for instance_id in instance_ids if instance_id]
-        instance_id = query_data.get("instance_id")
-        if instance_id:
-            instance_ids.append(str(instance_id))
-        level_values = _normalize_filter_values(query_data.get("level"), "level")
-        alert_type_values = _normalize_filter_values(query_data.get("alert_type"), "alert_type")
+        limit, instance_ids, level_values, alert_type_values = _parse_latest_active_alerts_query(query_data)
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
 
@@ -1253,47 +1360,16 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
     if scope_error:
         return scope_error
 
-    if monitor_obj_id:
-        try:
-            MonitorObject.objects.get(id=monitor_obj_id)
-        except MonitorObject.DoesNotExist:
-            return {"result": False, "data": [], "message": "监控对象不存在"}
+    authorized_instances, error = _resolve_latest_active_alert_instances(monitor_obj_id, user_info, scope_ids)
+    if error:
+        return error
 
-    if monitor_obj_id:
-        permission, error = _get_monitor_instance_permission(monitor_obj_id, user_info)
-        if error:
-            return error
-        authorized_qs = (
-            _get_authorized_instance_queryset(permission, scope_ids)
-            .filter(
-                monitor_object_id=monitor_obj_id,
-                is_deleted=False,
-                is_active=True,
-            )
-            .select_related("monitor_object")
-        )
-        authorized_instances = {str(instance.id): instance for instance in authorized_qs}
-    else:
-        authorized_instances, error = _get_authorized_monitor_instances(
-            user_info,
-            scope_ids,
-        )
-        if error:
-            return error
-
-    if not authorized_instances:
-        return {
-            "result": True,
-            "data": {"count": 0, "items": []},
-            "message": "",
-        }
-
-    authorized_instance_ids = set(authorized_instances.keys())
-    if instance_ids:
-        filtered_instance_ids = [instance for instance in instance_ids if instance in authorized_instance_ids]
-        if not filtered_instance_ids:
-            return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
-        authorized_instance_ids = set(filtered_instance_ids)
+    authorized_instance_ids, filtered_instance_ids, filter_error = _filter_requested_alert_instances(
+        authorized_instances,
+        instance_ids,
+    )
+    if filter_error:
+        return filter_error
 
     accessible_policy_qs, policy_error = _get_nats_accessible_policy_queryset(user_info)
     if policy_error:
@@ -1304,30 +1380,54 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
         policy_id__in=accessible_policy_qs.values_list("id", flat=True),
         status="new",
     )
-
     if level_values:
         queryset = queryset.filter(level__in=level_values)
     if alert_type_values:
         queryset = queryset.filter(alert_type__in=alert_type_values)
 
-    items = []
-    for alert in queryset.order_by("-start_event_time", "-created_at")[:limit]:
-        item = _build_monitor_alert_segment(alert)
-        instance = authorized_instances.get(str(alert.monitor_instance_id))
-        item["monitor_obj_id"] = str(instance.monitor_object_id) if instance else None
-        item["monitor_object_name"] = (
-            (instance.monitor_object.display_name or instance.monitor_object.name) if instance and instance.monitor_object else None
-        )
-        item["end_event_time"] = None
-        items.append(item)
+    total_count = queryset.count()
     return {
         "result": True,
         "data": {
-            "count": len(items),
-            "items": items,
+            "count": total_count,
+            "max_level": _max_monitor_alert_level(queryset.values_list("level", flat=True)) if total_count else None,
+            "items": _build_latest_active_alert_items(queryset, authorized_instances, limit),
+            "instance_summaries": _build_active_alert_instance_summaries(queryset, filtered_instance_ids),
         },
         "message": "",
     }
+
+
+@nats_client.register
+def query_latest_interface_metrics(instance_ids=None, *args, **kwargs):
+    """Return latest IF-MIB values per instance_id + ifDescr for authorized instances."""
+    user_info = kwargs.get("user_info") or {}
+    try:
+        requested_ids = normalize_instance_ids(instance_ids)
+    except InterfaceMetricsQueryError as exc:
+        return {"result": False, "data": {"items": []}, "message": str(exc)}
+
+    if not requested_ids:
+        return {"result": True, "data": {"items": []}, "message": ""}
+
+    _, _, _, scope_ids, _, scope_error = _get_nats_actor_scope(user_info)
+    if scope_error:
+        return scope_error
+
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if error:
+        return error
+
+    allowed_ids = [item for item in requested_ids if item in authorized_instances]
+    if not allowed_ids:
+        return {"result": True, "data": {"items": []}, "message": ""}
+
+    try:
+        items = query_interface_metric_items(VictoriaMetricsAPI(), allowed_ids)
+    except Exception:
+        logger.exception("query_latest_interface_metrics failed")
+        return {"result": False, "data": {"items": []}, "message": "接口指标查询失败"}
+    return {"result": True, "data": {"items": items}, "message": ""}
 
 
 @nats_client.register

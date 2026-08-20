@@ -30,6 +30,7 @@ from apps.operation_analysis.services.import_export.view_sets import (
     normalize_canvas_view_sets_for_yaml,
     rewrite_canvas_view_sets_refs_for_yaml,
 )
+from apps.operation_analysis.services.network_status_topology_overlay import overlay_datasource_ids_for_view_sets
 
 
 class ExportService:
@@ -209,6 +210,7 @@ class ExportService:
 
         if object_type in CANVAS_TYPES:
             collect_datasource_ids(normalized)
+            datasource_ids |= overlay_datasource_ids_for_view_sets(normalized)
 
         return datasource_ids, namespace_ids
 
