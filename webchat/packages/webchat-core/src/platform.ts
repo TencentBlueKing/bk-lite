@@ -197,7 +197,9 @@ export function dockCollapsedStorageKey(prefix: string, userId: string, teamId: 
   return `${prefix}:collapsed:${userId}:${teamId}`;
 }
 
-/** Missing key or unreadable storage means collapsed (open when needed). */
+/** Missing key or unreadable storage means collapsed (open when needed).
+ * PlatformChat keeps dock chrome in memory; these helpers remain for hosts
+ * that still want optional persistence. */
 export function readDockCollapsed(
   storage: Pick<Storage, 'getItem'> | null | undefined,
   key: string
