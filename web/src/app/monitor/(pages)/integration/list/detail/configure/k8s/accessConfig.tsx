@@ -35,6 +35,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const [k8sClusterList, setK8sClusterList] = useState<any[]>([]);
   const [unit, setUnit] = useState('seconds');
 
+  // 表单控件宽度
+  const FORM_CONTROL_WIDTH = 300;
 
   useEffect(() => {
     if (!isLoading) {
@@ -175,7 +177,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                 },
               ]}
             >
-              <Radio.Group className="w-[300px]">
+              <Radio.Group style={{ width: FORM_CONTROL_WIDTH }}>
                 <Radio value="new">
                   {t('monitor.integrations.k8s.newAsset')}
                 </Radio>
@@ -218,7 +220,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                     >
                       <Input
                         placeholder={t('common.inputTip')}
-                        className="w-[300px]"
+                        style={{ width: FORM_CONTROL_WIDTH }}
                       />
                     </Form.Item>
                     <div className="text-[var(--color-text-3)] flex-1">
@@ -243,7 +245,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                       ]}
                     >
                       <GroupTreeSelector
-                        style={{ width: 300 }}
+                        style={{ width: FORM_CONTROL_WIDTH }}
                         placeholder={t('common.selectTip')}
                       />
                     </Form.Item>
@@ -273,7 +275,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                     >
                       <Select
                         placeholder={t('common.selectTip')}
-                        className="w-[300px]"
+                        style={{ width: FORM_CONTROL_WIDTH }}
                         loading={k8sClusterLoading}
                         options={k8sClusterList.map((item) => ({
                           value: item.instance_id,
@@ -305,7 +307,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
             >
               <Select
                 placeholder={t('common.selectTip')}
-                className="w-[300px]"
+                style={{ width: FORM_CONTROL_WIDTH }}
                 loading={cloudRegionLoading}
                 options={cloudRegionList.map((item) => ({
                   value: item.id,
@@ -343,7 +345,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
             >
               <Input
                 placeholder={DEFAULT_K8S_IMAGE_REGISTRY_PREFIX}
-                className="w-[300px]"
+                style={{ width: FORM_CONTROL_WIDTH }}
               />
             </Form.Item>
             <div className="text-[var(--color-text-3)] flex-1">
@@ -369,7 +371,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
               ]}
             >
               <InputNumber
-                className="w-[300px]"
+                style={{ width: FORM_CONTROL_WIDTH }}
                 min={1}
                 max={unit === 'seconds' ? 3600 : unit === 'minutes' ? 60 : 24}
                 precision={0}
@@ -377,7 +379,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
                 addonAfter={
                   <Select
                     value={unit}
-                    className="w-20"
+                    style={{ width: 80 }}
                     onChange={(val) => setUnit(val)}
                   >
                     <Select.Option value="seconds">
