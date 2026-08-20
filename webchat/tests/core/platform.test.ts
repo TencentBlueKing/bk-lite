@@ -231,7 +231,8 @@ test('formats session timestamps in Chinese relative units', () => {
   assert.equal(formatSessionTime(undefined, now), undefined);
 });
 
-test('persists dock collapsed state separately from last session', () => {
+test('dock collapsed helpers default to collapsed when storage is empty', () => {
+  // PlatformChat uses in-memory collapsed state; helpers stay available for other hosts.
   const store = new Map<string, string>();
   const storage = {
     getItem: (key: string) => store.get(key) ?? null,
@@ -246,4 +247,5 @@ test('persists dock collapsed state separately from last session', () => {
   assert.equal(readDockCollapsed(storage, key), true);
   writeDockCollapsed(storage, key, false);
   assert.equal(readDockCollapsed(storage, key), false);
+  assert.equal(readDockCollapsed({ getItem: () => null }, key), true);
 });

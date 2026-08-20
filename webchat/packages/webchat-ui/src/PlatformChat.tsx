@@ -4,15 +4,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   PlatformAccessDeniedError,
   createPlatformSessionId,
-  dockCollapsedStorageKey,
   fillUrlTemplate,
   formatSessionTime,
   isPlatformMode,
   lastSessionStorageKey,
-  readDockCollapsed,
   readLastSelection,
   resolvePlatformSelection,
-  writeDockCollapsed,
   writeLastSelection,
   type Message,
   type PlatformApplication,
@@ -98,7 +95,8 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
 
   const storagePrefix = platform.storageKey || 'webchat:platform';
   const storageKey = lastSessionStorageKey(storagePrefix, userId, teamId);
-  const collapsedKey = dockCollapsedStorageKey(storagePrefix, userId, teamId);
+  // Session/app selection stays in localStorage. Dock open/collapsed is
+  // in-memory only so new windows and refreshes always start as FAB.
   const storage = typeof window === 'undefined' ? null : window.localStorage;
 
   const [apps, setApps] = useState<PlatformApplication[]>([]);
@@ -111,7 +109,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const [forbidden, setForbidden] = useState(false);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
   const [view, setView] = useState<DockView>('chat');
-  const [collapsed, setCollapsed] = useState(() => readDockCollapsed(storage, collapsedKey));
+  const [collapsed, setCollapsed] = useState(true);
   const [draft, setDraft] = useState('');
   const [kickoffMessage, setKickoffMessage] = useState<string | undefined>();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -123,14 +121,6 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
       writeLastSelection(storage, storageKey, { appId, sessionId: nextSessionId });
     },
     [storage, storageKey]
-  );
-
-  const persistCollapsed = useCallback(
-    (next: boolean) => {
-      setCollapsed(next);
-      writeDockCollapsed(storage, collapsedKey, next);
-    },
-    [collapsedKey, storage]
   );
 
   useEffect(() => {
@@ -290,9 +280,9 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   }, [onStreamingStop, platform, requestInit]);
 
   const handleClose = useCallback(() => {
-    persistCollapsed(true);
+    setCollapsed(true);
     onClose?.();
-  }, [onClose, persistCollapsed]);
+  }, [onClose]);
 
   const handleComposerSend = useCallback(() => {
     const text = draft.trim();
@@ -327,7 +317,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
           type="button"
           title="打开对话"
           aria-label="打开对话"
-          onClick={() => persistCollapsed(false)}
+          onClick={() => setCollapsed(false)}
           className="flex h-10 w-10 items-center justify-center rounded-full border-none"
           style={{ background: WC.indigo, color: WC.onPrimary }}
         >
