@@ -1,5 +1,4 @@
 import hashlib
-import json
 import re
 import uuid
 from datetime import timedelta
@@ -9,6 +8,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.utils.k8s_image_registry import build_kubectl_install_command, normalize_k8s_image_registry_prefix
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, K8sCollectSetting, K8sInstallToken
 from apps.log.services.search import SearchService
@@ -39,6 +39,7 @@ class K8sLogCollectService:
             "cluster_name",
             "cloud_region_id",
             "config_type",
+            "image_registry_prefix",
             "usage_count",
             "max_usage",
             "expires_at",
@@ -283,7 +284,13 @@ class K8sLogCollectService:
         return {"instance_id": instance.id}
 
     @classmethod
-    def generate_install_token(cls, cluster_name: str, cloud_region_id: str) -> str:
+    def generate_install_token(
+        cls,
+        cluster_name: str,
+        cloud_region_id: str,
+        image_registry_prefix: str | None = None,
+    ) -> str:
+        image_registry_prefix = normalize_k8s_image_registry_prefix(image_registry_prefix)
         token = str(uuid.uuid4())
         now = timezone.now()
         K8sInstallToken.objects.filter(expires_at__lte=now).delete()
@@ -292,6 +299,7 @@ class K8sLogCollectService:
             cluster_name=cluster_name,
             cloud_region_id=str(cloud_region_id),
             config_type="log",
+            image_registry_prefix=image_registry_prefix,
             usage_count=0,
             max_usage=cls.TOKEN_MAX_USAGE,
             expires_at=now + timedelta(seconds=cls.TOKEN_EXPIRE_TIME),
@@ -309,6 +317,7 @@ class K8sLogCollectService:
             "cluster_name": data["cluster_name"],
             "cloud_region_id": data["cloud_region_id"],
             "config_type": data["config_type"],
+            "image_registry_prefix": normalize_k8s_image_registry_prefix(data.get("image_registry_prefix")),
             "remaining_usage": max_usage - usage_count,
         }
 
@@ -336,22 +345,23 @@ class K8sLogCollectService:
         cls,
         instance_id: str,
         cloud_region_id: str,
+        image_registry_prefix: str | None = None,
     ) -> str:
         instance = cls.get_k8s_instance(instance_id)
         cls.load_setting_render_options(instance.id)
 
         env_vars = cls.get_cloud_region_envconfig(cloud_region_id)
         server_url = env_vars.get("NODE_SERVER_URL")
-        token = cls.generate_install_token(instance.id, str(cloud_region_id))
+        token = cls.generate_install_token(instance.id, str(cloud_region_id), image_registry_prefix)
         api_url = f"{server_url.rstrip('/')}/api/v1/log/open_api/k8s/render/"
-        payload = json.dumps({"token": token}, ensure_ascii=False)
-        return f"curl -sSLk -X POST -H 'Content-Type: application/json' {api_url} -d '{payload}' | kubectl apply -f -"
+        return build_kubectl_install_command(api_url, token)
 
     @classmethod
     def render_config_from_cloud_region(
         cls,
         cluster_name: str,
         cloud_region_id: str,
+        image_registry_prefix: str | None = None,
     ) -> str:
         render_options = cls.load_setting_render_options(cluster_name)
         env_vars = cls.get_cloud_region_envconfig(cloud_region_id)
@@ -368,6 +378,7 @@ class K8sLogCollectService:
                     "nats_username": env_vars.get("NATS_USERNAME"),
                     "nats_password": env_vars.get("NATS_PASSWORD"),
                     "nats_ca": env_vars.get("NATS_TLS_CA"),
+                    "image_registry_prefix": normalize_k8s_image_registry_prefix(image_registry_prefix),
                     **render_options,
                 },
                 headers={"Content-Type": "application/json"},

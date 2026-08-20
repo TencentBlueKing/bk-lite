@@ -93,8 +93,8 @@ const ACTIVE_RECORD_STATUSES = new Set(['waiting', 'running']);
 
 function executionText(task: any, formatTime: (value: string) => string, translate: (key: string) => string) {
   if (task.execution_mode !== 'window') return translate('patchManager.risk.executeNow');
-  const start = task.execution_window_start ? formatTime(task.execution_window_start) : '—';
-  const end = task.execution_window_end ? formatTime(task.execution_window_end) : '—';
+  const start = task.execution_window_start ? formatTime(task.execution_window_start) : '--';
+  const end = task.execution_window_end ? formatTime(task.execution_window_end) : '--';
   return `${translate('patchManager.risk.executionWindow')} ${start}–${end}`;
 }
 
@@ -119,7 +119,7 @@ async function exportTasks(
       );
       const attemptTime = (step: any) => {
         const attempt = step?.attempts?.[step.attempts.length - 1];
-        if (!attempt) return '—';
+        if (!attempt) return '--';
         return `${formatTime(attempt.started_at)}${attempt.finished_at ? ` ～ ${formatTime(attempt.finished_at)}` : ''}`;
       };
       const attempts = (risk.steps || []).flatMap((step: any) => step.attempts || []);
@@ -127,11 +127,11 @@ async function exportTasks(
         ...row,
         host: risk.host_name || risk.host_id,
         patch: risk.patch_name || risk.patch_id,
-        installStatus: stepMap.install ? translate(`patchManager.execution.statuses.${stepMap.install.status}`) : '—',
+        installStatus: stepMap.install ? translate(`patchManager.execution.statuses.${stepMap.install.status}`) : '--',
         installTime: attemptTime(stepMap.install),
-        rebootStatus: stepMap.reboot ? translate(`patchManager.execution.statuses.${stepMap.reboot.status}`) : '—',
+        rebootStatus: stepMap.reboot ? translate(`patchManager.execution.statuses.${stepMap.reboot.status}`) : '--',
         rebootTime: attemptTime(stepMap.reboot),
-        verifyStatus: stepMap.verify ? translate(`patchManager.execution.statuses.${stepMap.verify.status}`) : '—',
+        verifyStatus: stepMap.verify ? translate(`patchManager.execution.statuses.${stepMap.verify.status}`) : '--',
         verifyTime: attemptTime(stepMap.verify),
         status: translate(`patchManager.execution.statuses.${risk.status}`),
         reason: attempts.map((attempt: any) => attempt.reason).filter(Boolean).at(-1) || '',
@@ -212,7 +212,7 @@ export default function RiskExecutionPage() {
   }, []);
 
   const formatDateTime = useCallback((value?: string | null) => (
-    value ? localizedTimeRef.current(value) : '—'
+    value ? localizedTimeRef.current(value) : '--'
   ), []);
 
   const mapTaskRows = useCallback((items: any[]): TaskRow[] => (
@@ -653,7 +653,7 @@ export default function RiskExecutionPage() {
                 <Tag color={item.status_color} className="shrink-0 !me-0">{t(`patchManager.execution.statuses.${item.status}`, item.status_display)}</Tag>
                 <EllipsisWithTooltip
                   className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-(--color-text-3)"
-                  text={item.host_ip || '—'}
+                  text={item.host_ip || '--'}
                 />
               </div>
             </div>;
@@ -666,9 +666,9 @@ export default function RiskExecutionPage() {
               showIcon
               message={t('patchManager.execution.cancelInfo')}
               description={<Space direction="vertical" size={2}>
-                <span>{t('patchManager.execution.cancelledBy')}：{detailTask.cancelled_by || '—'}</span>
+                <span>{t('patchManager.execution.cancelledBy')}：{detailTask.cancelled_by || '--'}</span>
                 <span>{t('patchManager.execution.cancelledAt')}：{formatDateTime(detailTask.cancelled_at)}</span>
-                <span>{t('patchManager.execution.cancelReason')}：{detailTask.cancel_reason || '—'}</span>
+                <span>{t('patchManager.execution.cancelReason')}：{detailTask.cancel_reason || '--'}</span>
               </Space>}
               className="mb-4"
             />}
@@ -681,7 +681,7 @@ export default function RiskExecutionPage() {
             <div className="mb-4 flex justify-between">
               <div>
                 <div className="text-base font-semibold">{riskDetail.display_name}</div>
-                <div className="mt-1 text-[var(--color-text-3)]">{riskDetail.host_ip || '—'} · {riskDetail.baseline_name || '—'}</div>
+                <div className="mt-1 text-[var(--color-text-3)]">{riskDetail.host_ip || '--'} · {riskDetail.baseline_name || '--'}</div>
               </div>
               {riskDetail.can_retry && <PermissionWrapper requiredPermissions={['Edit']} instPermissions={detailTask?.permission}><Button type="link" size="small" onClick={handleRetry}>{t('patchManager.execution.retry')}</Button></PermissionWrapper>}
             </div>

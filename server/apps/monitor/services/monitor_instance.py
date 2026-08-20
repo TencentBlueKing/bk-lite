@@ -1,6 +1,6 @@
+import json
 import os
 import re
-import json
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -11,17 +11,11 @@ from apps.core.utils.loader import LanguageLoader
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.constants.plugin import PluginConstants
-from apps.monitor.models import (
-    Metric,
-    MonitorObject,
-    CollectConfig,
-    MonitorPlugin,
-    MonitorInstanceOrganization,
-    MonitorInstance,
-)
+from apps.monitor.models import CollectConfig, Metric, MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorPlugin
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.rpc.node_mgmt import NodeMgmt
 
 # 实例列表页插件状态查询的最大并发度：每个插件的 status_query 是一次独立 VM 读，
 # 去重后并发拉取以消除「插件越多越慢」的串行 N+1。保守默认 8，可经 env 调。
@@ -260,7 +254,7 @@ class InstanceSearch:
         items = []
         instance_id_keys = self.obj_metric_map.get("instance_id_keys")
         for metric in vm_metrics:
-            instance_id = str(tuple([metric["metric"].get(i) for i in instance_id_keys]))
+            instance_id = str(tuple(metric["metric"].get(i) for i in instance_id_keys))
             if instance_id not in objs_map:
                 continue
             obj = objs_map[instance_id]
@@ -279,9 +273,7 @@ class InstanceSearch:
 
         vm_params = self.query_data.get("vm_params") or {}
         if isinstance(vm_params, dict):
-            items = InstanceSearch.apply_status_filter_to_items(
-                items, vm_params.get("status")
-            )
+            items = InstanceSearch.apply_status_filter_to_items(items, vm_params.get("status"))
 
         # 数据合并，取objs和vm_metrics的交集
         page = self.query_data.get("page", 1)
@@ -314,15 +306,18 @@ class InstanceSearch:
             monitor_instance_id__in=[i["instance_id"] for i in data["results"]],
         )
         confs_map = {}
+        config_ids_by_instance_plugin = {}
         for conf in confs:
             if conf.monitor_instance_id not in confs_map:
                 confs_map[conf.monitor_instance_id] = set()
-            plugin_key = (
-                conf.monitor_plugin_id
-                if conf.monitor_plugin_id
-                else (self.monitor_obj.id, conf.collector, conf.collect_type)
-            )
+            plugin_key = conf.monitor_plugin_id if conf.monitor_plugin_id else (self.monitor_obj.id, conf.collector, conf.collect_type)
             confs_map[conf.monitor_instance_id].add(plugin_key)
+            if conf.is_child:
+                config_ids_by_instance_plugin.setdefault((conf.monitor_instance_id, plugin_key), set()).add(conf.id)
+
+        nodes_by_config_id = self._batch_collection_nodes_by_config_ids(
+            {config_id for config_ids in config_ids_by_instance_plugin.values() for config_id in config_ids}
+        )
 
         plugin_map, plugin_status_map = {}, {}
         plugins = list(MonitorPlugin.objects.filter(monitor_object=self.monitor_obj))
@@ -439,6 +434,13 @@ class InstanceSearch:
                         collect_mode=collect_mode,
                         configured=configured,
                         config_source=config_source,
+                        collector_nodes=self._collection_nodes_for_plugin(
+                            item["instance_id"],
+                            c_tuple,
+                            collect_mode,
+                            config_ids_by_instance_plugin,
+                            nodes_by_config_id,
+                        ),
                     )
                     item["plugins"].append(info)
 
@@ -448,6 +450,55 @@ class InstanceSearch:
             item["plugins"] = self._dedupe_instance_plugins(item["plugins"])
 
         return data
+
+    def _batch_collection_nodes_by_config_ids(self, config_ids):
+        """一次 RPC 获取当前页所有子配置的授权采集节点。"""
+        normalized_ids = sorted({str(config_id) for config_id in config_ids if config_id not in (None, "")})
+        if not normalized_ids or not self.visible_organization_ids:
+            return {}
+        try:
+            rows = NodeMgmt().get_child_config_nodes_by_ids(
+                normalized_ids,
+                sorted(self.visible_organization_ids),
+            )
+        except Exception:
+            logger.exception("批量查询采集配置关联节点失败，实例列表将按未关联展示")
+            return {}
+
+        nodes_by_config_id = {}
+        for row in rows or []:
+            if not isinstance(row, dict) or row.get("id") in (None, ""):
+                continue
+            normalized_nodes = {}
+            for node in row.get("nodes") or []:
+                if not isinstance(node, dict) or node.get("id") in (None, ""):
+                    continue
+                node_id = str(node["id"])
+                normalized_nodes[node_id] = {
+                    "id": node_id,
+                    "name": str(node.get("name") or node_id),
+                }
+            nodes_by_config_id[str(row["id"])] = list(normalized_nodes.values())
+        return nodes_by_config_id
+
+    @staticmethod
+    def _collection_nodes_for_plugin(
+        instance_id,
+        plugin_key,
+        collect_mode,
+        config_ids_by_instance_plugin,
+        nodes_by_config_id,
+    ):
+        if collect_mode != PluginConstants.COLLECT_MODE_AUTO:
+            return []
+        nodes_by_id = {}
+        for config_id in config_ids_by_instance_plugin.get((instance_id, plugin_key), set()):
+            for node in nodes_by_config_id.get(str(config_id), []):
+                nodes_by_id[node["id"]] = node
+        return sorted(
+            nodes_by_id.values(),
+            key=lambda node: (node["name"].casefold(), node["name"], node["id"]),
+        )
 
     @staticmethod
     def _dedupe_instance_plugins(plugins):
@@ -485,26 +536,18 @@ class InstanceSearch:
         )
 
     @staticmethod
-    def apply_process_instance_filters(
-        qs, monitor_obj_name, vm_params, monitor_object_id=None
-    ):
+    def apply_process_instance_filters(qs, monitor_obj_name, vm_params, monitor_object_id=None):
         """按 vm_params 过滤实例：Process 主机多选 + asset.ip 多选 + Enum 指标多选。"""
         qs = InstanceSearch.apply_process_host_filters(qs, monitor_obj_name, vm_params)
         qs = InstanceSearch.apply_asset_ip_filters(qs, vm_params)
         object_id = monitor_object_id
         if object_id is None and monitor_obj_name:
-            object_id = (
-                MonitorObject.objects.filter(name=monitor_obj_name)
-                .values_list("id", flat=True)
-                .first()
-            )
+            object_id = MonitorObject.objects.filter(name=monitor_obj_name).values_list("id", flat=True).first()
         return InstanceSearch.apply_enum_metric_filters(qs, object_id, vm_params)
 
     @staticmethod
     def apply_instance_vm_param_filters(qs, monitor_object_id, monitor_obj_name, vm_params):
-        return InstanceSearch.apply_process_instance_filters(
-            qs, monitor_obj_name, vm_params, monitor_object_id=monitor_object_id
-        )
+        return InstanceSearch.apply_process_instance_filters(qs, monitor_obj_name, vm_params, monitor_object_id=monitor_object_id)
 
     @staticmethod
     def apply_process_host_filters(qs, monitor_obj_name, vm_params):
@@ -613,9 +656,7 @@ class InstanceSearch:
             return None
         if len(values) == 1:
             return f'{key}="{InstanceSearch._escape_promql_label_value(values[0])}"'
-        joined = "|".join(
-            InstanceSearch._escape_promql_label_value(re.escape(v)) for v in values
-        )
+        joined = "|".join(InstanceSearch._escape_promql_label_value(re.escape(v)) for v in values)
         return f'{key}=~"{joined}"'
 
     @staticmethod
@@ -624,13 +665,7 @@ class InstanceSearch:
         if not monitor_object_id or not isinstance(vm_params, dict):
             return qs
 
-        metrics = (
-            Metric.objects.filter(
-                monitor_object_id=monitor_object_id, data_type="Enum"
-            )
-            .exclude(query="")
-            .order_by("id")
-        )
+        metrics = Metric.objects.filter(monitor_object_id=monitor_object_id, data_type="Enum").exclude(query="").order_by("id")
         seen_names = set()
         unique_metrics = []
         for metric in metrics:
@@ -640,9 +675,7 @@ class InstanceSearch:
             unique_metrics.append(metric)
 
         label_parts = []
-        instance_clause = InstanceSearch._promql_label_clause(
-            "instance_id", vm_params.get("instance_id")
-        )
+        instance_clause = InstanceSearch._promql_label_clause("instance_id", vm_params.get("instance_id"))
         if instance_clause:
             label_parts.append(instance_clause)
         node_clause = InstanceSearch._promql_label_clause("node", vm_params.get("node"))
@@ -798,9 +831,7 @@ class InstanceSearch:
         max_workers = min(len(unique_queries), PLUGIN_STATUS_QUERY_MAX_WORKERS)
         status_map_by_query = {}
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_query = {
-                executor.submit(self.get_plugin_normal_status_map, instance_id_keys, query): query for query in unique_queries
-            }
+            future_to_query = {executor.submit(self.get_plugin_normal_status_map, instance_id_keys, query): query for query in unique_queries}
             for future in as_completed(future_to_query):
                 query = future_to_query[future]
                 try:
@@ -817,7 +848,7 @@ class InstanceSearch:
         metrics = resp.get("data", {}).get("result", [])
         status_map = {}
         for metric in metrics:
-            instance_id = str(tuple([metric["metric"].get(i) for i in instance_id_keys]))
+            instance_id = str(tuple(metric["metric"].get(i) for i in instance_id_keys))
             iso_time = datetime.fromtimestamp(metric["value"][0], tz=timezone.utc).isoformat()
             status_map[instance_id] = iso_time
         return status_map
@@ -877,7 +908,7 @@ class InstanceSearch:
             metrics = VictoriaMetricsAPI().query(query, step="10m")
             _metric_map = {}
             for metric in metrics.get("data", {}).get("result", []):
-                instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
+                instance_id = str(tuple(metric["metric"].get(i) for i in metric_obj.instance_id_keys))
                 value = metric["value"][1]
                 if instance_id not in _metric_map:
                     _metric_map[instance_id] = value

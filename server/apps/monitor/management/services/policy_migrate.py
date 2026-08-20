@@ -18,22 +18,23 @@ def migrate_policy():
     # 商业版策略
     enterprise_path_list = find_files_by_pattern(PluginConstants.ENTERPRISE_DIRECTORY, filename_pattern="policy.json")
     path_list.extend(enterprise_path_list)
-    logger.info(f'找到 {len(path_list)} 个策略配置文件')
+    logger.info(f"找到 {len(path_list)} 个策略配置文件")
 
     documents = []
     error_count = 0
     for file_path in sorted(path_list):
         try:
-            policy_data = json.loads(Path(file_path).read_text(encoding='utf-8'))
+            policy_data = json.loads(Path(file_path).read_text(encoding="utf-8"))
             if policy_data == []:
-                logger.info(f'跳过空策略配置: {file_path}')
+                logger.info(f"跳过空策略配置: {file_path}")
                 continue
             documents.append(policy_data)
         except Exception as e:
-            logger.error(f'读取策略配置失败: {file_path}, 错误: {e}')
+            logger.error(f"读取策略配置失败: {file_path}, 错误: {e}")
             error_count += 1
     if error_count:
-        logger.error("部分策略配置读取失败，将跳过损坏文件并对账其余有效文档: 失败=%s", error_count)
+        logger.error("部分策略配置读取失败，保留上一次有效内置模板且不执行部分对账: 失败=%s", error_count)
+        return
     if not documents:
         logger.error("没有可读的策略配置，保留上一次有效内置模板: 失败=%s", error_count)
         return

@@ -257,6 +257,15 @@ stargazer_collection_credential_state_redis_error_total {stats.get("credential_s
             "nats_metrics_pending_bytes",
             "run_first_schedule_wait_seconds_p95",
             "run_first_schedule_wait_seconds_p99",
+            "job_node_info_lookup_total",
+            "job_node_info_lookup_rpc_total",
+            "job_node_info_lookup_target_total",
+            "job_node_info_lookup_found_total",
+            "job_node_info_lookup_missing_total",
+            "job_node_info_lookup_ambiguous_total",
+            "job_node_info_lookup_failure_total",
+            "job_node_info_lookup_duration_seconds_p95",
+            "job_node_info_lookup_duration_seconds_p99",
         )
         for key in bounded_metric_keys:
             prometheus_text += (

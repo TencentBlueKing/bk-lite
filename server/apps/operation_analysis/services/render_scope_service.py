@@ -193,10 +193,11 @@ class DashboardReportRenderScopeService:
         if cls._NETWORK_STATUS_TOPOLOGY.match(path) and method == "POST":
             allowed_targets = cls._collect_network_status_topology_targets(execution.render_snapshot.view_sets)
             body = cls._read_json_body(request)
-            model_id = body.get("model_id")
-            inst_uuid = body.get("inst_uuid")
-            if model_id is not None and inst_uuid is not None and (str(model_id), str(inst_uuid)) in allowed_targets:
-                return claims
+            requested = body.get("inst_uuids")
+            if isinstance(requested, list) and requested:
+                requested_ids = {str(item) for item in requested if item not in (None, "")}
+                if requested_ids and requested_ids <= allowed_targets:
+                    return claims
 
         raise DashboardReportRenderScopeError("Render Session 不允许访问该接口")
 
@@ -233,9 +234,9 @@ class DashboardReportRenderScopeService:
     def _collect_network_status_topology_targets(
         cls,
         view_sets,
-    ) -> set[tuple[str, str]]:
-        """从冻结 view_sets 收集允许的 (model_id, inst_uuid)。"""
-        targets: set[tuple[str, str]] = set()
+    ) -> set[str]:
+        """从冻结 view_sets 收集允许的 inst_uuid。"""
+        targets: set[str] = set()
 
         def visit(item) -> None:
             if not isinstance(item, dict):
@@ -244,10 +245,9 @@ class DashboardReportRenderScopeService:
             scene_type = value_config.get("sceneWidgetType") or item.get("sceneWidgetType") or value_config.get("chartType") or item.get("chartType")
             config = value_config.get("networkStatusTopology") or item.get("networkStatusTopology")
             if scene_type == "networkStatusTopology" and isinstance(config, dict):
-                model_id = config.get("modelId")
-                inst_uuid = config.get("instUuid")
-                if model_id is not None and inst_uuid is not None:
-                    targets.add((str(model_id), str(inst_uuid)))
+                inst_uuids = config.get("instUuids")
+                if isinstance(inst_uuids, list):
+                    targets.update(str(value) for value in inst_uuids if value not in (None, ""))
             children = (item.get("subGridOpts") or {}).get("children") or []
             for child in children:
                 visit(child)

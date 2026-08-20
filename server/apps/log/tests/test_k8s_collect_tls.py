@@ -7,7 +7,6 @@ from unittest.mock import MagicMock
 
 from apps.log.services.k8s_collect import K8sLogCollectService
 
-
 _ENV_VARS = {
     "WEBHOOK_SERVER_URL": "https://webhookd.internal",
     "NODE_SERVER_URL": "https://node.internal",
@@ -27,13 +26,24 @@ def _patch_post(monkeypatch, captured):
         return resp
 
     monkeypatch.setattr("apps.log.services.k8s_collect.requests.post", fake_post)
+    monkeypatch.setattr(
+        K8sLogCollectService,
+        "load_setting_render_options",
+        classmethod(
+            lambda cls, instance_id: {
+                "runtime_profile": "standard",
+                "host_log_path": None,
+                "docker_container_log_path": None,
+                "namespace_patterns": [],
+                "pod_patterns": [],
+            }
+        ),
+    )
 
 
 def test_render_uses_configured_ca_path(monkeypatch):
     monkeypatch.setenv("WEBHOOK_SERVER_SSL_VERIFY", "/etc/ssl/webhook-ca.pem")
-    monkeypatch.setattr(
-        K8sLogCollectService, "get_cloud_region_envconfig", staticmethod(lambda cloud_region_id: dict(_ENV_VARS))
-    )
+    monkeypatch.setattr(K8sLogCollectService, "get_cloud_region_envconfig", staticmethod(lambda cloud_region_id: dict(_ENV_VARS)))
     captured = {}
     _patch_post(monkeypatch, captured)
 
@@ -45,9 +55,7 @@ def test_render_uses_configured_ca_path(monkeypatch):
 
 def test_render_defaults_to_secure_verification(monkeypatch):
     monkeypatch.delenv("WEBHOOK_SERVER_SSL_VERIFY", raising=False)
-    monkeypatch.setattr(
-        K8sLogCollectService, "get_cloud_region_envconfig", staticmethod(lambda cloud_region_id: dict(_ENV_VARS))
-    )
+    monkeypatch.setattr(K8sLogCollectService, "get_cloud_region_envconfig", staticmethod(lambda cloud_region_id: dict(_ENV_VARS)))
     captured = {}
     _patch_post(monkeypatch, captured)
 
@@ -58,9 +66,7 @@ def test_render_defaults_to_secure_verification(monkeypatch):
 
 def test_render_explicit_optout(monkeypatch):
     monkeypatch.setenv("WEBHOOK_SERVER_SSL_VERIFY", "false")
-    monkeypatch.setattr(
-        K8sLogCollectService, "get_cloud_region_envconfig", staticmethod(lambda cloud_region_id: dict(_ENV_VARS))
-    )
+    monkeypatch.setattr(K8sLogCollectService, "get_cloud_region_envconfig", staticmethod(lambda cloud_region_id: dict(_ENV_VARS)))
     captured = {}
     _patch_post(monkeypatch, captured)
 

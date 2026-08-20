@@ -30,6 +30,10 @@ def user_info_func(name, user_info=None):
     return {}
 
 
+def team_list_with_user_func(name, *, team=None, user_info=None):
+    return {}
+
+
 class AnchorSerializer(OpenAPIRequestSerializer):
     name = serializers.CharField()
     team = serializers.IntegerField(required=False)
@@ -106,6 +110,15 @@ def test_user_info_registration():
         reg, inject="user_info", func=user_info_func, serializer_class=AnchorSerializer
     )
     assert endpoint.inject == "user_info"
+
+
+def test_team_list_with_user_registration_requires_both_trusted_parameters():
+    reg = OpenAPIRegistry()
+    endpoint = register(reg, inject="team_list_with_user", func=team_list_with_user_func)
+    assert endpoint.inject == "team_list_with_user"
+
+    with pytest.raises(ImproperlyConfigured):
+        register(OpenAPIRegistry(), inject="team_list_with_user", func=team_list_func)
 
 
 def test_permission_with_app_accepted():

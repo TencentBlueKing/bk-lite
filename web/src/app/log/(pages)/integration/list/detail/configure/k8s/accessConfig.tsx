@@ -17,6 +17,10 @@ import CollectSettingFields, {
 import IntegrationStepCallout, {
   createLogK8sStepCalloutPreset,
 } from '@/components/integration-step-callout';
+import {
+  DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
+  isValidK8sImageRegistryPrefix
+} from '@/utils/k8sImageRegistry';
 
 interface AccessConfigProps {
   onNext: (data?: K8sCommandData) => void;
@@ -77,7 +81,9 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         host_log_path: commandData.host_log_path,
         docker_container_log_path: commandData.docker_container_log_path,
         namespace_patterns: commandData.namespace_patterns,
-        pod_patterns: commandData.pod_patterns
+        pod_patterns: commandData.pod_patterns,
+        image_registry_prefix:
+          commandData.image_registry_prefix || DEFAULT_K8S_IMAGE_REGISTRY_PREFIX
       });
       setDockerPathForFields(commandData.docker_container_log_path);
       if (commandData.instance_id) {
@@ -149,7 +155,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         host_log_path: values.host_log_path,
         docker_container_log_path: values.docker_container_log_path,
         namespace_patterns: values.namespace_patterns,
-        pod_patterns: values.pod_patterns
+        pod_patterns: values.pod_patterns,
+        image_registry_prefix: values.image_registry_prefix
       };
 
       let instanceId = values.k8sCluster as string;
@@ -176,7 +183,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         host_log_path: values.host_log_path,
         docker_container_log_path: values.docker_container_log_path,
         namespace_patterns: values.namespace_patterns,
-        pod_patterns: values.pod_patterns
+        pod_patterns: values.pod_patterns,
+        image_registry_prefix: values.image_registry_prefix
       });
     } finally {
       setSubmitLoading(false);
@@ -193,7 +201,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         className="w-full"
         initialValues={{
           accessType: 'new',
-          runtime_profile: commandData?.runtime_profile || 'standard'
+          runtime_profile: commandData?.runtime_profile || 'standard',
+          image_registry_prefix: DEFAULT_K8S_IMAGE_REGISTRY_PREFIX
         }}
       >
         <div className="flex items-center mb-6">
@@ -375,6 +384,45 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
               </Form.Item>
             }
             description={t('log.integration.k8s.cloudRegionHint')}
+          />
+        </Form.Item>
+
+        <Form.Item
+          label={
+            <FieldLabel
+              label={t('log.integration.k8s.imageRegistryPrefix')}
+              detail={t('log.integration.k8s.imageRegistryPrefixDesc')}
+            />
+          }
+          required
+        >
+          <FormSettingRow
+            control={
+              <Form.Item
+                name="image_registry_prefix"
+                noStyle
+                validateTrigger="onBlur"
+                rules={[
+                  { required: true, message: t('common.required') },
+                  {
+                    validator: (_, value) =>
+                      isValidK8sImageRegistryPrefix(value)
+                        ? Promise.resolve()
+                        : Promise.reject(
+                          new Error(
+                            t('log.integration.k8s.imageRegistryInvalid')
+                          )
+                        )
+                  }
+                ]}
+              >
+                <Input
+                  placeholder={DEFAULT_K8S_IMAGE_REGISTRY_PREFIX}
+                  className="w-[300px]"
+                />
+              </Form.Item>
+            }
+            description={t('log.integration.k8s.imageRegistryPrefixHint')}
           />
         </Form.Item>
 

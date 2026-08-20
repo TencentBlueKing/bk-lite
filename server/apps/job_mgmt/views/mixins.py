@@ -120,7 +120,9 @@ class BatchDeleteMixin:
         instances = self.get_batch_delete_queryset(ids)
         self.pre_batch_delete(instances)
 
-        deleted_count, _ = instances.delete()
+        # QuerySet.delete() 的首项包含级联删除行数；API 契约只返回用户所选主对象数。
+        deleted_count = instances.count()
+        instances.delete()
         response = Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
         if response.status_code == status.HTTP_200_OK and self.batch_delete_log_label:
             log_operation(request, "delete", "job", f"批量删除{self.batch_delete_log_label}: (共{deleted_count}个)")

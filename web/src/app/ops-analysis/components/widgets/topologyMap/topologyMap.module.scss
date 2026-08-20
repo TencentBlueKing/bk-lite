@@ -41,20 +41,21 @@
 }
 
 .popover {
-  padding: 11px 12px;
-  border: 1px solid var(--color-border-2);
+  min-width: 188px;
+  padding: 10px 12px;
+  border: 1px solid rgba(213, 226, 242, 0.96);
   border-radius: 8px;
-  background: var(--color-bg-1);
-  box-shadow: 0 8px 16px color-mix(in srgb, var(--color-text-1) 12%, transparent);
-  color: var(--color-text-1);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 34px rgba(39, 67, 104, 0.16);
+  color: #253244;
   font-size: 12px;
   line-height: 18px;
+  backdrop-filter: blur(8px);
 }
 
 .popTitle {
   overflow: hidden;
   margin-bottom: 7px;
-  color: var(--color-text-1);
   font-size: 13px;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -63,11 +64,11 @@
 
 .popLine {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   min-width: 0;
   margin-top: 4px;
-  color: var(--color-text-3);
+  color: #607086;
 
   > span {
     flex: none;
@@ -75,39 +76,40 @@
 
   > strong {
     overflow: hidden;
-    color: var(--color-text-1);
+    color: #253244;
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 }
 
 .alertCount {
-  color: var(--color-fail) !important;
+  color: #dc2626 !important;
 }
 
 .statusPill {
   padding: 1px 7px;
   border-radius: 999px;
-  background: var(--color-primary-bg-active);
-  color: var(--color-primary) !important;
+  background: #ecfdf5;
+  color: #047857 !important;
   font-size: 11px;
   font-weight: 600;
 }
 
 .warning {
-  background: color-mix(in srgb, var(--theme-color-status-warning) 16%, transparent);
-  color: var(--theme-color-status-warning) !important;
+  background: #fffbeb;
+  color: #b45309 !important;
 }
 
 .error,
 .critical {
-  background: color-mix(in srgb, var(--color-fail) 12%, transparent);
-  color: var(--color-fail) !important;
+  background: #fef2f2;
+  color: #dc2626 !important;
 }
 
 .unknown {
-  background: color-mix(in srgb, var(--color-text-3) 14%, transparent);
-  color: var(--color-text-3) !important;
+  background: #f1f5f9;
+  color: #64748b !important;
 }
 
 .centered {

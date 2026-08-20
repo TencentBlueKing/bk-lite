@@ -542,6 +542,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           readonly={nodeReadonly}
           builtinNamespaceId={namespaceDraftId}
           editingNodeData={addNodeVisible ? null : state.editingNodeData}
+          filterDefinitions={definitions}
           onClose={handleNodeEditClose}
           onConfirm={handleNodeConfirm}
           onCancel={handleNodeEditClose}

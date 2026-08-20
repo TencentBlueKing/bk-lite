@@ -49,7 +49,6 @@ const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
   className,
 }) => {
   const { t } = useTranslation();
-  // undefined 时仅展示默认快捷范围，不回写 Form，避免挂载期 onChange 把字段标成 touched
   const effectiveValue = getDateRangeSelectorValue(value);
   const effectiveStatus = status ?? (
     value !== undefined && !validateDateRangeValue(value).valid ? 'error' : undefined

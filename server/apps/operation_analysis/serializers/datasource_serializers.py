@@ -4,16 +4,13 @@
 # @Author: windyzhao
 from rest_framework import serializers
 
-from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.core.utils.serializers import AuthSerializer
+from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.operation_analysis.common.datasource_security import LEGACY_RAW_MONITOR_QUERY_ERROR, is_legacy_raw_monitor_query
 from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDER, is_sensitive_field_name
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
-from apps.operation_analysis.serializers.data_connection_serializers import (
-    validate_datasource_connection_binding,
-    validate_rest_headers,
-)
+from apps.operation_analysis.serializers.data_connection_serializers import validate_datasource_connection_binding, validate_rest_headers
 
 TRANSFORM_ALLOWED_SOURCE_TYPES = {
     DataSourceAPIModel.SOURCE_TYPE_REST_API,
@@ -41,8 +38,7 @@ def redact_sensitive_config(value):
         # Spec: REST Header names are visible; every Header value is sensitive.
         if key == "headers" and isinstance(item, dict):
             redacted[key] = {
-                header_key: (SENSITIVE_PLACEHOLDER if header_value not in (None, "") else header_value)
-                for header_key, header_value in item.items()
+                header_key: (SENSITIVE_PLACEHOLDER if header_value not in (None, "") else header_value) for header_key, header_value in item.items()
             }
             continue
         if is_sensitive_field_name(key):
@@ -239,9 +235,7 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             if isinstance(connection_config, dict) and "headers" in connection_config:
                 validate_rest_headers(connection_config.get("headers"))
 
-        should_validate_target = (
-            self.instance is None or "connection_config" in attrs or "source_type" in attrs
-        )
+        should_validate_target = self.instance is None or "connection_config" in attrs or "source_type" in attrs
         if source_type != DataSourceAPIModel.SOURCE_TYPE_PROMETHEUS or not should_validate_target:
             return attrs
 
@@ -273,10 +267,7 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         previous_type = instance.source_type
         previous_transform = instance.transform_config if isinstance(instance.transform_config, dict) else {}
         updated = super().update(instance, validated_data)
-        left_excel = (
-            previous_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL
-            and updated.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL
-        )
+        left_excel = previous_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL and updated.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL
         if left_excel:
             from apps.operation_analysis.services.excel_materialize import abandon_excel_materialization
 
@@ -287,10 +278,9 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             return updated
 
         new_transform = updated.transform_config if isinstance(updated.transform_config, dict) else {}
-        transform_changed = (
-            bool(previous_transform.get("enabled")) != bool(new_transform.get("enabled"))
-            or (previous_transform.get("script") or "") != (new_transform.get("script") or "")
-        )
+        transform_changed = bool(previous_transform.get("enabled")) != bool(new_transform.get("enabled")) or (
+            previous_transform.get("script") or ""
+        ) != (new_transform.get("script") or "")
         if not transform_changed:
             return updated
 
@@ -301,9 +291,7 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         if not has_source:
             return updated
 
-        from apps.operation_analysis.services.excel_materialize.submit import (
-            schedule_resubmit_excel_from_saved_source,
-        )
+        from apps.operation_analysis.services.excel_materialize.submit import schedule_resubmit_excel_from_saved_source
 
         schedule_resubmit_excel_from_saved_source(updated.id)
         return updated
@@ -350,5 +338,5 @@ class NameSpaceModelSerializer(BaseFormatTimeSerializer):
         model = NameSpace
         fields = "__all__"
         extra_kwargs = {
-            "password": {"write_only": True},
+            "password": {"write_only": True, "allow_blank": True},
         }

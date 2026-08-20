@@ -100,8 +100,9 @@ export const formatCompactAxisValue = (value: number) => {
 };
 
 const toNumericValue = (value: unknown) => {
-  const num = Number(value ?? 0);
-  return Number.isFinite(num) ? num : 0;
+  if (value == null || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
 };
 
 const TimeSeriesComposedChart = <T extends TimeSeriesRow>({

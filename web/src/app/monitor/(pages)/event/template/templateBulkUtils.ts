@@ -38,6 +38,17 @@ export interface BulkAssetItem {
   [key: string]: unknown;
 }
 
+export interface BulkAssetSelectionState {
+  selectedAssetIds: string[];
+  selectedAssets: BulkAssetItem[];
+}
+
+export interface BulkAssetPaginationState {
+  current: number;
+  pageSize: number;
+  total: number;
+}
+
 export interface BulkConfig {
   name_prefix?: string;
   enable?: boolean;
@@ -186,6 +197,49 @@ export const displayAssetName = (asset: BulkAssetItem): string => {
   const match = asset.instance_id.match(/^\('([^']*)',?\)$/);
   return match?.[1] || asset.instance_id;
 };
+
+export const reconcileBulkAssetSelection = (
+  previousSelectedAssets: BulkAssetItem[],
+  visibleAssets: BulkAssetItem[],
+  selectedAssetIds: string[]
+): BulkAssetSelectionState => {
+  const selectedIdSet = new Set(selectedAssetIds);
+  const selectedAssetMap = new Map(
+    previousSelectedAssets
+      .filter((asset) => selectedIdSet.has(asset.instance_id))
+      .map((asset) => [asset.instance_id, asset])
+  );
+
+  visibleAssets.forEach((asset) => {
+    if (selectedIdSet.has(asset.instance_id)) {
+      selectedAssetMap.set(asset.instance_id, asset);
+    }
+  });
+
+  return {
+    selectedAssetIds,
+    selectedAssets: selectedAssetIds
+      .map((instanceId) => selectedAssetMap.get(instanceId))
+      .filter((asset): asset is BulkAssetItem => Boolean(asset)),
+  };
+};
+
+export const changeBulkAssetPage = (
+  pagination: BulkAssetPaginationState,
+  page: number,
+  pageSize: number
+): BulkAssetPaginationState => ({
+  ...pagination,
+  current: pageSize === pagination.pageSize ? page : 1,
+  pageSize,
+});
+
+export const resetBulkAssetPageForSearch = (
+  pagination: BulkAssetPaginationState
+): BulkAssetPaginationState => ({
+  ...pagination,
+  current: 1,
+});
 
 const getTemplateGroupName = (template: PolicyTemplateItem): string =>
   template.template_group ||

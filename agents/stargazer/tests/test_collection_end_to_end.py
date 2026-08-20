@@ -82,9 +82,7 @@ def redis_socket(tmp_path):
 
 @pytest_asyncio.fixture
 async def redis_client(redis_socket):
-    client = AsyncRedis(
-        unix_socket_path=str(redis_socket), db=13, decode_responses=True
-    )
+    client = AsyncRedis(unix_socket_path=str(redis_socket), db=13, decode_responses=True)
     await client.flushdb()
     try:
         yield client
@@ -116,12 +114,17 @@ class RecordingPlugin:
                 status=CollectOutcomeStatus.AUTH_FAILED,
                 error_code="authentication_failed",
             )
-        value = (
-            f'host_health{{host="{target}"}} 1'
-            if self.family == "monitor"
-            else f'mysql_info{{host="{target}"}} 1'
-        )
+        value = f'host_health{{host="{target}"}} 1' if self.family == "monitor" else f'mysql_info{{host="{target}"}} 1'
         return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value=value)
+
+
+class ClosableRecordingPlugin(RecordingPlugin):
+    def __init__(self):
+        super().__init__()
+        self.close_calls = 0
+
+    async def close(self):
+        self.close_calls += 1
 
 
 class PluginFactory:
@@ -275,11 +278,7 @@ class MixedRealSnmpPlugin:
             "error_code": "" if succeeded else "snmp_collection_failed",
         }
         return CollectOutcome(
-            status=(
-                CollectOutcomeStatus.SUCCESS
-                if succeeded
-                else CollectOutcomeStatus.FAILED
-            ),
+            status=(CollectOutcomeStatus.SUCCESS if succeeded else CollectOutcomeStatus.FAILED),
             value=("snmp_collection_success 1\n" if succeeded else None),
             error_code="" if succeeded else "real_snmp_failed",
         )
@@ -372,15 +371,11 @@ async def http_client(blueprint, name):
 
 
 @pytest.mark.asyncio
-async def test_configuration_http_to_redis_plugin_nats_and_next_cycle_resubmit(
-    redis_client, monkeypatch
-):
+async def test_configuration_http_to_redis_plugin_nats_and_next_cycle_resubmit(redis_client, monkeypatch):
     published = []
     scheduled = []
     plugin = RecordingPlugin(rotate_credentials=True)
-    application, preflight = build_application(
-        redis_client, plugin, published, scheduled
-    )
+    application, preflight = build_application(redis_client, plugin, published, scheduled)
     monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
 
     async with http_client(collect_api.collect_router, "e2e-config-app") as client:
@@ -416,20 +411,33 @@ async def test_configuration_http_to_redis_plugin_nats_and_next_cycle_resubmit(
 
 
 @pytest.mark.asyncio
-async def test_http_chain_uses_credential_protocol_probe_before_collection(
-    redis_client, monkeypatch
-):
+async def test_collection_run_closes_run_scoped_plugin(redis_client, monkeypatch):
+    published = []
+    scheduled = []
+    plugin = ClosableRecordingPlugin()
+    application, _preflight = build_application(redis_client, plugin, published, scheduled)
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
+
+    async with http_client(collect_api.collect_router, "e2e-plugin-close-app") as client:
+        accepted = await client.get(
+            "/collect/collect_info",
+            headers=configuration_request("e2e-plugin-close"),
+        )
+        await scheduled[0]
+
+    assert accepted.status_code == 202
+    assert plugin.close_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_http_chain_uses_credential_protocol_probe_before_collection(redis_client, monkeypatch):
     published = []
     scheduled = []
     plugin = CredentialProbePlugin()
-    application, _preflight = build_application(
-        redis_client, plugin, published, scheduled
-    )
+    application, _preflight = build_application(redis_client, plugin, published, scheduled)
     monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
 
-    async with http_client(
-        collect_api.collect_router, "e2e-credential-probe-app"
-    ) as client:
+    async with http_client(collect_api.collect_router, "e2e-credential-probe-app") as client:
         accepted = await client.get(
             "/collect/collect_info",
             headers=configuration_request("e2e-credential-probe"),
@@ -448,15 +456,11 @@ async def test_http_chain_uses_credential_protocol_probe_before_collection(
 
 
 @pytest.mark.asyncio
-async def test_publish_transient_failure_retries_once_without_recollecting(
-    redis_client, monkeypatch
-):
+async def test_publish_transient_failure_retries_once_without_recollecting(redis_client, monkeypatch):
     published = []
     scheduled = []
     plugin = RecordingPlugin()
-    application, preflight = build_application(
-        redis_client, plugin, published, scheduled, fail_once=True
-    )
+    application, preflight = build_application(redis_client, plugin, published, scheduled, fail_once=True)
     monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
     headers = {
         "x-task-id": "e2e-publish-retry",
@@ -465,9 +469,7 @@ async def test_publish_transient_failure_retries_once_without_recollecting(
         "cmdbcredential_id": "credential-good",
     }
 
-    async with http_client(
-        collect_api.collect_router, "e2e-publish-retry-app"
-    ) as client:
+    async with http_client(collect_api.collect_router, "e2e-publish-retry-app") as client:
         first = await client.get("/collect/collect_info", headers=headers)
         await scheduled[0]
         next_cycle = await client.get("/collect/collect_info", headers=headers)
@@ -564,15 +566,11 @@ async def test_monitor_auth_enforce_does_not_affect_other_blueprints(
 
 
 @pytest.mark.asyncio
-async def test_monitor_http_uses_the_same_runtime_and_result_pipeline(
-    redis_client, monkeypatch
-):
+async def test_monitor_http_uses_the_same_runtime_and_result_pipeline(redis_client, monkeypatch):
     published = []
     scheduled = []
     plugin = RecordingPlugin(family="monitor")
-    application, preflight = build_application(
-        redis_client, plugin, published, scheduled
-    )
+    application, preflight = build_application(redis_client, plugin, published, scheduled)
     monkeypatch.setattr(monitor_api, "get_collection_application", lambda: application)
     monkeypatch.delenv("STARGAZER_MONITOR_AUTH_MODE", raising=False)
     monkeypatch.delenv("STARGAZER_MONITOR_AUTH_TOKEN", raising=False)
@@ -589,9 +587,7 @@ async def test_monitor_http_uses_the_same_runtime_and_result_pipeline(
     }
 
     async with http_client(monitor_api.monitor_router, "e2e-monitor-app") as client:
-        accepted = await client.get(
-            "/monitor/vmware/metrics?minutes=5", headers=headers
-        )
+        accepted = await client.get("/monitor/vmware/metrics?minutes=5", headers=headers)
         await scheduled[0]
         monkeypatch.setenv("STARGAZER_MONITOR_AUTH_MODE", "enforce")
         monkeypatch.setenv("STARGAZER_MONITOR_AUTH_TOKEN", "current-token")
@@ -612,9 +608,7 @@ async def test_monitor_http_uses_the_same_runtime_and_result_pipeline(
 
 
 @pytest.mark.asyncio
-async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
-    redis_client, monkeypatch
-):
+async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(redis_client, monkeypatch):
     """最坏情况：256 个 SNMP 目标全部在 5 秒超时，验证两批有界执行。"""
     target_prefix = os.getenv("STARGAZER_SNMP_TEST_PREFIX", "10.10.69")
     community = os.getenv("STARGAZER_SNMP_TEST_COMMUNITY", "mock-snmp-community")
@@ -764,9 +758,7 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
 
 
 @pytest.mark.asyncio
-async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
-    redis_client, monkeypatch
-):
+async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(redis_client, monkeypatch):
     """主机采集压测：10.10.41.0–149（150）全部 mock 凭据，外层 5s 超时。"""
     target_prefix = os.getenv("STARGAZER_HOST_TEST_PREFIX", "10.10.41")
     username = os.getenv("STARGAZER_HOST_TEST_USERNAME", "mock-host-user")
@@ -933,9 +925,7 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
 
 
 @pytest.mark.asyncio
-async def test_snmp_mixed_real_targets_and_mock_subnet_through_full_runtime(
-    redis_client, monkeypatch
-):
+async def test_snmp_mixed_real_targets_and_mock_subnet_through_full_runtime(redis_client, monkeypatch):
     raw_real_targets = os.getenv("STARGAZER_SNMP_REAL_TARGETS_JSON", "")
     if not raw_real_targets:
         pytest.skip("STARGAZER_SNMP_REAL_TARGETS_JSON is not configured")
@@ -1110,12 +1100,8 @@ async def test_snmp_mixed_real_targets_and_mock_subnet_through_full_runtime(
         "active_runs_after_completion": stats["active_runs"],
         "active_targets_after_completion": stats["active_targets"],
         "target_worker_tasks_after_completion": stats["target_worker_tasks"],
-        "real_succeeded": sum(
-            1 for item in plugin.real_results.values() if item.get("success")
-        ),
-        "real_failed": sum(
-            1 for item in plugin.real_results.values() if not item.get("success")
-        ),
+        "real_succeeded": sum(1 for item in plugin.real_results.values() if item.get("success")),
+        "real_failed": sum(1 for item in plugin.real_results.values() if not item.get("success")),
         "mock_calls": plugin.mock_calls,
     }
     print("SNMP_MIXED_LOAD_RESULT=" + json.dumps(report, sort_keys=True))

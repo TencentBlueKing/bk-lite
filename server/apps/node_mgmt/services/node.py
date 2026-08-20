@@ -1,3 +1,4 @@
+import ipaddress
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -111,9 +112,7 @@ class NodeService:
         for row in rows:
             node_id = row["nodes__id"]
             collector_id = row["collector_id"]
-            assignment_map.setdefault(node_id, {}).setdefault(collector_id, []).append(
-                {"id": row["id"], "name": row["name"]}
-            )
+            assignment_map.setdefault(node_id, {}).setdefault(collector_id, []).append({"id": row["id"], "name": row["name"]})
         return assignment_map
 
     @staticmethod
@@ -501,6 +500,65 @@ class NodeService:
         serializer = NodeSerializer(nodes, many=True)
         node_data = serializer.data
         return dict(count=count, nodes=node_data)
+
+    @staticmethod
+    def get_nodes_by_ips(
+        ips,
+        *,
+        organization_ids=None,
+        cloud_region_id=None,
+        permission_data=None,
+        skip_permission=False,
+    ):
+        """按 IP 集合精确查询 Job 执行所需的最小节点信息。"""
+        if not isinstance(ips, (list, tuple, set)):
+            raise BaseAppException("ips 必须是 IP 列表")
+        if len(ips) > NodeService.NODE_LIST_PAGE_SIZE_MAX:
+            raise BaseAppException(f"单次最多查询 {NodeService.NODE_LIST_PAGE_SIZE_MAX} 个 IP")
+        normalized_ips = set()
+        for ip in ips:
+            if not isinstance(ip, str) or not ip.strip() or len(ip) > 64:
+                raise BaseAppException("ips 只能包含非空 IP 字符串")
+            try:
+                normalized_ips.add(str(ipaddress.ip_address(ip.strip())))
+            except ValueError as error:
+                raise BaseAppException(f"非法 IP: {ip}") from error
+        normalized_ips = sorted(normalized_ips)
+        if not normalized_ips:
+            return {"nodes": []}
+
+        permission_data = permission_data or {}
+        if not isinstance(permission_data, dict):
+            raise BaseAppException("permission_data 参数非法")
+        organization_ids = organization_ids or []
+        if organization_ids:
+            organization_ids = list(_normalize_organization_ids(organization_ids))
+        if permission_data:
+            permission, scope = NodeService._build_scoped_permission(permission_data)
+            if scope is None:
+                qs = Node.objects.none()
+            else:
+                qs = (
+                    permission_filter(
+                        Node,
+                        permission,
+                        team_key="nodeorganization__organization__in",
+                        id_key="id__in",
+                    )
+                    .filter(nodeorganization__organization__in=scope.data_team_ids)
+                    .distinct()
+                )
+        elif skip_permission is True or organization_ids:
+            qs = Node.objects.all()
+        else:
+            qs = Node.objects.none()
+
+        if organization_ids:
+            qs = qs.filter(nodeorganization__organization__in=organization_ids).distinct()
+        if cloud_region_id:
+            qs = qs.filter(cloud_region_id=cloud_region_id)
+        nodes = list(qs.filter(ip__in=normalized_ips).order_by("ip", "id").values("id", "ip", "operating_system"))
+        return {"nodes": nodes}
 
     @staticmethod
     def get_nodes_with_child_config(node_ids, collector, collect_type):

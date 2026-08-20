@@ -209,7 +209,7 @@ const NotificationRuleMatrix: React.FC<NotificationRuleMatrixProps> = ({
                       <Tag bordered={false} className={styles.channelTag}>
                         {t(CHANNEL_TYPE_LABEL_KEYS[channel.channel_type] || channel.channel_type)}
                       </Tag>
-                    ) : <span className={styles.emptyValue}>—</span>}
+                    ) : <span className={styles.emptyValue}>--</span>}
                   </div>
 
                   <div className={styles.fieldCell}>

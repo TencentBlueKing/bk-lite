@@ -53,11 +53,6 @@
     }
 }
 
-.toolbarActions {
-    display: flex;
-    align-items: center;
-}
-
 .groupList {
     display: flex;
     flex-direction: column;
@@ -240,6 +235,20 @@
 }
 
 .cardTitle {
+    padding-right: 28px;
+    min-width: 0;
+}
+
+.cardTitleInner {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    vertical-align: top;
+}
+
+.cardTitleText {
+    min-width: 0;
     color: var(--color-text-1);
     font-size: 14px;
     font-weight: 700;
@@ -247,6 +256,29 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.cardTypeBadge {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 7px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 18px;
+    white-space: nowrap;
+}
+
+.cardBuiltinBadge {
+    color: var(--color-text-2);
+    background: var(--color-fill-2);
+}
+
+.cardCustomBadge {
+    color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 .cardMetric {
@@ -259,43 +291,9 @@
     white-space: nowrap;
 }
 
-.cardMeta {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 8px;
-    min-height: 22px;
-
-    :global(.ant-tag) {
-        margin-inline-end: 0;
-    }
-}
-
-.cardTag {
-    max-width: 100%;
-    margin: 0;
-    border: 0;
-    border-radius: 4px;
-    color: var(--color-primary);
-    background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 20px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.cardTypeTag {
-    margin: 0;
-    flex-shrink: 0;
-    font-size: 12px;
-    line-height: 20px;
-}
-
 .cardDescription {
     display: -webkit-box;
-    margin-top: 18px;
+    margin-top: 8px;
     color: var(--color-text-2);
     font-size: 12px;
     line-height: 19px;

@@ -1,8 +1,11 @@
 import os
+import time
+import uuid
 
 import numpy as np
 import pandas as pd
 import requests
+from django.db import transaction
 from django.http import FileResponse
 from rest_framework import status
 from rest_framework.decorators import action
@@ -950,69 +953,223 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
         - 容器非 running → 仅更新数据库，用户自行决定是否启动
         """
         instance = self.get_object()
-
-        # 保存旧值用于判断变更
-        old_port = instance.port
-        old_model_version = instance.model_version
-        old_train_job_id = instance.train_job.id
-
-        # 检测是否更新了影响容器的字段（基于请求数据与旧值对比）
-        model_version_changed = "model_version" in request.data and str(request.data["model_version"]) != str(old_model_version)
-        train_job_changed = "train_job" in request.data and int(request.data["train_job"]) != old_train_job_id
-        port_changed = "port" in request.data and request.data.get("port") != old_port
-
         container_id = f"ImageClassification_Serving_{instance.id}"
+        transition_token = uuid.uuid4().hex
+        # 单次 webhook 启动请求的硬上限低于 6 分钟；15 分钟租约不会回收仍在执行的 owner。
+        transition_ttl_seconds = 900
 
-        # 获取容器实际状态（更新前），防御性处理 container_info 为空的情况
-        container_info = instance.container_info or {}
-        container_state = container_info.get("state")
-        container_port = container_info.get("port")
+        def transition_is_active(info):
+            token = info.get("_image_update_token")
+            if not token:
+                return False
+            try:
+                started_at = float(info.get("_image_update_started_at", 0))
+            except (TypeError, ValueError):
+                return False
+            return time.time() - started_at < transition_ttl_seconds
 
-        # 更新数据库
-        response = super().update(request, *args, **kwargs)
-        instance.refresh_from_db()
+        force_reconcile = False
+        with transaction.atomic():
+            current = type(instance).objects.select_for_update().get(pk=instance.pk)
+            transition_info = dict(current.container_info or {})
+            expired_token = transition_info.get("_image_update_token")
+            if expired_token and transition_is_active(transition_info):
+                return Response(
+                    {"error": "serving update is already in progress"},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
-        # 只有容器在运行时才考虑重启
-        if container_state != "running":
-            return response
+        if expired_token:
+            try:
+                observed_runtime = WebhookClient.get_status([container_id])
+            except Exception:
+                return Response(
+                    {"error": "expired serving update could not be reconciled"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            runtime_state = next(
+                (item for item in observed_runtime if item.get("id") == container_id),
+                {},
+            )
+            with transaction.atomic():
+                current = type(instance).objects.select_for_update().get(pk=instance.pk)
+                current_info = dict(current.container_info or {})
+                if current_info.get("_image_update_token") != expired_token:
+                    return Response(
+                        {"error": "serving update ownership changed during recovery"},
+                        status=status.HTTP_409_CONFLICT,
+                    )
+                current_info.pop("_image_update_token", None)
+                current_info.pop("_image_update_started_at", None)
+                current_info.update(runtime_state)
+                current.container_info = current_info
+                current.save(update_fields=["container_info"])
+            force_reconcile = True
 
-        # 决策：是否需要重启
-        need_restart = False
-
-        # 1. model/train_job 变更，必须重启
-        if model_version_changed or train_job_changed:
-            need_restart = True
-
-        # 2. 仅 port 变更，检查策略
-        elif port_changed:
-            new_port = instance.port
-            if new_port is None and old_port is not None:
-                # 有值 → None：不重启（当前端口视为自动分配，下次再应用）
-                need_restart = False
-            elif new_port is not None and old_port is None:
-                # None → 有值：需要重启（用户明确要指定端口）
+        # 锁内重读全部决策依据，并在任何远端副作用前声明所有权。
+        with transaction.atomic():
+            current = type(instance).objects.select_for_update().select_related("train_job").get(pk=instance.pk)
+            current_container_info = dict(current.container_info or {})
+            if transition_is_active(current_container_info):
+                return Response(
+                    {"error": "serving update is already in progress"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            current_container_info.pop("_image_update_token", None)
+            current_container_info.pop("_image_update_started_at", None)
+            old_container_info = current_container_info
+            old_port = current.port
+            old_model_version = current.model_version
+            old_train_job = current.train_job
+            container_state = current_container_info.get("state")
+            container_port = current_container_info.get("port")
+            model_version_changed = "model_version" in request.data and str(request.data["model_version"]) != str(old_model_version)
+            train_job_changed = "train_job" in request.data and int(request.data["train_job"]) != old_train_job.id
+            port_changed = "port" in request.data and request.data.get("port") != old_port
+            need_restart = model_version_changed or train_job_changed
+            if force_reconcile:
                 need_restart = True
-            elif new_port is not None and old_port is not None:
-                # 有值 → 另一个有值：检查是否与实际端口一致
-                if container_port and str(new_port) != str(container_port):
+            if not need_restart and port_changed:
+                requested_port = request.data.get("port")
+                if requested_port is not None and (
+                    old_port is None or not container_port or str(requested_port) != str(container_port)
+                ):
                     need_restart = True
+            restart_transition = (container_state == "running" or force_reconcile) and need_restart
+            if restart_transition:
+                claimed_container_info = dict(old_container_info)
+                claimed_container_info["_image_update_token"] = transition_token
+                claimed_container_info["_image_update_started_at"] = time.time()
+                current.container_info = claimed_container_info
+                current.save(update_fields=["container_info"])
+                instance = current
+                response = None
+            else:
+                if current.container_info != old_container_info:
+                    current.container_info = old_container_info
+                    current.save(update_fields=["container_info"])
+                response = super().update(request, *args, **kwargs)
+                instance.refresh_from_db()
 
-        # 如果需要重启，先删除旧容器
-        if need_restart:
+        if restart_transition:
             try:
-                logger.warning(f"配置变更需要重启，删除旧容器: {container_id}")
-                WebhookClient.remove(container_id)
-            except WebhookError as e:
-                logger.warning(f"删除旧容器失败（可能已不存在）: {e}")
-                # 继续执行，尝试启动新容器
-
-            try:
-                # 获取环境变量
+                WebhookClient.validate_image_budget_config(container_id)
                 mlflow_tracking_uri = get_mlflow_tracking_uri()
                 if not mlflow_tracking_uri:
                     raise ValueError("error.mlflow_tracker_url_not_configured")
+                old_device = None
+                if old_train_job.hyperopt_config:
+                    old_device = old_train_job.hyperopt_config.get("hyperparams", {}).get("device")
+                rollback_args = {
+                    "mlflow_tracking_uri": mlflow_tracking_uri,
+                    "mlflow_model_uri": self._resolve_model_uri(instance),
+                    "port": old_port,
+                    "train_image": get_image_by_prefix(self.MLFLOW_PREFIX, old_train_job.algorithm),
+                    "device": old_device,
+                }
+            except Exception as e:
+                with transaction.atomic():
+                    current = type(instance).objects.select_for_update().get(pk=instance.pk)
+                    if (current.container_info or {}).get("_image_update_token") == transition_token:
+                        current.container_info = old_container_info
+                        current.save(update_fields=["container_info"])
+                logger.error(f"更新前置校验失败: {str(e)}", exc_info=True)
+                return Response(
+                    {"error": mlops_exception_message(request, e)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
-                # 解析新的 model_uri
+            try:
+                with transaction.atomic():
+                    current = type(instance).objects.select_for_update().get(pk=instance.pk)
+                    if (current.container_info or {}).get("_image_update_token") != transition_token:
+                        return Response(
+                            {"error": "serving update ownership was lost"},
+                            status=status.HTTP_409_CONFLICT,
+                        )
+                    response = super().update(request, *args, **kwargs)
+                    instance.refresh_from_db()
+            except Exception:
+                with transaction.atomic():
+                    current = type(instance).objects.select_for_update().get(pk=instance.pk)
+                    if (current.container_info or {}).get("_image_update_token") == transition_token:
+                        current.container_info = old_container_info
+                        current.save(update_fields=["container_info"])
+                raise
+
+        applied_database_state = {
+            "train_job_id": instance.train_job_id,
+            "model_version": instance.model_version,
+            "port": instance.port,
+            "container_info": instance.container_info,
+        }
+
+        # 只有容器在运行时才考虑重启
+        if not restart_transition:
+            return response
+
+        def restore_old_record(restored_container_info):
+            with transaction.atomic():
+                current = type(instance).objects.select_for_update().get(pk=instance.pk)
+                current_state = {
+                    "train_job_id": current.train_job_id,
+                    "model_version": current.model_version,
+                    "port": current.port,
+                    "container_info": current.container_info,
+                }
+                if current_state != applied_database_state:
+                    response.data = self.get_serializer(current).data
+                    return False
+                current.train_job = old_train_job
+                current.model_version = old_model_version
+                current.port = old_port
+                current.container_info = restored_container_info
+                current.save(update_fields=["train_job", "model_version", "port", "container_info"])
+            instance.refresh_from_db()
+            response.data = self.get_serializer(instance).data
+            return True
+
+        def database_state_still_applied():
+            with transaction.atomic():
+                current = type(instance).objects.select_for_update().get(pk=instance.pk)
+                current_state = {
+                    "train_job_id": current.train_job_id,
+                    "model_version": current.model_version,
+                    "port": current.port,
+                    "container_info": current.container_info,
+                }
+                if current_state != applied_database_state:
+                    response.data = self.get_serializer(current).data
+                    return False
+            return True
+
+        def save_runtime_result(result):
+            with transaction.atomic():
+                current = type(instance).objects.select_for_update().get(pk=instance.pk)
+                current_state = {
+                    "train_job_id": current.train_job_id,
+                    "model_version": current.model_version,
+                    "port": current.port,
+                    "container_info": current.container_info,
+                }
+                if current_state != applied_database_state:
+                    response.data = self.get_serializer(current).data
+                    return False
+                current.container_info = result
+                current.port = int(result.get("port", 0)) if result.get("port") else current.port
+                current.save(update_fields=["container_info", "port"])
+            instance.refresh_from_db()
+            response.data = self.get_serializer(instance).data
+            return True
+
+        # 如果需要重启，失败时恢复旧配置和旧服务。
+        if need_restart:
+            removed = False
+            try:
+                logger.warning(f"配置变更需要重启，删除旧容器: {container_id}")
+                WebhookClient.remove(container_id)
+                removed = True
+
                 model_uri = self._resolve_model_uri(instance)
 
                 # 从关联训练任务的 hyperopt_config 中提取 device 参数
@@ -1035,29 +1192,72 @@ class ImageClassificationServingViewSet(TeamModelViewSet):
                 )
 
                 # 更新容器信息（status 由用户控制，不修改）
-                instance.container_info = result
-                instance.port = int(result.get("port", 0)) if result.get("port") else instance.port
-                instance.save(update_fields=["container_info", "port"])
+                result_saved = save_runtime_result(result)
 
                 # 更新返回数据
-                response.data["container_info"] = result
-                response.data["message"] = mlops_message(request, "message.serving_updated_and_restarted")
+                if result_saved:
+                    response.data["container_info"] = result
+                    response.data["message"] = mlops_message(request, "message.serving_updated_and_restarted")
 
             except Exception as e:
                 logger.error(f"自动重启失败: {str(e)}", exc_info=True)
-
-                # 启动失败，仅更新容器信息
-                instance.container_info = {
-                    "status": "error",
-                    "message": mlops_message(request, "message.serving_updated_restart_failed", detail=mlops_exception_message(request, e)),
-                }
-                instance.save(update_fields=["container_info"])
-
-                response.data["container_info"] = instance.container_info
-                response.data["message"] = mlops_message(
-                    request, "message.serving_updated_restart_failed", detail=mlops_exception_message(request, e)
-                )
-                response.data["warning"] = mlops_message(request, "message.serving_restart_manually")
+                if not database_state_still_applied():
+                    return response
+                restored_container_info = old_container_info
+                rollback_error = None
+                if not removed:
+                    try:
+                        observed_runtime = WebhookClient.get_status([container_id])
+                        runtime_state = next(
+                            (
+                                item
+                                for item in observed_runtime
+                                if item.get("id") == container_id
+                            ),
+                            {},
+                        )
+                        if runtime_state.get("state") == "not_found":
+                            removed = True
+                        elif runtime_state.get("state") == "running":
+                            restored_container_info = runtime_state
+                        else:
+                            rollback_error = e
+                            restored_container_info = runtime_state or {
+                                "status": "error",
+                                "state": "unknown",
+                                "message": mlops_exception_message(request, e),
+                            }
+                    except Exception as status_error:
+                        rollback_error = status_error
+                        restored_container_info = {
+                            "status": "error",
+                            "state": "unknown",
+                            "message": mlops_exception_message(request, status_error),
+                        }
+                if removed and rollback_args is not None:
+                    try:
+                        # 新容器可能已经部分创建，先有界清理，再恢复旧版本。
+                        try:
+                            WebhookClient.remove(container_id)
+                        except WebhookError:
+                            pass
+                        restored_container_info = WebhookClient.serve(
+                            container_id, **rollback_args
+                        )
+                    except Exception as restore_error:
+                        rollback_error = restore_error
+                        restored_container_info = {
+                            "status": "error",
+                            "message": mlops_exception_message(request, restore_error),
+                        }
+                restored = restore_old_record(restored_container_info)
+                if restored:
+                    response.data["container_info"] = restored_container_info
+                    response.data["message"] = mlops_message(
+                        request, "message.serving_updated_restart_failed", detail=mlops_exception_message(request, e)
+                    )
+                    if rollback_error is not None:
+                        response.data["warning"] = mlops_message(request, "message.serving_restart_manually")
 
         return response
 

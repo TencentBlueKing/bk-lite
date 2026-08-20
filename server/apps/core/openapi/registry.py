@@ -18,8 +18,9 @@ from rest_framework import serializers as drf_serializers
 SERVICE_NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 
 INJECT_TEAM_LIST = "team_list"
+INJECT_TEAM_LIST_WITH_USER = "team_list_with_user"
 INJECT_USER_INFO = "user_info"
-VALID_INJECTS = {INJECT_TEAM_LIST, INJECT_USER_INFO}
+VALID_INJECTS = {INJECT_TEAM_LIST, INJECT_TEAM_LIST_WITH_USER, INJECT_USER_INFO}
 
 DISPATCH_LOCAL = "local"
 
@@ -105,16 +106,26 @@ class OpenAPIRegistry:
                     f"openapi_expose({func_name}): inject 必须是 {sorted(VALID_INJECTS)} 之一，"
                     f"或显式声明 team_free=True，got {inject!r}"
                 )
-            if inject == INJECT_TEAM_LIST:
+            if inject in {INJECT_TEAM_LIST, INJECT_TEAM_LIST_WITH_USER}:
                 if "team" not in params:
                     raise ImproperlyConfigured(
-                        f"openapi_expose({func_name}): inject='team_list' 要求函数具有可按关键字传入的 team 参数"
+                        f"openapi_expose({func_name}): inject='{inject}' 要求函数具有可按关键字传入的 team 参数"
                     )
                 if "team" in serializer_fields:
                     raise ImproperlyConfigured(
-                        f"openapi_expose({func_name}): inject='team_list' 时 serializer 不得声明 team 字段"
+                        f"openapi_expose({func_name}): inject='{inject}' 时 serializer 不得声明 team 字段"
                         "（身份集合只能由网关注入，客户端字段一律丢弃）"
                     )
+                if inject == INJECT_TEAM_LIST_WITH_USER:
+                    if "user_info" not in params:
+                        raise ImproperlyConfigured(
+                            f"openapi_expose({func_name}): inject='{inject}' 要求函数具有 user_info 参数"
+                        )
+                    conflict = serializer_fields & {"user_info", "user", "domain"}
+                    if conflict:
+                        raise ImproperlyConfigured(
+                            f"openapi_expose({func_name}): serializer 不得声明身份字段 {sorted(conflict)}"
+                        )
             if inject == INJECT_USER_INFO:
                 if "user_info" not in params:
                     raise ImproperlyConfigured(

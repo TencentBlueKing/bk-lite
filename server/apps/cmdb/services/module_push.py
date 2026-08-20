@@ -72,10 +72,33 @@ class CmdbToMonitorPushService:
         )
         if not isinstance(result, dict):
             result = {"id": result}
+
+        conflict = result.get("conflict")
+        monitor_id = result.get("id")
+        if conflict:
+            link_status = "conflict"
+        elif result.get("ignored") or monitor_id in (None, ""):
+            link_status = "not_found"
+            monitor_id = None
+        else:
+            link_status = "ok"
+
+        instance_out = instance
+        if link_status == "ok" and monitor_id and instance.get("_id") not in (None, ""):
+            instance_out = cls._backfill_monitor_id(
+                instance,
+                str(monitor_id),
+                operator=operator,
+                allowed_org_ids=allowed_org_ids,
+            )
+
         return {
             "cmdb_id": cmdb_id,
             "node_id": node_id,
+            "monitor_id": str(monitor_id) if link_status == "ok" else None,
+            "link_status": link_status,
             "monitor_result": result,
+            "instance": instance_out,
         }
 
     @classmethod
@@ -444,6 +467,9 @@ class CmdbToMonitorPushService:
             "operating_system": instance.get("os_type"),
             "model_id": instance.get("model_id") or "host",
         }
+        for key in ("port", "snmp_port"):
+            if instance.get(key) not in (None, "", []):
+                raw[key] = instance.get(key)
         # 明确不携带 credential：公开 push_instance / 创建钩子只关联；
         # 带凭据路径由 push_with_credential 另行写入 raw.credential。
         return {k: v for k, v in raw.items() if v not in (None, "", [])}

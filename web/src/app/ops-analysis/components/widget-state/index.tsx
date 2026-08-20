@@ -1,7 +1,6 @@
 'use client';
 
 import React from 'react';
-import { Empty } from 'antd';
 import { ExclamationCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -22,7 +21,7 @@ const WidgetState: React.FC<WidgetStateProps> = ({
 }) => {
   const { t } = useTranslation();
   const { scale } = useWidgetViewport();
-  const fontSize = toCanvasPixels(14, scale);
+  const errorFontSize = toCanvasPixels(14, scale);
 
   if (kind === 'error') {
     return (
@@ -37,28 +36,27 @@ const WidgetState: React.FC<WidgetStateProps> = ({
             marginBottom: toCanvasPixels(12, scale),
           }}
         />
-        <span style={{ fontSize, lineHeight: 1.5 }}>{description}</span>
+        <span style={{ fontSize: errorFontSize, lineHeight: 1.5 }}>{description}</span>
       </div>
     );
   }
 
   return (
-    <div className={`flex h-full items-center justify-center ${className}`.trim()}>
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        styles={{
-          image: {
-            height: toCanvasPixels(40, scale),
-            marginBottom: toCanvasPixels(8, scale),
-          },
-          description: {
-            color: 'var(--screen-empty-color, var(--color-text-3))',
-            fontSize,
-            lineHeight: 1.5,
-          },
+    <div
+      className={`flex h-full items-center justify-center px-3 text-center ${className}`.trim()}
+      style={{
+        color: 'var(--screen-empty-color, var(--color-text-3))',
+      }}
+    >
+      <span
+        style={{
+          fontSize: 'calc(13px * var(--screen-widget-ui-scale, 1))',
+          lineHeight: 1.35,
+          opacity: 0.86,
         }}
-        description={description ?? t('common.noData')}
-      />
+      >
+        {description ?? t('common.noData')}
+      </span>
     </div>
   );
 };

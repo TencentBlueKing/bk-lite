@@ -211,6 +211,6 @@ def _verify_token(token):
             raise Exception("Token is invalid")
 
     user = User.objects.filter(id=user_info["user_id"]).first()
-    if not user:
+    if not user or user.disabled:
         raise Exception(VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE)
     return user
