@@ -206,7 +206,8 @@ def send_assessment_notification_delivery(delivery_id: int) -> None:
                 "body": delivery.content,
                 "event_payload": event_payload,
                 "required_delivery_mode": "alert_event_copy",
-                "producer": "lite-monitor",
+                "producer": "lite-patch",
+                "internal_caller": "lite-patch",
             }
             if ALERT_CENTER_ACK_TOKEN:
                 dispatch_kwargs.update(

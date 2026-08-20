@@ -3,7 +3,13 @@ import html
 import re
 
 from apps.core.logger import system_mgmt_logger as logger
-from apps.core.utils.internal_event_auth import legacy_internal_event_auth_allowed, sign_internal_event, verify_internal_event
+from apps.core.utils.internal_event_auth import (
+    TRUSTED_INTERNAL_EVENT_CALLERS,
+    build_internal_event_payload,
+    legacy_internal_event_auth_allowed,
+    sign_internal_event,
+    verify_internal_event,
+)
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
 from .common import *  # noqa: F401,F403
@@ -306,13 +312,29 @@ def _internal_auth_failure():
     )
 
 
-def _accept_internal_request(scope, payload, internal_auth):
-    if verify_internal_event(scope, payload, internal_auth):
+def _accept_internal_request(scope, payload, internal_auth, *, caller):
+    if verify_internal_event(scope, payload, internal_auth, caller=caller):
         return True
-    if legacy_internal_event_auth_allowed():
+    if internal_auth is None and legacy_internal_event_auth_allowed():
         logger.warning("内部告警事件使用 legacy 无签名路径: scope=%s", scope)
         return True
     return False
+
+
+def _alert_event_organizations(content):
+    if not isinstance(content, dict):
+        return []
+    organizations = []
+    for event in content.get("events") or []:
+        if isinstance(event, dict) and "organizations" in event:
+            value = event.get("organizations")
+            if not isinstance(value, list):
+                return None
+            try:
+                organizations.extend(int(organization) for organization in value)
+            except (TypeError, ValueError):
+                return None
+    return organizations
 
 
 @nats_client.register
@@ -404,23 +426,12 @@ def dispatch_notification(
     if delivery_organization is None:
         return _notification_failure("channel_forbidden", "通知渠道不属于事件组织范围。")
     capability = _notification_channel_capabilities(channel)
-    request_payload = {
-        "delivery_key": delivery_key,
-        "channel_id": channel_id,
-        "organization_ids": organization_ids,
-        "recipients": recipients,
-        "title": title,
-        "body": body,
-        "event_payload": event_payload,
-        "required_delivery_mode": required_delivery_mode,
-        "producer": producer,
-        "ack_mode": ack_mode,
-        "ack_token": ack_token,
-    }
+    request_payload = build_internal_event_payload("system_mgmt.dispatch_notification", locals())
     if capability["delivery_mode"] == "alert_event_copy" and not _accept_internal_request(
         "system_mgmt.dispatch_notification",
         request_payload,
         internal_auth,
+        caller=producer,
     ):
         return _internal_auth_failure()
     if required_delivery_mode and capability["delivery_mode"] != required_delivery_mode:
@@ -448,7 +459,7 @@ def dispatch_notification(
         return _notification_failure("invalid_payload", "通知内容无效。")
 
     if capability["delivery_mode"] == "alert_event_copy":
-        producer = producer if producer in {"lite-apm", "lite-monitor", "lite-log"} else "lite-apm"
+        producer = producer if producer in TRUSTED_INTERNAL_EVENT_CALLERS else "lite-apm"
         bounded_event_payload = dict(event_payload)
         # 不能把调用方消息体中的 organizations 原样提升为 receiver 的可信归属；
         # 仅透传渠道自身授权范围内的交集，兼容合法多组织渠道。
@@ -483,16 +494,20 @@ def dispatch_notification(
     try:
         send_kwargs = {}
         if capability["delivery_mode"] == "alert_event_copy":
-            send_request_payload = {
-                "channel_id": channel.id,
-                "title": send_title,
-                "content": content,
-                "receivers": send_recipients,
-                "attachments": None,
-            }
+            send_request_payload = build_internal_event_payload(
+                "system_mgmt.send_msg_with_channel",
+                {
+                    "channel_id": channel.id,
+                    "title": send_title,
+                    "content": content,
+                    "receivers": send_recipients,
+                    "attachments": None,
+                },
+            )
             send_kwargs["internal_auth"] = sign_internal_event(
                 "system_mgmt.send_msg_with_channel",
                 send_request_payload,
+                caller=producer,
             )
         response = send_msg_with_channel(
             channel.id,
@@ -553,17 +568,18 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         return {"result": False, "message": "Channel not found"}
     method_name = (channel_obj.config or {}).get("method_name")
     if channel_obj.channel_type == ChannelChoices.NATS and method_name in RAW_PASSTHROUGH_NATS_METHODS:
-        request_payload = {
-            "channel_id": channel_id,
-            "title": title,
-            "content": content,
-            "receivers": receivers,
-            "attachments": attachments,
-        }
-        if not _accept_internal_request(
-            "system_mgmt.send_msg_with_channel",
-            request_payload,
-            internal_auth,
+        if not isinstance(content, dict) or not isinstance(content.get("pusher"), str) or not content["pusher"]:
+            return _notification_failure("invalid_payload", "告警事件内容无效。")
+        organizations = _alert_event_organizations(content)
+        trusted_caller = content["pusher"] in TRUSTED_INTERNAL_EVENT_CALLERS
+        if trusted_caller:
+            if organizations is None or (
+                organizations and _channel_delivery_organizations(channel_obj, organizations) != sorted(set(organizations))
+            ):
+                return _notification_failure("channel_forbidden", "告警事件组织不属于通知渠道范围。")
+        request_payload = build_internal_event_payload("system_mgmt.send_msg_with_channel", locals())
+        if organizations and trusted_caller and not _accept_internal_request(
+            "system_mgmt.send_msg_with_channel", request_payload, internal_auth, caller=content.get("pusher")
         ):
             return _internal_auth_failure()
     # 兼容用户ID列表和用户名列表两种情况
@@ -600,10 +616,12 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         if method_name in RAW_PASSTHROUGH_NATS_METHODS:
             # 内部直推通道（如告警中心）：原样透传 content，跳过 IM 触发的字段规范化。
             signed_content = dict(content)
-            signed_content["internal_auth"] = sign_internal_event(
-                "alerts.receive_alert_events",
-                signed_content,
-            )
+            if signed_content.get("pusher") in TRUSTED_INTERNAL_EVENT_CALLERS:
+                signed_content["internal_auth"] = sign_internal_event(
+                    "alerts.receive_alert_events",
+                    signed_content,
+                    caller=signed_content["pusher"],
+                )
             return send_nats_message(channel_obj, signed_content)
         normalized, error = _normalize_nats_content(content)
         if error:

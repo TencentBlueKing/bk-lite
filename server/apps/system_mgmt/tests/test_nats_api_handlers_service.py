@@ -34,6 +34,7 @@ def _authenticated_dispatch(**kwargs):
         internal_auth=sign_internal_event(
             "system_mgmt.dispatch_notification",
             request_payload,
+            caller=request_payload["producer"],
         ),
     )
 
@@ -829,7 +830,80 @@ def test_public_notification_dispatch_builds_alert_center_event_copy(monkeypatch
         "pusher": "lite-apm",
         "events": [{"event_key": "event-1", "organizations": [9]}],
     }
-    assert verify_internal_event("alerts.receive_alert_events", sent["content"], receiver_auth) is True
+    assert verify_internal_event(
+        "alerts.receive_alert_events", sent["content"], receiver_auth, caller="lite-apm"
+    ) is True
+
+
+@pytest.mark.parametrize("producer", ["lite-apm", "lite-patch"])
+def test_rpc_dispatch_reaches_alerts_with_authenticated_bounded_organization(monkeypatch, producer):
+    """覆盖 producer RPC -> system_mgmt -> alerts 的真实认证与落库接缝。"""
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.alert_source import AlertSource
+    from apps.alerts.models.models import Event, Level
+    from apps.alerts.nats import nats as alerts_nats
+
+    for level_id in (0, 1, 2, 3):
+        Level.objects.create(
+            level_id=level_id,
+            level_name=f"L{level_id}",
+            level_display_name=f"等级{level_id}",
+            level_type=LevelType.EVENT,
+        )
+    AlertSource.objects.create(
+        name="端到端 NATS 源",
+        source_id="nats",
+        source_type="nats",
+        secret="x",
+        team_secrets={},
+        is_active=True,
+        is_effective=True,
+        config={
+            "event_fields_mapping": {
+                "title": "title",
+                "level": "level",
+                "item": "item",
+                "start_time": "start_time",
+            }
+        },
+    )
+    channel = Channel.objects.create(
+        name="告警中心端到端",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[9],
+    )
+
+    def deliver_to_alerts(_channel, content, **_kwargs):
+        return alerts_nats.receive_alert_events(**content)
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_nats_message", deliver_to_alerts)
+    monkeypatch.setenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", "false")
+    monkeypatch.setenv(f"ALERTS_INTERNAL_EVENT_AUTH_{producer.upper().replace('-', '_')}_KEY", f"{producer}-secret")
+
+    event_title = f"{producer} 端到端认证告警"
+    result = SystemMgmt().dispatch_notification(
+        delivery_key=f"{producer}:event:e2e-auth",
+        channel_id=channel.id,
+        organization_ids=[9, 99],
+        recipients=[],
+        title="ignored",
+        body="ignored",
+        event_payload={
+            "title": event_title,
+            "level": "0",
+            "item": "cpu",
+            "start_time": "1700000000",
+            "organizations": [99],
+        },
+        required_delivery_mode="alert_event_copy",
+        producer=producer,
+        internal_caller=producer,
+    )
+
+    assert result == {"result": True, "code": "delivered", "retryable": False, "message": "success"}
+    assert Event.objects.get(title=event_title).team == [9]
 
 
 def test_public_notification_dispatch_uses_shared_channel_organization_for_nats(monkeypatch):
@@ -930,6 +1004,26 @@ def test_send_msg_with_channel_channel_not_found():
     assert result["result"] is False
 
 
+@pytest.mark.parametrize("content", [None, {"pusher": []}, {"pusher": ""}])
+def test_send_msg_with_channel_rejects_invalid_alert_event_envelope(content):
+    channel = Channel.objects.create(
+        name="告警中心非法入参",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[3],
+    )
+
+    result = nats_api.send_msg_with_channel(channel.id, "", content, [])
+
+    assert result == {
+        "result": False,
+        "code": "invalid_payload",
+        "retryable": False,
+        "message": "告警事件内容无效。",
+    }
+
+
 def test_send_msg_with_channel_rejects_unsigned_alert_center_copy(monkeypatch):
     channel = Channel.objects.create(
         name="告警中心",
@@ -939,7 +1033,8 @@ def test_send_msg_with_channel_rejects_unsigned_alert_center_copy(monkeypatch):
         team=[3],
     )
     send = Mock(return_value={"result": True})
-    monkeypatch.delenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", raising=False)
+    monkeypatch.setenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", "false")
+    monkeypatch.setenv("ALERTS_INTERNAL_EVENT_AUTH_LITE_MONITOR_KEY", "monitor-secret")
     monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", send)
 
     result = nats_api.send_msg_with_channel(
@@ -973,13 +1068,119 @@ def test_send_msg_with_channel_rejects_unsigned_alert_center_copy(monkeypatch):
         internal_auth=sign_internal_event(
             "system_mgmt.send_msg_with_channel",
             request_payload,
+            caller="lite-monitor",
         ),
     )
 
     assert result == {"result": True}
     signed_content = send.call_args.args[1]
     receiver_auth = signed_content.pop("internal_auth")
-    assert verify_internal_event("alerts.receive_alert_events", signed_content, receiver_auth) is True
+    assert verify_internal_event(
+        "alerts.receive_alert_events", signed_content, receiver_auth, caller="lite-monitor"
+    ) is True
+
+
+def test_send_msg_with_channel_legacy_sender_is_accepted_during_rolling_upgrade(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心 rolling",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[3],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.delenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", raising=False)
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", send)
+
+    result = nats_api.send_msg_with_channel(
+        channel.id,
+        "",
+        {"source_id": "nats", "pusher": "lite-monitor", "events": [{"organizations": [3]}]},
+        [],
+    )
+
+    assert result == {"result": True}
+    assert send.call_args.args[1]["internal_auth"]["caller"] == "lite-monitor"
+
+
+def test_send_msg_with_channel_rejects_caller_or_channel_organization_mismatch(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心 bounded",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[3],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.delenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", raising=False)
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", send)
+
+    content = {"source_id": "nats", "pusher": "lite-monitor", "events": [{"organizations": [3]}]}
+    request_payload = {
+        "channel_id": channel.id,
+        "title": "",
+        "content": content,
+        "receivers": [],
+        "attachments": None,
+    }
+    wrong_caller = sign_internal_event(
+        "system_mgmt.send_msg_with_channel", request_payload, caller="lite-log"
+    )
+    assert nats_api.send_msg_with_channel(channel.id, "", content, [], internal_auth=wrong_caller)["code"] == "internal_auth_required"
+
+    forbidden = {**content, "events": [{"organizations": [99]}]}
+    forbidden_payload = {**request_payload, "content": forbidden}
+    forbidden_auth = sign_internal_event(
+        "system_mgmt.send_msg_with_channel", forbidden_payload, caller="lite-monitor"
+    )
+    assert nats_api.send_msg_with_channel(channel.id, "", forbidden, [], internal_auth=forbidden_auth)["code"] == "channel_forbidden"
+    send.assert_not_called()
+
+
+def test_send_msg_with_channel_preserves_registered_external_source_contract(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心外部来源",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[99],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.setenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", "false")
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", send)
+    content = {
+        "source_id": "registered-source",
+        "pusher": "external-agent",
+        "events": [{"title": "external", "organizations": [3]}],
+    }
+
+    result = nats_api.send_msg_with_channel(channel.id, "", content, [])
+
+    assert result == {"result": True}
+    assert send.call_args.args[1] == content
+
+
+def test_send_msg_with_channel_unsigned_event_without_organizations_keeps_legacy_behavior(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心 ordinary",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[3],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.setenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", "false")
+    monkeypatch.setenv("ALERTS_INTERNAL_EVENT_AUTH_LITE_MONITOR_KEY", "monitor-secret")
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", send)
+
+    result = nats_api.send_msg_with_channel(
+        channel.id,
+        "",
+        {"source_id": "nats", "pusher": "lite-monitor", "events": [{"title": "ordinary"}]},
+        [],
+    )
+
+    assert result == {"result": True}
 
 
 def test_monitor_alert_copy_dispatch_is_capability_scoped_and_returns_ack(monkeypatch):

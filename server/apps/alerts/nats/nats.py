@@ -25,14 +25,18 @@ from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Incident, Level
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
 from apps.core.logger import alert_logger as logger
-from apps.core.utils.internal_event_auth import legacy_internal_event_auth_allowed, verify_internal_event
+from apps.core.utils.internal_event_auth import (
+    TRUSTED_INTERNAL_EVENT_CALLERS,
+    legacy_internal_event_auth_allowed,
+    verify_internal_event,
+)
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.time_util import parse_rfc3339_range_utc, parse_rfc3339_utc
 from apps.core.utils.trend_granularity import resolve_trend_group_by_from_range
 from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
-TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log", "lite-apm"}
+TRUSTED_INTERNAL_PUSHERS = TRUSTED_INTERNAL_EVENT_CALLERS
 PER_EVENT_ACK_MODE = "per_event_v1"
 PER_EVENT_ACK_MAX_EVENTS = 200
 PER_EVENT_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
@@ -847,16 +851,14 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
             normalized_events.append(normalized_event)
 
         has_internal_organizations = any("organizations" in event for event in normalized_events)
-        authenticated_internal = (
-            verify_internal_event(
-                "alerts.receive_alert_events",
-                auth_payload,
-                internal_auth,
-            )
-            or per_event_ack_authorized
+        authenticated_internal = verify_internal_event(
+            "alerts.receive_alert_events",
+            auth_payload,
+            internal_auth,
+            caller=pusher,
         )
         if pusher in TRUSTED_INTERNAL_PUSHERS and has_internal_organizations and not authenticated_internal:
-            if legacy_internal_event_auth_allowed():
+            if internal_auth is None and legacy_internal_event_auth_allowed():
                 logger.warning(
                     "[AlertEvent] legacy 无签名内部组织归属暂时放行: source_id=%s pusher=%s",
                     source_id,
