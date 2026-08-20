@@ -8,7 +8,6 @@ import CustomTable from '@/components/custom-table';
 import {
   ArrowRightOutlined,
   PlayCircleOutlined,
-  PlusOutlined,
   FileTextOutlined,
   DesktopOutlined,
   CheckCircleOutlined,
@@ -17,6 +16,9 @@ import {
   ExclamationCircleOutlined,
   ToolOutlined,
   AlertOutlined,
+  SafetyCertificateOutlined,
+  ThunderboltOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import { useRouter } from 'next/navigation';
@@ -195,51 +197,98 @@ export default function HomePage() {
 
       {/* 快捷操作 */}
       <Card
-        title={<span><PlayCircleOutlined className="mr-1.5" />{t('patchManager.dashboard.quickActions')}</span>}
+        title={<span><ThunderboltOutlined className="mr-1.5" />{t('patchManager.dashboard.quickActions')}</span>}
         className="mb-3.5 rounded-[10px]"
-        styles={{ body: { padding: '12px 16px' } }}
+        styles={{ body: { padding: 16 } }}
       >
-        <div className="flex flex-wrap gap-3">
-          <Card size="small" className="min-w-[200px] flex-[1_1_200px] rounded-lg" styles={{ body: { padding: 14 } }}>
-            <div className="mb-2 flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-primary)]"><PlayCircleOutlined /></div>
-              <div className="font-medium">{t('patchManager.dashboard.assessNow')}</div>
+        <div className="grid grid-cols-4 gap-3">
+          <div className="flex min-h-[144px] min-w-0 flex-col rounded-lg bg-[var(--color-fill-1)] p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)] text-base text-[var(--color-primary)]">
+                <PlayCircleOutlined aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-medium leading-5 text-[var(--color-text-1)]">{t('patchManager.dashboard.assessNow')}</div>
+                <div className="mt-1 text-xs leading-5 text-[var(--color-text-3)]">{t('patchManager.dashboard.assessNowDescription')}</div>
+              </div>
             </div>
-            <div className="mb-3 min-h-[34px] text-xs text-[var(--color-text-3)]">{t('patchManager.dashboard.assessNowDescription')}</div>
             <PermissionWrapper
               requiredPermissions={['Add']}
               permissionPath="/patch-manager/risk-execution"
-              className="block!"
+              className="block! mt-auto pt-3"
             >
               <Popconfirm title={t('patchManager.dashboard.confirmAssessAll')} onConfirm={handleImmediateAssess} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')}>
-                <Button type="primary" block icon={<PlayCircleOutlined />} loading={assessLoading}>{t('patchManager.dashboard.assessNow')}</Button>
+                <Button
+                  type="primary"
+                  block
+                  icon={<PlayCircleOutlined aria-hidden="true" />}
+                  loading={assessLoading}
+                >
+                  {t('patchManager.dashboard.assessNow')}
+                </Button>
               </Popconfirm>
             </PermissionWrapper>
-          </Card>
-          <Card size="small" className="min-w-[200px] flex-[1_1_200px] rounded-lg" styles={{ body: { padding: 14 } }}>
-            <div className="mb-2 flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-primary)]"><PlusOutlined /></div>
-              <div className="font-medium">{t('patchManager.dashboard.addTarget')}</div>
+          </div>
+
+          <div className="flex min-h-[144px] min-w-0 flex-col rounded-lg bg-[var(--color-fill-1)] p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)] text-base text-[var(--color-primary)]">
+                <DesktopOutlined aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-medium leading-5 text-[var(--color-text-1)]">{t('patchManager.dashboard.addTarget')}</div>
+                <div className="mt-1 text-xs leading-5 text-[var(--color-text-3)]">{t('patchManager.dashboard.addTargetDescription')}</div>
+              </div>
             </div>
-            <div className="mb-3 min-h-[34px] text-xs text-[var(--color-text-3)]">{t('patchManager.dashboard.addTargetDescription')}</div>
-            <Button type="primary" block icon={<PlusOutlined />} onClick={() => router.push('/patch-manager/target')}>{t('patchManager.dashboard.addTarget')}</Button>
-          </Card>
-          <Card size="small" className="min-w-[200px] flex-[1_1_200px] rounded-lg" styles={{ body: { padding: 14 } }}>
-            <div className="mb-2 flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-primary)]"><PlusOutlined /></div>
-              <div className="font-medium">{t('patchManager.dashboard.createBaseline')}</div>
+            <Button
+              block
+              icon={<PlusOutlined aria-hidden="true" />}
+              className="mt-auto"
+              onClick={() => router.push('/patch-manager/target')}
+            >
+              {t('patchManager.dashboard.addTarget')}
+            </Button>
+          </div>
+
+          <div className="flex min-h-[144px] min-w-0 flex-col rounded-lg bg-[var(--color-fill-1)] p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)] text-base text-[var(--color-primary)]">
+                <SafetyCertificateOutlined aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-medium leading-5 text-[var(--color-text-1)]">{t('patchManager.dashboard.createBaseline')}</div>
+                <div className="mt-1 text-xs leading-5 text-[var(--color-text-3)]">{t('patchManager.dashboard.createBaselineDescription')}</div>
+              </div>
             </div>
-            <div className="mb-3 min-h-[34px] text-xs text-[var(--color-text-3)]">{t('patchManager.dashboard.createBaselineDescription')}</div>
-            <Button type="primary" block icon={<PlusOutlined />} onClick={() => router.push('/patch-manager/baseline')}>{t('patchManager.dashboard.createBaseline')}</Button>
-          </Card>
-          <Card size="small" className="min-w-[200px] flex-[1_1_200px] rounded-lg" styles={{ body: { padding: 14 } }}>
-            <div className="mb-2 flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-primary)]"><FileTextOutlined /></div>
-              <div className="font-medium">{t('patchManager.dashboard.executionRecords')}</div>
+            <Button
+              block
+              icon={<PlusOutlined aria-hidden="true" />}
+              className="mt-auto"
+              onClick={() => router.push('/patch-manager/baseline')}
+            >
+              {t('patchManager.dashboard.createBaseline')}
+            </Button>
+          </div>
+
+          <div className="flex min-h-[144px] min-w-0 flex-col rounded-lg bg-[var(--color-fill-1)] p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)] text-base text-[var(--color-primary)]">
+                <FileTextOutlined aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-medium leading-5 text-[var(--color-text-1)]">{t('patchManager.dashboard.executionRecords')}</div>
+                <div className="mt-1 text-xs leading-5 text-[var(--color-text-3)]">{t('patchManager.dashboard.executionRecordsDescription')}</div>
+              </div>
             </div>
-            <div className="mb-3 min-h-[34px] text-xs text-[var(--color-text-3)]">{t('patchManager.dashboard.executionRecordsDescription')}</div>
-            <Button type="primary" block icon={<FileTextOutlined />} onClick={() => router.push('/patch-manager/risk-execution')}>{t('patchManager.dashboard.viewRecords')}</Button>
-          </Card>
+            <Button
+              block
+              icon={<EyeOutlined aria-hidden="true" />}
+              className="mt-auto"
+              onClick={() => router.push('/patch-manager/risk-execution')}
+            >
+              {t('patchManager.dashboard.viewRecords')}
+            </Button>
+          </div>
         </div>
       </Card>
 
