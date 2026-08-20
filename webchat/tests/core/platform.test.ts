@@ -16,6 +16,7 @@ import {
   unwrapPlatformPayload,
   writeDockCollapsed,
 } from '../../packages/webchat-core/src/platform';
+import { isSilentCustomEvent } from '../../packages/webchat-core/src/aguiHistoryText';
 import { normalizeWebChatConfig } from '../../packages/webchat-core/src/config';
 
 const platform = {
@@ -193,6 +194,34 @@ test('drops protocol-only AG-UI dumps and keeps assistant text from mixed dumps'
   assert.equal(mixed[0].content, '工作负载正常');
 });
 
+test('planned execution CUSTOM events stay out of chat bubbles', () => {
+  // 实时流（Chat.applyCustomEvent）与历史回放共用同一份静默清单
+  assert.equal(isSilentCustomEvent('planned_execution_status'), true);
+  assert.equal(isSilentCustomEvent('planned_execution_step'), true);
+  assert.equal(isSilentCustomEvent('wiki_citations'), true);
+  assert.equal(isSilentCustomEvent('approval_request'), false);
+  assert.equal(isSilentCustomEvent('config_analysis_report'), false);
+
+  const planned = mapPlatformMessages([
+    {
+      id: 12,
+      conversation_role: 'bot',
+      conversation_content: JSON.stringify([
+        { type: 'RUN_STARTED' },
+        { type: 'CUSTOM', name: 'planned_execution_status', value: { phase: 'planning' } },
+        {
+          type: 'CUSTOM',
+          name: 'planned_execution_step',
+          value: { phase: 'start', step_index: 1, total_steps: 1, objective: '查询当前时间', tools: ['get_current_time'] },
+        },
+        { type: 'TEXT_MESSAGE_CONTENT', delta: '现在是下午两点' },
+        { type: 'RUN_FINISHED' },
+      ]),
+    },
+  ]);
+  assert.equal(planned[0].content, '现在是下午两点');
+});
+
 test('formats session timestamps in Chinese relative units', () => {
   const now = Date.parse('2026-08-18T10:00:00Z');
   assert.equal(formatSessionTime('2026-08-18T09:59:40Z', now), '刚刚');
@@ -202,7 +231,8 @@ test('formats session timestamps in Chinese relative units', () => {
   assert.equal(formatSessionTime(undefined, now), undefined);
 });
 
-test('persists dock collapsed state separately from last session', () => {
+test('dock collapsed helpers default to collapsed when storage is empty', () => {
+  // PlatformChat uses in-memory collapsed state; helpers stay available for other hosts.
   const store = new Map<string, string>();
   const storage = {
     getItem: (key: string) => store.get(key) ?? null,
@@ -217,4 +247,5 @@ test('persists dock collapsed state separately from last session', () => {
   assert.equal(readDockCollapsed(storage, key), true);
   writeDockCollapsed(storage, key, false);
   assert.equal(readDockCollapsed(storage, key), false);
+  assert.equal(readDockCollapsed({ getItem: () => null }, key), true);
 });

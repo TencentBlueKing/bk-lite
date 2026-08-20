@@ -1291,7 +1291,7 @@ class ModelManage(object):
                 f"[update_enum_instances_display] 更新实例枚举 _display 字段失败: 模型={model_id}, 字段={attr_id}, 错误={e}",
                 exc_info=True,
             )
-            # 不抛出异常，避免中断主流程
+            raise BaseAppException("枚举属性已更新，但实例展示字段刷新失败，请重试保存") from e
 
         return updated_count
 

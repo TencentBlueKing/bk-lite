@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { Button, Segmented, Tooltip } from 'antd';
+import { Button, ConfigProvider, Segmented, Tooltip, theme as antdTheme } from 'antd';
 import {
   DownloadOutlined,
   FullscreenOutlined,
@@ -196,6 +196,13 @@ const toolbarActionsStyle: React.CSSProperties = {
   gap: 4,
   alignItems: 'center',
 };
+
+/** 工具栏外壳固定浅色，不跟随大屏/控制台暗色 ConfigProvider。 */
+const toolbarAntdTheme = {
+  inherit: false,
+  cssVar: { key: 'network-topo-toolbar' },
+  algorithm: antdTheme.defaultAlgorithm,
+} as const;
 
 const buildStructureKey = (data: NetworkTopologyX6GraphData) =>
   JSON.stringify({
@@ -893,15 +900,16 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
   const showResetLayout =
     toolbar && toolbar.showResetLayout && toolbar.onResetLayout;
   const toolbarBody = toolbar && (
-    <div style={toolbarShellStyle}>
-      {toolbar.layoutOptions && toolbar.layoutMode && toolbar.onLayoutChange && (
-        <Segmented
-          value={toolbar.layoutMode}
-          options={toolbar.layoutOptions}
-          onChange={(value) => toolbar.onLayoutChange?.(String(value))}
-        />
-      )}
-      <div style={toolbarActionsStyle}>
+    <ConfigProvider theme={toolbarAntdTheme}>
+      <div style={toolbarShellStyle}>
+        {toolbar.layoutOptions && toolbar.layoutMode && toolbar.onLayoutChange && (
+          <Segmented
+            value={toolbar.layoutMode}
+            options={toolbar.layoutOptions}
+            onChange={(value) => toolbar.onLayoutChange?.(String(value))}
+          />
+        )}
+        <div style={toolbarActionsStyle}>
         {showResetLayout && (
           <Tooltip title={toolbarLabels.resetLayout}>
             <Button
@@ -968,8 +976,9 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
             />
           </Tooltip>
         )}
+        </div>
       </div>
-    </div>
+    </ConfigProvider>
   );
   const toolbarPrefix = toolbar?.prefix && (
     <div style={toolbarPrefixStyle}>{toolbar.prefix}</div>

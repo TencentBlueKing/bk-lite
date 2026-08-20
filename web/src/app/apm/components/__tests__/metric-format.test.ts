@@ -3,10 +3,13 @@ import {
   aggregateApplicationRedTrends,
   deriveHealth,
   formatErrorRate,
+  formatDateTime,
   formatLatency,
   formatMetricEmpty,
+  formatPerSecond,
   formatPercentage,
   formatRelativeTime,
+  formatRequestRate,
   formatThroughput,
   isErrorRateDanger,
   metricEmptyHint,
@@ -49,6 +52,34 @@ describe('APM metric-format', () => {
     expect(formatRelativeTime(undefined)).toBe('—');
     expect(formatRelativeTime('not-a-date')).toBe('—');
     expect(formatRelativeTime(new Date().toISOString())).toBe('刚刚');
+  });
+
+  it('根据当前 locale 格式化空态和相对时间', () => {
+    const messages: Record<string, string> = {
+      'apm.common.noData': 'No data',
+      'apm.common.queryFailed': 'Query failed',
+      'apm.common.metricNoSamplesHint': 'No telemetry samples',
+      'apm.common.justNow': 'Just now',
+      'apm.common.secondsValue': '{value} seconds',
+      'apm.common.perSecondValue': '{value} per second',
+      'apm.common.requestsPerSecondValue': '{value} requests per second',
+    };
+    const t = (id: string, fallback?: string, values?: Record<string, string | number>) => {
+      const template = messages[id] || fallback || id;
+      return Object.entries(values ?? {}).reduce(
+        (result, [key, value]) => result.replace(`{${key}}`, String(value)),
+        template,
+      );
+    };
+
+    expect(formatMetricEmpty(false, t)).toBe('No data');
+    expect(formatThroughput(null, true, t)).toBe('Query failed');
+    expect(metricEmptyHint(false, t)).toBe('No telemetry samples');
+    expect(formatRelativeTime(new Date().toISOString(), t)).toBe('Just now');
+    expect(formatLatency(1500, false, t)).toBe('1.50 seconds');
+    expect(formatPerSecond('12.4', t)).toBe('12.4 per second');
+    expect(formatRequestRate(12.4, false, t)).toBe('12.4 requests per second');
+    expect(formatDateTime('not-a-date')).toBe('—');
   });
 
   it('按时间戳对齐并加权聚合应用级趋势', () => {

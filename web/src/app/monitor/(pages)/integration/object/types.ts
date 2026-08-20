@@ -95,6 +95,7 @@ export interface DisplayColumn {
   name: string;
   type?: 'metric' | 'field';
   sort_order: number;
+  variable_id?: string;
   metrics: DisplayMetricBinding[];
 }
 

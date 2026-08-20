@@ -37,6 +37,7 @@ from apps.operation_analysis.serializers.datasource_serializers import (
 )
 from apps.operation_analysis.services.data_connection import ConnectionResolveError, resolve_datasource_connection
 from apps.operation_analysis.services.datasource_preview import ConnectorError, get_preview_executor
+from apps.operation_analysis.services.table_query_list import apply_query_list_to_payload
 from apps.operation_analysis.views.data_connection_view import extract_inline_connection
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
@@ -580,7 +581,15 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                     from apps.operation_analysis.services.excel_materialize import load_excel_runtime
 
                     payload = load_excel_runtime(instance, limit=runtime_limit)
-                    return Response({"data": payload.get("items", []), "warnings": payload.get("warnings", [])})
+                    return Response(
+                        {
+                            "data": apply_query_list_to_payload(
+                                payload.get("items", []),
+                                params.get("query_list"),
+                            ),
+                            "warnings": payload.get("warnings", []),
+                        }
+                    )
                 connection_config = _connection_config_for_instance(
                     instance,
                     request.data if isinstance(request.data, dict) else {},
@@ -620,7 +629,12 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                     {"code": transform_error.get("code") or "transform_failed"},
                 )
 
-            return Response({"data": payload.get("items", []), "warnings": []})
+            return Response(
+                {
+                    "data": apply_query_list_to_payload(payload.get("items", []), params.get("query_list")),
+                    "warnings": [],
+                }
+            )
 
         namespace_list = instance.namespaces.all()
         if "/" not in instance.rest_api:
@@ -663,6 +677,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 result.get("data"),
             )
 
+        result["data"] = apply_query_list_to_payload(result.get("data"), params.get("query_list"))
         return Response({"data": result.get("data"), "warnings": []})
 
     @HasPermission("data_source-Add,data_source-Edit")

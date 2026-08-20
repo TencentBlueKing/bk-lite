@@ -62,14 +62,15 @@
       "apm",
       "log",
       "monitor",
-      "ops-analysis"
+      "ops-analysis",
+      "patch-manager"
     ],
     "stories": [
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 5 apps",
+    "reason": "consumed transitively by 6 apps",
     "activeStories": [
       "data-display-family.stories.tsx"
     ]
@@ -1319,11 +1320,13 @@
   {
     "component": "layout",
     "directApps": [
-      "cmdb"
+      "cmdb",
+      "patch-manager"
     ],
     "transitiveApps": [
       "cmdb",
-      "monitor"
+      "monitor",
+      "patch-manager"
     ],
     "stories": [
       "layout-family.stories.tsx",
@@ -1332,7 +1335,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 2 apps",
+    "reason": "consumed transitively by 3 apps",
     "activeStories": [
       "apm-service-pages.stories.tsx",
       "layout-family.stories.tsx",
@@ -2595,18 +2598,20 @@
     "component": "summary-metric-card",
     "directApps": [
       "alarm",
-      "apm"
+      "apm",
+      "patch-manager"
     ],
     "transitiveApps": [
       "alarm",
-      "apm"
+      "apm",
+      "patch-manager"
     ],
     "stories": [
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 2 apps",
+    "reason": "consumed transitively by 3 apps",
     "activeStories": [
       "data-display-family.stories.tsx"
     ]

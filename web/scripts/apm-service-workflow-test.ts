@@ -48,7 +48,7 @@ assert.match(topologyPage, /只看异常/, '拓扑必须支持异常筛选');
 assert.match(topologyPage, /getTopology/, '拓扑必须来自服务端的真实 Trace 聚合');
 assert.match(topologyPage, /type ViewMode = 'graph' \| 'list'/, '拓扑必须提供图形与依赖列表双视图');
 assert.match(topologyPage, /screens\.md === false[\s\S]*setViewMode\('list'\)/, '窄屏必须默认使用依赖列表，避免图形撑宽页面');
-assert.match(topologyPage, /viewBox="0 0 1030 520"/, '图形视图必须使用响应式 viewBox');
+assert.match(topologyPage, /viewBox=\{`0 0 \$\{TOPOLOGY_CANVAS_SIZE\.width\} \$\{TOPOLOGY_CANVAS_SIZE\.height\}`\}/, '图形视图必须使用响应式 viewBox');
 assert.doesNotMatch(topologyPage, /min-w-\[960px\]|scroll=\{\{ x:/, '拓扑不得通过固定宽度撑开整页');
 assert.match(topologyPage, /columns=\{dependencyColumns\}/, '图形必须提供可访问的依赖表格替代视图');
 assert.match(topologyPage, /tabIndex=\{onNodeClick \? 0 : undefined\}/, '可点击拓扑节点必须支持键盘聚焦');

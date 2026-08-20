@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import type { ApmTimeWindow } from '@/app/apm/types';
-import { formatLatency, formatThroughput } from '@/app/apm/components/metric-format';
+import { formatLatency, formatPerSecond, formatThroughput, type Translate } from '@/app/apm/components/metric-format';
 
 export interface Top5BarRow {
   service_id: string;
@@ -32,13 +32,13 @@ export function p95BarColor(value: number): string {
   return 'var(--color-success)';
 }
 
-export function formatTopErrorSubValue(p95Ms: number | null): string {
-  return formatLatency(p95Ms);
+export function formatTopErrorSubValue(p95Ms: number | null, t?: Translate): string {
+  return formatLatency(p95Ms, false, t);
 }
 
-export function formatTopP95SubValue(requestRate: number | null): string {
+export function formatTopP95SubValue(requestRate: number | null, t?: Translate): string {
   if (requestRate === null) return '—';
-  return `${formatThroughput(requestRate)}/s`;
+  return formatPerSecond(formatThroughput(requestRate, false, t), t);
 }
 
 export default function Top5BarChart({

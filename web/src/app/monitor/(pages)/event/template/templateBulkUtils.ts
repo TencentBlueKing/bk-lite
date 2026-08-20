@@ -6,6 +6,17 @@ export interface PolicyTemplateItem {
   name?: string;
   description?: string;
   metric_name?: string;
+  metric_unit?: string;
+  threshold_unit?: string;
+  calculation_unit?: string;
+  trigger_count?: number;
+  threshold?: Array<{
+    level?: string;
+    method?: string;
+    value?: string | number | null;
+  }>;
+  algorithm?: string;
+  group_algorithm?: string;
   query_condition?: {
     type?: string;
     metric_name?: string;
@@ -105,7 +116,7 @@ export const getTemplateThresholdItems = (
 ): TemplateThresholdItem[] => {
   const thresholds = Array.isArray(template.threshold) ? template.threshold : [];
   const unitSuffix = formatUnitSuffix(
-    template.threshold_unit || template.calculation_unit || template.metric_unit
+    String(template.threshold_unit || template.calculation_unit || template.metric_unit || '')
   );
 
   return thresholds
@@ -184,7 +195,10 @@ export const formatTemplateAlgorithmSummary = (template: PolicyTemplateItem): st
 export const getTemplateTriggerCount = (
   template: PolicyTemplateItem,
   triggerCount?: number
-): number => triggerCount ?? template.trigger_count ?? 1;
+): number => {
+  if (typeof triggerCount === 'number') return triggerCount;
+  return typeof template.trigger_count === 'number' ? template.trigger_count : 1;
+};
 
 export const getTemplateKey = (template: PolicyTemplateItem): string => {
   if (template.template_key) return String(template.template_key);
@@ -500,10 +514,14 @@ export const getAssetOrganizationText = (
   const values = Array.isArray(organization) ? organization : [organization];
   const labels = values
     .map((item) => {
-      if (typeof item === 'object' && item !== null) {
-        return item.name || item.label;
+      if (typeof item === 'string' || typeof item === 'number') {
+        return findOrganizationLabel(organizations, item) || String(item);
       }
-      return findOrganizationLabel(organizations, item as string | number) || String(item);
+      if (item && typeof item === 'object') {
+        const record = item as Record<string, unknown>;
+        return String(record.name || record.label || '');
+      }
+      return '';
     })
     .filter(Boolean);
   return labels.length ? labels.join(',') : '--';

@@ -3,6 +3,7 @@ import type {
   ThresholdColorConfig,
   ValueMapping,
 } from '@/app/ops-analysis/components/ops-analysis-config-sections/types';
+import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 
 export type ChartType =
   | 'line'
@@ -170,6 +171,7 @@ export interface DashboardActionConfig {
 
 export interface ValueConfig {
   chartType?: string;
+  chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
   params?: Record<string, string | number | boolean | [number, number] | null>;

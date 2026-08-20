@@ -25,13 +25,18 @@ from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Incident, Level
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
 from apps.core.logger import alert_logger as logger
+from apps.core.utils.internal_event_auth import (
+    TRUSTED_INTERNAL_EVENT_CALLERS,
+    legacy_internal_event_auth_allowed,
+    verify_internal_event,
+)
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.time_util import parse_rfc3339_range_utc, parse_rfc3339_utc
 from apps.core.utils.trend_granularity import resolve_trend_group_by_from_range
 from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
-TRUSTED_INTERNAL_PUSHERS = {"lite-monitor", "lite-log", "lite-apm"}
+TRUSTED_INTERNAL_PUSHERS = TRUSTED_INTERNAL_EVENT_CALLERS
 PER_EVENT_ACK_MODE = "per_event_v1"
 PER_EVENT_ACK_MAX_EVENTS = 200
 PER_EVENT_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
@@ -770,6 +775,9 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
     if kwargs.pop("health_probe", False) is True:
         return {"result": True, "data": {"status": "ok"}, "message": ""}
 
+    internal_auth = kwargs.pop("internal_auth", None)
+    auth_payload = dict(kwargs)
+
     logger.info(
         "[AlertEvent] receive_alert_events source_id=%s pusher=%s event_count=%s",
         kwargs.get("source_id", ""),
@@ -804,11 +812,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
 
         per_event_ack_authorized = False
         if ack_mode == PER_EVENT_ACK_MODE:
-            if (
-                pusher not in TRUSTED_INTERNAL_PUSHERS
-                or not PER_EVENT_ACK_TOKEN
-                or not secrets.compare_digest(str(ack_token), PER_EVENT_ACK_TOKEN)
-            ):
+            if pusher not in TRUSTED_INTERNAL_PUSHERS or not PER_EVENT_ACK_TOKEN or not secrets.compare_digest(str(ack_token), PER_EVENT_ACK_TOKEN):
                 logger.warning("[AlertEvent] 非可信 pusher 不允许逐事件 ACK: pusher=%s", pusher)
                 return {"result": False, "data": {}, "message": "Per-event acknowledgement is restricted."}
             if len(events) > PER_EVENT_ACK_MAX_EVENTS:
@@ -845,6 +849,34 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 normalized_event.pop("lifecycle_action", None)
                 normalized_event.pop("lifecycle_generation", None)
             normalized_events.append(normalized_event)
+
+        has_internal_organizations = any("organizations" in event for event in normalized_events)
+        authenticated_internal = verify_internal_event(
+            "alerts.receive_alert_events",
+            auth_payload,
+            internal_auth,
+            caller=pusher,
+        )
+        if pusher in TRUSTED_INTERNAL_PUSHERS and has_internal_organizations and not authenticated_internal:
+            if internal_auth is None and legacy_internal_event_auth_allowed():
+                logger.warning(
+                    "[AlertEvent] legacy 无签名内部组织归属暂时放行: source_id=%s pusher=%s",
+                    source_id,
+                    pusher,
+                )
+            else:
+                logger.warning(
+                    "[AlertEvent] 拒绝无认证内部组织归属: source_id=%s pusher=%s",
+                    source_id,
+                    pusher,
+                )
+                return {
+                    "result": False,
+                    "code": "internal_auth_required",
+                    "retryable": False,
+                    "data": {},
+                    "message": "Internal alert event authentication failed.",
+                }
 
         # 内部约定：NATS 生效源（event_source 已校验）+ 明确允许的内部推送方，双重判断为可信内部推送。
         # 此时采信每个 event 自带的 organizations 作为归属组织，无需走组织级 secret。
@@ -885,8 +917,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 ingestions.append(single_ingestion)
                 event_results.append(_event_ack(delivery_id, single_ingestion))
             ingestion = {
-                key: sum(item.get(key, 0) for item in ingestions)
-                for key in ("received", "accepted", "skipped", "errored", "duplicates", "rejected")
+                key: sum(item.get(key, 0) for item in ingestions) for key in ("received", "accepted", "skipped", "errored", "duplicates", "rejected")
             }
         else:
             ingestion = adapter.main() or {

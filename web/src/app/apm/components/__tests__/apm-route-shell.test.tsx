@@ -24,7 +24,7 @@ describe('ApmRouteShell', () => {
     ).toBe(true);
   });
 
-  it('复用二级导航内容区的顶部留白，不再叠加页面壳顶部内边距', () => {
+  it('复用二级导航内容区的留白，页面壳不再二次水平缩进', () => {
     const { container } = renderWithApmIntl(
       <ApmRouteShell title="服务" description="服务目录">
         <div>服务工作面</div>
@@ -33,9 +33,11 @@ describe('ApmRouteShell', () => {
 
     const shell = container.firstElementChild;
 
-    expect(shell?.classList.contains('px-4')).toBe(true);
+    expect(shell?.classList.contains('px-4')).toBe(false);
+    expect(shell?.classList.contains('lg:px-5')).toBe(false);
     expect(shell?.classList.contains('pb-4')).toBe(true);
     expect(shell?.classList.contains('p-4')).toBe(false);
+    expect(Array.from(shell?.classList ?? []).some((className) => className.startsWith('px-'))).toBe(false);
     expect(Array.from(shell?.classList ?? []).some((className) => className.startsWith('pt-'))).toBe(false);
   });
 

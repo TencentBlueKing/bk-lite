@@ -331,7 +331,7 @@ def test_update_enum_instances_display(fake_graph):
 
 
 @pytest.mark.unit
-def test_update_enum_instances_display_backend_failure_is_non_blocking(fake_graph):
+def test_update_enum_instances_display_backend_failure_is_reported_after_retry(fake_graph):
     def _raise(*args, **kwargs):
         raise RuntimeError("graph unavailable")
 
@@ -341,13 +341,15 @@ def test_update_enum_instances_display_backend_failure_is_non_blocking(fake_grap
         batch_update_node_property_values=_raise,
     )
 
-    count = ModelManage.update_enum_instances_display(
-        "host",
-        "status",
-        [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}],
-    )
-
-    assert count == 0
+    with pytest.raises(
+        BaseAppException,
+        match="枚举属性已更新，但实例展示字段刷新失败，请重试保存",
+    ):
+        ModelManage.update_enum_instances_display(
+            "host",
+            "status",
+            [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}],
+        )
 
 
 @pytest.mark.unit
@@ -506,7 +508,11 @@ def test_update_enum_instances_display_resumes_after_later_batch_failure(
     )
 
     options = [{"id": "1", "name": "运行"}]
-    assert ModelManage.update_enum_instances_display("host", "status", options) == 1000
+    with pytest.raises(
+        BaseAppException,
+        match="枚举属性已更新，但实例展示字段刷新失败，请重试保存",
+    ):
+        ModelManage.update_enum_instances_display("host", "status", options)
     assert write_calls == 3
     assert [checkpoint["cursor"] for checkpoint in enum_backfill_checkpoints.values()] == [1000]
 
@@ -609,7 +615,7 @@ def test_update_enum_instances_display_ignores_checkpoint_for_old_options(
 
 
 @pytest.mark.unit
-def test_update_enum_instances_display_cache_failure_is_non_blocking(fake_graph, monkeypatch):
+def test_update_enum_instances_display_cache_failure_is_reported(fake_graph, monkeypatch):
     def _raise_cache_error(*_args, **_kwargs):
         raise RuntimeError("cache unavailable")
 
@@ -621,11 +627,15 @@ def test_update_enum_instances_display_cache_failure_is_non_blocking(fake_graph,
         query_entity=_paged_query_entity([{"_id": 1, "status": "1"}]),
     )
 
-    assert ModelManage.update_enum_instances_display(
-        "host",
-        "status",
-        [{"id": "1", "name": "运行"}],
-    ) == 0
+    with pytest.raises(
+        BaseAppException,
+        match="枚举属性已更新，但实例展示字段刷新失败，请重试保存",
+    ):
+        ModelManage.update_enum_instances_display(
+            "host",
+            "status",
+            [{"id": "1", "name": "运行"}],
+        )
 
 
 @pytest.mark.unit

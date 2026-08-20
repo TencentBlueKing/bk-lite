@@ -205,6 +205,8 @@ export interface InstanceParam {
   add_metrics?: boolean;
   monitor_plugin_id?: React.Key;
   name?: string;
+  /** 精确匹配存储键；用于回填已选实例展示名 */
+  instance_id?: string;
   vm_params?: any;
 }
 
@@ -244,6 +246,7 @@ export interface ObjectItem {
     name: string;
     type?: 'metric' | 'field';
     sort_order: number;
+    variable_id?: string;
     metrics: { plugin: string; metric: string; field?: string }[];
   }[];
   instance_summary_columns?: {

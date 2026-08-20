@@ -4,15 +4,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   PlatformAccessDeniedError,
   createPlatformSessionId,
-  dockCollapsedStorageKey,
   fillUrlTemplate,
   formatSessionTime,
   isPlatformMode,
   lastSessionStorageKey,
-  readDockCollapsed,
   readLastSelection,
   resolvePlatformSelection,
-  writeDockCollapsed,
   writeLastSelection,
   type Message,
   type PlatformApplication,
@@ -98,7 +95,8 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
 
   const storagePrefix = platform.storageKey || 'webchat:platform';
   const storageKey = lastSessionStorageKey(storagePrefix, userId, teamId);
-  const collapsedKey = dockCollapsedStorageKey(storagePrefix, userId, teamId);
+  // Session/app selection stays in localStorage. Dock open/collapsed is
+  // in-memory only so new windows and refreshes always start as FAB.
   const storage = typeof window === 'undefined' ? null : window.localStorage;
 
   const [apps, setApps] = useState<PlatformApplication[]>([]);
@@ -111,7 +109,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const [forbidden, setForbidden] = useState(false);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
   const [view, setView] = useState<DockView>('chat');
-  const [collapsed, setCollapsed] = useState(() => readDockCollapsed(storage, collapsedKey));
+  const [collapsed, setCollapsed] = useState(true);
   const [draft, setDraft] = useState('');
   const [kickoffMessage, setKickoffMessage] = useState<string | undefined>();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -123,14 +121,6 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
       writeLastSelection(storage, storageKey, { appId, sessionId: nextSessionId });
     },
     [storage, storageKey]
-  );
-
-  const persistCollapsed = useCallback(
-    (next: boolean) => {
-      setCollapsed(next);
-      writeDockCollapsed(storage, collapsedKey, next);
-    },
-    [collapsedKey, storage]
   );
 
   useEffect(() => {
@@ -290,9 +280,9 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   }, [onStreamingStop, platform, requestInit]);
 
   const handleClose = useCallback(() => {
-    persistCollapsed(true);
+    setCollapsed(true);
     onClose?.();
-  }, [onClose, persistCollapsed]);
+  }, [onClose]);
 
   const handleComposerSend = useCallback(() => {
     const text = draft.trim();
@@ -322,12 +312,12 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
 
   if (collapsed) {
     return (
-      <div ref={ref} className="fixed bottom-5 right-2 z-50">
+      <div ref={ref} className="fixed bottom-5 right-2 z-[1200]">
         <button
           type="button"
           title="打开对话"
           aria-label="打开对话"
-          onClick={() => persistCollapsed(false)}
+          onClick={() => setCollapsed(false)}
           className="flex h-10 w-10 items-center justify-center rounded-full border-none"
           style={{ background: WC.indigo, color: WC.onPrimary }}
         >
@@ -344,12 +334,12 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   return (
     <div
       ref={ref}
-      className="fixed inset-y-0 right-0 z-[1100] flex w-[380px] flex-col overflow-hidden font-sans"
+      className="fixed bottom-0 right-0 top-0 z-[1200] flex w-[380px] flex-col overflow-hidden font-sans"
       style={{ background: WC.white, borderLeft: `1px solid ${WC.botBorder}` }}
     >
       <div ref={menuRef} className="relative flex-shrink-0">
         <div
-          className="flex h-[52px] items-center gap-2 pl-4 pr-2"
+          className="flex h-14 items-center gap-2 pl-4 pr-2"
           style={{ background: WC.indigo, color: WC.onPrimary }}
         >
           {emptyApps ? (
@@ -401,7 +391,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
         </div>
         {appMenuOpen && !emptyApps ? (
           <div
-            className="absolute left-2 right-2 top-[52px] z-20 overflow-hidden rounded-lg"
+            className="absolute left-2 right-2 top-14 z-20 overflow-hidden rounded-lg"
             style={{ background: WC.white, border: `1px solid ${WC.botBorder}` }}
           >
             {apps.map((app) => {

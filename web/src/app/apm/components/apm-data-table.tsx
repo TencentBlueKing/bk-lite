@@ -11,19 +11,22 @@ const DEFAULT_PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
 /**
  * APM 列表只为稳定窄列保留固定宽度；名称、服务、资源等主信息列不设置 width，
  * 由表格分配剩余空间。统一语义宽度可以避免不同页面各自使用百分比后在超宽屏失真。
+ *
+ * 密度约定：工作面 16px 内边距；表头/单元格 8×12，最右列右侧 20px，避免操作贴边；高度随行数，不锁死视口。
  */
 export const APM_TABLE_COLUMN_WIDTHS = {
-  actionGroup: 168,
-  actionPair: 152,
+  actionGroup: 192,
+  actionPair: 160,
   compact: 104,
   metric: 112,
   metricWide: 120,
   organization: 160,
   progress: 176,
   relativeTime: 112,
-  singleAction: 88,
+  singleAction: 96,
   status: 96,
   timestamp: 168,
+  traceId: 216,
   trend: 96,
 } as const;
 

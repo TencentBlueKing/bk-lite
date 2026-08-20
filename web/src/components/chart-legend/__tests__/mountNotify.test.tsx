@@ -48,4 +48,17 @@ describe('ChartLegend mount notification', () => {
     expect(onSelectionChange).toHaveBeenCalledTimes(1);
     expect(onSelectionChange).toHaveBeenCalledWith({});
   });
+
+  it('uses dashboard fill token for legend hover', () => {
+    const { container } = render(
+      <ChartLegend
+        data={legendItems}
+        colors={['#1677ff', '#52c41a']}
+      />,
+    );
+
+    expect(container.querySelector('button')?.className).toContain(
+      'hover:bg-(--color-fill-2)',
+    );
+  });
 });

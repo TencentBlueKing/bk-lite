@@ -11,7 +11,7 @@ export interface PolicyNameSource {
     metric_name?: string;
     result_name?: string;
     expression?: string;
-    queries?: Array<{ metric_name?: string; ref?: string }>;
+    queries?: Array<{ ref?: string; metric_name?: string }>;
     [key: string]: unknown;
   } | null;
   monitor_object_name?: string;

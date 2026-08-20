@@ -3,13 +3,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Form, Input, Select, Switch, Button, InputNumber, Slider, Spin, message, Modal, Checkbox } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import useGroups from '@/app/opspilot/hooks/useGroups';
 import styles from './index.module.scss';
 import { useSearchParams } from 'next/navigation';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
 import CompactEmptyState from '@/components/compact-empty-state';
 import SearchActionBar from '@/components/search-action-bar';
 import PermissionWrapper from '@/components/permission';
+import GroupTreeSelect from '@/components/group-tree-select';
 import { SkillPackage, SkillPackageParam } from '@/app/opspilot/types/skill';
 import { SelectTool } from '@/app/opspilot/types/tool';
 import ToolSelector from '@/app/opspilot/components/skill/toolSelector';
@@ -43,13 +43,14 @@ const getPackageRequiredTools = (pkg: SkillPackage) => pkg.required_tools || [];
 
 const SkillSettingsPage: React.FC = () => {
   const [form] = Form.useForm();
-  const { groups, loading: groupsLoading } = useGroups();
   const { t } = useTranslation();
   const { fetchSkillDetail, fetchLlmModels, fetchSkillPackages, saveSkillDetail } = useSkillApi();
   const { fetchKnowledgeBases } = useWikiApi();
   const { refreshSkillInfo } = useSkill();
   const searchParams = useSearchParams();
   const id = searchParams ? searchParams.get('id') : null;
+  // 管理组织（group 字段）当前值：自动并入使用组织、且在使用组织里锁定不可删
+  const manageGroup: number[] = Form.useWatch('group', form) || [];
 
   const [temperature, setTemperature] = useState(0.7);
   const [initialMessages] = useState<any[]>([]); // 稳定的空数组引用
@@ -111,6 +112,10 @@ const SkillSettingsPage: React.FC = () => {
         form.setFieldsValue({
           name: data.name,
           group: data.team,
+          // 空数组不能用 ?? 回退；保证管理组织至少进入使用组织
+          usage_team: (Array.isArray(data.usage_team) && data.usage_team.length > 0)
+            ? data.usage_team
+            : (data.team || []),
           introduction: data.introduction,
           llmModel: data.llm_model,
           temperature: data.temperature || 0.7,
@@ -165,7 +170,16 @@ const SkillSettingsPage: React.FC = () => {
     fetchInitialData();
   }, [id]);
 
-  const allLoading = Object.values(pageLoading).some(loading => loading) || groupsLoading;
+  const allLoading = Object.values(pageLoading).some(loading => loading);
+
+  useEffect(() => {
+    const current = (form.getFieldValue('usage_team') || []).map(Number).filter((n: number) => !Number.isNaN(n));
+    const manage = (manageGroup || []).map(Number).filter((n: number) => !Number.isNaN(n));
+    const merged = Array.from(new Set([...manage, ...current]));
+    if (JSON.stringify(merged) !== JSON.stringify(current)) {
+      form.setFieldsValue({ usage_team: merged });
+    }
+  }, [JSON.stringify(manageGroup)]);
 
   const handleSave = async () => {
     try {
@@ -177,6 +191,7 @@ const SkillSettingsPage: React.FC = () => {
       const payload = {
         name: values.name,
         team: values.group,
+        usage_team: values.usage_team,
         introduction: values.introduction,
         llm_model: values.llmModel,
         skill_prompt: values.prompt,
@@ -610,12 +625,23 @@ const SkillSettingsPage: React.FC = () => {
                     <Form.Item label={t('common.name')} name="name" rules={[{ required: true, message: `${t('common.input')} ${t('common.name')}` }]}>
                       <Input />
                     </Form.Item>
-                    <Form.Item label={t('common.organization')} name="group" rules={[{ required: true, message: `${t('common.input')} ${t('common.organization')}` }]}>
-                      <Select mode="multiple">
-                        {groups.map(group => (
-                          <Option key={group.id} value={group.id}>{group.name}</Option>
-                        ))}
-                      </Select>
+                    <Form.Item
+                      label={t('skill.form.manageGroup')}
+                      name="group"
+                      rules={[{ required: true, message: `${t('common.selectMsg')}${t('skill.form.manageGroup')}` }]}
+                    >
+                      <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('skill.form.manageGroup')}`} />
+                    </Form.Item>
+                    <Form.Item
+                      label={t('skill.form.usageGroup')}
+                      name="usage_team"
+                      tooltip={t('skill.form.usageGroupTip')}
+                      rules={[{ required: true, message: `${t('common.selectMsg')}${t('skill.form.usageGroup')}` }]}
+                    >
+                      <GroupTreeSelect
+                        placeholder={`${t('common.selectMsg')}${t('skill.form.usageGroup')}`}
+                        lockedValues={manageGroup}
+                      />
                     </Form.Item>
                     <Form.Item label={t('skill.form.introduction')} name="introduction" rules={[{ required: true, message: `${t('common.input')} ${t('skill.form.introduction')}` }]}>
                       <TextArea rows={4} />

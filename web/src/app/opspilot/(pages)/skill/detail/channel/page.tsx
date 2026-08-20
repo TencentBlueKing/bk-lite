@@ -1,7 +1,21 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Form, Input, Modal, Select, Space, Spin, Switch, Typography, message } from 'antd';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Button,
+  Empty,
+  Form,
+  Input,
+  Modal,
+  Select,
+  Space,
+  Spin,
+  Switch,
+  Table,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useSkillApi } from '@/app/opspilot/api/skill';
@@ -15,17 +29,29 @@ interface SkillChannelItem {
   channel_config?: Record<string, any>;
   callback_path?: string;
   usage_team?: number[];
-};
+}
+
+const WEB_CHAT_PATH = '/opspilot/skill/chat';
 
 const CHANNEL_OPTIONS = [
-  { value: 'platform', labelKey: 'platform' },
-  { value: 'web_chat', labelKey: 'web_chat' },
-  { value: 'embedded_chat', labelKey: 'embedded_chat' },
-  { value: 'enterprise_wechat', labelKey: 'enterprise_wechat' },
-  { value: 'enterprise_wechat_aibot', labelKey: 'enterprise_wechat_aibot' },
-  { value: 'dingtalk', labelKey: 'dingtalk' },
-  { value: 'wechat_official', labelKey: 'wechat_official' },
+  { value: 'platform' },
+  { value: 'web_chat' },
+  { value: 'embedded_chat' },
+  { value: 'enterprise_wechat' },
+  { value: 'enterprise_wechat_aibot' },
+  { value: 'dingtalk' },
+  { value: 'wechat_official' },
 ];
+
+const CHANNEL_TAG_COLOR: Record<string, string> = {
+  platform: 'cyan',
+  web_chat: 'blue',
+  embedded_chat: 'purple',
+  enterprise_wechat: 'green',
+  enterprise_wechat_aibot: 'green',
+  dingtalk: 'orange',
+  wechat_official: 'lime',
+};
 
 const CONFIG_FIELDS: Record<string, string[]> = {
   enterprise_wechat: ['token', 'secret', 'aes_key', 'corp_id', 'agent_id'],
@@ -36,6 +62,9 @@ const CONFIG_FIELDS: Record<string, string[]> = {
   web_chat: ['appName', 'appDescription'],
   embedded_chat: [],
 };
+
+const channelTypeLabel = (t: (key: string, fallback?: string) => string, channelType: string) =>
+  t(`skill.channel.types.${channelType}`, channelType);
 
 const SkillChannelPage: React.FC = () => {
   const { t } = useTranslation();
@@ -54,17 +83,35 @@ const SkillChannelPage: React.FC = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<SkillChannelItem | null>(null);
   const [saving, setSaving] = useState(false);
+  const [nameQuery, setNameQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>();
   const [form] = Form.useForm();
   const channelType = Form.useWatch('channel_type', form);
+  const apiRef = useRef({
+    fetchSkillChannels,
+    createSkillChannel,
+    updateSkillChannel,
+    setSkillChannelEnabled,
+    deleteSkillChannel,
+    t,
+  });
+  apiRef.current = {
+    fetchSkillChannels,
+    createSkillChannel,
+    updateSkillChannel,
+    setSkillChannelEnabled,
+    deleteSkillChannel,
+    t,
+  };
 
   const load = useCallback(async () => {
     if (!skillId) return;
     setLoading(true);
     try {
-      const data = await fetchSkillChannels(skillId);
+      const data = await apiRef.current.fetchSkillChannels(skillId);
       setChannels(Array.isArray(data) ? data : []);
     } catch (e: any) {
-      message.error(e?.message || '加载渠道失败');
+      message.error(e?.message || apiRef.current.t('skill.channel.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -76,6 +123,17 @@ const SkillChannelPage: React.FC = () => {
 
   const configFields = useMemo(() => CONFIG_FIELDS[channelType] || [], [channelType]);
 
+  const enabledCount = useMemo(() => channels.filter((c) => c.enabled).length, [channels]);
+  const filteredChannels = useMemo(() => {
+    const keyword = nameQuery.trim().toLowerCase();
+    return channels.filter((item) => {
+      const displayName = (item.name || channelTypeLabel(t, item.channel_type)).toLowerCase();
+      const matchName = !keyword || displayName.includes(keyword);
+      const matchType = !typeFilter || item.channel_type === typeFilter;
+      return matchName && matchType;
+    });
+  }, [channels, nameQuery, typeFilter, t]);
+
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
@@ -86,7 +144,6 @@ const SkillChannelPage: React.FC = () => {
   const openEdit = (item: SkillChannelItem) => {
     setEditing(item);
     const cfg = item.channel_config || {};
-    // aibot 可能嵌套 webhook
     const flat = { ...cfg, ...(cfg.webhook || {}) };
     form.setFieldsValue({
       channel_type: item.channel_type,
@@ -144,7 +201,7 @@ const SkillChannelPage: React.FC = () => {
       await load();
     } catch (e: any) {
       if (e?.errorFields) return;
-      message.error(e?.message || '保存失败');
+      message.error(e?.message || t('skill.channel.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -155,14 +212,16 @@ const SkillChannelPage: React.FC = () => {
       await setSkillChannelEnabled(item.id, enabled);
       await load();
     } catch (e: any) {
-      message.error(e?.message || '启停失败');
+      message.error(e?.message || t('skill.channel.toggleFailed'));
     }
   };
 
   const onDelete = async (item: SkillChannelItem) => {
     Modal.confirm({
       title: t('common.delete') || '删除',
-      content: `确认删除渠道「${item.name || item.channel_type}」？`,
+      content: t('skill.channel.deleteConfirm', '确认删除渠道「{name}」？', {
+        name: item.name || channelTypeLabel(t, item.channel_type),
+      }),
       onOk: async () => {
         await deleteSkillChannel(item.id);
         await load();
@@ -170,60 +229,154 @@ const SkillChannelPage: React.FC = () => {
     });
   };
 
+  const openWebChat = () => {
+    window.open(WEB_CHAT_PATH, '_blank', 'noopener,noreferrer');
+  };
+
+  const columns = useMemo(
+    () => [
+      {
+        title: t('skill.channel.name'),
+        dataIndex: 'name',
+        key: 'name',
+        ellipsis: true,
+        render: (name: string, item: SkillChannelItem) =>
+          name || channelTypeLabel(t, item.channel_type),
+      },
+      {
+        title: t('skill.channel.type'),
+        dataIndex: 'channel_type',
+        key: 'channel_type',
+        width: 140,
+        render: (channelType: string) => (
+          <Tag color={CHANNEL_TAG_COLOR[channelType] || 'default'} className="!m-0">
+            {channelTypeLabel(t, channelType)}
+          </Tag>
+        ),
+      },
+      {
+        title: t('skill.channel.status', '启停'),
+        dataIndex: 'enabled',
+        key: 'enabled',
+        width: 88,
+        render: (_: boolean, item: SkillChannelItem) => (
+          <Switch size="small" checked={item.enabled} onChange={(v) => onToggle(item, v)} />
+        ),
+      },
+      {
+        title: t('common.action') || '操作',
+        key: 'action',
+        width: 220,
+        render: (_: unknown, item: SkillChannelItem) => (
+          <Space size="small">
+            {item.channel_type === 'web_chat' ? (
+              <Button size="small" type="primary" onClick={openWebChat}>
+                {t('skill.channel.openChat', '对话')}
+              </Button>
+            ) : null}
+            <Button size="small" onClick={() => openEdit(item)}>
+              {t('common.setting') || '设置'}
+            </Button>
+            <Button size="small" danger onClick={() => onDelete(item)}>
+              {t('common.delete') || '删除'}
+            </Button>
+          </Space>
+        ),
+      },
+    ],
+    [t]
+  );
+
   return (
-    <div className="p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <Typography.Title level={5} className="!mb-0">
-          {t('skill.channelPublish') || '渠道发布'}
-        </Typography.Title>
+    <div className="flex h-full flex-col gap-4 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <Typography.Title level={5} className="!mb-1">
+            {t('skill.channelPublish')}
+          </Typography.Title>
+          <Typography.Paragraph className="!mb-0 text-xs text-[var(--color-text-3)]">
+            {t(
+              'skill.channel.pageDesc',
+              '为当前智能体开通独立入口。配置活引用技能参数；同类型可挂多条；启停互不影响。'
+            )}
+          </Typography.Paragraph>
+        </div>
         <PermissionWrapper requiredPermissions={['Edit']}>
           <Button type="primary" onClick={openCreate}>
-            {t('common.add') || '新增'}
+            {t('skill.channel.add', '添加渠道')}
           </Button>
         </PermissionWrapper>
       </div>
-      <Spin spinning={loading}>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {channels.map((item) => (
-            <div key={item.id} className="rounded border border-[var(--color-border-1)] p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <div className="font-medium">{item.name || item.channel_type}</div>
-                <Switch checked={item.enabled} onChange={(v) => onToggle(item, v)} />
-              </div>
-              <div className="mb-2 text-xs text-[var(--color-text-3)]">{item.channel_type}</div>
-              {item.callback_path ? (
-                <Typography.Paragraph copyable className="!mb-2 text-xs" ellipsis>
-                  {item.callback_path}
-                </Typography.Paragraph>
-              ) : null}
-              {item.channel_type === 'web_chat' ? (
-                <Typography.Paragraph className="!mb-2 text-xs text-[var(--color-text-3)]">
-                  Web 对话入口：
-                  <Typography.Link href="/opspilot/skill/chat" target="_blank">
-                    /opspilot/skill/chat
-                  </Typography.Link>
-                </Typography.Paragraph>
-              ) : null}
-              {item.channel_type === 'embedded_chat' ? (
-                <Typography.Paragraph className="!mb-2 text-xs text-[var(--color-text-3)]">
-                  嵌入式请求需携带 Api-Authorization（系统管理 UserAPISecret），路径含 skill_id 与 channel_id。
-                </Typography.Paragraph>
-              ) : null}
-              <Space>
-                <Button size="small" onClick={() => openEdit(item)}>
-                  {t('common.setting') || '设置'}
-                </Button>
-                <Button size="small" danger onClick={() => onDelete(item)}>
-                  {t('common.delete') || '删除'}
-                </Button>
-              </Space>
-            </div>
-          ))}
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)] px-4 py-3">
+          <div className="text-xs text-[var(--color-text-3)]">{t('skill.channel.statTotal', '渠道总数')}</div>
+          <div className="mt-1 text-2xl font-semibold text-[var(--color-text-1)]">{channels.length}</div>
         </div>
+        <div className="rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)] px-4 py-3">
+          <div className="text-xs text-[var(--color-text-3)]">{t('skill.channel.statEnabled', '已启用')}</div>
+          <div className="mt-1 text-2xl font-semibold text-[var(--color-primary)]">{enabledCount}</div>
+        </div>
+        <div className="rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)] px-4 py-3">
+          <div className="text-xs text-[var(--color-text-3)]">{t('skill.channel.statDisabled', '未启用')}</div>
+          <div className="mt-1 text-2xl font-semibold text-[var(--color-text-2)]">
+            {channels.length - enabledCount}
+          </div>
+        </div>
+      </div>
+
+      <Spin spinning={loading}>
+        {channels.length === 0 && !loading ? (
+          <div className="flex min-h-[280px] items-center justify-center rounded-md border border-dashed border-[var(--color-border-2)] bg-[var(--color-fill-1)]">
+            <Empty
+              description={t('skill.channel.empty', '尚未发布任何渠道')}
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            >
+              <PermissionWrapper requiredPermissions={['Edit']}>
+                <Button type="primary" onClick={openCreate}>
+                  {t('skill.channel.add', '添加渠道')}
+                </Button>
+              </PermissionWrapper>
+            </Empty>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)] p-4">
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                allowClear
+                value={nameQuery}
+                onChange={(e) => setNameQuery(e.target.value)}
+                placeholder={t('skill.channel.filterNamePlaceholder', '按名称筛选')}
+                className="sm:max-w-xs"
+              />
+              <Select
+                allowClear
+                value={typeFilter}
+                onChange={(value) => setTypeFilter(value)}
+                placeholder={t('skill.channel.filterTypeAll', '全部类型')}
+                className="sm:w-48"
+                options={CHANNEL_OPTIONS.map((o) => ({
+                  value: o.value,
+                  label: channelTypeLabel(t, o.value),
+                }))}
+              />
+            </div>
+            <Table
+              rowKey="id"
+              size="middle"
+              pagination={false}
+              columns={columns}
+              dataSource={filteredChannels}
+              locale={{
+                emptyText: t('skill.channel.filterEmpty', '没有匹配的渠道'),
+              }}
+            />
+          </div>
+        )}
       </Spin>
 
       <Modal
-        title={editing ? t('common.edit') || '编辑' : t('common.add') || '新增'}
+        title={editing ? t('common.edit') || '编辑' : t('skill.channel.add', '添加渠道')}
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={onSave}
@@ -231,21 +384,30 @@ const SkillChannelPage: React.FC = () => {
         destroyOnClose
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="channel_type" label="渠道类型" rules={[{ required: true }]}>
+          <Form.Item name="channel_type" label={t('skill.channel.type')} rules={[{ required: true }]}>
             <Select
               disabled={!!editing}
-              options={CHANNEL_OPTIONS.map((o) => ({ value: o.value, label: o.value }))}
+              options={CHANNEL_OPTIONS.map((o) => ({
+                value: o.value,
+                label: channelTypeLabel(t, o.value),
+              }))}
             />
           </Form.Item>
-          <Form.Item name="name" label="名称">
+          <Form.Item name="name" label={t('skill.channel.name')}>
             <Input />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
+          <Form.Item name="enabled" label={t('skill.channel.enabled')} valuePropName="checked">
             <Switch />
           </Form.Item>
           {configFields.map((field) => (
             <Form.Item key={field} name={field} label={field}>
-              <Input.Password visibilityToggle={field.toLowerCase().includes('secret') || field.toLowerCase().includes('token') || field.toLowerCase().includes('aes')} />
+              <Input.Password
+                visibilityToggle={
+                  field.toLowerCase().includes('secret') ||
+                  field.toLowerCase().includes('token') ||
+                  field.toLowerCase().includes('aes')
+                }
+              />
             </Form.Item>
           ))}
         </Form>

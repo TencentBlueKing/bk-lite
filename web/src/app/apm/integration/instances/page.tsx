@@ -14,6 +14,7 @@ import CatalogState, {
 import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
 import ServiceIdentity from '@/app/apm/components/service-identity';
 import ApmStatusTag from '@/app/apm/components/status-tag';
+import { formatDateTime } from '@/app/apm/components/metric-format';
 import type { ApmApplication, ApmServiceInstance, InstanceStatus } from '@/app/apm/types';
 import Permission from '@/components/permission';
 import FilterToolbar from '@/components/filter-toolbar';
@@ -160,7 +161,7 @@ export default function ApmIntegrationInstancesPage() {
       responsive: ['xxl'],
       render: (value) => (
         <time className="whitespace-nowrap tabular-nums" dateTime={value}>
-          {dayjs(value).format('YYYY-MM-DD HH:mm')}
+          {formatDateTime(value, false)}
         </time>
       ),
     },
@@ -173,9 +174,9 @@ export default function ApmIntegrationInstancesPage() {
         <time
           className="whitespace-nowrap tabular-nums text-[var(--color-text-1)]"
           dateTime={value}
-          title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}
+          title={formatDateTime(value)}
         >
-          {dayjs(value).format('YYYY-MM-DD HH:mm')}
+          {formatDateTime(value, false)}
         </time>
       ),
     },

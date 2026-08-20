@@ -47,11 +47,13 @@ class HistoryService:
         processed_history = []
         role_map = {"assistant": "bot"}
         for user_msg in chat_history[num:]:
-            message = user_msg.get("message", user_msg.get("text", ""))
-            if user_msg["event"] == "user" and isinstance(message, list):
+            event = str(user_msg.get("event") or user_msg.get("role") or "").strip().lower()
+            event = role_map.get(event, event or "user")
+            message = user_msg.get("message", user_msg.get("text", user_msg.get("content", "")))
+            if event == "user" and isinstance(message, list):
                 image_list = []
                 msg = ""
-                for item in user_msg["message"]:
+                for item in message:
                     if item["type"] == "image_url":
                         image_url = item.get("image_url", item.get("url"))
                         if isinstance(image_url, dict):
@@ -62,12 +64,12 @@ class HistoryService:
                         msg = item.get("text", "") or item.get("message", "")
                 processed_history.append({"event": "user", "message": msg, "image_data": image_list})
             else:
-                txt = user_msg.get("message", user_msg.get("text", ""))
+                txt = message
                 if isinstance(txt, list):
                     txt = "\n".join([i.get("message", i.get("text")) for i in txt])
                 processed_history.append(
                     {
-                        "event": role_map.get(user_msg["event"], user_msg["event"]),
+                        "event": event,
                         "message": txt,
                     }
                 )

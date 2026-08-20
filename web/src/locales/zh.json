@@ -351,6 +351,15 @@
         "queryStatusFailed": "查询认证状态失败。",
         "startFailed": "启动认证失败。",
         "popupBlocked": "无法打开认证页面，请允许浏览器弹窗后重试。"
+      },
+      "result": {
+        "titleSuccess": "认证完成",
+        "titleCancelled": "认证已取消",
+        "titleExpired": "认证已过期",
+        "titleFailed": "认证失败",
+        "defaultMessage": "原登录页会继续处理，你可以关闭此标签。",
+        "closeTab": "关闭此标签",
+        "closeFailed": "浏览器无法自动关闭此标签，请手动关闭。原登录页会继续。"
       }
     },
     "languageToggle": {

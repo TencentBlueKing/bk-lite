@@ -33,6 +33,7 @@ export type InstallerStepCode =
   | 'prepare_directories'
   | 'download'
   | 'download_package'
+  | 'stop_service'
   | 'extract'
   | 'extract_package'
   | 'write_config'

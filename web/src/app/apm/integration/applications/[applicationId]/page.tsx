@@ -12,7 +12,7 @@ import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm
 import ServiceLanguage from '@/app/apm/components/service-language';
 import ApmStatusTag from '@/app/apm/components/status-tag';
 import { TopologyCanvas } from '@/app/apm/services/topology/page';
-import { formatErrorRate, formatLatency, formatThroughput } from '@/app/apm/components/metric-format';
+import { formatDateTime, formatErrorRate, formatLatency, formatPerSecond, formatThroughput } from '@/app/apm/components/metric-format';
 import type { ApmApplication, ApmService, ApmServiceRed, ApmTopologyGraph } from '@/app/apm/types';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
@@ -56,9 +56,9 @@ export default function ApmApplicationDetailPage() {
     const weightedErrors = reds.reduce((sum, red) => sum + (red.request_rate ?? 0) * (red.error_rate ?? 0), 0);
     return [
       { label: t('apm.applications.serviceCount', '服务数'), value: String(services.length) },
-      { label: t('apm.common.throughput', '吞吐量'), value: `${formatThroughput(requestRate)}/s` },
-      { label: t('apm.common.errorRate', '错误率'), value: formatErrorRate(requestRate ? weightedErrors / requestRate : null) },
-      { label: t('apm.common.p95', 'P95'), value: formatLatency(reds.reduce<number | null>((max, red) => red.p95_ms == null ? max : Math.max(max ?? 0, red.p95_ms), null)) },
+      { label: t('apm.common.throughput', '吞吐量'), value: formatPerSecond(formatThroughput(requestRate, false, t), t) },
+      { label: t('apm.common.errorRate', '错误率'), value: formatErrorRate(requestRate ? weightedErrors / requestRate : null, false, t) },
+      { label: t('apm.common.p95', 'P95'), value: formatLatency(reds.reduce<number | null>((max, red) => red.p95_ms == null ? max : Math.max(max ?? 0, red.p95_ms), null), false, t) },
     ];
   }, [reds, services.length, t]);
 
@@ -94,7 +94,7 @@ export default function ApmApplicationDetailPage() {
       dataIndex: 'last_seen_at',
       width: APM_TABLE_COLUMN_WIDTHS.timestamp,
       responsive: ['lg'],
-      render: (value) => <EllipsisWithTooltip text={new Date(value).toLocaleString()} />,
+      render: (value) => <EllipsisWithTooltip text={formatDateTime(value)} />,
     },
   ], [t]);
 

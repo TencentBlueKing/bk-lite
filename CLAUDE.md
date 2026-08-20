@@ -29,6 +29,9 @@
 
 - **布局**：优先 Tailwind `className`；禁止新增大段行内布局，也勿为普通布局新建 SCSS Module。
   行内 `style` 仅限动态值 / AntD 契约 / 画布瞬时尺寸。
+- **统一尺寸常量勿拆**：若多处表单控件共用 `FORM_CONTROL_WIDTH`（或同类常量）以
+  `style={{ width: CONST }}` 对齐，**保留该常量**；禁止为了「改成 Tailwind」拆成
+  多处散落的 `w-[300px]` 等任意值，否则失去单点改宽能力。
 - **颜色**：语义 token（`var(--color-*)` / `globals.css`）；禁止硬编码主题色。
 - **组件**：Ant Design → `src/components` → app-local；升 shared 须 ≥2 真实 app，
   并遵守 `web/COMPONENT_GOVERNANCE.md`。
