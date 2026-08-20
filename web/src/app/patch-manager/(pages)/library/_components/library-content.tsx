@@ -68,16 +68,16 @@ function getPatchSourceTypes(patch: Patch): PatchOriginType[] {
 
 function getPatchName(patch: Patch): string {
   if (patch.os_type === 'windows') {
-    return patch.windows_detail?.kb_number || patch.title || '—';
+    return patch.windows_detail?.kb_number || patch.title || '--';
   }
-  return patch.linux_detail?.pkg_name || patch.title || '—';
+  return patch.linux_detail?.pkg_name || patch.title || '--';
 }
 
 function getPatchVersion(patch: Patch): string {
   if (patch.os_type === 'windows') {
-    return (patch.windows_detail?.product_list || []).join('、') || '—';
+    return (patch.windows_detail?.product_list || []).join('、') || '--';
   }
-  return patch.linux_detail?.distro_name || '—';
+  return patch.linux_detail?.distro_name || '--';
 }
 
 function getPatchArch(patch: Patch): string {
@@ -332,7 +332,7 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
         width: 140,
         render: (_: unknown, r: Patch) => {
           const sourceTypes = getPatchSourceTypes(r);
-          const text = sourceTypes.map((value) => value === 'manual' ? t('patchManager.manual') : SOURCE_TYPE_LABELS[value]).join('，') || '—';
+          const text = sourceTypes.map((value) => value === 'manual' ? t('patchManager.manual') : SOURCE_TYPE_LABELS[value]).join('，') || '--';
           return <Tooltip title={text}><Tag color={sourceTypes.includes('manual') ? 'warning' : 'default'} className="max-w-[120px] overflow-hidden text-ellipsis">{text}</Tag></Tooltip>;
         },
       },
@@ -345,7 +345,7 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
           ? <Button type="link" size="small" className="!px-0" onClick={() => router.push(`/patch-manager/baseline?patch_ids=${r.id}`)}>{v}</Button>
           : <span className="text-[var(--color-text-4)]">0</span>,
       },
-      { title: t('patchManager.libraryPage.lastUpdated'), dataIndex: 'last_synced_at', width: 180, render: (v: string | null, r: Patch) => convertToLocalizedTime(v || r.updated_at) || '—' },
+      { title: t('patchManager.libraryPage.lastUpdated'), dataIndex: 'last_synced_at', width: 180, render: (v: string | null, r: Patch) => convertToLocalizedTime(v || r.updated_at) || '--' },
       { title: t('patchManager.operation'), dataIndex: 'op', width: 180, fixed: 'right', render: (_: unknown, r: Patch) => {
         const deleteBlocked = (r.baseline_requirement_count ?? 0) > 0;
         const deleteButton = <Button

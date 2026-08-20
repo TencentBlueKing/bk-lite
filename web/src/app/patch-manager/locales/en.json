@@ -236,7 +236,7 @@
       "pendingRisks": "Pending Risks",
       "remediationFailures": "Remediation Failures",
       "complianceDistribution": "Target Compliance Distribution",
-      "rateHelp": "Compliance rate = compliant / (compliant + non-compliant){rateHint}; coverage = assessed / managed targets{coverageHint}. Not configured, pending, and failed assessments are excluded from compliance rate; '-' is shown when the denominator is 0.",
+      "rateHelp": "Compliance rate = compliant / (compliant + non-compliant){rateHint}; coverage = assessed / managed targets{coverageHint}. Not configured, pending, and failed assessments are excluded from compliance rate; '--' is shown when the denominator is 0.",
       "quickActions": "Quick Actions",
       "assessNow": "Assess Now",
       "assessNowDescription": "Run a compliance assessment for all targets and refresh risk data.",
