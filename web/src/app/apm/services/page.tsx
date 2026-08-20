@@ -796,7 +796,6 @@ export default function ApmServicesPage() {
   const catalogFilters = (
     <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
       <div className="flex items-center gap-2 border-r border-[var(--color-border)] pr-3">
-        <Typography.Text type="secondary" className="!text-xs">{t('apm.services.perspective', '视角')}</Typography.Text>
         <Segmented<ServicePerspective>
           aria-label={t('apm.services.viewMode', '服务目录视角')}
           options={[

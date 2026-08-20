@@ -498,6 +498,7 @@
       "description": "Define service reliability objectives and track attainment rate and error budget.",
       "empty": "No SLOs yet. Create an objective to start tracking service reliability.",
       "refresh": "Refresh SLO",
+      "searchPlaceholder": "Search name / service / endpoint",
       "edit": "Edit SLO",
       "create": "Create SLO",
       "updated": "SLO updated",

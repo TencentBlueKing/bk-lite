@@ -22,7 +22,7 @@ import {
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
-import ApmRouteShell from '@/app/apm/components/apm-route-shell';
+import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import Collapse from '@/components/collapse';
 import TimeSelector from '@/components/time-selector';
@@ -307,6 +307,7 @@ export default function ApmAlertsPage() {
       render: (_, item) => (
         <Button
           type="link"
+          size="small"
           className={styles.alertTitleLink}
           title={item.title}
           onClick={(event) => {
@@ -409,9 +410,9 @@ export default function ApmAlertsPage() {
       title="告警"
       description="Alert 聚合完整生命周期；Event 记录触发、升级、恢复与人工关闭。"
       dependency="control"
-      spacing="flush"
     >
-      <div className={`${styles.workspace} ${styles.alertsWorkspace}`}>
+      <ApmSurface>
+        <div className="flex flex-col gap-4">
         <Tabs
           className={styles.alertsViewTabs}
           activeKey={activeTab}
@@ -422,7 +423,7 @@ export default function ApmAlertsPage() {
           ]}
         />
 
-        <section className={styles.alertsContent} aria-label="告警工作区">
+        <section className={`${styles.alertsContent} flex flex-col gap-4`} aria-label="告警工作区">
           <section className={styles.alertsToolbar} aria-label="告警筛选">
             <div className={styles.alertsToolbarActions}>
               <Input
@@ -465,7 +466,6 @@ export default function ApmAlertsPage() {
               contentClassName={styles.alertsDistributionCollapseContent}
               icon={(
                 <div className={styles.alertsSeveritySummary} aria-label="三级告警数量">
-                  <Typography.Text type="secondary">级别：</Typography.Text>
                   <Tag color={ALERT_LEVEL_COLORS.critical}>严重 {distributionTotals.critical}</Tag>
                   <Tag color={ALERT_LEVEL_COLORS.error}>错误 {distributionTotals.error}</Tag>
                   <Tag color={ALERT_LEVEL_COLORS.warning}>警告 {distributionTotals.warning}</Tag>
@@ -539,7 +539,8 @@ export default function ApmAlertsPage() {
             )}
           </section>
         </section>
-      </div>
+        </div>
+      </ApmSurface>
       <AlertDetailDrawer
         open={Boolean(selected)}
         alert={selected}

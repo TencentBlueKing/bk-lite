@@ -498,6 +498,7 @@
       "description": "定义服务可靠性目标，跟踪达标率与错误预算。",
       "empty": "还没有 SLO，创建一个目标开始跟踪服务可靠性。",
       "refresh": "刷新 SLO",
+      "searchPlaceholder": "搜索名称 / 服务 / 端点",
       "edit": "编辑 SLO",
       "create": "新建 SLO",
       "updated": "SLO 已更新",

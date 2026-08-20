@@ -1,7 +1,7 @@
 'use client';
 
 import { AimOutlined, MinusOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, WarningOutlined } from '@ant-design/icons';
-import { Alert, Button, Grid, Input, Segmented, Select, Tag, Typography, type TableColumnsType } from 'antd';
+import { Alert, Button, Grid, Input, Segmented, Select, Tag, type TableColumnsType } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useApmApi from '@/app/apm/api';
@@ -405,7 +405,6 @@ export default function ApmTopologyPage() {
             <LegendDot color={healthColors.healthy} label={t('apm.severity.normal', '正常')} />
             <LegendDot color={healthColors.warning} label={t('apm.severity.warning', '警告')} />
             <LegendDot color={healthColors.critical} label={t('apm.severity.critical', '严重')} />
-            <Typography.Text type="secondary" className="!text-xs">{t('apm.topology.legendHint', '观测数据是时间窗内有界查询结果；点击节点进入服务详情。')}</Typography.Text>
           </div>
         </ApmSurface>
       </div>

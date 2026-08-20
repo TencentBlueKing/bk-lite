@@ -253,6 +253,8 @@ export default function ApmTracesPage() {
   const [services, setServices] = useState<ApmService[]>([]);
   const [queryStartedAt, setQueryStartedAt] = useState<string>();
   const [queryEndedAt, setQueryEndedAt] = useState<string>();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
   const autoSearched = useRef(false);
   const entityModeReady = useRef(false);
   const servicesLoaded = useRef(false);
@@ -286,7 +288,10 @@ export default function ApmTracesPage() {
     if (authLoading) return;
     setSearching(true);
     if (cursor) setLoadingMore(true);
-    else setState('loading');
+    else {
+      setState('loading');
+      setPage(1);
+    }
     const window = timeWindow(cursor);
     if (entityMode === 'spans') {
       const query: ApmSpanSearchParams = {
@@ -602,6 +607,19 @@ export default function ApmTracesPage() {
     ),
     [aggregateDimension, entityMode, statusError, statusOk, t, visibleSpans, visibleTraces],
   );
+
+  useEffect(() => {
+    setPage(1);
+  }, [aggregateDimension, entityMode, resultMode, serviceFilter]);
+
+  const listPagination = {
+    current: page,
+    pageSize,
+    onChange: (nextPage: number, nextPageSize: number) => {
+      setPage(nextPageSize === pageSize ? nextPage : 1);
+      setPageSize(nextPageSize);
+    },
+  };
 
   const aggregateColumns: TableProps<AggregateRow>['columns'] = [
     { title: t('apm.explore.group', '分组'), dataIndex: 'label' },
@@ -934,7 +952,7 @@ export default function ApmTracesPage() {
                         rowKey="span_id"
                         columns={spanColumns}
                         dataSource={visibleSpans}
-                        pagination={false}
+                        pagination={listPagination}
                         onRow={(item) => ({
                           onClick: () => router.push(`/apm/explore/traces/${item.trace_id}?span_id=${item.span_id}`),
                           onKeyDown: (event) => {
@@ -954,7 +972,7 @@ export default function ApmTracesPage() {
                         rowKey="trace_id"
                         columns={traceColumns}
                         dataSource={visibleTraces}
-                        pagination={false}
+                        pagination={listPagination}
                         onRow={(item) => ({
                           onClick: () => router.push(`/apm/explore/traces/${item.trace_id}`),
                           onKeyDown: (event) => {
@@ -995,7 +1013,7 @@ export default function ApmTracesPage() {
                     rowKey="key"
                     columns={aggregateColumns}
                     dataSource={aggregateRows}
-                    pagination={false}
+                    pagination={listPagination}
                   />
                 </div>
               )}

@@ -123,4 +123,34 @@ describe('APM 调用链探索', () => {
     })));
     expect(screen.getByText('快速筛选')).not.toBeNull();
   });
+
+  it('明细列表分页展示，避免一次铺开全部命中', async () => {
+    search = '';
+    api.getSpans.mockResolvedValue({
+      items: Array.from({ length: 25 }, (_, index) => ({
+        trace_id: `trace-${index}`,
+        span_id: `span-${index}`,
+        started_at: '2026-08-06T02:00:00Z',
+        duration_ms: 20 + index,
+        service_namespace: 'shop',
+        service_name: 'checkout',
+        environment: 'prod',
+        instance_id: 'pod-a',
+        status: 'ok' as const,
+        name: `SPAN ${index}`,
+        kind: 'server',
+        http_method: 'POST',
+        http_status_code: '200',
+      })),
+      next_cursor: 'cursor-2',
+    });
+
+    renderWithApmIntl(<ApmTracesPage />);
+
+    expect(await screen.findByText('SPAN 0')).not.toBeNull();
+    expect(screen.getByText('SPAN 19')).not.toBeNull();
+    expect(screen.queryByText('SPAN 20')).toBeNull();
+    expect(screen.getByText('共 25 条')).not.toBeNull();
+    expect(screen.getByRole('button', { name: '加载更多' })).not.toBeNull();
+  });
 });
