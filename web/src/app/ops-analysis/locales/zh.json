@@ -236,6 +236,7 @@
       "string": "字符串"
     },
     "title": "数据源",
+    "emptyGroupsMeansAllOrgs": "未选择组织表示所有组织可见",
     "params": "参数",
     "defaultValue": "默认值",
     "tag": "标签",

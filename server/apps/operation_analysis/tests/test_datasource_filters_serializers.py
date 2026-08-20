@@ -205,6 +205,84 @@ def test_datasource_serializer_preserves_existing_raw_monitor_query_route(authen
     assert serializer.is_valid(), serializer.errors
 
 
+@pytest.mark.django_db
+def test_serializer_rejects_empty_groups_on_create(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    serializer = DataSourceAPIModelSerializer(
+        context={"request": _serializer_request(authenticated_user)},
+        data=_nats_datasource_payload(groups=[]),
+    )
+
+    assert not serializer.is_valid()
+    assert "groups" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_serializer_rejects_create_that_omits_groups(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    payload = _nats_datasource_payload()
+    payload.pop("groups")
+    serializer = DataSourceAPIModelSerializer(
+        context={"request": _serializer_request(authenticated_user)},
+        data=payload,
+    )
+
+    assert not serializer.is_valid()
+    assert "groups" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_serializer_rejects_empty_groups_on_update(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    datasource = DataSourceAPIModel.objects.create(
+        name="自定义源",
+        rest_api="custom/query",
+        source_type="nats",
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data={"groups": []},
+        partial=True,
+    )
+
+    assert not serializer.is_valid()
+    assert "groups" in serializer.errors
+    datasource.refresh_from_db()
+    assert datasource.groups == [1]
+
+
+@pytest.mark.django_db
+def test_serializer_allows_empty_groups_for_builtin_instance(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    datasource = DataSourceAPIModel.objects.create(
+        name="内置源",
+        rest_api="builtin/query",
+        source_type="nats",
+        groups=[1],
+        is_build_in=True,
+        build_in_key="builtin::query",
+        created_by="s",
+        updated_by="s",
+    )
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data={"groups": []},
+        partial=True,
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["groups"] == []
+
+
 def test_builtin_datasource_registry_stops_publishing_raw_monitor_query_routes():
     source_file = Path(__file__).parents[1] / "support-files" / "source_api.json"
     rest_apis = {item["rest_api"] for item in json.loads(source_file.read_text())}
@@ -376,10 +454,7 @@ def test_datasource_serializer_redacts_and_preserves_nested_separator_variants(a
 
 
 def test_transform_config_for_source_type_strips_python_transform_for_database():
-    from apps.operation_analysis.serializers.datasource_serializers import (
-        DISABLED_TRANSFORM_CONFIG,
-        transform_config_for_source_type,
-    )
+    from apps.operation_analysis.serializers.datasource_serializers import DISABLED_TRANSFORM_CONFIG, transform_config_for_source_type
 
     leftover = {
         "enabled": True,

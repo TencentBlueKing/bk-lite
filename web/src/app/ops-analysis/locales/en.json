@@ -236,6 +236,7 @@
       "string": "String"
     },
     "title": "Data Source",
+    "emptyGroupsMeansAllOrgs": "If no organization is selected, all organizations can see this data source.",
     "params": "Parameters",
     "defaultValue": "Default Value",
     "tag": "Tag",
