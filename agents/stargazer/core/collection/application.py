@@ -8,37 +8,18 @@ import socket
 import threading
 from dataclasses import dataclass
 
-from core.collection.capacity_observer import (
-    CapacityUsageReporter,
-    with_capacity_utilization,
-)
-from core.collection.constants import (
-    DEFAULT_COLLECTION_REDIS_PREFIX,
-    DEFAULT_MAX_ACTIVE_TARGETS,
-    DEFAULT_TARGET_TASK_WINDOW,
-)
+from core.collection.capacity_observer import CapacityUsageReporter, with_capacity_utilization
+from core.collection.constants import DEFAULT_COLLECTION_REDIS_PREFIX, DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
 from core.collection.contracts import TargetExecutorSettings
 from core.collection.credential_policy import CredentialPolicy
 from core.collection.execution_plan import ExecutionPlanResolver, TimeoutDefaults
 from core.collection.executor import TargetActivityTracker, TargetCollectionExecutor
 from core.collection.metrics import CollectionMetrics
 from core.collection.plugins import UnifiedPluginFactory
-from core.collection.preflight import (
-    AsyncProtocolPreflight,
-    reachability_enabled_from_env,
-)
+from core.collection.preflight import AsyncProtocolPreflight, reachability_enabled_from_env
 from core.collection.redis_state import RedisCredentialStateStore, RedisRunStateStore
-from core.collection.result_publisher import (
-    BufferedResultPublisher,
-    NatsResultPublisher,
-)
-from core.collection.runtime import (
-    CollectionRequest,
-    CollectionRuntime,
-    CollectionRuntimeSettings,
-    RunLease,
-    Submission,
-)
+from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher
+from core.collection.runtime import CollectionRequest, CollectionRuntime, CollectionRuntimeSettings, RunLease, Submission
 from core.collection.scheduler import CollectionScheduler
 from core.collection.yaml_target_policy import apply_yaml_target_policy
 from core.infra.event_loop_monitor import EventLoopLagMonitor
@@ -108,32 +89,14 @@ class CollectionApplicationSettings:
     def from_env(cls) -> CollectionApplicationSettings:
         return cls(
             max_active_runs=int(os.getenv("MAX_ACTIVE_RUNS", "16")),
-            max_active_targets=concurrency_limit_from_env(
-                "MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS
-            ),
-            target_task_window=concurrency_limit_from_env(
-                "TARGET_TASK_WINDOW", DEFAULT_TARGET_TASK_WINDOW
-            ),
-            connect_timeout_seconds=float(
-                os.getenv("PREFLIGHT_TIMEOUT", os.getenv("CONNECT_TIMEOUT", "15"))
-            ),
-            probe_timeout_seconds=float(
-                os.getenv("PROBE_TIMEOUT", os.getenv("CONNECT_TIMEOUT", "15"))
-            ),
-            plugin_timeout_seconds=float(
-                os.getenv("COLLECTION_TIMEOUT", os.getenv("PLUGIN_TIMEOUT", "60"))
-            ),
-            publish_timeout_seconds=float(
-                os.getenv(
-                    "PUBLISH_DELIVERY_TIMEOUT", os.getenv("PUBLISH_TIMEOUT", "30")
-                )
-            ),
-            publish_queue_timeout_seconds=float(
-                os.getenv("PUBLISH_QUEUE_TIMEOUT", "60")
-            ),
-            publish_total_timeout_seconds=float(
-                os.getenv("PUBLISH_TOTAL_TIMEOUT", "120")
-            ),
+            max_active_targets=concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS),
+            target_task_window=concurrency_limit_from_env("TARGET_TASK_WINDOW", DEFAULT_TARGET_TASK_WINDOW),
+            connect_timeout_seconds=float(os.getenv("PREFLIGHT_TIMEOUT", os.getenv("CONNECT_TIMEOUT", "15"))),
+            probe_timeout_seconds=float(os.getenv("PROBE_TIMEOUT", os.getenv("CONNECT_TIMEOUT", "15"))),
+            plugin_timeout_seconds=float(os.getenv("COLLECTION_TIMEOUT", os.getenv("PLUGIN_TIMEOUT", "60"))),
+            publish_timeout_seconds=float(os.getenv("PUBLISH_DELIVERY_TIMEOUT", os.getenv("PUBLISH_TIMEOUT", "30"))),
+            publish_queue_timeout_seconds=float(os.getenv("PUBLISH_QUEUE_TIMEOUT", "60")),
+            publish_total_timeout_seconds=float(os.getenv("PUBLISH_TOTAL_TIMEOUT", "120")),
             lease_ttl_seconds=float(os.getenv("RUN_LEASE_TTL", "600")),
             lease_heartbeat_seconds=float(os.getenv("RUN_LEASE_HEARTBEAT", "30")),
             shutdown_grace_seconds=float(os.getenv("COLLECTION_SHUTDOWN_GRACE", "30")),
@@ -141,9 +104,7 @@ class CollectionApplicationSettings:
             max_no_response_attempts=int(os.getenv("MAX_NO_RESPONSE_ATTEMPTS", "3")),
             publish_max_attempts=int(os.getenv("PUBLISH_MAX_ATTEMPTS", "2")),
             access_probe_enabled=reachability_enabled_from_env(),
-            capacity_log_interval_seconds=float(
-                os.getenv("CAPACITY_LOG_INTERVAL", "180")
-            ),
+            capacity_log_interval_seconds=float(os.getenv("CAPACITY_LOG_INTERVAL", "180")),
         )
 
 
@@ -182,29 +143,20 @@ class CollectionApplication:
                 metrics=self._metrics,
                 event_max_attempts=self.settings.publish_max_attempts,
             )
-        publish_capacity = (
-            self.settings.target_task_window
-            or self.settings.max_active_targets
-            or DEFAULT_TARGET_TASK_WINDOW
-        )
+        publish_capacity = self.settings.target_task_window or self.settings.max_active_targets or DEFAULT_TARGET_TASK_WINDOW
         self._publisher = (
             publisher
             if isinstance(publisher, BufferedResultPublisher)
-            else BufferedResultPublisher(
-                publisher, capacity=publish_capacity, metrics=self._metrics
-            )
+            else BufferedResultPublisher(publisher, capacity=publish_capacity, metrics=self._metrics)
         )
-        self._execution_plan_resolver = (
-            execution_plan_resolver
-            or ExecutionPlanResolver(
-                defaults=TimeoutDefaults(
-                    preflight_seconds=self.settings.connect_timeout_seconds,
-                    probe_seconds=self.settings.probe_timeout_seconds,
-                    collection_seconds=self.settings.plugin_timeout_seconds,
-                    publish_seconds=self.settings.publish_timeout_seconds,
-                ),
-                preflight_enabled=self.settings.access_probe_enabled,
-            )
+        self._execution_plan_resolver = execution_plan_resolver or ExecutionPlanResolver(
+            defaults=TimeoutDefaults(
+                preflight_seconds=self.settings.connect_timeout_seconds,
+                probe_seconds=self.settings.probe_timeout_seconds,
+                collection_seconds=self.settings.plugin_timeout_seconds,
+                publish_seconds=self.settings.publish_timeout_seconds,
+            ),
+            preflight_enabled=self.settings.access_probe_enabled,
         )
         self._target_activity = TargetActivityTracker()
         scheduler_limits = tuple(
@@ -220,18 +172,14 @@ class CollectionApplication:
             metrics=self._metrics,
         )
         self._submission_counts: dict[str, int] = {}
-        self._loop_lag = EventLoopLagMonitor(
-            interval_seconds=float(os.getenv("EVENT_LOOP_LAG_INTERVAL", "1"))
-        )
+        self._loop_lag = EventLoopLagMonitor(interval_seconds=float(os.getenv("EVENT_LOOP_LAG_INTERVAL", "1")))
         self._capacity_reporter = CapacityUsageReporter(
             snapshot=self.capacity_snapshot,
             emit=self._emit_capacity_log,
             interval_seconds=self.settings.capacity_log_interval_seconds,
         )
         prefix = os.getenv("COLLECTION_REDIS_PREFIX", DEFAULT_COLLECTION_REDIS_PREFIX)
-        self._credentials = RedisCredentialStateStore(
-            redis_client, key_prefix=f"{prefix}:credential"
-        )
+        self._credentials = RedisCredentialStateStore(redis_client, key_prefix=f"{prefix}:credential")
         self._credential_policy = CredentialPolicy(store=self._credentials)
         self._target_executor_settings = TargetExecutorSettings(
             max_active_targets=self.settings.max_active_targets,
@@ -284,6 +232,7 @@ class CollectionApplication:
 
     def capacity_snapshot(self) -> dict[str, float | int]:
         """返回 MAX_ACTIVE_TARGETS 全局异步槽位及发布背压的即时使用情况。"""
+        metric_snapshot = self._metrics.snapshot()
         return with_capacity_utilization(
             {
                 "active_runs": self.active_runs,
@@ -297,6 +246,11 @@ class CollectionApplication:
                 "pending_runs": self._scheduler.pending_runs,
                 "publish_queue_depth": self._publisher.queue_depth,
                 "publish_queue_capacity": self._publisher.capacity,
+                "publish_batch_age_ms": round(self._publisher.current_batch_age_seconds * 1000, 2),
+                "publish_queue_residence_p99_ms": round(
+                    metric_snapshot.get("publish_queue_residence_seconds_p99", 0.0) * 1000,
+                    2,
+                ),
                 "event_loop_lag_ms": round(self._loop_lag.latest_seconds * 1000, 2),
                 "event_loop_lag_p99_ms": round(self._loop_lag.p99_seconds * 1000, 2),
             }
@@ -310,6 +264,7 @@ class CollectionApplication:
             "configured_max_active_targets=%s configured_target_task_window=%s "
             "target_slots_peak=%s active_targets=%s pending_targets=%s pending_runs=%s "
             "publish_queue_depth=%s publish_queue_capacity=%s publish_queue_utilization_percent=%s "
+            "publish_batch_age_ms=%s publish_queue_residence_p99_ms=%s "
             "event_loop_lag_ms=%s event_loop_lag_p99_ms=%s",
             snapshot.get("active_runs", 0),
             snapshot.get("target_slots_used", 0),
@@ -325,6 +280,8 @@ class CollectionApplication:
             snapshot.get("publish_queue_depth", 0),
             snapshot.get("publish_queue_capacity", 0),
             snapshot.get("publish_queue_utilization_percent", 0),
+            snapshot.get("publish_batch_age_ms", 0),
+            snapshot.get("publish_queue_residence_p99_ms", 0),
             snapshot.get("event_loop_lag_ms", 0),
             snapshot.get("event_loop_lag_p99_ms", 0),
         )
@@ -336,9 +293,7 @@ class CollectionApplication:
         plan = self._execution_plan_resolver.resolve(request)
         # 有 probe 且未显式关闭时启用廉价 AccessProbe；否则 CredentialAttempt=collect
         access_probe = None
-        if callable(getattr(plugin, "probe", None)) and getattr(
-            plugin, "supports_access_probe", True
-        ):
+        if callable(getattr(plugin, "probe", None)) and getattr(plugin, "supports_access_probe", True):
             access_probe = plugin
         executor = TargetCollectionExecutor(
             preflight=self._preflight,
@@ -393,15 +348,9 @@ class CollectionApplication:
             "thread_count": threading.active_count(),
             "open_file_descriptors": _open_file_descriptor_count(),
             "submissions": dict(self._submission_counts),
-            "redis_pool_wait_seconds_total": float(
-                getattr(self._redis, "pool_wait_seconds_total", 0.0) or 0.0
-            ),
-            "redis_pool_timeout_total": float(
-                getattr(self._redis, "pool_timeout_total", 0) or 0
-            ),
-            "redis_pool_exhaustion_total": float(
-                getattr(self._redis, "pool_exhaustion_total", 0) or 0
-            ),
+            "redis_pool_wait_seconds_total": float(getattr(self._redis, "pool_wait_seconds_total", 0.0) or 0.0),
+            "redis_pool_timeout_total": float(getattr(self._redis, "pool_timeout_total", 0) or 0),
+            "redis_pool_exhaustion_total": float(getattr(self._redis, "pool_exhaustion_total", 0) or 0),
             **nats_metrics_connection_stats(),
             **self._metrics.snapshot(),
         }

@@ -10,17 +10,11 @@ from core.collection.contracts import (
     PreflightStatus,
     TargetExecutorSettings,
 )
-from core.collection.credential_policy import (
-    CredentialPolicy,
-    InMemoryCredentialStateStore,
-)
+from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
 from core.collection.executor import TargetCollectionExecutor, TargetWorkerBudget
 from core.collection.metrics import CollectionMetrics
 from core.collection.plugins import UnifiedPluginFactory
-from core.collection.result_publisher import (
-    BufferedResultPublisher,
-    NatsResultPublisher,
-)
+from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher
 from core.collection.runtime import CollectionRequest, RunLease
 from tasks.utils import metrics_helper
 
@@ -1426,10 +1420,12 @@ async def test_total_timeout_cancels_queued_result_without_false_unknown_or_late
         credentials=({"credential_id": "c1"},),
     )
     lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
+    metrics = CollectionMetrics()
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
         plugin=RecordingPlugin(),
         publisher=publisher,
+        metrics=metrics,
         settings=TargetExecutorSettings(
             max_active_targets=2,
             target_task_window=2,
@@ -1446,6 +1442,7 @@ async def test_total_timeout_cancels_queued_result_without_false_unknown_or_late
     assert summary.publish_unknown == 1
     assert summary.publish_failed == 1
     assert delivered == ["10.10.24.1"]
+    assert metrics.snapshot()["publish_queue_residence_seconds_p99"] > 0
 
 
 @pytest.mark.asyncio

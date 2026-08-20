@@ -40,9 +40,7 @@ async def test_capacity_reporter_periodically_emits_150_target_slot_usage():
 
 @pytest.mark.asyncio
 async def test_capacity_reporter_stop_is_idempotent_before_start():
-    reporter = CapacityUsageReporter(
-        snapshot=dict, emit=lambda _snapshot: None, interval_seconds=30
-    )
+    reporter = CapacityUsageReporter(snapshot=dict, emit=lambda _snapshot: None, interval_seconds=30)
     await reporter.stop()
 
 
@@ -50,12 +48,11 @@ def test_application_capacity_snapshot_exposes_derived_values_for_health_metrics
     application = SimpleNamespace(
         active_runs=3,
         runtime=SimpleNamespace(active_runs=3),
-        _scheduler=SimpleNamespace(
-            active=120, capacity=150, peak=145, pending=80, pending_runs=4
-        ),
+        _scheduler=SimpleNamespace(active=120, capacity=150, peak=145, pending=80, pending_runs=4),
         settings=SimpleNamespace(max_active_targets=150, target_task_window=150),
         _target_activity=SimpleNamespace(active=110),
-        _publisher=SimpleNamespace(queue_depth=45, capacity=150),
+        _publisher=SimpleNamespace(queue_depth=45, capacity=150, current_batch_age_seconds=1.25),
+        _metrics=SimpleNamespace(snapshot=lambda: {"publish_queue_residence_seconds_p99": 2.5}),
         _loop_lag=SimpleNamespace(latest_seconds=0.008, p99_seconds=0.035),
     )
 
@@ -64,3 +61,5 @@ def test_application_capacity_snapshot_exposes_derived_values_for_health_metrics
     assert snapshot["target_slots_available"] == 30
     assert snapshot["target_slots_utilization_percent"] == 80.0
     assert snapshot["publish_queue_utilization_percent"] == 30.0
+    assert snapshot["publish_batch_age_ms"] == 1250.0
+    assert snapshot["publish_queue_residence_p99_ms"] == 2500.0

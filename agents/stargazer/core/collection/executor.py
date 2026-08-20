@@ -25,16 +25,10 @@ from core.collection.contracts import (
     TargetCollectionResult,
     TargetExecutorSettings,
 )
-from core.collection.credential_policy import (
-    CredentialPolicy,
-    InMemoryCredentialStateStore,
-)
+from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
 from core.collection.execution_plan import ExecutionPlan
 from core.collection.metrics import CollectionMetrics
-from core.collection.result_publisher import (
-    FuturePublishReceipt,
-    ImmediateResultPublishQueue,
-)
+from core.collection.result_publisher import FuturePublishReceipt, ImmediateResultPublishQueue
 from core.collection.runtime import CollectionRequest, RunLease
 from core.collection.scheduler import CollectionScheduler
 from core.infra.redis_client import is_credential_state_redis_error
@@ -164,14 +158,8 @@ class TargetCollectionExecutor:
         # None = 无廉价 AccessProbe，CredentialAttempt 直接 collect
         self._access_probe = access_probe
         self._plugin = plugin
-        self._publisher = (
-            publisher
-            if callable(getattr(publisher, "enqueue", None))
-            else ImmediateResultPublishQueue(publisher)
-        )
-        self._credential_policy = credential_policy or CredentialPolicy(
-            store=InMemoryCredentialStateStore()
-        )
+        self._publisher = publisher if callable(getattr(publisher, "enqueue", None)) else ImmediateResultPublishQueue(publisher)
+        self._credential_policy = credential_policy or CredentialPolicy(store=InMemoryCredentialStateStore())
         self._settings = settings or TargetExecutorSettings()
         self._plan = plan or ExecutionPlan(
             preflight_enabled=self._settings.access_probe_enabled,
@@ -190,13 +178,9 @@ class TargetCollectionExecutor:
         elif self._settings.max_active_targets <= 0:
             self._target_semaphore = unlimited_target_gate()
         else:
-            self._target_semaphore = asyncio.Semaphore(
-                self._settings.max_active_targets
-            )
+            self._target_semaphore = asyncio.Semaphore(self._settings.max_active_targets)
         self._activity_tracker = activity_tracker or TargetActivityTracker()
-        self._worker_budget = worker_budget or TargetWorkerBudget(
-            self._settings.target_task_window
-        )
+        self._worker_budget = worker_budget or TargetWorkerBudget(self._settings.target_task_window)
         self._metrics = metrics or CollectionMetrics()
         self._scheduler = scheduler
 
@@ -262,6 +246,16 @@ class TargetCollectionExecutor:
                     async with asyncio.timeout_at(current.deadline):
                         outcome = await current.receipt.wait()
                     self._metrics.observe(
+                        "publish_queue_residence_seconds",
+                        float(
+                            getattr(
+                                current.receipt,
+                                "queue_residence_seconds",
+                                0.0,
+                            )
+                        ),
+                    )
+                    self._metrics.observe(
                         "publish_duration_seconds",
                         asyncio.get_running_loop().time() - current.started_at,
                     )
@@ -281,6 +275,16 @@ class TargetCollectionExecutor:
                         break
                     error_code = outcome.error_code or "publish_retryable_failed"
                 except Exception as error:  # noqa: BLE001 - 单目标有限重试
+                    self._metrics.observe(
+                        "publish_queue_residence_seconds",
+                        float(
+                            getattr(
+                                current.receipt,
+                                "queue_residence_seconds",
+                                0.0,
+                            )
+                        ),
+                    )
                     error_code = type(error).__name__
                     if (
                         isinstance(error, TimeoutError)
@@ -317,7 +321,9 @@ class TargetCollectionExecutor:
                 break
             logger.warning(
                 "event=result_publish_terminal task_id=%s plugin_ref=%s "
-                "model_id=%s target=%s status=%s attempts=%s error_code=%s",
+                "model_id=%s target=%s status=%s attempts=%s error_code=%s "
+                "delivery_started=%s queue_depth_at_enqueue=%s "
+                "queue_wait_ms=%.2f queue_age_ms=%.2f",
                 request.task_id,
                 request.plugin_ref,
                 request.params.get("model_id") or "-",
@@ -325,6 +331,10 @@ class TargetCollectionExecutor:
                 "confirmed" if publish_status == "succeeded" else publish_status,
                 attempts,
                 error_code or "-",
+                bool(getattr(current.receipt, "delivery_started", False)),
+                int(getattr(current.receipt, "queue_depth_at_enqueue", 0)),
+                float(getattr(current.receipt, "queue_wait_seconds", 0.0)) * 1000,
+                float(getattr(current.receipt, "queue_age_seconds", 0.0)) * 1000,
             )
             return current.index, publish_status
 

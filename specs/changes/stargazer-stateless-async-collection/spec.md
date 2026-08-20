@@ -12,6 +12,10 @@ Status: approved for implementation (COMPLETE-PLAN-2026-08-06.md); code convergi
 Redis 结果事件隔离以同目录 `nats-result-publishing-final-plan-2026-08-17.md` 为准；该文档替代
 2026-08-14 方案中的结果发布和单一 `PUBLISH_TIMEOUT` 设计，不改变 `16/150/150` 全局容量结论。
 
+2026-08-20 SangforSCP 补充锁定：企业版配置采集的原生 HTTP async、300 秒单一总预算、
+完整快照失败语义、分页/对象/字节边界和发布诊断字段以同目录
+`sangforscp-async-remediation-2026-08-20.md` 为准；不改变 `16/150/150` 或 NATS 单 writer。
+
 ## 摘要
 
 Stargazer 移除 ARQ 队列与 Worker，改由 Sanic 承载一个统一的异步采集运行时。
