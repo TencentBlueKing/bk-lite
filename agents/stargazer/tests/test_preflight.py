@@ -37,9 +37,7 @@ async def test_tcp_preflight_uses_protocol_port_and_closes_connection(monkeypatc
         params={"port": "3306", "preflight_kind": "tcp"},
     )
 
-    result = await AsyncProtocolPreflight(reachability_enabled=True).check(
-        "10.10.24.10", request, timeout_seconds=5
-    )
+    result = await AsyncProtocolPreflight(reachability_enabled=True).check("10.10.24.10", request, timeout_seconds=5)
 
     assert result.status == PreflightStatus.REACHABLE
     assert calls == [("10.10.24.10", 3306, {})]
@@ -72,12 +70,39 @@ async def test_http_preflight_uses_base_url_scheme_and_port(monkeypatch):
         },
     )
 
-    result = await AsyncProtocolPreflight(
-        policy=Policy(), reachability_enabled=True
-    ).check("api.example.test", request, timeout_seconds=5)
+    result = await AsyncProtocolPreflight(policy=Policy(), reachability_enabled=True).check("api.example.test", request, timeout_seconds=5)
 
     assert result.status == PreflightStatus.REACHABLE
     assert calls == [("api.example.test", 8080, {})]
+
+
+@pytest.mark.asyncio
+async def test_https_preflight_uses_configured_port_for_bare_target(monkeypatch):
+    calls = []
+    writer = FakeWriter()
+
+    class Policy:
+        async def resolve_allowed(self, host, port=None):
+            calls.append(("policy", host, port))
+            return host
+
+    async def fake_open_connection(host, port, **kwargs):
+        calls.append(("connect", host, port))
+        return object(), writer
+
+    monkeypatch.setattr(asyncio, "open_connection", fake_open_connection)
+    request = CollectionRequest(
+        task_id="probe-hci-custom-port",
+        plugin_ref="sangforhci.config",
+        targets=("192.0.2.17",),
+        params={"port": 8443, "preflight_kind": "https"},
+    )
+
+    result = await AsyncProtocolPreflight(policy=Policy(), reachability_enabled=True).check("192.0.2.17", request, timeout_seconds=5)
+
+    assert result.status == PreflightStatus.REACHABLE
+    assert calls[0] == ("policy", "192.0.2.17", 8443)
+    assert calls[1] == ("connect", "192.0.2.17", 8443)
 
 
 @pytest.mark.asyncio
@@ -97,9 +122,7 @@ async def test_https_certificate_failure_has_stable_error_code(monkeypatch):
         params={"preflight_kind": "https"},
     )
 
-    result = await AsyncProtocolPreflight(
-        policy=Policy(), reachability_enabled=True
-    ).check("api.example.test", request, timeout_seconds=5)
+    result = await AsyncProtocolPreflight(policy=Policy(), reachability_enabled=True).check("api.example.test", request, timeout_seconds=5)
 
     assert result.status == PreflightStatus.UNREACHABLE
     assert result.error_code == "tls_validation_failed"
@@ -142,12 +165,8 @@ async def test_cloud_and_udp_preflight_do_not_use_icmp_or_tcp(monkeypatch):
         params={"preflight_kind": "udp", "port": 161},
     )
 
-    assert (
-        await probe.check("qcloud-account", cloud, timeout_seconds=5)
-    ).status == PreflightStatus.UNKNOWN
-    assert (
-        await probe.check("10.10.24.20", snmp, timeout_seconds=5)
-    ).status == PreflightStatus.UNKNOWN
+    assert (await probe.check("qcloud-account", cloud, timeout_seconds=5)).status == PreflightStatus.UNKNOWN
+    assert (await probe.check("10.10.24.20", snmp, timeout_seconds=5)).status == PreflightStatus.UNKNOWN
 
 
 @pytest.mark.asyncio
@@ -171,9 +190,7 @@ async def test_logical_instance_id_is_not_resolved_as_https_hostname():
         },
     )
 
-    result = await AsyncProtocolPreflight(policy=Policy()).check(
-        "cmdb_6", request, timeout_seconds=1
-    )
+    result = await AsyncProtocolPreflight(policy=Policy()).check("cmdb_6", request, timeout_seconds=1)
 
     assert result.status == PreflightStatus.UNREACHABLE
     assert result.error_code == "network_target_missing"
@@ -191,9 +208,7 @@ async def test_untrusted_logical_flag_cannot_bypass_outbound_policy():
     )
     policy = OutboundTargetPolicy(allowed_cidrs=("10.0.0.0/8",))
 
-    result = await AsyncProtocolPreflight(policy=policy).check(
-        "8.8.8.8", request, timeout_seconds=1
-    )
+    result = await AsyncProtocolPreflight(policy=policy).check("8.8.8.8", request, timeout_seconds=1)
 
     assert result.status == PreflightStatus.UNREACHABLE
     assert result.error_code == "outbound_target_rejected"
@@ -210,9 +225,7 @@ async def test_non_dial_preflight_modes_still_enforce_outbound_policy(kind):
     )
     policy = OutboundTargetPolicy(allowed_cidrs=("10.0.0.0/8",))
 
-    result = await AsyncProtocolPreflight(
-        policy=policy, reachability_enabled=False
-    ).check("8.8.8.8", request, timeout_seconds=1)
+    result = await AsyncProtocolPreflight(policy=policy, reachability_enabled=False).check("8.8.8.8", request, timeout_seconds=1)
 
     assert result.status == PreflightStatus.UNREACHABLE
     assert result.error_code == "outbound_target_rejected"
@@ -241,9 +254,7 @@ async def test_cloud_endpoint_policy_validates_url_hostname_without_dial(monkeyp
         },
     )
 
-    result = await AsyncProtocolPreflight(policy=Policy()).check(
-        "cloud.example.test", request, timeout_seconds=1
-    )
+    result = await AsyncProtocolPreflight(policy=Policy()).check("cloud.example.test", request, timeout_seconds=1)
 
     assert result.status == PreflightStatus.UNKNOWN
     assert calls == [("cloud.example.test", 8443)]
@@ -262,9 +273,7 @@ async def test_tcp_preflight_returns_stable_unreachable_error(monkeypatch):
         params={"port": 3306, "preflight_kind": "tcp"},
     )
 
-    result = await AsyncProtocolPreflight(reachability_enabled=True).check(
-        "10.10.24.30", request, timeout_seconds=5
-    )
+    result = await AsyncProtocolPreflight(reachability_enabled=True).check("10.10.24.30", request, timeout_seconds=5)
 
     assert result.status == PreflightStatus.UNREACHABLE
     assert result.error_code == "tcp_connection_refused"
@@ -287,9 +296,7 @@ async def test_outbound_rejected_target_is_logged(monkeypatch):
     )
     policy = OutboundTargetPolicy(allowed_cidrs=("10.0.0.0/8",))
 
-    result = await AsyncProtocolPreflight(policy=policy).check(
-        "8.8.8.8", request, timeout_seconds=1
-    )
+    result = await AsyncProtocolPreflight(policy=policy).check("8.8.8.8", request, timeout_seconds=1)
 
     assert result.status == PreflightStatus.UNREACHABLE
     assert result.error_code == "outbound_target_rejected"
@@ -346,9 +353,7 @@ async def test_outbound_only_allows_after_cidr_without_tcp(monkeypatch):
         targets=("10.10.69.245",),
         params={"preflight_kind": "outbound_only", "port": 161},
     )
-    result = await AsyncProtocolPreflight().check(
-        "10.10.69.245", request, timeout_seconds=5
-    )
+    result = await AsyncProtocolPreflight().check("10.10.69.245", request, timeout_seconds=5)
 
     assert result.connect_host == "10.10.69.245"
     assert result.status == PreflightStatus.UNKNOWN
@@ -372,9 +377,7 @@ async def test_remote_preflight_checks_cidr_then_responder():
         },
     )
 
-    result = await AsyncProtocolPreflight(
-        remote_probe=probe, reachability_enabled=True
-    ).check("10.10.24.10", request, timeout_seconds=5)
+    result = await AsyncProtocolPreflight(remote_probe=probe, reachability_enabled=True).check("10.10.24.10", request, timeout_seconds=5)
 
     assert calls == [("executor-region-a", 5)]
     assert result.status == PreflightStatus.UNREACHABLE
@@ -394,9 +397,7 @@ async def test_tcp_reachability_off_skips_dial_after_cidr(monkeypatch):
         params={"port": 3306, "preflight_kind": "tcp"},
     )
 
-    result = await AsyncProtocolPreflight(reachability_enabled=False).check(
-        "10.10.24.10", request, timeout_seconds=5
-    )
+    result = await AsyncProtocolPreflight(reachability_enabled=False).check("10.10.24.10", request, timeout_seconds=5)
 
     assert result.status == PreflightStatus.UNKNOWN
     assert "tcp reachability disabled" in (result.detail or "")
@@ -412,9 +413,7 @@ async def test_tcp_reachability_off_still_rejects_cidr():
     )
     policy = OutboundTargetPolicy(allowed_cidrs=("10.0.0.0/8",))
 
-    result = await AsyncProtocolPreflight(
-        policy=policy, reachability_enabled=False
-    ).check("8.8.8.8", request, timeout_seconds=1)
+    result = await AsyncProtocolPreflight(policy=policy, reachability_enabled=False).check("8.8.8.8", request, timeout_seconds=1)
 
     assert result.status == PreflightStatus.UNREACHABLE
     assert result.error_code == "outbound_target_rejected"
@@ -438,9 +437,7 @@ async def test_remote_skips_responder_but_keeps_outbound_policy_when_reachabilit
         },
     )
 
-    result = await AsyncProtocolPreflight(
-        remote_probe=probe, reachability_enabled=False
-    ).check("10.10.24.10", request, timeout_seconds=5)
+    result = await AsyncProtocolPreflight(remote_probe=probe, reachability_enabled=False).check("10.10.24.10", request, timeout_seconds=5)
 
     assert calls == []
     assert result.status == PreflightStatus.UNKNOWN

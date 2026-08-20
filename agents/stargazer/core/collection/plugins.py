@@ -273,7 +273,13 @@ def _extract_collection_error(value: Any) -> str:
 
 def _failure_outcome(error: str, *, value: Any = None) -> CollectOutcome:
     normalized = str(error or "").lower()
-    if any(word in normalized for word in SNMP_NO_RESPONSE_WORDS):
+    if "tls validation failed" in normalized:
+        status = CollectOutcomeStatus.UNREACHABLE
+        error_code = "tls_validation_failed"
+    elif "product/api mismatch" in normalized:
+        status = CollectOutcomeStatus.FAILED
+        error_code = "product_api_mismatch"
+    elif any(word in normalized for word in SNMP_NO_RESPONSE_WORDS):
         status = CollectOutcomeStatus.RETRY_CREDENTIAL
         error_code = "credential_probe_no_response"
     elif any(word in normalized for word in AUTH_ERROR_WORDS):

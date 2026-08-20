@@ -44,6 +44,7 @@ dependencies = [
     "psycopg2==2.9.11",
     "psycopg[binary]>=3.2.0",
     "httpx>=0.28.1",
+    "pycryptodome>=3.23.0",
     "icmplib>=3.0.4",
     # 2026-07-07 Gap-1 预存在修复:tests/collect_fixtures/{cli,docker_lifecycle,run_collector}.py 都 import docker,
     # 没声明 SDK 会让 cli 单测在收集阶段 ModuleNotFoundError。详见 test_docker_sdk_smoke.py。
