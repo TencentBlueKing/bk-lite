@@ -6,6 +6,17 @@ export interface PolicyTemplateItem {
   name?: string;
   description?: string;
   metric_name?: string;
+  metric_unit?: string;
+  threshold_unit?: string;
+  calculation_unit?: string;
+  trigger_count?: number;
+  threshold?: Array<{
+    level?: string;
+    method?: string;
+    value?: string | number | null;
+  }>;
+  algorithm?: string;
+  group_algorithm?: string;
   query_condition?: {
     type?: string;
     metric_name?: string;

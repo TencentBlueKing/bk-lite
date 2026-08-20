@@ -322,7 +322,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
 
   if (collapsed) {
     return (
-      <div ref={ref} className="fixed bottom-5 right-2 z-50">
+      <div ref={ref} className="fixed bottom-5 right-2 z-[1200]">
         <button
           type="button"
           title="打开对话"
@@ -344,12 +344,12 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   return (
     <div
       ref={ref}
-      className="fixed inset-y-0 right-0 z-[1100] flex w-[380px] flex-col overflow-hidden font-sans"
+      className="fixed bottom-0 right-0 top-0 z-[1200] flex w-[380px] flex-col overflow-hidden font-sans"
       style={{ background: WC.white, borderLeft: `1px solid ${WC.botBorder}` }}
     >
       <div ref={menuRef} className="relative flex-shrink-0">
         <div
-          className="flex h-[52px] items-center gap-2 pl-4 pr-2"
+          className="flex h-14 items-center gap-2 pl-4 pr-2"
           style={{ background: WC.indigo, color: WC.onPrimary }}
         >
           {emptyApps ? (
@@ -401,7 +401,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
         </div>
         {appMenuOpen && !emptyApps ? (
           <div
-            className="absolute left-2 right-2 top-[52px] z-20 overflow-hidden rounded-lg"
+            className="absolute left-2 right-2 top-14 z-20 overflow-hidden rounded-lg"
             style={{ background: WC.white, border: `1px solid ${WC.botBorder}` }}
           >
             {apps.map((app) => {

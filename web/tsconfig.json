@@ -34,12 +34,6 @@
       "@/*": [
         "./src/*"
       ],
-      "@webchat/ui": [
-        "../webchat/packages/webchat-ui/src/embed.ts"
-      ],
-      "@webchat/core": [
-        "../webchat/packages/webchat-core/src/index.ts"
-      ],
       "@/app/monitor/(enterprise)/*": [
         "./src/app/monitor/(enterprise)/*",
         "./src/lib/enterpriseStub.ts"
