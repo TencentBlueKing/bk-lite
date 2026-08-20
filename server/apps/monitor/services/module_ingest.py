@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import base64
+import re
 import uuid
 from typing import Any
 
@@ -19,6 +21,8 @@ from apps.rpc.node_mgmt import NodeMgmt
 HOST_OBJECT_NAME = "Host"
 HOST_PLUGIN_NAME = "Host"
 RECEIVING_MODULE = "monitor"
+# 接入页偶发把默认名「IP-switch」编进网络设备主键；认领时只取前面的 IPv4。
+_IPV4_WITH_OPTIONAL_SUFFIX = re.compile(r"^(\d{1,3}(?:\.\d{1,3}){3})(?:-.+)?$")
 
 # CMDB → 监控：允许「有凭据则创建资产并自动监控」的对象范围（按 CMDB model_id）。
 # 适配范围外的对象一律只做关联/回填，不创建。全局开关默认关；扫描显式推送走 allow_credential_create。
@@ -1092,6 +1096,16 @@ class MonitorModuleIngestService:
             return None
         if model_id not in cls.IP_CLOUD_CLAIM_MODELS:
             return None
+        if cloud is not None:
+            storage_key = cls._storage_key_after_onboarding(
+                model_id=model_id,
+                raw_instance_id=f"{cloud}_{ip}",
+                cloud=cloud,
+                ip=ip,
+            )
+            by_pk = cls._find_by_pk(storage_key)
+            if by_pk and not by_pk.is_deleted and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
+                return by_pk
         qs = MonitorInstance.objects.filter(
             ip=ip,
             is_deleted=False,
@@ -1102,7 +1116,92 @@ class MonitorModuleIngestService:
         matches = list(qs[:2])
         if len(matches) == 1:
             return matches[0]
-        return None
+        if matches:
+            return None
+        by_encoded = cls._find_by_encoded_network_identity(object_name, ip=ip, cloud=cloud)
+        if by_encoded:
+            return by_encoded
+        return cls._find_by_unique_network_name(object_name, ip=ip)
+
+    @classmethod
+    def _find_by_encoded_network_identity(
+        cls,
+        object_name: str,
+        *,
+        ip: str,
+        cloud: int | None,
+    ) -> MonitorInstance | None:
+        from apps.monitor.services.node_mgmt import InstanceConfigService
+
+        if not InstanceConfigService._should_use_network_device_identity_adapter(object_name):
+            return None
+        hits: list[MonitorInstance] = []
+        candidates = MonitorInstance.objects.filter(
+            is_deleted=False,
+            monitor_object__name=object_name,
+        ).select_related("monitor_object")
+        for instance in candidates:
+            encoded_cloud, encoded_ip = cls._network_identity_parts(instance)
+            if cls._normalize_network_identity_ip(encoded_ip) != ip:
+                continue
+            if cloud is not None and encoded_cloud is not None and int(encoded_cloud) != int(cloud):
+                continue
+            hits.append(instance)
+            if len(hits) > 1:
+                return None
+        return hits[0] if hits else None
+
+    @classmethod
+    def _find_by_unique_network_name(cls, object_name: str, *, ip: str) -> MonitorInstance | None:
+        from apps.monitor.services.node_mgmt import InstanceConfigService
+
+        if not InstanceConfigService._should_use_network_device_identity_adapter(object_name):
+            return None
+        suffix = object_name.strip().lower()
+        names = {ip, f"{ip}-{suffix}"}
+        matches = list(
+            MonitorInstance.objects.filter(
+                name__in=names,
+                is_deleted=False,
+                monitor_object__name=object_name,
+            ).select_related(
+                "monitor_object"
+            )[:2]
+        )
+        return matches[0] if len(matches) == 1 else None
+
+    @classmethod
+    def _normalize_network_identity_ip(cls, value: str | None) -> str | None:
+        if not value:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        match = _IPV4_WITH_OPTIONAL_SUFFIX.fullmatch(text)
+        return match.group(1) if match else text
+
+    @classmethod
+    def _network_identity_parts(cls, instance: MonitorInstance) -> tuple[int | None, str | None]:
+        if instance.ip:
+            return instance.cloud_region_id, str(instance.ip)
+        try:
+            logical = normalize_instance_identity(instance.id)["logical_instance_value"]
+        except ValueError:
+            return None, None
+        padded = logical + "=" * ((4 - len(logical) % 4) % 4)
+        try:
+            decoded = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+        except Exception:
+            return None, None
+        if ":" not in decoded:
+            return None, None
+        cloud_part, ip_part = decoded.split(":", 1)
+        ip_part = ip_part.strip()
+        try:
+            encoded_cloud = int(cloud_part)
+        except (TypeError, ValueError):
+            encoded_cloud = None
+        return encoded_cloud, ip_part or None
 
     @classmethod
     def _find_by_ip_cloud(cls, ip: str, cloud: int) -> MonitorInstance | None:

@@ -301,6 +301,92 @@ def test_cmdb_uncredentialed_claims_switch_by_ip_cloud(db):
 
 
 @pytest.mark.django_db
+def test_cmdb_uncredentialed_claims_monitor_ui_switch_without_ip_column(db):
+    """监控中心手动接入的交换机只写 adapter 主键和默认名，不填 ip/cloud 列。"""
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="交换机", level="base")
+    ip = "10.10.69.246"
+    existing = MonitorInstance.objects.create(
+        id=_network_storage_key(1, ip),
+        name=f"{ip}-switch",
+        monitor_object=switch_object,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="sw-uuid",
+            link_ids={"cmdb_id": "sw-uuid"},
+            raw={
+                "ip": ip,
+                "cloud_region_id": 1,
+                "model_id": "switch",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == existing.id
+    existing.refresh_from_db()
+    assert existing.cmdb_id == "sw-uuid"
+    assert existing.name == f"{ip}-switch"
+    assert existing.ip in (None, "")
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_claims_monitor_ui_switch_when_cmdb_has_no_cloud(db):
+    """CMDB 交换机通常没有 cloud；监控侧 cloud 只编码在主键里时仍应按 IP 认领。"""
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="交换机", level="base")
+    ip = "10.10.69.246"
+    existing = MonitorInstance.objects.create(
+        id=_network_storage_key(1, ip),
+        name=f"{ip}-switch",
+        monitor_object=switch_object,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="sw-uuid",
+            link_ids={"cmdb_id": "sw-uuid"},
+            raw={
+                "ip": ip,
+                "model_id": "switch",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == existing.id
+    existing.refresh_from_db()
+    assert existing.cmdb_id == "sw-uuid"
+
+
+@pytest.mark.django_db
+def test_cmdb_uncredentialed_claims_switch_when_pk_encodes_name_not_ip(db):
+    """现场：接入页把默认名 10.10.69.246-switch 编进主键，ip 列为空。"""
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="交换机", level="base")
+    ip = "10.10.69.246"
+    existing = MonitorInstance.objects.create(
+        id=_network_storage_key(1, f"{ip}-switch"),
+        name=f"{ip}-switch",
+        monitor_object=switch_object,
+    )
+    result = MonitorModuleIngestService.ingest(
+        _params(
+            source_module="cmdb",
+            source_id="sw-uuid",
+            link_ids={"cmdb_id": "sw-uuid"},
+            raw={
+                "ip": ip,
+                "model_id": "switch",
+                "organization_ids": [1],
+            },
+        )
+    )
+    assert result["id"] == existing.id
+    existing.refresh_from_db()
+    assert existing.cmdb_id == "sw-uuid"
+    assert existing.name == f"{ip}-switch"
+    assert existing.ip in (None, "")
+
+
+@pytest.mark.django_db
 def test_cmdb_uncredentialed_claims_mysql_by_ip_port(db):
     mysql_object = MonitorObject.objects.create(name="Mysql", display_name="Mysql", level="base")
     existing = MonitorInstance.objects.create(
@@ -1159,7 +1245,8 @@ def test_network_device_reuses_existing_safe_instance_without_recreate(host_obje
         )
     )
 
-    assert result["created"] is True
+    assert result["created"] is False
+    assert result["updated"] is True
     assert result["id"] == storage_key
     mock_collect_apply.assert_not_called()
     inst = MonitorInstance.objects.get(id=storage_key)
@@ -1232,7 +1319,8 @@ def test_network_device_empty_shell_reonboards_and_uses_cmdb_name(host_object, m
         )
     )
 
-    assert result["created"] is True
+    assert result["created"] is False
+    assert result["updated"] is True
     assert result["id"] == storage_key
     mock_collect_apply.assert_called_once()
     assert mock_collect_apply.call_args.args[0]["instances"][0]["instance_name"] == "10.0.0.100-switch"
