@@ -670,7 +670,7 @@ export default function TargetPage() {
       dataIndex: 'teamNames',
       width: 160,
       render: (names: string[]) => {
-        const text = (names || []).join(',') || '—';
+        const text = (names || []).join(',') || '--';
         return <EllipsisWithTooltip text={text} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />;
       },
     },
@@ -708,9 +708,9 @@ export default function TargetPage() {
         ) : tag;
       },
     },
-    { title: t('patchManager.targetPage.lastAssessment'), dataIndex: 'lastEval', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.targetPage.lastAssessment'), dataIndex: 'lastEval', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '--' },
     { title: t('patchManager.connectivity'), dataIndex: 'connectivity', width: 90, render: (v: HostRow['connectivity']) => <ConnTag status={v} /> },
-    { title: t('patchManager.targetPage.lastCheck'), dataIndex: 'lastDetected', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.targetPage.lastCheck'), dataIndex: 'lastDetected', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '--' },
     {
       title: t('patchManager.operation'),
       dataIndex: 'op',

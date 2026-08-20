@@ -25,7 +25,7 @@ export function formatCompactKpiValue(
   locale: string,
 ): CompactKpiValue {
   if (value == null) {
-    return { value: '—' };
+    return { value: '--' };
   }
 
   const exactValue = new Intl.NumberFormat(locale).format(value);

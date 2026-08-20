@@ -419,8 +419,8 @@ export default function BaselineComplianceDetail({
   const detailRows: ComplianceDetailRow[] = (detailsData?.details.items || []).map((item) => ({
     ...item,
     evidence_display: formatComplianceEvidence(item.evidence),
-    reason_display: item.reason || '—',
-    evaluated_at_display: convertToLocalizedTime(item.evaluated_at) || '—',
+    reason_display: item.reason || '--',
+    evaluated_at_display: convertToLocalizedTime(item.evaluated_at) || '--',
   }));
   const detailRowKey = (row: ComplianceDetailRow) => perspective === 'host'
     ? String((row as BaselineComplianceHostDetail).requirement_id)
@@ -597,8 +597,8 @@ export default function BaselineComplianceDetail({
                     <div className={styles.detailSubtitle}>
                       <span>
                         {perspective === 'host'
-                          ? selectedHost?.ip || '—'
-                          : selectedPatch?.title || '—'}
+                          ? selectedHost?.ip || '--'
+                          : selectedPatch?.title || '--'}
                       </span>
                       <DistributionTags items={selected.distribution} />
                     </div>

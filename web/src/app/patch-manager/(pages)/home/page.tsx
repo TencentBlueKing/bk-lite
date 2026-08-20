@@ -99,8 +99,8 @@ export default function HomePage() {
 
   const kpis: Omit<KpiCardProps, 'maxFontSize'>[] = [
     { label: t('patchManager.dashboard.managedTargets'), ...formatCompactKpiValue(stats?.target_total, locale), icon: <DesktopOutlined /> },
-    { label: t('patchManager.dashboard.complianceRate'), value: stats?.compliance_rate != null ? `${stats.compliance_rate}%` : '—', tone: 'success', icon: <CheckCircleOutlined /> },
-    { label: t('patchManager.dashboard.coverageRate'), value: stats?.coverage_rate != null ? `${stats.coverage_rate}%` : '—', icon: <EyeOutlined /> },
+    { label: t('patchManager.dashboard.complianceRate'), value: stats?.compliance_rate != null ? `${stats.compliance_rate}%` : '--', tone: 'success', icon: <CheckCircleOutlined /> },
+    { label: t('patchManager.dashboard.coverageRate'), value: stats?.coverage_rate != null ? `${stats.coverage_rate}%` : '--', icon: <EyeOutlined /> },
     { label: t('patchManager.dashboard.nonCompliantTargets'), ...formatCompactKpiValue(stats?.non_compliant_hosts, locale), tone: 'danger', icon: <WarningOutlined /> },
     { label: t('patchManager.dashboard.unconfiguredBaselines'), ...formatCompactKpiValue(stats?.unconfigured_hosts, locale), tone: 'warning', icon: <ExclamationCircleOutlined /> },
     { label: t('patchManager.dashboard.pendingRisks'), ...formatCompactKpiValue(stats?.pending_risk_count, locale), tone: 'warning', icon: <ToolOutlined /> },
@@ -119,8 +119,8 @@ export default function HomePage() {
   const coverageHint = targetTotal > 0 ? ` = ${assessedCount} / ${targetTotal} ≈ ${Math.round(assessedCount / targetTotal * 100)}%` : '';
   const recentExecutionText = (record: RecentTaskItem) => {
     if (record.execution_mode !== 'window') return t('patchManager.risk.executeNow');
-    const start = record.execution_window_start ? convertToLocalizedTime(record.execution_window_start) : '—';
-    const end = record.execution_window_end ? convertToLocalizedTime(record.execution_window_end) : '—';
+    const start = record.execution_window_start ? convertToLocalizedTime(record.execution_window_start) : '--';
+    const end = record.execution_window_end ? convertToLocalizedTime(record.execution_window_end) : '--';
     return `${t('patchManager.risk.executionWindow')} ${start}–${end}`;
   };
   const tableScrollY = resolveDashboardTableScrollY(tableHeight);
@@ -263,7 +263,7 @@ export default function HomePage() {
                 { title: t('patchManager.execution.type'), dataIndex: 'task_type_display', width: 90, render: (value: string) => <Tag>{value}</Tag> },
                 { title: t('patchManager.risk.executionMode'), dataIndex: 'execution_mode', width: 110, render: (_: unknown, r: RecentTaskItem) => recentExecutionText(r) },
                 { title: t('patchManager.execution.status'), dataIndex: 'status', width: 110, render: (_: unknown, r: RecentTaskItem) => <Tag color={r.status_color}>{t(`patchManager.execution.statuses.${r.status_code}`, r.status)}</Tag> },
-                { title: t('patchManager.createTime'), dataIndex: 'created_at', width: 170, render: (_: string, r: RecentTaskItem) => <span className="text-[var(--color-text-3)]">{convertToLocalizedTime(r.created_at) || '—'}</span> },
+                { title: t('patchManager.createTime'), dataIndex: 'created_at', width: 170, render: (_: string, r: RecentTaskItem) => <span className="text-[var(--color-text-3)]">{convertToLocalizedTime(r.created_at) || '--'}</span> },
               ]}
             />
           </div>

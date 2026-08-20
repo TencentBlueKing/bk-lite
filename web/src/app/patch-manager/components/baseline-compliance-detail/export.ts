@@ -50,8 +50,8 @@ export function buildBaselineComplianceWorkbook({
         condition: row.condition,
         status: translate(`patchManager.baseline.complianceDetail.status.${row.status}`),
         evidence: formatComplianceEvidence(row.evidence),
-        reason: row.reason || '—',
-        evaluatedAt: formatTime(row.evaluated_at) || '—',
+        reason: row.reason || '--',
+        evaluatedAt: formatTime(row.evaluated_at) || '--',
       });
     });
   } else {
@@ -70,8 +70,8 @@ export function buildBaselineComplianceWorkbook({
         ip: row.target_ip,
         status: translate(`patchManager.baseline.complianceDetail.status.${row.status}`),
         evidence: formatComplianceEvidence(row.evidence),
-        reason: row.reason || '—',
-        evaluatedAt: formatTime(row.evaluated_at) || '—',
+        reason: row.reason || '--',
+        evaluatedAt: formatTime(row.evaluated_at) || '--',
       });
     });
   }

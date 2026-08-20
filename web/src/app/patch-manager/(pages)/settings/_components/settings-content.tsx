@@ -300,7 +300,7 @@ export function PatchSourcesSettings() {
       width: 140,
       render: (_: unknown, r: PatchSource) => {
         const proxy = r.proxy_host ? `http://${r.proxy_host}${r.proxy_port ? ':' + r.proxy_port : ''}` : '';
-        return <span className={proxy ? 'text-[var(--color-text-1)]' : 'text-[var(--color-text-3)]'}>{proxy || '-'}</span>;
+        return <span className={proxy ? 'text-[var(--color-text-1)]' : 'text-[var(--color-text-3)]'}>{proxy || '--'}</span>;
       },
     },
     {
