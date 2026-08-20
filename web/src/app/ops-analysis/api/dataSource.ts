@@ -20,7 +20,7 @@ export const withRuntimeSourceDataErrorSuppression = (
   getSourceDataByApiId(id, params, { suppressErrorNotification: true });
 
 export const useDataSourceApi = () => {
-  const { get, post, put, del } = useApiClient();
+  const { get, post, put, del, patch } = useApiClient();
   const sharedAccess = useSharedDataSourceQuery();
 
   const getDataSourceList = useCallback(async (params?: any) => {
@@ -66,6 +66,10 @@ export const useDataSourceApi = () => {
   const updateDataSource = useCallback(async (id: number, data: any) => {
     return put(`/operation_analysis/api/data_source/${id}/`, data);
   }, [put]);
+
+  const patchDataSource = useCallback(async (id: number, data: any) => {
+    return patch(`/operation_analysis/api/data_source/${id}/`, data);
+  }, [patch]);
 
   const deleteDataSource = useCallback(async (id: number, config?: any) => {
     return del(`/operation_analysis/api/data_source/${id}/`, config);
@@ -137,6 +141,7 @@ export const useDataSourceApi = () => {
     getDataSourceDetails,
     createDataSource,
     updateDataSource,
+    patchDataSource,
     deleteDataSource,
     getDataSourceDetail,
     getSourceDataByApiId,
