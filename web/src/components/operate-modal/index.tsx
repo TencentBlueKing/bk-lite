@@ -22,6 +22,8 @@ const OperateModal: React.FC<CustomModalProps> = ({
   maskClosable = false,
   destroyOnClose,
   destroyOnHidden,
+  open,
+  visible,
   ...modalProps
 }) => {
   const shouldDestroyOnHidden = destroyOnHidden ?? destroyOnClose;
@@ -63,6 +65,7 @@ const OperateModal: React.FC<CustomModalProps> = ({
       forceRender={!shouldDestroyOnHidden}
       destroyOnHidden={shouldDestroyOnHidden}
       {...modalProps}
+      open={open ?? visible}
     />
   );
 };

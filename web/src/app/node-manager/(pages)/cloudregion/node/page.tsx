@@ -14,8 +14,7 @@ import {
   Modal,
   Tooltip,
   Tag,
-  Dropdown,
-  Empty
+  Dropdown
 } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
@@ -54,6 +53,7 @@ import {
   getCollectorOperationSelection,
   isControllerOperationDisabled
 } from '@/app/node-manager/utils/nodeOperation';
+import { asCollectorStatusList } from '@/app/node-manager/utils/collectorConfig';
 const { confirm } = Modal;
 
 type TableRowSelection<T extends object = object> =
@@ -210,8 +210,10 @@ const Node = () => {
       record.operating_system === 'linux'
         ? 'natsexecutor_linux'
         : 'natsexecutor_windows';
-    const collectors = record.status?.collectors || [];
-    const collectorsInstall = record.status?.collectors_install || [];
+    const collectors = asCollectorStatusList(record.status?.collectors);
+    const collectorsInstall = asCollectorStatusList(
+      record.status?.collectors_install
+    );
     // 获取已在 collectors 中的 collector_id 集合
     const collectorIds = new Set(collectors.map((c: any) => c.collector_id));
     // 过滤 collectors_install,排除已在 collectors 中的采集器
@@ -477,10 +479,14 @@ const Node = () => {
             record.operating_system === 'linux'
               ? 'natsexecutor_linux'
               : 'natsexecutor_windows';
-          const collectorTarget = (record.status?.collectors || []).find(
+          const collectorTarget = asCollectorStatusList(
+            record.status?.collectors
+          ).find(
             (item: TableDataItem) => item.collector_id === natsexecutorId
           );
-          const installTarget = (record.status?.collectors_install || []).find(
+          const installTarget = asCollectorStatusList(
+            record.status?.collectors_install
+          ).find(
             (item: TableDataItem) => item.collector_id === natsexecutorId
           );
           const { title, tagColor } = getStatusInfo(
@@ -490,11 +496,13 @@ const Node = () => {
 
           // 检查是否有 Ansible-Executor
           const ansibleExecutorId = 'ansibleexecutor_linux';
-          const ansibleCollectorTarget = (record.status?.collectors || []).find(
+          const ansibleCollectorTarget = asCollectorStatusList(
+            record.status?.collectors
+          ).find(
             (item: TableDataItem) => item.collector_id === ansibleExecutorId
           );
-          const ansibleInstallTarget = (
-            record.status?.collectors_install || []
+          const ansibleInstallTarget = asCollectorStatusList(
+            record.status?.collectors_install
           ).find(
             (item: TableDataItem) => item.collector_id === ansibleExecutorId
           );
