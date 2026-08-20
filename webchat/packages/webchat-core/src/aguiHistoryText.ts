@@ -9,8 +9,20 @@ const SKIP_CUSTOM_EVENTS = new Set([
   'browser_step_progress',
   'browser_task_received',
   'planned_execution_step',
+  'planned_execution_status',
   'skill_view',
+  'wiki_citations',
+  'user_choice_result',
+  'assistant_text_retract',
 ]);
+
+/**
+ * 进度/元数据类 CUSTOM 事件：只描述执行过程，不该作为聊天气泡展示。
+ * 实时流与历史回放共用同一份清单，避免规划 JSON 被降级成正文。
+ */
+export function isSilentCustomEvent(name: string): boolean {
+  return SKIP_CUSTOM_EVENTS.has(name);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);

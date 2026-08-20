@@ -16,6 +16,7 @@ import {
   MessageContent,
   MessageType,
   generateId,
+  isSilentCustomEvent,
   normalizeWebChatConfig,
 } from '@webchat/core';
 import { AGUIHandler, AGUIEvent, type CustomProtocolEvent } from './agui';
@@ -351,6 +352,10 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     onCustomEvent?.(event);
     if (isBlockingHitlEvent(event)) {
       setHitlEvent(event);
+      return;
+    }
+    // 进度/元数据类事件（规划步骤、步骤进度、引用等）不降级成聊天气泡
+    if (isSilentCustomEvent(event.name)) {
       return;
     }
     const degraded = formatDegradedCustomEvent(event);

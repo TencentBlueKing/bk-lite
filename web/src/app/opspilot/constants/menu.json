@@ -71,7 +71,7 @@
           "name": "skill_setting"
         },
         {
-          "title": "渠道发布",
+          "title": "发布",
           "url": "/opspilot/skill/detail/channel",
           "icon": "channel1",
           "name": "skill_channel",

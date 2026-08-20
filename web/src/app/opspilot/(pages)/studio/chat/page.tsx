@@ -152,6 +152,7 @@ const StudioChatPage: React.FC = () => {
           browserStepsHistory: processed.browserStepsHistory ?? null,
           agentStepProgress: processed.agentStepProgress,
           plannedExecutionSteps: processed.plannedExecutionSteps,
+          wikiCitations: processed.wikiCitations,
           toolCalls: processed.toolCalls,
           isStreamingTools: false,
           configDiffReports: processed.configDiffReports,

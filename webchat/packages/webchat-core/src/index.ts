@@ -9,5 +9,6 @@ export { SessionManager } from './sessionManager';
 export { StateMachine } from './stateMachine';
 export { SSEHandler } from './sse';
 export { SSEStreamParser } from './sseParser';
+export { assembleAguiHistoryText, isSilentCustomEvent } from './aguiHistoryText';
 export * from './utils';
 export * from './platform';

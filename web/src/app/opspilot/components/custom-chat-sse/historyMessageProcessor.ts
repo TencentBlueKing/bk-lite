@@ -14,6 +14,7 @@ import {
   RepairCommands,
   ReportFileDownload,
   UserChoiceRequest,
+  WikiCitation,
 } from '@/app/opspilot/types/global';
 import { initToolCallTooltips, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
 import {
@@ -26,6 +27,7 @@ import {
 } from './plannedExecutionState';
 import { isToolResultErrorContent } from './toolResultStatus';
 import type { PlannedExecutionStepValue } from '@/app/opspilot/types/chat';
+import { isRecord, looksLikePlannedExecutionPayload, unwrapCustomValue } from './plannedExecutionPayload';
 
 const escapeNewlinesInStrings = (raw: string) => {
   let result = '';
@@ -288,10 +290,14 @@ const parseJsonArray = (raw: string): any[] | null => {
   };
 
   const extractArraySlice = (value: string) => {
-    const start = value.indexOf('[');
-    const end = value.lastIndexOf(']');
-    if (start >= 0 && end > start) {
-      return value.slice(start, end + 1);
+    // 只裁顶层数组。对象里的 tools: [...] 不能当成事件列表，否则规划 JSON 会被解析成 ["get_current_time"]。
+    const trimmed = value.trim();
+    if (!trimmed.startsWith('[')) {
+      return value;
+    }
+    const end = trimmed.lastIndexOf(']');
+    if (end > 0) {
+      return trimmed.slice(0, end + 1);
     }
     return value;
   };
@@ -350,6 +356,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
   let lastStep: BrowserStepProgressData | null = null;
   const pendingToolIds: string[] = [];
   let plannedExecutionState = createPlannedExecutionState();
+  const wikiCitations: WikiCitation[] = [];
 
   const flushToolCalls = () => {
     if (pendingToolIds.length > 0) {
@@ -402,6 +409,20 @@ const buildFromEvents = (events: any[], finalize = true) => {
 
       case 'TEXT_MESSAGE_CONTENT':
         isThinking = false;
+        {
+          const plannedPayload = unwrapCustomValue(msg.delta);
+          const plannedKind = looksLikePlannedExecutionPayload(plannedPayload);
+          if (plannedKind === 'step') {
+            plannedExecutionState = applyPlannedExecutionStep(
+              plannedExecutionState,
+              plannedPayload as PlannedExecutionStepValue
+            );
+            break;
+          }
+          if (plannedKind === 'status') {
+            break;
+          }
+        }
         // If pending tool calls exist and this is the start of new text, flush them
         if (pendingToolIds.length > 0 && !currentText) {
           flushToolCalls();
@@ -494,66 +515,79 @@ const buildFromEvents = (events: any[], finalize = true) => {
 
       case 'CUSTOM':
         isThinking = false;
-        if (msg.name === 'browser_step_progress' && msg.value) {
-          upsertStep(msg.value as BrowserStepProgressData);
-        } else if (msg.name === 'browser_task_received' && msg.value) {
-          const browserTaskReceived = msg.value as BrowserTaskReceivedData;
-          const toolCallId = findLatestCallingToolCallId(typeof browserTaskReceived.tool === 'string' ? browserTaskReceived.tool : undefined);
-          if (toolCallId) {
-            const tool = toolCalls.get(toolCallId);
-            if (tool) {
-              tool.browserTaskReceived = browserTaskReceived;
-            }
-          }
-        } else if (msg.name === 'agent_step_progress' && msg.value) {
-          const data = msg.value as any;
-          const key = `${data.agent_name || 'main'}_${data.step}`;
-          const existingIdx = agentSteps.findIndex(
-            (d: any) => `${d.agent_name || 'main'}_${d.step}` === key
-          );
-          if (existingIdx >= 0) {
-            agentSteps[existingIdx] = data;
-          } else {
-            agentSteps.push(data);
-          }
-        } else if (msg.name === 'sub_agent_progress' && msg.value) {
-          const data = msg.value as any;
-          const newStep = {
-            agent_name: data.agent_name,
-            step: 0,
-            max_steps: 0,
-            status: data.status,
-            description: data.description,
-          };
-          const existingIdx = agentSteps.findIndex(
-            (d: any) => d.agent_name === data.agent_name && (d.status === 'started' || d.status === 'running')
-          );
-          if (existingIdx >= 0 && (data.status === 'completed' || data.status === 'error')) {
-            agentSteps[existingIdx] = newStep;
-          } else {
-            agentSteps.push(newStep);
-          }
-        } else if (msg.name === 'skill_view' && msg.value && Array.isArray(msg.value.items)) {
-          skillViews.splice(0, skillViews.length, ...msg.value.items.filter((item: any) => item?.name));
-        } else if (msg.name === 'planned_execution_step' && msg.value) {
-          plannedExecutionState = applyPlannedExecutionStep(
-            plannedExecutionState,
-            msg.value as PlannedExecutionStepValue
-          );
-          const stepValue = msg.value as PlannedExecutionStepValue;
-          if (stepValue.phase === 'end' && isFailedPlannedStepStatus(stepValue.status)) {
-            const step = plannedExecutionState.steps.find(
-              (item) => item.step_index === Number(stepValue.step_index)
-            );
-            const errorText =
-              (typeof stepValue.error === 'string' && stepValue.error.trim()) ||
-              step?.error ||
-              '步骤因凭据、权限或配置失败已中止';
-            for (const toolCallId of step?.toolCallIds || []) {
+        {
+          const customValue = unwrapCustomValue(msg.value);
+          const customName = msg.name || (isRecord(customValue) ? String(customValue.name || '') : '');
+          const plannedKind = looksLikePlannedExecutionPayload(customValue);
+          if (customName === 'browser_step_progress' && customValue) {
+            upsertStep(customValue as BrowserStepProgressData);
+          } else if (customName === 'browser_task_received' && customValue) {
+            const browserTaskReceived = customValue as BrowserTaskReceivedData;
+            const toolCallId = findLatestCallingToolCallId(typeof browserTaskReceived.tool === 'string' ? browserTaskReceived.tool : undefined);
+            if (toolCallId) {
               const tool = toolCalls.get(toolCallId);
-              if (!tool || tool.status !== 'calling') continue;
-              tool.status = 'error';
-              tool.result = errorText;
+              if (tool) {
+                tool.browserTaskReceived = browserTaskReceived;
+              }
+            }
+          } else if (customName === 'agent_step_progress' && customValue) {
+            const data = customValue as any;
+            const key = `${data.agent_name || 'main'}_${data.step}`;
+            const existingIdx = agentSteps.findIndex(
+              (d: any) => `${d.agent_name || 'main'}_${d.step}` === key
+            );
+            if (existingIdx >= 0) {
+              agentSteps[existingIdx] = data;
+            } else {
+              agentSteps.push(data);
+            }
+          } else if (customName === 'sub_agent_progress' && customValue) {
+            const data = customValue as any;
+            const newStep = {
+              agent_name: data.agent_name,
+              step: 0,
+              max_steps: 0,
+              status: data.status,
+              description: data.description,
+            };
+            const existingIdx = agentSteps.findIndex(
+              (d: any) => d.agent_name === data.agent_name && (d.status === 'started' || d.status === 'running')
+            );
+            if (existingIdx >= 0 && (data.status === 'completed' || data.status === 'error')) {
+              agentSteps[existingIdx] = newStep;
+            } else {
+              agentSteps.push(newStep);
+            }
+          } else if (customName === 'skill_view' && customValue && Array.isArray((customValue as any).items)) {
+            skillViews.splice(0, skillViews.length, ...(customValue as any).items.filter((item: any) => item?.name));
+          } else if (customName === 'wiki_citations' && customValue) {
+            const items = Array.isArray((customValue as { citations?: WikiCitation[] }).citations)
+              ? (customValue as { citations: WikiCitation[] }).citations
+              : Array.isArray(customValue)
+                ? customValue
+                : [];
+            for (const item of items) {
+              if (item && typeof item.n === 'number' && item.id) {
+                wikiCitations.push(item);
+              }
+            }
+          } else if (customName === 'planned_execution_step' || plannedKind === 'step') {
+            const stepValue = customValue as PlannedExecutionStepValue;
+            plannedExecutionState = applyPlannedExecutionStep(plannedExecutionState, stepValue);
+            if (stepValue?.phase === 'end' && isFailedPlannedStepStatus(stepValue.status)) {
+              const step = plannedExecutionState.steps.find(
+                (item) => item.step_index === Number(stepValue.step_index)
+              );
+              const errorText =
+                (typeof stepValue.error === 'string' && stepValue.error.trim()) ||
+                step?.error ||
+                '步骤因凭据、权限或配置失败已中止';
+              for (const toolCallId of step?.toolCallIds || []) {
+                const tool = toolCalls.get(toolCallId);
+                if (!tool || tool.status !== 'calling') continue;
+                tool.status = 'error';
+                tool.result = errorText;
+              }
             }
           }
         }
@@ -567,15 +601,23 @@ const buildFromEvents = (events: any[], finalize = true) => {
         plannedExecutionState = finalizePlannedExecutionSteps(plannedExecutionState);
         break;
 
-      default:
+      default: {
+        const plannedKind = looksLikePlannedExecutionPayload(msg);
+        if (plannedKind === 'step') {
+          plannedExecutionState = applyPlannedExecutionStep(
+            plannedExecutionState,
+            msg as PlannedExecutionStepValue
+          );
+        }
         break;
+      }
     }
   });
 
   // 输出剩余的工具调用占位
   flushToolCalls();
 
-  if (currentText) {
+  if (currentText && !looksLikePlannedExecutionPayload(currentText)) {
     if (parts.length > 0 && lastBlockType !== 'text') {
       parts.push('\n\n' + currentText);
     } else {
@@ -613,6 +655,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
     agentStepProgress: agentSteps.length > 0 ? agentSteps : undefined,
     skillViews: skillViews.length > 0 ? skillViews : undefined,
     reportFileDownloads: reportFileDownloads.length > 0 ? reportFileDownloads : undefined,
+    wikiCitations: wikiCitations.length > 0 ? wikiCitations : undefined,
     plannedExecutionSteps,
     isStreamingTools: finalize ? false : Boolean(plannedExecutionSteps?.some((s) => s.status === 'running')),
     toolCalls: toolCalls.size > 0 ? Array.from(toolCalls.entries()).map(([id, info]) => ({
@@ -635,7 +678,7 @@ export const processHistoryMessageContent = (content: string, role: string): str
   }
 
   // 非 bot 消息直接返回
-  if (role !== 'bot') return typeof content === 'string' ? content : String(content ?? '');
+  if (role !== 'bot' && role !== 'assistant') return typeof content === 'string' ? content : String(content ?? '');
 
   if (Array.isArray(content)) {
     return buildFromEvents(content, true).content;
@@ -677,10 +720,11 @@ export const processHistoryMessageWithExtras = (
   repairCommands?: RepairCommands[];
   reportFileDownloads?: ReportFileDownload[];
   plannedExecutionSteps?: PlannedExecutionStepView[];
+  wikiCitations?: WikiCitation[];
   isStreamingTools?: boolean;
   toolCalls?: Array<{ id: string; name: string; args: string; status: 'calling' | 'completed' | 'error'; result?: string }>;
 } => {
-  if (role !== 'bot') {
+  if (role !== 'bot' && role !== 'assistant') {
     return {
       content: typeof content === 'string' ? content : String(content ?? ''),
       thinking: '',
@@ -693,6 +737,10 @@ export const processHistoryMessageWithExtras = (
 
   if (Array.isArray(content)) {
     return buildFromEvents(content, true);
+  }
+
+  if (content && typeof content === 'object') {
+    return buildFromEvents([content], true);
   }
 
   if (typeof content !== 'string') {
@@ -716,6 +764,14 @@ export const processHistoryMessageWithExtras = (
       browserStepsHistory: null,
       reportFileDownloads: undefined,
     };
+  }
+
+  if (
+    parsedContent.length > 0
+    && parsedContent.every((item) => typeof item === 'string')
+    && looksLikePlannedExecutionPayload(content)
+  ) {
+    return buildFromEvents([unwrapCustomValue(content)], true);
   }
 
   return buildFromEvents(parsedContent, true);
