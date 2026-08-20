@@ -4,6 +4,12 @@
 
 - 告警名称模板必须支持当前监控实例的 `${resource_id}` 与
   `${resource_name}`。
+- 告警名称模板必须支持 `${resource_ip}`：取值与实例列表「IP信息」同源，
+  优先 `summary_facts['asset.ip']`，回落 `MonitorInstance.ip`，缺值渲染
+  为空字符串。
+- 监控对象 `display_fields` 中配置了 `variable_id` 的展示列，可作为告警
+  名称变量 `${variable_id}`；字段列优先使用当前告警维度中的同名 label，
+  再回落实例展示回填值。普通告警和无数据告警使用同一套资源上下文。
 - 子对象告警必须额外支持 `${parent_resource_id}` 与
   `${parent_resource_name}`；普通告警和无数据告警使用同一套资源上下文。
 - 子对象指标只携带部分身份维度时，只能在策略已选实例范围内唯一匹配后解析
@@ -28,6 +34,8 @@
 
 ## 验证接缝
 
+- `server/apps/monitor/tests/test_alert_name_variables.py`
+- `server/apps/monitor/tests/test_display_fields_api.py`
 - `server/apps/monitor/tests/test_policy_scan_alert_detector.py`
 - `server/apps/monitor/tests/test_policy_scan_event_alert_manager.py`
 - `server/apps/monitor/tests/test_policy_scan_metric_query_service.py`
