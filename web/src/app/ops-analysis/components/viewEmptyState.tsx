@@ -1,8 +1,6 @@
 'use client';
 
 import React from 'react';
-import { Button } from 'antd';
-import PermissionWrapper from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -12,7 +10,6 @@ import {
 
 interface ViewEmptyStateProps {
   recents: RecentCanvasRecord[];
-  onCreateCanvas: () => void;
   onOpenRecent: (item: RecentCanvasRecord) => void;
 }
 
@@ -43,7 +40,6 @@ const RecentCanvasPreview: React.FC = () => (
 
 const ViewEmptyState: React.FC<ViewEmptyStateProps> = ({
   recents,
-  onCreateCanvas,
   onOpenRecent,
 }) => {
   const { t } = useTranslation();
@@ -64,11 +60,6 @@ const ViewEmptyState: React.FC<ViewEmptyStateProps> = ({
           <p className="mb-0 mt-2 text-sm leading-6 text-[var(--color-text-3)]">
             {t('opsAnalysisSidebar.selectItemHint')}
           </p>
-          <PermissionWrapper requiredPermissions={['AddChart']} className="mt-3">
-            <Button type="primary" onClick={onCreateCanvas}>
-              {t('opsAnalysisSidebar.newCanvas')}
-            </Button>
-          </PermissionWrapper>
         </div>
 
         {shouldShowRecents && (

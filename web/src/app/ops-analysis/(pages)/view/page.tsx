@@ -249,7 +249,6 @@ const ViewPage: React.FC = () => {
         ) : (
           <ViewEmptyState
             recents={getDisplayRecentCanvases(recentCanvases)}
-            onCreateCanvas={() => sidebarRef.current?.openAddCanvas()}
             onOpenRecent={handleOpenRecent}
           />
         )}

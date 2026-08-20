@@ -23,7 +23,6 @@ export interface SidebarProps {
 export interface SidebarRef {
   clearSelection: () => void;
   setSelectedKeys: (keys: React.Key[]) => void;
-  openAddCanvas: () => void;
 }
 
 export interface FormValues {
