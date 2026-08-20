@@ -13,12 +13,13 @@ EXPECTED_INSTALLER_STEPS = [
     "install",
 ]
 
-OPTIONAL_INSTALLER_STEPS = {"clock_check"}
-CLOCK_AWARE_INSTALLER_STEPS = [
+OPTIONAL_INSTALLER_STEPS = {"clock_check", "stop_service"}
+CURRENT_INSTALLER_STEPS = [
     "fetch_session",
     "clock_check",
     "prepare_dirs",
     "download",
+    "stop_service",
     "extract",
     "write_config",
     "install",
@@ -27,9 +28,11 @@ CLOCK_AWARE_INSTALLER_STEPS = [
 
 def _counted_installer_steps(deduped_steps):
     observed_actions = {step.get("action") for step in deduped_steps}
-    if "clock_check" in observed_actions:
-        return list(CLOCK_AWARE_INSTALLER_STEPS)
-    return list(EXPECTED_INSTALLER_STEPS)
+    return [
+        step
+        for step in CURRENT_INSTALLER_STEPS
+        if step not in OPTIONAL_INSTALLER_STEPS or step in observed_actions
+    ]
 
 
 def project_task_status_from_summary(summary):

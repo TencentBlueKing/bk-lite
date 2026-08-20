@@ -2,9 +2,9 @@ import React from 'react';
 import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import dayjs from 'dayjs';
 
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+import { formatDateTime } from '@/app/apm/components/metric-format';
 import ApmServicesPage from '../page';
 
 const api = {
@@ -226,7 +226,7 @@ describe('APM 服务目录服务视角与归档', () => {
     const servicePerspective = await screen.findByRole('radio', { name: '服务' });
     await user.click(servicePerspective.closest('label')!);
 
-    expect((await screen.findAllByText('吞吐量(/s)')).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('吞吐量（请求/秒）')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('错误率').length).toBeGreaterThan(0);
     expect(screen.getByText('Java')).not.toBeNull();
     expect(screen.getByLabelText('最高活跃告警：严重')).not.toBeNull();
@@ -250,11 +250,11 @@ describe('APM 服务目录服务视角与归档', () => {
     expect(screen.queryByRole('button', { name: /更多操作/ })).toBeNull();
     expect(screen.queryByText('全部服务')).toBeNull();
     expect(screen.queryByText(/个环境视图/)).toBeNull();
-    const lastSeenText = dayjs(serviceWithEnv.environment_views[0].last_seen_at).format('YYYY-MM-DD HH:mm');
+    const lastSeenText = formatDateTime(serviceWithEnv.environment_views[0].last_seen_at, false);
     const lastSeen = screen.getByText(lastSeenText);
     expect(lastSeen.closest('td')?.textContent).toBe(lastSeenText);
     expect(lastSeen.getAttribute('title')).toBe(
-      dayjs(serviceWithEnv.environment_views[0].last_seen_at).format('YYYY-MM-DD HH:mm:ss')
+      formatDateTime(serviceWithEnv.environment_views[0].last_seen_at)
     );
   });
 

@@ -29,7 +29,7 @@ import useApmApi from '@/app/apm/api';
 import ApmDataTable from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
-import { formatLatency } from '@/app/apm/components/metric-format';
+import { formatLatency, formatPercentage } from '@/app/apm/components/metric-format';
 import type { ApmSpanDetail, ApmTraceDetail } from '@/app/apm/types';
 import { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
@@ -250,7 +250,7 @@ export default function ApmTraceDetailPage() {
               <KpiStat label={t('apm.trace.spanCount', 'Span 数')} value={trace.spans.length} />
               <KpiStat label={t('apm.trace.errorSpans', '错误 Span')} value={errorSpans.length} danger={hasError} />
               <KpiStat label={t('apm.trace.serviceCount', '服务数')} value={services.length} />
-              <KpiStat label={t('apm.trace.totalDuration', '总耗时')} value={formatLatency(totalDuration)} />
+              <KpiStat label={t('apm.trace.totalDuration', '总耗时')} value={formatLatency(totalDuration, false, t)} />
             </div>
           </ApmSurface>
 
@@ -318,7 +318,7 @@ export default function ApmTraceDetailPage() {
                               />
                             </div>
                             <div className="w-24 text-right text-xs tabular-nums text-[var(--color-text-2)]">
-                              {formatLatency(span.duration_ms)}
+                              {formatLatency(span.duration_ms, false, t)}
                             </div>
                           </button>
                         );
@@ -375,7 +375,7 @@ export default function ApmTraceDetailPage() {
                                   : 'text-[var(--color-text-1)]'
                               }`}
                             >
-                              {formatLatency(span.duration_ms)}
+                              {formatLatency(span.duration_ms, false, t)}
                               {span.status === 'error' ? ' ⚠' : ''}
                             </span>
                           </button>
@@ -415,10 +415,10 @@ export default function ApmTraceDetailPage() {
                           strokeColor={serviceColor(row.service, services)}
                         />
                         <span className="w-11 shrink-0 text-right text-xs font-medium tabular-nums">
-                          {row.percent.toFixed(1)}%
+                          {formatPercentage(row.percent, 1)}
                         </span>
                         <span className="w-12 shrink-0 text-right text-xs tabular-nums text-[var(--color-text-3)]">
-                          {formatLatency(row.duration)}
+                          {formatLatency(row.duration, false, t)}
                         </span>
                       </div>
                     ))}
@@ -442,7 +442,7 @@ export default function ApmTraceDetailPage() {
                         </div>
                       </div>
                       <Descriptions size="small" column={1}>
-                        <Descriptions.Item label={t('apm.trace.totalDuration', '总耗时')}>{formatLatency(selected.duration_ms)}</Descriptions.Item>
+                        <Descriptions.Item label={t('apm.trace.totalDuration', '总耗时')}>{formatLatency(selected.duration_ms, false, t)}</Descriptions.Item>
                         <Descriptions.Item label={t('apm.common.service', '服务')}>
                           {selected.service_namespace || t('apm.common.unsetNamespace', '未设置 namespace')} / {selected.service_name}
                         </Descriptions.Item>

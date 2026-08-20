@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ApmPoliciesPage from '../page';
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+import { formatDateTime } from '@/app/apm/components/metric-format';
 
 const policy = {
   id: 'policy-1',
@@ -85,8 +86,8 @@ describe('APM 策略列表', () => {
     expect(screen.getByText('checkout')).not.toBeNull();
     expect(screen.getByText('POST /checkout')).not.toBeNull();
     expect(screen.getByText('admin')).not.toBeNull();
-    expect(screen.getByText(/2026-08-11/)).not.toBeNull();
-    expect(screen.getByText(/2026-08-14/)).not.toBeNull();
+    expect(screen.getByText(formatDateTime(policy.created_at, false))).not.toBeNull();
+    expect(screen.getByText(formatDateTime(policy.state.last_succeeded_at, false))).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: '环境' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '端点 / 版本' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '告警条件' })).toBeNull();

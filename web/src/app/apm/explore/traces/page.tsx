@@ -10,7 +10,12 @@ import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import HealthDot from '@/app/apm/components/health-dot';
-import { formatLatency, formatRelativeTime } from '@/app/apm/components/metric-format';
+import {
+  formatErrorRate,
+  formatLatency,
+  formatNumber,
+  formatRelativeTime,
+} from '@/app/apm/components/metric-format';
 import type {
   ApmService,
   ApmSpanSearchParams,
@@ -212,7 +217,7 @@ function DurationDistribution({ items, unitLabel }: { items: DurationPoint[]; un
         const y = 110 - (item.duration_ms / maxDuration) * 96;
         return (
           <circle
-            aria-label={t('apm.explore.barAria', '{label}，{duration} 毫秒', { label: item.label, duration: item.duration_ms.toFixed(2) })}
+            aria-label={t('apm.explore.barAria', '{label}，{duration} 毫秒', { label: item.label, duration: formatNumber(item.duration_ms, 2) })}
             cx={x}
             cy={y}
             fill={item.status === 'error' ? 'var(--color-fail)' : 'var(--color-primary)'}
@@ -489,7 +494,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['sm'],
-      render: (value: number) => formatLatency(value),
+      render: (value: number) => formatLatency(value, false, t),
     },
     {
       title: t('apm.explore.spanCount', '跨度数'),
@@ -516,7 +521,7 @@ export default function ApmTracesPage() {
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       responsive: ['xl'],
       render: (value: string) => (
-        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
+        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value, t)}</span>
       ),
     },
   ], [statusError, statusOk, t]);
@@ -559,7 +564,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
-      render: (value: number) => formatLatency(value),
+      render: (value: number) => formatLatency(value, false, t),
     },
     {
       title: t('apm.common.time', '时间'),
@@ -567,7 +572,7 @@ export default function ApmTracesPage() {
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       responsive: ['xl'],
       render: (value: string) => (
-        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
+        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value, t)}</span>
       ),
     },
   ], [t]);
@@ -683,7 +688,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['sm'],
-      render: (value: number) => `${(value * 100).toFixed(1)}%`,
+      render: (value: number) => formatErrorRate(value, false, t),
     },
     {
       title: t('apm.explore.avgDuration', '平均耗时'),
@@ -692,7 +697,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
-      render: (value: number) => formatLatency(value),
+      render: (value: number) => formatLatency(value, false, t),
     },
     {
       title: t('apm.common.p95', 'P95'),
@@ -701,7 +706,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['lg'],
-      render: (value: number) => formatLatency(value),
+      render: (value: number) => formatLatency(value, false, t),
     },
     {
       title: t('apm.explore.maxDuration', '最大耗时'),
@@ -710,7 +715,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['lg'],
-      render: (value: number) => formatLatency(value),
+      render: (value: number) => formatLatency(value, false, t),
     },
   ];
 
@@ -966,7 +971,7 @@ export default function ApmTracesPage() {
                       onBlur={commitDuration}
                       onPressEnter={commitDuration}
                     />
-                    <span className="shrink-0 text-xs text-[var(--color-text-3)]">ms</span>
+                    <span className="shrink-0 text-xs text-[var(--color-text-3)]">{t('apm.common.millisecondUnit', 'ms')}</span>
                   </div>
                   {durationDraft.min != null && durationDraft.max != null && durationDraft.min > durationDraft.max ? (
                     <Typography.Text type="danger" className="mt-2 block !text-xs">{t('apm.explore.durationInvalid', '最小耗时不能大于最大耗时')}</Typography.Text>
@@ -978,7 +983,7 @@ export default function ApmTracesPage() {
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <div className="flex items-baseline gap-2">
-                    <strong className="text-base font-semibold tabular-nums">{hitRate >= 10 ? hitRate.toFixed(1) : hitRate.toFixed(2)}</strong>
+                    <strong className="text-base font-semibold tabular-nums">{formatNumber(hitRate, hitRate >= 10 ? 1 : 2)}</strong>
                     <Typography.Text type="secondary" className="!text-xs">
                       {entityMode === 'spans' ? t('apm.explore.spansPerSec', 'spans/s') : t('apm.explore.hitRate', 'traces/s')}
                     </Typography.Text>

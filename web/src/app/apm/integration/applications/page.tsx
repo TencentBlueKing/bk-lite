@@ -5,11 +5,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AppstoreAddOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
 import { Button, Drawer, Form, Input, message, Space, type TableColumnsType } from 'antd';
-import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
+import { formatDateTime } from '@/app/apm/components/metric-format';
 import type { ApmApplication, ApmApplicationInput } from '@/app/apm/types';
 import FilterToolbar from '@/components/filter-toolbar';
 import GroupTreeSelect from '@/components/group-tree-select';
@@ -133,7 +133,7 @@ export default function ApmApplicationsPage() {
         />
       ),
     },
-    { title: t('apm.applications.updatedAt', '更新时间'), dataIndex: 'updated_at', width: APM_TABLE_COLUMN_WIDTHS.timestamp, responsive: ['xxl'], className: 'tabular-nums', render: (value) => dayjs(value).format('YYYY-MM-DD HH:mm') },
+    { title: t('apm.applications.updatedAt', '更新时间'), dataIndex: 'updated_at', width: APM_TABLE_COLUMN_WIDTHS.timestamp, responsive: ['xxl'], className: 'tabular-nums', render: (value) => formatDateTime(value, false) },
     {
       title: t('apm.common.operation', '操作'), key: 'action', width: APM_TABLE_COLUMN_WIDTHS.actionGroup, align: 'right', fixed: 'right',
       render: (_, item) => (
