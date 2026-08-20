@@ -389,6 +389,15 @@ Agent 日常入口：根 `CLAUDE.md` / `AGENTS.md`「Web UI 硬约束」；**勿
 - 显式不迁：带 CTA 的 Empty（应用筛选清除、报表添加组件、SLO 配置）；订阅/List 表内 emptyText；图表 legend / auto-fit 动态尺寸；ops-analysis `chartLegend` 仍为 app-local（含 scale/主题语义）。
 - 门禁：`pnpm check:component-ownership`。
 
+### 合并最新 master 后事件驱动(2026-08 Cycle 28)
+
+- 快进合并 `origin/master`（`337c19439` → `7d791dd44`），审计相对 Cycle 27 的 web 增量。
+- 样式：Monitor K8s `accessConfig` 静态宽 `FORM_CONTROL_WIDTH` → `w-[300px]` / `w-20`（`GroupTreeSelect` 仍走 `style={{ width: 300 }}` 契约）；patch `risk-execution` 列表/时间线静态布局 → Tailwind，状态色保留行内动态值；patch home 遮罩 `bg-white/50` → `bg-[var(--color-bg-1)]/50`。
+- 门禁修复：master 再次带回 `chart-legend` 测试对 `@/app/ops-analysis/components/chartLegend` 的反向引用 → 去掉；ops 图例契约仍留 app-local。
+- 显式不迁：OpsPilot skill 渠道 Empty（含「添加渠道」CTA）；画布/拓扑大 Empty（screenCanvas、topologyMap、networkStatusTopology）；patch home 图表 hex 色（图表例外）；`unifiedFilter` vs `ops-analysis-unified-filter` 双路径仍为 ops-analysis 域内演进，不晋升 shared。
+- CompactEmpty：本轮增量中多处已接入；无新增无 CTA 低成本空态可迁。
+- 门禁：`pnpm check:component-ownership` 通过（113 records；Node v24.18.0）。
+
 ### 已知 Storybook 构建阻塞
 
 - Node 24 全量 `pnpm build-storybook` 在 webpack `WasmHash._updateWithBuffer` 崩溃(#0125)。MoreActionsDropdown 的 Storybook 契约暂时以单文件 + 定向 ESLint 保障。
