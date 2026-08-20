@@ -4,6 +4,8 @@
  * 锁定 `fix-locale-provider-switch-flash` 变更的回归行为：
  *   - `fetchLocaleMessages` 函数体内不再管控 `isLoading`,
  *     loading 状态完全由 useEffect 初始化路径显式管控。
+ *   - 初始化 fetch 的 finally 必须检查 cancelled：Strict Mode 卸载不得
+ *     把空 messages 交给 IntlProvider。
  *   - `changeLocale` 仍后台调用 `fetchLocaleMessages` 拉新 messages,
  *     但**不**触发 `<Spin/>` 卸载整页 children —— 这正是"切语言不闪"的关键。
  *
@@ -47,8 +49,10 @@ if (!existsSync(localePath)) {
     );
   }
 
-  // 2. useEffect 初始化路径必须 setIsLoading(true) 打开 loading
-  // 3. useEffect 初始化路径必须 finally 关 setIsLoading
+  // 3. useEffect 初始化路径必须在仍有效的 effect 里关闭 loading。
+  //    不得无条件 .finally(() => setIsLoading(false))：React Strict Mode
+  //    会先卸载再挂载，第一次 fetch 的 finally 若关掉 loading，会把空 messages
+  //    交给 IntlProvider，刷出整页 MISSING_TRANSLATION。
   const initUseEffectRe =
     /useEffect\s*\(\s*\(\s*\)\s*=>\s*\{[\s\S]*?\bsetLocale\s*\(\s*savedLocale\s*\)\s*;[\s\S]*?\}\s*,\s*\[\s*\]\s*\)/m;
   const initUseEffectBlock = src.match(initUseEffectRe);
@@ -56,17 +60,32 @@ if (!existsSync(localePath)) {
     failures.push('[locale.tsx] 找不到含 `setLocale(savedLocale)` 的初始化 useEffect');
   } else {
     const block = initUseEffectBlock[0];
+    if (!/\blet\s+cancelled\s*=\s*false/.test(block)) {
+      failures.push('[locale.tsx] useEffect 初始化路径必须用 cancelled 标记过期的 Strict Mode 卸载');
+    }
     if (!/\bsetIsLoading\s*\(\s*true\s*\)/.test(block)) {
       failures.push('[locale.tsx] useEffect 初始化路径必须 setIsLoading(true)');
     }
     if (
-      !/finally\s*\(\s*\(\s*\)\s*=>\s*setIsLoading\s*\(\s*false\s*\)\s*\)/.test(
+      /finally\s*\(\s*\(\s*\)\s*=>\s*setIsLoading\s*\(\s*false\s*\)\s*\)/.test(
         block,
       )
     ) {
       failures.push(
-        '[locale.tsx] useEffect 初始化路径必须在 fetch 后 .finally(() => setIsLoading(false))',
+        '[locale.tsx] 初始化 fetch 的 finally 不得无条件 setIsLoading(false)',
       );
+    }
+    if (
+      !/finally\s*\(\s*\(\s*\)\s*=>\s*\{[\s\S]*?\bcancelled[\s\S]*?setIsLoading\s*\(\s*false\s*\)/.test(
+        block,
+      )
+    ) {
+      failures.push(
+        '[locale.tsx] useEffect 初始化路径必须在 fetch 后 .finally 且仅当 !cancelled 时 setIsLoading(false)',
+      );
+    }
+    if (!/return\s*\(\s*\)\s*=>\s*\{\s*cancelled\s*=\s*true/.test(block)) {
+      failures.push('[locale.tsx] 初始化 useEffect cleanup 必须 cancelled = true');
     }
   }
 

@@ -28,10 +28,18 @@ export const LocaleProvider = ({ children }: { children: ReactNode }) => {
   );
 
   useEffect(() => {
+    let cancelled = false;
     const savedLocale = getStoredLocale();
     setLocale(savedLocale);
     setIsLoading(true);
-    fetchLocaleMessages(savedLocale).finally(() => setIsLoading(false));
+    fetchLocaleMessages(savedLocale).finally(() => {
+      if (!cancelled) {
+        setIsLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
