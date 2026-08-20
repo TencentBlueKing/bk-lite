@@ -225,6 +225,9 @@ describe('APM 告警指标快照与事件原始数据', { timeout: 15000 }, () =
     expect(screen.getByText('分布图')).not.toBeNull();
     expect(screen.queryByText('自动刷新')).toBeNull();
     expect(screen.queryByText('最近7天')).toBeNull();
+    const severitySummary = screen.getByLabelText('三级告警数量');
+    expect(severitySummary.textContent?.replace(/\s+/g, ' ').trim()).toMatch(/严重 0.*错误 1.*警告 0/);
+    expect(severitySummary.querySelector('.ant-tag')).toBeNull();
     expect(screen.getByText('严重 / 错误 / 警告')).not.toBeNull();
     const distributionSeries = chartRender.mock.calls.find(
       ([props]) => props.series[0]?.name === '严重',
@@ -256,6 +259,9 @@ describe('APM 告警指标快照与事件原始数据', { timeout: 15000 }, () =
       '处置人',
       '操作',
     ]);
+    const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
+      .map((column) => (column as HTMLElement).style.width);
+    expect(columnWidths).toEqual(['96px', '168px', '', '120px', '', '120px', '160px', '160px']);
     expect(screen.getByText('已通知')).not.toBeNull();
     expect(screen.getByText('sre.wang')).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: '当前值' })).toBeNull();

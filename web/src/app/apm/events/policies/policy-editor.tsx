@@ -551,9 +551,8 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
         title={policyId ? '编辑告警策略' : '新建告警策略'}
         description="正在加载 APM 策略编辑器"
         dependency="control"
-        spacing="flush"
       >
-        <ApmSurface className="m-5"><CatalogState kind="loading" /></ApmSurface>
+        <ApmSurface><CatalogState kind="loading" /></ApmSurface>
       </ApmRouteShell>
     );
 
@@ -831,7 +830,6 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       title={policyId ? '编辑告警策略' : '新建告警策略'}
       description="四步完成范围、指标、条件和通知配置；预览直接查询 VictoriaTraces。"
       dependency="control"
-      spacing="flush"
     >
       <Form
         form={form}

@@ -1,6 +1,6 @@
 'use client';
 
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import {
   Button,
   Drawer,
@@ -32,6 +32,7 @@ import type {
   ApmSloInput,
 } from '@/app/apm/types';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import FilterToolbar from '@/components/filter-toolbar';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import { useTranslation } from '@/utils/i18n';
 
@@ -75,29 +76,6 @@ function BudgetProgress({ value }: { value: number | null }) {
   );
 }
 
-function SloColumnHeading({
-  label,
-  hint,
-  align = 'left',
-}: {
-  label: string;
-  hint: string;
-  align?: 'left' | 'center' | 'right';
-}) {
-  const alignmentClass = align === 'right'
-    ? 'items-end text-right'
-    : align === 'center'
-      ? 'items-center text-center'
-      : 'items-start text-left';
-
-  return (
-    <span className={`flex min-w-0 flex-col ${alignmentClass}`}>
-      <span>{label}</span>
-      <span className="text-xs font-normal leading-4 text-[var(--color-text-3)]">{hint}</span>
-    </span>
-  );
-}
-
 function EvaluationTag({ row }: { row: ApmSlo }) {
   const { t } = useTranslation();
   if (!row.is_enabled) return <Tag bordered={false}>{t('apm.slo.disabledTag', '已停用')}</Tag>;
@@ -120,6 +98,7 @@ export default function ApmSloPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
+  const [keyword, setKeyword] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
@@ -171,9 +150,18 @@ export default function ApmSloPage() {
     ...activeServices.flatMap((service) => service.environment_views.map((view) => view.environment).filter(Boolean)),
     ...(editingRow?.environment ? [editingRow.environment] : []),
   ])).sort().map((value) => ({ value, label: value })), [activeServices, editingRow]);
+  const filtered = useMemo(() => {
+    const value = keyword.trim().toLowerCase();
+    if (!value) return rows;
+    return rows.filter((row) => (
+      `${row.name} ${row.service_namespace} ${row.service_name} ${row.environment} ${row.endpoint}`
+        .toLowerCase()
+        .includes(value)
+    ));
+  }, [keyword, rows]);
   const pageRows = useMemo(
-    () => rows.slice((page - 1) * pageSize, page * pageSize),
-    [page, pageSize, rows],
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize],
   );
 
   const closeDrawer = () => {
@@ -262,17 +250,17 @@ export default function ApmSloPage() {
 
   const columns: TableColumnsType<ApmSlo> = [
     {
-      title: <SloColumnHeading hint={t('apm.slo.nameHint', '评估结果')} label={t('apm.slo.name', '名称')} />,
+      title: t('apm.slo.name', '名称'),
       dataIndex: 'name',
       render: (value, row) => (
-        <Space direction="vertical" size={4} className="!flex w-full min-w-0">
-          <EllipsisWithTooltip className="truncate font-semibold text-[var(--color-text-1)]" text={value} />
+        <div className="flex min-w-0 items-center gap-2">
+          <EllipsisWithTooltip className="min-w-0 truncate text-[var(--color-text-1)]" text={value} />
           <EvaluationTag row={row} />
-        </Space>
+        </div>
       ),
     },
     {
-      title: <SloColumnHeading hint={t('apm.slo.targetHint', '服务 · 环境')} label={t('apm.slo.target', '目标对象')} />,
+      title: t('apm.slo.target', '目标对象'),
       responsive: ['md'],
       render: (_, row) => (
         <Space direction="vertical" size={2} className="!flex w-full min-w-0">
@@ -282,30 +270,34 @@ export default function ApmSloPage() {
       ),
     },
     {
-      title: <SloColumnHeading hint={t('apm.slo.sliHint', '计算口径')} label={t('apm.slo.sliType', 'SLI 类型')} />,
+      title: t('apm.slo.sliType', 'SLI 类型'),
       dataIndex: 'sli_type',
       responsive: ['xl'],
       render: (value: ApmSliType, row) => (
-        <Space direction="vertical" size={2} className="!flex w-full min-w-0">
-          <EllipsisWithTooltip className="truncate" text={t(sliI18n[value].id, sliI18n[value].fallback)} />
-          {row.latency_threshold_ms ? <Typography.Text type="secondary" className="!text-xs">{t('apm.slo.thresholdMs', '阈值 {ms} ms', { ms: row.latency_threshold_ms })}</Typography.Text> : null}
-        </Space>
+        <EllipsisWithTooltip
+          className="truncate"
+          text={row.latency_threshold_ms
+            ? `${t(sliI18n[value].id, sliI18n[value].fallback)} · ${t('apm.slo.thresholdMs', '阈值 {ms} ms', { ms: row.latency_threshold_ms })}`
+            : t(sliI18n[value].id, sliI18n[value].fallback)}
+        />
       ),
     },
     {
-      title: <SloColumnHeading align="right" hint={t('apm.slo.objectiveHint', '评估窗口')} label={t('apm.slo.objective', '目标值')} />,
+      title: t('apm.slo.objective', '目标值'),
       width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       align: 'right',
       responsive: ['lg'],
       render: (_, row) => (
-        <Space direction="vertical" size={2} className="!flex w-full !items-end">
-          <span className="tabular-nums">{formatPercentage(row.objective)}</span>
-          <Typography.Text type="secondary" className="!text-xs">{t(windowI18n[row.evaluation_window].id, windowI18n[row.evaluation_window].fallback)}</Typography.Text>
-        </Space>
+        <span className="tabular-nums">
+          {formatPercentage(row.objective)}
+          <span className="ml-1 text-xs text-[var(--color-text-3)]">
+            {t(windowI18n[row.evaluation_window].id, windowI18n[row.evaluation_window].fallback)}
+          </span>
+        </span>
       ),
     },
     {
-      title: <SloColumnHeading align="right" hint={t('apm.slo.currentHint', '达标率')} label={t('apm.slo.current', '当前表现')} />,
+      title: t('apm.slo.current', '当前表现'),
       dataIndex: 'current_rate',
       width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       align: 'right',
@@ -313,14 +305,14 @@ export default function ApmSloPage() {
       render: (value: number | null) => value === null ? '—' : <span className="tabular-nums">{formatPercentage(value)}</span>,
     },
     {
-      title: <SloColumnHeading hint={t('apm.slo.budgetHint', '剩余')} label={t('apm.slo.budget', '错误预算')} />,
+      title: t('apm.slo.budget', '错误预算'),
       dataIndex: 'budget_remaining',
       width: APM_TABLE_COLUMN_WIDTHS.progress,
       responsive: ['xxl'],
       render: (value: number | null) => <BudgetProgress value={value} />,
     },
     {
-      title: <SloColumnHeading align="center" hint={t('apm.slo.enabledHint', '状态')} label={t('apm.slo.enabledCol', '启用')} />,
+      title: t('apm.slo.enabledCol', '启用'),
       dataIndex: 'is_enabled',
       width: APM_TABLE_COLUMN_WIDTHS.status,
       align: 'center',
@@ -395,7 +387,7 @@ export default function ApmSloPage() {
       pagination={{
         current: page,
         pageSize,
-        total: rows.length,
+        total: filtered.length,
         pageSizeOptions: [10, 20, 50, 100],
         showSizeChanger: true,
         onChange: (nextPage, nextPageSize) => {
@@ -416,21 +408,26 @@ export default function ApmSloPage() {
   return (
     <ApmRouteShell dependency="telemetry" description={t('apm.slo.description', '定义服务可靠性目标，跟踪达标率与错误预算。')} title={t('apm.slo.title', 'SLO')}>
       <ApmSurface>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <Typography.Text strong>{t('apm.slo.list', 'SLO 列表')}</Typography.Text>
-              <span className="inline-flex rounded-full border border-[var(--color-border)] bg-[var(--color-fill-1)] px-2 py-0.5 text-xs tabular-nums text-[var(--color-text-3)]">
-                {rows.length} {t('common.items', '项')}
-              </span>
-            </div>
-          </div>
-          <Space>
-            <Button aria-label={t('apm.slo.refresh', '刷新 SLO')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
-            <Button disabled={!services.length} type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreateDrawer}>{t('apm.slo.create', '新建 SLO')}</Button>
-          </Space>
+        <div className="flex flex-col gap-4">
+          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+            <Input
+              allowClear
+              className="min-w-0 flex-1 md:max-w-sm"
+              prefix={<SearchOutlined aria-hidden="true" />}
+              placeholder={t('apm.slo.searchPlaceholder', '搜索名称 / 服务 / 端点')}
+              value={keyword}
+              onChange={(event) => {
+                setKeyword(event.target.value);
+                setPage(1);
+              }}
+            />
+            <Space className="ml-auto" size={8}>
+              <Button aria-label={t('apm.slo.refresh', '刷新 SLO')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
+              <Button disabled={!services.length} type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreateDrawer}>{t('apm.slo.create', '新建 SLO')}</Button>
+            </Space>
+          </FilterToolbar>
+          {content}
         </div>
-        {content}
       </ApmSurface>
       <Drawer
         destroyOnHidden
