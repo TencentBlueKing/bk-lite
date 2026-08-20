@@ -39,7 +39,8 @@ class ReportCanvasReportAdapter:
 
     def build_manifest(self, resource: Report) -> list[dict]:
         return expand_widget_manifest_with_named_option_datasources(
-            expand_widget_manifest_with_topology_overlay(build_report_widget_manifest(resource.view_sets or {}))
+            expand_widget_manifest_with_topology_overlay(build_report_widget_manifest(resource.view_sets or {})),
+            filters=self.load_filters(resource),
         )
 
     def load_filters(self, resource: Report):
@@ -61,7 +62,8 @@ class ReportCanvasReportAdapter:
             "filters": self.load_filters(resource),
             "other": deepcopy(resource.other),
             "widget_manifest": expand_widget_manifest_with_named_option_datasources(
-                expand_widget_manifest_with_topology_overlay(build_report_widget_manifest(view_sets))
+                expand_widget_manifest_with_topology_overlay(build_report_widget_manifest(view_sets)),
+                filters=self.load_filters(resource),
             ),
         }
 

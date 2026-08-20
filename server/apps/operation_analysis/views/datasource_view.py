@@ -270,14 +270,26 @@ def _parse_time_value(value):
     raise ValueError("timeRange 时间必须为带时区的 RFC3339 字符串")
 
 
-def _normalize_time_range(value):
-    now = datetime.now(timezone.utc)
-
+def _relative_time_range_minutes(value):
+    if isinstance(value, bool):
+        return None
     if isinstance(value, (int, float)):
         minutes = int(value)
         if minutes <= 0:
             raise ValueError("timeRange 必须为正整数分钟数")
-        start = now - timedelta(minutes=minutes)
+        return minutes
+    if isinstance(value, dict):
+        select_value = value.get("selectValue")
+        if isinstance(select_value, (int, float)) and not isinstance(select_value, bool) and select_value > 0:
+            return int(select_value)
+    return None
+
+
+def _normalize_time_range(value):
+    now = datetime.now(timezone.utc)
+    relative_minutes = _relative_time_range_minutes(value)
+    if relative_minutes is not None:
+        start = now - timedelta(minutes=relative_minutes)
         return [format_rfc3339_utc(start), format_rfc3339_utc(now)]
 
     if isinstance(value, list) and len(value) == 2:
@@ -1056,14 +1068,6 @@ class DataSourceAPIModelViewSet(AuthViewSet):
 
     @HasPermission("data_source-View")
     def retrieve(self, request, *args, **kwargs):
-        instance = self.get_object()
-        current_team = self._parse_current_team_cookie(request)
-        superuser_can_manage_builtin = bool(getattr(request.user, "is_superuser", False)) and bool(instance.is_build_in)
-        if not can_access_datasource_in_org(instance, current_team) and not superuser_can_manage_builtin:
-            return Response({"detail": "无权访问当前数据源"}, status=status.HTTP_403_FORBIDDEN)
-        if is_builtin_globally_visible(instance) or superuser_can_manage_builtin:
-            serializer = self.get_serializer(instance)
-            return Response(serializer.data)
         return super(DataSourceAPIModelViewSet, self).retrieve(request, *args, **kwargs)
 
     @HasPermission("data_source-View")

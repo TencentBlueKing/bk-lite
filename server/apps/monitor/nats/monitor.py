@@ -42,6 +42,14 @@ from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, Metr
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
+from apps.monitor.services.host_dashboard import (
+    HOST_OBJECT_NAME,
+    HostMetricRangeService,
+    HostResourceSnapshotService,
+    build_host_instance_rows,
+    empty_host_snapshot,
+    validate_range_metric_type,
+)
 from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
 from apps.monitor.services.interface_metrics_query import InterfaceMetricsQueryError, normalize_instance_ids, query_interface_metric_items
 from apps.monitor.services.metrics import Metrics
@@ -1485,18 +1493,119 @@ def get_host_resource_top(metric_type: str, *args, **kwargs):
     authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
     if error:
         return error
-    if not authorized_instances:
+    if "instance_ids" in kwargs:
+        try:
+            requested_ids = _normalize_filter_values(kwargs.get("instance_ids"), "instance_ids")
+        except ValueError as exc:
+            return {"result": False, "data": [], "message": str(exc)}
+        selected_instances = [authorized_instances[item] for item in requested_ids if item in authorized_instances]
+    else:
+        selected_instances = list(authorized_instances.values())
+    if not selected_instances:
         return {"result": True, "data": [], "message": ""}
 
     try:
         rows = HostResourceTopService(vm_api=VictoriaMetricsAPI()).run(
             metric_type,
-            list(authorized_instances.values()),
+            selected_instances,
         )
     except Exception:
         logger.exception("host resource top query failed metric_type=%s", metric_type)
         return {"result": False, "data": [], "message": "主机资源指标查询失败"}
     return {"result": True, "data": rows, "message": ""}
+
+
+@nats_client.register
+def get_host_instance_list(*args, **kwargs):
+    """Return authorized Host monitor instances for ops-analysis filter options."""
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    host_obj = MonitorObject.objects.filter(name=HOST_OBJECT_NAME).first()
+    if host_obj is None:
+        return {"result": True, "data": [], "message": ""}
+    authorized_instances, error = _get_authorized_monitor_instances(
+        user_info,
+        scope_ids,
+        monitor_obj_id=host_obj.id,
+    )
+    if error:
+        return error
+    return {
+        "result": True,
+        "data": build_host_instance_rows(authorized_instances.values()),
+        "message": "",
+    }
+
+
+@nats_client.register
+def get_host_metric_range(*args, **kwargs):
+    """Return one line per selected host for a host dashboard metric."""
+    try:
+        metric_type = validate_range_metric_type(kwargs.get("metric_type"))
+    except ValueError as exc:
+        return {"result": False, "data": {}, "message": str(exc)}
+    try:
+        instance_ids = _normalize_filter_values(kwargs.get("instance_ids"), "instance_ids")
+    except ValueError as exc:
+        return {"result": False, "data": {}, "message": str(exc)}
+    if not instance_ids:
+        return {"result": True, "data": {}, "message": ""}
+
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if error:
+        return error
+    selected_instances = [authorized_instances[item] for item in instance_ids if item in authorized_instances]
+    if not selected_instances:
+        return {"result": True, "data": {}, "message": ""}
+
+    try:
+        data = HostMetricRangeService(vm_api=VictoriaMetricsAPI()).run(
+            metric_type=metric_type,
+            time_range=kwargs.get("time"),
+            instances=selected_instances,
+            step=kwargs.get("step") or "5m",
+        )
+    except ValueError as exc:
+        return {"result": False, "data": {}, "message": str(exc)}
+    except Exception:
+        logger.exception("host metric range query failed metric_type=%s", metric_type)
+        return {"result": False, "data": {}, "message": "主机指标查询失败"}
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def get_host_resource_snapshot(*args, **kwargs):
+    """Return avg/max resource snapshot for selected authorized hosts."""
+    try:
+        instance_ids = _normalize_filter_values(kwargs.get("instance_ids"), "instance_ids")
+    except ValueError as exc:
+        return {"result": False, "data": empty_host_snapshot(), "message": str(exc)}
+    if not instance_ids:
+        return {"result": True, "data": empty_host_snapshot(), "message": ""}
+
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if error:
+        return error
+    selected_instances = [authorized_instances[item] for item in instance_ids if item in authorized_instances]
+    if not selected_instances:
+        return {"result": True, "data": empty_host_snapshot(), "message": ""}
+
+    try:
+        snapshot = HostResourceSnapshotService(vm_api=VictoriaMetricsAPI()).run(selected_instances)
+    except Exception:
+        logger.exception("host resource snapshot query failed")
+        return {"result": False, "data": empty_host_snapshot(), "message": "主机资源快照查询失败"}
+    return {"result": True, "data": snapshot, "message": ""}
 
 
 @nats_client.register

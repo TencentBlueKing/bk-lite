@@ -8,7 +8,6 @@ from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.core.utils.open_base import login_exempt
-from apps.operation_analysis.common.datasource_visibility import can_access_datasource_in_org
 from apps.operation_analysis.constants.canvas_refresh import normalize_canvas_refresh_interval
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.serializers.share_serializers import (
@@ -16,6 +15,10 @@ from apps.operation_analysis.serializers.share_serializers import (
     ShareNetworkTopologyLinkRuntimeSerializer,
     ShareNetworkTopologyMetricValuesSerializer,
     SharePrepareSerializer,
+)
+from apps.operation_analysis.services.named_option_datasources import (
+    collect_named_option_datasource_ids,
+    collect_named_option_datasource_ids_from_filters,
 )
 from apps.operation_analysis.services.network_status_topology_overlay import (
     collect_network_status_topology_overlay_datasource_ids,
@@ -37,6 +40,7 @@ from apps.operation_analysis.services.share_service import (
     ShareLinkInvalid,
     ShareQueryParamsDenied,
     ShareRateLimited,
+    _resource_filter_definitions,
     exchange_share,
     filter_share_query_params,
     prepare_share_exchange,
@@ -68,10 +72,13 @@ def _walk_data_source_ids(value):
     return found
 
 
-def _canvas_data_source_ids(value):
-    found = _walk_data_source_ids(value)
-    if view_sets_has_network_status_topology(value):
+def _canvas_data_source_ids(resource):
+    view_sets = getattr(resource, "view_sets", None)
+    found = _walk_data_source_ids(view_sets)
+    if view_sets_has_network_status_topology(view_sets):
         found.update(collect_network_status_topology_overlay_datasource_ids())
+    found.update(collect_named_option_datasource_ids(found))
+    found.update(collect_named_option_datasource_ids_from_filters(_resource_filter_definitions(resource)))
     return found
 
 
@@ -259,7 +266,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             )
             return Response({"detail": "当前画布不支持数据源查询"}, status=status.HTTP_403_FORBIDDEN)
 
-        if int(data_source_id) not in _canvas_data_source_ids(getattr(principal.resource, "view_sets", None)):
+        if int(data_source_id) not in _canvas_data_source_ids(principal.resource):
             log_share_access(
                 request,
                 action="query",
@@ -319,11 +326,11 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         if principal.resource_type not in SHARE_DATASOURCE_RESOURCE_TYPES:
             return Response([])
 
-        allowed_ids = _canvas_data_source_ids(getattr(principal.resource, "view_sets", None))
+        allowed_ids = _canvas_data_source_ids(principal.resource)
         data_sources = [
             item
             for item in DataSourceAPIModel.objects.filter(id__in=allowed_ids).prefetch_related("namespaces", "tag")
-            if can_access_datasource_in_org(item, principal.space_id)
+            if principal.space_id in (item.groups or [])
         ]
         log_share_access(
             request,

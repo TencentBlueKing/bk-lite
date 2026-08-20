@@ -279,6 +279,38 @@ def test_extract_canvas_dependencies_empty():
 
 
 @pytest.mark.django_db
+def test_extract_canvas_dependencies_includes_filter_option_datasource():
+    option = DataSourceAPIModel.objects.create(
+        name="监控主机列表",
+        rest_api="monitor/get_host_instance_list",
+        is_build_in=True,
+        created_by="s",
+        updated_by="s",
+    )
+    filters = [
+        {
+            "id": "instance_ids__stringList",
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "monitor/get_host_instance_list"},
+                    "valueField": "instance_id",
+                    "labelField": "display_name",
+                },
+            },
+        }
+    ]
+    ds_ids, ns_ids = ExportService.extract_canvas_dependencies(
+        [{"valueConfig": {"dataSource": 8}}],
+        ObjectType.DASHBOARD,
+        filters=filters,
+    )
+    assert ds_ids == {8, option.id}
+    assert ns_ids == set()
+
+
+@pytest.mark.django_db
 def test_extract_canvas_dependencies_includes_topology_overlay_without_datasource():
     from apps.operation_analysis.services.network_status_topology_overlay import NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
 

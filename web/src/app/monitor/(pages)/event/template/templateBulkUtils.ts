@@ -20,6 +20,12 @@ export interface PolicyTemplateItem {
   plugin_name?: string;
   template_type?: 'builtin' | 'custom';
   deletable?: boolean;
+  threshold_unit?: string;
+  calculation_unit?: string;
+  metric_unit?: string;
+  trigger_count?: number;
+  group_algorithm?: string;
+  algorithm?: string;
   [key: string]: unknown;
 }
 
@@ -375,16 +381,16 @@ export const buildAssetScopeLabel = (
   if (assetNames.length <= 3) {
     return t
       ? t('monitor.events.coverInstances', '覆盖 {count} 个实例：{names}', {
-          count: assetNames.length,
-          names: previewNames,
-        })
+        count: assetNames.length,
+        names: previewNames,
+      })
       : `覆盖 ${assetNames.length} 个实例：${assetNames.join('、')}`;
   }
   return t
     ? t('monitor.events.coverInstancesMore', '覆盖 {count} 个实例：{names} 等', {
-        count: assetNames.length,
-        names: previewNames,
-      })
+      count: assetNames.length,
+      names: previewNames,
+    })
     : `覆盖 ${assetNames.length} 个实例：${previewNames} 等`;
 };
 
@@ -497,7 +503,7 @@ export const getAssetOrganizationText = (
       if (typeof item === 'object' && item !== null) {
         return item.name || item.label;
       }
-      return findOrganizationLabel(organizations, item) || String(item);
+      return findOrganizationLabel(organizations, item as string | number) || String(item);
     })
     .filter(Boolean);
   return labels.length ? labels.join(',') : '--';

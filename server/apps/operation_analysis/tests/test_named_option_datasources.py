@@ -131,3 +131,89 @@ def test_expand_widget_manifest_appends_named_option_identity():
             "datasource_id": 42,
         },
     ]
+
+
+def test_collect_named_option_ids_from_canvas_filters():
+    DataSourceAPIModel.objects.create(
+        id=42,
+        name="监控主机列表",
+        rest_api="monitor/get_host_instance_list",
+        is_build_in=True,
+    )
+    DataSourceAPIModel.objects.create(
+        id=9,
+        name="命名空间选项",
+        rest_api="system/namespaces",
+    )
+
+    from apps.operation_analysis.services.named_option_datasources import collect_named_option_datasource_ids_from_filters
+
+    filters = [
+        {
+            "id": "instance_ids__stringList",
+            "key": "instance_ids",
+            "type": "stringList",
+            "inputConfig": {
+                "control": "select",
+                "multiple": True,
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "monitor/get_host_instance_list"},
+                    "valueField": "instance_id",
+                    "labelField": "display_name",
+                },
+            },
+        },
+        {
+            "id": "ns__string",
+            "key": "namespace",
+            "type": "string",
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceId": 9,
+                    "valueField": "id",
+                    "labelField": "name",
+                },
+            },
+        },
+    ]
+
+    assert collect_named_option_datasource_ids_from_filters(filters) == {9, 42}
+
+
+def test_expand_widget_manifest_appends_filter_option_identity():
+    DataSourceAPIModel.objects.create(
+        id=42,
+        name="监控主机列表",
+        rest_api="monitor/get_host_instance_list",
+        is_build_in=True,
+    )
+    manifest = [
+        {
+            "widget_id": "cpu-1",
+            "widget_type": "line",
+            "datasource_id": 17,
+        }
+    ]
+    filters = [
+        {
+            "id": "instance_ids__stringList",
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "monitor/get_host_instance_list"},
+                    "valueField": "instance_id",
+                    "labelField": "display_name",
+                },
+            },
+        }
+    ]
+    expanded = expand_widget_manifest_with_named_option_datasources(manifest, filters=filters)
+    assert expanded[-1] == {
+        "widget_id": "__unified_filter__",
+        "widget_type": "unifiedFilter",
+        "datasource_id": 42,
+    }

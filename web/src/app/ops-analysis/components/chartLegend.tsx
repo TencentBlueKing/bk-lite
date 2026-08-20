@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { resolveOpsChartThemeName } from '@/app/ops-analysis/utils/chartTheme';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { shouldEmitLegendReset } from '@/components/chart-legend/selection';
+
+const VERTICAL_LEGEND_WIDTH_PX = 120;
 
 interface LegendItem {
   name: string;
@@ -99,7 +102,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
         {legendData.map((item, index) => (
           <div
             key={`${item.name}-${index}`}
-            className="flex cursor-pointer select-none items-center"
+            className="flex min-w-0 cursor-pointer select-none items-center"
             onClick={() => handleClick(item.name)}
             style={{ gap: 6 * scale, opacity: isActive(item.name) ? 1 : 0.4 }}
           >
@@ -112,10 +115,13 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
               }}
             />
             <span
-              className="text-[var(--color-text-2)]"
+              className="min-w-0 max-w-40"
               style={{ color: textColor, fontSize: 12 * scale }}
             >
-              {item.name}
+              <EllipsisWithTooltip
+                className="overflow-hidden text-ellipsis whitespace-nowrap text-[var(--color-text-2)]"
+                text={item.name}
+              />
             </span>
           </div>
         ))}
@@ -126,11 +132,11 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   // vertical layout (right side)
   return (
     <div
-      className="flex h-full w-max shrink-0 items-center"
-      style={{ maxWidth: `min(48%, ${360 * scale}px)` }}
+      className="flex h-full shrink-0 min-w-0 items-center"
+      style={{ width: VERTICAL_LEGEND_WIDTH_PX * scale }}
     >
       <div
-        className="max-h-full max-w-full overflow-y-auto"
+        className="max-h-full w-full min-w-0 overflow-y-auto"
         style={{
           paddingBottom: 4 * scale,
           paddingTop: 4 * scale,
@@ -140,11 +146,12 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
           const percent = showPercent && total > 0
             ? ((item.value || 0) / total * 100).toFixed(1)
             : null;
+          const label = percent != null ? `${item.name} (${percent}%)` : item.name;
 
           return (
             <div
               key={`${item.name}-${index}`}
-              className="flex cursor-pointer select-none items-center rounded transition-colors hover:bg-[var(--color-fill-2)]"
+              className="flex w-full min-w-0 cursor-pointer select-none items-center rounded transition-colors hover:bg-[var(--color-fill-2)]"
               onClick={() => handleClick(item.name)}
               style={{
                 gap: 8 * scale,
@@ -161,14 +168,13 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                 }}
               />
               <span
-                className="inline-block whitespace-nowrap text-[var(--color-text-2)]"
-                style={{
-                  color: textColor,
-                  fontSize: 12 * scale,
-                }}
+                className="min-w-0 flex-1"
+                style={{ color: textColor, fontSize: 12 * scale }}
               >
-                {item.name}
-                {percent != null && ` (${percent}%)`}
+                <EllipsisWithTooltip
+                  className="overflow-hidden text-ellipsis whitespace-nowrap text-[var(--color-text-2)]"
+                  text={label}
+                />
               </span>
             </div>
           );

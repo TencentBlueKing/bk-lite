@@ -6,7 +6,7 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/components/ops-analysis-widgets';
 
-export type BindableParamType = 'string' | 'timeRange';
+export type BindableParamType = 'string' | 'stringList' | 'timeRange';
 export type UnifiedFilterInputMode =
   | 'input'
   | 'select'
@@ -61,12 +61,32 @@ export const sanitizeUnifiedFilterDefinition = <
   }
 
   const options = Array.isArray(definition.options) ? definition.options : [];
-  const optionValues = options.map((item) => item.value);
-  const defaultValue =
-    typeof definition.defaultValue === 'string' &&
-    optionValues.includes(definition.defaultValue)
+  const optionValues: Array<string | number> = options.map((item) => item.value);
+  const defaultValue = (() => {
+    if (definition.type === 'stringList') {
+      const asList = Array.isArray(definition.defaultValue)
+        ? definition.defaultValue.filter(
+          (item): item is string | number =>
+            typeof item === 'string' || typeof item === 'number',
+        )
+        : typeof definition.defaultValue === 'string' ||
+            typeof definition.defaultValue === 'number'
+          ? [definition.defaultValue]
+          : null;
+      if (!Array.isArray(asList)) {
+        return asList;
+      }
+      if (!options.length) {
+        return asList;
+      }
+      const allowed = asList.filter((item) => optionValues.includes(item));
+      return allowed.length === asList.length ? asList : allowed.length ? allowed : null;
+    }
+    return typeof definition.defaultValue === 'string' &&
+      optionValues.includes(definition.defaultValue)
       ? definition.defaultValue
       : null;
+  })();
 
   return {
     ...definition,
@@ -87,7 +107,7 @@ export const getBindableFilterParams = (
   (Array.isArray(params) ? params : []).filter(
     (param): param is ParamItem & { type: BindableParamType } =>
       param.filterType === 'filter' &&
-      (param.type === 'string' || param.type === 'timeRange'),
+      (param.type === 'string' || param.type === 'stringList' || param.type === 'timeRange'),
   );
 
 export const buildDefaultFilterBindings = (

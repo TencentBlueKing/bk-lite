@@ -6,12 +6,13 @@ import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/d
 import { useParamInputOptions } from '@/app/ops-analysis/hooks/useParamInputOptions';
 import { createParamInputOptionsNotifier } from '@/app/ops-analysis/utils/paramInputOptionsLoader';
 import { normalizeParamInputChangeValue } from '@/app/ops-analysis/components/normalizeParamInputChangeValue';
+import ParamInputTableSelect from '@/app/ops-analysis/components/paramInputTableSelect';
 
 interface ParamInputControlProps {
   inputConfig?: InputControlConfig;
   fallback: React.ReactNode;
-  value?: string | number;
-  onChange?: (value: string | number | null) => void;
+  value?: string | number | Array<string | number>;
+  onChange?: (value: string | number | Array<string | number> | null) => void;
   disabled?: boolean;
   placeholder?: string;
   allowClear?: boolean;
@@ -69,6 +70,38 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
         optionType="button"
         buttonStyle="outline"
         onChange={(event) => onChange?.(event.target.value ?? null)}
+      />
+    );
+  }
+
+  if (inputConfig.control === 'select') {
+    const isMultiple = Boolean(inputConfig.multiple);
+    if (inputConfig.picker === 'table') {
+      return (
+        <ParamInputTableSelect
+          options={options}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          placeholder={placeholder}
+          allowClear={allowClear}
+          multiple={isMultiple}
+          maxCount={isMultiple ? inputConfig.maxCount : undefined}
+          style={style}
+        />
+      );
+    }
+    return (
+      <Select
+        value={value}
+        disabled={disabled}
+        placeholder={placeholder}
+        allowClear={allowClear}
+        mode={inputConfig.multiple ? 'multiple' : undefined}
+        maxCount={isMultiple ? inputConfig.maxCount : undefined}
+        style={{ width: '100%', ...style }}
+        options={options}
+        onChange={(nextValue) => onChange?.(nextValue ?? null)}
       />
     );
   }
