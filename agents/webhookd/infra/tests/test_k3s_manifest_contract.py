@@ -2,7 +2,6 @@ from pathlib import Path
 
 import yaml
 
-
 MANIFEST_PATH = Path(__file__).resolve().parents[2] / "bk-lite-k3s-metric-collector.yaml"
 NAMESPACE = "bk-lite-k3s-collector"
 KSM_METRICS = {
@@ -31,11 +30,7 @@ def _load_documents():
 
 
 def _find_document(documents, kind, name):
-    return next(
-        document
-        for document in documents
-        if document["kind"] == kind and document["metadata"]["name"] == name
-    )
+    return next(document for document in documents if document["kind"] == kind and document["metadata"]["name"] == name)
 
 
 def test_k3s_manifest_is_independent_and_does_not_deploy_docker_cadvisor():
@@ -106,16 +101,10 @@ def test_cadvisor_scrape_keeps_only_the_six_monitoring_metric_families():
     documents = _load_documents()
     config_map = _find_document(documents, "ConfigMap", "k3s-vmagent-config")
     prometheus_config = yaml.safe_load(config_map["data"]["prometheus.yml"])
-    cadvisor_job = next(
-        job
-        for job in prometheus_config["scrape_configs"]
-        if job["job_name"] == "k3s-kubelet-cadvisor"
-    )
+    cadvisor_job = next(job for job in prometheus_config["scrape_configs"] if job["job_name"] == "k3s-kubelet-cadvisor")
 
     keep_rules = [
-        rule
-        for rule in cadvisor_job["metric_relabel_configs"]
-        if rule.get("action") == "keep" and rule.get("source_labels") == ["__name__"]
+        rule for rule in cadvisor_job["metric_relabel_configs"] if rule.get("action") == "keep" and rule.get("source_labels") == ["__name__"]
     ]
     assert keep_rules == [
         {
@@ -177,17 +166,9 @@ def test_kube_state_metrics_is_k3s_owned_and_exposes_the_dashboard_contract():
 
     config_map = _find_document(documents, "ConfigMap", "k3s-vmagent-config")
     prometheus_config = yaml.safe_load(config_map["data"]["prometheus.yml"])
-    ksm_job = next(
-        job
-        for job in prometheus_config["scrape_configs"]
-        if job["job_name"] == "k3s-kube-state-metrics"
-    )
+    ksm_job = next(job for job in prometheus_config["scrape_configs"] if job["job_name"] == "k3s-kube-state-metrics")
     assert ksm_job["static_configs"] == [{"targets": ["k3s-kube-state-metrics:8080"]}]
-    keep_rule = next(
-        rule
-        for rule in ksm_job["metric_relabel_configs"]
-        if rule.get("action") == "keep"
-    )
+    keep_rule = next(rule for rule in ksm_job["metric_relabel_configs"] if rule.get("action") == "keep")
     assert set(keep_rule["regex"].split("|")) == KSM_METRICS
 
 
@@ -226,9 +207,7 @@ def test_telegraf_receives_remote_write_and_reports_node_metrics_to_nats():
 
     metric_pod_spec = metric_deployment["spec"]["template"]["spec"]
     assert metric_deployment["spec"]["replicas"] == 1
-    assert metric_pod_spec["containers"][0]["ports"] == [
-        {"name": "remote-write", "containerPort": 9090}
-    ]
+    assert metric_pod_spec["containers"][0]["ports"] == [{"name": "remote-write", "containerPort": 9090}]
 
     node_pod_spec = node_daemonset["spec"]["template"]["spec"]
     node_container = node_pod_spec["containers"][0]
@@ -236,9 +215,7 @@ def test_telegraf_receives_remote_write_and_reports_node_metrics_to_nats():
     assert env["HOST_PROC"] == "/hostfs/proc"
     assert env["HOST_SYS"] == "/hostfs/sys"
     assert env["HOST_ETC"] == "/hostfs/etc"
-    host_mount = next(
-        mount for mount in node_container["volumeMounts"] if mount["name"] == "host-root"
-    )
+    host_mount = next(mount for mount in node_container["volumeMounts"] if mount["name"] == "host-root")
     assert host_mount["mountPath"] == "/hostfs"
     assert host_mount["readOnly"] is True
 
@@ -285,3 +262,13 @@ def test_vmagent_writes_remote_queue_only_to_the_bounded_tmp_volume():
         "name": "tmp",
         "emptyDir": {"sizeLimit": "256Mi"},
     } in pod_spec["volumes"]
+
+
+def test_workloads_tolerate_control_plane_noschedule():
+    expected = {"operator": "Exists", "effect": "NoSchedule"}
+    documents = _load_documents()
+    workloads = [document for document in documents if document["kind"] in ("Deployment", "DaemonSet")]
+    assert workloads
+    for document in workloads:
+        tolerations = document["spec"]["template"]["spec"].get("tolerations") or []
+        assert expected in tolerations, f"{document['kind']} `{document['metadata']['name']}` 缺少 operator=Exists " "effect=NoSchedule，无法调度到控制平面污点节点"

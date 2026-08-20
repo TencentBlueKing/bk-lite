@@ -20,6 +20,10 @@ spec:
         bklite.io/log-collect-config: "__LOG_COLLECT_CONFIG_HASH__"
     spec:
       serviceAccount: vector-daemonset
+      # 控制平面默认 NoSchedule；不上这台节点则该节点日志采不到
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
       containers:
         - name: vector
           image: __IMAGE_REGISTRY_PREFIX__/vector:0.39.0-debian
