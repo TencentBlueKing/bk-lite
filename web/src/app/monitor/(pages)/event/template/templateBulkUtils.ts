@@ -31,12 +31,6 @@ export interface PolicyTemplateItem {
   plugin_name?: string;
   template_type?: 'builtin' | 'custom';
   deletable?: boolean;
-  threshold_unit?: string;
-  calculation_unit?: string;
-  metric_unit?: string;
-  trigger_count?: number;
-  group_algorithm?: string;
-  algorithm?: string;
   [key: string]: unknown;
 }
 
