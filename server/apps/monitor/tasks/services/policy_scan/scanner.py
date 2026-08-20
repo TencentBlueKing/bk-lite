@@ -14,6 +14,11 @@ from apps.monitor.tasks.services.policy_scan.event_alert_manager import (
     EventAlertManager,
 )
 from apps.monitor.tasks.services.policy_scan.snapshot_recorder import SnapshotRecorder
+from apps.monitor.utils.alert_name_variables import (
+    field_label_map,
+    load_display_variable_map,
+    resolve_resource_ip,
+)
 from apps.monitor.utils.dimension import (
     normalize_instance_identity,
     parse_instance_id,
@@ -26,8 +31,15 @@ class MonitorPolicyScan:
 
     def __init__(self, policy):
         self.policy = policy
-        self.instances_map = self._build_instances_map()
+        self.instances_map, self.resource_ip_map = self._build_instances_map()
         self.parent_instances_map = self._build_parent_instances_map()
+        self.display_variable_map = load_display_variable_map(
+            self.policy.monitor_object,
+            list(self.instances_map.keys()),
+        )
+        self.display_field_label_map = field_label_map(
+            getattr(self.policy.monitor_object, "display_fields", None)
+        )
         self.baselines_map = self._build_baselines_map()
         self.active_alerts = self._get_active_alerts()
 
@@ -39,6 +51,9 @@ class MonitorPolicyScan:
             self.active_alerts,
             self.metric_query_service,
             parent_instances_map=self.parent_instances_map,
+            resource_ip_map=self.resource_ip_map,
+            display_variable_map=self.display_variable_map,
+            display_field_label_map=self.display_field_label_map,
         )
         self.event_alert_manager = EventAlertManager(policy, self.instances_map, self.active_alerts)
         self.snapshot_recorder = SnapshotRecorder(policy, self.instances_map, self.active_alerts, self.metric_query_service)
@@ -53,7 +68,7 @@ class MonitorPolicyScan:
     def _build_instances_map(self):
         """构建策略适用的实例映射: {monitor_instance_id: monitor_instance_name}"""
         if not self.policy.source:
-            return {}
+            return {}, {}
 
         source_type = self.policy.source["type"]
         source_values = self.policy.source["values"]
@@ -64,8 +79,15 @@ class MonitorPolicyScan:
             monitor_object_id=self.policy.monitor_object_id,
             id__in=instance_list,
             is_deleted=False,
-        )
-        return {instance.id: instance.name for instance in instances}
+        ).only("id", "name", "ip", "summary_facts")
+        instances_map = {}
+        resource_ip_map = {}
+        for instance in instances:
+            instances_map[instance.id] = instance.name
+            resource_ip_map[instance.id] = resolve_resource_ip(
+                instance.summary_facts, instance.ip
+            )
+        return instances_map, resource_ip_map
 
     def _build_parent_instances_map(self):
         """构建子对象所属父实例映射，供告警模板展示父对象身份。"""
