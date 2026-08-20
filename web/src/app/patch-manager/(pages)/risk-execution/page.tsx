@@ -644,7 +644,12 @@ export default function RiskExecutionPage() {
           <Input.Search placeholder={t('patchManager.execution.riskSearch')} value={riskSearch} onChange={(event) => setRiskSearch(event.target.value)} className="mb-3" />
           {filteredRiskItems.length ? filteredRiskItems.map((item) => {
             const selected = item.id === selectedRiskId;
-            return <div key={item.id} onClick={() => handleSelectRisk(item.id)} style={{ padding: '10px 12px', marginBottom: 8, cursor: 'pointer', borderRadius: 7, border: '1px solid var(--color-border-1, #e8e8e8)', borderLeft: `3px solid ${STEP_BORDER[item.status] || '#d9d9d9'}`, background: selected ? 'var(--color-fill-1, #f4f6f9)' : 'var(--color-bg-1, #fff)' }}>
+            return <div
+              key={item.id}
+              onClick={() => handleSelectRisk(item.id)}
+              className={`mb-2 cursor-pointer rounded-[7px] border border-[var(--color-border-1)] border-l-[3px] px-3 py-2.5 ${selected ? 'bg-[var(--color-fill-1)]' : 'bg-[var(--color-bg-1)]'}`}
+              style={{ borderLeftColor: STEP_BORDER[item.status] || 'var(--color-border-1)' }}
+            >
               <EllipsisWithTooltip
                 className="overflow-hidden text-ellipsis whitespace-nowrap font-medium"
                 text={`${item.host_name || ''}-${item.patch_name || t('patchManager.risk.patch')}`}
@@ -685,13 +690,30 @@ export default function RiskExecutionPage() {
               </div>
               {riskDetail.can_retry && <PermissionWrapper requiredPermissions={['Edit']} instPermissions={detailTask?.permission}><Button type="link" size="small" onClick={handleRetry}>{t('patchManager.execution.retry')}</Button></PermissionWrapper>}
             </div>
-            {(riskDetail.steps || []).map((step: any, stepIndex: number) => <div key={step.key} style={{ position: 'relative', paddingLeft: 28, paddingBottom: stepIndex === riskDetail.steps.length - 1 ? 0 : 18 }}>
-              {stepIndex < riskDetail.steps.length - 1 && <div style={{ position: 'absolute', left: 9, top: 20, bottom: -2, width: 2, background: STEP_BORDER[step.status] || '#d9d9d9' }} />}
-              <div style={{ position: 'absolute', left: 0, top: 2, width: 20, height: 20, borderRadius: '50%', background: STEP_BORDER[step.status] || '#d9d9d9', color: '#fff', textAlign: 'center', lineHeight: '20px', fontSize: 12 }}>{stepIndex + 1}</div>
+            {(riskDetail.steps || []).map((step: any, stepIndex: number) => <div key={step.key} className={`relative pl-7 ${stepIndex === riskDetail.steps.length - 1 ? 'pb-0' : 'pb-[18px]'}`}>
+              {stepIndex < riskDetail.steps.length - 1 && (
+                <div
+                  className="absolute bottom-[-2px] left-[9px] top-5 w-0.5"
+                  style={{ background: STEP_BORDER[step.status] || 'var(--color-border-1)' }}
+                />
+              )}
+              <div
+                className="absolute left-0 top-0.5 flex h-5 w-5 items-center justify-center rounded-full text-xs leading-5 text-[var(--color-text-1)]"
+                style={{
+                  background: STEP_BORDER[step.status] || 'var(--color-border-1)',
+                  color: 'var(--color-bg-1)',
+                }}
+              >
+                {stepIndex + 1}
+              </div>
               <div className="mb-2 flex items-center gap-2"><strong>{t(`patchManager.execution.steps.${step.key}`, step.name)}</strong><Tag color={step.status_color}>{t(`patchManager.execution.statuses.${step.status}`, step.status_display)}</Tag></div>
               <div className="grid gap-2">
                 {(step.attempts?.length ? step.attempts : [{ id: `${step.key}-empty`, status: step.status, status_display: step.status_display, status_color: step.status_color, reason: step.reason, log: '' }]).map((attempt: any, attemptIndex: number) => {
-                  return <div key={attempt.id} style={{ borderLeft: `3px solid ${STEP_BORDER[attempt.status] || '#d9d9d9'}`, background: 'var(--color-fill-1, #f4f6f9)', borderRadius: 6, padding: '10px 12px' }}>
+                  return <div
+                    key={attempt.id}
+                    className="rounded-md bg-[var(--color-fill-1)] px-3 py-2.5 border-l-[3px]"
+                    style={{ borderLeftColor: STEP_BORDER[attempt.status] || 'var(--color-border-1)' }}
+                  >
                     <div className="flex justify-between gap-3">
                       <span>{step.attempts?.length > 1 ? t('patchManager.execution.attempt', undefined, { count: attemptIndex + 1 }) : t(`patchManager.execution.steps.${step.key}`, step.name)}</span>
                       <span className="text-[var(--color-text-3)]">{formatDateTime(attempt.started_at)}{attempt.finished_at ? ` ～ ${formatDateTime(attempt.finished_at)}` : ''}</span>

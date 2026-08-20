@@ -16,9 +16,10 @@ from apps.opspilot.models import LLMSkill, SkillChannel, SkillConversation, Skil
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
 from apps.opspilot.services.skill_channel_service import channel_allows_team, resolve_ops_pilot_guest_id
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
+from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.prompt_utils import merge_skill_params
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
-from apps.opspilot.utils.sse_chat import create_error_stream_response, stream_chat
+from apps.opspilot.utils.sse_chat import create_error_stream_response
 
 
 class SkillChannelChatError(Exception):
@@ -201,13 +202,98 @@ def build_skill_chat_params(skill: LLMSkill, user_message: str, request_user, ex
     return params
 
 
+def parse_sse_json_payloads(text: str) -> list[dict]:
+    """从 SSE 分片中解析 data: JSON 行。"""
+    events = []
+    for line in text.splitlines():
+        if not line.startswith("data: "):
+            continue
+        payload = line[6:].strip()
+        if not payload or payload == "[DONE]":
+            continue
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            events.append(data)
+    return events
+
+
+def assemble_assistant_persist_content(events: list[dict]) -> str:
+    """助手落库：有 AG-UI type 时存事件数组，供前端分步回放；否则拼 OpenAI 正文。"""
+    typed = [item for item in events if item.get("type")]
+    if typed:
+        return json.dumps(typed, ensure_ascii=False)
+    parts = []
+    for data in events:
+        delta = (((data.get("choices") or [{}])[0]).get("delta") or {}).get("content")
+        if delta:
+            parts.append(str(delta))
+        elif data.get("content") and "choices" not in data:
+            parts.append(str(data["content"]))
+    return "".join(parts).strip()
+
+
+def _looks_like_planned_execution_delta(delta: str) -> bool:
+    """TEXT_MESSAGE_CONTENT 误带规划 JSON 时不当成可见正文。"""
+    stripped = (delta or "").strip()
+    if not stripped.startswith("{"):
+        return False
+    try:
+        payload = json.loads(stripped)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    phase = payload.get("phase")
+    return phase in {"planning", "planned", "replanning", "idle", "start", "end"}
+
+
+def visible_assistant_text(content: str) -> str:
+    """给模型的上下文只用可见正文，丢掉计划/工具等 AG-UI 事件。"""
+    if not content:
+        return ""
+    stripped = content.strip()
+    if not stripped.startswith("["):
+        return content
+    try:
+        events = json.loads(stripped)
+    except json.JSONDecodeError:
+        return content
+    if not (isinstance(events, list) and events and isinstance(events[0], dict) and events[0].get("type")):
+        return content
+    parts = []
+    for event in events:
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") != "TEXT_MESSAGE_CONTENT":
+            continue
+        delta = event.get("delta") or ""
+        if delta and _looks_like_planned_execution_delta(str(delta)):
+            continue
+        if delta:
+            parts.append(str(delta))
+    return "".join(parts).strip()
+
+
 def _history_from_conversation(conversation: SkillConversation, window: int) -> list[dict]:
+    """从落库会话取出上下文，转成 chat_service 使用的 {event, message}。
+
+    当前用户话已作为 user_message 单独传入，最后一条 user 不重复进历史。
+    助手 AG-UI 事件数组会先抽成可见正文，避免计划/工具日志进入模型上下文。
+    """
     qs = conversation.messages.order_by("-created_at", "-id")[: max(window, 0) * 2]
     items = list(reversed(list(qs)))
-    history = []
+    if items and items[-1].role == SkillConversationMessage.ROLE_USER:
+        items = items[:-1]
+    raw = []
     for msg in items:
-        history.append({"role": msg.role if msg.role != "assistant" else "assistant", "content": msg.content})
-    return history
+        content = msg.content
+        if msg.role == SkillConversationMessage.ROLE_ASSISTANT:
+            content = visible_assistant_text(content)
+        raw.append({"role": msg.role, "content": content})
+    return normalize_client_chat_history(raw)
 
 
 def normalize_client_chat_history(raw) -> list[dict]:
@@ -305,6 +391,7 @@ def stream_skill_channel_chat(
     user = identity_user or request.user
     params = build_skill_chat_params(skill, user_message, user)
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
+    params["browser_use_force_task"] = True
     try:
         params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, user)
     except CallerIdentityError as e:
@@ -316,7 +403,7 @@ def stream_skill_channel_chat(
     else:
         current_ip = request.META.get("REMOTE_ADDR", "")
 
-    base_response = stream_chat(params, skill.name, {}, current_ip, user_message)
+    base_response = stream_agui_chat(params, skill.name, {}, current_ip, user_message, skill_id=skill.id)
     return _wrap_stream_persist_assistant(base_response, conversation.id)
 
 
@@ -331,33 +418,19 @@ async def _aiter_stream(iterable):
 
 
 def _wrap_stream_persist_assistant(response: StreamingHttpResponse, conversation_id: int) -> StreamingHttpResponse:
-    """包装 SSE：尽量从 delta 拼出助手回复并落库。失败不影响流式输出。"""
+    """包装 SSE：落库 AG-UI 事件数组（或 OpenAI 正文）。失败不影响流式输出。"""
 
     original = response.streaming_content
 
     async def generator():
-        chunks: list[str] = []
+        events: list[dict] = []
         try:
             async for piece in _aiter_stream(original):
                 text = piece.decode("utf-8") if isinstance(piece, (bytes, bytearray)) else str(piece)
                 yield piece
-                for line in text.splitlines():
-                    if not line.startswith("data: "):
-                        continue
-                    payload = line[6:].strip()
-                    if payload == "[DONE]":
-                        continue
-                    try:
-                        data = json.loads(payload)
-                    except json.JSONDecodeError:
-                        continue
-                    delta = (((data.get("choices") or [{}])[0]).get("delta") or {}).get("content")
-                    if delta:
-                        chunks.append(delta)
-                    elif data.get("content"):
-                        chunks.append(str(data["content"]))
+                events.extend(parse_sse_json_payloads(text))
         finally:
-            content = "".join(chunks).strip()
+            content = assemble_assistant_persist_content(events)
             if content:
                 try:
                     await sync_to_async(append_message)(

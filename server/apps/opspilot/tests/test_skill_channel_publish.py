@@ -278,7 +278,7 @@ class TestPlatformListAndEmbeddedGate:
             format="json",
             HTTP_API_AUTHORIZATION=plain,
         )
-        with patch("apps.opspilot.services.skill_channel_chat_service.stream_chat") as mock_stream:
+        with patch("apps.opspilot.services.skill_channel_chat_service.stream_agui_chat") as mock_stream:
             from django.http import StreamingHttpResponse
 
             def gen():

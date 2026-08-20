@@ -54,7 +54,10 @@ import {
   getIfmibDeploymentPatch
 } from './ifmibDeploymentState';
 import { getSnmpInterfaceFilterModePatch } from '@/app/monitor/hooks/integration/snmpInterfaceFilterMode';
-import { countAccessAssets } from './automaticAssetCount';
+import {
+  countAccessAssets,
+  mergeImportedAssetRows
+} from './automaticAssetCount';
 const { confirm } = Modal;
 
 interface CollectDetectState {
@@ -800,7 +803,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       key: uuidv4(),
       group_ids: row.group_ids || groupId
     }));
-    setDataSource([...dataSource, ...newRows]);
+    setDataSource(
+      mergeImportedAssetRows(
+        dataSource,
+        newRows,
+        visibleTableColumns,
+        initTableItems
+      )
+    );
   };
 
   const batchMenuItems: MenuProps['items'] = [

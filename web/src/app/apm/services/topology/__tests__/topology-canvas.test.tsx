@@ -112,4 +112,15 @@ describe('APM 服务拓扑画布', () => {
     expect(screen.queryByRole('radiogroup', { name: '拓扑布局' })).toBeNull();
     expect(screen.queryByRole('radio', { name: '环形' })).toBeNull();
   });
+
+  it('把健康图例叠在图形画布上，依赖列表不再单独占一张卡片', async () => {
+    renderWithApmIntl(<ApmTopologyPage />);
+
+    await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
+    expect(screen.getByRole('list', { name: '节点健康图例' })).not.toBeNull();
+
+    screen.getByRole('radio', { name: '依赖列表' }).click();
+    expect(screen.queryByRole('list', { name: '节点健康图例' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: '健康' })).not.toBeNull();
+  });
 });

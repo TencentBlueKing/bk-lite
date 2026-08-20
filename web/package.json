@@ -134,7 +134,7 @@
     "test:e2e": "playwright test",
     "test:e2e:smoke": "pnpm build && playwright test",
     "test:e2e:install": "playwright install chromium",
-    "type-check": "pnpm prepare-enterprise && next typegen && node scripts/sync-next-build-types.mjs && rm -rf .next/dev && tsc -p tsconfig.build.json --noEmit",
+    "type-check": "pnpm prepare-enterprise && next typegen && node scripts/sync-next-build-types.mjs && tsc -p tsconfig.build.json --noEmit",
     "precommit": "node -r dotenv/config scripts/generate-tsconfig.js dotenv_config_path=.env.local",
     "prepare": "cd .. && husky .husky",
     "analyze": "node scripts/build.mjs --analyze --webpack",

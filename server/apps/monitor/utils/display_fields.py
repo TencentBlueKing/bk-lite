@@ -3,6 +3,10 @@ import json
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models.monitor_metrics import Metric
+from apps.monitor.utils.alert_name_variables import (
+    normalize_variable_id,
+    validate_variable_id,
+)
 
 DISPLAY_FIELD_TYPES = {"metric", "field"}
 
@@ -41,6 +45,7 @@ def validate_display_fields(monitor_object, display_fields):
     }
 
     normalized = []
+    used_variable_ids: set[str] = set()
     for idx, col in enumerate(display_fields):
         if not isinstance(col, dict):
             raise BaseAppException("each display field must be an object")
@@ -70,9 +75,13 @@ def validate_display_fields(monitor_object, display_fields):
                     raise BaseAppException(f"display field '{name}' has an incomplete field binding")
                 norm_binding["field"] = field
             norm_metrics.append(norm_binding)
+        variable_id = normalize_variable_id(col.get("variable_id"))
+        validate_variable_id(variable_id, used_variable_ids, name)
         norm_col = {"name": name, "sort_order": col.get("sort_order", idx), "metrics": norm_metrics}
         if col_type == "field":
             norm_col["type"] = "field"
+        if variable_id:
+            norm_col["variable_id"] = variable_id
         normalized.append(norm_col)
 
     sorted_cols = sorted(normalized, key=lambda c: c["sort_order"])

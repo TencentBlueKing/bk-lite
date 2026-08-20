@@ -166,7 +166,7 @@ export default function HomePage() {
   return (
     <div className="relative overflow-x-hidden">
       {pageLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--color-bg-1)]/50">
           <Spin />
         </div>
       )}

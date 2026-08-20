@@ -58,8 +58,8 @@ describe('APM 服务拓扑布局', () => {
     result.forEach((item) => {
       expect(item.x).toBeGreaterThanOrEqual(90);
       expect(item.x).toBeLessThanOrEqual(950);
-      expect(item.y).toBeGreaterThanOrEqual(80);
-      expect(item.y).toBeLessThanOrEqual(420);
+      expect(item.y).toBeGreaterThanOrEqual(90);
+      expect(item.y).toBeLessThanOrEqual(540);
     });
   });
 });

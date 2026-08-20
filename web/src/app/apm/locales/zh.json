@@ -185,6 +185,8 @@
       "aggregateAnalysis": "聚合分析",
       "unnamed": "(未命名)",
       "unsetParen": "(未设置)",
+      "entryService": "入口服务",
+      "traceId": "Trace ID",
       "entryTrace": "入口服务 / Trace ID",
       "resource": "资源",
       "totalDuration": "总耗时",
@@ -498,6 +500,7 @@
       "description": "定义服务可靠性目标，跟踪达标率与错误预算。",
       "empty": "还没有 SLO，创建一个目标开始跟踪服务可靠性。",
       "refresh": "刷新 SLO",
+      "searchPlaceholder": "搜索名称 / 服务 / 端点",
       "edit": "编辑 SLO",
       "create": "新建 SLO",
       "updated": "SLO 已更新",
@@ -583,6 +586,7 @@
       "dependency": "依赖",
       "observedTraces": "观测 Trace",
       "anomalyOnly": "只看异常",
+      "healthLegend": "节点健康图例",
       "legendHint": "观测数据是时间窗内有界查询结果；点击节点进入服务详情。"
     },
     "instances": {

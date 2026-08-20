@@ -4,13 +4,14 @@ import React, {
   useState,
   forwardRef,
   useImperativeHandle,
-  useEffect,
   useMemo,
+  useRef,
 } from 'react';
 import { Button, Input, Tabs, Tree } from 'antd';
 import OperateModal from '@/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
 import useMonitorApi from '@/app/monitor/api';
+import useViewApi from '@/app/monitor/api/view';
 import { convertGroupTreeToTreeSelectData } from '@/utils';
 import CustomTable from '@/components/custom-table';
 import {
@@ -21,16 +22,20 @@ import {
   Pagination,
   TableDataItem,
   ObjectItem,
+  MetricItem,
 } from '@/app/monitor/types';
 import { CloseOutlined } from '@ant-design/icons';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import selectInstanceStyle from './selectInstance.module.scss';
-import {
-  getBaseInstanceColumn,
-  showInstName,
-} from '@/app/monitor/utils/common';
+import { showInstName } from '@/app/monitor/utils/common';
 import { useUserInfoContext } from '@/context/userInfo';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import {
+  DEFAULT_VIEW_FIXED_FIELD_KEYS,
+  resolveViewColumns,
+} from '@/app/monitor/(pages)/view/viewColumnPreference';
+import { buildInstanceViewColumns } from '@/app/monitor/(pages)/view/instanceViewColumns';
 
 const filterTreeData = (treeData: any, searchText: string) => {
   if (!searchText) return treeData;
@@ -70,8 +75,10 @@ const getLabelByKey = (key: string, treeData: any): string => {
 const SelectAssets = forwardRef<ModalRef, ModalConfig>(
   ({ onSuccess, monitorObject, objects }, ref) => {
     const { t } = useTranslation();
-    const { getInstanceList } = useMonitorApi();
+    const { getInstanceList, getMonitorMetrics } = useMonitorApi();
+    const { getViewColumnPreference } = useViewApi();
     const { convertToLocalizedTime } = useLocalizedTime();
+    const { getEnumValueUnit } = useUnitTransform();
     const { groupTree } = useUserInfoContext();
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
     const [pagination, setPagination] = useState<Pagination>({
@@ -84,7 +91,7 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
     const [title, setTitle] = useState<string>('');
     const [tableLoading, setTableLoading] = useState<boolean>(false);
     const [selectedRowKeys, setSelectedRowKeys] = useState<Array<string>>([]);
-    const [allTableData, setAllTableData] = useState<TableDataItem[]>([]);
+    const [tableData, setTableData] = useState<TableDataItem[]>([]);
     const [searchText, setSearchText] = useState<string>('');
     const [selectedTreeKeys, setSelectedTreeKeys] = useState<string[]>([]);
     const [treeSearchText, setTreeSearchText] = useState<string>('');
@@ -95,6 +102,28 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
     const [organizationSelectedKeys, setOrganizationSelectedKeys] = useState<
       string[]
     >([]);
+    const [metrics, setMetrics] = useState<MetricItem[]>([]);
+    const [columnPreference, setColumnPreference] = useState<string[] | null>(
+      null
+    );
+    const [fixedColumnPreference, setFixedColumnPreference] = useState<
+      string[] | null
+    >(null);
+    const [selectedLabelMap, setSelectedLabelMap] = useState<
+      Record<string, string>
+    >({});
+    const paginationRef = useRef(pagination);
+    const searchTextRef = useRef(searchText);
+    paginationRef.current = pagination;
+    searchTextRef.current = searchText;
+
+    const objectItem = useMemo(
+      () =>
+        (objects as ObjectItem[])?.find(
+          (item: ObjectItem) => item.id === Number(monitorObject as React.Key)
+        ) || ({} as ObjectItem),
+      [objects, monitorObject]
+    );
 
     const tabs: TabItem[] = [
       {
@@ -107,33 +136,41 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
       },
     ];
 
-    const columns = useMemo(() => {
-      const columnItems: ColumnItem[] = [
-        {
-          title: t('monitor.views.reportTime'),
-          dataIndex: 'time',
-          width: 160,
-          key: 'time',
-          render: (_, { time }) => (
-            <>
-              {time ? convertToLocalizedTime(new Date(time * 1000) + '') : '--'}
-            </>
-          ),
-        },
-      ];
-      const row =
-        (objects as ObjectItem[])?.find(
-          (item: ObjectItem) => item.id === Number(monitorObject as React.Key)
-        ) || ({} as ObjectItem);
-      return [
-        ...getBaseInstanceColumn({
-          objects: objects as ObjectItem[],
-          row,
+    const tableColumn = useMemo(
+      () =>
+        buildInstanceViewColumns({
+          objects: (objects as ObjectItem[]) || [],
+          targetObject: objectItem,
           t,
+          convertToLocalizedTime,
+          metrics,
+          getEnumValueUnit,
+          objectId: monitorObject as React.Key,
+          includeStatusFilters: false,
+          includeDimensionTooltip: false,
         }),
-        ...columnItems,
-      ];
-    }, [objects, monitorObject, t]);
+      [
+        objects,
+        objectItem,
+        t,
+        convertToLocalizedTime,
+        metrics,
+        getEnumValueUnit,
+        monitorObject,
+      ]
+    );
+
+    const columns = useMemo(
+      () =>
+        resolveViewColumns(
+          tableColumn,
+          columnPreference,
+          [],
+          fixedColumnPreference,
+          DEFAULT_VIEW_FIXED_FIELD_KEYS
+        ).columns as ColumnItem[],
+      [tableColumn, columnPreference, fixedColumnPreference]
+    );
 
     const treeData = useMemo(() => {
       return convertGroupTreeToTreeSelectData(groupTree);
@@ -143,50 +180,120 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
       return filterTreeData(treeData, treeSearchText);
     }, [treeData, treeSearchText]);
 
-    // 处理表格数据：前端搜索和分页
-    const { tableData, paginationInfo } = useMemo(() => {
-      let filteredData = allTableData;
-      if (searchText) {
-        filteredData = allTableData.filter((item) =>
-          item.instance_name?.toLowerCase().includes(searchText.toLowerCase())
-        );
-      }
-      const total = filteredData.length;
-      const startIndex = (pagination.current - 1) * pagination.pageSize;
-      const endIndex = startIndex + pagination.pageSize;
-      const paginatedData = filteredData.slice(startIndex, endIndex);
-      return {
-        tableData: paginatedData,
-        paginationInfo: {
-          ...pagination,
-          total: total,
-        },
-      };
-    }, [allTableData, searchText, pagination.current, pagination.pageSize]);
+    const mergeSelectedLabels = (rows: TableDataItem[]) => {
+      setSelectedLabelMap((prev) => {
+        const next = { ...prev };
+        rows.forEach((row) => {
+          if (row?.instance_id) {
+            next[String(row.instance_id)] = showInstName(objectItem, row);
+          }
+        });
+        return next;
+      });
+    };
 
-    // 更新分页信息
-    useEffect(() => {
-      if (paginationInfo.total !== pagination.total) {
-        setPagination(paginationInfo);
+    /** 编辑回填 / 跨页已选：按存储键精确拉取展示名，避免侧栏长期显示 raw instance_id。 */
+    const hydrateSelectedLabels = async (keys: string[]) => {
+      const uniqueKeys = [...new Set(keys.filter(Boolean))];
+      if (!uniqueKeys.length) return;
+      const results = await Promise.all(
+        uniqueKeys.map(async (instanceId) => {
+          try {
+            const data = await getInstanceList(monitorObject as React.Key, {
+              page: 1,
+              page_size: 1,
+              instance_id: instanceId,
+              add_metrics: false,
+            });
+            return data?.results?.[0] as TableDataItem | undefined;
+          } catch {
+            return undefined;
+          }
+        })
+      );
+      mergeSelectedLabels(
+        results.filter(Boolean) as TableDataItem[]
+      );
+    };
+
+    const fetchColumns = async () => {
+      const objectId = monitorObject as React.Key;
+      const displayMetricNames = (objectItem?.display_fields || [])
+        .flatMap((column) => column.metrics || [])
+        .map((binding) => binding.metric)
+        .filter(Boolean);
+      const [metricRes, preference] = await Promise.all([
+        getMonitorMetrics({
+          monitor_object_id: String(objectId),
+          ...(displayMetricNames.length
+            ? { name_in: [...new Set(displayMetricNames)].join(',') }
+            : {}),
+        }).catch(() => ({ items: [] })),
+        getViewColumnPreference(objectId).catch(() => null),
+      ]);
+      setMetrics(metricRes?.items || []);
+      setColumnPreference(preference?.field_keys || null);
+      setFixedColumnPreference(
+        preference == null
+          ? null
+          : Array.isArray(preference.fixed_field_keys)
+            ? preference.fixed_field_keys
+            : null
+      );
+    };
+
+    const fetchData = async (
+      page = paginationRef.current.current,
+      pageSize = paginationRef.current.pageSize,
+      name = searchTextRef.current
+    ) => {
+      try {
+        setTableLoading(true);
+        const data = await getInstanceList(monitorObject as React.Key, {
+          page,
+          page_size: pageSize,
+          name: name || '',
+          add_metrics: true,
+        });
+        const results = data?.results || [];
+        setTableData(results);
+        mergeSelectedLabels(results);
+        setPagination((prev) => ({
+          ...prev,
+          current: page,
+          pageSize,
+          total: data?.count || 0,
+        }));
+      } finally {
+        setTableLoading(false);
       }
-    }, [paginationInfo, pagination.total]);
+    };
 
     useImperativeHandle(ref, () => ({
       showModal: ({ title, form: { type, values, id } }) => {
-        // 开启弹窗的交互
         setPagination((prev: Pagination) => ({
           ...prev,
           current: 1,
         }));
-        setAllTableData([]);
+        paginationRef.current = {
+          ...paginationRef.current,
+          current: 1,
+        };
+        setTableData([]);
+        setSearchText('');
+        searchTextRef.current = '';
         setGroupVisible(true);
         setTitle(title);
         setRowId(id as number);
         setActiveTab((type as string) || 'instance');
         if (type === 'instance' || !type) {
-          fetchData();
-          setInstanceSelectedKeys((values as string[]) || []);
-          setSelectedRowKeys((values as string[]) || []);
+          const selected = (values as string[]) || [];
+          setInstanceSelectedKeys(selected);
+          setSelectedRowKeys(selected);
+          setSelectedLabelMap({});
+          void fetchColumns();
+          void fetchData(1, paginationRef.current.pageSize, '');
+          void hydrateSelectedLabels(selected);
         } else {
           setOrganizationSelectedKeys((values as string[]) || []);
           setSelectedTreeKeys((values as string[]) || []);
@@ -202,8 +309,13 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
           ...prev,
           current: 1,
         }));
-        if (!allTableData.length) {
-          fetchData();
+        paginationRef.current = {
+          ...paginationRef.current,
+          current: 1,
+        };
+        if (!tableData.length) {
+          void fetchColumns();
+          void fetchData(1, paginationRef.current.pageSize);
         }
         return;
       }
@@ -218,6 +330,9 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
       const newSelectedKeys = [...otherPagesSelectedKeys, ...selectedKeys];
       setSelectedRowKeys(newSelectedKeys);
       setInstanceSelectedKeys(newSelectedKeys);
+      mergeSelectedLabels(
+        tableData.filter((item) => selectedKeys.includes(item.instance_id))
+      );
     };
 
     const rowSelection = {
@@ -238,21 +353,6 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
       );
     };
 
-    const fetchData = async () => {
-      try {
-        setTableLoading(true);
-        const data = await getInstanceList(monitorObject as React.Key, {
-          page: 1,
-          page_size: -1,
-          name: '',
-        });
-        const results = data?.results || [];
-        setAllTableData(results);
-      } finally {
-        setTableLoading(false);
-      }
-    };
-
     const handleCancel = () => {
       setGroupVisible(false);
       setSelectedRowKeys([]);
@@ -260,11 +360,31 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
       setInstanceSelectedKeys([]);
       setOrganizationSelectedKeys([]);
       setSearchText('');
+      searchTextRef.current = '';
       setTreeSearchText('');
+      setTableData([]);
+      setSelectedLabelMap({});
     };
 
-    const handleTableChange = (pagination: any) => {
-      setPagination(pagination);
+    const handleTableChange = (nextPagination: Pagination) => {
+      paginationRef.current = {
+        ...paginationRef.current,
+        ...nextPagination,
+      };
+      void fetchData(
+        nextPagination.current,
+        nextPagination.pageSize,
+        searchTextRef.current
+      );
+    };
+
+    const handleSearch = () => {
+      paginationRef.current = {
+        ...paginationRef.current,
+        current: 1,
+      };
+      setPagination((prev) => ({ ...prev, current: 1 }));
+      void fetchData(1, paginationRef.current.pageSize, searchTextRef.current);
     };
 
     const handleClearSelection = () => {
@@ -299,16 +419,8 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
       setOrganizationSelectedKeys(selectedKeys);
     };
 
-    const clearText = () => {
-      setSearchText('');
-    };
-
-    const getInstanceName = (row: TableDataItem) => {
-      const objectItem =
-        (objects as ObjectItem[])?.find(
-          (item: ObjectItem) => item.id === Number(monitorObject as React.Key)
-        ) || ({} as ObjectItem);
-      return showInstName(objectItem, row);
+    const getInstanceName = (key: string) => {
+      return selectedLabelMap[key] || key;
     };
 
     return (
@@ -316,7 +428,7 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
         <OperateModal
           title={title}
           visible={groupVisible}
-          width={800}
+          width="90vw"
           onClose={handleCancel}
           footer={
             <div>
@@ -343,24 +455,26 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
                       allowClear
                       placeholder={t('common.searchPlaceHolder')}
                       value={searchText}
-                      onClear={clearText}
+                      onClear={() => {
+                        setSearchText('');
+                        searchTextRef.current = '';
+                        handleSearch();
+                      }}
                       onChange={(e) => {
                         setSearchText(e.target.value);
-                        setPagination((prev) => ({
-                          ...prev,
-                          current: 1,
-                        }));
+                        searchTextRef.current = e.target.value;
                       }}
+                      onPressEnter={handleSearch}
                     ></Input>
                   </div>
                   <CustomTable
                     rowSelection={rowSelection}
                     dataSource={tableData}
                     columns={columns}
-                    pagination={paginationInfo}
+                    pagination={pagination}
                     loading={tableLoading}
                     rowKey="instance_id"
-                    scroll={{ x: 520, y: 'calc(100vh - 370px)' }}
+                    scroll={{ x: 'max-content', y: 'calc(100vh - 370px)' }}
                     onChange={handleTableChange}
                   />
                 </div>
@@ -403,26 +517,21 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
                 </div>
                 <ul className={selectInstanceStyle.list}>
                   {isInstance
-                    ? selectedRowKeys.map((key) => {
-                      const item = allTableData.find(
-                        (data) => data.instance_id === key
-                      );
-                      return (
-                        <li
-                          className={selectInstanceStyle.listItem}
-                          key={key}
-                        >
-                          <EllipsisWithTooltip
-                            text={getInstanceName(item as TableDataItem)}
-                            className="w-[170px] overflow-hidden text-ellipsis whitespace-nowrap"
-                          ></EllipsisWithTooltip>
-                          <CloseOutlined
-                            className={`text-[12px] ${selectInstanceStyle.operate}`}
-                            onClick={() => handleRemoveItem(key)}
-                          />
-                        </li>
-                      );
-                    })
+                    ? selectedRowKeys.map((key) => (
+                      <li
+                        className={selectInstanceStyle.listItem}
+                        key={key}
+                      >
+                        <EllipsisWithTooltip
+                          text={getInstanceName(key)}
+                          className="w-[170px] overflow-hidden text-ellipsis whitespace-nowrap"
+                        ></EllipsisWithTooltip>
+                        <CloseOutlined
+                          className={`text-[12px] ${selectInstanceStyle.operate}`}
+                          onClick={() => handleRemoveItem(key)}
+                        />
+                      </li>
+                    ))
                     : selectedTreeKeys.map((key) => (
                       <li className={selectInstanceStyle.listItem} key={key}>
                         <EllipsisWithTooltip
