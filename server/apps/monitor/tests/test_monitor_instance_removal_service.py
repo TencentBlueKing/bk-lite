@@ -24,8 +24,8 @@ def _stub_node_mgmt(monkeypatch, *, child_calls=None, base_calls=None):
     monkeypatch.setattr(
         "apps.monitor.services.monitor_instance_removal.NodeMgmt",
         lambda: types.SimpleNamespace(
-            delete_child_configs=lambda ids: child_calls.append(list(ids)),
-            delete_configs=lambda ids: base_calls.append(list(ids)),
+            delete_child_configs=lambda ids, source_app=None: child_calls.append(list(ids)),
+            delete_configs=lambda ids, source_app=None: base_calls.append(list(ids)),
         ),
     )
     return child_calls, base_calls
@@ -329,8 +329,8 @@ def test_remove_remote_failure_keeps_database_state(db, monkeypatch):
     monkeypatch.setattr(
         "apps.monitor.services.monitor_instance_removal.NodeMgmt",
         lambda: types.SimpleNamespace(
-            delete_child_configs=lambda ids: None,
-            delete_configs=lambda ids: (_ for _ in ()).throw(RuntimeError("rpc failed")),
+            delete_child_configs=lambda ids, source_app=None: None,
+            delete_configs=lambda ids, source_app=None: (_ for _ in ()).throw(RuntimeError("rpc failed")),
         ),
     )
 
@@ -349,7 +349,10 @@ def test_remove_rejects_oversized_batch_before_remote_call(db, monkeypatch):
     def build_node_mgmt():
         nonlocal remote_called
         remote_called = True
-        return types.SimpleNamespace(delete_child_configs=lambda ids: None, delete_configs=lambda ids: None)
+        return types.SimpleNamespace(
+            delete_child_configs=lambda ids, source_app=None: None,
+            delete_configs=lambda ids, source_app=None: None,
+        )
 
     monkeypatch.setattr("apps.monitor.services.monitor_instance_removal.NodeMgmt", build_node_mgmt)
     instance_ids = [f"instance-{index}" for index in range(MonitorInstanceRemovalService.MAX_BATCH_SIZE + 1)]
@@ -365,8 +368,8 @@ def test_remove_missing_instance_is_idempotent_without_remote_call(db, monkeypat
 
     def build_node_mgmt():
         return types.SimpleNamespace(
-            delete_child_configs=lambda ids: remote_calls.append(("child", ids)),
-            delete_configs=lambda ids: remote_calls.append(("base", ids)),
+            delete_child_configs=lambda ids, source_app=None: remote_calls.append(("child", ids)),
+            delete_configs=lambda ids, source_app=None: remote_calls.append(("base", ids)),
         )
 
     monkeypatch.setattr("apps.monitor.services.monitor_instance_removal.NodeMgmt", build_node_mgmt)

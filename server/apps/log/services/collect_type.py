@@ -153,14 +153,14 @@ class CollectTypeService:
                 env_config = base_info.get("env_config")
                 if env_config:
                     child_env = {k: v for k, v in env_config.items()}
-                NodeMgmt().update_config_content(base_info["id"], content, env_config)
+                NodeMgmt().update_config_content(base_info["id"], content, env_config, source_app="log")
 
         if child_info or child_env:
             config_obj = CollectConfig.objects.filter(id=child_info["id"]).first()
             if not config_obj:
                 return
             content = toml.dumps(child_info["content"]) if child_info else None
-            NodeMgmt().update_child_config_content(child_info["id"], content, child_env)
+            NodeMgmt().update_child_config_content(child_info["id"], content, child_env, source_app="log")
 
     @staticmethod
     def update_instance_config_v2(child_info, base_info, instance_id, collect_type_id):
@@ -214,7 +214,7 @@ class CollectTypeService:
                 env_config = base_info.get("env_config")
                 if env_config:
                     child_env = {k: v for k, v in env_config.items()}
-                NodeMgmt().update_config_content(base_info["id"], content, env_config)
+                NodeMgmt().update_config_content(base_info["id"], content, env_config, source_app="log")
 
         if child_info or child_env:
             config_obj = CollectConfig.objects.filter(id=child_info["id"]).first()
@@ -242,7 +242,7 @@ class CollectTypeService:
                     "PACKETBEAT_DEVICE_INPUT": raw_device,
                     "PACKETBEAT_DEVICE": Controller.normalize_packetbeat_device(raw_device, operating_system),
                 }
-            NodeMgmt().update_child_config_content(child_info["id"], content, child_env)
+            NodeMgmt().update_child_config_content(child_info["id"], content, child_env, source_app="log")
 
     @staticmethod
     def update_instance(instance_id, name, organizations):

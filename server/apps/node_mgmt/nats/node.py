@@ -31,6 +31,13 @@ from apps.node_mgmt.services.node import NodeService
 from apps.node_mgmt.services.sidecar_cache import invalidate_bulk_child_config_etags, invalidate_bulk_config_node_etags
 from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+from apps.node_mgmt.utils.config_write_scope import (
+    assert_config_ids_unmanaged,
+    assert_managed_config_owner,
+    config_ids_managed,
+    config_write_scope_enforcement_enabled,
+    verify_config_write_scope,
+)
 
 LEGACY_NODE_LIST_CALLSITES = frozenset(
     {
@@ -54,6 +61,18 @@ def _observe_legacy_node_list_callsite(declared_callsite: str) -> None:
     logger.warning(
         "legacy node_list skip_permission used; declared_callsite=%s authorization_source=untrusted_payload",
         declared_callsite,
+    )
+
+
+def _guard_legacy_config_write(ids, *, is_child):
+    if not config_ids_managed(ids, is_child=is_child):
+        return
+    if config_write_scope_enforcement_enabled():
+        assert_config_ids_unmanaged(ids, is_child=is_child)
+    logger.warning(
+        "legacy managed config write observed; is_child=%s config_count=%s",
+        is_child,
+        len(ids),
     )
 
 
@@ -978,7 +997,17 @@ def update_child_config_content(data: dict):
     id = data.get("id")
     content = data.get("content")
     env_config = data.get("env_config")
+    _guard_legacy_config_write([id], is_child=True)
     NatsService().update_child_config_content(id, content, env_config)
+
+
+@nats_client.register
+def update_child_config_content_scoped(token: str):
+    """按经过签名的调用范围更新 Log/Monitor 托管子配置。"""
+    source_app, data = verify_config_write_scope(token, "update_child")
+    id = data.get("id")
+    assert_managed_config_owner([id], source_app, is_child=True)
+    NatsService().update_child_config_content(id, data.get("content"), data.get("env_config"))
 
 
 def compare_and_swap_child_config_content(data: dict):
@@ -996,18 +1025,48 @@ def update_config_content(data: dict):
     id = data.get("id")
     content = data.get("content")
     env_config = data.get("env_config")
+    _guard_legacy_config_write([id], is_child=False)
     NatsService().update_config_content(id, content, env_config)
+
+
+@nats_client.register
+def update_config_content_scoped(token: str):
+    """按经过签名的调用范围更新 Log/Monitor 托管配置。"""
+    source_app, data = verify_config_write_scope(token, "update")
+    id = data.get("id")
+    assert_managed_config_owner([id], source_app, is_child=False)
+    NatsService().update_config_content(id, data.get("content"), data.get("env_config"))
 
 
 @nats_client.register
 def delete_child_configs(ids: list):
     """删除实例子配置"""
+    _guard_legacy_config_write(ids, is_child=True)
+    NatsService().delete_child_configs(ids)
+
+
+@nats_client.register
+def delete_child_configs_scoped(token: str):
+    """按经过签名的调用范围删除 Log/Monitor 托管子配置。"""
+    source_app, data = verify_config_write_scope(token, "delete_child")
+    ids = data.get("ids") or []
+    assert_managed_config_owner(ids, source_app, is_child=True)
     NatsService().delete_child_configs(ids)
 
 
 @nats_client.register
 def delete_configs(ids: list):
     """删除实例子配置"""
+    _guard_legacy_config_write(ids, is_child=False)
+    NatsService().delete_configs(ids)
+
+
+@nats_client.register
+def delete_configs_scoped(token: str):
+    """按经过签名的调用范围删除 Log/Monitor 托管配置。"""
+    source_app, data = verify_config_write_scope(token, "delete")
+    ids = data.get("ids") or []
+    assert_managed_config_owner(ids, source_app, is_child=False)
     NatsService().delete_configs(ids)
 
 

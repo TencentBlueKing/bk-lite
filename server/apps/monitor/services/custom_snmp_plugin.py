@@ -321,7 +321,7 @@ class CustomSnmpPluginService:
         rollback_failures = []
         for item in reversed(applied_updates):
             try:
-                node_mgmt.update_child_config_content(item["id"], item["original_content"])
+                node_mgmt.update_child_config_content(item["id"], item["original_content"], source_app="monitor")
             except Exception:
                 rollback_failures.append(item["id"])
         return rollback_failures
@@ -355,7 +355,7 @@ class CustomSnmpPluginService:
         applied_updates = []
         try:
             for item in update_plan:
-                node_mgmt.update_child_config_content(item["id"], item["rendered_content"])
+                node_mgmt.update_child_config_content(item["id"], item["rendered_content"], source_app="monitor")
                 applied_updates.append(item)
         except Exception as exc:
             rollback_failures = CustomSnmpPluginService._rollback_propagation(node_mgmt, applied_updates)

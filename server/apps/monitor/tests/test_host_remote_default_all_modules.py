@@ -221,7 +221,8 @@ def test_sync_remote_host_child_configs_updates_only_host_remote_and_wmi(monkeyp
             requested_ids.extend(ids)
             return [{"id": config_id, "content": child_contents[config_id]} for config_id in ids]
 
-        def update_child_config_content(self, config_id, content, env_config=None):
+        def update_child_config_content(self, config_id, content, env_config=None, source_app=None):
+            assert source_app == "monitor"
             updates[config_id] = content
             child_contents[config_id] = content
 

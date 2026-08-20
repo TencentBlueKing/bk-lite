@@ -196,9 +196,11 @@ def test_update_instance_config_updates_base_and_child(collect_type, mocker):
     node_mgmt.update_config_content.assert_called_once()
     base_call = node_mgmt.update_config_content.call_args.args
     assert base_call[0] == base.id
+    assert node_mgmt.update_config_content.call_args.kwargs == {"source_app": "log"}
     assert node_mgmt.update_child_config_content.call_count == 1
     child_call = node_mgmt.update_child_config_content.call_args.args
     assert child_call[0] == child.id
+    assert node_mgmt.update_child_config_content.call_args.kwargs == {"source_app": "log"}
 
 
 @pytest.mark.django_db

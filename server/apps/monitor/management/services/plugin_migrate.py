@@ -347,7 +347,7 @@ def _sync_remote_host_metrics_modules():
             continue
 
         try:
-            node_mgmt.update_child_config_content(config_id, updated_content)
+            node_mgmt.update_child_config_content(config_id, updated_content, source_app="monitor")
             updated_count += 1
         except Exception as e:
             logger.error(f"同步主机远程子配置采集模块失败: config_id={config_id}, 错误={e}")
