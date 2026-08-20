@@ -342,7 +342,7 @@ export default function BaselineManagementPage() {
       dataIndex: 'requirement_names',
       width: 220,
       render: (names: string[]) => {
-        const text = (names || []).join(',') || '—';
+        const text = (names || []).join(',') || '--';
         return <EllipsisWithTooltip text={text} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />;
       },
     },
@@ -373,7 +373,7 @@ export default function BaselineManagementPage() {
       render: (dist: any[], r: any) => {
         const items = dist || [];
         if (!items.length) {
-          return r.bound_host_count ? '—' : <span className="text-[var(--color-text-4)]">{t('patchManager.baseline.unbound')}</span>;
+          return r.bound_host_count ? '--' : <span className="text-[var(--color-text-4)]">{t('patchManager.baseline.unbound')}</span>;
         }
         return (
           <Space size={6} wrap>
@@ -391,8 +391,8 @@ export default function BaselineManagementPage() {
         );
       },
     },
-    { title: t('patchManager.baseline.recentAssessment'), dataIndex: 'last_evaluated_at', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
-    { title: t('patchManager.updateTime'), dataIndex: 'updated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.baseline.recentAssessment'), dataIndex: 'last_evaluated_at', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '--' },
+    { title: t('patchManager.updateTime'), dataIndex: 'updated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '--' },
     {
       title: t('patchManager.operation'),
       dataIndex: 'op',

@@ -2590,6 +2590,80 @@ class InstanceManage(object):
         return InstanceManage._remap_network_topology_device_ids_to_uuids(result)
 
     @staticmethod
+    def network_topology_among_uuids(
+        inst_uuids: list[str],
+        permission_maps: dict | None = None,
+        user=None,
+    ) -> dict:
+        """按勾选设备做接口直连诱导子图：节点闭集，边只保留两端都在集合内。"""
+        from apps.cmdb.services.topology_theme import is_network_device_model
+
+        closed_set_error = "设备列表包含无效或不允许的网络设备，请重新配置"
+        normalized = [normalize_inst_uuid(value) for value in inst_uuids]
+        if not normalized:
+            raise BaseAppException(closed_set_error)
+        if len(set(normalized)) != len(normalized):
+            raise BaseAppException(closed_set_error)
+
+        entities = InstanceManage.query_entity_by_uuids(normalized)
+        if len(entities) != len(normalized):
+            raise BaseAppException(closed_set_error)
+
+        network_model_ok: dict[str, bool] = {}
+        for entity in entities:
+            model_id = str(entity.get("model_id") or "")
+            if model_id not in network_model_ok:
+                network_model_ok[model_id] = is_network_device_model(model_id)
+            if not network_model_ok[model_id]:
+                raise BaseAppException(closed_set_error)
+            permission_map = (permission_maps or {}).get(model_id) if permission_maps else None
+            if permission_maps is not None and not InstanceManage._has_topology_view_permission(entity, permission_map, user=user):
+                raise BaseAppException(closed_set_error)
+
+        selected_graph_ids = {str(entity["_id"]) for entity in entities}
+        id_to_uuid = {str(entity["_id"]): str(entity.get("inst_uuid")) for entity in entities}
+        nodes = [
+            {
+                "id": str(entity.get("inst_uuid")),
+                "name": entity.get("inst_name") or str(entity.get("inst_uuid")),
+                "model_id": str(entity.get("model_id") or ""),
+                "hop": 0,
+                "expanded": True,
+            }
+            for entity in entities
+        ]
+        links = {}
+        with GraphClient() as ag:
+            for entity in entities:
+                model_id = str(entity.get("model_id") or "")
+                rows = ag.query_network_topo(int(entity["_id"]), f"interface_belong_{model_id}") or []
+                for row in rows:
+                    peer_id = str(row["peer_id"])
+                    if peer_id not in selected_graph_ids:
+                        continue
+                    rel_id = str(row["rel_id"])
+                    if rel_id in links:
+                        continue
+                    source_id = str(row["dev_id"])
+                    links[rel_id] = {
+                        "relationship_id": rel_id,
+                        "source_device": id_to_uuid.get(source_id, source_id),
+                        "source_inst_name": row["local_if"],
+                        "target_device": id_to_uuid.get(peer_id, peer_id),
+                        "target_inst_name": row["peer_if"],
+                        "asst_id": "connect",
+                        "model_asst_id": "interface_connect_interface",
+                        "src_inst_uuid": str(row.get("local_if_uuid") or "") or None,
+                        "dst_inst_uuid": str(row.get("peer_if_uuid") or "") or None,
+                    }
+
+        return {
+            "nodes": nodes,
+            "links": list(links.values()),
+            "truncated": False,
+        }
+
+    @staticmethod
     def topo_search_by_uuid(inst_uuid: str):
         instance = InstanceManage.query_entity_by_uuid(inst_uuid)
         if not instance:

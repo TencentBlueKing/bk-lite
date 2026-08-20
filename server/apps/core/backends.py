@@ -90,12 +90,20 @@ class APISecretAuthBackend(ModelBackend):
             if user_secret is None:
                 return None
             user = User._default_manager.get(username=user_secret.username, domain=user_secret.domain)
+            if not user.is_active:
+                logger.warning(
+                    "API token base user is inactive: %s@%s",
+                    user_secret.username,
+                    user_secret.domain,
+                )
+                return None
             if not SystemUser.objects.filter(
                 username=user_secret.username,
                 domain=user_secret.domain,
+                disabled=False,
             ).exists():
                 logger.warning(
-                    "API token user is missing from system management: %s@%s",
+                    "API token system user is missing or disabled: %s@%s",
                     user_secret.username,
                     user_secret.domain,
                 )

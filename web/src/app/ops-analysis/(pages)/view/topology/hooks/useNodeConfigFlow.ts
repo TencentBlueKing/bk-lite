@@ -272,6 +272,9 @@ export const useNodeConfigFlow = ({
             chartType: values.chartType,
             dataSource: values.dataSource,
             dataSourceParams: values.dataSourceParams || [],
+            ...(values.filterBindings && Object.keys(values.filterBindings).length > 0
+              ? { filterBindings: values.filterBindings }
+              : {}),
             unitId: values.unitId || undefined,
             valueMappings: values.valueMappings || undefined,
           },

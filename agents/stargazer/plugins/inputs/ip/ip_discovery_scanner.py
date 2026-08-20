@@ -50,10 +50,18 @@ class IPDiscoveryScanner:
             return DEFAULT_PORTS
         normalized = []
         for port in ports:
-            try:
-                normalized.append(int(port))
-            except (TypeError, ValueError):
-                continue
+            if isinstance(port, bool):
+                raise ValueError("port must be between 1 and 65535")
+            if isinstance(port, str):
+                port_text = port.strip()
+                if not re.fullmatch(r"[+-]?\d+", port_text):
+                    raise ValueError("port must be between 1 and 65535")
+                port = int(port_text)
+            elif not isinstance(port, int):
+                raise ValueError("port must be between 1 and 65535")
+            if not 1 <= port <= 65535:
+                raise ValueError("port must be between 1 and 65535")
+            normalized.append(port)
         return normalized or DEFAULT_PORTS
 
     def _build_targets(self, explicit_targets) -> list[dict]:

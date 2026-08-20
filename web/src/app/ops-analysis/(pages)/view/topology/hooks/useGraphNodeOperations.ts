@@ -448,6 +448,9 @@ export const useGraphNodeOperations = ({
         dataSource: values.dataSource || valueConfig?.dataSource,
         dataSourceParams:
           values.dataSourceParams || valueConfig?.dataSourceParams,
+        ...(values.filterBindings && Object.keys(values.filterBindings).length > 0
+          ? { filterBindings: values.filterBindings }
+          : {}),
         topNLabelField: values.topNLabelField ?? valueConfig?.topNLabelField,
         topNValueField: values.topNValueField ?? valueConfig?.topNValueField,
         unitId: values.unitId ?? valueConfig?.unitId,

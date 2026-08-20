@@ -141,7 +141,16 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
     if (currentValueString !== newValueString) {
       setInternalValue(withLocked);
     }
-  }, [valueString, processedTreeData, isValidValue, normalizeValue, lockedIds]);
+
+    // 锁定项并入后必须回写表单：仅改 internalValue 会「看得见但校验仍为空」
+    if (JSON.stringify(withLocked) !== JSON.stringify(normalizedValue)) {
+      if (multiple) {
+        onChange?.(withLocked);
+      } else {
+        onChange?.(withLocked.length > 0 ? withLocked[0] : undefined);
+      }
+    }
+  }, [valueString, processedTreeData, isValidValue, normalizeValue, lockedIds, multiple, onChange]);
 
   // 处理 MultiCascadePanel 值变化
   const handlePanelChange = useCallback((newValue: number[]) => {

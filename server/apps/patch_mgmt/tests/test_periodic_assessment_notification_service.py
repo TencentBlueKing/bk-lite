@@ -256,6 +256,7 @@ def test_missing_host_result_is_counted_as_assessment_failure():
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_notification_delivery_dispatches_with_alert_event_contract_and_marks_delivered(mocker):
     """投递任务应调用系统管理渠道，成功后持久化投递事实。"""
     task = GovernanceTask.objects.create(
@@ -338,7 +339,8 @@ def test_notification_delivery_dispatches_with_alert_event_contract_and_marks_de
             },
         },
         required_delivery_mode="alert_event_copy",
-        producer="lite-monitor",
+        producer="lite-patch",
+        internal_caller="lite-patch",
         ack_mode="per_event_v1",
         ack_token="receiver-secret",
     )

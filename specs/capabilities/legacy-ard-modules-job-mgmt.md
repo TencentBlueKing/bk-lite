@@ -20,7 +20,7 @@
 | DangerousRule / DangerousPath | `models/*.py` | 危险命令/路径黑名单 |
 
 ## 3. 接口【已实现/已存在】
-DRF 路由前缀均带 `api/` 段；结合 app 注册前缀 `api/v1/job_mgmt/`，对外完整路径为 `api/v1/job_mgmt/api/<resource>/`：`api/target`、`api/script`、`api/playbook`、`api/execution`、`api/scheduled_task`、`api/dashboard`、`api/distribution_file`、`api/dangerous_rule`、`api/dangerous_path`。开放端点 `api/open/upload_file`、`api/open/delete_file`、`api/open/job_list`、`api/open/script_execute`、`api/open/job_status`、`api/open/job_detail/<task_id>`（同样带 `api/` 前缀，API Secret 鉴权）。当前 `urls.py` 未注册 `callback_test/` 回调测试端点。
+DRF 路由前缀均带 `api/` 段；结合 app 注册前缀 `api/v1/job_mgmt/`，对外完整路径为 `api/v1/job_mgmt/api/<resource>/`：`api/target`、`api/script`、`api/playbook`、`api/execution`、`api/scheduled_task`、`api/dashboard`、`api/distribution_file`、`api/dangerous_rule`、`api/dangerous_path`。存量开放端点 `api/open/upload_file`、`api/open/delete_file`、`api/open/job_list`、`api/open/script_execute`、`api/open/job_status`、`api/open/job_detail/<task_id>` 仍使用 API Secret 中间件。新文件分发能力按统一规范暴露为 `POST /openapi/v1/job-mgmt/file-distribute`，由网关从 Bearer API Secret 注入团队并记录可归因审计。当前 `urls.py` 未注册 `callback_test/` 回调测试端点。
 
 ## 4. 执行机制【已实现/已存在】
 - 脚本：危险命令校验 → Ansible（Windows 手动目标）或 nats-executor（sidecar）；日志发布到 JetStream。
@@ -35,7 +35,13 @@ DRF 路由前缀均带 `api/` 段；结合 app 注册前缀 `api/v1/job_mgmt/`�
 ## 5. 风险 / 待确认
 - 危险命令黑名单覆盖度与绕过风险【待确认】。
 - JetStream 日志流依赖（默认关闭）【已实现风险】。
-- 水平越权防护【已实现/已存在】：`utils/team_authz.py` 提供团队归属授权校验（BL-NEW-002 修复），视图层按 ID 加载 Script/Playbook/Target/DistributionFile 后，用 `is_team_authorized` 校验对象 `team` 是否落在「当前用户授权团队」内；开放删除按 `(file_id, file_key, team)` 限定文件，NATS 文件分发按请求声明的团队范围限定 `file_key`。跨团队和无团队归属文件一律 fail-closed，防止 Team A 的文件被 Team B 删除或用于自己的作业。
+- 水平越权防护【已实现/已存在】：`utils/team_authz.py` 提供团队归属授权校验。存量 NATS 文件分发仍只能校验请求自报团队，默认保持契约供迁移；新网关文件分发从 API Secret 注入唯一活动团队，并在产生作业/异步副作用前同时校验文件与 manual/node 目标归属。新入口不接受客户端身份字段或出站回调目标。
+
+### 文件分发迁移与回滚
+- 旧 `bklite.job_file_distribute` 默认保持可用；新调用只接入网关路径。listener 日志观测旧 subject 流量，NATS 连接审计完成调用方归因。
+- 新网关作业以 `executor_user + domain` 保存完整可信调用身份；历史 32 字符维护人列仅保存用户名兼容投影。旧 NATS 消息体中的任何身份字段均不可信并被忽略，继续记录为 `api@domain.com`。
+- 已知调用方迁移完成且观测窗口归零后，设 `JOB_FILE_DISTRIBUTE_NATS_ENABLED=0` 拒绝旧入口；发现遗漏调用或新路径故障时置回 `1` 即时回滚。开关不改数据 schema，不回滚已签发凭据或审计记录。
+- 退役演练必须先在非生产环境验证：开关为 `0` 时旧请求可预期失败且无作业副作用，置回 `1` 后旧契约立即恢复；定向测试固化该行为。
 
 ## 2026-07-01 Code-ARD 校准
 - `[job_mgmt#20260701-017]` 移除 `callback_test/` 回调测试端点的强结论，当前 `urls.py` 未注册该路由。

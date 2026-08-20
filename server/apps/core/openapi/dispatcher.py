@@ -18,11 +18,7 @@ from django.conf import settings
 from apps.core.logger import openapi_logger as logger
 from apps.core.openapi.envelope import ErrorCode, fail, ok
 from apps.core.openapi.identity import CREDENTIAL_API_TOKEN, CallerIdentity
-from apps.core.openapi.registry import (
-    INJECT_TEAM_LIST,
-    INJECT_USER_INFO,
-    Endpoint,
-)
+from apps.core.openapi.registry import INJECT_TEAM_LIST, INJECT_TEAM_LIST_WITH_USER, INJECT_USER_INFO, Endpoint
 
 _executor = None
 
@@ -69,6 +65,11 @@ def _build_kwargs(identity: CallerIdentity, endpoint: Endpoint, validated: dict)
 
     if endpoint.inject == INJECT_TEAM_LIST:
         kwargs["team"] = list(identity.team_ids)
+        return kwargs
+
+    if endpoint.inject == INJECT_TEAM_LIST_WITH_USER:
+        kwargs["team"] = list(identity.team_ids)
+        kwargs["user_info"] = {"user": identity.user, "domain": identity.domain}
         return kwargs
 
     if endpoint.inject == INJECT_USER_INFO:

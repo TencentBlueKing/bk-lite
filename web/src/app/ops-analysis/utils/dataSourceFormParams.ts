@@ -1,7 +1,6 @@
 import dayjs, { type Dayjs } from 'dayjs';
 
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
-import { DEFAULT_DATE_RANGE_VALUE } from '@/app/ops-analysis/types/dateRange';
 import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 
@@ -34,10 +33,7 @@ export const getDataSourceFormParamInitialValue = (
     case 'timeRange':
       return value ?? 10080;
     case 'dateRange':
-      if (value === undefined) {
-        return { ...DEFAULT_DATE_RANGE_VALUE };
-      }
-      if (value === '' || value === null) {
+      if (value === undefined || value === '' || value === null) {
         return null;
       }
       return value;

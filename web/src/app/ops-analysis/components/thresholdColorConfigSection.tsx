@@ -5,6 +5,8 @@ import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUti
 
 interface ThresholdColorConfigSectionProps {
   t: (key: string, defaultMessage?: string) => string;
+  label?: React.ReactNode;
+  extra?: React.ReactNode;
   thresholdColors: ThresholdColorConfig[];
   onThresholdChange: (
     index: number,
@@ -23,6 +25,8 @@ export const ThresholdColorConfigSection: React.FC<
   ThresholdColorConfigSectionProps
 > = ({
   t,
+  label,
+  extra,
   thresholdColors,
   onThresholdChange,
   onThresholdBlur,
@@ -32,7 +36,10 @@ export const ThresholdColorConfigSection: React.FC<
   allowEmpty = false,
 }) => {
   return (
-    <Form.Item label={t('topology.nodeConfig.thresholdColors')}>
+    <Form.Item
+      label={label ?? t('topology.nodeConfig.thresholdColors')}
+      extra={extra}
+    >
       <div className="rounded-md border border-(--color-border-1) bg-(--color-fill-1) px-3 py-2">
         {thresholdColors.map((threshold, index) => {
           const isBaseThreshold = index === thresholdColors.length - 1;

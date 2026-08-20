@@ -474,7 +474,9 @@ class AlertLifecycleNotifier:
         error_msg = ""
         event_results = {}
         try:
-            send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, "", content, [])
+            send_result = SystemMgmtUtils.send_msg_with_channel(
+                channel_id, "", content, [], internal_caller="lite-monitor"
+            )
             success, error_msg = self._parse_channel_result(send_result)
             if use_per_event_ack and isinstance(send_result, dict):
                 details = send_result.get("data") or {}

@@ -612,6 +612,32 @@ def test_get_source_data_allows_runtime_query_fields(authenticated_user, monkeyp
 
 
 @pytest.mark.django_db
+def test_get_source_data_applies_query_list_to_nats_table_payload(authenticated_user, monkeypatch):
+    authenticated_user.is_superuser = True
+    request = _build_request(
+        authenticated_user,
+        data={"query_list": [{"field": "name", "type": "str*", "value": "bk"}]},
+    )
+
+    response, payload, _ = _build_view_response(
+        request,
+        monkeypatch,
+        {
+            "result": True,
+            "data": [
+                {"name": "bk-web"},
+                {"name": "ops-db"},
+                {"name": "bk-lite"},
+            ],
+            "message": "",
+        },
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["data"]["data"] == [{"name": "bk-web"}, {"name": "bk-lite"}]
+
+
+@pytest.mark.django_db
 def test_get_source_data_rejects_invalid_runtime_query_fields(authenticated_user, monkeypatch):
     authenticated_user.is_superuser = True
     request = _build_request(

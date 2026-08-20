@@ -278,6 +278,34 @@ def test_extract_canvas_dependencies_empty():
     assert ExportService.extract_canvas_dependencies([], ObjectType.DASHBOARD) == (set(), set())
 
 
+@pytest.mark.django_db
+def test_extract_canvas_dependencies_includes_topology_overlay_without_datasource():
+    from apps.operation_analysis.services.network_status_topology_overlay import NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
+
+    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS[:2]
+    cmdb = DataSourceAPIModel.objects.create(
+        name="export-overlay-cmdb",
+        rest_api=cmdb_api,
+        is_build_in=True,
+        created_by="s",
+        updated_by="s",
+    )
+    monitor = DataSourceAPIModel.objects.create(
+        name="export-overlay-monitor",
+        rest_api=monitor_api,
+        is_build_in=True,
+        created_by="s",
+        updated_by="s",
+    )
+    view_sets = [
+        {"valueConfig": {"chartType": "networkStatusTopology"}},
+        {"valueConfig": {"chartType": "line", "dataSource": 1}},
+    ]
+    ds_ids, ns_ids = ExportService.extract_canvas_dependencies(view_sets, ObjectType.DASHBOARD)
+    assert ds_ids == {1, cmdb.id, monitor.id}
+    assert ns_ids == set()
+
+
 # --------------------------------------------------------------------------
 # ExportService.export_objects 端到端
 # --------------------------------------------------------------------------

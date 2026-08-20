@@ -73,9 +73,11 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         # 与写入 execution_contexts，需串行化以避免计数错乱或字典写入竞争。
         self._state_lock = threading.RLock()
 
-        # 解析流程图
-        self.nodes = self._parse_nodes(instance.flow_json)
-        self.edges = self._parse_edges(instance.flow_json)
+        # 先校验并生成仅供本次执行使用的安全结构视图。历史数据保持原样，
+        # 但缺字段/错类型不能在 validate_flow() 之前触发原始 Python 异常。
+        self._flow_structure_errors, execution_flow_json = self._normalize_flow_structure(instance.flow_json)
+        self.nodes = self._parse_nodes(execution_flow_json)
+        self.edges = self._parse_edges(execution_flow_json)
 
         # 构建节点ID到节点的映射字典（用于 O(1) 查找）
         self._node_map: Dict[str, Dict[str, Any]] = {node.get("id"): node for node in self.nodes if node.get("id")}
@@ -290,14 +292,15 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         entry_type = input_data.get("entry_type", "openai")
         logger.info(f"[SSE-Engine] 开始执行 - flow_id: {self.instance.id}, user_id: {user_id}, entry_type: {entry_type}, 节点数: {len(self.nodes)}")
 
+        validation_errors = self.validate_flow()
+        if validation_errors:
+            error_message = f"流程验证失败: {'; '.join(validation_errors)}"
+            return None, None, user_id, entry_type, session_id, "", False, False, self._create_error_response(error_message)
+
         self._initialize_variables(input_data)
 
         node_id = input_data.get("node_id", "")
         self._record_conversation_history(user_id, input_message, "user", entry_type, node_id, session_id)
-
-        validation_errors = self.validate_flow()
-        if validation_errors:
-            return None, None, user_id, entry_type, session_id, node_id, False, False, self._create_error_response("流程验证失败")
 
         start_node = self._get_start_node()
         start_node_type = start_node.get("type", "") if start_node else None
@@ -980,7 +983,9 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         Returns:
             错误列表，空列表表示无错误
         """
-        errors = []
+        errors = list(self._flow_structure_errors)
+        if errors:
+            return errors
 
         # 检查是否有节点
         if not self.nodes:
