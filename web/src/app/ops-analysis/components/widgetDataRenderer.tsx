@@ -64,7 +64,7 @@ import WidgetErrorState from "@/app/ops-analysis/components/widgetErrorState";
 import WidgetState from "@/app/ops-analysis/components/widget-state";
 import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widgetHeaderRuntimeSlot";
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
-import { buildScreenContentTokenStyle } from "@/app/ops-analysis/utils/screenWidgetTokens";
+import ScreenWidgetThemeProvider from "@/app/ops-analysis/components/screenWidgetThemeProvider";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
 import {
   areTableQueryParamsEquivalent,
@@ -1216,103 +1216,62 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     widgetId,
   ]);
 
+  let body: React.ReactNode;
   if (isSceneWidget) {
-    return (
-      <>
-        {runtimeHeaderControl}
-        <div
-          style={{
-            position: "relative",
-            height: "100%",
-            ...buildScreenContentTokenStyle(config?.chartThemeMode),
-          }}
-        >
-          <WidgetRenderer
-            chartType={chartType}
-            rawData={null}
-            loading={false}
-            config={config}
-            refreshKey={reloadVersion}
-            refreshCause={refreshCause}
-            screenRenderContext={screenRenderContext}
-            onReady={handleRendererReady}
-            onError={handleRendererError}
-            layoutEditable={layoutEditable}
-            onTopologyLayoutChange={onTopologyLayoutChange}
-            runtimeOwnerId={widgetId}
-            runtimeActive={runtimeActive}
-            runtimePriority={runtimePriority}
-            fallback={renderError(
-              `${t("dashboard.unknownComponentType")}: ${chartType}`,
-            )}
-          />
-        </div>
-      </>
-    );
-  }
-
-  if (isInitialNonTableLoading || isWaitingForInitialData || isWaitingForSwitchOptions) {
-    return (
-      <>
-        {runtimeHeaderControl}
-        <div className="h-full flex items-center justify-center">
-          <Spin spinning />
-        </div>
-      </>
-    );
-  }
-
-  if (widgetDataSourceState === "data-source-load-error") {
-    return (
-      <>
-        {runtimeHeaderControl}
-        {renderError(t("dashboard.dataSourceLoadFailed"))}
-      </>
-    );
-  }
-
-  if (widgetDataSourceState === "data-source-not-found") {
-    return (
-      <>
-        {runtimeHeaderControl}
-        {renderError(t("dashboard.dataSourceNotFound"))}
-      </>
-    );
-  }
-
-  if (isEmptyComponentSwitch) {
-    return (
-      <>
-        {runtimeHeaderControl}
-        <WidgetState kind="empty" description={t("dashboard.noData")} />
-      </>
-    );
-  }
-
-  // 如果数据校验失败，显示错误提示
-  if (
-    dataValidation &&
-    !dataValidation.isValid &&
-    !hasActiveRuntimeControl
-  ) {
-    return (
-      <>
-        {runtimeHeaderControl}
-        {renderError(
-          dataValidation.message || t("dashboard.dataCannotRenderAsChart"),
-        )}
-      </>
-    );
-  }
-
-  return (
-    <>
-      {runtimeHeaderControl}
+    body = (
       <div
         style={{
           position: "relative",
           height: "100%",
-          ...buildScreenContentTokenStyle(config?.chartThemeMode),
+        }}
+      >
+        <WidgetRenderer
+          chartType={chartType}
+          rawData={null}
+          loading={false}
+          config={config}
+          refreshKey={reloadVersion}
+          refreshCause={refreshCause}
+          screenRenderContext={screenRenderContext}
+          onReady={handleRendererReady}
+          onError={handleRendererError}
+          layoutEditable={layoutEditable}
+          onTopologyLayoutChange={onTopologyLayoutChange}
+          runtimeOwnerId={widgetId}
+          runtimeActive={runtimeActive}
+          runtimePriority={runtimePriority}
+          fallback={renderError(
+            `${t("dashboard.unknownComponentType")}: ${chartType}`,
+          )}
+        />
+      </div>
+    );
+  } else if (isInitialNonTableLoading || isWaitingForInitialData || isWaitingForSwitchOptions) {
+    body = (
+      <div className="h-full flex items-center justify-center">
+        <Spin spinning />
+      </div>
+    );
+  } else if (widgetDataSourceState === "data-source-load-error") {
+    body = renderError(t("dashboard.dataSourceLoadFailed"));
+  } else if (widgetDataSourceState === "data-source-not-found") {
+    body = renderError(t("dashboard.dataSourceNotFound"));
+  } else if (isEmptyComponentSwitch) {
+    body = <WidgetState kind="empty" description={t("dashboard.noData")} />;
+  } else if (
+    dataValidation &&
+    !dataValidation.isValid &&
+    !hasActiveRuntimeControl
+  ) {
+    body = renderError(
+      dataValidation.message || t("dashboard.dataCannotRenderAsChart"),
+    );
+  } else {
+    body = (
+      <div
+        style={{
+          position: "relative",
+          height: "100%",
         }}
       >
         <WidgetRenderer
@@ -1342,7 +1301,14 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           )}
         />
       </div>
-    </>
+    );
+  }
+
+  return (
+    <ScreenWidgetThemeProvider mode={config?.chartThemeMode}>
+      {runtimeHeaderControl}
+      {body}
+    </ScreenWidgetThemeProvider>
   );
 };
 

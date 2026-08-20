@@ -64,7 +64,7 @@ describe('ChartLegend mount notification', () => {
     expect(onSelectionChange).not.toHaveBeenCalled();
   });
 
-  it('uses a screen-aware hover token with dashboard fill fallback', () => {
+  it('uses dashboard fill token for legend hover', () => {
     const { container } = render(
       <ChartLegend
         data={legendItems}
@@ -79,10 +79,10 @@ describe('ChartLegend mount notification', () => {
     );
 
     expect(container.querySelector('button')?.className).toContain(
-      '--chart-legend-hover-bg,var(--color-fill-2)',
+      'hover:bg-(--color-fill-2)',
     );
     expect(opsView.container.querySelector('div.cursor-pointer')?.className).toContain(
-      '--chart-legend-hover-bg,var(--color-fill-2)',
+      'hover:bg-(--color-fill-2)',
     );
   });
 });

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CompressOutlined } from '@ant-design/icons';
-import { Button, Empty, Spin, Tooltip } from 'antd';
+import { Button, ConfigProvider, Empty, Spin, Tooltip, theme as antdTheme } from 'antd';
 import { Graph } from '@antv/x6';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -23,7 +23,6 @@ import {
 } from './topologyMapViewerSession';
 import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
-import { buildScreenContentTokenStyle } from '@/app/ops-analysis/utils/screenWidgetTokens';
 import styles from './topologyMap.module.scss';
 
 interface TopologyMapProps {
@@ -37,6 +36,13 @@ interface TopologyMapProps {
 const POPOVER_SIZE = { width: 232, height: 156 };
 const POPOVER_GAP = 12;
 const POPOVER_PADDING = 8;
+
+/** 工具栏固定浅色，不跟随大屏暗色 ConfigProvider。 */
+const toolbarAntdTheme = {
+  inherit: false,
+  cssVar: { key: 'topology-map-toolbar' },
+  algorithm: antdTheme.defaultAlgorithm,
+} as const;
 
 const resolvePopoverPosition = (event: MouseEvent, container: HTMLElement) => {
   const rect = container.getBoundingClientRect();
@@ -57,12 +63,10 @@ const resolvePopoverPosition = (event: MouseEvent, container: HTMLElement) => {
 const TopologyMap: React.FC<TopologyMapProps> = ({
   rawData,
   loading = false,
-  config,
   onReady,
   onError,
 }) => {
   const { t } = useTranslation();
-  const screenContentStyle = buildScreenContentTokenStyle(config?.chartThemeMode);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<Graph | null>(null);
@@ -258,17 +262,19 @@ const TopologyMap: React.FC<TopologyMapProps> = ({
   }
 
   return (
-    <div ref={rootRef} className={styles.root} style={screenContentStyle}>
+    <div ref={rootRef} className={styles.root}>
       <div ref={hostRef} className={styles.canvas} />
       <div className={styles.toolbar}>
-        <Tooltip title={t('dashboard.topologyMapFit')}>
-          <Button
-            aria-label={t('dashboard.topologyMapFit')}
-            icon={<CompressOutlined />}
-            size="small"
-            onClick={fitGraph}
-          />
-        </Tooltip>
+        <ConfigProvider theme={toolbarAntdTheme}>
+          <Tooltip title={t('dashboard.topologyMapFit')}>
+            <Button
+              aria-label={t('dashboard.topologyMapFit')}
+              icon={<CompressOutlined />}
+              size="small"
+              onClick={fitGraph}
+            />
+          </Tooltip>
+        </ConfigProvider>
       </div>
       {rendering || loading ? (
         <div className={`${styles.centered} absolute inset-0 pointer-events-none`}>

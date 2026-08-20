@@ -8,7 +8,6 @@ import {
 } from '@/app/ops-analysis/utils/cardList';
 import { useTranslation } from '@/utils/i18n';
 import { CardListAccent } from './cardListAccent';
-import { buildScreenContentTokenStyle } from '@/app/ops-analysis/utils/screenWidgetTokens';
 
 interface ComCardListProps {
   rawData: unknown;
@@ -24,7 +23,6 @@ const ComCardList: React.FC<ComCardListProps> = ({
   onReady,
 }) => {
   const { t } = useTranslation();
-  const screenContentStyle = buildScreenContentTokenStyle(config?.chartThemeMode);
   const cardListConfig = config?.cardList;
   const parsed = parseCardListItems(rawData, {
     ...cardListConfig,
@@ -42,7 +40,7 @@ const ComCardList: React.FC<ComCardListProps> = ({
   }, [hasData, loading, onReady]);
 
   return (
-    <div className="h-full min-h-0 w-full" style={screenContentStyle}>
+    <div className="h-full min-h-0 w-full">
       <ChartSurface
         loading={loading}
         hasData={hasData}

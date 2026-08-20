@@ -1,32 +1,43 @@
 import type { CSSProperties } from 'react';
+import { theme as antdTheme } from 'antd';
+import type { ThemeConfig } from 'antd/es/config-provider/context';
+import type { SemanticColorTokens } from '@/theme';
 import {
   getOpsChartThemeByMode,
   isScreenChartThemeMode,
   type OpsChartThemeMode,
 } from '@/app/ops-analysis/utils/chartTheme';
 
-export const SCREEN_SWITCH_DROPDOWN_CLASS = 'screen-component-switch-dropdown';
+export const SCREEN_ANTD_CSS_VAR_KEY = {
+  'screen-dark': 'ops-screen-dark',
+  'screen-light': 'ops-screen-light',
+} as const;
 
-const SCREEN_SWITCH_TOKENS = {
+/** 控件实心底与选中面；与画布玻璃面区分，保证 Select/Segmented 可读。 */
+const SCREEN_CONTROL_TOKENS = {
   'screen-dark': {
-    bg: '#14243a',
-    dropdownBg: '#14243a',
+    containerBg: '#14243a',
+    elevatedBg: '#14243a',
     border: 'rgba(112, 147, 195, 0.16)',
-    dropdownBorder: 'rgba(112, 147, 195, 0.28)',
-    color: 'rgba(226, 232, 240, 0.84)',
+    text: 'rgba(226, 232, 240, 0.84)',
     selectedBg: 'rgba(59, 130, 246, 0.2)',
-    dropdownShadow: '0 10px 24px rgba(0, 10, 24, 0.36)',
   },
   'screen-light': {
-    bg: 'rgba(255, 255, 255, 0.42)',
-    dropdownBg: 'rgba(255, 255, 255, 0.96)',
+    containerBg: 'rgba(255, 255, 255, 0.42)',
+    elevatedBg: 'rgba(255, 255, 255, 0.96)',
     border: 'rgba(121, 145, 176, 0.18)',
-    dropdownBorder: 'rgba(121, 145, 176, 0.22)',
-    color: '#34445b',
+    text: '#34445b',
     selectedBg: '#e7effd',
-    dropdownShadow: '0 10px 24px rgba(31, 47, 70, 0.12)',
   },
 } as const;
+
+const resolveHoverBg = (mode: 'screen-dark' | 'screen-light') => {
+  const theme = getOpsChartThemeByMode(mode);
+  // 亮色大屏图例/选中面用实心浅蓝，暗色跟 legendHover
+  return mode === 'screen-light'
+    ? SCREEN_CONTROL_TOKENS[mode].selectedBg
+    : theme.legendHoverBg;
+};
 
 /** 大屏下把仪表盘语义 token 改写成 screen 主题色，子树里的 --color-* 会跟着变。 */
 export const buildScreenContentTokenStyle = (
@@ -37,56 +48,89 @@ export const buildScreenContentTokenStyle = (
   }
 
   const theme = getOpsChartThemeByMode(mode);
-  const switchTokens = SCREEN_SWITCH_TOKENS[mode];
+  const hoverBg = resolveHoverBg(mode);
   return {
     '--color-text-1': theme.panelTitleColor,
     '--color-text-2': theme.panelDescriptionColor,
     '--color-text-3': theme.singleValueMetaColor,
+    '--color-text-4': theme.singleValueMetaColor,
     '--color-bg': theme.panelSubtleBg,
     '--color-bg-1': theme.panelBg,
-    '--color-primary-bg-active': theme.legendHoverBg,
-    '--chart-legend-hover-bg':
-      mode === 'screen-light' ? switchTokens.selectedBg : theme.legendHoverBg,
-    '--screen-component-switch-bg': switchTokens.bg,
-    '--screen-component-switch-border': switchTokens.border,
-    '--screen-component-switch-color': switchTokens.color,
-    '--screen-component-switch-hover-bg': theme.legendHoverBg,
-    '--screen-component-switch-hover-color': theme.panelTitleColor,
-    '--screen-component-switch-selected-bg': switchTokens.selectedBg,
-    '--screen-component-switch-selected-color': theme.panelTitleColor,
+    '--color-bg-2': theme.panelBg,
+    '--color-fill-1': theme.panelSubtleBg,
+    '--color-fill-2': hoverBg,
+    '--color-fill-3': theme.legendRowBg,
+    '--color-border': theme.panelBorderColor,
+    '--color-border-1': theme.panelBorderColor,
+    '--color-border-2': theme.panelBorderColor,
+    '--color-border-3': theme.panelBorderColor,
+    '--color-primary-bg-active': hoverBg,
   } as CSSProperties;
 };
 
-/** 下拉挂到 body 后继承不到画布变量，把大屏色写到 popup 根节点上。 */
-export const buildScreenSwitchDropdownStyle = (
-  mode?: OpsChartThemeMode,
-): CSSProperties | undefined => {
+/** 大屏组件子树的 Ant Design 主题；非大屏 mode 返回 undefined。 */
+export const createScreenAntdTheme = (
+  mode: OpsChartThemeMode | undefined,
+  systemTokens: SemanticColorTokens,
+): ThemeConfig | undefined => {
   if (!isScreenChartThemeMode(mode)) {
     return undefined;
   }
 
   const theme = getOpsChartThemeByMode(mode);
-  const switchTokens = SCREEN_SWITCH_TOKENS[mode];
-  return {
-    '--screen-switch-dropdown-bg': switchTokens.dropdownBg,
-    '--screen-switch-dropdown-border': switchTokens.dropdownBorder,
-    '--screen-switch-dropdown-shadow': switchTokens.dropdownShadow,
-    '--screen-switch-dropdown-color': switchTokens.color,
-    '--screen-switch-dropdown-hover-bg': theme.legendHoverBg,
-    '--screen-switch-dropdown-hover-color': theme.panelTitleColor,
-    '--screen-switch-dropdown-selected-bg': switchTokens.selectedBg,
-    '--screen-switch-dropdown-selected-color': theme.panelTitleColor,
-  } as CSSProperties;
-};
-
-export const buildScreenOverlayPopupProps = (mode?: OpsChartThemeMode) => {
-  const dropdownStyle = buildScreenSwitchDropdownStyle(mode);
-  if (!dropdownStyle) {
-    return undefined;
-  }
+  const control = SCREEN_CONTROL_TOKENS[mode];
+  const hoverBg = resolveHoverBg(mode);
 
   return {
-    classNames: { popup: { root: SCREEN_SWITCH_DROPDOWN_CLASS } },
-    styles: { popup: { root: dropdownStyle } },
+    cssVar: { key: SCREEN_ANTD_CSS_VAR_KEY[mode] },
+    algorithm:
+      mode === 'screen-dark'
+        ? antdTheme.darkAlgorithm
+        : antdTheme.defaultAlgorithm,
+    token: {
+      colorPrimary: systemTokens.interactionPrimary,
+      colorSuccess: systemTokens.statusSuccess,
+      colorWarning: systemTokens.statusWarning,
+      colorInfo: systemTokens.statusInfo,
+      colorError: systemTokens.statusError,
+      colorBgLayout: theme.panelSubtleBg,
+      // 触发器实心底，避免玻璃面板上 Input/Select 发白或发虚
+      colorBgContainer: control.containerBg,
+      colorBgElevated: control.elevatedBg,
+      colorFillSecondary: hoverBg,
+      colorFillTertiary: hoverBg,
+      colorText: theme.panelTitleColor,
+      colorTextSecondary: theme.panelDescriptionColor,
+      colorTextPlaceholder: theme.singleValueMetaColor,
+      colorTextQuaternary: theme.singleValueMetaColor,
+      colorBorder: control.border,
+      colorBorderSecondary: theme.panelBorderColor,
+      colorIcon: theme.singleValueMetaColor,
+    },
+    components: {
+      Segmented: {
+        trackBg: control.containerBg,
+        itemColor: control.text,
+        itemHoverColor: theme.panelTitleColor,
+        itemHoverBg: hoverBg,
+        itemSelectedBg: control.selectedBg,
+        itemSelectedColor: theme.panelTitleColor,
+        itemActiveBg: control.selectedBg,
+      },
+      Select: {
+        colorBgContainer: control.containerBg,
+        colorBorder: control.border,
+        optionSelectedBg: control.selectedBg,
+        optionActiveBg: hoverBg,
+      },
+      Input: {
+        colorBgContainer: control.containerBg,
+        colorBorder: control.border,
+      },
+      DatePicker: {
+        colorBgContainer: control.containerBg,
+        colorBorder: control.border,
+      },
+    },
   };
 };

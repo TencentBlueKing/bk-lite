@@ -14,6 +14,7 @@ import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import { useTranslation } from '@/utils/i18n';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import { WidgetViewportProvider } from '@/app/ops-analysis/components/widget-viewport';
+import ScreenWidgetThemeProvider from '../screenWidgetThemeProvider';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
 
 const readMetricVisibleFontSize = (container: HTMLElement) => {
@@ -67,17 +68,21 @@ const SingleValueSizingRegressionDemo = () => {
                 }}
               >
                 <WidgetViewportProvider scale={scale}>
-                  <ComSingle
-                    rawData={20}
-                    loading={false}
-                    screenRenderContext={screen ? screenRenderContext : undefined}
-                    config={{
-                      chartType: 'single',
-                      chartThemeMode: screen ? 'screen-light' : undefined,
-                      unit: '条',
-                      thresholdColors: blueThreshold,
-                    }}
-                  />
+                  <ScreenWidgetThemeProvider
+                    mode={screen ? 'screen-light' : undefined}
+                  >
+                    <ComSingle
+                      rawData={20}
+                      loading={false}
+                      screenRenderContext={screen ? screenRenderContext : undefined}
+                      config={{
+                        chartType: 'single',
+                        chartThemeMode: screen ? 'screen-light' : undefined,
+                        unit: '条',
+                        thresholdColors: blueThreshold,
+                      }}
+                    />
+                  </ScreenWidgetThemeProvider>
                 </WidgetViewportProvider>
               </div>
             </div>
@@ -272,21 +277,23 @@ const TopNRuntimeDimensionPreview: React.FC<{
           </div>
         </div>
         <div className="min-h-0 flex-1">
-          <ComTopN
-            rawData={rawData}
-            loading={false}
-            dataSource={{
-              field_schema: [
-                { key: 'key', title: '排行主体', value_type: 'string' },
-                {
-                  key: 'total_cost',
-                  title: '费用合计(元)',
-                  value_type: 'number',
-                },
-              ],
-            } as any}
-            config={config}
-          />
+          <ScreenWidgetThemeProvider mode={chartThemeMode}>
+            <ComTopN
+              rawData={rawData}
+              loading={false}
+              dataSource={{
+                field_schema: [
+                  { key: 'key', title: '排行主体', value_type: 'string' },
+                  {
+                    key: 'total_cost',
+                    title: '费用合计(元)',
+                    value_type: 'number',
+                  },
+                ],
+              } as any}
+              config={config}
+            />
+          </ScreenWidgetThemeProvider>
         </div>
       </div>
     </div>
@@ -564,26 +571,28 @@ const Showcase = () => (
           padding: 12,
         }}
       >
-        <ComTopN
-          rawData={[
-            { source_name: 'RESTful', event_count: 9 },
-            { source_name: 'Zabbix', event_count: 5 },
-            { source_name: 'BlueKing', event_count: 3 },
-          ]}
-          loading={false}
-          dataSource={{
-            field_schema: [
-              { key: 'source_name', title: '告警源', value_type: 'string' },
-              { key: 'event_count', title: '事件数', value_type: 'number' },
-            ],
-          } as any}
-          config={{
-            chartType: 'topN',
-            chartThemeMode: 'screen-dark',
-            topNLabelField: 'source_name',
-            topNValueField: 'event_count',
-          }}
-        />
+        <ScreenWidgetThemeProvider mode="screen-dark">
+          <ComTopN
+            rawData={[
+              { source_name: 'RESTful', event_count: 9 },
+              { source_name: 'Zabbix', event_count: 5 },
+              { source_name: 'BlueKing', event_count: 3 },
+            ]}
+            loading={false}
+            dataSource={{
+              field_schema: [
+                { key: 'source_name', title: '告警源', value_type: 'string' },
+                { key: 'event_count', title: '事件数', value_type: 'number' },
+              ],
+            } as any}
+            config={{
+              chartType: 'topN',
+              chartThemeMode: 'screen-dark',
+              topNLabelField: 'source_name',
+              topNValueField: 'event_count',
+            }}
+          />
+        </ScreenWidgetThemeProvider>
       </div>
       <div
         style={{
@@ -595,26 +604,28 @@ const Showcase = () => (
           padding: 12,
         }}
       >
-        <ComTable
-          rawData={[
-            { id: 'ALERT-001', name: '数据库连接池耗尽', level: '严重' },
-            { id: 'ALERT-002', name: 'API响应超时', level: '错误' },
-            { id: 'ALERT-003', name: '磁盘空间不足', level: '严重' },
-            { id: 'ALERT-004', name: '内存告警', level: '警告' },
-          ]}
-          loading={false}
-          config={{
-            chartType: 'table',
-            chartThemeMode: 'screen-dark',
-            tableConfig: {
-              columns: [
-                { key: 'id', title: '告警ID', visible: true, order: 0 },
-                { key: 'name', title: '告警名称', visible: true, order: 1 },
-                { key: 'level', title: '等级', visible: true, order: 2 },
-              ],
-            },
-          }}
-        />
+        <ScreenWidgetThemeProvider mode="screen-dark">
+          <ComTable
+            rawData={[
+              { id: 'ALERT-001', name: '数据库连接池耗尽', level: '严重' },
+              { id: 'ALERT-002', name: 'API响应超时', level: '错误' },
+              { id: 'ALERT-003', name: '磁盘空间不足', level: '严重' },
+              { id: 'ALERT-004', name: '内存告警', level: '警告' },
+            ]}
+            loading={false}
+            config={{
+              chartType: 'table',
+              chartThemeMode: 'screen-dark',
+              tableConfig: {
+                columns: [
+                  { key: 'id', title: '告警ID', visible: true, order: 0 },
+                  { key: 'name', title: '告警名称', visible: true, order: 1 },
+                  { key: 'level', title: '等级', visible: true, order: 2 },
+                ],
+              },
+            }}
+          />
+        </ScreenWidgetThemeProvider>
       </div>
     </Section>
 

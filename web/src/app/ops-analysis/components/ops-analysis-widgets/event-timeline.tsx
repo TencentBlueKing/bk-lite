@@ -6,7 +6,7 @@ import {
   DEFAULT_EVENT_TIMELINE_MAX_ITEMS,
   parseEventTimelineItems,
 } from '@/app/ops-analysis/utils/eventTimeline';
-import { buildScreenContentTokenStyle } from '@/app/ops-analysis/utils/screenWidgetTokens';
+import { isScreenChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import { useTranslation } from '@/utils/i18n';
 
 export interface OpsAnalysisEventTimelineProps {
@@ -32,7 +32,7 @@ const OpsAnalysisEventTimeline: React.FC<OpsAnalysisEventTimelineProps> = ({
   onReady,
 }) => {
   const { t } = useTranslation();
-  const screenContentStyle = buildScreenContentTokenStyle(config?.chartThemeMode);
+  const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const timelineConfig = config?.eventTimeline;
   const parsed = parseEventTimelineItems(rawData, {
     sortOrder: timelineConfig?.sortOrder,
@@ -47,7 +47,7 @@ const OpsAnalysisEventTimeline: React.FC<OpsAnalysisEventTimelineProps> = ({
   }, [hasData, loading, onReady]);
 
   return (
-    <div className="h-full min-h-0 w-full" style={screenContentStyle}>
+    <div className="h-full min-h-0 w-full">
       <ChartSurface
         loading={loading}
         hasData={hasData}
@@ -84,7 +84,7 @@ const OpsAnalysisEventTimeline: React.FC<OpsAnalysisEventTimelineProps> = ({
                   <Tag
                     bordered={false}
                     style={
-                      screenContentStyle
+                      usesScreenTheme
                         ? {
                           color: 'var(--color-text-1)',
                           background: 'var(--color-primary-bg-active)',

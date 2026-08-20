@@ -127,7 +127,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                   <td className="w-full max-w-0 px-2 py-1">
                     <button
                       type="button"
-                      className="flex w-full min-w-0 items-center gap-2 rounded px-0 text-left transition-colors duration-200 hover:bg-[var(--chart-legend-hover-bg,var(--color-fill-2))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-6)]"
+                      className="flex w-full min-w-0 items-center gap-2 rounded px-0 text-left transition-colors duration-200 hover:bg-(--color-fill-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-6)]"
                       onClick={() => handleClick(item.name)}
                       aria-pressed={isActive(item.name)}
                       aria-label={item.name}
@@ -190,7 +190,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
             <button
               key={`${item.name}-${index}`}
               type="button"
-              className="flex w-full select-none items-center gap-2 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--chart-legend-hover-bg,var(--color-fill-2))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-6)]"
+              className="flex w-full select-none items-center gap-2 rounded px-2 py-1 text-left transition-colors hover:bg-(--color-fill-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-6)]"
               onClick={() => handleClick(item.name)}
               aria-pressed={active}
               aria-label={item.name}

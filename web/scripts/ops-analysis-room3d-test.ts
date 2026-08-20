@@ -582,13 +582,6 @@ const componentSwitchSource = readFileSync(
   ),
   "utf8",
 );
-const screenThemeSource = readFileSync(
-  new URL(
-    "../src/app/ops-analysis/(pages)/view/screen/utils/screenTheme.ts",
-    import.meta.url,
-  ),
-  "utf8",
-);
 assert.match(room3DComponentSource, /roomSwitchOverlay/);
 assert.match(room3DComponentSource, /chromeVisible|room3DChromeVisible/);
 assert.match(room3DComponentSource, /showRoomSummary = !componentSwitchControl/);
@@ -602,5 +595,4 @@ assert.doesNotMatch(
 );
 assert.match(screenWidgetFrameSource, /screen-widget-frame__drag-surface/);
 assert.doesNotMatch(componentSwitchSource, /component-param-switch-control/);
-assert.match(screenThemeSource, /--screen-component-switch-bg/g);
-assert.match(screenThemeSource, /--screen-component-switch-selected-bg/g);
+assert.match(componentSwitchSource, /ScreenWidgetThemeProvider/);

@@ -43,8 +43,6 @@ import {
   buildTableQueryList,
 } from '@/app/ops-analysis/utils/tableQueryList';
 import { useTableBodyScrollY } from './shared/useTableBodyScrollY';
-import { buildScreenOverlayPopupProps } from '@/app/ops-analysis/utils/screenWidgetTokens';
-import '@/app/ops-analysis/utils/screenOverlayDropdown.scss';
 
 const { RangePicker } = DatePicker;
 const DEFAULT_CELL_MAX_WIDTH = 260;
@@ -88,9 +86,6 @@ const ComTable: React.FC<ComTableProps> = ({
     });
   const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const screenTableTheme = getOpsChartThemeByMode(config?.chartThemeMode);
-  const screenOverlayPopupProps = buildScreenOverlayPopupProps(
-    config?.chartThemeMode,
-  );
   const widgetScale = getScreenWidgetScale(screenRenderContext);
   const screenTableStyle = useMemo(() => {
     if (!usesScreenTheme) return undefined;
@@ -402,7 +397,7 @@ const ComTable: React.FC<ComTableProps> = ({
 
     return (
       <div
-        className={`mb-3 flex flex-wrap gap-2 ${usesScreenTheme ? styles.screenDarkFilters : ''}`}
+        className="mb-3 flex flex-wrap gap-2"
       >
         {searchableFilterFields.length > 0 && (
           <div className="flex items-center">
@@ -416,7 +411,6 @@ const ComTable: React.FC<ComTableProps> = ({
                   label: field.label || field.key,
                   value: field.key,
                 }))}
-                {...screenOverlayPopupProps}
               />
               {activeSearchField?.inputType === 'time_range' ? (
                 <RangePicker
@@ -437,7 +431,6 @@ const ComTable: React.FC<ComTableProps> = ({
                     setQueryPagination((prev) => ({ ...prev, current: 1 }));
                   }}
                   showTime
-                  {...screenOverlayPopupProps}
                 />
               ) : (
                 <Input
@@ -544,7 +537,6 @@ const ComTable: React.FC<ComTableProps> = ({
                 total: pagination.total,
                 showSizeChanger: {
                   getPopupContainer: () => document.body,
-                  ...screenOverlayPopupProps,
                 },
                 showQuickJumper: true,
                 showTotal: (total) =>
