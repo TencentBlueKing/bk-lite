@@ -231,7 +231,8 @@ const ExcelImportModal = forwardRef<ExcelImportModalRef, ExcelImportModalProps>(
             for (const rule of rules) {
               if (rule.type === 'pattern') {
                 if (value !== undefined && value !== null && value !== '') {
-                  const stringValue = String(value?.text || '').trim();
+                  // Excel 普通文本是 string；超链接单元格才是 { text }。须回退到 value 本身。
+                  const stringValue = String(value?.text || value || '').trim();
                   const regex = new RegExp(rule.pattern);
                   if (!regex.test(stringValue)) {
                     return {
