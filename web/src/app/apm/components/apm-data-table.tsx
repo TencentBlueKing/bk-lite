@@ -26,6 +26,7 @@ export const APM_TABLE_COLUMN_WIDTHS = {
   singleAction: 96,
   status: 96,
   timestamp: 168,
+  traceId: 216,
   trend: 96,
 } as const;
 

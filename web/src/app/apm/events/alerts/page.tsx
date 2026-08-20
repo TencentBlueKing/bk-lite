@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckOutlined,
-  ClockCircleOutlined,
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
@@ -287,7 +286,7 @@ export default function ApmAlertsPage() {
       width: APM_TABLE_COLUMN_WIDTHS.status,
       render: (value) => {
         const severity = value as ApmPolicySeverity;
-        return <Tag color={SEVERITY_COLOR[severity]}>{SEVERITY_LABEL[severity]}</Tag>;
+        return <Tag bordered={false} className="m-0" color={SEVERITY_COLOR[severity]}>{SEVERITY_LABEL[severity]}</Tag>;
       },
     },
     {
@@ -296,7 +295,6 @@ export default function ApmAlertsPage() {
       width: APM_TABLE_COLUMN_WIDTHS.timestamp,
       render: (value) => (
         <span className={styles.alertTimeCell}>
-          <ClockCircleOutlined aria-hidden="true" />
           {dayjs(value).format('YYYY-MM-DD HH:mm')}
         </span>
       ),
@@ -304,6 +302,7 @@ export default function ApmAlertsPage() {
     {
       title: '告警标题',
       dataIndex: 'title',
+      ellipsis: true,
       render: (_, item) => (
         <Button
           type="link"
@@ -324,12 +323,11 @@ export default function ApmAlertsPage() {
       dataIndex: 'metric_type',
       width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       render: (value, item) => (
-        <Tag color={SEVERITY_COLOR[item.severity]}>{METRIC_LABEL[value as ApmAlert['metric_type']]}</Tag>
+        <Tag bordered={false} className="m-0" color={SEVERITY_COLOR[item.severity]}>{METRIC_LABEL[value as ApmAlert['metric_type']]}</Tag>
       ),
     },
     {
       title: '服务 / 端点',
-      width: 208,
       render: (_, item) => (
         <div className={styles.alertServiceCell}>
           <span className={styles.alertServiceName} title={item.service_name}>{item.service_name}</span>
@@ -342,13 +340,18 @@ export default function ApmAlertsPage() {
     {
       title: '通知',
       dataIndex: 'notification_status',
-      width: APM_TABLE_COLUMN_WIDTHS.compact,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       render: (value) => {
         const status = (value || 'none') as NonNullable<ApmAlert['notification_status']>;
         if (status === 'none') return <Typography.Text type="secondary">{NOTIFICATION_LABEL.none}</Typography.Text>;
         const color = status === 'delivered' ? 'success' : status === 'pending' ? 'processing' : 'warning';
         return (
-          <Tag color={status === 'failed' ? 'error' : color} icon={status === 'delivered' ? <CheckOutlined /> : undefined}>
+          <Tag
+            bordered={false}
+            className="m-0"
+            color={status === 'failed' ? 'error' : color}
+            icon={status === 'delivered' ? <CheckOutlined /> : undefined}
+          >
             {NOTIFICATION_LABEL[status]}
           </Tag>
         );
@@ -358,6 +361,7 @@ export default function ApmAlertsPage() {
       title: '处置人',
       dataIndex: 'operator',
       width: APM_TABLE_COLUMN_WIDTHS.organization,
+      ellipsis: true,
       render: (value) => value ? (
         <Space size={8} className={styles.alertOperatorCell}>
           <Avatar size={24}>{String(value).slice(0, 1).toUpperCase()}</Avatar>
@@ -465,10 +469,37 @@ export default function ApmAlertsPage() {
               titleClassName={styles.alertsDistributionCollapseTitle}
               contentClassName={styles.alertsDistributionCollapseContent}
               icon={(
-                <div className={styles.alertsSeveritySummary} aria-label="三级告警数量">
-                  <Tag color={ALERT_LEVEL_COLORS.critical}>严重 {distributionTotals.critical}</Tag>
-                  <Tag color={ALERT_LEVEL_COLORS.error}>错误 {distributionTotals.error}</Tag>
-                  <Tag color={ALERT_LEVEL_COLORS.warning}>警告 {distributionTotals.warning}</Tag>
+                <div
+                  className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs"
+                  aria-label="三级告警数量"
+                >
+                  {(['critical', 'error', 'warning'] as const).map((level, index) => {
+                    const count = distributionTotals[level];
+                    const idle = count === 0;
+                    return (
+                      <span key={level} className="inline-flex items-center gap-2.5">
+                        {index > 0 ? (
+                          <span className="text-[var(--color-text-4)]" aria-hidden="true">·</span>
+                        ) : null}
+                        <span
+                          className={`inline-flex items-center gap-1.5 ${
+                            idle ? 'text-[var(--color-text-4)]' : 'text-[var(--color-text-3)]'
+                          }`}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`h-1.5 w-1.5 rounded-full ${idle ? 'opacity-50' : ''}`}
+                            style={{ background: ALERT_LEVEL_COLORS[level] }}
+                          />
+                          {SEVERITY_LABEL[level]}
+                          {' '}
+                          <span className={`tabular-nums ${idle ? '' : 'font-medium text-[var(--color-text-1)]'}`}>
+                            {count}
+                          </span>
+                        </span>
+                      </span>
+                    );
+                  })}
                 </div>
               )}
             >
@@ -526,7 +557,6 @@ export default function ApmAlertsPage() {
                   columns={columns}
                   dataSource={alerts}
                   pagination={{ pageSize: 20 }}
-                  scroll={{ x: 1248 }}
                 />
                 {alerts.length >= ALERT_LIST_LIMIT ? (
                   <Typography.Text type="secondary" className="mt-2 block">

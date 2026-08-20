@@ -12,6 +12,7 @@ import {
   buildTopologyEdgeGeometry,
   hasReciprocalTopologyEdge,
   layoutLayeredTopology,
+  TOPOLOGY_CANVAS_SIZE,
   type PositionedApmTopologyNode,
 } from '@/app/apm/services/topology/topology-layout';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyHealth, ApmTopologyNode } from '@/app/apm/types';
@@ -94,7 +95,7 @@ export function TopologyCanvas({
   const maxCalls = Math.max(...edges.map((edge) => edge.sampled_calls), 1);
   const edgePairs = new Set(edges.map((edge) => `${edge.source}\u0000${edge.target}`));
   return (
-    <svg aria-label={t('apm.topology.chartAria', 'APM 服务调用拓扑')} className="block h-[520px] w-full" role="img" viewBox="0 0 1030 520">
+    <svg aria-label={t('apm.topology.chartAria', 'APM 服务调用拓扑')} className="block h-[640px] w-full" role="img" viewBox={`0 0 ${TOPOLOGY_CANVAS_SIZE.width} ${TOPOLOGY_CANVAS_SIZE.height}`}>
       <defs>
         {(['healthy', 'warning', 'critical'] as ApmTopologyHealth[]).map((health) => (
           <marker id={`apm-arrow-${health}`} key={health} markerHeight="8" markerUnits="userSpaceOnUse" markerWidth="8" orient="auto" refX="7" refY="4" viewBox="0 0 8 8">
@@ -356,7 +357,7 @@ export default function ApmTopologyPage() {
               <Button aria-label={t('apm.topology.refresh', '刷新拓扑')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
             </FilterToolbar>
           </div>
-          <div className={viewMode === 'graph' ? 'relative min-h-[520px]' : ''}>
+          <div className={viewMode === 'graph' ? 'relative min-h-[640px]' : ''}>
             {state === 'ready' ? (
               viewMode === 'graph' ? (
                 <>
@@ -375,6 +376,15 @@ export default function ApmTopologyPage() {
                     zoom={zoom}
                     onNodeClick={openNode}
                   />
+                  <div
+                    aria-label={t('apm.topology.healthLegend', '节点健康图例')}
+                    className="pointer-events-none absolute bottom-3 left-3 z-10 flex items-center gap-x-4 text-xs text-[var(--color-text-3)]"
+                    role="list"
+                  >
+                    <LegendDot color={healthColors.healthy} label={t('apm.severity.normal', '正常')} />
+                    <LegendDot color={healthColors.warning} label={t('apm.severity.warning', '警告')} />
+                    <LegendDot color={healthColors.critical} label={t('apm.severity.critical', '严重')} />
+                  </div>
                 </>
               ) : (
                 <div className="p-4">
@@ -398,13 +408,6 @@ export default function ApmTopologyPage() {
                 onRetry={() => void load()}
               />
             ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />}
-          </div>
-        </ApmSurface>
-        <ApmSurface padding="compact">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[var(--color-text-3)]">
-            <LegendDot color={healthColors.healthy} label={t('apm.severity.normal', '正常')} />
-            <LegendDot color={healthColors.warning} label={t('apm.severity.warning', '警告')} />
-            <LegendDot color={healthColors.critical} label={t('apm.severity.critical', '严重')} />
           </div>
         </ApmSurface>
       </div>

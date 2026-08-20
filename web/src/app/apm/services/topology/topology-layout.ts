@@ -24,11 +24,16 @@ export interface TopologyEdgeGeometry {
   labelY: number;
 }
 
+export const TOPOLOGY_CANVAS_SIZE = {
+  width: 1030,
+  height: 640,
+} as const;
+
 const CANVAS_BOUNDS = {
   minX: 150,
   maxX: 900,
-  minY: 100,
-  maxY: 390,
+  minY: 120,
+  maxY: 500,
 } as const;
 
 const normalizeAxis = (

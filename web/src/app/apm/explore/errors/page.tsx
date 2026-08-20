@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Alert, Button, Collapse, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Select, Space, Tag, Typography } from 'antd';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -17,7 +17,64 @@ type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d';
 const RANGE_MS: Record<TimeRange, number> = { '15m': 900000, '1h': 3600000, '4h': 14400000, '1d': 86400000, '7d': 604800000 };
 
 function Distribution({ items }: { items: ApmIssue['version_distribution'] }) {
-  return <Space wrap size={[6, 6]}>{items.map((item) => <Tag key={item.value} bordered={false}>{item.value} · {item.count} ({item.percent}%)</Tag>)}</Space>;
+  if (!items.length) return <span className="text-xs text-[var(--color-text-3)]">—</span>;
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--color-text-2)]">
+      {items.map((item) => (
+        <span key={item.value}>
+          <span className="font-mono">{item.value}</span>
+          <span className="text-[var(--color-text-3)]"> · {item.count} ({item.percent}%)</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function IssueDetails({ issue }: { issue: ApmIssue }) {
+  const { t } = useTranslation();
+  return (
+    <details>
+      <summary className="cursor-pointer select-none text-sm text-[var(--color-text-2)] hover:text-[var(--color-text-1)]">
+        {t('apm.errors.issueDetails', '完整堆栈与分布')}
+      </summary>
+      <div className="mt-3 flex flex-col gap-4">
+        {issue.stacktrace ? (
+          <pre className="m-0 max-h-80 overflow-auto whitespace-pre-wrap font-mono text-xs leading-5 text-[var(--color-text-2)]">
+            {issue.stacktrace}
+          </pre>
+        ) : (
+          <p className="m-0 text-xs text-[var(--color-text-3)]">{t('apm.errors.noStacktrace', '遥测中未携带异常堆栈')}</p>
+        )}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="flex flex-col gap-1.5">
+            <div className="text-xs text-[var(--color-text-3)]">{t('apm.errors.versionDistribution', '版本分布')}</div>
+            <Distribution items={issue.version_distribution} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <div className="text-xs text-[var(--color-text-3)]">{t('apm.errors.endpointDistribution', '端点分布')}</div>
+            <Distribution items={issue.endpoint_distribution} />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <div className="text-xs text-[var(--color-text-3)]">{t('apm.errors.sampleTraces', '样本调用链')}</div>
+          <div className="flex flex-col gap-1">
+            {issue.sample_traces.map((sample) => (
+              <Link
+                key={`${sample.trace_id}:${sample.span_id}`}
+                href={`/apm/explore/traces/${sample.trace_id}`}
+                className="flex flex-wrap items-center justify-between gap-2 text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+              >
+                <span className="font-mono text-xs">{sample.endpoint}</span>
+                <span className="text-xs text-[var(--color-text-3)]">
+                  {formatLatency(sample.duration_ms)} · {dayjs(sample.started_at).format('YYYY-MM-DD HH:mm:ss')}
+                </span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+    </details>
+  );
 }
 
 export default function ApmErrorsPage() {
@@ -80,45 +137,7 @@ export default function ApmErrorsPage() {
                         <Typography.Text type="secondary" className="!text-xs">{formatRelativeTime(issue.last_seen_at)}</Typography.Text>
                       </Space>
                     </div>
-                    <Collapse
-                      ghost
-                      size="small"
-                      items={[{
-                        key: 'details',
-                        label: t('apm.errors.issueDetails', '完整堆栈与分布'),
-                        children: (
-                          <div className="grid gap-4 lg:grid-cols-2">
-                            <div className="lg:col-span-2">
-                              <Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.errors.stacktrace', '完整堆栈')}</Typography.Text>
-                              <pre className="max-h-80 overflow-auto whitespace-pre-wrap bg-[var(--color-code-block-bg)] p-3 font-mono text-xs">{issue.stacktrace || t('apm.errors.noStacktrace', '遥测中未携带异常堆栈')}</pre>
-                            </div>
-                            <div>
-                              <Typography.Text strong>{t('apm.errors.versionDistribution', '版本分布')}</Typography.Text>
-                              <div className="mt-2"><Distribution items={issue.version_distribution} /></div>
-                            </div>
-                            <div>
-                              <Typography.Text strong>{t('apm.errors.endpointDistribution', '端点分布')}</Typography.Text>
-                              <div className="mt-2"><Distribution items={issue.endpoint_distribution} /></div>
-                            </div>
-                            <div className="lg:col-span-2">
-                              <Typography.Text strong>{t('apm.errors.sampleTraces', '样本调用链')}</Typography.Text>
-                              <div className="mt-2 divide-y divide-[var(--color-border)]">
-                                {issue.sample_traces.map((sample) => (
-                                  <Link
-                                    key={`${sample.trace_id}:${sample.span_id}`}
-                                    href={`/apm/explore/traces/${sample.trace_id}`}
-                                    className="flex flex-wrap items-center justify-between gap-2 py-2 text-[var(--color-text-1)] first:pt-0 last:pb-0 hover:text-[var(--color-primary)]"
-                                  >
-                                    <span className="font-mono text-xs">{sample.endpoint}</span>
-                                    <span className="text-xs text-[var(--color-text-3)]">{formatLatency(sample.duration_ms)} · {dayjs(sample.started_at).format('YYYY-MM-DD HH:mm:ss')}</span>
-                                  </Link>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        ),
-                      }]}
-                    />
+                    <IssueDetails issue={issue} />
                   </article>
                 ))}
               </div>

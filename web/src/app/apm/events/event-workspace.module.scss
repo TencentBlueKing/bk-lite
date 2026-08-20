@@ -124,16 +124,6 @@
   overflow: hidden;
 }
 
-.alertsSeveritySummary {
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.alertsSeveritySummary :global(.ant-tag) {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
-}
-
 .alertsDistributionChart {
   height: 150px;
   padding: 0 10px;
@@ -156,16 +146,9 @@
 }
 
 .alertTimeCell {
-  display: inline-flex;
-  align-items: center;
   color: var(--color-text-3);
   font-variant-numeric: tabular-nums;
-  gap: 6px;
   white-space: nowrap;
-}
-
-.alertTimeCell :global(.anticon) {
-  color: var(--color-text-4);
 }
 
 .alertTitleLink {

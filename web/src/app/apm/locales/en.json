@@ -185,6 +185,8 @@
       "aggregateAnalysis": "Aggregation analysis",
       "unnamed": "(Unnamed)",
       "unsetParen": "(Unset)",
+      "entryService": "Entry service",
+      "traceId": "Trace ID",
       "entryTrace": "Entry service / Trace ID",
       "resource": "Resource",
       "totalDuration": "Total duration",
@@ -584,6 +586,7 @@
       "dependency": "Dependencies",
       "observedTraces": "Observed Traces",
       "anomalyOnly": "Anomalies only",
+      "healthLegend": "Node health legend",
       "legendHint": "Observed data is a bounded query result within the time window. Click a node to open service details."
     },
     "instances": {
