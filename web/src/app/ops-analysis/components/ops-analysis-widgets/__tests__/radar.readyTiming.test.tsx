@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const chartSpy = vi.hoisted(() => ({
   onEvents: null as { finished?: () => void } | null,
+  option: null as { tooltip?: { confine?: boolean } } | null,
 }));
 
 vi.mock('@/utils/i18n', () => ({
@@ -13,12 +14,13 @@ vi.mock('@/utils/i18n', () => ({
 vi.mock('echarts-for-react', () => {
   const MockEcharts = React.forwardRef(
     (
-      { onEvents }: { onEvents?: { finished?: () => void } },
+      { option, onEvents }: { option?: { tooltip?: { confine?: boolean } }; onEvents?: { finished?: () => void } },
       _ref: React.ForwardedRef<unknown>,
     ) => {
       React.useEffect(() => {
         chartSpy.onEvents = onEvents ?? null;
-      }, [onEvents]);
+        chartSpy.option = option ?? null;
+      }, [onEvents, option]);
       return <div data-testid="radar-chart" />;
     },
   );
@@ -38,6 +40,7 @@ describe('OpsAnalysisRadar report onReady timing', () => {
   afterEach(() => {
     cleanup();
     chartSpy.onEvents = null;
+    chartSpy.option = null;
   });
 
   it('does not mark ready until the radar animation finished event', async () => {
@@ -58,5 +61,17 @@ describe('OpsAnalysisRadar report onReady timing', () => {
 
     expect(onReady).toHaveBeenCalledTimes(1);
     expect(onReady).toHaveBeenCalledWith(true);
+  });
+
+  it('confines the hover tooltip inside the chart so the widget panel cannot clip it', async () => {
+    render(
+      <OpsAnalysisRadar rawData={radarData} loading={false} />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(chartSpy.option?.tooltip?.confine).toBe(true);
   });
 });

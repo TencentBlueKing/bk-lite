@@ -19,9 +19,9 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.common.audit_log import get_response_name, log_ops_analysis_success
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
 from apps.operation_analysis.common.visibility_update import partial_update_groups_with_auth
+from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDER, is_sensitive_field_name
 from apps.operation_analysis.filters.datasource_filters import DataSourceAPIModelFilter, DataSourceTagModelFilter, NameSpaceModelFilter
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace, NamespacePasswordDecryptionError
-from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDER, is_sensitive_field_name
 from apps.operation_analysis.serializers.datasource_serializers import (
     DataSourceAPIModelSerializer,
     DataSourceBriefSerializer,
@@ -32,6 +32,7 @@ from apps.operation_analysis.serializers.datasource_serializers import (
 )
 from apps.operation_analysis.services.data_connection import ConnectionResolveError, resolve_datasource_connection
 from apps.operation_analysis.services.datasource_preview import ConnectorError, get_preview_executor
+from apps.operation_analysis.services.table_query_list import apply_query_list_to_payload
 from apps.operation_analysis.views.data_connection_view import extract_inline_connection
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
@@ -130,10 +131,7 @@ def _execute_inline_preview(
 
 
 def _strip_unmerged_placeholders(connection_config):
-    return {
-        key: None if item == SENSITIVE_PLACEHOLDER and is_sensitive_field_name(key) else item
-        for key, item in connection_config.items()
-    }
+    return {key: None if item == SENSITIVE_PLACEHOLDER and is_sensitive_field_name(key) else item for key, item in connection_config.items()}
 
 
 def _draft_inline_connection_config(instance, request_data):
@@ -199,9 +197,7 @@ def _resolve_preview_connection_config(request_data, *, current_team=None, group
         source_type=source_type,
         groups=groups if isinstance(groups, list) else [],
         connection=connection,
-        connection_overrides=request_data.get("connection_overrides")
-        if isinstance(request_data.get("connection_overrides"), dict)
-        else {},
+        connection_overrides=request_data.get("connection_overrides") if isinstance(request_data.get("connection_overrides"), dict) else {},
         connection_config=_normalize_preview_config(request_data.get("connection_config")),
     )
     return resolve_datasource_connection(stub, current_team=current_team)
@@ -491,11 +487,15 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     数据源
     """
 
-    queryset = DataSourceAPIModel.objects.select_related(
-        "connection",
-        "excel_success_slot",
-        "excel_candidate_slot",
-    ).prefetch_related("namespaces", "tag").all()
+    queryset = (
+        DataSourceAPIModel.objects.select_related(
+            "connection",
+            "excel_success_slot",
+            "excel_candidate_slot",
+        )
+        .prefetch_related("namespaces", "tag")
+        .all()
+    )
     serializer_class = DataSourceAPIModelSerializer
     ordering_fields = ["id"]
     ordering = ["id"]
@@ -574,7 +574,15 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                     from apps.operation_analysis.services.excel_materialize import load_excel_runtime
 
                     payload = load_excel_runtime(instance, limit=runtime_limit)
-                    return Response({"data": payload.get("items", []), "warnings": payload.get("warnings", [])})
+                    return Response(
+                        {
+                            "data": apply_query_list_to_payload(
+                                payload.get("items", []),
+                                params.get("query_list"),
+                            ),
+                            "warnings": payload.get("warnings", []),
+                        }
+                    )
                 connection_config = _connection_config_for_instance(
                     instance,
                     request.data if isinstance(request.data, dict) else {},
@@ -614,7 +622,12 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                     {"code": transform_error.get("code") or "transform_failed"},
                 )
 
-            return Response({"data": payload.get("items", []), "warnings": []})
+            return Response(
+                {
+                    "data": apply_query_list_to_payload(payload.get("items", []), params.get("query_list")),
+                    "warnings": [],
+                }
+            )
 
         namespace_list = instance.namespaces.all()
         if "/" not in instance.rest_api:
@@ -657,6 +670,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 result.get("data"),
             )
 
+        result["data"] = apply_query_list_to_payload(result.get("data"), params.get("query_list"))
         return Response({"data": result.get("data"), "warnings": []})
 
     @HasPermission("data_source-Add,data_source-Edit")
@@ -722,9 +736,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 if not transform_config:
                     transform_config = instance.transform_config or {}
                 if isinstance(transform_config, dict) and transform_config.get("enabled"):
-                    from apps.operation_analysis.services.datasource_preview.excel import (
-                        preview_excel_from_saved_source,
-                    )
+                    from apps.operation_analysis.services.datasource_preview.excel import preview_excel_from_saved_source
 
                     result = preview_excel_from_saved_source(
                         instance,
@@ -965,9 +977,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             )
             if discard_on_fail:
                 try:
-                    from apps.operation_analysis.services.excel_materialize import (
-                        discard_unready_excel_datasource,
-                    )
+                    from apps.operation_analysis.services.excel_materialize import discard_unready_excel_datasource
 
                     instance.refresh_from_db()
                     discard_unready_excel_datasource(instance)
@@ -1020,10 +1030,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         sync = _request_flag_true(request.data, "sync", default=True)
 
         try:
-            from apps.operation_analysis.services.excel_materialize import (
-                materialize_candidate_inline,
-                submit_excel_candidate_from_saved_source,
-            )
+            from apps.operation_analysis.services.excel_materialize import materialize_candidate_inline, submit_excel_candidate_from_saved_source
 
             slot = submit_excel_candidate_from_saved_source(
                 instance,

@@ -2,7 +2,6 @@ import dayjs, { Dayjs } from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 
 import {
-  DEFAULT_DATE_RANGE_VALUE,
   DateRangeValue,
 } from '@/app/ops-analysis/types/dateRange';
 
@@ -10,11 +9,10 @@ dayjs.extend(customParseFormat);
 
 export type DateRangePickerValue = [Dayjs | null, Dayjs | null] | null;
 
+/** 只展示已写入的值；未设置时保持空，避免把「最近 7 天」当成已生效条件。 */
 export const getDateRangeSelectorValue = (
   value: DateRangeValue | null | undefined,
-): DateRangeValue | null => value === undefined
-  ? { ...DEFAULT_DATE_RANGE_VALUE }
-  : value;
+): DateRangeValue | null => value ?? null;
 
 export const toDateRangePickerValue = (
   value: DateRangeValue | null | undefined,

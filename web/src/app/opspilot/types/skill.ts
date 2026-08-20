@@ -5,6 +5,7 @@ export interface Skill {
   created_by: string;
   team: string[];
   team_name: string;
+  usage_team?: number[] | string[];
   is_pinned?: boolean;
   permissions?: string[];
   skill_type?: number;
@@ -220,6 +221,7 @@ export interface CreateSkillPayload {
   name: string;
   introduction: string;
   team: string[];
+  usage_team?: number[] | string[];
   skill_type: number;
 }
 
