@@ -70,7 +70,7 @@ interface SortableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
 
 interface ScannedParam {
   key: string;
-  type: 'string' | 'timeRange';
+  type: 'string' | 'stringList' | 'timeRange';
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;

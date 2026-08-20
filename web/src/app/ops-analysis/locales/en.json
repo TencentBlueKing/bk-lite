@@ -225,7 +225,7 @@
   },
   "dataSource": {
     "duplicateParamNames": "Duplicate parameter names: ",
-    "invalidFilterParamType": "Only string, time range, and date range parameters can be configured as filters.",
+    "invalidFilterParamType": "Only string, string list, time range, and date range parameters can be configured as filters.",
     "addParam": "Add Parameter",
     "paramTypes": {
       "timeRange": "Time Range",
@@ -233,9 +233,11 @@
       "number": "Number",
       "boolean": "Boolean",
       "date": "Date",
+      "stringList": "String list",
       "string": "String"
     },
     "title": "Data Source",
+    "emptyGroupsMeansAllOrgs": "If no organization is selected, all organizations can see this data source.",
     "params": "Parameters",
     "defaultValue": "Default Value",
     "tag": "Tag",
@@ -1222,6 +1224,16 @@
       "input": "Input",
       "select": "Select",
       "radio": "Radio"
+    },
+    "picker": "Picker",
+    "pickerDropdown": "Dropdown",
+    "pickerTable": "Table checklist",
+    "tableSelect": {
+      "title": "Select",
+      "search": "Search name or ID",
+      "selected": "{count} selected",
+      "label": "Name",
+      "value": "ID"
     },
     "sourceType": "Option source",
     "source": {

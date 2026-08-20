@@ -30,6 +30,7 @@ from apps.operation_analysis.services.import_export.view_sets import (
     normalize_canvas_view_sets_for_yaml,
     rewrite_canvas_view_sets_refs_for_yaml,
 )
+from apps.operation_analysis.services.named_option_datasources import collect_named_option_datasource_ids_from_filters
 from apps.operation_analysis.services.network_status_topology_overlay import overlay_datasource_ids_for_view_sets
 
 
@@ -175,20 +176,25 @@ class ExportService:
         )
 
     @staticmethod
-    def extract_canvas_dependencies(view_sets: list | dict, object_type: ObjectType) -> tuple[set, set]:
+    def extract_canvas_dependencies(
+        view_sets: list | dict,
+        object_type: ObjectType,
+        filters=None,
+    ) -> tuple[set, set]:
         """
         从画布的view_sets中提取依赖的数据源和命名空间
 
         依赖收敛规则：遍历view_sets中的组件配置，提取实际引用的数据源ID和命名空间ID。
+        画布筛选项上的动态选项源也纳入依赖，否则分享/导入会缺下拉选项。
         返回：(datasource_ids, namespace_ids)
         """
         datasource_ids = set()
         namespace_ids = set()
 
-        if not view_sets:
+        if not view_sets and not filters:
             return datasource_ids, namespace_ids
 
-        normalized = normalize_canvas_view_sets_for_storage(view_sets, object_type)
+        normalized = normalize_canvas_view_sets_for_storage(view_sets, object_type) if view_sets else view_sets
 
         def collect_datasource_ids(value: Any):
             if isinstance(value, list):
@@ -208,9 +214,12 @@ class ExportService:
             for nested in value.values():
                 collect_datasource_ids(nested)
 
-        if object_type in CANVAS_TYPES:
+        if object_type in CANVAS_TYPES and normalized:
             collect_datasource_ids(normalized)
             datasource_ids |= overlay_datasource_ids_for_view_sets(normalized)
+        if isinstance(normalized, dict):
+            datasource_ids |= collect_named_option_datasource_ids_from_filters(normalized.get("filters"))
+        datasource_ids |= collect_named_option_datasource_ids_from_filters(filters)
 
         return datasource_ids, namespace_ids
 
@@ -223,7 +232,10 @@ class ExportService:
         ns_key_map: {namespace_id: namespace_key} 映射
         """
         raw_view_sets = canvas.view_sets if canvas.view_sets is not None else []
-        ds_ids, ns_ids = ExportService.extract_canvas_dependencies(raw_view_sets, object_type)
+        filters = getattr(canvas, "filters", None) if object_type == ObjectType.DASHBOARD else None
+        if filters is None and isinstance(raw_view_sets, dict):
+            filters = raw_view_sets.get("filters")
+        ds_ids, ns_ids = ExportService.extract_canvas_dependencies(raw_view_sets, object_type, filters=filters)
         view_sets = rewrite_canvas_view_sets_refs_for_yaml(
             normalize_canvas_view_sets_for_yaml(raw_view_sets, object_type),
             object_type,
@@ -272,7 +284,11 @@ class ExportService:
         model = cls.MODEL_MAP[ot]
 
         for canvas in model.objects.filter(id__in=object_ids):
-            ds_ids, ns_ids = cls.extract_canvas_dependencies(canvas.view_sets or [], ot)
+            filters = getattr(canvas, "filters", None) if ot == ObjectType.DASHBOARD else None
+            view_sets = canvas.view_sets or []
+            if filters is None and isinstance(view_sets, dict):
+                filters = view_sets.get("filters")
+            ds_ids, ns_ids = cls.extract_canvas_dependencies(view_sets, ot, filters=filters)
             collected_datasource_ids.update(ds_ids)
             collected_namespace_ids.update(ns_ids)
 

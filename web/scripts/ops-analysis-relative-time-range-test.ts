@@ -6,48 +6,38 @@ import {
 } from '../src/app/ops-analysis/utils/widgetDataTransform';
 
 const relativeMinutes = 7 * 24 * 60;
-const NativeDate = Date;
-let advancingNow = Date.parse('2026-08-04T09:52:43.418Z');
 
-class AdvancingDate extends NativeDate {
-  constructor(...args: any[]) {
-    if (args.length === 0) {
-      super(advancingNow);
-      advancingNow += 5;
-      return;
-    }
-    super(args[0]);
-  }
-
-  static now() {
-    const current = advancingNow;
-    advancingNow += 5;
-    return current;
-  }
-}
-
-globalThis.Date = AdvancingDate as DateConstructor;
-let range: string[];
-try {
-  range = formatTimeRange({
+assert.deepEqual(
+  formatTimeRange({
     start: '2026-07-28T00:00:00.000Z',
     end: '2026-08-04T00:00:00.000Z',
     selectValue: relativeMinutes,
-  });
-} finally {
-  globalThis.Date = NativeDate;
-}
-
-const [start, end] = range;
-const startAt = Date.parse(start);
-const endAt = Date.parse(end);
-
-assert.equal(
-  endAt - startAt,
-  relativeMinutes * 60 * 1000,
-  '最近7天必须解析为滚动10080分钟，不能对齐自然日边界',
+  }),
+  { selectValue: relativeMinutes },
+  '最近7天必须按统一协议发送 selectValue，由取数网关按当前时刻滚动，不能在前端对齐自然日',
 );
-assert.equal(end, '2026-08-04T09:52:43.418Z');
+
+assert.deepEqual(
+  formatTimeRange({
+    selectValue: 15,
+    rangePickerVaule: null,
+  }),
+  { selectValue: 15 },
+  '统一筛选 {selectValue:15} 必须原样发出相对协议，不能回落到7天 ISO 起止',
+);
+
+assert.deepEqual(
+  formatTimeRange({
+    selectValue: 0,
+    start: '2026-08-19T00:00:00.000Z',
+    end: '2026-08-20T00:00:00.000Z',
+  }),
+  {
+    start: '2026-08-19T00:00:00.000Z',
+    end: '2026-08-20T00:00:00.000Z',
+  },
+  '自定义时间范围应发送绝对起止，不带过期的快捷分钟数',
+);
 
 const legacyNaturalDaysValue = { mode: 'naturalDays', days: 7 };
 const formattedLegacyValue = formatDataSourceParamValue(

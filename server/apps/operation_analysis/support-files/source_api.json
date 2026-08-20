@@ -138,6 +138,23 @@
             ]
           }
         }
+      },
+      {
+        "name": "instance_ids",
+        "type": "stringList",
+        "value": [],
+        "alias_name": "主机",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/get_host_instance_list"},
+            "valueField": "instance_id",
+            "labelField": "display_name"
+          }
+        }
       }
     ],
     "field_schema": [
@@ -152,6 +169,120 @@
       {"key": "path", "title": "路径", "value_type": "string"},
       {"key": "fstype", "title": "文件系统类型", "value_type": "string"},
       {"key": "sampled_at", "title": "采样时间", "value_type": "datetime"}
+    ]
+},
+{
+    "key": "监控主机列表::monitor/get_host_instance_list",
+    "name": "监控主机列表（选项）",
+    "desc": "当前组织权限范围内的主机实例，供统一筛选下拉使用，本身不直接出图",
+    "rest_api": "monitor/get_host_instance_list",
+    "tag": ["monitor"],
+    "chart_type": [],
+    "params": [],
+    "field_schema": [
+      {"key": "instance_id", "title": "实例ID", "value_type": "string"},
+      {"key": "display_name", "title": "主机", "value_type": "string"}
+    ]
+},
+{
+    "key": "主机指标趋势::monitor/get_host_metric_range",
+    "name": "主机指标趋势",
+    "desc": "按所选主机查询单一指标趋势，一主机一线；未选主机不退化为全量",
+    "rest_api": "monitor/get_host_metric_range",
+    "tag": ["monitor"],
+    "chart_type": ["line", "bar"],
+    "params": [
+      {
+        "name": "instance_ids",
+        "type": "stringList",
+        "value": [],
+        "alias_name": "主机",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/get_host_instance_list"},
+            "valueField": "instance_id",
+            "labelField": "display_name"
+          }
+        }
+      },
+      {
+        "name": "metric_type",
+        "type": "string",
+        "value": "cpu",
+        "alias_name": "指标类型",
+        "filterType": "params",
+        "required": true,
+        "inputConfig": {
+          "control": "select",
+          "componentSwitch": true,
+          "optionsSource": {
+            "type": "static",
+            "staticItems": [
+              {"label": "CPU使用率", "value": "cpu"},
+              {"label": "内存使用率", "value": "memory"},
+              {"label": "磁盘使用率", "value": "disk"},
+              {"label": "5分钟负载", "value": "load5"},
+              {"label": "入流量", "value": "net_in"},
+              {"label": "出流量", "value": "net_out"},
+              {"label": "磁盘IO使用率", "value": "disk_io"},
+              {"label": "磁盘写入延迟", "value": "disk_write_latency"},
+              {"label": "磁盘读速率", "value": "disk_read_rate"},
+              {"label": "磁盘写速率", "value": "disk_write_rate"},
+              {"label": "阻塞进程", "value": "processes_blocked"},
+              {"label": "僵尸进程", "value": "processes_zombies"}
+            ]
+          }
+        }
+      },
+      {
+        "name": "time",
+        "type": "timeRange",
+        "value": 10080,
+        "alias_name": "时间范围",
+        "filterType": "filter"
+      }
+    ],
+    "field_schema": []
+},
+{
+    "key": "主机资源快照::monitor/get_host_resource_snapshot",
+    "name": "主机资源快照",
+    "desc": "按所选主机返回数量、CPU/内存/磁盘均值与最高值；未选主机不退化为全量",
+    "rest_api": "monitor/get_host_resource_snapshot",
+    "tag": ["monitor"],
+    "chart_type": ["single", "multiValue", "table"],
+    "params": [
+      {
+        "name": "instance_ids",
+        "type": "stringList",
+        "value": [],
+        "alias_name": "主机",
+        "filterType": "filter",
+        "inputConfig": {
+          "control": "select",
+          "multiple": true,
+          "optionsSource": {
+            "type": "dynamic",
+            "sourceRef": {"type": "rest_api", "value": "monitor/get_host_instance_list"},
+            "valueField": "instance_id",
+            "labelField": "display_name"
+          }
+        }
+      }
+    ],
+    "field_schema": [
+      {"key": "host_count", "title": "主机数", "value_type": "number"},
+      {"key": "avg_cpu", "title": "平均CPU(%)", "value_type": "number"},
+      {"key": "avg_memory", "title": "平均内存(%)", "value_type": "number"},
+      {"key": "avg_disk", "title": "平均磁盘(%)", "value_type": "number"},
+      {"key": "max_cpu", "title": "最高CPU(%)", "value_type": "number"},
+      {"key": "max_cpu_host", "title": "最高CPU主机", "value_type": "string"},
+      {"key": "max_memory", "title": "最高内存(%)", "value_type": "number"},
+      {"key": "max_memory_host", "title": "最高内存主机", "value_type": "string"}
     ]
 },
 {

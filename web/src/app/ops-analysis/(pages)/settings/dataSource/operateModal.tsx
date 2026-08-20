@@ -47,9 +47,13 @@ import ExcelMaterializationStatus, {
 } from "@/app/ops-analysis/components/ops-analysis-excel-materialization-status";
 import { ensurePrometheusQueryRequired } from "@/app/ops-analysis/utils/dataSourceParamContract";
 import {
+  buildBuiltinGroupsPayload,
   buildConnectorPayload,
   buildConnectionLibraryCreateFromDatasourceForm,
+  canEditBuiltinDatasourceGroups,
   canExtractConnectionFromDatasourceForm,
+  isBuiltinDatasource,
+  isDatasourceDefinitionReadOnly,
   shouldCreateLibraryConnectionFromForm,
   createDefaultParam,
   createDefaultSchemaField,
@@ -185,7 +189,17 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const readOnly = mode === "view";
   const handleClose = () =>
     readOnly ? onClose() : guardClose(form.isFieldsTouched(), onClose);
-  const { selectedGroup } = useUserInfoContext();
+  const { selectedGroup, isSuperUser } = useUserInfoContext();
+  const definitionReadOnly = isDatasourceDefinitionReadOnly(mode, currentRow);
+  const groupsReadOnly =
+    mode === "view" ||
+    (isBuiltinDatasource(currentRow)
+      ? !canEditBuiltinDatasourceGroups(isSuperUser, currentRow)
+      : false);
+  const canSaveDatasource =
+    mode !== "view" &&
+    (!isBuiltinDatasource(currentRow) ||
+      canEditBuiltinDatasourceGroups(isSuperUser, currentRow));
   const [params, setParams] = React.useState<ParamItem[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [schemaFields, setSchemaFields] = React.useState<SchemaField[]>([]);
@@ -229,6 +243,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const {
     createDataSource,
     updateDataSource,
+    patchDataSource,
     deleteDataSource,
     previewDataSource,
     previewDataSourceConfig,
@@ -469,7 +484,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
   });
 
   const extractToConnectionLibraryButton =
-    !useSharedConnection && !readOnly ? (
+    !useSharedConnection && !definitionReadOnly ? (
       <Button
         className="mb-2"
         disabled={!canExtractToConnectionLibrary}
@@ -1048,7 +1063,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
   };
 
   const handleRetryExcelMaterialization = async () => {
-    if (!currentRow || readOnly) return;
+    if (!currentRow || definitionReadOnly) return;
     if (!excelMaterialization?.can_retry) {
       setSourceInlineError(t("dataSource.excelStatus.failedHintReupload"));
       scrollToFormError(undefined, "process", "connect");
@@ -1120,7 +1135,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
   };
 
   const handleTestConnection = async () => {
-    if (readOnly || !isPrometheusSource) return;
+    if (definitionReadOnly || !isPrometheusSource) return;
 
     try {
       setTestConnectionLoading(true);
@@ -1172,6 +1187,14 @@ const OperateModal: React.FC<OperateModalProps> = ({
     if (readOnly) return;
     try {
       setLoading(true);
+
+      if (isBuiltinDatasource(currentRow) && currentRow?.id) {
+        await patchDataSource(currentRow.id, buildBuiltinGroupsPayload(values.groups));
+        message.success(t("dataSource.updateDataSourceSuccess"));
+        onClose();
+        onSuccess && onSuccess();
+        return;
+      }
 
       if (isNatsSource) {
         if (!paramTableRef.current?.validate()) {
@@ -1320,7 +1343,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
   };
 
-  const previewActions = readOnly ? null : (
+  const previewActions = definitionReadOnly ? null : (
     <div
       className={`flex items-center justify-end gap-3${supportsTransform ? " mb-3" : ""}`}
     >
@@ -1389,17 +1412,28 @@ const OperateModal: React.FC<OperateModalProps> = ({
       }}
       footer={
         <div className="text-right">
-          {readOnly ? null : (
+          {canSaveDatasource ? (
             <Button
               type="primary"
               loading={loading}
-              onClick={() => form.submit()}
+              onClick={() => {
+                if (isBuiltinDatasource(currentRow)) {
+                  form
+                    .validateFields(["groups"])
+                    .then((values) => {
+                      void onFinish(values);
+                    })
+                    .catch(() => undefined);
+                  return;
+                }
+                form.submit();
+              }}
             >
               {t("common.confirm")}
             </Button>
-          )}
+          ) : null}
           <Button
-            className={readOnly ? undefined : "ml-2"}
+            className={canSaveDatasource ? "ml-2" : undefined}
             onClick={handleClose}
           >
             {readOnly ? t("common.close") : t("common.cancel")}
@@ -1412,7 +1446,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
         layout="vertical"
         onFinish={onFinish}
         scrollToFirstError={{ behavior: "smooth", block: "center" }}
-        disabled={readOnly}
         className="ds-operate-form flex h-full min-h-0 flex-col"
         onValuesChange={(changed) => {
           if (!supportsTransform && !isExcelSource) return;
@@ -1450,6 +1483,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             optionType="button"
             buttonStyle="solid"
             options={sourceTypeOptions}
+            disabled={definitionReadOnly}
             onChange={(event) => {
               const nextSourceType = event.target.value as DataSourceSourceType;
               if (nextSourceType === SOURCE_TYPE_MYSQL) {
@@ -1500,7 +1534,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           label={t("dataSource.name")}
           rules={[{ required: true, message: t("common.inputMsg") }]}
         >
-          <Input placeholder={t("common.inputMsg")} />
+          <Input placeholder={t("common.inputMsg")} disabled={definitionReadOnly} />
         </Form.Item>
         {isNatsSource && (
           <>
@@ -1509,7 +1543,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
               label="NATS"
               rules={[{ required: true, message: t("common.inputMsg") }]}
             >
-              <Input placeholder={t("common.inputMsg")} />
+              <Input placeholder={t("common.inputMsg")} disabled={definitionReadOnly} />
             </Form.Item>
             <Form.Item
               name="namespaces"
@@ -1532,7 +1566,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   {t("common.noData")}
                 </div>
               ) : (
-                <Checkbox.Group className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
+                <Checkbox.Group
+                  className="flex flex-wrap gap-x-4 gap-y-2 pt-1"
+                  disabled={definitionReadOnly}
+                >
                   {namespaceList.map((ns: NamespaceItem) => (
                     <Checkbox
                       key={ns.id}
@@ -1574,6 +1611,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             </div>
           ) : (
             <Checkbox.Group
+              disabled={definitionReadOnly}
               options={tagList.map((tag: TagItem) => ({
                 label: tag.name,
                 value: tag.id,
@@ -1600,29 +1638,39 @@ const OperateModal: React.FC<OperateModalProps> = ({
             optionFilterProp="label"
             placeholder={t("common.selectMsg")}
             options={chartTypeOptions}
-            disabled={readOnly}
+            disabled={definitionReadOnly}
           />
         </Form.Item>
         <Form.Item
           name="groups"
           label={t("common.group")}
-          rules={[
-            {
-              required: true,
-              message: `${t("common.selectMsg")}${t("common.group")}`,
-            },
-          ]}
+          extra={
+            isBuiltinDatasource(currentRow)
+              ? t("dataSource.emptyGroupsMeansAllOrgs")
+              : undefined
+          }
+          rules={
+            isBuiltinDatasource(currentRow)
+              ? undefined
+              : [
+                {
+                  required: true,
+                  message: `${t("common.selectMsg")}${t("common.group")}`,
+                },
+              ]
+          }
         >
           <GroupTreeSelect
             placeholder={`${t("common.selectMsg")}${t("common.group")}`}
             multiple={true}
             mode="ownership"
-            disabled={readOnly}
+            disabled={groupsReadOnly}
           />
         </Form.Item>
         <Form.Item name="desc" label={t("dataSource.describe")}>
           <Input.TextArea
             rows={3}
+            disabled={definitionReadOnly}
             placeholder={`${t("common.inputMsg")} ${t("dataSource.describe")}`}
           />
         </Form.Item>
@@ -1637,7 +1685,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           id="connect"
           title={connectSubsectionTitle}
           extra={
-            isNatsSource && !readOnly ? (
+            isNatsSource && !definitionReadOnly ? (
               <Button
                 type="link"
                 size="small"
@@ -1658,7 +1706,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 className="!mb-2"
                 initialValue="connection"
               >
-                <Radio.Group disabled={readOnly}>
+                <Radio.Group disabled={definitionReadOnly}>
                   <Radio.Button value="connection">
                     {t("dataConnection.useConnection")}
                   </Radio.Button>
@@ -1676,7 +1724,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                     rules={[{ required: true, message: t("common.selectMsg") }]}
                   >
                     <Select
-                      disabled={readOnly}
+                      disabled={definitionReadOnly}
                       placeholder={t("common.selectMsg")}
                       options={connectionList.map((item) => ({
                         label: `${item.name}${item.endpoint_summary ? ` (${item.endpoint_summary})` : ""}`,
@@ -1691,7 +1739,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                     label={t("dataConnection.relativePath")}
                     className="!mb-2"
                   >
-                    <Input disabled={readOnly} placeholder="/api/v1/items" />
+                    <Input disabled={definitionReadOnly} placeholder="/api/v1/items" />
                   </Form.Item>
                 </>
               ) : (
@@ -1701,7 +1749,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
-                  <Input placeholder="https://example.com/api" disabled={readOnly} />
+                  <Input placeholder="https://example.com/api" disabled={definitionReadOnly} />
                 </Form.Item>
               )}
               <div className="grid grid-cols-2 gap-x-3">
@@ -1712,7 +1760,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   initialValue="GET"
                 >
                   <Select
-                    disabled={readOnly}
+                    disabled={definitionReadOnly}
                     options={[
                       { label: "GET", value: "GET" },
                       { label: "POST", value: "POST" },
@@ -1725,14 +1773,14 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   initialValue={10}
                 >
-                  <InputNumber min={1} max={30} className="w-full" disabled={readOnly} />
+                  <InputNumber min={1} max={30} className="w-full" disabled={definitionReadOnly} />
                 </Form.Item>
                 <Form.Item
                   name={["query_config", "response_path"]}
                   label={t("dataSource.responsePath")}
                   className="!mb-2"
                 >
-                  <Input placeholder="data.items" disabled={readOnly} />
+                  <Input placeholder="data.items" disabled={definitionReadOnly} />
                 </Form.Item>
               </div>
               {!useSharedConnection && (
@@ -1744,7 +1792,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   <Input.TextArea
                     rows={3}
                     placeholder='{"Authorization":"Bearer ..."}'
-                    disabled={readOnly}
+                    disabled={definitionReadOnly}
                   />
                 </Form.Item>
               )}
@@ -1753,14 +1801,14 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 label={t("dataSource.queryParams")}
                 className="!mb-2"
               >
-                <Input.TextArea rows={3} placeholder='{"page":1}' disabled={readOnly} />
+                <Input.TextArea rows={3} placeholder='{"page":1}' disabled={definitionReadOnly} />
               </Form.Item>
               <Form.Item
                 name={["query_config", "bodyText"]}
                 label={t("dataSource.requestBody")}
                 className="!mb-2"
               >
-                <Input.TextArea rows={3} placeholder='{"limit":50}' disabled={readOnly} />
+                <Input.TextArea rows={3} placeholder='{"limit":50}' disabled={definitionReadOnly} />
               </Form.Item>
               {extractToConnectionLibraryButton}
             </div>
@@ -1775,7 +1823,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 className="!mb-2"
                 initialValue="connection"
               >
-                <Radio.Group disabled={readOnly}>
+                <Radio.Group disabled={definitionReadOnly}>
                   <Radio.Button value="connection">
                     {t("dataConnection.useConnection")}
                   </Radio.Button>
@@ -1793,7 +1841,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                     rules={[{ required: true, message: t("common.selectMsg") }]}
                   >
                     <Select
-                      disabled={readOnly}
+                      disabled={definitionReadOnly}
                       placeholder={t("common.selectMsg")}
                       options={connectionList.map((item) => ({
                         label: `${item.name}${item.endpoint_summary ? ` (${item.endpoint_summary})` : ""}`,
@@ -1808,7 +1856,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                     label={t("dataConnection.overrideDatabase")}
                     className="!mb-2"
                   >
-                    <Input disabled={readOnly} placeholder={t("dataSource.database")} />
+                    <Input disabled={definitionReadOnly} placeholder={t("dataSource.database")} />
                   </Form.Item>
                 </>
               ) : (
@@ -1819,7 +1867,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
-                  <Input placeholder="127.0.0.1" disabled={readOnly} />
+                  <Input placeholder="127.0.0.1" disabled={definitionReadOnly} />
                 </Form.Item>
                 <Form.Item
                   name={["connection_config", "port"]}
@@ -1827,7 +1875,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
-                  <InputNumber min={1} max={65535} className="w-full" disabled={readOnly} />
+                  <InputNumber min={1} max={65535} className="w-full" disabled={definitionReadOnly} />
                 </Form.Item>
                 <Form.Item
                   name={["connection_config", "database"]}
@@ -1835,7 +1883,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
-                  <Input disabled={readOnly} />
+                  <Input disabled={definitionReadOnly} />
                 </Form.Item>
                 <Form.Item
                   name={["connection_config", "username"]}
@@ -1843,7 +1891,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
-                  <Input disabled={readOnly} />
+                  <Input disabled={definitionReadOnly} />
                 </Form.Item>
                 <Form.Item
                   name={["connection_config", "password"]}
@@ -1855,7 +1903,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                     autoComplete="new-password"
                     onFocus={handlePasswordFocus}
                     onBlur={handlePasswordBlur}
-                    disabled={readOnly}
+                    disabled={definitionReadOnly}
                   />
                 </Form.Item>
                 </div>
@@ -1866,7 +1914,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   label={t("dataSource.tableName")}
                   className="!mb-2"
                 >
-                  <Input disabled={readOnly} />
+                  <Input disabled={definitionReadOnly} />
                 </Form.Item>
               </div>
               <Form.Item
@@ -1877,7 +1925,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <Input.TextArea
                   rows={3}
                   placeholder="SELECT * FROM table_name"
-                  disabled={readOnly}
+                  disabled={definitionReadOnly}
                 />
               </Form.Item>
               {extractToConnectionLibraryButton}
@@ -1894,7 +1942,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
-                  <Input placeholder="https://prometheus.example.com" />
+                  <Input placeholder="https://prometheus.example.com" disabled={definitionReadOnly} />
                 </Form.Item>
                 <Form.Item
                   name={["connection_config", "auth_type"]}
@@ -1903,6 +1951,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   initialValue="none"
                 >
                   <Select
+                    disabled={definitionReadOnly}
                     options={[
                       { label: t("dataSource.authTypes.none"), value: "none" },
                       { label: t("dataSource.authTypes.basic"), value: "basic" },
@@ -1920,7 +1969,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                         { required: true, message: t("common.inputMsg") },
                       ]}
                     >
-                      <Input />
+                      <Input disabled={definitionReadOnly} />
                     </Form.Item>
                     <Form.Item
                       name={["connection_config", "password"]}
@@ -1932,6 +1981,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                     >
                       <Input.Password
                         autoComplete="new-password"
+                        disabled={definitionReadOnly}
                         onFocus={handlePasswordFocus}
                         onBlur={handlePasswordBlur}
                       />
@@ -1947,6 +1997,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   >
                     <Input.Password
                       autoComplete="new-password"
+                      disabled={definitionReadOnly}
                       onFocus={(event) =>
                         handleSecretFocus(
                           ["connection_config", "token"],
@@ -1965,10 +2016,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   className="!mb-2"
                   initialValue={30}
                 >
-                  <InputNumber min={1} max={120} className="w-full" />
+                  <InputNumber min={1} max={120} className="w-full" disabled={definitionReadOnly} />
                 </Form.Item>
               </div>
-              {readOnly ? null : (
+              {definitionReadOnly ? null : (
                 <div className="mb-3 text-right">
                   <Button
                     size="small"
@@ -1998,6 +2049,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                           <Input.TextArea
                             rows={2}
                             placeholder="up"
+                            disabled={definitionReadOnly}
                           />
                         </Form.Item>
                         <Form.Item
@@ -2007,6 +2059,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                           initialValue="range"
                         >
                           <Select
+                            disabled={definitionReadOnly}
                             options={[
                               { label: "range", value: "range" },
                               { label: "instant", value: "instant" },
@@ -2031,6 +2084,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                                 min={1}
                                 max={44640}
                                 className="w-full"
+                                disabled={definitionReadOnly}
                               />
                             </Form.Item>
                             <Form.Item
@@ -2039,7 +2093,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                               className="!mb-2"
                               initialValue="1m"
                             >
-                              <Input placeholder="1m" />
+                              <Input placeholder="1m" disabled={definitionReadOnly} />
                             </Form.Item>
                           </>
                         )}
@@ -2053,6 +2107,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
                             min={1}
                             max={50}
                             className="w-full"
+                            disabled={definitionReadOnly}
                           />
                         </Form.Item>
                       </div>
@@ -2070,7 +2125,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           >
             <div>
               <Upload
-                disabled={readOnly}
+                disabled={definitionReadOnly}
                 accept=".xlsx"
                 maxCount={1}
                 beforeUpload={(file) => {
@@ -2096,7 +2151,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
               <div className="mt-3">
                 <ExcelMaterializationStatus
                   state={excelMaterialization}
-                  readOnly={readOnly}
+                  readOnly={definitionReadOnly}
                   retrying={excelRetryLoading}
                   pendingNewFile={Boolean(excelFile)}
                   onRetry={
@@ -2114,7 +2169,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             ref={paramTableRef}
             params={params}
             onChange={setParams}
-            readOnly={readOnly}
+            readOnly={definitionReadOnly}
           />
         )}
         </FormSubsection>
@@ -2128,7 +2183,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             {supportsTransform ? (
               <TransformScriptPanel
                 enabled={transformEnabled}
-                readOnly={readOnly}
+                readOnly={definitionReadOnly}
                 onEnabledChange={clearPreviewState}
                 onScriptChange={clearPreviewState}
               />
@@ -2160,7 +2215,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
               </Tooltip>
             }
             extra={
-              readOnly ? null : (
+              definitionReadOnly ? null : (
                 <Button
                   type="link"
                   size="small"
@@ -2181,7 +2236,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
               ref={fieldSchemaTableRef}
               schemaFields={schemaFields}
               onChange={setSchemaFields}
-              readOnly={readOnly}
+              readOnly={definitionReadOnly}
             />
           </FormSubsection>
         )}

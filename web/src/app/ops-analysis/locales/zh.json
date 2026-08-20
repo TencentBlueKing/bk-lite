@@ -225,7 +225,7 @@
   },
   "dataSource": {
     "duplicateParamNames": "参数名重复：",
-    "invalidFilterParamType": "只有字符串、时间范围和日期范围参数可以配置为筛选。",
+    "invalidFilterParamType": "只有字符串、字符串列表、时间范围和日期范围参数可以配置为筛选。",
     "addParam": "添加参数",
     "paramTypes": {
       "timeRange": "时间范围",
@@ -233,9 +233,11 @@
       "number": "数字",
       "boolean": "布尔",
       "date": "日期",
+      "stringList": "字符串列表",
       "string": "字符串"
     },
     "title": "数据源",
+    "emptyGroupsMeansAllOrgs": "未选择组织表示所有组织可见",
     "params": "参数",
     "defaultValue": "默认值",
     "tag": "标签",
@@ -1222,6 +1224,16 @@
       "input": "输入框",
       "select": "下拉选择",
       "radio": "单选按钮"
+    },
+    "picker": "选择方式",
+    "pickerDropdown": "下拉列表",
+    "pickerTable": "表格勾选",
+    "tableSelect": {
+      "title": "选择",
+      "search": "搜索名称或 ID",
+      "selected": "已选 {count} 项",
+      "label": "名称",
+      "value": "ID"
     },
     "sourceType": "选项来源",
     "source": {

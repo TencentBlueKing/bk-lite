@@ -10,9 +10,9 @@ export const checkDataSourceAuth = (
   dataSource: DatasourceItem,
   userGroupId?: number | string
 ): boolean => {
-  // 如果数据源没有配置 groups，则所有人都有权限
+  // 空组织：仅内置数据源对所有组织可见；自定义数据源必须显式配置组织
   if (!dataSource.groups || dataSource.groups.length === 0) {
-    return true;
+    return Boolean(dataSource.is_build_in);
   }
 
   // 如果用户没有组织信息，则无权限

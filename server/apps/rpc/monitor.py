@@ -223,3 +223,19 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
             instance_ids=instance_ids,
             **kwargs,
         )
+
+    def get_host_instance_list(self, **kwargs):
+        """查询当前组织权限范围内的主机实例，供下拉选项使用。"""
+        return self.client.run("get_host_instance_list", **kwargs)
+
+    def get_host_metric_range(self, **kwargs):
+        """按所选主机查询单一指标时序，返回 {display_name: [[ts, value], ...]}。"""
+        return self.client.run("get_host_metric_range", **kwargs)
+
+    def get_host_resource_snapshot(self, **kwargs):
+        """按所选主机返回 CPU/内存/磁盘均值与最高值快照。"""
+        return self.client.run("get_host_resource_snapshot", **kwargs)
+
+    def get_host_resource_top(self, metric_type: str, **kwargs):
+        """查询主机资源使用率 Top10，可选 instance_ids 收窄。"""
+        return self.client.run("get_host_resource_top", metric_type=metric_type, **kwargs)

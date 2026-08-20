@@ -44,6 +44,7 @@ import {
 import {
   activateAllRuntimeWidgets,
   resolveRuntimeActivation,
+  shouldCommitRuntimeStates,
   type RuntimeActivationState,
 } from '@/app/ops-analysis/utils/dashboardRuntimeActivation';
 
@@ -223,7 +224,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         });
       });
       setRuntimeStates((previous) =>
-        JSON.stringify(previous) === JSON.stringify(next) ? previous : next,
+        shouldCommitRuntimeStates(previous, next) ? next : previous,
       );
     };
     const scheduleUpdate = () => {

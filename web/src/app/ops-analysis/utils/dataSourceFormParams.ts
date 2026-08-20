@@ -9,6 +9,7 @@ export type DataSourceFormParamValue =
   | number
   | boolean
   | Dayjs
+  | Array<string | number>
   | [number, number]
   | DateRangeValue
   | null

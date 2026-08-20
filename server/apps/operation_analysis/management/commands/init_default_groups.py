@@ -92,6 +92,11 @@ class Command(BaseCommand):
         self.stdout.write(f"  [{model_name}] 共 {total_count} 条记录")
 
         for record in all_records:
+            # 内置数据源空组织表示全员可见，不回填 Default。
+            if model_class is DataSourceAPIModel and getattr(record, "is_build_in", False):
+                skipped_count += 1
+                continue
+
             # 获取当前 groups 字段值
             current_groups = record.groups
 

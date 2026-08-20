@@ -118,6 +118,7 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             "build_in_key": {"read_only": True},
             "connection": {"required": False, "allow_null": True},
             "connection_overrides": {"required": False},
+            "groups": {"required": True},
         }
 
     def validate_source_type(self, value):
@@ -125,6 +126,14 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         if value not in allowed:
             raise serializers.ValidationError("source_type 不支持")
         return value
+
+    def validate_groups(self, value):
+        groups = value or []
+        if self.instance is not None and getattr(self.instance, "is_build_in", False):
+            return groups
+        if not groups:
+            raise serializers.ValidationError("必须选择所属组织")
+        return groups
 
     def validate_connection_config(self, value):
         if value in (None, ""):

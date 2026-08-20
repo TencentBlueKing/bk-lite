@@ -51,3 +51,25 @@ export const activateAllRuntimeWidgets = (
     };
     return result;
   }, {});
+
+const runtimeStateRenderKey = (state: RuntimeActivationState) =>
+  `${Number(state.active)}:${state.priority.visibility}:${state.priority.order}`;
+
+export const shouldCommitRuntimeStates = (
+  previous: Record<string, RuntimeActivationState>,
+  next: Record<string, RuntimeActivationState>,
+) => {
+  const previousIds = Object.keys(previous);
+  const nextIds = Object.keys(next);
+  if (previousIds.length !== nextIds.length) {
+    return true;
+  }
+  return nextIds.some((id) => {
+    const previousState = previous[id];
+    const nextState = next[id];
+    if (!previousState || !nextState) {
+      return true;
+    }
+    return runtimeStateRenderKey(previousState) !== runtimeStateRenderKey(nextState);
+  });
+};
