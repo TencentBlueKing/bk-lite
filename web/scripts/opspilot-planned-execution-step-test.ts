@@ -132,14 +132,71 @@ assert.equal(history.plannedExecutionSteps?.[0].status, 'done');
 assert.equal(history.isStreamingTools, false);
 assert.equal(history.toolCalls?.find((t) => t.id === 'tc-1')?.name, 'list_namespaces');
 
+const dumped = processHistoryMessageWithExtras(
+  JSON.stringify({ phase: 'start', step_index: 1, total_steps: 1, objective: '查询当前时间', tools: ['get_current_time'] }),
+  'bot'
+);
+assert.equal(dumped.content.includes('phase'), false);
+assert.equal(dumped.plannedExecutionSteps?.[0].objective, '查询当前时间');
+
+const wikiHistory = processHistoryMessageWithExtras(
+  [
+    { type: 'RUN_STARTED' },
+    {
+      type: 'CUSTOM',
+      name: 'wiki_citations',
+      value: { citations: [{ n: 1, kb_id: 1, kind: 'page', id: 9, title: '蓝鲸平台' }] },
+    },
+    { type: 'TEXT_MESSAGE_CONTENT', delta: '{"phase":"planning"}' },
+    { type: 'TEXT_MESSAGE_CONTENT', delta: '蓝鲸是腾讯蓝鲸智云。[1]' },
+    { type: 'RUN_FINISHED' },
+  ],
+  'bot'
+);
+assert.equal(wikiHistory.content.includes('蓝鲸是腾讯蓝鲸智云。[1]'), true);
+assert.equal(wikiHistory.content.includes('planning'), false);
+assert.equal(wikiHistory.wikiCitations?.[0].title, '蓝鲸平台');
+
+const stringCustom = processHistoryMessageWithExtras(
+  [
+    {
+      type: 'CUSTOM',
+      name: 'planned_execution_step',
+      value: JSON.stringify({ phase: 'start', step_index: 1, total_steps: 1, objective: '查询当前时间', tools: ['get_current_time'] }),
+    },
+    { type: 'TEXT_MESSAGE_CONTENT', delta: '现在下午两点' },
+  ],
+  'assistant'
+);
+assert.equal(stringCustom.content, '现在下午两点');
+assert.equal(stringCustom.plannedExecutionSteps?.[0].objective, '查询当前时间');
+
+import {
+  looksLikePlannedExecutionPayload,
+  stripPlannedExecutionDumps,
+  unwrapCustomValue,
+} from '../src/app/opspilot/components/custom-chat-sse/plannedExecutionPayload';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+
+assert.equal(looksLikePlannedExecutionPayload({ phase: 'planning' }), 'status');
+assert.equal(looksLikePlannedExecutionPayload({ phase: 'start', step_index: 1, objective: '查询当前时间' }), 'step');
+assert.equal(
+  looksLikePlannedExecutionPayload(unwrapCustomValue('{"phase":"planned","step_count":1,"goal":"获取当前时间"}')),
+  'status'
+);
+assert.equal(
+  stripPlannedExecutionDumps('{"phase":"planning"}\n\n现在是下午两点\n\n{"phase":"end","step_index":1,"total_steps":1,"objective":"查询时间"}'),
+  '现在是下午两点'
+);
 
 const root = join(process.cwd(), 'src/app/opspilot/components/custom-chat-sse');
 const handler = readFileSync(join(root, 'aguiMessageHandler.ts'), 'utf8');
 const ui = readFileSync(join(root, 'index.tsx'), 'utf8');
 assert.match(handler, /planned_execution_step/);
 assert.match(handler, /handlePlannedExecutionStep/);
+assert.match(handler, /applyPlannedExecutionText/);
 assert.match(ui, /PlannedExecutionSteps/);
+assert.match(ui, /stripPlannedExecutionDumps/);
 
 console.log('planned execution step state tests passed');

@@ -167,7 +167,7 @@ const SkillWebChatPage: React.FC = () => {
       const data = await fetchSkillSessionMessages(id);
       const messages = (data || []).map((row: any) => {
         const role = row.conversation_role === 'user' ? 'user' : 'bot';
-        const processed = processHistoryMessageWithExtras(row.conversation_content, row.conversation_role);
+        const processed = processHistoryMessageWithExtras(row.conversation_content, role);
         return {
           id: String(row.id),
           role,
@@ -178,6 +178,7 @@ const SkillWebChatPage: React.FC = () => {
           browserStepsHistory: processed.browserStepsHistory ?? null,
           agentStepProgress: processed.agentStepProgress,
           plannedExecutionSteps: processed.plannedExecutionSteps,
+          wikiCitations: processed.wikiCitations,
           toolCalls: processed.toolCalls,
           isStreamingTools: false,
           configDiffReports: processed.configDiffReports,
@@ -266,6 +267,11 @@ const SkillWebChatPage: React.FC = () => {
     return {
       url,
       payload: { message, session_id: sessionId },
+      interruptRequest: {
+        enabled: true,
+        url: '/api/proxy/opspilot/bot_mgmt/interrupt_chat_flow_execution/',
+        reason: 'user_manual',
+      },
     };
   };
 
