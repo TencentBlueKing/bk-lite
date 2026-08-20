@@ -98,6 +98,19 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       (isCreatingCanvas || modalAction === 'edit') &&
       activeCanvasType === 'networkTopology';
 
+    const findFirstWritableDirectory = (
+      items: DirItem[]
+    ): DirItem | undefined => {
+      for (const item of items) {
+        if (item.type === 'directory' && !item.is_build_in) return item;
+        if (item.children?.length) {
+          const found = findFirstWritableDirectory(item.children);
+          if (found) return found;
+        }
+      }
+      return undefined;
+    };
+
     useImperativeHandle(
       ref,
       () => ({
@@ -107,8 +120,22 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         setSelectedKeys: (keys: React.Key[]) => {
           setSelectedKeys(keys);
         },
+        openAddCanvas: () => {
+          const parent = findFirstWritableDirectory(dirs);
+          if (!parent) {
+            message.warning(t('opsAnalysisSidebar.noDirectoryForCanvas'));
+            return;
+          }
+          showModal(
+            'addChild',
+            t('opsAnalysisSidebar.addCanvas'),
+            '',
+            parent,
+            'dashboard',
+          );
+        },
       }),
-      []
+      [dirs, t]
     );
 
     const autoExpandAll = (
