@@ -22,7 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
-import { formatPercentage } from '@/app/apm/components/metric-format';
+import { formatLatency, formatPercentage } from '@/app/apm/components/metric-format';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type {
   ApmService,
@@ -71,7 +71,7 @@ function BudgetProgress({ value }: { value: number | null }) {
   return (
     <div className="grid w-full min-w-0 grid-cols-[minmax(72px,1fr)_44px] items-center gap-2.5">
       <Progress className="!mb-0 flex-1" percent={value} showInfo={false} size="small" strokeColor={color} />
-      <span className="text-right text-xs tabular-nums text-[var(--color-text-3)]">{value.toFixed(1)}%</span>
+      <span className="text-right text-xs tabular-nums text-[var(--color-text-3)]">{formatPercentage(value, 1)}</span>
     </div>
   );
 }
@@ -277,7 +277,7 @@ export default function ApmSloPage() {
         <EllipsisWithTooltip
           className="truncate"
           text={row.latency_threshold_ms
-            ? `${t(sliI18n[value].id, sliI18n[value].fallback)} · ${t('apm.slo.thresholdMs', '阈值 {ms} ms', { ms: row.latency_threshold_ms })}`
+            ? `${t(sliI18n[value].id, sliI18n[value].fallback)} · ${t('apm.slo.thresholdMs', '阈值 {duration}', { duration: formatLatency(row.latency_threshold_ms, false, t) })}`
             : t(sliI18n[value].id, sliI18n[value].fallback)}
         />
       ),
@@ -462,12 +462,12 @@ export default function ApmSloPage() {
           <Form.Item noStyle shouldUpdate={(before, current) => before.sli_type !== current.sli_type}>
             {({ getFieldValue }) => getFieldValue('sli_type') === 'availability' ? null : (
               <Form.Item label={t('apm.slo.latencyThreshold', '时延阈值')} name="latency_threshold_ms" rules={[{ required: true, message: t('apm.slo.latencyRequired', '请输入正数时延阈值') }]}>
-                <InputNumber className="!w-full" min={1} precision={0} addonAfter="ms" />
+                <InputNumber className="!w-full" min={1} precision={0} addonAfter={t('apm.common.millisecondUnit', 'ms')} />
               </Form.Item>
             )}
           </Form.Item>
           <Form.Item label={t('apm.slo.objectiveRate', '目标达标率')} name="objective" rules={[{ required: true, message: t('apm.slo.objectiveRequired', '请输入目标达标率') }]}>
-            <InputNumber className="!w-full" max={100} min={0.001} precision={3} step={0.1} addonAfter="%" />
+            <InputNumber className="!w-full" max={100} min={0.001} precision={3} step={0.1} addonAfter={t('apm.common.percentUnit', '%')} />
           </Form.Item>
           <Form.Item label={t('apm.slo.window', '评估窗口')} name="evaluation_window" rules={[{ required: true, message: t('apm.slo.windowRequired', '请选择评估窗口') }]}>
             <Select options={Object.entries(windowI18n).map(([value, item]) => ({ value, label: t(item.id, item.fallback) }))} />

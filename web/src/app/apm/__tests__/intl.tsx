@@ -1,6 +1,8 @@
 import type { ReactElement } from 'react';
 import { IntlProvider } from 'react-intl';
 import { render, type RenderOptions } from '@testing-library/react';
+import dayjs from 'dayjs';
+import 'dayjs/locale/zh-cn';
 
 import commonZh from '@/locales/zh.json';
 import apmZh from '@/app/apm/locales/zh.json';
@@ -28,6 +30,7 @@ export const apmZhMessages = {
 };
 
 export function renderWithApmIntl(ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) {
+  dayjs.locale('zh-cn');
   return render(ui, {
     ...options,
     wrapper: ({ children }) => (

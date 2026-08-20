@@ -137,12 +137,14 @@ export default function ApplicationCard({
               <div className={`flex min-w-0 items-baseline gap-0.5 ${metricUnavailable ? 'relative z-20 pointer-events-auto' : ''}`}>
                 <MetricValue
                   size="lg"
-                  text={formatThroughput(requestRate, metricUnavailable)}
+                  text={formatThroughput(requestRate, metricUnavailable, t)}
                   unavailable={metricUnavailable}
                   onRetry={metricUnavailable ? onRetryMetrics : undefined}
                 />
                 {requestRate !== null ? (
-                  <span className="text-xs text-[var(--color-text-3)]">/s</span>
+                  <span className="text-xs text-[var(--color-text-3)]">
+                    {t('apm.common.requestsPerSecondUnit', 'req/s')}
+                  </span>
                 ) : null}
               </div>
               {showThroughputSpark ? (
@@ -167,7 +169,7 @@ export default function ApplicationCard({
               <div className={metricUnavailable ? 'relative z-20 pointer-events-auto' : ''}>
                 <MetricValue
                   size="lg"
-                  text={formatErrorRate(errorRate, metricUnavailable)}
+                  text={formatErrorRate(errorRate, metricUnavailable, t)}
                   unavailable={metricUnavailable}
                   danger={errDanger}
                   onRetry={metricUnavailable ? onRetryMetrics : undefined}

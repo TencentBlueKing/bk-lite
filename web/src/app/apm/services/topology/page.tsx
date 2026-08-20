@@ -8,6 +8,7 @@ import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
+import { formatLatency, formatNumber } from '@/app/apm/components/metric-format';
 import {
   buildTopologyEdgeGeometry,
   hasReciprocalTopologyEdge,
@@ -122,11 +123,11 @@ export function TopologyCanvas({
           const strokeWidth = Math.max(1.2, Math.min(3.2, 1 + (edge.sampled_calls / maxCalls) * 2));
           return (
             <g data-source={edge.source} data-target={edge.target} key={`${edge.source}-${edge.target}`}>
-              <title>{t('apm.topology.edgeTitle', '{source} 调用 {target}，观测调用 {calls} 次，平均耗时 {duration}ms', {
+              <title>{t('apm.topology.edgeTitle', '{source} 调用 {target}，观测调用 {calls} 次，平均耗时 {duration}', {
                 source: source.service_name,
                 target: target.service_name,
-                calls: edge.sampled_calls,
-                duration: edge.average_duration_ms.toFixed(0),
+                calls: formatNumber(edge.sampled_calls),
+                duration: formatLatency(edge.average_duration_ms, false, t),
               })}</title>
               <path
                 d={geometry.path}
@@ -148,7 +149,7 @@ export function TopologyCanvas({
                 x={geometry.labelX}
                 y={geometry.labelY - 5}
               >
-                {edge.sampled_calls} · {edge.average_duration_ms.toFixed(0)}ms
+                {formatNumber(edge.sampled_calls)} · {formatLatency(edge.average_duration_ms, false, t)}
               </text>
             </g>
           );
@@ -322,6 +323,7 @@ export default function ApmTopologyPage() {
       width: APM_TABLE_COLUMN_WIDTHS.metric,
       className: 'tabular-nums',
       responsive: ['lg'],
+      render: (value: number) => formatNumber(value),
     },
     {
       title: t('apm.topology.avgDuration', '平均耗时'),
@@ -330,7 +332,7 @@ export default function ApmTopologyPage() {
       width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       className: 'tabular-nums',
       responsive: ['md'],
-      render: (value: number) => `${value.toFixed(0)} ms`,
+      render: (value: number) => formatLatency(value, false, t),
     },
   ];
 

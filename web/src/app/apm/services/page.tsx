@@ -39,6 +39,7 @@ import CatalogState, {
 } from '@/app/apm/components/catalog-state';
 import {
   formatErrorRate,
+  formatDateTime,
   formatLatency,
   formatPercentage,
   formatRelativeTime,
@@ -451,7 +452,7 @@ export default function ApmServicesPage() {
         lastSeenAt: null,
       };
       current.serviceNames.set(row.serviceName, row.status === 'silent' || Boolean(current.serviceNames.get(row.serviceName)));
-      current.environments.add(row.environment || '未设置');
+      current.environments.add(row.environment || t('apm.common.unset', '未设置'));
       current.statuses.push(row.status);
       current.lastSeenAt = current.lastSeenAt && dayjs(current.lastSeenAt).isAfter(row.last_seen_at)
         ? current.lastSeenAt
@@ -494,7 +495,7 @@ export default function ApmServicesPage() {
         lastSeenAt: summary.lastSeenAt,
       };
     }).sort((left, right) => left.label.localeCompare(right.label));
-  }, [alertCounts, applications, environment, filteredRows, keyword, metricFailureKeys, namespace, redMetrics, statusFilter]);
+  }, [alertCounts, applications, environment, filteredRows, keyword, metricFailureKeys, namespace, redMetrics, statusFilter, t]);
 
   const archivedRows = useMemo(() => {
     const normalized = archivedKeyword.trim().toLowerCase();
@@ -606,7 +607,7 @@ export default function ApmServicesPage() {
         const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
         return (
           <MetricValue
-            text={formatThroughput(metric?.request_rate ?? null, unavailable)}
+            text={formatThroughput(metric?.request_rate ?? null, unavailable, t)}
             unavailable={unavailable}
             muted={item.status === 'silent'}
             onRetry={unavailable ? retryMetrics : undefined}
@@ -626,7 +627,7 @@ export default function ApmServicesPage() {
         const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
         return (
           <MetricValue
-            text={formatErrorRate(metric?.error_rate ?? null, unavailable)}
+            text={formatErrorRate(metric?.error_rate ?? null, unavailable, t)}
             unavailable={unavailable}
             danger={isErrorRateDanger(metric?.error_rate ?? null)}
             onRetry={unavailable ? retryMetrics : undefined}
@@ -646,7 +647,7 @@ export default function ApmServicesPage() {
         const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
         return (
           <MetricValue
-            text={formatLatency(metric?.p99_ms ?? null, unavailable)}
+            text={formatLatency(metric?.p99_ms ?? null, unavailable, t)}
             unavailable={unavailable}
             onRetry={unavailable ? retryMetrics : undefined}
           />
@@ -711,9 +712,9 @@ export default function ApmServicesPage() {
         <time
           className="whitespace-nowrap tabular-nums text-[var(--color-text-1)]"
           dateTime={value}
-          title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}
+          title={formatDateTime(value)}
         >
-          {dayjs(value).format('YYYY-MM-DD HH:mm')}
+          {formatDateTime(value, false)}
         </time>
       ),
     },
@@ -1071,7 +1072,7 @@ export default function ApmServicesPage() {
                   <Space size={8} wrap className="!text-xs text-[var(--color-text-3)]">
                     <span>{t('apm.services.appEquals', '应用 = {name}', { name: service.application_name || t('apm.services.unbound', '未绑定') })}</span>
                     <span>·</span>
-                    <span>{t('apm.services.lastActive', '最后活跃 {time}', { time: formatRelativeTime(service.last_seen_at) })}</span>
+                    <span>{t('apm.services.lastActive', '最后活跃 {time}', { time: formatRelativeTime(service.last_seen_at, t) })}</span>
                   </Space>
                 )}
               />
