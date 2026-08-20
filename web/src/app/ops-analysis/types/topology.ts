@@ -216,6 +216,7 @@ export interface NodeConfPanelProps {
   visible?: boolean;
   title?: string;
   builtinNamespaceId?: number;
+  filterDefinitions?: UnifiedFilterDefinition[];
   onClose?: () => void;
   onConfirm?: (values: NodeConfigFormValues) => void;
   onCancel?: () => void;
@@ -364,6 +365,7 @@ export interface NodeConfigFormValues {
   chartType?: string;
   dataSource?: number | string;
   dataSourceParams?: ParamItem[];
+  filterBindings?: FilterBindings;
   builtinNamespaceId?: number;
   topNLabelField?: string;
   topNValueField?: string;

@@ -23,6 +23,7 @@ class SystemMgmtNotificationDispatcher:
                 title=delivery.title,
                 body=delivery.body,
                 event_payload=dict(delivery.event_payload),
+                internal_caller="lite-apm",
             )
         except Exception:
             return NotificationDeliveryResult(

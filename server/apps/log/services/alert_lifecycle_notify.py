@@ -174,6 +174,7 @@ class LogAlertLifecycleNotifier:
                     "",
                     envelope,
                     [],
+                    internal_caller="lite-log",
                 )
                 success, error_message = self._parse_channel_result(send_result)
                 if success:

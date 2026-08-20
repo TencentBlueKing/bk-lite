@@ -144,7 +144,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
           return (
             <div
               key={`${item.name}-${index}`}
-              className="flex cursor-pointer select-none items-center rounded transition-colors hover:bg-[var(--color-fill-2)]"
+              className="flex cursor-pointer select-none items-center rounded transition-colors hover:bg-(--color-fill-2)"
               onClick={() => handleClick(item.name)}
               style={{
                 gap: 8 * scale,

@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { App, ConfigProvider } from 'antd';
 import { createAntdTheme } from './antd-adapter';
-import { applyThemeMode } from './css-adapter';
+import { applyThemeMode, getAppliedThemeMode } from './css-adapter';
 import { defaultTheme } from './defaults';
 import { persistThemeMode, readStoredThemeMode } from './mode-storage';
 import type { SemanticColorTokens, ThemeMode } from './contract';
@@ -82,3 +82,12 @@ export const useThemeMode = () => {
 };
 
 export const useThemeTokens = () => useThemeContext().tokens;
+
+/** 无 ThemeProvider 时回退到当前文档主题，避免大屏隔离层在测试里硬依赖全局壳。 */
+export const useOptionalThemeTokens = (): SemanticColorTokens => {
+  const context = useContext(ThemeContext);
+  if (context) {
+    return context.tokens;
+  }
+  return defaultTheme[getAppliedThemeMode()];
+};

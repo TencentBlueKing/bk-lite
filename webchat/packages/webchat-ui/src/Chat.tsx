@@ -929,15 +929,38 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                 loading={isLoading}
                 onPaste={handlePaste}
                 imageSlot={
-                  <label className="cursor-pointer" style={{ color: WC.muted }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      width: 28,
+                      height: 28,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      margin: 0,
+                      cursor: 'pointer',
+                      color: WC.muted,
+                      lineHeight: 0,
+                    }}
+                  >
                     <input
                       type="file"
                       accept="image/*"
                       multiple
                       onChange={handleImageUpload}
-                      className="hidden"
+                      style={{ display: 'none' }}
                     />
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ display: 'block' }}
+                    >
                       <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
                       <circle cx="8.5" cy="8.5" r="1.5"/>
                       <polyline points="21 15 16 10 5 21"/>

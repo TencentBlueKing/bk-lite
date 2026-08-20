@@ -2,29 +2,6 @@
   color: var(--ops-screen-table-text);
 }
 
-.screenDarkFilters {
-  :global(.ant-select-selector),
-  :global(.ant-input),
-  :global(.ant-picker) {
-    color: var(--ops-screen-table-text) !important;
-    background: var(--ops-screen-table-control-bg) !important;
-    border-color: var(--ops-screen-table-border) !important;
-    box-shadow: none !important;
-  }
-
-  :global(.ant-select-selection-placeholder),
-  :global(.ant-input::placeholder),
-  :global(.ant-picker-input > input::placeholder) {
-    color: var(--ops-screen-table-muted) !important;
-  }
-
-  :global(.ant-select-arrow),
-  :global(.ant-picker-suffix),
-  :global(.ant-input-suffix) {
-    color: var(--ops-screen-table-muted) !important;
-  }
-}
-
 .screenDarkTableWrap {
   height: 100%;
   min-height: 0;

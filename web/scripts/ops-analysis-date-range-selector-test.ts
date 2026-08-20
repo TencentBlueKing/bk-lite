@@ -9,8 +9,12 @@ import {
   toDateRangePickerValue,
 } from '../src/app/ops-analysis/components/dateRangeSelectorModel';
 
-assert.deepEqual(getDateRangeSelectorValue(undefined), { rangeType: 'last_7_days' });
+assert.equal(getDateRangeSelectorValue(undefined), null);
 assert.equal(getDateRangeSelectorValue(null), null);
+assert.deepEqual(
+  getDateRangeSelectorValue({ rangeType: 'last_7_days' }),
+  { rangeType: 'last_7_days' },
+);
 assert.deepEqual(toDateRangePickerValue({
   rangeType: 'custom', startDate: '2026-07-01', endDate: '2026-07-17',
 })?.map((item) => item.format('YYYY-MM-DD')), ['2026-07-01', '2026-07-17']);
