@@ -69,6 +69,15 @@ const areComparableValuesEqual = (left: unknown, right: unknown): boolean => {
 export const hasAssetValue = (value: unknown): boolean =>
   normalizeComparableValue(value) !== undefined;
 
+const getRelevantAssetColumns = (
+  visibleColumns: AssetCountColumn[]
+): AssetCountColumn[] => {
+  const submissionColumns = visibleColumns.filter(
+    (column) => column.required || column.is_only
+  );
+  return submissionColumns.length ? submissionColumns : visibleColumns;
+};
+
 export const isCountedAssetRow = (
   row: AssetRow,
   visibleColumns: AssetCountColumn[],
@@ -76,12 +85,7 @@ export const isCountedAssetRow = (
 ): boolean => {
   if (!visibleColumns.length) return false;
 
-  const submissionColumns = visibleColumns.filter(
-    (column) => column.required || column.is_only
-  );
-  const relevantColumns = submissionColumns.length
-    ? submissionColumns
-    : visibleColumns;
+  const relevantColumns = getRelevantAssetColumns(visibleColumns);
 
   const isComplete = relevantColumns.every((column) =>
     hasAssetValue(row[column.name])
@@ -95,6 +99,35 @@ export const isCountedAssetRow = (
         placeholderRow[column.name]
       )
   );
+};
+
+/** 仍为初始化默认值/空值的占位行，导入时应剔除，避免空行压在导入数据上方。 */
+export const isPlaceholderAssetRow = (
+  row: AssetRow,
+  visibleColumns: AssetCountColumn[],
+  placeholderRow: AssetRow = {}
+): boolean => {
+  if (!visibleColumns.length) return true;
+
+  const relevantColumns = getRelevantAssetColumns(visibleColumns);
+  return relevantColumns.every(
+    (column) =>
+      !hasAssetValue(row[column.name]) ||
+      areComparableValuesEqual(row[column.name], placeholderRow[column.name])
+  );
+};
+
+/** 保留已填写行，去掉空占位行后追加导入数据。 */
+export const mergeImportedAssetRows = <T extends AssetRow>(
+  existingRows: T[],
+  importedRows: T[],
+  visibleColumns: AssetCountColumn[],
+  placeholderRow: AssetRow = {}
+): T[] => {
+  const retainedRows = existingRows.filter(
+    (row) => !isPlaceholderAssetRow(row, visibleColumns, placeholderRow)
+  );
+  return [...retainedRows, ...importedRows];
 };
 
 export const countAccessAssets = (
