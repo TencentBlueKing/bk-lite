@@ -1206,12 +1206,12 @@
       "usageGroup": "使用组织",
       "usageGroupTip": "使用组织可调用该智能体进行对话/接口请求；管理组织会自动加入且不可移除"
     },
-    "channelPublish": "渠道发布",
+    "channelPublish": "发布",
     "channel": {
       "type": "渠道类型",
       "name": "名称",
       "enabled": "启用",
-      "status": "状态",
+      "status": "启停",
       "types": {
         "platform": "平台",
         "web_chat": "Web 对话",

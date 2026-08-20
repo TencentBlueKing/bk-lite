@@ -4,6 +4,8 @@ import time
 import uuid
 
 from django.db import transaction
+from django.db.models import Q
+from django.db.models.fields.json import KeyTextTransform
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
@@ -192,7 +194,14 @@ class MonitorObjectService:
         if instance_id:
             qs = qs.filter(id=instance_id)
         if name:
-            qs = qs.filter(name__icontains=name)
+            # 与列表「IP信息」/ ${resource_ip} 同源：summary_facts['asset.ip'] 优先字段。
+            qs = qs.annotate(
+                _asset_ip_fact=KeyTextTransform("asset.ip", "summary_facts")
+            ).filter(
+                Q(name__icontains=name)
+                | Q(ip__icontains=name)
+                | Q(_asset_ip_fact__icontains=name)
+            )
 
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
         if not monitor_obj:

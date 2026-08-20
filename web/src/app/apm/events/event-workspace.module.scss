@@ -16,7 +16,7 @@
 }
 
 .filterSection {
-  padding: 10px 20px;
+  padding: 10px 0;
   margin-bottom: 10px;
 }
 
@@ -69,21 +69,20 @@
   padding: 0 10px;
 }
 
-.alertsWorkspace {
-  min-height: calc(100vh - 146px);
-  padding: 0 0 24px;
-}
-
 .alertsViewTabs {
-  padding: 0 20px;
-  margin: 0 0 10px;
-  background: var(--color-bg-1);
-  border-bottom: 1px solid var(--color-border-1);
+  margin: 0;
 }
 
 .alertsViewTabs :global(.ant-tabs-nav) {
-  min-height: 56px;
   margin-bottom: 0;
+}
+
+.alertsViewTabs :global(.ant-tabs-nav::before) {
+  border-bottom-color: var(--color-border);
+}
+
+.alertsViewTabs :global(.ant-tabs-tab) {
+  padding: 0 0 10px;
 }
 
 .alertsContent {
@@ -92,11 +91,7 @@
 
 .alertsToolbar {
   display: flex;
-  min-height: 60px;
   align-items: center;
-  padding: 10px 20px;
-  margin-bottom: 10px;
-  background: var(--color-bg-1);
 }
 
 .alertsToolbarActions,
@@ -126,19 +121,7 @@
 }
 
 .alertsDistribution {
-  margin-bottom: 10px;
   overflow: hidden;
-  background: var(--color-bg-1);
-}
-
-.alertsSeveritySummary {
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.alertsSeveritySummary :global(.ant-tag) {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
 }
 
 .alertsDistributionChart {
@@ -148,7 +131,6 @@
 
 .alertsDistributionCollapseTitle {
   min-height: 44px;
-  padding: 10px 20px !important;
 }
 
 .alertsDistributionCollapseContent {
@@ -157,8 +139,6 @@
 
 .alertsTableSection {
   min-width: 0;
-  padding: 10px 20px 20px;
-  background: var(--color-bg-1);
 }
 
 .alertsTableSection :global(.ant-table-wrapper) {
@@ -166,22 +146,16 @@
 }
 
 .alertTimeCell {
-  display: inline-flex;
-  align-items: center;
   color: var(--color-text-3);
   font-variant-numeric: tabular-nums;
-  gap: 6px;
   white-space: nowrap;
-}
-
-.alertTimeCell :global(.anticon) {
-  color: var(--color-text-4);
 }
 
 .alertTitleLink {
   display: block !important;
   width: 100%;
-  min-height: 40px;
+  height: auto !important;
+  min-height: 0;
   overflow: hidden;
   padding: 0 !important;
   font-weight: 500;
@@ -228,7 +202,8 @@
 }
 
 .alertOperationCell :global(.ant-btn) {
-  min-height: 40px;
+  height: auto;
+  min-height: 0;
 }
 
 .alertDetailDrawer :global(.ant-drawer-header) {
@@ -636,16 +611,15 @@
 
 .tableSection {
   min-width: 0;
-  padding: 10px 20px 20px;
+  padding: 10px 0 16px;
 }
 
 .policySection {
-  min-height: calc(100vh - 146px);
-  padding: 20px;
+  min-width: 0;
 }
 
 .policyToolbar {
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
 .policyNameLink,
@@ -704,13 +678,14 @@
 }
 
 .policyOperationCell :global(.ant-btn) {
-  min-height: 40px;
+  height: auto;
+  min-height: 0;
 }
 
 .editor {
   width: 100%;
   min-height: 100%;
-  padding: 16px 20px 0;
+  padding: 0;
   background: transparent;
 }
 
@@ -983,29 +958,6 @@
     justify-content: space-between;
   }
 
-  .tableSection,
-  .filterSection,
-  .policySection {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
-
-  .alertsViewTabs {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
-
-  .alertsToolbar,
-  .alertsTableSection {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
-
-  .alertsDistributionCollapseTitle {
-    padding-right: 16px !important;
-    padding-left: 16px !important;
-  }
-
   .alertsToolbarActions :global(.ant-input-affix-wrapper) {
     width: min(100%, 360px);
   }
@@ -1038,16 +990,6 @@
 }
 
 @media (max-width: 640px) {
-  .alertsWorkspace {
-    padding: 0 0 12px;
-  }
-
-  .alertsViewTabs {
-    padding-right: 12px;
-    padding-left: 12px;
-    margin-bottom: 12px;
-  }
-
   .alertsToolbarActions {
     align-items: stretch;
     flex-direction: column;

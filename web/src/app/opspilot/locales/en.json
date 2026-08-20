@@ -1199,12 +1199,12 @@
       "usageGroup": "Usage Organization",
       "usageGroupTip": "Usage organizations can chat with / call this skill via API; management organizations are auto-included and cannot be removed."
     },
-    "channelPublish": "Channel Publish",
+    "channelPublish": "Publish",
     "channel": {
       "type": "Channel Type",
       "name": "Name",
       "enabled": "Enabled",
-      "status": "Status",
+      "status": "On/Off",
       "types": {
         "platform": "Platform",
         "web_chat": "Web Chat",

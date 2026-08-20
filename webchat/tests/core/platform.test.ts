@@ -16,6 +16,7 @@ import {
   unwrapPlatformPayload,
   writeDockCollapsed,
 } from '../../packages/webchat-core/src/platform';
+import { isSilentCustomEvent } from '../../packages/webchat-core/src/aguiHistoryText';
 import { normalizeWebChatConfig } from '../../packages/webchat-core/src/config';
 
 const platform = {
@@ -191,6 +192,34 @@ test('drops protocol-only AG-UI dumps and keeps assistant text from mixed dumps'
     },
   ]);
   assert.equal(mixed[0].content, '工作负载正常');
+});
+
+test('planned execution CUSTOM events stay out of chat bubbles', () => {
+  // 实时流（Chat.applyCustomEvent）与历史回放共用同一份静默清单
+  assert.equal(isSilentCustomEvent('planned_execution_status'), true);
+  assert.equal(isSilentCustomEvent('planned_execution_step'), true);
+  assert.equal(isSilentCustomEvent('wiki_citations'), true);
+  assert.equal(isSilentCustomEvent('approval_request'), false);
+  assert.equal(isSilentCustomEvent('config_analysis_report'), false);
+
+  const planned = mapPlatformMessages([
+    {
+      id: 12,
+      conversation_role: 'bot',
+      conversation_content: JSON.stringify([
+        { type: 'RUN_STARTED' },
+        { type: 'CUSTOM', name: 'planned_execution_status', value: { phase: 'planning' } },
+        {
+          type: 'CUSTOM',
+          name: 'planned_execution_step',
+          value: { phase: 'start', step_index: 1, total_steps: 1, objective: '查询当前时间', tools: ['get_current_time'] },
+        },
+        { type: 'TEXT_MESSAGE_CONTENT', delta: '现在是下午两点' },
+        { type: 'RUN_FINISHED' },
+      ]),
+    },
+  ]);
+  assert.equal(planned[0].content, '现在是下午两点');
 });
 
 test('formats session timestamps in Chinese relative units', () => {

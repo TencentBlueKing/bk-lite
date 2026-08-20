@@ -255,7 +255,7 @@ const SkillChannelPage: React.FC = () => {
         ),
       },
       {
-        title: t('skill.channel.status', '状态'),
+        title: t('skill.channel.status', '启停'),
         dataIndex: 'enabled',
         key: 'enabled',
         width: 88,
@@ -267,7 +267,6 @@ const SkillChannelPage: React.FC = () => {
         title: t('common.action') || '操作',
         key: 'action',
         width: 220,
-        align: 'right' as const,
         render: (_: unknown, item: SkillChannelItem) => (
           <Space size="small">
             {item.channel_type === 'web_chat' ? (

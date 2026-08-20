@@ -13,7 +13,7 @@ import { Avatar, Button, message, Popconfirm, Space, Switch, Typography, type Ta
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
-import ApmRouteShell from '@/app/apm/components/apm-route-shell';
+import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import type { ApmPolicy } from '@/app/apm/types';
 import SearchActionBar from '@/components/search-action-bar';
@@ -200,9 +200,9 @@ export default function ApmPolicyListPage() {
       title={t('apm.policies.title', '告警策略')}
       description="面向 APM Service、端点、环境和版本的独立策略。启停只在列表执行。"
       dependency="control"
-      spacing="flush"
     >
-      <section className={styles.policySection} aria-label="告警策略列表">
+      <ApmSurface>
+        <div className="flex flex-col gap-4">
         <SearchActionBar
           spacing="flush"
           className={styles.policyToolbar}
@@ -232,12 +232,13 @@ export default function ApmPolicyListPage() {
             columns={columns}
             dataSource={visible}
             pagination={{ pageSize: 20 }}
-            scroll={{ x: 1160, y: 'calc(100vh - 336px)' }}
+            scroll={{ x: 1160 }}
           />
         ) : (
           <CatalogState kind={state} onRetry={load} />
         )}
-      </section>
+        </div>
+      </ApmSurface>
     </ApmRouteShell>
   );
 }

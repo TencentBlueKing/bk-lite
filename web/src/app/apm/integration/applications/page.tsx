@@ -115,7 +115,9 @@ export default function ApmApplicationsPage() {
             <Link href={`/apm/integration/applications/${item.id}`} className="font-medium text-[var(--color-primary)] hover:underline">
               {item.name}
             </Link>
-            <EllipsisWithTooltip className="truncate font-mono text-xs text-[var(--color-text-3)]" text={item.application_id} />
+            {item.application_id && item.application_id !== item.name ? (
+              <EllipsisWithTooltip className="truncate font-mono text-xs text-[var(--color-text-3)]" text={item.application_id} />
+            ) : null}
           </div>
         </div>
       ),

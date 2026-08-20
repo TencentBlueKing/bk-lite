@@ -33,6 +33,7 @@ import {CustomChatSSEProps, GuideParseResult} from '@/app/opspilot/types/chat';
 import {useSSEStream} from './hooks/useSSEStream';
 import {useSendMessage} from './hooks/useSendMessage';
 import {initToolCallTooltips} from './toolCallRenderer';
+import { stripPlannedExecutionDumps } from './plannedExecutionPayload';
 
 const normalizeThinkingText = (value?: string) => {
   if (!value) return '';
@@ -617,7 +618,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       ? reportFileDownloads.filter(isRenderableReportDownload)
       : [];
 
-    let replacedContent = parseReferenceLinks(content || '');
+    let replacedContent = parseReferenceLinks(stripPlannedExecutionDumps(content || ''));
     replacedContent = parseSuggestionLinks(replacedContent);
     replacedContent = rewriteAttachmentDownloadMentions(replacedContent, reportFileDownloads);
 
@@ -629,18 +630,21 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       const hasMarkers = markerPattern.test(replacedContent);
 
       if (!hasMarkers) {
-        // No markers — render as single block with fallback positions
-        const html = sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(md.render(replacedContent)), reportFileDownloads));
+        const html = replacedContent.trim()
+          ? sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(md.render(replacedContent)), reportFileDownloads))
+          : '';
         return (
           <>
-            <div
-              dangerouslySetInnerHTML={{ __html: html }}
-              className={styles.markdownBody}
-              onClick={e => {
-                handleToolCallClick(e);
-                handleSuggestionClick(e);
-              }}
-            />
+            {html ? (
+              <div
+                dangerouslySetInnerHTML={{ __html: html }}
+                className={styles.markdownBody}
+                onClick={e => {
+                  handleToolCallClick(e);
+                  handleSuggestionClick(e);
+                }}
+              />
+            ) : null}
             {Array.isArray(configDiffReports) && configDiffReports.length > 0 && (
               <div className="mt-2">
                 {[...configDiffReports].sort((a, b) => (a.received_at || 0) - (b.received_at || 0)).map(report => (
@@ -872,7 +876,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <BrowserStepProgress history={browserStepsHistory} />
         )}
         {renderContentWithInlineComponents()}
-        {!!msg.wikiCitations?.length && <WikiCitations citations={msg.wikiCitations} content={msg.content} />}
+        {!!msg.wikiCitations?.length && <WikiCitations citations={msg.wikiCitations} content={replacedContent} />}
       </>
     );
   };
