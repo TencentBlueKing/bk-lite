@@ -51,6 +51,25 @@ class SkillChannelSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(f"不支持的渠道类型: {value}")
         return value
 
+    def validate(self, attrs):
+        skill = attrs.get("skill") or getattr(self.instance, "skill", None)
+        channel_type = attrs.get("channel_type") or getattr(self.instance, "channel_type", None)
+        if "name" in attrs:
+            name = (attrs.get("name") or "").strip()
+        else:
+            name = (getattr(self.instance, "name", "") or "").strip() if self.instance else ""
+        if not name and channel_type:
+            name = dict(SkillChannelChoices.choices).get(channel_type, channel_type)
+        attrs["name"] = name
+
+        if skill is not None and channel_type:
+            qs = SkillChannel.objects.filter(skill=skill, channel_type=channel_type, name=name)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError({"name": "同一智能体下，同渠道类型不能使用重复名称"})
+        return attrs
+
     def create(self, validated_data):
         skill = validated_data["skill"]
         raw_config = self.initial_data.get("channel_config") or {}
@@ -58,8 +77,6 @@ class SkillChannelSerializer(serializers.ModelSerializer):
             raw_config = {}
         validated_data["channel_config"] = raw_config
         validated_data["usage_team"] = copy_usage_team_for_channel(skill)
-        if not validated_data.get("name"):
-            validated_data["name"] = dict(SkillChannelChoices.choices).get(validated_data["channel_type"], validated_data["channel_type"])
         return super().create(validated_data)
 
     def update(self, instance, validated_data):

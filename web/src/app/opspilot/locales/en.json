@@ -1235,7 +1235,19 @@
       "groupSaas": "In-product",
       "groupSaasDesc": "Platform / Web chat / Embedded",
       "groupIm": "Messaging",
-      "groupImDesc": "WeCom / DingTalk / Official Account (org check skipped)"
+      "groupImDesc": "WeCom / DingTalk / Official Account (org check skipped)",
+      "fields": {
+        "token": "Token",
+        "secret": "Secret",
+        "aes_key": "AES Key",
+        "corp_id": "Corp ID",
+        "agent_id": "Agent ID",
+        "encodingAESKey": "EncodingAESKey",
+        "aibotid": "Bot ID",
+        "client_id": "Client ID",
+        "client_secret": "Client Secret",
+        "app_id": "App ID"
+      }
     },
     "skillParams": {
       "title": "Prompt Parameters",

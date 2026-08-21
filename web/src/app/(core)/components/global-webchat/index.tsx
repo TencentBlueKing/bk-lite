@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { message } from 'antd';
 
+import { installPageContextBridge } from '@/components/ai-page-context/registry';
 import { useAuth } from '@/context/auth';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -39,6 +40,8 @@ interface WebChatPlatformConfig {
   platform: typeof PLATFORM & { storageKey: string };
   userId: string;
   teamId: string;
+  collectContext?: () => Promise<unknown>;
+  hasPageContext?: () => boolean;
 }
 
 interface WebChatBrowserApi {
@@ -150,6 +153,14 @@ const GlobalWebchat = () => {
           },
           userId: resolvedUserId,
           teamId,
+          collectContext: async () => {
+            installPageContextBridge();
+            return window.__BK_AI_PAGE_CONTEXT__?.collect() ?? null;
+          },
+          hasPageContext: () => {
+            installPageContextBridge();
+            return Boolean(window.__BK_AI_PAGE_CONTEXT__?.hasAvailable());
+          },
         },
         null,
       );
