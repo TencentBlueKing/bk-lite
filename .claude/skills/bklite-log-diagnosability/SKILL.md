@@ -9,7 +9,7 @@ Make production failures explainable from logs without increasing steady-state n
 
 ## Operating rules
 
-- Read `AGENTS.md` and the relevant current capabilities before judging or editing logging behavior: `specs/capabilities/backend-engineering.md`, `platform-security.md`, `platform-reliability.md`, and `engineering-quality.md`.
+- Read `AGENTS.md` and the relevant current capabilities before judging or editing logging behavior: `specs/capabilities/backend-engineering.md`, `specs/capabilities/platform-security.md`, `specs/capabilities/platform-reliability.md`, and `specs/capabilities/engineering-quality.md`.
 - Treat detector output as candidates. Read the complete control flow before reporting a finding.
 - Audit critical workflows end to end, especially Server → Celery/NATS → Stargazer → plugin/executor → callback → Server persistence.
 - Prefer one terminal failure log at the layer that owns the outcome. Avoid log-then-raise duplication at every stack layer.
