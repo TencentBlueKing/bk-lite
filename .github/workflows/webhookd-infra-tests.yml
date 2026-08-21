@@ -4,6 +4,9 @@ name: Webhookd Infra Tests
 # agents/webhookd/infra/kubernetes.sh（依赖 bash + jq + python3 + pyyaml），
 # 合约测试静态解析模板/dist YAML。此前这些测试没有任何 CI 入口，
 # 容忍策略等渲染契约的回归只能靠本地手跑发现。
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths:
@@ -39,7 +42,7 @@ jobs:
         run: python --version || sudo ln -s "$(command -v python3)" /usr/local/bin/python
 
       - name: Install test dependencies
-        run: pip install pytest pyyaml
+        run: pip install pytest pyyaml cryptography
 
       - name: Run webhookd infra tests
         run: python3 -m pytest tests/ -q
