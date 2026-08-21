@@ -1,0 +1,4 @@
+interface:
+  display_name: "BK-Lite 日志可诊断性"
+  short_description: "审计并改善 Server 与 Stargazer 的日志信噪比"
+  default_prompt: "使用 $bklite-log-diagnosability 审计 Server 到 Stargazer 关键链路的日志可诊断性。"

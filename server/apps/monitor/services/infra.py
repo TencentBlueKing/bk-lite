@@ -45,10 +45,12 @@ class InfraService:
         cache.set(cache_key, token_data, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
 
         logger.info(
-            f"生成 infra 安装令牌成功: token={token[:8]}***, "
-            f"cluster={cluster_name}, region={cloud_region_id}, "
-            f"有效期={InfraConstants.TOKEN_EXPIRE_TIME}秒, "
-            f"最大使用次数={InfraConstants.TOKEN_MAX_USAGE}"
+            "monitor.infra_install_token.generated cluster=%s region=%s "
+            "expires_in_seconds=%s max_usage=%s",
+            cluster_name,
+            cloud_region_id,
+            InfraConstants.TOKEN_EXPIRE_TIME,
+            InfraConstants.TOKEN_MAX_USAGE,
         )
 
         return token
@@ -71,9 +73,10 @@ class InfraService:
 
         if not data:
             logger.warning(
-                f"Token 验证失败: token={token[:8]}*** 在缓存中不存在或已过期。"
-                f"可能原因: 1) token 已过期(>{InfraConstants.TOKEN_EXPIRE_TIME}秒) "
-                f"2) 缓存服务重启 3) token 格式错误"
+                "monitor.infra_install_token.validation_failed reason=%s "
+                "expires_in_seconds=%s",
+                "missing_or_expired",
+                InfraConstants.TOKEN_EXPIRE_TIME,
             )
             raise BaseAppException("Invalid or expired token")
 
@@ -84,7 +87,14 @@ class InfraService:
         if usage_count >= max_usage:
             # 超过最大使用次数，删除令牌
             cache.delete(cache_key)
-            logger.warning(f"Token 已达到最大使用次数: token={token[:8]}***, " f"usage={usage_count}/{max_usage}, cluster={data.get('cluster_name')}")
+            logger.warning(
+                "monitor.infra_install_token.validation_failed reason=%s "
+                "usage=%s max_usage=%s cluster=%s",
+                "usage_limit_exceeded",
+                usage_count,
+                max_usage,
+                data.get("cluster_name"),
+            )
             raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
 
         # 增加使用次数
@@ -94,9 +104,13 @@ class InfraService:
         cache.set(cache_key, data, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
 
         logger.info(
-            f"Token 验证成功: token={token[:8]}***, "
-            f"cluster={data['cluster_name']}, region={data['cloud_region_id']}, "
-            f"使用次数={data['usage_count']}/{max_usage}, 剩余次数={max_usage - data['usage_count']}"
+            "monitor.infra_install_token.validated cluster=%s region=%s "
+            "usage=%s max_usage=%s remaining_usage=%s",
+            data["cluster_name"],
+            data["cloud_region_id"],
+            data["usage_count"],
+            max_usage,
+            max_usage - data["usage_count"],
         )
 
         return {

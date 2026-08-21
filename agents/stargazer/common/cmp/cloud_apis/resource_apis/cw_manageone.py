@@ -64,19 +64,36 @@ def handle_request(method, url, **kwargs):
     try:
         resp = requests.request(method, url, **kwargs)
     except Exception:
-        logger.exception(f"请求失败,url:{url},method:{method},kwargs:{kwargs}")
-        return {"result": False, "message": f"请求失败,url:{url},method:{method},kwargs:{kwargs}", "data": {}}
-    if resp.status_code > 300:
         logger.exception(
-            f"请求失败,url:{url},method:{method},kwargs:{kwargs},status_code:{resp.status_code}"
-            f"message:{resp.content.decode('utf-8')}"
+            "manageone.request.failed method=%s url=%s failed_stage=%s",
+            method,
+            url,
+            "transport",
         )
         return {
             "result": False,
-            "message": f"请求错误,status_code:{resp.status_code},message:{resp.content.decode('utf-8')}",
+            "message": f"请求失败,url:{url},method:{method}",
             "data": {},
         }
-    logger.debug(f"请求成功,url:{url},method:{method},kwargs:{kwargs}")
+    if resp.status_code > 300:
+        logger.error(
+            "manageone.request.failed method=%s url=%s failed_stage=%s status_code=%s",
+            method,
+            url,
+            "http_response",
+            resp.status_code,
+        )
+        return {
+            "result": False,
+            "message": f"请求错误,status_code:{resp.status_code}",
+            "data": {},
+        }
+    logger.debug(
+        "manageone.request.completed method=%s url=%s status_code=%s",
+        method,
+        url,
+        resp.status_code,
+    )
     return {"result": True, "data": resp.json()}
 
 
@@ -116,7 +133,10 @@ class CwManageOne(object):
         if not resp["result"]:
             return ""
         auth_token = resp["data"].get("accessSession", "")
-        logger.debug(f"获取运维面token成功,auth_token:{auth_token}")
+        logger.debug(
+            "manageone.token_acquired token_present=%s",
+            bool(auth_token),
+        )
         return auth_token
 
     def __call__(self, *args, **kwargs):
