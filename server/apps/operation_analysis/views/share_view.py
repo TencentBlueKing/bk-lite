@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.core.utils.open_base import login_exempt
+from apps.operation_analysis.common.datasource_visibility import can_access_datasource_in_org
 from apps.operation_analysis.constants.canvas_refresh import normalize_canvas_refresh_interval
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.serializers.share_serializers import (
@@ -330,7 +331,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         data_sources = [
             item
             for item in DataSourceAPIModel.objects.filter(id__in=allowed_ids).prefetch_related("namespaces", "tag")
-            if principal.space_id in (item.groups or [])
+            if can_access_datasource_in_org(item, principal.space_id)
         ]
         log_share_access(
             request,
