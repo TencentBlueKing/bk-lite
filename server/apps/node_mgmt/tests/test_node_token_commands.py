@@ -103,7 +103,10 @@ def test_node_token_init_returns_token_without_logging_it(monkeypatch):
         stdout=out,
     )
 
-    assert token in out.getvalue()
-    assert logged_calls[0][0] == ("node.token_init.started",)
-    assert logged_calls[1][0][0] == "node.token_init.completed node_id=%s"
+    output_lines = out.getvalue().splitlines()
+    assert len(output_lines) == 1
+    assert output_lines[0].startswith("node_id: ")
+    assert output_lines[0].endswith(f", token: {token}")
+    assert logged_calls[0][0] == ("node token 初始化开始！",)
+    assert logged_calls[1][0] == ("node token 初始化完成！",)
     assert token not in repr(logged_calls)

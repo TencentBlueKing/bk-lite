@@ -207,10 +207,7 @@ def verify_wechat_code(code: str) -> dict:
         token_data = token_resp.json()
 
         if "errcode" in token_data:
-            logger.warning(
-                "wechat.token_exchange.failed errcode=%s",
-                token_data.get("errcode"),
-            )
+            logger.warning(f"WeChat token exchange failed: {token_data}")
             return {
                 "success": False,
                 "error": token_data.get("errmsg", "Unknown error"),
@@ -226,10 +223,7 @@ def verify_wechat_code(code: str) -> dict:
         userinfo_data = userinfo_resp.json()
 
         if "errcode" in userinfo_data:
-            logger.warning(
-                "wechat.userinfo.failed errcode=%s",
-                userinfo_data.get("errcode"),
-            )
+            logger.warning(f"WeChat userinfo fetch failed: {userinfo_data}")
             return {
                 "success": False,
                 "error": userinfo_data.get("errmsg", "Unknown error"),

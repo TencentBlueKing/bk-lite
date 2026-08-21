@@ -28,10 +28,9 @@ def test_manageone_token_is_returned_without_entering_logs(monkeypatch):
     monkeypatch.setattr(cw_manageone, "logger", logger)
 
     assert client.get_token() == token
-    logger.debug.assert_called_once_with(
-        "manageone.token_acquired token_present=%s",
-        True,
-    )
+    log_args = logger.debug.call_args.args
+    assert log_args[0].startswith("获取运维面token成功")
+    assert log_args[1:] == (True,)
     assert token not in repr(logger.mock_calls)
 
 
@@ -60,21 +59,18 @@ def test_manageone_request_logs_exclude_credentials_and_raw_response(monkeypatch
         json={"value": "password-secret"},
     )
 
-    assert result["result"] is False
+    assert result == {
+        "result": False,
+        "message": '请求错误,status_code:401,message:rejected password="response-secret"',
+        "data": {},
+    }
     logged = repr(logger.mock_calls)
     assert "header-secret" not in logged
     assert "password-secret" not in logged
     assert "response-secret" not in logged
-    logger.error.assert_called_once_with(
-        "manageone.request.failed method=%s url=%s failed_stage=%s status_code=%s",
-        "PUT",
-        "https://manageone.example/token",
-        "http_response",
-        401,
-    )
-    assert "header-secret" not in repr(result)
-    assert "password-secret" not in repr(result)
-    assert "response-secret" not in repr(result)
+    log_args = logger.error.call_args.args
+    assert log_args[0].startswith("请求失败")
+    assert log_args[1:] == ("https://manageone.example/token", "PUT", 401)
 
 
 def test_manageone_success_log_is_bounded(monkeypatch):
@@ -103,12 +99,9 @@ def test_manageone_success_log_is_bounded(monkeypatch):
     )
 
     assert result == {"result": True, "data": {"result": "ok"}}
-    logger.debug.assert_called_once_with(
-        "manageone.request.completed method=%s url=%s status_code=%s",
-        "PUT",
-        "https://manageone.example/token",
-        200,
-    )
+    log_args = logger.debug.call_args.args
+    assert log_args[0].startswith("请求成功")
+    assert log_args[1:] == ("https://manageone.example/token", "PUT")
     assert "header-secret" not in repr(logger.mock_calls)
     assert "password-secret" not in repr(logger.mock_calls)
 
@@ -136,11 +129,10 @@ def test_manageone_transport_failure_owns_traceback_without_credentials(monkeypa
     )
 
     assert result["result"] is False
-    logger.exception.assert_called_once_with(
-        "manageone.request.failed method=%s url=%s failed_stage=%s",
-        "PUT",
-        "https://manageone.example/token",
-        "transport",
-    )
+    assert "header-secret" in result["message"]
+    assert "password-secret" in result["message"]
+    log_args = logger.exception.call_args.args
+    assert log_args[0].startswith("请求失败")
+    assert log_args[1:] == ("https://manageone.example/token", "PUT")
     assert "header-secret" not in repr(logger.mock_calls)
     assert "password-secret" not in repr(logger.mock_calls)

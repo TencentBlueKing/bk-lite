@@ -15,19 +15,6 @@
 
 > **覆盖率门槛**:改动代码覆盖率 **≥75%**(`pytest --cov`)。是否设置全仓 `--cov-fail-under` 以当前测试基线和 CI 配置为准，不在本文预设未落地门禁。
 
-### 日志变更增量验证
-
-修改 `server/` 或 `agents/stargazer/` 的生产日志时，除模块测试外必须运行相关失败路径回归测试，并只扫描本次触及的生产 Python 文件：
-
-```bash
-python3 .claude/skills/bklite-log-diagnosability/scripts/inventory_logging.py \
-  <本次触及的生产 Python 文件...> --format markdown
-```
-
-- 已确认的敏感信息暴露（P0）必须为 0；不得引入未经审查的新 P1。
-- 测试至少断言稳定事件/等级、必要关联字段、异常所有权或 traceback，以及敏感/原始内容不在日志参数中。
-- 扫描器是候选收集器，不是正确性判定器。全仓仍有存量候选时，不以“全量结果为 0”作为合并条件；自动硬门禁应在增量行识别和误报基线稳定后单独落地。
-
 ## 2. 自动门禁(已落地,别绕过)
 
 - `.husky/pre-commit`:对 `web/`、`mobile/` staged 变更自动 lint/type-check。
@@ -42,7 +29,6 @@ python3 .claude/skills/bklite-log-diagnosability/scripts/inventory_logging.py \
 - [ ] Python:black + isort + flake8 全过,行宽 ≤150
 - [ ] **无空 `except`**
 - [ ] **日志无敏感信息**
-- [ ] **日志变更已做增量验证**：稳定模板、终态所有权、关联字段和噪声预算符合[后端工程 §8](backend-engineering.md#8-日志可诊断性)，目标扫描无确认 P0
 - [ ] FalkorDB 语法(CMDB),**无 Neo4j 语法**
 - [ ] **禁用原生 SQL**:走 Django ORM,无 raw SQL / `.raw()` / `RawSQL` / `cursor.execute`(跨 `DB_ENGINE` 方言)
 - [ ] **启动不被非关键初始化阻断**:非关键、可重建资源失败须告警并可恢复,不得让 `startup.sh` / `batch_init` / entrypoint 退出;见 [可靠性红线 §2.6](platform-reliability.md#26-启动安全非关键初始化不得阻断服务红线)

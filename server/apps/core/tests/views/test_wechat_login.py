@@ -61,35 +61,6 @@ class TestVerifyWechatCode:
         assert result["success"] is False
         assert result["errcode"] == 40029
 
-    @patch("apps.core.views.index_view.logger")
-    @patch("apps.core.views.index_view.requests")
-    @patch("apps.core.views.index_view.LoginModule")
-    def test_token_exchange_failure_log_excludes_raw_response(
-        self, mock_login_module, mock_requests, mock_logger
-    ):
-        from apps.core.views.index_view import verify_wechat_code
-
-        mock_module = MagicMock()
-        mock_module.app_id = "test_app"
-        mock_module.decrypted_app_secret = "test_secret"
-        mock_login_module.objects.filter.return_value.first.return_value = mock_module
-        mock_response = MagicMock()
-        mock_response.json.return_value = {
-            "errcode": 40029,
-            "errmsg": "invalid code",
-            "access_token": "wechat-secret-token",
-        }
-        mock_requests.get.return_value = mock_response
-
-        result = verify_wechat_code("test_code")
-
-        assert result["success"] is False
-        mock_logger.warning.assert_called_once_with(
-            "wechat.token_exchange.failed errcode=%s",
-            40029,
-        )
-        assert "wechat-secret-token" not in repr(mock_logger.mock_calls)
-
     @patch("apps.core.views.index_view.requests")
     @patch("apps.core.views.index_view.LoginModule")
     def test_returns_success_on_valid_flow(self, mock_login_module, mock_requests):

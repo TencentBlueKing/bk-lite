@@ -58,7 +58,7 @@
 - ✅ **禁原生 SQL**:走 Django ORM(`DB_ENGINE` 多方言,raw SQL 跨库易碎);确需复杂查询用 ORM 表达式。
 - ✅ **图库(CMDB)用参数化查询**,禁拼接 Cypher / 禁 Neo4j 语法(本项目用 FalkorDB)。
 
-## 8. 日志可诊断性
+## 8. 日志引入
 
 - ✅ **`server/apps/<app>/` 内统一从 `apps.core.logger` 引入本 app 的 logger，并别名为 `logger`**:
   ```python
@@ -67,16 +67,6 @@
   现有导出见 `server/apps/core/logger.py`（如 `cmdb_logger`、`opspilot_logger`、`alert_logger`、`monitor_logger`、`node_logger`、`job_logger`、`mlops_logger`、`log_logger`、`system_mgmt_logger`、`console_mgmt_logger`、`operation_analysis_logger`、`nats_logger`、`celery_logger`）。`core` / 跨 app 共享工具可用默认 `from apps.core.logger import logger`。
   - ❌ `from loguru import logger`、直接 `logging.getLogger(...)`、或引入其他 app 的 `*_logger`。
   - ❌ 新增 app logger 时绕过 `apps/core/logger.py` 就地创建。
-- ✅ **使用稳定事件名和惰性参数**：消息模板采用 `<domain>.<operation>.<outcome>` 或等价稳定名称，动态值通过 `%s` 参数传入。
-  - ❌ f-string、拼接、`.format()` 把 ID、host、异常文本等动态值写进模板，导致日志无法稳定检索和聚合。
-- ✅ **一个失败只有一个终态所有者**：下层补充异常上下文并继续抛出，决定返回、持久化或任务终态的边界记录一次带 traceback 的 ERROR；可恢复降级记录一次 WARNING，并写明 `failed_stage` 与降级结果。
-  - ❌ 插件、执行器、NATS/Celery handler、回调和 Server 服务层对同一异常层层打印 ERROR；或只记录 `str(exc)` 后返回空结果伪装成功。
-- ✅ **关键链路携带已有业务标识**：优先传播 `request_id`、`task_id`、`collect_task_id`、`debug_id`、`execution_id`、`subject` 等现有标识；失败至少包含稳定事件、`failed_stage`、`error_type` 和可用的关联 ID。
-  - ❌ 只写“执行失败”“请求异常”，无法判断组件、阶段、任务或最终结果。
-- ✅ **按业务结果选择等级**：DEBUG 用于分支、单项与单次尝试；INFO 仅记录服务/任务边界和终态成功摘要；WARNING 表示重试、降级、部分失败或跳过；ERROR 表示需要调查或补偿的终态失败。
-- ✅ **高频路径有噪声预算**：循环逐项成功默认不记，必要诊断降为 DEBUG；批量操作在终态输出 total/success/failed/skipped 等有界汇总。
-- ✅ **敏感与无界内容永不进入日志**：禁止 password/token/secret/cookie/Authorization、完整 credential/config/request/response/payload/result/kwargs、原始命令及无界输出；只能记录存在性、计数、类型、状态码等有界元数据。
-- ✅ 日志审计、设计和修复遵循 `.claude/skills/bklite-log-diagnosability/`；扫描结果是待人工核实的候选，不得机械批量改写全部 f-string、INFO 或 broad exception。
 
 ## 9. 架构卫生
 
@@ -112,8 +102,6 @@
 - [ ] 输入经校验,异常不吞,失败码语义正确(400/403 非 500)
 - [ ] serializer 无 `__all__`,敏感字段 write_only
 - [ ] 日志从 `apps.core.logger` 引入本 app 的 `*_logger as logger`,未用 loguru / 就地 getLogger
-- [ ] 日志模板稳定且使用惰性参数；关键失败仅由终态所有者记录一次，保留 traceback、失败阶段和关联 ID
-- [ ] 循环/批量日志有界；无凭据、认证头、原始 payload/response/kwargs 或其他敏感与无界内容
 - [ ] 无原生 SQL,图查询参数化
 - [ ] 安全边界变更已盘点存量契约,有迁移与回滚方案
 - [ ] 异步状态有 fencing/幂等,持久化与外部副作用可补偿重试

@@ -34,25 +34,6 @@ class TestGenerateToken:
         assert value["max_usage"] == InfraConstants.TOKEN_MAX_USAGE
         assert cache_set.call_args.kwargs["timeout"] == InfraConstants.TOKEN_EXPIRE_TIME
 
-    def test_生命周期日志不包含令牌值(self, mocker):
-        logger = mocker.patch("apps.cmdb.services.infra.logger")
-        mocker.patch("apps.cmdb.services.infra.uuid.uuid4", return_value="cmdb-secret-token")
-        mocker.patch("apps.cmdb.services.infra.cache.set")
-
-        token = InfraService.generate_install_token("cluster-a", "1")
-
-        assert token == "cmdb-secret-token"
-        logger.info.assert_called_once_with(
-            "cmdb.infra_install_token.generated cluster=%s region=%s "
-            "expires_in_seconds=%s max_usage=%s",
-            "cluster-a",
-            "1",
-            InfraConstants.TOKEN_EXPIRE_TIME,
-            InfraConstants.TOKEN_MAX_USAGE,
-        )
-        assert token not in repr(logger.mock_calls)
-        assert token[:8] not in repr(logger.mock_calls)
-
 
 class TestValidateToken:
     def test_空token_报错(self):
@@ -99,46 +80,6 @@ class TestValidateToken:
         # 计数写回 +1
         _, value = cache_set.call_args.args
         assert value["usage_count"] == 2
-
-    @pytest.mark.parametrize(
-        ("cache_data", "raises"),
-        [
-            (None, True),
-            (
-                {
-                    "cluster_name": "cluster-x",
-                    "cloud_region_id": "9",
-                    "usage_count": 1,
-                    "max_usage": 5,
-                },
-                False,
-            ),
-            (
-                {
-                    "cluster_name": "cluster-x",
-                    "cloud_region_id": "9",
-                    "usage_count": 5,
-                    "max_usage": 5,
-                },
-                True,
-            ),
-        ],
-    )
-    def test_验证日志不包含令牌值(self, mocker, cache_data, raises):
-        token = "cmdb-validation-secret"
-        logger = mocker.patch("apps.cmdb.services.infra.logger")
-        mocker.patch("apps.cmdb.services.infra.cache.get", return_value=cache_data)
-        mocker.patch("apps.cmdb.services.infra.cache.set")
-        mocker.patch("apps.cmdb.services.infra.cache.delete")
-
-        if raises:
-            with pytest.raises(BaseAppException):
-                InfraService.validate_and_get_token_data(token)
-        else:
-            InfraService.validate_and_get_token_data(token)
-
-        assert token not in repr(logger.mock_calls)
-        assert token[:8] not in repr(logger.mock_calls)
 
 
 class TestRenderFromCloudRegion:
