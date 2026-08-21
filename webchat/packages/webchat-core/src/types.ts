@@ -31,6 +31,28 @@ export interface ChatSession {
   customData?: Record<string, unknown>;
 }
 
+export interface PageContextSection {
+  id?: string;
+  label?: string;
+  content: string;
+  priority?: number;
+}
+
+export interface PageContextImage {
+  caption?: string;
+  dataUrl: string;
+}
+
+export interface PageContext {
+  url?: string;
+  app?: string;
+  title?: string;
+  sections?: PageContextSection[];
+  images?: PageContextImage[];
+}
+
+export type CollectPageContext = () => Promise<PageContext | null | undefined>;
+
 export interface WebChatConfig {
   sseUrl?: string;
   /**
@@ -84,6 +106,15 @@ export interface WebChatConfig {
    * include it in chat requests; request metadata belongs in `customData`.
    */
   extensions?: Record<string, unknown>;
+  /**
+   * Host callback: collect current page snapshot immediately before send.
+   * WebChat never calls this unless the page-context chip is on.
+   */
+  collectContext?: CollectPageContext;
+  /**
+   * Cheap availability probe for the page-context chip. Must not collect data.
+   */
+  hasPageContext?: () => boolean;
   /**
    * Host-injected platform assistant contract. When present with required URLs,
    * WebChat runs in platform mode and ignores top-level `sseUrl`.

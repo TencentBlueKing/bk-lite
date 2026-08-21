@@ -570,9 +570,7 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
                 thread_sensitive=False,
             )()
             if web_session is not None and not web_session.is_participant(user):
-                return JsonResponse(
-                    {"result": False, "message": loader.get("error.session_not_participant", "当前用户不在该会话的干系人列表中")}, status=403
-                )
+                return JsonResponse({"result": False, "message": loader.get("error.session_not_participant", "当前用户不在该会话的干系人列表中")}, status=403)
 
             delivered = await sync_to_async(try_deliver_to_pending, thread_sensitive=False)(bot_id, session_id, message)
             if delivered:
@@ -996,8 +994,8 @@ def _serialize_saas_skill_channels(qs):
             "name": ch.name or (ch.skill.name if ch.skill_id else ""),
             "channel_type": ch.channel_type,
             "introduction": getattr(ch.skill, "introduction", "") or "",
-            "app_name": (ch.channel_config or {}).get("appName") or ch.name or (ch.skill.name if ch.skill_id else ""),
-            "app_description": (ch.channel_config or {}).get("appDescription") or getattr(ch.skill, "introduction", "") or "",
+            "app_name": ch.name or (ch.skill.name if ch.skill_id else ""),
+            "app_description": getattr(ch.skill, "introduction", "") or "",
         }
         for ch in qs
     ]
@@ -1157,6 +1155,7 @@ def execute_skill_channel_chat(request, channel_id):
     if not message:
         return create_error_stream_response("message 必填")
     session_id = kwargs.get("session_id") or ""
+    page_context = kwargs.get("page_context")
     try:
         channel = get_enabled_channel(int(channel_id), PLATFORM_OR_WEB)
         current_team = request.COOKIES.get("current_team") or get_current_team(request) or "0"
@@ -1168,6 +1167,7 @@ def execute_skill_channel_chat(request, channel_id):
             request=request,
             external_user_id=external_user_id,
             session_id=session_id or None,
+            page_context=page_context,
         )
     except SkillChannelChatError as e:
         return create_error_stream_response(e.message)

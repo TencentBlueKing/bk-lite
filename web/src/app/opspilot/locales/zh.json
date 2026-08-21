@@ -1242,7 +1242,19 @@
       "groupSaas": "站内入口",
       "groupSaasDesc": "平台弹窗 / Web 对话 / 嵌入式",
       "groupIm": "即时通讯",
-      "groupImDesc": "企微 / 钉钉 / 公众号（回调不校组织）"
+      "groupImDesc": "企微 / 钉钉 / 公众号（回调不校组织）",
+      "fields": {
+        "token": "Token",
+        "secret": "Secret",
+        "aes_key": "AES Key",
+        "corp_id": "企业 ID",
+        "agent_id": "应用 Agent ID",
+        "encodingAESKey": "EncodingAESKey",
+        "aibotid": "机器人 ID",
+        "client_id": "Client ID",
+        "client_secret": "Client Secret",
+        "app_id": "App ID"
+      }
     },
     "skillParams": {
       "title": "提示词参数",
