@@ -18,7 +18,6 @@ export interface K8sCommandData {
   namespace_patterns?: string;
   pod_patterns?: string;
   image_registry_prefix?: string;
-  tolerations?: { key: string; effect: string; value?: string }[] | null;
 }
 
 const K8sConfiguration: React.FC = () => {

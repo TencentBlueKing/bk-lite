@@ -38,7 +38,6 @@ class InfraViewSet(OpenAPIViewSet):
             cloud_region_id=cloud_region_id,
             config_type="metric",
             image_registry_prefix=token_data.get("image_registry_prefix"),
-            tolerations=token_data.get("tolerations"),
         )
 
         # 在响应头中添加剩余使用次数信息

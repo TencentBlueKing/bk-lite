@@ -16,7 +16,6 @@ def test_monitor_render_uses_token_bound_registry_and_ignores_request_override(m
                 "cluster_name": "prod",
                 "cloud_region_id": "7",
                 "image_registry_prefix": "harbor.internal/bklite",
-                "tolerations": [{"key": "dedicated", "effect": "NoSchedule"}],
                 "remaining_usage": 2,
             }
 
@@ -30,7 +29,6 @@ def test_monitor_render_uses_token_bound_registry_and_ignores_request_override(m
         data={
             "token": "signed-token",
             "image_registry_prefix": "attacker.example/override",
-            "tolerations": [],
         }
     )
 
@@ -43,7 +41,6 @@ def test_monitor_render_uses_token_bound_registry_and_ignores_request_override(m
         "cloud_region_id": "7",
         "config_type": "metric",
         "image_registry_prefix": "harbor.internal/bklite",
-        "tolerations": [{"key": "dedicated", "effect": "NoSchedule"}],
     }
 
 
@@ -73,39 +70,6 @@ def test_monitor_install_command_binds_registry_to_generated_token(monkeypatch):
         "prod-k8s",
         "7",
         "harbor.internal/bklite",
-        tolerations=None,
     )
     assert "https://node.internal/base/api/v1/monitor/open_api/infra/render/" in command
     assert "signed-token" in command
-
-
-def test_monitor_install_command_binds_tolerations_to_generated_token(monkeypatch):
-    generate_token = Mock(return_value="signed-token")
-    monkeypatch.setattr(
-        "apps.monitor.services.manual_collect.parse_instance_id",
-        Mock(return_value=("prod-k8s", "ignored")),
-    )
-    monkeypatch.setattr(
-        "apps.monitor.services.manual_collect.InfraService.generate_install_token",
-        generate_token,
-    )
-    node_mgmt = Mock()
-    node_mgmt.return_value.get_cloud_region_envconfig.return_value = {
-        "NODE_SERVER_URL": "https://node.internal/base",
-    }
-    monkeypatch.setattr("apps.rpc.node_mgmt.NodeMgmt", node_mgmt)
-
-    custom = [{"key": "dedicated", "effect": "NoSchedule"}]
-    ManualCollectService.generate_install_command(
-        "prod-k8s-instance",
-        "7",
-        "harbor.internal/bklite",
-        custom,
-    )
-
-    generate_token.assert_called_once_with(
-        "prod-k8s",
-        "7",
-        "harbor.internal/bklite",
-        tolerations=custom,
-    )

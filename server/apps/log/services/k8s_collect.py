@@ -9,7 +9,6 @@ from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.k8s_image_registry import build_kubectl_install_command, normalize_k8s_image_registry_prefix
-from apps.core.utils.k8s_tolerations import apply_k8s_tolerations_param, normalize_k8s_tolerations
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, K8sCollectSetting, K8sInstallToken
 from apps.log.services.search import SearchService
@@ -189,7 +188,6 @@ class K8sLogCollectService:
             "docker_container_log_path": setting.docker_container_log_path or None,
             "namespace_patterns": setting.namespace_patterns or [],
             "pod_patterns": setting.pod_patterns or [],
-            "tolerations": setting.tolerations,
         }
 
     @classmethod
@@ -209,20 +207,17 @@ class K8sLogCollectService:
         namespace_patterns = cls.validate_patterns(data.get("namespace_patterns"), "采集 Namespace")
         pod_patterns = cls.validate_patterns(data.get("pod_patterns"), "采集 Pod")
         cls.build_include_patterns(namespace_patterns, pod_patterns)
-        defaults = {
-            "runtime_profile": render_options["runtime_profile"],
-            "host_log_path": render_options["host_log_path"] or "",
-            "docker_container_log_path": render_options["docker_container_log_path"] or "",
-            "namespace_patterns": namespace_patterns,
-            "pod_patterns": pod_patterns,
-        }
-        if "tolerations" in data:
-            defaults["tolerations"] = normalize_k8s_tolerations(data.get("tolerations"))
 
         with transaction.atomic():
             setting, _created = K8sCollectSetting.objects.update_or_create(
                 collect_instance_id=instance.id,
-                defaults=defaults,
+                defaults={
+                    "runtime_profile": render_options["runtime_profile"],
+                    "host_log_path": render_options["host_log_path"] or "",
+                    "docker_container_log_path": render_options["docker_container_log_path"] or "",
+                    "namespace_patterns": namespace_patterns,
+                    "pod_patterns": pod_patterns,
+                },
             )
         return cls.serialize_setting(instance, setting)
 
@@ -241,7 +236,6 @@ class K8sLogCollectService:
         pod_patterns = cls.validate_patterns(setting.pod_patterns, "采集 Pod")
         render_options["namespace_patterns"] = namespace_patterns
         render_options["pod_patterns"] = pod_patterns
-        render_options["tolerations"] = normalize_k8s_tolerations(setting.tolerations)
         return render_options
 
     @staticmethod
@@ -373,22 +367,20 @@ class K8sLogCollectService:
         env_vars = cls.get_cloud_region_envconfig(cloud_region_id)
         webhook_server_url = env_vars.get("WEBHOOK_SERVER_URL")
         api_url = f"{webhook_server_url.rstrip('/')}/infra/kubernetes"
-        payload = {
-            "cluster_name": cluster_name,
-            "type": "log",
-            "nats_url": env_vars.get("NATS_SERVERS"),
-            "nats_username": env_vars.get("NATS_USERNAME"),
-            "nats_password": env_vars.get("NATS_PASSWORD"),
-            "nats_ca": env_vars.get("NATS_TLS_CA"),
-            "image_registry_prefix": normalize_k8s_image_registry_prefix(image_registry_prefix),
-            **{key: value for key, value in render_options.items() if key != "tolerations"},
-        }
-        apply_k8s_tolerations_param(payload, render_options.get("tolerations"))
 
         try:
             response = requests.post(
                 api_url,
-                json=payload,
+                json={
+                    "cluster_name": cluster_name,
+                    "type": "log",
+                    "nats_url": env_vars.get("NATS_SERVERS"),
+                    "nats_username": env_vars.get("NATS_USERNAME"),
+                    "nats_password": env_vars.get("NATS_PASSWORD"),
+                    "nats_ca": env_vars.get("NATS_TLS_CA"),
+                    "image_registry_prefix": normalize_k8s_image_registry_prefix(image_registry_prefix),
+                    **render_options,
+                },
                 headers={"Content-Type": "application/json"},
                 timeout=cls.REQUEST_TIMEOUT,
                 verify=get_webhook_tls_verify(),
