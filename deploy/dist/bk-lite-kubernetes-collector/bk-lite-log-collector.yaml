@@ -22,9 +22,14 @@ spec:
         bklite.io/log-collect-config: "default"
     spec:
       serviceAccount: vector-daemonset
-      # 控制平面默认 NoSchedule；不上这台节点则该节点日志采不到
+      # 默认容忍 control-plane/master 污点：控制平面节点也需要节点级采集；
+      # 如需覆盖其他带自定义污点的节点，请在此追加精确容忍项（禁止无 key 的通配容忍）
       tolerations:
-        - operator: Exists
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
           effect: NoSchedule
       containers:
         - name: vector
