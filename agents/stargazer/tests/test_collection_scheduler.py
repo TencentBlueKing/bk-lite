@@ -109,3 +109,38 @@ async def test_three_thousand_targets_remain_bounded_by_one_hundred_fifty_window
     assert results[0] == 0
     assert results[-1] == 2999
     await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_reports_waiting_running_and_completed_target_counts():
+    scheduler = CollectionScheduler(max_in_flight=1)
+    releases = [asyncio.Event(), asyncio.Event()]
+    started = []
+
+    async def handle(item):
+        started.append(item)
+        await releases[item].wait()
+        return item
+
+    run = asyncio.create_task(scheduler.execute("counted", range(2), handle))
+    await asyncio.sleep(0.01)
+
+    assert scheduler.pending == 1
+    assert scheduler.active == 1
+    assert scheduler.completed == 0
+    assert scheduler.completed_total == 0
+
+    releases[0].set()
+    await asyncio.sleep(0.01)
+
+    assert started == [0, 1]
+    assert scheduler.pending == 0
+    assert scheduler.active == 1
+    assert scheduler.completed == 1
+    assert scheduler.completed_total == 1
+
+    releases[1].set()
+    assert await run == (0, 1)
+    assert scheduler.completed == 0
+    assert scheduler.completed_total == 2
+    await scheduler.shutdown()

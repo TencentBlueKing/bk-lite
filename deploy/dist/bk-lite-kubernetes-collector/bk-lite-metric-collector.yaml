@@ -24,9 +24,14 @@ spec:
         prometheus.io/path: '/metrics'
     spec:
       serviceAccountName: cadvisor
-      # 控制平面默认 NoSchedule；不上这台节点则该节点 cadvisor 指标为空
+      # 默认容忍 control-plane/master 污点：控制平面节点也需要节点级采集；
+      # 如需覆盖其他带自定义污点的节点，请在此追加精确容忍项（禁止无 key 的通配容忍）
       tolerations:
-        - operator: Exists
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
           effect: NoSchedule
       containers:
       - name: cadvisor
@@ -100,9 +105,14 @@ spec:
       labels:
         app: telegraf-daemonset
     spec:
-      # 控制平面默认 NoSchedule；不上这台节点则该节点主机指标为空
+      # 默认容忍 control-plane/master 污点：控制平面节点也需要节点级采集；
+      # 如需覆盖其他带自定义污点的节点，请在此追加精确容忍项（禁止无 key 的通配容忍）
       tolerations:
-        - operator: Exists
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
           effect: NoSchedule
       containers:
         - name: telegraf
@@ -221,10 +231,6 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux
       serviceAccountName: kube-state-metrics
-      # 控制平面默认 NoSchedule；单节点集群否则采集 Pod 全部 Pending
-      tolerations:
-        - operator: Exists
-          effect: NoSchedule
 
 ---
 apiVersion: apps/v1
@@ -242,10 +248,6 @@ spec:
       labels:
         app: telegraf
     spec:    
-      # 控制平面默认 NoSchedule；单节点集群否则 remote_write 接收端 Pending
-      tolerations:
-        - operator: Exists
-          effect: NoSchedule
       containers:
         - name: telegraf
           image: bk-lite.tencentcloudcr.com/bklite/telegraf:1.29.5
@@ -301,10 +303,6 @@ spec:
         app: vmagent
     spec:
       serviceAccountName: vmagent    
-      # 控制平面默认 NoSchedule；单节点集群否则 vmagent Pending
-      tolerations:
-        - operator: Exists
-          effect: NoSchedule
       containers:
         - name: vmagent
           image: bk-lite.tencentcloudcr.com/bklite/vmagent

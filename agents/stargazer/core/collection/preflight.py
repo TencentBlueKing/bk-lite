@@ -109,7 +109,7 @@ class AsyncProtocolPreflight:
             )
         if kind == "remote":
             if not self._reachability_enabled:
-                logger.info(
+                logger.debug(
                     "event=preflight_reachability_skipped task_id=%s " "target=%s kind=remote",
                     request.task_id,
                     target,
@@ -157,7 +157,7 @@ class AsyncProtocolPreflight:
         writer = None
         try:
             if not self._reachability_enabled:
-                logger.info(
+                logger.debug(
                     "event=preflight_reachability_skipped task_id=%s " "target=%s kind=%s",
                     request.task_id,
                     target,
@@ -236,10 +236,17 @@ class AsyncProtocolPreflight:
     def _endpoint(target: str, request: CollectionRequest, kind: str) -> tuple[str, int | None, bool]:
         if kind in {"http", "https"} or "://" in target or request.params.get("base_url"):
             base_url = str(request.params.get("base_url") or "").strip()
+            has_explicit_endpoint = "://" in target or bool(base_url)
             endpoint = target if "://" in target else base_url or f"{kind}://{target}"
             parsed = urlsplit(endpoint)
             use_tls = parsed.scheme == "https"
-            port = parsed.port or (443 if use_tls else 80)
+            raw_port = request.params.get("port")
+            port = parsed.port
+            if port is None and not has_explicit_endpoint and raw_port not in (None, ""):
+                port = int(raw_port)
+                if not 1 <= port <= 65535:
+                    raise ValueError("port must be between 1 and 65535")
+            port = port or (443 if use_tls else 80)
             return parsed.hostname or target, port, use_tls
 
         raw_port = request.params.get("port")

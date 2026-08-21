@@ -3,9 +3,7 @@
 # @Time: 2025/2/27 14:00
 # @Author: windyzhao
 import re
-from pathlib import Path
 
-from django.conf import settings
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -26,6 +24,7 @@ from apps.cmdb.serializers.collect_serializer import (
     CollectModelSerializer,
     OidModelSerializer,
 )
+from apps.cmdb.services.collect_document import get_collect_model_document
 from apps.cmdb.services.collect_object_tree import get_collect_obj_tree
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.cmdb.services.instance_identity import optional_inst_uuid
@@ -452,18 +451,7 @@ class CollectModelViewSet(AuthViewSet):
         if not re.fullmatch(r"[A-Za-z0-9_]+", model_id):
             return WebUtils.response_error(error_message="id 参数非法", status_code=400)
 
-        template_dir = (Path(settings.BASE_DIR) / "apps/cmdb/support-files/plugins_doc").resolve()
-        file_path = (template_dir / f"{model_id}.md").resolve()
-        if template_dir not in file_path.parents:
-            return WebUtils.response_error(error_message="非法文档路径", status_code=400)
-
-        data = ""
-        if file_path.exists():
-            with file_path.open("r", encoding="utf-8") as f:
-                data = f.read()
-        else:
-            data = "未找到对应的文档！"
-        return WebUtils.response_success(data)
+        return WebUtils.response_success(get_collect_model_document(model_id))
 
 
 class OidModelViewSet(ModelViewSet):

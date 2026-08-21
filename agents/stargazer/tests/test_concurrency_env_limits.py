@@ -1,43 +1,28 @@
 from pathlib import Path
 
 import pytest
-from core.collection.application import (
-    CollectionApplicationSettings,
-    concurrency_limit_from_env,
-)
-from core.collection.constants import (
-    DEFAULT_MAX_ACTIVE_TARGETS,
-    DEFAULT_TARGET_TASK_WINDOW,
-)
+from core.collection.application import CollectionApplicationSettings, concurrency_limit_from_env
+from core.collection.constants import DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
 from core.collection.contracts import TargetExecutorSettings
 from core.collection.executor import TargetWorkerBudget
 
 
 def test_default_concurrency_matches_production_baseline():
-    assert DEFAULT_MAX_ACTIVE_TARGETS == 150
-    assert DEFAULT_TARGET_TASK_WINDOW == 150
-    assert TargetExecutorSettings().max_active_targets == 150
-    assert TargetExecutorSettings().target_task_window == 150
+    assert DEFAULT_MAX_ACTIVE_TARGETS == 250
+    assert DEFAULT_TARGET_TASK_WINDOW == 250
+    assert TargetExecutorSettings().max_active_targets == 250
+    assert TargetExecutorSettings().target_task_window == 250
 
 
 def test_concurrency_limit_from_env_uses_default_and_zero_unlimited(monkeypatch):
     monkeypatch.delenv("MAX_ACTIVE_TARGETS", raising=False)
-    assert (
-        concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
-        == DEFAULT_MAX_ACTIVE_TARGETS
-    )
+    assert concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS) == DEFAULT_MAX_ACTIVE_TARGETS
 
     monkeypatch.setenv("MAX_ACTIVE_TARGETS", "3500")
-    assert (
-        concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
-        == 3500
-    )
+    assert concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS) == 3500
 
     monkeypatch.setenv("MAX_ACTIVE_TARGETS", "0")
-    assert (
-        concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
-        == 0
-    )
+    assert concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS) == 0
 
     monkeypatch.setenv("MAX_ACTIVE_TARGETS", "-1")
     with pytest.raises(ValueError, match="MAX_ACTIVE_TARGETS"):
@@ -96,11 +81,7 @@ def test_application_settings_split_timeouts_and_keep_legacy_fallback(monkeypatc
 
 def test_env_example_uses_split_timeout_contract():
     example = (Path(__file__).parents[1] / ".env.example").read_text(encoding="utf-8")
-    keys = {
-        line.split("=", 1)[0]
-        for line in example.splitlines()
-        if "=" in line and not line.lstrip().startswith("#")
-    }
+    keys = {line.split("=", 1)[0] for line in example.splitlines() if "=" in line and not line.lstrip().startswith("#")}
 
     assert "PREFLIGHT_TIMEOUT=15" in example
     assert "PROBE_TIMEOUT=15" in example
@@ -109,6 +90,8 @@ def test_env_example_uses_split_timeout_contract():
     assert "PUBLISH_DELIVERY_TIMEOUT=30" in example
     assert "PUBLISH_TOTAL_TIMEOUT=120" in example
     assert "CAPACITY_LOG_INTERVAL=180" in example
+    assert "MAX_ACTIVE_TARGETS=250" in example
+    assert "TARGET_TASK_WINDOW=250" in example
     assert "CONNECT_TIMEOUT" not in keys
     assert "PLUGIN_TIMEOUT" not in keys
     assert "PUBLISH_TIMEOUT" not in keys

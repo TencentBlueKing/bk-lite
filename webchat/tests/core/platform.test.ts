@@ -86,6 +86,20 @@ test('maps published platform skill channels and restores last selection', () =>
       skill_name: 'K8s RCA',
       channel_type: 'platform',
     },
+    {
+      id: 3,
+      skill_id: 30,
+      name: '我来测试的',
+      skill_name: '智能体A',
+      channel_type: 'platform',
+    },
+    {
+      id: 4,
+      skill_id: 40,
+      name: '我来测试的',
+      skill_name: '智能体B',
+      channel_type: 'platform',
+    },
   ]);
   const sessions = mapPlatformSessions([
     { session_id: 's-new', title: '最新', created_at: '2026-08-18T00:00:00Z' },
@@ -94,16 +108,20 @@ test('maps published platform skill channels and restores last selection', () =>
 
   assert.deepEqual(apps[0], {
     id: '2',
-    name: '配置检查',
+    name: '配置检查（cfg-skill）',
     channelId: '2',
     skillId: '20',
+    skillName: 'cfg-skill',
   });
   assert.deepEqual(apps[1], {
     id: '1',
     name: 'K8s RCA',
     channelId: '1',
     skillId: '10',
+    skillName: 'K8s RCA',
   });
+  assert.equal(apps[2].name, '我来测试的（智能体A）');
+  assert.equal(apps[3].name, '我来测试的（智能体B）');
   assert.equal(sessions[0].updatedAt, '2026-08-18T00:00:00Z');
   assert.equal(sessions[1].updatedAt, undefined);
   assert.equal(lastSessionStorageKey('webchat:platform', 'alice', '7'), 'webchat:platform:alice:7');

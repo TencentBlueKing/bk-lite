@@ -59,12 +59,20 @@ const CONFIG_FIELDS: Record<string, string[]> = {
   dingtalk: ['client_id', 'client_secret'],
   wechat_official: ['token', 'secret', 'aes_key', 'app_id'],
   platform: [],
-  web_chat: ['appName', 'appDescription'],
+  web_chat: [],
   embedded_chat: [],
 };
 
 const channelTypeLabel = (t: (key: string, fallback?: string) => string, channelType: string) =>
   t(`skill.channel.types.${channelType}`, channelType);
+
+const channelFieldLabel = (t: (key: string, fallback?: string) => string, field: string) =>
+  t(`skill.channel.fields.${field}`, field);
+
+const isSecretConfigField = (field: string) => {
+  const key = field.toLowerCase();
+  return key.includes('secret') || key.includes('token') || key.includes('aes');
+};
 
 const SkillChannelPage: React.FC = () => {
   const { t } = useTranslation();
@@ -201,7 +209,10 @@ const SkillChannelPage: React.FC = () => {
       await load();
     } catch (e: any) {
       if (e?.errorFields) return;
-      message.error(e?.message || t('skill.channel.saveFailed'));
+      const detail = e?.response?.data?.name || e?.response?.data?.message || e?.message;
+      message.error(
+        Array.isArray(detail) ? detail[0] : detail || t('skill.channel.saveFailed')
+      );
     } finally {
       setSaving(false);
     }
@@ -258,7 +269,7 @@ const SkillChannelPage: React.FC = () => {
         title: t('skill.channel.status', '启停'),
         dataIndex: 'enabled',
         key: 'enabled',
-        width: 88,
+        width: 100,
         render: (_: boolean, item: SkillChannelItem) => (
           <Switch size="small" checked={item.enabled} onChange={(v) => onToggle(item, v)} />
         ),
@@ -270,14 +281,14 @@ const SkillChannelPage: React.FC = () => {
         render: (_: unknown, item: SkillChannelItem) => (
           <Space size="small">
             {item.channel_type === 'web_chat' ? (
-              <Button size="small" type="primary" onClick={openWebChat}>
+              <Button type="link" size="small" onClick={openWebChat}>
                 {t('skill.channel.openChat', '对话')}
               </Button>
             ) : null}
-            <Button size="small" onClick={() => openEdit(item)}>
+            <Button type="link" size="small" onClick={() => openEdit(item)}>
               {t('common.setting') || '设置'}
             </Button>
-            <Button size="small" danger onClick={() => onDelete(item)}>
+            <Button type="link" size="small" danger onClick={() => onDelete(item)}>
               {t('common.delete') || '删除'}
             </Button>
           </Space>
@@ -288,18 +299,56 @@ const SkillChannelPage: React.FC = () => {
   );
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <Typography.Title level={5} className="!mb-1">
-            {t('skill.channelPublish')}
-          </Typography.Title>
-          <Typography.Paragraph className="!mb-0 text-xs text-[var(--color-text-3)]">
-            {t(
-              'skill.channel.pageDesc',
-              '为当前智能体开通独立入口。配置活引用技能参数；同类型可挂多条；启停互不影响。'
-            )}
-          </Typography.Paragraph>
+    <div className="flex h-full flex-col">
+      <div className="mb-4 min-w-0">
+        <Typography.Title level={5} className="!mb-1">
+          {t('skill.channelPublish')}
+        </Typography.Title>
+        <Typography.Paragraph className="!mb-0 text-xs text-[var(--color-text-3)]">
+          {t(
+            'skill.channel.pageDesc',
+            '为当前智能体开通独立入口。配置活引用技能参数；同类型可挂多条；启停互不影响。'
+          )}
+        </Typography.Paragraph>
+      </div>
+
+      <div className="mb-4 grid grid-cols-3 gap-3">
+        <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-1)] px-4 py-3">
+          <div className="text-xs text-[var(--color-text-3)]">{t('skill.channel.statTotal', '渠道总数')}</div>
+          <div className="mt-1 text-2xl font-semibold text-[var(--color-text-1)]">{channels.length}</div>
+        </div>
+        <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-1)] px-4 py-3">
+          <div className="text-xs text-[var(--color-text-3)]">{t('skill.channel.statEnabled', '已启用')}</div>
+          <div className="mt-1 text-2xl font-semibold text-[var(--color-primary)]">{enabledCount}</div>
+        </div>
+        <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg-1)] px-4 py-3">
+          <div className="text-xs text-[var(--color-text-3)]">{t('skill.channel.statDisabled', '未启用')}</div>
+          <div className="mt-1 text-2xl font-semibold text-[var(--color-text-2)]">
+            {channels.length - enabledCount}
+          </div>
+        </div>
+      </div>
+
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Input
+            allowClear
+            value={nameQuery}
+            onChange={(e) => setNameQuery(e.target.value)}
+            placeholder={t('skill.channel.filterNamePlaceholder', '按名称筛选')}
+            className="w-60"
+          />
+          <Select
+            allowClear
+            value={typeFilter}
+            onChange={(value) => setTypeFilter(value)}
+            placeholder={t('skill.channel.filterTypeAll', '全部类型')}
+            className="w-48"
+            options={CHANNEL_OPTIONS.map((o) => ({
+              value: o.value,
+              label: channelTypeLabel(t, o.value),
+            }))}
+          />
         </div>
         <PermissionWrapper requiredPermissions={['Edit']}>
           <Button type="primary" onClick={openCreate}>
@@ -308,26 +357,13 @@ const SkillChannelPage: React.FC = () => {
         </PermissionWrapper>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)] px-4 py-3">
-          <div className="text-xs text-[var(--color-text-3)]">{t('skill.channel.statTotal', '渠道总数')}</div>
-          <div className="mt-1 text-2xl font-semibold text-[var(--color-text-1)]">{channels.length}</div>
-        </div>
-        <div className="rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)] px-4 py-3">
-          <div className="text-xs text-[var(--color-text-3)]">{t('skill.channel.statEnabled', '已启用')}</div>
-          <div className="mt-1 text-2xl font-semibold text-[var(--color-primary)]">{enabledCount}</div>
-        </div>
-        <div className="rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)] px-4 py-3">
-          <div className="text-xs text-[var(--color-text-3)]">{t('skill.channel.statDisabled', '未启用')}</div>
-          <div className="mt-1 text-2xl font-semibold text-[var(--color-text-2)]">
-            {channels.length - enabledCount}
+      <div className="flex-grow">
+        {loading ? (
+          <div className="flex min-h-72 w-full items-center justify-center">
+            <Spin size="large" />
           </div>
-        </div>
-      </div>
-
-      <Spin spinning={loading}>
-        {channels.length === 0 && !loading ? (
-          <div className="flex min-h-[280px] items-center justify-center rounded-md border border-dashed border-[var(--color-border-2)] bg-[var(--color-fill-1)]">
+        ) : channels.length === 0 ? (
+          <div className="flex min-h-72 w-full items-center justify-center">
             <Empty
               description={t('skill.channel.empty', '尚未发布任何渠道')}
               image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -340,40 +376,19 @@ const SkillChannelPage: React.FC = () => {
             </Empty>
           </div>
         ) : (
-          <div className="flex flex-col gap-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg)] p-4">
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Input
-                allowClear
-                value={nameQuery}
-                onChange={(e) => setNameQuery(e.target.value)}
-                placeholder={t('skill.channel.filterNamePlaceholder', '按名称筛选')}
-                className="sm:max-w-xs"
-              />
-              <Select
-                allowClear
-                value={typeFilter}
-                onChange={(value) => setTypeFilter(value)}
-                placeholder={t('skill.channel.filterTypeAll', '全部类型')}
-                className="sm:w-48"
-                options={CHANNEL_OPTIONS.map((o) => ({
-                  value: o.value,
-                  label: channelTypeLabel(t, o.value),
-                }))}
-              />
-            </div>
-            <Table
-              rowKey="id"
-              size="middle"
-              pagination={false}
-              columns={columns}
-              dataSource={filteredChannels}
-              locale={{
-                emptyText: t('skill.channel.filterEmpty', '没有匹配的渠道'),
-              }}
-            />
-          </div>
+          <Table
+            rowKey="id"
+            size="middle"
+            pagination={false}
+            columns={columns}
+            dataSource={filteredChannels}
+            scroll={{ y: 'calc(100vh - 420px)' }}
+            locale={{
+              emptyText: t('skill.channel.filterEmpty', '没有匹配的渠道'),
+            }}
+          />
         )}
-      </Spin>
+      </div>
 
       <Modal
         title={editing ? t('common.edit') || '编辑' : t('skill.channel.add', '添加渠道')}
@@ -400,14 +415,14 @@ const SkillChannelPage: React.FC = () => {
             <Switch />
           </Form.Item>
           {configFields.map((field) => (
-            <Form.Item key={field} name={field} label={field}>
-              <Input.Password
-                visibilityToggle={
-                  field.toLowerCase().includes('secret') ||
-                  field.toLowerCase().includes('token') ||
-                  field.toLowerCase().includes('aes')
-                }
-              />
+            <Form.Item key={field} name={field} label={channelFieldLabel(t, field)}>
+              {isSecretConfigField(field) ? (
+                <Input.Password visibilityToggle />
+              ) : field === 'appDescription' ? (
+                <Input.TextArea rows={3} />
+              ) : (
+                <Input />
+              )}
             </Form.Item>
           ))}
         </Form>

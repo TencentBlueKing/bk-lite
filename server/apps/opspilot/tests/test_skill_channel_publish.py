@@ -117,6 +117,49 @@ class TestSkillChannelCrud:
         assert ch.usage_team == [1, 2]
         assert ch.enabled is True
 
+    def test_rejects_duplicate_name_same_skill_and_channel_type(self):
+        skill = _skill(usage_team=[1])
+        SkillChannel.objects.create(
+            skill=skill,
+            channel_type=SkillChannelChoices.PLATFORM,
+            enabled=True,
+            usage_team=[1],
+            name="同名渠道",
+        )
+        factory = APIRequestFactory()
+        user = _superuser("su_dup")
+        request = factory.post(
+            "/",
+            {
+                "skill": skill.id,
+                "channel_type": SkillChannelChoices.PLATFORM,
+                "name": "同名渠道",
+                "enabled": False,
+            },
+            format="json",
+        )
+        force_authenticate(request, user=user)
+        request.COOKIES["current_team"] = "1"
+        resp = SkillChannelViewSet.as_view({"post": "create"})(request)
+        assert resp.status_code == 400
+        assert SkillChannel.objects.filter(skill=skill, channel_type=SkillChannelChoices.PLATFORM).count() == 1
+
+        # 不同类型允许同名
+        request2 = factory.post(
+            "/",
+            {
+                "skill": skill.id,
+                "channel_type": SkillChannelChoices.WEB_CHAT,
+                "name": "同名渠道",
+                "enabled": False,
+            },
+            format="json",
+        )
+        force_authenticate(request2, user=user)
+        request2.COOKIES["current_team"] = "1"
+        resp2 = SkillChannelViewSet.as_view({"post": "create"})(request2)
+        assert resp2.status_code == 201
+
     def test_set_enabled_and_im_reject_when_offline(self):
         skill = _skill()
         ch = SkillChannel.objects.create(
@@ -224,7 +267,7 @@ class TestPlatformListAndEmbeddedGate:
         resp = opspilot_views.list_web_chat_skill_channels(request)
         assert resp.status_code == 200
         body = resp.content.decode()
-        assert "WebApp1" in body or "w1" in body
+        assert "w1" in body
         assert "w2" not in body
         assert "platform-should-not-list" not in body
 

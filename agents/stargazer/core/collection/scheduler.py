@@ -42,6 +42,7 @@ class CollectionScheduler:
         self._closing = False
         self.active = 0
         self.peak = 0
+        self.completed_total = 0
 
     @property
     def pending(self) -> int:
@@ -54,6 +55,12 @@ class CollectionScheduler:
     @property
     def pending_runs(self) -> int:
         return len(self._runs)
+
+    @property
+    def completed(self) -> int:
+        """仍在调度中的 Run 已完成目标数。"""
+
+        return sum(state.completed for state in self._runs.values())
 
     async def execute(
         self,
@@ -79,9 +86,7 @@ class CollectionScheduler:
             # 新 Run 优先获得下一空闲槽位，避免大 Run 的剩余目标插队。
             self._order.appendleft(run_id)
             if self._dispatcher is None or self._dispatcher.done():
-                self._dispatcher = asyncio.create_task(
-                    self._dispatch_loop(), name="collection-target-dispatcher"
-                )
+                self._dispatcher = asyncio.create_task(self._dispatch_loop(), name="collection-target-dispatcher")
             self._condition.notify_all()
         try:
             return await state.done
@@ -93,9 +98,7 @@ class CollectionScheduler:
         async with self._condition:
             self._closing = True
             states = tuple(self._runs.values())
-            tasks = tuple(
-                task for state in states for task in state.tasks if not task.done()
-            )
+            tasks = tuple(task for state in states for task in state.tasks if not task.done())
             for state in states:
                 if not state.done.done():
                     state.done.cancel()
@@ -114,10 +117,7 @@ class CollectionScheduler:
     async def _dispatch_loop(self) -> None:
         while True:
             async with self._condition:
-                await self._condition.wait_for(
-                    lambda: self._closing
-                    or (self.active < self._max_in_flight and bool(self._order))
-                )
+                await self._condition.wait_for(lambda: self._closing or (self.active < self._max_in_flight and bool(self._order)))
                 if self._closing:
                     return
                 while self.active < self._max_in_flight and self._order:
@@ -129,10 +129,7 @@ class CollectionScheduler:
                         item = next(state.items)
                     except StopIteration:
                         state.exhausted = True
-                        if (
-                            state.completed == len(state.results)
-                            and not state.done.done()
-                        ):
+                        if state.completed == len(state.results) and not state.done.done():
                             state.done.set_result(tuple(state.results))
                             self._runs.pop(run_id, None)
                         continue
@@ -155,9 +152,7 @@ class CollectionScheduler:
                     )
                     state.tasks.add(task)
 
-    async def _run_item(
-        self, run_id: str, state: _RunState[T, R], index: int, item: T
-    ) -> None:
+    async def _run_item(self, run_id: str, state: _RunState[T, R], index: int, item: T) -> None:
         current = asyncio.current_task()
         try:
             result = await state.handler(item)
@@ -170,11 +165,8 @@ class CollectionScheduler:
         else:
             state.results[index] = result
             state.completed += 1
-            if (
-                state.exhausted
-                and state.completed == len(state.results)
-                and not state.done.done()
-            ):
+            self.completed_total += 1
+            if state.exhausted and state.completed == len(state.results) and not state.done.done():
                 state.done.set_result(tuple(state.results))
                 async with self._condition:
                     self._runs.pop(run_id, None)
@@ -184,17 +176,13 @@ class CollectionScheduler:
                 self.active = max(0, self.active - 1)
                 self._condition.notify_all()
 
-    async def _cancel_run(
-        self, run_id: str, *, exclude: asyncio.Task | None = None
-    ) -> None:
+    async def _cancel_run(self, run_id: str, *, exclude: asyncio.Task | None = None) -> None:
         async with self._condition:
             state = self._runs.pop(run_id, None)
             if state is None:
                 return
             self._order = deque(item for item in self._order if item != run_id)
-            tasks = tuple(
-                task for task in state.tasks if task is not exclude and not task.done()
-            )
+            tasks = tuple(task for task in state.tasks if task is not exclude and not task.done())
             self._condition.notify_all()
         for task in tasks:
             task.cancel()

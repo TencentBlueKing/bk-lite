@@ -14,12 +14,18 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import SKILL_CHANNEL_SKIP_ORG_CHECK, SkillChannelChoices
 from apps.opspilot.models import LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
+from apps.opspilot.services.history_service import HistoryService
 from apps.opspilot.services.skill_channel_service import channel_allows_team, resolve_ops_pilot_guest_id
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.prompt_utils import merge_skill_params
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.sse_chat import create_error_stream_response
+
+PAGE_CONTEXT_TEXT_BUDGET = 8000
+PAGE_CONTEXT_MAX_IMAGES = 6
+PAGE_CONTEXT_MAX_IMAGE_CHARS = 500 * 1024
+PAGE_CONTEXT_GUIDE = "以下是用户当前正在查看的页面快照，仅当问题与页面相关时参考。"
 
 
 class SkillChannelChatError(Exception):
@@ -84,6 +90,126 @@ def get_or_create_conversation(channel: SkillChannel, external_user_id: str, ses
         channel=channel,
         external_user_id=external_user_id or "",
     )
+
+
+def persistable_user_message_text(user_message) -> str:
+    """落库只用用户原文；多模态 list 抽出纯文本，避免把快照/图片写入 TextField。"""
+    if isinstance(user_message, str):
+        return user_message
+    if isinstance(user_message, list):
+        text, _images = HistoryService.process_user_message_and_images(user_message)
+        return text if isinstance(text, str) else ""
+    return str(user_message or "")
+
+
+def _split_user_content(user_message) -> tuple[str, list[dict]]:
+    if isinstance(user_message, list):
+        text, image_urls = HistoryService.process_user_message_and_images(user_message)
+        images = [{"type": "image_url", "image_url": url} for url in image_urls if url]
+        return (text if isinstance(text, str) else ""), images
+    return str(user_message or ""), []
+
+
+def _section_priority(section) -> int:
+    if not isinstance(section, dict):
+        return 0
+    try:
+        return int(section.get("priority") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _sanitize_page_context(page_context) -> dict | None:
+    if not isinstance(page_context, dict) or not page_context:
+        return None
+    sections = [item for item in (page_context.get("sections") or []) if isinstance(item, dict)]
+    sections.sort(key=_section_priority, reverse=True)
+    kept_sections = []
+    used = 0
+    for section in sections:
+        content = str(section.get("content") or "")
+        if not content.strip():
+            continue
+        remaining = PAGE_CONTEXT_TEXT_BUDGET - used
+        if remaining <= 0:
+            break
+        if len(content) > remaining:
+            if used == 0:
+                content = content[:remaining]
+            else:
+                continue
+        kept_sections.append(
+            {
+                "id": section.get("id") or "",
+                "label": section.get("label") or "",
+                "content": content,
+                "priority": _section_priority(section),
+            }
+        )
+        used += len(content)
+
+    images = []
+    for item in page_context.get("images") or []:
+        if len(images) >= PAGE_CONTEXT_MAX_IMAGES:
+            break
+        if not isinstance(item, dict):
+            continue
+        data_url = str(item.get("dataUrl") or item.get("data_url") or "")
+        if not data_url or len(data_url) > PAGE_CONTEXT_MAX_IMAGE_CHARS:
+            continue
+        images.append({"caption": str(item.get("caption") or ""), "dataUrl": data_url})
+
+    if not kept_sections and not images and not (page_context.get("title") or page_context.get("url")):
+        return None
+    return {
+        "url": str(page_context.get("url") or ""),
+        "app": str(page_context.get("app") or ""),
+        "title": str(page_context.get("title") or ""),
+        "sections": kept_sections,
+        "images": images,
+    }
+
+
+def _render_page_context_block(snapshot: dict) -> str:
+    lines = [PAGE_CONTEXT_GUIDE, "<current_page>"]
+    if snapshot.get("url"):
+        lines.append(f"url: {snapshot['url']}")
+    if snapshot.get("app"):
+        lines.append(f"app: {snapshot['app']}")
+    if snapshot.get("title"):
+        lines.append(f"title: {snapshot['title']}")
+    for section in snapshot.get("sections") or []:
+        label = section.get("label") or section.get("id") or "section"
+        lines.append(f"## {label}")
+        lines.append(section.get("content") or "")
+    lines.append("</current_page>")
+    return "\n".join(lines).strip()
+
+
+def inject_page_context(user_message, page_context, mode: str = "inline"):
+    """把当轮 page_context 拼进当前用户消息；不写入会话历史。mode 仅实现 inline。"""
+    if not page_context:
+        return user_message
+    if mode != "inline":
+        logger.warning("page_context inject mode=%s not implemented, skip", mode)
+        return user_message
+    try:
+        snapshot = _sanitize_page_context(page_context)
+        if not snapshot:
+            return user_message
+        text, existing_images = _split_user_content(user_message)
+        page_images = [{"type": "image_url", "image_url": item["dataUrl"]} for item in snapshot.get("images") or []]
+        captions = [item.get("caption") for item in snapshot.get("images") or [] if item.get("caption")]
+        block = _render_page_context_block(snapshot)
+        if captions:
+            block = block + "\n图表说明:\n" + "\n".join(f"- {caption}" for caption in captions)
+        merged_text = f"{text}\n\n{block}".strip() if text else block
+        if not page_images and not existing_images:
+            return merged_text
+        return [*existing_images, *page_images, {"type": "message", "message": merged_text}]
+    except Exception:
+        logger.exception("inject_page_context failed, continue without page context")
+        return user_message
 
 
 def append_message(conversation: SkillConversation, role: str, content: str) -> SkillConversationMessage:
@@ -383,14 +509,17 @@ def stream_skill_channel_chat(
     external_user_id: str,
     session_id: str | None = None,
     identity_user=None,
+    page_context=None,
 ) -> StreamingHttpResponse:
     skill = channel.skill
     conversation = get_or_create_conversation(channel, external_user_id, session_id)
-    append_message(conversation, SkillConversationMessage.ROLE_USER, user_message)
+    persist_text = persistable_user_message_text(user_message)
+    append_message(conversation, SkillConversationMessage.ROLE_USER, persist_text)
 
     user = identity_user or request.user
-    params = build_skill_chat_params(skill, user_message, user)
+    params = build_skill_chat_params(skill, persist_text, user)
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
+    params["user_message"] = inject_page_context(user_message, page_context, mode="inline")
     params["browser_use_force_task"] = True
     try:
         params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, user)
@@ -403,7 +532,7 @@ def stream_skill_channel_chat(
     else:
         current_ip = request.META.get("REMOTE_ADDR", "")
 
-    base_response = stream_agui_chat(params, skill.name, {}, current_ip, user_message, skill_id=skill.id)
+    base_response = stream_agui_chat(params, skill.name, {}, current_ip, persist_text, skill_id=skill.id)
     return _wrap_stream_persist_assistant(base_response, conversation.id)
 
 

@@ -99,6 +99,45 @@ def test_initialization_does_not_mutate_request_params():
 
 
 @pytest.mark.asyncio
+async def test_collection_service_logs_sanitized_call_chain_for_sampled_exception(monkeypatch):
+    class BrokenConfigProvider:
+        @staticmethod
+        async def get_executor_config_with_resolution_async(*_args, **_kwargs):
+            raise RuntimeError("token=must-not-be-logged")
+
+    error_logs = []
+
+    def capture_error(message, *args):
+        error_logs.append(message % args if args else message)
+
+    monkeypatch.setattr("service.collection_service.logger.error", capture_error)
+    service = CollectionService(
+        {
+            "plugin_name": "snmp_facts",
+            "model_id": "network",
+            "executor_type": "protocol",
+            "host": "10.3.252.254",
+            "collection_task_id": "task-401",
+            "collection_plugin_ref": "network.config",
+            "_log_plugin_call_chain": True,
+        },
+        config_provider=BrokenConfigProvider(),
+    )
+
+    await service.collect()
+
+    assert len(error_logs) == 1
+    assert "event=plugin_exception" in error_logs[0]
+    assert "task_id=task-401" in error_logs[0]
+    assert "plugin_ref=network.config" in error_logs[0]
+    assert "plugin_name=snmp_facts" in error_logs[0]
+    assert "target=10.3.252.254" in error_logs[0]
+    assert "error_type=RuntimeError" in error_logs[0]
+    assert "get_executor_config_with_resolution_async" in error_logs[0]
+    assert "must-not-be-logged" not in error_logs[0]
+
+
+@pytest.mark.asyncio
 async def test_job_service_never_performs_legacy_per_target_node_query(monkeypatch):
     executor_config = ExecutorConfig(
         executor_type="job",
@@ -197,6 +236,7 @@ async def test_failed_plugin_result_is_not_logged_as_success(monkeypatch):
             }
 
     info_logs = []
+    debug_logs = []
     warning_logs = []
 
     def capture_info(message, *args):
@@ -205,8 +245,12 @@ async def test_failed_plugin_result_is_not_logged_as_success(monkeypatch):
     def capture_warning(message, *args):
         warning_logs.append(message % args if args else message)
 
+    def capture_debug(message, *args):
+        debug_logs.append(message % args if args else message)
+
     monkeypatch.setattr("service.collection_service.PluginExecutor", FailedExecutor)
     monkeypatch.setattr("service.collection_service.logger.info", capture_info)
+    monkeypatch.setattr("service.collection_service.logger.debug", capture_debug)
     monkeypatch.setattr("service.collection_service.logger.warning", capture_warning)
     service = CollectionService(
         {
@@ -224,6 +268,9 @@ async def test_failed_plugin_result_is_not_logged_as_success(monkeypatch):
 
     assert isinstance(result, StructuredMetricsPayload)
     assert result.error == "connection failed"
-    assert any("event=plugin_result_failed" in item for item in warning_logs)
-    assert any("task_id=vmware-failed-result" in item for item in warning_logs)
+    assert warning_logs == []
+    assert not any("start collect." in item for item in info_logs)
+    assert any("start collect." in item for item in debug_logs)
+    assert not any("Starting collection V2" in item for item in info_logs)
+    assert not any("Plugin collection completed" in item for item in info_logs)
     assert not any("Collection completed successfully" in item for item in info_logs)

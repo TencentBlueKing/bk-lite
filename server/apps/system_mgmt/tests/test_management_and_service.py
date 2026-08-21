@@ -20,6 +20,7 @@ from django.db import close_old_connections
 import apps.core.management.commands.batch_init as batch_init
 from apps.core.utils.permission_cache import get_user_permission_version
 from apps.system_mgmt.models import App, CustomMenuGroup, Group, LoginModule, Menu, Role, SystemSettings, User
+from apps.system_mgmt.nats.login import login
 from apps.system_mgmt.services.role_manage import RoleManage
 
 pytestmark = [pytest.mark.integration, pytest.mark.django_db]
@@ -113,6 +114,29 @@ def test_create_user_concurrent_bootstrap_is_idempotent(monkeypatch):
     finally:
         with ThreadPoolExecutor(max_workers=1) as executor:
             executor.submit(cleanup).result(timeout=10)
+
+
+def test_batch_init_fresh_admin_defaults_to_password(monkeypatch):
+    real_call_command = call_command
+
+    def route_call_command(name, *args, **kwargs):
+        if name == "create_user":
+            return real_call_command(name, *args, **kwargs)
+        return None
+
+    monkeypatch.setattr(batch_init, "call_command", route_call_command)
+    monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
+    monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_FILE", raising=False)
+    monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING", raising=False)
+
+    batch_init.Command()._init_system_mgmt()
+
+    admin = User.objects.get(username="admin", domain="domain.com")
+    assert check_password("password", admin.password)
+    assert Role.objects.get(name="admin", app="").id in admin.role_list
+    login_result = login("admin", "password")
+    assert login_result["result"] is True
+    assert login_result["data"]["token"]
 
 
 def test_batch_init_admin_bootstrap_and_repeat_use_real_create_user(monkeypatch):
@@ -243,6 +267,7 @@ def test_create_user_concurrent_migration_serializes_legacy_password_update():
         assert sum("成功迁移用户密码" in output for output in outputs) == 1
         assert sum("用户密码已完成轮换" in output for output in outputs) == 1
     finally:
+
         def cleanup():
             close_old_connections()
             try:

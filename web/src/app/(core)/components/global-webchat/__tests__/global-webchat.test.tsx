@@ -151,6 +151,8 @@ describe('GlobalWebChat', () => {
           applicationsUrl: '/api/proxy/opspilot/skill_channel/platform/',
           storageKey: 'webchat:platform:alice:7',
         }),
+        collectContext: expect.any(Function),
+        hasPageContext: expect.any(Function),
       }),
       null,
     );

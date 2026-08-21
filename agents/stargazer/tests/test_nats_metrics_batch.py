@@ -31,12 +31,8 @@ def test_structured_metrics_encoder_matches_legacy_prometheus_round_trip(monkeyp
         "collection_result_id": "result-1",
     }
 
-    legacy = nats_helper.convert_prometheus_to_influx(
-        convert_to_prometheus_format(data), params
-    )
-    structured = nats_helper.convert_structured_metrics_to_influx(
-        StructuredMetricsPayload(data=data), params
-    )
+    legacy = nats_helper.convert_prometheus_to_influx(convert_to_prometheus_format(data), params)
+    structured = nats_helper.convert_structured_metrics_to_influx(StructuredMetricsPayload(data=data), params)
 
     assert structured == legacy
 
@@ -147,17 +143,11 @@ async def test_metrics_batch_isolates_transport_failure_to_one_target_with_same_
 
 
 def test_line_chunks_are_bounded_by_count_and_utf8_bytes():
-    chunks = list(
-        nats_helper._iter_line_chunks(
-            ["a" * 4, "中", "b" * 4, "c"], max_lines=2, max_bytes=7
-        )
-    )
+    chunks = list(nats_helper._iter_line_chunks(["a" * 4, "中", "b" * 4, "c"], max_lines=2, max_bytes=7))
 
     assert chunks == [["a" * 4, "中"], ["b" * 4, "c"]]
     assert all(len(chunk) <= 2 for chunk in chunks)
-    assert all(
-        sum(len(line.encode("utf-8")) for line in chunk) <= 7 for chunk in chunks
-    )
+    assert all(sum(len(line.encode("utf-8")) for line in chunk) <= 7 for chunk in chunks)
 
 
 @pytest.mark.asyncio
@@ -209,13 +199,35 @@ async def test_nats_helper_performs_only_one_low_level_attempt(monkeypatch):
     monkeypatch.setattr(nats_helper, "nats_publish_lines", fail_before_delivery)
 
     with pytest.raises(nats_helper.MetricsPublishError) as error:
-        await nats_helper._publish_lines_with_retry(
-            "metrics.network", ["line"], "run-1"
-        )
+        await nats_helper._publish_lines_with_retry("metrics.network", ["line"], "run-1")
 
     assert attempts == 1
     assert error.value.delivery_detected is False
     assert error.value.attempts == 1
+
+
+@pytest.mark.asyncio
+async def test_successful_metrics_publish_is_visible_at_info_level(monkeypatch):
+    info_logs = []
+
+    async def publish_lines(_subject, lines):
+        return len(lines)
+
+    def capture_info(message, *args):
+        info_logs.append(message % args if args else message)
+
+    monkeypatch.setattr(nats_helper, "nats_publish_lines", publish_lines)
+    monkeypatch.setattr(nats_helper.logger, "info", capture_info)
+
+    published = await nats_helper._publish_lines_with_retry("metrics.snmp_facts", ["line-1", "line-2"], "run-snmp-1")
+
+    assert published == 2
+    assert len(info_logs) == 1
+    assert "event=nats_metrics_publish_succeeded" in info_logs[0]
+    assert "task_id=run-snmp-1" in info_logs[0]
+    assert "subject=metrics.snmp_facts" in info_logs[0]
+    assert "NATS指标推送成功" in info_logs[0]
+    assert "成功行数=2/2" in info_logs[0]
 
 
 @pytest.mark.asyncio
@@ -329,9 +341,7 @@ async def test_close_shared_nats_closes_both_channels_even_when_drain_fails(
         async def close(self):
             closed.append(self.name)
 
-    monkeypatch.setattr(
-        nats_utils, "_shared_nc", FakeConnection("control", fail_drain=True)
-    )
+    monkeypatch.setattr(nats_utils, "_shared_nc", FakeConnection("control", fail_drain=True))
     monkeypatch.setattr(nats_utils, "_metrics_nc", FakeConnection("metrics"))
 
     await nats_utils.close_shared_nats()
@@ -350,9 +360,7 @@ def test_nats_metrics_connection_stats_expose_connection_and_pending_bytes(monke
     monkeypatch.setattr(nats_utils, "_metrics_nc", connection)
     monkeypatch.setattr(nats_utils, "_metrics_reconnect_total", 3)
     monkeypatch.setattr(nats_utils, "_metrics_reconnect_duration_seconds", 1.25)
-    monkeypatch.setattr(
-        nats_utils, "_metrics_reconnect_durations", deque((0.5, 1.25), maxlen=500)
-    )
+    monkeypatch.setattr(nats_utils, "_metrics_reconnect_durations", deque((0.5, 1.25), maxlen=500))
 
     assert nats_utils.nats_metrics_connection_stats() == {
         "nats_metrics_connected": 1,

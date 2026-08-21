@@ -817,7 +817,7 @@ const JobHomePage = () => {
               <ChipIcon>{ICON_EXEC}</ChipIcon>
             </span>
             <span className="text-[13px] text-(--color-text-2) font-medium">{t('job.executionCount')}</span>
-            <span className="ml-auto rounded-md bg-[#eef1f6] px-2 py-0.5 text-[11px] text-(--color-text-3)">{periodLabel}</span>
+            <span className="ml-auto rounded-md bg-[var(--color-fill-1)] px-2 py-0.5 text-[11px] text-(--color-text-3)">{periodLabel}</span>
           </div>
           <div className="flex items-baseline gap-2.5">
             <span className="text-[30px] font-bold leading-none tracking-tight text-(--color-text-1)">{executionTotal}</span>
@@ -833,7 +833,7 @@ const JobHomePage = () => {
               <ChipIcon>{ICON_CHECK}</ChipIcon>
             </span>
             <span className="text-[13px] text-(--color-text-2) font-medium">{t('job.successRate')}</span>
-            <span className="ml-auto rounded-md bg-[#eef1f6] px-2 py-0.5 text-[11px] text-(--color-text-3)">{periodLabel}</span>
+            <span className="ml-auto rounded-md bg-[var(--color-fill-1)] px-2 py-0.5 text-[11px] text-(--color-text-3)">{periodLabel}</span>
           </div>
           <div className="flex items-baseline gap-2.5">
             <span className="text-[30px] font-bold leading-none tracking-tight text-[#19b87a]">{formatPercent(successRate)}</span>
