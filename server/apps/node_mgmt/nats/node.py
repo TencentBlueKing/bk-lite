@@ -1,7 +1,9 @@
 import threading
 import uuid
+from collections import defaultdict
 
 from django.db import IntegrityError, connection, transaction
+from django.db.models import F
 
 import nats_client
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -586,6 +588,41 @@ class NatsService:
             for config in child_configs
         ]
 
+    def get_child_config_nodes_by_ids(self, ids: list, organization_ids: list):
+        """批量解析子配置绑定的采集节点，并限定在调用方已授权的组织范围。"""
+        if not isinstance(ids, (list, tuple, set)) or not isinstance(organization_ids, (list, tuple, set)):
+            return []
+        normalized_ids = sorted({str(config_id) for config_id in ids if config_id not in (None, "")})
+        if not normalized_ids or not organization_ids:
+            return []
+        try:
+            normalized_organization_ids = _normalize_organization_ids(organization_ids)
+        except BaseAppException:
+            return []
+
+        rows = (
+            ChildConfig.objects.filter(
+                id__in=normalized_ids,
+                collector_config__nodes__nodeorganization__organization__in=normalized_organization_ids,
+            )
+            .values(
+                "id",
+                node_id=F("collector_config__nodes__id"),
+                node_name=F("collector_config__nodes__name"),
+            )
+            .order_by("id", "node_name", "node_id")
+            .distinct()
+        )
+        nodes_by_config = defaultdict(list)
+        for row in rows:
+            nodes_by_config[row["id"]].append(
+                {
+                    "id": row["node_id"],
+                    "name": row["node_name"],
+                }
+            )
+        return [{"id": config_id, "nodes": nodes_by_config[config_id]} for config_id in sorted(nodes_by_config)]
+
     def get_configs_by_ids(self, ids: list):
         """根据配置ID列表获取配置对象"""
         configs = CollectorConfiguration.objects.filter(id__in=ids)
@@ -915,6 +952,12 @@ def batch_add_node_config(configs: list):
 def get_child_configs_by_ids(ids: list):
     """根据ID获取子配置"""
     return NatsService().get_child_configs_by_ids(ids)
+
+
+@nats_client.register
+def get_child_config_nodes_by_ids(ids: list, organization_ids: list):
+    """按子配置 ID 批量获取授权组织范围内的采集节点。"""
+    return NatsService().get_child_config_nodes_by_ids(ids, organization_ids)
 
 
 @nats_client.register

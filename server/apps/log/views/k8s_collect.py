@@ -15,9 +15,7 @@ class K8sCollectViewSet(viewsets.ViewSet):
 
         normalized = []
         for organization in organizations:
-            if isinstance(organization, bool) or not isinstance(
-                organization, (int, str)
-            ):
+            if isinstance(organization, bool) or not isinstance(organization, (int, str)):
                 return None
             try:
                 normalized.append(int(organization))
@@ -38,9 +36,7 @@ class K8sCollectViewSet(viewsets.ViewSet):
 
         organizations = self._normalize_organizations(organizations)
         if organizations is None:
-            return WebUtils.response_error(
-                error_message="organizations must contain only integer values"
-            )
+            return WebUtils.response_error(error_message="organizations must contain only integer values")
 
         error_response = CollectInstanceViewSet()._authorize_target_organizations(
             request,
@@ -49,9 +45,7 @@ class K8sCollectViewSet(viewsets.ViewSet):
         )
         if error_response:
             return error_response
-        data = K8sLogCollectService.create_k8s_collect_instance(
-            {**request.data, "organizations": organizations}
-        )
+        data = K8sLogCollectService.create_k8s_collect_instance({**request.data, "organizations": organizations})
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="generate_install_command")
@@ -62,6 +56,7 @@ class K8sCollectViewSet(viewsets.ViewSet):
         command = K8sLogCollectService.generate_install_command(
             instances[0].id,
             request.data.get("cloud_region_id"),
+            request.data.get("image_registry_prefix"),
         )
         return WebUtils.response_success(command)
 
@@ -87,7 +82,11 @@ class K8sCollectViewSet(viewsets.ViewSet):
         if error_response:
             return error_response
         setting = K8sLogCollectService.save_setting(instances[0].id, request.data)
-        command = K8sLogCollectService.generate_install_command(instances[0].id, cloud_region_id)
+        command = K8sLogCollectService.generate_install_command(
+            instances[0].id,
+            cloud_region_id,
+            request.data.get("image_registry_prefix"),
+        )
         return WebUtils.response_success({**setting, "command": command})
 
     @action(methods=["post"], detail=False, url_path="check_collect_status")

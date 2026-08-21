@@ -764,9 +764,8 @@ def test_render_session_allows_frozen_network_status_topology(
                     "valueConfig": {
                         "sceneWidgetType": "networkStatusTopology",
                         "networkStatusTopology": {
-                            "modelId": "router",
-                            "instUuid": allowed_inst_uuid,
-                            "depth": 4,
+                            "instUuids": [allowed_inst_uuid],
+                            "nodeLimit": 100,
                         },
                     },
                 }
@@ -794,9 +793,8 @@ def test_render_session_allows_frozen_network_status_topology(
         factory.post(
             "/api/v1/operation_analysis/api/scene_widgets/network_status_topology/",
             {
-                "model_id": "router",
-                "inst_uuid": allowed_inst_uuid,
-                "depth": 4,
+                "inst_uuids": [allowed_inst_uuid],
+                "node_limit": 100,
             },
             format="json",
         ),
@@ -807,10 +805,106 @@ def test_render_session_allows_frozen_network_status_topology(
             factory.post(
                 "/api/v1/operation_analysis/api/scene_widgets/network_status_topology/",
                 {
-                    "model_id": "router",
-                    "inst_uuid": denied_inst_uuid,
-                    "depth": 4,
+                    "inst_uuids": [denied_inst_uuid],
+                    "node_limit": 100,
                 },
+                format="json",
+            ),
+            session["token"],
+        )
+
+
+def test_render_session_allows_overlay_datasource_query_for_topology_manifest(
+    running_execution,
+    monkeypatch,
+):
+    from apps.operation_analysis.services.network_status_topology_overlay import NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
+
+    monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
+    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS[:2]
+    cmdb = DataSourceAPIModel.objects.create(
+        name="render-overlay-cmdb",
+        rest_api=cmdb_api,
+        is_build_in=True,
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+    monitor = DataSourceAPIModel.objects.create(
+        name="render-overlay-monitor",
+        rest_api=monitor_api,
+        is_build_in=True,
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+    unrelated = DataSourceAPIModel.objects.create(
+        name="render-overlay-unrelated",
+        rest_api="other/query",
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+    old = running_execution.render_snapshot
+    DashboardReportRenderSnapshot.objects.filter(pk=old.pk).delete()
+    DashboardReportRenderSnapshot.objects.create(
+        execution=running_execution,
+        dashboard_id=old.dashboard_id,
+        dashboard_name=old.dashboard_name,
+        dashboard_updated_at=old.dashboard_updated_at,
+        view_sets={
+            "items": [
+                {
+                    "id": "topo-1",
+                    "chartType": "networkStatusTopology",
+                    "valueConfig": {"sceneWidgetType": "networkStatusTopology"},
+                }
+            ]
+        },
+        filters=[],
+        other={},
+        widget_manifest=[
+            {
+                "widget_id": "topo-1",
+                "widget_type": "networkStatusTopology",
+                "datasource_id": cmdb.id,
+            },
+            {
+                "widget_id": "topo-1",
+                "widget_type": "networkStatusTopology",
+                "datasource_id": monitor.id,
+            },
+        ],
+    )
+
+    issued = DashboardReportRenderTokenService.issue(running_execution)
+    session = DashboardReportRenderTokenService.consume(
+        execution_id=running_execution.id,
+        plaintext=issued.plaintext,
+    )
+    factory = APIRequestFactory()
+
+    DashboardReportRenderScopeService.authorize_request(
+        factory.post(
+            f"/api/v1/operation_analysis/api/data_source/get_source_data/{cmdb.id}/",
+            {},
+            format="json",
+        ),
+        session["token"],
+    )
+    DashboardReportRenderScopeService.authorize_request(
+        factory.post(
+            f"/api/v1/operation_analysis/api/data_source/get_source_data/{monitor.id}/",
+            {},
+            format="json",
+        ),
+        session["token"],
+    )
+    with pytest.raises(DashboardReportRenderScopeError):
+        DashboardReportRenderScopeService.authorize_request(
+            factory.post(
+                f"/api/v1/operation_analysis/api/data_source/get_source_data/{unrelated.id}/",
+                {},
                 format="json",
             ),
             session["token"],

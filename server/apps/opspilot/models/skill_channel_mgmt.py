@@ -11,7 +11,7 @@ class SkillChannel(TimeInfo):
     """智能体渠道发布绑定。
 
     - usage_team 为组副本：创建/更新时从 Skill.usage_team 拷入；改 Skill.usage_team 时全量同步。
-    - 同 channel_type 允许多条；对外回调与对话 URL 使用本表主键消歧。
+    - 同 channel_type 允许多条，但同一智能体下 (channel_type, name) 唯一；对外回调与对话 URL 使用本表主键消歧。
     """
 
     skill = models.ForeignKey(
@@ -37,6 +37,12 @@ class SkillChannel(TimeInfo):
         db_table = "model_provider_mgmt_skillchannel"
         indexes = [
             models.Index(fields=["skill", "channel_type", "enabled"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["skill", "channel_type", "name"],
+                name="uniq_skillchannel_skill_type_name",
+            ),
         ]
 
     def __str__(self):

@@ -1,13 +1,13 @@
-export type CollectorConfigRef = {
+export interface CollectorConfigRef {
   collector_id?: string;
   configuration_id?: string | number | Array<string | number> | null;
-};
+}
 
-export type MainConfigCandidate = {
+export interface MainConfigCandidate {
   key?: string;
   id?: string;
   collector_id?: string;
-};
+}
 
 export function normalizeConfigurationIds(
   configurationId: CollectorConfigRef['configuration_id']
@@ -52,6 +52,12 @@ export function buildConfigModalFormData<T extends Record<string, unknown>>(
     ...form,
     configInfo: String(form.content || form.configInfo || '')
   };
+}
+
+export function asCollectorStatusList(
+  collectors: unknown
+): Array<Record<string, any>> {
+  return Array.isArray(collectors) ? collectors : [];
 }
 
 export function applyConfigFormValues(

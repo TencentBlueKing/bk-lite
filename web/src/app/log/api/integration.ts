@@ -140,6 +140,7 @@ const useIntegrationApi = () => {
     params: {
       instance_id?: string;
       cloud_region_id?: React.Key;
+      image_registry_prefix?: string;
     } = {}
   ) => {
     return await post('/log/k8s_collect/generate_install_command/', params);
@@ -159,6 +160,7 @@ const useIntegrationApi = () => {
     docker_container_log_path?: string;
     namespace_patterns?: string;
     pod_patterns?: string;
+    image_registry_prefix?: string;
   }) => {
     return await post('/log/k8s_collect/collect_setting/', data);
   };

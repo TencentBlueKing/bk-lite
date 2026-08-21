@@ -203,16 +203,13 @@ def test_init_default_namespace_rerun_no_change(settings):
 
 @pytest.mark.django_db
 def test_init_source_api_data_creates_tags_and_sources(settings):
-    from apps.system_mgmt.models.user import Group
-
     settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
-    default_group, _ = Group.objects.get_or_create(name="Default")
     call_command("init_default_namespace")
     call_command("init_source_api_data")
 
     assert DataSourceTag.objects.exists()
     assert DataSourceAPIModel.objects.exists()
-    assert DataSourceAPIModel.objects.filter(groups=[default_group.id]).exists()
+    assert all(source.groups == [] for source in DataSourceAPIModel.objects.filter(is_build_in=True))
 
 
 @pytest.mark.django_db
@@ -464,11 +461,11 @@ def test_init_source_api_data_force_update_does_not_claim_custom_same_rest_api_o
 
 
 @pytest.mark.django_db
-def test_init_source_api_data_backfills_empty_groups_on_existing_sources(settings):
+def test_init_source_api_data_keeps_empty_groups_on_existing_builtin(settings):
     from apps.system_mgmt.models.user import Group
 
     settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
-    default_group, _ = Group.objects.get_or_create(name="Default")
+    Group.objects.get_or_create(name="Default")
     call_command("init_default_namespace")
     call_command("init_source_api_data")
 
@@ -479,7 +476,7 @@ def test_init_source_api_data_backfills_empty_groups_on_existing_sources(setting
     call_command("init_source_api_data", "--force-update")
 
     source.refresh_from_db()
-    assert source.groups == [default_group.id]
+    assert source.groups == []
 
 
 @pytest.mark.django_db
@@ -504,6 +501,32 @@ def test_init_source_api_data_keeps_existing_non_empty_groups(settings):
 # --------------------------------------------------------------------------
 # init_default_groups
 # --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_init_default_groups_skips_builtin_datasource():
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.system_mgmt.models.user import Group
+
+    Group.objects.get_or_create(name="Default", parent_id=0)
+    builtin = DataSourceAPIModel.objects.create(
+        name="keep-empty",
+        rest_api="keep/empty",
+        groups=[],
+        is_build_in=True,
+        build_in_key="keep-empty",
+    )
+    custom = DataSourceAPIModel.objects.create(
+        name="fill-custom",
+        rest_api="fill/custom",
+        groups=[],
+        is_build_in=False,
+    )
+    call_command("init_default_groups")
+    builtin.refresh_from_db()
+    custom.refresh_from_db()
+    assert builtin.groups == []
+    assert custom.groups  # 自定义空名单仍补 Default
 
 
 @pytest.mark.django_db

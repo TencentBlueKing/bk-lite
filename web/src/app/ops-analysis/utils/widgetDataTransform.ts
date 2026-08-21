@@ -1,4 +1,3 @@
-import dayjs from 'dayjs';
 import type {
   FilterValue,
   FilterBindings,
@@ -72,11 +71,11 @@ export const sanitizeUnifiedFilterDefinition = <T extends UnifiedFilterDefinitio
     staticOptions = definition.options;
   }
 
-  const defaultValue = staticOptions
-    ? staticOptions.some((item) => item.value === definition.defaultValue)
-      ? definition.defaultValue
-      : null
-    : definition.defaultValue;
+  const defaultValue = sanitizeFilterDefaultValue(
+    definition.type,
+    definition.defaultValue,
+    staticOptions,
+  );
 
   return {
     ...definition,
@@ -84,6 +83,42 @@ export const sanitizeUnifiedFilterDefinition = <T extends UnifiedFilterDefinitio
     options: Array.isArray(definition.options) ? definition.options : undefined,
     defaultValue,
   };
+};
+
+const isScalarFilterValue = (value: unknown): value is string | number =>
+  typeof value === 'string' || typeof value === 'number';
+
+const sanitizeFilterDefaultValue = (
+  type: UnifiedFilterDefinition['type'],
+  defaultValue: FilterValue | undefined,
+  staticOptions?: InputOption[],
+): FilterValue | undefined => {
+  if (type === 'stringList') {
+    const asList = Array.isArray(defaultValue)
+      ? defaultValue.filter(isScalarFilterValue)
+      : isScalarFilterValue(defaultValue)
+        ? [defaultValue]
+        : defaultValue == null
+          ? defaultValue
+          : null;
+    if (!Array.isArray(asList)) {
+      return asList;
+    }
+    if (!staticOptions) {
+      return asList;
+    }
+    const allowed = asList.filter((item) =>
+      staticOptions.some((option) => option.value === item),
+    );
+    return allowed.length === asList.length ? asList : allowed.length ? allowed : null;
+  }
+
+  if (!staticOptions) {
+    return defaultValue;
+  }
+  return staticOptions.some((item) => item.value === defaultValue)
+    ? defaultValue
+    : null;
 };
 
 export const getFilterDefinitionId = (
@@ -138,45 +173,24 @@ export const buildDefaultFilterBindings = (
   };
 };
 
-export const formatTimeRange = (timeParams: any): string[] => {
-  let startTime, endTime;
-
-  if (timeParams && typeof timeParams === 'number') {
-    // 数值类型：表示分钟数
-    const now = dayjs();
-    endTime = now.valueOf();
-    startTime = now.subtract(timeParams, 'minute').valueOf();
-  } else if (timeParams && Array.isArray(timeParams) && timeParams.length === 2) {
-    // 数组类型：[startTime, endTime]
-    startTime = timeParams[0];
-    endTime = timeParams[1];
-  } else if (timeParams && timeParams.start && timeParams.end) {
-    // 对象类型：{ start, end, selectValue? }
-    if (timeParams.selectValue && timeParams.selectValue > 0) {
-      // 有快捷选项时，基于当前时间重新计算相对时间
-      const now = dayjs();
-      endTime = now.valueOf();
-      startTime = now.subtract(timeParams.selectValue, 'minute').valueOf();
-    } else {
-      startTime = timeParams.start;
-      endTime = timeParams.end;
-    }
-  } else {
-    // 默认时间范围：最近7天
-    const now = dayjs();
-    endTime = now.valueOf();
-    startTime = now.subtract(7, 'day').valueOf();
+const getRelativeTimeRangeMinutes = (timeParams: unknown): number | null => {
+  if (typeof timeParams === 'number' && Number.isFinite(timeParams) && timeParams > 0) {
+    return timeParams;
   }
-
-  const startTimeStr = formatOpsRequestTime(startTime);
-  const endTimeStr = formatOpsRequestTime(endTime);
-
-  return [startTimeStr, endTimeStr];
+  if (!timeParams || typeof timeParams !== 'object' || Array.isArray(timeParams)) {
+    return null;
+  }
+  const selectValue = (timeParams as { selectValue?: unknown }).selectValue;
+  if (typeof selectValue === 'number' && Number.isFinite(selectValue) && selectValue > 0) {
+    return selectValue;
+  }
+  return null;
 };
 
-const formatTimeRangeForSignature = (timeParams: any): unknown => {
-  if (timeParams && typeof timeParams === 'number') {
-    return { mode: 'relative', value: timeParams };
+export const formatTimeRange = (timeParams: any): unknown => {
+  const relativeMinutes = getRelativeTimeRangeMinutes(timeParams);
+  if (relativeMinutes !== null) {
+    return { selectValue: relativeMinutes };
   }
 
   if (timeParams && Array.isArray(timeParams) && timeParams.length === 2) {
@@ -187,10 +201,29 @@ const formatTimeRangeForSignature = (timeParams: any): unknown => {
   }
 
   if (timeParams && timeParams.start && timeParams.end) {
-    if (timeParams.selectValue && timeParams.selectValue > 0) {
-      return { mode: 'relative', value: timeParams.selectValue };
-    }
+    return {
+      start: formatOpsRequestTime(timeParams.start),
+      end: formatOpsRequestTime(timeParams.end),
+    };
+  }
 
+  return timeParams;
+};
+
+const formatTimeRangeForSignature = (timeParams: any): unknown => {
+  const relativeMinutes = getRelativeTimeRangeMinutes(timeParams);
+  if (relativeMinutes !== null) {
+    return { mode: 'relative', value: relativeMinutes };
+  }
+
+  if (timeParams && Array.isArray(timeParams) && timeParams.length === 2) {
+    return [
+      formatOpsRequestTime(timeParams[0]),
+      formatOpsRequestTime(timeParams[1]),
+    ];
+  }
+
+  if (timeParams && timeParams.start && timeParams.end) {
     return {
       start: formatOpsRequestTime(timeParams.start),
       end: formatOpsRequestTime(timeParams.end),
@@ -214,6 +247,9 @@ export const formatDataSourceParamValue = (
   timeRangeFormatter: (timeParams: any) => unknown = formatTimeRange,
 ): unknown | typeof OMIT_DATA_SOURCE_PARAM => {
   if (value === null || value === undefined || value === '') {
+    return OMIT_DATA_SOURCE_PARAM;
+  }
+  if (Array.isArray(value) && value.length === 0) {
     return OMIT_DATA_SOURCE_PARAM;
   }
   if (type === 'dateRange') {
@@ -574,7 +610,7 @@ export const processDataSourceParams = ({
           if (bindingDisabled) {
             // 绑定的统一筛选被禁用：不传该参数
             delete processedParams[name];
-          } else if (unifiedValue !== null && unifiedValue !== undefined && unifiedValue !== '') {
+          } else if (unifiedValue !== null && unifiedValue !== undefined && unifiedValue !== '' && !(Array.isArray(unifiedValue) && unifiedValue.length === 0)) {
             // 有绑定且有值：使用统一筛选值
             setProcessedParam(name, type, unifiedValue);
           } else {
@@ -622,7 +658,11 @@ export const processDataSourceParams = ({
 
   return Object.fromEntries(
     Object.entries(processedParams).filter(
-      ([, value]) => value !== null && value !== undefined && value !== '',
+      ([, value]) =>
+        value !== null &&
+        value !== undefined &&
+        value !== '' &&
+        !(Array.isArray(value) && value.length === 0),
     ),
   );
 };

@@ -10,7 +10,12 @@ import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import HealthDot from '@/app/apm/components/health-dot';
-import { formatLatency, formatRelativeTime } from '@/app/apm/components/metric-format';
+import {
+  formatErrorRate,
+  formatLatency,
+  formatNumber,
+  formatRelativeTime,
+} from '@/app/apm/components/metric-format';
 import type {
   ApmService,
   ApmSpanSearchParams,
@@ -19,6 +24,7 @@ import type {
   ApmTraceSummary,
 } from '@/app/apm/types';
 import FilterToolbar from '@/components/filter-toolbar';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready' | 'idle';
@@ -50,6 +56,49 @@ interface TraceFilters {
   maxDurationMs: number | null;
 }
 
+interface ResultFacets {
+  status: 'all' | 'ok' | 'error';
+  serviceName?: string;
+  environment?: string;
+  kind?: string;
+  minDurationMs: number | null;
+  maxDurationMs: number | null;
+}
+
+const EMPTY_RESULT_FACETS: ResultFacets = {
+  status: 'all',
+  minDurationMs: null,
+  maxDurationMs: null,
+};
+
+function parseSpanKind(value: string | null | undefined): SpanKind | undefined {
+  const normalized = (value ?? '').trim().toLowerCase();
+  return SPAN_KINDS.includes(normalized as SpanKind) ? normalized as SpanKind : undefined;
+}
+
+function normalizeSpanKind(value: string | undefined): string {
+  return (value ?? '').trim().toLowerCase();
+}
+
+function matchesResultFacets(
+  item: {
+    status: string;
+    service_name: string;
+    environment?: string | null;
+    kind?: string;
+    duration_ms: number;
+  },
+  facets: ResultFacets,
+): boolean {
+  if (facets.status !== 'all' && item.status !== facets.status) return false;
+  if (facets.serviceName && item.service_name !== facets.serviceName) return false;
+  if (facets.environment !== undefined && (item.environment || '') !== facets.environment) return false;
+  if (facets.kind && normalizeSpanKind(item.kind) !== facets.kind) return false;
+  if (facets.minDurationMs != null && item.duration_ms < facets.minDurationMs) return false;
+  if (facets.maxDurationMs != null && item.duration_ms > facets.maxDurationMs) return false;
+  return true;
+}
+
 function serializeFilters(filters: TraceFilters): string {
   const tokens: string[] = [];
   if (filters.namespace.trim()) tokens.push(`service_namespace:${filters.namespace.trim()}`);
@@ -62,6 +111,10 @@ function serializeFilters(filters: TraceFilters): string {
   if (filters.minDurationMs != null) tokens.push(`duration:>=${filters.minDurationMs}ms`);
   if (filters.maxDurationMs != null) tokens.push(`duration:<=${filters.maxDurationMs}ms`);
   return tokens.join(' ');
+}
+
+function parseDurationInput(value: number | string | null): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 function parseDurationToken(raw: string): { op: 'min' | 'max'; value: number } | null {
@@ -100,7 +153,10 @@ function parseFilters(text: string): TraceFilters {
     else if (key === 'instance' || key === 'instance_id') next.instanceId = value;
     else if (key === 'name' || key === 'operation' || key === 'resource' || key === 'span_name') next.spanName = value;
     else if (key === 'status' && (value === 'ok' || value === 'error')) next.status = value;
-    else if (key === 'kind' && SPAN_KINDS.includes(value as SpanKind)) next.kind = value as SpanKind;
+    else if (key === 'kind') {
+      const parsed = parseSpanKind(value);
+      if (parsed) next.kind = parsed;
+    }
     else if (key === 'duration') {
       const parsed = parseDurationToken(value);
       if (!parsed) return;
@@ -112,7 +168,6 @@ function parseFilters(text: string): TraceFilters {
 }
 
 function filtersFromSearchParams(params: URLSearchParams): TraceFilters {
-  const kind = params.get('kind');
   return {
     namespace: params.get('service_namespace') ?? '',
     serviceName: params.get('service_name') ?? '',
@@ -122,7 +177,7 @@ function filtersFromSearchParams(params: URLSearchParams): TraceFilters {
     status: params.get('status') === 'ok' || params.get('status') === 'error'
       ? params.get('status') as 'ok' | 'error'
       : 'all',
-    kind: SPAN_KINDS.includes(kind as SpanKind) ? kind as SpanKind : undefined,
+    kind: parseSpanKind(params.get('kind')),
     minDurationMs: params.get('min_duration_ms') ? Number(params.get('min_duration_ms')) : null,
     maxDurationMs: params.get('max_duration_ms') ? Number(params.get('max_duration_ms')) : null,
   };
@@ -162,7 +217,7 @@ function DurationDistribution({ items, unitLabel }: { items: DurationPoint[]; un
         const y = 110 - (item.duration_ms / maxDuration) * 96;
         return (
           <circle
-            aria-label={t('apm.explore.barAria', '{label}，{duration} 毫秒', { label: item.label, duration: item.duration_ms.toFixed(2) })}
+            aria-label={t('apm.explore.barAria', '{label}，{duration} 毫秒', { label: item.label, duration: formatNumber(item.duration_ms, 2) })}
             cx={x}
             cy={y}
             fill={item.status === 'error' ? 'var(--color-fail)' : 'var(--color-primary)'}
@@ -243,29 +298,25 @@ export default function ApmTracesPage() {
   const [timeRange, setTimeRange] = useState<TimeRange>('1h');
   const [traceItems, setTraceItems] = useState<ApmTraceSummary[]>([]);
   const [spanItems, setSpanItems] = useState<ApmSpanSummary[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [serviceFilter, setServiceFilter] = useState<string>();
+  const [facets, setFacets] = useState<ResultFacets>(EMPTY_RESULT_FACETS);
   const [resultMode, setResultMode] = useState<ResultMode>('detail');
   const [aggregateDimension, setAggregateDimension] = useState<AggregateDimension>('service');
   const [state, setState] = useState<PageState>('loading');
-  const [loadingMore, setLoadingMore] = useState(false);
   const [searching, setSearching] = useState(false);
   const [services, setServices] = useState<ApmService[]>([]);
   const [queryStartedAt, setQueryStartedAt] = useState<string>();
   const [queryEndedAt, setQueryEndedAt] = useState<string>();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [durationDraft, setDurationDraft] = useState<{ min: number | null; max: number | null }>({
+    min: null,
+    max: null,
+  });
   const autoSearched = useRef(false);
   const entityModeReady = useRef(false);
   const servicesLoaded = useRef(false);
-  const durationTimer = useRef<number | undefined>(undefined);
 
-  const {
-    serviceName,
-    environment,
-    status: queryStatus,
-    kind,
-    minDurationMs,
-    maxDurationMs,
-  } = filters;
+  const { serviceName } = filters;
 
   const applyFilters = useCallback((next: TraceFilters, options?: { search?: boolean }) => {
     setFilters(next);
@@ -285,8 +336,12 @@ export default function ApmTracesPage() {
     const active = nextFilters ?? filters;
     if (authLoading) return;
     setSearching(true);
-    if (cursor) setLoadingMore(true);
-    else setState('loading');
+    if (!cursor) {
+      setState('loading');
+      setPage(1);
+      setFacets(EMPTY_RESULT_FACETS);
+      setDurationDraft({ min: null, max: null });
+    }
     const window = timeWindow(cursor);
     if (entityMode === 'spans') {
       const query: ApmSpanSearchParams = {
@@ -306,14 +361,12 @@ export default function ApmTracesPage() {
         .then((page) => {
           setSpanItems((current) => (cursor ? [...current, ...page.items] : page.items));
           setTraceItems([]);
-          setNextCursor(page.next_cursor);
           setQueryStartedAt(query.started_at);
           setQueryEndedAt(query.ended_at);
           setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
         })
         .catch((error) => setState(catalogErrorKind(error)))
         .finally(() => {
-          setLoadingMore(false);
           setSearching(false);
         });
       return;
@@ -334,14 +387,12 @@ export default function ApmTracesPage() {
       .then((page) => {
         setTraceItems((current) => (cursor ? [...current, ...page.items] : page.items));
         setSpanItems([]);
-        setNextCursor(page.next_cursor);
         setQueryStartedAt(query.started_at);
         setQueryEndedAt(query.ended_at);
         setState(page.items.length === 0 && !cursor && !page.next_cursor ? 'empty' : 'ready');
       })
       .catch((error) => setState(catalogErrorKind(error)))
       .finally(() => {
-        setLoadingMore(false);
         setSearching(false);
       });
   }, [authLoading, entityMode, filters, getSpans, getTraces, timeWindow]);
@@ -352,20 +403,25 @@ export default function ApmTracesPage() {
     search(undefined, next);
   }, [applyFilters, queryText, search]);
 
-  const patchFilters = useCallback((patch: Partial<TraceFilters>) => {
-    const next = { ...filters, ...patch };
-    applyFilters(next);
-    search(undefined, next);
-  }, [applyFilters, filters, search]);
-
-  const updateDuration = useCallback((patch: Partial<TraceFilters>, immediate = false) => {
-    const next = { ...filters, ...patch };
-    applyFilters(next, { search: false });
-    if (durationTimer.current) window.clearTimeout(durationTimer.current);
-    if (next.minDurationMs != null && next.maxDurationMs != null && next.minDurationMs > next.maxDurationMs) return;
-    if (immediate) search(undefined, next);
-    else durationTimer.current = window.setTimeout(() => search(undefined, next), 400);
-  }, [applyFilters, filters, search]);
+  const commitDuration = useCallback(() => {
+    if (
+      durationDraft.min != null
+      && durationDraft.max != null
+      && durationDraft.min > durationDraft.max
+    ) {
+      return;
+    }
+    setFacets((current) => {
+      if (current.minDurationMs === durationDraft.min && current.maxDurationMs === durationDraft.max) {
+        return current;
+      }
+      return {
+        ...current,
+        minDurationMs: durationDraft.min,
+        maxDurationMs: durationDraft.max,
+      };
+    });
+  }, [durationDraft]);
 
   useEffect(() => {
     if (authLoading || servicesLoaded.current) return;
@@ -408,15 +464,21 @@ export default function ApmTracesPage() {
 
   const traceColumns = useMemo<TableProps<ApmTraceSummary>['columns']>(() => [
     {
-      title: t('apm.explore.entryTrace', '入口服务 / Trace ID'),
+      title: t('apm.explore.entryService', '入口服务'),
+      key: 'service',
       render: (_, item) => (
-        <Space direction="vertical" size={2}>
-          <Space size={6}>
-            <HealthDot level={item.status === 'error' ? 1 : 5} />
-            <span className="text-sm font-medium">{item.service_name}</span>
-          </Space>
-          <span className="font-mono text-xs text-[var(--color-text-3)]">{item.trace_id}</span>
-        </Space>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <HealthDot level={item.status === 'error' ? 1 : 5} />
+          <span className="truncate text-sm font-medium">{item.service_name}</span>
+        </span>
+      ),
+    },
+    {
+      title: t('apm.explore.traceId', 'Trace ID'),
+      dataIndex: 'trace_id',
+      width: APM_TABLE_COLUMN_WIDTHS.traceId,
+      render: (value: string) => (
+        <EllipsisWithTooltip className="truncate font-mono text-xs text-[var(--color-text-3)]" text={value} />
       ),
     },
     {
@@ -432,7 +494,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['sm'],
-      render: (value: number) => formatLatency(value),
+      render: (value: number) => formatLatency(value, false, t),
     },
     {
       title: t('apm.explore.spanCount', '跨度数'),
@@ -459,7 +521,7 @@ export default function ApmTracesPage() {
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       responsive: ['xl'],
       render: (value: string) => (
-        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
+        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value, t)}</span>
       ),
     },
   ], [statusError, statusOk, t]);
@@ -502,7 +564,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
-      render: (value: number) => formatLatency(value),
+      render: (value: number) => formatLatency(value, false, t),
     },
     {
       title: t('apm.common.time', '时间'),
@@ -510,18 +572,18 @@ export default function ApmTracesPage() {
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       responsive: ['xl'],
       render: (value: string) => (
-        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
+        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value, t)}</span>
       ),
     },
   ], [t]);
 
   const visibleTraces = useMemo(
-    () => traceItems.filter((item) => (!serviceFilter || item.service_name === serviceFilter)),
-    [serviceFilter, traceItems],
+    () => traceItems.filter((item) => matchesResultFacets(item, facets)),
+    [facets, traceItems],
   );
   const visibleSpans = useMemo(
-    () => spanItems.filter((item) => (!serviceFilter || item.service_name === serviceFilter)),
-    [serviceFilter, spanItems],
+    () => spanItems.filter((item) => matchesResultFacets(item, facets)),
+    [facets, spanItems],
   );
   const activeItems = entityMode === 'spans' ? visibleSpans : visibleTraces;
   const statusCounts = useMemo(() => {
@@ -549,7 +611,7 @@ export default function ApmTracesPage() {
   const kindCounts = useMemo(() => {
     if (entityMode !== 'spans') return [] as Array<[string, number]>;
     return Array.from(spanItems.reduce((counts, item) => {
-      const key = item.kind || 'unspecified';
+      const key = normalizeSpanKind(item.kind) || 'unspecified';
       counts.set(key, (counts.get(key) ?? 0) + 1);
       return counts;
     }, new Map<string, number>())).sort((left, right) => right[1] - left[1]);
@@ -603,6 +665,19 @@ export default function ApmTracesPage() {
     [aggregateDimension, entityMode, statusError, statusOk, t, visibleSpans, visibleTraces],
   );
 
+  useEffect(() => {
+    setPage(1);
+  }, [aggregateDimension, entityMode, facets, resultMode]);
+
+  const listPagination = {
+    current: page,
+    pageSize,
+    onChange: (nextPage: number, nextPageSize: number) => {
+      setPage(nextPageSize === pageSize ? nextPage : 1);
+      setPageSize(nextPageSize);
+    },
+  };
+
   const aggregateColumns: TableProps<AggregateRow>['columns'] = [
     { title: t('apm.explore.group', '分组'), dataIndex: 'label' },
     { title: t('apm.explore.count', '数量'), dataIndex: 'count', width: APM_TABLE_COLUMN_WIDTHS.status, align: 'right', className: 'tabular-nums' },
@@ -613,7 +688,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['sm'],
-      render: (value: number) => `${(value * 100).toFixed(1)}%`,
+      render: (value: number) => formatErrorRate(value, false, t),
     },
     {
       title: t('apm.explore.avgDuration', '平均耗时'),
@@ -622,7 +697,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
-      render: (value: number) => formatLatency(value),
+      render: (value: number) => formatLatency(value, false, t),
     },
     {
       title: t('apm.common.p95', 'P95'),
@@ -631,7 +706,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['lg'],
-      render: (value: number) => formatLatency(value),
+      render: (value: number) => formatLatency(value, false, t),
     },
     {
       title: t('apm.explore.maxDuration', '最大耗时'),
@@ -640,7 +715,7 @@ export default function ApmTracesPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['lg'],
-      render: (value: number) => formatLatency(value),
+      render: (value: number) => formatLatency(value, false, t),
     },
   ];
 
@@ -665,7 +740,6 @@ export default function ApmTracesPage() {
                 if (value !== 'spans' && value !== 'traces') return;
                 setEntityMode(value);
                 setResultMode('detail');
-                setNextCursor(null);
                 setTraceItems([]);
                 setSpanItems([]);
                 setState(serviceName.trim() ? 'loading' : 'idle');
@@ -701,7 +775,7 @@ export default function ApmTracesPage() {
             <Button
               type="primary"
               icon={<SearchOutlined aria-hidden="true" />}
-              loading={searching && !loadingMore}
+              loading={searching}
               onClick={commitQueryText}
             >
               {t('apm.common.query', '查询')}
@@ -739,7 +813,7 @@ export default function ApmTracesPage() {
                 <div>
                   <Typography.Text type="secondary" className="mb-2 block !text-xs">
                     {t('apm.common.status', '状态')}
-                    {queryStatus !== 'all' ? (
+                    {facets.status !== 'all' ? (
                       <span className="ml-1.5 font-semibold text-[var(--color-primary)]">(1)</span>
                     ) : null}
                   </Typography.Text>
@@ -751,14 +825,15 @@ export default function ApmTracesPage() {
                       <div
                         key={item.value}
                         className={`flex w-full items-center justify-between gap-3 rounded px-1.5 py-0.5 ${
-                          queryStatus === item.value ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]' : ''
+                          facets.status === item.value ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]' : ''
                         }`}
                       >
                         <Checkbox
-                          checked={queryStatus === item.value}
-                          onChange={(event) => patchFilters({
+                          checked={facets.status === item.value}
+                          onChange={(event) => setFacets((current) => ({
+                            ...current,
                             status: event.target.checked ? item.value : 'all',
-                          })}
+                          }))}
                         >
                           <span className="inline-flex items-center gap-1.5">
                             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full" style={{ background: item.color }} />
@@ -773,7 +848,7 @@ export default function ApmTracesPage() {
                 <div>
                   <Typography.Text type="secondary" className="mb-2 block !text-xs">
                     {t('apm.common.service', '服务')}
-                    {serviceFilter ? (
+                    {facets.serviceName ? (
                       <span className="ml-1.5 font-semibold text-[var(--color-primary)]">(1)</span>
                     ) : null}
                   </Typography.Text>
@@ -786,9 +861,12 @@ export default function ApmTracesPage() {
                         key={name}
                         type="button"
                         className={`flex w-full items-center justify-between gap-3 rounded px-1.5 py-0.5 text-left hover:bg-[var(--color-fill-1)] ${
-                          serviceFilter === name ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]' : ''
+                          facets.serviceName === name ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]' : ''
                         }`}
-                        onClick={() => setServiceFilter((current) => (current === name ? undefined : name))}
+                        onClick={() => setFacets((current) => ({
+                          ...current,
+                          serviceName: current.serviceName === name ? undefined : name,
+                        }))}
                       >
                         <Typography.Text ellipsis={{ tooltip: name }} className="max-w-36 !text-xs !text-inherit">{name}</Typography.Text>
                         <span className="tabular-nums text-xs text-[var(--color-text-3)]">{count}</span>
@@ -799,21 +877,27 @@ export default function ApmTracesPage() {
                 <div>
                   <Typography.Text type="secondary" className="mb-2 block !text-xs">
                     {t('apm.common.environment', '环境')}
-                    {environment ? (
+                    {facets.environment !== undefined ? (
                       <span className="ml-1.5 font-semibold text-[var(--color-primary)]">(1)</span>
                     ) : null}
                   </Typography.Text>
                   <Space direction="vertical" size={6} className="w-full">
-                    {(environmentCounts.length ? environmentCounts : [[environment || unsetParen, 0] as [string, number]]).slice(0, 8).map(([name, count]) => (
+                    {(environmentCounts.length ? environmentCounts : [[unsetParen, 0] as [string, number]]).slice(0, 8).map(([name, count]) => (
                       <button
                         key={name}
                         type="button"
                         className={`flex w-full items-center justify-between gap-3 rounded px-1.5 py-0.5 text-left hover:bg-[var(--color-fill-1)] ${
-                          (environment || unsetParen) === name ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]' : ''
+                          facets.environment !== undefined && (facets.environment || unsetParen) === name
+                            ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
+                            : ''
                         }`}
-                        onClick={() => patchFilters({
-                          environment: name === unsetParen ? '' : name,
-                        })}
+                        onClick={() => {
+                          const nextEnvironment = name === unsetParen ? '' : name;
+                          setFacets((current) => ({
+                            ...current,
+                            environment: current.environment === nextEnvironment ? undefined : nextEnvironment,
+                          }));
+                        }}
                       >
                         <Typography.Text ellipsis={{ tooltip: name }} className="max-w-36 !text-xs !text-inherit">{name}</Typography.Text>
                         <span className="tabular-nums text-xs text-[var(--color-text-3)]">{count}</span>
@@ -825,7 +909,7 @@ export default function ApmTracesPage() {
                   <div>
                     <Typography.Text type="secondary" className="mb-2 block !text-xs">
                       {t('apm.explore.spanKind', 'SPAN 类型')}
-                      {kind ? (
+                      {facets.kind ? (
                         <span className="ml-1.5 font-semibold text-[var(--color-primary)]">(1)</span>
                       ) : null}
                     </Typography.Text>
@@ -837,16 +921,15 @@ export default function ApmTracesPage() {
                         <div
                           key={name}
                           className={`flex w-full items-center justify-between gap-3 rounded px-1.5 py-0.5 ${
-                            kind === name ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]' : ''
+                            facets.kind === name ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]' : ''
                           }`}
                         >
                           <Checkbox
-                            checked={kind === name}
-                            onChange={(event) => patchFilters({
-                              kind: event.target.checked && SPAN_KINDS.includes(name as SpanKind)
-                                ? name as SpanKind
-                                : undefined,
-                            })}
+                            checked={facets.kind === name}
+                            onChange={(event) => setFacets((current) => ({
+                              ...current,
+                              kind: event.target.checked ? name : undefined,
+                            }))}
                           >
                             <span className="text-xs uppercase">{name}</span>
                           </Checkbox>
@@ -862,31 +945,35 @@ export default function ApmTracesPage() {
                     <InputNumber
                       size="small"
                       min={0}
+                      controls={false}
                       className="w-full"
                       placeholder="min"
-                      value={minDurationMs}
-                      onChange={(value) => updateDuration({
-                        minDurationMs: typeof value === 'number' ? value : null,
-                      })}
-                      onBlur={() => updateDuration({}, true)}
-                      onPressEnter={() => updateDuration({}, true)}
+                      value={durationDraft.min}
+                      onChange={(value) => setDurationDraft((current) => ({
+                        ...current,
+                        min: parseDurationInput(value),
+                      }))}
+                      onBlur={commitDuration}
+                      onPressEnter={commitDuration}
                     />
                     <span className="text-xs text-[var(--color-text-3)]">-</span>
                     <InputNumber
                       size="small"
                       min={0}
+                      controls={false}
                       className="w-full"
                       placeholder="max"
-                      value={maxDurationMs}
-                      onChange={(value) => updateDuration({
-                        maxDurationMs: typeof value === 'number' ? value : null,
-                      })}
-                      onBlur={() => updateDuration({}, true)}
-                      onPressEnter={() => updateDuration({}, true)}
+                      value={durationDraft.max}
+                      onChange={(value) => setDurationDraft((current) => ({
+                        ...current,
+                        max: parseDurationInput(value),
+                      }))}
+                      onBlur={commitDuration}
+                      onPressEnter={commitDuration}
                     />
-                    <span className="shrink-0 text-xs text-[var(--color-text-3)]">ms</span>
+                    <span className="shrink-0 text-xs text-[var(--color-text-3)]">{t('apm.common.millisecondUnit', 'ms')}</span>
                   </div>
-                  {minDurationMs != null && maxDurationMs != null && minDurationMs > maxDurationMs ? (
+                  {durationDraft.min != null && durationDraft.max != null && durationDraft.min > durationDraft.max ? (
                     <Typography.Text type="danger" className="mt-2 block !text-xs">{t('apm.explore.durationInvalid', '最小耗时不能大于最大耗时')}</Typography.Text>
                   ) : null}
                 </div>
@@ -896,7 +983,7 @@ export default function ApmTracesPage() {
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <div className="flex items-baseline gap-2">
-                    <strong className="text-base font-semibold tabular-nums">{hitRate >= 10 ? hitRate.toFixed(1) : hitRate.toFixed(2)}</strong>
+                    <strong className="text-base font-semibold tabular-nums">{formatNumber(hitRate, hitRate >= 10 ? 1 : 2)}</strong>
                     <Typography.Text type="secondary" className="!text-xs">
                       {entityMode === 'spans' ? t('apm.explore.spansPerSec', 'spans/s') : t('apm.explore.hitRate', 'traces/s')}
                     </Typography.Text>
@@ -934,7 +1021,7 @@ export default function ApmTracesPage() {
                         rowKey="span_id"
                         columns={spanColumns}
                         dataSource={visibleSpans}
-                        pagination={false}
+                        pagination={listPagination}
                         onRow={(item) => ({
                           onClick: () => router.push(`/apm/explore/traces/${item.trace_id}?span_id=${item.span_id}`),
                           onKeyDown: (event) => {
@@ -954,7 +1041,7 @@ export default function ApmTracesPage() {
                         rowKey="trace_id"
                         columns={traceColumns}
                         dataSource={visibleTraces}
-                        pagination={false}
+                        pagination={listPagination}
                         onRow={(item) => ({
                           onClick: () => router.push(`/apm/explore/traces/${item.trace_id}`),
                           onKeyDown: (event) => {
@@ -970,11 +1057,6 @@ export default function ApmTracesPage() {
                         })}
                       />
                     )}
-                    {nextCursor ? (
-                      <div className="mt-4 flex justify-center border-t border-[var(--color-border-1)] pt-4">
-                        <Button loading={loadingMore} disabled={loadingMore} onClick={() => search(nextCursor)}>{t('apm.explore.loadMore', '加载更多')}</Button>
-                      </div>
-                    ) : null}
                 </>
               ) : (
                 <div>
@@ -995,7 +1077,7 @@ export default function ApmTracesPage() {
                     rowKey="key"
                     columns={aggregateColumns}
                     dataSource={aggregateRows}
-                    pagination={false}
+                    pagination={listPagination}
                   />
                 </div>
               )}

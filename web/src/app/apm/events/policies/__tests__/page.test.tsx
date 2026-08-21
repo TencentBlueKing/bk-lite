@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ApmPoliciesPage from '../page';
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+import { formatDateTime } from '@/app/apm/components/metric-format';
 
 const policy = {
   id: 'policy-1',
@@ -25,11 +26,6 @@ const policy = {
   recover_after: 3,
   no_data_after: null,
   no_data_severity: '' as const,
-  comparator: 'gt' as const,
-  threshold: '500',
-  duration_window: 5,
-  recovery_window: 3,
-  severity: 'warning' as const,
   notification_targets: [],
   is_enabled: true,
   state: {
@@ -90,12 +86,27 @@ describe('APM 策略列表', () => {
     expect(screen.getByText('checkout')).not.toBeNull();
     expect(screen.getByText('POST /checkout')).not.toBeNull();
     expect(screen.getByText('admin')).not.toBeNull();
-    expect(screen.getByText(/2026-08-11/)).not.toBeNull();
-    expect(screen.getByText(/2026-08-14/)).not.toBeNull();
+    expect(screen.getByText(formatDateTime(policy.created_at, false))).not.toBeNull();
+    expect(screen.getByText(formatDateTime(policy.state.last_succeeded_at, false))).not.toBeNull();
     expect(screen.queryByRole('columnheader', { name: '环境' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '端点 / 版本' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '告警条件' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: '状态' })).toBeNull();
+  });
+
+  it('最近评估失败时不把失败显示成普通执行时间', async () => {
+    api.getPolicies.mockResolvedValue([
+      {
+        ...policy,
+        state: {
+          ...policy.state,
+          last_succeeded_at: '2026-08-14T01:00:00Z',
+          last_failed_at: '2026-08-14T02:10:00Z',
+        },
+      },
+    ]);
+    renderWithApmIntl(<ApmPoliciesPage />);
+    expect(await screen.findByText(/评估失败/)).not.toBeNull();
   });
 
   it('新建和编辑使用独立路由，启停只保留在列表', async () => {

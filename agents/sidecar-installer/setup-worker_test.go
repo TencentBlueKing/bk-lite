@@ -343,10 +343,118 @@ func TestFetchConfigRecordsFinishAfterReadingAndParsingResponse(t *testing.T) {
 	}
 }
 
-func TestInstallerStepPositionUsesNewEightStepProtocol(t *testing.T) {
-	index, total := installerStepPosition("download_package")
-	if index != 4 || total != 8 {
-		t.Fatalf("expected download step 4/8, got %d/%d", index, total)
+func TestInstallerStepPositionIncludesStopServiceInNineStepProtocol(t *testing.T) {
+	index, total := installerStepPosition("stop_service")
+	if index != 5 || total != 9 {
+		t.Fatalf("expected stop service step 5/9, got %d/%d", index, total)
+	}
+}
+
+func TestPrepareLinuxPackageStopsServiceBeforeExtracting(t *testing.T) {
+	serviceStopped := false
+	extractCalled := false
+	events := []string{}
+
+	n, err := prepareLinuxPackageWithProgress(
+		"controller.zip",
+		"/opt/fusion-collectors",
+		func() error {
+			serviceStopped = true
+			return nil
+		},
+		func(_, _ string) (int, error) {
+			extractCalled = true
+			if !serviceStopped {
+				return 0, errors.New("open /opt/fusion-collectors/collector-sidecar: text file busy")
+			}
+			return 12, nil
+		},
+		func(step, status, _ string) { events = append(events, step+":"+status) },
+	)
+
+	if err != nil {
+		t.Fatalf("prepare Linux package: %v", err)
+	}
+	if !extractCalled || n != 12 {
+		t.Fatalf("expected extraction after stopping service, called=%v files=%d", extractCalled, n)
+	}
+	want := []string{
+		"stop_service:running",
+		"stop_service:success",
+		"extract_package:running",
+		"extract_package:success",
+	}
+	if strings.Join(events, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected Linux package progress: got %v, want %v", events, want)
+	}
+}
+
+func TestPrepareLinuxPackageDoesNotExtractWhenServiceStopFails(t *testing.T) {
+	extractCalled := false
+
+	_, err := prepareLinuxPackageWithProgress(
+		"controller.zip",
+		"/opt/fusion-collectors",
+		func() error { return errors.New("systemctl stop failed") },
+		func(_, _ string) (int, error) {
+			extractCalled = true
+			return 0, nil
+		},
+		nil,
+	)
+
+	if err == nil || !strings.Contains(err.Error(), "systemctl stop failed") {
+		t.Fatalf("expected service stop failure, got %v", err)
+	}
+	if extractCalled {
+		t.Fatal("Linux package must not be extracted when the existing service cannot be stopped")
+	}
+}
+
+func TestStopLinuxControllerServiceSkipsMissingUnit(t *testing.T) {
+	calls := []string{}
+	err := stopLinuxControllerServiceWithCommand(func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return []byte("not-found\n"), errors.New("exit status 1")
+	})
+
+	if err != nil {
+		t.Fatalf("missing service should be a successful fresh install: %v", err)
+	}
+	if len(calls) != 1 || !strings.Contains(calls[0], "systemctl show") {
+		t.Fatalf("unexpected service commands: %v", calls)
+	}
+}
+
+func TestStopLinuxControllerServiceStopsLoadedUnit(t *testing.T) {
+	calls := []string{}
+	err := stopLinuxControllerServiceWithCommand(func(name string, args ...string) ([]byte, error) {
+		call := name + " " + strings.Join(args, " ")
+		calls = append(calls, call)
+		if strings.Contains(call, " show ") {
+			return []byte("loaded\n"), nil
+		}
+		return nil, nil
+	})
+
+	if err != nil {
+		t.Fatalf("stop loaded service: %v", err)
+	}
+	if len(calls) != 2 || calls[1] != "systemctl stop bk-sidecar.service" {
+		t.Fatalf("expected systemctl stop after checking the unit, got %v", calls)
+	}
+}
+
+func TestStopLinuxControllerServicePreservesStopFailure(t *testing.T) {
+	err := stopLinuxControllerServiceWithCommand(func(name string, args ...string) ([]byte, error) {
+		if strings.Contains(strings.Join(args, " "), "show") {
+			return []byte("loaded\n"), nil
+		}
+		return []byte("Access denied"), errors.New("exit status 1")
+	})
+
+	if err == nil || !strings.Contains(err.Error(), "Access denied") || !strings.Contains(err.Error(), "exit status 1") {
+		t.Fatalf("expected original systemctl failure context, got %v", err)
 	}
 }
 
@@ -428,6 +536,8 @@ func TestInstallWindowsPackageReportsActualPhaseBoundaries(t *testing.T) {
 		"extract_package:success",
 		"configure_runtime:running",
 		"configure_runtime:success",
+		"stop_service:running",
+		"stop_service:success",
 		"run_package_installer:running",
 		"run_package_installer:success",
 	}

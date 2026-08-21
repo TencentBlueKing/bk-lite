@@ -103,7 +103,7 @@ describe('APM 端点详情抽屉', () => {
 
     expect(await screen.findByText('端点趋势')).not.toBeNull();
     expect(screen.getAllByTestId('endpoint-trend')).toHaveLength(3);
-    expect(screen.getByText('吞吐量 req/s')).not.toBeNull();
+    expect(screen.getByText('吞吐量（请求/秒）')).not.toBeNull();
     expect(screen.getByText('错误率 %')).not.toBeNull();
     expect(screen.getByText('P95 / P99')).not.toBeNull();
     expect(await screen.findByText('样本调用链')).not.toBeNull();
@@ -129,7 +129,7 @@ describe('APM 端点详情抽屉', () => {
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
 
-    expect(columnWidths).toEqual(['', '', '120px', '112px', '104px', '112px', '88px']);
+    expect(columnWidths).toEqual(['', '', '120px', '112px', '104px', '112px', '96px']);
     expect(screen.queryByRole('columnheader', { name: '方法' })).toBeNull();
     expect(getComputedStyle(screen.getByRole('columnheader', { name: /吞吐量/ })).textAlign).toBe('left');
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });

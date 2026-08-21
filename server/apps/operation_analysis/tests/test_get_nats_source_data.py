@@ -180,3 +180,84 @@ class TestUpdateRequestParamsGuard:
         obj.update_request_params()
 
         assert obj.params["user_info"]["locale"] == "en"
+
+
+class TestLocalRpcOverlayHandlers:
+    """IS_LOCAL_RPC=1 时叠色两个 rest_api 走本进程，避免远端旧 NATS worker 无 responder。"""
+
+    @pytest.mark.parametrize(
+        "namespace,path,module",
+        [
+            ("cmdb", "get_monitor_ids_by_inst_uuids", "apps.cmdb.nats.nats"),
+            ("monitor", "query_latest_active_alerts", "apps.monitor.nats.monitor"),
+            ("monitor", "query_latest_interface_metrics", "apps.monitor.nats.monitor"),
+        ],
+    )
+    def test_overlay_apis_use_app_client_when_is_local_rpc(self, monkeypatch, namespace, path, module):
+        monkeypatch.setenv("IS_LOCAL_RPC", "1")
+        captured = {}
+
+        class FakeAppClient:
+            def __init__(self, client_path):
+                captured["path"] = client_path
+
+            def run(self, method_name, **kwargs):
+                captured["method"] = method_name
+                captured["kwargs"] = kwargs
+                return {"result": True, "data": {"items": []}}
+
+        class ExplodingNats:
+            DEFAULT_NATS = True
+
+            def __init__(self, **kwargs):
+                raise AssertionError("IS_LOCAL_RPC overlay path must not call NATS")
+
+        monkeypatch.setattr(
+            "apps.operation_analysis.common.get_nats_source_data.AppClient",
+            FakeAppClient,
+        )
+
+        class LocalGetNatsData(GetNatsData):
+            @property
+            def default_nats_client(self):
+                return ExplodingNats
+
+        obj = LocalGetNatsData(
+            namespace=namespace,
+            path=path,
+            namespace_list=[_Namespace()],
+            params={"inst_uuids": ["abc"]} if namespace == "cmdb" else {"instance_ids": ["mon-1"]},
+            request=_make_request(current_team_cookie="1"),
+        )
+        assert obj.get_data() == {"result": True, "data": {"items": []}}
+        assert captured["path"] == module
+        assert captured["method"] == path
+        assert "user_info" in captured["kwargs"]
+
+    def test_unrelated_api_still_uses_nats_when_is_local_rpc(self, monkeypatch):
+        monkeypatch.setenv("IS_LOCAL_RPC", "1")
+        captured = {}
+
+        class FakeClient:
+            DEFAULT_NATS = True
+
+            def __init__(self, **kwargs):
+                captured["init"] = kwargs
+
+            def get_customization_nast_data(self, **kwargs):
+                captured["call"] = kwargs
+                return {"ok": True}
+
+        class TestGetNatsData(GetNatsData):
+            @property
+            def default_nats_client(self):
+                return FakeClient
+
+        obj = TestGetNatsData(
+            namespace="cmdb",
+            path="get_room_list",
+            namespace_list=[_Namespace()],
+            request=_make_request(current_team_cookie="1"),
+        )
+        assert obj.get_data() == {"ok": True}
+        assert "init" in captured

@@ -177,6 +177,11 @@ const StrategyOperation = () => {
   const [noDataAlertLevel, setNoDataAlertLevel] = useState<string>('none');
   const [noDataAlertName, setNoDataAlertName] = useState<string>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
+  const currentMonitorObject = useMemo(
+    () =>
+      objects.find((item) => String(item.id) === String(monitorObjId)),
+    [objects, monitorObjId]
+  );
   const [groupBy, setGroupBy] = useState<string[]>(
     getGroupIds(monitorName as string)?.default || defaultGroup
   );
@@ -1296,6 +1301,7 @@ const StrategyOperation = () => {
             </div>
             <div className="flex flex-col flex-1 min-w-[400px]">
               <VariablesTable
+                displayFields={currentMonitorObject?.display_fields}
                 onVariableSelect={(variable: string) => {
                   basicInfoFormRef.current?.insertVariable(variable);
                 }}

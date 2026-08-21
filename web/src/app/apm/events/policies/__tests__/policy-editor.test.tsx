@@ -30,11 +30,6 @@ const input = {
 const policy = {
   ...input,
   id: 'p1',
-  comparator: 'gt' as const,
-  threshold: '0.05',
-  duration_window: 5,
-  recovery_window: 3,
-  severity: 'warning' as const,
   is_enabled: true,
   service_namespace: 'shop',
   service_name: 'checkout',

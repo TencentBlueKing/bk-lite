@@ -6,6 +6,17 @@ export interface PolicyTemplateItem {
   name?: string;
   description?: string;
   metric_name?: string;
+  metric_unit?: string;
+  threshold_unit?: string;
+  calculation_unit?: string;
+  trigger_count?: number;
+  threshold?: Array<{
+    level?: string;
+    method?: string;
+    value?: string | number | null;
+  }>;
+  algorithm?: string;
+  group_algorithm?: string;
   query_condition?: {
     type?: string;
     metric_name?: string;
@@ -36,6 +47,17 @@ export interface BulkAssetItem {
   organizations?: number[] | string[] | number | string | Record<string, unknown>;
   plugins?: Array<{ id?: string | number; name?: string; display_name?: string }>;
   [key: string]: unknown;
+}
+
+export interface BulkAssetSelectionState {
+  selectedAssetIds: string[];
+  selectedAssets: BulkAssetItem[];
+}
+
+export interface BulkAssetPaginationState {
+  current: number;
+  pageSize: number;
+  total: number;
 }
 
 export interface BulkConfig {
@@ -88,7 +110,7 @@ export const getTemplateThresholdItems = (
 ): TemplateThresholdItem[] => {
   const thresholds = Array.isArray(template.threshold) ? template.threshold : [];
   const unitSuffix = formatUnitSuffix(
-    template.threshold_unit || template.calculation_unit || template.metric_unit
+    String(template.threshold_unit || template.calculation_unit || template.metric_unit || '')
   );
 
   return thresholds
@@ -167,7 +189,10 @@ export const formatTemplateAlgorithmSummary = (template: PolicyTemplateItem): st
 export const getTemplateTriggerCount = (
   template: PolicyTemplateItem,
   triggerCount?: number
-): number => triggerCount ?? template.trigger_count ?? 1;
+): number => {
+  if (typeof triggerCount === 'number') return triggerCount;
+  return typeof template.trigger_count === 'number' ? template.trigger_count : 1;
+};
 
 export const getTemplateKey = (template: PolicyTemplateItem): string => {
   if (template.template_key) return String(template.template_key);
@@ -183,6 +208,49 @@ export const displayAssetName = (asset: BulkAssetItem): string => {
   const match = asset.instance_id.match(/^\('([^']*)',?\)$/);
   return match?.[1] || asset.instance_id;
 };
+
+export const reconcileBulkAssetSelection = (
+  previousSelectedAssets: BulkAssetItem[],
+  visibleAssets: BulkAssetItem[],
+  selectedAssetIds: string[]
+): BulkAssetSelectionState => {
+  const selectedIdSet = new Set(selectedAssetIds);
+  const selectedAssetMap = new Map(
+    previousSelectedAssets
+      .filter((asset) => selectedIdSet.has(asset.instance_id))
+      .map((asset) => [asset.instance_id, asset])
+  );
+
+  visibleAssets.forEach((asset) => {
+    if (selectedIdSet.has(asset.instance_id)) {
+      selectedAssetMap.set(asset.instance_id, asset);
+    }
+  });
+
+  return {
+    selectedAssetIds,
+    selectedAssets: selectedAssetIds
+      .map((instanceId) => selectedAssetMap.get(instanceId))
+      .filter((asset): asset is BulkAssetItem => Boolean(asset)),
+  };
+};
+
+export const changeBulkAssetPage = (
+  pagination: BulkAssetPaginationState,
+  page: number,
+  pageSize: number
+): BulkAssetPaginationState => ({
+  ...pagination,
+  current: pageSize === pagination.pageSize ? page : 1,
+  pageSize,
+});
+
+export const resetBulkAssetPageForSearch = (
+  pagination: BulkAssetPaginationState
+): BulkAssetPaginationState => ({
+  ...pagination,
+  current: 1,
+});
 
 const getTemplateGroupName = (template: PolicyTemplateItem): string =>
   template.template_group ||
@@ -321,16 +389,16 @@ export const buildAssetScopeLabel = (
   if (assetNames.length <= 3) {
     return t
       ? t('monitor.events.coverInstances', '覆盖 {count} 个实例：{names}', {
-          count: assetNames.length,
-          names: previewNames,
-        })
+        count: assetNames.length,
+        names: previewNames,
+      })
       : `覆盖 ${assetNames.length} 个实例：${assetNames.join('、')}`;
   }
   return t
     ? t('monitor.events.coverInstancesMore', '覆盖 {count} 个实例：{names} 等', {
-        count: assetNames.length,
-        names: previewNames,
-      })
+      count: assetNames.length,
+      names: previewNames,
+    })
     : `覆盖 ${assetNames.length} 个实例：${previewNames} 等`;
 };
 
@@ -440,10 +508,14 @@ export const getAssetOrganizationText = (
   const values = Array.isArray(organization) ? organization : [organization];
   const labels = values
     .map((item) => {
-      if (typeof item === 'object' && item !== null) {
-        return item.name || item.label;
+      if (typeof item === 'string' || typeof item === 'number') {
+        return findOrganizationLabel(organizations, item) || String(item);
       }
-      return findOrganizationLabel(organizations, item) || String(item);
+      if (item && typeof item === 'object') {
+        const record = item as Record<string, unknown>;
+        return String(record.name || record.label || '');
+      }
+      return '';
     })
     .filter(Boolean);
   return labels.length ? labels.join(',') : '--';

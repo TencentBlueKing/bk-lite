@@ -51,12 +51,12 @@ export function normalizeArchitectures(values: ArchitectureValues): CanonicalArc
   return Array.from(new Set(items.map(normalizeArchitecture).filter(Boolean))) as CanonicalArchitecture[];
 }
 
-export function formatArchitecture(value?: string | null, fallback = '—'): string {
+export function formatArchitecture(value?: string | null, fallback = '--'): string {
   const architecture = normalizeArchitecture(value);
   return architecture ? ARCHITECTURE_LABELS[architecture] : fallback;
 }
 
-export function formatArchitectures(values: ArchitectureValues, fallback = '—'): string {
+export function formatArchitectures(values: ArchitectureValues, fallback = '--'): string {
   const labels = normalizeArchitectures(values).map((architecture) => ARCHITECTURE_LABELS[architecture]);
   return labels.join('、') || fallback;
 }
@@ -64,7 +64,7 @@ export function formatArchitectures(values: ArchitectureValues, fallback = '—'
 export function formatSourceApplicableScope(
   source: ApplicableScopeSource,
   wsusLabel = 'Windows（WSUS）',
-  fallback = '—',
+  fallback = '--',
 ): string {
   if (source.source_type === 'wsus') return wsusLabel;
   const parts = [

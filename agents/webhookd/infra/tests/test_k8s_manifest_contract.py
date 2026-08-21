@@ -25,6 +25,14 @@ MANIFEST_PATHS = [
 
 CLUSTER_SCOPED_KINDS = ("ClusterRole", "ClusterRoleBinding")
 CLUSTER_SCOPED_PREFIX = "bk-lite-"
+CONTROL_PLANE_NOSCHEDULE_TOLERATION = {"operator": "Exists", "effect": "NoSchedule"}
+WORKLOAD_MANIFEST_PATHS = [
+    WEBHOOKD_DIR / "bk-lite-metric-collector.yaml",
+    WEBHOOKD_DIR / "bk-lite-resource-collector.yaml",
+    WEBHOOKD_DIR / "bk-lite-log-collector.yaml",
+    DIST_DIR / "bk-lite-metric-collector.yaml",
+    DIST_DIR / "bk-lite-log-collector.yaml",
+]
 
 # 渲染前的模板占位符，独占整行，解析前剔除
 LINE_PLACEHOLDERS = (
@@ -125,3 +133,15 @@ def test_dist_and_webhookd_metric_manifests_share_cluster_rbac():
     assert set(template) == set(dist)
     for identity in template:
         assert template[identity] == dist[identity], f"{identity} 在 webhookd 模板与 deploy/dist 部署包中不一致"
+
+
+@pytest.mark.parametrize("path", WORKLOAD_MANIFEST_PATHS, ids=lambda path: path.name)
+def test_workloads_tolerate_control_plane_noschedule(path):
+    """采集器必须能调度到 control-plane:NoSchedule，否则单节点/污点节点没有采集 Pod。"""
+    workloads = [document for document in _load_documents(path) if document["kind"] in ("Deployment", "DaemonSet")]
+    assert workloads, f"{path} 没有 Deployment/DaemonSet"
+    for document in workloads:
+        tolerations = document["spec"]["template"]["spec"].get("tolerations") or []
+        assert CONTROL_PLANE_NOSCHEDULE_TOLERATION in tolerations, (
+            f"{path.name}: {document['kind']} `{document['metadata']['name']}` " "缺少 operator=Exists effect=NoSchedule，无法调度到控制平面污点节点"
+        )

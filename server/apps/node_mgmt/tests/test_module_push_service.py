@@ -21,6 +21,22 @@ def node(db):
     return n
 
 
+def test_monitor_linkage_uses_local_ingest_client(mocker):
+    """节点推送已在 server 进程内，监控 ingest 必须本进程执行。
+
+    走真 NATS 时 handler 会再调 NodeMgmt 写采集配置，形成嵌套 RPC + Node 行锁自死锁，
+    调用方超时三次后把 push_status 记为 skipped。
+    """
+    monitor_cls = mocker.patch("apps.node_mgmt.services.module_push.Monitor")
+    monitor_cls.return_value.ingest_from_source.return_value = {"id": "mon-1", "created": True}
+    from apps.node_mgmt.services.module_push import MonitorLinkage
+
+    result = MonitorLinkage().ingest_from_source(source_module="node_mgmt")
+
+    monitor_cls.assert_called_once_with(is_local_client=True)
+    assert result["id"] == "mon-1"
+
+
 @pytest.mark.django_db
 def test_push_cmdb_only_does_not_call_monitor(mocker, node):
     cmdb = mocker.patch("apps.node_mgmt.services.module_push.CMDB")

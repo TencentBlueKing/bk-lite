@@ -5,10 +5,13 @@ const TEMPLATE_TOKEN = /\{(\w+)\}/g;
 
 export interface PlatformApplication {
   id: string;
+  /** 列表展示名：渠道名；跨智能体重名时会带上智能体名 */
   name: string;
   /** SkillChannel binding id used by platform/web chat APIs. */
   channelId: string;
   skillId?: string;
+  /** 所属智能体名称，用于跨智能体同名渠道消歧 */
+  skillName?: string;
 }
 
 export interface PlatformSession {
@@ -84,18 +87,54 @@ export function asRecordList(payload: unknown): Record<string, unknown>[] {
 }
 
 export function mapPlatformApplications(rows: Record<string, unknown>[]): PlatformApplication[] {
-  return rows
+  const prepared = rows
     .map((item) => {
       const id = String(item.id ?? item.channel_id ?? '');
       const channelId = String(item.channel_id ?? item.id ?? '');
-      const name =
-        String(item.app_name ?? item.skill_name ?? item.name ?? '').trim() ||
+      const channelName =
+        String(item.name ?? item.app_name ?? '').trim() ||
+        String(item.skill_name ?? '').trim() ||
         (id ? `渠道 ${id}` : '');
+      const skillName = String(item.skill_name ?? '').trim() || undefined;
       const skillId =
         item.skill_id === undefined || item.skill_id === null ? undefined : String(item.skill_id);
-      return { id, name, channelId, skillId };
+      return { id, channelName, channelId, skillId, skillName };
     })
     .filter((item) => item.id && item.channelId);
+
+  const channelNameCounts = new Map<string, number>();
+  for (const item of prepared) {
+    channelNameCounts.set(item.channelName, (channelNameCounts.get(item.channelName) || 0) + 1);
+  }
+
+  const withDisplay = prepared.map((item) => {
+    const collision = (channelNameCounts.get(item.channelName) || 0) > 1;
+    // 渠道名与智能体名不同，或列表内渠道名撞车时，展示「渠道名（智能体名）」
+    const name =
+      item.skillName && (collision || item.skillName !== item.channelName)
+        ? `${item.channelName}（${item.skillName}）`
+        : item.channelName;
+    return {
+      id: item.id,
+      name,
+      channelId: item.channelId,
+      skillId: item.skillId,
+      skillName: item.skillName,
+    };
+  });
+
+  const displayCounts = new Map<string, number>();
+  for (const app of withDisplay) {
+    displayCounts.set(app.name, (displayCounts.get(app.name) || 0) + 1);
+  }
+
+  // 智能体名也相同导致展示仍撞车时，追加 skillId
+  return withDisplay.map((app) => {
+    if ((displayCounts.get(app.name) || 0) <= 1 || !app.skillId) {
+      return app;
+    }
+    return { ...app, name: `${app.name}#${app.skillId}` };
+  });
 }
 
 function optionalTime(value: unknown): string | undefined {
@@ -197,7 +236,9 @@ export function dockCollapsedStorageKey(prefix: string, userId: string, teamId: 
   return `${prefix}:collapsed:${userId}:${teamId}`;
 }
 
-/** Missing key or unreadable storage means collapsed (open when needed). */
+/** Missing key or unreadable storage means collapsed (open when needed).
+ * PlatformChat keeps dock chrome in memory; these helpers remain for hosts
+ * that still want optional persistence. */
 export function readDockCollapsed(
   storage: Pick<Storage, 'getItem'> | null | undefined,
   key: string

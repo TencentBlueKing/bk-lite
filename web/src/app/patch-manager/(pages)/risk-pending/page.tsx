@@ -305,13 +305,13 @@ export default function RiskPendingPage() {
     { title: t('patchManager.severity'), dataIndex: 'sev', width: 100, render: (v: string) => <SeverityTag severity={v} /> },
     { title: t('patchManager.risk.affectedHosts'), dataIndex: 'hosts', width: 90, render: (v: number) => t('patchManager.dashboard.targetCount', undefined, { count: v }) },
     { title: t('patchManager.risk.remediationStatus'), dataIndex: 'dist', render: (_: unknown, r: RiskRow) => <DistRender dist={r.dist} /> },
-    { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '--' },
     { title: t('patchManager.operation'), dataIndex: 'op', width: 200, fixed: 'right' as const, render: (_: unknown, r: RiskRow) => opCell(r) },
   ];
   const hostCols = [
     { title: t('patchManager.risk.host'), dataIndex: 'host', width: 180 },
-    { title: t('patchManager.risk.ipAddress'), dataIndex: 'host_ip', width: 140, render: (v: string) => v || '—' },
-    { title: t('patchManager.osType'), dataIndex: 'os_type', width: 100, render: (v: string) => v === 'windows' ? 'Windows' : v === 'linux' ? 'Linux' : v || '—' },
+    { title: t('patchManager.risk.ipAddress'), dataIndex: 'host_ip', width: 140, render: (v: string) => v || '--' },
+    { title: t('patchManager.osType'), dataIndex: 'os_type', width: 100, render: (v: string) => v === 'windows' ? 'Windows' : v === 'linux' ? 'Linux' : v || '--' },
     { title: t('patchManager.risk.currentBaseline'), dataIndex: 'baseline', width: 180 },
     {
       title: t('patchManager.risk.missingPatchCount'),
@@ -330,15 +330,15 @@ export default function RiskPendingPage() {
       ),
     },
     { title: t('patchManager.risk.remediationStatus'), dataIndex: 'dist', render: (_: unknown, r: { dist: RiskRow['dist'] }) => <DistRender dist={r.dist} /> },
-    { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '--' },
     { title: t('patchManager.operation'), dataIndex: 'op', width: 200, fixed: 'right' as const, render: (_: unknown, r: any) => opCell(r) },
   ];
   const baselineCols = [
     { title: t('patchManager.risk.baseline'), dataIndex: 'baseline', width: 240 },
-    { title: t('patchManager.risk.applicable'), dataIndex: 'apply', width: 200, render: (_: unknown, r: any) => r.apply || '-' },
+    { title: t('patchManager.risk.applicable'), dataIndex: 'apply', width: 200, render: (_: unknown, r: any) => r.apply || '--' },
     { title: t('patchManager.risk.affectedHosts'), width: 100, render: (_: unknown, r: any) => t('patchManager.dashboard.targetCount', undefined, { count: new Set((r.items || []).map((i: any) => i.host_id)).size }) },
     { title: t('patchManager.risk.remediationStatus'), dataIndex: 'dist', render: (_: unknown, r: { dist: RiskRow['dist'] }) => <DistRender dist={r.dist} /> },
-    { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.updateTime'), dataIndex: 'evaluated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '--' },
     { title: t('patchManager.operation'), dataIndex: 'op', width: 200, fixed: 'right' as const, render: (_: unknown, r: any) => opCell(r) },
   ];
 
@@ -435,7 +435,7 @@ export default function RiskPendingPage() {
           sev: sevDisplay,
           status,
           remark: it.inOtherTask ? t('patchManager.risk.inOtherTask') : it.compliance === 'invalidated' ? t('patchManager.risk.riskInvalidated') : '',
-          deps: it.deps || '-',
+          deps: it.deps || '--',
           install_impact: it.install_impact,
           os_type: it.os_type,
           disabled,
@@ -584,7 +584,7 @@ export default function RiskPendingPage() {
           it.patch_severity || '',
           it.condition || '',
           it.remediation,
-          convertToLocalizedTime(it.evaluated_at) || '—',
+          convertToLocalizedTime(it.evaluated_at) || '--',
         ]);
         if (idx === 0) {
           keyToFirstRow[row.key] = r.number;
@@ -599,21 +599,21 @@ export default function RiskPendingPage() {
       headers = t('patchManager.risk.exportHostHeaders').split('|');
       rowToArray = (r) => [
         r.host,
-        r.host_ip || '—',
-        r.os_type === 'windows' ? 'Windows' : r.os_type === 'linux' ? 'Linux' : r.os_type || '—',
+        r.host_ip || '--',
+        r.os_type === 'windows' ? 'Windows' : r.os_type === 'linux' ? 'Linux' : r.os_type || '--',
         r.baseline,
         r.missing,
         formatDist(r.dist),
-        convertToLocalizedTime(r.evaluated_at) || '—',
+        convertToLocalizedTime(r.evaluated_at) || '--',
       ];
       firstColumnName = (r) => r.host;
     } else if (view === 'patch') {
       headers = t('patchManager.risk.exportPatchHeaders').split('|');
-      rowToArray = (r) => [r.patch, r.sub, r.sev, r.hosts, formatDist(r.dist), convertToLocalizedTime(r.evaluated_at) || '—'];
+      rowToArray = (r) => [r.patch, r.sub, r.sev, r.hosts, formatDist(r.dist), convertToLocalizedTime(r.evaluated_at) || '--'];
       firstColumnName = (r) => r.patch;
     } else {
       headers = t('patchManager.risk.exportBaselineHeaders').split('|');
-      rowToArray = (r) => [r.baseline, r.apply || '—', formatDist(r.dist), convertToLocalizedTime(r.evaluated_at) || '—'];
+      rowToArray = (r) => [r.baseline, r.apply || '--', formatDist(r.dist), convertToLocalizedTime(r.evaluated_at) || '--'];
       firstColumnName = (r) => r.baseline;
     }
 
@@ -696,7 +696,8 @@ export default function RiskPendingPage() {
                   setHostIdFilter(undefined);
                   setFilters((f) => ({ ...f, host_name: v || undefined }));
                 }}
-                className="w-[180px]"
+                className="w-[200px]"
+                enterButton
               />
               <Select
                 placeholder={t('patchManager.osType')}
@@ -723,6 +724,7 @@ export default function RiskPendingPage() {
                 }}
                 onSearch={(v) => { setFilters((f) => ({ ...f, patch_name: v || undefined })); }}
                 className="w-[200px]"
+                enterButton
               />
               <Select
                 placeholder={t('patchManager.severity')}
@@ -748,12 +750,15 @@ export default function RiskPendingPage() {
               }}
               onSearch={(v) => { setFilters((f) => ({ ...f, baseline_name: v || undefined })); }}
               className="w-[200px]"
+              enterButton
             />
           )}
           <Select
             placeholder={t('patchManager.risk.remediationStatus')}
             className="w-[130px]"
             allowClear
+            showSearch
+            optionFilterProp="label"
             value={filters.remediation}
             onChange={(v) => setFilters((f) => ({ ...f, remediation: v }))}
             options={(['unplanned', 'scheduled', 'installing', 'pending_reboot', 'rebooting', 'verifying', 'failed'] as const).map((value) => ({ label: t(`patchManager.remediationStatus.${value}`), value }))}

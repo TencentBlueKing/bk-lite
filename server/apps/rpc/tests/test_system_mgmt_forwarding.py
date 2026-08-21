@@ -5,7 +5,6 @@
 能抓到方法名拼写、参数名/顺序回归。不触达真实 NATS。
 """
 import pydantic.root_model  # noqa
-
 import pytest
 
 from apps.rpc.system_mgmt import SystemMgmt
@@ -192,8 +191,15 @@ def test_save_operation_log_默认detail为None(client):
         "save_operation_log",
         (),
         {
-            "username": "alice", "source_ip": "1.2.3.4", "app": "cmdb", "action_type": "create",
-            "summary": "", "domain": "domain.com", "target_type": "", "target_id": "", "detail": None,
+            "username": "alice",
+            "source_ip": "1.2.3.4",
+            "app": "cmdb",
+            "action_type": "create",
+            "summary": "",
+            "domain": "domain.com",
+            "target_type": "",
+            "target_id": "",
+            "detail": None,
         },
     )
 
@@ -280,61 +286,56 @@ def test_dispatch_notification_转发稳定投递契约(client):
         title="标题",
         body="正文",
         event_payload={"event_key": "event"},
+        internal_caller="lite-apm",
     )
-    assert _last(client) == (
-        "dispatch_notification",
-        (),
-        {
-            "delivery_key": "event:1",
-            "channel_id": 7,
-            "organization_ids": [1],
-            "recipients": ["42"],
-            "title": "标题",
-            "body": "正文",
-            "event_payload": {"event_key": "event"},
-        },
-    )
+    method_name, args, kwargs = _last(client)
+    internal_auth = kwargs.pop("internal_auth")
+    assert method_name == "dispatch_notification"
+    assert args == ()
+    assert kwargs == {
+        "delivery_key": "event:1",
+        "channel_id": 7,
+        "organization_ids": [1],
+        "recipients": ["42"],
+        "title": "标题",
+        "body": "正文",
+        "event_payload": {"event_key": "event"},
+        "required_delivery_mode": "",
+        "producer": "lite-apm",
+        "ack_mode": "",
+        "ack_token": "",
+    }
+    assert internal_auth["version"] == "hmac-sha256-v1"
+    assert internal_auth["caller"] == "lite-apm"
+    assert internal_auth["signature"]
 
 
-def test_dispatch_notification_新生产者兼容旧receiver(client):
-    class LegacyReceiver:
+def test_dispatch_notification_receiver_type_error_does_not_retry(client):
+    class BrokenReceiver:
         def __init__(self):
             self.calls = []
 
         def run(self, method_name, **kwargs):
             self.calls.append((method_name, kwargs))
-            if len(self.calls) == 1:
-                raise TypeError("unexpected keyword argument 'ack_mode'")
-            return {"result": True}
+            raise TypeError("unexpected keyword argument raised inside receiver")
 
-    receiver = LegacyReceiver()
+    receiver = BrokenReceiver()
     client.client = receiver
 
-    result = client.dispatch_notification(
-        delivery_key="event:1",
-        channel_id=7,
-        organization_ids=[1],
-        recipients=[],
-        title="",
-        body="正文",
-        event_payload={"event_key": "event"},
-        required_delivery_mode="alert_event_copy",
-        producer="lite-monitor",
-        ack_mode="per_event_v1",
-        ack_token="secret",
-    )
+    with pytest.raises(TypeError, match="raised inside receiver"):
+        client.dispatch_notification(
+            delivery_key="event:1",
+            channel_id=7,
+            organization_ids=[1],
+            recipients=[],
+            title="",
+            body="正文",
+            event_payload={"event_key": "event"},
+            producer="lite-monitor",
+            internal_caller="lite-monitor",
+        )
 
-    assert result == {"result": True}
-    assert len(receiver.calls) == 2
-    assert receiver.calls[-1] == ("dispatch_notification", {
-        "delivery_key": "event:1",
-        "channel_id": 7,
-        "organization_ids": [1],
-        "recipients": [],
-        "title": "",
-        "body": "正文",
-        "event_payload": {"event_key": "event"},
-    })
+    assert len(receiver.calls) == 1
 
 
 def test_probe_notification_channel_转发渠道探针(client):
@@ -385,11 +386,28 @@ def test_send_email_to_receiver_转发(client):
 
 def test_send_msg_with_channel_默认attachments为None(client):
     client.send_msg_with_channel(1, "t", "c", [1, 2])
-    assert _last(client) == (
-        "send_msg_with_channel",
-        (),
-        {"channel_id": 1, "title": "t", "content": "c", "receivers": [1, 2], "attachments": None},
-    )
+    method_name, args, kwargs = _last(client)
+    assert method_name == "send_msg_with_channel"
+    assert args == ()
+    assert kwargs == {
+        "channel_id": 1,
+        "title": "t",
+        "content": "c",
+        "receivers": [1, 2],
+        "attachments": None,
+        "internal_auth": None,
+    }
+
+
+def test_send_msg_with_channel_内部caller绑定pusher(client):
+    content = {"pusher": "lite-log", "events": [{"organizations": [1]}]}
+    client.send_msg_with_channel(1, "", content, [], internal_caller="lite-log")
+
+    internal_auth = _last(client)[2]["internal_auth"]
+    assert internal_auth["caller"] == "lite-log"
+
+    with pytest.raises(ValueError, match="match payload pusher"):
+        client.send_msg_with_channel(1, "", content, [], internal_caller="lite-monitor")
 
 
 def test_sync_opspilot_nats_channels_默认timeout(client):

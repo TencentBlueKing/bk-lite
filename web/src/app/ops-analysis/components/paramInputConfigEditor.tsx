@@ -134,6 +134,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   const { getDataSourceList, getSourceDataByApiId } = useDataSourceApi();
   const [form] = Form.useForm();
   const [control, setControl] = useState<InputControlConfig['control']>('input');
+  const [picker, setPicker] = useState<'dropdown' | 'table'>('dropdown');
   const [componentSwitch, setComponentSwitch] = useState(false);
   const [sourceType, setSourceType] = useState<'static' | 'dynamic'>('static');
   const [staticRows, setStaticRows] = useState<StaticRow[]>([createRow()]);
@@ -156,6 +157,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     if (!open) return;
     if (!value) {
       setControl('input');
+      setPicker('dropdown');
       setComponentSwitch(false);
       setSourceType('static');
       setStaticRows([createRow()]);
@@ -168,6 +170,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     }
 
     setControl(value.control);
+    setPicker(value.control === 'select' && value.picker === 'table' ? 'table' : 'dropdown');
     setComponentSwitch(
       value.control === 'input' ? false : Boolean(value.componentSwitch),
     );
@@ -367,6 +370,17 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     });
   };
 
+  const buildOptionControlExtras = (): Pick<
+    Extract<InputControlConfig, { control: 'select' | 'radio' }>,
+    'multiple' | 'maxCount' | 'picker'
+  > => {
+    const current = value && value.control !== 'input' ? value : undefined;
+    return {
+      ...(current?.multiple ? { multiple: true, maxCount: current.maxCount } : {}),
+      ...(control === 'select' && picker === 'table' ? { picker: 'table' as const } : {}),
+    };
+  };
+
   const handleConfirm = async () => {
     if (control === 'input') {
       onConfirm({ control: 'input' });
@@ -393,6 +407,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
         {
           control,
           componentSwitch: componentSwitch || undefined,
+          ...buildOptionControlExtras(),
           optionsSource: {
             type: 'static',
             staticItems,
@@ -436,6 +451,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     onConfirm({
       control,
       componentSwitch: componentSwitch || undefined,
+      ...buildOptionControlExtras(),
       optionsSource,
     });
   };
@@ -462,6 +478,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
             onChange={(event) => {
               const nextControl = event.target.value as InputControlConfig['control'];
               setControl(nextControl);
+              if (nextControl !== 'select') {
+                setPicker('dropdown');
+              }
               if (nextControl === 'input') {
                 setComponentSwitch(false);
                 setDynamicSourceId(undefined);
@@ -478,6 +497,19 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
             ]}
           />
         </Form.Item>
+
+        {control === 'select' && (
+          <Form.Item label={t('paramInput.picker')} className="mb-3">
+            <Radio.Group
+              value={picker}
+              onChange={(event) => setPicker(event.target.value)}
+              options={[
+                { label: t('paramInput.pickerDropdown'), value: 'dropdown' },
+                { label: t('paramInput.pickerTable'), value: 'table' },
+              ]}
+            />
+          </Form.Item>
+        )}
 
         {control !== 'input' && (
           <>

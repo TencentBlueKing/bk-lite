@@ -31,7 +31,7 @@ spec:
       automountServiceAccountToken: true
       containers:
       - name: kube-state-metrics
-        image: bk-lite.tencentcloudcr.com/bklite/kube-state-metrics:2.13.0
+        image: __IMAGE_REGISTRY_PREFIX__/kube-state-metrics:2.13.0
         resources:
           requests:
             memory: 64Mi
@@ -83,6 +83,10 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux
       serviceAccountName: kube-state-metrics
+      # 控制平面默认 NoSchedule；单节点集群否则采集 Pod 全部 Pending
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -283,9 +287,13 @@ spec:
         prometheus.io/path: '/metrics'
     spec:
       serviceAccountName: cadvisor
+      # 控制平面默认 NoSchedule；不上这台节点则该节点 cadvisor 指标为空
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
       containers:
       - name: cadvisor
-        image: bk-lite.tencentcloudcr.com/bklite/cadvisor:0.56.2
+        image: __IMAGE_REGISTRY_PREFIX__/cadvisor:0.56.2
         resources:
           requests:
             memory: 400Mi
@@ -356,9 +364,13 @@ spec:
       labels:
         app: telegraf-daemonset
     spec:
+      # 控制平面默认 NoSchedule；不上这台节点则该节点主机指标为空
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
       containers:
         - name: telegraf
-          image: bk-lite.tencentcloudcr.com/bklite/telegraf:1.29.5
+          image: __IMAGE_REGISTRY_PREFIX__/telegraf:1.29.5
           resources:
             requests:
               memory: 128Mi
@@ -408,9 +420,13 @@ spec:
       labels:
         app: telegraf
     spec:
+      # 控制平面默认 NoSchedule；单节点集群否则 remote_write 接收端 Pending
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
       containers:
         - name: telegraf
-          image: bk-lite.tencentcloudcr.com/bklite/telegraf:1.29.5
+          image: __IMAGE_REGISTRY_PREFIX__/telegraf:1.29.5
           resources:
             requests:
               memory: 128Mi
@@ -463,9 +479,13 @@ spec:
         app: vmagent
     spec:
       serviceAccountName: vmagent
+      # 控制平面默认 NoSchedule；单节点集群否则 vmagent Pending
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
       containers:
         - name: vmagent
-          image: bk-lite.tencentcloudcr.com/bklite/vmagent
+          image: __IMAGE_REGISTRY_PREFIX__/vmagent
           resources:
             requests:
               memory: 128Mi

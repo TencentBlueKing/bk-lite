@@ -236,7 +236,7 @@
       "pendingRisks": "待治理风险",
       "remediationFailures": "修复异常",
       "complianceDistribution": "主机合规分布",
-      "rateHelp": "合规率 = 合规 / (合规+不合规){rateHint}；评估覆盖率 = 已评估 / 纳管主机{coverageHint}；未配置/待评估/评估失败不计入合规率；分母为 0 时显示 -。",
+      "rateHelp": "合规率 = 合规 / (合规+不合规){rateHint}；评估覆盖率 = 已评估 / 纳管主机{coverageHint}；未配置/待评估/评估失败不计入合规率；分母为 0 时显示 --。",
       "quickActions": "快捷操作",
       "assessNow": "立即评估",
       "assessNowDescription": "立即对所有主机执行一次合规评估，刷新风险数据。",

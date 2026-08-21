@@ -34,10 +34,6 @@ export const normalizeTimeRangeFilterValue = (
   }
 
   const candidate = value as Partial<TimeRangeValue>;
-  if (!candidate.start || !candidate.end) {
-    return null;
-  }
-
   if (
     typeof candidate.selectValue === 'number' &&
     Number.isFinite(candidate.selectValue) &&
@@ -47,6 +43,10 @@ export const normalizeTimeRangeFilterValue = (
       candidate.selectValue,
       referenceTime,
     );
+  }
+
+  if (!candidate.start || !candidate.end) {
+    return null;
   }
 
   return {

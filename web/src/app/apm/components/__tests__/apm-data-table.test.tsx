@@ -3,7 +3,7 @@ import { Space } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import ApmDataTable from '../apm-data-table';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '../apm-data-table';
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 
 interface Row {
@@ -142,5 +142,11 @@ describe('ApmDataTable', () => {
     const actionSpace = screen.getByText('编辑').closest('.ant-space') as HTMLElement;
     expect(['flex-end', 'end', 'right']).not.toContain(getComputedStyle(actionSpace).justifyContent);
     expect(getComputedStyle(actionSpace).width).not.toBe('100%');
+  });
+
+  it('为三连操作列预留右侧贴边空间', () => {
+    expect(APM_TABLE_COLUMN_WIDTHS.actionGroup).toBe(192);
+    expect(APM_TABLE_COLUMN_WIDTHS.actionPair).toBe(160);
+    expect(APM_TABLE_COLUMN_WIDTHS.singleAction).toBe(96);
   });
 });

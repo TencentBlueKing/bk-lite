@@ -3,6 +3,7 @@ import type {
   ThresholdColorConfig,
   ValueMapping,
 } from '@/app/ops-analysis/components/ops-analysis-config-sections/types';
+import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 
 export type ChartType =
   | 'line'
@@ -39,7 +40,7 @@ export interface TableDefaultConfig {
 export interface ParamItem {
   id?: string;
   name: string;
-  value: string | number | boolean | [number, number] | null;
+  value: string | number | boolean | Array<string | number> | [number, number] | null;
   alias_name: string;
   type?: string;
   filterType?: string;
@@ -79,7 +80,12 @@ export interface TimeRangeValue {
   selectValue?: number;
 }
 
-export type FilterValue = string | number | TimeRangeValue | null;
+export type FilterValue =
+  | string
+  | number
+  | Array<string | number>
+  | TimeRangeValue
+  | null;
 
 export interface FilterOption {
   label: string;
@@ -90,7 +96,7 @@ export interface UnifiedFilterDefinition {
   id: string;
   key: string;
   name: string;
-  type: 'timeRange' | 'string';
+  type: 'timeRange' | 'string' | 'stringList';
   defaultValue?: FilterValue;
   order: number;
   enabled: boolean;
@@ -111,7 +117,7 @@ export interface FilterBindings {
 
 export interface ScannedFilterParam {
   key: string;
-  type: 'string' | 'timeRange';
+  type: 'string' | 'stringList' | 'timeRange';
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;
@@ -165,6 +171,7 @@ export interface DashboardActionConfig {
 
 export interface ValueConfig {
   chartType?: string;
+  chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
   params?: Record<string, string | number | boolean | [number, number] | null>;

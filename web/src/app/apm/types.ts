@@ -469,22 +469,12 @@ export interface ApmPolicyInput {
   no_data_after?: number | null;
   no_data_severity?: ApmPolicySeverity | '';
   no_data_alert_name?: string;
-  comparator?: ApmPolicyComparator;
-  threshold?: number | string;
-  duration_window?: number;
-  recovery_window?: number;
-  severity?: ApmPolicySeverity;
   notification_targets: ApmPolicyNotificationTarget[];
   is_enabled?: boolean;
 }
 
 export interface ApmPolicy extends ApmPolicyInput {
   id: string;
-  threshold: string;
-  comparator: ApmPolicyComparator;
-  duration_window: number;
-  recovery_window: number;
-  severity: ApmPolicySeverity;
   is_enabled: boolean;
   service_namespace: string;
   service_name: string;
@@ -595,6 +585,28 @@ export interface ApmAlertQuery {
   started_at?: string;
   ended_at?: string;
   limit?: number;
+}
+
+export interface ApmAlertMetricSnapshotItem {
+  type: 'event' | 'info' | 'no_data';
+  snapshot_time: string;
+  event_id: string | null;
+  event_time: string | null;
+  value: string | null;
+  threshold: {
+    severity: ApmPolicySeverity;
+    comparator: ApmPolicyComparator | 'no_data';
+    value: string | number;
+  } | null;
+  data_state: 'available' | 'no_data';
+}
+
+export interface ApmAlertMetricSnapshot {
+  unit: string;
+  aggregation: ApmPolicyAggregation;
+  evaluation_interval: number;
+  metric_window: number;
+  snapshots: ApmAlertMetricSnapshotItem[];
 }
 
 export interface ApmEventSnapshot {

@@ -18,16 +18,36 @@ interface SkillFormProps {
 const SkillForm: React.FC<SkillFormProps> = ({ form, initialValues, visible }) => {
   const { t } = useTranslation();
   const { selectedGroup } = useUserInfoContext();
+  // 管理组织当前值（用于锁定同步进使用组织）
+  const manageTeam: number[] = Form.useWatch('team', form) || [];
 
   useEffect(() => {
     if (!visible) return;
     if (initialValues) {
-      form.setFieldsValue(initialValues);
+      form.resetFields();
+      form.setFieldsValue({
+        ...initialValues,
+        skill_type: initialValues.skill_type ?? DEFAULT_SKILL_TYPE,
+        usage_team: (Array.isArray(initialValues.usage_team) && initialValues.usage_team.length > 0)
+          ? initialValues.usage_team
+          : (initialValues.team ?? []),
+      });
     } else {
       form.resetFields();
       form.setFieldsValue({ skill_type: DEFAULT_SKILL_TYPE });
     }
   }, [initialValues, visible]);
+
+  // 管理组织自动并入使用组织（team ⊆ usage_team），并在使用组织里锁定不可删除
+  useEffect(() => {
+    if (!visible) return;
+    const current = (form.getFieldValue('usage_team') || []).map(Number).filter((n: number) => !Number.isNaN(n));
+    const manage = (manageTeam || []).map(Number).filter((n: number) => !Number.isNaN(n));
+    const merged = Array.from(new Set([...manage, ...current]));
+    if (JSON.stringify(merged) !== JSON.stringify(current)) {
+      form.setFieldsValue({ usage_team: merged });
+    }
+  }, [JSON.stringify(manageTeam), visible]);
 
   return (
     <Form form={form} layout="vertical" name="skill_form">
@@ -43,11 +63,23 @@ const SkillForm: React.FC<SkillFormProps> = ({ form, initialValues, visible }) =
       </Form.Item>
       <Form.Item
         name="team"
-        label={t('skill.form.group')}
-        rules={[{ required: true, message: `${t('common.selectMsg')}${t('skill.form.group')}` }]}
+        label={t('skill.form.manageGroup')}
+        rules={[{ required: true, message: `${t('common.selectMsg')}${t('skill.form.manageGroup')}` }]}
         initialValue={selectedGroup ? [selectedGroup?.id] : []}
       >
-        <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('skill.form.group')}`} />
+        <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('skill.form.manageGroup')}`} />
+      </Form.Item>
+      <Form.Item
+        name="usage_team"
+        label={t('skill.form.usageGroup')}
+        tooltip={t('skill.form.usageGroupTip')}
+        rules={[{ required: true, message: `${t('common.selectMsg')}${t('skill.form.usageGroup')}` }]}
+        initialValue={selectedGroup ? [selectedGroup?.id] : []}
+      >
+        <GroupTreeSelect
+          placeholder={`${t('common.selectMsg')}${t('skill.form.usageGroup')}`}
+          lockedValues={manageTeam}
+        />
       </Form.Item>
       <Form.Item
         name="introduction"

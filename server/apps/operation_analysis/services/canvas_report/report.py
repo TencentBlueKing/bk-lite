@@ -3,6 +3,7 @@ from copy import deepcopy
 from apps.operation_analysis.models.models import Report
 from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_REPORT
 from apps.operation_analysis.services.named_option_datasources import expand_widget_manifest_with_named_option_datasources
+from apps.operation_analysis.services.network_status_topology_overlay import expand_widget_manifest_with_topology_overlay
 
 TERMINATION_REASON_REPORT_DELETED = "report_deleted"
 
@@ -37,7 +38,10 @@ class ReportCanvasReportAdapter:
         return Report.objects.get(pk=resource_id)
 
     def build_manifest(self, resource: Report) -> list[dict]:
-        return expand_widget_manifest_with_named_option_datasources(build_report_widget_manifest(resource.view_sets or {}))
+        return expand_widget_manifest_with_named_option_datasources(
+            expand_widget_manifest_with_topology_overlay(build_report_widget_manifest(resource.view_sets or {})),
+            filters=self.load_filters(resource),
+        )
 
     def load_filters(self, resource: Report):
         view_sets = resource.view_sets or {}
@@ -57,7 +61,10 @@ class ReportCanvasReportAdapter:
             "view_sets": view_sets,
             "filters": self.load_filters(resource),
             "other": deepcopy(resource.other),
-            "widget_manifest": expand_widget_manifest_with_named_option_datasources(build_report_widget_manifest(view_sets)),
+            "widget_manifest": expand_widget_manifest_with_named_option_datasources(
+                expand_widget_manifest_with_topology_overlay(build_report_widget_manifest(view_sets)),
+                filters=self.load_filters(resource),
+            ),
         }
 
     def render_route_key(self) -> str:

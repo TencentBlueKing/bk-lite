@@ -4,15 +4,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   PlatformAccessDeniedError,
   createPlatformSessionId,
-  dockCollapsedStorageKey,
   fillUrlTemplate,
   formatSessionTime,
   isPlatformMode,
   lastSessionStorageKey,
-  readDockCollapsed,
   readLastSelection,
   resolvePlatformSelection,
-  writeDockCollapsed,
   writeLastSelection,
   type Message,
   type PlatformApplication,
@@ -54,6 +51,8 @@ const QuietIcon: React.FC<{
   <button
     type="button"
     title={title}
+    aria-label={title}
+    aria-pressed={active}
     onClick={onClick}
     onMouseDown={(event) => event.stopPropagation()}
     className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border-none"
@@ -84,6 +83,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     requestHeaders,
     onClose,
     onStreamingStop,
+    showFullscreenButton = true,
     ...chatProps
   } = props;
 
@@ -98,7 +98,8 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
 
   const storagePrefix = platform.storageKey || 'webchat:platform';
   const storageKey = lastSessionStorageKey(storagePrefix, userId, teamId);
-  const collapsedKey = dockCollapsedStorageKey(storagePrefix, userId, teamId);
+  // Session/app selection stays in localStorage. Dock open/collapsed is
+  // in-memory only so new windows and refreshes always start as FAB.
   const storage = typeof window === 'undefined' ? null : window.localStorage;
 
   const [apps, setApps] = useState<PlatformApplication[]>([]);
@@ -111,7 +112,8 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const [forbidden, setForbidden] = useState(false);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
   const [view, setView] = useState<DockView>('chat');
-  const [collapsed, setCollapsed] = useState(() => readDockCollapsed(storage, collapsedKey));
+  const [collapsed, setCollapsed] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [draft, setDraft] = useState('');
   const [kickoffMessage, setKickoffMessage] = useState<string | undefined>();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -123,14 +125,6 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
       writeLastSelection(storage, storageKey, { appId, sessionId: nextSessionId });
     },
     [storage, storageKey]
-  );
-
-  const persistCollapsed = useCallback(
-    (next: boolean) => {
-      setCollapsed(next);
-      writeDockCollapsed(storage, collapsedKey, next);
-    },
-    [collapsedKey, storage]
   );
 
   useEffect(() => {
@@ -289,10 +283,30 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     onStreamingStop?.();
   }, [onStreamingStop, platform, requestInit]);
 
+  const handleToggleSessions = useCallback(() => {
+    setView((current) => (current === 'sessions' ? 'chat' : 'sessions'));
+  }, []);
+
+  const handleToggleFullscreen = useCallback(() => {
+    setIsFullscreen((open) => !open);
+  }, []);
+
   const handleClose = useCallback(() => {
-    persistCollapsed(true);
+    setCollapsed(true);
+    setIsFullscreen(false);
     onClose?.();
-  }, [onClose, persistCollapsed]);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (collapsed || !isFullscreen) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsFullscreen(false);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [collapsed, isFullscreen]);
 
   const handleComposerSend = useCallback(() => {
     const text = draft.trim();
@@ -322,12 +336,12 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
 
   if (collapsed) {
     return (
-      <div ref={ref} className="fixed bottom-5 right-2 z-50">
+      <div ref={ref} className="fixed bottom-5 right-2 z-[1200]">
         <button
           type="button"
           title="打开对话"
           aria-label="打开对话"
-          onClick={() => persistCollapsed(false)}
+          onClick={() => setCollapsed(false)}
           className="flex h-10 w-10 items-center justify-center rounded-full border-none"
           style={{ background: WC.indigo, color: WC.onPrimary }}
         >
@@ -344,12 +358,16 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   return (
     <div
       ref={ref}
-      className="fixed inset-y-0 right-0 z-[1100] flex w-[380px] flex-col overflow-hidden font-sans"
-      style={{ background: WC.white, borderLeft: `1px solid ${WC.botBorder}` }}
+      className={
+        isFullscreen
+          ? 'fixed inset-0 z-[2000] flex h-full w-full flex-col overflow-hidden font-sans'
+          : 'fixed bottom-0 right-0 top-0 z-[1200] flex w-[380px] flex-col overflow-hidden font-sans'
+      }
+      style={{ background: WC.white, borderLeft: isFullscreen ? undefined : `1px solid ${WC.botBorder}` }}
     >
       <div ref={menuRef} className="relative flex-shrink-0">
         <div
-          className="flex h-[52px] items-center gap-2 pl-4 pr-2"
+          className="flex h-14 items-center gap-2 pl-4 pr-2"
           style={{ background: WC.indigo, color: WC.onPrimary }}
         >
           {emptyApps ? (
@@ -383,7 +401,12 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
                   <path d="M12 5v14M5 12h14" />
                 </svg>
               </QuietIcon>
-              <QuietIcon title="会话" onClick={() => setView('sessions')} active={view === 'sessions'} onAccent>
+              <QuietIcon
+                title={view === 'sessions' ? '返回对话' : '历史会话'}
+                onClick={handleToggleSessions}
+                active={view === 'sessions'}
+                onAccent
+              >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M3 12a9 9 0 1 0 3-6.7" />
                   <path d="M3 4v5h5" />
@@ -391,6 +414,24 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
                 </svg>
               </QuietIcon>
             </>
+          )}
+          {showFullscreenButton && (
+            <QuietIcon
+              title={isFullscreen ? '退出全屏' : '全屏'}
+              onClick={handleToggleFullscreen}
+              active={isFullscreen}
+              onAccent
+            >
+              {isFullscreen ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                </svg>
+              )}
+            </QuietIcon>
           )}
           <QuietIcon title="关闭" onClick={handleClose} onAccent>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -401,7 +442,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
         </div>
         {appMenuOpen && !emptyApps ? (
           <div
-            className="absolute left-2 right-2 top-[52px] z-20 overflow-hidden rounded-lg"
+            className="absolute left-2 right-2 top-14 z-20 overflow-hidden rounded-lg"
             style={{ background: WC.white, border: `1px solid ${WC.botBorder}` }}
           >
             {apps.map((app) => {
@@ -510,6 +551,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
                 platform={platform}
                 historyLoading={messagesLoading}
                 initialMessages={messages}
+                wideLayout={isFullscreen}
                 customData={sessionCustomData}
                 kickoffMessage={kickoffMessage}
                 onKickoffConsumed={() => setKickoffMessage(undefined)}

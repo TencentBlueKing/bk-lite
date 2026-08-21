@@ -53,7 +53,10 @@ import {
   type ModulePushStatusMap,
   type ModulePushTarget
 } from '@/app/node-manager/utils/modulePush';
-import { resolveMainConfig } from '@/app/node-manager/utils/collectorConfig';
+import {
+  asCollectorStatusList,
+  resolveMainConfig
+} from '@/app/node-manager/utils/collectorConfig';
 
 interface CollectorDetailDrawerProps extends ModalSuccess {
   nodeStateEnum?: any;
@@ -108,9 +111,12 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       showModal: ({ collectors, row }) => {
         setVisible(true);
         // 过滤采集器列表:如果同一个collector_id同时存在于collectors和collectors_install中,只保留collectors中的
-        const collectorsFromStatus = row.status?.collectors || [];
-        const collectorsInstallFromStatus =
-          row.status?.collectors_install || [];
+        const collectorsFromStatus = asCollectorStatusList(
+          row.status?.collectors
+        );
+        const collectorsInstallFromStatus = asCollectorStatusList(
+          row.status?.collectors_install
+        );
         const collectorIds = new Set(
           collectorsFromStatus.map((c: any) => c.collector_id)
         );

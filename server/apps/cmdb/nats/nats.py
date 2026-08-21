@@ -40,6 +40,7 @@ from apps.cmdb.display_field.handler import DisplayFieldConverter, DisplayFieldH
 from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, OPERATE_TYPE_CHOICES, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
+from apps.cmdb.openapi_serializers import CmdbModuleDataQuerySerializer
 from apps.cmdb.services import rack_room
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.collect_credential_result_service import CollectCredentialResultService
@@ -48,7 +49,6 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.module_ingest import CmdbModuleIngestService
 from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
-from apps.cmdb.openapi_serializers import CmdbModuleDataQuerySerializer
 from apps.cmdb.services.region_resource_overview import build_region_resource_items, extract_region_options
 from apps.cmdb.utils.base import get_default_group_id
 from apps.cmdb.utils.config_file_path import validate_absolute_path
@@ -1529,6 +1529,58 @@ def get_room_list(user_info=None, **kwargs):
     # init_source_api_data --force-update 的存量数据源配置。
     items = [item for item in rack_room.list_server_rooms(permission_map=permission_map, user_info=user_info) if item.get("inst_uuid")]
     return {"items": items}
+
+
+@nats_client.register
+def get_monitor_ids_by_inst_uuids(inst_uuids=None, user_info=None, **kwargs):
+    from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_MAX_NODES
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+
+    raw = inst_uuids if inst_uuids is not None else kwargs.get("inst_uuids")
+    if raw in (None, ""):
+        raw = []
+    if not isinstance(raw, list):
+        return {"result": False, "data": {"items": []}, "message": "inst_uuids 必须是列表"}
+
+    unique = []
+    seen = set()
+    for value in raw:
+        if value in (None, ""):
+            continue
+        normalized = normalize_inst_uuid(value)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        unique.append(normalized)
+
+    if len(unique) > NETWORK_STATUS_TOPOLOGY_MAX_NODES:
+        return {
+            "result": False,
+            "data": {"items": []},
+            "message": f"inst_uuids 不能超过 {NETWORK_STATUS_TOPOLOGY_MAX_NODES}",
+        }
+
+    if not unique:
+        return {"result": True, "data": {"items": []}, "message": ""}
+
+    permission_map = _build_nats_permission_map(user_info)
+    if permission_map is None:
+        return {"result": True, "data": {"items": []}, "message": ""}
+    user = _normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain"))
+    entities = InstanceManage.query_entity_by_uuids(unique)
+    items = []
+    for entity in entities:
+        if not InstanceManage._has_topology_view_permission(entity, permission_map, user=user):
+            continue
+        monitor_id = entity.get("monitor_id")
+        items.append(
+            {
+                "inst_uuid": entity.get("inst_uuid"),
+                "model_id": entity.get("model_id"),
+                "monitor_id": "" if monitor_id in (None, "") else str(monitor_id),
+            }
+        )
+    return {"result": True, "data": {"items": items}, "message": ""}
 
 
 @nats_client.register

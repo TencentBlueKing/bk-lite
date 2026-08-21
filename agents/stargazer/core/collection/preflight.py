@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import os
 import socket
 import ssl
@@ -19,6 +20,14 @@ _REACHABILITY_OFF = {"", "0", "off", "false", "no"}
 def reachability_enabled_from_env() -> bool:
     raw = str(os.getenv("PREFLIGHT_REACHABILITY", "off")).strip().lower()
     return raw not in _REACHABILITY_OFF
+
+
+def _is_ip_literal(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
 
 
 class AsyncProtocolPreflight:
@@ -68,7 +77,7 @@ class AsyncProtocolPreflight:
                     status=PreflightStatus.UNREACHABLE,
                     error_code="outbound_target_rejected",
                 )
-        else:
+        elif kind != "skip" or _is_ip_literal(host):
             try:
                 connect_host = await self._policy.resolve_allowed(host, port or 0)
             except (OutboundTargetRejected, socket.gaierror) as error:

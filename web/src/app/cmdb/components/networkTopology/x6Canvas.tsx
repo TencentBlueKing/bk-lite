@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
-import { Button, Segmented, Tooltip } from 'antd';
+import { Button, ConfigProvider, Segmented, Tooltip, theme as antdTheme } from 'antd';
 import {
   DownloadOutlined,
   FullscreenOutlined,
@@ -77,7 +77,7 @@ interface NetworkTopologyX6CanvasProps {
     edgeId: string,
     vertices: Array<{ x: number; y: number }>,
   ) => void;
-  onNodeClick?: (nodeId: string) => void;
+  onNodeClick?: (nodeId: string, event?: MouseEvent) => void;
   onNodeMouseEnter?: (nodeId: string, event: MouseEvent) => void;
   onNodeMouseMove?: (nodeId: string, event: MouseEvent) => void;
   onNodeMouseLeave?: (nodeId: string) => void;
@@ -196,6 +196,13 @@ const toolbarActionsStyle: React.CSSProperties = {
   gap: 4,
   alignItems: 'center',
 };
+
+/** 工具栏外壳固定浅色，不跟随大屏/控制台暗色 ConfigProvider。 */
+const toolbarAntdTheme = {
+  inherit: false,
+  cssVar: { key: 'network-topo-toolbar' },
+  algorithm: antdTheme.defaultAlgorithm,
+} as const;
 
 const buildStructureKey = (data: NetworkTopologyX6GraphData) =>
   JSON.stringify({
@@ -637,8 +644,10 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
   );
   const onNodeMovedRef = useRef(onNodeMoved);
   const onEdgeVerticesChangedRef = useRef(onEdgeVerticesChanged);
+  const onGraphReadyRef = useRef(onGraphReady);
   onNodeMovedRef.current = onNodeMoved;
   onEdgeVerticesChangedRef.current = onEdgeVerticesChanged;
+  onGraphReadyRef.current = onGraphReady;
 
   useEffect(() => {
     ensureNetworkTopologyDeviceNodeRegistered();
@@ -664,7 +673,7 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
   useEffect(() => {
     if (!graph) return undefined;
     if (graphRef) graphRef.current = graph;
-    onGraphReady?.(graph);
+    onGraphReadyRef.current?.(graph);
     applyGraphInteracting(graph, nodeMovable);
     ensureGraphPanning(graph);
     if (!graph.getPlugin('export')) {
@@ -673,9 +682,9 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
     syncEdgeVertexTools(graph, edgeVerticesEditable);
     return () => {
       if (graphRef) graphRef.current = null;
-      onGraphReady?.(null);
+      onGraphReadyRef.current?.(null);
     };
-  }, [graph, graphRef, nodeMovable, edgeVerticesEditable, onGraphReady]);
+  }, [graph, graphRef, nodeMovable, edgeVerticesEditable]);
 
   useEffect(() => {
     if (!graph) return undefined;
@@ -742,7 +751,8 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
       ensureGraphPanning(graph);
       applyGraphInteracting(graph, nodeMovable);
     };
-    const handleNodeClick = ({ node }: { node: any }) => onNodeClick?.(String(node.id));
+    const handleNodeClick = ({ node, e }: { node: any; e?: MouseEvent }) =>
+      onNodeClick?.(String(node.id), e);
     const handleNodeEnter = ({ node, e }: { node: any; e: MouseEvent }) => onNodeMouseEnter?.(String(node.id), e);
     const handleNodeMove = ({ node, e }: { node: any; e: MouseEvent }) => onNodeMouseMove?.(String(node.id), e);
     const handleNodeLeave = ({ node }: { node: any }) => onNodeMouseLeave?.(String(node.id));
@@ -870,13 +880,16 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
     });
   }, [toolbar?.exportFileName]);
 
+  const onGraphReadyRef = useRef(onGraphReady);
+  onGraphReadyRef.current = onGraphReady;
+
   const handleGraphReady = useCallback(
     (graph: Graph | null) => {
       internalGraphRef.current = graph;
       if (graphRef) graphRef.current = graph;
-      onGraphReady?.(graph);
+      onGraphReadyRef.current?.(graph);
     },
-    [graphRef, onGraphReady],
+    [graphRef],
   );
 
   const toolbarLabels = toolbar?.labels || {};
@@ -887,15 +900,16 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
   const showResetLayout =
     toolbar && toolbar.showResetLayout && toolbar.onResetLayout;
   const toolbarBody = toolbar && (
-    <div style={toolbarShellStyle}>
-      {toolbar.layoutOptions && toolbar.layoutMode && toolbar.onLayoutChange && (
-        <Segmented
-          value={toolbar.layoutMode}
-          options={toolbar.layoutOptions}
-          onChange={(value) => toolbar.onLayoutChange?.(String(value))}
-        />
-      )}
-      <div style={toolbarActionsStyle}>
+    <ConfigProvider theme={toolbarAntdTheme}>
+      <div style={toolbarShellStyle}>
+        {toolbar.layoutOptions && toolbar.layoutMode && toolbar.onLayoutChange && (
+          <Segmented
+            value={toolbar.layoutMode}
+            options={toolbar.layoutOptions}
+            onChange={(value) => toolbar.onLayoutChange?.(String(value))}
+          />
+        )}
+        <div style={toolbarActionsStyle}>
         {showResetLayout && (
           <Tooltip title={toolbarLabels.resetLayout}>
             <Button
@@ -962,8 +976,9 @@ const NetworkTopologyX6Canvas: React.FC<NetworkTopologyX6CanvasProps> = ({
             />
           </Tooltip>
         )}
+        </div>
       </div>
-    </div>
+    </ConfigProvider>
   );
   const toolbarPrefix = toolbar?.prefix && (
     <div style={toolbarPrefixStyle}>{toolbar.prefix}</div>

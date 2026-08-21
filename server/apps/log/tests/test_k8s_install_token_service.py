@@ -36,14 +36,24 @@ def test_token_lifecycle_increments_usage():
     token = K8s.generate_install_token("cluster-a", "cr-1")
     token_record = K8sInstallToken.objects.get(token_hash=K8s._hash_token(token))
     assert token_record.cluster_name == "cluster-a"
+    assert token_record.image_registry_prefix == "bk-lite.tencentcloudcr.com/bklite"
 
     data = K8s.validate_and_get_token_data(token)
 
     assert data["cluster_name"] == "cluster-a"
     assert data["cloud_region_id"] == "cr-1"
+    assert data["image_registry_prefix"] == "bk-lite.tencentcloudcr.com/bklite"
     assert data["remaining_usage"] == K8s.TOKEN_MAX_USAGE - 1
     token_record.refresh_from_db()
     assert token_record.usage_count == 1
+
+
+def test_custom_image_registry_is_authoritatively_bound_to_token():
+    token = K8s.generate_install_token("cluster-a", "cr-1", "harbor.internal/bklite")
+
+    data = K8s.validate_and_get_token_data(token)
+
+    assert data["image_registry_prefix"] == "harbor.internal/bklite"
 
 
 @pytest.mark.parametrize(

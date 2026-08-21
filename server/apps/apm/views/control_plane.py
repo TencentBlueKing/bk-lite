@@ -17,7 +17,6 @@ from apps.apm.models import (
     ApmEventSnapshot,
     ApmPolicy,
     ApmPolicyNotificationTarget,
-    ApmPolicyState,
     ApmService,
     ApmServiceInstance,
     ApmSlo,
@@ -43,6 +42,7 @@ from apps.apm.serializers import (
     ServiceMetricQuerySerializer,
 )
 from apps.apm.services import (
+    ApmAlertMetricSnapshotStore,
     ApmEventSnapshotStore,
     DeliveryStateConflict,
     DjangoApmAlertService,
@@ -593,9 +593,10 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         return DjangoApmPolicyService(VictoriaTracesTelemetryStore(), SystemMgmtNotificationDispatcher())
 
     def get_queryset(self):
-        queryset = ApmPolicy.objects.select_related("service", "state").prefetch_related(
+        queryset = ApmPolicy.objects.select_related("service").prefetch_related(
             "service__organization_links",
             "notification_targets",
+            "target_states",
         )
         return filter_current_organization(queryset, self.request, "service__organization_links")
 
@@ -607,41 +608,15 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         )
         return get_object_or_404(queryset, id=service_id)
 
-    @staticmethod
-    def _pop_notification_fields(data):
-        notification_targets = data.pop("notification_targets", None)
-        notice = data.pop("notice", None)
-        if notification_targets is not None:
-            notice = bool(notification_targets)
-        return {
-            "notice": notice,
-            "notification_targets": notification_targets,
-            "notice_type_ids": data.pop("notice_type_ids", None),
-            "notice_users": data.pop("notice_users", None),
-        }
-
     def _validate_notification_channels(self, serializer, policy=None):
         data = serializer.validated_data
-        notification_fields = {"notice", "notification_targets", "notice_type_ids", "notice_users"}
-        if policy is not None and not notification_fields.intersection(data):
+        if "notification_targets" not in data:
+            if policy is None:
+                return []
             return None
         requested_targets = data.get("notification_targets")
-        notice = bool(requested_targets) if requested_targets is not None else data.get("notice", getattr(policy, "notice", False))
-        if not notice:
-            return []
-        if requested_targets is None:
-            legacy_channel_ids = data.get("notice_type_ids")
-            if legacy_channel_ids is None and policy is not None:
-                requested_targets = [
-                    {"channel_id": target.channel_id, "recipients": list(target.recipients)} for target in policy.notification_targets.all()
-                ]
-            else:
-                legacy_recipients = data.get("notice_users", getattr(policy, "notice_users", []))
-                requested_targets = [
-                    {"channel_id": channel_id, "recipients": list(legacy_recipients or [])} for channel_id in legacy_channel_ids or []
-                ]
         if not requested_targets:
-            raise ValidationError({"notification_targets": "启用通知时至少选择一个渠道。"})
+            return []
         organization_id = current_organization_id(self.request)
         if organization_id is None:
             raise ValidationError({"notification_targets": "缺少当前组织。"})
@@ -713,11 +688,10 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         if isinstance(targets, Response):
             return targets
         service_id = serializer.validated_data.pop("service_id")
-        notification_data = self._pop_notification_fields(serializer.validated_data)
+        serializer.validated_data.pop("notification_targets", None)
         with transaction.atomic():
             policy = serializer.save(
                 service=self._visible_service(service_id),
-                notice=bool(notification_data["notice"]),
                 created_by=request.user.username,
                 updated_by=request.user.username,
             )
@@ -734,21 +708,14 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
         if isinstance(targets, Response):
             return targets
         service_id = serializer.validated_data.pop("service_id", None)
-        notification_data = self._pop_notification_fields(serializer.validated_data)
+        serializer.validated_data.pop("notification_targets", None)
         save_kwargs = {"updated_by": request.user.username}
         if service_id is not None:
             save_kwargs["service"] = self._visible_service(service_id)
-        if notification_data["notice"] is not None:
-            save_kwargs["notice"] = bool(notification_data["notice"])
         with transaction.atomic():
             policy = serializer.save(**save_kwargs)
             if targets is not None:
                 self._replace_notification_targets(policy, targets, actor=request.user.username)
-            state, _ = ApmPolicyState.objects.get_or_create(policy=policy)
-            state.evaluation_cursor = ""
-            state.consecutive_hits = 0
-            state.consecutive_recoveries = 0
-            state.save()
             policy.target_states.all().delete()
         return Response(self.get_serializer(policy).data)
 
@@ -816,13 +783,11 @@ class ApmPolicyViewSet(viewsets.GenericViewSet):
     def preview(self, request, *args, **kwargs):
         payload = dict(request.data)
         payload["notification_targets"] = []
-        payload["notice"] = False
         serializer = self.get_serializer(data=payload)
         serializer.is_valid(raise_exception=True)
         values = dict(serializer.validated_data)
         service_id = values.pop("service_id")
-        for field in ("notification_targets", "notice_type_ids", "notice_users"):
-            values.pop(field, None)
+        values.pop("notification_targets", None)
         policy = ApmPolicy(service=self._visible_service(service_id), **values)
         try:
             result = self._service().test_query(policy, evaluated_at=timezone.now())
@@ -921,6 +886,15 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
     @action(methods=("get",), detail=True)
     @HasPermission("events-View")
     def snapshots(self, request, *args, **kwargs):
+        alert = self.get_object()
+        snapshot = getattr(alert, "metric_snapshot", None)
+        if snapshot is None:
+            return Response({"snapshots": []})
+        return Response(ApmAlertMetricSnapshotStore.serialize(snapshot))
+
+    @action(methods=("get",), detail=True, url_path="event-evidence")
+    @HasPermission("events-View")
+    def event_evidence(self, request, *args, **kwargs):
         alert = self.get_object()
         event_id = request.query_params.get("event_id", "").strip()
         queryset = ApmEventSnapshot.objects.filter(alert=alert).select_related("payload", "event")

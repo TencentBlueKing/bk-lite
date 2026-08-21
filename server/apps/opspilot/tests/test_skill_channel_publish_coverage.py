@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -285,8 +286,15 @@ class TestChatServiceUnit:
         chat_svc.append_message(c1, "assistant", "b")
         c2 = chat_svc.get_or_create_conversation(ch, "u1", session_id="sid-1")
         assert c2.id == c1.id
+        from apps.opspilot.services.history_service import history_service
+
         hist = chat_svc._history_from_conversation(c1, 10)
-        assert hist[-1]["content"] == "b"
+        assert hist[-1]["event"] == "bot"
+        assert hist[-1]["message"] == "b"
+        assert history_service.process_chat_history(hist, 10, [])[-1]["event"] == "bot"
+        chat_svc.append_message(c1, "user", "current-turn")
+        hist2 = chat_svc._history_from_conversation(c1, 10)
+        assert [item["message"] for item in hist2] == ["a", "b"]
 
     def test_build_params_with_tools_and_extra(self):
         skill = _skill(tools=[{"name": "t1"}], skill_prompt="p", team=[1])
@@ -337,7 +345,7 @@ class TestChatServiceUnit:
             yield b'data: {"content":"!"}\n\n'
             yield b"data: [DONE]\n\n"
 
-        with patch("apps.opspilot.services.skill_channel_chat_service.stream_chat") as mock_stream:
+        with patch("apps.opspilot.services.skill_channel_chat_service.stream_agui_chat") as mock_stream:
             mock_stream.return_value = StreamingHttpResponse(gen(), content_type="text/event-stream")
             with patch(
                 "apps.opspilot.services.skill_channel_chat_service.capture_caller_identity",
@@ -378,6 +386,41 @@ class TestChatServiceUnit:
 
         chunks = asyncio.run(consume())
         assert chunks  # 至少透传了流式分片
+
+    def test_agui_persist_helpers_and_history_uses_visible_text(self):
+        events = [
+            {"type": "CUSTOM", "name": "planned_execution_status", "value": {"phase": "planning"}},
+            {
+                "type": "CUSTOM",
+                "name": "planned_execution_step",
+                "value": {
+                    "phase": "start",
+                    "step_index": 1,
+                    "total_steps": 1,
+                    "objective": "查询当前时间",
+                    "tools": ["get_current_time"],
+                },
+            },
+            {"type": "TEXT_MESSAGE_CONTENT", "delta": "现在是下午两点"},
+            {"type": "RUN_FINISHED"},
+        ]
+        sse_text = "".join(f"data: {json.dumps(item, ensure_ascii=False)}\n\n" for item in events) + "data: [DONE]\n\n"
+        parsed = chat_svc.parse_sse_json_payloads(sse_text)
+        assert [item.get("type") for item in parsed] == ["CUSTOM", "CUSTOM", "TEXT_MESSAGE_CONTENT", "RUN_FINISHED"]
+        content = chat_svc.assemble_assistant_persist_content(parsed)
+        assert json.loads(content)[0]["name"] == "planned_execution_status"
+        assert chat_svc.visible_assistant_text(content) == "现在是下午两点"
+        mixed = chat_svc.assemble_assistant_persist_content(events + [{"type": "TEXT_MESSAGE_CONTENT", "delta": '{"phase":"planning"}'}])
+        assert chat_svc.visible_assistant_text(mixed) == "现在是下午两点"
+        assert chat_svc.assemble_assistant_persist_content([{"choices": [{"delta": {"content": "hello"}}]}, {"content": "!"}]) == "hello!"
+
+        skill = _skill()
+        ch = _channel(skill)
+        conv = SkillConversation.objects.create(session_id="s-agui", skill=skill, channel=ch, external_user_id="u")
+        SkillConversationMessage.objects.create(conversation=conv, role="user", content="现在几点了")
+        SkillConversationMessage.objects.create(conversation=conv, role="assistant", content=content)
+        history = chat_svc._history_from_conversation(conv, 10)
+        assert history == [{"event": "user", "message": "现在几点了"}, {"event": "bot", "message": "现在是下午两点"}]
 
     def test_wrap_persist_swallows_db_error(self):
         skill = _skill()
