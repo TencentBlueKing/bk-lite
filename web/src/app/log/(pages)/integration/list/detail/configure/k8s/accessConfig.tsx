@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Form, Input, Select, Button, Radio } from 'antd';
+import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
@@ -11,8 +12,7 @@ import Icon from '@/components/icon';
 import { K8sCommandData } from './k8sConfiguration';
 import FormSettingRow from '@/components/form-setting-row';
 import CollectSettingFields, {
-  FieldLabel,
-  K8S_SETTING_FORM_WIDTH
+  FieldLabel
 } from './collectSettingFields';
 import IntegrationStepCallout, {
   createLogK8sStepCalloutPreset,
@@ -21,6 +21,15 @@ import {
   DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
   isValidK8sImageRegistryPrefix
 } from '@/utils/k8sImageRegistry';
+import {
+  DEFAULT_K8S_DS_TOLERATIONS,
+  K8S_DS_TOLERATION_EFFECTS,
+  MAX_K8S_DS_TOLERATIONS,
+  isValidK8sTolerations,
+  k8sTolerationModeFromValue,
+  k8sTolerationsFromMode,
+  type K8sTolerationMode
+} from '@/utils/k8sTolerations';
 
 interface AccessConfigProps {
   onNext: (data?: K8sCommandData) => void;
@@ -63,6 +72,9 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const [dockerPathForFields, setDockerPathForFields] = useState(
     commandData?.docker_container_log_path
   );
+  const tolerationMode =
+    (Form.useWatch('tolerationMode', form) as K8sTolerationMode | undefined) ??
+    'default';
 
   useEffect(() => {
     if (!isLoading) {
@@ -83,7 +95,11 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         namespace_patterns: commandData.namespace_patterns,
         pod_patterns: commandData.pod_patterns,
         image_registry_prefix:
-          commandData.image_registry_prefix || DEFAULT_K8S_IMAGE_REGISTRY_PREFIX
+          commandData.image_registry_prefix || DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
+        tolerationMode: k8sTolerationModeFromValue(commandData.tolerations),
+        tolerationItems: Array.isArray(commandData.tolerations)
+          ? commandData.tolerations
+          : DEFAULT_K8S_DS_TOLERATIONS
       });
       setDockerPathForFields(commandData.docker_container_log_path);
       if (commandData.instance_id) {
@@ -129,7 +145,9 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         host_log_path: undefined,
         docker_container_log_path: undefined,
         namespace_patterns: undefined,
-        pod_patterns: undefined
+        pod_patterns: undefined,
+        tolerationMode: 'default',
+        tolerationItems: DEFAULT_K8S_DS_TOLERATIONS
       });
       return;
     }
@@ -141,7 +159,11 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
       host_log_path: setting?.host_log_path,
       docker_container_log_path: dockerPath,
       namespace_patterns: (setting?.namespace_patterns || []).join('\n'),
-      pod_patterns: (setting?.pod_patterns || []).join('\n')
+      pod_patterns: (setting?.pod_patterns || []).join('\n'),
+      tolerationMode: k8sTolerationModeFromValue(setting?.tolerations),
+      tolerationItems: Array.isArray(setting?.tolerations)
+        ? setting.tolerations
+        : DEFAULT_K8S_DS_TOLERATIONS
     });
   };
 
@@ -156,7 +178,11 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         docker_container_log_path: values.docker_container_log_path,
         namespace_patterns: values.namespace_patterns,
         pod_patterns: values.pod_patterns,
-        image_registry_prefix: values.image_registry_prefix
+        image_registry_prefix: values.image_registry_prefix,
+        tolerations: k8sTolerationsFromMode(
+          values.tolerationMode,
+          values.tolerationItems
+        )
       };
 
       let instanceId = values.k8sCluster as string;
@@ -184,7 +210,11 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         docker_container_log_path: values.docker_container_log_path,
         namespace_patterns: values.namespace_patterns,
         pod_patterns: values.pod_patterns,
-        image_registry_prefix: values.image_registry_prefix
+        image_registry_prefix: values.image_registry_prefix,
+        tolerations: k8sTolerationsFromMode(
+          values.tolerationMode,
+          values.tolerationItems
+        )
       });
     } finally {
       setSubmitLoading(false);
@@ -202,7 +232,9 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         initialValues={{
           accessType: 'new',
           runtime_profile: commandData?.runtime_profile || 'standard',
-          image_registry_prefix: DEFAULT_K8S_IMAGE_REGISTRY_PREFIX
+          image_registry_prefix: DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
+          tolerationMode: 'default',
+          tolerationItems: DEFAULT_K8S_DS_TOLERATIONS
         }}
       >
         <div className="flex items-center mb-6">
@@ -423,6 +455,144 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
               </Form.Item>
             }
             description={t('log.integration.k8s.imageRegistryPrefixHint')}
+          />
+        </Form.Item>
+
+        <Form.Item
+          label={
+            <FieldLabel
+              label={t('log.integration.k8s.tolerations')}
+              detail={t('log.integration.k8s.tolerationsDesc')}
+            />
+          }
+          required
+        >
+          <FormSettingRow
+            control={
+              <div className="w-[300px]">
+                <Form.Item name="tolerationMode" noStyle>
+                  <Radio.Group
+                    className="flex flex-col gap-2"
+                    onChange={(event) => {
+                      if (
+                        event.target.value === 'custom' &&
+                        !form.getFieldValue('tolerationItems')?.length
+                      ) {
+                        form.setFieldsValue({
+                          tolerationItems: DEFAULT_K8S_DS_TOLERATIONS
+                        });
+                      }
+                    }}
+                  >
+                    <Radio value="default">
+                      {t('log.integration.k8s.tolerationsModeDefault')}
+                    </Radio>
+                    <Radio value="custom">
+                      {t('log.integration.k8s.tolerationsModeCustom')}
+                    </Radio>
+                    <Radio value="none">
+                      {t('log.integration.k8s.tolerationsModeNone')}
+                    </Radio>
+                  </Radio.Group>
+                </Form.Item>
+                {tolerationMode === 'custom' ? (
+                  <Form.List
+                    name="tolerationItems"
+                    rules={[
+                      {
+                        validator: async (_, value) => {
+                          if (!isValidK8sTolerations(value ?? [])) {
+                            throw new Error(
+                              t('log.integration.k8s.tolerationsInvalid')
+                            );
+                          }
+                        }
+                      }
+                    ]}
+                  >
+                    {(fields, { add, remove }) => (
+                      <div className="mt-3 flex flex-col gap-2">
+                        {fields.map((field) => (
+                          <div
+                            key={field.key}
+                            className="flex items-start gap-2"
+                          >
+                            <Form.Item
+                              {...field}
+                              name={[field.name, 'key']}
+                              className="mb-0 flex-1"
+                              rules={[
+                                {
+                                  required: true,
+                                  message: t('common.required')
+                                }
+                              ]}
+                            >
+                              <Input
+                                placeholder={t(
+                                  'log.integration.k8s.tolerationsKey'
+                                )}
+                              />
+                            </Form.Item>
+                            <Form.Item
+                              {...field}
+                              name={[field.name, 'effect']}
+                              className="mb-0 w-[130px]"
+                              rules={[
+                                {
+                                  required: true,
+                                  message: t('common.required')
+                                }
+                              ]}
+                            >
+                              <Select
+                                options={K8S_DS_TOLERATION_EFFECTS.map(
+                                  (effect) => ({
+                                    value: effect,
+                                    label: effect
+                                  })
+                                )}
+                              />
+                            </Form.Item>
+                            <Form.Item
+                              {...field}
+                              name={[field.name, 'value']}
+                              className="mb-0 w-[90px]"
+                            >
+                              <Input
+                                placeholder={t(
+                                  'log.integration.k8s.tolerationsValue'
+                                )}
+                              />
+                            </Form.Item>
+                            <MinusCircleOutlined
+                              className="mt-2 text-[var(--color-text-3)]"
+                              onClick={() => remove(field.name)}
+                            />
+                          </div>
+                        ))}
+                        {fields.length < MAX_K8S_DS_TOLERATIONS ? (
+                          <Button
+                            type="dashed"
+                            icon={<PlusOutlined />}
+                            onClick={() =>
+                              add({ key: '', effect: 'NoSchedule' })
+                            }
+                          >
+                            {t('log.integration.k8s.tolerationsAdd')}
+                          </Button>
+                        ) : null}
+                      </div>
+                    )}
+                  </Form.List>
+                ) : null}
+              </div>
+            }
+            description={
+              tolerationMode === 'none'
+                ? t('log.integration.k8s.tolerationsModeNoneHint')
+                : t('log.integration.k8s.tolerationsHint')
+            }
           />
         </Form.Item>
 

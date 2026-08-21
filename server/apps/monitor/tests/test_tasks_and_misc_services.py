@@ -168,6 +168,7 @@ class TestInfraService:
         assert data["cluster_name"] == "c1"
         assert data["cloud_region_id"] == "5"
         assert data["image_registry_prefix"] == "bk-lite.tencentcloudcr.com/bklite"
+        assert data["tolerations"] is None
         assert data["remaining_usage"] >= 0
 
     def test_validate_empty_token_raises(self, locmem_cache):
@@ -194,3 +195,18 @@ class TestInfraService:
         data = InfraService.validate_and_get_token_data(token)
 
         assert data["image_registry_prefix"] == "harbor.internal/bklite"
+
+    def test_empty_tolerations_are_bound_to_token(self, locmem_cache):
+        token = InfraService.generate_install_token("c1", "5", tolerations=[])
+
+        data = InfraService.validate_and_get_token_data(token)
+
+        assert data["tolerations"] == []
+
+    def test_custom_tolerations_are_bound_to_token(self, locmem_cache):
+        custom = [{"key": "dedicated", "effect": "NoSchedule", "value": "edge"}]
+        token = InfraService.generate_install_token("c1", "5", tolerations=custom)
+
+        data = InfraService.validate_and_get_token_data(token)
+
+        assert data["tolerations"] == custom

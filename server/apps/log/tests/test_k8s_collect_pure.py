@@ -174,6 +174,46 @@ def test_render_config_forwards_custom_image_registry(mocker):
     K8s.render_config_from_cloud_region("clusterA", "cr1", "harbor.internal/bklite")
 
     assert post.call_args.kwargs["json"]["image_registry_prefix"] == "harbor.internal/bklite"
+    assert "tolerations" not in post.call_args.kwargs["json"]
+
+
+def test_render_config_omits_unset_tolerations(mocker):
+    mocker.patch.object(K8s, "get_cloud_region_envconfig", return_value=dict(_FULL_ENV))
+    mocker.patch("apps.log.services.k8s_collect.get_webhook_tls_verify", return_value=True)
+    response = mocker.MagicMock(status_code=200)
+    response.json.return_value = {"yaml": "apiVersion: v1"}
+    post = mocker.patch("apps.log.services.k8s_collect.requests.post", return_value=response)
+
+    K8s.render_config_from_cloud_region("clusterA", "cr1")
+
+    assert "tolerations" not in post.call_args.kwargs["json"]
+
+
+def test_render_config_forwards_empty_tolerations(mocker):
+    K8s.load_setting_render_options.return_value["tolerations"] = []
+    mocker.patch.object(K8s, "get_cloud_region_envconfig", return_value=dict(_FULL_ENV))
+    mocker.patch("apps.log.services.k8s_collect.get_webhook_tls_verify", return_value=True)
+    response = mocker.MagicMock(status_code=200)
+    response.json.return_value = {"yaml": "apiVersion: v1"}
+    post = mocker.patch("apps.log.services.k8s_collect.requests.post", return_value=response)
+
+    K8s.render_config_from_cloud_region("clusterA", "cr1")
+
+    assert post.call_args.kwargs["json"]["tolerations"] == []
+
+
+def test_render_config_forwards_custom_tolerations(mocker):
+    custom = [{"key": "dedicated", "effect": "NoSchedule", "value": "edge"}]
+    K8s.load_setting_render_options.return_value["tolerations"] = custom
+    mocker.patch.object(K8s, "get_cloud_region_envconfig", return_value=dict(_FULL_ENV))
+    mocker.patch("apps.log.services.k8s_collect.get_webhook_tls_verify", return_value=True)
+    response = mocker.MagicMock(status_code=200)
+    response.json.return_value = {"yaml": "apiVersion: v1"}
+    post = mocker.patch("apps.log.services.k8s_collect.requests.post", return_value=response)
+
+    K8s.render_config_from_cloud_region("clusterA", "cr1")
+
+    assert post.call_args.kwargs["json"]["tolerations"] == custom
 
 
 def test_render_config_non_200_raises(mocker):

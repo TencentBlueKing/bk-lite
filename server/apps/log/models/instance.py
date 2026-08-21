@@ -55,6 +55,7 @@ class K8sCollectSetting(TimeInfo, MaintainerInfo):
     )
     namespace_patterns = models.JSONField(default=list, verbose_name="采集 Namespace")
     pod_patterns = models.JSONField(default=list, verbose_name="采集 Pod")
+    tolerations = models.JSONField(blank=True, null=True, default=None, verbose_name="DaemonSet 污点容忍")
 
     class Meta:
         db_table = "log_k8s_collect_setting"

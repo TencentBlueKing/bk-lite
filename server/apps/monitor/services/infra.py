@@ -6,6 +6,7 @@ from django.core.cache import cache
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
 from apps.core.utils.k8s_image_registry import normalize_k8s_image_registry_prefix
+from apps.core.utils.k8s_tolerations import apply_k8s_tolerations_param, normalize_k8s_tolerations
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.monitor.constants.infra import InfraConstants
 from apps.rpc.node_mgmt import NodeMgmt
@@ -19,6 +20,7 @@ class InfraService:
         cluster_name: str,
         cloud_region_id: str,
         image_registry_prefix: str | None = None,
+        tolerations=None,
     ) -> str:
         """
         生成安装令牌（30分钟有效，最多使用5次）
@@ -28,6 +30,7 @@ class InfraService:
         :return: 限时令牌
         """
         image_registry_prefix = normalize_k8s_image_registry_prefix(image_registry_prefix)
+        tolerations = normalize_k8s_tolerations(tolerations)
 
         # 生成限时令牌
         token = str(uuid.uuid4())
@@ -38,6 +41,7 @@ class InfraService:
             "cluster_name": cluster_name,
             "cloud_region_id": cloud_region_id,
             "image_registry_prefix": image_registry_prefix,
+            "tolerations": tolerations,
             "usage_count": 0,
             "max_usage": InfraConstants.TOKEN_MAX_USAGE,
         }
@@ -103,6 +107,7 @@ class InfraService:
             "cluster_name": data["cluster_name"],
             "cloud_region_id": data["cloud_region_id"],
             "image_registry_prefix": normalize_k8s_image_registry_prefix(data.get("image_registry_prefix")),
+            "tolerations": normalize_k8s_tolerations(data.get("tolerations")),
             "remaining_usage": max_usage - data["usage_count"],
         }
 
@@ -112,6 +117,7 @@ class InfraService:
         cloud_region_id: str,
         config_type: str = "metric",
         image_registry_prefix: str | None = None,
+        tolerations=None,
     ) -> str:
         """
         从云区域环境变量获取参数后，调用外部 API 渲染配置
@@ -157,6 +163,7 @@ class InfraService:
             "nats_ca": nats_tls_ca,
             "image_registry_prefix": normalize_k8s_image_registry_prefix(image_registry_prefix),
         }
+        apply_k8s_tolerations_param(params, tolerations)
 
         # 调用外部 webhook API
         return InfraService.render_config_from_api(params, webhook_server_url)

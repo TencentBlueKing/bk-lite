@@ -313,6 +313,7 @@ class ManualCollect(viewsets.ViewSet):
             request.data["instance_id"],
             request.data["cloud_region_id"],
             request.data.get("image_registry_prefix"),
+            request.data.get("tolerations"),
         )
         return WebUtils.response_success(data)
 

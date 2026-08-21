@@ -16,6 +16,7 @@ export const createMonitorK8sStepCalloutPreset = (
     t('monitor.integrations.k8s.k8sVersionRequirement'),
     t('monitor.integrations.k8s.resourceRequirement'),
     t('monitor.integrations.k8s.permissionRequirement'),
+    t('monitor.integrations.k8s.controlPlaneTaintPrecondition'),
   ],
 });
 
@@ -29,5 +30,6 @@ export const createLogK8sStepCalloutPreset = (
     t('log.integration.k8s.resourceRequirement'),
     t('log.integration.k8s.permissionRequirement'),
     t('log.integration.k8s.presetHint'),
+    t('log.integration.k8s.controlPlaneTaintPrecondition'),
   ],
 });

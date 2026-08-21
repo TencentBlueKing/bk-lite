@@ -105,6 +105,7 @@ class ManualCollectService:
         instance_id: str,
         cloud_region_id: str,
         image_registry_prefix: str | None = None,
+        tolerations: list | None = None,
     ) -> str:
         """
         生成 Kubernetes 安装命令
@@ -132,6 +133,7 @@ class ManualCollectService:
             cluster_name,
             cloud_region_id,
             image_registry_prefix,
+            tolerations=tolerations,
         )
 
         # 构造完整的 API URL（使用 open_api 前缀，统一开放 API 路由风格）
