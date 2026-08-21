@@ -531,6 +531,7 @@ export default function BaselineManagementPage() {
             onChange={(e) => setBaselineSearch(e.target.value)}
             onSearch={(v) => { setPagination((p) => ({ ...p, current: 1 })); loadData(1, pagination.pageSize, v); }}
             className="w-[220px]"
+            enterButton
           />
           <Select
             mode="multiple"
@@ -542,7 +543,7 @@ export default function BaselineManagementPage() {
             placeholder={t('patchManager.baseline.patchFilter')}
             optionFilterProp="label"
             maxTagCount="responsive"
-            className="w-[360px]"
+            className="w-[220px]"
             options={patchFilterOptions.map((patch) => ({
               value: patch.id,
               label: patch.windows_detail?.kb_number || patch.linux_detail?.pkg_name || patch.title,
@@ -852,6 +853,7 @@ export default function BaselineManagementPage() {
               onSearch={(v) => { setPatchPickerPagination((p) => ({ ...p, current: 1 })); loadPatches(1, patchPickerPagination.pageSize, v); }}
               onChange={(e) => setPatchSearch(e.target.value)}
               allowClear
+              enterButton
               className="mb-3 w-[300px]"
             />
           }
