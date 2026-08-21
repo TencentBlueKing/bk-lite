@@ -64,6 +64,7 @@
       "metricQueryFailedHint": "The RED metric query failed. Click to retry",
       "metricNoSamplesHint": "No telemetry samples in this time window (no traffic or not reporting yet)",
       "justNow": "Just now",
+      "secondsAgo": "{count} seconds ago",
       "minutesAgo": "{count} minutes ago",
       "hoursAgo": "{count} hours ago",
       "daysAgo": "{count} days ago",
