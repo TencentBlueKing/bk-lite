@@ -25,9 +25,7 @@ async def health_check(request):
         "timestamp": 1703001234567
     }
     """
-    return response.json(
-        {"status": "ok", "timestamp": int(__import__("time").time() * 1000)}
-    )
+    return response.json({"status": "ok", "timestamp": int(__import__("time").time() * 1000)})
 
 
 @health_router.route("/ready", methods=["GET"])
@@ -211,6 +209,9 @@ stargazer_collection_credential_state_redis_error_total {stats.get("credential_s
             "publish_queue_capacity",
             "publish_queue_wait_seconds_p95",
             "publish_queue_wait_seconds_p99",
+            "publish_queue_residence_seconds_p95",
+            "publish_queue_residence_seconds_p99",
+            "publish_batch_age_ms",
             "publish_batch_total",
             "publish_batch_items_total",
             "publish_batch_size_p95",
@@ -268,10 +269,7 @@ stargazer_collection_credential_state_redis_error_total {stats.get("credential_s
             "job_node_info_lookup_duration_seconds_p99",
         )
         for key in bounded_metric_keys:
-            prometheus_text += (
-                f"# TYPE stargazer_collection_{key} gauge\n"
-                f"stargazer_collection_{key} {stats.get(key, 0)}\n"
-            )
+            prometheus_text += f"# TYPE stargazer_collection_{key} gauge\n" f"stargazer_collection_{key} {stats.get(key, 0)}\n"
         for dimension, values in (
             ("execution_mode", ("sync", "async", "remote")),
             ("capacity_group", ("snmp", "sync_sdk", "remote_job", "default")),
@@ -291,10 +289,7 @@ stargazer_collection_credential_state_redis_error_total {stats.get("credential_s
                 prometheus_text += f"# TYPE {metric_name} {metric_type}\n"
                 for value in values:
                     key = f"{dimension}_{value}_{suffix}"
-                    prometheus_text += (
-                        f'{metric_name}{{{dimension}="{value}"}} '
-                        f"{stats.get(key, 0)}\n"
-                    )
+                    prometheus_text += f'{metric_name}{{{dimension}="{value}"}} ' f"{stats.get(key, 0)}\n"
 
         return response.text(prometheus_text, content_type="text/plain; version=0.0.4")
 

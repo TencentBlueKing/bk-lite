@@ -5,9 +5,8 @@ import sys
 import time
 from pathlib import Path
 
-import yaml
 import pytest
-
+import yaml
 from core.plugin.executor import PluginExecutor
 from core.plugin.yaml_reader import ExecutorConfig
 
@@ -30,12 +29,8 @@ def test_registered_plugin_runtime_entrypoints_are_coroutine_functions():
         except ModuleNotFoundError:
             # 精简测试环境不安装全部厂商 SDK；静态契约测试仍覆盖所有注册项。
             continue
-        if not inspect.iscoroutinefunction(
-            getattr(collector_class, "list_all_resources")
-        ):
-            violations.append(
-                f"{config_path.parent.name}:{module_name}.{class_name}"
-            )
+        if not inspect.iscoroutinefunction(getattr(collector_class, "list_all_resources")):
+            violations.append(f"{config_path.parent.name}:{module_name}.{class_name}")
 
     assert violations == []
 
@@ -93,10 +88,7 @@ async def test_explicit_sync_plugin_wrapper_does_not_stall_event_loop():
             time.sleep(0.05)
             return "done"
 
-    assert (
-        await _assert_event_loop_responsive(WrappedPlugin().collect())
-        == "done"
-    )
+    assert await _assert_event_loop_responsive(WrappedPlugin().collect()) == "done"
 
 
 @pytest.mark.asyncio
@@ -127,17 +119,13 @@ class Collector:
         plugin_config={"metadata": {}},
     )
 
-    result = await _assert_event_loop_responsive(
-        PluginExecutor("demo", config, {}).execute()
-    )
+    result = await _assert_event_loop_responsive(PluginExecutor("demo", config, {}).execute())
 
     assert result == {"success": True, "result": {"demo": []}}
 
 
 @pytest.mark.asyncio
-async def test_plugin_initialization_does_not_stall_event_loop(
-    monkeypatch, tmp_path
-):
+async def test_plugin_initialization_does_not_stall_event_loop(monkeypatch, tmp_path):
     module_name = "slow_initializing_plugin"
     (tmp_path / f"{module_name}.py").write_text(
         """
@@ -162,8 +150,46 @@ class Collector:
         plugin_config={"metadata": {}},
     )
 
-    result = await _assert_event_loop_responsive(
-        PluginExecutor("demo", config, {}).execute()
-    )
+    result = await _assert_event_loop_responsive(PluginExecutor("demo", config, {}).execute())
 
     assert result == {"success": True, "result": {"demo": []}}
+
+
+@pytest.mark.asyncio
+async def test_collector_receives_trusted_yaml_options(monkeypatch, tmp_path):
+    module_name = "collector_with_yaml_options"
+    (tmp_path / f"{module_name}.py").write_text(
+        """
+class Collector:
+    def __init__(self, params):
+        self.params = params
+
+    async def list_all_resources(self):
+        return {"success": True, "result": self.params["_collector_options"]}
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+    sys.modules.pop(module_name, None)
+    config = ExecutorConfig(
+        executor_type="protocol",
+        config={
+            "collector": {
+                "module": module_name,
+                "class": "Collector",
+                "options": {"total_timeout": 300, "max_pages": 1000},
+            }
+        },
+        plugin_config={"metadata": {}},
+    )
+
+    result = await PluginExecutor(
+        "demo",
+        config,
+        {"_collector_options": {"total_timeout": 1}},
+    ).execute()
+
+    assert result == {
+        "success": True,
+        "result": {"total_timeout": 300, "max_pages": 1000},
+    }
