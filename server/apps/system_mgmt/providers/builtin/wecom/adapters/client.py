@@ -67,6 +67,28 @@ def _resolved_url(config, field_key, default):
     return config.get(field_key) or default
 
 
+def _map_wecom_request_exception(error, *, timeout_message, invalid_message, request_failed_message):
+    """把 Timeout / ValueError / RequestException 映射为统一的 CapabilityExecutionResult。"""
+    if isinstance(error, requests.Timeout):
+        return CapabilityExecutionResult.failed_result(
+            timeout_message,
+            code="provider.timeout",
+            retryable=True,
+        )
+    if isinstance(error, ValueError):
+        return CapabilityExecutionResult.failed_result(
+            str(error) or invalid_message,
+            code="provider.invalid_response",
+        )
+    if isinstance(error, (KeyError, requests.RequestException)):
+        return CapabilityExecutionResult.failed_result(
+            request_failed_message,
+            code="provider.request_failed",
+            retryable=True,
+        )
+    raise error
+
+
 def _sanitize_url_for_log(url):
     """保留身份接口的安全定位信息，过滤凭据和查询参数。"""
     parsed = urlparse(url)
@@ -95,22 +117,12 @@ def _get_access_token(config):
     try:
         response = requests.get(url, **kwargs)
         data = _parse_json_response(response)
-    except requests.Timeout:
-        return None, CapabilityExecutionResult.failed_result(
-            "WeCom access token request timed out",
-            code="provider.timeout",
-            retryable=True,
-        )
-    except ValueError as error:
-        return None, CapabilityExecutionResult.failed_result(
-            str(error) or "WeCom access token response is invalid",
-            code="provider.invalid_response",
-        )
-    except (KeyError, requests.RequestException):
-        return None, CapabilityExecutionResult.failed_result(
-            "WeCom access token request failed",
-            code="provider.request_failed",
-            retryable=True,
+    except (KeyError, ValueError, requests.Timeout, requests.RequestException) as error:
+        return None, _map_wecom_request_exception(
+            error,
+            timeout_message="WeCom access token request timed out",
+            invalid_message="WeCom access token response is invalid",
+            request_failed_message="WeCom access token request failed",
         )
 
     if response.status_code != 200 or data.get("errcode") or not data.get("access_token"):
@@ -120,6 +132,46 @@ def _get_access_token(config):
             external_code=str(data.get("errcode") or response.status_code),
         )
     return data["access_token"], None
+
+
+def _fetch_visible_departments(config, token):
+    url = _resolved_url(config, "user_sync_departments_url", WECOM_DEFAULT_USER_SYNC_DEPARTMENTS_URL)
+    try:
+        data = _request_get(url, config, token)
+    except (ValueError, requests.Timeout, requests.RequestException) as error:
+        return None, _map_wecom_request_exception(
+            error,
+            timeout_message="WeCom department request timed out",
+            invalid_message="WeCom department response is invalid",
+            request_failed_message="WeCom department request failed",
+        )
+    return data.get("department") or [], None
+
+
+def _visible_department_root_ids(departments):
+    """应用可见部门林的根：父部门不在本次返回集合内。
+
+    空列表表示权限范围内没有可见部门（例如可见范围仅成员/标签），不臆造公司根 ``1``。
+    """
+    visible_id_set = set()
+    for department in departments or []:
+        department_id = str(department.get("id") or "").strip()
+        if department_id:
+            visible_id_set.add(department_id)
+    if not visible_id_set:
+        return []
+
+    roots = []
+    for department in departments or []:
+        department_id = str(department.get("id") or "").strip()
+        if not department_id:
+            continue
+        parent_id = str(department.get("parentid") or "").strip()
+        if parent_id not in visible_id_set and department_id not in roots:
+            roots.append(department_id)
+    return roots
+
+
 def _request_get(url, config, token, params=None, *, return_response=False):
     """执行带 token 的 GET 请求;显式传入 config 以注入代理配置。"""
     kwargs = {
@@ -189,22 +241,12 @@ def _fetch_all_users(config, token, url, params):
         try:
             response = requests.get(url, **kwargs)
             data = _parse_json_response(response)
-        except requests.Timeout:
-            return None, CapabilityExecutionResult.failed_result(
-                "WeCom directory request timed out",
-                code="provider.timeout",
-                retryable=True,
-            )
-        except ValueError as error:
-            return None, CapabilityExecutionResult.failed_result(
-                str(error) or "WeCom directory response is invalid",
-                code="provider.invalid_response",
-            )
-        except requests.RequestException:
-            return None, CapabilityExecutionResult.failed_result(
-                "WeCom directory request failed",
-                code="provider.request_failed",
-                retryable=True,
+        except (ValueError, requests.Timeout, requests.RequestException) as error:
+            return None, _map_wecom_request_exception(
+                error,
+                timeout_message="WeCom directory request timed out",
+                invalid_message="WeCom directory response is invalid",
+                request_failed_message="WeCom directory request failed",
             )
         if response.status_code != 200 or data.get("errcode"):
             return None, CapabilityExecutionResult.failed_result(

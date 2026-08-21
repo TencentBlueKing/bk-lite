@@ -564,6 +564,8 @@ def test_feishu_list_departments_returns_items_without_selection_state():
         return DummyResponse({"code": 0, "tenant_access_token": "tenant-token"})
 
     def fake_get(url, *args, **kwargs):
+        if url.endswith("/contact/v3/departments/0/children"):
+            return DummyResponse({"code": 40004, "msg": "no permission"}, headers={"X-Tt-Logid": "denied"})
         if url.endswith("/contact/v3/scopes"):
             return DummyResponse({"code": 0, "data": {"department_ids": ["dept-visible"], "has_more": False}})
         if url.endswith("/contact/v3/departments/batch"):

@@ -2,19 +2,19 @@ import json
 
 import requests
 
-from apps.system_mgmt.providers.log import logger
 from apps.system_mgmt.providers.base import BaseIMNotificationAdapter
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 
 from .client import (
+    FEISHU_DEFAULT_DEPARTMENT_ID_TYPE,
+    FEISHU_DEFAULT_USER_ID_TYPE,
     FEISHU_SEND_MESSAGE_URL,
     FEISHU_TIMEOUT,
-    FEISHU_USERS_BY_DEPARTMENT_URL,
-    _feishu_get_paginated,
+    _collect_visible_department_ids,
     _fetch_tenant_access_token,
     _get_config_value,
+    _list_users_in_departments,
     _request_tenant_access_token,
-    _sanitize_url_for_log,
 )
 
 
@@ -31,35 +31,30 @@ class FeishuIMNotificationAdapter(BaseIMNotificationAdapter):
         if error:
             return error
 
-        user_payload, error = _feishu_get_paginated(
-            _get_config_value(config, "im_notification_users_url", FEISHU_USERS_BY_DEPARTMENT_URL),
-            tenant_access_token,
-            params={
-                "department_id": "0",
-                "fetch_child": "true",
-                "page_size": 50,
-                "fields": "user_id,open_id,name,email,mobile",
-            },
-            config=config,
+        visible_departments, error = _collect_visible_department_ids(
+            config, tenant_access_token, FEISHU_DEFAULT_DEPARTMENT_ID_TYPE
         )
         if error:
             return error
 
-        external_users = []
-        for item in user_payload["items"]:
-            external_users.append(
-                {
-                    "user_id": item.get("user_id", ""),
-                    "open_id": item.get("open_id", ""),
-                    "name": item.get("name", ""),
-                    "email": item.get("email", ""),
-                    "mobile": item.get("mobile", ""),
-                }
-            )
+        users_payload, error = _list_users_in_departments(
+            config,
+            tenant_access_token,
+            visible_departments["department_ids"],
+            department_id_type=FEISHU_DEFAULT_DEPARTMENT_ID_TYPE,
+            user_id_type=FEISHU_DEFAULT_USER_ID_TYPE,
+        )
+        if error:
+            return error
 
         return CapabilityExecutionResult.success_result(
             "Feishu IM users fetched",
-            payload={"external_users": external_users, "external_request_id": user_payload.get("request_id", "")},
+            payload={
+                "external_users": users_payload["external_users"],
+                "external_request_id": users_payload.get("external_request_id")
+                or visible_departments.get("request_id")
+                or "",
+            },
         )
 
     @classmethod

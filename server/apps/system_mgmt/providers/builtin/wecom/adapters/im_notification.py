@@ -8,11 +8,13 @@ from .client import (
     WECOM_DEFAULT_IM_NOTIFICATION_USERS_URL,
     WECOM_TIMEOUT,
     _fetch_all_users,
+    _fetch_visible_departments,
     _get_access_token,
     _parse_json_response,
     _resolve_proxies,
     _resolved_url,
     _validate_credentials,
+    _visible_department_root_ids,
 )
 
 
@@ -31,20 +33,27 @@ class WeComIMNotificationAdapter(BaseIMNotificationAdapter):
         token, error = cls._token(config)
         if error:
             return error
+        departments, department_error = _fetch_visible_departments(config, token)
+        if department_error:
+            return department_error
         users_url = _resolved_url(
             config, "im_notification_users_url", WECOM_DEFAULT_IM_NOTIFICATION_USERS_URL
         )
-        normalized_users, user_error = _fetch_all_users(
-            config,
-            token,
-            users_url,
-            {"department_id": "1", "fetch_child": 1},
-        )
-        if user_error:
-            return user_error
+        merged_users = {}
+        for root_department_id in _visible_department_root_ids(departments):
+            normalized_users, user_error = _fetch_all_users(
+                config,
+                token,
+                users_url,
+                {"department_id": root_department_id, "fetch_child": 1},
+            )
+            if user_error:
+                return user_error
+            for item in normalized_users:
+                merged_users[item["userid"]] = item
         external_users = [
             {key: item[key] for key in ("userid", "name", "email", "mobile")}
-            for item in normalized_users
+            for item in merged_users.values()
         ]
         return CapabilityExecutionResult.success_result(
             "WeCom IM users fetched",

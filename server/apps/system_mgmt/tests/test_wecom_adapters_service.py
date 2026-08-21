@@ -227,6 +227,7 @@ def test_user_sync_collects_all_pages_of_members_via_cursor():
 def test_im_notification_collects_all_pages_of_users_via_cursor():
     with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
         response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "next"}),
         response({"errcode": 0, "userlist": [{"userid": "bob"}], "next_cursor": ""}),
     ]):
@@ -234,6 +235,41 @@ def test_im_notification_collects_all_pages_of_users_via_cursor():
 
     assert result.success is True
     assert sorted(user["userid"] for user in result.payload["external_users"]) == ["alice", "bob"]
+
+
+def test_im_notification_fetches_each_visible_department_forest_root():
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
+        response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "department": [
+            {"id": 2, "parentid": 1, "name": "研发"},
+            {"id": 3, "parentid": 1, "name": "财务"},
+        ]}),
+        response({"errcode": 0, "userlist": [{"userid": "dev"}]}),
+        response({"errcode": 0, "userlist": [{"userid": "fin"}]}),
+    ]) as get:
+        result = WeComIMNotificationAdapter.list_external_users(CONFIG, "wecom", "im_notification")
+
+    assert result.success is True
+    assert sorted(user["userid"] for user in result.payload["external_users"]) == ["dev", "fin"]
+    user_params = [
+        call.kwargs["params"]
+        for call in get.call_args_list
+        if str(call.args[0]).endswith("/cgi-bin/user/list")
+    ]
+    assert [params["department_id"] for params in user_params] == ["2", "3"]
+    assert all(params["fetch_child"] == 1 for params in user_params)
+
+
+def test_im_notification_empty_department_list_means_no_visible_departments():
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
+        response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "department": []}),
+    ]) as get:
+        result = WeComIMNotificationAdapter.list_external_users(CONFIG, "wecom", "im_notification")
+
+    assert result.success is True
+    assert result.payload["external_users"] == []
+    assert all(not str(call.args[0]).endswith("/cgi-bin/user/list") for call in get.call_args_list)
 
 
 def test_user_sync_default_fetch_child_is_one():
@@ -322,6 +358,8 @@ def test_user_sync_caps_pagination_when_next_cursor_repeats():
 def test_im_notification_caps_pagination_when_next_cursor_repeats():
     with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
+        response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
         response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
         response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
     ]) as get:
@@ -329,7 +367,7 @@ def test_im_notification_caps_pagination_when_next_cursor_repeats():
 
     assert result.success is False
     assert result.errors[0].code == "provider.invalid_response"
-    assert len(get.call_args_list) <= 4
+    assert len(get.call_args_list) <= 6
 
 
 def test_user_sync_handles_non_object_json_response():
@@ -384,6 +422,7 @@ def test_im_notification_users_endpoint_override_is_honored():
     }
     with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
         response({"errcode": 0, "userlist": [{"userid": "alice"}]}),
     ]) as get:
         result = WeComIMNotificationAdapter.list_external_users(
@@ -497,6 +536,7 @@ def test_proxy_url_passes_requests_proxies_to_im_notification_endpoints():
     }
     get_responses = [
         response({"errcode": 0, "access_token": "token"}),  # list_external_users token
+        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
         response({"errcode": 0, "userlist": [{"userid": "bob"}], "next_cursor": ""}),
         response({"errcode": 0, "access_token": "token"}),  # send_message token
     ]
@@ -638,6 +678,7 @@ def test_im_notification_falls_back_to_official_urls_when_addresses_missing():
     }
     get_responses = [
         response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
         response({"errcode": 0, "userlist": []}),
         response({"errcode": 0, "access_token": "token"}),
     ]
@@ -665,6 +706,7 @@ def test_im_notification_falls_back_to_official_urls_when_addresses_missing():
     assert send_result.success is True
     assert [call.args[0] for call in get.call_args_list] == [
         "https://qyapi.weixin.qq.com/cgi-bin/gettoken",
+        "https://qyapi.weixin.qq.com/cgi-bin/department/list",
         "https://qyapi.weixin.qq.com/cgi-bin/user/list",
         "https://qyapi.weixin.qq.com/cgi-bin/gettoken",
     ]

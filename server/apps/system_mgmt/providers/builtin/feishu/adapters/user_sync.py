@@ -6,11 +6,15 @@ from apps.system_mgmt.providers.base import BaseUserSyncAdapter
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 
 from .client import (
+    FEISHU_COMPANY_ROOT_DEPARTMENT_ID,
+    FEISHU_COMPANY_ROOT_DEPARTMENT_NAME,
     FEISHU_CONTACT_SCOPES_URL,
+    FEISHU_DEFAULT_DEPARTMENT_ID_TYPE,
     FEISHU_DEPARTMENT_CHILDREN_MAX_WORKERS,
-    FEISHU_DEPARTMENT_CHILDREN_URL,
     FEISHU_DEPARTMENTS_BATCH_URL,
     FEISHU_USERS_BY_DEPARTMENT_URL,
+    _fetch_company_root_children,
+    _fetch_department_children,
     _feishu_get_paginated,
     _fetch_tenant_access_token,
     _get_config_value,
@@ -45,27 +49,12 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
         if department_id_type:
             department_params["department_id_type"] = department_id_type
 
-        scopes_started_at = time.perf_counter()
-        scopes_payload, error = _feishu_get_paginated(
-            _get_config_value(config, "user_sync_scopes_url", FEISHU_CONTACT_SCOPES_URL),
-            tenant_access_token,
-            params=department_params,
-            config=config,
-            item_key="department_ids",
-        )
-        if error:
-            return error
-        scopes_duration_ms = round((time.perf_counter() - scopes_started_at) * 1000)
-
-        invalid_scope_root_ids = {"", "0", "__all__", "**all**"}
-        scope_root_ids = []
-        for department_id in scopes_payload["items"]:
-            normalized_id = str(department_id or "").strip()
-            if normalized_id not in invalid_scope_root_ids and normalized_id not in scope_root_ids:
-                scope_root_ids.append(normalized_id)
-
         nodes: dict[str, dict] = {}
-        external_request_id = scopes_payload.get("request_id") or ""
+        external_request_id = ""
+        scope_root_ids: list[str] = []
+        scopes_duration_ms = 0
+        root_details_duration_ms = 0
+        children_duration_ms = 0
 
         def upsert_node(item: dict, fallback_parent_id: str | None = None):
             department_id = _get_feishu_department_identifier(item, department_id_type)
@@ -84,51 +73,84 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
                 node["parent_id"] = parent_id
             return department_id
 
-        root_details_started_at = time.perf_counter()
-        for start in range(0, len(scope_root_ids), 50):
-            detail_payload, error = _feishu_get_paginated(
-                _get_config_value(config, "user_sync_departments_batch_url", FEISHU_DEPARTMENTS_BATCH_URL),
+        company_root_started_at = time.perf_counter()
+        company_root_payload, company_root_error = _fetch_company_root_children(config, tenant_access_token)
+        company_root_duration_ms = round((time.perf_counter() - company_root_started_at) * 1000)
+        if company_root_error:
+            return company_root_error
+
+        if company_root_payload is not None:
+            department_id_type = FEISHU_DEFAULT_DEPARTMENT_ID_TYPE
+            scope_root_ids = [FEISHU_COMPANY_ROOT_DEPARTMENT_ID]
+            external_request_id = company_root_payload.get("request_id") or ""
+            nodes[FEISHU_COMPANY_ROOT_DEPARTMENT_ID] = {
+                "id": FEISHU_COMPANY_ROOT_DEPARTMENT_ID,
+                "name": FEISHU_COMPANY_ROOT_DEPARTMENT_NAME,
+                "parent_id": None,
+            }
+            for child in company_root_payload["items"]:
+                upsert_node(child, FEISHU_COMPANY_ROOT_DEPARTMENT_ID)
+        else:
+            scopes_started_at = time.perf_counter()
+            scopes_payload, error = _feishu_get_paginated(
+                _get_config_value(config, "user_sync_scopes_url", FEISHU_CONTACT_SCOPES_URL),
                 tenant_access_token,
-                params={
-                    "department_ids": scope_root_ids[start:start + 50],
-                    **({"department_id_type": department_id_type} if department_id_type else {}),
-                },
+                params=department_params,
                 config=config,
+                item_key="department_ids",
             )
             if error:
                 return error
-            external_request_id = detail_payload.get("request_id") or external_request_id
-            for department in detail_payload["items"]:
-                upsert_node(department)
-        root_details_duration_ms = round((time.perf_counter() - root_details_started_at) * 1000)
+            scopes_duration_ms = round((time.perf_counter() - scopes_started_at) * 1000)
 
-        children_params = {**department_params, "fetch_child": "true"}
+            invalid_scope_root_ids = {"", FEISHU_COMPANY_ROOT_DEPARTMENT_ID, "__all__", "**all**"}
+            for department_id in scopes_payload["items"]:
+                normalized_id = str(department_id or "").strip()
+                if normalized_id not in invalid_scope_root_ids and normalized_id not in scope_root_ids:
+                    scope_root_ids.append(normalized_id)
 
-        def fetch_children(scope_root_id: str):
-            child_payload, error = _feishu_get_paginated(
-                _get_config_value(config, "user_sync_departments_url", FEISHU_DEPARTMENT_CHILDREN_URL).format(
-                    department_id=scope_root_id
-                ),
-                tenant_access_token,
-                params=children_params,
-                config=config,
-            )
-            return scope_root_id, child_payload, error
+            external_request_id = scopes_payload.get("request_id") or ""
 
-        children_started_at = time.perf_counter()
-        if scope_root_ids:
-            with ThreadPoolExecutor(
-                max_workers=min(FEISHU_DEPARTMENT_CHILDREN_MAX_WORKERS, len(scope_root_ids))
-            ) as executor:
-                child_requests = [executor.submit(fetch_children, scope_root_id) for scope_root_id in scope_root_ids]
-                for child_request in child_requests:
-                    scope_root_id, child_payload, error = child_request.result()
-                    if error:
-                        return error
-                    external_request_id = child_payload.get("request_id") or external_request_id
-                    for child in child_payload["items"]:
-                        upsert_node(child, scope_root_id)
-        children_duration_ms = round((time.perf_counter() - children_started_at) * 1000)
+            root_details_started_at = time.perf_counter()
+            for start in range(0, len(scope_root_ids), 50):
+                detail_payload, error = _feishu_get_paginated(
+                    _get_config_value(config, "user_sync_departments_batch_url", FEISHU_DEPARTMENTS_BATCH_URL),
+                    tenant_access_token,
+                    params={
+                        "department_ids": scope_root_ids[start:start + 50],
+                        **({"department_id_type": department_id_type} if department_id_type else {}),
+                    },
+                    config=config,
+                )
+                if error:
+                    return error
+                external_request_id = detail_payload.get("request_id") or external_request_id
+                for department in detail_payload["items"]:
+                    upsert_node(department)
+            root_details_duration_ms = round((time.perf_counter() - root_details_started_at) * 1000)
+
+            children_params = {**department_params, "fetch_child": "true"}
+
+            def fetch_children(scope_root_id: str):
+                child_payload, child_error = _fetch_department_children(
+                    config, tenant_access_token, scope_root_id, children_params
+                )
+                return scope_root_id, child_payload, child_error
+
+            children_started_at = time.perf_counter()
+            if scope_root_ids:
+                with ThreadPoolExecutor(
+                    max_workers=min(FEISHU_DEPARTMENT_CHILDREN_MAX_WORKERS, len(scope_root_ids))
+                ) as executor:
+                    child_requests = [executor.submit(fetch_children, scope_root_id) for scope_root_id in scope_root_ids]
+                    for child_request in child_requests:
+                        _scope_root_id, child_payload, error = child_request.result()
+                        if error:
+                            return error
+                        external_request_id = child_payload.get("request_id") or external_request_id
+                        for child in child_payload["items"]:
+                            upsert_node(child, _scope_root_id)
+            children_duration_ms = round((time.perf_counter() - children_started_at) * 1000)
 
         child_ids_by_parent: dict[str, list[str]] = {}
         roots = []
@@ -175,6 +197,7 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
         total_duration_ms = round((time.perf_counter() - operation_started_at) * 1000)
         server_timing = ", ".join([
             f"feishu-token;dur={token_duration_ms}",
+            f"feishu-company-root;dur={company_root_duration_ms}",
             f"feishu-scopes;dur={scopes_duration_ms}",
             f"feishu-root-details;dur={root_details_duration_ms}",
             f"feishu-children;dur={children_duration_ms}",
@@ -199,7 +222,7 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
 
         source = kwargs.get("source")
         root_department_id = str(get_user_sync_business_value(source, "root_department_id", "") or "").strip()
-        if root_department_id in {"", "0", "__all__", "**all**"}:
+        if root_department_id in {"", "__all__", "**all**"}:
             return CapabilityExecutionResult.failed_result(
                 "Feishu user synchronization requires a visible department root",
                 code="provider.invalid_config",
@@ -212,16 +235,15 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
 
         department_id_type = get_user_sync_business_value(source, "department_id_type", None)
         user_id_type = get_user_sync_business_value(source, "user_id_type", None)
+        if root_department_id == FEISHU_COMPANY_ROOT_DEPARTMENT_ID:
+            department_id_type = FEISHU_DEFAULT_DEPARTMENT_ID_TYPE
 
         dept_params: dict = {"page_size": 50, "fetch_child": "true"}
         if department_id_type:
             dept_params["department_id_type"] = department_id_type
 
-        department_payload, error = _feishu_get_paginated(
-            _get_config_value(config, "user_sync_departments_url", FEISHU_DEPARTMENT_CHILDREN_URL).format(department_id=root_department_id),
-            tenant_access_token,
-            params=dept_params,
-            config=config,
+        department_payload, error = _fetch_department_children(
+            config, tenant_access_token, root_department_id, dept_params
         )
         if error:
             return error

@@ -9,6 +9,7 @@ from .client import (
     _department_tree,
     _fetch_all_users,
     _get_access_token,
+    _map_wecom_request_exception,
     _request_get,
     _resolved_url,
     _validate_credentials,
@@ -40,22 +41,12 @@ class WeComUserSyncAdapter(BaseUserSyncAdapter):
             return error
         try:
             departments = cls._departments(config, token)
-        except requests.Timeout:
-            return CapabilityExecutionResult.failed_result(
-                "WeCom department request timed out",
-                code="provider.timeout",
-                retryable=True,
-            )
-        except ValueError as error:
-            return CapabilityExecutionResult.failed_result(
-                str(error) or "WeCom department response is invalid",
-                code="provider.invalid_response",
-            )
-        except requests.RequestException:
-            return CapabilityExecutionResult.failed_result(
-                "WeCom department request failed",
-                code="provider.request_failed",
-                retryable=True,
+        except (ValueError, requests.Timeout, requests.RequestException) as error:
+            return _map_wecom_request_exception(
+                error,
+                timeout_message="WeCom department request timed out",
+                invalid_message="WeCom department response is invalid",
+                request_failed_message="WeCom department request failed",
             )
         return CapabilityExecutionResult.success_result(
             "WeCom department options loaded",
@@ -83,22 +74,12 @@ class WeComUserSyncAdapter(BaseUserSyncAdapter):
             return error
         try:
             departments = cls._departments(config, token, root_department_id)
-        except requests.Timeout:
-            return CapabilityExecutionResult.failed_result(
-                "WeCom department request timed out",
-                code="provider.timeout",
-                retryable=True,
-            )
-        except ValueError as error:
-            return CapabilityExecutionResult.failed_result(
-                str(error) or "WeCom department response is invalid",
-                code="provider.invalid_response",
-            )
-        except requests.RequestException:
-            return CapabilityExecutionResult.failed_result(
-                "WeCom department request failed",
-                code="provider.request_failed",
-                retryable=True,
+        except (ValueError, requests.Timeout, requests.RequestException) as error:
+            return _map_wecom_request_exception(
+                error,
+                timeout_message="WeCom department request timed out",
+                invalid_message="WeCom department response is invalid",
+                request_failed_message="WeCom department request failed",
             )
         if not include_child:
             departments = [
