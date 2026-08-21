@@ -1,5 +1,4 @@
 import pytest
-
 from core.collection.contracts import AccessProbeStatus
 from plugins.inputs.network.snmp_facts import SnmpFacts
 
@@ -51,7 +50,7 @@ async def test_snmp_probe_ready_on_successful_get(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_snmp_probe_uses_fixed_timeout_5_retries_2(monkeypatch):
+async def test_snmp_probe_uses_fixed_timeout_10_retries_1(monkeypatch):
     facts = _make_facts(timeout=1, retries=0)
     captured = {}
 
@@ -69,7 +68,7 @@ async def test_snmp_probe_uses_fixed_timeout_5_retries_2(monkeypatch):
         fake_udp,
     )
     await facts.probe()
-    assert captured["opts"] == {"timeout": 5, "retries": 2}
+    assert captured["opts"] == {"timeout": 10, "retries": 1}
 
 
 @pytest.mark.asyncio
@@ -82,3 +81,37 @@ async def test_snmp_probe_is_native_async(monkeypatch):
     monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get_cmd)
     result = await facts.probe()
     assert result.status == AccessProbeStatus.READY
+
+
+@pytest.mark.asyncio
+async def test_snmp_internal_exception_logs_sampled_sanitized_call_chain(monkeypatch):
+    facts = _make_facts(
+        model_id="network",
+        plugin_name="snmp_facts",
+        collection_task_id="snmp-task-7",
+        collection_plugin_ref="network.config",
+        _log_plugin_call_chain=True,
+    )
+    error_logs = []
+
+    async def broken_collect():
+        raise RuntimeError("community=must-not-be-logged")
+
+    def capture_error(message, *args):
+        error_logs.append(message % args if args else message)
+
+    monkeypatch.setattr(facts, "collect", broken_collect)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.logger.error", capture_error)
+
+    result = await facts.list_all_resources()
+
+    assert result["success"] is False
+    assert len(error_logs) == 1
+    assert "event=plugin_exception" in error_logs[0]
+    assert "task_id=snmp-task-7" in error_logs[0]
+    assert "plugin_ref=network.config" in error_logs[0]
+    assert "target=127.0.0.1" in error_logs[0]
+    assert "error_type=RuntimeError" in error_logs[0]
+    assert ":broken_collect" in error_logs[0]
+    assert "community" not in error_logs[0]
+    assert "must-not-be-logged" not in error_logs[0]

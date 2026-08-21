@@ -41,14 +41,17 @@ class PluginExecutor:
             采集结果
         """
         source = self.plugin_resolution.source if self.plugin_resolution else "oss"
-        logger.info(f"Executing plugin: model_id={self.model}, executor={self.executor_config.executor_type}, source={source}")
+        logger.debug(
+            "event=plugin_executor_started model_id=%s executor=%s source=%s target=%s",
+            self.model,
+            self.executor_config.executor_type,
+            source,
+            self.params.get("host") or self.params.get("ip") or "logical",
+        )
 
         collector_instance = await self._prepare_collector()
-        logger.info("⏳ Executing collection...")
         # 所有注册插件必须暴露异步契约；同步 SDK 由插件自身用 to_thread 包装。
-        result = await collector_instance.list_all_resources()
-        logger.info("✅ Collection completed")
-        return result
+        return await collector_instance.list_all_resources()
 
     async def probe(self) -> AccessProbeResult:
         """执行插件声明的最小协议预检；未声明时不得伪造 READY。"""
@@ -116,14 +119,10 @@ class PluginExecutor:
     @staticmethod
     def _load_collector(module_name: str, class_name: str):
         """动态加载采集器类"""
-        try:
-            module = importlib.import_module(module_name)
-            collector_class = getattr(module, class_name)
-            logger.debug(f"✅ Collector loaded: {module_name}.{class_name}")
-            return collector_class
-        except Exception as e:
-            logger.error(f"❌ Failed to load collector: {e}")
-            raise
+        module = importlib.import_module(module_name)
+        collector_class = getattr(module, class_name)
+        logger.debug(f"✅ Collector loaded: {module_name}.{class_name}")
+        return collector_class
 
     def _load_collector_with_fallback(self, collector_info: Dict[str, str]):
         try:
@@ -134,7 +133,9 @@ class PluginExecutor:
 
             if self.strict_enterprise:
                 logger.error(
-                    f"Strict enterprise mode enabled: model_id={self.model}, selected_source=enterprise, " f"strict=true, failure_reason={exc}"
+                    "event=plugin_enterprise_load_failed model_id=%s selected_source=enterprise " "strict=true error_type=%s",
+                    self.model,
+                    type(exc).__name__,
                 )
                 raise
 
@@ -142,7 +143,9 @@ class PluginExecutor:
                 raise
 
             logger.warning(
-                f"Plugin fallback triggered: model_id={self.model}, failed_source=enterprise, " f"fallback_source=oss, failure_reason={exc}"
+                "event=plugin_fallback model_id=%s failed_source=enterprise " "fallback_source=oss error_type=%s",
+                self.model,
+                type(exc).__name__,
             )
 
             self.executor_config = self.fallback_executor_config

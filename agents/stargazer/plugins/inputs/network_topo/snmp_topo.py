@@ -158,8 +158,8 @@ class SnmpAuth(object):
         privacy: str = None,
         authkey: str = None,
         privkey: str = None,
-        timeout: int = 5,
-        retries: int = 2,
+        timeout: int = 10,
+        retries: int = 1,
     ):
         self.cmdGen = cmdGen  # 保留兼容参数；原生 asyncio 路径不再使用
         self.version = version
@@ -244,8 +244,8 @@ class SnmpTopo:
         self.privacy = kwargs.get("privacy")
         self.authkey = kwargs.get("authkey")
         self.privkey = kwargs.get("privkey")
-        self.timeout = int(kwargs.get("timeout", 5))
-        self.retries = int(kwargs.get("retries", 2))
+        self.timeout = int(kwargs.get("timeout", 10))
+        self.retries = int(kwargs.get("retries", 1))
         self.snmp_port = int(kwargs.get("snmp_port", 161))  # 默认 SNMP 端口为 161
         self.topology_protocols = kwargs.get("topology_protocols")
         self.oids = self._build_oids(self.topology_protocols)

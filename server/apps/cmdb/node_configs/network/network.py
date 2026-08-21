@@ -2,8 +2,8 @@
 # @File: network.py
 # @Time: 2025/11/13 14:21
 # @Author: windyzhao
-from apps.cmdb.node_configs.base import BaseNodeParams
 from apps.cmdb.models.collect_model import normalize_topology_contract
+from apps.cmdb.node_configs.base import BaseNodeParams
 
 
 class NetworkNodeParams(BaseNodeParams):
@@ -17,6 +17,7 @@ class NetworkNodeParams(BaseNodeParams):
         self.host_field = "ip_addr"
         self.topology_contract = normalize_topology_contract(getattr(self.instance, "params", {}))
         self.has_network_topo = self.topology_contract["has_network_topo"]
+        self.timeout = int(self.credential.get("timeout", 10))
 
     def set_credential(self, *args, **kwargs):
         """
@@ -31,8 +32,8 @@ class NetworkNodeParams(BaseNodeParams):
         #     "privacy": "aes",
         #     "authkey": "WeOps@2024",
         #     "privkey": "1145141919",
-        #     "timeout": 5,
-        #     "retries": 3,
+        #     "timeout": 10,
+        #     "retries": 1,
         #     "snmp_port": 161,
         #     "community": "",
         # }
@@ -42,6 +43,8 @@ class NetworkNodeParams(BaseNodeParams):
         _privkey = self._secret_env_name("privkey")
         credential_data = {
             "snmp_port": self.credential.get("snmp_port", 161),
+            "timeout": self.credential.get("timeout", 10),
+            "retries": self.credential.get("retries", 1),
             "community": "${" + _community + "}",  # 团体字 仅v1/v2c使用
             "version": self.credential.get("version", ""),
             "username": self.credential.get("username", ""),
@@ -83,6 +86,8 @@ class NetworkNodeParams(BaseNodeParams):
         for index, credential in enumerate(self.credential_pool or []):
             item = {
                 "snmp_port": credential.get("snmp_port", 161),
+                "timeout": credential.get("timeout", 10),
+                "retries": credential.get("retries", 1),
                 "community": "${" + self._secret_env_name("community", index) + "}",
                 "version": credential.get("version", ""),
                 "username": credential.get("username", ""),
@@ -93,8 +98,8 @@ class NetworkNodeParams(BaseNodeParams):
                 "privkey": "${" + self._secret_env_name("privkey", index) + "}",
                 "has_network_topo": self.has_network_topo,
                 # 逗号串而非列表：下发经 custom_headers 的 str() 后 agent 才能正确 split 解析；
-            # 列表会被 str() 成 "['lldp', ...]" repr，导致 agent 解析为空、不采 LLDP/CDP/FDB。
-            "topology_protocols": ",".join(self.topology_contract["topology_protocols"]),
+                # 列表会被 str() 成 "['lldp', ...]" repr，导致 agent 解析为空、不采 LLDP/CDP/FDB。
+                "topology_protocols": ",".join(self.topology_contract["topology_protocols"]),
                 "topology_fallback_strategy": self.topology_contract["topology_fallback_strategy"],
                 "min_confidence": self.topology_contract["min_confidence"],
             }

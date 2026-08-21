@@ -100,7 +100,7 @@ class AsyncProtocolPreflight:
             )
         if kind == "remote":
             if not self._reachability_enabled:
-                logger.info(
+                logger.debug(
                     "event=preflight_reachability_skipped task_id=%s " "target=%s kind=remote",
                     request.task_id,
                     target,
@@ -148,7 +148,7 @@ class AsyncProtocolPreflight:
         writer = None
         try:
             if not self._reachability_enabled:
-                logger.info(
+                logger.debug(
                     "event=preflight_reachability_skipped task_id=%s " "target=%s kind=%s",
                     request.task_id,
                     target,

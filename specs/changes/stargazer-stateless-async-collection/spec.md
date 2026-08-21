@@ -5,16 +5,22 @@ Status: approved for implementation (COMPLETE-PLAN-2026-08-06.md); code convergi
 2026-08-14 补充锁定：以同目录
 `collection-failure-remediation-plan-2026-08-14.md` 为准。关闭
 `PREFLIGHT_REACHABILITY` 时跳过全部采集前探测但保留出站安全检查；全局容量默认
-`MAX_ACTIVE_RUNS=16`、`MAX_ACTIVE_TARGETS=150`、`TARGET_TASK_WINDOW=150`；单目标发布失败不得取消
+`MAX_ACTIVE_RUNS=16`、`MAX_ACTIVE_TARGETS=250`、`TARGET_TASK_WINDOW=250`；单目标发布失败不得取消
 同 Run 其他目标，Run 汇总为 `completed_with_errors`。
+
+2026-08-20 容量补充锁定：单 Pod 默认目标并发与任务窗口由 `150/150` 提升为 `250/250`；
+`collection_capacity` 同步记录进程 CPU/RSS/线程/FD 与 cgroup CPU、内存、throttling，供压测后
+判断是否继续扩容。下文保留的 `150` 仅为既有验证示例，不代表当前默认值。
 
 2026-08-17 结果发布补充锁定：发布状态、成功/失败结果微批、超时拆分、NATS 重连与
 Redis 结果事件隔离以同目录 `nats-result-publishing-final-plan-2026-08-17.md` 为准；该文档替代
-2026-08-14 方案中的结果发布和单一 `PUBLISH_TIMEOUT` 设计，不改变 `16/150/150` 全局容量结论。
+2026-08-14 方案中的结果发布和单一 `PUBLISH_TIMEOUT` 设计；容量默认值后续由上述 2026-08-20
+锁定调整为 `16/250/250`。
 
 2026-08-20 SangforSCP 补充锁定：企业版配置采集的原生 HTTP async、300 秒单一总预算、
 完整快照失败语义、分页/对象/字节边界和发布诊断字段以同目录
-`sangforscp-async-remediation-2026-08-20.md` 为准；不改变 `16/150/150` 或 NATS 单 writer。
+`sangforscp-async-remediation-2026-08-20.md` 为准；不改变 NATS 单 writer，容量默认值以本文件
+上述 `16/250/250` 补充锁定为准。
 
 ## 摘要
 
@@ -550,6 +556,22 @@ HTTP 分片；本变更不提前实现。
 不再提供插件专用线程池活跃数或队列长度，因为该线程池不存在。日志只记录 `task_id`、
 `target_id`/目标哈希、`plugin_ref`、`credential_id` 和稳定错误码，严禁输出凭据
 明文或认证请求头。
+
+生产 INFO 日志以 Run 为粒度：开始、聚合结果、终态各一条，目标失败按错误码计数并最多保留
+3 个脱敏样本。插件加载步骤、预期内协议超时、预检跳过和发布成功降为 DEBUG，不逐目标输出
+traceback 或重复成功/失败文案。主日志写 stdout，由日志平台按结构化字段建立视图；网络设备
+`network.config` / `snmp_facts` 额外写入一个有大小上限和保留数的独立滚动文件，其他插件不得混入；
+NATS、Redis、租约、发布不确定等基础设施异常继续保留 WARNING/ERROR。
+插件执行、协议预检及插件内部吞掉的异常通过 `plugin_exception` 保留每 Run 最多 3 条调用链样本；
+样本必须带任务、插件、模型和目标上下文，调用链仅包含文件、行号、函数名，禁止记录异常正文、
+源码行、请求头或凭据字段。
+Run 开始、进度、汇总和终态日志必须携带 `instance_id`。生产 INFO 以约 10% 完成度输出有界
+`collection_progress`，并为每个目标输出且只输出一条 `target_collection_started`。协议探测无响应使用
+`target_collection_failed stage=access_probe reason=timeout` 提供最多 3 个样本，并在 Run 汇总保留
+`protocol_no_response` 计数，不得降级为含混的 `credentials_exhausted`。发布失败逐 Run 最多输出
+3 条 `result_publish_failed`，完整计数与样本在 Run 汇总聚合；成功发布不输出逐目标终态日志。
+`collection_capacity` 保留稳定英文 `event`，正文使用中文分区、单位、状态和阈值提示；底层不可用的
+资源采样显示为“不可用”，机器指标继续由健康接口和 Prometheus 字段提供。
 
 ## 测试方案
 

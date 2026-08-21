@@ -1,7 +1,7 @@
 # Stargazer 配置采集调用链
 
 > 状态：按当前代码实现整理
-> 更新日期：2026-08-19
+> 更新日期：2026-08-20
 > 范围：`agents/stargazer` 配置采集；同时说明 Job 与 Protocol 两条执行分支
 
 ## 1. 结论
@@ -15,6 +15,10 @@ Job 与 Protocol 采集共用同一套异步框架：HTTP 接入、Run 租约、
   `local.execute.<node_id>` 或 `ssh.execute.<node_id>` 执行采集脚本。
 - **Protocol**：不查询 `node_info`，直接按照插件 YAML 加载采集类；原生异步依赖直接
   `await`，同步 SDK 由插件使用 `asyncio.to_thread()` 隔离。
+
+异常排查统一检索 `event=plugin_exception`。每个 Run 最多输出 3 个调用链样本，字段包含
+`task_id`、`plugin_ref`、`model_id`、`plugin_name`、`target`、`error_type` 和 `call_chain`；
+调用链只保留文件、行号与函数名，不包含异常正文、源码行和凭据内容。
 
 ## 2. 总体调用链
 
@@ -46,8 +50,8 @@ flowchart TD
     H3 --> I["TargetCollectionExecutor.execute()"]
 
     I --> J["跨 Run 公平调度器"]
-    J --> J1["全局目标并发<br/>MAX_ACTIVE_TARGETS=150"]
-    J1 --> J2["任务窗口<br/>TARGET_TASK_WINDOW=150"]
+    J --> J1["全局目标并发<br/>MAX_ACTIVE_TARGETS=250"]
+    J1 --> J2["任务窗口<br/>TARGET_TASK_WINDOW=250"]
 
     J2 --> K["每个 Target 独立执行"]
     K --> L["出站安全检查 / 可选预检"]
@@ -275,8 +279,8 @@ Server 补齐节点信息。
 
 ```text
 MAX_ACTIVE_RUNS=16
-MAX_ACTIVE_TARGETS=150
-TARGET_TASK_WINDOW=150
+MAX_ACTIVE_TARGETS=250
+TARGET_TASK_WINDOW=250
 ```
 
 - `MAX_ACTIVE_RUNS`：单个 Stargazer 进程同时接纳的 Collection Run 上限。
