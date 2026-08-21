@@ -9,6 +9,7 @@
 | 领域术语与产品取舍 | `CONTEXT.md`、`PRODUCT.md` |
 | 长期业务与工程事实 | `specs/capabilities/` |
 | 后端编码与高风险规则 | `specs/capabilities/backend-engineering.md` |
+| 日志可诊断性审计与修复 | `specs/capabilities/backend-engineering.md#8-日志可诊断性`、`.claude/skills/bklite-log-diagnosability/` |
 | 安全、可靠性与质量红线 | `specs/capabilities/{platform-security,platform-reliability,engineering-quality}.md` |
 | 对外 API 暴露与网关规范 | `specs/capabilities/openapi-gateway.md` |
 | 当前跨会话变更 | `specs/changes/<feature>/spec.md` |
@@ -61,6 +62,7 @@
 - 凭据只由环境注入，不提交或记录 `.env`、keystore、token。
 - 数据库访问使用 Django ORM，禁止 raw SQL、`.raw()`、`RawSQL`、`cursor.execute`。
 - `server/apps/<app>/` 引入日志统一用 `from apps.core.logger import {app_name}_logger as logger`（见 `server/apps/core/logger.py`），禁止 `loguru` 或就地 `logging.getLogger`。
+- 日志使用稳定事件模板和惰性参数；禁止记录凭据、认证头、原始请求/响应/`kwargs`。关键失败只由终态所有者记录一次并保留 traceback，高频循环只输出有界汇总；审计或修复时使用 `bklite-log-diagnosability` skill。
 - 非关键、可重建的外部资源失败不得阻断服务启动。
 - 新增对外 API 一律经 OpenAPI 网关暴露（内部函数用 `@openapi_expose`，外部服务写 KV 注册表），不得新增散落的 `open_api` 端点或对外端口；暴露端点必须附双租户测试并登记。见 `specs/capabilities/openapi-gateway.md`。
 - 向目标主机下发或执行操作必须有资源边界、幂等/回滚和相应测试。
