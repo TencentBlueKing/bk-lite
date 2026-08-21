@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "OperationAnalysis 模块目标架构",
+    "output": "operation-analysis-target.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1500, 720],
+    "views": [
+      {"id": "query", "label": "只读数据能力", "focus": ["entry", "scope", "canvas", "planner", "budget", "external"], "note": "Canvas 只引用注册的数据能力；QueryPlan 编译 scope、参数、目标、复杂度和 read-only contract，再由共享预算执行。"},
+      {"id": "report", "label": "可重放报告运行", "focus": ["run", "bundle", "render", "budget", "effect", "consumers"], "note": "ExecutionBundle 冻结 scope、canvas、query plan digest 和数据 generation；RenderSlot 与 EffectOutbox 使用 token lease。"},
+      {"id": "share", "label": "统一消费边界", "focus": ["scope", "share", "planner", "budget"], "note": "普通查看、分享和 Render Session 共用同一 Scope/Plan compiler，仅使用不同 budget profile。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "security-group", "label": "可信命令与 Scope", "wraps": ["entry", "scope", "share"], "pad": 18},
+    {"kind": "region", "label": "画布与只读查询计划", "wraps": ["canvas", "planner", "budget", "external"], "pad": 18},
+    {"kind": "region", "label": "持久运行、渲染与副作用", "wraps": ["run", "bundle", "render", "effect", "consumers"], "pad": 18}
+  ],
+  "components": [
+    {"id": "entry", "type": "frontend", "label": "HTTP / Beat Adapters", "sublabel": "edit / view / import / schedule", "pos": [20, 310], "size": [190, 100]},
+    {"id": "scope", "type": "security", "label": "OperationAccessScope", "sublabel": "actor + team + resource revision", "tag": "统一授权", "pos": [255, 310], "size": [210, 100]},
+    {"id": "canvas", "type": "database", "label": "Canvas Aggregate", "sublabel": "typed widgets + dependency index", "tag": "显式引用", "pos": [510, 310], "size": [210, 100]},
+    {"id": "planner", "type": "backend", "label": "ReadOnly QueryPlan Compiler", "sublabel": "capability + params + cost + digest", "tag": "禁止任意方法/SQL", "pos": [765, 310], "size": [220, 100]},
+    {"id": "budget", "type": "messagebus", "label": "Connector Budget Gateway", "sublabel": "team / connector / run / share", "tag": "配额 + 背压", "pos": [1030, 310], "size": [210, 100]},
+    {"id": "external", "type": "external", "label": "Read-only External Ports", "sublabel": "NATS registry / DB role / HTTP / WeOps", "pos": [1285, 310], "size": [195, 100]},
+    {"id": "run", "type": "database", "label": "ScheduleRun / Execution", "sublabel": "cursor + step + lease token", "tag": "可补扫", "pos": [510, 80], "size": [210, 100]},
+    {"id": "bundle", "type": "database", "label": "ExecutionBundle", "sublabel": "scope + canvas + plans + generations", "tag": "可重放", "pos": [765, 80], "size": [220, 100]},
+    {"id": "render", "type": "backend", "label": "Render Slot Worker", "sublabel": "token + heartbeat + bounded browser", "tag": "公平调度", "pos": [1030, 80], "size": [210, 100]},
+    {"id": "share", "type": "security", "label": "Share Session Adapter", "sublabel": "principal + declared interactions", "pos": [255, 545], "size": [210, 100]},
+    {"id": "effect", "type": "database", "label": "Artifact + Effect Outbox", "sublabel": "PDF/object/email intents + token", "tag": "幂等副作用", "pos": [1030, 545], "size": [210, 100]},
+    {"id": "consumers", "type": "external", "label": "MinIO / SMTP / Audit", "sublabel": "idempotent consumers", "pos": [1285, 545], "size": [195, 100]}
+  ],
+  "connections": [
+    {"id": "entry_scope", "from": "entry", "to": "scope", "variant": "security"},
+    {"id": "scope_canvas", "from": "scope", "to": "canvas", "variant": "security"},
+    {"id": "canvas_planner", "from": "canvas", "to": "planner", "variant": "emphasis"},
+    {"id": "planner_budget", "from": "planner", "to": "budget", "variant": "emphasis"},
+    {"id": "budget_external", "from": "budget", "to": "external", "variant": "emphasis"},
+    {"id": "scope_share", "from": "scope", "to": "share", "variant": "security"},
+    {"id": "canvas_run", "from": "canvas", "to": "run", "variant": "default"},
+    {"id": "run_bundle", "from": "run", "to": "bundle", "variant": "security"},
+    {"id": "bundle_render", "from": "bundle", "to": "render", "variant": "emphasis"},
+    {"id": "render_budget", "from": "render", "to": "budget", "variant": "security"},
+    {"id": "budget_effect", "from": "budget", "to": "effect", "variant": "emphasis"},
+    {"id": "effect_consumers", "from": "effect", "to": "consumers", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "短期：收紧数据能力", "items": ["NATS 改为批准的 DataCapability registry；数据库账号强制只读、SQL AST/statement timeout/response bytes；DB 与 WeOps 接入统一 egress policy", "建立 CanvasDependency 索引；DataSource/Connection 删除或缩权先返回受影响画布、分享和订阅，禁止静默断链"]},
+    {"dot": "violet", "title": "中期：查询计划与持久运行", "items": ["所有 viewer/share/render 查询编译为 ScopedQueryPlan，统一限制时间、行/字节、复杂度、并发和 connector 配额", "Execution/Excel/Render/Delivery 使用同一 token lease、heartbeat、retry_at 和 reaper；重试拆成持久 StepWorkItem，不在一个任务里紧循环"]},
+    {"dot": "emerald", "title": "长期：可重放报告与可重建投影", "items": ["ExecutionBundle 冻结 datasource query plan、connection endpoint digest、transform/excel generation；同一 execution 重试保持相同语义", "Canvas JSON 迁移为 typed aggregate + dependency projection；导入导出、分享、报告和网络拓扑只消费公开 Port，不解析彼此私有 JSON"]}
+  ]
+}

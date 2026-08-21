@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Log 模块现状架构",
+    "output": "log-current.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/zhouzhuangjie/bk-lite-1.git", "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"},
+    "viewBox": [1460, 790],
+    "views": [
+      {"id": "control", "label": "采集与配置控制面", "focus": ["entry", "collect", "node", "extractor", "vector"], "note": "Log 保存采集实例与配置引用，实际配置由 NodeMgmt 持有；提取规则编译成全局 generation 快照供中心 Vector 拉取。"},
+      {"id": "query", "label": "日志查询数据面", "focus": ["entry", "scope", "query", "vm"], "note": "HTTP/NATS 查询先解析可信团队与日志分组，再构造 LogsQL 访问 VictoriaLogs；返回数量有界但时间范围和总查询预算未统一。"},
+      {"id": "alert", "label": "策略与告警生命周期", "focus": ["policy", "beat", "scan", "facts", "notify"], "note": "每策略一个 Beat 任务，游标和事件 ID 支持重试；分组异常却会降级为更宽 collect_type 查询，通知在数据库锁内同步发送。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "region", "label": "Log 接口与可信范围", "wraps": ["entry", "scope"], "pad": 18},
+    {"kind": "region", "label": "采集配置控制面", "wraps": ["collect", "node", "extractor", "vector"], "pad": 18},
+    {"kind": "region", "label": "查询与告警数据面", "wraps": ["query", "policy", "beat", "scan", "facts", "notify"], "pad": 18}
+  ],
+  "components": [
+    {"id": "entry", "type": "frontend", "label": "HTTP / NATS Adapters", "sublabel": "17 routers + 6 NATS handlers", "pos": [20, 300], "size": [180, 100]},
+    {"id": "scope", "type": "security", "label": "Access Scope", "sublabel": "current team + LogGroup 权限", "tag": "请求查询 fail-closed", "pos": [235, 300], "size": [205, 100], "sources": [{"path": "server/apps/log/services/access_scope.py", "line": 1, "label": "可信范围解析"}]},
+    {"id": "collect", "type": "backend", "label": "Collector Control", "sublabel": "CollectType / Instance / Config ref", "tag": "跨库事务幻觉", "pos": [485, 78], "size": [220, 100], "sources": [{"path": "server/apps/log/services/collect_type.py", "line": 38, "label": "采集配置创建"}]},
+    {"id": "node", "type": "external", "label": "NodeMgmt Config", "sublabel": "实际配置与子配置下发", "tag": "无 desired/effective 状态", "pos": [750, 78], "size": [210, 100]},
+    {"id": "extractor", "type": "backend", "label": "Extractor Compiler", "sublabel": "rules + generation + checksum", "tag": "全局 singleton", "pos": [1005, 78], "size": [215, 100]},
+    {"id": "vector", "type": "external", "label": "中心 Vector / NATS", "sublabel": "pull YAML / ingest → VictoriaLogs", "tag": "无消费者 ACK", "pos": [1260, 78], "size": [180, 100]},
+    {"id": "query", "type": "backend", "label": "Search Service", "sublabel": "LogGroup builder + SSE tail", "tag": "每连接独立线程", "pos": [485, 300], "size": [220, 105]},
+    {"id": "vm", "type": "database", "label": "VictoriaLogs", "sublabel": "query / hits / tail / stats", "tag": "共享容量无预算", "pos": [750, 300], "size": [210, 105]},
+    {"id": "policy", "type": "database", "label": "Policy + PeriodicTask", "sublabel": "JSON condition / schedule / cursor", "tag": "每策略一任务", "pos": [485, 545], "size": [220, 105]},
+    {"id": "beat", "type": "messagebus", "label": "Celery / Beat", "sublabel": "singleton scan + bounded backfill", "pos": [750, 545], "size": [210, 105]},
+    {"id": "scan", "type": "backend", "label": "LogPolicyScan", "sublabel": "query / group / aggregate / lifecycle", "tag": "单策略可 1001 查询", "pos": [1005, 300], "size": [215, 105], "sources": [{"path": "server/apps/log/tasks/services/policy_scan.py", "line": 399, "label": "范围降级与扫描内核"}]},
+    {"id": "facts", "type": "database", "label": "Alert / Event / Snapshot", "sublabel": "DB + MinIO S3JSONField", "tag": "快照整表重写", "pos": [1005, 545], "size": [215, 105]},
+    {"id": "notify", "type": "external", "label": "SystemMgmt / Alerts", "sublabel": "通知渠道与生命周期事件", "tag": "锁内外部 I/O", "pos": [1260, 545], "size": [180, 105]}
+  ],
+  "connections": [
+    {"id": "entry_scope", "from": "entry", "to": "scope", "variant": "security"},
+    {"id": "scope_query", "from": "scope", "to": "query", "variant": "emphasis"},
+    {"id": "scope_collect", "from": "scope", "to": "collect"},
+    {"id": "collect_node", "from": "collect", "to": "node", "variant": "security"},
+    {"id": "node_extractor", "from": "node", "to": "extractor"},
+    {"id": "extractor_vector", "from": "extractor", "to": "vector", "variant": "emphasis"},
+    {"id": "query_vm", "from": "query", "to": "vm", "variant": "emphasis"},
+    {"id": "policy_beat", "from": "policy", "to": "beat", "variant": "emphasis"},
+    {"id": "beat_scan", "from": "beat", "to": "scan", "variant": "emphasis"},
+    {"id": "scan_vm", "from": "scan", "to": "vm", "variant": "security", "route": "straight", "fromSide": "left", "toSide": "right"},
+    {"id": "scan_facts", "from": "scan", "to": "facts", "variant": "security"},
+    {"id": "facts_notify", "from": "facts", "to": "notify", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "应保留的正确内核", "items": ["HTTP/NATS 都从服务端可信团队解析日志分组；无权限或解析失败时拒绝查询", "策略扫描使用 singleton、延迟窗口、有界回补、游标 CAS 和确定性 Event ID；Vector 发布使用 generation + checksum 丢弃陈旧任务"]},
+    {"dot": "rose", "title": "范围与副作用没有统一协议", "items": ["策略日志分组构建异常时回退为 collect_type 查询；条件字段和 group_by 缺少结构白名单并直接拼入 LogsQL", "Log 本地事务无法回滚 NodeMgmt RPC；通知发送和 MinIO 上传发生在数据库锁/事务内，失败恢复仍可能重复或漂移"]},
+    {"dot": "amber", "title": "容量由任务和连接隐式放大", "items": ["分组策略最多返回 1000 组并为每组再查样本，单策略可产生 1001 次 VictoriaLogs 请求且无全局预算", "每条 SSE tail 独占 daemon 线程和有界队列；结果条数有上限，但时间跨度、查询复杂度、团队配额与并发连接数未统一治理"]}
+  ]
+}

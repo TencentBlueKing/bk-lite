@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "APM 模块目标架构",
+    "output": "apm-target.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1480, 720],
+    "views": [
+      {"id": "access", "label": "组织感知 Trace 访问", "focus": ["entry", "scope", "planner", "store"], "note": "先从目录生成 AuthorizedTelemetryScope，再下推到查询计划；详情按可见 span 裁剪并保持图结构语义。"},
+      {"id": "runtime", "label": "预算化目录与策略运行", "focus": ["catalogRun", "scheduler", "scan", "store"], "note": "目录活动和策略目标都变为可分片 Run/WorkItem，由共享 VictoriaTraces 预算、公平性和背压控制。"},
+      {"id": "lifecycle", "label": "统一生命周期与副作用", "focus": ["scan", "reducer", "facts", "outbox", "consumers"], "note": "Reducer 原子写事件、证据意图和投递意图；带 token 的 lease worker 执行 MinIO 和通知。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "security-group", "label": "可信组织与遥测范围", "wraps": ["entry", "scope"], "pad": 18},
+    {"kind": "region", "label": "查询计划与共享容量", "wraps": ["planner", "scheduler", "store"], "pad": 18},
+    {"kind": "region", "label": "运行计划与领域事实", "wraps": ["catalogRun", "scan", "reducer", "facts", "outbox"], "pad": 18},
+    {"kind": "region", "label": "基础设施消费者", "wraps": ["consumers"], "pad": 18}
+  ],
+  "components": [
+    {"id": "entry", "type": "frontend", "label": "HTTP / Beat Adapters", "sublabel": "query / catalog / SLO / policy", "pos": [20, 310], "size": [180, 100]},
+    {"id": "scope", "type": "security", "label": "AuthorizedTelemetryScope", "sublabel": "team + service/instance identities", "tag": "Trace 图授权", "pos": [245, 310], "size": [225, 100]},
+    {"id": "planner", "type": "backend", "label": "Telemetry Query Planner", "sublabel": "scope + AST + cost + window", "tag": "授权下推", "pos": [520, 310], "size": [220, 100]},
+    {"id": "scheduler", "type": "messagebus", "label": "VT Budget Scheduler", "sublabel": "team / API / policy / dashboard", "tag": "公平 + 背压", "pos": [790, 310], "size": [220, 100]},
+    {"id": "store", "type": "database", "label": "VictoriaTraces Adapter", "sublabel": "bounded execution + cost metrics", "pos": [1060, 310], "size": [220, 100]},
+    {"id": "catalogRun", "type": "database", "label": "Catalog Reconcile Run", "sublabel": "cursor + partitions + lease", "tag": "批量 upsert", "pos": [520, 80], "size": [220, 100]},
+    {"id": "scan", "type": "database", "label": "Policy Scan WorkItem", "sublabel": "target + cursor + attempt + token", "tag": "成本上限", "pos": [790, 80], "size": [220, 100]},
+    {"id": "reducer", "type": "security", "label": "Lifecycle Reducer", "sublabel": "fencing + consecutive windows", "tag": "唯一状态裁决", "pos": [1300, 80], "size": [160, 100]},
+    {"id": "facts", "type": "database", "label": "Alert / Event / Evidence", "sublabel": "window facts + rollup", "tag": "可审计", "pos": [1300, 545], "size": [160, 100]},
+    {"id": "outbox", "type": "database", "label": "Effect Outbox", "sublabel": "object / notification intents", "tag": "token + lease + retry", "pos": [790, 545], "size": [220, 100]},
+    {"id": "consumers", "type": "external", "label": "MinIO / SystemMgmt / Alerts", "sublabel": "idempotent consumers", "pos": [520, 545], "size": [220, 100]}
+  ],
+  "connections": [
+    {"id": "entry_scope", "from": "entry", "to": "scope", "variant": "security"},
+    {"id": "scope_planner", "from": "scope", "to": "planner", "variant": "security"},
+    {"id": "planner_scheduler", "from": "planner", "to": "scheduler", "variant": "emphasis"},
+    {"id": "scheduler_store", "from": "scheduler", "to": "store", "variant": "emphasis"},
+    {"id": "catalog_scheduler", "from": "catalogRun", "to": "scheduler", "variant": "default"},
+    {"id": "scan_scheduler", "from": "scan", "to": "scheduler", "variant": "security"},
+    {"id": "store_reducer", "from": "store", "to": "reducer", "variant": "security"},
+    {"id": "reducer_scan", "from": "reducer", "to": "scan", "variant": "security"},
+    {"id": "reducer_facts", "from": "reducer", "to": "facts", "variant": "emphasis"},
+    {"id": "facts_outbox", "from": "facts", "to": "outbox", "variant": "emphasis"},
+    {"id": "outbox_consumers", "from": "outbox", "to": "consumers", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "短期：先修授权与 fencing", "items": ["Trace 列表按 AuthorizedTelemetryScope 查询；详情只返回当前组织可见 span，并显式标记跨范围边被裁剪", "Outbox 和 Snapshot worker 增加 claim_token；结果更新必须匹配 token，外部 I/O 移出数据库锁事务"]},
+    {"dot": "violet", "title": "中期：运行计划与共享预算", "items": ["保存策略时限制 endpoint×version 总成本；生成 ScanRun/WorkItem，按团队、服务和 VT 集群配额调度并补扫缺失 cursor", "Catalog reconcile 按 identity 批量 upsert，使用带 token 的 lease/cursor；Dashboard 复用短 TTL rollup，禁止每请求私有扇出无限放大"]},
+    {"dot": "emerald", "title": "长期：不可变窗口事实与可重建投影", "items": ["每次评估保存 WindowEvidence；AlertMetricSnapshot 只做有界 rollup，可从事件事实重建", "Trace/Span、RED、目录、策略与通知共享 scope digest、query plan digest、run identity 和成本观测，形成可审计链路"]}
+  ]
+}
