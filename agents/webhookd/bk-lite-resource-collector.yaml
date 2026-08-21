@@ -83,10 +83,6 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux
       serviceAccountName: kube-state-metrics
-      # 控制平面默认 NoSchedule；单节点集群否则采集 Pod 全部 Pending
-      tolerations:
-        - operator: Exists
-          effect: NoSchedule
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -281,10 +277,6 @@ spec:
       labels:
         app: telegraf-resource
     spec:
-      # 控制平面默认 NoSchedule；单节点集群否则 CMDB 资源采集 Pending
-      tolerations:
-        - operator: Exists
-          effect: NoSchedule
       containers:
         - name: telegraf
           image: __IMAGE_REGISTRY_PREFIX__/telegraf:1.29.5
