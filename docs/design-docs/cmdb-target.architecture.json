@@ -1,0 +1,179 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "CMDB 目标模块架构",
+    "output": "cmdb-target.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 760],
+    "views": [
+      {
+        "id": "deep-interface",
+        "label": "统一资产 Interface",
+        "focus": ["inbound_adapters", "application_interface", "asset_registry", "graph_port", "graph_adapters"],
+        "note": "调用方只学习 Command、Query 与一致性语义，不接触 GraphClient 方法。"
+      },
+      {
+        "id": "ingestion-capability",
+        "label": "来源无关的写入管线",
+        "focus": ["application_interface", "ingestion_pipeline", "asset_registry", "external_adapters"],
+        "note": "采集、扫描、同步和模块推送共享身份归一、验证、Upsert 与结果契约。"
+      },
+      {
+        "id": "reliability-model",
+        "label": "可靠性与投影",
+        "focus": ["asset_registry", "sync_reconciler", "delivery", "operation_store", "postgres"],
+        "note": "所有写入口进入统一操作账本，派生关系和跨模块通知经 Outbox 收敛。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "inbound_adapters",
+      "type": "backend",
+      "label": "Interface Adapters",
+      "sublabel": "HTTP / OpenAPI / NATS / Celery / Command",
+      "pos": [35, 320],
+      "size": [200, 86]
+    },
+    {
+      "id": "application_interface",
+      "type": "backend",
+      "label": "CMDB Application Interface",
+      "sublabel": "AssetCommand / AssetQuery / IngestCommand",
+      "tag": "统一鉴权、幂等与错误语义",
+      "pos": [285, 305],
+      "size": [230, 116]
+    },
+    {
+      "id": "catalog",
+      "type": "backend",
+      "label": "Catalog Module",
+      "sublabel": "模型、属性、约束与关系定义",
+      "pos": [585, 45],
+      "size": [235, 78]
+    },
+    {
+      "id": "asset_registry",
+      "type": "backend",
+      "label": "Asset Registry Module",
+      "sublabel": "身份、验证、CRUD、批量与查询",
+      "tag": "资产事实唯一写入口",
+      "pos": [585, 185],
+      "size": [235, 88]
+    },
+    {
+      "id": "ingestion_pipeline",
+      "type": "backend",
+      "label": "Ingestion Module",
+      "sublabel": "Collect / Scan / Sync / Module Push",
+      "pos": [585, 325],
+      "size": [235, 86]
+    },
+    {
+      "id": "sync_reconciler",
+      "type": "backend",
+      "label": "Sync Reconciler Module",
+      "sublabel": "租约、分区、快照、对账与补偿",
+      "pos": [585, 465],
+      "size": [235, 86]
+    },
+    {
+      "id": "delivery",
+      "type": "backend",
+      "label": "Projection & Delivery Module",
+      "sublabel": "关系投影、变更、订阅和跨模块交付",
+      "pos": [585, 605],
+      "size": [235, 86]
+    },
+    {
+      "id": "graph_port",
+      "type": "database",
+      "label": "Graph Repository Interface",
+      "sublabel": "Catalog / Asset / Relation 三类窄 Interface",
+      "pos": [895, 140],
+      "size": [240, 90]
+    },
+    {
+      "id": "operation_store",
+      "type": "database",
+      "label": "Operation & Outbox Store",
+      "sublabel": "幂等键 / lease / event / retry",
+      "pos": [925, 605],
+      "size": [240, 86]
+    },
+    {
+      "id": "graph_adapters",
+      "type": "database",
+      "label": "Graph Adapters",
+      "sublabel": "FalkorDB Adapter / Neo4j Adapter",
+      "tag": "共享契约测试",
+      "pos": [1190, 140],
+      "size": [200, 90]
+    },
+    {
+      "id": "external_adapters",
+      "type": "external",
+      "label": "Outbound Adapters",
+      "sublabel": "NodeMgmt / Stargazer / Monitor / SystemMgmt",
+      "pos": [895, 340],
+      "size": [240, 82]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "Django Operational DB",
+      "sublabel": "操作、任务、快照、投递状态",
+      "pos": [1190, 605],
+      "size": [200, 86]
+    }
+  ],
+  "boundaries": [
+    {"kind": "region", "label": "稳定的 CMDB Interface", "wraps": ["inbound_adapters", "application_interface"], "pad": 18},
+    {"kind": "region", "label": "按业务能力组织的深 Module", "wraps": ["catalog", "asset_registry", "ingestion_pipeline", "sync_reconciler", "delivery"], "pad": 20},
+    {"kind": "region", "label": "Ports 与可替换 Adapters", "wraps": ["graph_port", "operation_store", "graph_adapters", "external_adapters", "postgres"], "pad": 18}
+  ],
+  "connections": [
+    {"id": "adapters_to_interface", "from": "inbound_adapters", "to": "application_interface", "variant": "emphasis"},
+    {"id": "interface_to_asset", "from": "application_interface", "to": "asset_registry", "variant": "emphasis"},
+    {"id": "interface_to_catalog", "from": "application_interface", "to": "catalog"},
+    {"id": "interface_to_ingestion", "from": "application_interface", "to": "ingestion_pipeline"},
+    {"id": "interface_to_sync", "from": "application_interface", "to": "sync_reconciler"},
+    {"id": "interface_to_delivery", "from": "application_interface", "to": "delivery"},
+    {"id": "catalog_to_graph_port", "from": "catalog", "to": "graph_port"},
+    {"id": "asset_to_graph_port", "from": "asset_registry", "to": "graph_port", "variant": "emphasis"},
+    {"id": "ingestion_to_asset", "from": "ingestion_pipeline", "to": "asset_registry", "label": "规范化 Upsert"},
+    {"id": "sync_to_ingestion", "from": "sync_reconciler", "to": "ingestion_pipeline", "label": "对账命令"},
+    {"id": "delivery_to_operation", "from": "delivery", "to": "operation_store", "label": "Outbox 意图与消费状态", "labelAt": [873, 705]},
+    {"id": "graph_port_to_adapters", "from": "graph_port", "to": "graph_adapters", "variant": "emphasis"},
+    {"id": "operation_to_postgres", "from": "operation_store", "to": "postgres", "variant": "emphasis"},
+    {"id": "ingestion_to_external", "from": "ingestion_pipeline", "to": "external_adapters", "label": "执行 Port", "variant": "dashed"},
+    {"id": "delivery_to_external", "from": "delivery", "to": "external_adapters", "variant": "dashed"}
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "更深的 Module",
+      "items": [
+        "调用方只依赖少量 Command、Query 和结果契约",
+        "图查询、权限、幂等、唯一性和批量策略隐藏在 Module 内部"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "能力局部性",
+      "items": [
+        "Catalog、Asset、Ingestion、Sync、Delivery 各自拥有模型、用例和测试",
+        "HTTP、NATS、Celery 只是 Interface Adapter，不再复制业务规则"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "渐进迁移",
+      "items": [
+        "先把新写入口统一到 Application Interface，再收缩 GraphClient 调用点",
+        "最后按能力移动目录；不需要先拆微服务或一次性重写图驱动"
+      ]
+    }
+  ]
+}

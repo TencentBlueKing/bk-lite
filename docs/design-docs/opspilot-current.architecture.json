@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "OpsPilot 模块现状架构",
+    "output": "opspilot-current.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/zhouzhuangjie/bk-lite-1",
+      "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"
+    },
+    "viewBox": [1420, 790],
+    "views": [
+      {
+        "id": "online-runtime",
+        "label": "在线对话运行时",
+        "focus": ["clients", "interfaces", "conversation", "workflow", "agent", "model_tools", "external_ai_ops"],
+        "note": "多渠道请求进入会话服务后，分别经过 ChatFlowEngine 与 DeepAgent Graph，并在请求流内调用模型和工具。"
+      },
+      {
+        "id": "knowledge-lifecycle",
+        "label": "知识构建与检索",
+        "focus": ["interfaces", "wiki", "celery", "state_store", "object_cache", "external_ai_ops"],
+        "note": "Wiki 以不可变 Generation 为发布事实，通过 Celery 构建并向在线检索提供活动快照。"
+      },
+      {
+        "id": "risk-boundary",
+        "label": "工具执行安全边界",
+        "focus": ["agent", "model_tools", "object_cache", "external_ai_ops"],
+        "note": "审批、预算、Shell 黑名单、临时目录与宿主执行分散在运行时组装代码中。"
+      }
+    ]
+  },
+  "boundaries": [
+    {"kind": "region", "label": "OpsPilot Interface Adapters", "wraps": ["interfaces"], "pad": 18},
+    {"kind": "region", "label": "同一 Django App 内的多能力运行时", "wraps": ["conversation", "workflow", "agent", "model_tools", "wiki", "memory"], "pad": 20},
+    {"kind": "region", "label": "共享基础设施与外部能力", "wraps": ["celery", "state_store", "object_cache", "external_ai_ops"], "pad": 18}
+  ],
+  "components": [
+    {
+      "id": "clients", "type": "external", "label": "用户与渠道", "sublabel": "Web / OpenAI / IM / Embedded", "pos": [20, 115], "size": [150, 86]
+    },
+    {
+      "id": "interfaces", "type": "backend", "label": "协议与管理入口", "sublabel": "View / ViewSet / Router / Channel Webhook", "tag": "24+ Router + 显式路由", "pos": [200, 110], "size": [180, 96],
+      "sources": [
+        {"path": "server/apps/opspilot/urls.py", "line": 1, "label": "路由总入口"},
+        {"path": "server/apps/opspilot/views.py", "line": 492, "label": "ChatFlow API"}
+      ]
+    },
+    {
+      "id": "conversation", "type": "backend", "label": "会话与渠道服务", "sublabel": "鉴权 / 历史 / 会话 / SSE 包装", "tag": "多套历史模型", "pos": [410, 110], "size": [180, 92],
+      "sources": [
+        {"path": "server/apps/opspilot/services/skill_channel_chat_service.py", "line": 1, "label": "渠道会话服务"},
+        {"path": "server/apps/opspilot/services/chat_service.py", "line": 160, "label": "Chat Service"}
+      ]
+    },
+    {
+      "id": "workflow", "type": "backend", "label": "ChatFlowEngine", "sublabel": "画布节点 / 变量 / 中断 / SSE / 执行记录", "tag": "1,197 行", "pos": [410, 320], "size": [180, 92],
+      "sources": [
+        {"path": "server/apps/opspilot/utils/chat_flow_utils/engine/engine.py", "line": 80, "label": "工作流编排"},
+        {"path": "server/apps/opspilot/utils/chat_flow_utils/engine/engine.py", "line": 407, "label": "SSE 执行"}
+      ]
+    },
+    {
+      "id": "agent", "type": "backend", "label": "DeepAgent Graph", "sublabel": "规划 / 流事件 / HITL / 子代理", "tag": "Graph 1,857 行", "pos": [620, 110], "size": [180, 92],
+      "sources": [
+        {"path": "server/apps/opspilot/metis/llm/chain/graph.py", "line": 362, "label": "Agent Graph"},
+        {"path": "server/apps/opspilot/utils/agent_factory.py", "line": 17, "label": "统一工厂"}
+      ]
+    },
+    {
+      "id": "model_tools", "type": "security", "label": "模型、技能与工具组装", "sublabel": "Provider / Tool Registry / Approval / Shell", "tag": "ToolsNodes 4,068 行", "pos": [830, 105], "size": [190, 100],
+      "sources": [
+        {"path": "server/apps/opspilot/metis/llm/chain/node.py", "line": 661, "label": "工具节点组合根"},
+        {"path": "server/apps/opspilot/metis/llm/middleware/shell_guard.py", "line": 1, "label": "Shell 黑名单"}
+      ]
+    },
+    {
+      "id": "wiki", "type": "backend", "label": "Wiki 知识生命周期", "sublabel": "资料 / 构建 / Generation / 治理 / 检索", "tag": "不可变发布快照", "pos": [410, 545], "size": [180, 96],
+      "sources": [
+        {"path": "server/apps/opspilot/models/wiki_mgmt.py", "line": 333, "label": "Generation 事实"},
+        {"path": "server/apps/opspilot/services/wiki/generation_service.py", "line": 946, "label": "Generation 激活"}
+      ]
+    },
+    {
+      "id": "memory", "type": "backend", "label": "记忆与上下文", "sublabel": "MemorySpace / 写缓存 / 历史上下文", "pos": [830, 320], "size": [190, 88],
+      "sources": [
+        {"path": "server/apps/opspilot/models/memory_mgmt.py", "line": 1, "label": "记忆模型"},
+        {"path": "server/apps/opspilot/tasks.py", "line": 484, "label": "记忆刷新任务"}
+      ]
+    },
+    {
+      "id": "celery", "type": "messagebus", "label": "Celery / Beat", "sublabel": "26 个任务 / Wiki / IM / Memory", "tag": "默认并发 2", "pos": [620, 545], "size": [180, 92],
+      "sources": [
+        {"path": "server/apps/opspilot/tasks.py", "line": 228, "label": "任务入口"},
+        {"path": "server/config/components/celery.py", "line": 22, "label": "全局 worker 并发"}
+      ]
+    },
+    {
+      "id": "state_store", "type": "database", "label": "Django 业务数据库", "sublabel": "Bot / Workflow / Wiki / Conversation / Usage", "pos": [830, 545], "size": [190, 92],
+      "sources": [
+        {"path": "server/apps/opspilot/models/bot_mgmt.py", "line": 1, "label": "Bot 与执行事实"},
+        {"path": "server/apps/opspilot/models/wiki_mgmt.py", "line": 1, "label": "Wiki 事实"}
+      ]
+    },
+    {
+      "id": "object_cache", "type": "database", "label": "MinIO + Redis Cache", "sublabel": "资料/附件 / HITL 租约 / 临时状态", "pos": [1060, 545], "size": [205, 92],
+      "sources": [
+        {"path": "server/apps/opspilot/models/wiki_mgmt.py", "line": 195, "label": "资料对象存储"},
+        {"path": "server/apps/opspilot/utils/pending_hitl.py", "line": 1, "label": "会话 HITL 租约"}
+      ]
+    },
+    {
+      "id": "external_ai_ops", "type": "external", "label": "模型、RAG 与运维目标", "sublabel": "LLM API / Metis / MCP / K8s / DB / Browser", "tag": "含高权限副作用", "pos": [1060, 105], "size": [205, 105],
+      "sources": [
+        {"path": "server/apps/opspilot/metis/llm/common/llm_client_factory.py", "line": 106, "label": "模型出口"},
+        {"path": "server/apps/opspilot/metis/llm/chain/node.py", "line": 2436, "label": "本地 Shell Backend"}
+      ]
+    }
+  ],
+  "connections": [
+    {"id": "clients_interfaces", "from": "clients", "to": "interfaces", "variant": "emphasis"},
+    {"id": "interfaces_conversation", "from": "interfaces", "to": "conversation"},
+    {"id": "interfaces_workflow", "from": "interfaces", "to": "workflow"},
+    {"id": "conversation_agent", "from": "conversation", "to": "agent", "variant": "emphasis"},
+    {"id": "workflow_agent", "from": "workflow", "to": "agent"},
+    {"id": "agent_tools", "from": "agent", "to": "model_tools", "variant": "emphasis"},
+    {"id": "tools_external", "from": "model_tools", "to": "external_ai_ops", "variant": "security"},
+    {"id": "wiki_celery", "from": "wiki", "to": "celery", "label": "异步构建", "labelAt": [605, 520]},
+    {"id": "celery_state", "from": "celery", "to": "state_store", "label": "写构建状态", "labelAt": [815, 520]},
+    {"id": "state_objects", "from": "state_store", "to": "object_cache", "label": "对象引用", "labelAt": [1040, 520]},
+    {"id": "agent_memory", "from": "agent", "to": "memory"},
+    {"id": "memory_state", "from": "memory", "to": "state_store"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "应保留的深模块", "items": ["Wiki 以结构 Revision、不可变 Generation 和活动快照分离写入与读取", "构建服务大量使用事务、行锁、输入指纹和一致性校验"]},
+    {"dot": "rose", "title": "运行时边界过宽", "items": ["ChatFlowEngine 与 Agent Graph 重复拥有流事件、历史、中断和执行结果语义", "ToolsNodes 同时组装模型、知识、技能、审批、Shell 与各类运维工具"]},
+    {"dot": "amber", "title": "资源与隔离未成为契约", "items": ["26 个异构 Celery 任务默认共享 worker 并发 2，未见 OpsPilot 队列路由", "本地 Shell 文件视图受限，但 execute 运行于宿主；黑名单明确不是强隔离"]}
+  ]
+}
