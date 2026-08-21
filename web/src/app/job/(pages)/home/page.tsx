@@ -772,7 +772,7 @@ const JobHomePage = () => {
         const color = STATUS_COLOR_MAP[record.status] || '#8c8c8c';
         return (
           <Tag style={{ color, backgroundColor: `${color}10`, borderColor: color, margin: 0 }}>
-            {record.status_display || getStatusText(record.status)}
+            {getStatusText(record.status)}
           </Tag>
         );
       },
