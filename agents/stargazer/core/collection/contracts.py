@@ -7,8 +7,13 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Mapping, Protocol
 
+from core.collection.constants import (
+    DEFAULT_MAX_ACTIVE_TARGETS,
+    DEFAULT_TARGET_TASK_WINDOW,
+)
 from core.collection.enums import (
     AccessProbeStatus,
     CollectOutcomeStatus,
@@ -28,8 +33,13 @@ __all__ = [
     "PreflightProbe",
     "PreflightResult",
     "PreflightStatus",
+    "PublishOutcome",
+    "PublishReceipt",
+    "PublishStatus",
     "ResultPublisher",
+    "ResultSink",
     "RunSummary",
+    "StructuredMetricsPayload",
     "TargetCollectionContext",
     "TargetCollectionResult",
     "TargetExecutorSettings",
@@ -42,6 +52,7 @@ class PreflightResult:
     status: PreflightStatus
     error_code: str = ""
     detail: str = ""
+    connect_host: str = ""
 
 
 @dataclass(frozen=True)
@@ -58,6 +69,14 @@ class CollectOutcome:
     value: Any = None
     error_code: str = ""
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class StructuredMetricsPayload:
+    """统一运行时内部的结构化配置采集指标，避免中间文本往返转换。"""
+
+    data: Mapping[str, Any]
+    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -85,45 +104,95 @@ class TargetCollectionResult:
     error_code: str = ""
     value: Any = None
     credential_failures: tuple[CredentialFailureResult, ...] = ()
+    publish_timestamp_ms: int = 0
+    detail: str = ""
+
+
+class PublishStatus(str, Enum):
+    CONFIRMED = "confirmed"
+    RETRYABLE_FAILED = "retryable_failed"
+    DELIVERY_UNKNOWN = "delivery_unknown"
+    EVENT_FAILED = "event_failed"
+    PERMANENT_FAILED = "permanent_failed"
+
+
+@dataclass(frozen=True)
+class PublishOutcome:
+    status: PublishStatus
+    attempts: int = 1
+    error_code: str = ""
+
+    @property
+    def succeeded(self) -> bool:
+        return self.status == PublishStatus.CONFIRMED
 
 
 @dataclass(frozen=True)
 class RunSummary:
     total: int
-    succeeded: int
-    failed: int
+    collection_succeeded: int
+    collection_failed: int
     unreachable: int
     deferred: int
     skipped: int
+    publish_succeeded: int = 0
+    publish_failed: int = 0
+    publish_unknown: int = 0
+    publish_event_failed: int = 0
+    publish_permanent_failed: int = 0
+
+    @property
+    def succeeded(self) -> int:
+        """兼容旧调用方。"""
+        return self.collection_succeeded
+
+    @property
+    def failed(self) -> int:
+        """兼容旧调用方。"""
+        return self.collection_failed
+
+    @property
+    def has_errors(self) -> bool:
+        return bool(
+            self.collection_failed
+            or self.unreachable
+            or self.publish_failed
+            or self.publish_unknown
+            or self.publish_event_failed
+            or self.publish_permanent_failed
+        )
 
 
 @dataclass(frozen=True)
 class TargetExecutorSettings:
     # 0 = 不限制；默认与环境变量 DEFAULT 对齐，运行时由 ApplicationSettings.from_env 注入
-    max_active_targets: int = 2000
-    target_task_window: int = 2000
-    connect_timeout_seconds: float = 7.0
+    max_active_targets: int = DEFAULT_MAX_ACTIVE_TARGETS
+    target_task_window: int = DEFAULT_TARGET_TASK_WINDOW
+    connect_timeout_seconds: float = 15.0
     plugin_timeout_seconds: float = 60.0
     publish_guard_seconds: float = 30.0
+    publish_queue_timeout_seconds: float = 60.0
+    publish_total_timeout_seconds: float = 120.0
+    access_probe_enabled: bool = True
     # 0 = 不限制；默认 3 = 连续 protocol_no_response 最多尝试次数
     max_no_response_attempts: int = 3
     publish_max_attempts: int = 2
 
     def __post_init__(self) -> None:
         if self.max_active_targets < 0:
-            raise ValueError(
-                "max_active_targets must be >= 0 (0 means unlimited)"
-            )
+            raise ValueError("max_active_targets must be >= 0 (0 means unlimited)")
         if self.target_task_window < 0:
-            raise ValueError(
-                "target_task_window must be >= 0 (0 means unlimited)"
-            )
+            raise ValueError("target_task_window must be >= 0 (0 means unlimited)")
         if self.connect_timeout_seconds <= 0:
             raise ValueError("connect_timeout_seconds must be greater than zero")
         if self.plugin_timeout_seconds <= 0:
             raise ValueError("plugin_timeout_seconds must be greater than zero")
         if self.publish_guard_seconds <= 0:
             raise ValueError("publish_guard_seconds must be greater than zero")
+        if self.publish_queue_timeout_seconds <= 0:
+            raise ValueError("publish_queue_timeout_seconds must be greater than zero")
+        if self.publish_total_timeout_seconds <= 0:
+            raise ValueError("publish_total_timeout_seconds must be greater than zero")
         if self.max_no_response_attempts < 0:
             raise ValueError("max_no_response_attempts must be >= 0")
         if self.publish_max_attempts <= 0:
@@ -174,12 +243,35 @@ class AccessProbe(Protocol):
 
 
 class ResultPublisher(Protocol):
-    async def publish(
+    """执行器依赖的有界发布队列 interface。"""
+
+    async def enqueue(
         self,
         request: CollectionRequest,
         result: TargetCollectionResult,
         lease: RunLease,
-    ) -> None:
+    ) -> PublishReceipt:
+        ...
+
+
+class ResultSink(Protocol):
+    """发布队列内部依赖的最终投递 interface。"""
+
+    async def publish_batch(
+        self,
+        items,
+    ) -> Mapping[str, BaseException | PublishOutcome | None]:
+        ...
+
+
+class PublishReceipt(Protocol):
+    def done(self) -> bool:
+        ...
+
+    async def wait(self) -> PublishOutcome | None:
+        ...
+
+    def cancel_if_unattempted(self) -> bool:
         ...
 
 

@@ -13,7 +13,6 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.models.field_group import FieldGroup
-from apps.cmdb.services.model import ModelManage
 from apps.cmdb.views.model import ModelViewSet
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -464,20 +463,51 @@ def test_model_attr_create_ok(superuser, monkeypatch):
     assert "ip" in fg.attr_orders
 
 
+@pytest.mark.integration
 @pytest.mark.django_db
-def test_model_attr_update_enum(superuser, monkeypatch):
+def test_model_attr_update_enum(api_client, superuser, monkeypatch, fake_graph):
     monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]})
-    monkeypatch.setattr(f"{VIEWS}.ModelManage.update_model_attr", lambda *a, **k: {"attr_id": "status"})
     called = {}
-    monkeypatch.setattr(
-        f"{VIEWS}.ModelManage.update_enum_instances_display",
-        lambda mid, aid, opts: called.setdefault("hit", True),
-    )
-    response = ModelViewSet.as_view({"put": "model_attr_update"})(
-        _req("put", superuser, data={"attr_id": "status", "attr_type": "enum", "option": []}), model_id="host"
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.update_model_attr", lambda *a, **k: called.setdefault("definition", {"attr_id": "status"}))
+    pages = iter([([{"_id": 1, "status": "1"}], 1), ([], 0)])
+    graph = fake_graph("apps.cmdb.services.model", query_entity=lambda *_args, **_kwargs: next(pages))
+    api_client.force_authenticate(user=superuser)
+
+    response = api_client.put(
+        "/api/v1/cmdb/api/model/host/attr_update/",
+        {"attr_id": "status", "attr_type": "enum", "option": [{"id": "1", "name": "运行"}]},
+        format="json",
     )
     assert response.status_code == status.HTTP_200_OK
-    assert called.get("hit") is True
+    assert called["definition"] == {"attr_id": "status"}
+    assert any(name == "batch_update_node_property_values" for name, _args, _kwargs in graph.calls)
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_model_attr_update_enum_propagates_display_refresh_failure(api_client, superuser, monkeypatch, fake_graph):
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]})
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.update_model_attr", lambda *a, **k: {"attr_id": "status"})
+
+    def _raise(*_args, **_kwargs):
+        raise RuntimeError("graph unavailable")
+
+    pages = iter([([{"_id": 1, "status": "1"}], 1), ([], 0)])
+    fake_graph(
+        "apps.cmdb.services.model",
+        query_entity=lambda *_args, **_kwargs: next(pages),
+        batch_update_node_property_values=_raise,
+    )
+
+    api_client.force_authenticate(user=superuser)
+    response = api_client.put(
+        "/api/v1/cmdb/api/model/host/attr_update/",
+        {"attr_id": "status", "attr_type": "enum", "option": [{"id": "1", "name": "运行"}]},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert response.json()["message"] == "枚举属性已更新，但实例展示字段刷新失败，请重试保存"
 
 
 @pytest.mark.django_db

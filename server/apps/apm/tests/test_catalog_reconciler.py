@@ -115,7 +115,7 @@ def test_reconciler_skips_metrics_for_unknown_applications():
     assert list(ApmServiceInstance.objects.values_list("instance_id", flat=True)) == ["live-pod"]
 
 
-def test_reconciler_does_not_archive_when_victoria_traces_query_fails(mocker):
+def test_reconciler_does_not_mutate_instance_lifecycle_when_victoria_traces_query_fails(mocker):
     store = mocker.Mock()
     store.instance_activity.side_effect = TelemetryStoreUnavailable("VictoriaTraces unavailable")
     catalog = mocker.Mock()
@@ -124,28 +124,23 @@ def test_reconciler_does_not_archive_when_victoria_traces_query_fails(mocker):
         TelemetryCatalogReconciler(store, catalog).reconcile(observed_at=timezone.now())
 
     catalog.discover.assert_not_called()
-    catalog.archive_stale_instances.assert_not_called()
 
 
-def test_stale_instances_archive_and_new_activity_unarchives_history():
+def test_stale_instances_remain_silent_metadata_and_new_activity_reactivates_them():
     observed_at = timezone.now()
     create_application("shop", (10,))
     metric_store = InMemoryMetricStore(activities=[_activity("shop", "pod-old", observed_at - timedelta(days=8))])
     reconciler = TelemetryCatalogReconciler(metric_store)
     reconciler.reconcile(observed_at=observed_at - timedelta(days=8))
 
-    archived = reconciler.reconcile(observed_at=observed_at)
+    reconciler.reconcile(observed_at=observed_at)
     instance = ApmServiceInstance.objects.get(instance_id="pod-old")
-    assert archived.archived_instances == 1
-    assert archived.archived_services == 0
-    assert instance.archived_at == observed_at
-    assert instance.service.archived_at is None
+    assert instance.last_seen_at == observed_at - timedelta(days=8)
 
     metric_store.add_activity(_activity("shop", "pod-old", observed_at + timedelta(minutes=1)))
     reconciler.reconcile(observed_at=observed_at + timedelta(minutes=1))
     instance.refresh_from_db()
     instance.service.refresh_from_db()
-    assert instance.archived_at is None
     assert instance.service.archived_at is None
     assert ApmServiceInstance.objects.count() == 1
 
@@ -161,7 +156,7 @@ def test_manual_service_archive_survives_new_activity():
     discovered.service.refresh_from_db()
     discovered.instance.refresh_from_db()
     assert discovered.service.archive_reason == "manual"
-    assert discovered.instance.archive_reason == ""
+    assert discovered.instance.last_seen_at == observed_at + timedelta(minutes=1)
 
 
 def test_environment_views_and_instance_status_filters_are_bounded(apm_api_client):

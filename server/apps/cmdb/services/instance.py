@@ -573,6 +573,41 @@ class InstanceManage(object):
             filtered_result[key] = cls._prune_topology_node(result.get(key), visible_ids, int(center_id))
         return filtered_result
 
+    @classmethod
+    def _transport_topology_result(cls, result: dict) -> dict:
+        """把通用拓扑树递归转换为只暴露 inst_uuid 的 Transport DTO。"""
+        if not isinstance(result, dict):
+            return result
+
+        graph_ids = set()
+        for key in ("src_result", "dst_result"):
+            graph_ids.update(cls._collect_topology_node_ids(result.get(key)))
+        instances_map = cls._query_instance_map_by_ids(graph_ids) if graph_ids else {}
+        uuid_by_id = {
+            int(graph_id): item.get("inst_uuid") for graph_id, item in instances_map.items() if isinstance(item, dict) and item.get("inst_uuid")
+        }
+
+        def transport_node(node: dict | None) -> dict:
+            if not isinstance(node, dict) or node.get("_id") is None:
+                return {}
+            try:
+                graph_id = int(node["_id"])
+            except (TypeError, ValueError):
+                return {}
+            inst_uuid = node.get("inst_uuid") or uuid_by_id.get(graph_id)
+            if not inst_uuid:
+                return {}
+            transported = {key: value for key, value in node.items() if key not in {"_id", "inst_id", "children"}}
+            transported["inst_uuid"] = inst_uuid
+            transported["children"] = [child for item in node.get("children") or [] if (child := transport_node(item))]
+            return transported
+
+        return {
+            **result,
+            "src_result": transport_node(result.get("src_result")),
+            "dst_result": transport_node(result.get("dst_result")),
+        }
+
     @staticmethod
     def _build_format_permission_dict(permission_map: dict, creator: str = "") -> dict:
         format_permission_dict = {}
@@ -2285,7 +2320,8 @@ class InstanceManage(object):
         instance = cls.query_entity_by_uuid(inst_uuid)
         if not instance:
             raise BaseAppException("实例不存在！")
-        return cls.topo_search_lite(instance["_id"], depth=depth, permission_map=permission_map, user=user)
+        result = cls.topo_search_lite(instance["_id"], depth=depth, permission_map=permission_map, user=user)
+        return cls._transport_topology_result(result)
 
     @classmethod
     def topo_search_expand(
@@ -2316,13 +2352,14 @@ class InstanceManage(object):
         parents = cls.query_entity_by_uuids(parent_uuids) if parent_uuids else []
         if len(parents) != len(parent_uuids or []):
             raise BaseAppException("父实例不存在！")
-        return cls.topo_search_expand(
+        result = cls.topo_search_expand(
             instance["_id"],
             [item["_id"] for item in parents],
             depth=depth,
             permission_map=permission_map,
             user=user,
         )
+        return cls._transport_topology_result(result)
 
     @staticmethod
     def inst_export(
@@ -2551,6 +2588,80 @@ class InstanceManage(object):
             node_limit=node_limit,
         )
         return InstanceManage._remap_network_topology_device_ids_to_uuids(result)
+
+    @staticmethod
+    def network_topology_among_uuids(
+        inst_uuids: list[str],
+        permission_maps: dict | None = None,
+        user=None,
+    ) -> dict:
+        """按勾选设备做接口直连诱导子图：节点闭集，边只保留两端都在集合内。"""
+        from apps.cmdb.services.topology_theme import is_network_device_model
+
+        closed_set_error = "设备列表包含无效或不允许的网络设备，请重新配置"
+        normalized = [normalize_inst_uuid(value) for value in inst_uuids]
+        if not normalized:
+            raise BaseAppException(closed_set_error)
+        if len(set(normalized)) != len(normalized):
+            raise BaseAppException(closed_set_error)
+
+        entities = InstanceManage.query_entity_by_uuids(normalized)
+        if len(entities) != len(normalized):
+            raise BaseAppException(closed_set_error)
+
+        network_model_ok: dict[str, bool] = {}
+        for entity in entities:
+            model_id = str(entity.get("model_id") or "")
+            if model_id not in network_model_ok:
+                network_model_ok[model_id] = is_network_device_model(model_id)
+            if not network_model_ok[model_id]:
+                raise BaseAppException(closed_set_error)
+            permission_map = (permission_maps or {}).get(model_id) if permission_maps else None
+            if permission_maps is not None and not InstanceManage._has_topology_view_permission(entity, permission_map, user=user):
+                raise BaseAppException(closed_set_error)
+
+        selected_graph_ids = {str(entity["_id"]) for entity in entities}
+        id_to_uuid = {str(entity["_id"]): str(entity.get("inst_uuid")) for entity in entities}
+        nodes = [
+            {
+                "id": str(entity.get("inst_uuid")),
+                "name": entity.get("inst_name") or str(entity.get("inst_uuid")),
+                "model_id": str(entity.get("model_id") or ""),
+                "hop": 0,
+                "expanded": True,
+            }
+            for entity in entities
+        ]
+        links = {}
+        with GraphClient() as ag:
+            for entity in entities:
+                model_id = str(entity.get("model_id") or "")
+                rows = ag.query_network_topo(int(entity["_id"]), f"interface_belong_{model_id}") or []
+                for row in rows:
+                    peer_id = str(row["peer_id"])
+                    if peer_id not in selected_graph_ids:
+                        continue
+                    rel_id = str(row["rel_id"])
+                    if rel_id in links:
+                        continue
+                    source_id = str(row["dev_id"])
+                    links[rel_id] = {
+                        "relationship_id": rel_id,
+                        "source_device": id_to_uuid.get(source_id, source_id),
+                        "source_inst_name": row["local_if"],
+                        "target_device": id_to_uuid.get(peer_id, peer_id),
+                        "target_inst_name": row["peer_if"],
+                        "asst_id": "connect",
+                        "model_asst_id": "interface_connect_interface",
+                        "src_inst_uuid": str(row.get("local_if_uuid") or "") or None,
+                        "dst_inst_uuid": str(row.get("peer_if_uuid") or "") or None,
+                    }
+
+        return {
+            "nodes": nodes,
+            "links": list(links.values()),
+            "truncated": False,
+        }
 
     @staticmethod
     def topo_search_by_uuid(inst_uuid: str):

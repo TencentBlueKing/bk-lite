@@ -3,7 +3,7 @@
  * 将工具调用挂到当前执行步骤，供对话 UI 按方案 A（步骤嵌套工具组）渲染。
  */
 
-export type PlannedStepStatus = 'running' | 'done';
+export type PlannedStepStatus = 'running' | 'done' | 'failed';
 
 export interface PlannedExecutionStepEvent {
   phase: 'start' | 'end' | string;
@@ -11,6 +11,9 @@ export interface PlannedExecutionStepEvent {
   total_steps: number;
   objective: string;
   tools?: string[];
+  /** 后端收口状态：failed_auth / failed_config / failed_permission / failed_internal 等 */
+  status?: string;
+  error?: string;
 }
 
 export interface PlannedExecutionStepData {
@@ -19,6 +22,7 @@ export interface PlannedExecutionStepData {
   objective: string;
   status: PlannedStepStatus;
   toolCallIds: string[];
+  error?: string;
 }
 
 export interface PlannedExecutionState {
@@ -43,9 +47,14 @@ const normalizeStepIndex = (value: unknown): number | null => {
   return Math.floor(n);
 };
 
+export const isFailedPlannedStepStatus = (status: unknown): boolean => {
+  if (typeof status !== 'string' || !status) return false;
+  return status === 'failed' || status.startsWith('failed_');
+};
+
 /**
  * 应用一条 planned_execution_step CUSTOM 事件。
- * start：创建或进入该步并标为 running；end：将该步标为 done。
+ * start：创建或进入该步并标为 running；end：将该步标为 done / failed。
  */
 export const applyPlannedExecutionStep = (
   state: PlannedExecutionState,
@@ -63,6 +72,12 @@ export const applyPlannedExecutionStep = (
   const totalSteps = normalizeStepIndex(event.total_steps) ?? stepIndex;
   const objective = normalizeObjective(event.objective);
   const phase = typeof event.phase === 'string' ? event.phase : '';
+  const endFailed = phase === 'end' && isFailedPlannedStepStatus(event.status);
+  const endStatus: PlannedStepStatus = endFailed ? 'failed' : 'done';
+  const endError =
+    endFailed && typeof event.error === 'string' && event.error.trim()
+      ? event.error.trim()
+      : undefined;
 
   const steps = state.steps.map((step) => ({
     ...step,
@@ -77,15 +92,17 @@ export const applyPlannedExecutionStep = (
         ...steps[existingIdx],
         total_steps: Math.max(steps[existingIdx].total_steps, totalSteps),
         objective: objective || steps[existingIdx].objective,
-        status: 'done',
+        status: endStatus,
+        error: endError,
       };
     } else {
       steps.push({
         step_index: stepIndex,
         total_steps: totalSteps,
         objective: objective || `步骤 ${stepIndex}`,
-        status: 'done',
+        status: endStatus,
         toolCallIds: [],
+        error: endError,
       });
       steps.sort((a, b) => a.step_index - b.step_index);
     }
@@ -103,6 +120,7 @@ export const applyPlannedExecutionStep = (
       total_steps: Math.max(steps[existingIdx].total_steps, totalSteps),
       objective: objective || steps[existingIdx].objective,
       status: 'running',
+      error: undefined,
     };
   } else {
     steps.push({
@@ -182,7 +200,7 @@ export const isToolAssignedToPlannedStep = (
   return state.steps.some((step) => step.toolCallIds.includes(toolCallId));
 };
 
-/** 流结束时把仍 running 的步骤收口为 done，便于默认全部收起。 */
+/** 流结束时把仍 running 的步骤收口为 done；已失败的保持 failed。 */
 export const finalizePlannedExecutionSteps = (
   state: PlannedExecutionState
 ): PlannedExecutionState => {
@@ -192,8 +210,11 @@ export const finalizePlannedExecutionSteps = (
 
   return {
     currentStepIndex: null,
-    steps: state.steps.map((step) =>
-      step.status === 'done' ? step : { ...step, status: 'done' as const }
-    ),
+    steps: state.steps.map((step) => {
+      if (step.status === 'done' || step.status === 'failed') {
+        return step;
+      }
+      return { ...step, status: 'done' as const };
+    }),
   };
 };

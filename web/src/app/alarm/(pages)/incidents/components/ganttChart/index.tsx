@@ -9,7 +9,7 @@ import { AlarmTableDataItem } from '@/app/alarm/types/alarms';
 import { ModalRef } from '@/app/alarm/types/types';
 import { Tooltip, Checkbox, Spin } from 'antd';
 import { useCommon } from '@/app/alarm/context/common';
-import { Empty } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 dayjs.extend(minMax);
@@ -83,10 +83,7 @@ export default function GanttChart({
       <div className={styles.chartWrapper}>
         <Spin spinning={loading}>
           {!sortedData?.length ? (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t('common.noData')}
-            />
+            <CompactEmptyState description={t('common.noData')} />
           ) : (
             <div className={styles.chartGrid}>
               <div className={styles.emptyHeader} />

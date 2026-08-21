@@ -70,9 +70,7 @@ def parse_credentials_pool(
             credentials_pool = json.loads(raw_value)
         except json.JSONDecodeError:
             try:
-                decoded_value = base64.urlsafe_b64decode(
-                    raw_value.encode()
-                ).decode()
+                decoded_value = base64.urlsafe_b64decode(raw_value.encode()).decode()
                 credentials_pool = json.loads(decoded_value)
             except Exception:
                 logger.warning(
@@ -103,9 +101,11 @@ def build_collection_request(
 
     max_targets = int(os.getenv("MAX_TARGETS_PER_RUN", "10000"))
     raw_targets = source.get("targets", source.get("hosts"))
-    if isinstance(raw_targets, Sequence) and not isinstance(
-        raw_targets, (str, bytes, bytearray)
-    ) and len(raw_targets) > max_targets:
+    if (
+        isinstance(raw_targets, Sequence)
+        and not isinstance(raw_targets, (str, bytes, bytearray))
+        and len(raw_targets) > max_targets
+    ):
         raise ValueError(
             f"target count {len(raw_targets)} exceeds MAX_TARGETS_PER_RUN={max_targets}"
         )
@@ -128,6 +128,14 @@ def build_collection_request(
         if key not in CREDENTIAL_KEYS
         and key not in {"credentials_pool", "hosts", "targets"}
         and key != "credential_count"
+        and key
+        not in {
+            "target_is_logical",
+            "target_policy_mode",
+            "trusted_endpoint_domains",
+            "_yaml_target_policy_verified",
+            "_validated_connect_host",
+        }
         and not FLATTENED_CREDENTIAL_KEY.fullmatch(str(key))
     }
     public_params["plugin_family"] = family
@@ -157,14 +165,14 @@ def _targets(source: dict[str, Any], plugin_name: str) -> tuple[tuple[str, ...],
     ):
         targets = tuple(
             dict.fromkeys(
-                str(item).strip()
-                for item in raw_targets
-                if str(item).strip()
+                str(item).strip() for item in raw_targets if str(item).strip()
             )
         )
         if targets:
             return targets, False
-    host = str(source.get("host") or source.get("base_url") or "").strip()
+    host = str(
+        source.get("host") or source.get("hostname") or source.get("base_url") or ""
+    ).strip()
     if host:
         return (host,), False
     logical = str(
@@ -176,17 +184,14 @@ def _targets(source: dict[str, Any], plugin_name: str) -> tuple[tuple[str, ...],
 
 
 def _credentials(source: dict[str, Any]) -> tuple[Mapping[str, Any], ...]:
-    credentials = parse_credentials_pool(
-        source.get("credentials_pool"), params=source
-    )
+    credentials = parse_credentials_pool(source.get("credentials_pool"), params=source)
     if not credentials:
-        credential = {
-            key: source[key] for key in CREDENTIAL_KEYS if key in source
-        }
+        credential = {key: source[key] for key in CREDENTIAL_KEYS if key in source}
         credentials = [credential] if credential else [{}]
     for index, credential in enumerate(credentials, 1):
         credential.setdefault("credential_id", f"credential-{index}")
     return tuple(credentials)
+
 
 def _apply_preflight_defaults(
     params: dict[str, Any], plugin_name: str, family: str

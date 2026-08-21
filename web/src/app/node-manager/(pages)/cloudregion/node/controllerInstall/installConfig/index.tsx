@@ -40,6 +40,7 @@ import {
   applyWinrmCertificateValidation,
   DEFAULT_WINRM_CERTIFICATE_VALIDATION
 } from './utils';
+import { buildOrganizationOptions } from './excelImportUtils';
 import WinrmCertificateValidationField from '@/app/node-manager/components/winrm-certificate-validation-field';
 
 interface InstallConfigProps {
@@ -74,6 +75,15 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     label: item.name,
     value: item.id
   }));
+  const excelGroupList = useMemo(
+    () =>
+      buildOrganizationOptions(
+        commonContext?.groupTree?.length
+          ? commonContext.groupTree
+          : commonContext?.groups || []
+      ),
+    [commonContext?.groupTree, commonContext?.groups]
+  );
   const batchEditModalRef = useRef<any>(null);
   const excelImportModalRef = useRef<any>(null);
   const hasFetchedPlatformsRef = useRef<boolean>(false);
@@ -407,7 +417,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
     excelImportModalRef.current?.showModal({
       title: t('node-manager.cloudregion.integrations.importData'),
       columns: tableConfig,
-      groupList
+      groupList: excelGroupList
     });
   };
 

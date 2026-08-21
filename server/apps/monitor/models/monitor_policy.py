@@ -43,10 +43,6 @@ class PolicyTemplate(TimeInfo, MaintainerInfo):
                 fields=("scope_key", "key"),
                 name="uniq_policy_template_scope_key",
             ),
-            models.UniqueConstraint(
-                fields=("scope_key", "monitor_object", "plugin", "name"),
-                name="uniq_policy_template_scope_name",
-            ),
             models.CheckConstraint(
                 check=(
                     models.Q(

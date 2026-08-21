@@ -278,6 +278,7 @@ def deliver_alert_center_delivery(record_id):
             producer="lite-monitor",
             ack_mode="per_event_v1",
             ack_token=ALERT_CENTER_ACK_TOKEN,
+            internal_caller="lite-monitor",
         )
         success, retryable, error = _ack_result(send_result, delivery_id)
     except Exception as exc:

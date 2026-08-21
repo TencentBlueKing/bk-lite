@@ -1,0 +1,23 @@
+.root {
+  :global(.ant-empty) {
+    color: var(--screen-empty-color, var(--color-text-3));
+  }
+
+  :global(.ant-empty-description) {
+    color: inherit;
+  }
+
+  :global(.ant-empty-image svg ellipse) {
+    fill: currentColor;
+    opacity: 0.18;
+  }
+
+  :global(.ant-empty-image svg g) {
+    stroke: currentColor;
+  }
+
+  :global(.ant-empty-image svg path[fill]) {
+    fill: currentColor;
+    fill-opacity: 0.42;
+  }
+}

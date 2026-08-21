@@ -84,6 +84,25 @@ export interface WebChatConfig {
    * include it in chat requests; request metadata belongs in `customData`.
    */
   extensions?: Record<string, unknown>;
+  /**
+   * Host-injected platform assistant contract. When present with required URLs,
+   * WebChat runs in platform mode and ignores top-level `sseUrl`.
+   */
+  platform?: PlatformContract;
+}
+
+/** URL templates may include `{channelId}` and `{sessionId}`. */
+export interface PlatformContract {
+  applicationsUrl: string;
+  sessionsUrl: string;
+  messagesUrl: string;
+  chatUrlTemplate: string;
+  interruptUrl?: string;
+  approvalUrl?: string;
+  choiceUrl?: string;
+  credentials?: RequestCredentials;
+  headers?: Record<string, string>;
+  storageKey?: string;
 }
 
 export interface SSEMessage {

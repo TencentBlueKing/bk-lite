@@ -57,7 +57,17 @@ def _make_user(username, group_list=None, sync_source=None, domain="domain.com")
 
 
 # 树节点字段白名单
-ALLOWED_TREE_KEYS = {"id", "name", "subGroupCount", "subGroups", "hasAuth", "role_ids", "is_virtual", "parentId"}
+ALLOWED_TREE_KEYS = {
+    "id",
+    "name",
+    "subGroupCount",
+    "subGroups",
+    "hasAuth",
+    "role_ids",
+    "is_virtual",
+    "parentId",
+    "sync_source",
+}
 
 
 def _collect_tree_keys(nodes, acc):
@@ -284,3 +294,25 @@ def test_case_11_rpc_get_user_group_tree_passes_kwargs(monkeypatch):
     assert out == {"result": True, "data": {"echo": True}}
     assert captured["subject"] == "get_user_group_tree"
     assert captured["kwargs"] == {"username": "ivan", "sync_source_id": src.id}
+
+
+@pytest.mark.django_db
+def test_group_list_omits_archived_ids():
+    src = _make_sync_source()
+    active = Group.objects.create(name="TreeActive", parent_id=0)
+    archived = Group.objects.create(name="TreeArchived", parent_id=0, is_delete=True)
+    _make_user("tree-arch-user", group_list=[active.id, archived.id], sync_source=src)
+
+    res = get_user_group_tree("tree-arch-user", src.id)
+
+    assert res["result"] is True
+    assert res["data"]["group_list"] == [active.id]
+    tree_ids = set()
+
+    def walk(nodes):
+        for node in nodes:
+            tree_ids.add(node["id"])
+            walk(node.get("subGroups") or [])
+
+    walk(res["data"]["group_tree"])
+    assert archived.id not in tree_ids

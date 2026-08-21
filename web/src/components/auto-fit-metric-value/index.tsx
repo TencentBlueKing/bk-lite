@@ -5,6 +5,8 @@ import React, {
   useState,
 } from 'react';
 
+import { buildPrintSafeFontSize } from './printSafeFontSize';
+
 export interface AutoFitMetricValueSize {
   width: number;
   height: number;
@@ -60,6 +62,7 @@ const AutoFitMetricValue: React.FC<AutoFitMetricValueProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const [fontSize, setFontSize] = useState(36);
+  const [textWidth, setTextWidth] = useState(0);
 
   const updateFontSize = useCallback(() => {
     const container = containerRef.current;
@@ -84,6 +87,9 @@ const AutoFitMetricValue: React.FC<AutoFitMetricValueProps> = ({
 
     setFontSize((prev) =>
       Math.abs(prev - nextFontSize) < 0.1 ? prev : nextFontSize,
+    );
+    setTextWidth((prev) =>
+      prev === measure.scrollWidth ? prev : measure.scrollWidth,
     );
     onFontSizeChange?.(nextFontSize);
   }, [gap, minFontSize, onFontSizeChange, resolveFontSize]);
@@ -111,16 +117,21 @@ const AutoFitMetricValue: React.FC<AutoFitMetricValueProps> = ({
   }, [updateFontSize, main, unit]);
 
   const resolvedGap = resolveGap(gap, fontSize);
+  const gapEm = fontSize > 0 ? resolvedGap / fontSize : 0;
   const alignClassName = align === 'end' ? 'items-end' : 'items-baseline';
 
   return (
-    <div ref={containerRef} className={`relative min-w-0 max-w-full ${className}`}>
+    <div
+      ref={containerRef}
+      className={`relative min-w-0 max-w-full ${className}`}
+      style={{ containerType: 'inline-size' }}
+    >
       <div
         className={`inline-flex max-w-full whitespace-nowrap leading-none ${alignClassName} ${valueClassName}`}
         style={{
           color,
-          fontSize: `${fontSize}px`,
-          gap: `${resolvedGap}px`,
+          fontSize: buildPrintSafeFontSize(fontSize, textWidth),
+          gap: `${gapEm}em`,
           textShadow,
           fontVariantNumeric,
           letterSpacing: 0,

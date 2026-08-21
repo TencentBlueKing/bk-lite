@@ -127,16 +127,21 @@ class ConfigFileService(object):
                     instance_id=instance_id,
                 )
                 content_hash = hashlib.sha256(text_content.encode("utf-8")).hexdigest()
-                existing_version = ConfigFileVersion.objects.filter(
-                    collect_task=task,
-                    instance_id=instance_id,
-                    version=version,
-                ).first()
+                existing_version = (
+                    ConfigFileVersion.objects.filter(
+                        collect_task=task,
+                        version=version,
+                    )
+                    .filter(cls._version_identity_q(instance_id, instance_uuid, instance))
+                    .first()
+                )
                 if existing_version:
                     version_obj, _ = cls._resolve_existing_version(existing_version, content_hash, instance_uuid=instance_uuid)
                     return {"version_obj": version_obj, "changed": False, "task_updated": False}
 
-                latest_success_version = cls._get_latest_success_version(task.id, instance_id, file_path)
+                latest_success_version = cls._get_latest_success_version(
+                    task.id, instance_id, file_path, instance_uuid=instance_uuid, instance=instance
+                )
                 if latest_success_version and latest_success_version.content_hash == content_hash:
                     cls._backfill_instance_uuid(latest_success_version, instance_uuid)
                     task_updated = cls._update_task_lifecycle(
@@ -155,6 +160,7 @@ class ConfigFileService(object):
                     task=task,
                     instance_id=instance_id,
                     instance_uuid=instance_uuid,
+                    instance=instance,
                     version=version,
                     model_id=model_id,
                     file_path=file_path,
@@ -223,7 +229,7 @@ class ConfigFileService(object):
             )
 
         task_state = cls._build_task_state(task)
-        items = dict(task_state.get("items") or {})
+        items = cls._normalize_item_map(task, task_state.get("items") or {})
         target_instance_ids = [item_id for item_id in expected_instance_ids if item_id not in items]
         if not target_instance_ids:
             target_instance_ids = expected_instance_ids[:1]
@@ -269,15 +275,16 @@ class ConfigFileService(object):
             return "配置文件采集回调 execution ID 已过期"
         if task.exec_status == CollectRunStatusType.SUCCESS:
             instance_identifier = str(payload.get("instance_uuid") or "").strip()
-            instance_id, _ = cls._resolve_task_instance(task, instance_identifier)
+            instance_id, instance = cls._resolve_task_instance(task, instance_identifier)
             version = cls._normalize_version(str(payload.get("version") or payload.get("collected_at") or ""))
             if (
                 instance_id
                 and ConfigFileVersion.objects.filter(
                     collect_task=task,
-                    instance_id=instance_id,
                     version=version,
-                ).exists()
+                )
+                .filter(cls._version_identity_q(instance_id, instance_identifier, instance))
+                .exists()
             ):
                 return ""
         if task.exec_status != CollectRunStatusType.RUNNING:
@@ -300,16 +307,24 @@ class ConfigFileService(object):
         content_hash: str,
         text_content: str,
         instance_uuid=None,
+        instance=None,
     ) -> tuple[ConfigFileVersion, bool]:
+        existing = (
+            ConfigFileVersion.objects.filter(
+                collect_task=task,
+                version=version,
+            )
+            .filter(cls._version_identity_q(instance_id, instance_uuid, instance))
+            .first()
+        )
+        if existing:
+            return cls._resolve_existing_version(existing, content_hash, instance_uuid=instance_uuid)
+
         business_key = {
             "collect_task": task,
             "instance_id": instance_id,
             "version": version,
         }
-        existing = ConfigFileVersion.objects.filter(**business_key).first()
-        if existing:
-            return cls._resolve_existing_version(existing, content_hash, instance_uuid=instance_uuid)
-
         try:
             temp_content_key = ConfigFileContentLifecycle.stage_content(text_content)
             formal_content_key = cls.build_object_key(model_id, instance_id, file_path, version)
@@ -329,6 +344,16 @@ class ConfigFileService(object):
                 )
         except IntegrityError:
             ConfigFileContentLifecycle.discard_temp_content(temp_content_key)
+            existing = (
+                ConfigFileVersion.objects.filter(
+                    collect_task=task,
+                    version=version,
+                )
+                .filter(cls._version_identity_q(instance_id, instance_uuid, instance))
+                .first()
+            )
+            if existing:
+                return cls._resolve_existing_version(existing, content_hash, instance_uuid=instance_uuid)
             existing = ConfigFileVersion.objects.get(**business_key)
             return cls._resolve_existing_version(existing, content_hash, instance_uuid=instance_uuid)
         except Exception:
@@ -485,7 +510,7 @@ class ConfigFileService(object):
             return False
 
         task_state = cls._build_task_state(task)
-        items = dict(task_state.get("items") or {})
+        items = cls._normalize_item_map(task, task_state.get("items") or {})
         items[instance_id] = {
             "instance_id": instance_id,
             "version": version,
@@ -539,7 +564,7 @@ class ConfigFileService(object):
     @classmethod
     def _get_task_instance_or_raise(cls, task: CollectModels, instance_identifier: str) -> tuple[str, dict]:
         resolved_instance_id, instance = cls._resolve_task_instance(task, instance_identifier)
-        if cls._get_expected_instance_map(task) and not instance:
+        if cls._get_expected_instance_ids(task) and not instance:
             raise BaseAppException(f"配置文件采集回调实例不属于当前任务: {instance_identifier}")
         return resolved_instance_id, instance or {}
 
@@ -571,19 +596,76 @@ class ConfigFileService(object):
             inst_uuid = str(instance.get("inst_uuid") or "").strip()
             if not inst_uuid or inst_uuid != normalized_identifier:
                 continue
-            graph_id = str(instance.get("_id") or instance.get("id") or "").strip()
-            return graph_id or inst_uuid, instance
+            return inst_uuid, instance
 
         expected_instance_map = cls._get_expected_instance_map(task)
         instance = expected_instance_map.get(normalized_identifier)
         if instance:
-            return normalized_identifier, instance
+            return cls._instance_identity_key(instance) or normalized_identifier, instance
 
         return "", {}
 
+    @staticmethod
+    def _instance_identity_key(instance: dict) -> str:
+        if not isinstance(instance, dict):
+            return ""
+        inst_uuid = str(instance.get("inst_uuid") or "").strip()
+        if inst_uuid:
+            return inst_uuid
+        return str(instance.get("_id") or instance.get("id") or "").strip()
+
+    @classmethod
+    def _instance_key_aliases(cls, task: CollectModels) -> dict[str, str]:
+        """任意已知键（UUID / 旧图 _id）→ 规范身份键。"""
+        aliases: dict[str, str] = {}
+        for instance in task.instances or []:
+            if not isinstance(instance, dict):
+                continue
+            identity = cls._instance_identity_key(instance)
+            if not identity:
+                continue
+            aliases[identity] = identity
+            graph_id = str(instance.get("_id") or instance.get("id") or "").strip()
+            if graph_id:
+                aliases[graph_id] = identity
+        return aliases
+
+    @classmethod
+    def _normalize_item_map(cls, task: CollectModels, items: dict | None) -> dict:
+        """把在途任务里旧图 _id 键收敛到 UUID，避免汇总按 len(items) 误判完成。"""
+        raw_items = items if isinstance(items, dict) else {}
+        aliases = cls._instance_key_aliases(task)
+        expected = cls._get_expected_instance_ids(task)
+        if not expected:
+            return dict(raw_items)
+
+        normalized: dict = {}
+        for key, item in raw_items.items():
+            if not isinstance(item, dict):
+                continue
+            canonical = aliases.get(str(key), str(key))
+            if canonical not in expected:
+                continue
+            existing = normalized.get(canonical)
+            if existing is None or str(item.get("version") or "") >= str(existing.get("version") or ""):
+                rewritten = dict(item)
+                rewritten["instance_id"] = canonical
+                normalized[canonical] = rewritten
+        return normalized
+
     @classmethod
     def _get_expected_instance_ids(cls, task: CollectModels) -> list[str]:
-        return list(cls._get_expected_instance_map(task).keys())
+        keys = []
+        seen: set[str] = set()
+        for instance in task.instances or []:
+            if not isinstance(instance, dict):
+                continue
+            key = cls._instance_identity_key(instance)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            keys.append(key)
+        return keys
 
     @staticmethod
     def _get_expected_instance_map(task: CollectModels) -> dict[str, dict]:
@@ -591,10 +673,12 @@ class ConfigFileService(object):
         for instance in task.instances or []:
             if not isinstance(instance, dict):
                 continue
-            instance_id = str(instance.get("_id") or instance.get("id") or "")
-            if not instance_id:
-                continue
-            instance_map[instance_id] = instance
+            inst_uuid = str(instance.get("inst_uuid") or "").strip()
+            graph_id = str(instance.get("_id") or instance.get("id") or "").strip()
+            if inst_uuid:
+                instance_map[inst_uuid] = instance
+            if graph_id:
+                instance_map[graph_id] = instance
         return instance_map
 
     @classmethod
@@ -636,9 +720,11 @@ class ConfigFileService(object):
     @classmethod
     def _build_summary(cls, task: CollectModels, items: dict | None = None) -> dict:
         task_state = cls._build_task_state(task)
-        item_map = dict(items if items is not None else task_state.get("items") or {})
+        item_map = cls._normalize_item_map(task, items if items is not None else task_state.get("items") or {})
         expected_instance_ids = cls._get_expected_instance_ids(task)
         expected_total = len(expected_instance_ids) if expected_instance_ids else len(item_map)
+        if expected_instance_ids:
+            item_map = {key: item_map[key] for key in expected_instance_ids if key in item_map}
         received_count = len(item_map)
         success_count = sum(1 for item in item_map.values() if item.get("status") == ConfigFileVersionStatus.SUCCESS)
         error_count = received_count - success_count
@@ -760,14 +846,17 @@ class ConfigFileService(object):
         return latest_version.content_hash if latest_version else ""
 
     @classmethod
-    def _get_latest_success_version(cls, task_id: int, instance_id: str, file_path: str):
+    def _get_latest_success_version(cls, task_id: int, instance_id: str, file_path: str, instance_uuid=None, instance=None):
+        lookup = cls._version_identity_q(instance_id, instance_uuid, instance)
+        if not lookup:
+            return None
         return (
             ConfigFileVersion.objects.filter(
                 collect_task_id=task_id,
-                instance_id=instance_id,
                 file_path=file_path,
                 status=ConfigFileVersionStatus.SUCCESS,
             )
+            .filter(lookup)
             .order_by("-created_at")
             .first()
         )
@@ -794,6 +883,18 @@ class ConfigFileService(object):
             query |= Q(instance_uuid=uuid_value) | Q(instance_id=uuid_value)
         if graph_id:
             query |= Q(instance_id=graph_id)
+        return query
+
+    @classmethod
+    def _version_identity_q(cls, instance_id: str = "", instance_uuid=None, instance=None) -> Q:
+        query = cls._instance_lookup_q(instance_id, instance_uuid)
+        if isinstance(instance, dict):
+            graph_id = str(instance.get("_id") or instance.get("id") or "").strip()
+            if graph_id:
+                query |= Q(instance_id=graph_id)
+            inst_uuid = str(instance.get("inst_uuid") or "").strip()
+            if inst_uuid:
+                query |= Q(instance_uuid=inst_uuid) | Q(instance_id=inst_uuid)
         return query
 
     @staticmethod

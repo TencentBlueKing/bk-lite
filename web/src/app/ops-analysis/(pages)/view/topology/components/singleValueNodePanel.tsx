@@ -7,11 +7,17 @@ import React, {
   useState,
   useRef,
   useCallback,
+  useMemo,
 } from 'react';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useSingleValueConfig } from '@/app/ops-analysis/hooks/useSingleValueConfig';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
-import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
+import type {
+  FilterBindings,
+  FilterValue,
+  UnifiedFilterDefinition,
+} from '@/app/ops-analysis/types/dashBoard';
 import type {
   NodeConfPanelProps,
   NodeConfigFormValues,
@@ -21,10 +27,16 @@ import { NODE_DEFAULTS } from '../constants/nodeDefaults';
 import { initThresholdColors } from '@/app/ops-analysis/utils/thresholdUtils';
 import { canEnableCompare } from '@/app/ops-analysis/utils/compareQuery';
 import { SingleValueSettingsSection } from '@/app/ops-analysis/components/singleValueSettingsSection';
+import { FilterBindingPanel } from '@/app/ops-analysis/components/unifiedFilter';
 import { useTranslation } from '@/utils/i18n';
 import DataSourceParamsConfig from '@/app/ops-analysis/components/paramsConfig';
 import DataSourceSelect from '@/app/ops-analysis/components/dataSourceSelect';
 import { normalizeColorFields } from '../utils/formColorUtils';
+import {
+  buildDefaultFilterBindings,
+  getBindableFilterParams,
+  getFilterDefinitionId,
+} from '@/app/ops-analysis/utils/widgetDataTransform';
 import {
   Form,
   Input,
@@ -33,7 +45,36 @@ import {
   Button,
   Drawer,
   ColorPicker,
+  Tooltip,
 } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
+
+const QUERY_PARAM_FILTER_TYPES = ['params', 'fixed'];
+
+const computePreviewDefinitions = (
+  existingDefinitions: UnifiedFilterDefinition[],
+  dataSource: DatasourceItem | undefined,
+): UnifiedFilterDefinition[] => {
+  const existingMap = new Map(
+    existingDefinitions.map((def) => [def.id, def]),
+  );
+  const bindableParams = getBindableFilterParams(dataSource?.params);
+  bindableParams.forEach((param, index) => {
+    const id = getFilterDefinitionId(param.name, param.type);
+    if (!existingMap.has(id)) {
+      existingMap.set(id, {
+        id,
+        key: param.name,
+        name: param.alias_name || param.name,
+        type: param.type,
+        defaultValue: (param.value as FilterValue) ?? null,
+        order: existingDefinitions.length + index,
+        enabled: true,
+      });
+    }
+  });
+  return Array.from(existingMap.values());
+};
 
 type SingleValueFormValues = NodeConfigFormValues & {
   params?: Record<string, unknown>;
@@ -46,6 +87,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
   visible = false,
   title,
   builtinNamespaceId,
+  filterDefinitions = [],
   onClose,
   onConfirm,
   onCancel,
@@ -54,6 +96,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
   const [currentDataSource, setCurrentDataSource] = useState<number | null>(null);
   const [filteredDataSources, setFilteredDataSources] = useState<DatasourceItem[]>([]);
   const initializedRef = useRef<string | null>(null);
+  const [filterBindings, setFilterBindings] = useState<FilterBindings>({});
 
   const { getSourceDataByApiId, getDataSourceBriefList } = useDataSourceApi();
   const { t } = useTranslation();
@@ -77,6 +120,35 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
     open: visible,
   });
 
+  const previewFilterDefinitions = useMemo(
+    () => computePreviewDefinitions(filterDefinitions, selectedDataSource),
+    [filterDefinitions, selectedDataSource],
+  );
+
+  const queryConfigParams = useMemo(
+    () =>
+      (Array.isArray(selectedDataSource?.params)
+        ? selectedDataSource.params
+        : []
+      ).filter((param: ParamItem) =>
+        QUERY_PARAM_FILTER_TYPES.includes(param.filterType || 'fixed'),
+      ),
+    [selectedDataSource?.params],
+  );
+
+  const bindableFilterParams = useMemo(
+    () =>
+      Array.isArray(selectedDataSource?.params)
+        ? getBindableFilterParams(selectedDataSource.params)
+        : [],
+    [selectedDataSource?.params],
+  );
+
+  const hasQueryParams = queryConfigParams.length > 0;
+  const hasUnifiedFilterBindings = bindableFilterParams.length > 0;
+  const shouldShowUnifiedFilterSection =
+    previewFilterDefinitions.length > 0 && Boolean(selectedDataSource?.params);
+
   const initializeNewNode = useCallback(() => {
     const defaultValues: SingleValueFormValues = {
       dataSource: undefined,
@@ -96,6 +168,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
 
     setCurrentDataSource(null);
     setSelectedDataSource(undefined);
+    setFilterBindings({});
     singleValueConfig.resetSingleValueConfig();
 
     form.resetFields();
@@ -164,9 +237,26 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
               params,
             );
           }
+
+          const previewDefs = computePreviewDefinitions(
+            filterDefinitions,
+            selectedSource,
+          );
+          setFilterBindings(
+            buildDefaultFilterBindings(
+              valueConfig.dataSourceParams?.length
+                ? valueConfig.dataSourceParams
+                : selectedSource.params,
+              previewDefs,
+              valueConfig.filterBindings,
+            ) || {},
+          );
+        } else {
+          setFilterBindings({});
         }
       } else {
         setSelectedDataSource(undefined);
+        setFilterBindings({});
       }
 
       form.setFieldsValue(formValues);
@@ -178,6 +268,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
       setDefaultParamValues,
       restoreUserParamValues,
       singleValueConfig,
+      filterDefinitions,
     ]
   );
 
@@ -244,9 +335,25 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
           selectedFields: [],
           params,
         });
+        const previewDefs = computePreviewDefinitions(
+          filterDefinitions,
+          selectedSource,
+        );
+        setFilterBindings(
+          buildDefaultFilterBindings(selectedSource.params, previewDefs) || {},
+        );
+      } else {
+        setFilterBindings({});
       }
     },
-    [ensureDataSource, setSelectedDataSource, form, setDefaultParamValues, singleValueConfig]
+    [
+      ensureDataSource,
+      setSelectedDataSource,
+      form,
+      setDefaultParamValues,
+      singleValueConfig,
+      filterDefinitions,
+    ]
   );
 
   const handleConfirm = useCallback(async () => {
@@ -266,7 +373,12 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
 
       values.thresholdColors = singleValueConfig.thresholdColors;
       values.compare = !!values.compare;
-      values.compareMode = values.compareMode || 'percent';
+      if (values.compare) {
+        values.compareMode = values.compareMode || 'percent';
+      }
+      if (filterBindings && Object.keys(filterBindings).length > 0) {
+        values.filterBindings = filterBindings;
+      }
 
       onConfirm?.(values);
     } catch (error) {
@@ -278,6 +390,7 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
     processFormParamsForSubmit,
     onConfirm,
     singleValueConfig.thresholdColors,
+    filterBindings,
   ]);
 
   const handleCancel = () => {
@@ -341,8 +454,8 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
           </Form.Item>
         </div>
 
-        {/* 参数 */}
-        {selectedDataSource?.params && selectedDataSource.params.length > 0 && (
+        {/* 查询参数：仅私有 params 与固定参数，筛选参数走统一筛选 */}
+        {hasQueryParams && (
           <div className="mb-6">
             <div className="font-bold text-(--color-text-1) mb-4">
               {t('dashboard.queryParams')}
@@ -351,10 +464,27 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
               <DataSourceParamsConfig
                 selectedDataSource={selectedDataSource}
                 readonly={readonly || dataSourcesLoading}
-                includeFilterTypes={['params', 'fixed', 'filter']}
+                includeFilterTypes={['params', 'fixed']}
                 fieldPrefix="params"
               />
             </Spin>
+          </div>
+        )}
+
+        {shouldShowUnifiedFilterSection && hasUnifiedFilterBindings && (
+          <div className="mb-6">
+            <div className="font-bold text-(--color-text-1) mb-4 flex items-center gap-1">
+              {t('dashboard.unifiedFilterLinkage')}
+              <Tooltip title={t('dashboard.unifiedFilterBindingTip')}>
+                <QuestionCircleOutlined className="text-(--color-text-3) cursor-help" />
+              </Tooltip>
+            </div>
+            <FilterBindingPanel
+              definitions={previewFilterDefinitions}
+              dataSourceParams={selectedDataSource?.params || []}
+              filterBindings={filterBindings}
+              onChange={setFilterBindings}
+            />
           </div>
         )}
 

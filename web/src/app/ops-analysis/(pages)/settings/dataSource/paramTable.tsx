@@ -2,9 +2,10 @@
 
 import React, { useImperativeHandle } from "react";
 import dayjs, { Dayjs } from "dayjs";
-import { Button, DatePicker, Empty, Input, Select, Switch } from "antd";
+import { Button, DatePicker, Input, Select, Switch } from "antd";
 import { MinusCircleOutlined, PlusCircleOutlined } from "@ant-design/icons";
 import CustomTable from "@/components/custom-table";
+import CompactEmptyState from "@/components/compact-empty-state";
 import TimeSelector from "@/components/time-selector";
 import DateRangeSelector from "@/app/ops-analysis/components/dateRangeSelector";
 import { useTranslation } from "@/utils/i18n";
@@ -120,6 +121,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
 
     const paramTypeOptions = [
       { label: t("dataSource.paramTypes.string"), value: "string" },
+      { label: t("dataSource.paramTypes.stringList"), value: "stringList" },
       { label: t("dataSource.paramTypes.number"), value: "number" },
       { label: t("dataSource.paramTypes.boolean"), value: "boolean" },
       { label: t("dataSource.paramTypes.date"), value: "date" },
@@ -329,7 +331,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
             disabled={readOnly}
             value={record.type || "string"}
             options={paramTypeOptions}
-            style={{ width: "100%" }}
+            className="w-full"
             onChange={(val) => handleTypeChange(val, record.id!)}
           />
         ),
@@ -358,7 +360,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
                   ? "error"
                   : undefined
               }
-              style={{ width: "100%" }}
+              className="w-full"
               onChange={(val) => handleFilterTypeChange(val, record.id!)}
             />
           );
@@ -372,13 +374,13 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         render: (text: any, record: ParamItem) => {
           const type = record.type || "string";
           const isFixed = record.name && record.filterType === "fixed";
+          const showRequiredBorder =
+            isFixed && !text && text !== 0 && text !== false;
           const commonProps = {
-            style: {
-              width: "100%",
-              ...(isFixed && !text && text !== 0 && text !== false
-                ? { borderColor: "var(--color-fail)" }
-                : {}),
-            },
+            className: "w-full",
+            ...(showRequiredBorder
+              ? { style: { borderColor: "var(--color-fail)" } }
+              : {}),
           };
 
           if (type === "date") {
@@ -391,7 +393,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
                 onChange={(date: Dayjs | null) =>
                   handleDefaultChange(date, record.id!, "date")
                 }
-                style={{ width: "100%" }}
+                className="w-full"
                 format="YYYY-MM-DD HH:mm:ss"
               />
             );
@@ -478,32 +480,20 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
             key: "action",
             width: 80,
             render: (_: any, record: ParamItem, index: number) => (
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "4px",
-                    justifyContent: "center",
-                  }}
-                >
+                <div className="flex justify-center gap-1">
                   <Button
                     type="text"
                     size="small"
                     icon={<PlusCircleOutlined />}
                     onClick={() => handleAddParamAfter(index)}
-                    style={{
-                      border: "none",
-                      padding: "4px",
-                    }}
+                    className="border-0 p-1"
                   />
                   <Button
                     type="text"
                     size="small"
                     icon={<MinusCircleOutlined />}
                     onClick={() => handleDeleteParam(record.id!)}
-                    style={{
-                      border: "none",
-                      padding: "4px",
-                    }}
+                    className="border-0 p-1"
                   />
                 </div>
             ),
@@ -512,7 +502,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
     ];
 
     return (
-      <div style={{ margin: 0 }}>
+      <div className="m-0">
         <CustomTable
           rowKey="id"
           size="small"
@@ -522,37 +512,18 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           bordered
           locale={{
             emptyText: (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={t("common.noData")}
-                className="!my-0 py-1"
-                styles={{ image: { height: 36 } }}
-              />
+              <CompactEmptyState description={t("common.noData")} />
             ),
           }}
         />
         {duplicateNames.length > 0 && (
-          <div
-            style={{
-              color: "var(--color-fail)",
-              fontSize: "12px",
-              marginTop: "2px",
-              padding: "2px 8px",
-            }}
-          >
+          <div className="mt-0.5 px-2 py-0.5 text-xs text-[var(--color-fail)]">
             {t("dataSource.duplicateParamNames")}
             {duplicateNames.join("、")}
           </div>
         )}
         {invalidFilterBindingIds.length > 0 && (
-          <div
-            style={{
-              color: "var(--color-fail)",
-              fontSize: "12px",
-              marginTop: "2px",
-              padding: "2px 8px",
-            }}
-          >
+          <div className="mt-0.5 px-2 py-0.5 text-xs text-[var(--color-fail)]">
             {t("dataSource.invalidFilterParamType")}
           </div>
         )}

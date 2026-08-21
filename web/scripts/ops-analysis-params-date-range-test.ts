@@ -42,15 +42,20 @@ assert.match(
   /case ['"]dateRange['"]:\s*return <DateRangeSelector disabled=\{isDisabled\} allowClear[^>]* \/>;/,
   'dateRange params should render the dedicated controlled selector branch',
 );
-assert.deepEqual(
+assert.equal(
   getDataSourceFormParamInitialValue({ ...dateRangeParam, value: undefined }),
-  { rangeType: 'last_7_days' },
-  'undefined dateRange values should initialize from a cloned default',
+  null,
+  'undefined dateRange values must stay unset instead of showing last 7 days',
 );
 assert.equal(
   getDataSourceFormParamInitialValue({ ...dateRangeParam, value: null }),
   null,
   'explicitly cleared dateRange values must remain null',
+);
+assert.equal(
+  getDataSourceFormParamInitialValue({ ...dateRangeParam, value: '' }),
+  null,
+  'legacy empty-string dateRange defaults must initialize as unset',
 );
 
 assert.match(

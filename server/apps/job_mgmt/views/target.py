@@ -13,7 +13,7 @@ from apps.core.logger import job_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import OSType, SSHCredentialType, WinRMTransport
 from apps.job_mgmt.filters.target import TargetFilter
-from apps.job_mgmt.models import Target
+from apps.job_mgmt.models import Target, TargetTeamConcurrentUpdateError
 from apps.job_mgmt.serializers.target import TargetBatchDeleteSerializer, TargetSerializer, TargetTestConnectionSerializer
 from apps.job_mgmt.services.error_response import exception_to_response
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
@@ -48,6 +48,7 @@ def _get_executor_node(cloud_region_id: int) -> str:
             "page": 1,
             "page_size": 1,
             "skip_permission": True,
+            "legacy_callsite": "job_mgmt.connection_test",
         }
     )
     if not isinstance(result, dict):
@@ -120,6 +121,12 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
         elif self.action == "test_connection":
             return TargetTestConnectionSerializer
         return TargetSerializer
+
+    def update(self, request, *args, **kwargs):
+        try:
+            return super().update(request, *args, **kwargs)
+        except TargetTeamConcurrentUpdateError as error:
+            return exception_to_response(error, context="[target.update]")
 
     @HasPermission("target-View")
     def list(self, request, *args, **kwargs):

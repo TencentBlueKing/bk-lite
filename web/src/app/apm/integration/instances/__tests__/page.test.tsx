@@ -1,10 +1,9 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { IntlProvider } from 'react-intl';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import dayjs from 'dayjs';
 
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+import { formatDateTime } from '@/app/apm/components/metric-format';
 import ApmIntegrationInstancesPage from '../page';
 
 const api = {
@@ -35,35 +34,12 @@ const activeInstance = {
   permission_mode: 'inherited' as const,
   first_seen_at: '2026-08-05T00:00:00Z',
   last_seen_at: '2026-08-05T01:00:00Z',
-  archived_at: null,
-  archive_reason: '',
   status: 'active' as const,
   organization_ids: [10],
 };
 
 function renderPage() {
-  return render(
-    <IntlProvider
-      locale="zh"
-      messages={{
-        'common.total': '共',
-        'common.items': '条',
-        'common.checked': '已选',
-        'common.confirm': '确认',
-        'common.cancel': '取消',
-        'common.searchPlaceHolder': '搜索字段',
-        'common.selectAll': '全选',
-        'common.selected': '已选',
-        'common.clear': '清空',
-        'common.pin': '固定',
-        'common.unpin': '取消固定',
-        'cutomTable.fieldSetting': '字段设置',
-        'cutomTable.pinHint': '固定字段会显示在表格左侧',
-      }}
-    >
-      <ApmIntegrationInstancesPage />
-    </IntlProvider>
-  );
+  return renderWithApmIntl(<ApmIntegrationInstancesPage />);
 }
 
 beforeEach(() => {
@@ -102,7 +78,6 @@ describe('APM 接入实例目录', () => {
       page: 1,
       page_size: 20,
       status: 'active',
-      include_archived: false,
       started_at: expect.any(String),
       ended_at: expect.any(String),
     })));
@@ -126,7 +101,7 @@ describe('APM 接入实例目录', () => {
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
 
-    expect(columnWidths).toEqual(['13%', '18%', '12%', '7%', '6%', '11%', '12%', '8%', '7%', '112px']);
+    expect(columnWidths).toEqual(['', '', '', '112px', '112px', '168px', '168px', '96px', '160px', '96px']);
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
       '实例 ID',
       '服务',
@@ -145,27 +120,20 @@ describe('APM 接入实例目录', () => {
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });
     expect(getComputedStyle(actionHeader).textAlign).toBe('left');
     expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
-    const lastSeenText = dayjs(activeInstance.last_seen_at).format('YYYY-MM-DD HH:mm');
+    const lastSeenText = formatDateTime(activeInstance.last_seen_at, false);
     const lastSeen = screen.getByText(lastSeenText);
     expect(lastSeen.closest('td')?.textContent).toBe(lastSeenText);
-    expect(lastSeen.getAttribute('title')).toBe(dayjs(activeInstance.last_seen_at).format('YYYY-MM-DD HH:mm:ss'));
+    expect(lastSeen.getAttribute('title')).toBe(formatDateTime(activeInstance.last_seen_at));
     expect(screen.getByRole('columnheader', { name: '所属组织' })).not.toBeNull();
     expect(screen.getByRole('button', { name: '调整组织' })).not.toBeNull();
   });
 
-  it('可显式切换到归档实例并交由服务端过滤', async () => {
-    const user = userEvent.setup();
+  it('实例状态只保留活跃和静默，不再暴露归档产品概念', async () => {
     renderPage();
     await screen.findByText('pod-a');
 
-    await user.click(screen.getByRole('combobox', { name: '按实例状态筛选' }));
-    await user.click(await screen.findByText('已归档'));
-
-    await waitFor(() => expect(api.getInstancePage).toHaveBeenLastCalledWith(expect.objectContaining({
-      page: 1,
-      status: 'archived',
-      include_archived: true,
-    })));
+    expect(screen.queryByText('已归档')).toBeNull();
+    expect(api.getInstancePage).not.toHaveBeenCalledWith(expect.objectContaining({ include_archived: expect.anything() }));
     expect(screen.queryByRole('button', { name: /归档|恢复/ })).toBeNull();
   });
 });

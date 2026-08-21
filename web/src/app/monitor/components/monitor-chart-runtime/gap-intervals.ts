@@ -291,6 +291,9 @@ export const getChartDataWithGapBreaks = (
   });
 
   normalizeGapIntervals(gaps).forEach((gap) => {
+    if (gap.align === 'exact') {
+      return;
+    }
     const valueKeys = getGapValueKeys(data, gap);
     if (!valueKeys.size) {
       return;
@@ -363,7 +366,9 @@ export const getRenderedGapIntervals = (
   const visibleXAxisDomain = resolveVisibleXAxisDomain(data, xAxisDomain);
   const reportedGaps = mergeGapIntervalsForDisplay(
     normalizeGapIntervals(gaps).map((gap) =>
-      alignReportedGapToSampleBoundaries(data, gap, visibleXAxisDomain)
+      gap.align === 'exact'
+        ? gap
+        : alignReportedGapToSampleBoundaries(data, gap, visibleXAxisDomain)
     ),
   );
   // 后端区间是缺失采样点；视觉边界取有效点与缺失点的中点，避免背景压住折线或留下生硬白缝。

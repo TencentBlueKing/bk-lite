@@ -27,7 +27,7 @@ export default function PatchSourceDisplay({
     ? sourceDetails
       .map((item) => item.deleted
         ? `${t('patchManager.libraryPage.sourceDeleted')}${item.url ? `:${item.url}` : ''}`
-        : item.url || '—')
+        : item.url || '--')
       .join(',')
     : t('patchManager.libraryPage.sourceDeleted');
 

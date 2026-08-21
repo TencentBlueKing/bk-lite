@@ -1,6 +1,6 @@
 'use client';
 import React, { useMemo } from 'react';
-import { Spin } from 'antd';
+import { Alert, Spin } from 'antd';
 import AutomaticConfiguration from './automatic';
 import { useSearchParams } from 'next/navigation';
 import configureStyle from './index.module.scss';
@@ -10,11 +10,16 @@ import K3sConfiguration from './k3s/k3sConfiguration';
 import type { FlowProtocol } from '@/app/monitor/types/integration';
 import FlowConfiguration from './flow/flowConfiguration';
 import TemplateAccessGuide from './accessGuide/index';
+import { parseIntegrationObjectId } from '@/app/monitor/utils/integrationEntryContext';
+import { useTranslation } from '@/utils/i18n';
 
 const Configure: React.FC = () => {
   const searchParams = useSearchParams();
+  const { t } = useTranslation();
   const pluginName = searchParams.get('plugin_name') || '';
   const objectName = searchParams.get('name') || '';
+  const objectId = parseIntegrationObjectId(searchParams.get('id'));
+  const pluginId = parseIntegrationObjectId(searchParams.get('plugin_id'));
   const templateType = searchParams.get('template_type') || '';
   const { getCollectType, ready: objectConfigReady } = useObjectConfigInfo(objectName);
 
@@ -26,6 +31,19 @@ const Configure: React.FC = () => {
   const isK8s = collectType === 'k8s';
   const isK3s = collectType === 'k3s';
   const isFlow = collectType === 'netflow' || collectType === 'sflow';
+
+  if (!objectId || !objectName || !pluginId || !pluginName) {
+    return (
+      <div className={configureStyle.configure}>
+        <Alert
+          type="error"
+          showIcon
+          message={t('monitor.integrations.missingEntryContext')}
+          description={t('monitor.integrations.missingEntryContextDescription')}
+        />
+      </div>
+    );
+  }
 
   if (templateType !== 'api' && !objectConfigReady) {
     return (

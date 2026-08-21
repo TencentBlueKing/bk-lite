@@ -54,6 +54,14 @@ for (const { name, pattern } of requiredImports) {
   }
 }
 
+if (!/<ApplicationResourceOverview[\s\S]*?fillContainer/.test(hostSrc)) {
+  failures.push('[ViewCanvasHost.tsx] application canvas should fill the hub workspace');
+}
+
+if (!/viewType === 'k8s'[\s\S]*?-m-4/.test(hostSrc)) {
+  failures.push('[ViewCanvasHost.tsx] k8s canvas should fill the hub workspace');
+}
+
 if (!/<RoomFloorPlan[\s\S]*?onRackSelect\s*=/.test(hostSrc)) {
   failures.push('[ViewCanvasHost.tsx] RoomFloorPlan missing onRackSelect wiring');
 }
@@ -85,6 +93,15 @@ const shellPath = path.join(
 const shellSrc = fs.readFileSync(shellPath, 'utf8');
 if (!/backToRoom|handleBackToRoom/.test(shellSrc)) {
   failures.push('[ViewsWorkspaceShell.tsx] missing back-to-room control');
+}
+if (!/HopDepthControl/.test(shellSrc)) {
+  failures.push('[ViewsWorkspaceShell.tsx] network hop control missing in hub bar');
+}
+if (!/networkCenterHop/.test(shellSrc)) {
+  failures.push('[ViewsWorkspaceShell.tsx] must pass networkCenterHop into the canvas host');
+}
+if (!/centerHop=\{networkCenterHop\}/.test(hostSrc)) {
+  failures.push('[ViewCanvasHost.tsx] NetworkTopo must receive hub-controlled centerHop');
 }
 if (!/getModelAssociations/.test(shellSrc)) {
   failures.push(

@@ -39,6 +39,39 @@ ALERT_CENTER_CREATED_RETRY_ENABLED = os.getenv(
 ).lower() in {"1", "true", "yes"}
 
 
+def _policy_secondary_context(policy) -> str:
+    """同名策略展示用短上下文：与序列化展示口径对齐（公式展开指标名）。"""
+    if not policy:
+        return ""
+    query = getattr(policy, "query_condition", None) or {}
+    if not isinstance(query, dict):
+        query = {}
+    # 与 PolicyService.display_metric_name 对齐，避免详情/通知公式文案不一致
+    from apps.monitor.services.policy import PolicyService
+
+    display = PolicyService.display_metric_name({"query_condition": query})
+    if display:
+        return display
+    monitor_object = getattr(policy, "monitor_object", None)
+    if monitor_object is not None:
+        return str(
+            getattr(monitor_object, "display_name", None)
+            or getattr(monitor_object, "name", "")
+            or ""
+        ).strip()
+    return ""
+
+
+def _format_policy_display_label(policy) -> str:
+    if not policy:
+        return ""
+    name = str(getattr(policy, "name", "") or "").strip()
+    secondary = _policy_secondary_context(policy)
+    if name and secondary:
+        return f"{name}（{secondary}）"
+    return name or secondary
+
+
 class AlertLifecycleNotifier:
     def __init__(self, policy=None, policies_by_id=None):
         self.policy = policy
@@ -441,7 +474,9 @@ class AlertLifecycleNotifier:
         error_msg = ""
         event_results = {}
         try:
-            send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, "", content, [])
+            send_result = SystemMgmtUtils.send_msg_with_channel(
+                channel_id, "", content, [], internal_caller="lite-monitor"
+            )
             success, error_msg = self._parse_channel_result(send_result)
             if use_per_event_ack and isinstance(send_result, dict):
                 details = send_result.get("data") or {}
@@ -552,7 +587,7 @@ class AlertLifecycleNotifier:
             ),
             "tags": getattr(alert, "dimensions", {}),
             "labels": {
-                "policy_name": getattr(policy, "name", "") if policy else "",
+                "policy_name": _format_policy_display_label(policy),
                 "metric_instance_id": getattr(alert, "metric_instance_id", ""),
                 "operator": operator,
                 "reason": reason,
@@ -568,8 +603,9 @@ class AlertLifecycleNotifier:
             "recovered": "告警恢复",
         }
         label = action_labels.get(action, "告警通知")
-        policy_name = getattr(self.policy, "name", "") if self.policy else ""
-        return f"{label}：{policy_name}" if policy_name else label
+        policy = self.policies_by_id.get(alert.policy_id, self.policy)
+        policy_label = _format_policy_display_label(policy)
+        return f"{label}：{policy_label}" if policy_label else label
 
     def _resolve_notice_timezone(self, notice_users):
         """取第一个通知人的账号时区；查不到或列表为空时回退 Asia/Shanghai。"""

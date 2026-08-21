@@ -143,7 +143,7 @@ def test_success_creates_version_and_updates_task(django_capture_on_commit_callb
     assert version_obj is not None
     assert version_obj.status == ConfigFileVersionStatus.SUCCESS
     assert str(version_obj.instance_uuid) == "123e4567-e89b-42d3-a456-426614174000"
-    assert version_obj.instance_id == "inst-1"
+    assert version_obj.instance_id == "123e4567-e89b-42d3-a456-426614174000"
     assert version_obj.content_hash  # 已计算哈希
     assert version_obj.content_key.endswith(".txt")  # 对象键已落到 content
     version_obj.refresh_from_db()
@@ -151,14 +151,14 @@ def test_success_creates_version_and_updates_task(django_capture_on_commit_callb
     assert version_obj.temp_content_key == ""
 
     # DB 真实落库
-    assert ConfigFileVersion.objects.filter(collect_task=task, instance_id="inst-1").count() == 1
+    assert ConfigFileVersion.objects.filter(collect_task=task, instance_id="123e4567-e89b-42d3-a456-426614174000").count() == 1
 
     task.refresh_from_db()
     assert task.exec_status == CollectRunStatusType.SUCCESS
     cf = task.collect_data["config_file"]
     assert cf["success_count"] == 1
     assert cf["changed_count"] == 1
-    assert cf["items"]["inst-1"]["status"] == ConfigFileVersionStatus.SUCCESS
+    assert cf["items"]["123e4567-e89b-42d3-a456-426614174000"]["status"] == ConfigFileVersionStatus.SUCCESS
     assert task.format_data["add"][0]["_status"] == "success"
 
 
@@ -186,7 +186,7 @@ def test_failed_status_marks_task_error_no_version():
 
     task.refresh_from_db()
     assert task.exec_status == CollectRunStatusType.ERROR
-    item = task.collect_data["config_file"]["items"]["inst-1"]
+    item = task.collect_data["config_file"]["items"]["123e4567-e89b-42d3-a456-426614174000"]
     assert item["status"] == ConfigFileVersionStatus.FILE_NOT_FOUND
     assert item["error_message"] == "文件不存在"
 
@@ -362,6 +362,7 @@ def test_create_or_get_version_reads_concurrent_winner_after_integrity_error(moc
         **_version_fields(task, content_hash="same-hash"),
     )
     filter_result = mocker.Mock()
+    filter_result.filter.return_value = filter_result
     filter_result.first.return_value = None
     mocker.patch.object(ConfigFileVersion.objects, "filter", return_value=filter_result)
     mocker.patch.object(ConfigFileVersion.objects, "create", side_effect=IntegrityError("duplicate"))

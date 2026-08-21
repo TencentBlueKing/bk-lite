@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   activateAllRuntimeWidgets,
   resolveRuntimeActivation,
+  shouldCommitRuntimeStates,
 } from '@/app/ops-analysis/utils/dashboardRuntimeActivation';
 
 describe('dashboard runtime activation', () => {
@@ -40,6 +41,38 @@ describe('dashboard runtime activation', () => {
       distance: 0,
       order: 8,
     });
+  });
+
+  it('does not commit scroll-only distance changes', () => {
+    const previous = {
+      a: {
+        active: true,
+        priority: { cause: 1, visibility: 1, distance: 20, order: 2 },
+      },
+    };
+    const next = {
+      a: {
+        active: true,
+        priority: { cause: 1, visibility: 1, distance: 180, order: 2 },
+      },
+    };
+    expect(shouldCommitRuntimeStates(previous, next)).toBe(false);
+  });
+
+  it('commits when a widget enters or leaves the viewport band', () => {
+    const previous = {
+      a: {
+        active: true,
+        priority: { cause: 1, visibility: 1, distance: 20, order: 2 },
+      },
+    };
+    const next = {
+      a: {
+        active: false,
+        priority: { cause: 1, visibility: 1, distance: 900, order: 2 },
+      },
+    };
+    expect(shouldCommitRuntimeStates(previous, next)).toBe(true);
   });
 
   it('activates every widget for report rendering', () => {

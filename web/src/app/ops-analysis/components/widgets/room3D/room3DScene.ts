@@ -146,31 +146,11 @@ export const resolveRoomObjectClickState = (
   };
 };
 
-const ROOM3D_ROOM_RECT_ASPECT = 1.38;
-const ROOM3D_MIN_ROOM_RECT_ASPECT = 1.08;
 const ROOM3D_MAX_DEPTH_TO_WIDTH_RATIO = 2.8;
-const ROOM3D_FLOOR_SIDE_PADDING = 5.0;
-const ROOM3D_MIN_FLOOR_WIDTH = 6.0;
-const ROOM3D_MIN_FLOOR_DEPTH = 5.0;
-
-const clampRoomRatio = (value: number, min: number, max: number) =>
-  Math.min(Math.max(value, min), max);
-
-const getRoomFloorStretchRatio = (
-  dominantCount: number,
-  secondaryCount: number,
-) => {
-  const dominance =
-    Math.max(dominantCount - secondaryCount, 0) / Math.max(dominantCount, 1);
-  const dominanceScale = clampRoomRatio(dominance / 0.625, 0, 1);
-  const secondaryScale = clampRoomRatio(secondaryCount / 3, 0.5, 1);
-  return (
-    ROOM3D_MIN_ROOM_RECT_ASPECT +
-    (ROOM3D_ROOM_RECT_ASPECT - ROOM3D_MIN_ROOM_RECT_ASPECT) *
-      dominanceScale *
-      secondaryScale
-  );
-};
+const ROOM3D_FLOOR_WIDTH_PADDING = 3.4;
+const ROOM3D_FLOOR_DEPTH_PADDING = 5.0;
+const ROOM3D_MIN_FLOOR_WIDTH = 4.5;
+const ROOM3D_MIN_FLOOR_DEPTH = 4.0;
 
 export const buildRoomFloorSize = (maxRow: number, maxCol: number) => {
   const rackMatrixWidth = Math.max(
@@ -183,11 +163,11 @@ export const buildRoomFloorSize = (maxRow: number, maxCol: number) => {
   );
   const frontAisleExtra = maxRow >= 1 ? ROOM3D_FRONT_AISLE_EXTRA : 0;
   const baseWidth = Math.max(
-    rackMatrixWidth + ROOM3D_FLOOR_SIDE_PADDING,
+    rackMatrixWidth + ROOM3D_FLOOR_WIDTH_PADDING,
     ROOM3D_MIN_FLOOR_WIDTH,
   );
   const baseDepth = Math.max(
-    rackMatrixDepth + ROOM3D_FLOOR_SIDE_PADDING + frontAisleExtra,
+    rackMatrixDepth + ROOM3D_FLOOR_DEPTH_PADDING + frontAisleExtra,
     ROOM3D_MIN_FLOOR_DEPTH + frontAisleExtra,
   );
   const rowDominant =
@@ -203,10 +183,9 @@ export const buildRoomFloorSize = (maxRow: number, maxCol: number) => {
     };
   }
 
-  const stretchRatio = getRoomFloorStretchRatio(maxCol, maxRow);
   return {
     floorWidth: baseWidth,
-    floorDepth: Math.max(baseDepth, baseWidth * stretchRatio),
+    floorDepth: baseDepth,
   };
 };
 
@@ -218,26 +197,13 @@ const buildInitialCameraPosition = (
 ) => {
   if (floorDepth > floorWidth * 1.35) {
     const span = Math.max(floorDepth * 0.68, floorWidth * 1.25, 9);
-    return new THREE.Vector3(span * 0.915, span * 0.335 + 2.5, span * 0.86);
+    return new THREE.Vector3(span * 0.9, span * 0.38 + 2.5, span * 1.14);
   }
 
   const rackSpan = Math.max(maxRow * ROOM3D_ROW_GAP, maxCol * ROOM3D_COL_GAP);
   const roomSpan = Math.max(floorWidth, floorDepth) * 0.72;
   const span = Math.max(rackSpan, roomSpan, 9);
   return new THREE.Vector3(span * 0.95, span * 0.5 + 2.5, span * 1.05);
-};
-
-const buildFramingCameraPosition = (
-  floorWidth: number,
-  floorDepth: number,
-  initialCameraPosition: THREE.Vector3,
-) => {
-  if (floorDepth <= floorWidth * 1.35) {
-    return initialCameraPosition.clone();
-  }
-
-  const span = Math.max(floorDepth * 0.68, floorWidth * 1.25, 9);
-  return new THREE.Vector3(span * 1.05, span * 0.52 + 2.5, span * 0.45);
 };
 
 export const buildRoom3DSceneLayout = (
@@ -289,17 +255,8 @@ export const buildRoom3DInitialView = (
     layout.initialCameraPosition,
     safeAspect,
   );
-  // Preserve the established framing target while presenting long rooms from a clearer angle.
-  const framingCameraPosition = getResponsiveCameraPosition(
-    buildFramingCameraPosition(
-      layout.floorWidth,
-      layout.floorDepth,
-      layout.initialCameraPosition,
-    ),
-    safeAspect,
-  );
   const camera = new THREE.PerspectiveCamera(42, safeAspect, 0.1, 1000);
-  camera.position.copy(framingCameraPosition);
+  camera.position.copy(cameraPosition);
   const target = new THREE.Vector3(0, 0, 0);
 
   for (
@@ -382,6 +339,7 @@ export const createRoom3DScene = (
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
     alpha: true,
+    preserveDrawingBuffer: true,
   });
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -838,6 +796,14 @@ export const createRoom3DScene = (
   renderer.domElement.addEventListener("pointerleave", handlePointerLeave);
   renderer.domElement.addEventListener("click", handleClick);
 
+  const handlePreparePrint = () => {
+    if (disposed) {
+      return;
+    }
+    renderer.render(scene, camera);
+  };
+  window.addEventListener("bk-dashboard-prepare-print", handlePreparePrint);
+
   const resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(mountNode);
   window.addEventListener("resize", handleWindowResize);
@@ -856,6 +822,7 @@ export const createRoom3DScene = (
       intersectionObserver?.disconnect();
       resizeObserver.disconnect();
       window.removeEventListener("resize", handleWindowResize);
+      window.removeEventListener("bk-dashboard-prepare-print", handlePreparePrint);
       pixelRatioMediaQuery?.removeEventListener(
         "change",
         handlePixelRatioChange,

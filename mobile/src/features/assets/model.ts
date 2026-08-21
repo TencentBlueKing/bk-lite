@@ -20,10 +20,42 @@ export interface PageResult<T> { count: number; items: T[]; }
 export interface AssetTableColumn { id: string; name: string; type: string; order: number; }
 export interface AssetFileMeta { fileId: string; fileName: string; fileSize: number | null; mimeType: string; }
 
+const ASSET_INSTANCE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null ? value as Record<string, unknown> : {};
+}
+
+function asText(value: unknown) {
+  return value === null || value === undefined ? '' : String(value);
+}
+
+/** 对外实例主键必须是 UUID；纯数字是已剥离的图 _id。 */
+export function isAssetInstanceUuid(value: unknown): value is string {
+  return ASSET_INSTANCE_UUID.test(asText(value).trim());
+}
+
+/** CMDB 对外主键是 inst_uuid；search/retrieve 已剥离图内部 _id。 */
+export function mapAssetInstance(value: unknown, fallbackModelId = ''): AssetInstance {
+  const item = asRecord(value);
+  const id = isAssetInstanceUuid(item.inst_uuid) ? asText(item.inst_uuid).trim() : '';
+  return {
+    id,
+    modelId: asText(item.model_id || fallbackModelId),
+    name: asText(item.inst_name || item.ip_addr || id),
+    organizationName: asText(item.organization_display),
+    values: item,
+  };
+}
+
+export function keepMappedAssetInstance(item: AssetInstance) {
+  return isAssetInstanceUuid(item.id);
+}
+
 export function assetRequestErrorKind(error: unknown): 'forbidden' | 'missing' | 'error' {
   if (!(error instanceof Error)) return 'error';
   if (/API Error:\s*403\b/.test(error.message)) return 'forbidden';
-  if (/API Error:\s*404\b/.test(error.message)) return 'missing';
+  if (/API Error:\s*404\b/.test(error.message) || /API Error:\s*400\b/.test(error.message)) return 'missing';
   return 'error';
 }
 
@@ -32,9 +64,10 @@ export function normalizeFollowedConfig(value: unknown): FollowedAssetsConfig {
   const source = typeof value === 'object' && value !== null ? value as { items?: unknown } : {};
   const items = (Array.isArray(source.items) ? source.items : []).flatMap((raw) => {
     if (typeof raw !== 'object' || raw === null) return [];
-    const item = raw as Record<string, unknown>; const modelId = String(item.model_id || ''); const instanceId = item.inst_id as string | number;
-    if (!modelId || instanceId === undefined || instanceId === null) return [];
-    return [{ modelId, instanceId, followedAt: String(item.followed_at || '') }];
+    const item = raw as Record<string, unknown>; const modelId = String(item.model_id || '');
+    const instanceId = item.inst_uuid ?? item.inst_id;
+    if (!modelId || !isAssetInstanceUuid(instanceId)) return [];
+    return [{ modelId, instanceId: asText(instanceId).trim(), followedAt: String(item.followed_at || '') }];
   }).sort((a, b) => new Date(b.followedAt || 0).getTime() - new Date(a.followedAt || 0).getTime()).slice(0, MAX_FOLLOWED_ASSETS);
   return { items };
 }
@@ -43,7 +76,7 @@ export function addFollowedAsset(config: FollowedAssetsConfig, modelId: string, 
   return { items: [{ modelId, instanceId, followedAt }, ...config.items.filter((item) => !sameAsset(item, modelId, instanceId))].slice(0, MAX_FOLLOWED_ASSETS) };
 }
 export function removeFollowedAsset(config: FollowedAssetsConfig, modelId: string, instanceId: string | number): FollowedAssetsConfig { return { items: config.items.filter((item) => !sameAsset(item, modelId, instanceId)) }; }
-export function serializeFollowedConfig(config: FollowedAssetsConfig) { return { items: config.items.map((item) => ({ model_id: item.modelId, inst_id: item.instanceId, followed_at: item.followedAt })) }; }
+export function serializeFollowedConfig(config: FollowedAssetsConfig) { return { items: config.items.map((item) => ({ model_id: item.modelId, inst_uuid: item.instanceId, followed_at: item.followedAt })) }; }
 
 export function groupAssetModels(classifications: readonly AssetClassification[], models: readonly AssetModel[]) {
   return classifications.filter((item) => item.visible).sort((a, b) => a.order - b.order).map((classification) => ({

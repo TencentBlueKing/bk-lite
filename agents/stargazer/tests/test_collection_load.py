@@ -2,22 +2,13 @@ import asyncio
 import time
 
 import pytest
-
+from core.collection.contracts import CollectOutcome, CollectOutcomeStatus, PreflightResult, PreflightStatus, TargetExecutorSettings
+from core.collection.executor import TargetCollectionExecutor
 from core.collection.runtime import CollectionRequest, RunLease
-from core.collection.contracts import (
-    CollectOutcome,
-    CollectOutcomeStatus,
-    PreflightResult,
-    PreflightStatus,
-    TargetExecutorSettings,
-)
-from core.collection.executor import (
-    TargetCollectionExecutor,
-)
 
 
 @pytest.mark.asyncio
-async def test_255_targets_5_credentials_200_concurrency_keeps_loop_responsive():
+async def test_3000_targets_5_credentials_150_concurrency_keeps_loop_responsive():
     active = 0
     peak = 0
     plugin_calls = 0
@@ -55,13 +46,10 @@ async def test_255_targets_5_credentials_200_concurrency_keeps_loop_responsive()
             expected = now + interval
 
     request = CollectionRequest(
-        task_id="load-255x5x200",
+        task_id="load-3000x5x150",
         plugin_ref="mysql.config",
-        targets=tuple(f"10.10.24.{index}" for index in range(1, 256)),
-        credentials=tuple(
-            {"credential_id": f"credential-{index}"}
-            for index in range(1, 6)
-        ),
+        targets=tuple(f"target-{index}" for index in range(3000)),
+        credentials=tuple({"credential_id": f"credential-{index}"} for index in range(1, 6)),
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -75,8 +63,8 @@ async def test_255_targets_5_credentials_200_concurrency_keeps_loop_responsive()
         plugin=Plugin(),
         publisher=Publisher(),
         settings=TargetExecutorSettings(
-            max_active_targets=200,
-            target_task_window=200,
+            max_active_targets=150,
+            target_task_window=150,
             # 与生产 5 秒保持同一行为，按 1:100 缩放测试时钟。
             connect_timeout_seconds=0.05,
             plugin_timeout_seconds=0.05,
@@ -89,15 +77,11 @@ async def test_255_targets_5_credentials_200_concurrency_keeps_loop_responsive()
     stop_heartbeat.set()
     await heartbeat_task
     await asyncio.sleep(0)
-    leaked = [
-        task
-        for task in asyncio.all_tasks() - before
-        if task is not asyncio.current_task() and not task.done()
-    ]
+    leaked = [task for task in asyncio.all_tasks() - before if task is not asyncio.current_task() and not task.done()]
 
-    assert peak == 200
+    assert peak == 150
     assert plugin_calls == 0
-    assert summary.total == 255
-    assert summary.unreachable == 255
+    assert summary.total == 3000
+    assert summary.unreachable == 3000
     assert max(lag_samples, default=0) < 0.1
     assert leaked == []

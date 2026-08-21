@@ -5,6 +5,7 @@ from django.core.cache import cache
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
+from apps.core.utils.k8s_image_registry import normalize_k8s_image_registry_prefix
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.monitor.constants.infra import InfraConstants
 from apps.rpc.node_mgmt import NodeMgmt
@@ -14,7 +15,11 @@ class InfraService:
     """基础设施配置服务 - 代理调用外部 infra API"""
 
     @staticmethod
-    def generate_install_token(cluster_name: str, cloud_region_id: str) -> str:
+    def generate_install_token(
+        cluster_name: str,
+        cloud_region_id: str,
+        image_registry_prefix: str | None = None,
+    ) -> str:
         """
         生成安装令牌（30分钟有效，最多使用5次）
 
@@ -22,6 +27,8 @@ class InfraService:
         :param cloud_region_id: 云区域 ID
         :return: 限时令牌
         """
+        image_registry_prefix = normalize_k8s_image_registry_prefix(image_registry_prefix)
+
         # 生成限时令牌
         token = str(uuid.uuid4())
         cache_key = f"infra_install_token:{token}"
@@ -30,6 +37,7 @@ class InfraService:
         token_data = {
             "cluster_name": cluster_name,
             "cloud_region_id": cloud_region_id,
+            "image_registry_prefix": image_registry_prefix,
             "usage_count": 0,
             "max_usage": InfraConstants.TOKEN_MAX_USAGE,
         }
@@ -76,10 +84,7 @@ class InfraService:
         if usage_count >= max_usage:
             # 超过最大使用次数，删除令牌
             cache.delete(cache_key)
-            logger.warning(
-                f"Token 已达到最大使用次数: token={token[:8]}***, "
-                f"usage={usage_count}/{max_usage}, cluster={data.get('cluster_name')}"
-            )
+            logger.warning(f"Token 已达到最大使用次数: token={token[:8]}***, " f"usage={usage_count}/{max_usage}, cluster={data.get('cluster_name')}")
             raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
 
         # 增加使用次数
@@ -97,11 +102,17 @@ class InfraService:
         return {
             "cluster_name": data["cluster_name"],
             "cloud_region_id": data["cloud_region_id"],
+            "image_registry_prefix": normalize_k8s_image_registry_prefix(data.get("image_registry_prefix")),
             "remaining_usage": max_usage - data["usage_count"],
         }
 
     @staticmethod
-    def render_config_from_cloud_region(cluster_name: str, cloud_region_id: str, config_type: str = "metric") -> str:
+    def render_config_from_cloud_region(
+        cluster_name: str,
+        cloud_region_id: str,
+        config_type: str = "metric",
+        image_registry_prefix: str | None = None,
+    ) -> str:
         """
         从云区域环境变量获取参数后，调用外部 API 渲染配置
 
@@ -116,27 +127,25 @@ class InfraService:
         env_vars = node_mgmt_rpc.get_cloud_region_envconfig(cloud_region_id)
 
         # 提取必需的环境变量
-        nats_username = env_vars.get('NATS_USERNAME')
-        nats_password = env_vars.get('NATS_PASSWORD')
-        nats_servers = env_vars.get('NATS_SERVERS')
-        nats_tls_ca = env_vars.get('NATS_TLS_CA')
-        webhook_server_url = env_vars.get('WEBHOOK_SERVER_URL')
+        nats_username = env_vars.get("NATS_USERNAME")
+        nats_password = env_vars.get("NATS_PASSWORD")
+        nats_servers = env_vars.get("NATS_SERVERS")
+        nats_tls_ca = env_vars.get("NATS_TLS_CA")
+        webhook_server_url = env_vars.get("WEBHOOK_SERVER_URL")
 
         # 验证必需的环境变量
         missing_vars = []
         if not nats_username:
-            missing_vars.append('NATS_USERNAME')
+            missing_vars.append("NATS_USERNAME")
         if not nats_password:
-            missing_vars.append('NATS_PASSWORD')
+            missing_vars.append("NATS_PASSWORD")
         if not nats_servers:
-            missing_vars.append('NATS_SERVERS')
+            missing_vars.append("NATS_SERVERS")
         if not webhook_server_url:
-            missing_vars.append('WEBHOOK_SERVER_URL')
+            missing_vars.append("WEBHOOK_SERVER_URL")
 
         if missing_vars:
-            raise BaseAppException(
-                f"Missing required environment variables in cloud region {cloud_region_id}: {', '.join(missing_vars)}"
-            )
+            raise BaseAppException(f"Missing required environment variables in cloud region {cloud_region_id}: {', '.join(missing_vars)}")
 
         # 构造请求参数
         params = {
@@ -146,6 +155,7 @@ class InfraService:
             "type": config_type,
             "nats_url": nats_servers,
             "nats_ca": nats_tls_ca,
+            "image_registry_prefix": normalize_k8s_image_registry_prefix(image_registry_prefix),
         }
 
         # 调用外部 webhook API
@@ -171,20 +181,18 @@ class InfraService:
             response = requests.post(
                 api_url,
                 json=params,
-                headers={'Content-Type': 'application/json'},
+                headers={"Content-Type": "application/json"},
                 timeout=InfraConstants.REQUEST_TIMEOUT,
                 verify=get_webhook_tls_verify(),
             )
 
             # 检查响应状态
             if response.status_code != 200:
-                raise BaseAppException(
-                    f"Infra API returned status {response.status_code}: {response.text}"
-                )
+                raise BaseAppException(f"Infra API returned status {response.status_code}: {response.text}")
 
             # 解析响应（假设返回的是 {"yaml": "..."} 格式）
             response_data = response.json()
-            yaml_content = response_data.get('yaml')
+            yaml_content = response_data.get("yaml")
 
             if not yaml_content:
                 raise BaseAppException("Invalid response from infra API: missing 'yaml' field")

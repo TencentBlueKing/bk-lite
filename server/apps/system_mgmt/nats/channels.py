@@ -2,8 +2,18 @@
 import html
 import re
 
+from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.internal_event_auth import (
+    TRUSTED_INTERNAL_EVENT_CALLERS,
+    build_internal_event_payload,
+    legacy_internal_event_auth_allowed,
+    sign_internal_event,
+    verify_internal_event,
+)
+from apps.system_mgmt.utils.group_utils import GroupUtils
+
 from .common import *  # noqa: F401,F403
-from .users import _get_actor_user_scope
+from .users import _actor_scope_response
 
 try:
     from apps.system_mgmt.enterprise import nats_notifications
@@ -38,26 +48,10 @@ def search_channel_list(channel_type="", teams=None, include_children=False, cha
     if not teams:
         return {"result": True, "data": []}
 
-    # 如果 include_children 为 True，递归获取所有子组织
     if include_children:
-        # 一次性获取所有组织，避免递归查询数据库
-        all_groups = Group.objects.values_list("id", "parent_id")
-        # 构建 parent_id -> [child_ids] 的映射
-        children_map = {}
-        for gid, pid in all_groups:
-            if pid is not None:
-                children_map.setdefault(pid, []).append(gid)
-
-        # 在内存中递归获取所有子组织
-        def get_descendants(group_id, result_set):
-            result_set.add(group_id)
-            for child_id in children_map.get(group_id, []):
-                get_descendants(child_id, result_set)
-
-        all_teams = set()
-        for team_id in teams:
-            get_descendants(team_id, all_teams)
-        teams = list(all_teams)
+        teams = GroupUtils.get_group_with_descendants(teams)
+        if not teams:
+            return {"result": True, "data": []}
 
     # 构建 teams 筛选条件：team 字段与 teams 有交集
     channels = Channel.objects.all()
@@ -97,7 +91,9 @@ def search_channel_list_scoped(
     :param channel_method: 可选，仅返回 config.method_name 匹配的通道
     :return: 标准 NATS 返回结构，data 为通知通道列表
     """
-    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
+    if error_response is not None:
+        return error_response
     if not user_obj or not authorized_groups:
         return {"result": True, "data": []}
 
@@ -197,10 +193,7 @@ MAX_NOTIFICATION_BODY_LENGTH = 20_000
 
 
 def _notification_channel_capabilities(channel):
-    is_alert_event_copy = (
-        channel.channel_type == ChannelChoices.NATS
-        and (channel.config or {}).get("method_name") == ALERT_EVENT_COPY_METHOD
-    )
+    is_alert_event_copy = channel.channel_type == ChannelChoices.NATS and (channel.config or {}).get("method_name") == ALERT_EVENT_COPY_METHOD
     if is_alert_event_copy:
         delivery_mode = "alert_event_copy"
         recipient_mode = "none"
@@ -241,7 +234,9 @@ def _channel_delivery_organizations(channel, organization_ids):
 @nats_client.register
 def list_notification_channels_scoped(actor_context, teams=None, include_children=False):
     """返回调用方组织范围内可用的公开通知能力，不暴露渠道私有配置。"""
-    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
+    if error_response is not None:
+        return error_response
     if not user_obj or not authorized_groups:
         return {"result": True, "data": []}
     if teams:
@@ -252,11 +247,7 @@ def list_notification_channels_scoped(actor_context, teams=None, include_childre
         authorized_groups = [group_id for group_id in authorized_groups if group_id in requested]
     if not authorized_groups:
         return {"result": True, "data": []}
-    channels = [
-        channel
-        for channel in Channel.objects.order_by("id")
-        if _channel_has_organization(channel, authorized_groups)
-    ]
+    channels = [channel for channel in Channel.objects.order_by("id") if _channel_has_organization(channel, authorized_groups)]
     return {
         "result": True,
         "data": [_notification_channel_capabilities(channel) for channel in channels],
@@ -272,7 +263,9 @@ def search_notification_recipients_scoped(
     limit=100,
 ):
     """返回通知配置可引用的组织内系统用户稳定 ID，不暴露用户敏感字段。"""
-    user_obj, authorized_groups = _get_actor_user_scope(actor_context, include_children=include_children)
+    user_obj, authorized_groups, error_response = _actor_scope_response(actor_context, include_children=include_children)
+    if error_response is not None:
+        return error_response
     if not user_obj or not authorized_groups:
         return {"result": True, "data": []}
     try:
@@ -309,6 +302,39 @@ def _notification_failure(code, message, *, retryable=False):
         "retryable": retryable,
         "message": message,
     }
+
+
+def _internal_auth_failure():
+    return _notification_failure(
+        "internal_auth_required",
+        "内部告警事件认证失败。",
+        retryable=False,
+    )
+
+
+def _accept_internal_request(scope, payload, internal_auth, *, caller):
+    if verify_internal_event(scope, payload, internal_auth, caller=caller):
+        return True
+    if internal_auth is None and legacy_internal_event_auth_allowed():
+        logger.warning("内部告警事件使用 legacy 无签名路径: scope=%s", scope)
+        return True
+    return False
+
+
+def _alert_event_organizations(content):
+    if not isinstance(content, dict):
+        return []
+    organizations = []
+    for event in content.get("events") or []:
+        if isinstance(event, dict) and "organizations" in event:
+            value = event.get("organizations")
+            if not isinstance(value, list):
+                return None
+            try:
+                organizations.extend(int(organization) for organization in value)
+            except (TypeError, ValueError):
+                return None
+    return organizations
 
 
 @nats_client.register
@@ -388,6 +414,7 @@ def dispatch_notification(
     producer="lite-apm",
     ack_mode="",
     ack_token="",
+    internal_auth=None,
 ):
     """按公开渠道能力投递一次通知，并返回稳定、可判定重试的结果。"""
     if not isinstance(delivery_key, str) or not delivery_key.strip() or len(delivery_key) > 384:
@@ -399,6 +426,14 @@ def dispatch_notification(
     if delivery_organization is None:
         return _notification_failure("channel_forbidden", "通知渠道不属于事件组织范围。")
     capability = _notification_channel_capabilities(channel)
+    request_payload = build_internal_event_payload("system_mgmt.dispatch_notification", locals())
+    if capability["delivery_mode"] == "alert_event_copy" and not _accept_internal_request(
+        "system_mgmt.dispatch_notification",
+        request_payload,
+        internal_auth,
+        caller=producer,
+    ):
+        return _internal_auth_failure()
     if required_delivery_mode and capability["delivery_mode"] != required_delivery_mode:
         return {
             "result": True,
@@ -424,13 +459,11 @@ def dispatch_notification(
         return _notification_failure("invalid_payload", "通知内容无效。")
 
     if capability["delivery_mode"] == "alert_event_copy":
-        producer = producer if producer in {"lite-apm", "lite-monitor", "lite-log"} else "lite-apm"
+        producer = producer if producer in TRUSTED_INTERNAL_EVENT_CALLERS else "lite-apm"
         bounded_event_payload = dict(event_payload)
         # 不能把调用方消息体中的 organizations 原样提升为 receiver 的可信归属；
         # 仅透传渠道自身授权范围内的交集，兼容合法多组织渠道。
-        bounded_event_payload["organizations"] = _channel_delivery_organizations(
-            channel, organization_ids
-        )
+        bounded_event_payload["organizations"] = _channel_delivery_organizations(channel, organization_ids)
         content = {
             "source_id": "nats",
             "pusher": producer,
@@ -459,11 +492,29 @@ def dispatch_notification(
         send_recipients = normalized_recipients
 
     try:
+        send_kwargs = {}
+        if capability["delivery_mode"] == "alert_event_copy":
+            send_request_payload = build_internal_event_payload(
+                "system_mgmt.send_msg_with_channel",
+                {
+                    "channel_id": channel.id,
+                    "title": send_title,
+                    "content": content,
+                    "receivers": send_recipients,
+                    "attachments": None,
+                },
+            )
+            send_kwargs["internal_auth"] = sign_internal_event(
+                "system_mgmt.send_msg_with_channel",
+                send_request_payload,
+                caller=producer,
+            )
         response = send_msg_with_channel(
             channel.id,
             send_title,
             content,
             send_recipients,
+            **send_kwargs,
         )
     except Exception:
         logger.exception("Public notification dispatch failed")
@@ -489,8 +540,7 @@ def dispatch_notification(
     if capability["delivery_mode"] == "alert_event_copy":
         ingestion = (response.get("data") or {}).get("ingestion") or {}
         if ingestion and (
-            int(ingestion.get("errored", 0) or 0) > 0
-            or int(ingestion.get("accepted", 0) or 0) + int(ingestion.get("skipped", 0) or 0) < 1
+            int(ingestion.get("errored", 0) or 0) > 0 or int(ingestion.get("accepted", 0) or 0) + int(ingestion.get("skipped", 0) or 0) < 1
         ):
             return _notification_failure("alert_copy_rejected", "告警中心未接受事件副本。", retryable=True)
     result = {"result": True, "code": "delivered", "retryable": False, "message": "success"}
@@ -502,7 +552,7 @@ def dispatch_notification(
 
 
 @nats_client.register
-def send_msg_with_channel(channel_id, title, content, receivers, attachments=None):
+def send_msg_with_channel(channel_id, title, content, receivers, attachments=None, internal_auth=None):
     """
     通过指定通道发送消息
     :param channel_id: 通道ID
@@ -516,6 +566,22 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
     channel_obj = Channel.objects.filter(id=channel_id).first()
     if not channel_obj:
         return {"result": False, "message": "Channel not found"}
+    method_name = (channel_obj.config or {}).get("method_name")
+    if channel_obj.channel_type == ChannelChoices.NATS and method_name in RAW_PASSTHROUGH_NATS_METHODS:
+        if not isinstance(content, dict) or not isinstance(content.get("pusher"), str) or not content["pusher"]:
+            return _notification_failure("invalid_payload", "告警事件内容无效。")
+        organizations = _alert_event_organizations(content)
+        trusted_caller = content["pusher"] in TRUSTED_INTERNAL_EVENT_CALLERS
+        if trusted_caller:
+            if organizations is None or (
+                organizations and _channel_delivery_organizations(channel_obj, organizations) != sorted(set(organizations))
+            ):
+                return _notification_failure("channel_forbidden", "告警事件组织不属于通知渠道范围。")
+        request_payload = build_internal_event_payload("system_mgmt.send_msg_with_channel", locals())
+        if organizations and trusted_caller and not _accept_internal_request(
+            "system_mgmt.send_msg_with_channel", request_payload, internal_auth, caller=content.get("pusher")
+        ):
+            return _internal_auth_failure()
     # 兼容用户ID列表和用户名列表两种情况
     user_list = _resolve_message_receivers(receivers)
     if channel_obj.channel_type == ChannelChoices.EMAIL:
@@ -547,10 +613,16 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         if nats_notifications is not None and nats_notifications.handles_config(channel_obj.config or {}):
             return send_nats_message(channel_obj, content, title=title)
         # NATS 通道：content 作为 kwargs 传递给目标服务
-        method_name = (channel_obj.config or {}).get("method_name")
         if method_name in RAW_PASSTHROUGH_NATS_METHODS:
             # 内部直推通道（如告警中心）：原样透传 content，跳过 IM 触发的字段规范化。
-            return send_nats_message(channel_obj, content)
+            signed_content = dict(content)
+            if signed_content.get("pusher") in TRUSTED_INTERNAL_EVENT_CALLERS:
+                signed_content["internal_auth"] = sign_internal_event(
+                    "alerts.receive_alert_events",
+                    signed_content,
+                    caller=signed_content["pusher"],
+                )
+            return send_nats_message(channel_obj, signed_content)
         normalized, error = _normalize_nats_content(content)
         if error:
             return error
@@ -684,21 +756,7 @@ def search_opspilot_nats_channels(teams=None, bot_id=None, include_children=Fals
                 continue
 
         if include_children and normalized_teams:
-            all_groups = Group.objects.values_list("id", "parent_id")
-            children_map = {}
-            for gid, pid in all_groups:
-                if pid is not None:
-                    children_map.setdefault(pid, []).append(gid)
-
-            def _collect_descendants(group_id, acc):
-                acc.add(group_id)
-                for child_id in children_map.get(group_id, []):
-                    _collect_descendants(child_id, acc)
-
-            expanded = set()
-            for team_id in normalized_teams:
-                _collect_descendants(team_id, expanded)
-            normalized_teams = list(expanded)
+            normalized_teams = GroupUtils.get_group_with_descendants(normalized_teams)
 
         if not normalized_teams:
             return {"result": True, "data": []}

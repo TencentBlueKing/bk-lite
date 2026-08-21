@@ -1,8 +1,9 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApmApplicationsPage from '../page';
 
 const api = {
@@ -15,6 +16,12 @@ const api = {
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/app/apm/api', () => ({ default: () => api }));
 vi.mock('@/app/apm/components/apm-data-table', () => ({
+  APM_TABLE_COLUMN_WIDTHS: {
+    actionGroup: 192,
+    organization: 160,
+    status: 96,
+    timestamp: 168,
+  },
   default: ({ columns, dataSource }: {
     columns: Array<{ key?: string; fixed?: string; render?: (_: unknown, item: { id: string; name: string; application_id: string }) => React.ReactNode }>;
     dataSource: Array<{ id: string; name: string; application_id: string }>;
@@ -82,7 +89,7 @@ afterEach(() => {
 
 describe('APM 应用管理', () => {
   it('移除重复总数并将创建应用作为右侧主操作', async () => {
-    render(<ApmApplicationsPage />);
+    renderWithApmIntl(<ApmApplicationsPage />);
 
     await screen.findByText('演示应用');
     expect(screen.queryByText('共 1 个应用')).toBeNull();
@@ -92,7 +99,7 @@ describe('APM 应用管理', () => {
   });
 
   it('直接展示高频行操作并固定在表格右侧', async () => {
-    render(<ApmApplicationsPage />);
+    renderWithApmIntl(<ApmApplicationsPage />);
 
     await screen.findByText('演示应用');
     expect(screen.getByRole('button', { name: '添加接入' })).not.toBeNull();
@@ -102,9 +109,9 @@ describe('APM 应用管理', () => {
     expect(document.querySelector('[data-fixed="right"]')).not.toBeNull();
   });
 
-  it('使用抽屉承载创建应用表单', async () => {
+  it('使用抽屉承载创建应用表单并将操作按钮放在底部', async () => {
     const user = userEvent.setup();
-    render(<ApmApplicationsPage />);
+    renderWithApmIntl(<ApmApplicationsPage />);
     await screen.findByText('演示应用');
 
     await user.click(screen.getByRole('button', { name: '创建应用' }));
@@ -113,6 +120,13 @@ describe('APM 应用管理', () => {
     expect(document.querySelector('.ant-modal')).toBeNull();
     expect(document.querySelector('.ant-drawer-title')?.textContent).toBe('创建应用');
     expect(document.querySelector('form#apm-application-form')).not.toBeNull();
-    expect(screen.getByRole('button', { name: /^创\s*建$/ }).getAttribute('form')).toBe('apm-application-form');
+    const createButton = screen.getByRole('button', { name: /^创\s*建$/ });
+    const cancelButton = screen.getByRole('button', { name: /^取\s*消$/ });
+    const drawerFooter = document.querySelector('.ant-drawer-footer');
+
+    expect(createButton.getAttribute('form')).toBe('apm-application-form');
+    expect(drawerFooter?.contains(cancelButton)).toBe(true);
+    expect(drawerFooter?.contains(createButton)).toBe(true);
+    expect(document.querySelector('.ant-drawer-header')?.contains(createButton)).toBe(false);
   });
 });

@@ -61,9 +61,15 @@ import {
 } from "@/app/ops-analysis/utils/widgetRequestVersion";
 import WidgetRenderer from "@/app/ops-analysis/components/widgetRenderer";
 import WidgetErrorState from "@/app/ops-analysis/components/widgetErrorState";
+import WidgetState from "@/app/ops-analysis/components/widget-state";
 import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widgetHeaderRuntimeSlot";
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
+import ScreenWidgetThemeProvider from "@/app/ops-analysis/components/screenWidgetThemeProvider";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
+import {
+  areTableQueryParamsEquivalent,
+  serializeTableQueryKey,
+} from "@/app/ops-analysis/utils/tablePagination";
 import { validateMultiValueData } from "@/app/ops-analysis/utils/multiValueData";
 import { validateEventTimelinePayload } from "@/app/ops-analysis/utils/eventTimeline";
 import { validateCardListPayload } from "@/app/ops-analysis/utils/cardList";
@@ -320,7 +326,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const [tableQueryParams, setTableQueryParams] = useState<Record<string, any>>(
     {},
   );
-  const { canvasDataSourceLookupStatus } = useOpsAnalysis();
+  const { canvasDataSourceLookupStatus, dataSources } = useOpsAnalysis();
   const runtimeScheduler = useDashboardRuntimeScheduler();
   const { getSourceDataByApiId } = useDataSourceApi();
   const optionConsumerSequenceRef = useRef(0);
@@ -345,8 +351,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     () => ({
       suppressErrorNotification: true as const,
       fallbackErrorMessage: t("dashboard.dataFetchFailed"),
+      knownDataSources: dataSources,
     }),
-    [t],
+    [dataSources, t],
   );
   const scheduleOptionsPhysical = useCallback(
     <T,>(physicalKey: string, start: () => Promise<T>) => {
@@ -478,6 +485,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       value={runtimeParamValue as string | number | undefined}
       onChange={handleRuntimeParamChange}
       block={!headerRuntimeSlot}
+      chartThemeMode={config?.chartThemeMode}
     />
   ) : null;
   const runtimeHeaderControl =
@@ -501,8 +509,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const rawDataRef = useRef<unknown>(null);
   rawDataRef.current = rawData;
   const tableQueryKey = useMemo(
-    () => JSON.stringify(tableQueryParams),
-    [tableQueryParams],
+    () => serializeTableQueryKey(tableQueryParams, dataSource?.params),
+    [dataSource?.params, tableQueryParams],
   );
   const normalizedDataSourceId = useMemo(() => {
     if (typeof config?.dataSource === "string") {
@@ -554,6 +562,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       }),
     [componentSwitchParam, optionState.status, runtimeParams],
   );
+  const switchOptionsLoadError =
+    optionState.status === "error" ? optionState.errorMessage : undefined;
+  const isEmptyComponentSwitch =
+    componentSwitchRequestGate === "blocked" && !switchOptionsLoadError;
   const requestEnabled =
     Boolean(normalizedDataSourceId) &&
     Boolean(dataSource) &&
@@ -718,10 +730,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const handleTableQueryChange = useCallback((params: Record<string, any>) => {
     setTableQueryParams((prev) => {
       const next = params || {};
-      const same = JSON.stringify(prev) === JSON.stringify(next);
-      return same ? prev : next;
+      return areTableQueryParamsEquivalent(prev, next, dataSource?.params)
+        ? prev
+        : next;
     });
-  }, []);
+  }, [dataSource?.params]);
 
   const validateChartData = useCallback(
     (data: unknown, type?: string) => {
@@ -989,18 +1002,25 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setHasSettledRequest(true);
       const optionsLoadErrorMessage =
         optionState.status === "error" ? optionState.errorMessage : undefined;
-      const blockedMessage = optionsLoadErrorMessage || t("dashboard.noData");
-      setDataValidation((previous) => {
-        if (
-          previous
-          && previous.isValid === false
-          && previous.message === blockedMessage
-          && previous.errorCode === undefined
-        ) {
-          return previous;
-        }
-        return { isValid: false, message: blockedMessage };
-      });
+      if (optionsLoadErrorMessage) {
+        setDataValidation((previous) => {
+          if (
+            previous
+            && previous.isValid === false
+            && previous.message === optionsLoadErrorMessage
+            && previous.errorCode === undefined
+          ) {
+            return previous;
+          }
+          return { isValid: false, message: optionsLoadErrorMessage };
+        });
+        return;
+      }
+      setDataValidation((previous) => (
+        previous?.isValid === true && previous.message === undefined
+          ? previous
+          : { isValid: true }
+      ));
     }
   }, [
     isSceneWidget,
@@ -1103,7 +1123,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         onRenderStatus?.({ widgetId, status: "loading" });
         return;
       }
-      if (!hasData && hasRenderableChartData(chartType, rawData)) {
+      if (!hasData && hasRenderableChartData(chartType, rawData, config)) {
         onRenderStatus?.({ widgetId, status: "loading" });
         return;
       }
@@ -1115,6 +1135,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     [
       hasSettledRequest,
       chartType,
+      config,
       isTableLikeChart,
       loading,
       onReady,
@@ -1155,8 +1176,18 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     });
 
   useEffect(() => {
-    if (isInitialNonTableLoading || isWaitingForInitialData || isWaitingForSwitchOptions) {
+    if (
+      isInitialNonTableLoading
+      || isWaitingForInitialData
+      || isWaitingForSwitchOptions
+      || (isTableLikeChart && tableLoading)
+    ) {
       onRenderStatus?.({ widgetId, status: "loading" });
+      return;
+    }
+
+    if (isEmptyComponentSwitch) {
+      onRenderStatus?.({ widgetId, status: "empty" });
       return;
     }
 
@@ -1174,92 +1205,75 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   }, [
     dataValidation,
     hasActiveRuntimeControl,
+    isEmptyComponentSwitch,
     isInitialNonTableLoading,
+    isTableLikeChart,
     isWaitingForInitialData,
     isWaitingForSwitchOptions,
     onRenderStatus,
     t,
+    tableLoading,
     widgetId,
   ]);
 
+  let body: React.ReactNode;
   if (isSceneWidget) {
-    return (
-      <>
-        {runtimeHeaderControl}
-        <div style={{ position: "relative", height: "100%" }}>
-          <WidgetRenderer
-            chartType={chartType}
-            rawData={null}
-            loading={false}
-            config={config}
-            refreshKey={reloadVersion}
-            refreshCause={refreshCause}
-            screenRenderContext={screenRenderContext}
-            onReady={handleRendererReady}
-            onError={handleRendererError}
-            layoutEditable={layoutEditable}
-            onTopologyLayoutChange={onTopologyLayoutChange}
-            runtimeOwnerId={widgetId}
-            runtimeActive={runtimeActive}
-            runtimePriority={runtimePriority}
-            fallback={renderError(
-              `${t("dashboard.unknownComponentType")}: ${chartType}`,
-            )}
-          />
-        </div>
-      </>
+    body = (
+      <div
+        style={{
+          position: "relative",
+          height: "100%",
+        }}
+      >
+        <WidgetRenderer
+          chartType={chartType}
+          rawData={null}
+          loading={false}
+          config={config}
+          refreshKey={reloadVersion}
+          refreshCause={refreshCause}
+          screenRenderContext={screenRenderContext}
+          onReady={handleRendererReady}
+          onError={handleRendererError}
+          layoutEditable={layoutEditable}
+          onTopologyLayoutChange={onTopologyLayoutChange}
+          runtimeOwnerId={widgetId}
+          runtimeActive={runtimeActive}
+          runtimePriority={runtimePriority}
+          fallback={renderError(
+            `${t("dashboard.unknownComponentType")}: ${chartType}`,
+          )}
+        />
+      </div>
     );
-  }
-
-  if (isInitialNonTableLoading || isWaitingForInitialData || isWaitingForSwitchOptions) {
-    return (
-      <>
-        {runtimeHeaderControl}
-        <div className="h-full flex items-center justify-center">
-          <Spin spinning />
-        </div>
-      </>
+  } else if (isInitialNonTableLoading || isWaitingForInitialData || isWaitingForSwitchOptions) {
+    body = (
+      <div className="h-full flex items-center justify-center">
+        <Spin spinning />
+      </div>
     );
-  }
-
-  if (widgetDataSourceState === "data-source-load-error") {
-    return (
-      <>
-        {runtimeHeaderControl}
-        {renderError(t("dashboard.dataSourceLoadFailed"))}
-      </>
-    );
-  }
-
-  if (widgetDataSourceState === "data-source-not-found") {
-    return (
-      <>
-        {runtimeHeaderControl}
-        {renderError(t("dashboard.dataSourceNotFound"))}
-      </>
-    );
-  }
-
-  // 如果数据校验失败，显示错误提示
-  if (
+  } else if (widgetDataSourceState === "data-source-load-error") {
+    body = renderError(t("dashboard.dataSourceLoadFailed"));
+  } else if (widgetDataSourceState === "data-source-not-found") {
+    body = renderError(t("dashboard.dataSourceNotFound"));
+  } else if (isEmptyComponentSwitch) {
+    body = <WidgetState kind="empty" description={t("dashboard.noData")} />;
+  } else if (
     dataValidation &&
     !dataValidation.isValid &&
     !hasActiveRuntimeControl
   ) {
-    return (
-      <>
-        {runtimeHeaderControl}
-        {renderError(
-          dataValidation.message || t("dashboard.dataCannotRenderAsChart"),
-        )}
-      </>
+    body = renderError(
+      dataValidation.message || t("dashboard.dataCannotRenderAsChart"),
     );
-  }
-
-  return (
-    <>
-      {runtimeHeaderControl}
-      <div style={{ position: "relative", height: "100%" }}>
+  } else {
+    body = (
+      <div
+        style={{
+          position: "relative",
+          height: "100%",
+        }}
+      >
         <WidgetRenderer
           chartType={chartType}
           rawData={rawData}
@@ -1287,7 +1301,14 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           )}
         />
       </div>
-    </>
+    );
+  }
+
+  return (
+    <ScreenWidgetThemeProvider mode={config?.chartThemeMode}>
+      {runtimeHeaderControl}
+      {body}
+    </ScreenWidgetThemeProvider>
   );
 };
 

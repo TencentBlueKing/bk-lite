@@ -176,7 +176,7 @@ const EnvironmentPage = () => {
   const confirmActivation = () => {
     modal.confirm({
       title: t('node-manager.cloudregion.environment.activateTitle'),
-      icon: <ExclamationCircleFilled style={{ color: token.colorWarning }} />,
+      icon: <ExclamationCircleFilled className="text-[var(--color-warning)]" />,
       content: t('node-manager.cloudregion.environment.activateDescription'),
       okText: t('node-manager.cloudregion.environment.activateConfirm'),
       cancelText: t('common.cancel'),
@@ -291,8 +291,7 @@ const EnvironmentPage = () => {
   const renderDefaultMaintenance = () => (
     <Card
       title={t('node-manager.cloudregion.environment.maintenanceMethod')}
-      className="border-[var(--color-border)]"
-      style={{ background: 'var(--color-fill-1)' }}
+      className="border-[var(--color-border)] bg-[var(--color-fill-1)]"
       styles={{ body: { padding: 20 } }}
     >
       <Alert
@@ -321,8 +320,7 @@ const EnvironmentPage = () => {
   const renderK8sDeployment = () => (
     <Card
       title={t('node-manager.cloudregion.environment.k8sDeploy')}
-      className="border-[var(--color-border)]"
-      style={{ background: 'var(--color-fill-1)' }}
+      className="border-[var(--color-border)] bg-[var(--color-fill-1)]"
       styles={{ body: { padding: 20 } }}
     >
       <Alert
@@ -348,8 +346,7 @@ const EnvironmentPage = () => {
   const renderFirstDeployment = () => (
     <Card
       title={t('node-manager.cloudregion.environment.firstDeployTitle')}
-      className="border-[var(--color-border)]"
-      style={{ background: 'var(--color-fill-1)' }}
+      className="border-[var(--color-border)] bg-[var(--color-fill-1)]"
       styles={{ body: { padding: 20 } }}
     >
       <Steps
@@ -403,8 +400,7 @@ const EnvironmentPage = () => {
     return (
       <Card
         title={t('node-manager.cloudregion.environment.deploySummary')}
-        className="border-[var(--color-border)]"
-        style={{ background: 'var(--color-fill-1)' }}
+        className="border-[var(--color-border)] bg-[var(--color-fill-1)]"
         styles={{ body: { padding: 20 } }}
         extra={
           !pendingAddress && (

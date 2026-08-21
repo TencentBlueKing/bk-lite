@@ -9,6 +9,8 @@ import re
 from apps.cmdb.constants.constants import INSTANCE_ASSOCIATION
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.instance import InstanceManage
+from apps.cmdb.services.instance_identity import optional_inst_uuid
+from apps.core.logger import cmdb_logger as logger
 
 RACK_LOCATION_PATTERN = re.compile(r"^([A-Z]+)(\d+)$")
 
@@ -57,7 +59,7 @@ def parse_rack_location(value) -> tuple[int, int] | None:
 def build_room_layout(racks: list) -> dict:
     """把机柜列表组装成俯视平面图数据。
 
-    入参每项：inst_id, inst_name, row, col, u_count, datacenter_type,
+    入参每项：inst_uuid, inst_name, row, col, u_count, datacenter_type,
               datacenter_state, used_u（已占用 U 数）。
     """
     placed, unplaced, cells = [], [], {}
@@ -73,7 +75,7 @@ def build_room_layout(racks: list) -> dict:
                 "usage": round(used_u / u_count * 100) if u_count else 0,
             }
             placed.append(item)
-            cells.setdefault((r["row"], r["col"]), []).append(item["inst_id"])
+            cells.setdefault((r["row"], r["col"]), []).append(item["inst_uuid"])
         else:
             location = r.get("location")
             unplaced.append(
@@ -83,7 +85,7 @@ def build_room_layout(racks: list) -> dict:
                 }
             )
 
-    conflicts = [{"row": rc[0], "col": rc[1], "inst_ids": ids} for rc, ids in cells.items() if len(ids) > 1]
+    conflicts = [{"row": rc[0], "col": rc[1], "inst_uuids": uuids} for rc, uuids in cells.items() if len(uuids) > 1]
     return {
         "racks": placed,
         "unplaced": unplaced,
@@ -98,7 +100,7 @@ def build_room_layout(racks: list) -> dict:
 def build_rack_layout(u_count: int, devices: list) -> dict:
     """把机柜内设备组装成正视 U 图数据。
 
-    入参每项：inst_id, inst_name, model_id, rack_u_start, u_size。
+    入参每项：inst_uuid, inst_name, model_id, rack_u_start, u_size。
     """
     placed, unplaced = [], []
     for d in devices:
@@ -116,7 +118,7 @@ def build_rack_layout(u_count: int, devices: list) -> dict:
         for b in ordered[i + 1 :]:
             if b["rack_u_start"] > a["u_end"]:
                 break
-            overlaps.append([a["inst_id"], b["inst_id"]])
+            overlaps.append([a["inst_uuid"], b["inst_uuid"]])
 
     free_u, max_free_u = free_u_stats(u_count, [(d["rack_u_start"], d["u_end"]) for d in placed])
     return {"u_count": u_count, "placed": placed, "unplaced": unplaced, "overlaps": overlaps, "free_u": free_u, "max_free_u": max_free_u}
@@ -234,16 +236,21 @@ def _rack_device_relations(rack_ids: list[int]) -> tuple[dict[int, list[int]], d
     return relation_map, device_map
 
 
-def get_room3d_rack_device_summaries(rack_ids, permission_map=None, user=None) -> dict:
+def get_room3d_rack_device_summaries(rack_uuids, permission_map=None, user=None) -> dict:
     """批量组装 Room3D 机柜设备摘要，避免按机柜重复查询正视图布局。"""
-    normalized_rack_ids = _normalize_int_ids(rack_ids)
-    if not normalized_rack_ids:
+    normalized_rack_uuids = [value for item in rack_uuids or [] if (value := optional_inst_uuid(item))]
+    if not normalized_rack_uuids:
         return {}
 
+    rack_instances = InstanceManage.query_entity_by_uuids(normalized_rack_uuids)
+    rack_uuid_by_id = {int(item["_id"]): item["inst_uuid"] for item in rack_instances if item.get("_id") is not None and item.get("inst_uuid")}
+    normalized_rack_ids = list(rack_uuid_by_id)
+
     relation_map, device_map = _rack_device_relations(normalized_rack_ids)
-    summaries = {rack_id: {"devices": [], "device_count": 0, "unplaced_device_count": 0} for rack_id in normalized_rack_ids}
+    summaries = {rack_uuid: {"devices": [], "device_count": 0, "unplaced_device_count": 0} for rack_uuid in normalized_rack_uuids}
 
     for rack_id in normalized_rack_ids:
+        rack_uuid = rack_uuid_by_id[rack_id]
         for device_id in relation_map.get(rack_id, []):
             inst = device_map.get(int(device_id))
             if not inst:
@@ -251,15 +258,19 @@ def get_room3d_rack_device_summaries(rack_ids, permission_map=None, user=None) -
             if permission_map and not InstanceManage._has_topology_view_permission(inst, permission_map, user=user):
                 continue
 
-            summaries[rack_id]["device_count"] += 1
+            inst_uuid = optional_inst_uuid(inst.get("inst_uuid"))
+            if not inst_uuid:
+                logger.warning("Room3D 设备缺少合法 inst_uuid，已安全跳过: graph_id=%s", inst.get("_id"))
+                continue
+            summaries[rack_uuid]["device_count"] += 1
             rack_u_start = _safe_int(inst.get("rack_u_start"))
             u_size = _safe_int(inst.get("u_size"))
             if not rack_u_start or not u_size:
-                summaries[rack_id]["unplaced_device_count"] += 1
+                summaries[rack_uuid]["unplaced_device_count"] += 1
                 continue
-            summaries[rack_id]["devices"].append(
+            summaries[rack_uuid]["devices"].append(
                 {
-                    "device_id": str(inst.get("inst_uuid") or inst["_id"]),
+                    "device_id": inst_uuid,
                     "device_name": inst.get("inst_name") or "",
                     "model_id": inst.get("model_id"),
                     "rack_u_start": rack_u_start,
@@ -276,19 +287,20 @@ def get_rack_layout(rack_id, permission_map=None, user=None) -> dict:
     u_count = _safe_int(rack.get("u_count")) or 0
     devices = [
         {
-            "inst_id": str(d["_id"]),
-            "inst_uuid": d.get("inst_uuid"),
+            "inst_uuid": d["inst_uuid"],
             "inst_name": d.get("inst_name"),
             "model_id": d.get("model_id"),
             "rack_u_start": _safe_int(d.get("rack_u_start")),
             "u_size": _safe_int(d.get("u_size")),
             "status": _scalar(d.get("status") or d.get("datacenter_state")),
+            "organization": d.get("organization") or [],
+            "_creator": d.get("_creator"),
         }
         for d in _rack_device_instances(rack_id, permission_map, user)
+        if d.get("inst_uuid")
     ]
     layout = build_rack_layout(u_count, devices)
     layout["rack"] = {
-        "inst_id": str(rack_id),
         "inst_uuid": rack.get("inst_uuid"),
         "inst_name": rack.get("inst_name"),
         "u_count": u_count,
@@ -308,6 +320,8 @@ def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
                 continue
             if permission_map and not InstanceManage._has_topology_view_permission(r, permission_map, user=user):
                 continue
+            if not r.get("inst_uuid"):
+                continue
             u_count = _safe_int(r.get("u_count")) or 0
             ranges = []
             for d in _rack_device_instances(rid, permission_map, user):
@@ -323,9 +337,9 @@ def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
             row, col = row_col if row_col else (None, None)
             racks.append(
                 {
-                    "inst_id": str(rid),
                     "inst_uuid": r.get("inst_uuid"),
                     "inst_name": r.get("inst_name"),
+                    "model_id": r.get("model_id") or "rack",
                     "row": row,
                     "col": col,
                     "location": r.get("location"),
@@ -335,6 +349,8 @@ def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
                     "used_u": used_u,
                     "free_u": free_u,
                     "max_free_u": max_free_u,
+                    "organization": r.get("organization") or [],
+                    "_creator": r.get("_creator"),
                 }
             )
     return build_room_layout(racks)

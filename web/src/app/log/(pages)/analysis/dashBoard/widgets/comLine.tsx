@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import ChartLegend from '../components/chartLegend';
-import { Spin, Empty } from 'antd';
+import { Spin } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import { ChartDataTransformer } from '@/app/log/utils/chartDataTransform';
 import useChartColors from './docker/useChartColors';
 import { createSoftLineArea } from './chartStyle';
@@ -260,11 +261,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
   }
 
   if (!isDataReady || !chartData || chartData.categories.length === 0) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <ChartEmptyState compact />;
   }
 
   return (

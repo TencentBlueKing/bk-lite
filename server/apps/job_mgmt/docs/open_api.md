@@ -8,6 +8,7 @@
 |------|------|------|------|
 | 查询节点列表 | NATS `bklite.node_list` | 无 | 同步，分页返回节点 |
 | 查询目标列表 | NATS `bklite.job_target_list` | 无 | 同步，分页返回目标 |
+| 查询目标列表 v2 | OpenAPI `POST /openapi/v1/job-mgmt/targets-v2` | Authorization Bearer | 同步，有上界键集分页 |
 | 作业列表 | NATS `bklite.job_list` | 无 | 同步，返回脚本库与 Playbook 及参数定义 |
 | 作业列表 | REST `GET /api/v1/job_mgmt/api/open/job_list` | Api-Authorization | 同步，执行前获取作业背景信息 |
 | 脚本执行 | NATS `bklite.job_script_execute` | 无 | 异步，返回 task_id |
@@ -16,14 +17,20 @@
 | 查询作业详情 | REST `GET /api/v1/job_mgmt/api/open/job_detail/{task_id}` | Api-Authorization | 同步，返回执行详情与状态 |
 | 文件上传 | REST `POST /api/v1/job_mgmt/api/open/upload_file` | Api-Authorization | 同步，返回 file_id + file_key |
 | 文件删除 | REST `DELETE /api/v1/job_mgmt/api/open/delete_file` | Api-Authorization | 同步，删除文件 |
-| 文件分发 | NATS `bklite.job_file_distribute` | 无 | 异步，返回 task_id |
+| 文件分发（推荐） | OpenAPI `POST /openapi/v1/job-mgmt/file-distribute` | Authorization Bearer | 异步，团队由 Secret 绑定 |
+| 文件分发（旧版） | NATS `bklite.job_file_distribute` | 无 | 迁移兼容，异步返回 task_id |
 | 批量查询状态 | NATS `bklite.job_status_batch_query` | 无 | 同步 |
 | 查询作业详情 | NATS `bklite.job_detail_query` | 无 | 同步 |
 
 ## 鉴权说明
 
 ### NATS 接口
-无需鉴权，信任内网 NATS 通道。NATS subject 前缀由 `NATS_NAMESPACE` 配置决定（默认 `bklite`）。
+NATS subject 前缀由 `NATS_NAMESPACE` 配置决定（默认 `bklite`）。
+
+旧版 `job_file_distribute` 暂时保留供存量调用迁移和紧急回滚；新接入必须使用统一 OpenAPI 网关。
+listener subject 日志用于流量计数，NATS 连接审计用于识别存量调用方；已知调用全部迁移且观测窗口归零后，设
+`JOB_FILE_DISTRIBUTE_NATS_ENABLED=0` 拒绝旧入口。若新路径异常，置回 `1` 即可回滚，不回滚已签发 Secret 和网关审计。
+NATS 旧入口仍按现有契约信任内网通道，请求自报 `team` 不是可信身份。
 
 ### REST 接口
 使用 `UserAPISecret` 的 `api_secret` 作为 token：
@@ -51,17 +58,17 @@ Api-Authorization: <api_secret>
        │─────────────────────────────────────────────────────▶│
        │◀─────────────────── { task_id } ─────────────────────│
        │                                                      │
-       │  3. NATS: bklite.job_file_distribute                 │
-       │     { file_keys: [file_key], ... }                   │
+       │  3. POST /openapi/v1/job-mgmt/file-distribute        │
+       │     Authorization: Bearer + { file_keys, ... }       │
        │─────────────────────────────────────────────────────▶│
        │◀─────────────────── { task_id } ─────────────────────│
        │                                                      │
        │          ... 等待执行 ...                             │
        │                                                      │
-       │  4. HTTP POST callback_url (server → 第三方)          │
+       │  4. NATS: bklite.job_detail_query (查询结果)           │
        │◀─────────────── { task_id, status } ─────────────────│
        │                                                      │
-       │  5. NATS: bklite.job_detail_query (可选，获取详情)     │
+       │  5. 未完成时可按 task_id 重复查询                │
        │─────────────────────────────────────────────────────▶│
        │◀─────────── { execution_results, ... } ──────────────│
 ```
@@ -244,9 +251,56 @@ Query：
 }
 ```
 
+> 兼容说明：该 v1 入口保留 `page_size=-1` 的“返回全部”语义。新调用方应优先使用下方 v2，避免单次返回无上界。
+
 ---
 
-### 2.1 查询作业列表
+### 2.1 查询目标列表 v2（推荐）
+
+**OpenAPI**: `POST /openapi/v1/job-mgmt/targets-v2`
+
+v2 由统一网关验证 Bearer 凭据、审计请求并注入不可伪造的授权团队，业务层在数据库内过滤目标，再使用按 `target_id` 降序的键集分页。调用方不得提交 `team`、`caller_token` 或其他身份字段。每页最多返回 100 条，不支持 `page_size=-1`。部署可用 `JOB_TARGET_LIST_V2_MAX_PAGE_SIZE` 在 1-100 内下调上限；非法值或超过 100 时恢复为 100。
+
+v2 默认关闭。滚动发布时，须先完成新版本部署并确认旧进程全部退出，再运行 `python manage.py reconcile_target_team_memberships --apply`，随后运行同命令的 `--check` 模式确认零漂移，最后设置 `JOB_TARGET_LIST_V2_ENABLED=true` 并滚动重启。未完成校验前不得启用，以避免迁移回填期间的旧进程写入造成授权投影漂移。回滚时先将该开关恢复为 `false` 并确认所有实例停止接收 v2 请求，再回滚应用；投影表是可重建数据，不影响保留的 v1 读路径。若必须回退 migration，仅在 v2 已停用且旧版本已全部恢复后执行反向迁移；重新发布时再次按上述顺序回填与校验。
+
+**Request:**
+```json
+{
+  "name": "web",
+  "ip": "10.0",
+  "os_type": "linux",
+  "page_size": 20,
+  "cursor": 1234
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 否 | 按名称模糊搜索 |
+| ip | string | 否 | 按 IP 模糊搜索 |
+| os_type | string | 否 | `linux` 或 `windows` |
+| page_size | int | 否 | 每页最大返回数量，默认 20，范围 1-100 |
+| cursor | int | 否 | 上一页返回的 `next_cursor`；首页不传 |
+
+**Response:**
+```json
+{
+  "result": true,
+  "data": {
+    "items": [],
+    "next_cursor": 1200,
+    "has_more": true
+  }
+}
+```
+
+`has_more=false` 时 `next_cursor` 为 `null`。v2 不返回需要扫描全部命中记录的精确总数。
+
+键集分页在固定筛选条件下不会重复返回同一目标，但不是一致性快照：翻页期间新增的目标可能不进入本轮后续页，删除、团队权限或筛选字段变化可能导致跳项。
+
+---
+
+### 2.2 查询作业列表
 
 **NATS Subject**: `bklite.job_list`
 
@@ -507,7 +561,12 @@ Content-Type: application/json
 
 ### 6. 文件分发
 
-**NATS Subject**: `bklite.job_file_distribute`
+**OpenAPI Endpoint（推荐）**: `POST /openapi/v1/job-mgmt/file-distribute`
+
+**鉴权**: `Authorization: Bearer <api_secret>`
+
+服务端使用 API Secret 绑定的唯一活动团队执行。请求 schema 不接受 `team`，也不接受调用方控制的
+`callback_url` / `callback_subject`；结果通过作业状态查询获取。网关审计记录凭据主体、团队、路径与结果。
 
 **Request:**
 ```json
@@ -516,13 +575,11 @@ Content-Type: application/json
   "file_keys": ["job-files/2026/04/30/abc123.rpm"],
   "target_source": "node_mgmt",
   "target_list": [
-    {"node_id": "xxx", "name": "web-01", "ip": "1.2.3.4", "os": "linux", "cloud_region_id": "region-1"}
+    {"node_id": "xxx", "name": "web-01", "ip": "1.2.3.4", "os": "linux"}
   ],
   "target_path": "/tmp/patches/",
   "overwrite_strategy": "overwrite",
-  "timeout": 600,
-  "team": [1],
-  "callback_url": "http://patch-mgmt:8080/api/callback/task_done"
+  "timeout": 600
 }
 ```
 
@@ -537,10 +594,7 @@ Content-Type: application/json
 | target_path | string | 是 | 目标机器上的存放路径 |
 | overwrite_strategy | string | 否 | `overwrite`（默认）或 `skip` |
 | timeout | int | 否 | 超时秒数，默认 600 |
-| team | array | 是 | 团队 ID 列表 |
-| callback_url | string | 否 | 任务完成回调地址 |
-
-> ⚠️ **团队隔离**：`file_keys` 对应的文件必须全部属于 `team` 声明的团队范围；跨团队文件、无归属历史文件与不存在文件都会被拒绝，且不会创建或派发作业。
+> ⚠️ **团队隔离**：网关接口仅允许分发 API Secret 绑定活动团队的文件与目标。跨团队、无归属、不存在或格式非法的输入都会在创建作业和派发 Celery 任务前被拒绝。
 
 **Response:** 同脚本执行
 

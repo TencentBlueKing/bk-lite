@@ -15,7 +15,7 @@
 }
 
 .table :global(.ant-table-thead > tr > th) {
-  padding: 12px 16px;
+  padding: 8px 12px;
   color: var(--color-text-2);
   background: var(--color-fill-1);
   font-size: 14px;
@@ -27,15 +27,29 @@
 }
 
 .table :global(.ant-table-tbody > tr > td) {
-  padding: 14px 16px;
+  padding: 8px 12px;
   line-height: 1.5;
   text-align: left;
   vertical-align: middle;
 }
 
-.table :global(.ant-table-tbody > tr > td > .ant-space) {
+.table :global(.ant-table-thead > tr > th:last-child),
+.table :global(.ant-table-tbody > tr > td:last-child) {
+  padding-right: 20px;
+}
+
+.table :global(.ant-table-tbody > tr > td .ant-space) {
+  display: inline-flex;
   justify-content: flex-start !important;
+  width: auto;
+  max-width: 100%;
   text-align: left !important;
+}
+
+.table :global(.ant-table-tbody > tr > td .ant-btn.ant-btn-link) {
+  height: auto;
+  margin: 0;
+  padding: 0 !important;
 }
 
 .table :global(.ant-table-tbody > tr > td > .ant-space-vertical) {
@@ -68,7 +82,8 @@
 }
 
 .table :global(.ant-table-pagination.ant-pagination) {
-  margin: 16px 0 0;
+  margin: 12px 0 0;
+  padding-right: 8px;
 }
 
 .paginationTotal {
@@ -82,6 +97,11 @@
     padding-right: 12px;
     padding-left: 12px;
   }
+
+  .table :global(.ant-table-thead > tr > th:last-child),
+  .table :global(.ant-table-tbody > tr > td:last-child) {
+    padding-right: 16px;
+  }
 }
 
 @media (max-width: 575px) {
@@ -89,6 +109,11 @@
   .table :global(.ant-table-tbody > tr > td) {
     padding-right: 8px;
     padding-left: 8px;
+  }
+
+  .table :global(.ant-table-thead > tr > th:last-child),
+  .table :global(.ant-table-tbody > tr > td:last-child) {
+    padding-right: 12px;
   }
 
   .paginationTotal {

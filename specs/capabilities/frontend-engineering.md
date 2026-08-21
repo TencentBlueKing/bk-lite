@@ -20,6 +20,7 @@
 ## 3. 视觉与组件(引用 web/DESIGN.md)
 
 - 颜色、圆角、间距、排版、组件样式必须取自 `web/DESIGN.md` 的现行 token，禁止复制本文中的历史示例值。
+- 布局与间距优先 Tailwind `className`；行内 `style` 仅用于动态值与 AntD 契约例外（见 `web/DESIGN.md` Layout & Styling）。治理迁移触及区块时同步收敛，见 `web/COMPONENT_GOVERNANCE.md`「样式与布局约束」。
 - 卡片、按钮、链接等基础组件遵循 `web/DESIGN.md` 与 `web/COMPONENT_GOVERNANCE.md`。
 - 产品侧 UI 规范见 [`legacy-design-ui`](legacy-design-ui.md)。
 

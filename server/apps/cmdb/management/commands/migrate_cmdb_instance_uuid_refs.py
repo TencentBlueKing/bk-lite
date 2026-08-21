@@ -33,8 +33,26 @@ def _instance_uuid_from_record(record):
     return _canonical_uuid((record.after_data or {}).get("inst_uuid") or (record.before_data or {}).get("inst_uuid"))
 
 
+# 无条件改写：CMDB 图节点 / 关联端点。instance_id 常与云厂商 ID 同名，默认不碰。
+_ALWAYS_GRAPH_ID_SCALAR_KEYS = (
+    ("_id", "inst_uuid"),
+    ("src_inst_id", "src_inst_uuid"),
+    ("dst_inst_id", "dst_inst_uuid"),
+)
+# 仅当同对象已是 CMDB 实例形态时改写 inst_id；instance_id 只在 Operation JSON 显式允许。
+_CONTEXT_INST_ID_KEY = ("inst_id", "inst_uuid")
+_BARE_INSTANCE_ID_KEY = ("instance_id", "instance_uuid")
+_GRAPH_ID_LIST_KEYS = (
+    ("subnet_ids", "subnet_uuids"),
+    ("instance_ids", "instance_uuids"),
+)
+_JSON_REWRITE_MAX_DEPTH = 16
+
+
 class Command(BaseCommand):
-    help = "在 0044 结构迁移之后补齐图实例 UUID，并清洗图关系与 CMDB PostgreSQL 活动引用。" "不进 batch_init；OA/告警等跨模块留给 T6。"
+    help = (
+        "补齐图实例 UUID，并清洗图关系与 CMDB PostgreSQL 活动引用。" "可手动 --dry-run/--apply/--verify；部署后由 Celery 运行期任务自动幂等收敛。" "不进 batch_init 硬门禁（batch_init 只注册运行期任务）。"
+    )
 
     def add_arguments(self, parser):
         parser.add_argument("--batch-size", type=int, default=500)
@@ -120,10 +138,24 @@ class Command(BaseCommand):
             "change_record_updated": 0,
             "change_record_historical_unmapped": 0,
             "subscription_updated": 0,
+            "subscription_snapshot_updated": 0,
             "followed_asset_config_updated": 0,
+            "followed_asset_unmapped": 0,
+            "custom_reporting_pending_updated": 0,
+            "custom_reporting_cleanup_updated": 0,
+            "custom_reporting_unmapped": 0,
             "collect_task_updated": 0,
+            "collect_instance_updated": 0,
+            "collect_reference_unmapped": 0,
+            "collect_result_snapshot_updated": 0,
             "node_mgmt_sync_detail_updated": 0,
             "operation_target_updated": 0,
+            "operation_snapshot_updated": 0,
+            "operation_outbox_updated": 0,
+            "monitor_cmdb_id_updated": 0,
+            "monitor_cmdb_id_unmapped": 0,
+            "node_cmdb_id_updated": 0,
+            "node_cmdb_id_unmapped": 0,
         }
         self._graph_uuid_by_id = {}
         graph_cursor, graph_completed = self._stage_cursor("graph_instances")
@@ -133,10 +165,18 @@ class Command(BaseCommand):
         self._clean_config_versions(batch_size, dry_run, stats)
         self._clean_change_records(batch_size, dry_run, stats)
         self._clean_subscriptions(batch_size, dry_run, stats)
+        self._clean_subscription_snapshots(batch_size, dry_run, stats)
         self._clean_followed_assets(batch_size, dry_run, stats)
+        self._clean_enterprise_custom_reporting(batch_size, dry_run, stats)
         self._clean_collect_tasks(batch_size, dry_run, stats)
+        self._clean_collect_instances(batch_size, dry_run, stats)
+        self._clean_collect_result_snapshots(batch_size, dry_run, stats)
         self._clean_node_mgmt_sync_details(batch_size, dry_run, stats)
         self._clean_operation_targets(batch_size, dry_run, stats)
+        self._clean_operation_snapshots(batch_size, dry_run, stats)
+        self._clean_operation_outbox(batch_size, dry_run, stats)
+        self._clean_monitor_cmdb_ids(batch_size, dry_run, stats)
+        self._clean_node_cmdb_ids(batch_size, dry_run, stats)
         if verify:
             blocker_keys = (
                 "graph_uuid_added",
@@ -145,10 +185,22 @@ class Command(BaseCommand):
                 "config_updated",
                 "change_record_updated",
                 "subscription_updated",
+                "subscription_snapshot_updated",
                 "followed_asset_config_updated",
+                "followed_asset_unmapped",
+                "custom_reporting_pending_updated",
+                "custom_reporting_cleanup_updated",
+                "custom_reporting_unmapped",
                 "collect_task_updated",
+                "collect_instance_updated",
+                "collect_reference_unmapped",
+                "collect_result_snapshot_updated",
                 "node_mgmt_sync_detail_updated",
                 "operation_target_updated",
+                "operation_snapshot_updated",
+                "operation_outbox_updated",
+                "monitor_cmdb_id_updated",
+                "node_cmdb_id_updated",
             )
             blockers = {key: stats[key] for key in blocker_keys if stats[key]}
             if blockers:
@@ -344,7 +396,7 @@ class Command(BaseCommand):
             self._save_stage("subscriptions", cursor)
 
     def _clean_followed_assets(self, batch_size, dry_run, stats):
-        """双写 inst_uuid，保留 inst_id。"""
+        """关注资产仅保留 inst_uuid；无法映射的数字旧值进入 verify 阻断。"""
         cursor, completed = self._stage_cursor("followed_assets")
         if completed:
             return
@@ -381,9 +433,15 @@ class Command(BaseCommand):
                     inst_uuid = _canonical_uuid(cleaned.get("inst_uuid"))
                     if not inst_uuid and str(cleaned.get("inst_id")).isdigit():
                         inst_uuid = uuid_map.get(int(cleaned["inst_id"]))
-                    if inst_uuid and cleaned.get("inst_uuid") != inst_uuid:
-                        cleaned["inst_uuid"] = inst_uuid
-                        item_changed = True
+                    if inst_uuid:
+                        if cleaned.get("inst_uuid") != inst_uuid:
+                            cleaned["inst_uuid"] = inst_uuid
+                            item_changed = True
+                        if "inst_id" in cleaned:
+                            cleaned.pop("inst_id", None)
+                            item_changed = True
+                    elif "inst_id" in cleaned:
+                        stats["followed_asset_unmapped"] += 1
                     cleaned_items.append(cleaned)
                 if item_changed:
                     value["items"] = cleaned_items
@@ -393,6 +451,89 @@ class Command(BaseCommand):
             if changed and not dry_run:
                 UserPersonalConfig.objects.bulk_update(changed, ["config_value"])
             self._save_stage("followed_assets", cursor)
+
+    def _clean_enterprise_custom_reporting(self, batch_size, dry_run, stats):
+        """清理 enterprise 待补关系和待审核删除中的跨请求图 ID。"""
+        try:
+            pending_model = django_apps.get_model("cmdb_enterprise", "CustomReportingPendingRelation")
+            review_model = django_apps.get_model("cmdb_enterprise", "CustomReportingCleanupReview")
+        except LookupError:
+            return
+
+        cursor, completed = self._stage_cursor("custom_reporting_pending")
+        if not completed:
+            while True:
+                rows = list(pending_model.objects.filter(id__gt=cursor).order_by("id")[:batch_size])
+                if not rows:
+                    self._save_stage("custom_reporting_pending", cursor, completed=True)
+                    break
+                cursor = rows[-1].id
+                numeric_ids = []
+                for row in rows:
+                    payload = row.relation_payload or {}
+                    for endpoint_name in ("source", "target"):
+                        endpoint = payload.get(endpoint_name) or {}
+                        raw_id = endpoint.get("_id", endpoint.get("inst_id"))
+                        if str(raw_id).isdigit():
+                            numeric_ids.append(int(raw_id))
+                uuid_map = self._graph_uuid_map(numeric_ids)
+                changed = []
+                for row in rows:
+                    payload = dict(row.relation_payload or {})
+                    row_changed = False
+                    for endpoint_name in ("source", "target"):
+                        endpoint = dict(payload.get(endpoint_name) or {})
+                        raw_id = endpoint.get("_id", endpoint.get("inst_id"))
+                        inst_uuid = _canonical_uuid(endpoint.get("inst_uuid"))
+                        if not inst_uuid and str(raw_id).isdigit():
+                            inst_uuid = uuid_map.get(int(raw_id))
+                        if inst_uuid:
+                            original_endpoint = dict(endpoint)
+                            endpoint["inst_uuid"] = inst_uuid
+                            endpoint.pop("_id", None)
+                            endpoint.pop("inst_id", None)
+                            if endpoint != original_endpoint:
+                                payload[endpoint_name] = endpoint
+                                row_changed = True
+                        elif raw_id is not None:
+                            stats["custom_reporting_unmapped"] += 1
+                    if row_changed:
+                        row.relation_payload = payload
+                        changed.append(row)
+                stats["custom_reporting_pending_updated"] += len(changed)
+                if changed and not dry_run:
+                    pending_model.objects.bulk_update(changed, ["relation_payload"])
+                self._save_stage("custom_reporting_pending", cursor)
+
+        cursor, completed = self._stage_cursor("custom_reporting_cleanup")
+        if completed:
+            return
+        while True:
+            rows = list(review_model.objects.filter(id__gt=cursor, status="pending").order_by("id")[:batch_size])
+            if not rows:
+                self._save_stage("custom_reporting_cleanup", cursor, completed=True)
+                return
+            cursor = rows[-1].id
+            numeric_ids = [int(value) for row in rows for value in (row.review_payload or {}).get("delete_ids", []) if str(value).isdigit()]
+            uuid_map = self._graph_uuid_map(numeric_ids)
+            changed = []
+            for row in rows:
+                payload = dict(row.review_payload or {})
+                delete_ids = payload.get("delete_ids")
+                if not isinstance(delete_ids, list):
+                    continue
+                delete_uuids = [uuid_map.get(int(value)) for value in delete_ids if str(value).isdigit()]
+                if len(delete_uuids) != len(delete_ids) or any(not value for value in delete_uuids):
+                    stats["custom_reporting_unmapped"] += 1
+                    continue
+                payload["delete_uuids"] = delete_uuids
+                payload.pop("delete_ids", None)
+                row.review_payload = payload
+                changed.append(row)
+            stats["custom_reporting_cleanup_updated"] += len(changed)
+            if changed and not dry_run:
+                review_model.objects.bulk_update(changed, ["review_payload"])
+            self._save_stage("custom_reporting_cleanup", cursor)
 
     def _clean_collect_tasks(self, batch_size, dry_run, stats):
         """双写 subnet_uuids，保留 subnet_ids。"""
@@ -412,6 +553,7 @@ class Command(BaseCommand):
                         continue
                     numeric_ids.extend(int(value) for value in container.get("subnet_ids", []) if str(value).isdigit())
             uuid_map = self._graph_uuid_map(numeric_ids)
+            stats["collect_reference_unmapped"] += len(set(numeric_ids).difference(uuid_map))
             changed = []
             for task in tasks:
                 task_changed = False
@@ -471,11 +613,12 @@ class Command(BaseCommand):
         return result, changed
 
     def _clean_node_mgmt_sync_details(self, batch_size, dry_run, stats):
+        stage = "node_mgmt_sync_details"
         try:
             model = django_apps.get_model("cmdb", "NodeMgmtSyncRun")
         except LookupError:
+            self._save_stage(stage, 0, completed=True)
             return
-        stage = "node_mgmt_sync_details"
         if not self._model_table_exists(model):
             self._save_stage(stage, 0, completed=True)
             return
@@ -509,11 +652,12 @@ class Command(BaseCommand):
             self._save_stage(stage, cursor)
 
     def _clean_operation_targets(self, batch_size, dry_run, stats):
+        stage = "operation_targets"
         try:
             model = django_apps.get_model("cmdb", "CmdbOperation")
         except LookupError:
+            self._save_stage(stage, 0, completed=True)
             return
-        stage = "operation_targets"
         if not self._model_table_exists(model):
             self._save_stage(stage, 0, completed=True)
             return
@@ -551,4 +695,427 @@ class Command(BaseCommand):
             if changed_rows and not dry_run:
                 with transaction.atomic():
                     model.objects.bulk_update(changed_rows, ["target"])
+            self._save_stage(stage, cursor)
+
+    @staticmethod
+    def _has_cmdb_instance_context(value):
+        if not isinstance(value, dict):
+            return False
+        if value.get("_id") is not None:
+            return True
+        return bool(value.get("model_id") and value.get("inst_name"))
+
+    @staticmethod
+    def _collect_graph_ids(value, acc, *, depth=0, allow_bare_instance_id=False):
+        if depth > _JSON_REWRITE_MAX_DEPTH or value is None:
+            return
+        if isinstance(value, list):
+            for item in value:
+                Command._collect_graph_ids(item, acc, depth=depth + 1, allow_bare_instance_id=allow_bare_instance_id)
+            return
+        if not isinstance(value, dict):
+            return
+        scalar_keys = list(_ALWAYS_GRAPH_ID_SCALAR_KEYS)
+        if allow_bare_instance_id or Command._has_cmdb_instance_context(value):
+            scalar_keys.append(_CONTEXT_INST_ID_KEY)
+        if allow_bare_instance_id:
+            scalar_keys.append(_BARE_INSTANCE_ID_KEY)
+        for src_key, _dst_key in scalar_keys:
+            graph_id = _graph_id(value.get(src_key))
+            if graph_id is not None:
+                acc.append(graph_id)
+        for src_key, _dst_key in _GRAPH_ID_LIST_KEYS:
+            for item in value.get(src_key) or []:
+                graph_id = _graph_id(item)
+                if graph_id is not None:
+                    acc.append(graph_id)
+        for child in value.values():
+            Command._collect_graph_ids(child, acc, depth=depth + 1, allow_bare_instance_id=allow_bare_instance_id)
+
+    @staticmethod
+    def _rewrite_scalar_uuid(result, src_key, dst_key, uuid_map):
+        if _canonical_uuid(result.get(dst_key)):
+            return False
+        raw = result.get(src_key)
+        inst_uuid = _canonical_uuid(raw)
+        if not inst_uuid:
+            graph_id = _graph_id(raw)
+            inst_uuid = uuid_map.get(graph_id) if graph_id is not None else None
+        if not inst_uuid:
+            return False
+        result[dst_key] = inst_uuid
+        return True
+
+    @staticmethod
+    def _rewrite_json_uuids(value, uuid_map, *, depth=0, allow_bare_instance_id=False):
+        if depth > _JSON_REWRITE_MAX_DEPTH:
+            return value, False
+        if isinstance(value, list):
+            rewritten_items = []
+            changed = False
+            for item in value:
+                rewritten, item_changed = Command._rewrite_json_uuids(item, uuid_map, depth=depth + 1, allow_bare_instance_id=allow_bare_instance_id)
+                rewritten_items.append(rewritten)
+                changed = changed or item_changed
+            return rewritten_items, changed
+        if not isinstance(value, dict):
+            return value, False
+        result = {}
+        changed = False
+        for key, child in value.items():
+            rewritten, child_changed = Command._rewrite_json_uuids(child, uuid_map, depth=depth + 1, allow_bare_instance_id=allow_bare_instance_id)
+            result[key] = rewritten
+            changed = changed or child_changed
+        for src_key, dst_key in _ALWAYS_GRAPH_ID_SCALAR_KEYS:
+            changed = Command._rewrite_scalar_uuid(result, src_key, dst_key, uuid_map) or changed
+        if allow_bare_instance_id or Command._has_cmdb_instance_context(result):
+            changed = Command._rewrite_scalar_uuid(result, *_CONTEXT_INST_ID_KEY, uuid_map) or changed
+        if allow_bare_instance_id:
+            changed = Command._rewrite_scalar_uuid(result, *_BARE_INSTANCE_ID_KEY, uuid_map) or changed
+        for src_key, dst_key in _GRAPH_ID_LIST_KEYS:
+            old_values = result.get(src_key)
+            if not isinstance(old_values, list):
+                continue
+            existing = [uuid_value for uuid_value in (result.get(dst_key) or []) if _canonical_uuid(uuid_value)]
+            uuids = list(existing)
+            for raw in old_values:
+                inst_uuid = _canonical_uuid(raw)
+                if not inst_uuid:
+                    graph_id = _graph_id(raw)
+                    inst_uuid = uuid_map.get(graph_id) if graph_id is not None else None
+                if inst_uuid and inst_uuid not in uuids:
+                    uuids.append(inst_uuid)
+            if uuids and uuids != existing:
+                result[dst_key] = uuids
+                changed = True
+        return result, changed
+
+    @staticmethod
+    def _rewrite_subscription_snapshot(snapshot, uuid_map):
+        if not isinstance(snapshot, dict):
+            return snapshot, False
+        result = dict(snapshot)
+        changed = False
+
+        existing_uuids = [uuid_value for uuid_value in (result.get("instance_uuids") or []) if _canonical_uuid(uuid_value)]
+        uuids = list(existing_uuids)
+        for value in result.get("instances") or []:
+            inst_uuid = _canonical_uuid(value)
+            if not inst_uuid:
+                graph_id = _graph_id(value)
+                inst_uuid = uuid_map.get(graph_id) if graph_id is not None else None
+            if inst_uuid and inst_uuid not in uuids:
+                uuids.append(inst_uuid)
+        if uuids and uuids != existing_uuids:
+            result["instance_uuids"] = uuids
+            changed = True
+
+        relations = result.get("relations") if isinstance(result.get("relations"), dict) else {}
+        existing_by_uuid = result.get("relations_by_uuid") if isinstance(result.get("relations_by_uuid"), dict) else {}
+        relations_by_uuid = {key: dict(value) if isinstance(value, dict) else value for key, value in existing_by_uuid.items()}
+        for src_key, models in relations.items():
+            src_uuid = _canonical_uuid(src_key)
+            if not src_uuid:
+                graph_id = _graph_id(src_key)
+                src_uuid = uuid_map.get(graph_id) if graph_id is not None else None
+            if not src_uuid or not isinstance(models, dict):
+                continue
+            mapped_models = dict(relations_by_uuid.get(src_uuid) or {})
+            model_changed = False
+            for model, related_ids in models.items():
+                mapped = [uuid_value for uuid_value in (mapped_models.get(model) or []) if _canonical_uuid(uuid_value)]
+                original_mapped = list(mapped)
+                for related_id in related_ids or []:
+                    rel_uuid = _canonical_uuid(related_id)
+                    if not rel_uuid:
+                        graph_id = _graph_id(related_id)
+                        rel_uuid = uuid_map.get(graph_id) if graph_id is not None else None
+                    if rel_uuid and rel_uuid not in mapped:
+                        mapped.append(rel_uuid)
+                if mapped != original_mapped:
+                    mapped_models[model] = mapped
+                    model_changed = True
+                elif mapped and model not in mapped_models:
+                    mapped_models[model] = mapped
+                    model_changed = True
+            if model_changed or (mapped_models and relations_by_uuid.get(src_uuid) != mapped_models):
+                relations_by_uuid[src_uuid] = mapped_models
+                changed = True
+        if relations_by_uuid != existing_by_uuid:
+            result["relations_by_uuid"] = relations_by_uuid
+            changed = True
+        return result, changed
+
+    def _clean_subscription_snapshots(self, batch_size, dry_run, stats):
+        """双写 snapshot_data.instance_uuids / relations_by_uuid，保留旧数字键。"""
+        cursor, completed = self._stage_cursor("subscription_snapshots")
+        if completed:
+            return
+        while True:
+            rules = list(SubscriptionRule.objects.filter(id__gt=cursor).order_by("id")[:batch_size])
+            if not rules:
+                self._save_stage("subscription_snapshots", cursor, completed=True)
+                return
+            cursor = rules[-1].id
+            numeric_ids = []
+            for rule in rules:
+                snapshot = rule.snapshot_data if isinstance(rule.snapshot_data, dict) else {}
+                for value in snapshot.get("instances") or []:
+                    graph_id = _graph_id(value)
+                    if graph_id is not None:
+                        numeric_ids.append(graph_id)
+                relations = snapshot.get("relations") if isinstance(snapshot.get("relations"), dict) else {}
+                for src_key, models in relations.items():
+                    graph_id = _graph_id(src_key)
+                    if graph_id is not None:
+                        numeric_ids.append(graph_id)
+                    if not isinstance(models, dict):
+                        continue
+                    for related_ids in models.values():
+                        for related_id in related_ids or []:
+                            related_graph_id = _graph_id(related_id)
+                            if related_graph_id is not None:
+                                numeric_ids.append(related_graph_id)
+            uuid_map = self._graph_uuid_map(numeric_ids)
+            changed = []
+            for rule in rules:
+                rewritten, row_changed = self._rewrite_subscription_snapshot(rule.snapshot_data, uuid_map)
+                if row_changed:
+                    rule.snapshot_data = rewritten
+                    changed.append(rule)
+            stats["subscription_snapshot_updated"] += len(changed)
+            if changed and not dry_run:
+                SubscriptionRule.objects.bulk_update(changed, ["snapshot_data"])
+            self._save_stage("subscription_snapshots", cursor)
+
+    def _clean_collect_instances(self, batch_size, dry_run, stats):
+        """全量采集任务 instances/params 补 inst_uuid / subnet_uuids，保留数字键。"""
+        cursor, completed = self._stage_cursor("collect_instances")
+        if completed:
+            return
+        while True:
+            tasks = list(CollectModels.objects.filter(id__gt=cursor).order_by("id")[:batch_size])
+            if not tasks:
+                self._save_stage("collect_instances", cursor, completed=True)
+                return
+            cursor = tasks[-1].id
+            numeric_ids = []
+            for task in tasks:
+                self._collect_graph_ids(task.instances, numeric_ids)
+                self._collect_graph_ids(task.params, numeric_ids)
+            uuid_map = self._graph_uuid_map(numeric_ids)
+            stats["collect_reference_unmapped"] += len(set(numeric_ids).difference(uuid_map))
+            changed = []
+            for task in tasks:
+                rewritten_instances, instances_changed = self._rewrite_json_uuids(task.instances, uuid_map)
+                rewritten_params, params_changed = self._rewrite_json_uuids(task.params, uuid_map)
+                if not instances_changed and not params_changed:
+                    continue
+                if instances_changed:
+                    task.instances = rewritten_instances
+                if params_changed:
+                    task.params = rewritten_params
+                changed.append(task)
+            stats["collect_instance_updated"] += len(changed)
+            if changed and not dry_run:
+                CollectModels.objects.bulk_update(changed, ["instances", "params"])
+            self._save_stage("collect_instances", cursor)
+
+    def _clean_collect_result_snapshots(self, batch_size, dry_run, stats):
+        """采集结果快照递归补 inst_uuid；无法映射的保持原样。"""
+        cursor, completed = self._stage_cursor("collect_result_snapshots")
+        if completed:
+            return
+        fields = ("format_data", "collect_data", "collect_digest", "topology_snapshot")
+        while True:
+            tasks = list(CollectModels.objects.filter(id__gt=cursor).order_by("id")[:batch_size])
+            if not tasks:
+                self._save_stage("collect_result_snapshots", cursor, completed=True)
+                return
+            cursor = tasks[-1].id
+            numeric_ids = []
+            for task in tasks:
+                for field in fields:
+                    self._collect_graph_ids(getattr(task, field), numeric_ids)
+            uuid_map = self._graph_uuid_map(numeric_ids)
+            changed = []
+            for task in tasks:
+                row_changed = False
+                for field in fields:
+                    rewritten, field_changed = self._rewrite_json_uuids(getattr(task, field), uuid_map)
+                    if field_changed:
+                        setattr(task, field, rewritten)
+                        row_changed = True
+                if row_changed:
+                    changed.append(task)
+            stats["collect_result_snapshot_updated"] += len(changed)
+            if changed and not dry_run:
+                CollectModels.objects.bulk_update(changed, list(fields))
+            self._save_stage("collect_result_snapshots", cursor)
+
+    def _clean_operation_snapshots(self, batch_size, dry_run, stats):
+        stage = "operation_snapshots"
+        try:
+            model = django_apps.get_model("cmdb", "CmdbOperation")
+        except LookupError:
+            self._save_stage(stage, 0, completed=True)
+            return
+        if not self._model_table_exists(model):
+            self._save_stage(stage, 0, completed=True)
+            return
+        cursor, completed = self._stage_cursor(stage)
+        if completed:
+            return
+        fields = ("request_snapshot", "result_snapshot")
+        while True:
+            rows = list(model.objects.filter(pk__gt=cursor).order_by("pk")[:batch_size])
+            if not rows:
+                self._save_stage(stage, cursor, completed=True)
+                return
+            cursor = rows[-1].pk
+            numeric_ids = []
+            for row in rows:
+                for field in fields:
+                    self._collect_graph_ids(getattr(row, field), numeric_ids, allow_bare_instance_id=True)
+            uuid_map = self._graph_uuid_map(numeric_ids)
+            changed_rows = []
+            for row in rows:
+                row_changed = False
+                for field in fields:
+                    rewritten, field_changed = self._rewrite_json_uuids(getattr(row, field), uuid_map, allow_bare_instance_id=True)
+                    if field_changed:
+                        setattr(row, field, rewritten)
+                        row_changed = True
+                if row_changed:
+                    changed_rows.append(row)
+            stats["operation_snapshot_updated"] += len(changed_rows)
+            if changed_rows and not dry_run:
+                with transaction.atomic():
+                    model.objects.bulk_update(changed_rows, list(fields))
+            self._save_stage(stage, cursor)
+
+    def _stage_cursor_str(self, stage):
+        if getattr(self, "_dry_run", False):
+            return "", False
+        state, _ = CmdbUuidMigrationState.objects.get_or_create(stage=stage)
+        return str(state.cursor or ""), state.completed
+
+    def _clean_peer_cmdb_id_table(
+        self,
+        *,
+        stage: str,
+        app_label: str,
+        model_name: str,
+        batch_size: int,
+        dry_run: bool,
+        stats: dict,
+        updated_key: str,
+        unmapped_key: str,
+    ):
+        try:
+            model = django_apps.get_model(app_label, model_name)
+        except LookupError:
+            self._save_stage(stage, 0, completed=True)
+            return
+        if not self._model_table_exists(model):
+            self._save_stage(stage, 0, completed=True)
+            return
+        cursor, completed = self._stage_cursor_str(stage)
+        if completed:
+            return
+        while True:
+            qs = model.objects.exclude(cmdb_id__isnull=True).exclude(cmdb_id="").order_by("pk")
+            if cursor:
+                qs = qs.filter(pk__gt=cursor)
+            rows = list(qs[:batch_size])
+            if not rows:
+                self._save_stage(stage, cursor or 0, completed=True)
+                return
+            cursor = rows[-1].pk
+            numeric_ids = []
+            pending = []
+            for row in rows:
+                value = str(getattr(row, "cmdb_id", "") or "").strip()
+                if _canonical_uuid(value):
+                    continue
+                graph_id = _graph_id(value)
+                if graph_id is None:
+                    continue
+                numeric_ids.append(graph_id)
+                pending.append((row, graph_id))
+            uuid_map = self._graph_uuid_map(numeric_ids)
+            changed_rows = []
+            for row, graph_id in pending:
+                inst_uuid = uuid_map.get(graph_id)
+                if not inst_uuid:
+                    stats[unmapped_key] += 1
+                    continue
+                row.cmdb_id = inst_uuid
+                changed_rows.append(row)
+            stats[updated_key] += len(changed_rows)
+            if changed_rows and not dry_run:
+                model.objects.bulk_update(changed_rows, ["cmdb_id"])
+            self._save_stage(stage, cursor)
+
+    def _clean_monitor_cmdb_ids(self, batch_size, dry_run, stats):
+        self._clean_peer_cmdb_id_table(
+            stage="monitor_cmdb_ids",
+            app_label="monitor",
+            model_name="MonitorInstance",
+            batch_size=batch_size,
+            dry_run=dry_run,
+            stats=stats,
+            updated_key="monitor_cmdb_id_updated",
+            unmapped_key="monitor_cmdb_id_unmapped",
+        )
+
+    def _clean_node_cmdb_ids(self, batch_size, dry_run, stats):
+        self._clean_peer_cmdb_id_table(
+            stage="node_cmdb_ids",
+            app_label="node_mgmt",
+            model_name="Node",
+            batch_size=batch_size,
+            dry_run=dry_run,
+            stats=stats,
+            updated_key="node_cmdb_id_updated",
+            unmapped_key="node_cmdb_id_unmapped",
+        )
+
+    def _clean_operation_outbox(self, batch_size, dry_run, stats):
+        try:
+            model = django_apps.get_model("cmdb", "CmdbOperationOutbox")
+        except LookupError:
+            self._save_stage("operation_outbox", 0, completed=True)
+            return
+        stage = "operation_outbox"
+        if not self._model_table_exists(model):
+            self._save_stage(stage, 0, completed=True)
+            return
+        cursor, completed = self._stage_cursor(stage)
+        if completed:
+            return
+        while True:
+            rows = list(model.objects.filter(pk__gt=cursor).order_by("pk")[:batch_size])
+            if not rows:
+                self._save_stage(stage, cursor, completed=True)
+                return
+            cursor = rows[-1].pk
+            numeric_ids = []
+            pending_rows = []
+            for row in rows:
+                if getattr(row, "status", None) == "success":
+                    continue
+                pending_rows.append(row)
+                self._collect_graph_ids(row.payload, numeric_ids, allow_bare_instance_id=True)
+            uuid_map = self._graph_uuid_map(numeric_ids)
+            changed_rows = []
+            for row in pending_rows:
+                rewritten, changed = self._rewrite_json_uuids(row.payload, uuid_map, allow_bare_instance_id=True)
+                if changed:
+                    row.payload = rewritten
+                    changed_rows.append(row)
+            stats["operation_outbox_updated"] += len(changed_rows)
+            if changed_rows and not dry_run:
+                with transaction.atomic():
+                    model.objects.bulk_update(changed_rows, ["payload"])
             self._save_stage(stage, cursor)

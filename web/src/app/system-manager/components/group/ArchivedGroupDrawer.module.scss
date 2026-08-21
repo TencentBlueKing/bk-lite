@@ -1,0 +1,17 @@
+.tableWrap :global(.ant-table-cell-with-append) {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tableWrap :global(.ant-table-cell-with-append .ant-table-row-indent),
+.tableWrap :global(.ant-table-cell-with-append .ant-table-row-expand-icon) {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.tableWrap :global(.ant-table-cell-with-append .truncate) {
+  display: inline-block;
+  max-width: calc(100% - 28px);
+  width: auto !important;
+  vertical-align: middle;
+}

@@ -14,6 +14,7 @@ async function loadTauriApiProxy() {
   const prelude = `
     const getUserInfoSync = () => null;
     const getCurrentTeamCookie = () => null;
+    const getIncludeChildrenCookie = () => false;
     const resolveDefaultCurrentTeamId = () => null;
   `;
   const output = ts.transpileModule(`${prelude}\n${moduleSource}`, {

@@ -21,7 +21,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.base.tests.factories import UserFactory
 from apps.mlops.constants import DatasetReleaseStatus, MLflowRunStatus, TrainJobStatus
-from apps.mlops.utils.webhook_client import WebhookError
+from apps.mlops.utils.webhook_client import WebhookError, WebhookTimeoutError, WebhookConnectionError
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
@@ -339,6 +339,44 @@ def test_stop_webhook_error_returns_500(monkeypatch, superuser, suffix, prefix, 
     # status not changed
     tj.refresh_from_db()
     assert tj.status == TrainJobStatus.RUNNING
+
+
+@pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
+def test_stop_webhook_timeout_returns_english_error(monkeypatch, superuser, suffix, prefix, model_module, basename):
+    superuser.locale = "en"
+    tj = _make_train_job(model_module, basename, status_value=TrainJobStatus.RUNNING)
+    mod = _view_module(suffix)
+    _patch_mlflow(monkeypatch, suffix)
+
+    def raise_timeout(job_id):
+        raise WebhookTimeoutError("请求 webhookd 服务超时，请检查服务是否正常运行")
+
+    monkeypatch.setattr(mod.WebhookClient, "stop", staticmethod(raise_timeout))
+    view = getattr(mod, f"{basename}TrainJobViewSet").as_view({"post": "stop"})
+    request = factory.post(f"/{suffix}_train_jobs/x/stop/")
+    resp = _call(view, request, superuser, pk=tj.id)
+    assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert resp.data["error"] == "Request to the webhookd service timed out. Please check whether the service is running"
+    assert resp.data["error"] != "请求 webhookd 服务超时，请检查服务是否正常运行"
+
+
+@pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
+def test_stop_webhook_connection_returns_english_error(monkeypatch, superuser, suffix, prefix, model_module, basename):
+    superuser.locale = "en"
+    tj = _make_train_job(model_module, basename, status_value=TrainJobStatus.RUNNING)
+    mod = _view_module(suffix)
+    _patch_mlflow(monkeypatch, suffix)
+
+    def raise_conn(job_id):
+        raise WebhookConnectionError("无法连接到 webhookd 服务: refused")
+
+    monkeypatch.setattr(mod.WebhookClient, "stop", staticmethod(raise_conn))
+    view = getattr(mod, f"{basename}TrainJobViewSet").as_view({"post": "stop"})
+    request = factory.post(f"/{suffix}_train_jobs/x/stop/")
+    resp = _call(view, request, superuser, pk=tj.id)
+    assert resp.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert resp.data["error"] == "Unable to connect to the webhookd service"
+    assert "refused" not in resp.data["error"]
 
 
 # =========================================================================
@@ -863,13 +901,89 @@ def test_serving_predict_connection_error(monkeypatch, superuser, suffix, prefix
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
+def test_serving_predict_timeout_returns_english_error(monkeypatch, superuser, suffix, prefix, model_module, basename):
+    import requests as _rq
+
+    from apps.mlops.utils.i18n import mlops_message_for_locale
+
+    superuser.locale = "en"
+    serving = _make_serving(
+        model_module, basename,
+        container_info={"state": "running", "port": "9000"}, port=9000,
+    )
+    mod = _view_module(suffix)
+    monkeypatch.setattr(mod, "build_predict_url", lambda serving_id, container_info: "http://predict.local/invocations")
+    monkeypatch.setattr(mod.requests, "post", Mock(side_effect=_rq.exceptions.Timeout()))
+    view = getattr(mod, f"{basename}ServingViewSet").as_view({"post": "predict"})
+    param = PREDICT_PARAM[suffix]
+    request = factory.post(f"/{suffix}_servings/x/predict/", {param: ["a"]}, format="json")
+    resp = _call(view, request, superuser, pk=serving.id)
+    assert resp.status_code == status.HTTP_504_GATEWAY_TIMEOUT
+    error = resp.data["error"]
+    assert not any("\u4e00" <= ch <= "\u9fff" for ch in error)
+    if suffix == "object_detection":
+        expected = mlops_message_for_locale("en", "error.serving_inference_timeout")
+    elif suffix == "image_classification":
+        expected = mlops_message_for_locale("en", "error.serving_prediction_timeout")
+    elif suffix == "timeseries_predict":
+        from apps.mlops.views.timeseries_predict import get_timeseries_predict_timeout_seconds
+
+        expected = mlops_message_for_locale(
+            "en",
+            "error.serving_prediction_timeout_exceeded",
+            seconds=get_timeseries_predict_timeout_seconds(),
+        )
+    else:
+        expected = mlops_message_for_locale("en", "error.serving_prediction_timeout_exceeded", seconds=60)
+    assert error == expected
+
+
+@pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
+def test_serving_predict_timeout_returns_english_error(monkeypatch, superuser, suffix, prefix, model_module, basename):
+    import requests as _rq
+
+    from apps.mlops.utils.i18n import mlops_message_for_locale
+
+    superuser.locale = "en"
+    serving = _make_serving(
+        model_module, basename,
+        container_info={"state": "running", "port": "9000"}, port=9000,
+    )
+    mod = _view_module(suffix)
+    monkeypatch.setattr(mod, "build_predict_url", lambda serving_id, container_info: "http://predict.local/invocations")
+    monkeypatch.setattr(mod.requests, "post", Mock(side_effect=_rq.exceptions.Timeout()))
+    view = getattr(mod, f"{basename}ServingViewSet").as_view({"post": "predict"})
+    param = PREDICT_PARAM[suffix]
+    request = factory.post(f"/{suffix}_servings/x/predict/", {param: ["a"]}, format="json")
+    resp = _call(view, request, superuser, pk=serving.id)
+    assert resp.status_code == status.HTTP_504_GATEWAY_TIMEOUT
+    error = resp.data["error"]
+    assert not any("\u4e00" <= ch <= "\u9fff" for ch in error)
+    if suffix == "object_detection":
+        expected = mlops_message_for_locale("en", "error.serving_inference_timeout")
+    elif suffix == "image_classification":
+        expected = mlops_message_for_locale("en", "error.serving_prediction_timeout")
+    elif suffix == "timeseries_predict":
+        from apps.mlops.views.timeseries_predict import get_timeseries_predict_timeout_seconds
+
+        expected = mlops_message_for_locale(
+            "en",
+            "error.serving_prediction_timeout_exceeded",
+            seconds=get_timeseries_predict_timeout_seconds(),
+        )
+    else:
+        expected = mlops_message_for_locale("en", "error.serving_prediction_timeout_exceeded", seconds=60)
+    assert error == expected
+
+
+@pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
 def test_serving_predict_invalid_container_info(monkeypatch, superuser, suffix, prefix, model_module, basename):
     # build_predict_url raises ValueError when container info lacks a usable port.
-    serving = _make_serving(model_module, basename, container_info={})
+    serving = _make_serving(model_module, basename, container_info={"state": "running"})
     mod = _view_module(suffix)
 
     def bad_url(serving_id, container_info):
-        raise ValueError("无法解析服务地址")
+        raise ValueError("error.serving_port_not_configured")
 
     monkeypatch.setattr(mod, "build_predict_url", bad_url)
     view = getattr(mod, f"{basename}ServingViewSet").as_view({"post": "predict"})
@@ -877,7 +991,7 @@ def test_serving_predict_invalid_container_info(monkeypatch, superuser, suffix, 
     request = factory.post(f"/{suffix}_servings/x/predict/", {param: ["a"]}, format="json")
     resp = _call(view, request, superuser, pk=serving.id)
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert "error" in resp.data
+    assert resp.data["error"] == "Service port is not configured. Please confirm the service has started"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)
@@ -1174,6 +1288,7 @@ def test_serving_start_container_already_exists_syncs(monkeypatch, superuser, su
     # re-raise to the generic handler (covered by the generic-error test).
     if suffix in ("image_classification", "object_detection"):
         pytest.skip(f"{suffix} start has no CONTAINER_ALREADY_EXISTS sync branch")
+    superuser.locale = "en"
     serving = _make_serving(model_module, basename)
     mod = _view_module(suffix)
     _patch_mlflow(monkeypatch, suffix)
@@ -1193,9 +1308,10 @@ def test_serving_start_container_already_exists_syncs(monkeypatch, superuser, su
     request = factory.post(f"/{suffix}_servings/x/start/")
     resp = _call(view, request, superuser, pk=serving.id)
     assert resp.status_code == status.HTTP_200_OK
-    # container info synced from get_status
     serving.refresh_from_db()
     assert serving.container_info["state"] == "running"
+    assert resp.data["warning"] == "Container already exists"
+    assert resp.data["message"] == "Existing container detected; status was synchronized"
 
 
 @pytest.mark.parametrize("suffix,prefix,model_module,basename", ALGOS, ids=ALGO_IDS)

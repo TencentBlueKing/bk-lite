@@ -9,7 +9,6 @@ import React, {
 } from 'react';
 import {
   Tag,
-  Empty,
   Button,
   Spin,
   Badge,
@@ -25,6 +24,7 @@ import {
   ExclamationCircleOutlined
 } from '@ant-design/icons';
 import Icon from '@/components/icon';
+import CompactEmptyState from '@/components/compact-empty-state';
 import OperateDrawer from '@/components/operate-drawer';
 import { useTranslation } from '@/utils/i18n';
 import { useTelegrafMap } from '@/app/node-manager/hooks/node';
@@ -53,7 +53,10 @@ import {
   type ModulePushStatusMap,
   type ModulePushTarget
 } from '@/app/node-manager/utils/modulePush';
-import { resolveMainConfig } from '@/app/node-manager/utils/collectorConfig';
+import {
+  asCollectorStatusList,
+  resolveMainConfig
+} from '@/app/node-manager/utils/collectorConfig';
 
 interface CollectorDetailDrawerProps extends ModalSuccess {
   nodeStateEnum?: any;
@@ -108,9 +111,12 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       showModal: ({ collectors, row }) => {
         setVisible(true);
         // 过滤采集器列表:如果同一个collector_id同时存在于collectors和collectors_install中,只保留collectors中的
-        const collectorsFromStatus = row.status?.collectors || [];
-        const collectorsInstallFromStatus =
-          row.status?.collectors_install || [];
+        const collectorsFromStatus = asCollectorStatusList(
+          row.status?.collectors
+        );
+        const collectorsInstallFromStatus = asCollectorStatusList(
+          row.status?.collectors_install
+        );
         const collectorIds = new Set(
           collectorsFromStatus.map((c: any) => c.collector_id)
         );
@@ -467,16 +473,9 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
           engText: 'Unknown',
           icon: (
             <div
-              className="w-6 h-6 rounded-lg flex items-center justify-center"
-              style={{ backgroundColor: 'rgba(0, 0, 0, 0.1)' }}
+              className="flex h-6 w-6 items-center justify-center rounded-lg bg-black/10"
             >
-              <ExclamationCircleOutlined
-                style={{
-                  color: '#000000',
-                  fontWeight: 'bold',
-                  fontSize: '12px'
-                }}
-              />
+              <ExclamationCircleOutlined className="text-xs font-bold text-black" />
             </div>
           )
         }
@@ -487,9 +486,8 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
       const osValue = form?.operating_system;
       return (
         <Icon
-          className="mr-[8px] center-align"
+          className="mr-[8px] center-align inline-block scale-[1.3]"
           type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
-          style={{ transform: 'scale(1.3)', display: 'inline-block' }}
         />
       );
     };
@@ -570,12 +568,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
             </>
           }
           headerExtra={
-            <div
-              style={{
-                color: 'var(--color-text-3)',
-                fontSize: '12px'
-              }}
-            >
+            <div className="text-xs text-[var(--color-text-3)]">
               {t('node-manager.cloudregion.node.lastReportTime')}：
               {form.updated_at ? convertToLocalizedTime(form.updated_at) : '--'}
             </div>
@@ -670,11 +663,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                   count={collectors.length}
                   showZero
                   color="var(--color-fill-1)"
-                  style={{
-                    backgroundColor: 'var(--color-fill-2)',
-                    color: 'var(--color-text-2)',
-                    boxShadow: 'none'
-                  }}
+                  className="bg-[var(--color-fill-2)] text-[var(--color-text-2)] shadow-none"
                 />
               </div>
               <div className="space-y-2">
@@ -689,15 +678,14 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                           return (
                             <div
                               key={collector.collector_id}
-                              className={`p-3 rounded cursor-pointer transition-colors flex items-center justify-between border-l-4 ${
+                              className={`flex cursor-pointer items-center justify-between rounded border border-[var(--color-border-1)] border-l-4 p-3 transition-colors ${
                                 selectedCollector?.collector_id ===
                                 collector.collector_id
-                                  ? 'bg-[var(--color-bg-hover)] border-blue-200'
-                                  : 'bg-[var(--color-bg-1)] border-gray-200 hover:bg-[var(--color-bg-hover)]'
+                                  ? 'bg-[var(--color-bg-hover)]'
+                                  : 'bg-[var(--color-bg-1)] hover:bg-[var(--color-bg-hover)]'
                               }`}
                               style={{
-                                border: '1px solid var(--color-border-1)',
-                                borderLeft: `4px solid ${collectorStatusInfo.color}`
+                                borderLeftColor: collectorStatusInfo.color
                               }}
                               onClick={() => handleCollectorClick(collector)}
                             >
@@ -756,11 +744,10 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                     >
                       <span className="flex items-center text-xs">
                         <span
+                          className="mr-1 text-base"
                           style={{
                             color: getStatusInfo(selectedCollector.status)
-                              .color,
-                            fontSize: '16px',
-                            marginRight: '4px'
+                              .color
                           }}
                         >
                           {React.cloneElement(
@@ -775,14 +762,11 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                             }
                           )}
                         </span>
-                        <span style={{ whiteSpace: 'pre-line' }}>
+                        <span className="whitespace-pre-line">
                           {selectedCollector.message || '--'}
                         </span>
                       </span>
-                      <p
-                        className="mt-[4px]"
-                        style={{ whiteSpace: 'pre-line' }}
-                      >
+                      <p className="mt-[4px] whitespace-pre-line">
                         {selectedCollector.verbose_message || ''}
                       </p>
                     </div>
@@ -830,7 +814,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                             onSearch={handleSearch}
                             onClear={handleClearSearch}
                             allowClear
-                            style={{ width: 250 }}
+                            className="w-[250px]"
                           />
                         </div>
                         <div className="flex-1">
@@ -855,7 +839,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
                   </Spin>
                 </div>
               ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                <CompactEmptyState description={t('common.noData')} />
               )}
             </div>
           </div>

@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Tooltip, Card, Empty, Segmented } from 'antd';
+import { Tooltip, Card, Segmented } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   AppstoreOutlined,
   BarsOutlined,
@@ -332,7 +333,7 @@ const SearchView: React.FC = () => {
             </div>
           ) : (
             <div className="flex items-center justify-center h-full">
-              <Empty description={t('monitor.search.noData')} />
+              <CompactEmptyState description={t('monitor.search.noData')} />
             </div>
           )}
         </div>

@@ -9,6 +9,8 @@
     "collector",
     "instance_id",
     "message",
+    "timestamp",
+    "collect_timestamp",
     "http.request.headers",
     "http.request.params",
     "http.response.status_phrase",

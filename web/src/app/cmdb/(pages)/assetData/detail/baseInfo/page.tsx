@@ -3,11 +3,12 @@ import { useEffect, useState, useRef } from 'react';
 import List from './list';
 import { useModelApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
 import { useSearchParams } from 'next/navigation';
-import { Spin, Modal, Button, Space } from 'antd';
+import { Spin, Modal, Button, Space, Empty, message } from 'antd';
 import { useCommon } from '@/app/cmdb/context/common';
 import {
   ensureCollectTaskMap,
 } from '@/app/cmdb/utils/collectTask';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import { useUserInfoContext } from '@/context/userInfo';
 import SubscriptionDrawer from '@/app/cmdb/components/subscription/subscriptionDrawer';
@@ -38,11 +39,13 @@ const BaseInfo = () => {
   const { submitting: quickSubscribeSubmitting, createRule: quickSubscribeCreateRule } = useSubscriptionMutation();
 
   const modelId: string = searchParams.get('model_id') || '';
-  const instUuid: string = searchParams.get('inst_uuid') || '';
+  const rawInstUuid: string = searchParams.get('inst_uuid') || '';
+  const instUuid: string = resolveCmdbInstUuid(rawInstUuid) || '';
   const modelName: string = searchParams.get('model_name') || '';
   const instName: string = searchParams.get('inst_name') || searchParams.get('ip_addr') || '--';
   const [instDetail, setInstDetail] = useState<InstDetail>({});
   const [pageLoading, setPageLoading] = useState<boolean>(false);
+  const [uuidMissing, setUuidMissing] = useState<boolean>(false);
 
   const quickDefaults = useQuickSubscribeDefaults('detail', {
     model_id: modelId,
@@ -68,6 +71,11 @@ const BaseInfo = () => {
   }, []);
 
   const getInitData = async () => {
+    if (!instUuid) {
+      setUuidMissing(true);
+      message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+      return;
+    }
     setPageLoading(true);
     try {
 
@@ -107,6 +115,10 @@ const BaseInfo = () => {
 
   return (
     <Spin spinning={pageLoading} className="min-h-[calc(100vh-180px)]">
+      {uuidMissing ? (
+        <Empty description="实例缺少合法 inst_uuid，请先完成 UUID 存量清洗" />
+      ) : (
+        <>
       {/* propertyList是模型属性列表+值 */}
       <List
         instDetail={instDetail}
@@ -122,6 +134,8 @@ const BaseInfo = () => {
         modelName={modelName}
         quickDefaults={quickDefaults}
       />
+        </>
+      )}
       <Modal
         open={quickSubscribeModalOpen}
         width={800}

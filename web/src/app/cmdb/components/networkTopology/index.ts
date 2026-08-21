@@ -12,6 +12,7 @@ export type {
 } from './x6Canvas';
 export type {
   NetworkTopologyLayoutMode,
+  NetworkTopologyLayoutResult,
   NetworkTopologyLink,
   NetworkTopologyNode,
   NetworkTopologyNodeStatus,

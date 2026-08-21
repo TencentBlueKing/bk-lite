@@ -120,20 +120,27 @@ class TestCreateInstance:
         assert "must be a dict" in out["error"]
 
     def test_superuser_success_non_children(self, super_user):
-        with patch.object(inst.InstanceManage, "instance_create", return_value={"_id": 9}) as m:
+        with patch.object(
+            inst.InstanceManage,
+            "instance_create",
+            return_value={"_id": 9, "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e", "inst_name": "h"},
+        ) as m:
             out = inst.cmdb_create_instance.func(
                 **{"model_id": "host", "instance_info": {"ip": "1"}, "allow_write": True, "team_id": 1, "config": cfg(super_user.id)}
             )
-        assert out["data"] == {"_id": 9}
+        assert out["data"] == {"inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e", "inst_name": "h"}
+        assert "_id" not in out["data"]
         # superuser non-children -> allowed_org_ids = [team]
         from apps.system_mgmt.utils.group_utils import GroupUtils  # noqa
 
         assert m.call_args.kwargs["allowed_org_ids"] == [1]
 
     def test_superuser_success_with_children(self, super_user):
-        with patch.object(inst.InstanceManage, "instance_create", return_value={"_id": 4}) as m, patch.object(
-            inst.GroupUtils, "get_group_with_descendants", return_value=[1, 2, 3]
-        ):
+        with patch.object(
+            inst.InstanceManage,
+            "instance_create",
+            return_value={"_id": 4, "inst_uuid": "c28e467a-501d-426f-a3c3-6e560c7b33cb", "inst_name": "h"},
+        ) as m, patch.object(inst.GroupUtils, "get_group_with_descendants", return_value=[1, 2, 3]):
             out = inst.cmdb_create_instance.func(
                 **{
                     "model_id": "host",
@@ -144,7 +151,8 @@ class TestCreateInstance:
                     "config": cfg(super_user.id),
                 }
             )
-        assert out["data"] == {"_id": 4}
+        assert out["data"] == {"inst_uuid": "c28e467a-501d-426f-a3c3-6e560c7b33cb", "inst_name": "h"}
+        assert "_id" not in out["data"]
         # superuser + children -> descendants used as allowed_org_ids
         assert m.call_args.kwargs["allowed_org_ids"] == [1, 2, 3]
 

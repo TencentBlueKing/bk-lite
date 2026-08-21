@@ -126,6 +126,22 @@ export function normalizeTransformConfig(value: unknown): TransformConfig {
   });
 }
 
+export const DISABLED_TRANSFORM_CONFIG: TransformConfig = {
+  enabled: false,
+  language: "python",
+  script: "",
+};
+
+export function transformConfigForSourceType(
+  sourceType: DataSourceSourceType,
+  value: unknown,
+): TransformConfig {
+  if (sourceType === SOURCE_TYPE_REST_API || sourceType === SOURCE_TYPE_EXCEL) {
+    return normalizeTransformConfig(value);
+  }
+  return { ...DISABLED_TRANSFORM_CONFIG };
+}
+
 export function normalizePrometheusTimeRange(
   value: unknown,
 ): string[] | number | undefined {
@@ -404,6 +420,7 @@ export const buildConnectorPayload = (
           table: queryConfig.table || "",
           sql: queryConfig.sql || "",
         },
+        transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
       };
     }
     return {
@@ -421,6 +438,7 @@ export const buildConnectorPayload = (
         table: queryConfig.table || "",
         sql: queryConfig.sql || "",
       },
+      transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
     };
   }
 
@@ -439,6 +457,8 @@ export const buildConnectorPayload = (
     const hasLegacy = legacyItems.length > 0;
     return {
       source_type: currentSourceType,
+      connection: null,
+      connection_overrides: {},
       connection_config: {
         filename: options.excelFileName || connectionConfig.filename || "",
       },
@@ -493,15 +513,21 @@ export const buildConnectorPayload = (
     }
     return {
       source_type: currentSourceType,
+      connection: null,
+      connection_overrides: {},
       connection_config: prometheusConnectionConfig,
       query_config: normalizedQueryConfig,
+      transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
     };
   }
 
   return {
     source_type: currentSourceType,
+    connection: null,
+    connection_overrides: {},
     connection_config: {},
     query_config: {},
+    transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
   };
 };
 
@@ -526,6 +552,27 @@ export function splitRestUrlForConnectionLibrary(
   } catch {
     return { baseUrl: raw, path: "" };
   }
+}
+
+export function shouldCreateLibraryConnectionFromForm(
+  currentRow?: {
+    id?: number;
+    connection?: number | null;
+    connection_id?: number | null;
+    source_type?: DataSourceSourceType;
+  } | null,
+  sourceType?: DataSourceSourceType,
+): boolean {
+  if (!currentRow?.id) {
+    return true;
+  }
+  if (currentRow.connection || currentRow.connection_id) {
+    return true;
+  }
+  if (sourceType && currentRow.source_type && sourceType !== currentRow.source_type) {
+    return true;
+  }
+  return false;
 }
 
 export function canExtractConnectionFromDatasourceForm(values: any): boolean {
@@ -656,4 +703,30 @@ export function buildConnectionLibraryCreateFromDatasourceForm(
   }
 
   throw new Error(options.t("dataConnection.operationFailed"));
+}
+
+export function isBuiltinDatasource(row?: { is_build_in?: boolean }): boolean {
+  return Boolean(row?.is_build_in);
+}
+
+export function isDatasourceDefinitionReadOnly(
+  mode: string,
+  row?: { is_build_in?: boolean },
+): boolean {
+  return mode === "view" || isBuiltinDatasource(row);
+}
+
+export function canEditBuiltinDatasourceGroups(
+  isSuperUser: boolean,
+  row?: { is_build_in?: boolean },
+): boolean {
+  return isBuiltinDatasource(row) && isSuperUser;
+}
+
+export function buildBuiltinGroupsPayload(groups: unknown): { groups: number[] } {
+  return {
+    groups: Array.isArray(groups)
+      ? groups.filter((id) => Number.isInteger(id) && id > 0)
+      : [],
+  };
 }

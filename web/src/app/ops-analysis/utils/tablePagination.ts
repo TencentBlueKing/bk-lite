@@ -42,3 +42,17 @@ export const buildTableQueryParams = ({
     page_size: pageSize ?? DEFAULT_TABLE_PAGE_SIZE,
   };
 };
+
+export const serializeTableQueryKey = (
+  queryParams: Record<string, unknown> = {},
+  dataSourceParams?: DataSourceParamDeclaration[],
+): string =>
+  JSON.stringify(buildTableQueryParams({ dataSourceParams, queryParams }));
+
+export const areTableQueryParamsEquivalent = (
+  left: Record<string, unknown> = {},
+  right: Record<string, unknown> = {},
+  dataSourceParams?: DataSourceParamDeclaration[],
+): boolean =>
+  serializeTableQueryKey(left, dataSourceParams)
+  === serializeTableQueryKey(right, dataSourceParams);

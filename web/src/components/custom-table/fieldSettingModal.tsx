@@ -357,7 +357,7 @@ const FieldSettingModal = forwardRef<FieldModalRef, FieldModalProps>(
 
     return (
       <OperateModal
-        visible={visible}
+        open={visible}
         title={title}
         width={width}
         onCancel={handleCancel}

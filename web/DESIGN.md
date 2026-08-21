@@ -20,22 +20,29 @@ themes:
 
 | 层级 | 真相源 | 负责什么 |
 | --- | --- | --- |
-| 设计语义 | `web/DESIGN.md` | 视觉原则、组件选择、主题语义和使用边界 |
+| 设计语义 | `web/DESIGN.md` | 视觉原则、组件选择、主题语义、布局/样式写法（Tailwind vs 行内）和使用边界 |
 | 运行时 Token | `web/src/styles/globals.css` | `:root` 亮色值和 `.dark` 暗色值；代码中的最终颜色真相 |
-| 组件所有权 | `web/COMPONENT_GOVERNANCE.md` | shared、primitive、app-local 的目录边界 |
+| 组件所有权 | `web/COMPONENT_GOVERNANCE.md` | shared、primitive、app-local 的目录边界；治理时如何执行样式约束 |
 | 组件契约 | Storybook `web/src/stories` | 组件 API、状态、变体和使用示例 |
 
 Markdown 不复制维护运行时颜色值。修改品牌色或主题值时先改 `globals.css` 的同名语义变量，再用 Storybook 验证；本文只说明应该选择哪个变量以及它表达什么。
 
+### Code Agent：短规则常驻，长文按需
+
+日常改 UI **不要默认通读本文全文**。可执行短清单在根目录 `CLAUDE.md` / `AGENTS.md` →「Web UI 硬约束」（会话常驻）。
+
+**仅当**新建视觉组件、改 token/设计语义、组件治理大迁移、设计走查，或短规则不够用时，再分段阅读本文相关章节（优先 **Layout & Styling**、**Do's and Don'ts**）和 `COMPONENT_GOVERNANCE.md`。
+
 ### Code Agent / 开发者开始写 UI 前
 
-1. 阅读本文和 `COMPONENT_GOVERNANCE.md`。
+1. 先跟短规则（上节）；需要时再读本文相关章节与 `COMPONENT_GOVERNANCE.md`。
 2. 按“Ant Design → `src/components` → 当前 app 组件”的顺序检索，不凭记忆创建新组件。
 3. 在 Storybook 查找相同交互或视觉契约，确认已有组件的 props 和状态。
 4. 有合适组件时直接复用，不复制源码、不创建平行实现。
-5. 确实没有且当前只有一个 app 使用时，在 `src/app/<app>/components` 创建 app-local 组件。
-6. 只有两个及以上真实 app 已经接入同一抽象时，才提升到 `src/components`；shared 组件必须同步 Storybook。
-7. 完成后检查亮色、暗色、loading、empty、error、disabled 和长文本状态。
+5. 布局与间距用 Tailwind `className`；颜色用语义 token；不要新增大段行内布局（见 Layout & Styling）。
+6. 确实没有且当前只有一个 app 使用时，在 `src/app/<app>/components` 创建 app-local 组件。
+7. 只有两个及以上真实 app 已经接入同一抽象时，才提升到 `src/components`；shared 组件必须同步 Storybook。
+8. 完成后检查亮色、暗色、loading、empty、error、disabled 和长文本状态。
 
 如果为了满足单一页面而修改 shared 组件，优先增加清晰、可复用的 variant；不能把业务字段、API 请求或 app 类型塞进 shared 组件。
 
@@ -52,6 +59,7 @@ BK-Lite Web 是面向运维管理员的产品界面，不是营销页、数据�
 - 克制用色：`--color-primary` 只用于主操作、链接、选中、focus，不做装饰。
 - 可预测交互：按钮、表单、表格、弹窗沿用 Ant Design 语义，不自造控件词汇。
 - 框架优先：新 UI 先使用 Ant Design、`web/src/components` 和当前模块已有组件，避免重写已有控件。
+- className 优先：布局/间距用 Tailwind；颜色走语义 token；行内 `style` 仅用于动态值与 AntD 契约例外。
 - 渐进展示：空状态、错误状态、加载状态都要告诉用户下一步。
 - 中英双语安全：中文、英文和长资源名都必须能换行、省略或 tooltip 展示完整内容。
 
@@ -132,7 +140,61 @@ BK-Lite Web 以边框和色阶分层为主，阴影为辅。默认面板不应�
 
 **The Z Index Rule.** 禁止随手写 `9999` / `10000`。现有 `.ant-dropdown { z-index: 10000; }` 是平台遗留，新增浮层应使用 Ant Design Portal 或集中 z-index token。
 
-## 5. Components
+## 5. Layout & Styling（Tailwind / className / 行内样式）
+
+BK-Lite Web 已启用 Tailwind。**布局、间距、对齐的默认且优先表达是 Tailwind `className`**，不是 `style={{ ... }}`，也不是为普通布局新建 SCSS Module。颜色与主题仍以 `globals.css` 语义 token 为准；Tailwind 负责结构节奏，token 负责主题语义，二者互补，不能互相替代。
+
+组件所有权门禁见 `COMPONENT_GOVERNANCE.md`；本节约束页面与组件的样式写法。治理迁移触及 UI 时，须同时满足本节与所有权规则。持续清理任务见样式统一 loop（行内 → Tailwind）。
+
+### 选型顺序
+
+1. Ant Design 组件自带布局 / `styles` API（仅限组件契约需要的局部，如 `Modal` body 限高）。
+2. **Tailwind `className`**（默认）：`flex`、`gap-*`、`p-*`、`w-*`、`min-h-0`、`truncate`、`text-[var(--color-text-1)]` 等（颜色类必须写完整 token 名；文档里不要写带星号的通配 class，会被 Tailwind 扫进 CSS）。
+3. 已有 CSS Module / 全局语义类：仅用于 AntD 深层覆盖、复杂伪类/动画，或 Tailwind 无法稳定表达的局部；**禁止**为 flex/间距/宽高新开 module。
+4. 最后才考虑 `style={{ ... }}`，且必须落入下方白名单例外。
+
+### Named Rules
+
+**The ClassName First Rule.** 新代码与治理触及的改动中，flex/grid、间距、宽高、对齐、换行、省略等布局样式必须写在 `className`。禁止新增大段 `style={{ display: 'flex', gap: 12, padding: 16, ... }}` 布局对象。
+
+**The Token Via Class Or Var Rule.** 颜色、边框、背景、文字色使用语义 token：优先 Tailwind 已映射的语义写法，或 `className`/`style` 中的 `var(--color-…)`（写具体名字）。禁止 `#fff`、`#8c8c8c`、`#ff4d4f`、`white`、`bg-white`、`text-black` 等硬编码主题色。
+
+**The Inline Style Exception Rule.** 仅允许下列情况使用行内 `style` / AntD `styles`：
+
+| 允许 | 说明 |
+| --- | --- |
+| Ant Design 组件契约 | 如 `Modal`/`Drawer` 的 `styles.body` 限高滚动（见 Modals / Drawers Viewport Fit） |
+| 运行时动态值 | 只能由数据决定的值：图表坐标、进度宽度、拖拽位置、虚拟列表 offset、用户自定义色板等 |
+| 第三方/画布特例 | 拓扑、3D、ECharts 容器等无法用 class 稳定表达的瞬时尺寸 |
+| 过渡期单点修补 | 修改旧页时若不动整块布局，可暂留原行内；**同次改动若重写该区块布局，必须改为 className** |
+
+**The No Parallel Style System Rule.** 同一元素不要同时堆叠“完整行内布局对象 + 等价 Tailwind class”。新增 SCSS Module 前先确认 Tailwind 无法覆盖；禁止为改 4px 间距新建 module 或组件。清理存量时：**行内布局 → Tailwind**，优先于继续堆 CSS Module。
+
+**The Migration Touch Rule.** 组件治理或功能改动触及的 JSX 区块，若含可用 Tailwind 表达的行内布局，应在同次改动中改为 `className`；不要只换组件壳、留下整段 `style={{ display:'flex' ... }}`。整页历史债可另开清理任务，但**禁止在新代码中扩大行内布局比例**。
+
+### 示例
+
+```tsx
+// Do
+<div className="mb-3 flex w-full flex-wrap items-center gap-3">
+  <Input.Search className="w-64" />
+  <Button type="primary">创建</Button>
+</div>
+
+// Don't（布局行内化）
+<div style={{ display: 'flex', gap: 12, marginBottom: 12, alignItems: 'center' }}>
+  <Input.Search style={{ width: 200 }} />
+</div>
+
+// Don't（硬编码色）
+<a style={{ color: '#ff4d4f' }}>删除</a>
+<span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>...</span>
+// Do
+<a className="text-[var(--color-fail)]">删除</a>
+<span className="text-[var(--color-text-3)]">...</span>
+```
+
+## 6. Components
 
 组件以 Ant Design 为基础，业务组件只做组合和约束，不重新发明控件。新模块优先复用 `web/src/components` 下的通用组件，例如 `CustomTable`、`sub-layout`、`operate-modal`、`ellipsis-with-tooltip`、`content-drawer`、`time-selector` 和 `permission`。机器可读的 shared 清单以 `component-ownership.manifest.json` 为准，不以组件名称或 Storybook 是否引用来猜测归属。
 
@@ -198,7 +260,7 @@ BK-Lite Web 以边框和色阶分层为主，阴影为辅。默认面板不应�
 - **Choices:** 用户选择必须使用真实 `button` / 表单控件，支持键盘、disabled、loading、已选择态。
 - **Streaming:** 流式内容默认可见，不依赖动画 class 才显示。
 
-## 6. Storybook 与完成标准
+## 7. Storybook 与完成标准
 
 - shared component 的新增、API 变化、视觉变化必须同步 Storybook；Storybook 是组件契约中心，不是 shared 所有权证据。
 - app-local 组件在交互复杂、状态较多或需要横向对比时也应进入对应 family story，但仍保留 app-local 所有权。
@@ -206,19 +268,21 @@ BK-Lite Web 以边框和色阶分层为主，阴影为辅。默认面板不应�
 - 所有视觉组件必须在 Storybook 或真实页面中分别检查亮色与暗色；不能只看默认主题截图。
 - UI 改造交付时必须说明：复用了哪个组件、为何没有新建 shared；若新增 app-local，说明所属 app；若修改 shared，列出受影响 app 和 Storybook 更新。
 
-## 7. Do's and Don'ts
+## 8. Do's and Don'ts
 
 ### Do:
-- **Do** 优先使用 `var(--color-*)`、Ant Design token 和 `web/src/components` 通用组件。
+- **Do** 优先使用 `var(--color-…)`、Ant Design token 和 `web/src/components` 通用组件。
+- **Do** 布局与间距优先用 Tailwind `className`（见 Layout & Styling），颜色走语义 token。
 - **Do** 先查当前框架组件和已有业务组件，再写新组件；能组合就组合，不能组合才抽象。
 - **Do** 新增业务组件默认放在 `src/app/<app>/components`，以真实跨 app 消费证明 shared 资格。
 - **Do** 在亮色和暗色下验证所有新增或修改的视觉状态。
 - **Do** 用 `gap-2` / `gap-3` 管理按钮组和标签组间距，不把 margin 散落到子按钮。
-- **Do** 为表格数字列加 `font-variant-numeric: tabular-nums`。
+- **Do** 为表格数字列加 `font-variant-numeric: tabular-nums` 或等价 `tabular-nums` class。
 - **Do** 为图标按钮提供 `aria-label`，为可展开区域提供 `aria-expanded` / `aria-controls`。
 - **Do** 给 loading、empty、error、permission denied、readonly 状态写清楚下一步。
 - **Do** 让中文、英文、长资源名、命令、路径、emoji 都能安全换行或省略。
 - **Do** 保持产品界面轻量、智能、友好：让操作更清楚，而不是让界面更热闹。
+- **Do** 治理/功能改动触及的布局区块，把可替换的行内 flex/间距改为 `className`。
 
 ### Don't:
 - **Don't** 做深色运维大屏化，除非该路由明确是监控展示大屏。
@@ -228,11 +292,12 @@ BK-Lite Web 以边框和色阶分层为主，阴影为辅。默认面板不应�
 - **Don't** 为了视觉新鲜感重写 Ant Design 已有的 Button、Modal、Drawer、Table、Form、Select、Tabs、Segmented、Tooltip、Popover。
 - **Don't** 在组件内直写品牌色或状态色 hex；需要时加 token 或语义映射。
 - **Don't** 用 `bg-white`、`text-black`、固定浅灰边框等只适用于单一主题的样式代替语义 token。
+- **Don't** 新增大段行内布局对象（`style={{ display:'flex', gap, padding, width... }}`）替代 Tailwind/`className`。
 - **Don't** 复制已有组件只为改变颜色、圆角、边框或间距；优先复用现有 variant 或补一个稳定 variant。
 - **Don't** 用 placeholder 当 label，不要只靠 toast 汇总表单错误。
 - **Don't** 把 `div onClick` 当按钮。可点击就用 `button`、AntD Button、链接或正确 ARIA 语义。
 - **Don't** 给卡片、输入框、面板使用 `32px+` 大圆角。
 - **Don't** 在卡片上叠加 `1px border` 和大模糊阴影。
-- **Don't** 在新代码里继续扩大 `z-index: 9999/10000`、硬编码 `min-width`、全局覆盖 AntD 样式。
+- **Don't** 在新代码里继续扩大 `z-index: 9999/10000`、硬编码主题色 / 不必要的固定 `min-width`、全局覆盖 AntD 样式。
 - **Don't** 让页面或容器出现非预期的横向滚动条（`overflow-x`）。布局必须自适应宽度：表格列宽随容器自适应（不要用固定宽度或强制 `scroll.x` 把内容撑出容器），长文本用换行 / 省略 / tooltip。横向滚动只允许出现在明确需要的局部（命令块、日志、超宽代码），不允许出现在整页或弹窗。
 - **Don't** 让弹窗触底。长表单弹窗必须限高 + 主体内部滚动；实在过长、滚动割裂就改用抽屉（见 Modals / Drawers 的 Viewport Fit）。

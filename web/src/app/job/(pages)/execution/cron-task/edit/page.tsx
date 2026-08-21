@@ -391,11 +391,7 @@ const EditCronTaskContent = () => {
   return (
     <div className="w-full h-full overflow-auto pb-6">
       <div
-        className="rounded-lg px-6 py-4 mb-4"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
+        className="rounded-lg px-6 py-4 mb-4 bg-[var(--color-bg-1)] border border-[var(--color-border-1)]"
       >
         <div className="flex items-center gap-2 mb-1">
           <Button
@@ -404,7 +400,7 @@ const EditCronTaskContent = () => {
             onClick={() => router.back()}
             className="p-1!"
           />
-          <h2 className="text-base font-medium m-0" style={{ color: 'var(--color-text-1)' }}>
+          <h2 className="text-base font-medium m-0 text-[var(--color-text-1)]">
             {t('job.editTask')}
           </h2>
         </div>
@@ -412,18 +408,14 @@ const EditCronTaskContent = () => {
           <div className="p-1! invisible">
             <ArrowLeftOutlined />
           </div>
-          <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
+          <p className="text-sm m-0 text-[var(--color-text-3)]">
             {t('job.editTaskDesc')}
           </p>
         </div>
       </div>
 
       <div
-        className="rounded-lg px-6 py-6"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
+        className="rounded-lg px-6 py-6 bg-[var(--color-bg-1)] border border-[var(--color-border-1)]"
       >
         <Form
           form={form}
@@ -629,15 +621,14 @@ const EditCronTaskContent = () => {
                       value={field.value}
                       onChange={(e) => field.setter(e.target.value)}
                       onBlur={(e) => { if (!e.target.value.trim()) field.setter('*'); }}
-                      className="w-12 text-center font-mono"
-                      style={{ borderColor: 'var(--color-primary)' }}
+                      className="w-12 border-[var(--color-primary)] text-center font-mono"
                     />
                   ))}
                 </div>
-                <div className="text-(--color-text-2) text-center text-sm" style={{ width: '296px' }}>
+                <div className="w-[296px] text-center text-sm text-(--color-text-2)">
                   {describeCron()}
                 </div>
-                <div className="text-sm text-center" style={{ width: '296px' }}>
+                <div className="w-[296px] text-center text-sm">
                   {previewLoading ? (
                     <>
                       <span className="text-(--color-text-3) text-xs">{t('job.cronNextRun')}</span>

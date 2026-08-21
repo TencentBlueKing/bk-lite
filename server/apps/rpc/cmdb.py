@@ -134,6 +134,9 @@ class CMDB(object):
         return_data = self.client.run("model_inst_count", **kwargs)
         return return_data
 
+    def get_monitor_ids_by_inst_uuids(self, **kwargs):
+        return self.client.run("get_monitor_ids_by_inst_uuids", **kwargs)
+
     def ingest_from_source(self, **kwargs):
         """跨模块推送写入 CMDB（host：node_id 优先 + 存量认领）。
 
@@ -141,3 +144,10 @@ class CMDB(object):
         不可把 envelope 字段摊成顶层 kwargs（否则 TypeError: unexpected keyword）。
         """
         return self.client.run("ingest_from_source", params=kwargs)
+
+    def create_manual_config_files(self, **kwargs):
+        """批量手动写入配置文件版本（UUID 定位，幂等跳过已有文件）。
+
+        :param kwargs/params: {"protocol_version": "2", "allowed_org_ids": [..], "items": [..]}
+        """
+        return self._run_params_handler("create_manual_config_files", kwargs)

@@ -134,5 +134,7 @@ Status: ready
     - **监控 ingest**：`node_mgmt` → 有则连、无则建 + Telegraf Agent；`cmdb` 无凭据 → 只关联；`cmdb` 带凭据创建路径由 `CMDB_CREDENTIAL_CREATE_ENABLED=False` 暂时关闭（扩展点保留）。
     - 各模块**自己创建主机后** best-effort 通知另外两边（钩子）；NATS 失败可回退本地 node ingest；回声/causation 防环。
     - 创建钩子通知 ≠ 暗建资产：监控侧无凭据不得新建。
-  - 遗留：CMDB 推送信封仍不携带凭据；凭据创建+默认对象列表后续按范围打开 `CMDB_CREDENTIAL_CREATE_ENABLED`。
+  - 遗留：公开 CMDB `push_instance` 信封仍不携带凭据；扫描等特权路径经 `push_with_credential` 写入 `raw.credential` 并置 `allow_credential_create`，全局 `CMDB_CREDENTIAL_CREATE_ENABLED` 仍默认 False。
+  - **2026-08-19 修订**：CMDB 资产页无凭据「同步」改为探测建链，命中只写关联 ID、不覆盖监控业务字段、不新建。见 [`cmdb-monitor-probe-link`](../cmdb-monitor-probe-link/spec.md)。
+  - **2026-08-20 修订**：节点→监控推送在 server 进程内本进程执行 ingest；`Controller` 写采集配置走 `NodeMgmt(is_local_client=True)`。禁止 ingest 事务锁住 Node 行后再 NATS 写 `NodeCollectorConfiguration`（InnoDB 外键自死锁，调用方超时三次后 `skipped`）。
   - ~~CMDB/监控 → 节点自动关联~~：已收敛为节点对称 ingest + 创建钩子通知。

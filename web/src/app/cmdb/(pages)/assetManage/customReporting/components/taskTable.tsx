@@ -1,10 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Input, Modal, Space, Switch, Tag, Tooltip, Typography, message } from 'antd';
+import { Button, Modal, Space, Switch, Tag, Tooltip, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import CustomTable from '@/components/custom-table';
+import SearchActionBar from '@/components/search-action-bar';
 import { useTranslation } from '@/utils/i18n';
 import { useCustomReportingApi } from '@/app/cmdb/api/customReporting';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -358,30 +359,34 @@ export default function TaskTable({
           </div>
         </div>
       </div>
-      <div className="mb-[12px] flex shrink-0 items-center justify-between gap-[12px]">
-        <Space>
-          <div className="text-[14px] font-[600]">
-            {t('CustomReporting.taskList')}
-          </div>
-          <Input.Search
-            allowClear
-            className="w-[240px]"
-            placeholder={t('CustomReporting.searchPlaceholder')}
-            onSearch={(value) => {
+      <div className="mb-[12px] flex shrink-0 items-center gap-[12px]">
+        <div className="text-[14px] font-[600]">
+          {t('CustomReporting.taskList')}
+        </div>
+        <SearchActionBar
+          className="min-w-0 flex-1"
+          spacing="flush"
+          searchClassName="!w-[240px]"
+          searchProps={{
+            allowClear: true,
+            placeholder: t('CustomReporting.searchPlaceholder'),
+            onSearch: (value) => {
               const next = value.trim();
               setSearchName(next);
               void loadTasks({ ...pagination, current: 1 }, next);
-            }}
-          />
-        </Space>
-        <Space>
-          <Button onClick={() => void loadTasks()}>
-            {t('common.refresh')}
-          </Button>
-          <Button type="primary" onClick={onCreate}>
-            {t('CustomReporting.createTask')}
-          </Button>
-        </Space>
+            },
+          }}
+          actions={(
+            <>
+              <Button onClick={() => void loadTasks()}>
+                {t('common.refresh')}
+              </Button>
+              <Button type="primary" onClick={onCreate}>
+                {t('CustomReporting.createTask')}
+              </Button>
+            </>
+          )}
+        />
       </div>
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
         <CustomTable<CustomReportingTask>

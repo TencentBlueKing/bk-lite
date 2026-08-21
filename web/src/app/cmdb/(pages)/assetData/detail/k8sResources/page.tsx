@@ -14,7 +14,11 @@ export { K8sOverviewContent };
 const K8sResourceDetails = () => {
   const searchParams = useSearchParams();
   const instUuid = searchParams.get('inst_uuid') || '';
-  return <K8sResourceDetailsContent instUuid={instUuid} />;
+  return (
+    <div className="h-full min-h-0 min-w-0 overflow-hidden">
+      <K8sResourceDetailsContent instUuid={instUuid} />
+    </div>
+  );
 };
 
 export default K8sResourceDetails;

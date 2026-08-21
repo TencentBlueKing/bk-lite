@@ -19,6 +19,7 @@ from apps.monitor.views.plugin import MonitorPluginViewSet
 from apps.monitor.views.system_mgmt import SystemMgmtView
 from apps.monitor.views.monitor_condition import MonitorConditionViewSet
 from apps.monitor.views.unit import UnitViewSet
+from apps.monitor.views.user_habit import UserHabitViewSet
 
 router = routers.DefaultRouter()
 router.register(r"api/monitor_object", MonitorObjectViewSet, basename="MonitorObject")
@@ -60,4 +61,5 @@ router.register(
     K3SOnboardingOpenViewSet,
     basename="K3SOnboardingOpenViewSet",
 )
+router.register(r"api/user_habits", UserHabitViewSet, basename="monitor-user-habit")
 urlpatterns = router.urls

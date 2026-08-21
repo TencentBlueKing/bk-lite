@@ -108,6 +108,19 @@ interface UrlOptions {
   namespaceId?: string; workloadFilterId?: string; nodeId?: string; namespaceIds?: string[];
 }
 
+/** Query keys that belong to a specific cluster's resource list filters. */
+export const K8S_CLUSTER_SCOPED_QUERY_KEYS = ['namespace_id', 'workload_id', 'node_id'] as const;
+
+export const stripK8sClusterScopedParams = (params: URLSearchParams): boolean => {
+  let changed = false;
+  for (const key of K8S_CLUSTER_SCOPED_QUERY_KEYS) {
+    if (!params.has(key)) continue;
+    params.delete(key);
+    changed = true;
+  }
+  return changed;
+};
+
 export const buildK8sResourceUrl = (action: UrlAction, clusterId: string, options: UrlOptions = {}) => {
   if (action === 'overview') return `/cmdb/api/instance/k8s_resource_overview/${clusterId}/`;
   const path = action === 'workloadPods'

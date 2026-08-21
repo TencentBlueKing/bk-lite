@@ -4,6 +4,7 @@
 """
 
 from apps.opspilot.models import BuildRecord
+from apps.opspilot.services.wiki.maintenance_errors import stage_failed
 
 
 def _stage_success(count=0):
@@ -11,7 +12,7 @@ def _stage_success(count=0):
 
 
 def _stage_failed(error):
-    return {"status": "failed", "error": str(error)}
+    return stage_failed(error)
 
 
 def _final_status(stages):

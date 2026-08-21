@@ -11,11 +11,7 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import Any, Awaitable, Callable, Mapping, Protocol, Sequence
 
 from core.collection.constants import SECRET_KEYS
-from core.collection.enums import (
-    LeaseAcquireStatus,
-    RunStatus,
-    SubmissionStatus,
-)
+from core.collection.enums import LeaseAcquireStatus, RunStatus, SubmissionStatus
 from core.logger import logger
 
 # 兼容：历史调用方从 runtime 导入枚举
@@ -59,8 +55,7 @@ class CollectionRequest:
                     "credential_id": credential.get("credential_id"),
                     "credential_version": credential.get("credential_version"),
                     "target_host": (
-                        credential.get("target_host")
-                        or credential.get("host")
+                        credential.get("target_host") or credential.get("host")
                     ),
                 }
             )
@@ -136,18 +131,19 @@ class RunStateStore(Protocol):
         request_digest: str,
         owner_id: str,
         ttl_seconds: float,
-    ) -> LeaseAcquisition: ...
+    ) -> LeaseAcquisition:
+        ...
 
-    async def heartbeat(
-        self, lease: RunLease, *, ttl_seconds: float
-    ) -> bool: ...
+    async def heartbeat(self, lease: RunLease, *, ttl_seconds: float) -> bool:
+        ...
 
     async def finish(
         self,
         lease: RunLease,
         status: RunStatus,
         summary: Mapping[str, Any] | None = None,
-    ) -> bool: ...
+    ) -> bool:
+        ...
 
 
 @dataclass
@@ -221,9 +217,7 @@ class InMemoryRunStateStore:
             self._records.pop(lease.task_id, None)
             return True
 
-    async def heartbeat(
-        self, lease: RunLease, *, ttl_seconds: float
-    ) -> bool:
+    async def heartbeat(self, lease: RunLease, *, ttl_seconds: float) -> bool:
         async with self._lock:
             record = self._records.get(lease.task_id)
             if not record or record.status != RunStatus.RUNNING:
@@ -350,21 +344,23 @@ class CollectionRuntime:
         )
         try:
             if self._settings.run_deadline_seconds:
-                async with asyncio.timeout(
-                    self._settings.run_deadline_seconds
-                ):
+                async with asyncio.timeout(self._settings.run_deadline_seconds):
                     result = await self._execute(request, lease)
             else:
                 result = await self._execute(request, lease)
             summary = _normalize_summary(result)
+            if _summary_has_errors(summary):
+                status = RunStatus.COMPLETED_WITH_ERRORS
         except asyncio.CancelledError:
             status = RunStatus.ABANDONED
             raise
         except Exception:
             status = RunStatus.FAILED
             logger.exception(
-                "collection run failed task_id=%s fence=%s",
+                "collection run failed task_id=%s plugin_ref=%s model_id=%s fence=%s",
                 request.task_id,
+                request.plugin_ref,
+                request.params.get("model_id") or "-",
                 lease.fence,
             )
         finally:
@@ -374,6 +370,16 @@ class CollectionRuntime:
             except asyncio.CancelledError:
                 pass
             await self._state_store.finish(lease, status, summary)
+            logger.info(
+                "event=collection_run_terminal task_id=%s plugin_ref=%s "
+                "model_id=%s fence=%s status=%s summary=%s",
+                request.task_id,
+                request.plugin_ref,
+                request.params.get("model_id") or "-",
+                lease.fence,
+                status.value,
+                summary,
+            )
             await self._release_admission()
 
     async def shutdown(self, *, grace_seconds: float = 30.0) -> None:
@@ -423,7 +429,11 @@ class CollectionRuntime:
 def _redact_secrets(value: Any) -> Any:
     if isinstance(value, Mapping):
         return {
-            str(key): "<redacted>" if str(key).lower() in SECRET_KEYS else _redact_secrets(item)
+            str(key): (
+                "<redacted>"
+                if str(key).lower() in SECRET_KEYS
+                else _redact_secrets(item)
+            )
             for key, item in value.items()
         }
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
@@ -439,3 +449,18 @@ def _normalize_summary(value: Any) -> Mapping[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
     return {"result": str(value)}
+
+
+def _summary_has_errors(summary: Mapping[str, Any]) -> bool:
+    return any(
+        int(summary.get(field, 0) or 0) > 0
+        for field in (
+            "collection_failed",
+            "failed",
+            "unreachable",
+            "publish_failed",
+            "publish_unknown",
+            "publish_event_failed",
+            "publish_permanent_failed",
+        )
+    )

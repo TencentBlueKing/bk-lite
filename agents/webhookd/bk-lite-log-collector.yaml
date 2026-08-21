@@ -16,11 +16,17 @@ spec:
     metadata:
       labels:
         app: vector-daemonset
+      annotations:
+        bklite.io/log-collect-config: "__LOG_COLLECT_CONFIG_HASH__"
     spec:
       serviceAccount: vector-daemonset
+      # 控制平面默认 NoSchedule；不上这台节点则该节点日志采不到
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
       containers:
         - name: vector
-          image: bk-lite.tencentcloudcr.com/bklite/vector:0.39.0-debian
+          image: __IMAGE_REGISTRY_PREFIX__/vector:0.39.0-debian
           volumeMounts:
             - name: vector-config-volume
               mountPath: /etc/vector/vector.yaml
@@ -82,7 +88,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: vector-daemonset
+  name: bk-lite-vector-daemonset
 rules:
   - apiGroups: [""]
     resources: ["pods", "namespaces", "nodes"]
@@ -94,11 +100,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: vector-daemonset
+  name: bk-lite-vector-daemonset
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: vector-daemonset
+  name: bk-lite-vector-daemonset
 subjects:
   - kind: ServiceAccount
     name: vector-daemonset
@@ -156,6 +162,7 @@ data:
           node_labels: "node_labels"
         extra_field_selector: ""
         extra_label_selector: ""
+__INCLUDE_PATHS_GLOB_PATTERNS__
         max_read_bytes: 2048
         max_line_bytes: 32768
         fingerprint_lines: 1

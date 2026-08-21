@@ -22,7 +22,8 @@ from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTas
 from apps.node_mgmt.models.installer import ControllerTaskNode
 from apps.node_mgmt.models.sidecar import Collector, CollectorConfiguration, Node, NodeCollectorConfiguration, NodeOrganization
 from apps.node_mgmt.services.cloudregion import RegionService
-from apps.node_mgmt.services.sidecar_cache import build_configuration_etag_cache_key
+from apps.node_mgmt.services.node_host_metadata import NodeHostMetadataRenderContext
+from apps.node_mgmt.services.sidecar_cache import build_configuration_etag_cache_key, invalidate_node_configuration_etags
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
 from apps.node_mgmt.tasks.installer import _matches_install_connectivity_target, converge_controller_install_connectivity_for_node
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
@@ -395,24 +396,28 @@ class Sidecar:
         return task_node.ip
 
     @staticmethod
-    def _cached_heartbeat_updates(node_id: str, node_details: dict) -> tuple[dict, str]:
+    def _cached_heartbeat_updates(node_id: str, node_details: dict) -> tuple[dict, str, bool]:
         """Build the bounded metadata update allowed on an ETag cache hit."""
         request_data = dict(node_details)
-        missing_fields = [field for field in ("ip", "operating_system") if not request_data.get(field)]
-        if missing_fields:
-            existing_node = Node.objects.filter(id=node_id).values(*missing_fields).first() or {}
-            for field in missing_fields:
+        existing_node = Node.objects.filter(id=node_id).values("ip", "operating_system").first() or {}
+        for field in ("ip", "operating_system"):
+            if not request_data.get(field):
                 request_data[field] = existing_node.get(field, "")
+
+        resolved_ip = Sidecar._resolve_reported_ip(node_id, request_data.get("ip", ""))
+        ip_changed = bool(existing_node) and resolved_ip != existing_node.get("ip", "")
 
         updates = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "status": node_details.get("status", {}),
         }
+        if ip_changed:
+            updates["ip"] = resolved_ip
         cpu_architecture = Sidecar._fallback_cpu_architecture(node_id, request_data)
         if cpu_architecture:
             updates["cpu_architecture"] = cpu_architecture
 
-        return updates, request_data.get("ip", "")
+        return updates, resolved_ip, ip_changed
 
     @staticmethod
     def _filter_reported_node_details(node_id: str, node_details: dict) -> dict:
@@ -502,8 +507,10 @@ class Sidecar:
 
         # 如果缓存的ETag存在且与客户端的相同，则返回304 Not Modified
         if cached_etag and cached_etag == if_none_match:
-            updates, node_ip = Sidecar._cached_heartbeat_updates(node_id, node_details)
-            Node.objects.filter(id=node_id).update(**updates)
+            updates, node_ip, ip_changed = Sidecar._cached_heartbeat_updates(node_id, node_details)
+            updated_count = Node.objects.filter(id=node_id).update(**updates)
+            if updated_count and ip_changed:
+                invalidate_node_configuration_etags([node_id])
             Sidecar.trigger_converge_tasks_if_needed(node_id, node_ip, updates["status"])
 
             response = HttpResponse(status=304)
@@ -595,7 +602,9 @@ class Sidecar:
             node_info = {key: val for key, val in request_data.items() if key != "name"}
             if not node_info.get("cpu_architecture"):
                 node_info.pop("cpu_architecture", None)
-            Node.objects.filter(id=node_id).update(**node_info)
+            updated_count = Node.objects.filter(id=node_id).update(**node_info)
+            if updated_count and request_data.get("ip", "") != node.ip:
+                invalidate_node_configuration_etags([node_id])
 
             # Existing node organization ownership is managed by the server/UI.
             # Sidecar may heartbeat with stale group tags before sidecar.yaml is
@@ -731,19 +740,26 @@ class Sidecar:
 
         # 从缓存中获取配置的 ETag
         cache_key = build_configuration_etag_cache_key(node_id, configuration_id)
-        cached_etag = cache.get(cache_key)
+        cached_entry = cache.get(cache_key)
 
-        # 对比客户端的 ETag 和缓存的 ETag
-        if cached_etag and cached_etag == if_none_match:
-            if not Sidecar.configuration_bound_to_node(node_id, configuration_id):
+        # 缓存命中仍校验当前绑定与 Node 主机身份，避免并发旧请求复活旧配置。
+        if isinstance(cached_entry, dict) and if_none_match:
+            node_identity = (
+                NodeCollectorConfiguration.objects.filter(node_id=node_id, collector_config_id=configuration_id)
+                .values_list("node__name", "node__ip")
+                .first()
+            )
+            if node_identity is None:
                 node, error_response = Sidecar.get_node_or_404(request, node_id)
                 if error_response:
                     return error_response
                 return EncryptedJsonResponse(status=404, data={"error": "Configuration not found"}, request=request)
 
-            response = HttpResponse(status=304)
-            response["ETag"] = cached_etag
-            return response
+            current_host_context = NodeHostMetadataRenderContext.build(*node_identity)
+            if current_host_context.matches_cache_entry(cached_entry, if_none_match):
+                response = HttpResponse(status=304)
+                response["ETag"] = cached_entry["etag"]
+                return response
 
         assignment, error_response = Sidecar.get_bound_assignment_or_404(
             request,
@@ -757,6 +773,7 @@ class Sidecar:
 
         node = assignment.node
         configuration = assignment.collector_config
+        host_context = NodeHostMetadataRenderContext.build(node.name, node.ip)
 
         collector = configuration.collector
         section_headers = {}
@@ -815,13 +832,17 @@ class Sidecar:
         variables.update(child_render_variables)
 
         # 渲染配置模板
-        configuration_data["template"] = Sidecar.render_template(configuration_data["template"], variables)
+        configuration_data["template"] = Sidecar.render_template(
+            configuration_data["template"],
+            variables,
+            trusted_reserved_variables=host_context.variables,
+        )
 
         # 生成新的 ETag - 基于实际响应内容
         new_etag = Sidecar.generate_response_etag(configuration_data, request)
 
         # 更新缓存中的 ETag
-        cache.set(cache_key, new_etag, ControllerConstants.E_CACHE_TIMEOUT)
+        cache.set(cache_key, host_context.build_cache_entry(new_etag), ControllerConstants.E_CACHE_TIMEOUT)
 
         # 返回配置信息和新的 ETag
         return EncryptedJsonResponse(configuration_data, headers={"ETag": new_etag}, request=request)
@@ -921,7 +942,7 @@ class Sidecar:
         return variables
 
     @staticmethod
-    def render_template(template_str, variables):
+    def render_template(template_str, variables, *, trusted_reserved_variables=None):
         """
         渲染字符串模板，将 ${变量} 替换为给定的值。
 
@@ -931,6 +952,10 @@ class Sidecar:
         """
         # 排除password相关的变量渲染，走env_config渲染
         _variables = {k: v for k, v in variables.items() if "password" not in k.lower()}
+        _variables = NodeHostMetadataRenderContext.prepare_template_variables(
+            _variables,
+            trusted_reserved_variables,
+        )
         template_str = template_str.replace("node.", "node__")
         template = Template(template_str)
         return template.safe_substitute(_variables)

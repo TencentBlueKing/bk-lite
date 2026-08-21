@@ -272,6 +272,7 @@ export interface K8sCommandData {
   instance_id?: string;
   cloud_region_id?: number;
   interval?: number;
+  image_registry_prefix?: string;
 }
 
 export type K3sSignalStatus = 'success' | 'pending' | 'error';

@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
-  Tag,
   Segmented,
   Button,
   Spin,
@@ -12,10 +11,11 @@ import {
   DatePicker,
   Tabs,
   Table,
-  Empty,
   Modal,
   Alert,
+  Tag,
 } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   ArrowLeftOutlined,
   CopyOutlined,
@@ -35,12 +35,14 @@ import {
 import CustomTable from '@/components/custom-table';
 import MarkdownRenderer from '@/components/markdown';
 import ExecutionStatusBadge from '@/components/execution-status-badge';
+import VersionBadge from '@/components/version-badge';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useAuth } from '@/context/auth';
 import useJobApi from '@/app/job/api';
 import { useExecutionStream } from '@/app/job/hooks/useExecutionStream';
 import { JobRecord, JobRecordStatus, JobRecordSource, JobRecordDetail, ExecutionTarget, Playbook, FileTreeNode, PlaybookFilePreview } from '@/app/job/types';
+import { normalizeExecutionTargets } from '@/app/job/utils/execution-targets';
 import { ColumnItem } from '@/types';
 import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
@@ -74,7 +76,7 @@ const JobRecordPage = () => {
   // Detail state
   const [detail, setDetail] = useState<JobRecordDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [selectedTargetId, setSelectedTargetId] = useState<number | null>(null);
+  const [selectedTargetId, setSelectedTargetId] = useState<string | number | null>(null);
   const [logSearch, setLogSearch] = useState('');
   const [autoScroll, setAutoScroll] = useState(false);
   const [scriptDrawerOpen, setScriptDrawerOpen] = useState(false);
@@ -162,46 +164,7 @@ const JobRecordPage = () => {
     }
     try {
       const res = await getJobRecordDetail(id);
-
-      // 兼容 API 返回的 execution_results 字段，映射为 execution_targets
-      if ((!res.execution_targets || res.execution_targets.length === 0) && res.execution_results?.length) {
-        res.execution_targets = res.execution_results.map((result: any, index: number) => ({
-          id: index,
-          target: index,
-          target_key: result.target_key != null ? String(result.target_key) : undefined,
-          target_name: result.name || result.ip,
-          target_ip: result.ip,
-          status: result.status,
-          status_display: result.status,
-          stdout: result.stdout || '',
-          stderr: result.stderr || result.error_message || '',
-          exit_code: result.exit_code,
-          started_at: result.started_at,
-          finished_at: result.finished_at,
-          error_message: result.error_message || '',
-        }));
-      }
-
-      // 任务刚创建时可能还没有 execution_results，但 target_list 已经存在
-      if ((!res.execution_targets || res.execution_targets.length === 0) && res.target_list?.length) {
-        res.execution_targets = res.target_list.map((target: any, index: number) => ({
-          id: Number(target.target_id || target.node_id || index),
-          target: Number(target.target_id || target.node_id || index),
-          target_key: String(target.node_id || target.target_id || index),
-          target_name: target.name || target.ip || `Target ${index + 1}`,
-          target_ip: target.ip || '-',
-          status: res.status,
-          status_display: res.status_display || res.status,
-          stdout: '',
-          stderr: '',
-          exit_code: 0,
-          started_at: res.started_at || null,
-          finished_at: res.finished_at || null,
-          error_message: '',
-        }));
-      }
-
-      setDetail(res);
+      setDetail(normalizeExecutionTargets(res));
     } finally {
       if (!silent) {
         setDetailLoading(false);
@@ -710,11 +673,11 @@ const JobRecordPage = () => {
         >
           <div className="flex items-center gap-2">
             {node.type === 'directory' ? (
-              <FolderOutlined style={{ color: '#faad14' }} />
+              <FolderOutlined className="text-[#faad14]" />
             ) : (
-              <FileOutlined style={{ color: 'var(--color-text-3)' }} />
+              <FileOutlined className="text-[var(--color-text-3)]" />
             )}
-            <span className="text-sm" style={{ color: 'var(--color-text-1)' }}>
+            <span className="text-sm text-[var(--color-text-1)]">
               {node.name}
             </span>
           </div>
@@ -754,13 +717,10 @@ const JobRecordPage = () => {
           <div className="space-y-4 py-2">
             {basicInfoItems.map((item, idx) => (
               <div key={idx} className="flex">
-                <span
-                  className="w-32 shrink-0 text-sm"
-                  style={{ color: 'var(--color-text-3)' }}
-                >
+                <span className="w-32 shrink-0 text-sm text-[var(--color-text-3)]">
                   {item.label}
                 </span>
-                <span className="text-sm" style={{ color: 'var(--color-text-1)' }}>
+                <span className="text-sm text-[var(--color-text-1)]">
                   {item.value}
                 </span>
               </div>
@@ -802,7 +762,7 @@ const JobRecordPage = () => {
               ]}
             />
           ) : (
-            <Empty description={t('job.noParams')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('job.noParams')} />
           ),
       },
       {
@@ -810,14 +770,11 @@ const JobRecordPage = () => {
         label: t('job.fileListTab'),
         children:
           viewingPlaybook.file_list && viewingPlaybook.file_list.length > 0 ? (
-            <div
-              className="rounded-md border p-2"
-              style={{ borderColor: 'var(--color-border-1)' }}
-            >
+            <div className="rounded-md border border-(--color-border-1) p-2">
               {renderPlaybookFileTree(viewingPlaybook.file_list)}
             </div>
           ) : (
-            <Empty description={t('job.noFiles')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('job.noFiles')} />
           ),
       },
       {
@@ -826,7 +783,7 @@ const JobRecordPage = () => {
         children: viewingPlaybook.readme ? (
           <MarkdownRenderer content={viewingPlaybook.readme} />
         ) : (
-          <Empty description={t('job.noReadme')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <CompactEmptyState description={t('job.noReadme')} />
         ),
       },
     ];
@@ -899,13 +856,7 @@ const JobRecordPage = () => {
     return (
       <div className="w-full h-full flex flex-col overflow-hidden">
         {/* Header Card */}
-        <div
-          className="mb-4 rounded-lg px-6 py-4 shrink-0"
-          style={{
-            background: 'var(--color-bg-1)',
-            border: '1px solid var(--color-border-1)',
-          }}
-        >
+        <div className="mb-4 shrink-0 rounded-lg border border-(--color-border-1) bg-(--color-bg-1) px-6 py-4">
           {/* Title Row */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -915,13 +866,10 @@ const JobRecordPage = () => {
                 onClick={handleBack}
                 className="p-1!"
               />
-              <h2
-                className="text-lg font-medium m-0"
-                style={{ color: 'var(--color-text-1)' }}
-              >
+              <h2 className="m-0 text-lg font-medium text-[var(--color-text-1)]">
                 {detail.name}
               </h2>
-              <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
+              <span className="text-sm text-[var(--color-text-3)]">
                 #{detail.id}
               </span>
               <ExecutionStatusBadge
@@ -963,52 +911,52 @@ const JobRecordPage = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-6 flex-wrap text-sm">
               <div>
-                <span style={{ color: 'var(--color-text-3)' }}>{t('job.jobType')}</span>
-                <span className="ml-2" style={{ color: 'var(--color-text-1)' }}>
+                <span className="text-[var(--color-text-3)]">{t('job.jobType')}</span>
+                <span className="ml-2 text-[var(--color-text-1)]">
                   {detail.job_type_display}
                 </span>
               </div>
               <div>
-                <span style={{ color: 'var(--color-text-3)' }}>{t('job.triggerSource')}</span>
+                <span className="text-[var(--color-text-3)]">{t('job.triggerSource')}</span>
                 <Tag color={getSourceConfig(detail.trigger_source || detail.source).color} className="ml-2">
                   {detail.trigger_source_display || detail.source_display || '-'}
                 </Tag>
               </div>
               <div>
-                <span style={{ color: 'var(--color-text-3)' }}>{t('job.initiator')}</span>
-                <span className="ml-2" style={{ color: 'var(--color-text-1)' }}>
+                <span className="text-[var(--color-text-3)]">{t('job.initiator')}</span>
+                <span className="ml-2 text-[var(--color-text-1)]">
                   {detail.created_by}
                 </span>
               </div>
               <div>
-                <span style={{ color: 'var(--color-text-3)' }}>{t('job.startTime')}</span>
-                <span className="ml-2" style={{ color: 'var(--color-text-1)' }}>
+                <span className="text-[var(--color-text-3)]">{t('job.startTime')}</span>
+                <span className="ml-2 text-[var(--color-text-1)]">
                   {detail.started_at ? dayjs(detail.started_at).format('YYYY-MM-DD HH:mm:ss') : '-'}
                 </span>
               </div>
               <div>
-                <span style={{ color: 'var(--color-text-3)' }}>{t('job.duration')}</span>
-                <span className="ml-2" style={{ color: 'var(--color-text-1)' }}>
+                <span className="text-[var(--color-text-3)]">{t('job.duration')}</span>
+                <span className="ml-2 text-[var(--color-text-1)]">
                   {formatDuration(detail.duration)}
                 </span>
               </div>
               <div>
-                <span style={{ color: 'var(--color-text-3)' }}>{t('job.targetHosts')}</span>
-                <span className="ml-2" style={{ color: 'var(--color-text-1)' }}>
+                <span className="text-[var(--color-text-3)]">{t('job.targetHosts')}</span>
+                <span className="ml-2 text-[var(--color-text-1)]">
                   {detail.total_count || detail.target_count || 0} {t('job.hostsUnit')}
                 </span>
               </div>
               {detail.executor_user && (
                 <div>
-                  <span style={{ color: 'var(--color-text-3)' }}>{t('job.executeUser')}</span>
-                  <span className="ml-2" style={{ color: 'var(--color-text-1)' }}>
+                  <span className="text-[var(--color-text-3)]">{t('job.executeUser')}</span>
+                  <span className="ml-2 text-[var(--color-text-1)]">
                     {detail.executor_user}
                   </span>
                 </div>
               )}
               <div>
-                <span style={{ color: 'var(--color-text-3)' }}>{t('job.timeout')}</span>
-                <span className="ml-2" style={{ color: 'var(--color-text-1)' }}>
+                <span className="text-[var(--color-text-3)]">{t('job.timeout')}</span>
+                <span className="ml-2 text-[var(--color-text-1)]">
                   {detail.timeout || 300}{t('job.seconds')}
                 </span>
               </div>
@@ -1034,17 +982,11 @@ const JobRecordPage = () => {
         {/* Main Content: Host List + Log Panel */}
         <div className="flex gap-4 flex-1 min-h-0">
           {/* Left: Target Host List */}
-          <div
-            className="flex w-80 shrink-0 flex-col rounded-lg"
-            style={{
-              background: 'var(--color-bg-1)',
-              border: '1px solid var(--color-border-1)',
-            }}
-          >
+          <div className="flex w-80 shrink-0 flex-col rounded-lg border border-(--color-border-1) bg-(--color-bg-1)">
             {/* Host List Header */}
-            <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--color-border-1)' }}>
+            <div className="border-b border-(--color-border-1) px-4 py-3">
               <div className="flex items-center justify-between">
-                <span className="font-medium" style={{ color: 'var(--color-text-1)' }}>
+                <span className="font-medium text-[var(--color-text-1)]">
                   {t('job.targetHosts')}
                 </span>
                 <div className="flex items-center gap-2 text-sm">
@@ -1067,24 +1009,23 @@ const JobRecordPage = () => {
                 const duration = getTargetDuration(target);
                 return (
                   <div
-                    key={target.id}
-                    className={`cursor-pointer border-b px-4 py-3 transition-colors ${
+                    key={target.target_key || target.id}
+                    className={`cursor-pointer border-b border-(--color-border-1) px-4 py-3 transition-colors ${
                       isSelected ? 'bg-(--color-primary-bg)' : 'hover:bg-(--color-fill-2)'
                     }`}
-                    style={{ borderColor: 'var(--color-border-1)' }}
                     onClick={() => setSelectedTargetId(target.id)}
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="font-medium" style={{ color: 'var(--color-text-1)' }}>
+                        <div className="font-medium text-[var(--color-text-1)]">
                           {target.target_name}
                         </div>
-                        <div className="text-xs mt-1" style={{ color: 'var(--color-text-3)' }}>
+                        <div className="mt-1 text-xs text-[var(--color-text-3)]">
                           {target.target_ip}
                         </div>
                       </div>
                       <div className="flex items-center gap-3">
-                        <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
+                        <span className="text-sm text-[var(--color-text-3)]">
                           {duration !== null ? `${duration}s` : '-'}
                         </span>
                         <ExecutionStatusBadge
@@ -1101,17 +1042,11 @@ const JobRecordPage = () => {
           </div>
 
           {/* Right: Execution Log Panel */}
-          <div
-            className="flex-1 rounded-lg flex flex-col min-w-0"
-            style={{
-              background: 'var(--color-bg-1)',
-              border: '1px solid var(--color-border-1)',
-            }}
-          >
+          <div className="flex min-w-0 flex-1 flex-col rounded-lg border border-(--color-border-1) bg-(--color-bg-1)">
             {/* Log Header */}
-            <div className="px-4 py-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--color-border-1)' }}>
+            <div className="flex items-center justify-between border-b border-(--color-border-1) px-4 py-3">
               <div className="flex items-center gap-2">
-                <span className="font-medium" style={{ color: 'var(--color-text-1)' }}>
+                <span className="font-medium text-[var(--color-text-1)]">
                   {t('job.executionLog')}
                 </span>
                 {streaming && (
@@ -1121,7 +1056,7 @@ const JobRecordPage = () => {
                   </Tag>
                 )}
                 {selectedTarget && (
-                  <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
+                  <span className="text-sm text-[var(--color-text-3)]">
                     {selectedTarget.target_name} ({selectedTarget.target_ip})
                   </span>
                 )}
@@ -1129,7 +1064,7 @@ const JobRecordPage = () => {
               <div className="flex items-center gap-2">
                 <Input
                   placeholder={t('job.searchLog')}
-                  suffix={<SearchOutlined style={{ color: 'var(--color-text-3)' }} />}
+                  suffix={<SearchOutlined className="text-[var(--color-text-3)]" />}
                   value={logSearch}
                   onChange={(e) => setLogSearch(e.target.value)}
                   className="w-48"
@@ -1160,8 +1095,7 @@ const JobRecordPage = () => {
             {/* Log Content */}
             <div
               ref={logContainerRef}
-              className="flex-1 overflow-auto p-4 font-mono text-sm leading-6"
-              style={{ background: '#1e1e1e' }}
+              className="flex-1 overflow-auto bg-[#1e1e1e] p-4 font-mono text-sm leading-6"
             >
               {filteredLogLines.length > 0 ? (
                 filteredLogLines.map((line) => (
@@ -1179,13 +1113,7 @@ const JobRecordPage = () => {
             </div>
 
             {/* Log Footer */}
-            <div
-              className="px-4 py-2 border-t flex items-center justify-between text-xs"
-              style={{
-                borderColor: 'var(--color-border-1)',
-                color: 'var(--color-text-3)',
-              }}
-            >
+            <div className="flex items-center justify-between border-t border-(--color-border-1) px-4 py-2 text-xs text-[var(--color-text-3)]">
               <span>
                 {t('job.totalLines').replace('{count}', String(filteredLogLines.length))}
               </span>
@@ -1214,41 +1142,32 @@ const JobRecordPage = () => {
             },
           }}
         >
-          <div
-            className="rounded-lg mb-4 shrink-0"
-            style={{
-              background: 'var(--color-bg-1)',
-              border: '1px solid var(--color-border-1)',
-            }}
-          >
-            <div
-              className="px-4 py-3 flex items-center gap-2"
-              style={{ borderBottom: '1px solid var(--color-border-1)' }}
-            >
-              <FileTextOutlined style={{ color: 'var(--color-primary)' }} />
-              <span className="font-medium" style={{ color: 'var(--color-text-1)' }}>
+          <div className="mb-4 shrink-0 rounded-lg border border-(--color-border-1) bg-(--color-bg-1)">
+            <div className="flex items-center gap-2 border-b border-(--color-border-1) px-4 py-3">
+              <FileTextOutlined className="text-[var(--color-primary)]" />
+              <span className="font-medium text-[var(--color-text-1)]">
                 {t('job.scriptInfo')}
               </span>
             </div>
             <div className="p-4">
               <div className="grid grid-cols-2 gap-y-4 text-sm">
                 <div>
-                  <div className="mb-1" style={{ color: 'var(--color-text-3)' }}>{t('job.contentSource')}</div>
-                  <div style={{ color: 'var(--color-text-1)' }}>{t('job.manualInput')}</div>
+                  <div className="mb-1 text-[var(--color-text-3)]">{t('job.contentSource')}</div>
+                  <div className="text-[var(--color-text-1)]">{t('job.manualInput')}</div>
                 </div>
                 <div>
-                  <div className="mb-1" style={{ color: 'var(--color-text-3)' }}>{t('job.scriptLanguage')}</div>
-                  <div style={{ color: 'var(--color-text-1)' }}>
+                  <div className="mb-1 text-[var(--color-text-3)]">{t('job.scriptLanguage')}</div>
+                  <div className="text-[var(--color-text-1)]">
                     {detail.script_type_display || detail.script_type || 'Shell (Bash)'}
                   </div>
                 </div>
                 <div>
-                  <div className="mb-1" style={{ color: 'var(--color-text-3)' }}>{t('job.executeUser')}</div>
-                  <div style={{ color: 'var(--color-text-1)' }}>{t('job.defaultExecuteUser')}</div>
+                  <div className="mb-1 text-[var(--color-text-3)]">{t('job.executeUser')}</div>
+                  <div className="text-[var(--color-text-1)]">{t('job.defaultExecuteUser')}</div>
                 </div>
                 <div>
-                  <div className="mb-1" style={{ color: 'var(--color-text-3)' }}>{t('job.codeLines')}</div>
-                  <div style={{ color: 'var(--color-text-1)' }}>
+                  <div className="mb-1 text-[var(--color-text-3)]">{t('job.codeLines')}</div>
+                  <div className="text-[var(--color-text-1)]">
                     {scriptLineCount} {t('job.lines')}
                   </div>
                 </div>
@@ -1256,20 +1175,11 @@ const JobRecordPage = () => {
             </div>
           </div>
 
-          <div
-            className="rounded-lg overflow-hidden flex-1 min-h-0 flex flex-col"
-            style={{
-              background: 'var(--color-bg-1)',
-              border: '1px solid var(--color-border-1)',
-            }}
-          >
-            <div
-              className="px-4 py-3 flex items-center justify-between shrink-0"
-              style={{ borderBottom: '1px solid var(--color-border-1)' }}
-            >
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-(--color-border-1) bg-(--color-bg-1)">
+            <div className="flex shrink-0 items-center justify-between border-b border-(--color-border-1) px-4 py-3">
               <div className="flex items-center gap-2">
-                <EditOutlined style={{ color: 'var(--color-primary)' }} />
-                <span className="font-medium" style={{ color: 'var(--color-text-1)' }}>
+                <EditOutlined className="text-[var(--color-primary)]" />
+                <span className="font-medium text-[var(--color-text-1)]">
                   {t('job.scriptContent')}
                 </span>
               </div>
@@ -1282,18 +1192,10 @@ const JobRecordPage = () => {
                 {t('common.copy')}
               </Button>
             </div>
-            <pre
-              className="p-0 text-sm overflow-auto font-mono m-0 flex-1 min-h-0"
-              style={{
-                background: '#1e1e1e',
-              }}
-            >
+            <pre className="m-0 min-h-0 flex-1 overflow-auto bg-[#1e1e1e] p-0 font-mono text-sm">
               {detail.script_content?.split('\n').map((line, index) => (
                 <div key={index} className="flex px-4 py-0.5 leading-6">
-                  <span
-                    className="mr-4 w-8 shrink-0 select-none text-right"
-                    style={{ color: '#6e7681' }}
-                  >
+                  <span className="mr-4 w-8 shrink-0 select-none text-right text-[#6e7681]">
                     {index + 1}
                   </span>
                   <code
@@ -1308,32 +1210,20 @@ const JobRecordPage = () => {
           </div>
 
           {/* Execution Parameters */}
-          <div
-            className="rounded-lg overflow-hidden mt-4 shrink-0"
-            style={{
-              background: 'var(--color-bg-1)',
-              border: '1px solid var(--color-border-1)',
-            }}
-          >
-            <div
-              className="px-4 py-3 flex items-center gap-2"
-              style={{ borderBottom: '1px solid var(--color-border-1)' }}
-            >
-              <ProfileOutlined style={{ color: 'var(--color-primary)' }} />
-              <span className="font-medium" style={{ color: 'var(--color-text-1)' }}>
+          <div className="mt-4 shrink-0 overflow-hidden rounded-lg border border-(--color-border-1) bg-(--color-bg-1)">
+            <div className="flex items-center gap-2 border-b border-(--color-border-1) px-4 py-3">
+              <ProfileOutlined className="text-[var(--color-primary)]" />
+              <span className="font-medium text-[var(--color-text-1)]">
                 {t('job.executeParams')}
               </span>
             </div>
             <div className="p-4">
               {executeParamsText ? (
-                <pre
-                  className="m-0 whitespace-pre-wrap break-all font-mono text-sm overflow-auto"
-                  style={{ color: 'var(--color-text-1)', maxHeight: '20vh' }}
-                >
+                <pre className="m-0 max-h-[20vh] overflow-auto break-all font-mono text-sm whitespace-pre-wrap text-[var(--color-text-1)]">
                   {executeParamsText}
                 </pre>
               ) : (
-                <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
+                <span className="text-sm text-[var(--color-text-3)]">
                   {t('job.noExecuteParams')}
                 </span>
               )}
@@ -1356,7 +1246,7 @@ const JobRecordPage = () => {
             viewingPlaybook ? (
               <div className="flex items-center gap-3">
                 <span>{viewingPlaybook.name}</span>
-                <Tag color="blue">{viewingPlaybook.version || 'v1.0.0'}</Tag>
+                <VersionBadge value={viewingPlaybook.version} />
               </div>
             ) : null
           }
@@ -1400,19 +1290,10 @@ const JobRecordPage = () => {
             />
           ) : filePreviewData ? (
             <div>
-              <div className="mb-2 text-xs" style={{ color: 'var(--color-text-3)' }}>
+              <div className="mb-2 text-xs text-[var(--color-text-3)]">
                 {filePreviewData.file_path} ({filePreviewData.file_size} bytes)
               </div>
-              <pre
-                className="overflow-auto rounded p-4 text-sm"
-                style={{
-                  backgroundColor: 'var(--color-bg-1)',
-                  border: '1px solid var(--color-border)',
-                  maxHeight: '60vh',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-word',
-                }}
-              >
+              <pre className="max-h-[60vh] overflow-auto rounded border border-(--color-border) bg-(--color-bg-1) p-4 text-sm whitespace-pre-wrap break-words">
                 <code>{filePreviewData.content}</code>
               </pre>
             </div>
@@ -1426,32 +1307,17 @@ const JobRecordPage = () => {
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div
-        className="mb-4 rounded-lg px-6 py-4 shrink-0"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
-        <h2
-          className="text-base font-medium m-0 mb-1"
-          style={{ color: 'var(--color-text-1)' }}
-        >
+      <div className="mb-4 shrink-0 rounded-lg border border-(--color-border-1) bg-(--color-bg-1) px-6 py-4">
+        <h2 className="m-0 mb-1 text-base font-medium text-[var(--color-text-1)]">
           {t('job.jobRecord')}
         </h2>
-        <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
+        <p className="m-0 text-sm text-[var(--color-text-3)]">
           {t('job.jobRecordDesc')}
         </p>
       </div>
 
       {/* Table Section */}
-      <div
-        className="rounded-lg px-6 py-6 flex-1 min-h-0 flex flex-col"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
+      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-(--color-border-1) bg-(--color-bg-1) px-6 py-6">
         {/* Toolbar */}
         <div className="mb-4 flex items-center justify-between shrink-0">
           <SearchCombination

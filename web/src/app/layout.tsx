@@ -30,6 +30,12 @@ import {
 import { isSessionExpiredState } from '@/utils/sessionExpiry'
 import { useUserInfoContext } from '@/context/userInfo';
 import { RouteScopedLayout } from '@/app/routeScopedLayout';
+import dynamic from 'next/dynamic';
+
+const GlobalWebchat = dynamic(
+  () => import('@/app/(core)/components/global-webchat'),
+  { ssr: false },
+);
 
 const Loader = () => (
   <div className="flex justify-center items-center h-screen">
@@ -167,8 +173,8 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));
-  const isResponsiveAppRoute = pathname?.startsWith('/apm');
   const isDashboardRoute = isProfessionalDashboardRoute(pathname);
+  const isResponsiveAppRoute = pathname?.startsWith('/apm') || isDashboardRoute;
   const isDashboardShareRoute = pathname?.startsWith('/ops-analysis/share/');
   const isDashboardRenderRoute = pathname?.startsWith(
     '/ops-analysis/render/execution/',
@@ -329,23 +335,31 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   );
 
   if (!isAuthenticated || !watermarkEnabled || isDashboardRenderRoute) {
-    return layoutContent;
+    return (
+      <>
+        {layoutContent}
+        {isAuthenticated && !isAuthRoute && <GlobalWebchat />}
+      </>
+    );
   }
 
   return (
-    <Watermark
-      content={watermarkContent}
-      gap={[120, 120]}
-      rotate={-24}
-      zIndex={20}
-      style={{ overflow: 'visible' }}
-      font={{
-        color: 'rgba(93,103,121,0.14)',
-        fontSize: 14,
-      }}
-    >
-      {layoutContent}
-    </Watermark>
+    <>
+      <Watermark
+        content={watermarkContent}
+        gap={[120, 120]}
+        rotate={-24}
+        zIndex={20}
+        style={{ overflow: 'visible' }}
+        font={{
+          color: 'rgba(93,103,121,0.14)',
+          fontSize: 14,
+        }}
+      >
+        {layoutContent}
+      </Watermark>
+      {isAuthenticated && !isAuthRoute && <GlobalWebchat />}
+    </>
   );
 };
 

@@ -31,6 +31,18 @@
 - 3D 机房组件消费 CMDB NATS `get_room3d_layout` 返回的机房布局数据，渲染 row/col 网格、机柜 U 占用、设备摘要与类型名图例；机柜类型同时返回 `datacenter_type` 枚举 id 与可读名称（如「计算」「网络」「存储」等），无值时仅返回 id。
 - 三类视图均支持全屏查看；拓扑额外支持大屏配置：设定固定分辨率（宽、高）与大屏背景色（信箱填充色），并将该视口随视图一同持久化、支持导入导出。
 
+### 3.1 画布刷新
+
+仪表盘、拓扑、大屏和网络拓扑画布支持关闭、1 分钟、5 分钟、10 分钟四档刷新频率。页面隐藏时暂停周期刷新；重新可见后静默刷新。静默刷新失败时保留已展示的成功数据，不以失败状态覆盖画布。
+
+> 证据来源：server/apps/operation_analysis/constants/canvas_refresh.py:6-30，server/apps/operation_analysis/models/models.py:85-112,145-153,188-210，web/src/app/ops-analysis/hooks/useCanvasPeriodicRefresh.ts:69-109，web/src/app/ops-analysis/utils/canvasRefreshTimer.ts:40-52,124-134　|　同步基线：b98b782a7　|　【已实现】
+
+### 3.2 场景组件与值映射
+
+网络状态拓扑组件仅接受 CMDB canonical UUID v4 作为实例标识，不回退数字 ID。值映射规则可分别配置展示文字和颜色；未配置的结果维度保持原有展示或颜色。
+
+> 证据来源：web/src/app/ops-analysis/utils/cmdbInstanceUuid.ts:1-5，web/src/app/ops-analysis/components/widgetConfig/hooks/useNetworkStatusTopologyConfig.ts:34-47，web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx:240-252，web/src/app/ops-analysis/utils/valueMapping.ts:16-40　|　同步基线：b98b782a7　|　【已实现】
+
 ## 4. 关键规则
 
 - 视图按组织分组，用户仅可见所属组织的视图；可见性与组织归属挂钩，不按创建人或实例数据权限收缩。

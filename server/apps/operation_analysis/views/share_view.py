@@ -16,6 +16,14 @@ from apps.operation_analysis.serializers.share_serializers import (
     ShareNetworkTopologyMetricValuesSerializer,
     SharePrepareSerializer,
 )
+from apps.operation_analysis.services.named_option_datasources import (
+    collect_named_option_datasource_ids,
+    collect_named_option_datasource_ids_from_filters,
+)
+from apps.operation_analysis.services.network_status_topology_overlay import (
+    collect_network_status_topology_overlay_datasource_ids,
+    view_sets_has_network_status_topology,
+)
 from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
 from apps.operation_analysis.services.network_topology.weops_adapter import WeOpsTopologyAdapterError
 from apps.operation_analysis.services.share_audit import log_share_access
@@ -32,6 +40,7 @@ from apps.operation_analysis.services.share_service import (
     ShareLinkInvalid,
     ShareQueryParamsDenied,
     ShareRateLimited,
+    _resource_filter_definitions,
     exchange_share,
     filter_share_query_params,
     prepare_share_exchange,
@@ -49,17 +58,27 @@ from apps.system_mgmt.nats.auth import build_user_authorization_context
 INVALID_SHARE_RESPONSE = {"detail": "分享链接无效或已失效"}
 
 
-def _canvas_data_source_ids(value):
+def _walk_data_source_ids(value):
     found = set()
     if isinstance(value, dict):
         source_id = value.get("dataSource")
         if isinstance(source_id, int) or (isinstance(source_id, str) and source_id.isdigit()):
             found.add(int(source_id))
         for child in value.values():
-            found.update(_canvas_data_source_ids(child))
+            found.update(_walk_data_source_ids(child))
     elif isinstance(value, list):
         for child in value:
-            found.update(_canvas_data_source_ids(child))
+            found.update(_walk_data_source_ids(child))
+    return found
+
+
+def _canvas_data_source_ids(resource):
+    view_sets = getattr(resource, "view_sets", None)
+    found = _walk_data_source_ids(view_sets)
+    if view_sets_has_network_status_topology(view_sets):
+        found.update(collect_network_status_topology_overlay_datasource_ids())
+    found.update(collect_named_option_datasource_ids(found))
+    found.update(collect_named_option_datasource_ids_from_filters(_resource_filter_definitions(resource)))
     return found
 
 
@@ -247,7 +266,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
             )
             return Response({"detail": "当前画布不支持数据源查询"}, status=status.HTTP_403_FORBIDDEN)
 
-        if int(data_source_id) not in _canvas_data_source_ids(getattr(principal.resource, "view_sets", None)):
+        if int(data_source_id) not in _canvas_data_source_ids(principal.resource):
             log_share_access(
                 request,
                 action="query",
@@ -307,7 +326,7 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
         if principal.resource_type not in SHARE_DATASOURCE_RESOURCE_TYPES:
             return Response([])
 
-        allowed_ids = _canvas_data_source_ids(getattr(principal.resource, "view_sets", None))
+        allowed_ids = _canvas_data_source_ids(principal.resource)
         data_sources = [
             item
             for item in DataSourceAPIModel.objects.filter(id__in=allowed_ids).prefetch_related("namespaces", "tag")

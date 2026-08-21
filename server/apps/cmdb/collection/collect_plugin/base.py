@@ -13,9 +13,7 @@ from apps.core.logger import cmdb_logger as logger
 def is_failed_vm_metric(row):
     """识别仅用于原始详情展示、不能进入 CMDB 计算的失败指标。"""
     metric = row.get("metric", {}) if isinstance(row, dict) else {}
-    return str(metric.get("collect_status", "")).lower() == "failed" or bool(
-        metric.get("cmdb_collect_error")
-    )
+    return str(metric.get("collect_status", "")).lower() == "failed" or bool(metric.get("cmdb_collect_error"))
 
 
 class CollectBase(metaclass=ABCMeta):
@@ -23,9 +21,11 @@ class CollectBase(metaclass=ABCMeta):
      k8s、阿里云、vc 在vm对比后把旧数据自动删除，如果无数据，定义为这个采集任务异常，任务的数据清空，但是不碰cmdb的数据
     然后其他对象模型的采集，不删除数据
     """
+
     _MODEL_ID = None  # 模型ID，需要删除cmdb数据的采集子类需要定义 不定义不删除
 
-    def __init__(self, inst_name, inst_id, task_id, *args, **kwargs):
+    def __init__(self, inst_name, inst_id, task_id, *args, collect_inst=None, **kwargs):
+        self._collect_inst = collect_inst
         self.inst_id = inst_id
         self.task_id = task_id
         self.inst_name = inst_name
@@ -72,6 +72,8 @@ class CollectBase(metaclass=ABCMeta):
         return sql
 
     def get_collect_inst(self):
+        if self._collect_inst is not None:
+            return self._collect_inst
         instance = CollectModels.objects.get(id=self.task_id)
         return instance
 

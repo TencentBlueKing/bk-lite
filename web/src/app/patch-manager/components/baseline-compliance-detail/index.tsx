@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
-  Empty,
   Input,
   message,
   Pagination,
@@ -16,11 +15,13 @@ import {
   Tooltip,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { ReloadOutlined } from '@ant-design/icons';
+import { DownOutlined, ExportOutlined, ReloadOutlined } from '@ant-design/icons';
 
 import OperateDrawer from '@/components/operate-drawer';
 import CustomTable from '@/components/custom-table';
+import CompactEmptyState from '@/components/compact-empty-state';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import FilterToolbar from '@/components/filter-toolbar';
 import PermissionWrapper from '@/components/permission';
 import ComplianceTag from '@/app/patch-manager/components/compliance-tag';
 import SeverityTag from '@/app/patch-manager/components/severity-tag';
@@ -43,6 +44,11 @@ import {
   getComplianceObjectBorderColor,
   getComplianceResultPresentation,
 } from './presentation';
+import {
+  buildBaselineComplianceWorkbook,
+  downloadBaselineComplianceWorkbook,
+  sanitizeExportFilename,
+} from './export';
 import styles from './index.module.scss';
 
 interface BaselineSummary {
@@ -112,6 +118,7 @@ export default function BaselineComplianceDetail({
   const [detailsData, setDetailsData] = useState<BaselineComplianceDetailsResponse | null>(null);
   const [objectsLoading, setObjectsLoading] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [assessing, setAssessing] = useState(false);
   const [objectSearch, setObjectSearch] = useState('');
   const [detailSearch, setDetailSearch] = useState('');
@@ -120,6 +127,7 @@ export default function BaselineComplianceDetail({
   const [selectedId, setSelectedId] = useState<number>();
   const [detailPage, setDetailPage] = useState(1);
   const [detailPageSize, setDetailPageSize] = useState(20);
+  const [selectedDetailKeys, setSelectedDetailKeys] = useState<React.Key[]>([]);
   const selectedIdRef = useRef<number | undefined>(undefined);
   selectedIdRef.current = selectedId;
   const objectsRequestRef = useRef<AbortController | null>(null);
@@ -259,7 +267,19 @@ export default function BaselineComplianceDetail({
     setDetailStatus(undefined);
     setSelectedId(undefined);
     setDetailPage(1);
+    setSelectedDetailKeys([]);
   }, [open]);
+
+  useEffect(() => {
+    setSelectedDetailKeys([]);
+  }, [
+    appliedDetailSearch,
+    detailPage,
+    detailPageSize,
+    detailStatus,
+    perspective,
+    selectedId,
+  ]);
 
   const statusOptions = useMemo(() => (
     (['satisfied', 'missing', 'not_applicable', 'unknown', 'pending', 'evaluating', 'failed'] as BaselineComplianceResultStatus[])
@@ -399,9 +419,43 @@ export default function BaselineComplianceDetail({
   const detailRows: ComplianceDetailRow[] = (detailsData?.details.items || []).map((item) => ({
     ...item,
     evidence_display: formatComplianceEvidence(item.evidence),
-    reason_display: item.reason || '—',
-    evaluated_at_display: convertToLocalizedTime(item.evaluated_at) || '—',
+    reason_display: item.reason || '--',
+    evaluated_at_display: convertToLocalizedTime(item.evaluated_at) || '--',
   }));
+  const detailRowKey = (row: ComplianceDetailRow) => perspective === 'host'
+    ? String((row as BaselineComplianceHostDetail).requirement_id)
+    : String((row as BaselineCompliancePatchDetail).target_id);
+  const selectedDetailRows = detailRows.filter((row) => selectedDetailKeys.includes(detailRowKey(row)));
+
+  const exportSelectedDetails = async () => {
+    if (!selectedDetailRows.length || !baseline) return;
+    setExporting(true);
+    try {
+      const workbook = buildBaselineComplianceWorkbook({
+        perspective,
+        rows: selectedDetailRows,
+        translate: t,
+        formatTime: convertToLocalizedTime,
+      });
+      const selectedObjectName = perspective === 'host'
+        ? selectedHost?.name
+        : selectedPatch?.identifier;
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '');
+      const filename = sanitizeExportFilename([
+        t('patchManager.baseline.complianceDetail.title'),
+        baseline.name,
+        selectedObjectName,
+        t('patchManager.risk.selected'),
+        timestamp,
+      ].filter(Boolean).join('-'));
+      await downloadBaselineComplianceWorkbook(workbook, `${filename}.xlsx`);
+      message.success(t('patchManager.risk.exportSelectedSucceeded'));
+    } catch {
+      message.error(t('common.exportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <OperateDrawer
@@ -519,8 +573,7 @@ export default function BaselineComplianceDetail({
                     </button>
                   );
                 }) : (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  <CompactEmptyState
                     description={objectsLoading
                       ? t('patchManager.baseline.complianceDetail.loading')
                       : normalizedObjectSearch
@@ -544,8 +597,8 @@ export default function BaselineComplianceDetail({
                     <div className={styles.detailSubtitle}>
                       <span>
                         {perspective === 'host'
-                          ? selectedHost?.ip || '—'
-                          : selectedPatch?.title || '—'}
+                          ? selectedHost?.ip || '--'
+                          : selectedPatch?.title || '--'}
                       </span>
                       <DistributionTags items={selected.distribution} />
                     </div>
@@ -555,7 +608,12 @@ export default function BaselineComplianceDetail({
                   )}
                   {perspective === 'patch' && selectedPatch && <SeverityTag severity={selectedPatch.severity} />}
                 </div>
-                <div className={styles.toolbar}>
+                <FilterToolbar
+                  align="start"
+                  spacing="flush"
+                  className={styles.toolbar}
+                  contentClassName="flex w-full flex-wrap items-center gap-2"
+                >
                   <Input.Search
                     aria-label={perspective === 'host'
                       ? t('patchManager.baseline.complianceDetail.detailSearch')
@@ -583,20 +641,23 @@ export default function BaselineComplianceDetail({
                       setDetailPage(1);
                     }}
                   />
-                </div>
+                </FilterToolbar>
               </div>
               <div className={styles.tableRegion}>
                 <CustomTable<ComplianceDetailRow>
-                  rowKey={(row) => perspective === 'host'
-                    ? String((row as BaselineComplianceHostDetail).requirement_id)
-                    : String((row as BaselineCompliancePatchDetail).target_id)}
+                  rowKey={detailRowKey}
                   size="small"
                   loading={detailsLoading}
                   dataSource={detailRows}
                   columns={perspective === 'host' ? hostColumns : patchColumns}
+                  rowSelection={{
+                    fixed: true,
+                    selectedRowKeys: selectedDetailKeys,
+                    onChange: setSelectedDetailKeys,
+                  }}
                   scroll={{ x: perspective === 'host' ? 1330 : 965, y: 'calc(100vh - 430px)' }}
                   pagination={false}
-                  locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('patchManager.baseline.complianceDetail.noDetails')} /> }}
+                  locale={{ emptyText: <CompactEmptyState description={t('patchManager.baseline.complianceDetail.noDetails')} /> }}
                 />
               </div>
               <div className={styles.detailPagination}>
@@ -615,7 +676,7 @@ export default function BaselineComplianceDetail({
             </>
             ) : (
               <Spin spinning={objectsLoading || detailsLoading} style={{ margin: 'auto' }}>
-                <Empty description={t('patchManager.baseline.complianceDetail.noSelection')} />
+                <CompactEmptyState description={t('patchManager.baseline.complianceDetail.noSelection')} />
               </Spin>
             )}
           </section>

@@ -54,8 +54,8 @@ class ApmSpanViewSet(viewsets.ViewSet):
         query = SpanSearchQuery(
             started_at=data["started_at"],
             ended_at=data["ended_at"],
-            service_name=data["service_name"],
-            environment=data["environment"],
+            service_name=data.get("service_name"),
+            environment=data.get("environment"),
             service_namespace=data.get("service_namespace"),
             instance_id=data.get("instance_id"),
             span_name=data.get("span_name"),

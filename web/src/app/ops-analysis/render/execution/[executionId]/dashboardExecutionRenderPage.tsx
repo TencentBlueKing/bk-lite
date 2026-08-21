@@ -8,6 +8,7 @@ import { useDashboardSubscriptionApi } from '@/app/ops-analysis/api/dashboardSub
 import { emitDashboardRenderSignal } from '@/app/ops-analysis/renderContract';
 import type { DashboardExecutionRenderInput } from '@/app/ops-analysis/types/dashboardSubscription';
 import type { FilterValue } from '@/app/ops-analysis/types/dashBoard';
+import { collectWidgetManifestDataSourceIds } from '@/app/ops-analysis/utils/canvasResources';
 
 interface DashboardExecutionRenderPageContentProps {
   executionId: number;
@@ -79,6 +80,9 @@ export const DashboardExecutionRenderPageContent = ({
       renderFilterValues={
         renderInput.input_snapshot.filter_values as Record<string, FilterValue>
       }
+      renderDataSourceIds={collectWidgetManifestDataSourceIds(
+        renderInput.render_snapshot.widget_manifest,
+      )}
       getDashboardDetailOverride={getDashboardDetailOverride}
     />
   );

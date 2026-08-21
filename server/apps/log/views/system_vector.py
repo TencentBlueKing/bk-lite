@@ -22,5 +22,6 @@ class SystemVectorConfigViewSet(OpenAPIViewSet):
         response = HttpResponse(snapshot.content.encode("utf-8"), content_type="application/yaml; charset=utf-8")
         response["X-Config-Checksum"] = snapshot.checksum
         response["X-Config-Generation"] = str(snapshot.generation)
+        response["X-Config-Contract-Version"] = str(snapshot.contract_version)
         response["Cache-Control"] = "no-store"
         return response

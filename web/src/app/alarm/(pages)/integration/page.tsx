@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Spin, Empty } from 'antd';
+import { Spin } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import PermissionWrapper from '@/components/permission';
 import { useSourceApi } from '@/app/alarm/api/integration';
 import { useTranslation } from '@/utils/i18n';
@@ -71,7 +72,7 @@ const IntegrationPage: React.FC = () => {
           {/* Card grid or empty state */}
           {!sources.length && !loading ? (
             <div className="mt-[24vh]">
-              <Empty description={t('common.noData')} />
+              <CompactEmptyState description={t('common.noData')} />
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

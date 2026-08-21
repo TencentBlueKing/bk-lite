@@ -83,6 +83,39 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             raise BaseAppException("抱歉！您没有该组织的权限或组织选择无效")
         return allowed_org_ids
 
+    def _layout_user_groups(self, request):
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        if include_children:
+            team_ids = get_organization_and_children_ids(tree_data=request.user.group_tree, target_id=current_team)
+            return format_groups_params(team_ids)
+        return format_group_params(current_team)
+
+    def _attach_layout_item_permissions(self, request, items, default_model=None):
+        if not items:
+            return
+        if getattr(request.user, "is_superuser", False):
+            for item in items:
+                item["permission"] = [VIEW, OPERATE]
+                item.pop("_creator", None)
+            return
+        by_model = {}
+        for item in items:
+            model_id = item.get("model_id") or default_model or ""
+            by_model.setdefault(model_id, []).append(item)
+        for model_id, group in by_model.items():
+            permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id)
+            for item in group:
+                item.setdefault("organization", [])
+            self.add_instance_permission(group, permissions_map, request.user.username)
+            for item in group:
+                item.pop("_creator", None)
+
+    def _transport_layout_instance(self, instance):
+        transported = self._transport_instance(instance)
+        transported.pop("_creator", None)
+        return transported
+
     @staticmethod
     def _parse_positive_int(value, field_name, default):
         if value in (None, ""):
@@ -317,7 +350,9 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(methods=["post"], detail=True, url_path="push_to_monitor")
     def push_to_monitor(self, request, pk=None):
         """显式推送到监控：无级联，带 causation。"""
-        instance = InstanceManage.query_entity_by_id(int(pk))
+        if str(pk).isdigit():
+            return WebUtils.response_error("请使用 inst_uuid 定位实例，不再支持数字 ID", status_code=status.HTTP_400_BAD_REQUEST)
+        instance = InstanceManage.query_entity_by_uuid(pk)
         if not instance or not self._is_instance_model_visible(instance):
             return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
 
@@ -331,11 +366,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         actor_scope = build_cmdb_push_actor_scope(request)
         try:
-            result = CmdbToMonitorPushService.push_instance(int(pk), actor_scope=actor_scope)
+            result = CmdbToMonitorPushService.push_instance(pk, actor_scope=actor_scope)
         except ValueError as exc:
             return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
         except Exception:
-            logger.exception("[push_to_monitor] failed inst_id=%s", pk)
+            logger.exception("[push_to_monitor] failed inst_uuid=%s", pk)
             return WebUtils.response_error("推送到监控失败", status_code=status.HTTP_502_BAD_GATEWAY)
         return WebUtils.response_success(result)
 
@@ -1270,7 +1305,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return permission_error
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
-        # 应用资源服务尚未切 UUID：桥接图内部 ID
+        # 图遍历仍用内部 _id；对外节点身份已由 overview service 输出为 inst_uuid
         applications = ApplicationResourceOverviewService.list_system_applications(instance["_id"], permission_map=permissions_map, user=request.user)
         return WebUtils.response_success({"applications": applications})
 
@@ -1406,7 +1441,103 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         if permission_error:
             return permission_error
 
-        return WebUtils.response_success(build_ipam_view(subnet))
+        data = build_ipam_view(subnet)
+        for ip in data.get("ips") or []:
+            if isinstance(ip, dict):
+                ip.setdefault("organization", [])
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="ip")
+        self.add_instance_permission(data["ips"], permissions_map, request.user.username)
+        return WebUtils.response_success(data)
+
+    @action(detail=False, methods=["post"], url_path="ipam_ip")
+    @HasPermission("asset_info-Add,asset_info-Edit,asset_info-Delete")
+    def ipam_ip(self, request):
+        """IP 视图手工登记：分配状态、IP 类型、使用人、IP 状态、MAC、描述。"""
+        from apps.cmdb.services.ipam_edit import (
+            ACTION_DELETE,
+            ACTION_NOOP,
+            ACTION_UPDATE,
+            IpamEditError,
+            decide_manual_ip_action,
+            execute_manual_ip_action,
+            find_ip_in_subnet,
+            required_asset_permission,
+            user_has_asset_permission,
+            validate_ip_belongs_to_subnet,
+        )
+        from apps.cmdb.services.ipam_view import _query_subnet_ips
+
+        subnet_uuid = str(request.data.get("subnet_inst_uuid") or "").strip()
+        ip_addr = str(request.data.get("ip_addr") or "").strip()
+        if not subnet_uuid or not ip_addr:
+            return WebUtils.response_error("subnet_inst_uuid 与 ip_addr 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+
+        subnet = InstanceManage.query_entity_by_uuid(subnet_uuid)
+        if not subnet or subnet.get("model_id") != "subnet":
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, subnet, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        try:
+            validate_ip_belongs_to_subnet(ip_addr, subnet)
+            existing = find_ip_in_subnet(_query_subnet_ips(subnet.get("_id")), ip_addr)
+            action = decide_manual_ip_action(existing, request.data.get("ip_allocated_status"))
+        except (IpamEditError, BaseAppException) as exc:
+            status_code = getattr(exc, "status_code", status.HTTP_400_BAD_REQUEST)
+            if status_code >= 500:
+                status_code = status.HTTP_400_BAD_REQUEST
+            return WebUtils.response_error(str(exc), status_code=status_code)
+
+        needed = required_asset_permission(action)
+        if needed and not user_has_asset_permission(request.user, needed):
+            return WebUtils.response_error("抱歉！您没有此操作的权限", status_code=status.HTTP_403_FORBIDDEN)
+
+        if action == ACTION_NOOP:
+            return WebUtils.response_success({"action": ACTION_NOOP, "ip": None})
+
+        if action in {ACTION_UPDATE, ACTION_DELETE} and existing:
+            permission_error = self.require_instance_permission(request, existing, operator=OPERATE)
+            if permission_error:
+                return permission_error
+
+        current_team = get_current_team_from_request(request)
+        include_children = request.COOKIES.get("include_children") == "1"
+        if include_children:
+            team_ids = get_organization_and_children_ids(tree_data=request.user.group_tree, target_id=current_team)
+            user_groups = format_groups_params(team_ids)
+        else:
+            user_groups = format_group_params(current_team)
+
+        try:
+            allowed_org_ids = self._get_allowed_org_ids(request)
+            result = execute_manual_ip_action(
+                action=action,
+                subnet=subnet,
+                existing=existing,
+                ip_addr=ip_addr,
+                allocated_status=request.data.get("ip_allocated_status"),
+                ip_status=request.data.get("ip_status"),
+                ip_type=request.data.get("ip_type"),
+                ip_user=request.data.get("ip_user"),
+                mac=request.data.get("mac"),
+                description=request.data.get("description") or "",
+                operator=request.user.username,
+                allowed_org_ids=allowed_org_ids,
+                user_groups=user_groups,
+                roles=request.user.roles,
+            )
+        except (IpamEditError, BaseAppException) as exc:
+            status_code = getattr(exc, "status_code", status.HTTP_400_BAD_REQUEST)
+            if status_code >= 500:
+                status_code = status.HTTP_400_BAD_REQUEST
+            return WebUtils.response_error(str(exc), status_code=status_code)
+
+        ip = result.get("ip")
+        if isinstance(ip, dict):
+            result = {**result, "ip": self._transport_instance(ip)}
+        return WebUtils.response_success(result)
 
     @action(
         detail=False,
@@ -1463,6 +1594,11 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
         # rack/room 服务尚未切 UUID：桥接图内部 ID
         result = get_room_layout(instance["_id"], permission_map=permissions_map, user=request.user)
+        self._attach_layout_item_permissions(
+            request,
+            (result.get("racks") or []) + (result.get("unplaced") or []),
+            default_model="rack",
+        )
         return WebUtils.response_success(result)
 
     @action(
@@ -1483,6 +1619,134 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=instance["model_id"])
         result = get_rack_layout(instance["_id"], permission_map=permissions_map, user=request.user)
+        self._attach_layout_item_permissions(
+            request,
+            (result.get("placed") or []) + (result.get("unplaced") or []),
+        )
+        return WebUtils.response_success(result)
+
+    @action(detail=False, methods=["post"], url_path="rack_room_layout")
+    @HasPermission("asset_info-Add,asset_info-Edit")
+    def rack_room_layout(self, request):
+        """机房/机柜布局变更：新建或选择已有并放置，或移出布局。不删除实例。"""
+        from apps.cmdb.services.rack_room_edit import (
+            ACTION_PLACE_EXISTING,
+            ACTION_UNPLACE,
+            RackRoomEditError,
+            execute_layout_action,
+            required_asset_permission,
+            user_has_asset_permission,
+        )
+
+        action = str(request.data.get("action") or "").strip()
+        scope = str(request.data.get("scope") or "").strip()
+        container_uuid = str(request.data.get("container_inst_uuid") or "").strip()
+        if not action or not scope or not container_uuid:
+            return WebUtils.response_error("action、scope 与 container_inst_uuid 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+
+        container = InstanceManage.query_entity_by_uuid(container_uuid)
+        expected_model = "server_room" if scope == "room" else "rack"
+        if not container or container.get("model_id") != expected_model:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, container, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        needed = required_asset_permission(action)
+        if needed and not user_has_asset_permission(request.user, needed):
+            return WebUtils.response_error("抱歉！您没有此操作的权限", status_code=status.HTTP_403_FORBIDDEN)
+
+        existing = None
+        existing_uuid = str(request.data.get("inst_uuid") or "").strip()
+        if action in {ACTION_PLACE_EXISTING, ACTION_UNPLACE}:
+            if not existing_uuid:
+                return WebUtils.response_error("inst_uuid 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+            existing = InstanceManage.query_entity_by_uuid(existing_uuid)
+            if not existing:
+                return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+            permission_error = self.require_instance_permission(request, existing, operator=OPERATE)
+            if permission_error:
+                return permission_error
+
+        try:
+            result = execute_layout_action(
+                action=action,
+                scope=scope,
+                container=container,
+                operator=request.user.username,
+                allowed_org_ids=self._get_allowed_org_ids(request),
+                user_groups=self._layout_user_groups(request),
+                roles=request.user.roles,
+                existing=existing,
+                instance_info=request.data.get("instance_info") or None,
+                model_id=request.data.get("model_id"),
+                row=request.data.get("row"),
+                col=request.data.get("col"),
+                u_start=request.data.get("u_start"),
+                u_size=request.data.get("u_size"),
+            )
+        except (RackRoomEditError, BaseAppException) as exc:
+            status_code = getattr(exc, "status_code", status.HTTP_400_BAD_REQUEST)
+            if status_code >= 500:
+                status_code = status.HTTP_400_BAD_REQUEST
+            return WebUtils.response_error(str(exc), status_code=status_code)
+
+        instance = result.get("instance")
+        if isinstance(instance, dict):
+            result = {**result, "instance": self._transport_layout_instance(instance)}
+        return WebUtils.response_success(result)
+
+    @action(detail=False, methods=["get"], url_path="rack_room_layout_candidates")
+    @HasPermission("asset_info-Add,asset_info-Edit")
+    def rack_room_layout_candidates(self, request):
+        """布局选择已有：可放置与已在其它容器的灰色候选。已在当前图上的不返回。"""
+        from apps.cmdb.services.rack_room_edit import RackRoomEditError, list_layout_candidates
+
+        scope = str(request.query_params.get("scope") or "").strip()
+        container_uuid = str(request.query_params.get("container_inst_uuid") or "").strip()
+        model_id = str(request.query_params.get("model_id") or "").strip()
+        if not scope or not container_uuid or not model_id:
+            return WebUtils.response_error("scope、container_inst_uuid 与 model_id 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+
+        container = InstanceManage.query_entity_by_uuid(container_uuid)
+        expected_model = "server_room" if scope == "room" else "rack"
+        if not container or container.get("model_id") != expected_model:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, container, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        try:
+            page = self._parse_positive_int(request.query_params.get("page"), "page", 1)
+            page_size = self._parse_positive_int(request.query_params.get("page_size"), "page_size", 20)
+        except ValueError as exc:
+            return WebUtils.response_error(str(exc), status_code=status.HTTP_400_BAD_REQUEST)
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id)
+        try:
+            result = list_layout_candidates(
+                scope=scope,
+                container=container,
+                model_id=model_id,
+                permission_map=permissions_map,
+                page=page,
+                page_size=page_size,
+                search=request.query_params.get("search") or "",
+            )
+        except (RackRoomEditError, BaseAppException) as exc:
+            status_code = getattr(exc, "status_code", status.HTTP_400_BAD_REQUEST)
+            if status_code >= 500:
+                status_code = status.HTTP_400_BAD_REQUEST
+            return WebUtils.response_error(str(exc), status_code=status_code)
+
+        items = result.get("items") or []
+        self._attach_layout_item_permissions(request, items, default_model=model_id)
+        result = {
+            **result,
+            "items": [self._transport_layout_instance(item) for item in items],
+        }
         return WebUtils.response_success(result)
 
     @action(

@@ -16,8 +16,9 @@ from apps.core.logger import logger
 from apps.core.utils.custom_error import DoesNotExist
 from apps.core.utils.permission_cache import API_TOKEN_PERMISSION_CACHE_PREFIX, get_user_permission_version, register_api_token_permission_cache_key
 from apps.rpc.system_mgmt import SystemMgmt
-from apps.system_mgmt.models import Group, Menu, Role
+from apps.system_mgmt.models import Menu, Role
 from apps.system_mgmt.models import User as SystemUser
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 # 常量定义
 DEFAULT_LOCALE = "en"
@@ -46,23 +47,28 @@ def _collect_ancestor_group_ids(seed_ids: List) -> Set[int]:
     返回的集合可用于后续有针对性地加载完整 Group 对象。
 
     算法与 system_mgmt/nats_api.py 中的 _collect_ancestor_group_ids 保持一致。
+    默认只投影活动组织；归档节点不进入祖先链。
     """
     if not seed_ids:
         return set()
-    # 一次轻量查询：只取 (id, parent_id, allow_inherit_roles)，不加载角色关联
-    all_meta = {row[0]: (row[1], row[2]) for row in Group.objects.values_list("id", "parent_id", "allow_inherit_roles")}
+    # 一次轻量查询：只取活动组织的 (id, parent_id, allow_inherit_roles)
+    all_meta = {
+        row[0]: (row[1], row[2])
+        for row in GroupUtils.active_queryset().values_list("id", "parent_id", "allow_inherit_roles")
+    }
     result: Set[int] = set()
     stack = list(seed_ids)
     while stack:
         gid = stack.pop()
         if gid in result:
             continue
-        result.add(gid)
         meta = all_meta.get(gid)
-        if meta:
-            parent_id, _allow_inherit = meta
-            if parent_id and parent_id not in result:
-                stack.append(parent_id)
+        if not meta:
+            continue
+        result.add(gid)
+        parent_id, _allow_inherit = meta
+        if parent_id and parent_id not in result:
+            stack.append(parent_id)
     return result
 
 
@@ -84,12 +90,20 @@ class APISecretAuthBackend(ModelBackend):
             if user_secret is None:
                 return None
             user = User._default_manager.get(username=user_secret.username, domain=user_secret.domain)
+            if not user.is_active:
+                logger.warning(
+                    "API token base user is inactive: %s@%s",
+                    user_secret.username,
+                    user_secret.domain,
+                )
+                return None
             if not SystemUser.objects.filter(
                 username=user_secret.username,
                 domain=user_secret.domain,
+                disabled=False,
             ).exists():
                 logger.warning(
-                    "API token user is missing from system management: %s@%s",
+                    "API token system user is missing or disabled: %s@%s",
                     user_secret.username,
                     user_secret.domain,
                 )
@@ -241,7 +255,7 @@ class APISecretAuthBackend(ModelBackend):
             # 2. 按 ID 集合有界加载含角色关联的 Group 对象
             seed_ids = [gid.get("id") if isinstance(gid, dict) else gid for gid in user_groups if gid]
             ancestor_ids = _collect_ancestor_group_ids(seed_ids)
-            all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").filter(id__in=ancestor_ids)}
+            all_groups = {g.id: g for g in GroupUtils.active_queryset(id__in=ancestor_ids).prefetch_related("roles")}
             visited: Set[int] = set()
 
             def collect_roles(group_id: int) -> None:

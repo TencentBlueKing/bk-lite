@@ -9,8 +9,7 @@ import time
 import traceback
 from typing import Any, Dict, Optional
 
-from core.collection.contracts import AccessProbeResult
-from core.infra.nats_utils import nats_request
+from core.collection.contracts import AccessProbeResult, StructuredMetricsPayload
 from core.logger import logger
 from core.plugin.executor import PluginExecutor
 from core.plugin.yaml_reader import yaml_reader
@@ -39,15 +38,12 @@ class CollectionService:
         *,
         config_provider=None,
     ):
-        self._node_info = None  # 单个节点信息
-        self.namespace = "bklite"
         self.yaml_reader = config_provider or yaml_reader
         # 运行期会补充 node_info/script_path，不能污染 HTTP 请求或其他目标复用的参数。
         self.params = dict(params or {})
         self.plugin_name = self.params.pop("plugin_name", None)
         self.model_id = self.params["model_id"]
         self.host = self.params.get("host")  # 可能为None（云采集）
-        self.connect_ip = self.params.get("connect_ip") or self.host
 
     @staticmethod
     def _get_bool_param(params: Dict[str, Any], key: str, default: bool) -> bool:
@@ -124,12 +120,6 @@ class CollectionService:
                 f"selected_plugin_path={plugin_resolution.plugin_path}, has_fallback={plugin_resolution.has_oss_fallback}"
             )
 
-            # 对于job类型且有host，获取节点信息
-            if executor_config.is_job and self.host:
-                await self.set_node_info()
-                if self._node_info:
-                    self.params["node_info"] = self._node_info
-
             # 执行单次采集
             executor = PluginExecutor(
                 self.model_id,
@@ -165,7 +155,10 @@ class CollectionService:
                             "version": "",
                             "status": "error",
                             "size": 0,
-                            "error": result.get("result", {}).get("cmdb_collect_error", result.get("error", "Unknown error")),
+                            "error": result.get("result", {}).get(
+                                "cmdb_collect_error",
+                                result.get("error", "Unknown error"),
+                            ),
                             "content_base64": "",
                         }
                         if self._is_config_file_callback()
@@ -179,16 +172,35 @@ class CollectionService:
                             "version": "",
                             "status": "error",
                             "size": 0,
-                            "error": result.get("result", {}).get("cmdb_collect_error", result.get("error", "Unknown error")),
+                            "error": result.get("result", {}).get(
+                                "cmdb_collect_error",
+                                result.get("error", "Unknown error"),
+                            ),
                             "content_base64": "",
                         }
                     )
                 )
 
-            # 处理结果并转换为 Prometheus 格式
-            final_result = await asyncio.to_thread(self._format_result, result)
+            processed = await asyncio.to_thread(self._process_result, result)
+            if self.params.get("_runtime_structured_metrics"):
+                result_data = result.get("result", {})
+                error = ""
+                if not result.get("success", True):
+                    error = str(result_data.get("cmdb_collect_error", result.get("error", "Unknown error")))
+                final_result = StructuredMetricsPayload(data=processed, error=error)
+            else:
+                final_result = await asyncio.to_thread(convert_to_prometheus_format, processed)
 
-            logger.info("✅ Collection completed successfully")
+            if result.get("success", True):
+                logger.info("✅ Collection completed successfully")
+            else:
+                logger.warning(
+                    "event=plugin_result_failed task_id=%s model_id=%s " "plugin_name=%s host=%s",
+                    self.params.get("collection_task_id") or "-",
+                    self.model_id,
+                    self.plugin_name or "-",
+                    self.host or "logical",
+                )
             logger.info("=" * 60)
             return final_result
 
@@ -400,36 +412,3 @@ class CollectionService:
 
             logger.error(f"Error list_regions for {self.plugin_name or self.model_id}: {traceback.format_exc()}")
             return {"result": [], "success": False, "message": str(e)}
-
-    async def set_node_info(self):
-        """查询单个节点信息"""
-        if not self.connect_ip:
-            return
-
-        try:
-            # 优先使用任务上下文中携带的 organization_id 限定查询范围，
-            # 避免跨租户拉取全量节点数据。仅当调用方未提供组织上下文时，
-            # 才回退到 skip_permission=True（单租户或无多租户隔离的部署场景）。
-            organization_id = self.params.get("organization_id")
-            query: dict = {"ip": self.connect_ip, "page_size": 1}
-            if organization_id:
-                query["organization_ids"] = [organization_id]
-            else:
-                query["skip_permission"] = True
-
-            exec_params = {"args": [query], "kwargs": {}}
-            subject = f"{self.namespace}.node_list"
-            payload = json.dumps(exec_params).encode()
-
-            response = await nats_request(subject, payload=payload, timeout=10.0)
-
-            if response.get("success") and response["result"]["nodes"]:
-                for node in response["result"]["nodes"]:
-                    if node["ip"] == self.connect_ip:
-                        self._node_info = node
-                        logger.info(f"✅ Found node info for {self.connect_ip}")
-                        break
-                else:
-                    logger.warning(f"⚠️  Node info not found for {self.connect_ip}")
-        except Exception as e:
-            logger.warning(f"⚠️  Failed to get node info for {self.connect_ip}: {e}")

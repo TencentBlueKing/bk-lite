@@ -4,6 +4,22 @@ import pytest
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.services.k8s_collect import K8sLogCollectService as K8s
 
+
+@pytest.fixture(autouse=True)
+def saved_render_options(mocker):
+    mocker.patch.object(
+        K8s,
+        "load_setting_render_options",
+        return_value={
+            "runtime_profile": "standard",
+            "host_log_path": None,
+            "docker_container_log_path": None,
+            "namespace_patterns": [],
+            "pod_patterns": [],
+        },
+    )
+
+
 # ----------------------- validate_cluster_name -----------------------
 
 
@@ -118,15 +134,17 @@ def test_generate_install_command_builds_curl(mocker):
     mocker.patch("apps.log.services.k8s_collect.CollectInstance.objects.filter").return_value.first.return_value = inst
     mocker.patch.object(K8s, "get_cloud_region_envconfig", return_value=dict(_FULL_ENV))
     mocker.patch.object(K8s, "generate_install_token", return_value="tok-123")
-    cmd = K8s.generate_install_command("inst-1", "cr1")
+    cmd = K8s.generate_install_command("inst-1", "cr1", "harbor.internal/bklite")
     assert "curl -sSLk -X POST" in cmd
     assert "http://node/api/v1/log/open_api/k8s/render/" in cmd
     assert "tok-123" in cmd
     assert "kubectl apply -f -" in cmd
+    K8s.generate_install_token.assert_called_once_with("inst-1", "cr1", "harbor.internal/bklite")
 
 
 def test_generate_install_command_missing_instance(mocker):
     mocker.patch("apps.log.services.k8s_collect.CollectInstance.objects.filter").return_value.first.return_value = None
+    K8s.load_setting_render_options.side_effect = None
     with pytest.raises(BaseAppException, match="实例不存在"):
         K8s.generate_install_command("missing", "cr1")
 
@@ -143,6 +161,19 @@ def test_render_config_from_cloud_region_success(mocker):
     out = K8s.render_config_from_cloud_region("clusterA", "cr1")
     assert out == "apiVersion: v1"
     assert post.call_args.args[0] == "http://hook/infra/kubernetes"
+    assert post.call_args.kwargs["json"]["image_registry_prefix"] == "bk-lite.tencentcloudcr.com/bklite"
+
+
+def test_render_config_forwards_custom_image_registry(mocker):
+    mocker.patch.object(K8s, "get_cloud_region_envconfig", return_value=dict(_FULL_ENV))
+    mocker.patch("apps.log.services.k8s_collect.get_webhook_tls_verify", return_value=True)
+    response = mocker.MagicMock(status_code=200)
+    response.json.return_value = {"yaml": "apiVersion: v1"}
+    post = mocker.patch("apps.log.services.k8s_collect.requests.post", return_value=response)
+
+    K8s.render_config_from_cloud_region("clusterA", "cr1", "harbor.internal/bklite")
+
+    assert post.call_args.kwargs["json"]["image_registry_prefix"] == "harbor.internal/bklite"
 
 
 def test_render_config_non_200_raises(mocker):

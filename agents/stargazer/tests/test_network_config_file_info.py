@@ -31,26 +31,32 @@ def test_merge_outputs_keeps_command_boundaries():
     assert "line2" in merged
 
 
+class FakeResponse:
+    def __init__(self, result, *, failed=False):
+        self.result = result
+        self.failed = failed
+
+
 class FakeNetConnect:
     def __init__(self):
         self.enabled = False
         self.commands = []
+        self.opened = False
+        self.closed = False
 
-    def __enter__(self):
-        return self
+    async def open(self):
+        self.opened = True
 
-    def __exit__(self, exc_type, exc, tb):
-        return False
+    async def close(self):
+        self.closed = True
 
-    def enable(self):
+    async def acquire_priv(self, privilege):
+        assert privilege == "privilege_exec"
         self.enabled = True
 
-    def disable_paging(self, command=None):
+    async def send_command(self, command, **kwargs):
         self.commands.append(command)
-
-    def send_command(self, command, **kwargs):
-        self.commands.append(command)
-        return f"output for {command}"
+        return FakeResponse(f"output for {command}")
 
 
 def _base_params(**extra):
@@ -73,7 +79,7 @@ def _base_params(**extra):
 def test_collect_builds_success_payload(monkeypatch):
     fake = FakeNetConnect()
     monkeypatch.setattr(
-        "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
+        "plugins.inputs.network_config_file.network_config_file_info.AsyncScrapli",
         lambda **kwargs: fake,
     )
     plugin = NetworkConfigFileInfo(
@@ -97,12 +103,14 @@ def test_collect_builds_success_payload(monkeypatch):
     assert "output for show running-config" in decoded
     assert "output for show version" in decoded
     assert fake.enabled is True
+    assert fake.opened is True
+    assert fake.closed is True
 
 
 def test_collect_enables_privilege_mode_when_enable_password_is_present(monkeypatch):
     fake = FakeNetConnect()
     monkeypatch.setattr(
-        "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
+        "plugins.inputs.network_config_file.network_config_file_info.AsyncScrapli",
         lambda **kwargs: fake,
     )
     plugin = NetworkConfigFileInfo(_base_params(enable_password="enable-secret"))
@@ -116,7 +124,7 @@ def test_collect_enables_privilege_mode_when_enable_password_is_present(monkeypa
 def test_collect_skips_privilege_mode_without_enable_password(monkeypatch):
     fake = FakeNetConnect()
     monkeypatch.setattr(
-        "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
+        "plugins.inputs.network_config_file.network_config_file_info.AsyncScrapli",
         lambda **kwargs: fake,
     )
     plugin = NetworkConfigFileInfo(_base_params())
@@ -129,14 +137,14 @@ def test_collect_skips_privilege_mode_without_enable_password(monkeypatch):
 
 def test_collect_returns_error_when_one_command_fails(monkeypatch):
     class FailingNetConnect(FakeNetConnect):
-        def send_command(self, command, **kwargs):
+        async def send_command(self, command, **kwargs):
             if command == "show bad":
-                return "Invalid input detected"
-            return "ok"
+                return FakeResponse("Invalid input detected", failed=True)
+            return FakeResponse("ok")
 
     fake = FailingNetConnect()
     monkeypatch.setattr(
-        "plugins.inputs.network_config_file.network_config_file_info.ConnectHandler",
+        "plugins.inputs.network_config_file.network_config_file_info.AsyncScrapli",
         lambda **kwargs: fake,
     )
     plugin = NetworkConfigFileInfo(_base_params(commands="show version\nshow bad"))
@@ -146,6 +154,34 @@ def test_collect_returns_error_when_one_command_fails(monkeypatch):
     assert result["success"] is False
     assert "show bad" in result["result"]["cmdb_collect_error"]
     assert "Invalid input" in result["result"]["cmdb_collect_error"]
+    assert fake.closed is True
+
+
+def test_close_failure_does_not_override_successful_collection(monkeypatch):
+    class CloseFailingConnect(FakeNetConnect):
+        async def close(self):
+            raise OSError("close failed")
+
+    fake = CloseFailingConnect()
+    monkeypatch.setattr(
+        "plugins.inputs.network_config_file.network_config_file_info.AsyncScrapli",
+        lambda **kwargs: fake,
+    )
+    plugin = NetworkConfigFileInfo(_base_params())
+
+    result = asyncio.run(plugin.list_all_resources())
+
+    assert result["success"] is True
+
+
+def test_connect_params_use_native_async_transport_and_strict_host_key():
+    plugin = NetworkConfigFileInfo(_base_params())
+
+    connect_params = plugin._connect_params()
+
+    assert connect_params["platform"] == "cisco_iosxe"
+    assert connect_params["transport"] == "asyncssh"
+    assert connect_params["auth_strict_key"] is True
 
 
 @pytest.mark.parametrize(

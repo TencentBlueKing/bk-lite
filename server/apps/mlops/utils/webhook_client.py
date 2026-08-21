@@ -8,6 +8,12 @@ import os
 import requests
 from typing import Optional, Any
 from apps.core.logger import mlops_logger as logger
+from apps.mlops.utils.i18n import (
+    WEBHOOK_CONNECTION_FAILED,
+    WEBHOOK_REQUEST_FAILED,
+    WEBHOOK_SERVER_URL_NOT_CONFIGURED,
+    WEBHOOK_TIMEOUT,
+)
 
 # 敏感字段列表，日志输出时会被脱敏
 # _SENSITIVE_KEYS = frozenset(
@@ -65,6 +71,16 @@ class WebhookClient:
     MAX_SERVING_STARTUP_TIMEOUT_SECONDS = 290
     SERVING_HOOK_GRACE_SECONDS = 5
     SERVING_REQUEST_GRACE_SECONDS = 5
+    IMAGE_BUDGET_DEFAULTS = {
+        "image_budget_mode": ("MLOPS_PREDICT_IMAGE_BUDGET_MODE", "observe"),
+        "max_image_bytes": ("MLOPS_PREDICT_MAX_IMAGE_BYTES", str(10 * 1024 * 1024)),
+        "max_image_batch_base64_bytes": (
+            "MLOPS_PREDICT_MAX_IMAGE_BATCH_BASE64_BYTES",
+            str(96 * 1024 * 1024),
+        ),
+        "max_image_batch_bytes": ("MLOPS_PREDICT_MAX_IMAGE_BATCH_BYTES", str(64 * 1024 * 1024)),
+        "max_image_batch_pixels": ("MLOPS_PREDICT_MAX_IMAGE_BATCH_PIXELS", str(64 * 1024 * 1024)),
+    }
 
     @staticmethod
     def get_runtime():
@@ -140,7 +156,7 @@ class WebhookClient:
             tuple: (is_valid, error_message)
         """
         if not os.getenv("WEBHOOK_SERVER_URL"):
-            return False, "环境变量 WEBHOOK_SERVER_URL 未配置"
+            return False, WEBHOOK_SERVER_URL_NOT_CONFIGURED
         return True, ""
 
     @staticmethod
@@ -175,6 +191,36 @@ class WebhookClient:
                 payload["network_mode"] = network_mode
 
     @staticmethod
+    def _add_image_budget_params(serving_id: str, payload: dict[str, Any]) -> None:
+        """为图片算法 serving 注入可灰度、可回滚的资源预算。"""
+        if not serving_id.startswith(("ImageClassification_Serving_", "ObjectDetection_Serving_")):
+            return
+
+        mode_env, default_mode = WebhookClient.IMAGE_BUDGET_DEFAULTS["image_budget_mode"]
+        mode = os.getenv(mode_env, default_mode).strip().lower()
+        if mode not in {"observe", "enforce"}:
+            raise ValueError(f"{mode_env} must be observe or enforce")
+        payload["image_budget_mode"] = mode
+
+        for payload_key, (env_name, default_value) in WebhookClient.IMAGE_BUDGET_DEFAULTS.items():
+            if payload_key == "image_budget_mode":
+                continue
+            try:
+                value = int(os.getenv(env_name, default_value))
+            except ValueError:
+                raise ValueError(f"{env_name} must be a positive integer") from None
+            if value <= 0:
+                raise ValueError(f"{env_name} must be a positive integer")
+            payload[payload_key] = value
+
+    @staticmethod
+    def validate_image_budget_config(serving_id: str) -> dict[str, Any]:
+        """在修改运行中图片服务前，无副作用地校验并返回预算参数。"""
+        payload: dict[str, Any] = {}
+        WebhookClient._add_image_budget_params(serving_id, payload)
+        return payload
+
+    @staticmethod
     def _request(endpoint: str, payload: dict, timeout: int = 30) -> dict:
         """
         统一的 webhook 请求方法
@@ -194,7 +240,7 @@ class WebhookClient:
         """
         url = WebhookClient.build_url(endpoint)
         if not url:
-            raise WebhookError("环境变量 WEBHOOK_SERVER_URL 未配置")
+            raise WebhookError(WEBHOOK_SERVER_URL_NOT_CONFIGURED)
 
         # logger.debug(
         #     f"请求 webhookd - URL: {url}, Payload: {_sanitize_payload(payload)}"
@@ -246,13 +292,13 @@ class WebhookClient:
 
         except requests.exceptions.Timeout:
             logger.error(f"请求 webhookd 超时({timeout}秒) - URL: {url}")
-            raise WebhookTimeoutError(f"请求 webhookd 服务超时，请检查服务是否正常运行")
+            raise WebhookTimeoutError(WEBHOOK_TIMEOUT)
         except requests.exceptions.ConnectionError as e:
             logger.error(f"无法连接到 webhookd - URL: {url}, Error: {e}")
-            raise WebhookConnectionError(f"无法连接到 webhookd 服务: {e}")
+            raise WebhookConnectionError(WEBHOOK_CONNECTION_FAILED)
         except requests.exceptions.RequestException as e:
             logger.error(f"请求 webhookd 失败 - URL: {url}, Error: {e}", exc_info=True)
-            raise WebhookError(f"请求 webhookd 失败: {e}")
+            raise WebhookError(WEBHOOK_REQUEST_FAILED)
 
     @staticmethod
     def serve(
@@ -305,6 +351,8 @@ class WebhookClient:
             if max_recursive_feature_engineering_work <= 0:
                 raise ValueError("max_recursive_feature_engineering_work must be a positive integer")
             payload["max_recursive_feature_engineering_work"] = max_recursive_feature_engineering_work
+
+        payload.update(WebhookClient.validate_image_budget_config(serving_id))
 
         request_timeout = 30
         if WebhookClient.get_runtime() == "docker":

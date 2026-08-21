@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.models import MonitorInstance, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.utils import plugin_controller as pc
 from apps.monitor.utils.plugin_controller import Controller
@@ -113,10 +114,7 @@ class TestRenderTemplate:
 
     def test_host_os_disk_template_uses_defaults_when_fstype_config_is_missing(self):
         """回归：Host/OS 磁盘模板缺省文件系统过滤配置时仍可通过 default 渲染。"""
-        template_path = (
-            Path(__file__).resolve().parents[1]
-            / "support-files/plugins/Telegraf/host/os/disk.child.toml.j2"
-        )
+        template_path = Path(__file__).resolve().parents[1] / "support-files/plugins/Telegraf/host/os/disk.child.toml.j2"
         template_content = template_path.read_text()
 
         out = Controller({}).render_template(
@@ -136,13 +134,24 @@ class TestRenderTemplate:
 class TestGetTemplatesByCollector:
     def test_groups_by_type(self):
         plugin = MonitorPlugin.objects.create(
-            name="PCPlugin", collector="Telegraf", collect_type="snmp", template_type="builtin",
+            name="PCPlugin",
+            collector="Telegraf",
+            collect_type="snmp",
+            template_type="builtin",
         )
         MonitorPluginConfigTemplate.objects.create(
-            plugin=plugin, type="base", config_type="base", file_type="toml", content="a",
+            plugin=plugin,
+            type="base",
+            config_type="base",
+            file_type="toml",
+            content="a",
         )
         MonitorPluginConfigTemplate.objects.create(
-            plugin=plugin, type="child", config_type="child", file_type="toml", content="b",
+            plugin=plugin,
+            type="child",
+            config_type="child",
+            file_type="toml",
+            content="b",
         )
         ctrl = Controller({"monitor_plugin_id": plugin.id})
         out = ctrl.get_templates_by_collector("Telegraf", "snmp")
@@ -151,11 +160,74 @@ class TestGetTemplatesByCollector:
 
     def test_filters_by_collector_when_no_plugin_id(self):
         plugin = MonitorPlugin.objects.create(
-            name="PCPlugin2", collector="Exporter", collect_type="http", template_type="builtin",
+            name="PCPlugin2",
+            collector="Exporter",
+            collect_type="http",
+            template_type="builtin",
         )
         MonitorPluginConfigTemplate.objects.create(
-            plugin=plugin, type="base", config_type="base", file_type="yaml", content="c",
+            plugin=plugin,
+            type="base",
+            config_type="base",
+            file_type="yaml",
+            content="c",
         )
         ctrl = Controller({})
         out = ctrl.get_templates_by_collector("Exporter", "http")
         assert "base" in out
+
+
+@pytest.mark.django_db
+def test_controller_writes_node_configs_via_local_node_mgmt(mocker):
+    """采集配置必须本进程写入 NodeMgmt。
+
+    节点→监控 ingest 会在同一事务里更新 Node.monitor_id；若 Controller 再 NATS
+    到另一连接写 NodeCollectorConfiguration，InnoDB 外键会等待父行锁，调用方超时后记 skipped。
+    """
+    constructed = {}
+
+    class FakeNodeMgmt:
+        def __init__(self, is_local_client=False):
+            constructed["is_local_client"] = is_local_client
+
+        def batch_create_configs_and_child_configs(self, configs, child_configs):
+            constructed["called"] = True
+            constructed["configs"] = configs
+            constructed["child_configs"] = child_configs
+
+    mocker.patch("apps.monitor.utils.plugin_controller.NodeMgmt", FakeNodeMgmt)
+
+    host = MonitorObject.objects.create(name="Host", display_name="主机", level="base")
+    MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=host)
+    plugin = MonitorPlugin.objects.create(name="Host", collector="Telegraf", collect_type="host")
+    plugin.monitor_object.add(host)
+    MonitorPluginConfigTemplate.objects.create(
+        plugin=plugin,
+        type="cpu",
+        config_type="child",
+        file_type="toml",
+        content='instance = "{{ instance_id }}"',
+    )
+
+    Controller(
+        {
+            "monitor_object_id": host.id,
+            "collector": "Telegraf",
+            "collect_type": "host",
+            "monitor_plugin_id": plugin.id,
+            "configs": [{"type": "cpu", "interval": 60}],
+            "instances": [
+                {
+                    "instance_id": "('h1',)",
+                    "instance_name": "h1",
+                    "node_ids": ["n-local-1"],
+                    "group_ids": [1],
+                    "instance_type": "os",
+                }
+            ],
+        }
+    ).controller()
+
+    assert constructed.get("is_local_client") is True
+    assert constructed.get("called") is True
+    assert constructed.get("child_configs")

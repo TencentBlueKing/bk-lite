@@ -40,7 +40,7 @@ def test_config_open_api_returns_exact_snapshot_and_headers(client, mocker):
         desired_generation=2,
         published_generation=1,
         status=SystemVectorConfigState.Status.FAILED,
-        published_content="sources:\n  nats: {}\n",
+        published_content="# bk-lite-system-vector-contract-version: 1\nsources:\n  nats: {}\n",
         published_checksum="sha256:abc",
     )
     compiler = mocker.patch("apps.log.services.log_extractor.compiler.compile_system_vector_config")
@@ -48,10 +48,11 @@ def test_config_open_api_returns_exact_snapshot_and_headers(client, mocker):
     response = client.get(reverse("log-system-vector-config"), HTTP_AUTHORIZATION=f"Bearer {token}")
 
     assert response.status_code == 200
-    assert response.content == b"sources:\n  nats: {}\n"
+    assert response.content == b"# bk-lite-system-vector-contract-version: 1\nsources:\n  nats: {}\n"
     assert response["Content-Type"] == "application/yaml; charset=utf-8"
     assert response["X-Config-Checksum"] == "sha256:abc"
     assert response["X-Config-Generation"] == "1"
+    assert response["X-Config-Contract-Version"] == "1"
     assert response["Cache-Control"] == "no-store"
     assert "ETag" not in response
     compiler.assert_not_called()

@@ -38,9 +38,9 @@ def _request(user):
     return request
 
 
-def _call(request, inst_id="9"):
+def _call(request, inst_uuid="subnet-uuid"):
     view = InstanceViewSet.as_view({"get": "ipam_view"})
-    return view(request, inst_id=inst_id)
+    return view(request, inst_uuid=inst_uuid)
 
 
 def _reconcile_request(user):
@@ -66,10 +66,11 @@ def test_ipam_view_requires_asset_view_permission():
         "subnet_address": "10.0.1.0",
         "subnet_mask": "24",
     }
-    with patch("apps.cmdb.views.instance.InstanceManage.query_entity_by_id", return_value=subnet), \
-         patch("apps.cmdb.views.instance.CmdbRulesFormatUtil.format_user_groups_permissions", return_value={}), \
-         patch("apps.cmdb.views.instance.CmdbRulesFormatUtil.has_object_permission", return_value=True), \
-         patch("apps.cmdb.services.ipam_view._query_subnet_ips", return_value=[]):
+    with patch("apps.cmdb.views.instance.InstanceManage.query_entity_by_id", return_value=subnet), patch(
+        "apps.cmdb.views.instance.CmdbRulesFormatUtil.format_user_groups_permissions", return_value={}
+    ), patch("apps.cmdb.views.instance.CmdbRulesFormatUtil.has_object_permission", return_value=True), patch(
+        "apps.cmdb.services.ipam_view._query_subnet_ips", return_value=[]
+    ):
         resp = _call(_request(user))
 
     assert resp.status_code == 403
@@ -79,8 +80,8 @@ def test_ipam_view_returns_404_when_subnet_missing():
     user = _user()
     _grant_asset_view(user)
 
-    with patch("apps.cmdb.views.instance.InstanceManage.query_entity_by_id", return_value=None):
-        resp = _call(_request(user), inst_id="404")
+    with patch("apps.cmdb.views.instance.InstanceManage.query_entity_by_uuid", return_value=None):
+        resp = _call(_request(user), inst_uuid="404")
 
     assert resp.status_code == 404
 
@@ -96,7 +97,7 @@ def test_ipam_view_returns_403_without_subnet_view_permission():
         "subnet_mask": "24",
     }
 
-    with patch("apps.cmdb.views.instance.InstanceManage.query_entity_by_id", return_value=subnet):
+    with patch("apps.cmdb.views.instance.InstanceManage.query_entity_by_uuid", return_value=subnet):
         resp = _call(_request(user))
 
     assert resp.status_code == 403
@@ -112,10 +113,13 @@ def test_ipam_view_action_returns_capacity_with_view_permission():
         "subnet_address": "10.0.1.0",
         "subnet_mask": "24",
     }
-    with patch("apps.cmdb.views.instance.InstanceManage.query_entity_by_id", return_value=subnet), \
-         patch("apps.cmdb.views.instance.CmdbRulesFormatUtil.format_user_groups_permissions", return_value={}), \
-         patch("apps.cmdb.views.instance.CmdbRulesFormatUtil.has_object_permission", return_value=True), \
-         patch("apps.cmdb.services.ipam_view._query_subnet_ips", return_value=[]):
+    with patch("apps.cmdb.views.instance.InstanceManage.query_entity_by_uuid", return_value=subnet), patch(
+        "apps.cmdb.views.instance.CmdbRulesFormatUtil.format_user_groups_permissions", return_value={}
+    ), patch("apps.cmdb.views.instance.CmdbRulesFormatUtil.has_object_permission", return_value=True), patch(
+        "apps.cmdb.services.ipam_view._query_subnet_ips", return_value=[]
+    ), patch.object(
+        InstanceViewSet, "require_instance_permission", return_value=None
+    ):
         resp = _call(_request(user))
 
     assert resp.status_code == 200

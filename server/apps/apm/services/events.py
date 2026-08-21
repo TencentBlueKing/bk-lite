@@ -20,9 +20,13 @@ class DjangoApmEventReader:
         severity: str | None = None,
         limit: int = 50,
     ) -> list[dict]:
-        queryset = ApmEvent.objects.select_related("alert").prefetch_related("outbox_entries").filter(
-            occurred_at__gte=started_at,
-            occurred_at__lte=ended_at,
+        queryset = (
+            ApmEvent.objects.select_related("alert", "snapshot")
+            .prefetch_related("outbox_entries")
+            .filter(
+                occurred_at__gte=started_at,
+                occurred_at__lte=ended_at,
+            )
         )
         queryset = queryset.filter(build_json_membership_query(queryset, "organizations", [organization_id]))
         if action:
@@ -52,8 +56,8 @@ class DjangoApmEventReader:
             "received_at": event.occurred_at,
             "policy_id": event.policy_id,
             "environment": event.environment,
-            "notification_deliveries": [
-                DjangoNotificationDeliveryService.serialize(delivery)
-                for delivery in event.outbox_entries.all()
-            ],
+            "endpoint": event.alert.endpoint,
+            "version": event.alert.version,
+            "snapshot_status": event.snapshot.payload_status if hasattr(event, "snapshot") else "unavailable",
+            "notification_deliveries": [DjangoNotificationDeliveryService.serialize(delivery) for delivery in event.outbox_entries.all()],
         }

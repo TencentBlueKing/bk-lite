@@ -15,7 +15,6 @@ from apps.apm.services.contracts import SpanDetail, TraceDetail, TraceSearchQuer
 from apps.apm.services.trace_access import TraceAccessResolver
 from apps.core.decorators.api_permission import HasPermission
 
-
 _TRACE_ID_RE = re.compile(r"^[0-9a-fA-F]{16}(?:[0-9a-fA-F]{16})?$")
 
 
@@ -87,8 +86,8 @@ class ApmTraceViewSet(viewsets.ViewSet):
             started_at=data["started_at"],
             ended_at=data["ended_at"],
             service_namespace=data.get("service_namespace"),
-            service_name=data["service_name"],
-            environment=data["environment"],
+            service_name=data.get("service_name"),
+            environment=data.get("environment"),
             instance_id=data.get("instance_id"),
             span_name=data.get("span_name"),
             status=data.get("status"),

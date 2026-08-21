@@ -26,11 +26,19 @@ import {
   DownOutlined,
   UpOutlined,
   QuestionCircleOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
 import { useInstanceApi } from '@/app/cmdb/api';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 import { useUserInfoContext } from '@/context/userInfo';
-import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
+import { useClientData } from '@/context/client';
+import TagCapsuleGroup from '@/components/tag-capsule-group';
+import {
+  canSyncMonitor,
+  showNodeId,
+  isMonitorSold,
+  resolveMonitorLinkMessage,
+} from '@/app/cmdb/utils/systemLinkage';
 
 const { Panel } = Collapse;
 const InfoList: React.FC<AssetDataFieldProps> = ({
@@ -47,10 +55,12 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   const [isBatchSaving, setIsBatchSaving] = useState<boolean>(false);
   const [editScenario, setEditScenario] = useState<string>('ordinary_attribute_change');
   const [collapsedTableFields, setCollapsedTableFields] = useState<Record<string, boolean>>({});
+  const [isSyncingMonitor, setIsSyncingMonitor] = useState(false);
   const { t } = useTranslation();
   const { flatGroups } = useUserInfoContext();
+  const { clientData } = useClientData();
 
-  const { updateInstance, getInstanceProxys } = useInstanceApi();
+  const { updateInstance, getInstanceProxys, pushToMonitor } = useInstanceApi();
 
   const searchParams = useSearchParams();
   const modelId: string = searchParams.get('model_id') || '';
@@ -514,31 +524,57 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   );
 
   const showSystemLinkage =
-    modelId === 'host' ||
+    canSyncMonitor(modelId) ||
     instDetail?.node_id ||
     instDetail?.monitor_id;
   const systemLinkageItems = showSystemLinkage
     ? [
-      {
-        key: 'node_id',
-        label: t('Model.systemLinkageNodeId'),
-        children: (
-            <span className="font-mono text-[13px] break-all">
-              {instDetail?.node_id || t('Model.systemLinkageEmpty')}
-            </span>
-        ),
-      },
+      ...(showNodeId(modelId)
+        ? [
+          {
+            key: 'node_id',
+            label: t('Model.systemLinkageNodeId'),
+            children: (
+              <span className="font-mono text-[13px] break-all">
+                {instDetail?.node_id || t('Model.systemLinkageEmpty')}
+              </span>
+            ),
+          },
+        ]
+        : []),
       {
         key: 'monitor_id',
         label: t('Model.systemLinkageMonitorId'),
         children: (
-            <span className="font-mono text-[13px] break-all">
-              {instDetail?.monitor_id || t('Model.systemLinkageEmpty')}
-            </span>
+          <span className="font-mono text-[13px] break-all">
+            {instDetail?.monitor_id || t('Model.systemLinkageEmpty')}
+          </span>
         ),
       },
     ]
     : [];
+
+  const handleSyncMonitor = async () => {
+    setIsSyncingMonitor(true);
+    try {
+      const res = await pushToMonitor(instUuid);
+      const key = resolveMonitorLinkMessage(res);
+      const text = t(key);
+      const status = res?.link_status;
+      if (status === 'ok') {
+        message.success(text);
+        onsuccessEdit?.();
+      } else if (status === 'not_found' || status === 'conflict') {
+        message.warning(text);
+      } else {
+        message.error(text);
+      }
+    } catch {
+      message.error(t('Model.systemLinkageSyncFailed'));
+    } finally {
+      setIsSyncingMonitor(false);
+    }
+  };
 
   return (
     <div>
@@ -635,8 +671,25 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       )}
       {showSystemLinkage && (
         <div className="mt-4 rounded border border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-4 py-3">
-          <div className="mb-1 text-sm font-medium text-[var(--color-text-1)]">
-            {t('Model.systemLinkage')}
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <div className="text-sm font-medium text-[var(--color-text-1)]">
+              {t('Model.systemLinkage')}
+            </div>
+            {canSyncMonitor(modelId) && isMonitorSold(clientData) && (
+              <PermissionWrapper
+                requiredPermissions={['Edit']}
+                instPermissions={instDetail.permission}
+              >
+                <Button
+                  size="small"
+                  icon={<SyncOutlined />}
+                  loading={isSyncingMonitor}
+                  onClick={handleSyncMonitor}
+                >
+                  {t('Model.systemLinkageSync')}
+                </Button>
+              </PermissionWrapper>
+            )}
           </div>
           <div className="mb-3 text-xs text-[var(--color-text-3)]">
             {t('Model.systemLinkageHint')}

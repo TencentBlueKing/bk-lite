@@ -17,9 +17,7 @@ class K8sOpenAPIViewSet(OpenAPIViewSet):
         yaml_content = K8sLogCollectService.render_config_from_cloud_region(
             token_data.get("cluster_name"),
             token_data.get("cloud_region_id"),
-            request.data.get("runtime_profile"),
-            request.data.get("host_log_path"),
-            request.data.get("docker_container_log_path"),
+            token_data.get("image_registry_prefix"),
         )
         response = HttpResponse(yaml_content, content_type="text/yaml; charset=utf-8")
         response["X-Token-Remaining-Usage"] = str(token_data.get("remaining_usage", 0))

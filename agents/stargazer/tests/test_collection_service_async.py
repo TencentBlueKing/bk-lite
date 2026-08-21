@@ -3,9 +3,9 @@ import time
 from pathlib import Path
 
 import pytest
-
+import service.collection_service as collection_service_module
+from core.collection.contracts import AccessProbeStatus, StructuredMetricsPayload
 from core.plugin.source_resolver import PluginResolution
-from core.collection.contracts import AccessProbeStatus
 from core.plugin.yaml_reader import ExecutorConfig, ResolvedExecutorConfig
 from service.collection_service import CollectionService
 
@@ -96,3 +96,134 @@ def test_initialization_does_not_mutate_request_params():
     CollectionService(params)
 
     assert params["plugin_name"] == "demo_info"
+
+
+@pytest.mark.asyncio
+async def test_job_service_never_performs_legacy_per_target_node_query(monkeypatch):
+    executor_config = ExecutorConfig(
+        executor_type="job",
+        config={"collector": {"module": "unused", "class": "Unused"}},
+        plugin_config={"metadata": {}},
+    )
+    resolution = PluginResolution(
+        model_id="host",
+        source="oss",
+        plugin_path=Path("plugins/inputs/host/plugin.yml"),
+        plugin_root=Path("plugins/inputs/host"),
+    )
+
+    class ConfigProvider:
+        @staticmethod
+        async def get_executor_config_with_resolution_async(*_args, **_kwargs):
+            return ResolvedExecutorConfig(
+                executor_config=executor_config,
+                plugin_resolution=resolution,
+                fallback_executor_config=None,
+            )
+
+    executed_params = []
+
+    class Executor:
+        def __init__(self, _model_id, _executor_config, params, **_kwargs):
+            executed_params.append(dict(params))
+
+        async def execute(self):
+            return {"success": True, "result": {}}
+
+    monkeypatch.setattr("service.collection_service.PluginExecutor", Executor)
+    service = CollectionService(
+        {
+            "plugin_name": "host_info",
+            "model_id": "host",
+            "executor_type": "job",
+            "host": "10.0.0.99",
+            "organization_id": "org-42",
+            "_runtime_structured_metrics": True,
+        },
+        config_provider=ConfigProvider(),
+    )
+    node_query_calls = 0
+
+    async def count_node_query(*_args, **_kwargs):
+        nonlocal node_query_calls
+        node_query_calls += 1
+        return {"success": False, "result": {"nodes": []}}
+
+    monkeypatch.setattr(
+        collection_service_module,
+        "nats_request",
+        count_node_query,
+        raising=False,
+    )
+
+    await service.collect()
+
+    assert node_query_calls == 0
+    assert len(executed_params) == 1
+    assert "node_info" not in executed_params[0]
+
+
+@pytest.mark.asyncio
+async def test_failed_plugin_result_is_not_logged_as_success(monkeypatch):
+    executor_config = ExecutorConfig(
+        executor_type="protocol",
+        config={"collector": {"module": "unused", "class": "Unused"}},
+        plugin_config={"metadata": {}},
+    )
+    resolution = PluginResolution(
+        model_id="vmware_vc",
+        source="oss",
+        plugin_path=Path("plugins/inputs/vmware_vc/plugin.yml"),
+        plugin_root=Path("plugins/inputs/vmware_vc"),
+    )
+
+    class ConfigProvider:
+        @staticmethod
+        async def get_executor_config_with_resolution_async(*_args, **_kwargs):
+            return ResolvedExecutorConfig(
+                executor_config=executor_config,
+                plugin_resolution=resolution,
+                fallback_executor_config=None,
+            )
+
+    class FailedExecutor:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def execute(self):
+            return {
+                "success": False,
+                "result": {"cmdb_collect_error": "connection failed"},
+            }
+
+    info_logs = []
+    warning_logs = []
+
+    def capture_info(message, *args):
+        info_logs.append(message % args if args else message)
+
+    def capture_warning(message, *args):
+        warning_logs.append(message % args if args else message)
+
+    monkeypatch.setattr("service.collection_service.PluginExecutor", FailedExecutor)
+    monkeypatch.setattr("service.collection_service.logger.info", capture_info)
+    monkeypatch.setattr("service.collection_service.logger.warning", capture_warning)
+    service = CollectionService(
+        {
+            "plugin_name": "vmware_info",
+            "model_id": "vmware_vc",
+            "executor_type": "protocol",
+            "host": "10.10.16.254",
+            "collection_task_id": "vmware-failed-result",
+            "_runtime_structured_metrics": True,
+        },
+        config_provider=ConfigProvider(),
+    )
+
+    result = await service.collect()
+
+    assert isinstance(result, StructuredMetricsPayload)
+    assert result.error == "connection failed"
+    assert any("event=plugin_result_failed" in item for item in warning_logs)
+    assert any("task_id=vmware-failed-result" in item for item in warning_logs)
+    assert not any("Collection completed successfully" in item for item in info_logs)

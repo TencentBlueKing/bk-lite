@@ -1,5 +1,6 @@
 import datetime
 import os
+import time
 from datetime import date
 from datetime import datetime as _datetime
 from datetime import timezone as _timezone
@@ -38,6 +39,8 @@ from apps.cmdb.display_field.constants import (
 from apps.cmdb.display_field.handler import DisplayFieldConverter, DisplayFieldHandler
 from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, OPERATE_TYPE_CHOICES, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
+from apps.cmdb.models.config_file_version import ConfigFileVersion, ConfigFileVersionStatus
+from apps.cmdb.openapi_serializers import CmdbModuleDataQuerySerializer
 from apps.cmdb.services import rack_room
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.collect_credential_result_service import CollectCredentialResultService
@@ -48,14 +51,21 @@ from apps.cmdb.services.module_ingest import CmdbModuleIngestService
 from apps.cmdb.services.rack_room import format_rack_location_label, parse_rack_location
 from apps.cmdb.services.region_resource_overview import build_region_resource_items, extract_region_options
 from apps.cmdb.utils.base import get_default_group_id
+from apps.cmdb.utils.config_file_path import validate_absolute_path
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
+from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.time_util import parse_rfc3339_utc
 from apps.core.utils.trend_granularity import resolve_trend_group_by_from_range
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.utils.group_utils import GroupUtils
+
+_MANUAL_CONFIG_FILE_MODELS = frozenset({"host", "switch", "router", "firewall", "loadbalance"})
+_MANUAL_CONFIG_FILE_MAX_ITEMS = 50
+_MANUAL_CONFIG_FILE_MAX_CONTENTS = 5
+_MANUAL_CONFIG_FILE_VERSION_GAP_SECONDS = 0.002
 
 _CHANGE_TREND_MAX_SPAN_SECONDS = {
     "minute": int(os.getenv("CMDB_CHANGE_TREND_MAX_SPAN_MINUTE", str(7 * 24 * 3600))),
@@ -325,6 +335,13 @@ def _format_asset_instances_response(model_id, instances):
 
 
 @nats_client.register
+@openapi_expose(
+    path="cmdb/module-data",
+    method="GET",
+    schema=CmdbModuleDataQuerySerializer,
+    inject="user_info",
+    summary="cmdb 实例模块数据（组织口径：以锚点做子树级联展开，锚点须为直属组织）",
+)
 def get_cmdb_module_data(module, child_module, page, page_size, group_id, user_info=None):
     """
     获取cmdb模块实例数据
@@ -920,6 +937,128 @@ def receive_config_file_result(data: dict):
     }
 
 
+def _manual_config_file_already_exists(instance_uuid, file_path) -> bool:
+    return ConfigFileVersion.objects.filter(
+        instance_uuid=instance_uuid,
+        file_path=file_path,
+        status=ConfigFileVersionStatus.SUCCESS,
+    ).exists()
+
+
+def _create_one_manual_config_file(item, allowed_org_ids: set[int]) -> dict:
+    if not isinstance(item, dict):
+        raise ValueError("item must be an object")
+    _reject_legacy_numeric_locators(item, "instance_id", "inst_id", "_id")
+    instance_uuid = str(item.get("instance_uuid") or "").strip()
+    model_id = str(item.get("model_id") or "").strip()
+    file_path = str(item.get("file_path") or "").strip()
+    contents = item.get("contents")
+    if not instance_uuid or not model_id or not file_path:
+        raise ValueError("instance_uuid, model_id and file_path are required")
+    if model_id not in _MANUAL_CONFIG_FILE_MODELS:
+        raise ValueError(f"model_id {model_id} does not support config files")
+    if not validate_absolute_path(file_path):
+        raise ValueError("file_path must be an absolute file path")
+    if not isinstance(contents, list) or not contents:
+        raise ValueError("contents must be a non-empty list")
+    if len(contents) > _MANUAL_CONFIG_FILE_MAX_CONTENTS:
+        raise ValueError(f"contents exceeds max {_MANUAL_CONFIG_FILE_MAX_CONTENTS}")
+    normalized_contents = []
+    for content in contents:
+        if not isinstance(content, str) or not content.strip():
+            raise ValueError("contents items must be non-empty strings")
+        normalized_contents.append(content)
+
+    instance = InstanceManage.query_entity_by_uuid(instance_uuid) or {}
+    graph_id = instance.get("_id")
+    instance_org_ids = set(_normalize_allowed_org_ids_for_scope(instance.get("organization")))
+    if not instance or graph_id in (None, "") or instance.get("model_id") != model_id:
+        raise ValueError("instance is outside authorization scope")
+    if not allowed_org_ids.intersection(instance_org_ids):
+        raise ValueError("instance is outside authorization scope")
+    if _manual_config_file_already_exists(instance_uuid, file_path):
+        return {"status": "skipped", "created": 0}
+
+    created = 0
+    for index, content in enumerate(normalized_contents):
+        if index:
+            time.sleep(_MANUAL_CONFIG_FILE_VERSION_GAP_SECONDS)
+        result = ConfigFileService.create_manual_version(
+            instance_id=str(graph_id),
+            model_id=model_id,
+            file_path=file_path,
+            content=content,
+            instance_uuid=instance_uuid,
+        )
+        if not result.get("unchanged"):
+            created += 1
+    return {"status": "created", "created": created}
+
+
+@nats_client.register
+@_accept_legacy_rpc_kwargs
+def create_manual_config_files(params):
+    """批量手动写入配置文件版本（Demo / 运维灌数）。
+
+    params={
+        "protocol_version": "2",
+        "allowed_org_ids": [1],
+        "items": [
+            {
+                "instance_uuid": "...",
+                "model_id": "host",
+                "file_path": "/etc/ssh/sshd_config",
+                "contents": ["v1", "v2", "v3"],
+            }
+        ],
+    }
+
+    同一 instance+file_path 已有成功版本时整文件跳过，避免重灌追加版本。
+    """
+    params = params or {}
+    _require_uuid_protocol(params)
+    _reject_legacy_numeric_locators(params, "instance_id", "inst_id", "_id", "inst_ids")
+    allowed_org_ids = set(_resolve_allowed_org_ids(params))
+    if not allowed_org_ids:
+        raise ValueError("authorization scope is required for CMDB NATS writes")
+    items = params.get("items")
+    if not isinstance(items, list) or not items:
+        raise ValueError("items is required")
+    if len(items) > _MANUAL_CONFIG_FILE_MAX_ITEMS:
+        raise ValueError(f"items exceeds max {_MANUAL_CONFIG_FILE_MAX_ITEMS}")
+
+    created = 0
+    versions = 0
+    skipped = 0
+    failed = 0
+    errors = []
+    for index, item in enumerate(items):
+        try:
+            result = _create_one_manual_config_file(item, allowed_org_ids)
+        except ValueError as exc:
+            failed += 1
+            errors.append({"index": index, "error": str(exc)[:300]})
+            continue
+        except Exception as exc:
+            logger.exception("create_manual_config_files item failed index=%s", index)
+            failed += 1
+            errors.append({"index": index, "error": str(exc)[:300]})
+            continue
+        if result.get("status") == "skipped":
+            skipped += 1
+        else:
+            created += 1
+            versions += int(result.get("created") or 0)
+    return {
+        "result": True,
+        "created": created,
+        "versions": versions,
+        "skipped": skipped,
+        "failed": failed,
+        "errors": errors[:20],
+    }
+
+
 @nats_client.register
 def receive_collect_credential_result(data: dict):
     """接收 Stargazer 推送的单条或批量凭据执行结果并回写命中状态。"""
@@ -931,9 +1070,7 @@ def receive_collect_credential_result(data: dict):
             "Received invalid collect credential result event, type=%s",
             type(payload).__name__,
         )
-        return CollectCredentialResultService.process_result(
-            payload, parse_datetime=_parse_nats_datetime
-        )
+        return CollectCredentialResultService.process_result(payload, parse_datetime=_parse_nats_datetime)
 
     if isinstance(events, list):
         logger.info(
@@ -971,6 +1108,29 @@ def receive_collect_credential_result(data: dict):
             result.get("credential_id") or "",
         )
 
+    return result
+
+
+@nats_client.register
+def receive_scan_credential_result(data: dict):
+    """接收扫描一枪的凭据结果；与采集 receive_collect_credential_result 隔离。"""
+    from apps.cmdb.services.scan_credential_result_service import ScanCredentialResultService
+
+    payload = data or {}
+    if not isinstance(payload, dict):
+        logger.warning(
+            "Received invalid scan credential result event, type=%s",
+            type(payload).__name__,
+        )
+        return ScanCredentialResultService.process_result(payload, parse_datetime=_parse_nats_datetime)
+
+    result = ScanCredentialResultService.process_batch(payload, parse_datetime=_parse_nats_datetime)
+    logger.info(
+        "Processed scan credential result, result=%s task_id=%s host=%s",
+        result.get("result", False),
+        payload.get("collect_task_id") or result.get("task_id") or "",
+        payload.get("host") or "",
+    )
     return result
 
 
@@ -1085,7 +1245,7 @@ def _parse_room3d_rack_location(value):
 
 
 def _room3d_rack_identity(rack):
-    rack_id = rack.get("inst_uuid") or rack.get("inst_id")
+    rack_id = rack.get("inst_uuid")
     return str(rack_id or ""), rack.get("inst_name") or str(rack_id or "")
 
 
@@ -1118,8 +1278,11 @@ def _format_room3d_invalid_location_notice(invalid_racks, locale="zh-CN"):
 
 
 def _format_room3d_device(device):
+    locator = _parse_room3d_server_room_locator(device.get("inst_uuid"))
+    if not locator or locator[0] != "uuid":
+        return None
     return {
-        "device_id": str(device.get("inst_uuid") or device.get("inst_id") or device.get("_id") or ""),
+        "device_id": locator[1],
         "device_name": device.get("inst_name") or "",
         "model_id": device.get("model_id"),
         "rack_u_start": device.get("rack_u_start"),
@@ -1132,10 +1295,12 @@ def _get_room3d_rack_device_summary(rack_id, permission_map=None, user=None):
     rack_layout = rack_room.get_rack_layout(rack_id, permission_map=permission_map, user=user)
     placed_devices = rack_layout.get("placed") or []
     unplaced_devices = rack_layout.get("unplaced") or []
+    formatted_placed = [formatted for device in placed_devices if (formatted := _format_room3d_device(device)) is not None]
+    formatted_unplaced = [formatted for device in unplaced_devices if (formatted := _format_room3d_device(device)) is not None]
     return {
-        "devices": [_format_room3d_device(device) for device in placed_devices],
-        "device_count": len(placed_devices) + len(unplaced_devices),
-        "unplaced_device_count": len(unplaced_devices),
+        "devices": formatted_placed,
+        "device_count": len(formatted_placed) + len(formatted_unplaced),
+        "unplaced_device_count": len(formatted_unplaced),
     }
 
 
@@ -1177,6 +1342,9 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
         return _room3d_error("机房实例不存在", code=404)
     if room.get("model_id") != "server_room":
         return _room3d_error("server_room_id 必须指向 server_room 实例")
+    room_uuid_locator = _parse_room3d_server_room_locator(room.get("inst_uuid"))
+    if not room_uuid_locator or room_uuid_locator[0] != "uuid":
+        return _room3d_error("机房实例缺少合法 inst_uuid", code=409)
 
     permission_map = _build_nats_permission_map(user_info)
     if permission_map is None:
@@ -1211,34 +1379,27 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
         }
         candidate_racks.append(candidate)
 
-    rack_ids = [
-        rack_id_int for rack_id_int in (_room3d_rack_id_as_int(item["rack"].get("inst_id")) for item in candidate_racks) if rack_id_int is not None
-    ]
+    rack_uuids = [item["rack_id"] for item in candidate_racks if item["rack_id"]]
     if hasattr(rack_room, "get_room3d_rack_device_summaries"):
         device_summaries = rack_room.get_room3d_rack_device_summaries(
-            rack_ids,
+            rack_uuids,
             permission_map=permission_map,
             user=user,
         )
     else:
         device_summaries = {}
-        for item in candidate_racks:
-            raw_rack_id = item["rack"].get("inst_id")
-            rack_id_int = _room3d_rack_id_as_int(raw_rack_id)
-            if rack_id_int is not None:
-                device_summaries[rack_id_int] = _get_room3d_rack_device_summary(
-                    raw_rack_id,
-                    permission_map=permission_map,
-                    user=user,
-                )
+        rack_instances = InstanceManage.query_entity_by_uuids(rack_uuids) if rack_uuids else []
+        rack_id_by_uuid = {item.get("inst_uuid"): item.get("_id") for item in rack_instances}
+        for rack_uuid in rack_uuids:
+            rack_id = rack_id_by_uuid.get(rack_uuid)
+            if rack_id is not None:
+                device_summaries[rack_uuid] = _get_room3d_rack_device_summary(rack_id, permission_map=permission_map, user=user)
 
     rack_type_name_map = _get_room3d_rack_type_name_map()
     racks = []
     for item in candidate_racks:
         rack = item["rack"]
-        rack_id = rack.get("inst_id")
-        rack_id_int = _room3d_rack_id_as_int(rack_id)
-        device_summary = device_summaries.get(rack_id_int, _empty_room3d_device_summary())
+        device_summary = device_summaries.get(item["rack_id"], _empty_room3d_device_summary())
         rack_type = rack.get("datacenter_type")
         rack_type_name = rack_type_name_map.get(str(rack_type)) if rack_type not in (None, "") else None
         rack_payload = {
@@ -1260,7 +1421,7 @@ def get_room3d_layout(server_room_id=None, user_info=None, **kwargs):
         racks.append(rack_payload)
 
     data = {
-        "room": {"id": str(room.get("inst_uuid") or room_id), "name": room.get("inst_name") or ""},
+        "room": {"id": room_uuid_locator[1], "name": room.get("inst_name") or ""},
         "racks": racks,
     }
     notice = _format_room3d_invalid_location_notice(
@@ -1368,6 +1529,58 @@ def get_room_list(user_info=None, **kwargs):
     # init_source_api_data --force-update 的存量数据源配置。
     items = [item for item in rack_room.list_server_rooms(permission_map=permission_map, user_info=user_info) if item.get("inst_uuid")]
     return {"items": items}
+
+
+@nats_client.register
+def get_monitor_ids_by_inst_uuids(inst_uuids=None, user_info=None, **kwargs):
+    from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_MAX_NODES
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+
+    raw = inst_uuids if inst_uuids is not None else kwargs.get("inst_uuids")
+    if raw in (None, ""):
+        raw = []
+    if not isinstance(raw, list):
+        return {"result": False, "data": {"items": []}, "message": "inst_uuids 必须是列表"}
+
+    unique = []
+    seen = set()
+    for value in raw:
+        if value in (None, ""):
+            continue
+        normalized = normalize_inst_uuid(value)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        unique.append(normalized)
+
+    if len(unique) > NETWORK_STATUS_TOPOLOGY_MAX_NODES:
+        return {
+            "result": False,
+            "data": {"items": []},
+            "message": f"inst_uuids 不能超过 {NETWORK_STATUS_TOPOLOGY_MAX_NODES}",
+        }
+
+    if not unique:
+        return {"result": True, "data": {"items": []}, "message": ""}
+
+    permission_map = _build_nats_permission_map(user_info)
+    if permission_map is None:
+        return {"result": True, "data": {"items": []}, "message": ""}
+    user = _normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain"))
+    entities = InstanceManage.query_entity_by_uuids(unique)
+    items = []
+    for entity in entities:
+        if not InstanceManage._has_topology_view_permission(entity, permission_map, user=user):
+            continue
+        monitor_id = entity.get("monitor_id")
+        items.append(
+            {
+                "inst_uuid": entity.get("inst_uuid"),
+                "model_id": entity.get("model_id"),
+                "monitor_id": "" if monitor_id in (None, "") else str(monitor_id),
+            }
+        )
+    return {"result": True, "data": {"items": items}, "message": ""}
 
 
 @nats_client.register

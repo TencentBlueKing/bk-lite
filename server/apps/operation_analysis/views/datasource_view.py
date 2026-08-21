@@ -17,8 +17,14 @@ from apps.core.utils.time_util import format_rfc3339_utc, parse_rfc3339_utc
 from apps.core.utils.trend_granularity import TREND_GROUP_BY_AUTO_REST_APIS
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.common.audit_log import get_response_name, log_ops_analysis_success
+from apps.operation_analysis.common.datasource_visibility import (
+    can_access_datasource_in_org,
+    expand_datasource_org_query,
+    is_builtin_globally_visible,
+)
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
 from apps.operation_analysis.common.visibility_update import partial_update_groups_with_auth
+from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDER, is_sensitive_field_name
 from apps.operation_analysis.filters.datasource_filters import DataSourceAPIModelFilter, DataSourceTagModelFilter, NameSpaceModelFilter
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace, NamespacePasswordDecryptionError
 from apps.operation_analysis.serializers.datasource_serializers import (
@@ -31,6 +37,7 @@ from apps.operation_analysis.serializers.datasource_serializers import (
 )
 from apps.operation_analysis.services.data_connection import ConnectionResolveError, resolve_datasource_connection
 from apps.operation_analysis.services.datasource_preview import ConnectorError, get_preview_executor
+from apps.operation_analysis.services.table_query_list import apply_query_list_to_payload
 from apps.operation_analysis.views.data_connection_view import extract_inline_connection
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
@@ -128,9 +135,39 @@ def _execute_inline_preview(
     return result.as_dict()
 
 
+def _strip_unmerged_placeholders(connection_config):
+    return {key: None if item == SENSITIVE_PLACEHOLDER and is_sensitive_field_name(key) else item for key, item in connection_config.items()}
+
+
+def _draft_inline_connection_config(instance, request_data):
+    connection_config = request_data.get("connection_config")
+    if not isinstance(connection_config, dict):
+        return instance.connection_config or {}
+    request_source_type = request_data.get("source_type") or instance.source_type
+    if request_source_type != instance.source_type or getattr(instance, "connection_id", None):
+        return _strip_unmerged_placeholders(connection_config)
+    return merge_redacted_config(instance.connection_config or {}, connection_config)
+
+
 def _connection_config_for_instance(instance, request_data=None, current_team=None):
     request_data = request_data if isinstance(request_data, dict) else {}
-    if instance.connection_id:
+    has_connection_field = "connection" in request_data or "connection_id" in request_data
+    requested_connection = request_data.get("connection") or request_data.get("connection_id")
+
+    if requested_connection:
+        groups = request_data.get("groups")
+        if not isinstance(groups, list):
+            groups = instance.groups or []
+        return _resolve_preview_connection_config(
+            request_data,
+            current_team=current_team,
+            groups=groups,
+        )
+
+    if has_connection_field:
+        return _draft_inline_connection_config(instance, request_data)
+
+    if getattr(instance, "connection_id", None):
         overrides = request_data.get("connection_overrides")
         original_overrides = instance.connection_overrides
         if isinstance(overrides, dict):
@@ -165,9 +202,7 @@ def _resolve_preview_connection_config(request_data, *, current_team=None, group
         source_type=source_type,
         groups=groups if isinstance(groups, list) else [],
         connection=connection,
-        connection_overrides=request_data.get("connection_overrides")
-        if isinstance(request_data.get("connection_overrides"), dict)
-        else {},
+        connection_overrides=request_data.get("connection_overrides") if isinstance(request_data.get("connection_overrides"), dict) else {},
         connection_config=_normalize_preview_config(request_data.get("connection_config")),
     )
     return resolve_datasource_connection(stub, current_team=current_team)
@@ -236,14 +271,26 @@ def _parse_time_value(value):
     raise ValueError("timeRange 时间必须为带时区的 RFC3339 字符串")
 
 
-def _normalize_time_range(value):
-    now = datetime.now(timezone.utc)
-
+def _relative_time_range_minutes(value):
+    if isinstance(value, bool):
+        return None
     if isinstance(value, (int, float)):
         minutes = int(value)
         if minutes <= 0:
             raise ValueError("timeRange 必须为正整数分钟数")
-        start = now - timedelta(minutes=minutes)
+        return minutes
+    if isinstance(value, dict):
+        select_value = value.get("selectValue")
+        if isinstance(select_value, (int, float)) and not isinstance(select_value, bool) and select_value > 0:
+            return int(select_value)
+    return None
+
+
+def _normalize_time_range(value):
+    now = datetime.now(timezone.utc)
+    relative_minutes = _relative_time_range_minutes(value)
+    if relative_minutes is not None:
+        start = now - timedelta(minutes=relative_minutes)
         return [format_rfc3339_utc(start), format_rfc3339_utc(now)]
 
     if isinstance(value, list) and len(value) == 2:
@@ -457,11 +504,15 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     数据源
     """
 
-    queryset = DataSourceAPIModel.objects.select_related(
-        "connection",
-        "excel_success_slot",
-        "excel_candidate_slot",
-    ).prefetch_related("namespaces", "tag").all()
+    queryset = (
+        DataSourceAPIModel.objects.select_related(
+            "connection",
+            "excel_success_slot",
+            "excel_candidate_slot",
+        )
+        .prefetch_related("namespaces", "tag")
+        .all()
+    )
     serializer_class = DataSourceAPIModelSerializer
     ordering_fields = ["id"]
     ordering = ["id"]
@@ -505,24 +556,14 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                     "无权访问当前数据源",
                     status.HTTP_403_FORBIDDEN,
                 )
-            if not self.get_has_permission(
-                request.user,
-                instance,
-                current_team,
-                is_check=True,
-            ):
-                return _build_error_response(
-                    "无权访问当前数据源",
-                    status.HTTP_403_FORBIDDEN,
-                )
         else:
-            # 组织校验：当前组织必须在数据源的 groups 中
             current_team = self._parse_current_team_cookie(request)
-            if current_team not in (instance.groups or []):
-                return _build_error_response(
-                    "无权访问当前数据源",
-                    status.HTTP_403_FORBIDDEN,
-                )
+
+        if not can_access_datasource_in_org(instance, current_team):
+            return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
+        if render_scoped and not is_builtin_globally_visible(instance):
+            if not self.get_has_permission(request.user, instance, current_team, is_check=True):
+                return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
 
         try:
             params = _resolve_request_params(instance, dict(request.data))
@@ -540,7 +581,15 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                     from apps.operation_analysis.services.excel_materialize import load_excel_runtime
 
                     payload = load_excel_runtime(instance, limit=runtime_limit)
-                    return Response({"data": payload.get("items", []), "warnings": payload.get("warnings", [])})
+                    return Response(
+                        {
+                            "data": apply_query_list_to_payload(
+                                payload.get("items", []),
+                                params.get("query_list"),
+                            ),
+                            "warnings": payload.get("warnings", []),
+                        }
+                    )
                 connection_config = _connection_config_for_instance(
                     instance,
                     request.data if isinstance(request.data, dict) else {},
@@ -580,7 +629,12 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                     {"code": transform_error.get("code") or "transform_failed"},
                 )
 
-            return Response({"data": payload.get("items", []), "warnings": []})
+            return Response(
+                {
+                    "data": apply_query_list_to_payload(payload.get("items", []), params.get("query_list")),
+                    "warnings": [],
+                }
+            )
 
         namespace_list = instance.namespaces.all()
         if "/" not in instance.rest_api:
@@ -623,6 +677,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 result.get("data"),
             )
 
+        result["data"] = apply_query_list_to_payload(result.get("data"), params.get("query_list"))
         return Response({"data": result.get("data"), "warnings": []})
 
     @HasPermission("data_source-Add,data_source-Edit")
@@ -677,7 +732,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
 
         current_team = self._validate_current_team_permission(request)
-        if current_team not in (instance.groups or []):
+        if not can_access_datasource_in_org(instance, current_team):
             return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
 
         try:
@@ -688,9 +743,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 if not transform_config:
                     transform_config = instance.transform_config or {}
                 if isinstance(transform_config, dict) and transform_config.get("enabled"):
-                    from apps.operation_analysis.services.datasource_preview.excel import (
-                        preview_excel_from_saved_source,
-                    )
+                    from apps.operation_analysis.services.datasource_preview.excel import preview_excel_from_saved_source
 
                     result = preview_excel_from_saved_source(
                         instance,
@@ -777,22 +830,16 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
 
         current_team = self._validate_current_team_permission(request)
-        if current_team not in (instance.groups or []):
+        if not can_access_datasource_in_org(instance, current_team):
             return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
 
         source_type = request.data.get("source_type") or instance.source_type
-        connection_config = request.data.get("connection_config")
-        if isinstance(connection_config, dict):
-            connection_config = merge_redacted_config(instance.connection_config or {}, connection_config)
-        else:
-            connection_config = instance.connection_config or {}
         try:
-            if instance.connection_id:
-                connection_config = _connection_config_for_instance(
-                    instance,
-                    request.data if isinstance(request.data, dict) else {},
-                    current_team=current_team,
-                )
+            connection_config = _connection_config_for_instance(
+                instance,
+                request.data if isinstance(request.data, dict) else {},
+                current_team=current_team,
+            )
             executor = get_preview_executor(source_type)
             executor.test_connection(connection_config)
         except ConnectionResolveError as exc:
@@ -819,7 +866,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
 
         current_team = self._validate_current_team_permission(request)
-        if current_team not in (instance.groups or []):
+        if not can_access_datasource_in_org(instance, current_team):
             return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
 
         body = request.data if isinstance(request.data, dict) else {}
@@ -867,7 +914,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
 
         current_team = self._validate_current_team_permission(request)
-        if current_team not in (instance.groups or []):
+        if not can_access_datasource_in_org(instance, current_team):
             return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
         if instance.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
             return _build_error_response("仅 Excel 数据源支持提交文件处理", status.HTTP_400_BAD_REQUEST)
@@ -937,9 +984,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             )
             if discard_on_fail:
                 try:
-                    from apps.operation_analysis.services.excel_materialize import (
-                        discard_unready_excel_datasource,
-                    )
+                    from apps.operation_analysis.services.excel_materialize import discard_unready_excel_datasource
 
                     instance.refresh_from_db()
                     discard_unready_excel_datasource(instance)
@@ -973,7 +1018,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
 
         current_team = self._validate_current_team_permission(request)
-        if current_team not in (instance.groups or []):
+        if not can_access_datasource_in_org(instance, current_team):
             return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
         if instance.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
             return _build_error_response("仅 Excel 数据源支持重试处理", status.HTTP_400_BAD_REQUEST)
@@ -992,10 +1037,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         sync = _request_flag_true(request.data, "sync", default=True)
 
         try:
-            from apps.operation_analysis.services.excel_materialize import (
-                materialize_candidate_inline,
-                submit_excel_candidate_from_saved_source,
-            )
+            from apps.operation_analysis.services.excel_materialize import materialize_candidate_inline, submit_excel_candidate_from_saved_source
 
             slot = submit_excel_candidate_from_saved_source(
                 instance,
@@ -1046,7 +1088,11 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     @HasPermission("data_source-View")
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
-        _, _, _, query = self.filter_by_group(queryset, request, request.user)
+        current_team, include_children, org_field, query = self.filter_by_group(queryset, request, request.user)
+        query = expand_datasource_org_query(
+            query,
+            include_all_builtins=bool(getattr(request.user, "is_superuser", False)),
+        )
         queryset = queryset.filter(query).order_by(self.ORDERING_FIELD)
         ids = [item.strip() for item in (request.query_params.get("ids") or "").split(",") if item.strip()]
         if ids:
@@ -1067,6 +1113,8 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         if instance.is_build_in and not visibility_only:
             return Response({"detail": "内置数据源不允许通过普通接口修改"}, status=status.HTTP_403_FORBIDDEN)
         if instance.is_build_in and visibility_only:
+            if not getattr(request.user, "is_superuser", False):
+                return Response({"detail": "只有超级管理员可以修改内置数据源的组织可见性"}, status=status.HTTP_403_FORBIDDEN)
             response = partial_update_groups_with_auth(self, request, instance)
         else:
             response = super(DataSourceAPIModelViewSet, self).update(request, *args, **kwargs)
@@ -1082,7 +1130,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         name = instance.name
         current_team = self._parse_current_team_cookie(request)
 
-        if current_team not in (instance.groups or []):
+        if not can_access_datasource_in_org(instance, current_team):
             return Response({"detail": "无权删除该数据源"}, status=403)
 
         instance.delete()

@@ -155,12 +155,16 @@ export type InputControlConfig =
     control: 'select' | 'radio';
     optionsSource: StaticOptionsSource | DynamicOptionsSource;
     componentSwitch?: boolean;
+    multiple?: boolean;
+    maxCount?: number;
+    /** select 专用：dropdown 为默认下拉；table 点击后弹表格批量勾选 */
+    picker?: 'dropdown' | 'table';
   };
 
 export interface ParamItem {
   id?: string;
   name: string;
-  value: string | number | boolean | [number, number] | DateRangeValue | null | undefined;
+  value: string | number | boolean | Array<string | number> | [number, number] | DateRangeValue | null | undefined;
   alias_name: string;
   type?: string;
   filterType?: DataSourceParamFilterType;

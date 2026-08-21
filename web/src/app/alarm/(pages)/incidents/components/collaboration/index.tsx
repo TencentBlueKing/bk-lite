@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Spin, Empty, Tag, Button, Avatar, Tooltip, message, Modal, Drawer, Select, Input, Checkbox } from 'antd';
+import { Spin, Tag, Button, Avatar, Tooltip, message, Modal, Drawer, Select, Input, Checkbox } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   PlusOutlined,
   StarOutlined,
@@ -293,7 +294,8 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
       <div key={reply.id} className="flex gap-3 py-2 first:pt-0">
         <Avatar
           size={28}
-          style={{ backgroundColor: getAvatarColor(reply.author), fontSize: 13, flexShrink: 0 }}
+          style={{ backgroundColor: getAvatarColor(reply.author) }}
+          className="shrink-0 text-[13px]"
         >
           {displayName[0]?.toUpperCase()}
         </Avatar>
@@ -343,7 +345,8 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
           {/* Avatar */}
           <Avatar
             size={36}
-            style={{ backgroundColor: getAvatarColor(item.author), fontSize: 15, flexShrink: 0 }}
+            style={{ backgroundColor: getAvatarColor(item.author) }}
+            className="shrink-0 text-[15px]"
           >
             {displayName[0]?.toUpperCase()}
           </Avatar>
@@ -391,8 +394,8 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
                 size="small"
                 className="text-xs text-gray-500 hover:text-blue-500 px-1.5"
                 icon={item.is_key_info
-                  ? <StarFilled className="text-yellow-500" style={{ fontSize: 13 }} />
-                  : <StarOutlined style={{ fontSize: 13 }} />}
+                  ? <StarFilled className="text-[13px] text-yellow-500" />
+                  : <StarOutlined className="text-[13px]" />}
                 onClick={() => handleToggleKeyInfo(item.id)}
               >
                 {t('incidents.markAsKeyInfo')}
@@ -403,7 +406,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
                 type="text"
                 size="small"
                 className="text-xs text-gray-500 hover:text-blue-500 px-1.5"
-                icon={<MessageOutlined style={{ fontSize: 13 }} />}
+                icon={<MessageOutlined className="text-[13px]" />}
                 onClick={() => {
                   setReplyingTo(isReplying ? null : item.id);
                   setReplyContent('');
@@ -531,7 +534,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
 
           {/* Update list */}
           {filteredUpdates.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('common.noData')} />
+            <CompactEmptyState description={t('common.noData')} />
           ) : (
             <div>{filteredUpdates.map(renderUpdateRow)}</div>
           )}
@@ -569,7 +572,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
             const displayName = (user?.display_name as string) || username;
             return (
               <div key={username} className="flex items-center gap-2 mb-2">
-                <Avatar size={28} style={{ backgroundColor: getAvatarColor(username), fontSize: 12 }}>
+                <Avatar size={28} className="text-xs" style={{ backgroundColor: getAvatarColor(username) }}>
                   {displayName[0]?.toUpperCase()}
                 </Avatar>
                 <div className="flex-1 min-w-0">
@@ -594,7 +597,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
               const displayName = (user?.display_name as string) || username;
               return (
                 <div key={username} className="flex items-center gap-2 mb-2 group">
-                  <Avatar size={28} style={{ backgroundColor: getAvatarColor(username), fontSize: 12 }}>
+                  <Avatar size={28} className="text-xs" style={{ backgroundColor: getAvatarColor(username) }}>
                     {displayName[0]?.toUpperCase()}
                   </Avatar>
                   <div className="flex-1 min-w-0">
@@ -606,7 +609,7 @@ const CollaborationTab: React.FC<CollaborationTabProps> = ({
                       size="small"
                       danger
                       className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      icon={<DeleteOutlined style={{ fontSize: 12 }} />}
+                      icon={<DeleteOutlined className="text-xs" />}
                       onClick={() => handleRemoveCollaborator(username)}
                     />
                   </PermissionWrapper>

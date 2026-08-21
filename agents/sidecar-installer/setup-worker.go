@@ -141,11 +141,14 @@ var installerStepSequence = []string{
 	"clock_check",
 	"prepare_directories",
 	"download_package",
+	"stop_service",
 	"extract_package",
 	"configure_runtime",
 	"run_package_installer",
 	"complete",
 }
+
+type installerProgressFunc func(step, status, message string)
 
 func installerStepPosition(step string) (int, int) {
 	for index, candidate := range installerStepSequence {
@@ -475,13 +478,41 @@ func run(client *http.Client) {
 			return
 		}
 
-		log("[4/6] Extracting files...")
-		emitEventWithOptions("extract_package", "running", "Extracting controller package", intPtr(0), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
-		n, err := extract(zipPath, cfg.InstallDir)
-		if err != nil {
-			targetPath := extractTargetPath(err)
-			fatalStepWithOptions("extract_package", "Extract failed: %v", err, &EventOptions{
-				ErrorType:       classifyExtractError(err),
+		n, prepareErr := prepareLinuxPackageWithProgress(
+			zipPath,
+			cfg.InstallDir,
+			stopLinuxControllerService,
+			extract,
+			func(step, status, message string) {
+				options := &EventOptions{
+					InstallDir:      cfg.InstallDir,
+					CPUArchitecture: cfg.Package.CPUArchitecture,
+				}
+				if step == "extract_package" {
+					options.PackageName = firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName)
+				}
+				progress := (*int)(nil)
+				if status == "running" {
+					progress = intPtr(0)
+				} else if status == "success" {
+					progress = intPtr(100)
+				}
+				emitEventWithOptions(step, status, message, progress, 0, 0, "", options)
+			},
+		)
+		if prepareErr != nil {
+			var phaseErr *linuxPackagePhaseError
+			if errors.As(prepareErr, &phaseErr) && phaseErr.step == "stop_service" {
+				fatalStepWithOptions(
+					"stop_service",
+					"Failed to stop existing controller service: %v",
+					prepareErr,
+					eventOptionsForExecError(prepareErr, &EventOptions{InstallDir: cfg.InstallDir, CPUArchitecture: cfg.Package.CPUArchitecture}),
+				)
+			}
+			targetPath := extractTargetPath(prepareErr)
+			fatalStepWithOptions("extract_package", "Extract failed: %v", prepareErr, &EventOptions{
+				ErrorType:       classifyExtractError(prepareErr),
 				InstallDir:      cfg.InstallDir,
 				TargetPath:      targetPath,
 				PackageName:     firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName),
@@ -490,7 +521,6 @@ func run(client *http.Client) {
 		}
 		os.Remove(zipPath)
 		log("      Extracted %d files", n)
-		emitEventWithOptions("extract_package", "success", fmt.Sprintf("Extracted %d files", n), intPtr(100), 0, 0, "", &EventOptions{InstallDir: cfg.InstallDir, PackageName: firstNonEmpty(cfg.Package.Name, cfg.Storage.FileName), CPUArchitecture: cfg.Package.CPUArchitecture})
 	} else {
 		log("[3/6] No storage package, skipping...")
 		log("[4/6] No extraction needed...")
@@ -1356,6 +1386,67 @@ func (controller *scWindowsServiceController) Remove() error {
 	return nil
 }
 
+type linuxPackagePhaseError struct {
+	step string
+	err  error
+}
+
+func (err *linuxPackagePhaseError) Error() string { return err.err.Error() }
+func (err *linuxPackagePhaseError) Unwrap() error { return err.err }
+
+func prepareLinuxPackageWithProgress(
+	zipPath string,
+	installDir string,
+	stopController func() error,
+	extractPackage func(string, string) (int, error),
+	progress installerProgressFunc,
+) (int, error) {
+	if progress != nil {
+		progress("stop_service", "running", "Stopping existing controller service")
+	}
+	if err := stopController(); err != nil {
+		return 0, &linuxPackagePhaseError{step: "stop_service", err: err}
+	}
+	if progress != nil {
+		progress("stop_service", "success", "Existing controller service stopped")
+		progress("extract_package", "running", "Extracting controller package")
+	}
+	count, err := extractPackage(zipPath, installDir)
+	if err != nil {
+		return 0, &linuxPackagePhaseError{step: "extract_package", err: err}
+	}
+	if progress != nil {
+		progress("extract_package", "success", fmt.Sprintf("Extracted %d files", count))
+	}
+	return count, nil
+}
+
+func stopLinuxControllerService() error {
+	return stopLinuxControllerServiceWithCommand(func(name string, args ...string) ([]byte, error) {
+		return exec.Command(name, args...).CombinedOutput()
+	})
+}
+
+func stopLinuxControllerServiceWithCommand(runCommand func(string, ...string) ([]byte, error)) error {
+	output, err := runCommand("systemctl", "show", "--property=LoadState", "--value", "bk-sidecar.service")
+	loadState := strings.TrimSpace(string(output))
+	if loadState == "not-found" {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("query bk-sidecar.service load state: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	if loadState == "" {
+		return fmt.Errorf("query bk-sidecar.service load state: empty systemctl response")
+	}
+
+	output, err = runCommand("systemctl", "stop", "bk-sidecar.service")
+	if err != nil {
+		return fmt.Errorf("systemctl stop bk-sidecar.service: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
 var windowsRuntimeDirectories = []string{"cache", "logs", "generated"}
 
 // uninstall.exe 与 installer.ico 由 NSIS 安装器写入安装目录，控制器包本身不含这两个
@@ -1649,7 +1740,7 @@ func discardEmptyWindowsInstallDir(installDir string) error {
 	return nil
 }
 
-type windowsInstallProgressFunc func(step, status, message string)
+type windowsInstallProgressFunc = installerProgressFunc
 
 type windowsInstallPhaseError struct {
 	step string
@@ -1761,8 +1852,7 @@ func installWindowsPackageWithProgress(
 	}
 	reportWindowsInstallProgress(progress, "configure_runtime", "success", "Installer runtime configured")
 
-	currentStep = "run_package_installer"
-	reportWindowsInstallProgress(progress, "run_package_installer", "running", "Activating controller and starting service")
+	currentStep = "stop_service"
 	if err := validateRemoteExecutionDeadline(cfg); err != nil {
 		return err
 	}
@@ -1772,6 +1862,7 @@ func installWindowsPackageWithProgress(
 		}
 	}
 
+	reportWindowsInstallProgress(progress, "stop_service", "running", "Stopping existing controller service")
 	serviceExisted, err := controller.Stop()
 	if err != nil {
 		if serviceExisted {
@@ -1781,6 +1872,14 @@ func installWindowsPackageWithProgress(
 		}
 		return fmt.Errorf("stop existing sidecar service: %w", err)
 	}
+	stopMessage := "No existing controller service found"
+	if serviceExisted {
+		stopMessage = "Existing controller service stopped"
+	}
+	reportWindowsInstallProgress(progress, "stop_service", "success", stopMessage)
+
+	currentStep = "run_package_installer"
+	reportWindowsInstallProgress(progress, "run_package_installer", "running", "Activating controller and starting service")
 	if cfg.RemoteLeaseValidator != nil {
 		leaseErr := cfg.RemoteLeaseValidator()
 		if leaseErr == nil {

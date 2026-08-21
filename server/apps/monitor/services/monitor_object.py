@@ -4,6 +4,8 @@ import time
 import uuid
 
 from django.db import transaction
+from django.db.models import Q
+from django.db.models.fields.json import KeyTextTransform
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
@@ -192,7 +194,14 @@ class MonitorObjectService:
         if instance_id:
             qs = qs.filter(id=instance_id)
         if name:
-            qs = qs.filter(name__icontains=name)
+            # 与列表「IP信息」/ ${resource_ip} 同源：summary_facts['asset.ip'] 优先字段。
+            qs = qs.annotate(
+                _asset_ip_fact=KeyTextTransform("asset.ip", "summary_facts")
+            ).filter(
+                Q(name__icontains=name)
+                | Q(ip__icontains=name)
+                | Q(_asset_ip_fact__icontains=name)
+            )
 
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
         if not monitor_obj:
@@ -634,6 +643,30 @@ class MonitorObjectService:
                     ["order"],
                     batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE,
                 )
+
+    @staticmethod
+    def descendant_object_ids(root_id):
+        """按 parent 关系收集全部后代对象 ID，避免环导致死循环。"""
+        descendant_ids = []
+        frontier = [root_id]
+        seen = {root_id}
+        while frontier:
+            children = list(
+                MonitorObject.objects.filter(parent_id__in=frontier)
+                .exclude(id__in=seen)
+                .values_list("id", flat=True)
+            )
+            descendant_ids.extend(children)
+            seen.update(children)
+            frontier = children
+        return descendant_ids
+
+    @staticmethod
+    def set_object_visibility(obj: MonitorObject, is_visible: bool) -> None:
+        """切换对象可见性，并同步全部子对象，避免父对象隐藏后子对象仍出现在视图中。"""
+        target_ids = [obj.id, *MonitorObjectService.descendant_object_ids(obj.id)]
+        with transaction.atomic():
+            MonitorObject.objects.filter(id__in=target_ids).update(is_visible=is_visible)
 
     @staticmethod
     def update_instance(instance_id, name=None, organizations=None, **extra_fields):

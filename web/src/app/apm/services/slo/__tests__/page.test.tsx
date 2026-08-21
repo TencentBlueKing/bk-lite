@@ -1,7 +1,9 @@
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApmSloPage from '../page';
 
 const api = {
@@ -67,13 +69,14 @@ afterEach(() => {
 
 describe('APM SLO 列表布局', () => {
   it('统一左对齐表头与正文，并保留自适应主信息列', async () => {
-    const { container } = render(<ApmSloPage />);
+    const { container } = renderWithApmIntl(<ApmSloPage />);
 
     expect(await screen.findByText('结算接口 500ms 时延目标')).not.toBeNull();
-    expect(screen.getByText('1 项')).not.toBeNull();
+    expect(screen.queryByText('SLO 列表')).toBeNull();
+    expect(screen.getByRole('button', { name: '新建 SLO' })).not.toBeNull();
 
-    const currentHeader = screen.getByRole('columnheader', { name: /当前表现.*达标率/ });
-    const enabledHeader = screen.getByRole('columnheader', { name: /启用.*状态/ });
+    const currentHeader = screen.getByRole('columnheader', { name: '当前表现' });
+    const enabledHeader = screen.getByRole('columnheader', { name: '启用' });
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });
     expect(getComputedStyle(currentHeader).textAlign).toBe('left');
     expect(getComputedStyle(enabledHeader).textAlign).toBe('left');
@@ -91,4 +94,85 @@ describe('APM SLO 列表布局', () => {
     expect(explicitColumnWidths).not.toContain('width: 220px;');
     expect(explicitColumnWidths).not.toContain('width: 210px;');
   }, 10_000);
+
+  it('在工具条左侧按名称、服务和端点筛选列表', async () => {
+    const user = userEvent.setup();
+    api.getSlos.mockResolvedValue([
+      {
+        id: 'slo-checkout',
+        name: '结算接口 500ms 时延目标',
+        service_id: 'service-checkout',
+        environment: 'local',
+        endpoint: 'POST /api/checkout',
+        sli_type: 'latency_p95',
+        objective: '95.00',
+        evaluation_window: 'rolling7d',
+        is_enabled: true,
+        service_namespace: 'apm-demo-shop',
+        service_name: 'demo-storefront',
+        latency_threshold_ms: 500,
+        current_rate: 78.74,
+        budget_remaining: 0,
+        data_state: 'available',
+      },
+      {
+        id: 'slo-availability',
+        name: '演示商城可用性',
+        service_id: 'service-checkout',
+        environment: 'local',
+        endpoint: '',
+        sli_type: 'availability',
+        objective: '99.90',
+        evaluation_window: 'rolling7d',
+        is_enabled: true,
+        service_namespace: 'apm-demo-shop',
+        service_name: 'demo-storefront',
+        latency_threshold_ms: null,
+        current_rate: null,
+        budget_remaining: null,
+        data_state: 'unavailable',
+      },
+    ]);
+
+    renderWithApmIntl(<ApmSloPage />);
+    expect(await screen.findByText('结算接口 500ms 时延目标')).not.toBeNull();
+    expect(screen.getByText('演示商城可用性')).not.toBeNull();
+
+    const search = screen.getByPlaceholderText('搜索名称 / 服务 / 端点');
+    await user.type(search, '可用性');
+
+    expect(screen.getByText('演示商城可用性')).not.toBeNull();
+    expect(screen.queryByText('结算接口 500ms 时延目标')).toBeNull();
+  });
+
+  it('编辑归档服务的 SLO 时展示服务名称而不是 UUID', async () => {
+    const user = userEvent.setup();
+    api.getServices.mockResolvedValue([]);
+    api.getSlos.mockResolvedValue([
+      {
+        id: 'slo-legacy',
+        name: '旧服务可用性',
+        service_id: 'service-archived',
+        environment: 'legacy',
+        endpoint: '',
+        sli_type: 'availability',
+        objective: '99.90',
+        evaluation_window: 'rolling30d',
+        is_enabled: false,
+        service_namespace: 'legacy-shop',
+        service_name: 'legacy-api',
+        latency_threshold_ms: null,
+        current_rate: null,
+        budget_remaining: null,
+        data_state: 'no_data',
+      },
+    ]);
+
+    renderWithApmIntl(<ApmSloPage />);
+    await user.click(await screen.findByRole('button', { name: '编辑' }));
+
+    expect(await screen.findByText('legacy-shop / legacy-api（已归档）')).not.toBeNull();
+    expect(screen.queryByText('service-archived')).toBeNull();
+    expect(api.getServices).toHaveBeenCalledWith({ include_archived: true });
+  });
 });

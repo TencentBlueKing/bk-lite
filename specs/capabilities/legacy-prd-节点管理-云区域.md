@@ -23,9 +23,9 @@
 - 支持节点标签（自定义标签与系统标签）。
 - 单个节点可关联多个组织，实现权限隔离。
 - 节点可绑定多个采集器配置。
-- 支持把已纳管节点按用户选择同步到 CMDB、监控系统，并保留两侧关联状态，便于在节点详情中按需补推。跨模块能力的接收范围分别以 [[legacy-prd-cmdb-资产.md#3.12 跨模块主机联动]]、[[legacy-prd-监控系统-集成.md#3.2.1 资产协同]] 为准。
+- 支持把已纳管节点按用户选择同步到 CMDB、监控系统，并保留两侧关联状态，便于在节点详情中按需补推。CMDB 关联以稳定资产身份为准；存量数字关联可在收到稳定身份时升级，但缺少历史映射信息时不承诺升级前后的同一性校验。跨模块能力的接收范围分别以 [[legacy-prd-cmdb-资产.md#3.12 跨模块主机联动]]、[[legacy-prd-监控系统-集成.md#3.2.1 资产协同]] 为准。
 
-> 证据来源：server/apps/node_mgmt/views/node.py:337-366，server/apps/node_mgmt/services/module_push.py:129-193　|　同步基线：d2769559　|　【已实现】
+> 证据来源：server/apps/node_mgmt/services/module_ingest.py:32-65，server/apps/node_mgmt/services/module_ingest.py:85-153，server/apps/node_mgmt/services/module_link.py:123-159　|　同步基线：b98b782a7　|　【已实现】
 
 ### 3.2 环境
 
@@ -42,10 +42,10 @@
 - 节点生命周期：安装控制器 → 节点激活 → 下发采集器配置 → 数据采集。
 - 节点与采集器配置均绑定到具体云区域。
 - 节点、采集器配置按组织范围隔离权限。
-- 跨模块同步只处理用户显式选择的 CMDB、监控目标；单目标有限重试，冲突或失败会保留结果供补推，不影响节点管理主流程。
+- 跨模块同步只处理用户显式选择的 CMDB、监控目标；单目标有限重试，冲突或失败会保留结果供补推，不影响节点管理主流程。存量数字关联可随入站稳定身份升级；缺少历史映射信息时，不把该升级表述为已经确认同一资产。
 - 删除节点默认不影响已关联的外部对象；仅在明确选择关联退役时才尝试同步退役，退役失败不阻断删除。
 
-> 证据来源：server/apps/node_mgmt/views/node.py:296-307,337-366，server/apps/node_mgmt/services/module_push.py:98-126,129-193,197-249,370-400　|　同步基线：d2769559　|　【已实现】
+> 证据来源：server/apps/node_mgmt/views/node.py:296-307,337-366，server/apps/node_mgmt/services/module_ingest.py:85-153，server/apps/node_mgmt/services/module_link.py:123-159　|　同步基线：b98b782a7　|　【已实现】
 
 ## 5. 关键技术架构选择
 

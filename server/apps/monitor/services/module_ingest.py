@@ -1,58 +1,105 @@
-"""跨模块推送写入监控：按 node_id → cmdb_id → ip+cloud 归并 upsert。
+"""跨模块推送写入监控：按 node_id → cmdb_id → 对象类型身份归并 upsert。
 
 节点来源创建/补采集必须命中 Host + Telegraf 主机模板；找不到或套用失败则整次失败。
 """
 
 from __future__ import annotations
 
+import base64
+import re
 import uuid
 from typing import Any
 
 from django.db import transaction
 
 from apps.core.logger import monitor_logger as logger
-from apps.monitor.models import (
-    CollectConfig,
-    MonitorInstance,
-    MonitorInstanceOrganization,
-    MonitorObject,
-)
+from apps.monitor.models import CollectConfig, MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.utils.dimension import normalize_instance_identity
-from apps.node_mgmt.services.module_push_contract import (
-    EVENT_LIFECYCLE,
-    EVENT_UPSERT,
-    LINK_CONFLICT,
-    IngestResult,
-)
+from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE, EVENT_UPSERT, LINK_CONFLICT, IngestResult
 from apps.rpc.node_mgmt import NodeMgmt
 
 HOST_OBJECT_NAME = "Host"
 HOST_PLUGIN_NAME = "Host"
 RECEIVING_MODULE = "monitor"
+# 接入页偶发把默认名「IP-switch」编进网络设备主键；认领时只取前面的 IPv4。
+_IPV4_WITH_OPTIONAL_SUFFIX = re.compile(r"^(\d{1,3}(?:\.\d{1,3}){3})(?:-.+)?$")
 
 # CMDB → 监控：允许「有凭据则创建资产并自动监控」的对象范围（按 CMDB model_id）。
-# 适配范围外的对象一律只做关联/回填，不创建。先做主机，其他对象逐步纳入。
-CMDB_CREATE_ADAPTED_MODEL_IDS = frozenset({"host"})
+# 适配范围外的对象一律只做关联/回填，不创建。全局开关默认关；扫描显式推送走 allow_credential_create。
+CMDB_CREATE_ADAPTED_MODEL_IDS = frozenset(
+    {
+        "host",
+        "switch",
+        "router",
+        "firewall",
+        "loadbalance",
+        "physcial_server",
+        "mysql",
+        "postgresql",
+        "mssql",
+        "influxdb",
+    }
+)
 
-# CMDB 带凭据创建资产+默认策略路径：一期先关闭（默认对象列表未齐），保留扩展开关。
+# CMDB 带凭据创建资产+默认策略路径：默认关闭，避免节点创建钩子突然建监控。
 CMDB_CREDENTIAL_CREATE_ENABLED = False
+
+CMDB_MODEL_TO_MONITOR_OBJECT = {
+    "host": HOST_OBJECT_NAME,
+    "switch": "Switch",
+    "router": "Router",
+    "firewall": "Firewall",
+    "loadbalance": "Loadbalance",
+    "physcial_server": "Hardware Server",
+    "mysql": "Mysql",
+    "postgresql": "Postgres",
+    "mssql": "MSSQL",
+    "influxdb": "InfluxDB",
+}
+
+# 扫描 / 带凭据创建按插件名查询，禁止写死数字 ID。名称与 builtin metrics.json 对齐。
+CMDB_MODEL_TO_MONITOR_PLUGIN = {
+    "host": "Host Remote",
+    "switch": "Switch SNMP General",
+    "router": "Router SNMP General",
+    "firewall": "Firewall SNMP General",
+    "loadbalance": "Loadbalance SNMP General",
+    "physcial_server": "Hardware Server IPMI",
+    "mysql": "Mysql",
+    "postgresql": "Postgres",
+    "mssql": "MSSQL",
+    "influxdb": "InfluxDB",
+}
+
+DB_DEFAULT_PORTS = {
+    "mysql": 3306,
+    "postgres": 5432,
+    "mssql": 1433,
+    "influxdb": 8086,
+}
+
+HOST_REMOTE_METRICS_MODULES = ("cpu", "mem", "disk", "diskio", "net", "processes", "system")
 
 # 节点推送创建场景：默认套用 Telegraf 主机（agent）模板
 HOST_AGENT_COLLECTOR = "Telegraf"
 HOST_AGENT_COLLECT_TYPE = "host"
 DEFAULT_HOST_COLLECT_MODULES = ("cpu", "disk", "diskio", "mem", "net", "processes", "system")
 DEFAULT_COLLECT_INTERVAL = 60
-DEFAULT_DISK_EXCLUDE_FSTYPES = (
-    "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32"
-)
+# 与 Switch SNMP General UI.json timeout.default_value 对齐；缺了会留下 {{ timeout }}s，Telegraf 整份配置解析失败。
+DEFAULT_SNMP_TIMEOUT = 10
+DEFAULT_DISK_EXCLUDE_FSTYPES = "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32"
 
 # CMDB 带凭据创建场景：套用 Host Remote（远程采集）模板
+HOST_REMOTE_PLUGIN_NAME = "Host Remote"
 HOST_REMOTE_COLLECT_TYPE = "http"
 HOST_REMOTE_CONFIG_TYPE = "host"
 
 
 class MonitorModuleIngestService:
     """接收 node_mgmt / CMDB 等模块推送的 ingest envelope，写入 MonitorInstance。"""
+
+    IP_CLOUD_CLAIM_MODELS = frozenset({"host", "switch", "router", "firewall", "loadbalance", "physcial_server", "influxdb"})
+    IP_PORT_CLAIM_MODELS = frozenset({"mysql", "postgresql", "mssql"})
 
     @classmethod
     def ingest(cls, params: dict[str, Any]) -> dict[str, Any]:
@@ -70,6 +117,7 @@ class MonitorModuleIngestService:
 
         node_id = cls._normalize_optional_str(link_ids.get("node_id"))
         cmdb_id = cls._normalize_optional_str(link_ids.get("cmdb_id"))
+        cmdb_aliases = link_ids.get("cmdb_id_aliases") or []
         monitor_id = cls._normalize_optional_str(link_ids.get("monitor_id"))
         # node_mgmt 信封常把节点 ID 放在 source_id；勿把 CMDB source_id 误当作 node_id
         if not node_id and params.get("source_module") == "node_mgmt":
@@ -83,7 +131,7 @@ class MonitorModuleIngestService:
             if not existing and node_id:
                 existing = cls._find_by_node_id(node_id)
             if not existing and cmdb_id:
-                existing = cls._find_by_cmdb_id(cmdb_id)
+                existing = cls._find_by_cmdb_id(cmdb_id, aliases=cmdb_aliases)
             return IngestResult(
                 id=existing.id if existing else None,
                 ignored=True,
@@ -98,18 +146,19 @@ class MonitorModuleIngestService:
                 cmdb_id=cmdb_id,
                 monitor_id=monitor_id,
                 operator=str(params.get("operator") or ""),
+                cmdb_aliases=cmdb_aliases,
             )
 
         operator = str(params.get("operator") or "")
         allowed = [int(x) for x in allowed_org_ids]
+        actor_context = params.get("actor_context")
 
         by_node = cls._find_by_node_id(node_id) if node_id else None
-        by_cmdb = cls._find_by_cmdb_id(cmdb_id) if cmdb_id else None
+        by_cmdb = cls._find_by_cmdb_id(cmdb_id, aliases=cmdb_aliases) if cmdb_id else None
 
         if by_node and by_cmdb and by_node.id != by_cmdb.id:
             logger.warning(
-                "[MonitorModuleIngest] link_conflict node_id=%s cmdb_id=%s "
-                "by_node=%s by_cmdb=%s",
+                "[MonitorModuleIngest] link_conflict node_id=%s cmdb_id=%s " "by_node=%s by_cmdb=%s",
                 node_id,
                 cmdb_id,
                 by_node.id,
@@ -125,32 +174,69 @@ class MonitorModuleIngestService:
 
         existing = by_node or by_cmdb
         if not existing:
-            ip = cls._extract_ip(raw)
-            cloud = cls._extract_cloud_region_id(raw)
-            if ip and cloud is not None:
-                by_ip = cls._find_by_ip_cloud(ip, cloud)
-                if by_ip:
-                    bound_node_id = cls._normalize_optional_str(by_ip.node_id)
-                    if node_id and bound_node_id and bound_node_id != node_id:
-                        logger.warning(
-                            "[MonitorModuleIngest] link_conflict ip=%s cloud=%s "
-                            "existing_node_id=%s incoming_node_id=%s",
-                            ip,
-                            cloud,
-                            bound_node_id,
-                            node_id,
-                        )
-                        return IngestResult(
-                            id=by_ip.id,
-                            conflict=LINK_CONFLICT,
-                            created=False,
-                            updated=False,
-                            claimed=False,
-                        ).as_dict()
-                    existing = by_ip
+            by_identity = cls._find_by_type_identity(raw)
+            if by_identity:
+                bound_node_id = cls._normalize_optional_str(by_identity.node_id)
+                if node_id and bound_node_id and bound_node_id != node_id:
+                    logger.warning(
+                        "[MonitorModuleIngest] link_conflict identity " "existing_node_id=%s incoming_node_id=%s instance_id=%s",
+                        bound_node_id,
+                        node_id,
+                        by_identity.id,
+                    )
+                    return IngestResult(
+                        id=by_identity.id,
+                        conflict=LINK_CONFLICT,
+                        created=False,
+                        updated=False,
+                        claimed=False,
+                    ).as_dict()
+                existing = by_identity
 
         if existing:
             source_module = str(params.get("source_module") or "")
+            credential = cls._extract_credential(raw) if source_module == "cmdb" else None
+            model_id = cls._resolve_cmdb_model_id(raw) if source_module == "cmdb" else ""
+            allow_cred = bool(params.get("allow_credential_create"))
+            # 默认 False：节点/资产页推送不得突然建监控；仅扫描等显式 allow_credential_create 打开。
+            create_enabled = CMDB_CREDENTIAL_CREATE_ENABLED or allow_cred
+            if source_module == "cmdb" and not (create_enabled and credential):
+                return cls._link_association_ids(
+                    existing,
+                    node_id=node_id,
+                    cmdb_id=cmdb_id,
+                    operator=operator,
+                )
+            has_collect = CollectConfig.objects.filter(monitor_instance_id=existing.id).exists()
+            # 已按 cmdb_id/node_id 命中的空壳：扫描带凭据推送仍须补采集，不能只 update。
+            needs_cmdb_collect = (
+                source_module == "cmdb" and create_enabled and bool(credential) and model_id in CMDB_CREATE_ADAPTED_MODEL_IDS and not has_collect
+            )
+            if needs_cmdb_collect:
+                instance = cls._create_adapted_instance(
+                    raw=raw,
+                    node_id=node_id,
+                    cmdb_id=cmdb_id,
+                    credential=credential,
+                    operator=operator,
+                    allowed_org_ids=allowed,
+                    model_id=model_id,
+                    actor_context=actor_context,
+                )
+                return IngestResult(id=instance.id, updated=True).as_dict()
+
+            # 仅扫描带凭据路径：cmdb_id 已关联且已有采集 → 幂等跳过（不影响 node_mgmt / 无凭据 push）。
+            if (
+                source_module == "cmdb"
+                and create_enabled
+                and bool(credential)
+                and model_id in CMDB_CREATE_ADAPTED_MODEL_IDS
+                and by_cmdb is not None
+                and existing.id == by_cmdb.id
+                and has_collect
+            ):
+                return IngestResult(id=existing.id, skipped=True).as_dict()
+
             needs_collect = (
                 source_module == "node_mgmt"
                 and bool(node_id)
@@ -187,7 +273,48 @@ class MonitorModuleIngestService:
             cmdb_id=cmdb_id,
             operator=operator,
             allowed_org_ids=allowed,
+            allow_credential_create=bool(params.get("allow_credential_create")),
+            actor_context=actor_context,
         )
+
+    @classmethod
+    def _link_association_ids(
+        cls,
+        instance: MonitorInstance,
+        *,
+        node_id: str | None,
+        cmdb_id: str | None,
+        operator: str,
+    ) -> dict[str, Any]:
+        if instance.is_deleted:
+            return IngestResult(id=None, ignored=True).as_dict()
+        bound_node = cls._normalize_optional_str(instance.node_id)
+        bound_cmdb = cls._normalize_optional_str(instance.cmdb_id)
+        if node_id and bound_node and bound_node != node_id:
+            return IngestResult(id=instance.id, conflict=LINK_CONFLICT, created=False, updated=False, claimed=False).as_dict()
+        if cmdb_id and bound_cmdb and bound_cmdb != cmdb_id:
+            return IngestResult(id=instance.id, conflict=LINK_CONFLICT, created=False, updated=False, claimed=False).as_dict()
+        update_fields: list[str] = []
+        claimed = False
+        if node_id and bound_node != node_id:
+            instance.node_id = node_id
+            update_fields.append("node_id")
+            claimed = True
+        if cmdb_id and bound_cmdb != cmdb_id:
+            instance.cmdb_id = cmdb_id
+            update_fields.append("cmdb_id")
+            claimed = True
+        if operator:
+            instance.updated_by = operator
+            update_fields.append("updated_by")
+        if update_fields:
+            instance.save(update_fields=update_fields + ["updated_at"])
+        return IngestResult(
+            id=instance.id,
+            created=False,
+            updated=not claimed,
+            claimed=claimed,
+        ).as_dict()
 
     # ----- 创建场景分流：按来源模块决定是否建资产 / 套用采集模板 -----
 
@@ -201,6 +328,8 @@ class MonitorModuleIngestService:
         cmdb_id: str | None,
         operator: str,
         allowed_org_ids: list[int],
+        allow_credential_create: bool = False,
+        actor_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """未命中任何已有实例时的创建分流。
 
@@ -209,23 +338,21 @@ class MonitorModuleIngestService:
           - 创建资产并自动监控：必须同时满足「传了凭据」+「对象在适配范围内」。
           - 无凭据或未适配对象：不创建，仅关联；走到这里说明无可建关系 → ignored。
 
-        当前适配范围：CMDB model_id ∈ CMDB_CREATE_ADAPTED_MODEL_IDS（先只含 host）。
+        当前适配范围：CMDB model_id ∈ CMDB_CREATE_ADAPTED_MODEL_IDS。
 
         节点管理推送创建：必须命中 Host + Telegraf 主机模板后再创建；套用失败则整次失败。
         """
         if source_module == "cmdb":
             credential = cls._extract_credential(raw)
             model_id = cls._resolve_cmdb_model_id(raw)
-            if (
-                not CMDB_CREDENTIAL_CREATE_ENABLED
-                or not credential
-                or model_id not in CMDB_CREATE_ADAPTED_MODEL_IDS
-            ):
+            create_enabled = CMDB_CREDENTIAL_CREATE_ENABLED or allow_credential_create
+            if not create_enabled or not credential or model_id not in CMDB_CREATE_ADAPTED_MODEL_IDS:
                 logger.info(
                     "[MonitorModuleIngest] cmdb push skip create "
-                    "(enabled=%s credential=%s adapted=%s model_id=%s) "
+                    "(enabled=%s allow=%s credential=%s adapted=%s model_id=%s) "
                     "cmdb_id=%s node_id=%s",
                     CMDB_CREDENTIAL_CREATE_ENABLED,
+                    allow_credential_create,
                     bool(credential),
                     model_id in CMDB_CREATE_ADAPTED_MODEL_IDS,
                     model_id,
@@ -234,18 +361,17 @@ class MonitorModuleIngestService:
                 )
                 return IngestResult(id=None, ignored=True).as_dict()
 
-            instance, collect_error = cls._create_remote_host_instance(
+            instance = cls._create_adapted_instance(
                 raw=raw,
                 node_id=node_id,
                 cmdb_id=cmdb_id,
                 credential=credential,
                 operator=operator,
                 allowed_org_ids=allowed_org_ids,
+                model_id=model_id,
+                actor_context=actor_context,
             )
-            result = IngestResult(id=instance.id, created=True).as_dict()
-            if collect_error:
-                result["collect_error"] = collect_error
-            return result
+            return IngestResult(id=instance.id, created=True).as_dict()
 
         if source_module == "node_mgmt" and node_id:
             if not cls._extract_ip(raw) or cls._extract_cloud_region_id(raw) is None:
@@ -288,12 +414,20 @@ class MonitorModuleIngestService:
 
     @staticmethod
     def _extract_credential(raw: dict[str, Any]) -> dict[str, Any] | None:
-        """从 envelope raw 提取远程采集凭据；非 dict 或缺用户名视为未提供。"""
+        """从 envelope raw 提取远程采集凭据。
+
+        主机 / 库 / IPMI 需要 username 或 password / 私钥；SNMP v2 允许仅 community；
+        Influx 允许仅 token。
+        """
         credential = raw.get("credential")
         if not isinstance(credential, dict):
             return None
-        username = str(credential.get("username") or "").strip()
-        if not username:
+        username = str(credential.get("username") or credential.get("user") or credential.get("sec_name") or "").strip()
+        community = str(credential.get("community") or "").strip()
+        token = str(credential.get("token") or "").strip()
+        password = str(credential.get("password") or "").strip()
+        private_key = str(credential.get("private_key") or credential.get("private_key_content") or "").strip()
+        if not any((username, community, token, password, private_key)):
             return None
         return credential
 
@@ -308,20 +442,24 @@ class MonitorModuleIngestService:
             collect_type=HOST_AGENT_COLLECT_TYPE,
         ).first()
         if not plugin:
-            raise ValueError(
-                f"host monitor plugin {HOST_PLUGIN_NAME!r} "
-                f"({HOST_AGENT_COLLECTOR}/{HOST_AGENT_COLLECT_TYPE}) not found"
-            )
-        existing_types = set(
-            MonitorPluginConfigTemplate.objects.filter(plugin=plugin).values_list(
-                "type", flat=True
-            )
-        )
+            raise ValueError(f"host monitor plugin {HOST_PLUGIN_NAME!r} " f"({HOST_AGENT_COLLECTOR}/{HOST_AGENT_COLLECT_TYPE}) not found")
+        existing_types = set(MonitorPluginConfigTemplate.objects.filter(plugin=plugin).values_list("type", flat=True))
         missing = [module for module in DEFAULT_HOST_COLLECT_MODULES if module not in existing_types]
         if missing:
-            raise ValueError(
-                f"host monitor plugin {HOST_PLUGIN_NAME!r} missing templates: {missing}"
-            )
+            raise ValueError(f"host monitor plugin {HOST_PLUGIN_NAME!r} missing templates: {missing}")
+        return plugin
+
+    @classmethod
+    def _require_adapted_plugin(cls, model_id: str):
+        """带凭据创建必须命中对应 General / Remote 插件名，禁止按对象取 id 最小插件。"""
+        from apps.monitor.models import MonitorPlugin
+
+        plugin_name = CMDB_MODEL_TO_MONITOR_PLUGIN.get(model_id)
+        if not plugin_name:
+            raise ValueError(f"no monitor plugin mapping for model_id={model_id}")
+        plugin = MonitorPlugin.objects.filter(name=plugin_name).first()
+        if not plugin:
+            raise ValueError(f"monitor plugin {plugin_name!r} not found")
         return plugin
 
     @classmethod
@@ -370,6 +508,252 @@ class MonitorModuleIngestService:
         )
 
     @classmethod
+    def _create_adapted_instance(
+        cls,
+        *,
+        raw: dict[str, Any],
+        node_id: str | None,
+        cmdb_id: str | None,
+        credential: dict[str, Any],
+        operator: str,
+        allowed_org_ids: list[int],
+        model_id: str,
+        actor_context: dict[str, Any] | None = None,
+    ) -> MonitorInstance:
+        """CMDB 带凭据创建：按插件名套用接入页同一条创建函数。失败禁止建空壳。"""
+        plugin = cls._require_adapted_plugin(model_id)
+        if model_id == "host":
+            return cls._create_remote_host_instance(
+                raw=raw,
+                node_id=node_id,
+                cmdb_id=cmdb_id,
+                credential=credential,
+                operator=operator,
+                allowed_org_ids=allowed_org_ids,
+                plugin=plugin,
+                actor_context=actor_context,
+            )
+
+        spec = cls._adapted_collect_spec(model_id)
+        ip = cls._extract_ip(raw)
+        if not ip:
+            raise ValueError("remote collect requires raw.ip")
+
+        collector_node_id, cloud = cls._pick_container_node(raw, allowed_org_ids)
+        if not collector_node_id:
+            raise ValueError("no container collector node available for remote collect")
+        if cloud is None:
+            cloud = 1
+
+        from apps.monitor.services.node_mgmt import InstanceConfigService
+
+        monitor_object = cls._resolve_monitor_object(raw)
+        raw_instance_id = spec["instance_id"](cloud=cloud, ip=ip, raw=raw)
+        storage_key = cls._storage_key_after_onboarding(
+            model_id=model_id,
+            raw_instance_id=raw_instance_id,
+            cloud=cloud,
+            ip=ip,
+        )
+        instance = cls._find_by_pk(storage_key)
+        # 已有空壳（无采集配置）必须补走接入页；否则只会补链路字段，名称/采集都会缺。
+        if instance is None or not CollectConfig.objects.filter(monitor_instance_id=instance.id).exists():
+            instance_row: dict[str, Any] = {
+                "instance_id": raw_instance_id,
+                "instance_name": cls._extract_name(raw, ip=ip),
+                "node_ids": [collector_node_id],
+                "group_ids": cls._normalize_org_ids(raw, allowed_org_ids),
+                "instance_type": spec["instance_type"],
+                "ip": ip,
+                "cloud_region_id": cloud,
+            }
+            # 与 Host Remote 同因：插件 fact 常绑 host/server，只传 ip 会报「必需实例事实缺失」。
+            cls._fill_instance_fact_ip_fields(instance_row, plugin=plugin, ip=ip)
+            InstanceConfigService.create_monitor_instance_by_node_mgmt(
+                {
+                    "monitor_object_id": monitor_object.id,
+                    "collector": plugin.collector or HOST_AGENT_COLLECTOR,
+                    "collect_type": plugin.collect_type or spec["collect_type"],
+                    "monitor_plugin_id": plugin.id,
+                    "configs": [spec["build_config"](ip=ip, raw=raw, credential=credential)],
+                    "instances": [instance_row],
+                },
+                actor_context,
+            )
+            instance = cls._find_by_pk(storage_key)
+        if instance is None:
+            raise ValueError("remote onboarding did not create instance")
+        update_fields: list[str] = []
+        desired_name = cls._extract_name(raw, ip=ip)
+        if desired_name and instance.name != desired_name:
+            instance.name = desired_name
+            update_fields.append("name")
+        if cmdb_id and instance.cmdb_id != cmdb_id:
+            instance.cmdb_id = cmdb_id
+            update_fields.append("cmdb_id")
+        if ip and instance.ip != ip:
+            instance.ip = ip
+            update_fields.append("ip")
+        if cloud is not None and instance.cloud_region_id != cloud:
+            instance.cloud_region_id = cloud
+            update_fields.append("cloud_region_id")
+        if update_fields:
+            instance.save(update_fields=update_fields + ["updated_at"])
+        org_ids = cls._normalize_org_ids(raw, allowed_org_ids)
+        cls._bind_organizations(instance, org_ids, operator=operator)
+        return instance
+
+    @classmethod
+    def _storage_key_after_onboarding(
+        cls,
+        *,
+        model_id: str,
+        raw_instance_id: str,
+        cloud,
+        ip: str,
+    ) -> str:
+        """创建后反查用的主键：交给监控接入页同一套 identity adapter，扫描侧不另编一套。"""
+        from apps.monitor.services.node_mgmt import InstanceConfigService
+
+        object_name = CMDB_MODEL_TO_MONITOR_OBJECT.get(model_id, HOST_OBJECT_NAME)
+        instances = [
+            {
+                "instance_id": raw_instance_id,
+                "ip": ip,
+                "cloud_region_id": cloud,
+            }
+        ]
+        if InstanceConfigService._should_use_network_device_identity_adapter(object_name):
+            prepared = InstanceConfigService._prepare_network_device_identity_instances(instances)
+            return prepared[0]["storage_instance_key"]
+        if InstanceConfigService._should_use_host_identity_adapter(object_name):
+            prepared = InstanceConfigService._prepare_host_identity_instances(instances)
+            return prepared[0]["storage_instance_key"]
+        return normalize_instance_identity(raw_instance_id)["storage_instance_key"]
+
+    @classmethod
+    def _adapted_collect_spec(cls, model_id: str) -> dict[str, Any]:
+        if model_id in {"switch", "router", "firewall", "loadbalance"}:
+            return {
+                "collect_type": "snmp",
+                "instance_type": model_id,
+                "build_config": lambda **kwargs: cls._build_snmp_config(config_type=model_id, **kwargs),
+                "instance_id": lambda *, cloud, ip, raw: f"{cloud}_{model_id}_snmp_{ip}",
+            }
+        if model_id == "physcial_server":
+            return {
+                "collect_type": "ipmi",
+                "instance_type": "hardware_server",
+                "build_config": cls._build_ipmi_config,
+                "instance_id": lambda *, cloud, ip, raw: f"{cloud}_hardware_server_ipmi_{ip}",
+            }
+        db_type = {
+            "mysql": "mysql",
+            "postgresql": "postgres",
+            "mssql": "mssql",
+            "influxdb": "influxdb",
+        }[model_id]
+        default_port = DB_DEFAULT_PORTS.get(db_type, 3306)
+        return {
+            "collect_type": "database",
+            "instance_type": db_type,
+            "build_config": lambda **kwargs: cls._build_database_config(db_type=db_type, **kwargs),
+            "instance_id": lambda *, cloud, ip, raw: (
+                f"{cloud}_{ip}" if db_type == "influxdb" else f"{cloud}_{ip}_{cls._extract_port(raw, default=default_port)}"
+            ),
+        }
+
+    @classmethod
+    def _build_snmp_config(
+        cls,
+        *,
+        ip: str,
+        raw: dict[str, Any],
+        credential: dict[str, Any],
+        config_type: str = "switch",
+    ) -> dict[str, Any]:
+        version_raw = str(credential.get("version") or raw.get("version") or "2").lower()
+        version = 3 if "3" in version_raw else 2
+        port = credential.get("snmp_port") or credential.get("port") or raw.get("snmp_port") or raw.get("port") or 161
+        config: dict[str, Any] = {
+            "type": config_type,
+            "ip": ip,
+            "port": int(port) if str(port).isdigit() else 161,
+            "version": version,
+            "interval": DEFAULT_COLLECT_INTERVAL,
+            "timeout": DEFAULT_SNMP_TIMEOUT,
+        }
+        if version == 2:
+            config["community"] = str(credential.get("community") or "")
+        else:
+            config["sec_name"] = str(credential.get("username") or credential.get("sec_name") or "")
+            config["sec_level"] = str(credential.get("level") or credential.get("sec_level") or "authNoPriv")
+            config["auth_protocol"] = str(credential.get("integrity") or credential.get("auth_protocol") or "sha")
+            config["auth_password"] = str(credential.get("authkey") or credential.get("auth_password") or credential.get("password") or "")
+            if str(config["sec_level"]).lower() == "authpriv":
+                config["priv_protocol"] = str(credential.get("privacy") or credential.get("priv_protocol") or "aes")
+                config["priv_password"] = str(credential.get("privkey") or credential.get("priv_password") or "")
+        return config
+
+    @classmethod
+    def _build_ipmi_config(
+        cls,
+        *,
+        ip: str,
+        raw: dict[str, Any],
+        credential: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "type": "hardware_server",
+            "monitor_ip": ip,
+            "username": str(credential.get("username") or ""),
+            "ENV_PASSWORD": str(credential.get("password") or ""),
+            "protocol": str(credential.get("protocol") or "lanplus"),
+            "interval": DEFAULT_COLLECT_INTERVAL,
+            "timeout": DEFAULT_SNMP_TIMEOUT,
+        }
+
+    @classmethod
+    def _build_database_config(
+        cls,
+        *,
+        db_type: str,
+        ip: str,
+        raw: dict[str, Any],
+        credential: dict[str, Any],
+    ) -> dict[str, Any]:
+        default_port = DB_DEFAULT_PORTS.get(db_type, 3306)
+        port = cls._extract_port(raw, default=credential.get("port") or default_port)
+        username = str(credential.get("username") or credential.get("user") or "")
+        config: dict[str, Any] = {
+            "type": db_type,
+            "username": username,
+            "ENV_PASSWORD": str(credential.get("password") or credential.get("token") or ""),
+            "interval": DEFAULT_COLLECT_INTERVAL,
+            "timeout": DEFAULT_SNMP_TIMEOUT,
+        }
+        if db_type == "influxdb":
+            scheme = str(credential.get("scheme") or ("https" if credential.get("ssl") else "http")).strip().lower() or "http"
+            if scheme not in ("http", "https"):
+                scheme = "http"
+            config["server"] = f"{scheme}://{ip}:{port}/debug/vars"
+        else:
+            config["host"] = ip
+            config["port"] = port
+        return config
+
+    @staticmethod
+    def _extract_port(raw: dict[str, Any], default=None) -> int:
+        value = raw.get("port") or raw.get("snmp_port") or default
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            try:
+                return int(default)
+            except (TypeError, ValueError):
+                return 0
+
+    @classmethod
     def _create_remote_host_instance(
         cls,
         *,
@@ -379,92 +763,100 @@ class MonitorModuleIngestService:
         credential: dict[str, Any],
         operator: str,
         allowed_org_ids: list[int],
-    ) -> tuple[MonitorInstance, str | None]:
-        """CMDB 带凭据创建：走 Host Remote 远程采集模板。
-
-        失败时回退为最小身份实例（不带采集配置），错误描述随结果返回。
-        """
+        plugin,
+        actor_context: dict[str, Any] | None = None,
+    ) -> MonitorInstance:
+        """CMDB 带凭据创建：走 Host Remote 远程采集模板。套用失败则整次失败。"""
         ip = cls._extract_ip(raw)
-        collector_node_id: str | None = None
-        cloud: int | None = None
-        error: str | None = None
-
         if not ip:
-            error = "remote collect requires raw.ip"
-        else:
-            collector_node_id, cloud = cls._pick_container_node(raw, allowed_org_ids)
-            if not collector_node_id:
-                error = "no container collector node available for remote collect"
-            elif cloud is None:
-                # 默认云区域，避免实例 ID 出现 None 段
-                cloud = 1
+            raise ValueError("remote collect requires raw.ip")
 
-        if not error:
-            try:
-                from apps.monitor.services.node_mgmt import InstanceConfigService
+        collector_node_id, cloud = cls._pick_container_node(raw, allowed_org_ids)
+        if not collector_node_id:
+            raise ValueError("no container collector node available for remote collect")
+        if cloud is None:
+            cloud = 1
 
-                monitor_object = cls._resolve_monitor_object(raw)
-                raw_instance_id = f"{cloud}_os_{ip}"
-                InstanceConfigService.create_monitor_instance_by_node_mgmt(
-                    {
-                        "monitor_object_id": monitor_object.id,
-                        "collector": HOST_AGENT_COLLECTOR,
-                        "collect_type": HOST_REMOTE_COLLECT_TYPE,
-                        "configs": [cls._build_remote_host_config(ip=ip, raw=raw, credential=credential)],
-                        "instances": [
-                            {
-                                "instance_id": raw_instance_id,
-                                "instance_name": cls._extract_name(raw, ip=ip),
-                                "node_ids": [collector_node_id],
-                                "group_ids": cls._normalize_org_ids(raw, allowed_org_ids),
-                                "instance_type": "os",
-                            }
-                        ],
-                    }
-                )
-                storage_key = normalize_instance_identity(raw_instance_id)[
-                    "storage_instance_key"
-                ]
-                instance = cls._find_by_pk(storage_key)
-                if instance is None:
-                    error = "remote onboarding did not create instance"
-                else:
-                    update_fields: list[str] = []
-                    linked = node_id
-                    if not linked:
-                        linked = cls._best_effort_auto_link_node(
-                            monitor_id=instance.id, ip=ip, cloud=cloud
-                        )
-                    if linked and instance.node_id != linked:
-                        instance.node_id = linked
-                        update_fields.append("node_id")
-                    if cmdb_id and instance.cmdb_id != cmdb_id:
-                        instance.cmdb_id = cmdb_id
-                        update_fields.append("cmdb_id")
-                    if ip and instance.ip != ip:
-                        instance.ip = ip
-                        update_fields.append("ip")
-                    if update_fields:
-                        instance.save(update_fields=update_fields + ["updated_at"])
-                    return instance, None
-            except Exception as exc:
-                logger.warning(
-                    "[MonitorModuleIngest] remote host onboarding failed "
-                    "cmdb_id=%s ip=%s: %s",
-                    cmdb_id,
-                    ip,
-                    exc,
-                )
-                error = str(exc)
+        from apps.monitor.services.node_mgmt import InstanceConfigService
 
-        instance = cls._create_instance(
-            raw=raw,
-            node_id=node_id,
-            cmdb_id=cmdb_id,
-            operator=operator,
-            allowed_org_ids=allowed_org_ids,
+        monitor_object = cls._resolve_monitor_object(raw)
+        raw_instance_id = f"{cloud}_os_{ip}"
+        storage_key = cls._storage_key_after_onboarding(
+            model_id="host",
+            raw_instance_id=raw_instance_id,
+            cloud=cloud,
+            ip=ip,
         )
-        return instance, error
+        instance = cls._find_by_pk(storage_key)
+        if instance is None or not CollectConfig.objects.filter(monitor_instance_id=instance.id).exists():
+            InstanceConfigService.create_monitor_instance_by_node_mgmt(
+                {
+                    "monitor_object_id": monitor_object.id,
+                    "collector": plugin.collector or HOST_AGENT_COLLECTOR,
+                    "collect_type": plugin.collect_type or HOST_REMOTE_COLLECT_TYPE,
+                    "monitor_plugin_id": plugin.id,
+                    "configs": [cls._build_remote_host_config(ip=ip, raw=raw, credential=credential)],
+                    "instances": [
+                        {
+                            "instance_id": raw_instance_id,
+                            "instance_name": cls._extract_name(raw, ip=ip),
+                            "node_ids": [collector_node_id],
+                            "group_ids": cls._normalize_org_ids(raw, allowed_org_ids),
+                            "instance_type": "os",
+                            # Host Remote 插件 fact binding 读 host；接入页其它路径也认 ip。
+                            "host": ip,
+                            "ip": ip,
+                            "cloud_region_id": cloud,
+                        }
+                    ],
+                },
+                actor_context,
+            )
+            instance = cls._find_by_pk(storage_key)
+        if instance is None:
+            raise ValueError("remote onboarding did not create instance")
+        update_fields: list[str] = []
+        desired_name = cls._extract_name(raw, ip=ip)
+        if desired_name and instance.name != desired_name:
+            instance.name = desired_name
+            update_fields.append("name")
+        linked = node_id
+        if not linked:
+            linked = cls._best_effort_auto_link_node(monitor_id=instance.id, ip=ip, cloud=cloud)
+        if linked and instance.node_id != linked:
+            instance.node_id = linked
+            update_fields.append("node_id")
+        if cmdb_id and instance.cmdb_id != cmdb_id:
+            instance.cmdb_id = cmdb_id
+            update_fields.append("cmdb_id")
+        if ip and instance.ip != ip:
+            instance.ip = ip
+            update_fields.append("ip")
+        if cloud is not None and instance.cloud_region_id != cloud:
+            instance.cloud_region_id = cloud
+            update_fields.append("cloud_region_id")
+        if update_fields:
+            instance.save(update_fields=update_fields + ["updated_at"])
+        return instance
+
+    @staticmethod
+    def _fill_instance_fact_ip_fields(
+        instance_row: dict[str, Any],
+        *,
+        plugin,
+        ip: str,
+    ) -> None:
+        """按插件 instance_fact_bindings 补齐 input/ip 字段（如 host、server），不另开接入路径。"""
+        if not ip:
+            return
+        for binding in getattr(plugin, "instance_fact_bindings", None) or []:
+            if not isinstance(binding, dict):
+                continue
+            if binding.get("resolver") != "input" or binding.get("value_type") != "ip":
+                continue
+            field = (binding.get("options") or {}).get("field")
+            if field and field not in instance_row:
+                instance_row[field] = ip
 
     @classmethod
     def _build_remote_host_config(
@@ -474,22 +866,33 @@ class MonitorModuleIngestService:
         raw: dict[str, Any],
         credential: dict[str, Any],
     ) -> dict[str, Any]:
-        """把 CMDB 凭据映射为 Host Remote 模板字段；密钥经 ENV_* 走 env_config。"""
+        """把扫描/CMDB 凭据映射为 Host Remote 接入页 configs；密钥经 ENV_* 走 env_config。"""
         os_type_raw = str(raw.get("os_type") or raw.get("operating_system") or "").lower()
         os_type = "windows" if "win" in os_type_raw else "linux"
 
-        auth_type = str(credential.get("auth_type") or "").strip()
-        if not auth_type:
-            auth_type = "private_key" if credential.get("private_key") else "password"
+        auth_raw = str(credential.get("auth_type") or credential.get("authType") or "").strip()
+        if auth_raw in ("private_key", "privateKey"):
+            auth_type = "private_key"
+        elif auth_raw:
+            auth_type = "password"
+        else:
+            auth_type = "private_key" if credential.get("private_key") or credential.get("private_key_content") else "password"
+
+        port = credential.get("port") or ""
+        try:
+            port = int(port) if port not in (None, "") else ""
+        except (TypeError, ValueError):
+            port = str(port)
 
         config: dict[str, Any] = {
             "type": HOST_REMOTE_CONFIG_TYPE,
             "interval": DEFAULT_COLLECT_INTERVAL,
             "host": ip,
             "os_type": os_type,
-            "username": str(credential.get("username") or ""),
+            "username": str(credential.get("username") or credential.get("user") or ""),
             "auth_type": auth_type,
-            "port": credential.get("port") or "",
+            "port": port,
+            "metrics_modules": list(HOST_REMOTE_METRICS_MODULES),
             "disk_include_fstypes": "",
             "disk_exclude_fstypes": DEFAULT_DISK_EXCLUDE_FSTYPES,
             "ENV_PASSWORD": str(credential.get("password") or ""),
@@ -525,9 +928,7 @@ class MonitorModuleIngestService:
             try:
                 data = NodeMgmt().node_list(query) or {}
             except Exception as exc:
-                logger.warning(
-                    "[MonitorModuleIngest] container node lookup failed: %s", exc
-                )
+                logger.warning("[MonitorModuleIngest] container node lookup failed: %s", exc)
                 return None
             nodes = data.get("nodes") or []
             return nodes[0] if nodes else None
@@ -569,6 +970,7 @@ class MonitorModuleIngestService:
         cmdb_id: str | None,
         monitor_id: str | None,
         operator: str,
+        cmdb_aliases: list[str] | None = None,
     ) -> dict[str, Any]:
         """跨模块删除通知。
 
@@ -590,12 +992,11 @@ class MonitorModuleIngestService:
         if not existing and node_id:
             existing = cls._find_by_node_id(node_id)
         if not existing and cmdb_id:
-            existing = cls._find_by_cmdb_id(cmdb_id)
+            existing = cls._find_by_cmdb_id(cmdb_id, aliases=cmdb_aliases)
 
         if not existing:
             logger.info(
-                "[MonitorModuleIngest] lifecycle no-op: instance not found "
-                "monitor_id=%s node_id=%s cmdb_id=%s",
+                "[MonitorModuleIngest] lifecycle no-op: instance not found " "monitor_id=%s node_id=%s cmdb_id=%s",
                 monitor_id,
                 node_id,
                 cmdb_id,
@@ -652,40 +1053,159 @@ class MonitorModuleIngestService:
 
     @classmethod
     def _find_by_pk(cls, instance_id: str) -> MonitorInstance | None:
-        return (
-            MonitorInstance.objects.filter(id=instance_id)
-            .select_related("monitor_object")
-            .first()
-        )
+        return MonitorInstance.objects.filter(id=instance_id).select_related("monitor_object").first()
 
     @classmethod
     def _find_by_node_id(cls, node_id: str) -> MonitorInstance | None:
-        return (
-            MonitorInstance.objects.filter(node_id=node_id, is_deleted=False)
-            .select_related("monitor_object")
-            .first()
-        )
+        return MonitorInstance.objects.filter(node_id=node_id, is_deleted=False).select_related("monitor_object").first()
 
     @classmethod
-    def _find_by_cmdb_id(cls, cmdb_id: str) -> MonitorInstance | None:
-        return (
-            MonitorInstance.objects.filter(cmdb_id=cmdb_id, is_deleted=False)
-            .select_related("monitor_object")
-            .first()
+    def _find_by_cmdb_id(
+        cls,
+        cmdb_id: str,
+        *,
+        aliases: list[str] | None = None,
+    ) -> MonitorInstance | None:
+        from apps.cmdb.services.instance_identity import expand_cmdb_id_lookup_candidates
+
+        candidates = expand_cmdb_id_lookup_candidates(cmdb_id, aliases)
+        if not candidates:
+            return None
+        return MonitorInstance.objects.filter(cmdb_id__in=candidates, is_deleted=False).select_related("monitor_object").first()
+
+    @classmethod
+    def _find_by_type_identity(cls, raw: dict[str, Any]) -> MonitorInstance | None:
+        model_id = cls._resolve_cmdb_model_id(raw)
+        object_name = CMDB_MODEL_TO_MONITOR_OBJECT.get(model_id)
+        ip = cls._extract_ip(raw)
+        if not object_name or not ip:
+            return None
+        cloud = cls._extract_cloud_region_id(raw)
+        if model_id in cls.IP_PORT_CLAIM_MODELS:
+            db_type = {"mysql": "mysql", "postgresql": "postgres", "mssql": "mssql"}[model_id]
+            port = cls._extract_port(raw, default=DB_DEFAULT_PORTS.get(db_type))
+            storage_key = cls._storage_key_after_onboarding(
+                model_id=model_id,
+                raw_instance_id=f"{cloud or 0}_{ip}_{port}",
+                cloud=cloud if cloud is not None else 0,
+                ip=ip,
+            )
+            by_pk = cls._find_by_pk(storage_key)
+            if by_pk and not by_pk.is_deleted and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
+                return by_pk
+            return None
+        if model_id not in cls.IP_CLOUD_CLAIM_MODELS:
+            return None
+        if cloud is not None:
+            storage_key = cls._storage_key_after_onboarding(
+                model_id=model_id,
+                raw_instance_id=f"{cloud}_{ip}",
+                cloud=cloud,
+                ip=ip,
+            )
+            by_pk = cls._find_by_pk(storage_key)
+            if by_pk and not by_pk.is_deleted and by_pk.monitor_object and by_pk.monitor_object.name == object_name:
+                return by_pk
+        qs = MonitorInstance.objects.filter(
+            ip=ip,
+            is_deleted=False,
+            monitor_object__name=object_name,
+        ).select_related("monitor_object")
+        if cloud is not None:
+            qs = qs.filter(cloud_region_id=cloud)
+        matches = list(qs[:2])
+        if len(matches) == 1:
+            return matches[0]
+        if matches:
+            return None
+        by_encoded = cls._find_by_encoded_network_identity(object_name, ip=ip, cloud=cloud)
+        if by_encoded:
+            return by_encoded
+        return cls._find_by_unique_network_name(object_name, ip=ip)
+
+    @classmethod
+    def _find_by_encoded_network_identity(
+        cls,
+        object_name: str,
+        *,
+        ip: str,
+        cloud: int | None,
+    ) -> MonitorInstance | None:
+        from apps.monitor.services.node_mgmt import InstanceConfigService
+
+        if not InstanceConfigService._should_use_network_device_identity_adapter(object_name):
+            return None
+        hits: list[MonitorInstance] = []
+        candidates = MonitorInstance.objects.filter(
+            is_deleted=False,
+            monitor_object__name=object_name,
+        ).select_related("monitor_object")
+        for instance in candidates:
+            encoded_cloud, encoded_ip = cls._network_identity_parts(instance)
+            if cls._normalize_network_identity_ip(encoded_ip) != ip:
+                continue
+            if cloud is not None and encoded_cloud is not None and int(encoded_cloud) != int(cloud):
+                continue
+            hits.append(instance)
+            if len(hits) > 1:
+                return None
+        return hits[0] if hits else None
+
+    @classmethod
+    def _find_by_unique_network_name(cls, object_name: str, *, ip: str) -> MonitorInstance | None:
+        from apps.monitor.services.node_mgmt import InstanceConfigService
+
+        if not InstanceConfigService._should_use_network_device_identity_adapter(object_name):
+            return None
+        suffix = object_name.strip().lower()
+        names = {ip, f"{ip}-{suffix}"}
+        matches = list(
+            MonitorInstance.objects.filter(
+                name__in=names,
+                is_deleted=False,
+                monitor_object__name=object_name,
+            ).select_related(
+                "monitor_object"
+            )[:2]
         )
+        return matches[0] if len(matches) == 1 else None
+
+    @classmethod
+    def _normalize_network_identity_ip(cls, value: str | None) -> str | None:
+        if not value:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        match = _IPV4_WITH_OPTIONAL_SUFFIX.fullmatch(text)
+        return match.group(1) if match else text
+
+    @classmethod
+    def _network_identity_parts(cls, instance: MonitorInstance) -> tuple[int | None, str | None]:
+        if instance.ip:
+            return instance.cloud_region_id, str(instance.ip)
+        try:
+            logical = normalize_instance_identity(instance.id)["logical_instance_value"]
+        except ValueError:
+            return None, None
+        padded = logical + "=" * ((4 - len(logical) % 4) % 4)
+        try:
+            decoded = base64.urlsafe_b64decode(padded.encode("ascii")).decode("utf-8")
+        except Exception:
+            return None, None
+        if ":" not in decoded:
+            return None, None
+        cloud_part, ip_part = decoded.split(":", 1)
+        ip_part = ip_part.strip()
+        try:
+            encoded_cloud = int(cloud_part)
+        except (TypeError, ValueError):
+            encoded_cloud = None
+        return encoded_cloud, ip_part or None
 
     @classmethod
     def _find_by_ip_cloud(cls, ip: str, cloud: int) -> MonitorInstance | None:
-        return (
-            MonitorInstance.objects.filter(
-                ip=ip,
-                cloud_region_id=cloud,
-                is_deleted=False,
-                monitor_object__name=HOST_OBJECT_NAME,
-            )
-            .select_related("monitor_object")
-            .first()
-        )
+        return cls._find_by_type_identity({"ip": ip, "cloud_region_id": cloud, "model_id": "host"})
 
     @classmethod
     def _resolve_monitor_object(cls, raw: dict[str, Any]) -> MonitorObject:
@@ -696,13 +1216,12 @@ class MonitorModuleIngestService:
                 return obj
             raise ValueError(f"monitor_object_id not found: {object_id!r}")
 
-        obj = MonitorObject.objects.filter(name=HOST_OBJECT_NAME).first()
+        model_id = cls._resolve_cmdb_model_id(raw)
+        object_name = CMDB_MODEL_TO_MONITOR_OBJECT.get(model_id, HOST_OBJECT_NAME)
+        obj = MonitorObject.objects.filter(name=object_name).first()
         if obj:
             return obj
-        raise ValueError(
-            f"monitor object {HOST_OBJECT_NAME!r} not found; "
-            "provide raw.monitor_object_id or create Host monitor object"
-        )
+        raise ValueError(f"monitor object {object_name!r} not found; provide raw.monitor_object_id or create the monitor object")
 
     @classmethod
     def _extract_ip(cls, raw: dict[str, Any]) -> str | None:
@@ -773,11 +1292,7 @@ class MonitorModuleIngestService:
         *,
         operator: str,
     ) -> None:
-        existing = set(
-            MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list(
-                "organization", flat=True
-            )
-        )
+        existing = set(MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True))
         for org_id in org_ids:
             if org_id in existing:
                 continue

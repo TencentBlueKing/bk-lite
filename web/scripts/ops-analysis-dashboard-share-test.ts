@@ -70,7 +70,11 @@ assert.match(shareAction, /createShare\(resourceType, resourceId\)/);
 assert.match(shareAction, /t\(['"]dashboard\.shareLinkCopied['"]\)/);
 assert.match(shareAction, /t\(['"]dashboard\.shareCopyFailed['"]\)/);
 assert.match(shareAction, /t\(['"]dashboard\.shareCreateFailed['"]\)/);
-assert.match(shareAction, /Exclude<CanvasShareResourceType,\s*['"]report['"]>/);
+assert.doesNotMatch(
+  shareAction,
+  /Exclude<CanvasShareResourceType,\s*['"]report['"]>/,
+);
+assert.match(shareAction, /function useCanvasShareAction\(resourceType: CanvasShareResourceType\)/);
 
 const screenToolbar = fs.readFileSync(
   'src/app/ops-analysis/(pages)/view/screen/components/screenToolbar.tsx',
@@ -110,7 +114,14 @@ assert.match(topologyPage, /useCanvasShareAction\(['"]topology['"]\)/);
 assert.match(architectureToolbar, /onOpenShare/);
 assert.match(architectureToolbar, /!shareMode && !isEditMode && onOpenShare/);
 assert.match(architecturePage, /useCanvasShareAction\(['"]architecture['"]\)/);
-assert.doesNotMatch(reportPage, /useCanvasShareAction|onOpenShare|ShareAltOutlined/);
+const reportToolbar = fs.readFileSync(
+  'src/app/ops-analysis/(pages)/view/report/components/reportToolbar.tsx',
+  'utf8',
+);
+assert.match(reportPage, /useCanvasShareAction\(['"]report['"]\)/);
+assert.match(reportPage, /onOpenShare/);
+assert.match(reportToolbar, /ShareAltOutlined/);
+assert.match(reportToolbar, /!shareMode && !editing && onOpenShare/);
 
 assert.match(tokenPage, /prepareShareToken/);
 assert.match(tokenPage, /share\/continue\?state=/);
@@ -118,6 +129,12 @@ assert.doesNotMatch(tokenPage, /callbackUrl: window\.location\.href/);
 assert.match(continuePage, /exchangeShare\(\{ state \}\)/);
 assert.match(sessionPage, /ShareModeProvider/);
 assert.match(sessionPage, /ShareDataSourceProvider/);
+assert.match(
+  sessionPage,
+  /DS_TYPES = new Set\(\[['"]dashboard['"], ['"]topology['"], ['"]screen['"], ['"]report['"]\]\)/,
+);
+assert.match(sessionPage, /case ['"]report['"]/);
+assert.doesNotMatch(sessionPage, /第一阶段不渲染 report/);
 assert.match(shareModeContext, /useShareMode/);
 assert.match(comTable, /useShareMode/);
 assert.match(comTable, /shareNavigationDisabled/);

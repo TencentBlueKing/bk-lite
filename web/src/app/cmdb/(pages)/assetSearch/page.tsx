@@ -21,11 +21,11 @@ import {
   Input,
   Tabs,
   Button,
-  Empty,
   Pagination,
   Checkbox,
   message,
 } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/cmdb/context/common';
 import { deepClone, getFieldItem } from '@/app/cmdb/utils/common';
@@ -35,8 +35,9 @@ import {
   useModelApi,
   useInstanceApi,
 } from '@/app/cmdb/api';
-import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
+import TagCapsuleGroup from '@/components/tag-capsule-group';
 import { normalizeTagValues } from '@/app/cmdb/utils/tag';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import { useRouter } from 'next/navigation';
 import { useUserInfoContext } from '@/context/userInfo';
 import dayjs from 'dayjs';
@@ -472,8 +473,8 @@ const AssetSearch = () => {
             key: key,
             label: properties.find((item) => item.attr_id === key)?.attr_name,
             children: value,
-            id: desc.inst_uuid || desc._id,
-            inst_uuid: desc.inst_uuid,
+            id: resolveCmdbInstUuid(desc.inst_uuid) || '',
+            inst_uuid: resolveCmdbInstUuid(desc.inst_uuid) || undefined,
           };
         })
         .filter((desc) => !!desc.label);
@@ -687,14 +688,21 @@ const AssetSearch = () => {
         key: key,
         label: propertyList.find((item) => item.attr_id === key)?.attr_name,
         children: value,
-        id: currentInst.inst_uuid || currentInst._id,
-        inst_uuid: currentInst.inst_uuid,
+        id: resolveCmdbInstUuid(currentInst.inst_uuid) || '',
+        inst_uuid: resolveCmdbInstUuid(currentInst.inst_uuid) || undefined,
       }))
       .filter((desc) => !!desc.label);
   }, [activeInstItem, currentModelData, propertyList]);
 
   const linkToDetail = () => {
     if (currentInstDetail.length === 0) return;
+    const instUuid = resolveCmdbInstUuid(
+      currentInstDetail[0]?.inst_uuid || currentInstDetail[0]?.id
+    );
+    if (!instUuid) {
+      message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+      return;
+    }
     const params: any = {
       icn: '',
       model_name:
@@ -702,7 +710,7 @@ const AssetSearch = () => {
         '--',
       model_id: activeTab,
       classification_id: '',
-      inst_uuid: currentInstDetail[0]?.inst_uuid || currentInstDetail[0]?.id || '',
+      inst_uuid: instUuid,
       inst_name: currentInstDetail.find(
         (title: InstDetailItem) => title.key === 'inst_name'
       )?.children,
@@ -740,12 +748,17 @@ const AssetSearch = () => {
   };
 
   const openFollowedAsset = (item: FollowedAssetViewItem) => {
+    const instUuid = resolveCmdbInstUuid(item.inst_uuid);
+    if (!instUuid) {
+      message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+      return;
+    }
     const params: any = {
       icn: item.icn || '',
       model_name: item.model_name || '',
       model_id: item.model_id,
       classification_id: item.classification_id || '',
-      inst_uuid: item.inst_uuid,
+      inst_uuid: instUuid,
       inst_name: item.inst_name,
     };
     router.push(`/cmdb/assetData/detail/baseInfo?${new URLSearchParams(params).toString()}`);
@@ -920,7 +933,7 @@ const AssetSearch = () => {
                   onChange={onTabChange}
                 />
               ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                <CompactEmptyState description={t('common.noData')} />
               )}
             </div>
           </div>

@@ -1,12 +1,10 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import ChartSurface from '@/components/chart-surface';
 import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
-import {
-  getOpsChartTheme,
-  randomColorForLegend,
-  resolveOpsChartThemeName,
-} from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
+import { randomColorForLegend } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
+import { getOpsChartThemeByMode } from '@/app/ops-analysis/utils/chartTheme';
+import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import {
   normalizeRadarRange,
   resolveRadarSeriesData,
@@ -27,9 +25,8 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
   onReady,
 }) => {
   const { t } = useTranslation();
-  const themeName = resolveOpsChartThemeName();
-  const chartTheme = getOpsChartTheme(themeName);
-  const seriesColor = randomColorForLegend(themeName)[0];
+  const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
+  const seriesColor = randomColorForLegend()[0];
   const radarConfig = config?.radar;
   const range = normalizeRadarRange(radarConfig, {
     gaugeMin: config?.gaugeMin,
@@ -41,19 +38,21 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
     [config?.selectedFields, radarConfig, rawData],
   );
   const hasData = radarSeries.indicatorLabels.length > 0;
-
-  useEffect(() => {
-    if (!loading) {
-      onReady?.(hasData);
-    }
-  }, [hasData, loading, onReady]);
+  const { onEvents } = useEchartsFinishedReady({
+    loading,
+    isDataReady: hasData,
+    onReady,
+  });
 
   const option = useMemo(
     () => ({
       tooltip: {
         trigger: 'item',
+        confine: true,
         backgroundColor: chartTheme.tooltipBackgroundColor,
+        borderWidth: 1,
         borderColor: chartTheme.tooltipBorderColor,
+        extraCssText: `box-shadow: ${chartTheme.tooltipShadow};`,
         textStyle: { color: chartTheme.tooltipTextColor },
       },
       radar: {
@@ -96,6 +95,7 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
       chartTheme.splitLineColor,
       chartTheme.tooltipBackgroundColor,
       chartTheme.tooltipBorderColor,
+      chartTheme.tooltipShadow,
       chartTheme.tooltipTextColor,
       radarSeries.indicatorLabels,
       radarSeries.indicatorValues,
@@ -121,7 +121,11 @@ const OpsAnalysisRadar: React.FC<OpsAnalysisRadarProps> = ({
         </div>
       ) : null}
       <div className="min-h-0 flex-1">
-        <ReactEcharts option={option} style={{ height: '100%', width: '100%' }} />
+        <ReactEcharts
+          option={option}
+          onEvents={onEvents}
+          style={{ height: '100%', width: '100%' }}
+        />
       </div>
     </ChartSurface>
   );

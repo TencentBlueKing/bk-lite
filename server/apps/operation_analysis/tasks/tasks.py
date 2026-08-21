@@ -164,7 +164,9 @@ def rescan_pending_excel_materializations_task(*, older_than_seconds: int = 60, 
     from django.utils import timezone
 
     from apps.core.logger import operation_analysis_logger as logger
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
     from apps.operation_analysis.models.excel_materialization_models import ExcelMaterializationSlot
+    from apps.operation_analysis.services.excel_materialize import sweep_abandoned_excel_materializations
     from apps.operation_analysis.tasks.tasks import materialize_excel_candidate_task
 
     cutoff = timezone.now() - timedelta(seconds=max(15, int(older_than_seconds)))
@@ -173,6 +175,7 @@ def rescan_pending_excel_materializations_task(*, older_than_seconds: int = 60, 
             role=ExcelMaterializationSlot.ROLE_CANDIDATE,
             status=ExcelMaterializationSlot.STATUS_PENDING,
             updated_at__lte=cutoff,
+            datasource__source_type=DataSourceAPIModel.SOURCE_TYPE_EXCEL,
         )
         .order_by("id")
         .values_list("id", flat=True)[: max(1, int(limit))]
@@ -188,4 +191,8 @@ def rescan_pending_excel_materializations_task(*, older_than_seconds: int = 60, 
                 slot_id,
                 type(exc).__name__,
             )
-    return {"scanned": len(pending), "enqueued": enqueued}
+    return {
+        "scanned": len(pending),
+        "enqueued": enqueued,
+        "sweep": sweep_abandoned_excel_materializations(limit=limit),
+    }

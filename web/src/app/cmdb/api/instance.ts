@@ -51,19 +51,19 @@ export const useInstanceApi = () => {
   const getApplicationResourceInstances = (
     modelId: string,
     instUuid: string,
-    nodeIds: string[]
+    nodeUuids: string[]
   ) => post(
     `/cmdb/api/instance/application_resource_instances/${modelId}/${instUuid}/`,
-    { node_ids: nodeIds }
+    { node_uuids: nodeUuids }
   );
 
   const exportApplicationResourceInstances = (
     modelId: string,
     instUuid: string,
-    nodeIds: string[]
+    nodeUuids: string[]
   ) => post(
     `/cmdb/api/instance/application_resource_export/${modelId}/${instUuid}/`,
-    { node_ids: nodeIds },
+    { node_uuids: nodeUuids },
     { responseType: 'blob' }
   );
 
@@ -96,6 +96,9 @@ export const useInstanceApi = () => {
   // 获取实例代理列表
   const getInstanceProxys = (params?: any) =>
     get('/cmdb/api/instance/list_proxys/', { params });
+
+  const pushToMonitor = (instUuid: string) =>
+    post(`/cmdb/api/instance/${instUuid}/push_to_monitor/`);
 
   // 获取模型实例数量
   const getModelInstanceCount = () =>
@@ -173,6 +176,39 @@ export const useInstanceApi = () => {
   const getIpamView = (instUuid: string) =>
     get(`/cmdb/api/instance/ipam_view/${instUuid}/`);
 
+  const saveIpamIp = (params: {
+    subnet_inst_uuid: string;
+    ip_addr: string;
+    ip_allocated_status: string;
+    ip_status?: string;
+    ip_type?: string;
+    ip_user?: string[];
+    mac?: string;
+    description?: string;
+  }) => post('/cmdb/api/instance/ipam_ip/', params);
+
+  const saveRackRoomLayout = (params: {
+    action: string;
+    scope: 'room' | 'rack';
+    container_inst_uuid: string;
+    inst_uuid?: string;
+    model_id?: string;
+    instance_info?: Record<string, unknown>;
+    row?: number;
+    col?: number;
+    u_start?: number;
+    u_size?: number;
+  }) => post('/cmdb/api/instance/rack_room_layout/', params);
+
+  const getRackRoomLayoutCandidates = (params: {
+    scope: 'room' | 'rack';
+    container_inst_uuid: string;
+    model_id: string;
+    page?: number;
+    page_size?: number;
+    search?: string;
+  }) => get('/cmdb/api/instance/rack_room_layout_candidates/', { params });
+
   return {
     searchInstances,
     fulltextSearchInstances,
@@ -195,6 +231,7 @@ export const useInstanceApi = () => {
     deleteInstance,
     batchDeleteInstances,
     getInstanceProxys,
+    pushToMonitor,
     getModelInstanceCount,
     getInstanceShowFieldDetail,
     setInstanceShowFieldSettings,
@@ -208,5 +245,8 @@ export const useInstanceApi = () => {
     deleteFile,
     getFileUrl,
     getIpamView,
+    saveIpamIp,
+    saveRackRoomLayout,
+    getRackRoomLayoutCandidates,
   };
 };

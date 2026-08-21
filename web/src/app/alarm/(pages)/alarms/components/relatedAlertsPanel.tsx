@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Card, Empty, Select, Space, Spin, Table, Tag, Tooltip, message } from 'antd';
+import { Alert, Button, Card, Select, Space, Spin, Table, Tag, Tooltip, message } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import type { ColumnsType } from 'antd/es/table';
 import { InfoCircleOutlined, LinkOutlined, PlusOutlined } from '@ant-design/icons';
 
@@ -247,7 +248,7 @@ const RelatedAlertsPanel = ({ alert, onRefresh }: Props) => {
           <Spin />
         </div>
       ) : !data?.items?.length ? (
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('alarms.noRelatedAlerts')} />
+        <CompactEmptyState description={t('alarms.noRelatedAlerts')} />
       ) : (
         <>
           <div className="space-y-5">

@@ -207,7 +207,7 @@ export const InitNode: React.FC<TopoDataProps> = ({
           let isBidirectional = false;
 
           // 获取子节点的ID
-          const childId = child._id.toString();
+          const childId = child.inst_uuid;
 
           // 跳过父节点本身
           if (childId === nodeId) return;
@@ -407,7 +407,7 @@ export const InitNode: React.FC<TopoDataProps> = ({
       // 遍历子节点以显示或隐藏节点
       children.forEach((child: NodeData) => {
         // 获取子节点，并获取子节点的前序节点数组
-        const childNode = graph?.getCellById(child._id.toString());
+        const childNode = graph?.getCellById(child.inst_uuid);
         const child_all_predecessors = graph?.getPredecessors(childNode)?.map((item: any) => item.id);
 
         // 如果子节点存在，则获取子节点数据
@@ -514,9 +514,9 @@ export const InitNode: React.FC<TopoDataProps> = ({
       }>;
     }
   ) => {
-    if (!node._id) return;
+    if (!node.inst_uuid) return;
 
-    const id = node._id.toString();
+    const id = node.inst_uuid;
     if (!levelNodes[level]) levelNodes[level] = [];
 
     levelNodes[level].push({ id, parentId, node });
@@ -615,10 +615,10 @@ export const InitNode: React.FC<TopoDataProps> = ({
     edges: any[],
     layoutInfo: { hasSrc: boolean; hasDst: boolean }
   ) => {
-    if (!node._id) return;
+    if (!node.inst_uuid) return;
 
     // 注意node对象是Cell对象，不是数据对象
-    const id = node._id.toString();
+    const id = node.inst_uuid;
     const has_more = !!node.children?.length;
     const position = nodePositions[id];
     const { hasSrc, hasDst } = layoutInfo;

@@ -11,7 +11,6 @@ import MetricCard from '@/features/monitor/metric-card';
 import MetricChartSheet from '@/features/monitor/metric-chart-sheet';
 import { getMonitorInstance, listEffectivePlugins, listMetricDefinition } from '@/features/monitor/adapter';
 import { recordRecentView } from '@/features/monitor/recent-views-storage';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { monitorRequestErrorKind, resolveMonitorReportingStatus, type MetricGroup, type MonitorMetric, type MonitorPlugin } from '@/features/monitor/model';
 import MonitorObjectIcon from '@/features/monitor/object-icon-image';
 import { useAuth } from '@/context/auth';
@@ -61,7 +60,7 @@ function DetailMetricsSkeleton({ label }: { label: string }) {
 
 function MonitorDetailContent() {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
+  const { userInfo, currentTeamId } = useAuth();
   const params = useSearchParams();
   const objectId = Number(params.get('objectId'));
   const objectName = params.get('objectName') || '--';
@@ -187,8 +186,8 @@ function MonitorDetailContent() {
   useEffect(() => {
     if (!objectId || !instanceId || status !== 'ready' || !instanceResolved || !userInfo?.id || recordedRef.current) return;
     recordedRef.current = true;
-    recordRecentView(userInfo.id, getCurrentTeamCookie() || 'none', objectId, instanceId);
-  }, [instanceId, instanceResolved, objectId, status, userInfo?.id]);
+    recordRecentView(userInfo.id, currentTeamId || 'none', objectId, instanceId);
+  }, [currentTeamId, instanceId, instanceResolved, objectId, status, userInfo?.id]);
 
   const grouped = groups
     .map((group) => ({ group, metrics: metrics.filter((metric) => metric.groupId === group.id) }))
