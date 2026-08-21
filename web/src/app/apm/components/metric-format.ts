@@ -136,12 +136,15 @@ export function formatRelativeTime(iso: string | null | undefined, t?: Translate
   if (!iso) return '—';
   const when = dayjs(iso);
   if (!when.isValid()) return '—';
-  const mins = dayjs().diff(when, 'minute');
-  if (mins < 1) return t ? t('apm.common.justNow', '刚刚') : '刚刚';
+  const seconds = dayjs().diff(when, 'second');
+  // 未来时刻（时钟偏差）和不足 5 秒都收成刚刚，避免整列被“刚刚”抹平真实分钟/小时。
+  if (seconds < 5) return t ? t('apm.common.justNow', '刚刚') : '刚刚';
+  if (seconds < 60) return t ? t('apm.common.secondsAgo', '{count} 秒前', { count: seconds }) : `${seconds} 秒前`;
+  const mins = Math.floor(seconds / 60);
   if (mins < 60) return t ? t('apm.common.minutesAgo', '{count} 分钟前', { count: mins }) : `${mins} 分钟前`;
-  const hours = dayjs().diff(when, 'hour');
+  const hours = Math.floor(mins / 60);
   if (hours < 24) return t ? t('apm.common.hoursAgo', '{count} 小时前', { count: hours }) : `${hours} 小时前`;
-  const days = dayjs().diff(when, 'day');
+  const days = Math.floor(hours / 24);
   if (days < 30) return t ? t('apm.common.daysAgo', '{count} 天前', { count: days }) : `${days} 天前`;
   return new Intl.DateTimeFormat(formattingLocale(), {
     year: 'numeric',

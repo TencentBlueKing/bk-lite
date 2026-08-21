@@ -40,6 +40,7 @@ import HealthDot from '@/app/apm/components/health-dot';
 import {
   deriveHealth,
   formatClockTime,
+  formatDateTime,
   formatErrorRate,
   formatLatency,
   formatNumber,
@@ -309,16 +310,6 @@ export default function ApmServiceDetailPage() {
 
   const traceColumns: TableColumnsType<ApmTraceSummary> = [
     {
-      title: t('apm.explore.entryService', '入口服务'),
-      key: 'service',
-      render: (_, item) => (
-        <span className="flex min-w-0 items-center gap-1.5">
-          <HealthDot level={item.status === 'error' ? 1 : 5} />
-          <span className="truncate text-sm font-medium">{item.service_name}</span>
-        </span>
-      ),
-    },
-    {
       title: t('apm.explore.traceId', 'Trace ID'),
       dataIndex: 'trace_id',
       width: APM_TABLE_COLUMN_WIDTHS.traceId,
@@ -332,10 +323,24 @@ export default function ApmServiceDetailPage() {
       ),
     },
     {
+      title: t('apm.explore.entryService', '入口服务'),
+      key: 'service',
+      width: APM_TABLE_COLUMN_WIDTHS.entryService,
+      ellipsis: true,
+      render: (_, item) => (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <HealthDot level={item.status === 'error' ? 1 : 5} />
+          <span className="truncate text-sm font-medium">{item.service_name}</span>
+        </span>
+      ),
+    },
+    {
       title: t('apm.explore.resource', '资源'),
       dataIndex: 'root_span_name',
+      width: APM_TABLE_COLUMN_WIDTHS.resource,
+      ellipsis: true,
       responsive: ['md'],
-      render: (value) => <span className="font-mono text-xs">{value}</span>,
+      render: (value) => <span className="truncate font-mono text-xs">{value}</span>,
     },
     {
       title: t('apm.explore.totalDuration', '总耗时'),
@@ -371,7 +376,9 @@ export default function ApmServiceDetailPage() {
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       responsive: ['xl'],
       render: (value: string) => (
-        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value, t)}</span>
+        <span className="text-xs tabular-nums text-[var(--color-text-3)]" title={formatDateTime(value)}>
+          {formatRelativeTime(value, t)}
+        </span>
       ),
     },
   ];
