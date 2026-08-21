@@ -13,6 +13,16 @@ const sourceDir = path.join(rootDir, 'packages/webchat-ui/dist/browser');
 const targetDir = path.resolve(rootDir, '../web/public/webchat');
 
 const files = ['webchat.js', 'style.css'];
+const staticFiles = [
+  {
+    source: path.join(rootDir, 'packages/webchat-ui/src/assets/fab-dolphin.gif'),
+    name: 'fab-dolphin.gif',
+  },
+  {
+    source: path.join(rootDir, 'packages/webchat-ui/src/assets/fab-dolphin.png'),
+    name: 'fab-dolphin.png',
+  },
+];
 
 for (const file of files) {
   const source = path.join(sourceDir, file);
@@ -31,5 +41,17 @@ for (const file of files) {
   fs.copyFileSync(source, target);
   console.log(
     `[sync-web-public] ${path.relative(rootDir, source)} -> ${path.relative(rootDir, target)}`,
+  );
+}
+
+for (const asset of staticFiles) {
+  if (!fs.existsSync(asset.source)) {
+    console.error(`[sync-web-public] missing static asset: ${asset.source}`);
+    process.exit(1);
+  }
+  const target = path.join(targetDir, asset.name);
+  fs.copyFileSync(asset.source, target);
+  console.log(
+    `[sync-web-public] ${path.relative(rootDir, asset.source)} -> ${path.relative(rootDir, target)}`,
   );
 }
