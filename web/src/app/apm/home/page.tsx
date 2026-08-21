@@ -32,6 +32,7 @@ import Top5BarChart, {
 import {
   formatLatency,
   formatMetricEmpty,
+  formatPercentage,
   formatRelativeTime,
   formatThroughput,
 } from '@/app/apm/components/metric-format';
@@ -87,7 +88,7 @@ function softBg(token: string, pct = 12): string {
 
 function buildKpiCards(
   data: ApmDashboardKpiData,
-  t: (id: string, defaultMessage?: string) => string,
+  t: (id: string, defaultMessage?: string, values?: Record<string, string | number>) => string,
 ): KpiCardConfig[] {
   const spark = data.sparklines;
   return [
@@ -127,8 +128,8 @@ function buildKpiCards(
       icon: <ApiOutlined aria-hidden="true" />,
       iconBg: 'var(--color-primary-bg-active)',
       iconColor: 'var(--color-primary)',
-      value: data.request_rate === null ? formatMetricEmpty() : formatThroughput(data.request_rate),
-      unit: data.request_rate === null ? undefined : 'req/s',
+      value: data.request_rate === null ? formatMetricEmpty(false, t) : formatThroughput(data.request_rate, false, t),
+      unit: data.request_rate === null ? undefined : t('apm.common.requestsPerSecondUnit', 'req/s'),
       trend: toSparklineData(spark.request_rate),
       sparkColor: 'var(--color-primary)',
     },
@@ -138,8 +139,8 @@ function buildKpiCards(
       icon: <WarningOutlined aria-hidden="true" />,
       iconBg: softBg('var(--color-fail)', 10),
       iconColor: 'var(--color-fail)',
-      value: data.error_request_rate === null ? formatMetricEmpty() : data.error_request_rate.toFixed(1),
-      unit: data.error_request_rate === null ? undefined : '/s',
+      value: data.error_request_rate === null ? formatMetricEmpty(false, t) : formatThroughput(data.error_request_rate, false, t),
+      unit: data.error_request_rate === null ? undefined : t('apm.common.requestsPerSecondUnit', 'req/s'),
       trend: toSparklineData(spark.error_request_rate),
       sparkColor: 'var(--color-fail)',
     },
@@ -149,7 +150,7 @@ function buildKpiCards(
       icon: <FieldTimeOutlined aria-hidden="true" />,
       iconBg: softBg('var(--theme-color-status-warning)', 12),
       iconColor: 'var(--theme-color-status-warning)',
-      value: data.p95_ms === null ? formatMetricEmpty() : formatLatency(data.p95_ms),
+      value: data.p95_ms === null ? formatMetricEmpty(false, t) : formatLatency(data.p95_ms, false, t),
       trend: toSparklineData(spark.p95_ms),
       sparkColor: 'var(--theme-color-status-warning)',
     },
@@ -214,7 +215,7 @@ function FailedSection({ onRetry }: { onRetry: () => void }) {
 }
 
 function HealthLegendRow({ bucket, total }: { bucket: ApmDashboardHealthBucket; total: number }) {
-  const pct = total > 0 ? ((bucket.count / total) * 100).toFixed(0) : '0';
+  const pct = formatPercentage(total > 0 ? (bucket.count / total) * 100 : 0, 0);
   return (
     <Link
       href={HEALTH_LINK[bucket.key]}
@@ -226,7 +227,7 @@ function HealthLegendRow({ bucket, total }: { bucket: ApmDashboardHealthBucket; 
       />
       <span className="flex-1 font-medium text-[var(--color-text-1)]">{bucket.label}</span>
       <span className="font-semibold tabular-nums text-[var(--color-text-1)]">{bucket.count}</span>
-      <span className="min-w-9 text-right tabular-nums text-[var(--color-text-4)]">({pct}%)</span>
+      <span className="min-w-9 text-right tabular-nums text-[var(--color-text-4)]">({pct})</span>
     </Link>
   );
 }
@@ -256,13 +257,13 @@ function SloOverviewList({ items }: { items: ApmDashboardSloRow[] }) {
             {row.service_name}
           </Link>
           <span className="text-right text-sm tabular-nums text-[var(--color-text-3)]">
-            {row.objective.toFixed(row.objective % 1 === 0 ? 1 : 2)}%
+            {formatPercentage(row.objective, row.objective % 1 === 0 ? 1 : 2)}
           </span>
           <span
             className="text-right text-sm font-semibold tabular-nums"
             style={{ color: row.met ? 'var(--color-success)' : 'var(--color-fail)' }}
           >
-            {row.current_rate.toFixed(2)}%
+            {formatPercentage(row.current_rate, 2)}
           </span>
           <span className="flex justify-center">
             <StatusPill label={row.met ? t('apm.home.sloMet', '达成') : t('apm.home.sloUnmet', '未达成')} tone={row.met ? 'success' : 'danger'} />
@@ -504,7 +505,7 @@ export default function ApmHomePage() {
                           </div>
                           <StatusPill label={severity.label} tone={severity.tone} />
                           <span className="min-w-[60px] text-right text-xs tabular-nums text-[var(--color-text-4)]">
-                            {formatRelativeTime(alert.started_at)}
+                            {formatRelativeTime(alert.started_at, t)}
                           </span>
                         </div>
                       );
@@ -534,9 +535,9 @@ export default function ApmHomePage() {
                       name: row.service_name,
                       environment: row.environment,
                       value: row.value,
-                      sub: formatTopErrorSubValue(row.sub_value),
+                      sub: formatTopErrorSubValue(row.sub_value, t),
                     }))}
-                    valueFormatter={(value) => `${value.toFixed(2)}%`}
+                    valueFormatter={(value) => formatPercentage(value, 2)}
                     colorOf={errorRateBarColor}
                     subField="P95"
                   />
@@ -562,9 +563,9 @@ export default function ApmHomePage() {
                       name: row.service_name,
                       environment: row.environment,
                       value: row.value,
-                      sub: formatTopP95SubValue(row.sub_value),
+                      sub: formatTopP95SubValue(row.sub_value, t),
                     }))}
-                    valueFormatter={(value) => `${Math.round(value)}ms`}
+                    valueFormatter={(value) => formatLatency(value, false, t)}
                     colorOf={p95BarColor}
                     subField={t('apm.home.topP95Sub', '吞吐')}
                   />

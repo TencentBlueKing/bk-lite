@@ -46,6 +46,7 @@
 - 运行时：Go（`setup-worker.go`）。
 - 通信：NATS JetStream Object Store（大文件传输）+ HTTP 回调。
 - 能力：下载/校验/安装/升级 sidecar 包，事件流上报进度。
+- 升级停服：Linux 在覆盖解压前停止 `bk-sidecar.service`；Windows 在暂存包校验完成、激活新目录前停止 `sidecar` 服务。两端统一上报 `stop_service` 安装步骤；首次安装未发现服务时按幂等成功处理。
 
 ### Windows 事务式安装与升级【已实现】
 - GUI 安装器将共享 worker 解压至 NSIS 插件目录后运行，与目标安装目录隔离；该边界允许 worker 在不占用目标目录的前提下完成目录切换与激活。

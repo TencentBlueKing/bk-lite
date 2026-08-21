@@ -11,7 +11,6 @@ import {
   DatePicker,
   Tabs,
   Table,
-  Empty,
   Modal,
   Alert,
   Tag,
@@ -43,6 +42,7 @@ import { useAuth } from '@/context/auth';
 import useJobApi from '@/app/job/api';
 import { useExecutionStream } from '@/app/job/hooks/useExecutionStream';
 import { JobRecord, JobRecordStatus, JobRecordSource, JobRecordDetail, ExecutionTarget, Playbook, FileTreeNode, PlaybookFilePreview } from '@/app/job/types';
+import { normalizeExecutionTargets } from '@/app/job/utils/execution-targets';
 import { ColumnItem } from '@/types';
 import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
@@ -76,7 +76,7 @@ const JobRecordPage = () => {
   // Detail state
   const [detail, setDetail] = useState<JobRecordDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [selectedTargetId, setSelectedTargetId] = useState<number | null>(null);
+  const [selectedTargetId, setSelectedTargetId] = useState<string | number | null>(null);
   const [logSearch, setLogSearch] = useState('');
   const [autoScroll, setAutoScroll] = useState(false);
   const [scriptDrawerOpen, setScriptDrawerOpen] = useState(false);
@@ -164,46 +164,7 @@ const JobRecordPage = () => {
     }
     try {
       const res = await getJobRecordDetail(id);
-
-      // 兼容 API 返回的 execution_results 字段，映射为 execution_targets
-      if ((!res.execution_targets || res.execution_targets.length === 0) && res.execution_results?.length) {
-        res.execution_targets = res.execution_results.map((result: any, index: number) => ({
-          id: index,
-          target: index,
-          target_key: result.target_key != null ? String(result.target_key) : undefined,
-          target_name: result.name || result.ip,
-          target_ip: result.ip,
-          status: result.status,
-          status_display: result.status,
-          stdout: result.stdout || '',
-          stderr: result.stderr || result.error_message || '',
-          exit_code: result.exit_code,
-          started_at: result.started_at,
-          finished_at: result.finished_at,
-          error_message: result.error_message || '',
-        }));
-      }
-
-      // 任务刚创建时可能还没有 execution_results，但 target_list 已经存在
-      if ((!res.execution_targets || res.execution_targets.length === 0) && res.target_list?.length) {
-        res.execution_targets = res.target_list.map((target: any, index: number) => ({
-          id: Number(target.target_id || target.node_id || index),
-          target: Number(target.target_id || target.node_id || index),
-          target_key: String(target.node_id || target.target_id || index),
-          target_name: target.name || target.ip || `Target ${index + 1}`,
-          target_ip: target.ip || '-',
-          status: res.status,
-          status_display: res.status_display || res.status,
-          stdout: '',
-          stderr: '',
-          exit_code: 0,
-          started_at: res.started_at || null,
-          finished_at: res.finished_at || null,
-          error_message: '',
-        }));
-      }
-
-      setDetail(res);
+      setDetail(normalizeExecutionTargets(res));
     } finally {
       if (!silent) {
         setDetailLoading(false);
@@ -1048,7 +1009,7 @@ const JobRecordPage = () => {
                 const duration = getTargetDuration(target);
                 return (
                   <div
-                    key={target.id}
+                    key={target.target_key || target.id}
                     className={`cursor-pointer border-b border-(--color-border-1) px-4 py-3 transition-colors ${
                       isSelected ? 'bg-(--color-primary-bg)' : 'hover:bg-(--color-fill-2)'
                     }`}

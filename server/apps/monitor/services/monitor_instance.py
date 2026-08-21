@@ -148,7 +148,7 @@ class InstanceSearch:
             instance_id_strs = [str(iid) for iid in instance_ids]
             node_id_strs = [str(nid) for nid in node_ids]
 
-            # 从数据库查询 Cluster 和 Node 实例名称
+            # 从数据库查询 Cluster / Node 实例名称
             instance_name_map = {}
             node_name_map = {}
 
@@ -158,7 +158,6 @@ class InstanceSearch:
                 instance_name_map = {inst["id"]: inst["name"] for inst in cluster_instances}
 
             if node_id_strs:
-                # 查询 Node 实例名称
                 node_instances = MonitorInstance.objects.filter(id__in=node_id_strs).values("id", "name")
                 node_name_map = {inst["id"]: inst["name"] for inst in node_instances}
 
@@ -171,13 +170,19 @@ class InstanceSearch:
                 for iid in instance_ids
             ]
 
-            node_list = [
-                {
-                    "id": nid[-1],  # 原始 node 维度值（如 "worker-node-1"）
-                    "name": node_name_map.get(str(nid), nid[-1]),  # Node 名称
-                }
-                for nid in node_ids
-            ]
+            # 节点过滤：保留手动改名；仅当库内名等于自动发现拼接名（uuid__hostname）
+            # 时改展示 kube 节点名，避免 240px 下拉被截成一串 id。
+            seen_nodes = set()
+            node_list = []
+            for nid in node_ids:
+                node = nid[-1]
+                if node in seen_nodes:
+                    continue
+                seen_nodes.add(node)
+                db_name = node_name_map.get(str(nid))
+                auto_joined = "__".join(str(part) for part in nid)
+                display_name = node if (not db_name or db_name == auto_joined) else db_name
+                node_list.append({"id": node, "name": display_name})
             return {"cluster": instance_list, "node": node_list}
         elif monitor_obj_name == "Node":
             query = "count(prometheus_remote_write_kube_node_info) by (instance_id)"

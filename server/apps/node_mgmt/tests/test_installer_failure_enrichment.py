@@ -97,6 +97,20 @@ def test_normalize_failure_classifies_file_busy_and_extracts_target_path():
     assert failure["context"]["target_path"] == "/opt/fusion-collectors/bin/vector"
 
 
+def test_stop_service_event_uses_current_installer_protocol_position():
+    record = build_installer_event_record(
+        {
+            "step": "stop_service",
+            "status": "success",
+            "message": "Existing controller service stopped",
+        }
+    )
+
+    assert record["action"] == "stop_service"
+    assert record["details"]["step_index"] == 5
+    assert record["details"]["step_total"] == 9
+
+
 def test_normalize_failure_marks_manual_windows_recovery_as_non_retriable():
     failure = normalize_failure(
         message="Transactional Windows installation failed",
@@ -264,6 +278,40 @@ def test_clock_check_counts_toward_installer_progress_when_present():
     assert summary["completed_steps"] == ["fetch_session", "clock_check", "prepare_dirs"]
     assert summary["expected_steps"][1] == "clock_check"
     assert summary["missing_steps"] == ["extract", "write_config", "install"]
+
+
+def test_stop_service_counts_toward_current_installer_progress_when_present():
+    installer_steps = [
+        "fetch_session",
+        "clock_check",
+        "prepare_dirs",
+        "download",
+        "stop_service",
+        "extract",
+        "write_config",
+        "install",
+    ]
+    normalized = normalize_task_result_for_read(
+        {
+            "overall_status": "running",
+            "steps": [
+                {
+                    "action": action,
+                    "status": "success",
+                    "message": action,
+                    "details": {"installer_event": True, "raw_step": action},
+                }
+                for action in installer_steps
+            ]
+            + [{"action": "connectivity_check", "status": "running", "message": "waiting"}],
+        }
+    )
+
+    summary = normalized["installer_summary"]
+    assert summary["expected_steps"] == installer_steps
+    assert summary["expected_count"] == 8
+    assert summary["completed_count"] == 8
+    assert summary["missing_steps"] == []
 
 
 def test_normalize_failure_ignores_successful_status_messages():

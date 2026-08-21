@@ -113,7 +113,7 @@ describe('APM 调用链探索', () => {
     expect(screen.queryByRole('columnheader', { name: '入口服务 / Trace ID' })).toBeNull();
     expect(screen.getByText('快速筛选')).not.toBeNull();
     expect(screen.getByText('耗时分布')).not.toBeNull();
-    expect(screen.getByText(/traces\/s/)).not.toBeNull();
+    expect(screen.getByText(/条调用链\/秒/)).not.toBeNull();
   });
 
   it('可切换到聚合视图并按服务汇总', async () => {

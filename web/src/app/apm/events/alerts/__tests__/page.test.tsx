@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import ApmAlertsPage from '../page';
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+import { formatDateTime } from '@/app/apm/components/metric-format';
 
 const { chartRender } = vi.hoisted(() => ({ chartRender: vi.fn() }));
 
@@ -235,7 +236,7 @@ describe('APM 告警指标快照与事件原始数据', { timeout: 15000 }, () =
     const distributionLabel = chartRender.mock.calls.find(
       ([props]) => props.series[0]?.name === '严重',
     )?.[0].getXLabel({ time: '2026-08-17T16:41:03Z' });
-    expect(distributionLabel).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+    expect(distributionLabel).toBe(formatDateTime('2026-08-17T16:41:03Z', false));
     expect(screen.getByRole('img', { name: /活跃告警事件分布/ })).not.toBeNull();
     await user.click(screen.getByText('分布图'));
     expect(screen.queryByRole('img', { name: /活跃告警事件分布/ })).toBeNull();
@@ -337,7 +338,7 @@ describe('APM 告警指标快照与事件原始数据', { timeout: 15000 }, () =
     expect(await screen.findByText('评估值 / 当时阈值 / 生命周期事件')).not.toBeNull();
     expect(screen.getByText(/告警指标快照/)).not.toBeNull();
     expect(screen.getByText(/每点一次策略扫描/)).not.toBeNull();
-    expect(screen.getByText(/检测频率 1m/)).not.toBeNull();
+    expect(screen.getByText(/检测频率 1 分钟/)).not.toBeNull();
     await waitFor(() => expect(api.getAlertSnapshots).toHaveBeenCalledWith('a1'));
     await waitFor(() => {
       const snapshotChart = [...chartRender.mock.calls].reverse().find(
@@ -358,7 +359,7 @@ describe('APM 告警指标快照与事件原始数据', { timeout: 15000 }, () =
         }),
       ]);
       expect(snapshotChart.getXLabel(snapshotChart.data[0])).toBe('触发');
-      expect(snapshotChart.getXLabel(snapshotChart.data[1])).toBe('+1m');
+      expect(snapshotChart.getXLabel(snapshotChart.data[1])).toBe('+1 分钟');
     });
   });
 
