@@ -125,7 +125,7 @@ class JobExecutionViewSet(AuthViewSet):
         log_operation(request, "execute", "job", f"快速执行作业: {playbook_name}")
 
         return Response(
-            JobExecutionDetailSerializer(execution).data,
+            JobExecutionDetailSerializer(execution, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -171,7 +171,7 @@ class JobExecutionViewSet(AuthViewSet):
         log_operation(request, "execute", "job", "文件分发")
 
         return Response(
-            JobExecutionDetailSerializer(execution).data,
+            JobExecutionDetailSerializer(execution, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -267,6 +267,6 @@ class JobExecutionViewSet(AuthViewSet):
             return Response({"error": e.message}, status=e.status_code)
 
         return Response(
-            JobExecutionDetailSerializer(execution).data,
+            JobExecutionDetailSerializer(execution, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )

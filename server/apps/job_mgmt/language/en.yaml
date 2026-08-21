@@ -1,0 +1,11 @@
+choice:
+  job_type:
+    script: "Script Execution"
+    file_distribution: "File Distribution"
+    playbook: "Playbook"
+  trigger_source:
+    manual: "Manual Execution"
+    scheduled: "Scheduled Task"
+    api: "API Call"
+message:
+  manual_trigger_name: "[Manual trigger] {name}"
