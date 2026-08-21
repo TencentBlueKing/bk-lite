@@ -92,10 +92,15 @@ copies under `deploy/dist/bk-lite-kubernetes-collector/`:
   `value` (present renders `operator: Equal`, absent renders
   `operator: Exists` scoped to that key). A key-less wildcard toleration is
   not expressible; invalid input SHALL reject the whole render request.
-- When the parameter is omitted, the render SHALL inject exactly
-  `node-role.kubernetes.io/control-plane:NoSchedule` and
+- When the parameter is omitted or explicitly `null`, the render SHALL
+  inject exactly `node-role.kubernetes.io/control-plane:NoSchedule` and
   `node-role.kubernetes.io/master:NoSchedule`. An explicit empty list SHALL
   render no tolerations.
+- Rendered `key` and `value` scalars SHALL be quoted so YAML implicit typing
+  can never reinterpret them (`"null"` as a bare key parses to an empty key —
+  a wildcard toleration). `__` is rejected in `key`/`value` (template
+  placeholder reserved token), and the toleration injection SHALL be the last
+  placeholder substitution of the render.
 - Deployments SHALL NOT carry tolerations: central components follow the
   cluster's default scheduling semantics. A single-node cluster that keeps the
   control-plane taint is the administrator's call — removing the taint is the

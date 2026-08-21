@@ -274,6 +274,8 @@ def fail(message):
 def validate_key(key):
     if not isinstance(key, str) or not key:
         fail("Invalid tolerations: key is required and must be a non-empty string")
+    if "__" in key:
+        fail("Invalid tolerations: __ is reserved for template placeholders")
     if key.count("/") > 1:
         fail("Invalid tolerations: key has more than one /")
     if "/" in key:
@@ -287,7 +289,8 @@ def validate_key(key):
 
 
 raw = os.environ["TOLERATIONS_INPUT"]
-if raw == "":
+# 显式 null 与缺省等价（上游可选字段序列化为 null 是常态）；显式 [] 才是"不容忍任何污点"
+if raw in ("", "null"):
     items = DEFAULT_TOLERATIONS
 else:
     try:
@@ -315,6 +318,8 @@ else:
                 fail("Invalid tolerations: value must be a string")
             if value and not NAME_RE.fullmatch(value):
                 fail(f"Invalid tolerations: value {value!r} violates Kubernetes label-value rules")
+            if value is not None and "__" in value:
+                fail("Invalid tolerations: __ is reserved for template placeholders")
         items.append({"key": entry["key"], "effect": effect, "value": value})
 
 if not items:
@@ -325,7 +330,10 @@ for item in items:
     key = item["key"]
     effect = item["effect"]
     value = item.get("value")
-    lines.append(f"        - key: {key}")
+    # key 必须引号化输出：裸拼时 "null" 会被 YAML 解析为空 key（= 通配容忍），
+    # "on"/"123" 等会被隐式转型；json.dumps 保证永远是显式字符串标量
+    quoted_key = json.dumps(key)
+    lines.append(f"        - key: {quoted_key}")
     if value is None:
         lines.append("          operator: Exists")
     else:
@@ -508,8 +516,6 @@ render_k8s_config() {
     fi
 
     template=$(replace_placeholder "$template" "__IMAGE_REGISTRY_PREFIX__" "$image_registry_prefix")
-    # DaemonSet 容忍策略统一注入（resource 模板无 DaemonSet、无占位符，替换为 no-op）
-    template=$(replace_placeholder "$template" "__DS_TOLERATIONS__" "$ds_tolerations_yaml")
 
     if [ "$type" == "log" ]; then
         local log_mounts
@@ -521,6 +527,10 @@ render_k8s_config() {
         template=$(replace_placeholder "$template" "__INCLUDE_PATHS_GLOB_PATTERNS__" "$include_paths_yaml")
         template=$(replace_placeholder "$template" "__LOG_COLLECT_CONFIG_HASH__" "$config_hash")
     fi
+
+    # DaemonSet 容忍策略注入必须放在所有占位符替换的最后：
+    # 注入内容含用户输入，先注入会被后续替换二次展开（resource 模板无占位符，此处为 no-op）
+    template=$(replace_placeholder "$template" "__DS_TOLERATIONS__" "$ds_tolerations_yaml")
     
     # Base64 编码
     local cluster_name_b64=$(echo -n "$cluster_name" | base64 | tr -d '\n')

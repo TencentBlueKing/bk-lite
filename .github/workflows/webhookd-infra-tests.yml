@@ -1,0 +1,45 @@
+name: Webhookd Infra Tests
+
+# K8s 采集器渲染脚本与 manifest 合约测试。渲染测试会真实执行
+# agents/webhookd/infra/kubernetes.sh（依赖 bash + jq + python3 + pyyaml），
+# 合约测试静态解析模板/dist YAML。此前这些测试没有任何 CI 入口，
+# 容忍策略等渲染契约的回归只能靠本地手跑发现。
+on:
+  pull_request:
+    paths:
+      - 'agents/webhookd/**'
+      - 'deploy/dist/bk-lite-kubernetes-collector/**'
+      - '.github/workflows/webhookd-infra-tests.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'agents/webhookd/**'
+      - 'deploy/dist/bk-lite-kubernetes-collector/**'
+  workflow_dispatch:
+
+jobs:
+  infra-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agents/webhookd/infra
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # kubernetes.sh 内部以裸 `python` 调用解释器（与 python:3.12 运行镜像一致），
+      # CI runner 上需保证 python 可用
+      - name: Ensure python alias
+        run: python --version || sudo ln -s "$(command -v python3)" /usr/local/bin/python
+
+      - name: Install test dependencies
+        run: pip install pytest pyyaml
+
+      - name: Run webhookd infra tests
+        run: python3 -m pytest tests/ -q

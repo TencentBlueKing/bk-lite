@@ -27,6 +27,19 @@
 - Kubernetes 集群版本 >= 1.16
 - 集群节点需要有足够的资源（CPU、内存）
 - 已部署 bk-lite 监控平台或具备 NATS 消息队列服务
+- **单节点集群 / 控制平面跑业务的集群**：本包中的 Deployment（kube-state-metrics、
+  telegraf-deployment、vmagent）不携带任何污点容忍，遵循集群默认调度语义。若集群
+  唯一可调度节点仍保留 `node-role.kubernetes.io/control-plane:NoSchedule` 污点，
+  这些组件会 Pending——请按 Kubernetes 标准实践先移除该污点：
+
+  ```bash
+  kubectl taint nodes --all node-role.kubernetes.io/control-plane-
+  ```
+
+  DaemonSet（cadvisor、telegraf-daemonset、vector-daemonset）已内置
+  control-plane/master 两条精确容忍，无需处理；如集群还有其他自定义污点节点需要
+  纳入节点级采集，请在各 DaemonSet 的 `tolerations` 处按注释追加**精确**容忍项，
+  不要使用无 key 的通配容忍（会穿透 cordon 与专用节点隔离）
 
 ## 安装部署
 
