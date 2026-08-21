@@ -574,7 +574,7 @@ export default function RiskExecutionPage() {
             search: value,
             taskType: taskType as ExecutionListQuery['taskType'],
           });
-        }} className="w-[220px]" />
+        }} className="w-[220px]" enterButton />
         <Select allowClear placeholder={t('patchManager.execution.taskType')} value={taskType} className="w-[130px]" options={[{ label: t('patchManager.risk.remediate'), value: 'install' }, { label: t('patchManager.risk.reboot'), value: 'reboot' }]} onChange={(value) => {
           setTaskType(value);
           setPagination((current) => ({ ...current, current: 1 }));
@@ -641,7 +641,7 @@ export default function RiskExecutionPage() {
     >
       {detailLoading && !detailTask ? <Spin className="m-auto" /> : <>
         <div className="w-[310px] overflow-auto border-r border-[var(--color-border-1)] p-3">
-          <Input.Search placeholder={t('patchManager.execution.riskSearch')} value={riskSearch} onChange={(event) => setRiskSearch(event.target.value)} className="mb-3" />
+          <Input.Search placeholder={t('patchManager.execution.riskSearch')} value={riskSearch} onChange={(event) => setRiskSearch(event.target.value)} className="mb-3" enterButton />
           {filteredRiskItems.length ? filteredRiskItems.map((item) => {
             const selected = item.id === selectedRiskId;
             return <div

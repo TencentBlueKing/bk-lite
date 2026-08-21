@@ -781,6 +781,8 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
                   className="w-[220px]"
                   placeholder={t('patchManager.libraryPage.selectSource')}
                   virtual
+                  showSearch
+                  optionFilterProp="label"
                   value={selectedSourceId ?? undefined}
                   onChange={handleSourceChange}
                   options={sources.map((s) => ({ value: s.id, label: `${s.name} (${s.source_type_display || s.source_type})` }))}
@@ -791,6 +793,7 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
                   onChange={(e) => setCandidateSearch(e.target.value)}
                   onSearch={(v) => handleCandidateSearch(v)}
                   className="w-[200px]"
+                  enterButton
                 />
               </FilterToolbar>
             </div>
