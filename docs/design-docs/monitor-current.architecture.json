@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Monitor 模块现状架构",
+    "output": "monitor-current.architecture.html",
+    "animation": "none",
+    "quality_profile": "showcase",
+    "viewBox": [1500, 830],
+    "views": [
+      {
+        "id": "control-plane",
+        "label": "控制与查询面",
+        "focus": ["clients", "protocol_adapters", "catalog", "onboarding", "observation", "policy_engine", "alerting"],
+        "note": "Monitor 负责目录、接入、查询、策略和告警，不直接承担指标写入。"
+      },
+      {
+        "id": "metric-plane",
+        "label": "指标数据面",
+        "focus": ["metric_pipeline", "victoria_metrics", "observation", "policy_engine"],
+        "note": "采集器经 NATS 与 Fusion Collector 写入 VictoriaMetrics，Monitor 只读查询。"
+      },
+      {
+        "id": "external-state",
+        "label": "跨系统状态",
+        "focus": ["onboarding", "node_runtime", "alerting", "delivery_systems", "monitor_db"],
+        "note": "采集配置、告警通知和生命周期同步跨越本地事务与远程系统。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "clients",
+      "type": "external",
+      "label": "访问与触发方",
+      "sublabel": "Web / Open API / 内部服务",
+      "pos": [40, 360],
+      "size": [180, 76],
+      "tag": "HTTP + NATS"
+    },
+    {
+      "id": "protocol_adapters",
+      "type": "backend",
+      "label": "协议与任务适配",
+      "sublabel": "ViewSet / NATS Handler / Celery",
+      "pos": [280, 360],
+      "size": [220, 76]
+    },
+    {
+      "id": "catalog",
+      "type": "backend",
+      "label": "Catalog",
+      "sublabel": "对象 / 插件 / 指标 / 模板",
+      "pos": [590, 105],
+      "size": [210, 76],
+      "tag": "能力定义"
+    },
+    {
+      "id": "onboarding",
+      "type": "backend",
+      "label": "Onboarding",
+      "sublabel": "实例接入 / 预检 / 配置下发",
+      "pos": [590, 245],
+      "size": [210, 76],
+      "tag": "期望状态"
+    },
+    {
+      "id": "observation",
+      "type": "backend",
+      "label": "Observation",
+      "sublabel": "实例发现 / 状态 / 指标查询",
+      "pos": [590, 385],
+      "size": [210, 76],
+      "tag": "观测投影"
+    },
+    {
+      "id": "policy_engine",
+      "type": "backend",
+      "label": "Policy Engine",
+      "sublabel": "策略 / 调度 / 扫描 / 基线",
+      "pos": [590, 525],
+      "size": [210, 76],
+      "tag": "异步执行"
+    },
+    {
+      "id": "alerting",
+      "type": "backend",
+      "label": "Alerting",
+      "sublabel": "事件 / 告警 / 快照 / 生命周期",
+      "pos": [590, 665],
+      "size": [210, 76],
+      "tag": "告警事实"
+    },
+    {
+      "id": "monitor_db",
+      "type": "database",
+      "label": "Monitor DB",
+      "sublabel": "目录 / 实例 / 策略 / 事件告警",
+      "pos": [930, 525],
+      "size": [210, 76],
+      "tag": "管理事实"
+    },
+    {
+      "id": "node_runtime",
+      "type": "external",
+      "label": "NodeMgmt + Executor",
+      "sublabel": "配置内容 / 目标主机预检",
+      "pos": [930, 245],
+      "size": [210, 76],
+      "tag": "远程副作用"
+    },
+    {
+      "id": "victoria_metrics",
+      "type": "database",
+      "label": "VictoriaMetrics",
+      "sublabel": "指标事实 / status_query",
+      "pos": [930, 385],
+      "size": [210, 76],
+      "tag": "时序事实"
+    },
+    {
+      "id": "delivery_systems",
+      "type": "external",
+      "label": "通知与告警中心",
+      "sublabel": "SystemMgmt / Alert Center / S3",
+      "pos": [930, 665],
+      "size": [210, 76],
+      "tag": "外部投影"
+    },
+    {
+      "id": "metric_pipeline",
+      "type": "messagebus",
+      "label": "指标写入数据面",
+      "sublabel": "采集器 → NATS → Fusion Collector",
+      "pos": [1220, 385],
+      "size": [230, 76],
+      "tag": "metrics.*"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Django Monitor 模块",
+      "wraps": ["protocol_adapters", "catalog", "onboarding", "observation", "policy_engine", "alerting", "monitor_db"],
+      "pad": 26
+    },
+    {
+      "kind": "region",
+      "label": "外部运行与数据系统",
+      "wraps": ["node_runtime", "victoria_metrics", "delivery_systems", "metric_pipeline"],
+      "pad": 24
+    }
+  ],
+  "connections": [
+    { "id": "invoke_adapters", "from": "clients", "to": "protocol_adapters", "label": "HTTP / NATS", "variant": "emphasis" },
+    { "id": "catalog_api", "from": "protocol_adapters", "to": "catalog", "label": "目录与配置 API" },
+    { "id": "catalog_to_onboarding", "from": "catalog", "to": "onboarding" },
+    { "id": "onboarding_to_node", "from": "onboarding", "to": "node_runtime", "label": "RPC 预检与配置下发", "variant": "security", "labelAt": [865, 335] },
+    { "id": "query_metrics", "from": "observation", "to": "victoria_metrics", "label": "PromQL 查询", "variant": "emphasis", "labelAt": [865, 480] },
+    { "id": "observation_to_policy", "from": "observation", "to": "policy_engine" },
+    { "id": "policy_to_alerting", "from": "policy_engine", "to": "alerting" },
+    { "id": "policy_state", "from": "policy_engine", "to": "monitor_db", "label": "策略与基线", "labelAt": [865, 515] },
+    { "id": "alert_state", "from": "alerting", "to": "monitor_db", "label": "事务写入事件告警", "fromSide": "right", "toSide": "bottom", "labelAt": [865, 640] },
+    { "id": "alert_delivery", "from": "alerting", "to": "delivery_systems", "label": "on_commit 通知与补偿", "variant": "dashed", "labelAt": [865, 760] },
+    { "id": "pipeline_write", "from": "metric_pipeline", "to": "victoria_metrics", "label": "Influx 写入", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "模块定位",
+      "items": [
+        "Monitor 是控制面与查询面，不是指标写入服务",
+        "HTTP、NATS、Celery 是入口适配，不应各自实现业务规则"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "事实边界",
+      "items": [
+        "DB 保存管理事实，VictoriaMetrics 保存指标事实",
+        "NodeMgmt 持有配置内容，外部告警中心是生命周期投影"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "结构压力",
+      "items": [
+        "本地事务无法覆盖远程 RPC 副作用",
+        "管理实例、观测实例、派生实例需要明确分型"
+      ]
+    }
+  ]
+}
