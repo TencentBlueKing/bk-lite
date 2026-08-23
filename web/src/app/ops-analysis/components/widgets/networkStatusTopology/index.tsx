@@ -38,6 +38,7 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import {
+  applyNetworkStatusTopologyLayoutPatch,
   applyNodePositionsToLayout,
   buildPersistedNetworkStatusTopologyConfig,
   canPersistNetworkStatusTopologyLayout,
@@ -1050,11 +1051,16 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
         nodeIds,
         linkIds,
       );
-      emitLayoutChange({
-        instUuids: selectedInstUuids,
-        nodeLimit,
-        ...pruned,
-      });
+      emitLayoutChange(
+        applyNetworkStatusTopologyLayoutPatch(
+          {
+            ...topoConfig,
+            instUuids: selectedInstUuids,
+            nodeLimit,
+          },
+          pruned,
+        ),
+      );
     },
     [
       canvasLinks,
