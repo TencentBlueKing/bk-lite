@@ -155,7 +155,13 @@
       "conditionValue": "Comparison value",
       "addCondition": "Add condition",
       "noCondition": "No additional condition",
-      "rootOrSource": "Root fields or source field"
+      "rootOrSource": "Root fields or source field",
+      "typeCopy": "Copy",
+      "typeSplit": "Split",
+      "typeKv": "Key-value",
+      "typeRegex": "Regex extract",
+      "typeRegexReplace": "Regex replace",
+      "typeJson": "JSON"
     },
     "integration": {
       "connect": "Connect",
