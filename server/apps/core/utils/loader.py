@@ -125,7 +125,7 @@ class LanguageLoader:
                         continue
                     lang_file = os.path.join(os.path.dirname(metrics_path), "language", f"{lang}.yaml")
                     if not os.path.isfile(lang_file):
-                        logger.warning(f"Plugin language missing: {lang_file}")
+                        logger.warning("Plugin language missing: %s", lang_file)
                         continue
                     try:
                         with open(lang_file, "r", encoding="utf-8") as f:
@@ -214,7 +214,7 @@ class LanguageLoader:
         result = self._deep_merge(result, enterprise)
 
         if not result:
-            logger.warning(f"No translations loaded for app={self.app} lang={lang}")
+            logger.warning("No translations loaded for app=%s lang=%s", self.app, lang)
         return result
 
     def _deep_merge(self, base: dict, override: dict) -> dict:
@@ -335,9 +335,9 @@ def preload_language_cache(apps: Optional[List[str]] = None, languages: Optional
                 logger.error(f"Failed to preload language cache {app}/{lang}: {e}")
 
     logger.info(
-        f"Language cache preload complete: "
-        f"{len(result['loaded'])} loaded, "
-        f"{len(result['skipped'])} skipped, "
-        f"{len(result['failed'])} failed"
+        "Language cache preload complete: %s loaded, %s skipped, %s failed",
+        len(result["loaded"]),
+        len(result["skipped"]),
+        len(result["failed"]),
     )
     return result

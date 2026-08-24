@@ -165,7 +165,7 @@ class S3JSONField(models.CharField):
                 setattr(model_instance, self.attname, uploaded_path)
                 self._register_cleanup_task(model_instance, previous_path, uploaded_path)
 
-                logger.debug(f"S3JSONField uploaded: {uploaded_path}")
+                logger.debug("S3JSONField uploaded: %s", uploaded_path)
                 return uploaded_path
 
             except Exception as e:
@@ -292,10 +292,10 @@ class S3JSONField(models.CharField):
         Returns:
             Python 对象（list 或 dict）
         """
-        logger.info(f"[S3JSONField] Loading from S3: {file_path}")
+        logger.info("[S3JSONField] Loading from S3: %s", file_path)
 
         if not file_path:
-            logger.warning(f"[S3JSONField] Empty file_path, returning None")
+            logger.warning("[S3JSONField] Empty file_path, returning None")
             return None
 
         try:
@@ -303,21 +303,21 @@ class S3JSONField(models.CharField):
             with self.storage.open(file_path, "rb") as f:
                 content_bytes = f.read()
 
-            logger.info(f"[S3JSONField] Read {len(content_bytes)} bytes from S3")
+            logger.info("[S3JSONField] Read %s bytes from S3", len(content_bytes))
 
             if not content_bytes:
-                logger.warning(f"S3 file is empty: {file_path}")
+                logger.warning("S3 file is empty: %s", file_path)
                 return None
 
             # 解压（智能检测）
             try:
                 # 尝试解压
                 json_bytes = gzip.decompress(content_bytes)
-                logger.info(f"[S3JSONField] Decompressed {len(content_bytes)} -> {len(json_bytes)} bytes")
+                logger.info("[S3JSONField] Decompressed %s -> %s bytes", len(content_bytes), len(json_bytes))
             except gzip.BadGzipFile:
                 # 不是 gzip 文件，使用原始内容
                 json_bytes = content_bytes
-                logger.info(f"[S3JSONField] Not gzipped, using raw content")
+                logger.info("[S3JSONField] Not gzipped, using raw content")
 
             # 解析 JSON
             json_str = json_bytes.decode("utf-8")
@@ -332,7 +332,7 @@ class S3JSONField(models.CharField):
             logger.error(f"Invalid JSON in S3 file {file_path}: {e}")
             return None
         except Exception as e:
-            logger.error(f"Failed to load from S3 {file_path}: {e}", exc_info=True)
+            logger.error("Failed to load from S3 %s: %s", file_path, e, exc_info=True)
             return None
 
     def get_prep_value(self, value):
@@ -432,7 +432,7 @@ class S3JSONFieldDescriptor:
             loaded_value = self.field._load_from_s3(value)
             if loaded_value is None:
                 # S3 加载失败时保留路径，避免后续 save 把 DB 中的引用清空
-                logger.warning(f"[S3JSONField] Load failed for {value}, preserving path reference")
+                logger.warning("[S3JSONField] Load failed for %s, preserving path reference", value)
                 return None
             instance.__dict__[self.field.attname] = loaded_value
             return loaded_value

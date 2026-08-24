@@ -87,7 +87,7 @@ class RequestTimingMiddleware(MiddlewareMixin):
 
         # 根据耗时和状态码选择日志级别
         if elapsed_time_ms > self.SLOW_REQUEST_THRESHOLD_MS:
-            logger.warning(f"Slow {log_message} (threshold: {self.SLOW_REQUEST_THRESHOLD_MS}ms)")
+            logger.warning("Slow %s (threshold: %sms)", log_message, self.SLOW_REQUEST_THRESHOLD_MS)
         elif status_code >= 500:
             logger.error(log_message)
         elif status_code >= 400:
