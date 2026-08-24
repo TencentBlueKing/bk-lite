@@ -296,7 +296,7 @@
         <span class="brand-mark" aria-hidden="true"></span>
         <div class="brand-copy">
           <h1>Server 后端模块架构中心</h1>
-          <p>13 个模块 · 39 张交互图 · 1 张全局路线图</p>
+          <p>13 个模块 · 40 张架构与链路图 · 1 张分析路线图</p>
         </div>
       </div>
       <nav id="viewTabs" class="view-tabs" aria-label="图件视角"></nav>
@@ -325,7 +325,10 @@
 
   <script>
     const catalog = [
-      { id: "overview", label: "全局路线图", views: { overview: ["路线图", "server-module-analysis-roadmap.architecture.html"] } },
+      { id: "overview", label: "系统总览", views: {
+        overall: ["总体架构", "server-overall.architecture.html"],
+        roadmap: ["分析路线图", "server-module-analysis-roadmap.architecture.html"]
+      } },
       { id: "monitor", label: "Monitor", views: {
         current: ["现状架构", "monitor-current.architecture.html"],
         core: ["核心数据流", "monitor-core.dataflow.html"],
@@ -402,7 +405,7 @@
     const openStandalone = document.getElementById("openStandalone");
     const themeToggle = document.getElementById("themeToggle");
 
-    let state = { module: "overview", view: "overview" };
+    let state = { module: "overview", view: "overall" };
 
     function readHash() {
       const [moduleId, viewId] = location.hash.slice(1).split("/");

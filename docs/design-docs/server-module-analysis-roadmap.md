@@ -21,6 +21,7 @@
 ## 2. 图件
 
 - 单页模块图导航：[server-module-architecture-hub.html](./server-module-architecture-hub.html)
+- Server 总体模块架构：[server-overall.architecture.html](./server-overall.architecture.html) · [JSON](./server-overall.architecture.json) · [PNG](./server-overall.architecture.light.png)
 - Archify 交互式路线图：[server-module-analysis-roadmap.architecture.html](./server-module-analysis-roadmap.architecture.html)
 - Archify 可维护规格：[server-module-analysis-roadmap.architecture.json](./server-module-analysis-roadmap.architecture.json)
 
