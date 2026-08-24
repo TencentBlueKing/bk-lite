@@ -31,12 +31,6 @@
           "name": "services"
         },
         {
-          "title": "部署",
-          "icon": "mulu",
-          "url": "/apm/services/deployments",
-          "name": "services"
-        },
-        {
           "url": "/apm/services/[serviceId]",
           "name": "service_detail",
           "isNotMenuItem": true
@@ -167,12 +161,6 @@
           "title": "SLO",
           "icon": "mulu",
           "url": "/apm/services/slo",
-          "name": "services"
-        },
-        {
-          "title": "Deployments",
-          "icon": "mulu",
-          "url": "/apm/services/deployments",
           "name": "services"
         },
         {

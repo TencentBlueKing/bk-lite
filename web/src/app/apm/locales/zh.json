@@ -712,16 +712,11 @@
       "endpointMeta": "{throughput} · P99 {latency}"
     },
     "deployments": {
-      "title": "部署",
-      "description": "发布由遥测 service.version 推断；接入 CI/CD 上报后将补充部署人与失败状态。",
-      "refresh": "刷新部署事件",
       "version": "版本",
       "deployedAt": "发布时间",
-      "deployedBy": "部署人",
       "source": "来源",
       "sourceInferred": "推断",
-      "sourceReported": "上报",
-      "empty": "暂无部署事件"
+      "sourceReported": "上报"
     },
     "slo": {
       "title": "SLO",

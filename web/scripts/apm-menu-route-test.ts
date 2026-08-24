@@ -34,13 +34,13 @@ assert.deepEqual(menu.zh[2].children?.flatMap((item) => item.title ? [item.title
 assert.deepEqual(menu.en[2].children?.flatMap((item) => item.title ? [item.title] : []), ['Traces', 'Endpoints', 'Errors']);
 assert.deepEqual(menu.zh[3].children?.flatMap((item) => item.title ? [item.title] : []), ['告警', '策略']);
 assert.deepEqual(menu.en[3].children?.flatMap((item) => item.title ? [item.title] : []), ['Alerts', 'Policies']);
-assert.deepEqual(menu.zh[1].children?.flatMap((item) => item.title ? [item.title] : []), ['服务', '服务拓扑', 'SLO', '部署']);
-assert.deepEqual(menu.en[1].children?.flatMap((item) => item.title ? [item.title] : []), ['Services', 'Service topology', 'SLO', 'Deployments']);
+assert.deepEqual(menu.zh[1].children?.flatMap((item) => item.title ? [item.title] : []), ['服务', '服务拓扑', 'SLO']);
+assert.deepEqual(menu.en[1].children?.flatMap((item) => item.title ? [item.title] : []), ['Services', 'Service topology', 'SLO']);
 assert.deepEqual(menu.zh[4].children?.flatMap((item) => item.title ? [item.title] : []), ['应用管理', '添加接入', '接入实例']);
 assert.deepEqual(menu.en[4].children?.flatMap((item) => item.title ? [item.title] : []), ['Applications', 'Add integration', 'Reporting instances']);
 assert.deepEqual(
   menu.zh[1].children?.flatMap((item) => item.title ? [item.url] : []),
-  ['/apm/services', '/apm/services/topology', '/apm/services/slo', '/apm/services/deployments'],
+  ['/apm/services', '/apm/services/topology', '/apm/services/slo'],
   '服务二级必须挂在 /apm/services 目录下',
 );
 assert.deepEqual(

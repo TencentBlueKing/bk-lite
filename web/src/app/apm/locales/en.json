@@ -712,16 +712,11 @@
       "endpointMeta": "{throughput} · P99 {latency}"
     },
     "deployments": {
-      "title": "Deployments",
-      "description": "Releases are inferred from telemetry service.version. CI/CD reporting will add deployers and failed statuses.",
-      "refresh": "Refresh deployments",
       "version": "Version",
       "deployedAt": "Deployed at",
-      "deployedBy": "Deployed by",
       "source": "Source",
       "sourceInferred": "Inferred",
-      "sourceReported": "Reported",
-      "empty": "No deployment events"
+      "sourceReported": "Reported"
     },
     "slo": {
       "title": "SLO",

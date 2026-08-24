@@ -625,7 +625,6 @@ export default function ApmHomePage() {
                 icon={<TagsOutlined aria-hidden="true" className="text-[var(--color-primary)]" />}
                 title={t('apm.home.releasesTitle', '版本发布变更')}
                 subtitle={t('apm.home.releasesSubtitle', '近 7 天')}
-                viewAllHref="/apm/services/deployments"
                 failed={sectionFailed(dashboard?.releases)}
                 onRetry={load}
               >

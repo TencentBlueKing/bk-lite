@@ -71,6 +71,10 @@ assert.match(sloPage, /deleteSlo/, 'SLO 删除必须写入服务端');
 assert.doesNotMatch(sloPage, /name="is_enabled"/, 'SLO 启用状态不得出现在新建或编辑表单');
 assert.doesNotMatch(sloPage, /本地预览|设计预览/, '服务端已支持的 SLO 不得再标成静态预览');
 
+const deploymentsPage = readPage('services/deployments');
+assert.match(deploymentsPage, /\bredirect\(/, '独立部署列表暂不展示，旧路由必须重定向');
+assert.doesNotMatch(deploymentsPage, /ApmDataTable|getDeployments/, '独立部署列表页不得继续渲染事件表');
+
 for (const page of [servicesPage, serviceDetail, topologyPage, sloPage]) {
   assert.doesNotMatch(page, /src\/stories|@\/stories/, '生产页面不得依赖 Storybook 实现');
 }

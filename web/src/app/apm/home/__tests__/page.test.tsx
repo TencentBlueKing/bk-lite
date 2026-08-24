@@ -186,9 +186,10 @@ describe('ApmHomePage', () => {
     expect(screen.getByText('1.2.0')).not.toBeNull();
     expect(screen.getByText('demo-payment')).not.toBeNull();
     expect(screen.getByText('失败')).not.toBeNull();
-    const releasesViewAll = screen.getAllByRole('link', { name: '查看全部 →' }).find((link) => (
-      link.getAttribute('href') === '/apm/services/deployments'
-    ));
-    expect(releasesViewAll).not.toBeUndefined();
+    expect(
+      screen.getAllByRole('link', { name: '查看全部 →' }).some((link) => (
+        link.getAttribute('href') === '/apm/services/deployments'
+      )),
+    ).toBe(false);
   });
 });

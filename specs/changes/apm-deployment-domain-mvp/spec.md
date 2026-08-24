@@ -6,9 +6,9 @@ Status: implemented
 
 ## 目标与范围
 
-补齐部署数据的产品承接面：部署列表页、服务详情「部署」Tab、首页发布段下钻。全部读 `ApmDeploymentEvent`，不新增 VictoriaTraces 查询，不接 CI/CD 上报，不做版本对比/回归检测/时序标线。
+补齐部署数据的产品承接面。当前前端只保留首页近 7 天 5 条摘要、服务详情「部署」Tab；独立部署列表暂不作为菜单或下钻入口。后端 `GET /api/v1/apm/deployments/`、物化写入与组织隔离保持不变，供详情 Tab 读取，并给后续 CI/CD 上报留列表闭环。全部读 `ApmDeploymentEvent`，不新增 VictoriaTraces 查询，不接 CI/CD 上报，不做版本对比/回归检测/时序标线。
 
-信息架构决定：**不新增一级菜单**。部署列表挂在「服务」二级下（与 SLO 同级），路由 `/apm/services/deployments`，菜单项 `name` 复用 `services`，因此**不需要新增权限声明**，`services-View` 即可访问（与 SLO、拓扑一致）。
+信息架构决定：**不新增一级菜单**，服务二级仍为 服务 / 拓扑 / SLO。`/apm/services/deployments` 仅保留为旧链重定向到服务目录，避免被 `[serviceId]` 当成服务 ID。详情 Tab 复用 `services-View`，不新增权限声明。
 
 ## 后端
 
@@ -42,24 +42,13 @@ Status: implemented
 
 ## 前端
 
-### 1. 部署列表页 `web/src/app/apm/services/deployments/page.tsx`
+### 1. 部署列表页暂不展示
 
-- 布局复用 `ApmRouteShell` + `ApmSurface` + `ApmDataTable`（参照 `services/slo/page.tsx` 的列表模式）。
-- 筛选条：服务 Select（数据来自 `getServices`）、环境 Select/Input、状态 Segmented（全部/成功/进行中/回滚/失败）。筛选状态写入 URL query。
-- 列：服务（链接到 `/apm/services/{service_id}`）/ 版本（等宽字体 tag，样式抄首页发布行）/ 环境 / 发布时间（相对时间 + title 绝对时间）/ 部署人（空显示「—」）/ 状态（`StatusPill`，色板与首页 `RELEASE_STATUS_META` 一致）/ 来源（`source=inferred` 显示「推断」灰 tag）。
-- 页头副文案：「发布由遥测 service.version 推断；接入 CI/CD 上报后将补充部署人与失败状态。」
-- 空态：CompactEmptyState「暂无部署事件」。
-- 分页走后端分页参数。
+`web/src/app/apm/services/deployments/page.tsx` 只做 `redirect('/apm/services')`，不渲染事件表。推断阶段跨服务列表没有独立任务，CI/CD 上报后再作为工作台打开。
 
 ### 2. 菜单 `web/src/app/apm/constants/menu.json`
 
-zh/en 各在「服务」children 的 SLO 之后加一项：
-
-```json
-{ "title": "部署", "icon": "mulu", "url": "/apm/services/deployments", "name": "services" }
-```
-
-en 为 `"Deployments"`。若 `web/scripts/apm-menu-route-test.ts` 校验菜单 URL 必须有对应页面，需同步让新路由通过。
+服务二级不挂「部署」。菜单脚本不得再要求 `/apm/services/deployments` 作为可见入口。
 
 ### 3. 服务详情「部署」Tab `web/src/app/apm/services/[serviceId]/page.tsx`
 
@@ -70,10 +59,10 @@ en 为 `"Deployments"`。若 `web/scripts/apm-menu-route-test.ts` 校验菜单 U
 - 表格上方一行 secondary 文案：「由遥测推断的发布记录」。
 - 空态文案改为：「近 90 天未观测到版本变化」；删除 zh/en 旧 `deployEmpty` 文案或改写其内容。
 
-### 4. 首页下钻 `web/src/app/apm/home/page.tsx`
+### 4. 首页 `web/src/app/apm/home/page.tsx`
 
-- 发布段 `viewAllHref` 从 `/apm/services` 改为 `/apm/services/deployments`。
-- 发布行副行已有 `deployed_by` 拼接；保持为空即不显示，不新增「推断」字样挤占首页空间（列表页承担解释）。
+- 发布段保留近 7 天最多 5 条，**不设**「查看全部 →」。
+- 发布行服务名链到该服务详情；部署人在推断源下为空即不显示。
 
 ### 5. API hook 与类型
 
@@ -82,19 +71,19 @@ en 为 `"Deployments"`。若 `web/scripts/apm-menu-route-test.ts` 校验菜单 U
 
 ### 6. i18n
 
-`locales/zh.json` / `en.json` 新增 `apm.deployments.*`：title、副文案、列名（version/environment/deployedAt/deployedBy/status/source）、`sourceInferred`（推断/Inferred）、空态；状态四态文案复用现有 `apm.home.release*`。
+`locales/zh.json` / `en.json` 保留详情 Tab 用到的 `apm.deployments.version / deployedAt / source / sourceInferred / sourceReported`；列表页文案随入口撤回。状态四态文案复用现有 `apm.home.release*`。
 
 ### 前端测试
 
-1. 新页面测试 `services/deployments/__tests__/page.test.tsx`：mock `getDeployments`，断言行渲染（服务链接、版本、「—」部署人、「推断」来源、状态 pill）与空态。
-2. 服务详情测试补一条：部署 Tab 渲染事件行而非占位文案。
-3. `home/__tests__/page.test.tsx`：断言发布段「查看全部」href 为 `/apm/services/deployments`。
-4. `menu.test.ts` 或菜单路由脚本按需更新。
+1. `apm-service-workflow-test.ts`：`/apm/services/deployments` 必须 `redirect`，不得再渲染事件表。
+2. 服务详情测试：部署 Tab 渲染事件行而非占位文案。
+3. `home/__tests__/page.test.tsx`：发布段不得再链到 `/apm/services/deployments`。
+4. 菜单脚本：服务二级仅为 服务 / 拓扑 / SLO。
 
 ## 文档同步
 
-- `spec/requirements/APM/PRD/首页.md` §3.7：「查看全部 →」目标从「部署追踪菜单」改为「服务 → 部署列表（`/apm/services/deployments`）」。
-- `spec/requirements/APM/PRD/服务.md`：服务详情「部署」Tab 从占位改为「推断部署记录表格」的现状描述（一句话即可）。
+- `spec/requirements/APM/PRD/首页.md` §3.7：最多 5 条，不提供独立部署列表下钻；行点击进入服务详情。
+- `spec/requirements/APM/PRD/服务.md`：服务详情「部署」Tab 为推断部署记录表格。
 
 ## 非目标
 
@@ -105,13 +94,14 @@ en 为 `"Deployments"`。若 `web/scripts/apm-menu-route-test.ts` 校验菜单 U
 
 ## 验收
 
-- 服务菜单出现「部署」子项，列表可按服务/环境/状态/时间过滤并分页；跨组织不可见；无权限 403。
+- 服务菜单不出现「部署」子项；旧 URL `/apm/services/deployments` 重定向到服务目录。
+- 部署列表 API 跨组织不可见；无权限 403；服务详情 Tab 可按 `service_id` 读取。
 - 服务详情「部署」Tab 展示该服务版本时间线，不再是占位文案。
-- 首页发布段「查看全部 →」进入部署列表。
+- 首页发布段展示近 7 天最多 5 条，无「查看全部 →」。
 - 全链路无新增 VictoriaTraces 查询（仅 ORM 读表）。
 - 后端 `uv run pytest apps/apm/tests/test_deployment_api.py` 及既有 APM 测试通过；前端相关 vitest 通过。
 
 ## 完成证据
 
 - 后端：`uv run pytest apps/apm/tests/test_deployment_api.py --no-cov` → **7 passed**（含组织隔离双向、403、过滤、7 天默认/90 天上限、page_size 钳制、未传 page_size 仍分页、归档排除）。关联 `test_dashboard_api.py` / `test_dashboard_service.py` / `test_catalog_list_api.py` 共 32 passed。
-- 前端：vitest 部署列表、服务详情部署 Tab、首页下钻共 8 passed；`apm-menu-route-test`、`apm-service-workflow-test`、`apm-home-workflow-test`、`apm-i18n-coverage-test` 通过。
+- 前端：vitest 服务详情部署 Tab、首页发布段（无列表下钻）；`apm-menu-route-test`、`apm-service-workflow-test`、`apm-home-workflow-test`、`apm-i18n-coverage-test` 通过。独立列表页改为旧链重定向。
