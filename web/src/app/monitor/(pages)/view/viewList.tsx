@@ -530,8 +530,11 @@ const ViewList: React.FC<ViewListProps> = ({
       if (k8sQuery?.cluster) {
         queryForm = k8sQuery?.cluster || [];
         setNodeList(k8sQuery?.node || []);
-      } else if (Array.isArray(k8sQuery)) {
-        queryForm = k8sQuery.map((item: any) => {
+      } else if (Array.isArray(k8sQuery) || Array.isArray(k8sQuery?.items)) {
+        const parentEnum = Array.isArray(k8sQuery)
+          ? k8sQuery
+          : k8sQuery.items;
+        queryForm = parentEnum.map((item: any) => {
           if (typeof item === 'string') {
             return { id: item, child: [] };
           }

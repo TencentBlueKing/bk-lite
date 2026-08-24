@@ -136,7 +136,13 @@ class InstanceSearch:
         field_options = InstanceSearch.collect_display_field_options(monitor_object_id)
         if not field_options:
             return data
-        merged = dict(data) if isinstance(data, dict) else {}
+        # ESXI/VM 等父实例枚举是 list；不能 dict(list) 丢掉，否则前端 colony 筛选为空。
+        if isinstance(data, dict):
+            merged = dict(data)
+        elif isinstance(data, list):
+            merged = {"items": data}
+        else:
+            merged = {}
         merged["field_options"] = field_options
         return merged
 
