@@ -8,14 +8,55 @@ import time
 from types import SimpleNamespace
 
 import pytest
+from django.conf import settings
 
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectType
 from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.nats import monitor as nm
+from apps.monitor.nats.contracts import MONITOR_NATS_HANDLER_NAMES
+from nats_client.registry import default_registry
 
 pytestmark = pytest.mark.django_db
+
+
+EXPECTED_MONITOR_NATS_HANDLER_NAMES = frozenset(
+    {
+        "create_metric",
+        "create_metric_group",
+        "create_monitor_object",
+        "create_monitor_object_type",
+        "create_monitor_plugin",
+        "create_monitor_policy",
+        "delete_monitor_policy",
+        "get_host_instance_list",
+        "get_host_metric_range",
+        "get_host_resource_snapshot",
+        "get_host_resource_top",
+        "get_monitor_statistics",
+        "get_network_device_resource_top",
+        "mm_query",
+        "mm_query_range",
+        "monitor_ingest_from_source",
+        "monitor_instance_metrics",
+        "monitor_metrics",
+        "monitor_object_instance_count",
+        "monitor_object_instances",
+        "monitor_objects",
+        "query_latest_active_alerts",
+        "query_latest_interface_metrics",
+        "query_monitor_alert_segments",
+        "query_monitor_data_by_metric",
+        "search_monitor_policies",
+    }
+)
+MONITOR_NATS_PERMISSION_HANDLER_NAMES = frozenset(
+    {
+        "get_monitor_module_data",
+        "get_monitor_module_list",
+    }
+)
 
 
 @pytest.fixture(autouse=True)
@@ -29,6 +70,27 @@ def authorized_current_team_scope(mocker):
             "is_superuser": False,
         },
     )
+
+
+@pytest.mark.unit
+def test_monitor_nats_handler_contract_lists_all_existing_handlers():
+    assert MONITOR_NATS_HANDLER_NAMES == EXPECTED_MONITOR_NATS_HANDLER_NAMES
+
+
+@pytest.mark.unit
+def test_monitor_nats_handler_contract_matches_runtime_registry():
+    runtime_handler_names = {
+        registration["name"]
+        for registration in default_registry.registry.values()
+        if registration["func"].__module__.startswith("apps.monitor.nats.")
+    }
+    expected_subjects = {
+        f"{settings.NATS_NAMESPACE}.{handler_name}"
+        for handler_name in MONITOR_NATS_HANDLER_NAMES
+    }
+
+    assert runtime_handler_names - MONITOR_NATS_PERMISSION_HANDLER_NAMES == MONITOR_NATS_HANDLER_NAMES
+    assert expected_subjects <= default_registry.registry.keys()
 
 
 class TestMonitorObjectsHandler:
