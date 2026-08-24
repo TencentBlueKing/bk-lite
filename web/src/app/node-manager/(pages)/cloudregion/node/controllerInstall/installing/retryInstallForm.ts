@@ -3,6 +3,11 @@ import type {
   RetryInstallParams
 } from '@/app/node-manager/types/controller';
 import type { Key } from 'react';
+import {
+  defaultWinrmPort,
+  isWinrmSchemePortMismatch,
+  type WinrmScheme
+} from '@/app/node-manager/utils/winrm';
 
 export interface RetryInstallNode extends ControllerInstallProgressRow {
   task_id?: Key;
@@ -13,7 +18,7 @@ export interface RetryInstallFormValues {
   username: string;
   password?: string;
   auth_type: 'password' | 'private_key';
-  winrm_scheme?: 'https';
+  winrm_scheme?: WinrmScheme;
   winrm_transport?: 'ntlm';
   winrm_cert_validation?: boolean;
 }
@@ -24,7 +29,7 @@ export const getRetryInstallInitialValues = (
   const isWindows = node.os === 'windows';
 
   return {
-    port: node.port || (isWindows ? 5986 : 22),
+    port: node.port || (isWindows ? defaultWinrmPort(node.winrm_scheme || 'https') : 22),
     username: node.username || (isWindows ? 'Administrator' : 'root'),
     auth_type: 'password',
     winrm_scheme: isWindows ? node.winrm_scheme || 'https' : undefined,
@@ -35,8 +40,11 @@ export const getRetryInstallInitialValues = (
   };
 };
 
-export const validateWindowsRetryPort = (port?: number) => {
-  return port !== 5985;
+export const validateWindowsRetryPort = (
+  port?: number,
+  scheme: WinrmScheme = 'https'
+) => {
+  return !isWinrmSchemePortMismatch(scheme, port);
 };
 
 export const buildRetryInstallParams = (
@@ -57,7 +65,10 @@ export const buildRetryInstallParams = (
   if (isWindows) {
     params.winrm_scheme = values.winrm_scheme || 'https';
     params.winrm_transport = values.winrm_transport || 'ntlm';
-    params.winrm_cert_validation = values.winrm_cert_validation ?? false;
+    params.winrm_cert_validation =
+      params.winrm_scheme === 'http'
+        ? false
+        : values.winrm_cert_validation ?? false;
   }
 
   return params;

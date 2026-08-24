@@ -155,7 +155,13 @@
       "conditionValue": "比较值",
       "addCondition": "添加条件",
       "noCondition": "无附加条件",
-      "rootOrSource": "根字段或源字段"
+      "rootOrSource": "根字段或源字段",
+      "typeCopy": "复制",
+      "typeSplit": "拆分",
+      "typeKv": "键值对",
+      "typeRegex": "正则提取",
+      "typeRegexReplace": "正则替换",
+      "typeJson": "JSON"
     },
     "integration": {
       "connect": "接入",

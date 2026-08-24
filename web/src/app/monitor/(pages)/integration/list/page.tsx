@@ -17,6 +17,8 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { getIconByObjectName, getPluginBrandIcon } from '@/app/monitor/utils/common';
 import { useRouter } from 'next/navigation';
+import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
+import { resolveMonitorObjectQueryId } from '@/app/monitor/utils/monitorObjectQuery';
 import {
   ModalRef,
   TreeItem,
@@ -70,6 +72,7 @@ const Integration = () => {
   const pluginAbortControllerRef = useRef<AbortController | null>(null);
   const pluginRequestIdRef = useRef<number>(0);
   const searchParams = useSearchParams();
+  const { syncObjectId } = useMonitorObjectQuery();
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>('');
   const [exportDisabled, setExportDisabled] = useState<boolean>(true);
@@ -130,6 +133,7 @@ const Integration = () => {
   const handleObjectChange = async (id: string) => {
     cancelAllRequests();
     setPagination((prev) => ({ ...prev, current: 1 }));
+    syncObjectId(id || 'all');
     if (id === 'all' || !id) {
       setObjectId('');
       setObjectType('');
@@ -417,11 +421,13 @@ const Integration = () => {
             showAllMenu
             allowParentSelect
             data={treeData}
-            defaultSelectedKey={
-              searchParams.get('objId')
-                ? toMonitorIdString(searchParams.get('objId'))
-                : 'all'
-            }
+            defaultSelectedKey={resolveMonitorObjectQueryId({
+              searchParams,
+              objects,
+              allowAll: true,
+              allowTypeKeys: true,
+              fallback: 'all'
+            })}
             loading={treeLoading}
             draggable
             onNodeSelect={handleObjectChange}

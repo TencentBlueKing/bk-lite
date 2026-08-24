@@ -56,6 +56,11 @@ import { useHabitExpanded } from '@/hooks/useHabitExpanded';
 import useMonitorUserHabitApi, {
   MONITOR_ALERT_CHART_HABIT_KEY
 } from '@/app/monitor/api/userHabit';
+import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
+import {
+  resolveMonitorObjectQueryId,
+  resolveMonitorObjectTreeKey
+} from '@/app/monitor/utils/monitorObjectQuery';
 const { Search } = Input;
 const { Option } = Select;
 
@@ -122,6 +127,8 @@ const Alert: React.FC = () => {
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [objectId, setObjectId] = useState<React.Key>('');
+  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
+  const { syncObjectId, searchParams } = useMonitorObjectQuery();
 
   const columns: ColumnItem[] = [
     {
@@ -326,6 +333,18 @@ const Alert: React.FC = () => {
       setObjects(data);
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
+      setDefaultSelectObj(
+        resolveMonitorObjectTreeKey(
+          data,
+          resolveMonitorObjectQueryId({
+            searchParams,
+            objects: data,
+            allowAll: true,
+            fallback: 'all'
+          }),
+          'all'
+        )
+      );
     } finally {
       setTreeLoading(false);
     }
@@ -597,6 +616,7 @@ const Alert: React.FC = () => {
   const handleObjectChange = async (id: string) => {
     cancelAllRequests();
     setObjectId(id);
+    syncObjectId(id);
   };
 
   return (
@@ -608,7 +628,7 @@ const Alert: React.FC = () => {
               loading={treeLoading}
               showAllMenu
               data={treeData}
-              defaultSelectedKey="all"
+              defaultSelectedKey={defaultSelectObj as string}
               onNodeSelect={handleObjectChange}
             />
           </div>

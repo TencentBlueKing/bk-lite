@@ -179,14 +179,14 @@ python manage.py migrate --no-input
 
 - Windows 10 或 Windows Server 2016 及以上版本。
 - PowerShell 5.1 或更高版本。
-- 已配置 HTTPS WinRM listener，默认端口为 5986；自定义端口必须确认实际承载 HTTPS Listener，不能把通常用于 HTTP 的 5985 作为 HTTPS 端口。
+- 已配置 WinRM listener：默认 HTTPS/5986；仅在页面显式选择 HTTP 时使用 HTTP/5985。自定义端口必须与所选协议一致，不能把 5985 当作 HTTPS 端口，也不能把 5986 当作 HTTP 端口。
 - 使用 NTLM 认证。
-- Windows 安装与卸载面向可信内网默认跳过证书校验；启用校验时，WinRM 服务端证书必须被 Ansible Executor 所在环境信任。
-- 云区域 `NODE_SERVER_URL` 必须使用 `https://` 地址。默认关闭证书校验时，bootstrap 仍拒绝 HTTP、HTTPS 降级重定向和非 HTTPS Server URL，但会跳过 WinRM 与安装服务 HTTPS 的证书链和名称校验；显式启用校验时，目标 Windows 主机必须信任安装服务证书。
-- 防火墙和网络策略允许云区域 Ansible Executor 访问目标主机 TCP/5986。
+- Windows 安装与卸载面向可信内网默认跳过证书校验；启用校验时，WinRM 服务端证书必须被 Ansible Executor 所在环境信任。证书校验只适用于 HTTPS。
+- 云区域 `NODE_SERVER_URL` 必须使用 `https://` 地址。默认关闭证书校验时，bootstrap 仍拒绝 HTTP、HTTPS 降级重定向和非 HTTPS Server URL，但会跳过 WinRM 与安装服务 HTTPS 的证书链和名称校验；显式启用校验时，目标 Windows 主机必须信任安装服务证书。选择 WinRM HTTP 不影响这条安装会话 HTTPS 要求。
+- 防火墙和网络策略允许云区域 Ansible Executor 访问目标主机所选 WinRM 端口（默认 TCP/5986，HTTP 为 TCP/5985）。
 - 使用具备安装 Windows 服务和写入 `C:\fusion-collectors` 权限的管理员账号。
 
-当前稳定支持面不包括 HTTP/5985、Basic、Kerberos、CredSSP 和 Windows ARM64。证书校验面向可信内网默认关闭，页面持续展示风险提示，并允许用户为当前批次显式开启。
+当前稳定支持面包括默认 HTTPS/5986 和显式选择的 HTTP/5985，不包括 Basic、Kerberos、CredSSP 和 Windows ARM64。证书校验面向可信内网默认关闭，页面持续展示风险提示，并允许用户为当前 HTTPS 批次显式开启。
 
 ### NATS 最小权限
 
@@ -250,7 +250,7 @@ bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`
 | 文件分发阶段提示对象不存在 | bootstrap 是否执行了 `installer_init --variant bootstrap`，对象路径和架构是否正确 |
 | 找不到健康 Executor | 目标云区域是否部署并上报了新版 Ansible Executor |
 | `couldn't resolve module/action 'ansible.windows.win_copy'` 或模块不在搜索路径 | 检查冻结产物是否丢失 `ansible_collections` 层级；这是 Executor 打包问题，不是目标 Windows/WinRM 问题，重新执行 `make package` 并发布完整 onedir 目录 |
-| WinRM 连接失败 | TCP/5986、防火墙、HTTPS listener、NTLM、账号权限 |
+| WinRM 连接失败 | 所选 scheme/port（默认 TCP/5986 或 HTTP TCP/5985）、防火墙、对应 listener、NTLM、账号权限 |
 | `WSManFaultError` fault 170、`请求的资源在使用中` 或 `winrm send_input failed` | 目标机 WinRM/WinRS 是否有未结束操作；等待后重试，确认安全时重启 WinRM 服务，并检查 `MaxShellsPerUser`、`MaxConcurrentOperationsPerUser` 配额和主机负载 |
 | 证书校验失败 | 服务端证书链、名称匹配和 Executor 容器 CA 信任 |
 | 提示 PowerShell 或 Windows 版本不支持 | 目标机是否满足 Windows 10/Server 2016、PowerShell 5.1+ |

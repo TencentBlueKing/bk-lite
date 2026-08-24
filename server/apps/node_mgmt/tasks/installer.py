@@ -36,6 +36,7 @@ from apps.node_mgmt.utils.installer import (
     unzip_file,
 )
 from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.utils.winrm import default_winrm_port, winrm_profile_error
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.services.windows_remote_bootstrap import (
     WindowsBootstrapTarget,
@@ -766,7 +767,7 @@ def install_controller_on_nodes(
                 _build_step(
                     "credential_check",
                     "success",
-                    f"Check credential configuration ({auth_method})",
+                    f"Check credential configuration ({auth_method}); connectivity is not probed in this step",
                 ),
                 _build_step("run", "running", "Run installer"),
             ],
@@ -1298,9 +1299,9 @@ def retry_controller(
         passphrase: 私钥密码短语（明文，将被加密后存储，可选）
         port: 远程连接端口（可选）
         username: 远程连接账号（可选）
-        winrm_scheme: Windows WinRM 协议（可选，仅支持 HTTPS）
+        winrm_scheme: Windows WinRM 协议（可选，https 或显式 http）
         winrm_transport: Windows WinRM 认证传输（可选，仅支持 NTLM）
-        winrm_cert_validation: 是否校验 WinRM 与安装服务 HTTPS 证书（可选）
+        winrm_cert_validation: 是否校验 WinRM 与安装服务 HTTPS 证书（可选，仅 HTTPS 生效）
     """
 
     task_obj = ControllerTask.objects.filter(id=task_id).first()
@@ -1343,8 +1344,6 @@ def retry_controller(
     if passphrase:
         update_data["passphrase"] = aes_obj.encode(passphrase)
     if winrm_scheme is not None:
-        if winrm_scheme != "https":
-            raise BaseAppException("Windows remote retry requires WinRM HTTPS")
         update_data["winrm_scheme"] = winrm_scheme
     if winrm_transport is not None:
         if winrm_transport != "ntlm":
@@ -1354,6 +1353,19 @@ def retry_controller(
         if not isinstance(winrm_cert_validation, bool):
             raise BaseAppException("WinRM certificate validation must be a boolean")
         update_data["winrm_cert_validation"] = winrm_cert_validation
+
+    if winrm_scheme == "http":
+        update_data["winrm_cert_validation"] = False
+
+    for retry_node in retry_nodes:
+        if getattr(retry_node, "os", "") != NodeConstants.WINDOWS_OS:
+            continue
+        effective_scheme = update_data.get("winrm_scheme", retry_node.winrm_scheme or "https")
+        effective_port = update_data.get("port", retry_node.port or default_winrm_port(effective_scheme))
+        effective_transport = update_data.get("winrm_transport", retry_node.winrm_transport or "ntlm")
+        profile_error = winrm_profile_error(effective_scheme, effective_port, effective_transport)
+        if profile_error:
+            raise BaseAppException(profile_error)
 
     if update_data:
         retry_nodes.update(**update_data)
@@ -1418,7 +1430,7 @@ def uninstall_controller(task_id):
                 _build_step(
                     "credential_check",
                     "success",
-                    f"Check credential configuration ({auth_method})",
+                    f"Check credential configuration ({auth_method}); connectivity is not probed in this step",
                 ),
                 _build_step("stop_run", "running", "Stop controller service"),
             ],
