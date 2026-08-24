@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 import yaml
+from django.db.models import Prefetch
 
 from apps.operation_analysis.constants.canvas_refresh import CANVAS_REFRESH_OBJECT_TYPES, normalize_canvas_refresh_interval
 from apps.operation_analysis.constants.import_export import (
@@ -273,7 +274,7 @@ class ExportService:
         return ExportService.mask_sensitive_fields(base_data)
 
     @classmethod
-    def _collect_canvas_dependencies(cls, object_type: str, object_ids: list[int]) -> tuple[set, set]:
+    def _collect_canvas_dependencies(cls, object_type: str, object_ids: list[int], *, lock: bool = False) -> tuple[set, set]:
         collected_datasource_ids = set()
         collected_namespace_ids = set()
 
@@ -283,7 +284,10 @@ class ExportService:
         ot = ObjectType(object_type)
         model = cls.MODEL_MAP[ot]
 
-        for canvas in model.objects.filter(id__in=object_ids):
+        canvases = model.objects.filter(id__in=object_ids)
+        if lock:
+            canvases = canvases.select_for_update()
+        for canvas in canvases:
             filters = getattr(canvas, "filters", None) if ot == ObjectType.DASHBOARD else None
             view_sets = canvas.view_sets or []
             if filters is None and isinstance(view_sets, dict):
@@ -305,6 +309,33 @@ class ExportService:
         return set(), set()
 
     @classmethod
+    def collect_export_dependencies(
+        cls,
+        scope_type: str,
+        object_type: str,
+        object_ids: list[int],
+        *,
+        lock: bool = False,
+    ) -> tuple[set, set]:
+        """返回导出实际会携带的数据源与命名空间依赖闭包。"""
+        if scope_type == ScopeType.CANVAS.value:
+            datasource_ids, namespace_ids = cls._collect_canvas_dependencies(object_type, object_ids, lock=lock)
+        else:
+            datasource_ids, namespace_ids = cls._collect_config_objects(object_type, object_ids)
+
+        if datasource_ids:
+            if lock:
+                list(DataSourceAPIModel.objects.select_for_update().filter(id__in=datasource_ids).only("id"))
+            related_namespace_ids = DataSourceAPIModel.objects.filter(id__in=datasource_ids).values_list(
+                "namespaces__id",
+                flat=True,
+            )
+            namespace_ids.update(namespace_id for namespace_id in related_namespace_ids if namespace_id is not None)
+        if lock and namespace_ids:
+            list(NameSpace.objects.select_for_update().filter(id__in=namespace_ids).only("id"))
+        return datasource_ids, namespace_ids
+
+    @classmethod
     def _convert_canvases_to_yaml(
         cls, scope_type: str, object_type: str, object_ids: list[int], ds_key_map: dict, ns_key_map: dict, export_data: dict
     ):
@@ -323,7 +354,14 @@ class ExportService:
             export_data[section_name].append(yaml_obj)
 
     @classmethod
-    def export_objects(cls, scope_type: str, object_type: str, object_ids: list[int], organization_id: int = 0) -> dict:
+    def export_objects(
+        cls,
+        scope_type: str,
+        object_type: str,
+        object_ids: list[int],
+        organization_id: int = 0,
+        authorized_dependencies: tuple[set[int], set[int]] | None = None,
+    ) -> dict:
         """
         导出对象为YAML
 
@@ -332,6 +370,7 @@ class ExportService:
         - object_type: 要导出的对象类型
         - object_ids: 经过组织过滤的合法对象 ID 列表
         - organization_id: 组织ID
+        - authorized_dependencies: 已在同一事务内锁定并通过鉴权的依赖 ID 集
 
         返回：
         {
@@ -351,10 +390,14 @@ class ExportService:
         for section in section_names:
             export_data[section] = []
 
-        if scope_type == ScopeType.CANVAS.value:
-            collected_datasource_ids, collected_namespace_ids = cls._collect_canvas_dependencies(object_type, object_ids)
+        if authorized_dependencies is None:
+            collected_datasource_ids, collected_namespace_ids = cls.collect_export_dependencies(
+                scope_type,
+                object_type,
+                object_ids,
+            )
         else:
-            collected_datasource_ids, collected_namespace_ids = cls._collect_config_objects(object_type, object_ids)
+            collected_datasource_ids, collected_namespace_ids = authorized_dependencies
 
         ns_key_map = {}
         if collected_namespace_ids:
@@ -365,7 +408,11 @@ class ExportService:
 
         ds_key_map = {}
         if collected_datasource_ids:
-            datasources = DataSourceAPIModel.objects.filter(id__in=collected_datasource_ids).prefetch_related("namespaces", "tag")
+            authorized_namespaces = NameSpace.objects.filter(id__in=collected_namespace_ids)
+            datasources = DataSourceAPIModel.objects.filter(id__in=collected_datasource_ids).prefetch_related(
+                Prefetch("namespaces", queryset=authorized_namespaces),
+                "tag",
+            )
             for ds in datasources:
                 ds_key = cls.generate_business_key(ds, ObjectType.DATASOURCE)
                 ds_key_map[ds.id] = ds_key
