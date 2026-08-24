@@ -1,14 +1,11 @@
 """补丁源域服务"""
 
-import logging
 from typing import Optional
 
-from django.utils import timezone
-
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.constants import ConnectivityStatus, OSType, PatchSourceType
 from apps.patch_mgmt.models import PatchSource
-
-logger = logging.getLogger("app")
+from django.utils import timezone
 
 
 class PatchSourceService:

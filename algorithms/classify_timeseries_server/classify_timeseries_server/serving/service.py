@@ -60,12 +60,11 @@ class MLService:
         用于预热缓存、下载资源等全局操作.
         不接收 self 参数,类似静态方法.
         """
-        logger.info("=== Deployment setup started ===")
         # 可以在这里做全局初始化,例如:
         # - 预热模型缓存
         # - 下载共享资源
         # - 初始化全局连接池
-        logger.info("=== Deployment setup completed ===")
+        logger.info("event=timeseries_deployment_setup_completed")
 
     def __init__(self) -> None:
         """初始化服务,加载配置和模型."""
@@ -83,12 +82,18 @@ class MLService:
 
             model_load_counter.labels(source=self.config.source, status="success").inc()
             logger.info(
-                f"⏱️  Model loaded successfully in {load_time:.3f}s: {self.config.mlflow_model_uri or 'local/dummy'}"
+                "event=timeseries_model_load_succeeded model_source={} model_type={} duration_ms={:.3f}",
+                self.config.source,
+                type(self.model).__name__,
+                load_time * 1000,
             )
 
         except Exception as e:
             model_load_counter.labels(source=self.config.source, status="failure").inc()
-            logger.error(f"❌ Failed to load model: {e}", exc_info=True)
+            logger.exception(
+                "event=timeseries_model_load_failed failed_stage=model_load error_type={}",
+                type(e).__name__,
+            )
 
             # 根据环境变量决定是否允许降级到 DummyModel
             allow_fallback = (
@@ -98,9 +103,7 @@ class MLService:
             if allow_fallback:
                 from .models.dummy_model import DummyModel
 
-                logger.warning(
-                    "⚠️  ALLOW_DUMMY_FALLBACK=true, using DummyModel as fallback"
-                )
+                logger.warning("event=timeseries_model_fallback_enabled fallback=dummy")
                 self.model = DummyModel()
                 model_load_counter.labels(
                     source="dummy_fallback", status="success"
@@ -150,7 +153,7 @@ class MLService:
                     "Ensure the path points to a valid MLflow model directory containing MLmodel file."
                 )
 
-            logger.info(f"✅ Local model config validated: {model_path}")
+            logger.info("event=timeseries_model_config_validated model_source=local")
 
         elif self.config.source == "mlflow":
             # MLflow Registry 模式：检查 URI
@@ -160,16 +163,15 @@ class MLService:
                     "Example: models:/model_name/version or models:/model_name/Production"
                 )
 
-            logger.info(
-                f"✅ MLflow model config validated: {self.config.mlflow_model_uri}"
-            )
+            logger.info("event=timeseries_model_config_validated model_source=mlflow")
 
         elif self.config.source == "dummy":
-            logger.info("✅ Using dummy model (no validation needed)")
+            logger.info("event=timeseries_model_config_validated model_source=dummy")
 
         else:
             logger.warning(
-                f"⚠️  Unknown model source: {self.config.source}, will attempt to load"
+                "event=timeseries_model_source_unknown model_source={}",
+                self.config.source,
             )
 
     @bentoml.on_shutdown
@@ -179,12 +181,11 @@ class MLService:
 
         用于释放资源、关闭连接等.
         """
-        logger.info("=== Service shutdown: cleaning up resources ===")
         # 清理逻辑,例如:
         # - 关闭数据库连接
         # - 保存缓存状态
         # - 释放 GPU 显存
-        logger.info("=== Cleanup completed ===")
+        logger.info("event=timeseries_cleanup_completed")
 
     @bentoml.api
     async def predict(self, data: list, config: dict) -> PredictResponse:
@@ -250,28 +251,22 @@ class MLService:
                     f"输入数据点数 {len(request.data)} 超过上限 {MAX_INPUT_DATA_POINTS}"
                 )
 
-            logger.info(
-                f"📊 Input data range: {history.index[0]} to {history.index[-1]}"
-            )
+            logger.debug("event=timeseries_input_ready data_points={}", len(history))
 
             # 推断频率（严格验证）
             inferred_freq = pd.infer_freq(history.index)
             if inferred_freq is None:
                 raise ValueError("无法推断输入数据的时间频率，请检查时间戳是否规则")
 
-            logger.info(f"🕒 Detected frequency: {inferred_freq}")
+            logger.debug("event=timeseries_input_frequency_detected frequency={}", inferred_freq)
 
             # 执行预测（添加模型来源信息）
-            model_info = (
-                f"source={self.config.source}, type={type(self.model).__name__}"
+            logger.debug(
+                "event=timeseries_prediction_started model_source={} model_type={} steps={}",
+                self.config.source,
+                type(self.model).__name__,
+                steps,
             )
-            if self.config.source == "local":
-                model_info += f", path={self.config.model_path}"
-            elif self.config.source == "mlflow":
-                model_info += f", uri={self.config.mlflow_model_uri}"
-
-            logger.info(f"🤖 Model info: {model_info}")
-            logger.info(f"🔮 Starting recursive prediction: steps={steps}")
 
             enforce_recursive_feature_engineering_budget(
                 self.model,
@@ -284,9 +279,10 @@ class MLService:
             prediction_values = self.model.predict({"history": history, "steps": steps})
             predict_time = time.time() - predict_start
 
-            logger.info(f"✅ Prediction completed successfully")
-            logger.info(
-                f"⏱️  Prediction time: {predict_time:.3f}s, returned {len(prediction_values)} values"
+            logger.debug(
+                "event=timeseries_model_predict_completed predictions={} duration_ms={:.3f}",
+                len(prediction_values),
+                predict_time * 1000,
             )
 
             # 生成预测时间戳
@@ -320,7 +316,14 @@ class MLService:
             )
 
             total_time = time.time() - request_start
-            logger.info(f"⏱️  Total request time: {total_time:.3f}s")
+            logger.info(
+                "event=timeseries_prediction_completed model_source={} input_points={} prediction_points={} "
+                "duration_ms={:.3f}",
+                self.config.source,
+                len(request.data),
+                len(predicted_points),
+                total_time * 1000,
+            )
 
             return response
 

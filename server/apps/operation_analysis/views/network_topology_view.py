@@ -31,15 +31,9 @@ request to the upstream WeOps service configured on the canvas.
 from __future__ import annotations
 
 import json
-import logging
-
-from django.core.exceptions import ValidationError as DjangoValidationError
-from rest_framework import permissions, status
-from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
-from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.models.models import NetworkTopology
 from apps.operation_analysis.serializers.network_topology_serializers import (
@@ -51,9 +45,12 @@ from apps.operation_analysis.services.network_topology import canvas_config
 from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
 from apps.operation_analysis.services.network_topology.weops_adapter import WeOpsTopologyAdapter, WeOpsTopologyAdapterError
 from apps.operation_analysis.views.view import BuiltinVisibleMixin, _create_canvas_share_response
-
-logger = logging.getLogger("apps.operation_analysis.network_topology")
-
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework import permissions, status
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.response import Response
 
 # --------------------------------------------------------------------------- #
 # Adapter factory                                                               #

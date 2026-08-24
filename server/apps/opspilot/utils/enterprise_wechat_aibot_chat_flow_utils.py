@@ -1,18 +1,15 @@
 import json
-import logging
 import re
 from typing import Any
 
 import requests
-from django.http import HttpRequest, HttpResponse
-
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Bot, BotWorkFlow
 from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.enterprise_wechat_aibot_crypto import EnterpriseWechatAibotCrypto, EnterpriseWechatAibotCryptoError
 from apps.opspilot.utils.workflow_sensitive_config import decrypt_workflow_sensitive_config
-
-logger = logging.getLogger(__name__)
+from django.http import HttpRequest, HttpResponse
 
 
 class EnterpriseWechatAibotChatFlowUtils(BaseChatFlowUtils):

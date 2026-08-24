@@ -1,20 +1,17 @@
-import logging
 from copy import deepcopy
 
-from django.db import DatabaseError, OperationalError, transaction
-from django.db.models import F
-from django.utils import timezone
-from rest_framework import status
-from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
-
+from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.team_utils import get_current_team
 from apps.operation_analysis.models.models import Dashboard
 from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportSubscription
 from apps.operation_analysis.services.filter_snapshot import normalize_applied_filter_values
 from apps.operation_analysis.services.schedule_calculator import ScheduleSpec, next_run, validate_iana_timezone
 from apps.system_mgmt.models import Channel
-
-logger = logging.getLogger(__name__)
+from django.db import DatabaseError, OperationalError, transaction
+from django.db.models import F
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 
 SCHEDULE_FIELDS = frozenset(
     {

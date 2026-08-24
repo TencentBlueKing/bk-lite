@@ -11,7 +11,6 @@ import io
 import json
 
 import pytest
-
 from apps.core.fields import s3_json_field as mod
 from apps.core.fields.s3_json_field import (
     S3JSONField,
@@ -108,19 +107,37 @@ class TestUploadAndLoadRoundTrip:
         assert json.loads(raw.decode("utf-8")) == data
         assert field._load_from_s3(path) == data
 
-    def test_load_non_gzip_raw_json(self, mocker):
+    def test_load_non_gzip_raw_json_has_debug_summary_without_info(self, mocker):
         field = _make_field(compressed=True)
         field.storage.objects["p.json"] = b'{"plain": true}'
         info = mocker.patch.object(mod.logger, "info")
+        debug = mocker.patch.object(mod.logger, "debug")
 
-        assert field._load_from_s3("p.json") == {"plain": True}
-        info.assert_has_calls(
-            [
-                mocker.call("[S3JSONField] Loading from S3: %s", "p.json"),
-                mocker.call("[S3JSONField] Read %s bytes from S3", 15),
-                mocker.call("[S3JSONField] Not gzipped, using raw content"),
-            ]
+        assert field.to_python("p.json") == {"plain": True}
+        info.assert_not_called()
+        debug.assert_called_once_with(
+            "event=s3_json_load_succeeded path=%s compressed=%s "
+            "stored_bytes=%s decoded_bytes=%s value_type=%s item_count=%s",
+            "p.json",
+            False,
+            15,
+            15,
+            "dict",
+            1,
         )
+
+    def test_load_debug_path_is_bounded_and_single_line(self, mocker):
+        field = _make_field(compressed=True)
+        path = "folder\r\n" + "x" * 600
+        field.storage.objects[path] = b"[]"
+        debug = mocker.patch.object(mod.logger, "debug")
+
+        assert field.to_python(path) == []
+
+        logged_path = debug.call_args.args[1]
+        assert len(logged_path) == 500
+        assert "\r" not in logged_path
+        assert "\n" not in logged_path
 
 
 class TestLoadFromS3EdgeCases:
@@ -202,14 +219,27 @@ class TestPreSave:
         inst.__dict__["data"] = None
         assert field.pre_save(inst, add=True) == ""
 
-    def test_pre_save_object_uploads_and_sets_path(self):
+    def test_pre_save_object_uploads_without_info_noise(self, mocker):
         field = _make_field()
         inst = _Instance()
         inst.__dict__["data"] = [{"k": 1}]
+        info = mocker.patch.object(mod.logger, "info")
+        debug = mocker.patch.object(mod.logger, "debug")
+
         path = field.pre_save(inst, add=True)
+
         assert path in field.storage.objects
         # 实例字段被改写为路径
         assert inst.__dict__["data"] == path
+        info.assert_not_called()
+        debug.assert_called_once_with(
+            "event=s3_json_upload_succeeded path=%s compressed=%s "
+            "original_bytes=%s stored_bytes=%s",
+            path,
+            True,
+            10,
+            30,
+        )
 
     def test_pre_save_promotes_pending_value(self):
         field = _make_field()

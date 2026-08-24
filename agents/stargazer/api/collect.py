@@ -199,7 +199,7 @@ async def collect(request):
     返回：
         Prometheus 格式的"请求已接收"指标，包含 task_id 用于追踪
     """
-    logger.info("=== Plugin collection request received ===")
+    logger.info("event=plugin_collection_request_received")
 
     # Sanic 要求请求体被消费（即使是 GET 请求），否则可能出现
     # "<Request ...> body not consumed." 日志告警。

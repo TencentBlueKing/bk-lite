@@ -1,13 +1,11 @@
-import logging
-from django.db import IntegrityError, transaction
-from apps.alerts.models.action import ActionRule, ActionExecution
+from apps.alerts.action.handlers.registry import get_handler
 from apps.alerts.action.matcher import event_matches
 from apps.alerts.action.payload import build_match_payload
-from apps.alerts.action.handlers.registry import get_handler
 from apps.alerts.constants.constants import LogAction, LogTargetType
+from apps.alerts.models.action import ActionExecution, ActionRule
 from apps.alerts.utils.operator_log import record_operator_log
-
-logger = logging.getLogger(__name__)
+from apps.core.logger import alert_logger as logger
+from django.db import IntegrityError, transaction
 
 
 class ActionEngine:

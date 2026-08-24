@@ -53,8 +53,7 @@ class MLService:
         用于预热缓存、下载资源等全局操作.
         不接收 self 参数,类似静态方法.
         """
-        logger.info("=== Deployment setup started ===")
-        logger.info("=== Deployment setup completed ===")
+        logger.info("event=text_classification_deployment_setup_completed")
 
     def __init__(self) -> None:
         """初始化服务,加载配置和模型."""
@@ -68,11 +67,18 @@ class MLService:
             load_time = time.time() - load_start
 
             model_load_counter.labels(source=self.config.source, status="success").inc()
-            logger.info(f"⏱️  Model loaded successfully in {load_time:.3f}s")
+            logger.info(
+                "event=text_classification_model_load_succeeded model_source={} duration_ms={:.3f}",
+                self.config.source,
+                load_time * 1000,
+            )
 
         except Exception as e:
             model_load_counter.labels(source=self.config.source, status="failure").inc()
-            logger.error(f"❌ Failed to load model: {e}", exc_info=True)
+            logger.exception(
+                "event=text_classification_model_load_failed failed_stage=model_load error_type={}",
+                type(e).__name__,
+            )
             raise RuntimeError(
                 f"Failed to load model from source '{self.config.source}'. "
                 "Service cannot start without a valid model."
@@ -85,8 +91,7 @@ class MLService:
 
         用于释放资源、关闭连接等.
         """
-        logger.info("=== Service shutdown: cleaning up resources ===")
-        logger.info("=== Cleanup completed ===")
+        logger.info("event=text_classification_cleanup_completed")
 
     @bentoml.api
     async def predict(self, texts: list[str], config: dict = None) -> PredictResponse:
@@ -128,7 +133,7 @@ class MLService:
                 execution_time_ms=(time.time() - request_start) * 1000,
             )
 
-        logger.info(f"📥 Received classification request: {len(request.texts)} texts")
+        logger.debug("event=text_classification_request_received texts={}", len(request.texts))
 
         # 2. 文本预处理（截断处理）
         processed_texts, text_warnings = self._preprocess_texts(request.texts)
@@ -154,7 +159,10 @@ class MLService:
                 model_output = self.model.predict(processed_texts)
 
                 predict_time = (time.time() - predict_start) * 1000
-                logger.info(f"⏱️  Model prediction completed in {predict_time:.1f}ms")
+                logger.debug(
+                    "event=text_classification_model_predict_completed duration_ms={:.1f}",
+                    predict_time,
+                )
 
             # 4. 解析模型输出并构造结果
             results = self._build_results(
@@ -183,9 +191,10 @@ class MLService:
             ).inc()
 
             logger.info(
-                f"✅ Classification completed: {summary.total_samples} texts, "
-                f"avg_probability={summary.avg_probability:.4f}, "
-                f"time={summary.processing_time_ms:.1f}ms"
+                "event=text_classification_completed texts={} avg_probability={:.4f} duration_ms={:.1f}",
+                summary.total_samples,
+                summary.avg_probability,
+                summary.processing_time_ms,
             )
 
             return PredictResponse(
@@ -197,7 +206,10 @@ class MLService:
             )
 
         except Exception as e:
-            logger.error(f"❌ Prediction failed: {e}", exc_info=True)
+            logger.exception(
+                "event=text_classification_failed failed_stage=model_predict error_type={}",
+                type(e).__name__,
+            )
 
             prediction_counter.labels(
                 model_source=self.config.source, status="failure"

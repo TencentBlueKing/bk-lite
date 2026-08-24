@@ -1,7 +1,5 @@
-import logging
+from apps.core.logger import logger
 from apps.rpc.system_mgmt import SystemMgmt
-
-logger = logging.getLogger(__name__)
 
 
 def normalize_user_group_ids(group_list):

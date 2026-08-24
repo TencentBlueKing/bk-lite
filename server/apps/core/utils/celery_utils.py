@@ -4,7 +4,7 @@ from django.core.exceptions import MultipleObjectsReturned
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 
-from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import logger
 
 
 def crontab_format(value_type: str, value: str):

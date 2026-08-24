@@ -40,12 +40,11 @@ class MLService:
         用于预热缓存、下载资源等全局操作.
         不接收 self 参数,类似静态方法.
         """
-        logger.info("=== Deployment setup started ===")
         # 可以在这里做全局初始化,例如:
         # - 预热模型缓存
         # - 下载共享资源
         # - 初始化全局连接池
-        logger.info("=== Deployment setup completed ===")
+        logger.info("event=log_classification_deployment_setup_completed")
 
     def __init__(self) -> None:
         """初始化服务,加载配置和模型."""
@@ -71,12 +70,11 @@ class MLService:
 
         用于释放资源、关闭连接等.
         """
-        logger.info("=== Service shutdown: cleaning up resources ===")
         # 清理逻辑,例如:
         # - 关闭数据库连接
         # - 保存缓存状态
         # - 释放 GPU 显存
-        logger.info("=== Cleanup completed ===")
+        logger.info("event=log_classification_cleanup_completed")
 
     @bentoml.api
     async def predict(self, request: LogClusterRequest) -> LogClusterResponseV2:

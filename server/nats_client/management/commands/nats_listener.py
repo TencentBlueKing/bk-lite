@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import jsonpickle
 import nats.errors
+from apps.core.logger import nats_logger as logger
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.management import BaseCommand
@@ -12,8 +13,6 @@ from django.utils import autoreload
 from nats.aio.client import Client
 from nats.aio.errors import ErrNoServers, ErrTimeout
 from nats.aio.msg import Msg
-
-from apps.core.logger import nats_logger as logger
 
 from ...clients import get_nc_client
 from ...handlers import nats_handler
@@ -58,14 +57,14 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         reload = options.get("reload", False)
-        print("** Starting NATS listener" + (" with reload enabled" if reload else ""))
+        logger.info("event=nats_listener_starting reload=%s", reload)
         if reload:
             autoreload.run_with_reloader(self.inner_run, *args, **options)
         else:
             self.inner_run(*args, **options)
 
     def inner_run(self, *args, **options):
-        print("** Initializing Loop")
+        logger.debug("event=nats_listener_event_loop_initializing")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -205,7 +204,11 @@ class Command(BaseCommand):
             for msg in msgs:
                 data = msg.data.decode()
                 func_name = msg.subject
-                print(f"Received a message on JetStream function `{func_name}`: {data}")
+                logger.debug(
+                    "event=nats_jetstream_message_received subject=%s payload_bytes=%s",
+                    func_name,
+                    len(msg.data),
+                )
                 await self._enqueue_jetstream(msg, data, func_name, progress_interval)
 
     async def _jetstream_progress_interval(self, psub, subject):
@@ -297,20 +300,20 @@ class Command(BaseCommand):
 
         try:
             await get_nc_client(self.nats)
-            print("** Connected to NATS server")
+            logger.info("event=nats_listener_connected")
 
             if getattr(settings, "NATS_JETSTREAM_ENABLED", True):
                 self.js = self.nats.jetstream()
-                print("** Initialized JetStream")
+                logger.info("event=nats_jetstream_initialized")
         except (ErrNoServers, ErrTimeout) as e:
             raise e
 
         if not default_registry.registry:
-            print("** No function found!")
+            logger.warning("event=nats_listener_no_handlers")
             return
 
         if self.js is not None and create_stream:
-            print("** Creating stream")
+            logger.info("event=nats_jetstream_creation_started namespace=%s", namespace)
             stream_config.pop("name", None)
             stream_config.pop("subjects", None)
             await self.js.add_stream(
@@ -325,7 +328,11 @@ class Command(BaseCommand):
             data = msg.data.decode()
             reply = msg.reply
             func_name = msg.subject
-            print(f"Received a message on function `{func_name}`")
+            logger.debug(
+                "event=nats_core_message_received subject=%s payload_bytes=%s",
+                func_name,
+                len(msg.data),
+            )
             try:
                 await asyncio.wait_for(
                     self._enqueue(func_name, data, reply=reply),
@@ -337,8 +344,10 @@ class Command(BaseCommand):
                 if reply:
                     await self._publish_failure(reply, error)
 
-        print("** Listened on:")
+        core_subscription_count = 0
+        jetstream_subscription_count = 0
         for data in default_registry.registry.values():
+            subscription_ready = False
             if data["js"]:
                 full_name = f'{data["namespace"]}.js.{data["name"]}'
                 if self.js is None:
@@ -355,6 +364,8 @@ class Command(BaseCommand):
                     self._fetch_tasks,
                     f"JetStream fetch {full_name}",
                 )
+                jetstream_subscription_count += 1
+                subscription_ready = True
             else:
                 full_name = f'{data["namespace"]}.{data["name"]}'
 
@@ -368,7 +379,27 @@ class Command(BaseCommand):
                 )
                 if subscription is not None:
                     self._core_subscriptions.append(subscription)
-            print(f"     - {full_name}" + (" (JetStream)" if data["js"] else ""))
+                    core_subscription_count += 1
+                    subscription_ready = True
+            if subscription_ready:
+                logger.debug(
+                    "event=nats_listener_subscription_ready subject=%s transport=%s",
+                    full_name,
+                    "jetstream" if data["js"] else "core",
+                )
+        subscription_count = core_subscription_count + jetstream_subscription_count
+        if subscription_count:
+            logger.info(
+                "event=nats_listener_ready subscriptions=%s core_subscriptions=%s jetstream_subscriptions=%s",
+                subscription_count,
+                core_subscription_count,
+                jetstream_subscription_count,
+            )
+        else:
+            logger.warning(
+                "event=nats_listener_no_active_subscriptions configured_subscriptions=%s",
+                len(default_registry.registry),
+            )
 
     async def handler(self, func_name: str, body, reply=None):
         try:

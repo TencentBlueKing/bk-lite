@@ -14,12 +14,17 @@ import json
 import uuid
 from typing import Any, Optional
 
+from apps.core.logger import logger
 from django.core.files.base import ContentFile
 from django.db import models, transaction
 from django.db.models.signals import post_save
 from django_minio_backend import MinioBackend
 
-from apps.core.logger import logger
+LOG_PATH_MAX_LENGTH = 500
+
+
+def _safe_log_path(path):
+    return str(path).replace("\r", "\\r").replace("\n", "\\n")[:LOG_PATH_MAX_LENGTH]
 
 
 def s3_json_upload_path(instance, filename):
@@ -165,7 +170,6 @@ class S3JSONField(models.CharField):
                 setattr(model_instance, self.attname, uploaded_path)
                 self._register_cleanup_task(model_instance, previous_path, uploaded_path)
 
-                logger.debug("S3JSONField uploaded: %s", uploaded_path)
                 return uploaded_path
 
             except Exception as e:
@@ -248,11 +252,13 @@ class S3JSONField(models.CharField):
         # 上传到 S3
         saved_path = self.storage.save(filename, content)
 
-        logger.info(
-            f"Uploaded to S3: {saved_path}, "
-            f"original={len(json_bytes)} bytes, "
-            f"compressed={len(content_bytes)} bytes, "
-            f"ratio={len(content_bytes) / len(json_bytes):.1%}"
+        logger.debug(
+            "event=s3_json_upload_succeeded path=%s compressed=%s "
+            "original_bytes=%s stored_bytes=%s",
+            _safe_log_path(saved_path),
+            self.compressed,
+            len(json_bytes),
+            len(content_bytes),
         )
 
         return saved_path
@@ -292,8 +298,6 @@ class S3JSONField(models.CharField):
         Returns:
             Python 对象（list 或 dict）
         """
-        logger.info("[S3JSONField] Loading from S3: %s", file_path)
-
         if not file_path:
             logger.warning("[S3JSONField] Empty file_path, returning None")
             return None
@@ -303,8 +307,6 @@ class S3JSONField(models.CharField):
             with self.storage.open(file_path, "rb") as f:
                 content_bytes = f.read()
 
-            logger.info("[S3JSONField] Read %s bytes from S3", len(content_bytes))
-
             if not content_bytes:
                 logger.warning("S3 file is empty: %s", file_path)
                 return None
@@ -313,18 +315,25 @@ class S3JSONField(models.CharField):
             try:
                 # 尝试解压
                 json_bytes = gzip.decompress(content_bytes)
-                logger.info("[S3JSONField] Decompressed %s -> %s bytes", len(content_bytes), len(json_bytes))
+                was_compressed = True
             except gzip.BadGzipFile:
                 # 不是 gzip 文件，使用原始内容
                 json_bytes = content_bytes
-                logger.info("[S3JSONField] Not gzipped, using raw content")
+                was_compressed = False
 
             # 解析 JSON
             json_str = json_bytes.decode("utf-8")
             data = json.loads(json_str)
 
-            logger.info(
-                f"[S3JSONField] Successfully loaded from S3: {file_path}, type: {type(data)}, items: {len(data) if isinstance(data, (list, dict)) else 'N/A'}"
+            logger.debug(
+                "event=s3_json_load_succeeded path=%s compressed=%s "
+                "stored_bytes=%s decoded_bytes=%s value_type=%s item_count=%s",
+                _safe_log_path(file_path),
+                was_compressed,
+                len(content_bytes),
+                len(json_bytes),
+                type(data).__name__,
+                len(data) if isinstance(data, (list, dict)) else "-",
             )
             return data
 

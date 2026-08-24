@@ -45,7 +45,7 @@ class TestVerifyWechatCode:
     @patch("apps.core.views.index_view.LoginModule")
     def test_returns_error_on_token_exchange_failure(self, mock_login_module, mock_requests):
         """Should return error when WeChat token exchange fails."""
-        from apps.core.views.index_view import verify_wechat_code
+        from apps.core.views import index_view
 
         mock_module = MagicMock()
         mock_module.app_id = "test_app"
@@ -53,13 +53,26 @@ class TestVerifyWechatCode:
         mock_login_module.objects.filter.return_value.first.return_value = mock_module
 
         mock_response = MagicMock()
-        mock_response.json.return_value = {"errcode": 40029, "errmsg": "invalid code"}
+        mock_response.status_code = 400
+        mock_response.json.return_value = {
+            "errcode": 40029,
+            "errmsg": "invalid code",
+            "access_token": "wechat-token-must-not-enter-logs",
+        }
         mock_requests.get.return_value = mock_response
 
-        result = verify_wechat_code("test_code")
+        with patch.object(index_view.logger, "warning") as warning:
+            result = index_view.verify_wechat_code("test_code")
 
         assert result["success"] is False
         assert result["errcode"] == 40029
+        warning.assert_called_once_with(
+            "event=wechat_token_exchange_failed http_status=%s errcode=%s error_type=%s",
+            400,
+            40029,
+            "wechat_api_error",
+        )
+        assert "wechat-token-must-not-enter-logs" not in str(warning.call_args)
 
     @patch("apps.core.views.index_view.requests")
     @patch("apps.core.views.index_view.LoginModule")
@@ -94,7 +107,6 @@ class TestVerifyWechatCode:
     def test_handles_timeout(self, mock_login_module, mock_requests):
         """Should handle timeout gracefully."""
         import requests as real_requests
-
         from apps.core.views.index_view import verify_wechat_code
 
         mock_module = MagicMock()
@@ -114,7 +126,7 @@ class TestVerifyWechatCode:
     @patch("apps.core.views.index_view.LoginModule")
     def test_returns_error_on_userinfo_failure(self, mock_login_module, mock_requests):
         """Should return error when userinfo fetch fails."""
-        from apps.core.views.index_view import verify_wechat_code
+        from apps.core.views import index_view
 
         mock_module = MagicMock()
         mock_module.app_id = "test_app"
@@ -127,14 +139,27 @@ class TestVerifyWechatCode:
 
         # Second call: userinfo failure
         userinfo_response = MagicMock()
-        userinfo_response.json.return_value = {"errcode": 40003, "errmsg": "invalid openid"}
+        userinfo_response.status_code = 400
+        userinfo_response.json.return_value = {
+            "errcode": 40003,
+            "errmsg": "invalid openid",
+            "openid": "openid-must-not-enter-logs",
+        }
 
         mock_requests.get.side_effect = [token_response, userinfo_response]
 
-        result = verify_wechat_code("test_code")
+        with patch.object(index_view.logger, "warning") as warning:
+            result = index_view.verify_wechat_code("test_code")
 
         assert result["success"] is False
         assert result["errcode"] == 40003
+        warning.assert_called_once_with(
+            "event=wechat_userinfo_fetch_failed http_status=%s errcode=%s error_type=%s",
+            400,
+            40003,
+            "wechat_api_error",
+        )
+        assert "openid-must-not-enter-logs" not in str(warning.call_args)
 
 
 @pytest.mark.unit

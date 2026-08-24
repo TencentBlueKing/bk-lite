@@ -20,15 +20,13 @@
 """
 
 import json
-import logging
 import threading
 import time
 
+from apps.core.logger import logger
 from django.db import IntegrityError
 from django.db.models import Q, QuerySet
 from django.db.models.fields.json import JSONField
-
-logger = logging.getLogger(__name__)
 
 # 标记早期补丁是否已应用，避免重复
 _early_patches_applied = False

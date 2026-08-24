@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from nats_client.management.commands import nats_listener
 
 from .nats_listener_test_utils import cancel_tasks_created_after
@@ -63,7 +62,83 @@ async def _start_listener(monkeypatch, settings, *, handler, nats, name, js, con
     return command
 
 
-async def test_core_listener_bounds_slow_handlers_and_backpressures_callback(monkeypatch, settings):
+async def test_jetstream_fetch_logs_subject_without_payload(monkeypatch, mocker):
+    command = nats_listener.Command()
+    secret = "payload-secret-must-not-enter-logs"
+    message = SimpleNamespace(data=secret.encode(), subject="bklite.js.collect")
+
+    class OneMessageSubscription:
+        async def fetch(self, timeout):
+            command._stopping = True
+            return [message]
+
+    enqueue = AsyncMock()
+    monkeypatch.setattr(command, "_enqueue_jetstream", enqueue)
+    debug = mocker.patch.object(nats_listener.logger, "debug")
+
+    await command._fetch(OneMessageSubscription(), progress_interval=10)
+
+    enqueue.assert_awaited_once_with(message, secret, "bklite.js.collect", 10)
+    debug.assert_called_once_with(
+        "event=nats_jetstream_message_received subject=%s payload_bytes=%s",
+        "bklite.js.collect",
+        len(message.data),
+    )
+    assert secret not in str(debug.call_args)
+
+
+@pytest.mark.parametrize("registered_js", [False, True])
+async def test_listener_does_not_report_ready_without_an_active_subscription(
+    monkeypatch,
+    settings,
+    mocker,
+    registered_js,
+):
+    class FakeNats:
+        async def subscribe(self, *args, **kwargs):
+            return None
+
+    monkeypatch.setattr(nats_listener, "get_nc_client", _fake_get_nc_client)
+    monkeypatch.setattr(
+        nats_listener.default_registry,
+        "registry",
+        {
+            "bklite.inactive": {
+                "func": AsyncMock(),
+                "namespace": "bklite",
+                "name": "inactive",
+                "js": registered_js,
+            }
+        },
+    )
+    settings.NATS_JETSTREAM_ENABLED = False
+    settings.NATS_JETSTREAM_CRATE_STREAM = False
+    settings.NATS_CORE_PENDING_MSGS_LIMIT = 7
+    settings.NATS_CORE_PENDING_BYTES_LIMIT = 4096
+    command = nats_listener.Command()
+    command.nats = FakeNats()
+    mocker.patch.object(command, "_start_workers")
+    info = mocker.patch.object(nats_listener.logger, "info")
+    warning = mocker.patch.object(nats_listener.logger, "warning")
+    debug = mocker.patch.object(nats_listener.logger, "debug")
+
+    await command.nats_coroutine()
+
+    assert not any(
+        call.args[0].startswith("event=nats_listener_ready")
+        for call in info.call_args_list
+    )
+    warning.assert_called_once_with(
+        "event=nats_listener_no_active_subscriptions configured_subscriptions=%s",
+        1,
+    )
+    assert not any(
+        call.args[0].startswith("event=nats_listener_subscription_ready")
+        for call in debug.call_args_list
+    )
+
+
+async def test_core_listener_bounds_slow_handlers_and_backpressures_callback(monkeypatch, settings, mocker, capsys):
     existing_tasks = set(asyncio.all_tasks())
     callbacks = {}
     subscription_options = {}
@@ -71,11 +146,13 @@ async def test_core_listener_bounds_slow_handlers_and_backpressures_callback(mon
     active = 0
     max_active = 0
     completed = 0
+    debug = mocker.patch.object(nats_listener.logger, "debug")
 
     class FakeNats:
         async def subscribe(self, subject, queue, cb, **kwargs):
             callbacks[subject] = cb
             subscription_options.update(kwargs)
+            return SimpleNamespace(drain=AsyncMock())
 
     async def slow_handler(_func_name, _data, reply=None):
         nonlocal active, max_active, completed
@@ -131,6 +208,14 @@ async def test_core_listener_bounds_slow_handlers_and_backpressures_callback(mon
 
         assert completed == 6
         assert max_active == 2
+        assert capsys.readouterr().out == ""
+        assert debug.call_args_list.count(
+            mocker.call(
+                "event=nats_core_message_received subject=%s payload_bytes=%s",
+                "bklite.slow_handler",
+                len(_message("bklite.slow_handler").data),
+            )
+        ) == 6
     finally:
         release.set()
         with suppress(asyncio.CancelledError):
