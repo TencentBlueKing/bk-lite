@@ -36,7 +36,7 @@ def test_prepare_class_mappings_merges_identical():
 def test_prepare_class_mappings_extends_from_val():
     train = {"classes": ["cat"]}
     val = {"classes": ["cat", "dog"]}
-    global_classes, *_ , warnings = prepare_class_mappings(train, val, None)
+    global_classes, *_, warnings = prepare_class_mappings(train, val, None)
     assert global_classes == ["cat", "dog"]
     assert warnings["conflicts"] == []
 
@@ -80,28 +80,34 @@ def test_prepare_class_mappings_invalid_test_meta_type():
 
 
 def _od_release(status):
-    from apps.mlops.models.object_detection import (
-        ObjectDetectionDataset,
-        ObjectDetectionDatasetRelease,
-    )
+    from apps.mlops.models.object_detection import ObjectDetectionDataset, ObjectDetectionDatasetRelease
 
     ds = ObjectDetectionDataset.objects.create(name="ds", description="", team=[1])
     return ObjectDetectionDatasetRelease.objects.create(
-        name="r", description="", dataset=ds, version="v1",
-        dataset_file="x.zip", status=status, metadata={}, file_size=1,
+        name="r",
+        description="",
+        dataset=ds,
+        version="v1",
+        dataset_file="x.zip",
+        status=status,
+        metadata={},
+        file_size=1,
     )
 
 
 def _ic_release(status):
-    from apps.mlops.models.image_classification import (
-        ImageClassificationDataset,
-        ImageClassificationDatasetRelease,
-    )
+    from apps.mlops.models.image_classification import ImageClassificationDataset, ImageClassificationDatasetRelease
 
     ds = ImageClassificationDataset.objects.create(name="ds", description="", team=[1])
     return ImageClassificationDatasetRelease.objects.create(
-        name="r", description="", dataset=ds, version="v1",
-        dataset_file="x.zip", status=status, metadata={}, file_size=1,
+        name="r",
+        description="",
+        dataset=ds,
+        version="v1",
+        dataset_file="x.zip",
+        status=status,
+        metadata={},
+        file_size=1,
     )
 
 
@@ -175,9 +181,7 @@ def test_image_classification_soft_timeout_marks_failed(monkeypatch):
 
 
 @pytest.mark.parametrize("task_module", [ic_task, od_task])
-def test_image_task_retries_busy_release_without_marking_failed(
-    monkeypatch, task_module
-):
+def test_image_task_retries_busy_release_without_marking_failed(monkeypatch, task_module):
     assert task_module.publish_dataset_release_async.max_retries is None
 
     def busy(*args, **kwargs):
@@ -201,9 +205,7 @@ def test_image_task_retries_busy_release_without_marking_failed(
 
 
 @pytest.mark.parametrize("task_module", [ic_task, od_task])
-def test_enforce_image_task_does_not_fail_release_before_claim(
-    monkeypatch, task_module
-):
+def test_enforce_image_task_does_not_fail_release_before_claim(monkeypatch, task_module):
     monkeypatch.setenv("MLOPS_DATASET_RELEASE_EXECUTION_MODE", "enforce")
 
     def claim_error(*args, **kwargs):

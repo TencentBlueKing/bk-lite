@@ -48,10 +48,7 @@ def _build_timeseries_metadata(
 
 def _get_config():
     """延迟加载配置，避免循环导入"""
-    from apps.mlops.models.timeseries_predict import (
-        TimeSeriesPredictDatasetRelease,
-        TimeSeriesPredictTrainData,
-    )
+    from apps.mlops.models.timeseries_predict import TimeSeriesPredictDatasetRelease, TimeSeriesPredictTrainData
 
     return DatasetPublishConfig(
         release_model=TimeSeriesPredictDatasetRelease,
@@ -72,9 +69,7 @@ def _get_config():
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def publish_dataset_release_async(
-    self, release_id, train_file_id, val_file_id, test_file_id
-):
+def publish_dataset_release_async(self, release_id, train_file_id, val_file_id, test_file_id):
     """
     异步发布数据集版本
 
@@ -105,27 +100,25 @@ def publish_dataset_release_async(
     except SoftTimeLimitExceeded:
         logger.error(f"数据集发布超时 - Release ID: {release_id}")
         if attempt.can_mark_failure():
-            from apps.mlops.models.timeseries_predict import (
-                TimeSeriesPredictDatasetRelease,
-            )
+            from apps.mlops.models.timeseries_predict import TimeSeriesPredictDatasetRelease
 
             mark_release_as_failed(
                 TimeSeriesPredictDatasetRelease,
                 release_id,
                 owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
             )
         raise
 
     except Exception:
         logger.error(f"数据集发布失败 - Release ID: {release_id}", exc_info=True)
         if attempt.can_mark_failure():
-            from apps.mlops.models.timeseries_predict import (
-                TimeSeriesPredictDatasetRelease,
-            )
+            from apps.mlops.models.timeseries_predict import TimeSeriesPredictDatasetRelease
 
             mark_release_as_failed(
                 TimeSeriesPredictDatasetRelease,
                 release_id,
                 owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
             )
         raise

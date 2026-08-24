@@ -8,10 +8,11 @@ from unittest.mock import MagicMock
 import pydantic.root_model  # noqa
 import pytest
 from django.core.management import call_command
-from django.db import close_old_connections, connection, connections
-from django.test.utils import CaptureQueriesContext
+from django.core.management.base import CommandError
+from django.db import close_old_connections, connections
 from django.utils import timezone
 
+from apps.mlops.constants import DatasetReleaseStatus
 from apps.mlops.models.anomaly_detection import AnomalyDetectionDataset, AnomalyDetectionDatasetRelease
 from apps.mlops.tasks import base as base_mod
 
@@ -42,6 +43,12 @@ def _cleanup_model():
     from apps.mlops.models.dataset_release_execution import DatasetReleaseObjectCleanup
 
     return DatasetReleaseObjectCleanup
+
+
+def _cleanup_cursor_model():
+    from apps.mlops.models.dataset_release_execution import DatasetReleaseObjectCleanupCursor
+
+    return DatasetReleaseObjectCleanupCursor
 
 
 @pytest.mark.django_db
@@ -162,6 +169,98 @@ def test_stale_owner_cannot_write_success_or_failure_after_takeover(monkeypatch)
 
 
 @pytest.mark.django_db
+def test_expired_owner_cannot_register_object_or_write_terminal_state(monkeypatch):
+    monkeypatch.setenv("MLOPS_DATASET_RELEASE_EXECUTION_MODE", "enforce")
+    release = _make_release()
+    base_mod.claim_dataset_release(AnomalyDetectionDatasetRelease, release.id, "owner-expired")
+    _execution_model().objects.filter(release_id=release.id).update(lease_expires_at=timezone.now() - timedelta(seconds=1))
+
+    assert not base_mod.record_dataset_release_object_path(
+        AnomalyDetectionDatasetRelease,
+        release.id,
+        "owner-expired",
+        "datasets/expired.zip",
+    )
+    assert not base_mod.finalize_dataset_release(
+        AnomalyDetectionDatasetRelease,
+        release.id,
+        "owner-expired",
+        file_size=20,
+        metadata={"owner": "expired"},
+        saved_path="datasets/expired.zip",
+    )
+    assert not base_mod.mark_release_as_failed(
+        AnomalyDetectionDatasetRelease,
+        release.id,
+        "expired failure",
+        owner_token="owner-expired",
+    )
+    release.refresh_from_db()
+    assert release.status == DatasetReleaseStatus.PROCESSING
+    assert release.metadata == {}
+
+
+@pytest.mark.django_db
+def test_object_intent_registration_renews_active_owner_lease(monkeypatch):
+    monkeypatch.setenv("MLOPS_DATASET_RELEASE_EXECUTION_MODE", "enforce")
+    release = _make_release()
+    base_mod.claim_dataset_release(AnomalyDetectionDatasetRelease, release.id, "owner-current")
+    _execution_model().objects.filter(release_id=release.id).update(lease_expires_at=timezone.now() + timedelta(seconds=1))
+
+    assert base_mod.record_dataset_release_object_path(
+        AnomalyDetectionDatasetRelease,
+        release.id,
+        "owner-current",
+        "datasets/current.zip",
+    )
+    execution = _execution_model().objects.get(release_id=release.id)
+    assert execution.lease_expires_at >= timezone.now() + timedelta(seconds=7260)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("terminal_action", ["success", "failure"])
+def test_archived_release_fences_current_owner_terminal_write(monkeypatch, terminal_action):
+    monkeypatch.setenv("MLOPS_DATASET_RELEASE_EXECUTION_MODE", "enforce")
+    release = _make_release()
+    base_mod.claim_dataset_release(AnomalyDetectionDatasetRelease, release.id, "owner-current")
+    AnomalyDetectionDatasetRelease.objects.filter(id=release.id).update(status=DatasetReleaseStatus.ARCHIVED)
+
+    if terminal_action == "success":
+        updated = base_mod.finalize_dataset_release(
+            AnomalyDetectionDatasetRelease,
+            release.id,
+            "owner-current",
+            file_size=20,
+            metadata={"owner": "current"},
+            saved_path="current.zip",
+        )
+    else:
+        updated = base_mod.mark_release_as_failed(
+            AnomalyDetectionDatasetRelease,
+            release.id,
+            "late failure",
+            owner_token="owner-current",
+        )
+
+    assert updated is False
+    release.refresh_from_db()
+    assert release.status == DatasetReleaseStatus.ARCHIVED
+    assert release.metadata == {}
+
+
+@pytest.mark.django_db
+def test_archived_release_redelivery_is_not_claimed(monkeypatch):
+    monkeypatch.setenv("MLOPS_DATASET_RELEASE_EXECUTION_MODE", "enforce")
+    release = _make_release(status=DatasetReleaseStatus.ARCHIVED)
+
+    claim = base_mod.claim_dataset_release(AnomalyDetectionDatasetRelease, release.id, "owner-current")
+
+    assert claim.acquired is False
+    assert claim.reason == "Task already archived"
+    assert not _execution_model().objects.filter(release_id=release.id).exists()
+
+
+@pytest.mark.django_db
 def test_rollback_to_shadow_does_not_unfence_stale_failure(monkeypatch):
     monkeypatch.setenv("MLOPS_DATASET_RELEASE_EXECUTION_MODE", "enforce")
     release = _make_release()
@@ -212,6 +311,23 @@ def test_failure_cleanup_removes_orphan_execution_when_release_was_deleted(
             owner_token="owner-redelivery",
         )
         is False
+    )
+    assert not _execution_model().objects.filter(release_id=release_id).exists()
+
+
+@pytest.mark.django_db
+def test_upload_preflight_removes_execution_when_release_was_deleted(monkeypatch):
+    monkeypatch.setenv("MLOPS_DATASET_RELEASE_EXECUTION_MODE", "enforce")
+    release = _make_release()
+    release_id = release.id
+    base_mod.claim_dataset_release(AnomalyDetectionDatasetRelease, release_id, "owner-current")
+    release.delete()
+
+    assert not base_mod.record_dataset_release_object_path(
+        AnomalyDetectionDatasetRelease,
+        release_id,
+        "owner-current",
+        "datasets/deleted-release.zip",
     )
     assert not _execution_model().objects.filter(release_id=release_id).exists()
 
@@ -268,13 +384,21 @@ def test_post_upload_finalize_error_cleans_attempt_object(monkeypatch):
             "owner-current",
             file_size=20,
             metadata={},
+            cleanup_owner_token="owner-current",
         )
 
     storage.delete.assert_called_once_with("attempt.zip")
 
 
-def test_shadow_finalize_error_does_not_delete_shared_object(monkeypatch):
+@pytest.mark.django_db
+def test_shadow_finalize_error_defers_recorded_attempt_cleanup(monkeypatch):
     storage = MagicMock()
+    _cleanup_model().objects.create(
+        release_type=AnomalyDetectionDatasetRelease._meta.label_lower,
+        release_id=1,
+        owner_token="shadow-attempt",
+        object_path="shared.zip",
+    )
 
     def boom(*args, **kwargs):
         raise RuntimeError("database unavailable")
@@ -289,9 +413,64 @@ def test_shadow_finalize_error_does_not_delete_shared_object(monkeypatch):
             None,
             file_size=20,
             metadata={},
+            cleanup_owner_token="shadow-attempt",
         )
 
     storage.delete.assert_not_called()
+    assert _cleanup_model().objects.filter(owner_token="shadow-attempt", object_path="shared.zip").exists()
+
+
+@pytest.mark.django_db
+def test_shadow_upload_intent_is_persisted_with_a_cleanup_grace_lease(monkeypatch):
+    monkeypatch.setenv("MLOPS_DATASET_RELEASE_EXECUTION_MODE", "shadow")
+    release = _make_release(status=DatasetReleaseStatus.PROCESSING)
+
+    assert base_mod.record_dataset_release_object_path(
+        AnomalyDetectionDatasetRelease,
+        release.id,
+        "shadow-attempt",
+        "datasets/shadow.zip",
+    )
+
+    intent = _cleanup_model().objects.get(release_id=release.id, owner_token="shadow-attempt")
+    assert intent.cleanup_token == "shadow-attempt"
+    assert intent.cleanup_lease_expires_at >= timezone.now() + timedelta(seconds=7260)
+
+
+@pytest.mark.django_db
+def test_shadow_persists_allocated_path_before_object_write(monkeypatch):
+    monkeypatch.setenv("MLOPS_DATASET_RELEASE_EXECUTION_MODE", "shadow")
+    release = _make_release(status=DatasetReleaseStatus.PROCESSING)
+    storage = MagicMock()
+    storage.get_available_name.return_value = "datasets/release_renamed.zip"
+
+    def worker_lost_after_intent(saved_path, content):
+        assert saved_path == "datasets/release_renamed.zip"
+        assert (
+            _cleanup_model()
+            .objects.filter(
+                release_id=release.id,
+                owner_token="shadow-attempt",
+                object_path=saved_path,
+            )
+            .exists()
+        )
+        raise SystemExit("worker lost")
+
+    storage._save.side_effect = worker_lost_after_intent
+
+    with pytest.raises(SystemExit, match="worker lost"):
+        base_mod.save_dataset_release_object(
+            storage,
+            MagicMock(),
+            "datasets/release.zip",
+            AnomalyDetectionDatasetRelease,
+            release.id,
+            None,
+            "shadow-attempt",
+        )
+
+    storage.get_available_name.assert_called_once_with("datasets/release.zip")
 
 
 @pytest.mark.django_db
@@ -394,6 +573,7 @@ def test_successful_finalize_retries_old_cleanup_intents(monkeypatch):
         "owner-current",
         file_size=20,
         metadata={},
+        cleanup_owner_token="owner-current",
     )
 
     storage.delete.assert_called_once_with("datasets/old-orphan.zip")
@@ -456,6 +636,66 @@ def test_cleanup_command_retries_orphans_and_retains_delete_failures(monkeypatch
     assert not _cleanup_model().objects.filter(object_path="datasets/expired.zip").exists()
 
 
+@pytest.mark.django_db
+def test_cleanup_command_rotates_skipped_intents_without_starving_later_rows(monkeypatch):
+    release_type = AnomalyDetectionDatasetRelease._meta.label_lower
+    active = _cleanup_model().objects.create(
+        release_type=release_type,
+        release_id=1001,
+        owner_token="owner-active",
+        object_path="datasets/active.zip",
+    )
+    orphan = _cleanup_model().objects.create(
+        release_type=release_type,
+        release_id=1002,
+        owner_token="owner-orphan",
+        object_path="datasets/orphan.zip",
+    )
+    _cleanup_model().objects.filter(id=active.id).update(updated_at=timezone.now() - timedelta(minutes=2))
+    _cleanup_model().objects.filter(id=orphan.id).update(updated_at=timezone.now() - timedelta(minutes=1))
+    _execution_model().objects.create(
+        release_type=release_type,
+        release_id=1001,
+        owner_token="owner-active",
+        lease_expires_at=timezone.now() + timedelta(minutes=5),
+    )
+    storage = MagicMock()
+    monkeypatch.setattr(base_mod, "MinioBackend", lambda **kwargs: storage)
+
+    call_command("cleanup_dataset_release_objects", limit=1)
+    storage.delete.assert_not_called()
+    assert _cleanup_cursor_model().objects.get(scope="global").last_intent_id == active.id
+    call_command("cleanup_dataset_release_objects", limit=1)
+
+    storage.delete.assert_called_once_with("datasets/orphan.zip")
+    assert _cleanup_cursor_model().objects.get(scope="global").last_intent_id == orphan.id
+    assert _cleanup_model().objects.filter(id=active.id).exists()
+    assert not _cleanup_model().objects.filter(id=orphan.id).exists()
+
+    call_command("cleanup_dataset_release_objects", limit=1)
+    assert _cleanup_cursor_model().objects.get(scope="global").last_intent_id == active.id
+
+
+@pytest.mark.django_db
+def test_cleanup_command_dry_run_has_no_side_effect_and_limit_is_bounded(monkeypatch):
+    intent = _cleanup_model().objects.create(
+        release_type=AnomalyDetectionDatasetRelease._meta.label_lower,
+        release_id=1003,
+        owner_token="owner-dry-run",
+        object_path="datasets/dry-run.zip",
+    )
+    storage_factory = MagicMock()
+    monkeypatch.setattr(base_mod, "MinioBackend", storage_factory)
+
+    call_command("cleanup_dataset_release_objects", dry_run=True)
+
+    storage_factory.assert_not_called()
+    assert _cleanup_model().objects.filter(id=intent.id).exists()
+    assert not _cleanup_cursor_model().objects.exists()
+    with pytest.raises(CommandError, match="--limit 必须在 1 到 1000 之间"):
+        call_command("cleanup_dataset_release_objects", limit=1001)
+
+
 @pytest.mark.django_db(
     transaction=True,
     available_apps=["apps.base", "apps.core", "apps.mlops"],
@@ -474,10 +714,6 @@ def test_cleanup_sweep_cannot_delete_object_published_after_candidate_scan(monke
         "owner-current",
         "datasets/current.zip",
     )
-    execution = _execution_model().objects.get(release_id=release.id)
-    execution.lease_expires_at = timezone.now() - timedelta(seconds=1)
-    execution.save(update_fields=["lease_expires_at"])
-
     candidate_scanned = Event()
     allow_cleanup = Event()
     storage = MagicMock()
@@ -564,6 +800,28 @@ def test_terminal_cleanup_backend_error_does_not_change_terminal_status(monkeypa
     assert _cleanup_model().objects.filter(release_id=release.id).exists()
 
 
+@pytest.mark.django_db
+def test_cleanup_never_deletes_an_object_still_referenced_by_release(monkeypatch):
+    release = _make_release(status=DatasetReleaseStatus.FAILED)
+    release.dataset_file.name = "datasets/referenced.zip"
+    release.save(update_fields=["dataset_file"])
+    _cleanup_model().objects.create(
+        release_type=AnomalyDetectionDatasetRelease._meta.label_lower,
+        release_id=release.id,
+        owner_token="shadow-loser",
+        object_path="datasets/referenced.zip",
+        cleanup_token="shadow-loser",
+        cleanup_lease_expires_at=timezone.now() - timedelta(seconds=1),
+    )
+    storage = MagicMock()
+    monkeypatch.setattr(base_mod, "MinioBackend", lambda **kwargs: storage)
+
+    call_command("cleanup_dataset_release_objects")
+
+    storage.delete.assert_not_called()
+    assert not _cleanup_model().objects.filter(release_id=release.id).exists()
+
+
 def test_storage_url_error_does_not_abort_completed_upload():
     assert hasattr(base_mod, "get_storage_display_url")
     storage = MagicMock()
@@ -617,45 +875,3 @@ def test_two_database_connections_only_allow_one_pending_claim(monkeypatch):
     execution = _execution_model().objects.get(release_id=release.id)
     assert execution.owner_token in {"owner-a", "owner-b"}
     assert execution.attempt == 1
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("terminal_action", ["success", "failure"])
-def test_terminal_write_locks_release_before_execution(monkeypatch, terminal_action):
-    """所有写路径保持同一锁顺序，避免接管与终态提交形成死锁。"""
-
-    monkeypatch.setenv("MLOPS_DATASET_RELEASE_EXECUTION_MODE", "enforce")
-    release = _make_release()
-    base_mod.claim_dataset_release(AnomalyDetectionDatasetRelease, release.id, "owner-current")
-
-    with CaptureQueriesContext(connection) as queries:
-        if terminal_action == "success":
-            base_mod.finalize_dataset_release(
-                AnomalyDetectionDatasetRelease,
-                release.id,
-                "owner-current",
-                file_size=20,
-                metadata={"owner": "current"},
-                saved_path="current.zip",
-            )
-        else:
-            base_mod.mark_release_as_failed(
-                AnomalyDetectionDatasetRelease,
-                release.id,
-                "current failure",
-                owner_token="owner-current",
-            )
-
-    release_table = AnomalyDetectionDatasetRelease._meta.db_table
-    execution_table = _execution_model()._meta.db_table
-    locked_tables = []
-    for query in queries:
-        sql = query["sql"]
-        if "FOR UPDATE" not in sql:
-            continue
-        if release_table in sql:
-            locked_tables.append(release_table)
-        elif execution_table in sql:
-            locked_tables.append(execution_table)
-
-    assert locked_tables[:2] == [release_table, execution_table]

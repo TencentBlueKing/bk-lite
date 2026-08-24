@@ -63,9 +63,7 @@ def _build_anomaly_detection_metadata(
             "val_anomaly_count": val_anomaly_count,
             "test_anomaly_count": test_anomaly_count,
             "total_anomaly_count": total_anomaly_count,
-            "anomaly_rate": round(total_anomaly_count / total_samples, 4)
-            if total_samples > 0
-            else 0,
+            "anomaly_rate": round(total_anomaly_count / total_samples, 4) if total_samples > 0 else 0,
             "features": ["timestamp", "value"],
             "data_types": {"timestamp": "string", "value": "float"},
         },
@@ -74,10 +72,7 @@ def _build_anomaly_detection_metadata(
 
 def _get_config() -> DatasetPublishConfig:
     """延迟加载配置，避免循环导入"""
-    from apps.mlops.models.anomaly_detection import (
-        AnomalyDetectionDatasetRelease,
-        AnomalyDetectionTrainData,
-    )
+    from apps.mlops.models.anomaly_detection import AnomalyDetectionDatasetRelease, AnomalyDetectionTrainData
 
     return DatasetPublishConfig(
         release_model=AnomalyDetectionDatasetRelease,
@@ -98,9 +93,7 @@ def _get_config() -> DatasetPublishConfig:
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def publish_dataset_release_async(
-    self, release_id: int, train_file_id: int, val_file_id: int, test_file_id: int
-) -> dict[str, Any]:
+def publish_dataset_release_async(self, release_id: int, train_file_id: int, val_file_id: int, test_file_id: int) -> dict[str, Any]:
     """
     异步发布异常检测数据集版本
 
@@ -131,27 +124,25 @@ def publish_dataset_release_async(
     except SoftTimeLimitExceeded:
         logger.error(f"数据集发布超时 - Release ID: {release_id}")
         if attempt.can_mark_failure():
-            from apps.mlops.models.anomaly_detection import (
-                AnomalyDetectionDatasetRelease,
-            )
+            from apps.mlops.models.anomaly_detection import AnomalyDetectionDatasetRelease
 
             mark_release_as_failed(
                 AnomalyDetectionDatasetRelease,
                 release_id,
                 owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
             )
         raise
 
     except Exception:
         logger.error(f"数据集发布失败 - Release ID: {release_id}", exc_info=True)
         if attempt.can_mark_failure():
-            from apps.mlops.models.anomaly_detection import (
-                AnomalyDetectionDatasetRelease,
-            )
+            from apps.mlops.models.anomaly_detection import AnomalyDetectionDatasetRelease
 
             mark_release_as_failed(
                 AnomalyDetectionDatasetRelease,
                 release_id,
                 owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
             )
         raise

@@ -2,16 +2,16 @@
 图片分类相关的 Celery 任务
 """
 
+import json
+import shutil
+import tempfile
+import zipfile
+from collections import defaultdict
+from pathlib import Path
+
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
 from django_minio_backend import MinioBackend, iso_date_prefix
-
-import tempfile
-import zipfile
-import json
-import shutil
-from pathlib import Path
-from collections import defaultdict
 
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.tasks.base import (
@@ -23,7 +23,7 @@ from apps.mlops.tasks.base import (
     get_storage_display_url,
     mark_release_as_failed,
     prepare_claim_storage,
-    record_dataset_release_object_path,
+    save_dataset_release_object,
 )
 
 ZIP_COPY_CHUNK_SIZE = 64 * 1024
@@ -37,9 +37,7 @@ ZIP_COPY_CHUNK_SIZE = 64 * 1024
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def publish_dataset_release_async(
-    self, release_id, train_file_id, val_file_id, test_file_id
-):
+def publish_dataset_release_async(self, release_id, train_file_id, val_file_id, test_file_id):
     """
     异步发布图片分类数据集版本
 
@@ -56,10 +54,7 @@ def publish_dataset_release_async(
     attempt = DatasetReleaseAttempt()
 
     try:
-        from apps.mlops.models.image_classification import (
-            ImageClassificationDatasetRelease,
-            ImageClassificationTrainData,
-        )
+        from apps.mlops.models.image_classification import ImageClassificationDatasetRelease, ImageClassificationTrainData
 
         claim = claim_dataset_release(
             ImageClassificationDatasetRelease,
@@ -71,6 +66,7 @@ def publish_dataset_release_async(
             return {"result": False, "reason": claim.reason}
         release = claim.release
         execution_token = claim.owner_token
+        cleanup_owner_token = execution_token or attempt.candidate_token
         if storage is None:
             storage = MinioBackend(
                 bucket_name="munchkin-public",
@@ -81,19 +77,11 @@ def publish_dataset_release_async(
         version = release.version
 
         # 获取训练数据对象
-        train_obj = ImageClassificationTrainData.objects.get(
-            id=train_file_id, dataset=dataset
-        )
-        val_obj = ImageClassificationTrainData.objects.get(
-            id=val_file_id, dataset=dataset
-        )
-        test_obj = ImageClassificationTrainData.objects.get(
-            id=test_file_id, dataset=dataset
-        )
+        train_obj = ImageClassificationTrainData.objects.get(id=train_file_id, dataset=dataset)
+        val_obj = ImageClassificationTrainData.objects.get(id=val_file_id, dataset=dataset)
+        test_obj = ImageClassificationTrainData.objects.get(id=test_file_id, dataset=dataset)
 
-        logger.info(
-            f"开始发布图片分类数据集 - Dataset: {dataset.id}, Version: {version}, Release ID: {release_id}"
-        )
+        logger.info(f"开始发布图片分类数据集 - Dataset: {dataset.id}, Version: {version}, Release ID: {release_id}")
 
         # 创建临时目录
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -124,27 +112,19 @@ def publish_dataset_release_async(
                     temp_extract = temp_path / f"{split_name}_extract"
                     temp_extract.mkdir()
                     temp_zip = temp_path / f"{split_name}_temp.zip"
-                    with data_obj.train_data.open("rb") as source, open(
-                        temp_zip, "wb"
-                    ) as target:
-                        shutil.copyfileobj(
-                            source, target, length=ZIP_COPY_CHUNK_SIZE
-                        )
+                    with data_obj.train_data.open("rb") as source, open(temp_zip, "wb") as target:
+                        shutil.copyfileobj(source, target, length=ZIP_COPY_CHUNK_SIZE)
 
                     with zipfile.ZipFile(temp_zip, "r") as zipf:
                         zipf.extractall(temp_extract)
 
                     # 根据 metadata 重组为 ImageFolder 格式
-                    split_stats = _reorganize_images(
-                        temp_extract, split_root, data_obj.metadata
-                    )
+                    split_stats = _reorganize_images(temp_extract, split_root, data_obj.metadata)
                     statistics["splits"][split_name] = split_stats
                     statistics["total_images"] += split_stats["total"]
                     statistics["classes"].update(split_stats["classes"].keys())
 
-                    logger.info(
-                        f"{split_name} 处理完成: {split_stats['total']} 张图片, {len(split_stats['classes'])} 个类别"
-                    )
+                    logger.info(f"{split_name} 处理完成: {split_stats['total']} 张图片, {len(split_stats['classes'])} 个类别")
 
             # 转换 set 为 sorted list
             statistics["classes"] = sorted(list(statistics["classes"]))
@@ -192,23 +172,23 @@ def publish_dataset_release_async(
             with open(zip_path, "rb") as f:
                 object_name = build_publish_object_name(zip_filename, execution_token)
                 date_prefixed_path = iso_date_prefix(dataset, object_name)
-                zip_object_path = (
-                    f"image_classification_datasets/{dataset.id}/{date_prefixed_path}"
-                )
+                zip_object_path = f"image_classification_datasets/{dataset.id}/{date_prefixed_path}"
 
-                if execution_token is not None and not record_dataset_release_object_path(
+                saved_path = save_dataset_release_object(
+                    storage,
+                    f,
+                    zip_object_path,
                     ImageClassificationDatasetRelease,
                     release_id,
                     execution_token,
-                    zip_object_path,
-                ):
+                    cleanup_owner_token,
+                )
+                if saved_path is None:
                     logger.warning(
                         "图片分类发布上传前 owner 已失效 - Release ID: %s",
                         release_id,
                     )
                     return {"result": False, "reason": "Stale execution"}
-
-                saved_path = storage.save(zip_object_path, f)
 
             finalized = finalize_uploaded_dataset_release(
                 storage,
@@ -218,6 +198,7 @@ def publish_dataset_release_async(
                 execution_token,
                 file_size=zip_size,
                 metadata=dataset_metadata,
+                cleanup_owner_token=cleanup_owner_token,
             )
             if not finalized:
                 logger.warning("陈旧图片分类发布结果已丢弃 - Release ID: %s", release_id)
@@ -226,9 +207,7 @@ def publish_dataset_release_async(
             zip_url = get_storage_display_url(storage, saved_path)
             logger.info(f"数据集上传成功: {zip_url}")
 
-            logger.info(
-                f"图片分类数据集发布成功 - Release ID: {release_id}, Version: {version}"
-            )
+            logger.info(f"图片分类数据集发布成功 - Release ID: {release_id}, Version: {version}")
 
             return {
                 "result": True,
@@ -244,30 +223,28 @@ def publish_dataset_release_async(
     except SoftTimeLimitExceeded:
         logger.error(f"任务超时 - Release ID: {release_id}")
         if attempt.can_mark_failure():
-            from apps.mlops.models.image_classification import (
-                ImageClassificationDatasetRelease,
-            )
+            from apps.mlops.models.image_classification import ImageClassificationDatasetRelease
 
             mark_release_as_failed(
                 ImageClassificationDatasetRelease,
                 release_id,
                 "任务超时",
                 owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
             )
         return {"result": False, "reason": "Task timeout"}
 
     except Exception as e:
         logger.error(f"数据集发布失败: {str(e)}", exc_info=True)
         if attempt.can_mark_failure():
-            from apps.mlops.models.image_classification import (
-                ImageClassificationDatasetRelease,
-            )
+            from apps.mlops.models.image_classification import ImageClassificationDatasetRelease
 
             mark_release_as_failed(
                 ImageClassificationDatasetRelease,
                 release_id,
                 str(e),
                 owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
             )
         return {"result": False, "error": str(e)}
 
@@ -346,8 +323,6 @@ def _reorganize_images(extract_dir: Path, split_root: Path, metadata: dict) -> d
 
                 logger.debug(f"移动图片: {img_name} -> {class_name}/")
             else:
-                logger.warning(
-                    f"图片 {img_name} 在 metadata.labels 中未找到对应类别，跳过"
-                )
+                logger.warning(f"图片 {img_name} 在 metadata.labels 中未找到对应类别，跳过")
 
     return {"total": total, "classes": dict(class_counts)}

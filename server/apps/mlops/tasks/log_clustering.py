@@ -48,10 +48,7 @@ def _build_log_clustering_metadata(
 
 def _get_config():
     """延迟加载配置，避免循环导入"""
-    from apps.mlops.models.log_clustering import (
-        LogClusteringDatasetRelease,
-        LogClusteringTrainData,
-    )
+    from apps.mlops.models.log_clustering import LogClusteringDatasetRelease, LogClusteringTrainData
 
     return DatasetPublishConfig(
         release_model=LogClusteringDatasetRelease,
@@ -72,9 +69,7 @@ def _get_config():
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def publish_dataset_release_async(
-    self, release_id, train_file_id, val_file_id, test_file_id
-):
+def publish_dataset_release_async(self, release_id, train_file_id, val_file_id, test_file_id):
     """
     异步发布日志聚类数据集版本
 
@@ -111,6 +106,7 @@ def publish_dataset_release_async(
                 LogClusteringDatasetRelease,
                 release_id,
                 owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
             )
         raise
 
@@ -123,5 +119,6 @@ def publish_dataset_release_async(
                 LogClusteringDatasetRelease,
                 release_id,
                 owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
             )
         raise

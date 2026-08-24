@@ -44,10 +44,7 @@ def _build_classification_metadata(
 
 def _get_config():
     """延迟加载配置，避免循环导入"""
-    from apps.mlops.models.classification import (
-        ClassificationDatasetRelease,
-        ClassificationTrainData,
-    )
+    from apps.mlops.models.classification import ClassificationDatasetRelease, ClassificationTrainData
 
     return DatasetPublishConfig(
         release_model=ClassificationDatasetRelease,
@@ -68,9 +65,7 @@ def _get_config():
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def publish_dataset_release_async(
-    self, release_id, train_file_id, val_file_id, test_file_id
-):
+def publish_dataset_release_async(self, release_id, train_file_id, val_file_id, test_file_id):
     """
     异步发布数据集版本
 
@@ -107,6 +102,7 @@ def publish_dataset_release_async(
                 ClassificationDatasetRelease,
                 release_id,
                 owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
             )
         raise
 
@@ -119,5 +115,6 @@ def publish_dataset_release_async(
                 ClassificationDatasetRelease,
                 release_id,
                 owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
             )
         raise

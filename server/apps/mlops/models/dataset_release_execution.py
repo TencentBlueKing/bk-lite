@@ -52,3 +52,13 @@ class DatasetReleaseObjectCleanup(TimeInfo):
                 name="mlops_release_cleanup_idx",
             )
         ]
+
+
+class DatasetReleaseObjectCleanupCursor(TimeInfo):
+    """对象补偿 sweep 的持久 keyset 断点。"""
+
+    scope = models.CharField(max_length=32, unique=True, default="global")
+    last_intent_id = models.PositiveBigIntegerField(default=0)
+
+    class Meta:
+        db_table = "mlops_dataset_release_cleanup_cursor"
