@@ -6,8 +6,8 @@ import pytest
 from django.core import signing
 from django.test import override_settings
 
-from apps.cmdb.nats import nats as cmdb_nats
 from apps.cmdb.nats import list_instances_auth as auth
+from apps.cmdb.nats import nats as cmdb_nats
 
 pytestmark = pytest.mark.unit
 
