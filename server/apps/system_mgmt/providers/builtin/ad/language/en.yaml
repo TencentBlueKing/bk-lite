@@ -49,8 +49,10 @@ templates:
       scope:
         title: Sync scope
         fields:
-          root_dn:
-            label: Sync start directory
+          root_dns:
+            label: Sync pull DNs
+            placeholder: "OU=BizA,DC=example,DC=com\nOU=BizC,DC=example,DC=com"
+            help_text: One complete DN per line. With one DN, child organizations attach under this sync source's root group. With multiple OUs, each appears as its own organization under that root.
           user_object_class:
             label: User object class
             help_text: Object class for user accounts in AD/LDAP. The common value is user; keep the default unless you need a different class.
@@ -66,7 +68,7 @@ capabilities:
     fields:
       base_dn:
         label: Login search Base DN
-        help_text: "LDAP search root used during login. This is not the same as the sync start directory (root_dn): root_dn limits what is synced, base_dn limits where login search looks."
+        help_text: "LDAP search root used during login. This is not the same as sync pull DNs (root_dns): root_dns limits what is synced, base_dn limits where login search looks."
       login_auth_identity_field:
         label: Login account type
         options:

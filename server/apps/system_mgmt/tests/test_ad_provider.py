@@ -287,7 +287,153 @@ def test_ad_user_sync_requires_root_dn():
     )
 
     assert result.success is False
-    assert result.errors[0].field == "root_dn"
+    assert result.errors[0].field == "root_dns"
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_multi_pull_dns_include_ou_roots_under_local_root(mock_search_entries):
+    """多个拉取 DN 时，每个 OU 本身进入 group_list，parent 指向合成本地根。"""
+    dn_a = "OU=BizA,OU=Company,DC=corp,DC=example,DC=com"
+    dn_c = "OU=BizC,OU=Company,DC=corp,DC=example,DC=com"
+    child_a = "OU=Dev,OU=BizA,OU=Company,DC=corp,DC=example,DC=com"
+
+    mock_search_entries.side_effect = [
+        # users under A
+        [
+            {
+                "sAMAccountName": "alice",
+                "displayName": "Alice",
+                "distinguishedName": f"CN=Alice,{child_a}",
+            }
+        ],
+        # orgs under A
+        [
+            {"distinguishedName": dn_a},
+            {"distinguishedName": child_a},
+        ],
+        # users under C
+        [
+            {
+                "sAMAccountName": "carol",
+                "displayName": "Carol",
+                "distinguishedName": f"CN=Carol,{dn_c}",
+            }
+        ],
+        # orgs under C
+        [{"distinguishedName": dn_c}],
+    ]
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=type(
+            "Source",
+            (),
+            {"business_config": {"root_dns": [dn_a, dn_c]}},
+        )(),
+    )
+
+    assert result.success is True
+    assert result.payload["local_root_scope_id"] == "__local_root__"
+    groups_by_id = {item["id"]: item for item in result.payload["group_list"]}
+    assert groups_by_id[dn_a] == {"id": dn_a, "name": "BizA", "parent_id": "__local_root__"}
+    assert groups_by_id[dn_c] == {"id": dn_c, "name": "BizC", "parent_id": "__local_root__"}
+    assert groups_by_id[child_a]["parent_id"] == dn_a
+    users_by_name = {u["sAMAccountName"]: u for u in result.payload["user_list"]}
+    assert users_by_name["alice"]["department_ids"] == [child_a]
+    assert users_by_name["carol"]["department_ids"] == [dn_c]
+    assert mock_search_entries.call_count == 4
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_drops_descendant_pull_dn_covered_by_ancestor(mock_search_entries):
+    parent = "OU=PAAS,DC=corp,DC=example,DC=com"
+    child = "OU=Dev,OU=PAAS,DC=corp,DC=example,DC=com"
+    mock_search_entries.side_effect = [[], [{"distinguishedName": parent}, {"distinguishedName": child}]]
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=type(
+            "Source",
+            (),
+            {"business_config": {"root_dns": [parent, child]}},
+        )(),
+    )
+
+    assert result.success is True
+    # 规范化后只搜父 DN，行为退回单 DN 折迭：父 OU 不出现在 group_list
+    assert result.payload["local_root_scope_id"] == parent
+    assert result.payload["group_list"] == [
+        {"id": child, "name": "Dev", "parent_id": parent},
+    ]
+    assert mock_search_entries.call_count == 2
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_multi_non_ou_pull_hangs_children_under_local_root(mock_search_entries):
+    """拉取 DN 不是 OU 时，其下子 OU 直接挂到合成本地根。"""
+    domain_a = "DC=corp,DC=example,DC=com"
+    domain_b = "DC=other,DC=example,DC=com"
+    child_a = "OU=Sales,DC=corp,DC=example,DC=com"
+    child_b = "OU=HR,DC=other,DC=example,DC=com"
+    mock_search_entries.side_effect = [
+        [],
+        [{"distinguishedName": child_a}],
+        [],
+        [{"distinguishedName": child_b}],
+    ]
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=type(
+            "Source",
+            (),
+            {"business_config": {"root_dns": [domain_a, domain_b]}},
+        )(),
+    )
+
+    assert result.success is True
+    assert result.payload["local_root_scope_id"] == "__local_root__"
+    groups_by_id = {item["id"]: item for item in result.payload["group_list"]}
+    assert domain_a not in groups_by_id
+    assert domain_b not in groups_by_id
+    assert groups_by_id[child_a]["parent_id"] == "__local_root__"
+    assert groups_by_id[child_b]["parent_id"] == "__local_root__"
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_fails_entirely_when_one_pull_dn_search_fails(mock_search_entries):
+    mock_search_entries.side_effect = [
+        [],
+        [],
+        RuntimeError("ldap search failed"),
+    ]
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=type(
+            "Source",
+            (),
+            {
+                "business_config": {
+                    "root_dns": [
+                        "OU=A,DC=corp,DC=example,DC=com",
+                        "OU=C,DC=corp,DC=example,DC=com",
+                    ]
+                }
+            },
+        )(),
+    )
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.request_failed"
 
 
 @patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")

@@ -152,6 +152,68 @@ def test_get_or_create_root_rejects_unrelated_local_name_collision(ready_integra
     assert not Group.objects.filter(sync_source=source, parent_id=0).exclude(id=local_root.id).exists()
 
 
+def test_ad_single_to_multi_releases_root_external_id_and_reparents_child_ou(db):
+    """单 DN 改多 DN：本地根让出原 DN 外部标识，原 OU 成子组织，已有子 OU 只改父不换主键。"""
+    from apps.system_mgmt.models import IntegrationInstance
+
+    instance = IntegrationInstance.objects.create(
+        name="ad-multi-handoff",
+        provider_key="ad",
+        enabled=True,
+        status="ready",
+        capability_status={"user_sync": "ready"},
+        config={},
+    )
+    dn_a = "OU=BizA,DC=corp,DC=com"
+    dn_c = "OU=BizC,DC=corp,DC=com"
+    child_dn = "OU=Dev,OU=BizA,DC=corp,DC=com"
+
+    source = UserSyncSource.objects.create(
+        name="ad-handoff-source",
+        integration_instance=instance,
+        enabled=True,
+        root_group_name="AD Local Root",
+        business_config={"root_dns": [dn_a]},
+        field_mapping={"username": "sAMAccountName"},
+        schedule_config={"mode": "disabled"},
+    )
+    root = Group.objects.create(
+        name="AD Local Root",
+        parent_id=0,
+        sync_source=source,
+        external_id=f"user-sync:{source.id}:{dn_a}",
+    )
+    existing_child = Group.objects.create(
+        name="Dev",
+        parent_id=root.id,
+        sync_source=source,
+        external_id=f"user-sync:{source.id}:{child_dn}",
+    )
+    existing_child_id = existing_child.id
+
+    source.business_config = {"root_dns": [dn_a, dn_c]}
+    source.save(update_fields=["business_config"])
+
+    new_root = user_sync_service_module._get_or_create_root_group(source)
+    assert new_root.id == root.id
+    new_root.refresh_from_db()
+    assert new_root.external_id == f"user-sync:{source.id}:__local_root__"
+
+    group_list = [
+        {"id": dn_a, "name": "BizA", "parent_id": "__local_root__"},
+        {"id": dn_c, "name": "BizC", "parent_id": "__local_root__"},
+        {"id": child_dn, "name": "Dev", "parent_id": dn_a},
+    ]
+    mapping = _sync_groups(source, group_list, new_root, "__local_root__")
+
+    existing_child.refresh_from_db()
+    assert existing_child.id == existing_child_id
+    assert existing_child.parent_id == mapping[dn_a]
+    assert mapping[dn_a] != new_root.id
+    assert Group.objects.get(id=mapping[dn_a]).external_id == f"user-sync:{source.id}:{dn_a}"
+    assert Group.objects.get(id=mapping[dn_c]).parent_id == new_root.id
+
+
 def test_execute_user_sync_locks_source_before_creating_running_run(ready_integration_instance):
     source = _source(ready_integration_instance, "lock-before-running", "Lock Before Running Root")
     events = []

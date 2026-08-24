@@ -675,7 +675,7 @@ def test_sync_source_accepts_root_dn_without_base_dn_rail(api_client, authentica
 
     assert response.status_code == 201, response.json()
     created = UserSyncSource.objects.get(name="ad-source-no-rail")
-    assert created.business_config == {"root_dn": "OU=A,DC=x,DC=y"}
+    assert created.business_config == {"root_dns": ["OU=A,DC=x,DC=y"]}
 
 
 @pytest.mark.django_db

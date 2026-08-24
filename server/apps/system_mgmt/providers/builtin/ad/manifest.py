@@ -116,11 +116,16 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                         "title": "Sync scope",
                         "fields": [
                             {
-                                "key": "root_dn",
-                                "label": "Sync start directory",
-                                "field_type": "string",
+                                "key": "root_dns",
+                                "label": "Sync pull DNs",
+                                "field_type": "textarea",
                                 "required": True,
-                                "placeholder": "OU=Users,DC=example,DC=com",
+                                "placeholder": "OU=BizA,DC=example,DC=com\nOU=BizC,DC=example,DC=com",
+                                "help_text": (
+                                    "One complete DN per line. "
+                                    "With one DN, child organizations attach under this sync source's root group. "
+                                    "With multiple OUs, each appears as its own organization under that root."
+                                ),
                                 "input_mode": "manual_input",
                             },
                             {
@@ -181,8 +186,8 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                         "required": True,
                         "placeholder": "DC=example,DC=com",
                         "help_text": (
-                            "LDAP search root used during login. This is not the same as the sync start directory (root_dn): "
-                            "root_dn limits what is synced, base_dn limits where login search looks."
+                            "LDAP search root used during login. This is not the same as sync pull DNs (root_dns): "
+                            "root_dns limits what is synced, base_dn limits where login search looks."
                         ),
                     },
                     {

@@ -98,8 +98,8 @@ def test_mode_resolver_reads_manual_input_from_manifest():
         adapter_registry._adapters.pop("demo_manual.user_sync", None)
 
 
-def test_ad_root_scope_field_resolves_to_root_dn():
-    assert get_user_sync_root_scope_field("ad") == "root_dn"
+def test_ad_root_scope_field_resolves_to_root_dns():
+    assert get_user_sync_root_scope_field("ad") == "root_dns"
 
 
 def test_ad_root_dn_uses_manual_input_mode():
@@ -250,7 +250,52 @@ def test_ad_manual_input_accepts_root_dn_and_skips_department_listing(ready_ad_i
         assert serializer.is_valid(), serializer.errors
 
     mock_execute.assert_not_called()
-    assert serializer.validated_data["business_config"]["root_dn"] == "OU=PAAS,DC=corp,DC=example,DC=com"
+    assert serializer.validated_data["business_config"]["root_dns"] == [
+        "OU=PAAS,DC=corp,DC=example,DC=com"
+    ]
+    assert "root_dn" not in serializer.validated_data["business_config"]
+
+
+@pytest.mark.django_db
+def test_ad_manual_input_accepts_multi_line_root_dns(ready_ad_integration_instance):
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "ad-source-multi",
+            "integration_instance": ready_ad_integration_instance.id,
+            "root_group_name": "AD Root Multi",
+            "business_config": {
+                "root_dns": (
+                    "OU=BizA,DC=corp,DC=example,DC=com\n"
+                    "OU=BizC,DC=corp,DC=example,DC=com\n"
+                ),
+            },
+            "field_mapping": {"username": "sAMAccountName"},
+            "schedule_config": {"mode": "disabled"},
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["business_config"]["root_dns"] == [
+        "OU=BizA,DC=corp,DC=example,DC=com",
+        "OU=BizC,DC=corp,DC=example,DC=com",
+    ]
+
+
+@pytest.mark.django_db
+def test_ad_manual_input_rejects_empty_root_dns_list(ready_ad_integration_instance):
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "ad-source-empty-list",
+            "integration_instance": ready_ad_integration_instance.id,
+            "root_group_name": "AD Empty List",
+            "business_config": {"root_dns": ["  ", "\n"]},
+            "field_mapping": {"username": "sAMAccountName"},
+            "schedule_config": {"mode": "disabled"},
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "business_config" in serializer.errors
 
 
 @pytest.mark.django_db

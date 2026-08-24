@@ -244,9 +244,10 @@ def test_ad_user_sync_root_dn_is_manual_input():
     from apps.system_mgmt.providers.builtin.ad import PROVIDER_MANIFEST
 
     template = PROVIDER_MANIFEST.business_templates["user_sync_form"]
-    root_field = next(field for group in template.groups for field in group.fields if field.key == "root_dn")
+    root_field = next(field for group in template.groups for field in group.fields if field.key == "root_dns")
 
     assert root_field.input_mode == "manual_input"
+    assert root_field.field_type == "textarea"
 
 
 def test_ad_user_sync_manifest_exposes_directory_query_parameters():
@@ -255,7 +256,7 @@ def test_ad_user_sync_manifest_exposes_directory_query_parameters():
     template = PROVIDER_MANIFEST.business_templates["user_sync_form"]
     field_map = {field.key: field for group in template.groups for field in group.fields}
 
-    assert list(field_map) == ["root_dn", "user_object_class", "user_filter", "organization_object_class"]
+    assert list(field_map) == ["root_dns", "user_object_class", "user_filter", "organization_object_class"]
     assert "base_dn" not in field_map
     assert field_map["user_object_class"].default == "user"
     assert field_map["user_filter"].default == "(&(objectCategory=Person)(sAMAccountName=*))"
@@ -272,26 +273,19 @@ def test_feishu_user_sync_manifest_does_not_expose_fetch_child_toggle():
 
 
 def test_capability_contract_only_validates_root_dn_for_ad_user_sync():
-    """T4: AD user-sync contract must accept business_config with only root_dn.
-
-    After removing the legacy base_dn rail, validate_user_sync_contract must
-    not raise when the source carries only {"root_dn": "OU=A,DC=x,DC=y"}.
-    The root_dn non-empty rule must remain in force (asserted separately).
-    """
+    """AD user-sync contract must accept business_config with only root_dns."""
     from apps.system_mgmt.providers.builtin.ad import PROVIDER_MANIFEST
     from apps.system_mgmt.services.capability_contract_service import (
         validate_user_sync_contract,
     )
 
-    # Sanity: the AD manifest no longer declares base_dn on its user_sync template.
     template = PROVIDER_MANIFEST.business_templates["user_sync_form"]
     template_fields = {field.key for group in template.groups for field in group.fields}
     assert "base_dn" not in template_fields
 
-    # The contract path must accept a config carrying only root_dn — no error.
     validate_user_sync_contract(
         PROVIDER_MANIFEST,
-        business_config={"root_dn": "OU=A,DC=x,DC=y"},
+        business_config={"root_dns": ["OU=A,DC=x,DC=y"]},
         field_mapping=None,
         schedule_config=None,
     )
@@ -305,7 +299,7 @@ def test_ad_user_sync_contract_allows_custom_ldap_attribute_mapping():
 
     validate_user_sync_contract(
         PROVIDER_MANIFEST,
-        business_config={"root_dn": "OU=A,DC=x,DC=y"},
+        business_config={"root_dns": ["OU=A,DC=x,DC=y"]},
         field_mapping={"username": "customEmployeeId"},
         schedule_config=None,
     )
@@ -325,20 +319,12 @@ def test_user_sync_contract_does_not_treat_available_fields_as_a_field_existence
 
 
 def test_capability_contract_still_rejects_empty_root_dn_for_ad_user_sync():
-    """T4 complementary: root_dn non-empty rule must remain after base_dn removal.
-
-    The contract layer relies on the business-template field set to surface
-    invalid keys; here we verify that an empty-string root_dn is still flagged
-    by the calling serializer path. validate_user_sync_contract itself only
-    validates shape (key membership), so the empty-value gate lives in the
-    serializer. We keep this assertion as documentation that the rule
-    continues to exist at the serializer layer and we are not deleting it.
-    """
+    """root_dns 必填规则由 serializer 保证；manifest 字段仍标记 required。"""
     from apps.system_mgmt.providers.builtin.ad import PROVIDER_MANIFEST
 
     template = PROVIDER_MANIFEST.business_templates["user_sync_form"]
     root_field = next(
-        field for group in template.groups for field in group.fields if field.key == "root_dn"
+        field for group in template.groups for field in group.fields if field.key == "root_dns"
     )
     assert root_field.required is True
 

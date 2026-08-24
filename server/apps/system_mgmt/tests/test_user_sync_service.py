@@ -29,6 +29,7 @@ from apps.system_mgmt.services.user_sync_service import (
     detect_root_group_name_conflicts,
     execute_user_sync,
     get_user_sync_business_value,
+    get_user_sync_root_scope_value,
     preview_user_sync,
 )
 
@@ -398,6 +399,35 @@ def test_get_user_sync_business_value_returns_default_when_both_absent():
 def test_get_user_sync_business_value_handles_none_business_config():
     source = SimpleNamespace(business_config=None)
     assert get_user_sync_business_value(source, "root_department_id", "0") == "0"
+
+
+def test_get_user_sync_root_scope_value_ad_single_dn_folds_to_that_dn():
+    source = SimpleNamespace(
+        integration_instance=SimpleNamespace(provider_key="ad"),
+        business_config={"root_dns": ["OU=PAAS,DC=corp,DC=com"]},
+    )
+    assert get_user_sync_root_scope_value(source) == "OU=PAAS,DC=corp,DC=com"
+
+
+def test_get_user_sync_root_scope_value_ad_multi_dn_uses_synthetic_local_root():
+    source = SimpleNamespace(
+        integration_instance=SimpleNamespace(provider_key="ad"),
+        business_config={
+            "root_dns": [
+                "OU=BizA,DC=corp,DC=com",
+                "OU=BizC,DC=corp,DC=com",
+            ]
+        },
+    )
+    assert get_user_sync_root_scope_value(source) == "__local_root__"
+
+
+def test_get_user_sync_root_scope_value_ad_accepts_legacy_root_dn():
+    source = SimpleNamespace(
+        integration_instance=SimpleNamespace(provider_key="ad"),
+        business_config={"root_dn": "OU=PAAS,DC=corp,DC=com"},
+    )
+    assert get_user_sync_root_scope_value(source) == "OU=PAAS,DC=corp,DC=com"
 
 
 def test_feishu_user_sync_uses_find_by_department_endpoint():

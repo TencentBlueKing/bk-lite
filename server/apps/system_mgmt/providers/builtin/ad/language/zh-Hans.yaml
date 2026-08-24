@@ -49,8 +49,10 @@ templates:
       scope:
         title: 同步范围
         fields:
-          root_dn:
-            label: 同步起始目录
+          root_dns:
+            label: 同步拉取 DN
+            placeholder: "OU=BizA,DC=example,DC=com\nOU=BizC,DC=example,DC=com"
+            help_text: 每行一个完整 DN。只填一个时，该目录下的子组织直接挂在同步源根组织下；填多个时，每个 OU 都会作为根组织下的独立组织显示。
           user_object_class:
             label: 用户对象类
             help_text: 指定 AD/LDAP 中用户账号的类别，常用user类型，若无需要，保持默认即可。
@@ -66,7 +68,7 @@ capabilities:
     fields:
       base_dn:
         label: 登录搜索 Base DN
-        help_text: 登录认证时 LDAP 搜索的根目录，决定可在哪个 OU/子树范围内查找登录用户。与「同步起始目录 (root_dn)」是不同字段：root_dn 限制同步范围，base_dn 限制登录搜索范围。
+        help_text: 登录认证时 LDAP 搜索的根目录，决定可在哪个 OU/子树范围内查找登录用户。与「同步拉取 DN (root_dns)」是不同字段：root_dns 限制同步范围，base_dn 限制登录搜索范围。
       login_auth_identity_field:
         label: 登录账号类型
         options:
