@@ -15,12 +15,31 @@
 | UI 与组件约定 | `DESIGN.md`、`web/DESIGN.md`、`web/COMPONENT_GOVERNANCE.md` |
 | 开发、验证与运行命令 | `DEVELOP.md` |
 | Server 启动顺序与依赖边界 | `docs/operations/server-startup-dependencies.md` |
+| Server 模块架构、数据流与演进建议 | `docs/design-docs/server-module-analysis-roadmap.md` |
 | 长期架构决定 | `docs/adr/` |
 | 发布记录 | `docs/changelog/` |
 
 按任务读取相关入口，并以当前代码、配置和测试为最终证据。修改 `server/` 或
 `agents/` 前，按影响范围阅读后端工程、安全、可靠性和质量 capability；只读取
 本次任务相关章节。
+
+## Server 模块架构证据
+
+设计、重构、扩展、修复或排障 `server/` 时，出现以下任一信号才按需读取模块图件：
+模块职责或依赖方向不清、跨模块调用、异步/并发、性能与容量、数据一致性、状态流转、
+外部副作用，或当前代码路径难以定位。已由局部测试完整证明的简单修改可以跳过。
+
+- 先从 `docs/design-docs/server-module-analysis-roadmap.md` 的“已完成模块与产物索引”
+  定位受影响模块；禁止无差别读取全部图件。
+- 判断现状 Module、Interface、Adapter 和依赖时，读取模块报告与
+  `<module>-current.architecture.json`；追踪执行、数据、状态、并发或外部副作用时，
+  再读取该模块的核心 `workflow` / `dataflow` JSON。HTML 仅用于人工交互浏览。
+- `<module>-target.architecture.json` 是演进候选，不是当前实现或既定方案；只在设计、
+  重构、修复后的架构复盘阶段读取，必须重新论证取舍。
+- 图件只用于导航代码、选择验证 Seam 和形成待证假设。当前代码、配置和测试始终是
+  最终证据；发现图件过期时明确指出，不得为了迎合图件修改正确实现。
+- 代码变更直接改变已记录的模块职责、依赖方向或核心数据流时，同步更新对应报告与
+  Archify JSON/HTML；小范围修复不要顺带重画无关模块。
 
 ## Web UI 硬约束
 

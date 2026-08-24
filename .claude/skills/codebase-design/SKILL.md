@@ -1,11 +1,29 @@
 ---
 name: codebase-design
-description: Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary.
+description: Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, architecture, data flow, dependency direction, seam placement, maintainability, extensibility, testability, or AI navigability, or when another skill needs the deep-module vocabulary.
 ---
 
 # Codebase Design
 
 Design **deep modules**: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use this language and these principles wherever code is being designed or restructured. The aim is leverage for callers, locality for maintainers, and testability for everyone.
+
+## Repository architecture evidence
+
+When the repository contains module architecture artifacts, use them as scoped evidence rather than
+starting from a blind scan:
+
+1. Follow the repository guide to locate the affected module from its architecture index or roadmap.
+   Read only that module's report and current architecture first.
+2. Read the relevant workflow, data-flow, sequence, or lifecycle specification when the design touches
+   execution order, facts and projections, async/concurrency, state changes, capacity, or external side
+   effects.
+3. Treat a target architecture as a prior proposal, not a requirement. Compare it with at least one
+   independently reasoned alternative before selecting an interface or seam.
+4. Trace important nodes and edges back to current code, configuration, and tests. Record stale or
+   unsupported diagram claims instead of designing around them.
+
+Use diagrams to reduce navigation cost and expose cross-module effects; do not use them as proof that
+an import, runtime call, transaction, ordering guarantee, or ownership rule exists.
 
 ## Glossary
 
