@@ -797,7 +797,7 @@
       "filterEnvironment": "Filter topology by environment",
       "view": "Topology view",
       "graph": "Graph",
-      "list": "Dependency list",
+      "list": "List",
       "edgeTitle": "{source} calls {target}. {calls} observed calls, {duration} average duration",
       "refresh": "Refresh topology",
       "locate": "Locate topology node",

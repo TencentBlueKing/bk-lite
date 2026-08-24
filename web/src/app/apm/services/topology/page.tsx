@@ -354,7 +354,17 @@ export default function ApmTopologyPage() {
               </div>
               <Segmented<TimeWindow> aria-label={t('apm.topology.window', '拓扑时间窗口')} options={['15m', '1h', '4h', '1d', '7d']} value={timeWindow} onChange={setTimeWindow} />
               <Select allowClear aria-label={t('apm.topology.filterEnvironment', '按环境筛选拓扑')} className="w-36" placeholder={t('apm.common.allEnvironments', '全部环境')} options={environmentOptions} value={environment} onChange={setEnvironment} />
-              <Segmented<ViewMode> aria-label={t('apm.topology.view', '拓扑视图')} options={[{ value: 'graph', label: t('apm.topology.graph', '图形') }, { value: 'list', label: t('apm.topology.list', '依赖列表') }]} value={viewMode} onChange={setViewMode} />
+              <Segmented<ViewMode>
+                aria-label={t('apm.topology.view', '拓扑视图')}
+                block
+                className="w-32 shrink-0"
+                options={[
+                  { value: 'graph', label: t('apm.topology.graph', '图形') },
+                  { value: 'list', label: t('apm.topology.list', '列表') },
+                ]}
+                value={viewMode}
+                onChange={setViewMode}
+              />
               <Button danger={anomalyOnly} icon={<WarningOutlined aria-hidden="true" />} type={anomalyOnly ? 'primary' : 'default'} onClick={() => setAnomalyOnly((value) => !value)}>{t('apm.topology.anomalyOnly', '只看异常')}</Button>
               <Button aria-label={t('apm.topology.refresh', '刷新拓扑')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
             </FilterToolbar>
