@@ -14,7 +14,7 @@ assert.match(servicesPage, /ServicePerspective = 'application' \| 'service'/, '�
 assert.match(servicesPage, /getServiceRed/, '应用视角指标必须来自真实 RED 查询');
 assert.match(servicesPage, /getApplications/, '应用视角必须以应用目录为事实来源，不能只从已有服务反推应用');
 assert.match(servicesPage, /applicationSummaries/, '服务必须按 namespace 聚合为应用卡片');
-assert.match(servicesPage, /已归档/, '服务工具栏必须保留已归档入口');
+assert.match(servicesPage, /perspective === 'service'[\s\S]*已归档/, '已归档入口只挂在服务视角，不出现在应用卡片页');
 assert.match(servicesPage, /已归档服务/, '已归档入口必须打开归档抽屉而不是仅切换列表筛选');
 assert.match(servicesPage, /Drawer/, '已归档服务必须使用 Drawer 承载');
 assert.match(servicesPage, /吞吐量\(\/s\)/, '服务表必须展示吞吐 RED 列');
