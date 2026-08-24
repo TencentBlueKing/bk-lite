@@ -1,3 +1,5 @@
+import type { TableDataItem } from '../types';
+
 export const WINRM_HTTP_PORT = 5985;
 export const WINRM_HTTPS_PORT = 5986;
 
@@ -31,12 +33,10 @@ export const isWinrmSchemePortMismatch = (
   );
 };
 
-export const applyWinrmScheme = <
-  T extends { winrm_scheme?: string; port?: number; winrm_cert_validation?: boolean }
->(
-  rows: T[],
+export const applyWinrmScheme = (
+  rows: TableDataItem[],
   scheme: WinrmScheme
-): T[] =>
+) =>
   rows.map((row) => ({
     ...row,
     winrm_scheme: scheme,
