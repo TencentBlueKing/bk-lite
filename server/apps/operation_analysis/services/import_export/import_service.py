@@ -42,6 +42,7 @@ from apps.operation_analysis.schemas.import_export_schema import (
     YAMLDocument,
 )
 from apps.operation_analysis.services.import_export.view_sets import rewrite_canvas_view_sets_refs_for_storage
+from apps.operation_analysis.services.string_param_multiple_migrate import migrate_filters_payload, migrate_param_items
 
 
 class ImportService:
@@ -422,15 +423,12 @@ class ImportService:
                 existing.transform_config = self._normalize_transform_config(ds_item)
                 # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 existing.is_active = ds_item.is_active
-                existing.params = ds_item.params
+                existing.params = migrate_param_items(ds_item.params)[0]
                 existing.chart_type = ds_item.chart_type
                 existing.field_schema = ds_item.field_schema
                 existing.updated_by = self.updated_by
                 existing.save()
-                if (
-                    previous_source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL
-                    and existing.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL
-                ):
+                if previous_source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL and existing.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
                     from apps.operation_analysis.services.excel_materialize import abandon_excel_materialization
 
                     abandon_excel_materialization(existing, clear_excel_query_keys=False)
@@ -470,7 +468,7 @@ class ImportService:
                     desc=ds_item.desc,
                     # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                     is_active=ds_item.is_active,
-                    params=ds_item.params,
+                    params=migrate_param_items(ds_item.params)[0],
                     chart_type=ds_item.chart_type,
                     field_schema=ds_item.field_schema,
                     created_by=self.created_by,
@@ -510,7 +508,7 @@ class ImportService:
                 desc=ds_item.desc,
                 # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 is_active=ds_item.is_active,
-                params=ds_item.params,
+                params=migrate_param_items(ds_item.params)[0],
                 chart_type=ds_item.chart_type,
                 field_schema=ds_item.field_schema,
                 created_by=self.created_by,
@@ -591,7 +589,7 @@ class ImportService:
 
         # Dashboard有额外的filters字段
         if object_type == ObjectType.DASHBOARD and hasattr(canvas_item, "filters"):
-            canvas_data["filters"] = canvas_item.filters
+            canvas_data["filters"] = migrate_filters_payload(canvas_item.filters)[0]
 
         if object_type in CANVAS_REFRESH_OBJECT_TYPES:
             canvas_data["refresh_interval"] = normalize_canvas_refresh_interval(getattr(canvas_item, "refresh_interval", 0))

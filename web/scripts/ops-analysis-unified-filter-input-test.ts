@@ -7,6 +7,7 @@ import {
   processDataSourceParams,
   sanitizeUnifiedFilterDefinition,
 } from '../src/app/ops-analysis/utils/widgetDataTransform';
+import { coerceValueForMultiple } from '../src/app/ops-analysis/utils/stringParamMultipleMigrate';
 import type { FilterValue, UnifiedFilterDefinition } from '../src/app/ops-analysis/types/dashBoard';
 
 const departmentFilter: UnifiedFilterDefinition = {
@@ -204,12 +205,20 @@ assert.doesNotMatch(
 );
 
 const hostFilter: UnifiedFilterDefinition = {
-  id: 'instance_ids__stringList',
+  id: 'instance_ids__string',
   key: 'instance_ids',
   name: '主机',
-  type: 'stringList',
+  type: 'string',
   order: 0,
   enabled: true,
+  inputConfig: {
+    control: 'select',
+    multiple: true,
+    optionsSource: {
+      type: 'static',
+      staticItems: [],
+    },
+  },
 };
 
 const buildHostRequest = (hosts: FilterValue) =>
@@ -218,9 +227,17 @@ const buildHostRequest = (hosts: FilterValue) =>
       {
         name: 'instance_ids',
         alias_name: '主机',
-        type: 'stringList',
+        type: 'string',
         filterType: 'filter',
         value: null,
+        inputConfig: {
+          control: 'select',
+          multiple: true,
+          optionsSource: {
+            type: 'static',
+            staticItems: [],
+          },
+        },
       },
     ],
     unifiedFilterValues: { [hostFilter.id]: hosts },
@@ -231,12 +248,12 @@ const buildHostRequest = (hosts: FilterValue) =>
 assert.deepEqual(
   buildHostRequest(['host-a', 'host-b']),
   { instance_ids: ['host-a', 'host-b'] },
-  'stringList 多选应把 ID 数组写入绑定组件请求',
+  'string + multiple 多选应把 ID 数组写入绑定组件请求',
 );
 assert.deepEqual(
   buildHostRequest(['host-a']),
   { instance_ids: ['host-a'] },
-  'stringList 单选也应传单元素数组，不能拆成标量',
+  'string + multiple 单选也应传单元素数组，不能拆成标量',
 );
 assert.deepEqual(buildHostRequest([]), {}, '空数组应省略参数，不能传空列表');
 assert.deepEqual(buildHostRequest(null), {}, '未选择应省略参数');
@@ -247,9 +264,17 @@ assert.deepEqual(
       {
         name: 'instance_ids',
         alias_name: '主机',
-        type: 'stringList',
+        type: 'string',
         filterType: 'filter',
         value: null,
+        inputConfig: {
+          control: 'select',
+          multiple: true,
+          optionsSource: {
+            type: 'static',
+            staticItems: [],
+          },
+        },
       },
       {
         name: 'department',
@@ -270,13 +295,192 @@ assert.deepEqual(
     filterDefinitions: [hostFilter, departmentFilter],
   }),
   { instance_ids: ['host-a'], department: '数据部' },
-  'string 筛选仍传标量，不能和 stringList 混绑成同一种值',
+  'string 筛选仍传标量，不能和 multiple 字符串混绑成同一种值',
 );
+
+const scalarHostFilter: UnifiedFilterDefinition = {
+  id: 'instance_ids__string',
+  key: 'instance_ids',
+  name: '主机',
+  type: 'string',
+  order: 0,
+  enabled: true,
+  inputConfig: {
+    control: 'select',
+    multiple: false,
+    optionsSource: {
+      type: 'static',
+      staticItems: [],
+    },
+  },
+};
+
+assert.deepEqual(
+  processDataSourceParams({
+    sourceParams: [
+      {
+        name: 'instance_ids',
+        alias_name: '主机',
+        type: 'string',
+        filterType: 'filter',
+        value: null,
+      },
+    ],
+    unifiedFilterValues: { [scalarHostFilter.id]: 'host-a' },
+    filterBindings: { [scalarHostFilter.id]: true },
+    filterDefinitions: [scalarHostFilter],
+  }),
+  { instance_ids: 'host-a' },
+  '关闭 multiple 后请求必须发标量，不得暗中回数组',
+);
+
+{
+  const residualArray = ['h1', 'h2'];
+  assert.deepEqual(
+    processDataSourceParams({
+      sourceParams: [
+        {
+          name: 'instance_ids',
+          alias_name: '主机',
+          type: 'string',
+          filterType: 'filter',
+          value: null,
+          inputConfig: {
+            control: 'select',
+            multiple: true,
+            optionsSource: { type: 'static', staticItems: [] },
+          },
+        },
+      ],
+      unifiedFilterValues: { [hostFilter.id]: residualArray },
+      filterBindings: { [hostFilter.id]: true },
+      filterDefinitions: [hostFilter],
+    }),
+    { instance_ids: ['h1', 'h2'] },
+    'multiple=true 时残留数组请求仍为数组',
+  );
+
+  assert.deepEqual(
+    processDataSourceParams({
+      sourceParams: [
+        {
+          name: 'instance_ids',
+          alias_name: '主机',
+          type: 'string',
+          filterType: 'filter',
+          value: null,
+        },
+      ],
+      unifiedFilterValues: { [scalarHostFilter.id]: residualArray },
+      filterBindings: { [scalarHostFilter.id]: true },
+      filterDefinitions: [scalarHostFilter],
+    }),
+    { instance_ids: 'h1' },
+    '关闭 multiple 后即使 applied 残留数组，请求也只能是首元素标量',
+  );
+
+  assert.deepEqual(
+    processDataSourceParams({
+      sourceParams: [
+        {
+          name: 'instance_ids',
+          alias_name: '主机',
+          type: 'string',
+          filterType: 'filter',
+          value: null,
+        },
+      ],
+      unifiedFilterValues: { [scalarHostFilter.id]: [] },
+      filterBindings: { [scalarHostFilter.id]: true },
+      filterDefinitions: [scalarHostFilter],
+    }),
+    {},
+    '关闭 multiple 后清空应省略参数',
+  );
+
+  assert.deepEqual(
+    processDataSourceParams({
+      sourceParams: [
+        {
+          name: 'instance_ids',
+          alias_name: '主机',
+          type: 'string',
+          filterType: 'params',
+          value: null,
+          inputConfig: {
+            control: 'select',
+            multiple: false,
+            optionsSource: { type: 'static', staticItems: [] },
+          },
+        },
+      ],
+      userParams: { instance_ids: ['h1', 'h2'] },
+    }),
+    { instance_ids: 'h1' },
+    '组件私有参数关闭 multiple 后残留数组也必须降为标量',
+  );
+
+  assert.deepEqual(
+    processDataSourceParams({
+      sourceParams: [
+        {
+          name: 'instance_ids',
+          alias_name: '主机',
+          type: 'string',
+          filterType: 'params',
+          value: null,
+          inputConfig: {
+            control: 'select',
+            multiple: true,
+            optionsSource: { type: 'static', staticItems: [] },
+          },
+        },
+      ],
+      userParams: { instance_ids: ['h1', 'h2'] },
+    }),
+    { instance_ids: ['h1', 'h2'] },
+    '组件私有参数开启 multiple 时请求为数组',
+  );
+
+  assert.deepEqual(
+    processDataSourceParams({
+      sourceParams: [
+        {
+          name: 'instance_ids',
+          alias_name: '主机',
+          type: 'string',
+          filterType: 'filter',
+          value: null,
+        },
+      ],
+      unifiedFilterValues: { [scalarHostFilter.id]: residualArray },
+      filterBindings: { [scalarHostFilter.id]: true },
+      filterDefinitions: [scalarHostFilter],
+    }),
+    { instance_ids: 'h1' },
+    'instance_ids 不得因特殊 key 暗中恢复为数组',
+  );
+}
 
 assert.match(
   controlSource,
   /mode=\{inputConfig\.multiple \? 'multiple' : undefined\}/,
   '下拉控件应按 inputConfig.multiple 进入多选',
+);
+assert.match(
+  editorSource,
+  /t\('paramInput\.multiple'\)/,
+  '参数输入配置应提供多选开关',
+);
+assert.match(
+  editorSource,
+  /disabled=\{componentSwitch\}/,
+  '已开 componentSwitch 时应禁用多选',
+);
+assert.match(
+  editorSource,
+  /multiple[\s\S]{0,80}disabled/,
+  'multiple 与 componentSwitch 应互斥禁用',
 );
 
 assert.deepEqual(
@@ -297,7 +501,18 @@ assert.deepEqual(
     },
   }).defaultValue,
   ['host-a', 'host-b'],
-  'stringList 默认值应保留数组，不能因对象比较失败被清掉',
+  'string + multiple 默认值应保留数组，不能因对象比较失败被清掉',
+);
+
+assert.equal(
+  coerceValueForMultiple(['host-a', 'host-b'], false),
+  'host-a',
+  '关多选时多值应静默保留第一个',
+);
+assert.deepEqual(
+  coerceValueForMultiple('host-a', true),
+  ['host-a'],
+  '开多选时标量应升为单元素数组',
 );
 
 console.log('ops analysis unified filter input tests passed');

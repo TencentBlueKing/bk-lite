@@ -141,7 +141,7 @@
       },
       {
         "name": "instance_ids",
-        "type": "stringList",
+        "type": "string",
         "value": [],
         "alias_name": "主机",
         "filterType": "filter",
@@ -194,7 +194,7 @@
     "params": [
       {
         "name": "instance_ids",
-        "type": "stringList",
+        "type": "string",
         "value": [],
         "alias_name": "主机",
         "filterType": "filter",
@@ -258,7 +258,7 @@
     "params": [
       {
         "name": "instance_ids",
-        "type": "stringList",
+        "type": "string",
         "value": [],
         "alias_name": "主机",
         "filterType": "filter",

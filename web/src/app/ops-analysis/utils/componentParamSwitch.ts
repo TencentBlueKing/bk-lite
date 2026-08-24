@@ -59,7 +59,27 @@ export const reconcileComponentSwitchValue = (
     : options[0].value;
 };
 
-export const reconcileComponentParamValue = reconcileComponentSwitchValue;
+/**
+ * 通用查询参数与选项对齐：多选数组保留仍存在于选项中的值；
+ * 标量仍走组件切换同源逻辑。禁止把多选数组误当成非法值落到 options[0]。
+ */
+export const reconcileComponentParamValue = (
+  value: ParamItem['value'] | undefined,
+  options?: InputOption[],
+): ParamItem['value'] | undefined => {
+  if (!options?.length) return value;
+  if (Array.isArray(value)) {
+    const optionKeys = new Set(
+      options.map((option) => getTypedValueKey(option.value)),
+    );
+    return value.filter(
+      (item): item is string | number =>
+        (typeof item === 'string' || typeof item === 'number')
+        && optionKeys.has(getTypedValueKey(item)),
+    );
+  }
+  return reconcileComponentSwitchValue(value, options);
+};
 
 export const reconcileComponentSwitchResult = (
   value: ParamItem['value'] | undefined,
