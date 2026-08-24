@@ -57,12 +57,18 @@ class CollectTargetService:
                 )
 
         for target in targets:
-            logger.info(
+            logger.debug(
                 "[CollectTarget] build object key task_id=%s object_key=%s model_id=%s",
                 task.id,
                 CollectTargetService.build_object_key(target),
                 target.model_id,
             )
+        logger.info(
+            "[CollectTarget] 目标构建完成 task_id=%s target_count=%s model_count=%s",
+            task.id,
+            len(targets),
+            len({target.model_id for target in targets}),
+        )
         return targets
 
     @staticmethod

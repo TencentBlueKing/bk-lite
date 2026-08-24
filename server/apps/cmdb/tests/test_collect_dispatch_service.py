@@ -25,7 +25,13 @@ def _create_task(task_type=CollectPluginTypes.HOST, driver_type=CollectDriverTyp
             {"credential_id": "cred-2", "username": "ops", "password": "plain-2", "port": 22},
         ],
         instances=[
-            {"_id": "host-1", "model_id": "host", "inst_name": "10.0.0.1", "ip": "10.0.0.1"},
+            {
+                "_id": "host-1",
+                "inst_uuid": "9696c7b8-78ab-4778-91d9-7e7fe38ac256",
+                "model_id": "host",
+                "inst_name": "10.0.0.1",
+                "ip": "10.0.0.1",
+            },
         ],
     )
 
@@ -79,6 +85,8 @@ def test_collect_dispatch_plan_prefers_success_state_and_skips_cooldown():
 @pytest.mark.django_db
 def test_collect_dispatch_execute_task_falls_back_to_next_credential(monkeypatch):
     task = _create_task()
+    logger = MagicMock()
+    monkeypatch.setattr("apps.cmdb.services.collect_dispatch_service.logger", logger)
 
     def fake_run_job_batch(inner_task, credential, targets):
         target = targets[0]
@@ -125,6 +133,39 @@ def test_collect_dispatch_execute_task_falls_back_to_next_credential(monkeypatch
     second_state = CollectTaskCredentialHit.objects.get(task=task, credential_id="cred-2")
     assert first_state.status == CollectTaskCredentialHit.STATUS_KNOWN_FAILED
     assert second_state.status == CollectTaskCredentialHit.STATUS_SUCCESS
+    assert logger.warning.call_count == 1
+    assert logger.info.call_count == 1
+    info_args = logger.info.call_args.args
+    assert "任务派发完成" in info_args[0]
+    assert info_args[1:] == (task.id, 1, 2, 1, 1)
+    assert logger.debug.call_count == 1
+    assert "凭据尝试成功" in logger.debug.call_args.args[0]
+
+
+@pytest.mark.django_db
+def test_collect_dispatch_does_not_log_completed_when_result_merge_fails(monkeypatch):
+    task = _create_task()
+    logger = MagicMock()
+    monkeypatch.setattr("apps.cmdb.services.collect_dispatch_service.logger", logger)
+
+    def fake_run_job_batch(inner_task, credential, targets):
+        target = targets[0]
+        return [
+            DispatchAttemptResult(
+                object_key=CollectTargetService.build_object_key(target),
+                credential_id=credential["credential_id"],
+                success=True,
+                failure_kind="",
+                raw_payload={"format_data": {"add": None}},
+            )
+        ]
+
+    monkeypatch.setattr(CollectDispatchService, "run_job_batch", staticmethod(fake_run_job_batch))
+
+    with pytest.raises(TypeError):
+        CollectDispatchService.execute_task(task)
+
+    assert not any("任务派发完成" in call.args[0] for call in logger.info.call_args_list)
 
 
 @pytest.mark.parametrize(
