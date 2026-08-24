@@ -13,6 +13,7 @@ from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import Node
 from apps.node_mgmt.services.installer_session import InstallerSessionService
+from apps.node_mgmt.utils.winrm import winrm_profile_error
 from apps.rpc.ansible import AnsibleExecutor
 from config.components.nats import NATS_NAMESPACE
 
@@ -103,8 +104,9 @@ class WindowsRemoteBootstrapService:
 
     @staticmethod
     def _validate_target(target: WindowsBootstrapTarget) -> None:
-        if target.scheme != "https" or not 1 <= target.port <= 65535 or target.transport != "ntlm":
-            raise BaseAppException("Windows remote operation requires HTTPS, NTLM, and a valid port")
+        profile_error = winrm_profile_error(target.scheme, target.port, target.transport)
+        if profile_error:
+            raise BaseAppException(profile_error)
 
     @staticmethod
     def _winrm_extra_vars() -> dict[str, int]:
@@ -187,10 +189,10 @@ class WindowsRemoteBootstrapService:
             return f"WinRM authentication failed ({detail}). Check the username and password, then retry."
 
         if "unreachable" in normalized or "establish winrm connection" in normalized:
-            detail = ansible_msg or "the target host did not accept the WinRM HTTPS connection"
+            detail = ansible_msg or "the target host did not accept the WinRM connection"
             return (
-                f"Target host is unreachable over WinRM HTTPS ({detail}). "
-                "Check TCP/5986 connectivity, firewall rules, and the HTTPS WinRM listener."
+                f"Target host is unreachable over WinRM ({detail}). "
+                "Check the selected WinRM scheme and port, firewall rules, and the listener on the target host."
             )
 
         if ansible_msg:

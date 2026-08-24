@@ -34,6 +34,7 @@ import type {
   RetryInstallFormValues,
   RetryInstallNode
 } from './retryInstallForm';
+import { syncWinrmPort, type WinrmScheme } from '@/app/node-manager/utils/winrm';
 
 const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
@@ -49,7 +50,11 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
       'winrm_cert_validation',
       form
     );
-    const winrmCertValidation = watchedWinrmCertValidation === true;
+    const watchedWinrmScheme = Form.useWatch('winrm_scheme', form);
+    const winrmScheme: WinrmScheme =
+      watchedWinrmScheme === 'http' ? 'http' : 'https';
+    const winrmCertValidation =
+      winrmScheme === 'https' && watchedWinrmCertValidation === true;
     const [uploadedFileName, setUploadedFileName] = useState<
       string | undefined
     >();
@@ -165,7 +170,11 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
             label={t('node-manager.cloudregion.node.loginPort')}
             extra={
               isWindows
-                ? t('node-manager.cloudregion.node.winrmHttpsPortHelp')
+                ? t(
+                  winrmScheme === 'http'
+                    ? 'node-manager.cloudregion.node.winrmHttpPortHelp'
+                    : 'node-manager.cloudregion.node.winrmHttpsPortHelp'
+                )
                 : undefined
             }
             rules={[
@@ -177,11 +186,11 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
                 ? [
                   {
                     validator: (_: unknown, value?: number) =>
-                      validateWindowsRetryPort(value)
+                      validateWindowsRetryPort(value, winrmScheme)
                         ? Promise.resolve()
                         : Promise.reject(
                           new Error(
-                            t('node-manager.cloudregion.node.winrmHttpPortError')
+                            t('node-manager.cloudregion.node.winrmSchemePortMismatch')
                           )
                         )
                   }
@@ -216,7 +225,25 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
                   name="winrm_scheme"
                   label={t('node-manager.cloudregion.node.winrmScheme')}
                 >
-                  <Input readOnly />
+                  <Select
+                    onChange={(scheme: WinrmScheme) => {
+                      const currentPort = form.getFieldValue('port');
+                      form.setFieldsValue({
+                        port: syncWinrmPort(currentPort, scheme),
+                        winrm_cert_validation:
+                          scheme === 'http'
+                            ? false
+                            : form.getFieldValue('winrm_cert_validation')
+                      });
+                    }}
+                  >
+                    <Option value="https">
+                      {t('node-manager.cloudregion.node.winrmSchemeHttps')}
+                    </Option>
+                    <Option value="http">
+                      {t('node-manager.cloudregion.node.winrmSchemeHttp')}
+                    </Option>
+                  </Select>
                 </Form.Item>
                 <Form.Item
                   name="winrm_transport"
@@ -225,25 +252,41 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
                   <Input readOnly />
                 </Form.Item>
               </div>
-              <Form.Item
-                name="winrm_cert_validation"
-                label={t('node-manager.cloudregion.node.winrmCertValidation')}
-                valuePropName="checked"
-              >
-                <Switch />
-              </Form.Item>
-              {!winrmCertValidation && (
+              {winrmScheme === 'http' ? (
                 <Alert
                   className="mb-[16px]"
                   type="warning"
                   showIcon
                   message={t(
-                    'node-manager.cloudregion.node.winrmCertValidationWarningTitle'
+                    'node-manager.cloudregion.node.winrmHttpWarningTitle'
                   )}
                   description={t(
-                    'node-manager.cloudregion.node.winrmCertValidationWarningDesc'
+                    'node-manager.cloudregion.node.winrmHttpWarningDesc'
                   )}
                 />
+              ) : (
+                <>
+                  <Form.Item
+                    name="winrm_cert_validation"
+                    label={t('node-manager.cloudregion.node.winrmCertValidation')}
+                    valuePropName="checked"
+                  >
+                    <Switch />
+                  </Form.Item>
+                  {!winrmCertValidation && (
+                    <Alert
+                      className="mb-[16px]"
+                      type="warning"
+                      showIcon
+                      message={t(
+                        'node-manager.cloudregion.node.winrmCertValidationWarningTitle'
+                      )}
+                      description={t(
+                        'node-manager.cloudregion.node.winrmCertValidationWarningDesc'
+                      )}
+                    />
+                  )}
+                </>
               )}
               <Form.Item name="auth_type" hidden>
                 <Input />
