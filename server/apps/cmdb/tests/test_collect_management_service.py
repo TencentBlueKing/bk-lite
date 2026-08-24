@@ -19,6 +19,9 @@ from apps.cmdb.collection.common import Management
 from apps.cmdb.constants.constants import DataCleanupStrategy
 
 
+pytestmark = pytest.mark.unit
+
+
 class FakeGraph:
     def __init__(self, **returns):
         self.returns = returns
