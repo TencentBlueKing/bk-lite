@@ -11,11 +11,18 @@ from apps.core import celery as celery_mod
 pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 
-def _allow_setup(mocker, settings, *, schedule=None, complete=True, mode="enforce"):
+def _legacy_token(task):
+    marker = celery_mod._managed_task_marker(task)
+    fingerprint = marker[len(celery_mod.MANAGED_TASK_DESCRIPTION_PREFIX) : -1]
+    return f"{task.name}@{fingerprint}"
+
+
+def _allow_setup(mocker, settings, *, schedule=None, complete=True, mode="enforce", legacy_names=""):
     settings.IS_USE_CELERY = True
     settings.CELERY_BEAT_SCHEDULE = schedule or {}
     settings.CELERY_BEAT_SCHEDULE_COMPLETE = complete
     settings.CELERY_BEAT_SCHEDULE_RECONCILE_MODE = mode
+    settings.CELERY_BEAT_SCHEDULE_LEGACY_MANAGED_NAMES = legacy_names
     fake_sys = mocker.MagicMock()
     fake_sys.modules = {name: module for name, module in sys.modules.items() if name != "pytest"}
     mocker.patch.object(celery_mod, "sys", fake_sys)
@@ -220,6 +227,116 @@ def test_enforce_detects_enabled_only_takeover(mocker, settings, caplog):
     collided.refresh_from_db()
     assert collided.enabled is True
     assert "所有权指纹不匹配" in caplog.text
+
+
+def test_legacy_baseline_import_is_idempotent_and_restore_releases_ownership(mocker, settings):
+    interval, _ = IntervalSchedule.objects.get_or_create(every=61, period=IntervalSchedule.SECONDS)
+    legacy = PeriodicTask.objects.create(
+        name="legacy-static",
+        task="apps.legacy.tasks.removed",
+        interval=interval,
+        enabled=True,
+        description="管理员备注",
+    )
+    legacy_token = _legacy_token(legacy)
+    _allow_setup(mocker, settings, mode="enforce", legacy_names=legacy_token)
+
+    celery_mod.setup_periodic_tasks(sender=None)
+    celery_mod.setup_periodic_tasks(sender=None)
+
+    legacy.refresh_from_db()
+    assert legacy.enabled is False
+    ownership_markers = [
+        line
+        for line in legacy.description.splitlines()
+        if line.startswith(celery_mod.MANAGED_TASK_DESCRIPTION_PREFIX) and line != celery_mod.RECONCILE_DISABLED_MARKER
+    ]
+    assert len(ownership_markers) == 1
+    assert celery_mod.RECONCILE_DISABLED_MARKER in legacy.description
+    assert celery_mod.LEGACY_IMPORTED_MARKER in legacy.description
+    assert legacy.description.endswith("管理员备注")
+
+    settings.CELERY_BEAT_SCHEDULE_RECONCILE_MODE = "restore"
+    celery_mod.setup_periodic_tasks(sender=None)
+    legacy.refresh_from_db()
+    assert legacy.enabled is True
+    assert legacy.description == "管理员备注"
+
+
+def test_legacy_restore_does_not_release_preexisting_ownership(mocker, settings):
+    interval, _ = IntervalSchedule.objects.get_or_create(every=63, period=IntervalSchedule.SECONDS)
+    managed = PeriodicTask.objects.create(
+        name="preexisting-managed",
+        task="apps.legacy.tasks.removed",
+        interval=interval,
+        enabled=True,
+        description=f"管理员备注含子串 {celery_mod.LEGACY_IMPORTED_MARKER} 尾部",
+    )
+    celery_mod._mark_config_managed(managed)
+    original_description = managed.description
+    _allow_setup(mocker, settings, mode="restore", legacy_names="preexisting-managed")
+
+    celery_mod.setup_periodic_tasks(sender=None)
+
+    managed.refresh_from_db()
+    assert managed.description == original_description
+
+
+def test_legacy_restore_keeps_pending_import_provenance_across_batches(mocker, settings):
+    interval, _ = IntervalSchedule.objects.get_or_create(every=64, period=IntervalSchedule.SECONDS)
+    regular = PeriodicTask.objects.create(
+        name="aaa-regular",
+        task="apps.legacy.tasks.regular",
+        interval=interval,
+        enabled=True,
+    )
+    imported = PeriodicTask.objects.create(
+        name="zzz-imported",
+        task="apps.legacy.tasks.imported",
+        interval=interval,
+        enabled=True,
+    )
+    for task in (regular, imported):
+        celery_mod._mark_config_managed(task)
+        task.enabled = False
+        celery_mod._set_reconcile_provenance(task, disabled=True)
+        celery_mod._refresh_managed_identity(task)
+        task.save(update_fields=["description", "enabled"])
+    imported.description = f"{imported.description}\n{celery_mod.LEGACY_IMPORTED_MARKER}"
+    imported.save(update_fields=["description"])
+    mocker.patch.object(celery_mod, "RECONCILE_TASK_LIMIT", 1)
+    _allow_setup(mocker, settings, mode="restore", legacy_names="zzz-imported")
+
+    celery_mod.setup_periodic_tasks(sender=None)
+    imported.refresh_from_db()
+    assert imported.enabled is False
+    assert celery_mod.LEGACY_IMPORTED_MARKER in imported.description
+    assert celery_mod.RECONCILE_DISABLED_MARKER in imported.description
+
+    celery_mod.setup_periodic_tasks(sender=None)
+    imported.refresh_from_db()
+    assert imported.enabled is True
+    assert imported.description == ""
+
+
+def test_legacy_baseline_import_rolls_back_with_enforcement(mocker, settings):
+    interval, _ = IntervalSchedule.objects.get_or_create(every=62, period=IntervalSchedule.SECONDS)
+    legacy = PeriodicTask.objects.create(
+        name="legacy-rollback",
+        task="apps.legacy.tasks.removed",
+        interval=interval,
+        enabled=True,
+        description="管理员备注",
+    )
+    _allow_setup(mocker, settings, mode="enforce", legacy_names=_legacy_token(legacy))
+
+    with patch.object(PeriodicTasks, "update_changed", side_effect=DatabaseError("legacy sentinel failed")):
+        with pytest.raises(DatabaseError, match="legacy sentinel failed"):
+            celery_mod.setup_periodic_tasks(sender=None)
+
+    legacy.refresh_from_db()
+    assert legacy.enabled is True
+    assert legacy.description == "管理员备注"
 
 
 def test_timedelta_schedule_is_owned_and_reconciled(mocker, settings):

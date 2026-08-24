@@ -29,6 +29,7 @@ def _run(
     in_pytest=False,
     schedule_complete=True,
     reconcile_mode="shadow",
+    legacy_managed_names="",
     periodic_model=None,
 ):
     """在受控环境下执行 setup_periodic_tasks，返回 mock 的 ORM 模型。"""
@@ -39,6 +40,7 @@ def _run(
     mocker.patch.object(dj_settings, "CELERY_BEAT_SCHEDULE", beat_schedule, create=True)
     mocker.patch.object(dj_settings, "CELERY_BEAT_SCHEDULE_COMPLETE", schedule_complete, create=True)
     mocker.patch.object(dj_settings, "CELERY_BEAT_SCHEDULE_RECONCILE_MODE", reconcile_mode, create=True)
+    mocker.patch.object(dj_settings, "CELERY_BEAT_SCHEDULE_LEGACY_MANAGED_NAMES", legacy_managed_names, create=True)
     mocker.patch.object(celery_mod.transaction, "atomic", side_effect=lambda: nullcontext())
     mocker.patch.object(celery_mod.transaction, "on_commit", side_effect=lambda callback: callback())
 
@@ -155,6 +157,8 @@ class _PeriodicTaskManager:
         for lookup, expected in criteria.items():
             if lookup == "description__startswith":
                 rows = [row for row in rows if row.description.startswith(expected)]
+            elif lookup == "name__in":
+                rows = [row for row in rows if row.name in expected]
             else:
                 rows = [row for row in rows if getattr(row, lookup) == expected]
         return _PeriodicTaskQuery(self, rows)
@@ -271,6 +275,115 @@ class TestScheduleSync:
 
 
 class TestManagedScheduleReconciliation:
+    def test_legacy_baseline_shadow_preflight_is_read_only(self, mocker, caplog):
+        legacy = _row("legacy-static", description="管理员备注")
+        dynamic = _row("dynamic-task", description="动态任务")
+        periodic = _PeriodicTaskModel([legacy, dynamic])
+
+        _run(
+            mocker,
+            {},
+            periodic_model=periodic,
+            reconcile_mode="shadow",
+            legacy_managed_names="legacy-static",
+        )
+
+        assert legacy.enabled is True
+        assert legacy.description == "管理员备注"
+        assert dynamic.description == "动态任务"
+        assert "candidates=legacy-static" in caplog.text
+
+    def test_invalid_legacy_baseline_keeps_old_behavior(self, mocker, caplog):
+        removed = _owned_row("removed-static")
+        legacy = _row("legacy-static")
+        periodic = _PeriodicTaskModel([removed, legacy])
+
+        _run(
+            mocker,
+            {},
+            periodic_model=periodic,
+            reconcile_mode="enforce",
+            legacy_managed_names="legacy-static,,dynamic-task",
+        )
+
+        assert removed.enabled is True
+        assert legacy.enabled is True
+        assert legacy.description == ""
+        assert "拒绝迁移" in caplog.text
+
+        caplog.clear()
+        _run(
+            mocker,
+            {},
+            periodic_model=periodic,
+            reconcile_mode="enforce",
+            legacy_managed_names="legacy-static@bad",
+        )
+        assert legacy.enabled is True
+        assert "指纹格式无效" in caplog.text
+
+    def test_enforce_rejects_missing_or_drifted_shadow_identity(self, mocker, caplog):
+        legacy = _row("legacy-static")
+        legacy.task = "apps.legacy.tasks.replaced"
+        periodic = _PeriodicTaskModel([legacy])
+
+        _run(
+            mocker,
+            {},
+            periodic_model=periodic,
+            reconcile_mode="enforce",
+            legacy_managed_names="future-static@00000000000000000000",
+        )
+        assert legacy.enabled is True
+        assert legacy.description == ""
+        assert "未找到数据库任务" in caplog.text
+
+        caplog.clear()
+        future = _row("future-static")
+        periodic.objects.rows[future.name] = future
+        _run(
+            mocker,
+            {},
+            periodic_model=periodic,
+            reconcile_mode="enforce",
+            legacy_managed_names="future-static@00000000000000000000",
+        )
+        assert future.enabled is True
+        assert future.description == ""
+        assert "行指纹已漂移" in caplog.text
+
+        caplog.clear()
+        _run(
+            mocker,
+            {},
+            periodic_model=periodic,
+            reconcile_mode="enforce",
+            legacy_managed_names="legacy-static@00000000000000000000",
+        )
+        assert legacy.enabled is True
+        assert legacy.description == ""
+        assert "行指纹已漂移" in caplog.text
+
+    def test_enforce_rejects_one_off_and_routing_drift_after_shadow(self, mocker, caplog):
+        legacy = _row("legacy-static")
+        marker = celery_mod._managed_task_marker(legacy)
+        fingerprint = marker[len(celery_mod.MANAGED_TASK_DESCRIPTION_PREFIX) : -1]
+        legacy.one_off = True
+        legacy.queue = "dynamic-writer"
+        periodic = _PeriodicTaskModel([legacy])
+
+        _run(
+            mocker,
+            {},
+            periodic_model=periodic,
+            reconcile_mode="enforce",
+            legacy_managed_names=f"legacy-static@{fingerprint}",
+        )
+
+        assert legacy.enabled is True
+        assert legacy.description == ""
+        assert "行指纹已漂移" in caplog.text
+
     def test_current_static_task_gets_versioned_owner_marker_without_losing_description(self, mocker):
         existing = _row("daily-job", description="管理员备注")
         periodic = _PeriodicTaskModel([existing])

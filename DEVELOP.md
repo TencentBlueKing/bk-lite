@@ -150,7 +150,10 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 
 Celery Beat 静态任务对账使用 `CELERY_BEAT_SCHEDULE_RECONCILE_MODE`，代码默认 `shadow`（只报告）；
 确认 shadow 明细后可切为 `enforce`，仅禁用带有效所有权指纹且退出完整配置快照的任务。回退代码前先切
-`restore` 并重复运行至恢复明细清空。首次上线不会接管无指纹历史任务，其迁移必须先确认历史静态名称基线。
+`restore` 并重复运行至恢复明细清空。首次上线不会接管无指纹历史任务；确认历史静态名称基线后，先将精确名称
+以逗号分隔写入 `CELERY_BEAT_SCHEDULE_LEGACY_MANAGED_NAMES` 并保持 `shadow`，再把日志输出的
+`名称@行指纹` 原样写回该配置并切 `enforce`，仅在行身份未漂移时原子导入并禁用。回滚该次存量导入时保留
+同一份 `名称@行指纹` 清单并切 `restore`，任务恢复后会释放导入的机器所有权标记。
 
 ## 5. Runbook（常见故障）
 
