@@ -4,7 +4,7 @@ import pytest
 from django.utils import timezone
 
 from apps.apm.adapters import InMemoryMetricStore, TelemetryStoreUnavailable
-from apps.apm.models import ApmServiceInstance
+from apps.apm.models import ApmDeploymentEvent, ApmServiceInstance
 from apps.apm.services import DjangoTelemetryCatalogService, TelemetryCatalogReconciler
 from apps.apm.services.contracts import CatalogDiscovery, InstanceActivity
 from apps.apm.tests.helpers import create_application
@@ -40,6 +40,7 @@ def test_reconciler_keeps_instances_distinct_and_reports_missing_identity():
     assert result.discovered_instances == 2
     assert result.missing_instance_identities == 1
     assert set(ApmServiceInstance.objects.values_list("instance_id", flat=True)) == {"pod-a", "pod-b"}
+    assert list(ApmDeploymentEvent.objects.values_list("version", "status")) == [("1.2.3", "success")]
 
 
 def test_missing_instance_identity_still_counts_the_discovered_service():
@@ -119,11 +120,28 @@ def test_reconciler_does_not_mutate_instance_lifecycle_when_victoria_traces_quer
     store = mocker.Mock()
     store.instance_activity.side_effect = TelemetryStoreUnavailable("VictoriaTraces unavailable")
     catalog = mocker.Mock()
+    deployments = mocker.Mock()
 
     with pytest.raises(TelemetryStoreUnavailable):
-        TelemetryCatalogReconciler(store, catalog).reconcile(observed_at=timezone.now())
+        TelemetryCatalogReconciler(store, catalog, deployments).reconcile(observed_at=timezone.now())
 
     catalog.discover.assert_not_called()
+    deployments.record.assert_not_called()
+
+
+def test_deployment_record_failure_does_not_roll_back_catalog_discovery(mocker):
+    observed_at = timezone.now()
+    create_application("shop", (10,))
+    deployments = mocker.Mock()
+    deployments.record.side_effect = RuntimeError("deploy table down")
+
+    with pytest.raises(RuntimeError, match="deploy table down"):
+        TelemetryCatalogReconciler(
+            InMemoryMetricStore(activities=[_activity("shop", "pod-a", observed_at)]),
+            deployments=deployments,
+        ).reconcile(observed_at=observed_at)
+
+    assert ApmServiceInstance.objects.filter(instance_id="pod-a").exists()
 
 
 def test_stale_instances_remain_silent_metadata_and_new_activity_reactivates_them():

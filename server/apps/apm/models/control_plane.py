@@ -286,6 +286,9 @@ class ApmDeploymentEvent(AuditedModel):
                 name="apm_deployment_event_version_not_empty",
             ),
         ]
+        indexes = [
+            models.Index(fields=("service", "environment", "-deployed_at"), name="apm_deploy_svc_env_time_idx"),
+        ]
 
     def _validate_database_constraints(self):
         if self.version == "":

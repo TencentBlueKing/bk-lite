@@ -4,8 +4,8 @@ from decimal import Decimal
 import pytest
 from django.utils import timezone
 
-from apps.apm.models import ApmAlert, ApmService, ApmServiceInstance, ApmServiceOrganization, ApmSlo
-from apps.apm.services.contracts import InferredDeploymentRelease, ServiceRed, ServiceRedPoint, SloEvaluation, SloMeasurement
+from apps.apm.models import ApmAlert, ApmDeploymentEvent, ApmService, ApmServiceInstance, ApmServiceOrganization, ApmSlo
+from apps.apm.services.contracts import ServiceRed, ServiceRedPoint, SloEvaluation, SloMeasurement
 from apps.apm.services.dashboard import ApmDashboardService
 from apps.apm.services.reliability import DjangoApmReliabilityService
 
@@ -13,11 +13,11 @@ pytestmark = pytest.mark.django_db
 
 
 class StubMetricStore:
-    def __init__(self, red_by_name: dict[str, ServiceRed], slo_rate: float | None = 99.9, deployment_release_items=None):
+    def __init__(self, red_by_name: dict[str, ServiceRed], slo_rate: float | None = 99.9):
         self.red_by_name = red_by_name
         self.slo_rate = slo_rate
         self.fail_names: set[str] = set()
-        self._deployment_releases = deployment_release_items or []
+        self.deployment_release_calls = 0
 
     def service_red(self, query):
         if query.service_name in self.fail_names:
@@ -30,11 +30,8 @@ class StubMetricStore:
         return SloMeasurement(self.slo_rate, 1.0, 1.0, "available")
 
     def deployment_releases(self, query):
-        return [
-            item
-            for item in self._deployment_releases
-            if query.started_at <= item.first_seen_at <= query.ended_at
-        ]
+        self.deployment_release_calls += 1
+        return []
 
 
 def _service(*, organization=10, namespace="shop", name="checkout", last_seen_at=None):
@@ -146,38 +143,46 @@ def test_dashboard_aggregates_kpis_health_alerts_and_releases():
     assert payment.name == "payment"
 
 
-def test_dashboard_releases_infers_from_telemetry():
+def test_dashboard_releases_reads_materialized_events():
     now = timezone.now()
     checkout = _service(name="checkout", last_seen_at=now)
     _service(name="payment", last_seen_at=now)
-    releases = [
-        InferredDeploymentRelease(
-            service_namespace="shop",
-            service_name="checkout",
-            environment="production",
-            version="v5.3.0",
-            first_seen_at=now - timedelta(hours=2),
-            last_seen_at=now - timedelta(minutes=5),
-        ),
-        InferredDeploymentRelease(
-            service_namespace="shop",
-            service_name="checkout",
-            environment="production",
-            version="v5.2.9",
-            first_seen_at=now - timedelta(days=8),
-            last_seen_at=now - timedelta(days=7, hours=20),
-        ),
-    ]
-    store = StubMetricStore({"checkout": _red(), "payment": _red()}, deployment_release_items=releases)
+    hidden = _service(organization=20, name="hidden", last_seen_at=now)
+    visible = ApmDeploymentEvent.objects.create(
+        service=checkout,
+        environment="production",
+        version="v5.3.0",
+        deployed_at=now - timedelta(hours=2),
+        status=ApmDeploymentEvent.Status.SUCCESS,
+        source=ApmDeploymentEvent.Source.INFERRED,
+    )
+    ApmDeploymentEvent.objects.create(
+        service=checkout,
+        environment="production",
+        version="v5.2.9",
+        deployed_at=now - timedelta(days=8),
+        status=ApmDeploymentEvent.Status.SUCCESS,
+        source=ApmDeploymentEvent.Source.INFERRED,
+    )
+    ApmDeploymentEvent.objects.create(
+        service=hidden,
+        environment="production",
+        version="v9.9.9",
+        deployed_at=now - timedelta(hours=1),
+        status=ApmDeploymentEvent.Status.SUCCESS,
+        source=ApmDeploymentEvent.Source.INFERRED,
+    )
+    store = StubMetricStore({"checkout": _red(), "payment": _red()})
     payload = ApmDashboardService(metric_store=store, now_fn=lambda: now).build(organization_id=10, window="1h")
 
     assert payload["releases"]["status"] == "ok"
     items = payload["releases"]["data"]["items"]
-    assert len(items) == 1
+    assert [item["id"] for item in items] == [str(visible.id)]
     assert items[0]["service_name"] == "checkout"
     assert items[0]["version"] == "v5.3.0"
     assert items[0]["status"] == "success"
     assert items[0]["source"] == "inferred"
+    assert store.deployment_release_calls == 0
 
 
 def test_dashboard_section_failure_does_not_break_other_sections(mocker):

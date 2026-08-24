@@ -185,6 +185,7 @@ export interface ApmDashboardReleaseRow {
   deployed_at: string;
   deployed_by: string;
   status: ApmDeploymentStatus;
+  source?: 'inferred' | 'reported';
 }
 
 export interface ApmDashboard {
