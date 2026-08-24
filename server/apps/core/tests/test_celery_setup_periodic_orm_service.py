@@ -33,7 +33,7 @@ def _create_task(name, *, enabled=True, task=None):
     return periodic
 
 
-def test_enforce_is_atomic_with_scheduler_sentinel(mocker, settings):
+def test_enforce_is_atomic_with_scheduler_sentinel(mocker, settings, caplog, django_capture_on_commit_callbacks):
     removed = _create_task("atomic-removed")
     _allow_setup(mocker, settings)
 
@@ -45,13 +45,16 @@ def test_enforce_is_atomic_with_scheduler_sentinel(mocker, settings):
     removed.refresh_from_db()
     assert removed.enabled is True
     assert "disabled-by-reconcile" not in removed.description
+    assert "task=atomic-removed action=disable result=success" not in caplog.text
 
     before = PeriodicTasks.last_change()
-    celery_mod.setup_periodic_tasks(sender=None)
+    with django_capture_on_commit_callbacks(execute=True):
+        celery_mod.setup_periodic_tasks(sender=None)
     removed.refresh_from_db()
     assert removed.enabled is False
     assert "disabled-by-reconcile" in removed.description
     assert PeriodicTasks.last_change() > before
+    assert "task=atomic-removed action=disable result=success" in caplog.text
 
 
 def test_rename_rolls_back_new_task_when_reconcile_sentinel_fails(mocker, settings):
@@ -109,6 +112,7 @@ def test_restore_progresses_in_bounded_batches(mocker, settings):
     for task in removed_tasks:
         task.enabled = False
         task.description = f"{task.description}\n{celery_mod.RECONCILE_DISABLED_MARKER}"
+        celery_mod._refresh_managed_identity(task)
         task.save()
     _allow_setup(mocker, settings, mode="restore")
 
@@ -163,15 +167,59 @@ def test_enforce_skips_owned_row_taken_over_by_dynamic_writer(mocker, settings, 
     assert "所有权指纹不匹配" in caplog.text
 
 
-def test_enforce_refuses_more_than_bounded_candidate_limit(mocker, settings, caplog):
+def test_enforce_progresses_in_bounded_batches(mocker, settings, caplog):
     for index in range(celery_mod.RECONCILE_TASK_LIMIT + 1):
         _create_task(f"bounded-{index:03d}")
     _allow_setup(mocker, settings, mode="enforce")
 
     celery_mod.setup_periodic_tasks(sender=None)
+    assert PeriodicTask.objects.filter(enabled=False).count() == celery_mod.RECONCILE_TASK_LIMIT
 
-    assert PeriodicTask.objects.filter(enabled=True).count() == celery_mod.RECONCILE_TASK_LIMIT + 1
+    celery_mod.setup_periodic_tasks(sender=None)
+
+    assert PeriodicTask.objects.filter(enabled=False).count() == celery_mod.RECONCILE_TASK_LIMIT + 1
     assert "超过单次上限" in caplog.text
+
+
+def test_enforce_collision_does_not_starve_later_owned_tasks(mocker, settings, caplog, django_capture_on_commit_callbacks):
+    mocker.patch.object(celery_mod, "RECONCILE_TASK_LIMIT", 2)
+    collisions = [_create_task(f"aaa-collision-{index}") for index in range(3)]
+    for task in collisions:
+        PeriodicTask.objects.filter(pk=task.pk).update(task="apps.dynamic.tasks.taken_over")
+    for index in range(3):
+        _create_task(f"zzz-owned-{index}")
+    _allow_setup(mocker, settings, mode="enforce")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        celery_mod.setup_periodic_tasks(sender=None)
+    released = PeriodicTask.objects.filter(name__startswith="aaa-collision-", description="").count()
+    assert released == 2
+    assert PeriodicTask.objects.filter(name__startswith="zzz-owned-", enabled=False).count() == 0
+
+    with django_capture_on_commit_callbacks(execute=True):
+        celery_mod.setup_periodic_tasks(sender=None)
+    assert PeriodicTask.objects.filter(name__startswith="aaa-collision-", description="").count() == 3
+    assert PeriodicTask.objects.filter(name__startswith="zzz-owned-", enabled=False).count() == 1
+
+    with django_capture_on_commit_callbacks(execute=True):
+        celery_mod.setup_periodic_tasks(sender=None)
+    assert PeriodicTask.objects.filter(name__startswith="zzz-owned-", enabled=False).count() == 3
+    assert PeriodicTask.objects.filter(name__startswith="aaa-collision-", enabled=True).count() == 3
+    assert "所有权指纹不匹配" in caplog.text
+    assert "release-stale-ownership" in caplog.text
+
+
+def test_enforce_detects_enabled_only_takeover(mocker, settings, caplog):
+    collided = _create_task("enabled-only-takeover")
+    _allow_setup(mocker, settings, mode="enforce")
+    celery_mod.setup_periodic_tasks(sender=None)
+    PeriodicTask.objects.filter(pk=collided.pk).update(enabled=True)
+
+    celery_mod.setup_periodic_tasks(sender=None)
+
+    collided.refresh_from_db()
+    assert collided.enabled is True
+    assert "所有权指纹不匹配" in caplog.text
 
 
 def test_timedelta_schedule_is_owned_and_reconciled(mocker, settings):

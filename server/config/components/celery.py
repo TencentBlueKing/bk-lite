@@ -22,9 +22,6 @@ def _load_beat_schedule(installed_apps, importer=importlib.import_module):
                 continue
             complete = False
             logger.exception("Failed to load CELERY_BEAT_SCHEDULE from %s", config_module)
-        except ImportError:
-            complete = False
-            logger.exception("Failed to load CELERY_BEAT_SCHEDULE from %s", config_module)
         except Exception:
             complete = False
             logger.exception("Failed to load CELERY_BEAT_SCHEDULE from %s", config_module)

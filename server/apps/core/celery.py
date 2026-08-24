@@ -31,6 +31,7 @@ def _managed_task_marker(task):
         "args": task.args,
         "clocked_id": task.clocked_id,
         "crontab_id": task.crontab_id,
+        "enabled": task.enabled,
         "interval_id": task.interval_id,
         "kwargs": task.kwargs,
         "name": task.name,
@@ -72,14 +73,24 @@ def _set_reconcile_provenance(task, *, disabled):
     task.description = "\n".join(lines)
 
 
+def _refresh_managed_identity(task):
+    description_lines = [
+        line
+        for line in task.description.split("\n")
+        if line == RECONCILE_DISABLED_MARKER or not line.startswith(MANAGED_TASK_DESCRIPTION_PREFIX)
+    ]
+    task.description = "\n".join([_managed_task_marker(task), *description_lines])
+
+
 def _bounded_tasks(queryset):
     return list(queryset.order_by("name")[: RECONCILE_TASK_LIMIT + 1])
 
 
-def _valid_owned_tasks(tasks, *, require_provenance=False):
+def _valid_owned_tasks(tasks, *, require_provenance=False, release_invalid=False):
     valid = []
     collisions = []
     invalid_provenance = []
+    released = []
     for task in tasks:
         if not _has_managed_identity(task):
             collisions.append(task.name)
@@ -87,11 +98,17 @@ def _valid_owned_tasks(tasks, *, require_provenance=False):
             invalid_provenance.append(task.name)
         else:
             valid.append(task)
+            continue
+        if release_invalid:
+            task.description = _description_without_machine_markers(task.description)
+            task.no_changes = True
+            task.save(update_fields=["description"])
+            released.append(task.name)
     if collisions:
         logger.error("Celery Beat 跳过所有权指纹不匹配的同名任务: %s", ", ".join(collisions))
     if invalid_provenance:
         logger.error("Celery Beat 跳过无精确禁用来源标记的任务: %s", ", ".join(invalid_provenance))
-    return valid
+    return valid, released
 
 
 def _apply_reconcile_state(stale_tasks, change_tracker, *, restore):
@@ -105,22 +122,47 @@ def _apply_reconcile_state(stale_tasks, change_tracker, *, restore):
         else:
             state_candidates = state_candidates.filter(description__contains=MANAGED_TASK_DESCRIPTION_PREFIX)
         candidates = _bounded_tasks(state_candidates.select_for_update())
-        if len(candidates) > RECONCILE_TASK_LIMIT and not restore:
-            logger.error("Celery Beat 对账候选超过单次上限 %s，拒绝修改", RECONCILE_TASK_LIMIT)
-            return 0
         if len(candidates) > RECONCILE_TASK_LIMIT:
             candidates = candidates[:RECONCILE_TASK_LIMIT]
-            logger.warning("Celery Beat restore 候选超过单次上限 %s，本次分批恢复并需再次运行 restore", RECONCILE_TASK_LIMIT)
+            logger.warning(
+                "Celery Beat %s 候选超过单次上限 %s，本次分批处理并需再次运行",
+                RECONCILE_MODE_RESTORE if restore else RECONCILE_MODE_ENFORCE,
+                RECONCILE_TASK_LIMIT,
+            )
 
-        valid_tasks = _valid_owned_tasks(candidates, require_provenance=restore)
+        valid_tasks, released_tasks = _valid_owned_tasks(candidates, require_provenance=restore, release_invalid=True)
+        action = RECONCILE_MODE_RESTORE if restore else "disable"
         for task in valid_tasks:
-            _set_reconcile_provenance(task, disabled=not restore)
             task.enabled = restore
             task.last_run_at = None
             task.no_changes = True
+            _set_reconcile_provenance(task, disabled=not restore)
+            _refresh_managed_identity(task)
             task.save(update_fields=["description", "enabled", "last_run_at"])
-        if valid_tasks:
+            transaction.on_commit(
+                lambda task_name=task.name: logger.warning(
+                    "Celery Beat 对账逐项结果: task=%s action=%s result=success",
+                    task_name,
+                    action,
+                )
+            )
+        for task_name in released_tasks:
+            transaction.on_commit(
+                lambda released_name=task_name: logger.warning(
+                    "Celery Beat 对账逐项结果: task=%s action=release-stale-ownership result=success",
+                    released_name,
+                )
+            )
+        if valid_tasks or released_tasks:
             change_tracker.update_changed()
+            transaction.on_commit(
+                lambda changed_count=len(valid_tasks), released_count=len(released_tasks): logger.warning(
+                    "Celery Beat 已%s %s 个退出配置的受管任务，释放 %s 个失效所有权标记",
+                    "恢复" if restore else "禁用",
+                    changed_count,
+                    released_count,
+                )
+            )
         return len(valid_tasks)
 
 
@@ -132,9 +174,7 @@ def _reconcile_removed_config_tasks(periodic_task_model, change_tracker, current
 
     stale_tasks = periodic_task_model.objects.filter(description__startswith=MANAGED_TASK_DESCRIPTION_PREFIX).exclude(name__in=current_names)
     if reconcile_mode == RECONCILE_MODE_RESTORE:
-        restored_count = _apply_reconcile_state(stale_tasks, change_tracker, restore=True)
-        if restored_count:
-            logger.warning("Celery Beat 已恢复 %s 个曾退出配置的受管任务", restored_count)
+        _apply_reconcile_state(stale_tasks, change_tracker, restore=True)
         return
 
     if not snapshot_complete:
@@ -144,9 +184,9 @@ def _reconcile_removed_config_tasks(periodic_task_model, change_tracker, current
     if reconcile_mode != RECONCILE_MODE_ENFORCE:
         candidates = _bounded_tasks(stale_tasks.filter(enabled=True))
         if len(candidates) > RECONCILE_TASK_LIMIT:
-            logger.error("Celery Beat shadow 候选超过单次上限 %s，enforce 将拒绝修改", RECONCILE_TASK_LIMIT)
-            return
-        valid_tasks = _valid_owned_tasks(candidates)
+            candidates = candidates[:RECONCILE_TASK_LIMIT]
+            logger.warning("Celery Beat shadow 候选超过单次展示上限 %s，仅输出本批明细", RECONCILE_TASK_LIMIT)
+        valid_tasks, _ = _valid_owned_tasks(candidates)
         if valid_tasks:
             logger.warning(
                 "Celery Beat shadow 对账发现退出配置的受管任务（上限 %s 个）: %s",
@@ -155,9 +195,7 @@ def _reconcile_removed_config_tasks(periodic_task_model, change_tracker, current
             )
         return
 
-    disabled_count = _apply_reconcile_state(stale_tasks, change_tracker, restore=False)
-    if disabled_count:
-        logger.warning("Celery Beat 已禁用 %s 个退出配置的受管任务", disabled_count)
+    _apply_reconcile_state(stale_tasks, change_tracker, restore=False)
 
 
 @app.on_after_finalize.connect

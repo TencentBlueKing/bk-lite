@@ -148,6 +148,10 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 模板:`server/envs/.env.example`、`server/support-files/env/*.example`（APM 使用 `.env.apm.example`）、`web/.env.example`、`agents/stargazer/.env.example`、K8s `secret.*.template`。
 > 新增 env 走 `os.getenv` 默认值,不改 `.env.example`(易冲突,见团队约定)。
 
+Celery Beat 静态任务对账使用 `CELERY_BEAT_SCHEDULE_RECONCILE_MODE`，代码默认 `shadow`（只报告）；
+确认 shadow 明细后可切为 `enforce`，仅禁用带有效所有权指纹且退出完整配置快照的任务。回退代码前先切
+`restore` 并重复运行至恢复明细清空。首次上线不会接管无指纹历史任务，其迁移必须先确认历史静态名称基线。
+
 ## 5. Runbook（常见故障）
 
 1. `git pull --ff-only` 失败 → 先解决分叉/未提交变更。

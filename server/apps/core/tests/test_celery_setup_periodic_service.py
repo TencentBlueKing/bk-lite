@@ -40,6 +40,7 @@ def _run(
     mocker.patch.object(dj_settings, "CELERY_BEAT_SCHEDULE_COMPLETE", schedule_complete, create=True)
     mocker.patch.object(dj_settings, "CELERY_BEAT_SCHEDULE_RECONCILE_MODE", reconcile_mode, create=True)
     mocker.patch.object(celery_mod.transaction, "atomic", side_effect=lambda: nullcontext())
+    mocker.patch.object(celery_mod.transaction, "on_commit", side_effect=lambda callback: callback())
 
     # 控制 "pytest" in sys.modules 分支（celery_mod 引用模块级 sys）
     fake_sys = mocker.MagicMock()
@@ -305,6 +306,18 @@ class TestManagedScheduleReconciliation:
         assert removed.enabled is True
         assert "removed-static" in caplog.text
 
+    def test_shadow_mode_reports_bounded_details_when_candidates_overflow(self, mocker, caplog):
+        mocker.patch.object(celery_mod, "RECONCILE_TASK_LIMIT", 2)
+        rows = [_owned_row(f"removed-{index}") for index in range(3)]
+        periodic = _PeriodicTaskModel(rows)
+
+        _run(mocker, {}, periodic_model=periodic, reconcile_mode="shadow")
+
+        assert all(row.enabled is True for row in rows)
+        assert "removed-0" in caplog.text
+        assert "removed-1" in caplog.text
+        assert "单次展示上限" in caplog.text
+
     def test_enforce_mode_disables_only_removed_owned_task(self, mocker):
         removed = _owned_row("removed-static")
         dynamic = _row("job_mgmt_scheduled_task_42", description="管理员创建")
@@ -398,6 +411,18 @@ class TestManagedScheduleReconciliation:
 
         first_tracker.update_changed.assert_called_once_with()
         periodic.change_tracker.update_changed.assert_not_called()
+
+    def test_enabled_change_invalidates_static_ownership(self, mocker, caplog):
+        taken_over = _owned_row("taken-over-static", enabled=False, disabled_by_reconcile=True)
+        taken_over.enabled = True
+        periodic = _PeriodicTaskModel([taken_over])
+
+        _run(mocker, {}, periodic_model=periodic, reconcile_mode="enforce")
+
+        assert taken_over.enabled is True
+        assert taken_over.description == ""
+        assert "所有权指纹不匹配" in caplog.text
+        assert "release-stale-ownership" in caplog.text
 
     def test_unknown_mode_warns_and_keeps_task_enabled(self, mocker, caplog):
         removed = _owned_row("removed-static")
