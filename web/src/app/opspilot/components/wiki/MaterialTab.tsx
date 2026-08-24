@@ -3,9 +3,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
+  App,
   Button,
   Descriptions,
-  Empty,
   Form,
   Input,
   InputNumber,
@@ -17,18 +17,19 @@ import {
   Switch,
   Tag,
   Upload,
-  message,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { UploadFile } from "antd/es/upload/interface";
 import { LoadingOutlined, UploadOutlined } from "@ant-design/icons";
 import { useRouter, useSearchParams } from "next/navigation";
 import CustomTable from "@/components/custom-table";
+import CompactEmptyState from "@/components/compact-empty-state";
 import {
   buildWikiMaterialDetailPath,
   buildWikiMaterialListPath,
 } from "@/app/opspilot/utils/wikiMaterialRoutes";
 import { useTranslation } from "@/utils/i18n";
+import { HandledRequestError } from "@/utils/request";
 import { useWikiApi } from "@/app/opspilot/api/wiki";
 import {
   Material,
@@ -42,17 +43,19 @@ import {
 import MaterialDetailPanel from "./MaterialDetailPanel";
 import WikiDirectorySelect from "./WikiDirectorySelect";
 import {
+  MATERIAL_DISPLAY_STATUS_OPTIONS,
   MATERIAL_STATUS_META,
   formatWikiDuration,
   formatWikiTime,
   materialDisplayStatus,
+  type MaterialDisplayStatus,
 } from "./wikiFormat";
 const MATERIAL_TYPE_KEY: Record<MaterialType, string> = {
   file: "wiki.materialFile",
   text: "wiki.materialText",
   web: "wiki.materialWeb",
 };
-const IN_PROGRESS = ["parsing", "building"];
+const IN_PROGRESS = ["queued", "parsing", "building"];
 const SUPPORTED_FILE_EXTENSIONS = [
   ".pdf",
   ".docx",
@@ -109,22 +112,36 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     batchCreateMaterials,
     deleteMaterial,
     buildMaterial,
+    batchBuildMaterials,
     proposeUpdate,
     reindexMaterial,
   } = useWikiApi();
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [data, setData] = useState<Material[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [batchBuilding, setBatchBuilding] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
+  const [nameDraft, setNameDraft] = useState("");
+  const [statusDraft, setStatusDraft] = useState<MaterialDisplayStatus[]>([]);
+  const [nameQuery, setNameQuery] = useState("");
+  const [statusGroups, setStatusGroups] = useState<MaterialDisplayStatus[]>([]);
   const loadRequestSequenceRef = useRef(0);
   const loadingRequestSequenceRef = useRef<number | null>(null);
   const silentPageCorrectionRef = useRef(false);
   const pendingSilentRefreshRef = useRef(false);
   const pollingRequestInFlightRef = useRef(false);
-  const loadScopeRef = useRef({ kbId, page, pageSize });
-  loadScopeRef.current = { kbId, page, pageSize };
+  const loadScopeRef = useRef({
+    kbId,
+    page,
+    pageSize,
+    nameQuery,
+    statusGroups: statusGroups as MaterialDisplayStatus[],
+  });
+  loadScopeRef.current = { kbId, page, pageSize, nameQuery, statusGroups };
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
@@ -167,6 +184,8 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         kbId: requestedKbId,
         page: requestedPage,
         pageSize: requestedPageSize,
+        nameQuery: requestedNameQuery,
+        statusGroups: requestedStatusGroups,
       } = loadScopeRef.current;
       const requestSequence = ++loadRequestSequenceRef.current;
       if (!silent) {
@@ -177,13 +196,22 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         const res = await fetchMaterials(requestedKbId, {
           page: requestedPage,
           page_size: requestedPageSize,
+          ...(requestedNameQuery.trim()
+            ? { search: requestedNameQuery.trim() }
+            : {}),
+          ...(requestedStatusGroups.length
+            ? { status_group: requestedStatusGroups.join(",") }
+            : {}),
         });
         const currentScope = loadScopeRef.current;
         if (
           requestSequence !== loadRequestSequenceRef.current ||
           currentScope.kbId !== requestedKbId ||
           currentScope.page !== requestedPage ||
-          currentScope.pageSize !== requestedPageSize
+          currentScope.pageSize !== requestedPageSize ||
+          currentScope.nameQuery !== requestedNameQuery ||
+          currentScope.statusGroups.join(",") !==
+            requestedStatusGroups.join(",")
         ) {
           return null;
         }
@@ -195,6 +223,8 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             kbId: requestedKbId,
             page: lastPage,
             pageSize: requestedPageSize,
+            nameQuery: requestedNameQuery,
+            statusGroups: requestedStatusGroups,
           };
           silentPageCorrectionRef.current = silent;
           setPage(lastPage);
@@ -212,9 +242,9 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           }
         }
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+       
     },
-    [kbId, page, pageSize],
+    [kbId, page, pageSize, nameQuery, statusGroups],
   );
   useEffect(() => {
     let active = true;
@@ -229,24 +259,24 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [kbId]);
 
   useEffect(() => {
     const silent = silentPageCorrectionRef.current;
     silentPageCorrectionRef.current = false;
     void load({ silent }).catch(() => undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId, page, pageSize]);
+     
+  }, [kbId, page, pageSize, nameQuery, statusGroups]);
 
   useEffect(() => {
     fetchKnowledgeBase(kbId)
       .then((kb) => setHasVisionModel(Boolean(kb.vision_model)))
       .catch(() => setHasVisionModel(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [kbId]);
 
-  // 统一构建为 Celery 异步：内部解析/生成阶段均以“构建中”呈现并静默轮询。
+  // 排队中 / 构建中(含 parsing) 均静默轮询刷新列表状态。
   useEffect(() => {
     if (!data.some((m) => IN_PROGRESS.includes(m.status || ""))) return;
     let cancelled = false;
@@ -472,7 +502,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     return () => {
       active = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [materialId]);
 
   const openDetail = (id: number) => {
@@ -490,9 +520,57 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   };
 
   const handleBuild = async (id: number) => {
-    await buildMaterial(id, true); // async=true:走 Celery,资料置「构建中」,由轮询反映结果
-    message.success(t("wiki.saveSuccess"));
-    void load({ silent: true }).catch(() => undefined);
+    try {
+      // suppress:业务冲突由本处用 warning 提示,避免拦截器 error + 未捕获 Promise 刷控制台
+      await buildMaterial(id, true, { suppressErrorNotification: true });
+      message.success(t("wiki.batchBuildDone"));
+      void load({ silent: true }).catch(() => undefined);
+    } catch (error) {
+      if (error instanceof HandledRequestError) {
+        if (error.status === 409) {
+          message.warning(error.message);
+        } else {
+          message.error(error.message);
+        }
+        void load({ silent: true }).catch(() => undefined);
+        return;
+      }
+      message.error(t("common.error"));
+    }
+  };
+
+  const handleBatchBuild = async () => {
+    const ids = selectedRowKeys
+      .map((key) => Number(key))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (!ids.length) {
+      message.warning(t("wiki.batchBuildEmpty"));
+      return;
+    }
+    setBatchBuilding(true);
+    try {
+      const result = await batchBuildMaterials(kbId, ids, {
+        suppressErrorNotification: true,
+      });
+      const queuedCount =
+        (result.queued?.length || 0) + (result.already_queued?.length || 0);
+      message.success(
+        `${t("wiki.batchBuildDone")}: ${queuedCount}` +
+          (result.in_progress?.length
+            ? ` (${t("wiki.statusBuilding")} ${result.in_progress.length})`
+            : ""),
+      );
+      setSelectedRowKeys([]);
+      void load({ silent: true }).catch(() => undefined);
+    } catch (error) {
+      if (error instanceof HandledRequestError) {
+        message.error(error.message);
+      } else {
+        message.error(t("common.error"));
+      }
+    } finally {
+      setBatchBuilding(false);
+    }
   };
 
   const openDeleteImpact = async (record: Material) => {
@@ -684,7 +762,8 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       width: 360,
       render: (_: unknown, record) => {
         const busy = IN_PROGRESS.includes(record.status || "");
-        const canBuild = !busy && record.status !== "invalid";
+        const canBuild =
+          !busy && record.status !== "invalid" && record.status !== "queued";
         const canProposeUpdate = record.status === "updated";
         return (
           <Space>
@@ -751,6 +830,31 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     },
   ];
 
+  const applyMaterialFilters = (overrides?: {
+    name?: string;
+    status?: MaterialDisplayStatus[];
+  }) => {
+    const nextName = (overrides?.name ?? nameDraft).trim();
+    const nextStatus = [...(overrides?.status ?? statusDraft)];
+    if (overrides?.name !== undefined) {
+      setNameDraft(overrides.name);
+    }
+    if (overrides?.status !== undefined) {
+      setStatusDraft(overrides.status);
+    }
+    loadScopeRef.current = {
+      kbId,
+      page: 1,
+      pageSize,
+      nameQuery: nextName,
+      statusGroups: nextStatus,
+    };
+    setSelectedRowKeys([]);
+    setNameQuery(nextName);
+    setStatusGroups(nextStatus);
+    setPage(1);
+  };
+
   if (materialId) {
     return (
       <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
@@ -761,7 +865,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           {detail ? (
             <MaterialDetailPanel detail={detail} onBack={backToList} />
           ) : (
-            !detailLoading && <Empty description={t("wiki.empty")} />
+            !detailLoading && <CompactEmptyState description={t("wiki.empty")} />
           )}
         </Spin>
       </div>
@@ -770,7 +874,48 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex justify-end mb-3 shrink-0">
+      <div className="mb-3 flex shrink-0 flex-wrap items-center justify-end gap-2">
+        <Select
+          mode="multiple"
+          allowClear
+          className="min-w-[200px] max-w-full sm:min-w-[240px] sm:max-w-[360px]"
+          placeholder={t("wiki.filterStatusAll")}
+          value={statusDraft}
+          options={MATERIAL_DISPLAY_STATUS_OPTIONS.map((value) => ({
+            value,
+            label: t(MATERIAL_STATUS_META[value].key),
+          }))}
+          maxTagCount="responsive"
+          onChange={(values: MaterialDisplayStatus[] | undefined) => {
+            const next = values || [];
+            setStatusDraft(next);
+            applyMaterialFilters({
+              name: nameDraft,
+              status: next,
+            });
+          }}
+        />
+        <Input.Search
+          allowClear
+          enterButton
+          className="w-60"
+          placeholder={t("wiki.filterNamePlaceholder")}
+          value={nameDraft}
+          onChange={(event) => setNameDraft(event.target.value)}
+          onSearch={(value) =>
+            applyMaterialFilters({
+              name: value,
+              status: statusDraft,
+            })
+          }
+        />
+        <Button
+          disabled={!selectedRowKeys.length}
+          loading={batchBuilding}
+          onClick={() => void handleBatchBuild()}
+        >
+          {t("wiki.batchBuild")}
+        </Button>
         <Button type="primary" onClick={openCreate}>
           {t("wiki.addMaterial")}
         </Button>
@@ -783,13 +928,26 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           loading={loading}
           columns={columns}
           dataSource={data}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys),
+            getCheckboxProps: (record) => ({
+              disabled: IN_PROGRESS.includes(record.status || ""),
+            }),
+          }}
           pagination={{
             current: page,
             pageSize,
             total,
             showSizeChanger: true,
             onChange: (p, ps) => {
-              loadScopeRef.current = { kbId, page: p, pageSize: ps };
+              loadScopeRef.current = {
+                kbId,
+                page: p,
+                pageSize: ps,
+                nameQuery,
+                statusGroups,
+              };
               setPage(p);
               setPageSize(ps);
             },
@@ -913,6 +1071,16 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         onCancel={closeMaterialModal}
         maskClosable={false}
         destroyOnHidden
+        centered
+        width={640}
+        styles={{
+          body: {
+            // header+footer+边距约 200px；再留余量避免 ant-modal-wrap 出现页面级滚动条
+            maxHeight: "min(520px, calc(100vh - 200px))",
+            overflowY: "auto",
+            overflowX: "hidden",
+          },
+        }}
       >
         <Form form={form} layout="vertical">
           {(type !== "file" || isEditing) && (
@@ -1030,37 +1198,54 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                 </Form.Item>
               )}
               <Form.Item label={t("wiki.materialFile")} required>
-                <Upload.Dragger
-                  multiple
-                  directory={folderImport}
-                  fileList={fileList}
-                  beforeUpload={() => false}
-                  onChange={({ fileList: fl }) => {
-                    setFileList(fl);
-                    // 上传文件后自动用文件名作为名称,无需用户额外填写
-                    const fname = fl.length === 1 ? fl[0]?.name : "";
-                    if (fname && !form.getFieldValue("name"))
-                      form.setFieldsValue({ name: fname });
-                    if (fl.length > 1) form.setFieldsValue({ name: "" });
-                  }}
-                  accept={FILE_ACCEPT}
+                <div
+                  className={
+                    fileList.length > 0
+                      ? "max-h-[280px] overflow-y-auto pr-1"
+                      : undefined
+                  }
                 >
-                  <p className="ant-upload-drag-icon">
-                    <UploadOutlined />
-                  </p>
-                  <p className="ant-upload-text">{t("wiki.uploadHint")}</p>
-                  <p className="ant-upload-hint text-xs text-gray-400">
-                    {t("wiki.supportedFileHint")}
-                  </p>
-                  <p className="ant-upload-hint text-xs text-amber-600">
-                    {t("wiki.largeFileUploadHint")}
-                  </p>
-                  {fileList.length > 1 && (
-                    <p className="ant-upload-hint text-xs text-gray-400">
-                      {t("wiki.selectedFiles")}: {fileList.length}
+                  <Upload.Dragger
+                    multiple
+                    directory={folderImport}
+                    fileList={fileList}
+                    beforeUpload={() => false}
+                    onChange={({ fileList: nextList }) => {
+                      setFileList((prev) => {
+                        const unchanged =
+                          prev.length === nextList.length &&
+                          prev.every((file, index) => file.uid === nextList[index]?.uid);
+                        return unchanged ? prev : nextList;
+                      });
+                      // 单文件自动填名称;多文件清空名称字段。仅在值变化时写 Form,避免 Upload 受控循环。
+                      if (nextList.length === 1) {
+                        const fname = nextList[0]?.name || "";
+                        if (fname && form.getFieldValue("name") !== fname) {
+                          form.setFieldsValue({ name: fname });
+                        }
+                      } else if (form.getFieldValue("name")) {
+                        form.setFieldsValue({ name: "" });
+                      }
+                    }}
+                    accept={FILE_ACCEPT}
+                  >
+                    <p className="ant-upload-drag-icon !mb-2">
+                      <UploadOutlined />
                     </p>
-                  )}
-                </Upload.Dragger>
+                    <p className="ant-upload-text !text-sm">{t("wiki.uploadHint")}</p>
+                    <p className="ant-upload-hint !text-xs text-gray-400">
+                      {t("wiki.supportedFileHint")}
+                    </p>
+                    <p className="ant-upload-hint !mb-0 !text-xs text-amber-600">
+                      {t("wiki.largeFileUploadHint")}
+                    </p>
+                  </Upload.Dragger>
+                </div>
+                {fileList.length > 1 && (
+                  <p className="mt-2 text-xs text-gray-400">
+                    {t("wiki.selectedFiles")}: {fileList.length}
+                  </p>
+                )}
               </Form.Item>
             </>
           )}

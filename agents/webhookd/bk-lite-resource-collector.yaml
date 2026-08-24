@@ -31,7 +31,7 @@ spec:
       automountServiceAccountToken: true
       containers:
       - name: kube-state-metrics
-        image: bk-lite.tencentcloudcr.com/bklite/kube-state-metrics:2.13.0
+        image: __IMAGE_REGISTRY_PREFIX__/kube-state-metrics:2.13.0
         resources:
           requests:
             memory: 64Mi
@@ -40,9 +40,10 @@ spec:
             memory: 256Mi
             cpu: 200m
         args:
-          # 注意：本 KSM 与 deploy/dist/bk-lite-kubernetes-collector/bk-lite-metric-collector.yaml
-          # 的 KSM 是同名共享实例（bk-lite-collector/kube-state-metrics），同集群共装时后
-          # apply 者覆盖先 apply 者，因此本段 args 必须与该文件逐字一致——取两条链路消费
+          # 注意：本 KSM 与 agents/webhookd/bk-lite-metric-collector.yaml、
+          # deploy/dist/bk-lite-kubernetes-collector/bk-lite-metric-collector.yaml
+          # 的 KSM 是同名共享实例（bk-lite-collector/kube-state-metrics），同集群任意组合
+          # 共装时后 apply 者覆盖先 apply 者，因此三份文件的 args 必须逐字一致——取两条链路消费
           # 指标的并集（监控 metrics.json/web dashboard 17 个 + CMDB collection/constants.py
           # 23 个，重叠 6 个）；各链路的精确过滤在采集侧（vmagent keep / telegraf fieldpass）
           - '--resources=cronjobs,daemonsets,deployments,jobs,namespaces,nodes,pods,replicasets,statefulsets'
@@ -82,6 +83,10 @@ spec:
       nodeSelector:
         kubernetes.io/os: linux
       serviceAccountName: kube-state-metrics
+      # 控制平面默认 NoSchedule；单节点集群否则采集 Pod 全部 Pending
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -97,8 +102,7 @@ automountServiceAccountToken: false
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kube-state-metrics
-  namespace: bk-lite-collector
+  name: bk-lite-kube-state-metrics
   labels:
     app.kubernetes.io/component: exporter
     app.kubernetes.io/name: kube-state-metrics
@@ -227,8 +231,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kube-state-metrics
-  namespace: bk-lite-collector
+  name: bk-lite-kube-state-metrics
   labels:
     app.kubernetes.io/component: exporter
     app.kubernetes.io/name: kube-state-metrics
@@ -236,7 +239,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kube-state-metrics
+  name: bk-lite-kube-state-metrics
 subjects:
 - kind: ServiceAccount
   name: kube-state-metrics
@@ -278,9 +281,13 @@ spec:
       labels:
         app: telegraf-resource
     spec:
+      # 控制平面默认 NoSchedule；单节点集群否则 CMDB 资源采集 Pending
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
       containers:
         - name: telegraf
-          image: bk-lite.tencentcloudcr.com/bklite/telegraf:1.29.5
+          image: __IMAGE_REGISTRY_PREFIX__/telegraf:1.29.5
           resources:
             requests:
               memory: 128Mi

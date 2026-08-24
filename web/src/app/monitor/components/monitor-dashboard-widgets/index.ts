@@ -13,13 +13,14 @@ export type {
   CollectionStatusCardStyles,
   CollectionStatusTone,
   CollectionStatusLegendItem,
+  CollectionStatusTimelineSegment,
 } from '@/app/monitor/components/monitor-dashboard-widgets/collection-status-card';
 
 export { RingChartPanel } from '@/app/monitor/components/monitor-dashboard-widgets/ring-chart-panel';
 export type { RingChartPanelProps, RingChartPanelStyles, RingChartDataItem, RingChartInfoRow } from '@/app/monitor/components/monitor-dashboard-widgets/ring-chart-panel';
 
-export { HorizontalBarPanel } from '@/app/monitor/components/monitor-dashboard-widgets/horizontal-bar-panel';
-export type { HorizontalBarPanelProps, HorizontalBarPanelStyles, BarItem } from '@/app/monitor/components/monitor-dashboard-widgets/horizontal-bar-panel';
+export { BarList, HorizontalBarPanel } from '@/app/monitor/components/monitor-dashboard-widgets/horizontal-bar-panel';
+export type { BarItem, BarListProps, HorizontalBarPanelProps, HorizontalBarPanelStyles } from '@/app/monitor/components/monitor-dashboard-widgets/horizontal-bar-panel';
 
 export { StackedBarPanel } from '@/app/monitor/components/monitor-dashboard-widgets/stacked-bar-panel';
 export type { StackedBarPanelProps, StackedBarPanelStyles, StackedBarRow } from '@/app/monitor/components/monitor-dashboard-widgets/stacked-bar-panel';

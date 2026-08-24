@@ -41,6 +41,10 @@ source = '''
 .collector = "Vector"
 .collect_type = "docker"
 .instance_id = "{{ instance_id }}"
+# bk-lite:vector-host-metadata:v1 begin
+.host_name = decode_base64!("${node.name_b64}")
+.host_ip = decode_base64!("${node.ip_b64}")
+# bk-lite:vector-host-metadata:v1 end
 '''
 
 # ====================================

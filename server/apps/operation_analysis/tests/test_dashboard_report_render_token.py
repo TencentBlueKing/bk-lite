@@ -4,31 +4,20 @@ from datetime import timedelta
 import jwt
 import pytest
 from django.utils import timezone
-from rest_framework.test import APIClient
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIClient, APIRequestFactory
 
-from apps.operation_analysis.models.datasource_models import (
-    DataSourceAPIModel,
-    NameSpace,
-)
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
 from apps.operation_analysis.models.models import Dashboard, Directory
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportExecutionSnapshot,
     DashboardReportRenderSnapshot,
-    DashboardReportSubscription,
     DashboardReportRenderToken,
+    DashboardReportSubscription,
 )
-from apps.operation_analysis.services.render_token_service import (
-    DashboardReportRenderTokenError,
-    DashboardReportRenderTokenService,
-)
-from apps.operation_analysis.services.render_scope_service import (
-    DashboardReportRenderScopeError,
-    DashboardReportRenderScopeService,
-)
+from apps.operation_analysis.services.render_scope_service import DashboardReportRenderScopeError, DashboardReportRenderScopeService
+from apps.operation_analysis.services.render_token_service import DashboardReportRenderTokenError, DashboardReportRenderTokenService
 from apps.system_mgmt.models import User as SystemUser
-
 
 pytestmark = pytest.mark.django_db
 
@@ -50,9 +39,7 @@ def _stub_render_auth_context(
             "domain": domain,
             "email": "render-token@example.com",
             "is_superuser": False,
-            "group_list": group_list
-            if group_list is not None
-            else [{"id": 1, "name": "Default Team"}],
+            "group_list": group_list if group_list is not None else [{"id": 1, "name": "Default Team"}],
             "group_tree": [],
             "roles": [],
             "role_ids": [],
@@ -140,9 +127,7 @@ def running_execution(authenticated_user):
         view_sets=[],
         filters=[],
         other={},
-        widget_manifest=[
-            {"widget_id": "chart-1", "widget_type": "line", "datasource_id": 17}
-        ],
+        widget_manifest=[{"widget_id": "chart-1", "widget_type": "line", "datasource_id": 17}],
     )
     return execution
 
@@ -202,13 +187,9 @@ def test_issue_and_consume_render_token_once(running_execution, monkeypatch):
 
     issued = DashboardReportRenderTokenService.issue(running_execution)
 
-    record = DashboardReportRenderToken.objects.get(
-        execution=running_execution
-    )
+    record = DashboardReportRenderToken.objects.get(execution=running_execution)
     assert issued.plaintext
-    assert record.token_hash == hashlib.sha256(
-        issued.plaintext.encode()
-    ).hexdigest()
+    assert record.token_hash == hashlib.sha256(issued.plaintext.encode()).hexdigest()
     assert issued.plaintext != record.token_hash
     assert record.expires_at > timezone.now()
     assert record.consumed_at is None
@@ -237,9 +218,7 @@ def test_issue_and_consume_render_token_once(running_execution, monkeypatch):
         )
 
 
-def test_render_token_resolves_creator_by_username_and_domain(
-    running_execution, monkeypatch
-):
+def test_render_token_resolves_creator_by_username_and_domain(running_execution, monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
     SystemUser.objects.create(
         username=running_execution.creator,
@@ -259,31 +238,21 @@ def test_render_token_resolves_creator_by_username_and_domain(
     assert session["domain"] == running_execution.creator_domain
 
 
-def test_new_attempt_invalidates_existing_render_session(
-    running_execution, monkeypatch
-):
+def test_new_attempt_invalidates_existing_render_session(running_execution, monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
-    first = DashboardReportRenderTokenService.issue(
-        running_execution, attempt_no=1
-    )
+    first = DashboardReportRenderTokenService.issue(running_execution, attempt_no=1)
     old_session = DashboardReportRenderTokenService.consume(
         execution_id=running_execution.id,
         plaintext=first.plaintext,
     )
     DashboardReportRenderTokenService.issue(running_execution, attempt_no=2)
 
-    request = APIRequestFactory().get(
-        f"/api/v1/operation_analysis/api/dashboard_execution/{running_execution.id}/render-input/"
-    )
+    request = APIRequestFactory().get(f"/api/v1/operation_analysis/api/dashboard_execution/{running_execution.id}/render-input/")
     with pytest.raises(DashboardReportRenderScopeError, match="已失效"):
-        DashboardReportRenderScopeService.authorize_request(
-            request, old_session["token"]
-        )
+        DashboardReportRenderScopeService.authorize_request(request, old_session["token"])
 
 
-def test_disabled_creator_invalidates_existing_render_session(
-    running_execution, monkeypatch
-):
+def test_disabled_creator_invalidates_existing_render_session(running_execution, monkeypatch):
     monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
     issued = DashboardReportRenderTokenService.issue(running_execution)
     session = DashboardReportRenderTokenService.consume(
@@ -295,20 +264,14 @@ def test_disabled_creator_invalidates_existing_render_session(
         domain=running_execution.creator_domain,
     ).update(disabled=True)
 
-    request = APIRequestFactory().get(
-        f"/api/v1/operation_analysis/api/dashboard_execution/{running_execution.id}/render-input/"
-    )
+    request = APIRequestFactory().get(f"/api/v1/operation_analysis/api/dashboard_execution/{running_execution.id}/render-input/")
     with pytest.raises(DashboardReportRenderScopeError, match="已失效"):
-        DashboardReportRenderScopeService.authorize_request(
-            request, session["token"]
-        )
+        DashboardReportRenderScopeService.authorize_request(request, session["token"])
 
 
 def test_expired_render_token_is_rejected(running_execution):
     issued = DashboardReportRenderTokenService.issue(running_execution)
-    DashboardReportRenderToken.objects.filter(
-        execution=running_execution
-    ).update(expires_at=timezone.now() - timedelta(seconds=1))
+    DashboardReportRenderToken.objects.filter(execution=running_execution).update(expires_at=timezone.now() - timedelta(seconds=1))
 
     with pytest.raises(DashboardReportRenderTokenError):
         DashboardReportRenderTokenService.consume(
@@ -336,9 +299,7 @@ def test_render_session_rejects_ordinary_api_and_cross_execution(
         )
     with pytest.raises(DashboardReportRenderScopeError):
         DashboardReportRenderScopeService.authorize_request(
-            factory.get(
-                "/api/v1/operation_analysis/api/dashboard_execution/999/render-input/"
-            ),
+            factory.get("/api/v1/operation_analysis/api/dashboard_execution/999/render-input/"),
             session["token"],
         )
 
@@ -556,6 +517,48 @@ def test_legacy_render_claims_are_detected_and_fail_closed():
     assert AuthMiddleware._is_render_token_candidate(token)
 
 
+ROOM3D_SWITCH_PARAMS = [
+    {
+        "name": "server_room_id",
+        "inputConfig": {
+            "control": "select",
+            "componentSwitch": True,
+            "optionsSource": {
+                "type": "dynamic",
+                "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
+                "valueField": "inst_uuid",
+                "labelField": "inst_name",
+            },
+        },
+    }
+]
+
+
+def _create_room3d_option_datasources():
+    layout = DataSourceAPIModel.objects.create(
+        id=17,
+        name="CMDB 3D机房布局",
+        rest_api="cmdb/get_room3d_layout",
+        groups=[1],
+        params=ROOM3D_SWITCH_PARAMS,
+    )
+    rooms = DataSourceAPIModel.objects.create(
+        id=42,
+        name="CMDB 机房列表",
+        rest_api="cmdb/get_room_list",
+        groups=[1],
+        params=[],
+    )
+    unrelated = DataSourceAPIModel.objects.create(
+        id=18,
+        name="无关数据源",
+        rest_api="other/query",
+        groups=[1],
+        params=[],
+    )
+    return layout, rooms, unrelated
+
+
 def test_render_session_allows_only_manifest_datasource(
     running_execution,
     monkeypatch,
@@ -569,9 +572,7 @@ def test_render_session_allows_only_manifest_datasource(
     factory = APIRequestFactory()
 
     DashboardReportRenderScopeService.authorize_request(
-        factory.get(
-            f"/api/v1/operation_analysis/api/dashboard_execution/{running_execution.id}/render-input/"
-        ),
+        factory.get(f"/api/v1/operation_analysis/api/dashboard_execution/{running_execution.id}/render-input/"),
         session["token"],
     )
     datasource_query_request = factory.post(
@@ -595,10 +596,158 @@ def test_render_session_allows_only_manifest_datasource(
         )
 
 
+def test_render_session_allows_component_switch_option_datasource(
+    running_execution,
+    monkeypatch,
+):
+    monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
+    _create_room3d_option_datasources()
+    issued = DashboardReportRenderTokenService.issue(running_execution)
+    session = DashboardReportRenderTokenService.consume(
+        execution_id=running_execution.id,
+        plaintext=issued.plaintext,
+    )
+    factory = APIRequestFactory()
+
+    with pytest.raises(DashboardReportRenderScopeError):
+        DashboardReportRenderScopeService.authorize_request(
+            factory.get(
+                "/api/v1/operation_analysis/api/data_source/",
+                {"page_size": "-1"},
+            ),
+            session["token"],
+        )
+
+    DashboardReportRenderScopeService.authorize_request(
+        factory.get(
+            "/api/v1/operation_analysis/api/data_source/",
+            {"ids": "17,42"},
+        ),
+        session["token"],
+    )
+    DashboardReportRenderScopeService.authorize_request(
+        factory.post(
+            "/api/v1/operation_analysis/api/data_source/get_source_data/42/",
+            {},
+            format="json",
+        ),
+        session["token"],
+    )
+    with pytest.raises(DashboardReportRenderScopeError):
+        DashboardReportRenderScopeService.authorize_request(
+            factory.get(
+                "/api/v1/operation_analysis/api/data_source/",
+                {"ids": "17,18"},
+            ),
+            session["token"],
+        )
+    with pytest.raises(DashboardReportRenderScopeError):
+        DashboardReportRenderScopeService.authorize_request(
+            factory.post(
+                "/api/v1/operation_analysis/api/data_source/get_source_data/18/",
+                {},
+                format="json",
+            ),
+            session["token"],
+        )
+
+
+def test_render_session_rejects_ambiguous_option_rest_api(
+    running_execution,
+    monkeypatch,
+):
+    monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
+    DataSourceAPIModel.objects.create(
+        id=17,
+        name="CMDB 3D机房布局",
+        rest_api="cmdb/get_room3d_layout",
+        groups=[1],
+        params=ROOM3D_SWITCH_PARAMS,
+    )
+    DataSourceAPIModel.objects.create(
+        id=42,
+        name="机房列表 A",
+        rest_api="cmdb/get_room_list",
+        groups=[1],
+    )
+    DataSourceAPIModel.objects.create(
+        id=43,
+        name="机房列表 B",
+        rest_api="cmdb/get_room_list",
+        groups=[1],
+    )
+    issued = DashboardReportRenderTokenService.issue(running_execution)
+    session = DashboardReportRenderTokenService.consume(
+        execution_id=running_execution.id,
+        plaintext=issued.plaintext,
+    )
+    factory = APIRequestFactory()
+
+    DashboardReportRenderScopeService.authorize_request(
+        factory.post(
+            "/api/v1/operation_analysis/api/data_source/get_source_data/17/",
+            {},
+            format="json",
+        ),
+        session["token"],
+    )
+    with pytest.raises(DashboardReportRenderScopeError):
+        DashboardReportRenderScopeService.authorize_request(
+            factory.post(
+                "/api/v1/operation_analysis/api/data_source/get_source_data/42/",
+                {},
+                format="json",
+            ),
+            session["token"],
+        )
+
+
+def test_render_session_datasource_list_requires_named_ids(
+    running_execution,
+    monkeypatch,
+    settings,
+):
+    monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
+    _create_room3d_option_datasources()
+    issued = DashboardReportRenderTokenService.issue(running_execution)
+    session = DashboardReportRenderTokenService.consume(
+        execution_id=running_execution.id,
+        plaintext=issued.plaintext,
+    )
+    settings.MIDDLEWARE = (
+        *settings.MIDDLEWARE,
+        "apps.core.middlewares.auth_middleware.AuthMiddleware",
+    )
+    _stub_render_auth_context(
+        monkeypatch,
+        username=running_execution.creator,
+        domain=running_execution.creator_domain,
+    )
+    _stub_datasource_instance_rules(monkeypatch, team_ids=[1])
+    client = APIClient()
+
+    denied = client.get(
+        "/api/v1/operation_analysis/api/data_source/",
+        {"page_size": "-1"},
+        HTTP_AUTHORIZATION=f"Bearer {session['token']}",
+    )
+    assert denied.status_code in {401, 403}
+
+    allowed = client.get(
+        "/api/v1/operation_analysis/api/data_source/",
+        {"ids": "17,42", "page_size": "-1"},
+        HTTP_AUTHORIZATION=f"Bearer {session['token']}",
+    )
+    assert allowed.status_code == 200, allowed.data
+    assert {item["id"] for item in allowed.data} == {17, 42}
+
+
 def test_render_session_allows_frozen_network_status_topology(
     running_execution,
     monkeypatch,
 ):
+    allowed_inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    denied_inst_uuid = "c28e467a-501d-426f-a3c3-6e560c7b33cb"
     monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
     old = running_execution.render_snapshot
     DashboardReportRenderSnapshot.objects.filter(pk=old.pk).delete()
@@ -615,9 +764,8 @@ def test_render_session_allows_frozen_network_status_topology(
                     "valueConfig": {
                         "sceneWidgetType": "networkStatusTopology",
                         "networkStatusTopology": {
-                            "modelId": "router",
-                            "instId": "335",
-                            "depth": 4,
+                            "instUuids": [allowed_inst_uuid],
+                            "nodeLimit": 100,
                         },
                     },
                 }
@@ -644,7 +792,10 @@ def test_render_session_allows_frozen_network_status_topology(
     DashboardReportRenderScopeService.authorize_request(
         factory.post(
             "/api/v1/operation_analysis/api/scene_widgets/network_status_topology/",
-            {"model_id": "router", "inst_id": "335", "depth": 4},
+            {
+                "inst_uuids": [allowed_inst_uuid],
+                "node_limit": 100,
+            },
             format="json",
         ),
         session["token"],
@@ -653,7 +804,107 @@ def test_render_session_allows_frozen_network_status_topology(
         DashboardReportRenderScopeService.authorize_request(
             factory.post(
                 "/api/v1/operation_analysis/api/scene_widgets/network_status_topology/",
-                {"model_id": "router", "inst_id": "999", "depth": 4},
+                {
+                    "inst_uuids": [denied_inst_uuid],
+                    "node_limit": 100,
+                },
+                format="json",
+            ),
+            session["token"],
+        )
+
+
+def test_render_session_allows_overlay_datasource_query_for_topology_manifest(
+    running_execution,
+    monkeypatch,
+):
+    from apps.operation_analysis.services.network_status_topology_overlay import NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
+
+    monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
+    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS[:2]
+    cmdb = DataSourceAPIModel.objects.create(
+        name="render-overlay-cmdb",
+        rest_api=cmdb_api,
+        is_build_in=True,
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+    monitor = DataSourceAPIModel.objects.create(
+        name="render-overlay-monitor",
+        rest_api=monitor_api,
+        is_build_in=True,
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+    unrelated = DataSourceAPIModel.objects.create(
+        name="render-overlay-unrelated",
+        rest_api="other/query",
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+    old = running_execution.render_snapshot
+    DashboardReportRenderSnapshot.objects.filter(pk=old.pk).delete()
+    DashboardReportRenderSnapshot.objects.create(
+        execution=running_execution,
+        dashboard_id=old.dashboard_id,
+        dashboard_name=old.dashboard_name,
+        dashboard_updated_at=old.dashboard_updated_at,
+        view_sets={
+            "items": [
+                {
+                    "id": "topo-1",
+                    "chartType": "networkStatusTopology",
+                    "valueConfig": {"sceneWidgetType": "networkStatusTopology"},
+                }
+            ]
+        },
+        filters=[],
+        other={},
+        widget_manifest=[
+            {
+                "widget_id": "topo-1",
+                "widget_type": "networkStatusTopology",
+                "datasource_id": cmdb.id,
+            },
+            {
+                "widget_id": "topo-1",
+                "widget_type": "networkStatusTopology",
+                "datasource_id": monitor.id,
+            },
+        ],
+    )
+
+    issued = DashboardReportRenderTokenService.issue(running_execution)
+    session = DashboardReportRenderTokenService.consume(
+        execution_id=running_execution.id,
+        plaintext=issued.plaintext,
+    )
+    factory = APIRequestFactory()
+
+    DashboardReportRenderScopeService.authorize_request(
+        factory.post(
+            f"/api/v1/operation_analysis/api/data_source/get_source_data/{cmdb.id}/",
+            {},
+            format="json",
+        ),
+        session["token"],
+    )
+    DashboardReportRenderScopeService.authorize_request(
+        factory.post(
+            f"/api/v1/operation_analysis/api/data_source/get_source_data/{monitor.id}/",
+            {},
+            format="json",
+        ),
+        session["token"],
+    )
+    with pytest.raises(DashboardReportRenderScopeError):
+        DashboardReportRenderScopeService.authorize_request(
+            factory.post(
+                f"/api/v1/operation_analysis/api/data_source/get_source_data/{unrelated.id}/",
+                {},
                 format="json",
             ),
             session["token"],
@@ -773,10 +1024,7 @@ def test_render_input_rejects_normal_session_and_accepts_bound_render_session(
     authenticated_user.permission = {
         "ops-analysis": {"view-View"},
     }
-    url = (
-        "/api/v1/operation_analysis/api/dashboard_execution/"
-        f"{running_execution.id}/render-input/"
-    )
+    url = "/api/v1/operation_analysis/api/dashboard_execution/" f"{running_execution.id}/render-input/"
 
     ordinary_response = api_client.get(url)
     assert ordinary_response.status_code == 403
@@ -801,10 +1049,7 @@ def test_render_token_exchange_endpoint_consumes_token_once(
 ):
     monkeypatch.setenv("SECRET_KEY", "render-token-test-secret")
     issued = DashboardReportRenderTokenService.issue(running_execution)
-    url = (
-        "/api/v1/operation_analysis/api/dashboard_execution/"
-        f"{running_execution.id}/render-token-exchange/"
-    )
+    url = "/api/v1/operation_analysis/api/dashboard_execution/" f"{running_execution.id}/render-token-exchange/"
     anonymous_client = APIClient()
 
     first = anonymous_client.post(
@@ -819,7 +1064,5 @@ def test_render_token_exchange_endpoint_consumes_token_once(
     )
 
     assert first.status_code == 200
-    assert first.data["session_user"]["username"] == (
-        running_execution.creator
-    )
+    assert first.data["session_user"]["username"] == (running_execution.creator)
     assert second.status_code == 403

@@ -14,6 +14,14 @@ monitor_object_metric:
         field. 0 means success, while non-zero values represent response string mismatch,
         body read error, connection failure, timeout, DNS error, or response status
         code mismatch.
+      enum:
+        "0": Success
+        "1": Content Mismatch
+        "2": Body Read Error
+        "3": Connection Failed
+        "4": Timeout
+        "5": DNS Error
+        "6": Status Code Mismatch
     http_node_success_rate:
       name: Node Success Rate
       desc: Calculate the 5-minute probe success rate for each probing node, reflecting

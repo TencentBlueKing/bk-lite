@@ -5,7 +5,6 @@ import {
   Button,
   message,
   Dropdown,
-  Tag,
   Popconfirm,
   Space,
   Tooltip,
@@ -53,6 +52,7 @@ import { cloneDeep } from 'lodash';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { buildAssetViewUrl } from './viewRoute';
+import PluginTooltipContent, { PluginTooltipTrigger } from './pluginTooltip';
 
 type TableRowSelection<T extends object = object> =
   TableProps<T>['rowSelection'];
@@ -133,22 +133,6 @@ const Asset = () => {
   const columns = useMemo(() => {
     const columnItems: ColumnItem[] = [
       {
-        title: t('monitor.views.nodeId'),
-        dataIndex: 'node_id',
-        key: 'node_id',
-        width: 180,
-        ellipsis: true,
-        render: (_, record: any) => <>{record.node_id || '--'}</>,
-      },
-      {
-        title: t('monitor.views.cmdbId'),
-        dataIndex: 'cmdb_id',
-        key: 'cmdb_id',
-        width: 120,
-        ellipsis: true,
-        render: (_, record: any) => <>{record.cmdb_id || '--'}</>,
-      },
-      {
         title: t('monitor.integrations.collectionTemplate'),
         dataIndex: 'plugins',
         key: 'plugins',
@@ -163,7 +147,7 @@ const Asset = () => {
 
           return (
             <div className="flex flex-wrap gap-1">
-              {plugins.map((plugin: any, index: number) => {
+              {plugins.map((plugin: any) => {
                 const isAuto = plugin.collect_mode === 'auto';
                 const statusInfo = {
                   color: ['normal', 'online'].includes(plugin.status)
@@ -181,37 +165,45 @@ const Asset = () => {
                 const timeText = plugin.time
                   ? convertToLocalizedTime(plugin.time)
                   : '--';
-                const tooltipTitle = `${statusText} - ${t(
-                  'monitor.integrations.lastReportTime'
-                )}：${timeText}`;
+                const tooltipTitle = (
+                  <PluginTooltipContent
+                    statusText={statusText}
+                    lastReportTimeLabel={t(
+                      'monitor.integrations.lastReportTime'
+                    )}
+                    timeText={timeText}
+                    collectionNodeLabel={t(
+                      'monitor.integrations.collectionNode'
+                    )}
+                    notAssociatedText={t(
+                      'monitor.integrations.notAssociated'
+                    )}
+                    collectMode={plugin.collect_mode}
+                    collectorNodes={plugin.collector_nodes}
+                  />
+                );
 
                 return (
-                  <>
+                  <React.Fragment key={plugin.name}>
                     <style>{`
                       .asset-tooltip.ant-tooltip {
                         max-width: none;
                       }
                     `}</style>
-                    <Tooltip
-                      key={`${plugin.name}-${index}`}
+                    <PluginTooltipTrigger
+                      ariaLabel={`${plugin.display_name || '--'}，${statusText}`}
+                      color={statusInfo.color}
+                      onActivate={() =>
+                        openTemplateDrawer(record, {
+                          selectedConfigId: isAuto ? plugin.name : undefined,
+                          showTemplateList: false
+                        })
+                      }
                       title={tooltipTitle}
-                      color="#000"
-                      overlayClassName="asset-tooltip"
                     >
-                      <Tag
-                        color={statusInfo.color}
-                        className="cursor-pointer"
-                        onClick={() =>
-                          openTemplateDrawer(record, {
-                            selectedConfigId: isAuto ? plugin.name : undefined,
-                            showTemplateList: false
-                          })
-                        }
-                      >
-                        {plugin.display_name || '--'}
-                      </Tag>
-                    </Tooltip>
-                  </>
+                      {plugin.display_name || '--'}
+                    </PluginTooltipTrigger>
+                  </React.Fragment>
                 );
               })}
             </div>
@@ -233,6 +225,54 @@ const Asset = () => {
             text={showGroupName(organization, organizationList)}
           />
         )
+      },
+      {
+        title: t('monitor.views.externalId'),
+        dataIndex: 'external_id',
+        key: 'external_id',
+        width: 80,
+        ellipsis: true,
+        onHeaderCell: () => ({
+          style: { width: 80, minWidth: 80, maxWidth: 80 },
+        }),
+        onCell: () => ({
+          style: {
+            width: 80,
+            minWidth: 80,
+            maxWidth: 80,
+            overflow: 'hidden',
+          },
+        }),
+        render: (_, record: TableDataItem) => {
+          const cmdbId = record.cmdb_id ? String(record.cmdb_id) : '--';
+          const nodeId = record.node_id ? String(record.node_id) : '--';
+          return (
+            <Tooltip
+              title={
+                <div className="text-xs leading-5">
+                  <div>
+                    {t('monitor.views.cmdbId')}: {cmdbId}
+                  </div>
+                  <div>
+                    {t('monitor.views.nodeId')}: {nodeId}
+                  </div>
+                </div>
+              }
+            >
+              <div
+                className="block overflow-hidden cursor-default"
+                style={{ width: 64, maxWidth: 64 }}
+              >
+                <div className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[12px] leading-[18px]">
+                  {cmdbId}
+                </div>
+                <div className="overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[12px] leading-[18px] text-[var(--color-text-3)]">
+                  {nodeId}
+                </div>
+              </div>
+            </Tooltip>
+          );
+        },
       },
       {
         title: t('common.action'),

@@ -8,6 +8,7 @@ from django.db.models import Q
 from django.utils import timezone as django_timezone
 
 from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.rpc.base import RpcClient
 from apps.system_mgmt.models import Channel, ErrorLog, Group, LoginModule, SystemSettings, User
@@ -46,6 +47,11 @@ def write_error_log_async(self, username, app, module, error_message, domain, st
 
 @shared_task
 def sync_user_and_group_by_login_module(login_module_id):
+    """执行遗留 LoginModule 的 bk_lite 用户/组织同步。
+
+    管理入口已关闭。后续同步必须使用集成中心 Provider 的 ``user_sync``
+    capability；此任务只为存量定时任务兼容保留，不得新增调用方。
+    """
     login_module = LoginModule.objects.filter(id=login_module_id, enabled=True).first()
     if not login_module:
         return {"result": False, "message": "Login module not found or not enabled."}
@@ -63,7 +69,7 @@ def sync_user_and_group_by_login_module(login_module_id):
 
 
 def sync_user_and_groups(user_list, group_list, login_module):
-    """同步用户和组数据到本地数据库"""
+    """遗留 LoginModule 同步实现；迁移目标为集成中心 ``user_sync`` Provider。"""
     try:
         parent_group, _ = Group.objects.get_or_create(
             name=login_module.other_config.get("root_group", login_module.name),
@@ -109,15 +115,8 @@ def _sync_groups(group_list, parent_group, parent_group_id):
                 affected_query = Q()
                 for group_id in affected_group_ids[offset : offset + 100]:
                     affected_query |= Q(group_list__contains=[group_id])
-                affected_identities.update(
-                    User.objects.filter(affected_query)
-                    .values_list("username", "domain")
-                    .iterator(chunk_size=1000)
-                )
-            affected_users = [
-                {"username": username, "domain": domain}
-                for username, domain in sorted(affected_identities)
-            ]
+                affected_identities.update(User.objects.filter(affected_query).values_list("username", "domain").iterator(chunk_size=1000))
+            affected_users = [{"username": username, "domain": domain} for username, domain in sorted(affected_identities)]
             Group.objects.filter(id__in=delete_groups).delete()
             if affected_users:
                 clear_users_permission_cache(affected_users)
@@ -169,7 +168,7 @@ def _sync_groups(group_list, parent_group, parent_group_id):
 
     # 批量创建新组
     if add_groups:
-        created_groups = Group.objects.bulk_create(add_groups, batch_size=100)
+        created_groups = bulk_create_with_primary_keys(Group.objects, add_groups, batch_size=100)
         logger.info(f"Created {len(created_groups)} groups under parent {parent_group.name}")
 
         # 为新创建的组添加映射并递归处理子组
@@ -468,7 +467,14 @@ def send_initial_password_email_batch(run_id: int):
         deliveries.append({"user": user, "username": username, "raw_password": raw_password})
     if deliveries:
         results = send_initial_password_emails(run.source, deliveries)
-        outcomes.extend({"username": item["username"], "ok": bool(results.get(item["username"], {}).get("result")), "reason": results.get(item["username"], {}).get("message", "邮件发送失败")} for item in deliveries)
+        outcomes.extend(
+            {
+                "username": item["username"],
+                "ok": bool(results.get(item["username"], {}).get("result")),
+                "reason": results.get(item["username"], {}).get("message", "邮件发送失败"),
+            }
+            for item in deliveries
+        )
     has_pending = complete_password_email_batch(run_id, outcomes)
     if has_pending:
         send_initial_password_email_batch.delay(run_id)

@@ -1,0 +1,79 @@
+Firewall Huawei SNMP:
+  name: Huawei USG (Telegraf)
+  desc: SNMP monitoring template for Huawei Secospace USG firewalls. It reports CPU,
+    memory, temperature, entity voltage, and interface traffic metrics from
+    HUAWEI-ENTITY-EXTENT-MIB. Fan/PSU operational-state OIDs are absent on USG6390;
+    optical power is USG9500-only and omitted.
+monitor_object:
+  Firewall: Firewall
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Firewall:
+    snmp_uptime:
+      name: System Uptime
+      desc: Uptime of the device since the last restart.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Per-entity CPU utilization of the Huawei USG firewall (hwEntityCpuUsage,
+        0-100). Dimension descr is entPhysicalName. Sustained high CPU may indicate
+        heavy inspection load or attack traffic.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Per-entity memory utilization of the Huawei USG firewall (hwEntityMemUsage;
+        USG6000 whole-device percentage 0-100). Dimension descr is entPhysicalName.
+        High memory pressure can degrade session handling.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Per-entity temperature in Celsius (hwEntityTemperature). Dimension descr
+        is entPhysicalName. Abnormally high values may indicate cooling issues.
+    device_voltage_volts:
+      name: Entity Voltage
+      desc: Per-entity voltage in volts (hwEntityVoltage; device reports mV, query
+        divides by 1000). Dimension descr is entPhysicalName. Abnormal voltage may
+        indicate power-rail or board issues.
+    interface_ifAdminStatus:
+      name: Interface Admin Status
+      desc: Administrative status of the network interface.
+    interface_ifOperStatus:
+      name: Interface Oper Status
+      desc: Operational status of the network interface.
+    interface_ifSpeed:
+      name: Interface Bandwidth
+      desc: Maximum data transmission speed of the interface.
+    interface_ifInErrors:
+      name: Incoming Errors Rate
+      desc: Average rate of incoming error packets over the past 5 minutes.
+    interface_ifOutErrors:
+      name: Outgoing Errors Rate
+      desc: Average rate of outgoing error packets over the past 5 minutes.
+    interface_ifInDiscards:
+      name: Incoming Discards Rate
+      desc: Average rate of incoming discarded packets over the past 5 minutes.
+    interface_ifOutDiscards:
+      name: Outgoing Discards Rate
+      desc: Average rate of outgoing discarded packets over the past 5 minutes.
+    interface_ifInUcastPkts:
+      name: Incoming Unicast Packets Rate
+      desc: Average rate of incoming unicast packets over the past 5 minutes.
+    interface_ifOutUcastPkts:
+      name: Outgoing Unicast Packets Rate
+      desc: Average rate of outgoing unicast packets over the past 5 minutes.
+    interface_ifInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: Average rate of bytes received over the past 5 minutes.
+    interface_ifOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: Average rate of bytes sent over the past 5 minutes.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: Average receive rate from 64-bit ifHCInOctets.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: Average transmit rate from 64-bit ifHCOutOctets.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: Device-wide incoming traffic rate.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: Device-wide outgoing traffic rate.

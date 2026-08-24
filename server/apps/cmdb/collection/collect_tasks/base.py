@@ -59,7 +59,8 @@ class BaseCollect(object):
         organization = instance.get("organization") or self.task.team
         if organization is not None and not isinstance(organization, list):
             organization = [organization]
-        inst_id = instance["_id"]
+        # 完成链路按 inst_name + collect_task 对账，图 _id 只是可选写句柄；缺 _id 不得 KeyError。
+        inst_id = instance.get("_id")
         return model_id, inst_name, organization, inst_id, not self.task.is_host
 
     @property

@@ -51,10 +51,19 @@ import {
   attachToolCallToCurrentStep,
   createPlannedExecutionState,
   finalizePlannedExecutionSteps,
+  isFailedPlannedStepStatus,
   isToolAssignedToPlannedStep,
   PlannedExecutionState,
 } from './plannedExecutionState';
-import type { PlannedExecutionStepValue } from '@/app/opspilot/types/chat';
+import type { PlannedExecutionStatusValue, PlannedExecutionStepValue } from '@/app/opspilot/types/chat';
+import {
+  looksLikePlannedExecutionPayload,
+  unwrapCustomValue,
+  tryParseJsonValue,
+} from './plannedExecutionPayload';
+import { isToolResultErrorContent } from './toolResultStatus';
+
+export { isToolResultErrorContent } from './toolResultStatus';
 
 export interface MessageUpdateFn {
   (updater: (prevMessages: CustomChatMessage[]) => CustomChatMessage[]): void;
@@ -140,14 +149,16 @@ const isStructuredConfigAnalysisReport = (
 
 export const finalizePendingToolCalls = (
   toolCalls: Map<string, ToolCallInfo>,
-  fallbackResult: string
+  fallbackResult: string,
+  options?: { status?: 'completed' | 'error' }
 ): boolean => {
   let changed = false;
+  const nextStatus = options?.status ?? 'completed';
   toolCalls.forEach((toolCall) => {
     if (toolCall.status !== 'calling') {
       return;
     }
-    toolCall.status = 'completed';
+    toolCall.status = nextStatus;
     if (!toolCall.result) {
       toolCall.result = fallbackResult;
     }
@@ -176,6 +187,7 @@ export class AGUIMessageHandler {
   private skillViews: SkillViewItem[] = [];
   private wikiCitations: WikiCitation[] = [];
   private plannedExecutionState: PlannedExecutionState = createPlannedExecutionState();
+  private plannedExecutionStatus: PlannedExecutionStatusValue | null = null;
 
   constructor(
     botMessage: CustomChatMessage,
@@ -214,6 +226,7 @@ export class AGUIMessageHandler {
       objective: step.objective,
       status: step.status,
       toolCallIds: [...step.toolCallIds],
+      error: step.error,
     }));
   }
 
@@ -233,7 +246,8 @@ export class AGUIMessageHandler {
         msgItem.id === this.botMessage.id
           ? {
             ...msgItem,
-            content,
+            // 流式过程中禁止用空串覆盖已有正文，避免中途「回答变空」
+            content: content || msgItem.content || '',
             thinking: thinking !== undefined ? thinking : msgItem.thinking,
             isThinking: isThinking !== undefined ? isThinking : msgItem.isThinking,
             browserStepProgress: browserStepProgress !== undefined ? browserStepProgress : msgItem.browserStepProgress,
@@ -268,6 +282,7 @@ export class AGUIMessageHandler {
             skillViews: this.skillViews.length > 0 ? this.skillViews : msgItem.skillViews,
             wikiCitations: this.wikiCitations.length > 0 ? this.wikiCitations : msgItem.wikiCitations,
             plannedExecutionSteps: this.snapshotPlannedSteps() ?? msgItem.plannedExecutionSteps,
+            plannedExecutionStatus: this.plannedExecutionStatus,
             toolCalls: this.snapshotToolCalls() ?? msgItem.toolCalls,
             isStreamingTools: this.isStreaming,
             updateAt: new Date().toISOString()
@@ -303,6 +318,9 @@ export class AGUIMessageHandler {
     for (const block of this.contentBlocks) {
       if (block.type === 'text') {
         // 遇到文本块，先输出累积的工具调用
+        if (looksLikePlannedExecutionPayload(tryParseJsonValue(block.content))) {
+          continue;
+        }
         flushToolCalls();
         if (parts.length > 0) {
           parts.push('\n\n' + block.content);
@@ -350,7 +368,7 @@ export class AGUIMessageHandler {
     flushToolCalls();
 
     // 添加当前正在累积的文本
-    if (this.currentTextBlock) {
+    if (this.currentTextBlock && !looksLikePlannedExecutionPayload(tryParseJsonValue(this.currentTextBlock))) {
       if (parts.length > 0 && lastBlockType !== 'text') {
         parts.push('\n\n' + this.currentTextBlock);
       } else if (parts.length > 0) {
@@ -379,10 +397,61 @@ export class AGUIMessageHandler {
    * 提交当前文本块
    */
   private flushCurrentTextBlock() {
-    if (this.currentTextBlock) {
-      this.contentBlocks.push({ type: 'text', content: this.currentTextBlock });
-      this.currentTextBlock = '';
+    if (!this.currentTextBlock) {
+      return;
     }
+    const pending = this.currentTextBlock;
+    this.currentTextBlock = '';
+    if (this.applyPlannedExecutionText(pending)) {
+      return;
+    }
+    this.contentBlocks.push({ type: 'text', content: pending });
+  }
+
+  private applyPlannedExecutionText(raw: string): boolean {
+    const parsed = unwrapCustomValue(tryParseJsonValue(raw));
+    const kind = looksLikePlannedExecutionPayload(parsed);
+    if (!kind || !parsed || typeof parsed !== 'object') {
+      return false;
+    }
+    if (kind === 'status') {
+      const value = parsed as PlannedExecutionStatusValue;
+      this.plannedExecutionStatus = {
+        phase: String(value.phase || ''),
+        step_count: value.step_count,
+        goal: value.goal,
+        replan_count: value.replan_count,
+        reason: value.reason,
+      };
+      return true;
+    }
+    this.plannedExecutionState = applyPlannedExecutionStep(
+      this.plannedExecutionState,
+      parsed as PlannedExecutionStepValue
+    );
+    if (this.plannedExecutionStatus) {
+      this.plannedExecutionStatus = {
+        ...this.plannedExecutionStatus,
+        phase: 'idle',
+      };
+    }
+    return true;
+  }
+
+  /**
+   * 撤回工具调用前已流式展示的旁白正文（后端 assistant_text_retract）。
+   */
+  handleAssistantTextRetract() {
+    this.stopThinking();
+    this.currentTextBlock = '';
+    while (this.contentBlocks.length > 0) {
+      const last = this.contentBlocks[this.contentBlocks.length - 1];
+      if (last.type !== 'text') {
+        break;
+      }
+      this.contentBlocks.pop();
+    }
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
   /**
@@ -406,7 +475,14 @@ export class AGUIMessageHandler {
    */
   handleTextContent(delta: string) {
     this.stopThinking();
+    if (this.applyPlannedExecutionText(delta)) {
+      this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+      return;
+    }
     this.currentTextBlock += delta;
+    if (this.applyPlannedExecutionText(this.currentTextBlock)) {
+      this.currentTextBlock = '';
+    }
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
@@ -415,7 +491,8 @@ export class AGUIMessageHandler {
    */
   handleToolCallStart(toolCallId: string, toolCallName: string) {
     this.stopThinking();
-    this.flushCurrentTextBlock();
+    // 工具轮次前的流式正文视为旁白：丢弃而非落盘，避免「先分析再调工具」泄漏到对话。
+    this.currentTextBlock = '';
 
     this.contentBlocks.push({ type: 'toolCall', id: toolCallId });
 
@@ -431,7 +508,42 @@ export class AGUIMessageHandler {
   handlePlannedExecutionStep(value: PlannedExecutionStepValue) {
     this.stopThinking();
     this.flushCurrentTextBlock();
+    // 首步开始后规划状态条收起，改由步骤面板展示进度
+    if (this.plannedExecutionStatus) {
+      this.plannedExecutionStatus = {
+        ...this.plannedExecutionStatus,
+        phase: 'idle',
+      };
+    }
     this.plannedExecutionState = applyPlannedExecutionStep(this.plannedExecutionState, value);
+    // 凭据/配置失败收口时，把仍 calling 的本步工具标成 error，避免流结束补成绿色「已完成」
+    if (value?.phase === 'end' && isFailedPlannedStepStatus(value.status)) {
+      const step = this.plannedExecutionState.steps.find(
+        (item) => item.step_index === Number(value.step_index)
+      );
+      const errorText =
+        (typeof value.error === 'string' && value.error.trim()) ||
+        step?.error ||
+        '步骤因凭据、权限或配置失败已中止';
+      for (const toolCallId of step?.toolCallIds || []) {
+        const toolCall = this.toolCallsRef.get(toolCallId);
+        if (!toolCall || toolCall.status !== 'calling') continue;
+        toolCall.status = 'error';
+        toolCall.result = errorText;
+      }
+    }
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+  }
+
+  handlePlannedExecutionStatus(value: PlannedExecutionStatusValue) {
+    this.stopThinking();
+    this.plannedExecutionStatus = {
+      phase: String(value?.phase || ''),
+      step_count: value?.step_count,
+      goal: value?.goal,
+      replan_count: value?.replan_count,
+      reason: value?.reason,
+    };
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
 
@@ -466,12 +578,12 @@ export class AGUIMessageHandler {
   handleToolCallResult(toolCallId: string, content: string) {
     const toolCall = this.toolCallsRef.get(toolCallId);
     if (toolCall) {
-      toolCall.status = 'completed';
+      toolCall.status = isToolResultErrorContent(content) ? 'error' : 'completed';
       toolCall.result = content;
       this.syncAttachmentDownloadFromToolResult(toolCallId, toolCall.name, content);
 
-      // Fallback: if report_config_diff completed but CUSTOM event wasn't received,
-      // construct the DiffReportCard from tool args
+      // Fallback: if report_config_diff / generate_repair_report completed but CUSTOM
+      // repair_diff_report event wasn't received, construct DiffReportCard from args/result.
       if (toolCall.name === 'report_config_diff' && toolCall.args) {
         try {
           const args = JSON.parse(toolCall.args);
@@ -492,6 +604,27 @@ export class AGUIMessageHandler {
           }
         } catch {
           // args parse failed, skip fallback
+        }
+      }
+
+      if (toolCall.name === 'generate_repair_report' && content) {
+        try {
+          const parsed = JSON.parse(content);
+          const items = Array.isArray(parsed?.items) ? parsed.items : [];
+          if (items.length > 0 && this.configDiffReports.length === 0) {
+            const report: ConfigDiffReport = {
+              report_id: `fallback_repair_${toolCallId}`,
+              title: parsed.title || 'K8S 配置修复对比',
+              cluster_name: parsed.cluster_name || '',
+              items,
+              received_at: Date.now(),
+            };
+            this.configDiffReports.push(report);
+            this.flushCurrentTextBlock();
+            this.contentBlocks.push({ type: 'configDiff', reportId: report.report_id });
+          }
+        } catch {
+          // result parse failed, skip fallback
         }
       }
 
@@ -773,6 +906,9 @@ export class AGUIMessageHandler {
     this.isStreaming = false;
     finalizePendingToolCalls(this.toolCallsRef, '工具调用已结束，但流中断前未收到结果事件。');
     this.plannedExecutionState = finalizePlannedExecutionSteps(this.plannedExecutionState);
+    if (this.plannedExecutionStatus) {
+      this.plannedExecutionStatus = { ...this.plannedExecutionStatus, phase: 'idle' };
+    }
     this.flushCurrentTextBlock();
     const errorMessage = renderErrorMessage(error, 'error');
     this.contentBlocks.push({ type: 'text', content: errorMessage });
@@ -787,6 +923,9 @@ export class AGUIMessageHandler {
     this.isStreaming = false;
     finalizePendingToolCalls(this.toolCallsRef, '工具调用已结束，但运行错误前未收到结果事件。');
     this.plannedExecutionState = finalizePlannedExecutionSteps(this.plannedExecutionState);
+    if (this.plannedExecutionStatus) {
+      this.plannedExecutionStatus = { ...this.plannedExecutionStatus, phase: 'idle' };
+    }
     this.flushCurrentTextBlock();
     const errorMessage = renderErrorMessage(message, 'run_error', code);
     this.contentBlocks.push({ type: 'text', content: errorMessage });
@@ -848,6 +987,8 @@ export class AGUIMessageHandler {
         return false;
 
       case 'TEXT_MESSAGE_START':
+        // 新文本消息开始前先落盘上一段，避免后续工具/自定义事件打空 currentTextBlock 时丢字
+        this.flushCurrentTextBlock();
         return false;
 
       case 'TEXT_MESSAGE_CONTENT':
@@ -857,28 +998,40 @@ export class AGUIMessageHandler {
         return false;
 
       case 'TEXT_MESSAGE_END':
+        this.flushCurrentTextBlock();
+        this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
         return false;
 
-      case 'TOOL_CALL_START':
-        if (aguiData.toolCallId && aguiData.toolCallName) {
-          this.handleToolCallStart(aguiData.toolCallId, aguiData.toolCallName);
+      case 'TOOL_CALL_START': {
+        const snake = aguiData as unknown as { tool_call_id?: string; tool_call_name?: string };
+        const toolCallId = aguiData.toolCallId || snake.tool_call_id;
+        const toolCallName = aguiData.toolCallName || snake.tool_call_name;
+        if (toolCallId && toolCallName) {
+          this.handleToolCallStart(toolCallId, toolCallName);
         }
         return false;
+      }
 
-      case 'TOOL_CALL_ARGS':
-        if (aguiData.toolCallId && aguiData.delta) {
-          this.handleToolCallArgs(aguiData.toolCallId, aguiData.delta);
+      case 'TOOL_CALL_ARGS': {
+        const toolCallId = aguiData.toolCallId
+          || (aguiData as unknown as { tool_call_id?: string }).tool_call_id;
+        if (toolCallId && aguiData.delta) {
+          this.handleToolCallArgs(toolCallId, aguiData.delta);
         }
         return false;
+      }
 
       case 'TOOL_CALL_END':
         return false;
 
-      case 'TOOL_CALL_RESULT':
-        if (aguiData.toolCallId && aguiData.content !== undefined) {
-          this.handleToolCallResult(aguiData.toolCallId, aguiData.content);
+      case 'TOOL_CALL_RESULT': {
+        const toolCallId = aguiData.toolCallId
+          || (aguiData as unknown as { tool_call_id?: string }).tool_call_id;
+        if (toolCallId && aguiData.content !== undefined) {
+          this.handleToolCallResult(toolCallId, aguiData.content);
         }
         return false;
+      }
 
       case 'ERROR':
         if (aguiData.error) {
@@ -898,42 +1051,55 @@ export class AGUIMessageHandler {
         this.isStreaming = false;
         finalizePendingToolCalls(this.toolCallsRef, '工具调用已结束，但未收到结果事件。');
         this.plannedExecutionState = finalizePlannedExecutionSteps(this.plannedExecutionState);
+        if (this.plannedExecutionStatus) {
+          this.plannedExecutionStatus = { ...this.plannedExecutionStatus, phase: 'idle' };
+        }
         this.handleBrowserStepComplete();
         // 重新渲染内容以收起工具列表
         this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, false);
         return true;
 
-      case 'CUSTOM':
-        if (aguiData.name === 'browser_step_progress' && aguiData.value) {
-          this.handleBrowserStepProgress(aguiData.value as BrowserStepProgressValue);
-        } else if (aguiData.name === 'browser_task_received' && aguiData.value) {
-          this.handleBrowserTaskReceived(aguiData.value as BrowserTaskReceivedValue);
-        } else if (aguiData.name === 'approval_request' && aguiData.value) {
-          this.handleApprovalRequest(aguiData.value as ApprovalRequestValue);
-        } else if (aguiData.name === 'user_choice_request' && aguiData.value) {
-          this.handleUserChoiceRequest(aguiData.value as UserChoiceRequestValue);
-        } else if (aguiData.name === 'user_choice_result' && aguiData.value) {
-          this.handleUserChoiceResult(aguiData.value as { choice_id: string; selected: string[]; source: string });
-        } else if (aguiData.name === 'repair_diff_report' && aguiData.value) {
-          this.handleConfigDiffReport(aguiData.value as unknown as ConfigDiffReportValue);
-        } else if (aguiData.name === 'config_analysis_report' && aguiData.value) {
-          this.handleConfigAnalysisReport(aguiData.value as ConfigAnalysisReportValue);
-        } else if (aguiData.name === 'report_file_download' && aguiData.value) {
-          this.handleReportFileDownload(aguiData.value as unknown as ReportFileDownloadValue);
-        } else if (aguiData.name === 'repair_commands' && aguiData.value) {
-          this.handleRepairCommands(aguiData.value as unknown as RepairCommandsValue);
-        } else if (aguiData.name === 'agent_step_progress' && aguiData.value) {
-          this.handleAgentStepProgress(aguiData.value as AgentStepProgressValue);
-        } else if (aguiData.name === 'sub_agent_progress' && aguiData.value) {
-          this.handleSubAgentProgress(aguiData.value as SubAgentProgressValue);
-        } else if (aguiData.name === 'skill_view' && aguiData.value) {
-          this.handleSkillView(aguiData.value as SkillViewValue);
-        } else if (aguiData.name === 'wiki_citations' && aguiData.value) {
-          this.handleWikiCitations(aguiData.value as { citations?: WikiCitation[] });
-        } else if (aguiData.name === 'planned_execution_step' && aguiData.value) {
-          this.handlePlannedExecutionStep(aguiData.value as PlannedExecutionStepValue);
+      case 'CUSTOM': {
+        const customValue = unwrapCustomValue(aguiData.value);
+        const customName = aguiData.name || (typeof customValue === 'object' && customValue && 'name' in customValue
+          ? String((customValue as { name?: string }).name || '')
+          : '');
+        const plannedKind = looksLikePlannedExecutionPayload(customValue);
+        if (customName === 'browser_step_progress' && customValue) {
+          this.handleBrowserStepProgress(customValue as BrowserStepProgressValue);
+        } else if (customName === 'browser_task_received' && customValue) {
+          this.handleBrowserTaskReceived(customValue as BrowserTaskReceivedValue);
+        } else if (customName === 'approval_request' && customValue) {
+          this.handleApprovalRequest(customValue as ApprovalRequestValue);
+        } else if (customName === 'user_choice_request' && customValue) {
+          this.handleUserChoiceRequest(customValue as UserChoiceRequestValue);
+        } else if (customName === 'user_choice_result' && customValue) {
+          this.handleUserChoiceResult(customValue as { choice_id: string; selected: string[]; source: string });
+        } else if (customName === 'repair_diff_report' && customValue) {
+          this.handleConfigDiffReport(customValue as unknown as ConfigDiffReportValue);
+        } else if (customName === 'config_analysis_report' && customValue) {
+          this.handleConfigAnalysisReport(customValue as ConfigAnalysisReportValue);
+        } else if (customName === 'report_file_download' && customValue) {
+          this.handleReportFileDownload(customValue as unknown as ReportFileDownloadValue);
+        } else if (customName === 'repair_commands' && customValue) {
+          this.handleRepairCommands(customValue as unknown as RepairCommandsValue);
+        } else if (customName === 'agent_step_progress' && customValue) {
+          this.handleAgentStepProgress(customValue as AgentStepProgressValue);
+        } else if (customName === 'sub_agent_progress' && customValue) {
+          this.handleSubAgentProgress(customValue as SubAgentProgressValue);
+        } else if (customName === 'skill_view' && customValue) {
+          this.handleSkillView(customValue as SkillViewValue);
+        } else if (customName === 'wiki_citations' && customValue) {
+          this.handleWikiCitations(customValue as { citations?: WikiCitation[] });
+        } else if (customName === 'planned_execution_step' || plannedKind === 'step') {
+          this.handlePlannedExecutionStep(customValue as PlannedExecutionStepValue);
+        } else if (customName === 'planned_execution_status' || plannedKind === 'status') {
+          this.handlePlannedExecutionStatus(customValue as PlannedExecutionStatusValue);
+        } else if (customName === 'assistant_text_retract') {
+          this.handleAssistantTextRetract();
         }
         return false;
+      }
 
       default:
         console.warn('[AG-UI] Unknown message type:', aguiData.type);

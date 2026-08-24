@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 from collections import defaultdict
 from typing import Any
 
@@ -380,6 +381,23 @@ def build_observed_device_mac_sets(ports: dict[str, NormalizedPort]) -> dict[str
             continue
         observed[port.device_id].add(port.mac)
     return observed
+
+
+def build_mac_device_index(device_mac_sets: dict[str, set[str]]) -> dict[str, list[str]]:
+    mac_devices: dict[str, list[str]] = defaultdict(list)
+    for device_id, macs in device_mac_sets.items():
+        for mac in macs:
+            mac_devices[mac].append(device_id)
+    return dict(mac_devices)
+
+
+def use_mac_device_index() -> bool:
+    return os.getenv("CMDB_TOPOLOGY_MAC_INDEX_ENABLED", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
 
 
 def build_stable_shared_device_mac_sets(normalized: dict[str, Any], ports: dict[str, NormalizedPort]) -> dict[str, set[str]]:
@@ -1175,6 +1193,9 @@ def build_device_mac_correlations(
         | set(stable_shared_device_mac_sets.get(device_id, set()))
         for device_id in devices.keys()
     }
+    use_index = use_mac_device_index()
+    observed_devices_by_mac = build_mac_device_index(observed_device_mac_sets) if use_index else None
+    correlation_devices_by_mac = build_mac_device_index(correlation_device_mac_sets) if use_index else None
 
     arp_by_device_ip: dict[tuple[str, str], set[str]] = defaultdict(set)
     for entry in normalized.get("arp_observations", []):
@@ -1201,12 +1222,22 @@ def build_device_mac_correlations(
         local_port = ports.get(local_port_id)
         if local_port is None or not is_l2_candidate_port(local_port):
             continue
-        for target_device, macs in observed_device_mac_sets.items():
-            if target_device == source_device or mac not in macs:
+        observed_candidates = (
+            observed_devices_by_mac.get(mac, [])
+            if observed_devices_by_mac is not None
+            else [device_id for device_id, macs in observed_device_mac_sets.items() if mac in macs]
+        )
+        for target_device in observed_candidates:
+            if target_device == source_device:
                 continue
             port_seen_devices[local_port_id].add(target_device)
-        for target_device, macs in correlation_device_mac_sets.items():
-            if target_device == source_device or mac not in macs:
+        correlation_candidates = (
+            correlation_devices_by_mac.get(mac, [])
+            if correlation_devices_by_mac is not None
+            else [device_id for device_id, macs in correlation_device_mac_sets.items() if mac in macs]
+        )
+        for target_device in correlation_candidates:
+            if target_device == source_device:
                 continue
             fdb_hits[(source_device, target_device)].append(
                 {

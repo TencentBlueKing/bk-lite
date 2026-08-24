@@ -1,31 +1,60 @@
-from django.db import transaction
-from django.db import IntegrityError
+import threading
+import uuid
+from collections import defaultdict
+
+from django.db import IntegrityError, connection, transaction
+from django.db.models import F
 
 import nats_client
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
+from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.utils.current_team_scope import _normalize_organization_ids
+from apps.core.utils.safe_template import build_sandboxed_env
+from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
-from apps.node_mgmt.models import CloudRegion, SidecarEnv
-from apps.node_mgmt.services.node import NodeService
-from apps.node_mgmt.services.installer import InstallerService
-from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
-from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
-
-from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.models import (
-    CollectorConfiguration,
     ChildConfig,
+    CloudRegion,
     Collector,
+    CollectorConfiguration,
     Node,
     NodeCollectorConfiguration,
     NodeOrganization,
+    SidecarEnv,
 )
-from apps.node_mgmt.services.sidecar_cache import (
-    invalidate_bulk_child_config_etags,
-    invalidate_bulk_config_node_etags,
+from apps.node_mgmt.services.cloudregion import RegionService
+from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.services.sidecar_cache import invalidate_bulk_child_config_etags, invalidate_bulk_config_node_etags
+from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+
+LEGACY_NODE_LIST_CALLSITES = frozenset(
+    {
+        "alerts.target_resolver",
+        "cmdb.node_sync",
+        "job_mgmt.connection_test",
+        "job_mgmt.execution",
+        "stargazer.node_info",
+    }
 )
-from apps.core.utils.crypto.aes_crypto import AESCryptor
+_observed_legacy_node_list_callsites: set[str] = set()
+_legacy_node_list_observation_lock = threading.Lock()
+
+
+def _observe_legacy_node_list_callsite(declared_callsite: str) -> None:
+    with _legacy_node_list_observation_lock:
+        if declared_callsite in _observed_legacy_node_list_callsites:
+            return
+        _observed_legacy_node_list_callsites.add(declared_callsite)
+
+    logger.warning(
+        "legacy node_list skip_permission used; declared_callsite=%s authorization_source=untrusted_payload",
+        declared_callsite,
+    )
 
 
 class NatsService:
@@ -49,17 +78,9 @@ class NatsService:
                 cpu_architecture__in=allowed_architectures,
             ).order_by("cpu_architecture", "id")
         )
-        if not collectors:
-            return None
+        return NatsService._resolve_collector_from_candidates(node, collectors)
 
-        if node_arch == NodeConstants.ARM64_ARCH:
-            return next((item for item in collectors if normalize_cpu_architecture(item.cpu_architecture) == NodeConstants.ARM64_ARCH), None)
-
-        x86_match = next((item for item in collectors if normalize_cpu_architecture(item.cpu_architecture) == NodeConstants.X86_64_ARCH), None)
-        legacy_x86_match = next((item for item in collectors if item.cpu_architecture == ""), None)
-        return x86_match or legacy_x86_match
-
-    def _ensure_parent_configs_for_child_configs(self, configs: list):
+    def _ensure_parent_configs_for_child_configs(self, configs: list):  # noqa: C901
         if not configs:
             return
 
@@ -76,13 +97,24 @@ class NatsService:
             return
 
         node_map = {node.id: node for node in Node.objects.filter(id__in=node_ids).select_related("cloud_region")}
+        collectors_by_name_and_os = {}
+        for collector in Collector.objects.filter(
+            name__in={collector_name for _, collector_name in missing_pairs},
+            node_operating_system__in={node.operating_system for node in node_map.values()},
+            cpu_architecture__in={"", NodeConstants.X86_64_ARCH, NodeConstants.ARM64_ARCH},
+        ).order_by("cpu_architecture", "id"):
+            collectors_by_name_and_os.setdefault((collector.name, collector.node_operating_system), []).append(collector)
 
-        for node_id, collector_name in missing_pairs:
+        resolved_pairs = []
+        for node_id, collector_name in sorted(missing_pairs):
             node = node_map.get(node_id)
             if not node:
                 raise BaseAppException(f"节点 {node_id} 不存在，无法为采集器 {collector_name} 创建父配置")
 
-            collector = self._resolve_collector_for_node(node, collector_name)
+            collector = self._resolve_collector_from_candidates(
+                node,
+                collectors_by_name_and_os.get((collector_name, node.operating_system), []),
+            )
             if not collector:
                 raise BaseAppException(
                     "节点 %s 的采集器 %s 不存在（%s/%s）"
@@ -100,12 +132,167 @@ class NatsService:
             if not collector.default_config:
                 raise BaseAppException(f"节点 {node_id} 的采集器 {collector_name} 缺少 default_config，无法创建父配置")
 
-            NodeService._create_collector_default_config(node, collector)
+            resolved_pairs.append((node, collector))
 
-            if not CollectorConfiguration.objects.filter(nodes__id=node_id, collector__name=collector_name).exists():
-                raise BaseAppException(
-                    f"节点 {node_id} 的采集器 {collector_name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量"
+        variables_by_region = RegionService.get_cloud_regions_envconfig({node.cloud_region_id for node, _ in resolved_pairs})
+
+        pending_configs = []
+        expected_by_name = {}
+        for node, collector in resolved_pairs:
+            try:
+                variables = variables_by_region[node.cloud_region_id]
+                default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
+                config_template = collector.default_config.get(default_sidecar_mode)
+                if not config_template:
+                    raise BaseAppException(f"节点 {node.id} 的采集器 {collector.name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量")
+
+                if node.node_type == ControllerConstants.NODE_TYPE_CONTAINER:
+                    add_config = collector.default_config.get("add_config", "")
+                    if add_config:
+                        config_template = config_template + "\n" + add_config
+
+                rendered_config = build_sandboxed_env().from_string(config_template).render(variables)
+                config_name = f"{collector.name}-{node.id}"
+                pending_config = CollectorConfiguration(
+                    id=uuid.uuid4().hex,
+                    name=config_name,
+                    collector=collector,
+                    config_template=rendered_config,
+                    is_pre=True,
+                    cloud_region=node.cloud_region,
                 )
+                expected_by_name[config_name] = (node.id, collector.id, pending_config.id)
+                pending_configs.append(pending_config)
+            except BaseAppException:
+                raise
+            except Exception as error:
+                raise BaseAppException(f"节点 {node.id} 自动创建 {collector.name} 父配置失败: {error}") from error
+
+        configs_to_create = pending_configs
+        try:
+            if connection.features.supports_ignore_conflicts:
+                CollectorConfiguration.objects.bulk_create(
+                    configs_to_create,
+                    batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+                    ignore_conflicts=True,
+                )
+            else:
+                for _ in range(3):
+                    try:
+                        with transaction.atomic():
+                            CollectorConfiguration.objects.bulk_create(
+                                configs_to_create,
+                                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+                            )
+                        break
+                    except IntegrityError:
+                        existing_names = set(
+                            CollectorConfiguration.objects.select_for_update()
+                            .filter(name__in=[config.name for config in configs_to_create])
+                            .values_list("name", flat=True)
+                        )
+                        configs_to_create = [config for config in configs_to_create if config.name not in existing_names]
+                        if not configs_to_create:
+                            break
+                else:
+                    raise BaseAppException("批量创建采集器父配置发生重复冲突，重试后仍未收敛")
+        except Exception as error:
+            if isinstance(error, BaseAppException):
+                raise
+            raise BaseAppException(f"批量创建采集器父配置失败: {error}") from error
+        created_configs = {
+            item["name"]: item
+            for item in CollectorConfiguration.objects.select_for_update().filter(name__in=expected_by_name).values("id", "name", "collector_id")
+        }
+        conflicting_config_ids = {
+            created_configs[config_name]["id"]
+            for config_name, (_, _, pending_config_id) in expected_by_name.items()
+            if config_name in created_configs and created_configs[config_name]["id"] != pending_config_id
+        }
+        existing_associations = set(
+            NodeCollectorConfiguration.objects.select_for_update()
+            .filter(collector_config_id__in=conflicting_config_ids)
+            .values_list("node_id", "collector_config_id")
+        )
+        node_config_associations = []
+        for config_name, (node_id, collector_id, pending_config_id) in expected_by_name.items():
+            created_config = created_configs.get(config_name)
+            if not created_config or created_config["collector_id"] != collector_id:
+                raise BaseAppException(f"节点 {node_id} 的采集器父配置名称 {config_name} 已被其他配置占用")
+            if created_config["id"] != pending_config_id:
+                if (node_id, created_config["id"]) not in existing_associations:
+                    raise BaseAppException(f"节点 {node_id} 的采集器父配置名称 {config_name} 已被其他配置占用")
+                continue
+            node_config_associations.append(NodeCollectorConfiguration(node_id=node_id, collector_config_id=created_config["id"]))
+
+        associations_to_create = node_config_associations
+        try:
+            if connection.features.supports_ignore_conflicts:
+                NodeCollectorConfiguration.objects.bulk_create(
+                    associations_to_create,
+                    batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+                    ignore_conflicts=True,
+                )
+            else:
+                for _ in range(3):
+                    try:
+                        with transaction.atomic():
+                            NodeCollectorConfiguration.objects.bulk_create(
+                                associations_to_create,
+                                batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
+                            )
+                        break
+                    except IntegrityError:
+                        existing_associations = set(
+                            NodeCollectorConfiguration.objects.select_for_update()
+                            .filter(
+                                node_id__in=[association.node_id for association in associations_to_create],
+                                collector_config_id__in=[association.collector_config_id for association in associations_to_create],
+                            )
+                            .values_list("node_id", "collector_config_id")
+                        )
+                        associations_to_create = [
+                            association
+                            for association in associations_to_create
+                            if (association.node_id, association.collector_config_id) not in existing_associations
+                        ]
+                        if not associations_to_create:
+                            break
+                else:
+                    raise BaseAppException("批量关联采集器父配置发生重复冲突，重试后仍未收敛")
+        except Exception as error:
+            if isinstance(error, BaseAppException):
+                raise
+            raise BaseAppException(f"批量关联采集器父配置失败: {error}") from error
+
+        created_pairs = set(
+            NodeCollectorConfiguration.objects.select_for_update()
+            .filter(
+                node_id__in=node_ids,
+                collector_config__collector__name__in=collector_names,
+            )
+            .values_list("node_id", "collector_config__collector__name")
+        )
+        if missing_pairs - created_pairs:
+            raise BaseAppException("批量创建采集器父配置失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量")
+
+        invalidate_bulk_config_node_etags([{"node_id": node_id} for node_id, _ in missing_pairs])
+
+    @staticmethod
+    def _resolve_collector_from_candidates(node: Node, collectors: list[Collector]):
+        node_arch = normalize_cpu_architecture(getattr(node, "cpu_architecture", ""))
+        if node_arch == NodeConstants.ARM64_ARCH:
+            return next(
+                (item for item in collectors if normalize_cpu_architecture(item.cpu_architecture) == NodeConstants.ARM64_ARCH),
+                None,
+            )
+
+        x86_match = next(
+            (item for item in collectors if normalize_cpu_architecture(item.cpu_architecture) == NodeConstants.X86_64_ARCH),
+            None,
+        )
+        legacy_x86_match = next((item for item in collectors if item.cpu_architecture == ""), None)
+        return x86_match or legacy_x86_match
 
     @staticmethod
     def _resolve_child_parent_config_id(base_configs: list[dict], node_id: str, collector_name: str, node_arch: str) -> str:
@@ -370,9 +557,7 @@ class NatsService:
                 ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
             except IntegrityError as e:
                 sample_ids = [config.id for config in node_objs[:3]]
-                raise BaseAppException(
-                    f"批量创建子配置失败，可能存在重复子配置ID或无效父配置关联: count={len(node_objs)}, sample_ids={sample_ids}, error={e}"
-                ) from e
+                raise BaseAppException(f"批量创建子配置失败，可能存在重复子配置ID或无效父配置关联: count={len(node_objs)}, sample_ids={sample_ids}, error={e}") from e
             except Exception as e:
                 sample_ids = [config.id for config in node_objs[:3]]
                 raise BaseAppException(f"批量创建子配置失败: count={len(node_objs)}, sample_ids={sample_ids}, error={e}") from e
@@ -389,7 +574,7 @@ class NatsService:
 
     def get_child_configs_by_ids(self, ids: list):
         """根据子配置ID列表获取子配置对象"""
-        child_configs = ChildConfig.objects.filter(id__in=ids)
+        child_configs = ChildConfig.objects.filter(id__in=ids).select_related("collector_config__collector")
         return [
             {
                 "id": config.id,
@@ -397,9 +582,46 @@ class NatsService:
                 "config_type": config.config_type,
                 "content": config.content,
                 "env_config": config.env_config,
+                "collector_config_id": config.collector_config_id,
+                "collector_name": config.collector_config.collector.name,
             }
             for config in child_configs
         ]
+
+    def get_child_config_nodes_by_ids(self, ids: list, organization_ids: list):
+        """批量解析子配置绑定的采集节点，并限定在调用方已授权的组织范围。"""
+        if not isinstance(ids, (list, tuple, set)) or not isinstance(organization_ids, (list, tuple, set)):
+            return []
+        normalized_ids = sorted({str(config_id) for config_id in ids if config_id not in (None, "")})
+        if not normalized_ids or not organization_ids:
+            return []
+        try:
+            normalized_organization_ids = _normalize_organization_ids(organization_ids)
+        except BaseAppException:
+            return []
+
+        rows = (
+            ChildConfig.objects.filter(
+                id__in=normalized_ids,
+                collector_config__nodes__nodeorganization__organization__in=normalized_organization_ids,
+            )
+            .values(
+                "id",
+                node_id=F("collector_config__nodes__id"),
+                node_name=F("collector_config__nodes__name"),
+            )
+            .order_by("id", "node_name", "node_id")
+            .distinct()
+        )
+        nodes_by_config = defaultdict(list)
+        for row in rows:
+            nodes_by_config[row["id"]].append(
+                {
+                    "id": row["node_id"],
+                    "name": row["node_name"],
+                }
+            )
+        return [{"id": config_id, "nodes": nodes_by_config[config_id]} for config_id in sorted(nodes_by_config)]
 
     def get_configs_by_ids(self, ids: list):
         """根据配置ID列表获取配置对象"""
@@ -434,6 +656,20 @@ class NatsService:
             child_config.env_config = merged_env_config
 
         child_config.save()
+
+    @transaction.atomic
+    def compare_and_swap_child_config_content(self, id, expected_content, content):
+        """锁内比较并更新子配置，冲突时返回 False 且不覆盖当前内容。"""
+        if not content:
+            raise BaseAppException("Content must be provided for compare-and-swap update.")
+        child_config = ChildConfig.objects.select_for_update().filter(id=id).first()
+        if not child_config:
+            raise BaseAppException("Child config not found.")
+        if child_config.content != expected_content:
+            return False
+        child_config.content = content
+        child_config.save(update_fields=["content", "updated_at"])
+        return True
 
     def update_config_content(self, id, content, env_config=None):
         """更新配置内容"""
@@ -584,6 +820,11 @@ def node_list(query_data: dict):
     is_container = query_data.get("is_container")
     permission_data = query_data.get("permission_data", {})
     skip_permission = query_data.get("skip_permission", False)
+    if skip_permission:
+        declared_callsite = query_data.get("legacy_callsite")
+        if not isinstance(declared_callsite, str) or declared_callsite not in LEGACY_NODE_LIST_CALLSITES:
+            declared_callsite = "unknown"
+        _observe_legacy_node_list_callsite(declared_callsite)
     return NodeService.get_node_list(
         organization_ids,
         cloud_region_id,
@@ -598,6 +839,63 @@ def node_list(query_data: dict):
         permission_data,
         skip_permission,
     )
+
+
+@nats_client.register
+def get_nodes_by_ips(query_data: dict):
+    """按 IP 集合查询 Job 执行所需的最小节点信息。"""
+    if not isinstance(query_data, dict):
+        raise BaseAppException("query_data 必须是对象")
+    if any(key in query_data for key in ("organization_ids", "permission_data", "skip_permission")):
+        raise BaseAppException("不允许通过消息参数覆盖节点查询权限")
+    _validate_node_info_query_shape(query_data)
+    organization_ids = _collect_task_organization_ids(query_data.get("collect_task_id"))
+    return NodeService.get_nodes_by_ips(
+        query_data.get("ips"),
+        organization_ids=organization_ids,
+        cloud_region_id=query_data.get("cloud_region_id"),
+    )
+
+
+def _validate_node_info_query_shape(query_data):
+    allowed_keys = {
+        "ips",
+        "collect_task_id",
+        "cloud_region_id",
+    }
+    if set(query_data) - allowed_keys:
+        raise BaseAppException("节点查询包含未知参数")
+    ips = query_data.get("ips")
+    if not isinstance(ips, list):
+        raise BaseAppException("ips 必须是 IP 列表")
+    if not ips or len(ips) > NodeService.NODE_LIST_PAGE_SIZE_MAX:
+        raise BaseAppException(f"单次必须查询 1 到 {NodeService.NODE_LIST_PAGE_SIZE_MAX} 个 IP")
+    if any(not isinstance(ip, str) or not ip.strip() or len(ip) > 64 for ip in ips):
+        raise BaseAppException("ips 只能包含有界非空 IP 字符串")
+
+
+def _collect_task_organization_ids(collect_task_id):
+    """从服务端可信任务记录解析组织范围，不信任 RPC 消息体中的组织字段。"""
+    if type(collect_task_id) not in (int, str):
+        raise BaseAppException("collect_task_id 参数非法")
+    try:
+        task_id = int(str(collect_task_id).strip())
+    except (TypeError, ValueError) as error:
+        raise BaseAppException("collect_task_id 参数非法") from error
+    if task_id <= 0:
+        raise BaseAppException("collect_task_id 参数非法")
+
+    from apps.cmdb.models import CollectModels
+
+    task = CollectModels.objects.filter(id=task_id, driver_type="job").only("team").first()
+    if task is None:
+        raise BaseAppException("Job 采集任务不存在")
+    if not task.team:
+        raise BaseAppException("Job 采集任务缺少组织范围")
+    organization_ids = list(_normalize_organization_ids(task.team))
+    if not organization_ids:
+        raise BaseAppException("Job 采集任务缺少组织范围")
+    return organization_ids
 
 
 @nats_client.register
@@ -657,6 +955,12 @@ def get_child_configs_by_ids(ids: list):
 
 
 @nats_client.register
+def get_child_config_nodes_by_ids(ids: list, organization_ids: list):
+    """按子配置 ID 批量获取授权组织范围内的采集节点。"""
+    return NatsService().get_child_config_nodes_by_ids(ids, organization_ids)
+
+
+@nats_client.register
 def get_configs_by_ids(ids: list):
     """根据ID获取配置"""
     return NatsService().get_configs_by_ids(ids)
@@ -675,6 +979,15 @@ def update_child_config_content(data: dict):
     content = data.get("content")
     env_config = data.get("env_config")
     NatsService().update_child_config_content(id, content, env_config)
+
+
+def compare_and_swap_child_config_content(data: dict):
+    """同进程运维命令专用：仅当内容仍等于读取快照时更新实例子配置。"""
+    return NatsService().compare_and_swap_child_config_content(
+        data.get("id"),
+        data.get("expected_content"),
+        data.get("content"),
+    )
 
 
 @nats_client.register

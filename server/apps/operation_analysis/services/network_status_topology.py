@@ -1,112 +1,55 @@
 from typing import Any
 
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import ValidationError
 
-from apps.alerts.constants import AlertStatus
-from apps.alerts.views.alert import AlertModelViewSet
-from apps.cmdb.constants.constants import NETWORK_TOPO_NODE_LIMIT, VIEW
+from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES, NETWORK_STATUS_TOPOLOGY_MAX_NODES
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
-from apps.cmdb.views.instance import InstanceViewSet
-
-ALERT_LEVEL_PRIORITY = {"0": 0, "1": 1, "2": 2}
-
-
-def map_alert_level_to_node_status(level: str | int | None) -> dict[str, Any]:
-    level_key = None if level is None else str(level)
-    if level_key == "0":
-        return {"status": "critical", "severity": "critical", "pulse": True, "color": "red"}
-    if level_key == "1":
-        return {"status": "error", "severity": "error", "pulse": False, "color": "red"}
-    if level_key == "2":
-        return {"status": "warning", "severity": "warning", "pulse": False, "color": "yellow"}
-    return {"status": "normal", "severity": None, "pulse": False, "color": "green"}
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import operation_analysis_logger as logger
 
 
 class NetworkStatusTopologyService:
+    CLOSED_SET_ERROR = "设备列表包含无效或不允许的网络设备，请重新配置"
+
     @classmethod
-    def build(cls, request, model_id: str, inst_id: int, depth: int) -> dict[str, Any]:
-        topology = cls._get_cmdb_topology(request, model_id, inst_id, depth)
-        node_keys = {
-            (str(node.get("model_id")), str(node.get("id")))
-            for node in topology.get("nodes", [])
-            if node.get("model_id") is not None and node.get("id") is not None
-        }
-        alert_summary = cls._get_active_alert_summary(request, node_keys)
+    def build(cls, request, inst_uuids: list[str], node_limit: int | None = None) -> dict[str, Any]:
+        limit = int(node_limit or NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES)
+        if limit < 1 or limit > NETWORK_STATUS_TOPOLOGY_MAX_NODES:
+            raise ValidationError({"node_limit": f"node_limit 必须在 1 到 {NETWORK_STATUS_TOPOLOGY_MAX_NODES} 之间"})
+        unique = [str(value) for value in inst_uuids if str(value).strip()]
+        if not unique or len(unique) > limit:
+            raise ValidationError({"inst_uuids": cls.CLOSED_SET_ERROR})
 
-        nodes = []
-        for node in topology.get("nodes", []):
-            node_key = (str(node.get("model_id")), str(node.get("id")))
-            summary = alert_summary.get(node_key, {"count": 0, "max_level": None})
-            nodes.append(
-                {
-                    **node,
-                    "alert_count": summary["count"],
-                    **map_alert_level_to_node_status(summary["max_level"]),
-                }
-            )
-
-        center = topology.get("center") or {}
+        topology = cls._get_cmdb_topology(request, unique)
         return {
-            "center_id": str(center.get("id") or inst_id),
-            "center_model_id": str(center.get("model_id") or model_id),
-            "nodes": nodes,
+            "nodes": topology.get("nodes", []),
             "links": topology.get("links", []),
-            "truncated": bool(topology.get("truncated", False)),
-            "node_limit": NETWORK_TOPO_NODE_LIMIT,
+            "truncated": False,
+            "node_limit": limit,
         }
 
-    @staticmethod
-    def _get_cmdb_topology(request, model_id: str, inst_id: int, depth: int) -> dict[str, Any]:
-        instance = InstanceManage.query_entity_by_id(int(inst_id))
-        if not instance:
-            raise NotFound("实例不存在")
+    @classmethod
+    def _get_cmdb_topology(cls, request, inst_uuids: list[str]) -> dict[str, Any]:
+        entities = InstanceManage.query_entity_by_uuids(inst_uuids)
+        if len(entities) != len(inst_uuids):
+            raise ValidationError({"inst_uuids": cls.CLOSED_SET_ERROR})
 
-        instance_view = InstanceViewSet()
-        permission_error = instance_view.require_instance_permission(request, instance, operator=VIEW)
-        if permission_error:
-            raise PermissionDenied("抱歉！您没有此实例的权限")
+        permission_maps: dict[str, dict] = {}
+        for entity in entities:
+            model_id = str(entity.get("model_id") or "")
+            if model_id and model_id not in permission_maps:
+                permission_maps[model_id] = CmdbRulesFormatUtil.format_user_groups_permissions(
+                    request=request,
+                    model_id=model_id,
+                )
 
-        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
-            request=request,
-            model_id=instance["model_id"],
-        )
-        return InstanceManage.network_topology(
-            int(inst_id),
-            instance["model_id"],
-            depth=depth,
-            permission_map=permissions_map,
-            user=request.user,
-        )
-
-    @staticmethod
-    def _get_active_alert_summary(request, node_keys: set[tuple[str, str]]) -> dict[tuple[str, str], dict[str, Any]]:
-        if not node_keys:
-            return {}
-
-        alert_view = AlertModelViewSet()
-        queryset = alert_view.get_queryset_by_permission(request, alert_view.get_queryset())
-        resource_types = {resource_type for resource_type, _resource_id in node_keys}
-        resource_ids = {resource_id for _resource_type, resource_id in node_keys}
-        queryset = queryset.filter(
-            status__in=AlertStatus.ACTIVATE_STATUS,
-            resource_type__in=resource_types,
-            resource_id__in=resource_ids,
-        )
-
-        summary: dict[tuple[str, str], dict[str, Any]] = {}
-        for alert in queryset.values("resource_type", "resource_id", "level"):
-            node_key = (str(alert["resource_type"]), str(alert["resource_id"]))
-            if node_key not in node_keys:
-                continue
-
-            node_summary = summary.setdefault(node_key, {"count": 0, "max_level": None})
-            node_summary["count"] += 1
-            level = None if alert["level"] is None else str(alert["level"])
-            if level not in ALERT_LEVEL_PRIORITY:
-                continue
-            current = node_summary["max_level"]
-            if current is None or ALERT_LEVEL_PRIORITY[level] < ALERT_LEVEL_PRIORITY[str(current)]:
-                node_summary["max_level"] = level
-
-        return summary
+        try:
+            return InstanceManage.network_topology_among_uuids(
+                inst_uuids,
+                permission_maps=permission_maps,
+                user=request.user,
+            )
+        except BaseAppException as exc:
+            logger.info("network status topology closed set rejected: %s", exc)
+            raise ValidationError({"inst_uuids": cls.CLOSED_SET_ERROR}) from exc

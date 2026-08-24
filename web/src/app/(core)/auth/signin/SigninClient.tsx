@@ -1,7 +1,7 @@
 "use client";
 import {signIn} from "next-auth/react";
 import type { SignInResponse } from "next-auth/react";
-import {useState} from "react";
+import {useEffect, useState} from "react";
 import { Alert } from "antd";
 import PasswordResetForm from "./PasswordResetForm";
 import OtpVerificationForm from "./OtpVerificationForm";
@@ -23,6 +23,8 @@ import {useTranslation} from "@/utils/i18n";
 import {saveAuthToken} from "@/utils/crossDomainAuth";
 import {
   AUTH_POPUP_SUCCESS_MESSAGE,
+  LOGIN_AUTH_RESULT_RETURN_MESSAGE,
+  SIGNIN_WINDOW_NAME,
   buildThirdLoginCallbackUrl,
   buildLegacyThirdLoginCallbackUrl,
   getLegacyThirdLoginCode,
@@ -91,8 +93,29 @@ export default function SigninClient({
   const [authStep, setAuthStep] = useState<AuthStep>('login');
   const [loginData, setLoginData] = useState<LoginResponse>({});
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
-  const { logoUrl } = usePortalBranding();
+  const { logoUrl, portalName } = usePortalBranding();
   const { t } = useTranslation();
+
+  useEffect(() => {
+    if (mode !== 'page') {
+      return;
+    }
+
+    window.name = SIGNIN_WINDOW_NAME;
+
+    const handleReturnToSigninTab = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+      if (event.data?.type !== LOGIN_AUTH_RESULT_RETURN_MESSAGE) {
+        return;
+      }
+      window.focus();
+    };
+
+    window.addEventListener('message', handleReturnToSigninTab);
+    return () => window.removeEventListener('message', handleReturnToSigninTab);
+  }, [mode]);
 
   const finishAuthentication = (targetUrl: string) => {
     if (onAuthenticated) {
@@ -517,22 +540,30 @@ export default function SigninClient({
       <aside
         aria-hidden="true"
         className="hidden min-h-screen bg-cover bg-center bg-no-repeat lg:block"
-        style={{ backgroundImage: "url('/system-login-bg.jpg')" }}
+        style={{ backgroundImage: "url('/system-login-bg-plain.jpg')" }}
       />
-      <main className="relative flex min-h-screen items-center justify-center bg-[radial-gradient(ellipse_at_center,rgba(224,235,255,0.38)_0%,rgba(245,247,251,0)_68%)] px-5 py-8 sm:px-8 lg:shadow-[-10px_0_24px_rgba(31,55,87,0.08)] lg:px-7 xl:px-7">
-        <div className="absolute right-5 top-5 sm:right-8 sm:top-8 lg:right-7 lg:top-10 xl:right-7">
-          <SigninLanguageToggle />
-        </div>
-        <div className="w-full max-w-[360px] lg:-translate-y-7">
-          <div className="mb-4 text-center">
-            <div className="mb-1 flex justify-center">
-              <div className="flex items-center justify-center">
-                <img src={logoUrl} alt={t('common.portalName', 'BK-Lite')} className="h-14 w-auto object-contain" />
-              </div>
-            </div>
-            <h2 className="text-2xl font-semibold text-(--color-text-1)">{t('signin.pageTitle.login')}</h2>
+      <main className="relative flex min-h-screen flex-col bg-[radial-gradient(ellipse_at_center,rgba(224,235,255,0.38)_0%,rgba(245,247,251,0)_68%)] px-5 py-5 sm:px-8 sm:py-8 lg:px-7 lg:py-8 lg:shadow-[-10px_0_24px_rgba(31,55,87,0.08)]">
+        <header className="flex items-center justify-between gap-3">
+          <h1
+            className="min-w-0 truncate text-lg font-semibold text-(--color-text-1)"
+            title={portalName}
+          >
+            {portalName}
+          </h1>
+          <div className="shrink-0">
+            <SigninLanguageToggle />
           </div>
-          {sharedContent}
+        </header>
+        <div className="flex flex-1 items-center justify-center">
+          <div className="w-full max-w-[360px] lg:-translate-y-7">
+            <div className="mb-4 text-center">
+              <div className="mb-1 flex justify-center">
+                <img src={logoUrl} alt="" className="h-14 w-auto object-contain" />
+              </div>
+              <h2 className="text-2xl font-semibold text-(--color-text-1)">{t('signin.pageTitle.login')}</h2>
+            </div>
+            {sharedContent}
+          </div>
         </div>
       </main>
     </div>

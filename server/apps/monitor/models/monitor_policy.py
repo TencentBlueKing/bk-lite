@@ -1,11 +1,16 @@
-from django.db import models
+from django.db import IntegrityError, models
 from django.db.models.functions import Cast, Concat
 
+from apps.core.fields.s3_json_field import S3JSONField
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.core.fields.s3_json_field import S3JSONField
+from apps.core.utils.database_constraints import ConstraintValidatedQuerySet
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_object import MonitorObject
+
+
+class PolicyTemplateQuerySet(ConstraintValidatedQuerySet):
+    protected_fields = frozenset({"template_type", "organization", "scope_key"})
 
 
 class PolicyTemplate(TimeInfo, MaintainerInfo):
@@ -28,6 +33,8 @@ class PolicyTemplate(TimeInfo, MaintainerInfo):
     description = models.TextField(blank=True, default="", verbose_name="模板描述")
     config = models.JSONField(default=dict, verbose_name="策略模板配置")
 
+    objects = PolicyTemplateQuerySet.as_manager()
+
     class Meta:
         verbose_name = "监控策略模板"
         verbose_name_plural = "监控策略模板"
@@ -35,10 +42,6 @@ class PolicyTemplate(TimeInfo, MaintainerInfo):
             models.UniqueConstraint(
                 fields=("scope_key", "key"),
                 name="uniq_policy_template_scope_key",
-            ),
-            models.UniqueConstraint(
-                fields=("scope_key", "monitor_object", "plugin", "name"),
-                name="uniq_policy_template_scope_name",
             ),
             models.CheckConstraint(
                 check=(
@@ -59,6 +62,16 @@ class PolicyTemplate(TimeInfo, MaintainerInfo):
                 name="policy_template_type_org_consistent",
             ),
         ]
+
+    def _validate_database_constraints(self):
+        valid_builtin = self.template_type == self.TYPE_BUILTIN and self.organization is None and self.scope_key == "builtin"
+        valid_custom = self.template_type == self.TYPE_CUSTOM and self.organization is not None and self.scope_key == f"custom:{self.organization}"
+        if not (valid_builtin or valid_custom):
+            raise IntegrityError("policy_template_type_org_consistent")
+
+    def save(self, *args, **kwargs):
+        self._validate_database_constraints()
+        return super().save(*args, **kwargs)
 
 
 class MonitorPolicy(TimeInfo, MaintainerInfo):
@@ -215,6 +228,9 @@ class MonitorAlert(TimeInfo):
     notice_logs = models.JSONField(default=list, verbose_name="通知记录")
     alert_center_notified = models.BooleanField(default=True, verbose_name="告警中心已同步")
     alert_center_retry_count = models.IntegerField(default=0, verbose_name="告警中心通知重试次数")
+    # Receiver-first rollout 中保持 False，直到 outbox 明确完成渠道解析与意图落库。
+    # 这样 producer 关闭期和进程在生命周期提交后退出的窗口都会由有界对账收敛。
+    alert_center_delivery_backfilled = models.BooleanField(default=False, verbose_name="告警中心投递意图已对账")
 
     class Meta:
         verbose_name = "监控告警"
@@ -223,6 +239,47 @@ class MonitorAlert(TimeInfo):
             # 支撑补偿任务查询（alert_center_notified=False + status__in）；
             # notified=False 行稀少（default=True），该索引选择性极高
             models.Index(fields=["alert_center_notified", "status"], name="idx_alert_center_notified"),
+        ]
+
+
+class MonitorAlertCenterDelivery(TimeInfo):
+    """监控告警向告警中心投递的不可变意图。"""
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "待投递"
+        DELIVERING = "delivering", "投递中"
+        DELIVERED = "delivered", "已投递"
+        FAILED = "failed", "投递失败"
+
+    alert = models.ForeignKey(
+        MonitorAlert,
+        on_delete=models.CASCADE,
+        related_name="alert_center_deliveries",
+        verbose_name="监控告警",
+    )
+    action = models.CharField(max_length=20, verbose_name="生命周期动作")
+    generation = models.PositiveIntegerField(verbose_name="告警内投递代次")
+    delivery_id = models.CharField(max_length=64, unique=True, verbose_name="投递幂等标识")
+    channel_id = models.PositiveBigIntegerField(verbose_name="通知通道 ID")
+    payload = models.JSONField(default=dict, verbose_name="不可变投递载荷")
+    status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING, db_index=True)
+    attempts = models.PositiveIntegerField(default=0, verbose_name="投递次数")
+    max_attempts = models.PositiveIntegerField(default=10, verbose_name="最大投递次数")
+    next_retry_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "monitor_alert_center_delivery"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["alert", "generation"],
+                name="uniq_monitor_alert_delivery_gen",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "next_retry_at"], name="idx_monitor_delivery_retry"),
+            models.Index(fields=["alert", "generation"], name="idx_monitor_delivery_order"),
         ]
 
 

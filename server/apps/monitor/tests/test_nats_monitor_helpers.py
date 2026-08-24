@@ -5,17 +5,23 @@
 
 from datetime import datetime
 from types import SimpleNamespace
+from uuid import uuid4
 
 import pytest
 
+import apps.node_mgmt  # noqa: F401 - MonitorPolicyViewSet 的运行时模型依赖
 from apps.monitor.nats import monitor as nm
 
 
 class TestNormalizeMonitorQueryData:
     def test_maps_aliases(self):
-        out = nm._normalize_monitor_query_data({
-            "monitor_object_id": 7, "start_time": 1, "end_time": 2,
-        })
+        out = nm._normalize_monitor_query_data(
+            {
+                "monitor_object_id": 7,
+                "start_time": 1,
+                "end_time": 2,
+            }
+        )
         assert out["monitor_obj_id"] == 7
         assert out["start"] == 1 and out["end"] == 2
 
@@ -42,11 +48,21 @@ class TestNormalizePositiveInt:
 
 
 class TestNormalizeBool:
-    @pytest.mark.parametrize("val,expected", [
-        (True, True), (False, False), (None, False), ("", False),
-        ("true", True), ("1", True), ("yes", True),
-        ("false", False), ("0", False), ("no", False),
-    ])
+    @pytest.mark.parametrize(
+        "val,expected",
+        [
+            (True, True),
+            (False, False),
+            (None, False),
+            ("", False),
+            ("true", True),
+            ("1", True),
+            ("yes", True),
+            ("false", False),
+            ("0", False),
+            ("no", False),
+        ],
+    )
     def test_values(self, val, expected):
         assert nm._normalize_bool(val, "f") is expected
 
@@ -92,9 +108,7 @@ class TestNormalizeFilterValues:
 
 class TestBuildVmQueryFailureResult:
     def test_uses_error_and_type(self):
-        out = nm._build_vm_query_failure_result(
-            {"error": "boom", "errorType": "bad_data"}, "default"
-        )
+        out = nm._build_vm_query_failure_result({"error": "boom", "errorType": "bad_data"}, "default")
         assert out["result"] is False
         assert out["message"] == "bad_data: boom"
 
@@ -224,13 +238,16 @@ class TestGetInstancePermissionMap:
         assert nm._get_instance_permission_map(None) == {}
 
     def test_builds_map(self):
-        perm = {"instance": [
-            {"id": "i1", "permission": ["View"]},
-            {"id": "i2", "permission": ["Operate"]},
-            {"no_id": True},
-        ]}
+        perm = {
+            "instance": [
+                {"id": "i1", "permission": ["View"]},
+                {"id": "i2", "permission": ["Operate"]},
+                {"no_id": True},
+            ]
+        }
         assert nm._get_instance_permission_map(perm) == {
-            "i1": ["View"], "i2": ["Operate"],
+            "i1": ["View"],
+            "i2": ["Operate"],
         }
 
 
@@ -244,6 +261,7 @@ class TestRequireAuthenticatedActor:
         assert nm._require_authenticated_actor({"user": user}) is None
 
 
+@pytest.mark.integration
 @pytest.mark.django_db
 class TestExecuteNatsCreate:
     def test_identity_gate_blocks_anonymous(self):
@@ -258,6 +276,7 @@ class TestExecuteNatsCreate:
         )
         assert out["result"] is True
         from apps.monitor.models.monitor_object import MonitorObjectType
+
         assert MonitorObjectType.objects.filter(id="natstype").exists()
 
     def test_create_monitor_object_with_validation_error(self):
@@ -268,3 +287,157 @@ class TestExecuteNatsCreate:
         )
         assert out["result"] is False
         assert out["message"]
+
+    def test_late_failure_rolls_back_database_writes(self):
+        from apps.monitor.models.monitor_object import MonitorObjectType
+
+        object_type_id = "nats-create-rollback"
+
+        def create_then_fail(data, operator, domain):
+            MonitorObjectType.objects.create(id=object_type_id, name="待回滚类型")
+            raise RuntimeError("simulated late create failure")
+
+        out = nm._execute_nats_create(
+            create_then_fail,
+            {},
+            user_info={"user": SimpleNamespace(username="a", domain="domain.com")},
+        )
+
+        assert out == {
+            "result": False,
+            "data": [],
+            "message": "simulated late create failure",
+        }
+        assert not MonitorObjectType.objects.filter(id=object_type_id).exists()
+
+    def test_object_child_failure_rolls_back_and_retry_succeeds(self, mocker):
+        from apps.monitor.models.monitor_object import MonitorObject
+
+        name = f"nats-object-{uuid4().hex[:8]}"
+        original_bulk_create = MonitorObject.objects.bulk_create
+        bulk_create = mocker.patch.object(MonitorObject.objects, "bulk_create")
+        bulk_create.side_effect = RuntimeError("child create failed")
+        payload = {"name": name, "level": "base", "children": [{"id": f"{name}-child", "name": "子对象"}]}
+        user_info = {"user": SimpleNamespace(username="a", domain="domain.com")}
+
+        assert nm.create_monitor_object(payload, user_info=user_info)["result"] is False
+        assert not MonitorObject.objects.filter(name=name).exists()
+        bulk_create.side_effect = original_bulk_create
+        assert nm.create_monitor_object(payload, user_info=user_info)["result"] is True
+        assert MonitorObject.objects.filter(name__in=[name, f"{name}-child"]).count() == 2
+
+    @pytest.mark.parametrize(
+        ("failing_method", "enable_alerts"),
+        [
+            ("update_or_create_task", ["threshold"]),
+            ("update_policy_organizations", ["threshold"]),
+            ("update_policy_baselines", ["no_data"]),
+        ],
+    )
+    def test_policy_stage_failure_rolls_back_all_writes(self, mocker, failing_method, enable_alerts):
+        from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+        from apps.monitor.models.monitor_object import MonitorObject
+        from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
+        from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
+
+        monitor_object = MonitorObject.objects.create(name=f"nats-policy-object-{uuid4().hex[:8]}", level="base")
+        policy_name = f"nats-policy-{uuid4().hex[:8]}"
+        before_tasks = set(PeriodicTask.objects.values_list("id", flat=True))
+        before_schedules = set(CrontabSchedule.objects.values_list("id", flat=True))
+        failing_write = mocker.patch.object(MonitorPolicyViewSet, failing_method, side_effect=RuntimeError("late failure"))
+        payload = {
+            "name": policy_name,
+            "monitor_object": monitor_object.id,
+            "organizations": [1],
+            "algorithm": "max_over_time",
+            "group_algorithm": "max",
+            "query_condition": {"type": "pmq", "query": "up"},
+            "schedule": {"type": "min", "value": 5},
+            "period": {"type": "min", "value": 5},
+            "enable_alerts": enable_alerts,
+        }
+
+        assert nm.create_monitor_policy(payload, user_info={"user": SimpleNamespace(username="a", domain="domain.com")})["result"] is False
+        failing_write.assert_called_once()
+        assert not MonitorPolicy.objects.filter(name=policy_name).exists()
+        assert set(PeriodicTask.objects.values_list("id", flat=True)) == before_tasks
+        assert set(CrontabSchedule.objects.values_list("id", flat=True)) == before_schedules
+        assert not PolicyOrganization.objects.filter(policy__name=policy_name).exists()
+
+
+@pytest.mark.django_db
+class TestSearchAndDeleteMonitorPolicy:
+    def _user_info(self, org_id=1):
+        return {
+            "user": SimpleNamespace(username="a", domain="domain.com"),
+            "team": org_id,
+            "allowed_org_ids": [org_id],
+        }
+
+    def _make_policy(self, name, organization=1):
+        from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+        from apps.monitor.models.monitor_object import MonitorObject
+        from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
+
+        monitor_object = MonitorObject.objects.create(name=f"nats-policy-obj-{uuid4().hex[:8]}", level="base")
+        policy = MonitorPolicy.objects.create(
+            name=name,
+            monitor_object=monitor_object,
+            algorithm="max_over_time",
+            query_condition={"type": "pmq", "query": "up"},
+            source={"type": "organization", "values": [organization]},
+            organizations=[organization],
+            schedule={"type": "min", "value": 5},
+            period={"type": "min", "value": 5},
+        )
+        PolicyOrganization.objects.create(policy=policy, organization=organization)
+        schedule = CrontabSchedule.objects.create(
+            minute="*/5",
+            hour="*",
+            day_of_week="*",
+            day_of_month="*",
+            month_of_year="*",
+        )
+        PeriodicTask.objects.create(
+            name=f"scan_policy_task_{policy.id}",
+            task="apps.monitor.tasks.monitor_policy.scan_policy_task",
+            args=f"[{policy.id}]",
+            crontab=schedule,
+        )
+        return policy
+
+    def test_search_requires_authenticated_actor(self):
+        out = nm.search_monitor_policies(name="demo-host-cpu-high", user_info=None)
+        assert out["result"] is False
+        assert "缺少用户" in out["message"]
+
+    def test_search_returns_policies_in_caller_org_only(self):
+        visible = self._make_policy("demo-host-cpu-high", organization=1)
+        self._make_policy("demo-host-cpu-high", organization=2)
+        out = nm.search_monitor_policies(name="demo-host-cpu-high", user_info=self._user_info(1))
+        assert out["result"] is True
+        assert [row["id"] for row in out["data"]] == [visible.id]
+
+    def test_delete_removes_policy_and_scan_task(self):
+        from django_celery_beat.models import PeriodicTask
+
+        from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
+
+        policy = self._make_policy("demo-host-cpu-high", organization=1)
+        policy_id = policy.id
+        out = nm.delete_monitor_policy(policy_id=policy_id, user_info=self._user_info(1))
+        assert out["result"] is True
+        assert not MonitorPolicy.objects.filter(id=policy_id).exists()
+        assert not PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").exists()
+        assert not PolicyOrganization.objects.filter(policy_id=policy_id).exists()
+
+    def test_delete_hides_out_of_org_policy(self):
+        from apps.monitor.models.monitor_policy import MonitorPolicy
+
+        policy = self._make_policy("demo-host-cpu-high", organization=2)
+        out = nm.delete_monitor_policy(policy_id=policy.id, user_info=self._user_info(1))
+        assert out["result"] is False
+        assert out["message"] == "策略不存在"
+        assert MonitorPolicy.objects.filter(id=policy.id).exists()

@@ -11,7 +11,6 @@ import MetricCard from '@/features/monitor/metric-card';
 import MetricChartSheet from '@/features/monitor/metric-chart-sheet';
 import { getMonitorInstance, listEffectivePlugins, listMetricDefinition } from '@/features/monitor/adapter';
 import { recordRecentView } from '@/features/monitor/recent-views-storage';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { monitorRequestErrorKind, resolveMonitorReportingStatus, type MetricGroup, type MonitorMetric, type MonitorPlugin } from '@/features/monitor/model';
 import MonitorObjectIcon from '@/features/monitor/object-icon-image';
 import { useAuth } from '@/context/auth';
@@ -61,7 +60,7 @@ function DetailMetricsSkeleton({ label }: { label: string }) {
 
 function MonitorDetailContent() {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
+  const { userInfo, currentTeamId } = useAuth();
   const params = useSearchParams();
   const objectId = Number(params.get('objectId'));
   const objectName = params.get('objectName') || '--';
@@ -88,7 +87,8 @@ function MonitorDetailContent() {
   const [groups, setGroups] = useState<MetricGroup[]>([]);
   const [metrics, setMetrics] = useState<MonitorMetric[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set());
-  const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'forbidden' | 'missing'>('loading');
+  const [status, setStatus] = useState<'loading' | 'ready' | 'error' | 'unavailable'>('loading');
+  const [instanceResolved, setInstanceResolved] = useState(false);
   const [range, setRange] = useState<RangeMinutes>(15);
   const [reloadToken, setReloadToken] = useState(0);
   const [pluginPickerOpen, setPluginPickerOpen] = useState(false);
@@ -115,35 +115,43 @@ function MonitorDetailContent() {
     }
     const controller = new AbortController();
     setStatus('loading');
+    setInstanceResolved(false);
     setPluginId(null);
     setPlugins([]);
     setGroups([]);
     setMetrics([]);
     setExpandedGroups(new Set());
 
-    const refreshHeader = getMonitorInstance(
-      objectId,
-      instanceId,
-      { name: routeInstanceName, idValues },
-      controller.signal,
-    ).then((instance) => {
-      if (!instance || controller.signal.aborted) return;
-      setInstanceName(instance.name || routeInstanceName);
-      setInstanceStatus(instance.status || '');
-      setLastReportedAt(instance.lastReportedAt);
-      setIntervalSeconds(instance.interval);
-    }).catch(() => undefined);
-
-    listEffectivePlugins(objectId, instanceId, controller.signal)
-      .then(async (items) => {
-        await refreshHeader;
+    Promise.all([
+      getMonitorInstance(
+        objectId,
+        instanceId,
+        {},
+        controller.signal,
+      ),
+      listEffectivePlugins(objectId, instanceId, controller.signal),
+    ])
+      .then(([instance, items]) => {
         if (controller.signal.aborted) return;
+        // Server 没有单实例读取接口：列表命中或能解析出有效插件都能证明实例存在。
+        if (!instance && items.length === 0) {
+          setStatus('unavailable');
+          return;
+        }
+        if (instance) {
+          setInstanceName(instance.name || routeInstanceName);
+          setInstanceStatus(instance.status || '');
+          setLastReportedAt(instance.lastReportedAt);
+          setIntervalSeconds(instance.interval);
+        }
+        setInstanceResolved(true);
         setPlugins(items);
         setPluginId(items[0]?.id || null);
         if (!items.length) setStatus('ready');
       })
       .catch((error) => {
-        if (!controller.signal.aborted) setStatus(monitorRequestErrorKind(error));
+        if (controller.signal.aborted) return;
+        setStatus(monitorRequestErrorKind(error) === 'error' ? 'error' : 'unavailable');
       });
     return () => controller.abort();
   }, [idValues, instanceId, objectId, reloadToken, routeInstanceName]);
@@ -160,7 +168,8 @@ function MonitorDetailContent() {
         setStatus('ready');
       })
       .catch((error) => {
-        if (!controller.signal.aborted) setStatus(monitorRequestErrorKind(error));
+        if (controller.signal.aborted) return;
+        setStatus(monitorRequestErrorKind(error) === 'error' ? 'error' : 'unavailable');
       });
     return () => controller.abort();
   }, [objectId, pluginId]);
@@ -175,10 +184,10 @@ function MonitorDetailContent() {
 
   // Reuse Auth userInfo already on this page — wait until id is known; do not fetch again or fall back to 0.
   useEffect(() => {
-    if (!objectId || !instanceId || status !== 'ready' || !userInfo?.id || recordedRef.current) return;
+    if (!objectId || !instanceId || status !== 'ready' || !instanceResolved || !userInfo?.id || recordedRef.current) return;
     recordedRef.current = true;
-    recordRecentView(userInfo.id, getCurrentTeamCookie() || 'none', objectId, instanceId);
-  }, [instanceId, objectId, status, userInfo?.id]);
+    recordRecentView(userInfo.id, currentTeamId || 'none', objectId, instanceId);
+  }, [currentTeamId, instanceId, instanceResolved, objectId, status, userInfo?.id]);
 
   const grouped = groups
     .map((group) => ({ group, metrics: metrics.filter((metric) => metric.groupId === group.id) }))
@@ -221,7 +230,7 @@ function MonitorDetailContent() {
     <main className={styles.page}>
       <MobilePageHeader title={t('monitor.detailTitle')} backHref={backHref} />
       <div className={`${styles.scroll} ${styles.detailScroll}`}>
-        <section className={styles.heroCard}>
+        {status !== 'unavailable' ? <section className={styles.heroCard}>
           <div className={styles.heroHead}>
             <MonitorObjectIcon className={styles.heroIcon} icon={objectIcon} size={36} />
             <div className={styles.heroCopy}>
@@ -254,7 +263,7 @@ function MonitorDetailContent() {
               <span className={styles.heroFactValueMono} title={displayId}>{displayId}</span>
             </div>
           </div>
-        </section>
+        </section> : null}
 
         <div className={styles.detailBody}>
           {status === 'loading' ? (
@@ -262,7 +271,7 @@ function MonitorDetailContent() {
           ) : status !== 'ready' ? (
             <MobileResult
               kind={status === 'error' ? 'error' : 'permission'}
-              title={status === 'forbidden' ? t('monitor.detailForbidden') : status === 'missing' ? t('monitor.detailMissing') : t('monitor.detailLoadFailed')}
+              title={status === 'unavailable' ? t('monitor.detailUnavailable') : t('monitor.detailLoadFailed')}
               description={status === 'error' ? t('monitor.retryHint') : ''}
               actionLabel={status === 'error' ? t('common.retry') : undefined}
               onAction={status === 'error' ? () => setReloadToken((value) => value + 1) : undefined}

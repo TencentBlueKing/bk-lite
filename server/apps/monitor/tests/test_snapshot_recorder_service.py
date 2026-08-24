@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from apps.monitor.models import MonitorAlert, MonitorAlertMetricSnapshot
+from apps.monitor.models import MonitorAlert, MonitorAlertMetricSnapshot, MonitorEvent
 from apps.monitor.tasks.services.policy_scan.snapshot_recorder import SnapshotRecorder
 
 pytestmark = pytest.mark.django_db
@@ -113,6 +113,60 @@ class TestRecordSnapshotsForActiveAlerts:
         rec.record_snapshots_for_active_alerts()
         snap = MonitorAlertMetricSnapshot.objects.get(alert_id=alert.id)
         assert any(s["type"] == "no_data" for s in snap.snapshots)
+
+    def test_no_data_alert_does_not_copy_threshold_window_leftover(self, stub_s3, mocker):
+        """无数据窗口更短时，阈值查询仍可能带回旧点；不能写到无数据告警上。"""
+        alert = MonitorAlert.objects.create(
+            policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
+            alert_type="no_data", status="new",
+        )
+        event = MonitorEvent.objects.create(
+            id="nd-ev1",
+            alert_id=alert.id,
+            policy_id=1,
+            monitor_instance_id="h1",
+            metric_instance_id="('h1',)",
+            level="no_data",
+            content="no data",
+            event_time=datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+        )
+        rec = SnapshotRecorder(_policy(), {}, [], _mq())
+        mocker.patch.object(
+            rec,
+            "_build_pre_alert_snapshot",
+            return_value={
+                "type": "pre_alert",
+                "snapshot_time": "2026-01-01T11:55:00+00:00",
+                "raw_data": {"values": [[100, "1"]]},
+            },
+        )
+        rec.record_snapshots_for_active_alerts(
+            info_events=[{
+                "metric_instance_id": "('h1',)",
+                "raw_data": {"values": [[200, "1"], [260, "1"]]},
+            }],
+            event_objs=[event],
+            new_alerts=[alert],
+        )
+        snap = MonitorAlertMetricSnapshot.objects.get(alert_id=alert.id)
+        types = [item["type"] for item in snap.snapshots]
+        assert types == ["pre_alert", "no_data"]
+        assert snap.snapshots[1]["raw_data"] == {}
+
+    def test_threshold_alert_still_records_info_from_raw_data(self, stub_s3):
+        alert = MonitorAlert.objects.create(
+            policy_id=1, monitor_instance_id="h1", metric_instance_id="('h1',)",
+            alert_type="alert", status="new",
+        )
+        rec = SnapshotRecorder(_policy(), {}, [alert], _mq())
+        rec.record_snapshots_for_active_alerts(
+            info_events=[{
+                "metric_instance_id": "('h1',)",
+                "raw_data": {"values": [[200, "1"]]},
+            }],
+        )
+        snap = MonitorAlertMetricSnapshot.objects.get(alert_id=alert.id)
+        assert [item["type"] for item in snap.snapshots] == ["info"]
 
 
 class TestBuildPreAlertSnapshot:

@@ -15,6 +15,7 @@ import PermissionWrapper from '@/components/permission';
 import BrowserStepProgress from './BrowserStepProgress';
 import AgentStepProgress from './AgentStepProgress';
 import PlannedExecutionSteps from './PlannedExecutionSteps';
+import PlannedExecutionStatus, { isActivePlannedExecutionStatus } from './PlannedExecutionStatus';
 import WikiCitations from './WikiCitations';
 import ApprovalCard from './ApprovalCard';
 import UserChoiceCard from './UserChoiceCard';
@@ -24,7 +25,7 @@ import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
 import RepairCommandsCard from './RepairCommandsCard';
 import SkillView from './SkillView';
-import { hydrateGeneratedFileLinks } from './downloadUrl';
+import { hydrateGeneratedFileLinks, isRenderableReportDownload, rewriteAttachmentDownloadMentions } from './downloadUrl';
 import {CustomChatMessage} from '@/app/opspilot/types/global';
 import {useSession} from 'next-auth/react';
 import {useAuth} from '@/context/auth';
@@ -32,6 +33,7 @@ import {CustomChatSSEProps, GuideParseResult} from '@/app/opspilot/types/chat';
 import {useSSEStream} from './hooks/useSSEStream';
 import {useSendMessage} from './hooks/useSendMessage';
 import {initToolCallTooltips} from './toolCallRenderer';
+import { stripPlannedExecutionDumps } from './plannedExecutionPayload';
 
 const normalizeThinkingText = (value?: string) => {
   if (!value) return '';
@@ -155,9 +157,11 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const chatContentRef = useRef<HTMLDivElement>(null);
   const scrollAnimationFrameRef = useRef<number | null>(null);
 
-  // 监听 initialMessages 变化
+  // 仅在父级提供历史消息时同步；空数组不得把正在流式的会话清空
   useEffect(() => {
-    setMessages(initialMessages.length ? initialMessages : []);
+    if (initialMessages.length) {
+      setMessages(initialMessages);
+    }
   }, [initialMessages]);
 
   // 初始化工具调用事件处理
@@ -219,7 +223,31 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       return;
     }
 
-    updateMessages(prevMessages => prevMessages.filter(msg => msg.id !== currentBotMessage.id));
+    // 只删尚未产出可见内容的占位气泡；已有正文/工具/卡片时保留，避免「问着问着内容没了」
+    updateMessages(prevMessages => {
+      const target = prevMessages.find(msg => msg.id === currentBotMessage.id);
+      if (!target) {
+        return prevMessages;
+      }
+      const hasVisibleContent = Boolean(
+        target.content ||
+        target.thinking ||
+        target.isThinking ||
+        (target.toolCalls && target.toolCalls.length > 0) ||
+        (target.userChoiceRequests && target.userChoiceRequests.length > 0) ||
+        (target.approvalRequests && target.approvalRequests.length > 0) ||
+        (target.configDiffReports && target.configDiffReports.length > 0) ||
+        (target.configAnalysisReports && target.configAnalysisReports.length > 0) ||
+        (target.reportFileDownloads && target.reportFileDownloads.length > 0) ||
+        (target.repairCommands && target.repairCommands.length > 0) ||
+        (target.plannedExecutionSteps && target.plannedExecutionSteps.length > 0) ||
+        (target.browserStepsHistory && target.browserStepsHistory.steps.length > 0)
+      );
+      if (hasVisibleContent) {
+        return prevMessages;
+      }
+      return prevMessages.filter(msg => msg.id !== currentBotMessage.id);
+    });
     currentBotMessageRef.current = null;
   }, [updateMessages]);
 
@@ -433,6 +461,19 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     async (msg: string, images?: UploadFile[]) => {
       if (pendingChoice && msg.trim() && token) {
         const answer = msg.trim();
+        // 乐观关闭，避免后台慢时用户重复发送
+        updateMessages(prev => prev.map(message => {
+          if (!message.userChoiceRequests) return message;
+          return {
+            ...message,
+            userChoiceRequests: message.userChoiceRequests.map(request =>
+              request.choice_id === pendingChoice.choice_id
+                ? { ...request, status: 'submitted' as const, selected: [answer] }
+                : request
+            ),
+          };
+        }));
+        const hideLoading = antMessage.loading(t('chat.choiceSubmitting') || '正在提交选择...', 0);
         try {
           await postUserChoice(token, {
             execution_id: pendingChoice.execution_id,
@@ -440,19 +481,21 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             choice_id: pendingChoice.choice_id,
             selected: [answer],
           });
+        } catch {
+          antMessage.error(t('chat.choiceSubmitFailed'));
           updateMessages(prev => prev.map(message => {
             if (!message.userChoiceRequests) return message;
             return {
               ...message,
               userChoiceRequests: message.userChoiceRequests.map(request =>
                 request.choice_id === pendingChoice.choice_id
-                  ? { ...request, status: 'submitted' as const, selected: [answer] }
+                  ? { ...request, status: 'pending' as const, selected: undefined }
                   : request
               ),
             };
           }));
-        } catch {
-          antMessage.error(t('chat.choiceSubmitFailed'));
+        } finally {
+          hideLoading();
         }
         return;
       }
@@ -557,24 +600,27 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     }));
   }, [updateMessages]);
 
-  const handleUserChoiceSubmit = useCallback((choiceId: string, status: 'submitted' | 'timeout', selected: string[]) => {
+  const handleUserChoiceSubmit = useCallback((choiceId: string, status: 'pending' | 'submitted' | 'timeout', selected: string[]) => {
     updateMessages(prev => prev.map(msg => {
       if (!msg.userChoiceRequests) return msg;
       const updated = msg.userChoiceRequests.map(req =>
-        req.choice_id === choiceId ? { ...req, status, selected } : req
+        req.choice_id === choiceId
+          ? { ...req, status, selected: status === 'pending' ? undefined : selected }
+          : req
       );
       return { ...msg, userChoiceRequests: updated };
     }));
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, toolCalls, isStreamingTools } = msg;
+    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, plannedExecutionStatus, toolCalls, isStreamingTools } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
-      ? reportFileDownloads.filter(download => Boolean(download.content_base64))
+      ? reportFileDownloads.filter(isRenderableReportDownload)
       : [];
 
-    let replacedContent = parseReferenceLinks(content || '');
+    let replacedContent = parseReferenceLinks(stripPlannedExecutionDumps(content || ''));
     replacedContent = parseSuggestionLinks(replacedContent);
+    replacedContent = rewriteAttachmentDownloadMentions(replacedContent, reportFileDownloads);
 
     // Split content at placeholder markers and render components inline
     const renderContentWithInlineComponents = () => {
@@ -584,18 +630,21 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       const hasMarkers = markerPattern.test(replacedContent);
 
       if (!hasMarkers) {
-        // No markers — render as single block with fallback positions
-        const html = sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(md.render(replacedContent)), reportFileDownloads));
+        const html = replacedContent.trim()
+          ? sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(md.render(replacedContent)), reportFileDownloads))
+          : '';
         return (
           <>
-            <div
-              dangerouslySetInnerHTML={{ __html: html }}
-              className={styles.markdownBody}
-              onClick={e => {
-                handleToolCallClick(e);
-                handleSuggestionClick(e);
-              }}
-            />
+            {html ? (
+              <div
+                dangerouslySetInnerHTML={{ __html: html }}
+                className={styles.markdownBody}
+                onClick={e => {
+                  handleToolCallClick(e);
+                  handleSuggestionClick(e);
+                }}
+              />
+            ) : null}
             {Array.isArray(configDiffReports) && configDiffReports.length > 0 && (
               <div className="mt-2">
                 {[...configDiffReports].sort((a, b) => (a.received_at || 0) - (b.received_at || 0)).map(report => (
@@ -813,6 +862,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         {Array.isArray(agentStepProgress) && agentStepProgress.length > 0 && (
           <AgentStepProgress steps={agentStepProgress} />
         )}
+        {plannedExecutionStatus && isActivePlannedExecutionStatus(plannedExecutionStatus.phase) && (
+          <PlannedExecutionStatus status={plannedExecutionStatus} />
+        )}
         {Array.isArray(plannedExecutionSteps) && plannedExecutionSteps.length > 0 && (
           <PlannedExecutionSteps
             steps={plannedExecutionSteps}
@@ -824,7 +876,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <BrowserStepProgress history={browserStepsHistory} />
         )}
         {renderContentWithInlineComponents()}
-        {!!msg.wikiCitations?.length && <WikiCitations citations={msg.wikiCitations} content={msg.content} />}
+        {!!msg.wikiCitations?.length && <WikiCitations citations={msg.wikiCitations} content={replacedContent} />}
       </>
     );
   };
@@ -975,11 +1027,15 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     ) : senderComponent;
   };
 
+  const stopSSEConnectionRef = useRef(stopSSEConnection);
+  stopSSEConnectionRef.current = stopSSEConnection;
+
+  // 仅在真正卸载时中断；勿把 stopSSEConnection 放进依赖，避免 identity 变化误清会话
   useEffect(() => {
     return () => {
-      stopSSEConnection();
+      stopSSEConnectionRef.current();
     };
-  }, [stopSSEConnection]);
+  }, []);
 
   const guideData = parseGuideItems(guide || '');
 
@@ -1017,7 +1073,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             {messages.map(msg => {
               const hasBrowserSteps = msg.browserStepsHistory && msg.browserStepsHistory.steps.length > 0;
               const hasThinking = Boolean(normalizeThinkingText(msg.thinking)) || Boolean(msg.isThinking);
-              const isEmptyMessage = !msg.content && !hasBrowserSteps && !hasThinking;
+              const hasPlanStatus = isActivePlannedExecutionStatus(msg.plannedExecutionStatus?.phase);
+              const hasPlanSteps = Array.isArray(msg.plannedExecutionSteps) && msg.plannedExecutionSteps.length > 0;
+              const isEmptyMessage = !msg.content && !hasBrowserSteps && !hasThinking && !hasPlanStatus && !hasPlanSteps;
               const isCurrentBotLoading = loading && currentBotMessageRef.current?.id === msg.id;
               return (
                 <Bubble

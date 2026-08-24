@@ -72,6 +72,7 @@ export function DashboardPageHeader({
           {showTimeSelector ? (
             <div className={styles.toolbarTimeSelector}>
               <TimeSelector
+                appearance="toolbar"
                 defaultValue={timeDefaultValue}
                 customFrequencyList={frequencyList}
                 onChange={onTimeChange}

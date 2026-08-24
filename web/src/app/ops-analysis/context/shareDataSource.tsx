@@ -2,8 +2,14 @@
 
 import { createContext, useContext } from 'react';
 
+import type { SourceDataRequestOptions } from '@/app/ops-analysis/api/dataSource';
+
 export interface SharedDataSourceAccess {
-  queryDataSource: (dataSourceId: number, params?: unknown) => Promise<unknown>;
+  queryDataSource: (
+    dataSourceId: number,
+    params?: unknown,
+    options?: SourceDataRequestOptions,
+  ) => Promise<unknown>;
   getDataSourceDetails: (ids: Array<number | string>) => Promise<unknown>;
 }
 

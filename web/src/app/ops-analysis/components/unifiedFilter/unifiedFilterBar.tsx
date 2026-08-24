@@ -206,7 +206,8 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         );
 
       case 'string':
-      default:
+      case 'stringList':
+      default: {
         if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'organization') {
           return (
             <GroupTreeSelect
@@ -221,6 +222,23 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           );
         }
 
+        const isStringList = definition.type === 'stringList';
+        const inputConfig = getFilterInputConfig(definition);
+        const selectConfig = isStringList
+          ? {
+            ...(inputConfig && inputConfig.control !== 'input'
+              ? inputConfig
+              : {
+                control: 'select' as const,
+                optionsSource: { type: 'static' as const, staticItems: [] },
+              }),
+            control: 'select' as const,
+            multiple: inputConfig && 'multiple' in inputConfig
+              ? Boolean(inputConfig.multiple)
+              : true,
+          }
+          : inputConfig;
+
         const fallbackInput = (
           <Input
             value={(typeof value === 'string' || typeof value === 'number') ? String(value) : ''}
@@ -233,19 +251,38 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           />
         );
 
+        const controlValue = Array.isArray(value)
+          ? value
+          : (typeof value === 'string' || typeof value === 'number')
+            ? value
+            : undefined;
+
         return (
           <ParamInputControl
-            inputConfig={getFilterInputConfig(definition)}
+            inputConfig={selectConfig}
             fallback={fallbackInput}
-            value={(typeof value === 'string' || typeof value === 'number') ? value : undefined}
-            onChange={(nextValue) =>
-              handleLocalValueChange(definition.id, nextValue ?? null)
-            }
+            value={controlValue}
+            onChange={(nextValue) => {
+              if (isStringList) {
+                if (Array.isArray(nextValue)) {
+                  handleLocalValueChange(definition.id, nextValue);
+                  return;
+                }
+                if (typeof nextValue === 'string' || typeof nextValue === 'number') {
+                  handleLocalValueChange(definition.id, [nextValue]);
+                  return;
+                }
+                handleLocalValueChange(definition.id, null);
+                return;
+              }
+              handleLocalValueChange(definition.id, nextValue ?? null);
+            }}
             placeholder={definition.name}
             allowClear
-            style={{ minWidth: 160 }}
+            style={{ minWidth: 220 }}
           />
         );
+      }
     }
   };
 

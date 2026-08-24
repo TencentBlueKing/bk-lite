@@ -84,7 +84,8 @@ def test_apply_skill_packages_records_visible_match_summary(mocker):
 
     viewset._apply_skill_packages_to_params(params, skill)
 
-    assert "已采用技能包：Kubernetes Specialist" in params["skill_prompt"]
+    assert "已启用的技能包" in params["skill_prompt"]
+    assert "### Kubernetes Specialist" in params["skill_prompt"]
     assert params["matched_skill_packages"] == [
         {
             "id": "kubernetes-specialist",
@@ -100,6 +101,41 @@ def test_apply_skill_packages_records_visible_match_summary(mocker):
     assert params["skill_package_capabilities"] == ["config_analysis_report", "repair_diff_report"]
     assert params["skill_package_reports"] == {"config_analysis": {"source_tool": "analyze_deployment_configurations"}}
     assert params["skill_package_workflows"] == {"after_config_analysis": [{"type": "choice"}]}
+
+
+def test_apply_skill_packages_keeps_report_capabilities_scoped_to_matched(mocker):
+    """报告门禁只看 matched：寒暄未命中 trigger 时 capabilities 为空；物化仍带 enabled 全集。"""
+    mocker.patch("apps.opspilot.viewsets.llm_view.hydrate_skill_packages", side_effect=lambda packages: packages)
+
+    viewset = LLMViewSet()
+    skill = SimpleNamespace(
+        skill_prompt="你是运维助手。",
+        skill_packages=[
+            {
+                "id": "kubernetes-specialist",
+                "name": "Kubernetes Specialist",
+                "description": "Kubernetes workload troubleshooting",
+                "required_tools": ["kubernetes"],
+                "triggers": ["异常工作负载"],
+                "capabilities": ["config_analysis_report", "repair_diff_report"],
+                "reports": {"config_analysis": {"source_tool": "analyze_deployment_configurations"}},
+                "workflows": {"after_config_analysis": [{"type": "choice"}]},
+                "skill_markdown": "Use workload troubleshooting workflow.",
+            }
+        ],
+    )
+    params = {
+        "skill_prompt": skill.skill_prompt,
+        "user_message": "你好",
+        "tools": [{"name": "kubernetes"}],
+    }
+
+    viewset._apply_skill_packages_to_params(params, skill)
+
+    assert params["matched_skill_packages"] == []
+    assert params["skill_package_capabilities"] == []
+    assert [pkg["id"] for pkg in params["enabled_skill_packages"]] == ["kubernetes-specialist"]
+    assert params["enabled_skill_packages"][0]["missing_params"] == []
 
 
 def _execution_skill():
@@ -555,3 +591,18 @@ def test_skill_package_cleanup_storage_path_empty_string_is_noop(tmp_path, mocke
 
     result = SkillPackageViewSet._cleanup_storage_path("")
     assert result is False
+
+
+def test_prepare_skill_package_params_copies_stored_when_request_omits_field():
+    stored = {"ad-domain-ops": [{"key": "AD_HOST", "value": "enc", "type": "text"}]}
+    skill = SimpleNamespace(skill_package_params=stored)
+    params = {}
+    assert LLMViewSet._prepare_skill_package_params(params, skill) is None
+    assert params["skill_package_params_overlay"] is stored
+
+
+def test_prepare_skill_package_params_skips_overlay_when_stored_empty():
+    skill = SimpleNamespace(skill_package_params={})
+    params = {}
+    assert LLMViewSet._prepare_skill_package_params(params, skill) is None
+    assert "skill_package_params_overlay" not in params

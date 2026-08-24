@@ -245,3 +245,59 @@ def test_backfill_rejects_invalid_page_status_before_starting_fence(wiki_factory
     assert "invalid_status=unexpected" in stderr.getvalue()
     assert knowledge_base.directory_migration_state == "legacy"
     assert knowledge_base.active_generation_id is None
+
+
+def test_backfill_repairs_orphaned_current_version_pointer(wiki_factory):
+    knowledge_base = wiki_factory.knowledge_base()
+    active = _legacy_page(knowledge_base, title="Active With Pointer")
+    archived = _legacy_page(knowledge_base, title="Archived Orphan Pointer", status="archived")
+    orphan_version_id = archived.current_version_id
+    PageVersion.objects.filter(page=archived).update(is_current=False)
+    KnowledgePage.objects.filter(pk=archived.id).update(current_version=None)
+    archived.refresh_from_db()
+    assert archived.current_version_id is None
+
+    call_command(
+        "backfill_wiki_directory_governance",
+        knowledge_base_ids=[knowledge_base.id],
+    )
+
+    knowledge_base.refresh_from_db()
+    active.refresh_from_db()
+    archived.refresh_from_db()
+    assert knowledge_base.directory_migration_state == "ready"
+    assert archived.current_version_id == orphan_version_id
+    assert PageVersion.objects.get(pk=orphan_version_id).is_current is True
+    assert active.current_version_id is not None
+
+    # baseline 已完成后再次执行，仍可修复新出现的孤儿指针。
+    PageVersion.objects.filter(page=archived).update(is_current=False)
+    KnowledgePage.objects.filter(pk=archived.id).update(current_version=None)
+    output = StringIO()
+    call_command(
+        "backfill_wiki_directory_governance",
+        knowledge_base_ids=[knowledge_base.id],
+        stdout=output,
+    )
+    archived.refresh_from_db()
+    assert archived.current_version_id == orphan_version_id
+    assert "repaired_current_version_pages=1" in output.getvalue()
+
+
+def test_audit_compact_includes_entity_ids_for_missing_current_version(wiki_factory):
+    knowledge_base = wiki_factory.knowledge_base()
+    page = _legacy_page(knowledge_base, title="Broken Pointer", status="archived")
+    PageVersion.objects.filter(page=page).update(is_current=False)
+    KnowledgePage.objects.filter(pk=page.id).update(current_version=None)
+    output = StringIO()
+
+    with pytest.raises(CommandError):
+        call_command(
+            "audit_wiki_directory_readiness",
+            knowledge_base_ids=[knowledge_base.id],
+            compact=True,
+            stdout=output,
+        )
+
+    text = output.getvalue()
+    assert f"page_current_version_missing#{page.id}" in text

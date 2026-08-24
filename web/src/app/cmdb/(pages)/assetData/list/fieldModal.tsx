@@ -29,8 +29,12 @@ import styles from './filterBar.module.scss';
 import useAssetDataStore from '@/app/cmdb/store/useAssetDataStore';
 
 interface FieldModalProps {
-  onSuccess: (instId?: string) => void;
+  onSuccess: (instUuid?: string) => void;
   userList: UserItem[];
+  createHandler?: (payload: {
+    model_id: string;
+    instance_info: Record<string, unknown>;
+  }) => Promise<any>;
 }
 
 export interface FieldModalRef {
@@ -38,7 +42,7 @@ export interface FieldModalRef {
 }
 
 const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
-  ({ onSuccess, userList }, ref) => {
+  ({ onSuccess, userList, createHandler }, ref) => {
     const { selectedGroup } = useUserInfoContext();
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
@@ -49,6 +53,8 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
     const [instanceData, setInstanceData] = useState<any>({});
     const [selectedRows, setSelectedRows] = useState<any[]>([]);
     const [modelId, setModelId] = useState<string>('');
+    const [lockedAttrIds, setLockedAttrIds] = useState<string[]>([]);
+    const [hideAssociate, setHideAssociate] = useState<boolean>(false);
     const [enabledFields, setEnabledFields] = useState<Record<string, boolean>>(
       {}
     );
@@ -112,6 +118,8 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         formInfo,
         model_id,
         list,
+        lockedAttrIds: nextLockedAttrIds,
+        hideAssociate: nextHideAssociate,
       }) => {
         setGroupVisible(true);
         setSubTitle(subTitle);
@@ -120,6 +128,8 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         setModelId(model_id);
         setFormItems(attrList);
         setSelectedRows(list);
+        setLockedAttrIds(nextLockedAttrIds || []);
+        setHideAssociate(Boolean(nextHideAssociate));
         const forms = deepClone(formInfo);
 
         const allAttrs = attrList.flatMap((group) => group.attrs || []);
@@ -220,10 +230,12 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
     };
 
     const renderFormField = (item: FullInfoAttrItem) => {
+      const locked = lockedAttrIds.includes(item.attr_id);
       const fieldDisabled =
-        type === 'batchEdit'
+        locked ||
+        (type === 'batchEdit'
           ? !enabledFields[item.attr_id]
-          : !item.editable && type !== 'add';
+          : !item.editable && type !== 'add');
 
       const hostDisabled = modelId === 'host' && item.attr_id === 'inst_name';
 
@@ -337,19 +349,26 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
         );
         let result: any;
         if (type === 'add') {
-          result = await instanceApi.createInstance({
-            model_id: modelId,
-            instance_info: formData,
-          });
+          if (createHandler) {
+            result = await createHandler({
+              model_id: modelId,
+              instance_info: formData,
+            });
+          } else {
+            result = await instanceApi.createInstance({
+              model_id: modelId,
+              instance_info: formData,
+            });
+          }
         } else {
           result = await instanceApi.batchUpdateInstances({
-            inst_ids: type === 'edit' ? [instanceData._id] : selectedRows,
+            inst_uuids: type === 'edit' ? [instanceData.inst_uuid] : selectedRows.map((id: any) => String(id)),
             update_data: formData,
           });
         }
-        const instId = result?._id;
+        const instUuid = result?.inst_uuid;
         message.success(msg);
-        onSuccess(confirmType ? instId : '');
+        onSuccess(confirmType ? instUuid : '');
         handleCancel();
       } catch (error) {
         console.log(error);
@@ -380,7 +399,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
               >
                 {t('common.confirm')}
               </Button>
-              {type === 'add' && (
+              {type === 'add' && !hideAssociate && (
                 <Button
                   className="mr-[10px]"
                   loading={confirmLoading}

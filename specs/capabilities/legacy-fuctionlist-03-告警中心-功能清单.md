@@ -39,8 +39,8 @@
 
 | 功能项 | 功能说明 | 规格 / 约束 | 状态 |
 |---|---|---|---|
-| 指纹聚合 | 基于相关性策略计算分组键（fingerprint），对活跃告警按 fingerprint 更新而非重复创建；聚合事件查询显式排除状态为 `SHIELD` 的事件，已屏蔽事件不参与指纹聚合 | 策略参数含 `match_rules`、`group_by`、窗口配置；`.exclude(status=EventStatus.SHIELD)`（`aggregation_processor.py:136`） | GA |
-| 窗口策略 | 支持会话窗口与滑动窗口聚合行为 | 会话窗口告警有独立会话状态：`observing` 观察中 / `confirmed` 已确认 / `recovered` 已恢复；观察期超时由定时检查转 `confirmed` | GA |
+| 指纹聚合 | 基于相关性策略计算分组键（fingerprint），对活跃告警按 fingerprint 更新而非重复创建；聚合事件查询显式排除状态为 `SHIELD` 的事件，已屏蔽事件不参与指纹聚合 | 策略参数含 `match_rules`、`group_by`、窗口配置；`.exclude(status=EventStatus.SHIELD)`（`aggregation_processor.py:136`）；全部 `group_by` 维度为空时降级按 `external_id` 分组（仅运维日志可观测，不改变降级规则） | GA |
+| 窗口策略 | 支持会话窗口与滑动窗口聚合行为 | **会话窗口口径**：在滑动聚合建警基础上增加观察期，用于延时自动分派/通知（过滤短时抖动），**不是**按事件静默间隔切出多段独立会话。会话状态：`observing` / `confirmed` / `recovered`；观察期超时由定时检查转 `confirmed` 后再分派。`fixed` 固定窗口枚举存在但运行时未落地，视为未支持 | GA |
 | 智能降噪规则 | 相关性规则类型之一，配置聚合匹配与分组 | 策略类型 `smart_denoise`；含关联组织（可见范围）与分派组织（聚合后归属） | GA |
 
 ### 4. 缺失检查（心跳哨兵）
@@ -63,8 +63,8 @@
 | 告警状态机 | 告警状态枚举与迁移 | 状态：`unassigned` 未分派 / `pending` 待处理 / `processing` 处理中 / `resolved` 人工恢复 / `closed` 人工关闭 / `auto_close` 自动关闭 / `auto_recovery` 自动恢复；默认 `unassigned` | GA |
 | 状态操作 | 分派、认领、转派、关闭、恢复 | assign：`unassigned→pending`；acknowledge：`pending→processing`；reassign：`processing→pending`；close：`processing→closed`；resolve：`processing→resolved`；非法前置状态操作被拒绝 | GA |
 | 批量操作 | 批量分派、认领、关闭、恢复 | 按后端支持动作执行 | GA |
-| 自动恢复 | 恢复事件经 `external_id` 关联历史创建事件，创建事件均被更晚恢复事件覆盖时转 `auto_recovery` | — | GA |
-| 自动关闭 | 按策略 `close_minutes` 自动关闭，并有定时兜底自动关闭 | `close_minutes` 默认 120 分钟；`auto_close` 默认开启 | GA |
+| 自动恢复 | 恢复事件经 `external_id` 关联历史创建事件，创建事件均被更晚恢复事件覆盖时转 `auto_recovery` | **依赖 `external_id`**：CREATED 或 RECOVERY 缺少 `external_id` 时不自动恢复（保持跳过）；因此产生的悬挂活跃告警依赖自动关闭（`close_minutes` / `beat_close_alert`）兜底，不放宽匹配键 | GA |
+| 自动关闭 | 按策略 `close_minutes` 自动关闭，并有定时兜底自动关闭 | `close_minutes` 默认 120 分钟；`auto_close` 默认开启；亦作为缺 `external_id` 无法自动恢复时的活跃告警兜底 | GA |
 | 操作留痕 | 处置过程写入操作日志 | — | GA |
 
 ### 6. 事件列表
@@ -120,13 +120,20 @@
 | 功能项 | 功能说明 | 规格 / 约束 | 状态 |
 |---|---|---|---|
 | 条件过滤 | Alert / Event / Incident / OperatorLog 支持条件过滤、时间范围筛选与分页 | — | GA |
-| 趋势统计 | 趋势聚合统计 | 支持分钟/小时/日/周/月多粒度（NATS 接口 `get_alert_trend_data`） | GA |
-| 告警源统计 | 统计可见告警关联的告警源数量、启用率与活跃量 | 非超管仅统计当前组织与对象权限范围内可见告警反推出来的告警源 | GA |
-| 通知效果统计 | 统计通知总量、成功量、失败量与成功率 | 仅统计当前组织与对象权限范围内可见告警关联的通知结果 | GA |
+| 趋势统计 | 按时间窗口输出告警、告警关联原始事件和已恢复告警三条趋势 | 支持分钟/小时/日/周/月；开始时间包含、结束时间不包含；空周期补零（NATS 接口 `get_alert_trend_data`） | GA |
+| 告警源事件 TOP | 按告警源列出原始事件量前 N 名 | 查询必须传入时间窗口，按事件接收时间统计（NATS 接口 `get_alert_source_event_top`） | GA |
+| 活跃告警状态分布 | 按活跃状态汇总告警数量，供运营分析饼图 | 仅统计未分派 / 待响应 / 处理中；同状态下多条告警正确聚合为一条计数（NATS 接口 `get_alert_status_distribution`） | GA |
+| 今日告警状态摘要 | 汇总今日产生、今日关闭与当前处理中数量 | 按用户时区切日（NATS 接口 `get_alert_today_status_summary`） | GA |
+| 告警级别分布 | 按告警级别汇总数量 | 可按状态过滤；供运营分析环形图（NATS 接口 `get_alert_level_distribution`） | GA |
+| 告警级别趋势 | 按时间粒度与级别输出多系列趋势 | 支持分钟/小时/日/周/月（NATS 接口 `get_alert_level_trend`） | GA |
+| 告警源分布 | 按告警源汇总可见告警数量 | 无来源标记归入未知（NATS 接口 `get_alert_source_distribution`） | GA |
+| 告警源统计 | 统计告警源总量、启用量、启用率和活跃量 | 总量、启用量和启用率来自全部配置；活跃量仅从当前权限范围的告警关联事件反推，可按时间窗口过滤 | GA |
+| 通知效果统计 | 统计通知总量、成功量、失败量与成功率 | 仅统计当前权限范围内的通知结果；无通知样本时成功率、失败率为空值 | GA |
 | 通知渠道统计 | 按通知渠道统计成功率 | 仅统计当前组织与对象权限范围内可见告警关联的通知结果 | GA |
+| 数据质量概览 | 分别统计告警和原始事件的字段缺失数量与比例 | 告警按创建时间、原始事件按接收时间筛选；无样本时比例为空值（NATS 接口 `get_alert_data_quality`） | GA |
 
-相关 PRD：[[spec/prd/告警中心/告警.md#3. 关键能力]]；相关架构：[[spec/ARD/modules/alerts.md#5. 任务与 NATS【已实现/已存在】]]
-> 证据来源：server/apps/alerts/nats/nats.py:78-137，server/apps/alerts/nats/nats.py:403-536　|　同步基线：a9d981aeb　|　【已实现】
+相关 PRD：[[legacy-prd-告警中心-告警.md#3. 关键能力]]；相关架构：[[legacy-ard-modules-alerts.md#5. 任务与 NATS【已实现/已存在】]]
+> 证据来源：server/apps/alerts/nats/nats.py:322-714，server/apps/alerts/nats/nats.py:1029-1176，server/apps/alerts/tests/test_nats_handlers.py:797-1223，server/apps/operation_analysis/support-files/builtin_canvases.yaml:1959-1964　|　同步基线：d2769559　|　【已实现】
 
 ## 三、能力边界与约束
 
@@ -178,7 +185,7 @@
 
 | 维度 | 取值 |
 |---|---|
-| 窗口类型（`WindowType`，定义 3 类） | sliding 滑动窗口 / fixed 固定窗口 / session 会话窗口 |
+| 窗口类型（`WindowType`，定义 3 类） | sliding 滑动窗口 / session 会话窗口（延时确认语义）/ fixed 固定窗口（**枚举存在，运行时未支持**） |
 | 窗口对齐（`Alignment`） | day 天对齐 / hour 小时对齐 / minute 分钟对齐 |
 | 策略类型（`AlarmStrategyType`） | smart_denoise 智能降噪 / missing_detection 缺失检测 |
 | 心跳激活方式（`HeartbeatActivationMode`） | first_heartbeat 首条心跳激活 / immediate 立即激活 |

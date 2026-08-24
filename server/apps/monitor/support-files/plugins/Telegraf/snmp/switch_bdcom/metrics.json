@@ -22,11 +22,16 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -39,7 +44,12 @@
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -52,7 +62,12 @@
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -61,11 +76,16 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
+      "query": "device_memory_used{instance_type='switch', __$labels__} / (device_memory_used{instance_type='switch', __$labels__} + device_memory_free{instance_type='switch', __$labels__}) * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -74,11 +94,16 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],

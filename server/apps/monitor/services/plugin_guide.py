@@ -33,23 +33,27 @@ class PluginGuideService:
     @staticmethod
     def _lookup_plugin_dir(collector: str, collect_type: str, plugin_name: str) -> Optional[Path]:
         for root in (PluginConstants.DIRECTORY, PluginConstants.ENTERPRISE_DIRECTORY):
-            base = Path(root) / collector / collect_type
-            if not base.is_dir():
-                continue
+            collector_root = Path(root) / collector
+            candidate_bases = [collector_root / collect_type]
+            if collect_type.startswith("snmp"):
+                candidate_bases.append(collector_root / "snmp")
             matched_by_name: Optional[Path] = None
-            for child in sorted(base.iterdir()):
-                if not child.is_dir():
+            for base in dict.fromkeys(candidate_bases):
+                if not base.is_dir():
                     continue
-                metrics_file = child / "metrics.json"
-                if metrics_file.is_file():
-                    try:
-                        data = json.loads(metrics_file.read_text(encoding="utf-8"))
-                    except (OSError, json.JSONDecodeError):
-                        data = {}
-                    if data.get("plugin") == plugin_name:
-                        return child
-                if child.name.lower() == plugin_name.lower():
-                    matched_by_name = child
+                for child in sorted(base.iterdir()):
+                    if not child.is_dir():
+                        continue
+                    metrics_file = child / "metrics.json"
+                    if metrics_file.is_file():
+                        try:
+                            data = json.loads(metrics_file.read_text(encoding="utf-8"))
+                        except (OSError, json.JSONDecodeError):
+                            data = {}
+                        if data.get("plugin") == plugin_name:
+                            return child
+                    if child.name.lower() == plugin_name.lower():
+                        matched_by_name = child
             if matched_by_name is not None:
                 return matched_by_name
         return None

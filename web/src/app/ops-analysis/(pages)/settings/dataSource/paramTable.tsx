@@ -2,9 +2,10 @@
 
 import React, { useImperativeHandle } from "react";
 import dayjs, { Dayjs } from "dayjs";
-import { Button, DatePicker, Empty, Input, Select, Switch } from "antd";
+import { Button, DatePicker, Input, Select, Switch } from "antd";
 import { MinusCircleOutlined, PlusCircleOutlined } from "@ant-design/icons";
 import CustomTable from "@/components/custom-table";
+import CompactEmptyState from "@/components/compact-empty-state";
 import TimeSelector from "@/components/time-selector";
 import DateRangeSelector from "@/app/ops-analysis/components/dateRangeSelector";
 import { useTranslation } from "@/utils/i18n";
@@ -78,6 +79,7 @@ const FormTimeSelector: React.FC<{
     <div className="w-full">
       {disabled ? (
         <Input
+          size="small"
           disabled
           value={Array.isArray(value) ? value.join(" - ") : String(value ?? "")}
         />
@@ -119,6 +121,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
 
     const paramTypeOptions = [
       { label: t("dataSource.paramTypes.string"), value: "string" },
+      { label: t("dataSource.paramTypes.stringList"), value: "stringList" },
       { label: t("dataSource.paramTypes.number"), value: "number" },
       { label: t("dataSource.paramTypes.boolean"), value: "boolean" },
       { label: t("dataSource.paramTypes.date"), value: "date" },
@@ -285,6 +288,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         width: 120,
         render: (_: any, record: ParamItem) => (
           <Input
+            size="small"
             disabled={readOnly}
             value={record.name}
             placeholder={t("dataSource.name")}
@@ -306,6 +310,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         width: 120,
         render: (_: any, record: ParamItem) => (
           <Input
+            size="small"
             disabled={readOnly}
             value={record.alias_name || ""}
             placeholder={t("dataSource.aliasName")}
@@ -322,10 +327,11 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         width: 110,
         render: (_: any, record: ParamItem) => (
           <Select
+            size="small"
             disabled={readOnly}
             value={record.type || "string"}
             options={paramTypeOptions}
-            style={{ width: "100%" }}
+            className="w-full"
             onChange={(val) => handleTypeChange(val, record.id!)}
           />
         ),
@@ -345,6 +351,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
             );
           return (
             <Select
+              size="small"
               disabled={readOnly}
               value={record.filterType || "fixed"}
               options={availableFilterTypeOptions}
@@ -353,7 +360,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
                   ? "error"
                   : undefined
               }
-              style={{ width: "100%" }}
+              className="w-full"
               onChange={(val) => handleFilterTypeChange(val, record.id!)}
             />
           );
@@ -367,25 +374,26 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         render: (text: any, record: ParamItem) => {
           const type = record.type || "string";
           const isFixed = record.name && record.filterType === "fixed";
+          const showRequiredBorder =
+            isFixed && !text && text !== 0 && text !== false;
           const commonProps = {
-            style: {
-              width: "100%",
-              ...(isFixed && !text && text !== 0 && text !== false
-                ? { borderColor: "var(--color-fail)" }
-                : {}),
-            },
+            className: "w-full",
+            ...(showRequiredBorder
+              ? { style: { borderColor: "var(--color-fail)" } }
+              : {}),
           };
 
           if (type === "date") {
             return (
               <DatePicker
+                size="small"
                 disabled={readOnly}
                 showTime
                 value={text ? dayjs(text) : undefined}
                 onChange={(date: Dayjs | null) =>
                   handleDefaultChange(date, record.id!, "date")
                 }
-                style={{ width: "100%" }}
+                className="w-full"
                 format="YYYY-MM-DD HH:mm:ss"
               />
             );
@@ -430,6 +438,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           if (type === "number") {
             return (
               <Input
+                size="small"
                 disabled={readOnly}
                 type="number"
                 value={text ?? ""}
@@ -447,6 +456,7 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
           }
           return (
             <Input
+              size="small"
               disabled={readOnly}
               value={text}
               placeholder={
@@ -470,32 +480,20 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
             key: "action",
             width: 80,
             render: (_: any, record: ParamItem, index: number) => (
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "4px",
-                    justifyContent: "center",
-                  }}
-                >
+                <div className="flex justify-center gap-1">
                   <Button
                     type="text"
                     size="small"
                     icon={<PlusCircleOutlined />}
                     onClick={() => handleAddParamAfter(index)}
-                    style={{
-                      border: "none",
-                      padding: "4px",
-                    }}
+                    className="border-0 p-1"
                   />
                   <Button
                     type="text"
                     size="small"
                     icon={<MinusCircleOutlined />}
                     onClick={() => handleDeleteParam(record.id!)}
-                    style={{
-                      border: "none",
-                      padding: "4px",
-                    }}
+                    className="border-0 p-1"
                   />
                 </div>
             ),
@@ -504,64 +502,28 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
     ];
 
     return (
-      <div style={{ margin: 0 }}>
-        <div
-          style={{
-            marginBottom: "8px",
-            color: "var(--color-text-1)",
-            fontSize: "14px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
+      <div className="m-0">
+        <CustomTable
+          rowKey="id"
+          size="small"
+          columns={columns}
+          dataSource={params}
+          pagination={false}
+          bordered
+          locale={{
+            emptyText: (
+              <CompactEmptyState description={t("common.noData")} />
+            ),
           }}
-        >
-          <span>{t("dataSource.params")}：</span>
-          {readOnly ? null : (
-            <Button
-              type="dashed"
-              size="small"
-              icon={<PlusCircleOutlined />}
-              onClick={() => onChange([...params, createDefaultParam()])}
-            >
-              {t("dataSource.addParam")}
-            </Button>
-          )}
-        </div>
-        {params.length > 0 ? (
-          <CustomTable
-            rowKey="id"
-            columns={columns}
-            dataSource={params}
-            pagination={false}
-          />
-        ) : (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={t("common.noData")}
-          />
-        )}
+        />
         {duplicateNames.length > 0 && (
-          <div
-            style={{
-              color: "var(--color-fail)",
-              fontSize: "12px",
-              marginTop: "2px",
-              padding: "2px 8px",
-            }}
-          >
+          <div className="mt-0.5 px-2 py-0.5 text-xs text-[var(--color-fail)]">
             {t("dataSource.duplicateParamNames")}
             {duplicateNames.join("、")}
           </div>
         )}
         {invalidFilterBindingIds.length > 0 && (
-          <div
-            style={{
-              color: "var(--color-fail)",
-              fontSize: "12px",
-              marginTop: "2px",
-              padding: "2px 8px",
-            }}
-          >
+          <div className="mt-0.5 px-2 py-0.5 text-xs text-[var(--color-fail)]">
             {t("dataSource.invalidFilterParamType")}
           </div>
         )}

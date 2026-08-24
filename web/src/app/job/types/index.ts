@@ -403,8 +403,8 @@ export type JobRecordStatus = 'pending' | 'running' | 'success' | 'failed' | 'ti
 export type JobRecordSource = 'manual' | 'scheduled' | 'api';
 
 export interface ExecutionTarget {
-  id: number;
-  target: number;
+  id: string | number;
+  target: string | number;
   target_key?: string;
   target_name: string;
   target_ip: string;
@@ -412,7 +412,7 @@ export interface ExecutionTarget {
   status_display: string;
   stdout: string;
   stderr: string;
-  exit_code: number;
+  exit_code: number | null;
   started_at: string | null;
   finished_at: string | null;
   error_message: string;

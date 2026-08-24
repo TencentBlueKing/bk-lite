@@ -94,6 +94,32 @@ class RegionService:
         return RegionService._decode_env_rows(RegionService._get_cloud_region_env_rows(cloud_region_id), keys=keys)
 
     @staticmethod
+    def get_cloud_regions_envconfig(cloud_region_ids):
+        region_ids = set(cloud_region_ids)
+        env_rows_by_region = {}
+        missing_region_ids = []
+        for region_id in region_ids:
+            cached_env_rows = cache.get(build_sidecar_env_cache_key(region_id))
+            if cached_env_rows is None:
+                missing_region_ids.append(region_id)
+            else:
+                env_rows_by_region[region_id] = cached_env_rows
+
+        if missing_region_ids:
+            for region_id in missing_region_ids:
+                env_rows_by_region[region_id] = []
+            for env_row in SidecarEnv.objects.filter(cloud_region_id__in=missing_region_ids).values("cloud_region_id", "key", "value", "type"):
+                env_rows_by_region[env_row["cloud_region_id"]].append({key: env_row[key] for key in ("key", "value", "type")})
+            for region_id in missing_region_ids:
+                cache.set(
+                    build_sidecar_env_cache_key(region_id),
+                    env_rows_by_region[region_id],
+                    ControllerConstants.E_CACHE_TIMEOUT,
+                )
+
+        return {region_id: RegionService._decode_env_rows(env_rows_by_region[region_id]) for region_id in region_ids}
+
+    @staticmethod
     def get_deploy_script(data: dict):
         """获取云区域代理服务部署脚本，调用 webhookd /infra/proxy 接口"""
         try:
@@ -158,6 +184,8 @@ class RegionService:
         node_id = uuid.uuid4().hex
         api_token = generate_node_token(node_id, proxy_ip, "system")
         redis_password = uuid.uuid4().hex[:12]
+        apm_nats_username = f"apm_region_{cloud_region_id}"
+        apm_nats_password = uuid.uuid4().hex
 
         region_executor_instance_id = RegionService.get_region_service_instance_id(
             cloud_region.name,
@@ -177,6 +205,8 @@ class RegionService:
             "proxy_ip": proxy_ip,
             "nats_monitor_username": nats_monitor_username,
             "nats_monitor_password": nats_monitor_password,
+            "apm_nats_username": apm_nats_username,
+            "apm_nats_password": apm_nats_password,
             "traefik_web_port": env_vars.get("TRAEFIK_WEB_PORT", "443"),
         }
 

@@ -12,6 +12,7 @@ import CustomBreadcrumb from '@/app/alarm/components/customBreadcrumb';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import GroupTreeSelect from '@/components/group-tree-select';
 import RefreshIconButton from '@/components/refresh-icon-button';
+import SecretValueDisplay from '@/components/secret-value-display';
 import {
   CheckCircleFilled,
   CopyOutlined,
@@ -28,7 +29,8 @@ import { AlertSourceIntegrationGuide, K8sMeta, SourceItem, TeamSecretItem } from
 import { useAlarmApi } from '@/app/alarm/api/alarms';
 import { EventItem } from '@/app/alarm/types/alarms';
 import { useSourceApi } from '@/app/alarm/api/integration';
-import { Alert, Button, Empty, Descriptions, message, Select, Tabs, DatePicker, Spin } from 'antd';
+import { Alert, Button, Descriptions, message, Select, Tabs, DatePicker, Spin } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 
 const IntegrationDetail: FC = () => {
   const { t } = useTranslation();
@@ -585,7 +587,7 @@ const IntegrationDetail: FC = () => {
                   </div>
                 </>
               ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('common.noData')} />
+                <CompactEmptyState description={t('common.noData')} />
               )}
             </div>
           </div>
@@ -719,17 +721,10 @@ const IntegrationDetail: FC = () => {
         {showSecretRow ? (
           <Descriptions bordered size="small" column={1} labelStyle={{ width: 120 }}>
             <Descriptions.Item label={t('integration.secret')}>
-              {selectedGuideSecret ? (
-                <>
-                  <span className="font-mono">{'******************'}</span>
-                  <CopyOutlined
-                    className="ml-[10px] cursor-pointer hover:text-blue-500"
-                    onClick={() => copySecret(selectedGuideSecret)}
-                  />
-                </>
-              ) : (
-                <span className="text-[var(--color-text-3)]">{placeholder}</span>
-              )}
+              <SecretValueDisplay
+                value={selectedGuideSecret}
+                placeholder={<span className="text-[var(--color-text-3)]">{placeholder}</span>}
+              />
             </Descriptions.Item>
           </Descriptions>
         ) : null}
@@ -754,17 +749,10 @@ const IntegrationDetail: FC = () => {
 
         <Descriptions bordered size="small" column={1} labelStyle={{ width: 120 }}>
           <Descriptions.Item label={t('integration.secret')}>
-            {selectedGuideSecret ? (
-              <>
-                <span className="font-mono">{'******************'}</span>
-                <CopyOutlined
-                  className="ml-[10px] cursor-pointer hover:text-blue-500"
-                  onClick={() => copySecret(selectedGuideSecret)}
-                />
-              </>
-            ) : (
-              <span className="text-[var(--color-text-3)]">{placeholder}</span>
-            )}
+            <SecretValueDisplay
+              value={selectedGuideSecret}
+              placeholder={<span className="text-[var(--color-text-3)]">{placeholder}</span>}
+            />
           </Descriptions.Item>
           <Descriptions.Item label="CURL">
             <div className="relative">
@@ -861,7 +849,7 @@ const IntegrationDetail: FC = () => {
   );
 
   if (!sourceItemId) {
-    return <Empty description={t('common.noData')} />;
+    return <CompactEmptyState description={t('common.noData')} />;
   }
 
   const renderEventFilters = () => (
@@ -897,7 +885,7 @@ const IntegrationDetail: FC = () => {
       <Spin spinning={loading}>
         {!source ? (
           <div className="mt-[24vh]">
-            {!loading && <Empty description={t('common.noData')} />}
+            {!loading && <CompactEmptyState description={t('common.noData')} />}
           </div>
         ) : (
           <>

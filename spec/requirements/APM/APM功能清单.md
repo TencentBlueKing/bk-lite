@@ -1,15 +1,15 @@
 | 功能模块 | 功能项 | 功能说明 |
 | --- | --- | --- |
-| 集成 | 集成菜单结构 | 集成菜单下设添加接入与接入列表两个二级页;菜单 operation(`View` / `Operate`)在角色系统中声明。添加接入创建受控接入源并签发只显示一次的凭证,接入列表按运行实例呈现。 |
-| 集成 | 添加接入 / 接入方式总览 | 按 SDK / OTC / eBPF / K8s 四组横向分块;SDK 组下分 Node.js、Java、Python、.NET、Go 五张语言卡,每张卡注明接入方式描述;OTC 组下展示"OTel Collector(链路)"卡;eBPF 组下展示"OBI 自动注入"卡(标记"低侵入");K8s 组下展示"OTel Operator 注册注入"卡;每张卡为入口,点击跳到对应接入详情页。 |
+| 集成 | 契约状态 | 本清单是产品能力盘点，不是实现验收入口；集成能力以 `specs/changes/apm-nats-vt-pipeline/spec.md`、ADR 0006/0008 和当前代码为准。旧接入源、Bearer Token 与 APM Gateway 方案已撤销。 |
+| 集成 | 集成菜单结构 | 集成菜单下设添加接入、应用管理和接入列表；添加接入即时生成无状态配置，不创建接入源或凭据；接入列表按遥测自动发现的运行实例呈现。 |
+| 集成 | 添加接入 / 接入方式总览 | SDK 组当前开放 Node.js、Java、Python 和 Go；.NET、自建 OTel Collector、OBI 与 OTel Operator 显示为未开放。Go 明确为手动 SDK，其余已开放语言提供自动探针入口。 |
 | 集成 | 接入详情页布局 | 采用"① 上报端点 + ② 接入配置"两步垂直布局,两段同时可见、自上而下排布,**不使用 Tabs 切换**;**不展示**接入自检(传输与准入 / 数据落库 / 最近活跃 / 采样保留 4 项) / Trace 接入任务路径 5 步 / "接通后先核对" / "跨服务不断链"双栏静态提示 / 排错说明(Markdown 文档);自检与排错由"服务 / 探索"菜单基于真实数据承载。 |
-| 集成 | ① 上报端点 | 云区域单选 + 组织多选 + 受控接入源名称 + 只读 OTLP 端点;提交后创建接入源并签发只显示一次的 Bearer Token。组织是新实例的默认权限,不参与遥测身份。 |
-| 集成 | 端点 URL 映射 | SDK、Agent 与自建 Collector 统一进入 APM Gateway 的 OTLP `/v1/traces`;内部同时支持 4317/4318。`/telegraf/api` 保留 Influx 接收用途,不得承载 OTLP。 |
-| 集成 | ② 接入配置 / SDK 5 语言 | SDK 类统一提供自动探针与 Docker 片段;代码包含 OTLP 端点、协议、传播器、`service.name`、`service.namespace`、环境、版本、按运行环境动态生成的 `service.instance.id` 与 Authorization Header。 |
-| 集成 | ② 接入配置 / OTel Collector | OTC 提供 exporter YAML,包含 traces endpoint 和 Authorization Header;凭证只来自刚创建或刚轮换接入源的一次性成功态。 |
-| 集成 | ② 接入配置 / eBPF + K8s | eBPF / K8s 不切换两段:eBPF 形态给 `kubectl apply -f obc.yaml` + `OTEL_EXPORTER_OTLP_ENDPOINT` 等环境变量 + `obi --config ./obi-config.yaml` 启动;K8s 形态给 `helm install opentelemetry-operator` + `Instrumentation` CR YAML(`exporter.otlp.endpoint: https://otlp.bklite.cloud` + `propagators: [tracecontext, baggage]`)+ `Deployment` 注解 `instrumentation.opentelemetry.io/inject-<lang>: "true"`。 |
-| 集成 | 接入列表 / 列表字段 | 一行一个 `service.instance.id`;列为服务 / 应用(namespace)/ 环境 / 实例 ID / 接入方式 / 组织 / 接入时间 / 最近上报 / 状态 / 操作。服务链接进入聚合详情,实例查看进入实例明细。 |
-| 集成 | 接入列表 / 顶部工具栏 | 服务名搜索框(模糊匹配 `service.name` 与 `service.namespace`,带清除按钮)+ 接入方式 Select(默认"全部",含 SDK / OTC / eBPF / K8s 与 SDK 子项 Node.js / Java / Python / .NET / Go)+ 环境 Select(默认"全部环境",与"环境"列同源,改了 Select 后"环境"列同步刷新)+ 时间 Radio(实心 `15m` / `1h` / `4h` / `1d` / `7d`,默认 `7d`,影响"最近上报"列与"状态"判定);**不展示**状态 chips(活跃 / 静默 / 失联 / 全部)/ tag chips / 未归类应用过滤。 |
+| 集成 | ① 上报端点 | 选择有权访问的 APM 应用与云区域；Server 从 NodeMgmt 受信配置解析区域代理地址并只读返回 `http://<receiver_host>:4318/v1/traces`。客户端不能提交 endpoint，不创建 Token。 |
+| 集成 | 端点 URL 映射 | SDK/Agent 通过受信区域内网访问代理 4318，再进入区域 Collector；`/telegraf/api` 只属于 Monitor，4317 仅作手工兼容。公网和其他不受信网络接入当前不支持。 |
+| 集成 | ② 接入配置 / SDK | Node.js、Java、Python 提供 Host、Docker 与 Kubernetes 配置；Kubernetes 使用 Downward API Pod UID。Go 提供完整手动 SDK Provider 示例，不宣称零代码自动探针。所有配置包含标准 OTEL 属性和动态 `service.instance.id`，不含 Authorization Header。 |
+| 集成 | ② 接入配置 / 后续方式 | .NET 自动探针、自建 OTel Collector、OBI 和 OTel Operator 暂未开放；未开放卡片不进入伪配置流程。 |
+| 集成 | 接入列表 / 列表字段 | 一行一个 `service.instance.id`；列为服务 / 应用(namespace) / 环境 / 实例 ID / 组织 / 首次发现 / 最近上报 / 状态 / 操作。服务链接进入聚合详情，实例查看进入实例明细。 |
+| 集成 | 接入列表 / 顶部工具栏 | 通过服务端有界分页按应用、环境、状态、时间和关键字筛选；默认只请求活跃实例，归档和历史由用户显式选择，不在浏览器一次加载全部实例。 |
 | 集成 | 接入列表 / 状态判定与接入时间 | 实例活跃 = 近 15 分钟有 Span;静默 = 无活跃且不足 7 天;已归档 = 静默至少 7 天或手动归档。接入时间和最近上报按实例键计算,不复用服务状态。 |
 | 集成 | 接入列表 / 行操作 | 支持查看实例明细和按 Operate 权限调整实例组织、归档/解档;服务链接另行进入逻辑服务详情。实例权限调整不改变服务全局指标。 |
 | 集成 | 接入列表 / 跟服务目录数据一致性 | 接入列表展示运行实例,服务目录展示按 `service.namespace + service.name` 聚合的逻辑服务,二者不是相同数据行集合。服务详情的实例分布可下钻到相同实例记录。 |

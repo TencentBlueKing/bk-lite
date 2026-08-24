@@ -4,11 +4,28 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-PROTECTED_FIELDS = {"instance_id", "source_type", "timestamp", "_msg", "log_message", "raw_message", "trap_message"}
+from apps.log.services.log_extractor.preview_runtime import (
+    RuleExecutionBusyError,
+    RuleExecutionLimitError,
+    RuleExecutionTimeoutError,
+    execute_regex_preview,
+)
+
+PROTECTED_FIELDS = {
+    "instance_id",
+    "source_type",
+    "timestamp",
+    "collect_timestamp",
+    "_msg",
+    "log_message",
+    "raw_message",
+    "trap_message",
+}
 EXTRACTOR_TYPES = {"copy", "split", "kv", "regex", "regex_replace", "json"}
 CONDITION_OPERATORS = {"==", "!=", "contains", "!contains", "startswith", "endswith", "exists", "!exists"}
 _SIMPLE_SEGMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 _MISSING = object()
+_REGEX_EXTRACTOR_TYPES = {"regex", "regex_replace"}
 
 
 class RuleValidationError(ValueError):
@@ -426,7 +443,7 @@ def _execute_action(event: dict[str, Any], rule: NormalizedRule, source: Any) ->
     return True
 
 
-def execute_rules(event: dict[str, Any], rules: list[NormalizedRule]) -> ExecutionResult:
+def _execute_rules_inline(event: dict[str, Any], rules: list[NormalizedRule]) -> ExecutionResult:
     current = copy.deepcopy(event)
     results: list[RuleExecutionResult] = []
     for rule in rules:
@@ -450,3 +467,9 @@ def execute_rules(event: dict[str, Any], rules: list[NormalizedRule]) -> Executi
             _delete(current, rule.source_path)
         results.append(RuleExecutionResult("success"))
     return ExecutionResult(event=current, results=results)
+
+
+def execute_rules(event: dict[str, Any], rules: list[NormalizedRule], *, timeout_seconds: float | None = None) -> ExecutionResult:
+    if not any(rule.extractor_type in _REGEX_EXTRACTOR_TYPES for rule in rules):
+        return _execute_rules_inline(event, rules)
+    return execute_regex_preview(event, rules, timeout_seconds=timeout_seconds)

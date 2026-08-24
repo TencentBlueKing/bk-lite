@@ -1,11 +1,13 @@
+'use client';
+
 import { Tooltip } from 'antd';
 import {
   deriveHealth,
   HEALTH_DOT_CLASS,
-  HEALTH_LABEL,
   type HealthLevel,
 } from '@/app/apm/components/metric-format';
 import type { CatalogStatus } from '@/app/apm/types';
+import { useTranslation } from '@/utils/i18n';
 
 interface HealthDotProps {
   level?: HealthLevel;
@@ -20,11 +22,26 @@ export default function HealthDot({
   level,
   status,
   errorRate = null,
-  showLabel = false,
+  showLabel = true,
   className = '',
 }: HealthDotProps) {
+  const { t } = useTranslation();
   const resolved = level ?? (status ? deriveHealth(status, errorRate) : 5);
-  const label = HEALTH_LABEL[resolved];
+  const healthKeys: Record<HealthLevel, string> = {
+    1: 'apm.health.critical',
+    2: 'apm.health.warning',
+    3: 'apm.health.watch',
+    4: 'apm.health.good',
+    5: 'apm.health.healthy',
+  };
+  const healthFallback: Record<HealthLevel, string> = {
+    1: '严重',
+    2: '警告',
+    3: '关注',
+    4: '良好',
+    5: '健康',
+  };
+  const label = t(healthKeys[resolved], healthFallback[resolved]);
   const dot = (
     <span
       aria-hidden={showLabel ? true : undefined}
@@ -45,10 +62,9 @@ export default function HealthDot({
     <span
       className={`inline-flex items-center gap-1.5 ${className}`}
       aria-label={label}
-      title={label}
     >
       {dot}
-      <span className="text-[11px] leading-none text-[var(--color-text-3)]">{label}</span>
+      <span className="text-xs leading-none text-[var(--color-text-3)]">{label}</span>
     </span>
   );
 }

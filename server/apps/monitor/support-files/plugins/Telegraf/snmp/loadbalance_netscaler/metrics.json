@@ -37,11 +37,16 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "device_cpu_usage{instance_type='loadbalance', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],

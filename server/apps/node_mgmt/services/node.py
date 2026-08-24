@@ -1,3 +1,4 @@
+import ipaddress
 import os
 from datetime import datetime, timedelta, timezone
 
@@ -84,6 +85,49 @@ class NodeService:
         return permission, scope
 
     @staticmethod
+    def _iter_configuration_ids(raw_configuration_id):
+        """sidecar 状态里 configuration_id 可能缺失、是标量，或是历史遗留的列表。"""
+        if raw_configuration_id in (None, ""):
+            return
+        if isinstance(raw_configuration_id, (list, tuple, set)):
+            for item in raw_configuration_id:
+                if item not in (None, ""):
+                    yield item
+            return
+        yield raw_configuration_id
+
+    @staticmethod
+    def _build_node_assignment_map(node_ids):
+        """按节点聚合服务端绑定的采集器配置，作为 configuration_* 的权威来源。"""
+        assignment_map = {}
+        if not node_ids:
+            return assignment_map
+
+        rows = CollectorConfiguration.objects.filter(nodes__id__in=node_ids).values(
+            "id",
+            "name",
+            "collector_id",
+            "nodes__id",
+        )
+        for row in rows:
+            node_id = row["nodes__id"]
+            collector_id = row["collector_id"]
+            assignment_map.setdefault(node_id, {}).setdefault(collector_id, []).append({"id": row["id"], "name": row["name"]})
+        return assignment_map
+
+    @staticmethod
+    def _apply_configuration_fields(collector, bound_configs, configuration_dict):
+        """优先用服务端绑定补全配置字段；status 里的 configuration_id 仅作回退。"""
+        if bound_configs:
+            collector["configuration_id"] = bound_configs[0]["id"]
+            collector["configuration_name"] = ", ".join(item["name"] for item in bound_configs if item.get("name")) or None
+            return
+
+        config_ids = list(NodeService._iter_configuration_ids(collector.get("configuration_id")))
+        config_names = [configuration_dict[config_id].name for config_id in config_ids if config_id in configuration_dict]
+        collector["configuration_name"] = ", ".join(config_names) if config_names else None
+
+    @staticmethod
     def process_node_data(node_data):
         """处理节点数据列表，并补充每个节点的采集器名称和采集器配置名称"""
         collector_ids = set()
@@ -94,8 +138,10 @@ class NodeService:
             if "collectors" not in node["status"]:
                 continue
             for collector in node["status"]["collectors"]:
-                collector_ids.add(collector["collector_id"])
-                configuration_ids.add(collector["configuration_id"])
+                collector_id = collector.get("collector_id")
+                if collector_id not in (None, ""):
+                    collector_ids.add(collector_id)
+                configuration_ids.update(NodeService._iter_configuration_ids(collector.get("configuration_id")))
 
         # 先查询安装状态，收集安装记录中涉及的 collector_id
         node_ids = [node["id"] for node in node_data]
@@ -116,7 +162,13 @@ class NodeService:
         collectors = Collector.objects.filter(id__in=collector_ids) if collector_ids else []
         collector_dict = {collector.id: collector for collector in collectors}
 
-        configurations = CollectorConfiguration.objects.filter(id__in=configuration_ids)
+        # 服务端绑定是 configuration_* 的权威来源；status 字段仅作回退
+        node_assignment_map = NodeService._build_node_assignment_map(node_ids)
+        for node_assignments in node_assignment_map.values():
+            for bound_configs in node_assignments.values():
+                configuration_ids.update(item["id"] for item in bound_configs)
+
+        configurations = CollectorConfiguration.objects.filter(id__in=configuration_ids) if configuration_ids else []
         configuration_dict = {config.id: config for config in configurations}
 
         # 处理节点数据
@@ -133,13 +185,19 @@ class NodeService:
             if "collectors" not in node["status"]:
                 continue
 
+            node_assignments = node_assignment_map.get(node["id"], {})
+
             # 处理采集器状态：忽略不支持空跑的采集器的特定错误，将其状态改为正常
             for collector in node["status"]["collectors"]:
-                collector_obj = collector_dict.get(collector["collector_id"])
+                collector_id = collector.get("collector_id")
+                collector_obj = collector_dict.get(collector_id)
                 collector["collector_name"] = collector_obj.name if collector_obj else None
 
-                configuration_obj = configuration_dict.get(collector["configuration_id"])
-                collector["configuration_name"] = configuration_obj.name if configuration_obj else None
+                NodeService._apply_configuration_fields(
+                    collector,
+                    node_assignments.get(collector_id, []),
+                    configuration_dict,
+                )
 
                 # 判断是否应该将错误状态改为正常
                 if collector["status"] == 2 and collector_obj:  # status=2 表示失败
@@ -442,6 +500,65 @@ class NodeService:
         serializer = NodeSerializer(nodes, many=True)
         node_data = serializer.data
         return dict(count=count, nodes=node_data)
+
+    @staticmethod
+    def get_nodes_by_ips(
+        ips,
+        *,
+        organization_ids=None,
+        cloud_region_id=None,
+        permission_data=None,
+        skip_permission=False,
+    ):
+        """按 IP 集合精确查询 Job 执行所需的最小节点信息。"""
+        if not isinstance(ips, (list, tuple, set)):
+            raise BaseAppException("ips 必须是 IP 列表")
+        if len(ips) > NodeService.NODE_LIST_PAGE_SIZE_MAX:
+            raise BaseAppException(f"单次最多查询 {NodeService.NODE_LIST_PAGE_SIZE_MAX} 个 IP")
+        normalized_ips = set()
+        for ip in ips:
+            if not isinstance(ip, str) or not ip.strip() or len(ip) > 64:
+                raise BaseAppException("ips 只能包含非空 IP 字符串")
+            try:
+                normalized_ips.add(str(ipaddress.ip_address(ip.strip())))
+            except ValueError as error:
+                raise BaseAppException(f"非法 IP: {ip}") from error
+        normalized_ips = sorted(normalized_ips)
+        if not normalized_ips:
+            return {"nodes": []}
+
+        permission_data = permission_data or {}
+        if not isinstance(permission_data, dict):
+            raise BaseAppException("permission_data 参数非法")
+        organization_ids = organization_ids or []
+        if organization_ids:
+            organization_ids = list(_normalize_organization_ids(organization_ids))
+        if permission_data:
+            permission, scope = NodeService._build_scoped_permission(permission_data)
+            if scope is None:
+                qs = Node.objects.none()
+            else:
+                qs = (
+                    permission_filter(
+                        Node,
+                        permission,
+                        team_key="nodeorganization__organization__in",
+                        id_key="id__in",
+                    )
+                    .filter(nodeorganization__organization__in=scope.data_team_ids)
+                    .distinct()
+                )
+        elif skip_permission is True or organization_ids:
+            qs = Node.objects.all()
+        else:
+            qs = Node.objects.none()
+
+        if organization_ids:
+            qs = qs.filter(nodeorganization__organization__in=organization_ids).distinct()
+        if cloud_region_id:
+            qs = qs.filter(cloud_region_id=cloud_region_id)
+        nodes = list(qs.filter(ip__in=normalized_ips).order_by("ip", "id").values("id", "ip", "operating_system"))
+        return {"nodes": nodes}
 
     @staticmethod
     def get_nodes_with_child_config(node_ids, collector, collect_type):

@@ -2,27 +2,33 @@
 
 不依赖数据库 / 网络 / MinIO，全部使用普通 dict 输入与假后端桩。
 """
-import yaml
 import pytest
+import yaml
 
-from apps.opspilot.services.skill_package.materializer import (
-    materialize_skill_package,
-    render_skill_md,
-    sanitize_skill_name,
-)
+from apps.opspilot.services.skill_package.materializer import materialize_skill_package, render_skill_md, sanitize_skill_name
 
 pytestmark = pytest.mark.unit
 
 
 class FakeBackend:
-    """记录所有 write 调用的假后端，模拟 deepagents BackendProtocol.write。"""
+    """记录所有 write / upload_files / chmod 调用的假后端。"""
 
     def __init__(self):
         self.writes = {}
+        self.uploads = {}
+        self.chmods = {}
 
     def write(self, file_path, content):
         self.writes[file_path] = content
         return {"file_path": file_path}
+
+    def upload_files(self, files):
+        for path, content in files:
+            self.uploads[path] = content
+            self.writes[path] = content
+
+    def chmod(self, file_path, mode):
+        self.chmods[file_path] = mode
 
 
 def _split_frontmatter(skill_md):
@@ -56,7 +62,7 @@ def test_sanitize_truncates_to_64_chars():
 
 
 def test_sanitize_truncation_does_not_leave_trailing_hyphen():
-    raw = ("ab-" * 30)  # 长度超过 64，第 64 位可能落在 '-' 上
+    raw = "ab-" * 30  # 长度超过 64，第 64 位可能落在 '-' 上
     out = sanitize_skill_name(raw)
     assert len(out) <= 64
     assert not out.endswith("-")
@@ -227,3 +233,62 @@ def test_materialize_returns_all_written_paths():
     }
     written = materialize_skill_package(pkg, backend)
     assert set(written) == set(backend.writes.keys())
+
+
+def test_materialize_streaming_copies_bin_and_keeps_skill_md_rendered(tmp_path):
+    extracted = tmp_path / "extracted"
+    (extracted / "bin").mkdir(parents=True)
+    (extracted / "scripts").mkdir()
+    (extracted / "SKILL.md").write_text("# raw extracted, should not be copied\n", encoding="utf-8")
+    (extracted / "skill.yaml").write_text("id: demo\n", encoding="utf-8")
+    (extracted / "bin" / "tool.sh").write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+    (extracted / "scripts" / "run.py").write_text("print(1)\n", encoding="utf-8")
+
+    backend = FakeBackend()
+    pkg = {
+        "package_id": "demo",
+        "skill_markdown": "# rendered body",
+        "extracted_root": extracted,
+    }
+    materialize_skill_package(pkg, backend)
+
+    skill_md = backend.writes["/skills/demo/SKILL.md"]
+    assert skill_md.startswith("---\n")
+    assert "# rendered body" in skill_md
+    assert "raw extracted" not in skill_md
+    assert "/skills/demo/skill.yaml" not in backend.writes
+    assert backend.writes["/skills/demo/bin/tool.sh"] == "#!/bin/sh\necho hi\n"
+    assert backend.writes["/skills/demo/scripts/run.py"] == "print(1)\n"
+
+
+def test_materialize_streaming_uploads_binary_bytes(tmp_path):
+    extracted = tmp_path / "extracted"
+    (extracted / "assets").mkdir(parents=True)
+    payload = bytes(range(256))
+    (extracted / "assets" / "blob.bin").write_bytes(payload)
+
+    backend = FakeBackend()
+    materialize_skill_package(
+        {"package_id": "demo", "skill_markdown": "# body", "extracted_root": extracted},
+        backend,
+    )
+    assert backend.uploads["/skills/demo/assets/blob.bin"] == payload
+    assert backend.writes["/skills/demo/assets/blob.bin"] == payload
+
+
+def test_materialize_preserves_executable_bit(tmp_path, monkeypatch):
+    extracted = tmp_path / "extracted"
+    (extracted / "bin").mkdir(parents=True)
+    script = extracted / "bin" / "run.sh"
+    script.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_package.materializer._is_executable",
+        lambda path: path.name == "run.sh",
+    )
+    backend = FakeBackend()
+    materialize_skill_package(
+        {"package_id": "demo", "skill_markdown": "# body", "extracted_root": extracted},
+        backend,
+    )
+    assert backend.chmods["/skills/demo/bin/run.sh"] == 0o755

@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   filterNetworkDeviceModels,
   isNetworkModel,
@@ -10,7 +13,17 @@ import {
   relationshipIdFromEdgeId,
   nextFloatingPosition,
   extractOccupiedPortNames,
+  CONNECT_MODEL_ASST_ID,
 } from '../src/app/cmdb/(pages)/assetData/detail/relationships/networkTopo/topoEditingUtils';
+import {
+  NETWORK_TOPO_DEFAULT_CENTER_HOP,
+  NETWORK_TOPO_HOP_OPTIONS,
+  parseNetworkTopoHop,
+} from '../src/app/cmdb/(pages)/assetData/detail/relationships/networkTopo/hopDepth';
+
+const PORT_A = '11111111-1111-4111-8111-111111111111';
+const PORT_B = '22222222-2222-4222-8222-222222222222';
+const DEVICE = '33333333-3333-4333-8333-333333333333';
 
 // filterNetworkDeviceModels
 assert.deepEqual(
@@ -31,32 +44,32 @@ assert.deepEqual(
     [
       {
         model_asst_id: 'interface_belong_switch',
-        inst_list: [{ _id: 11, inst_name: 'sw1-GE0/0/1' }],
+        inst_list: [{ inst_uuid: PORT_A, inst_name: 'sw1-GE0/0/1' }],
       },
-      { model_asst_id: 'switch_run_router', inst_list: [{ _id: 99, inst_name: 'x' }] },
+      { model_asst_id: 'switch_run_router', inst_list: [{ inst_uuid: 'x', inst_name: 'x' }] },
     ],
     'switch'
   ),
-  [{ id: '11', name: 'sw1-GE0/0/1' }]
+  [{ id: PORT_A, name: 'sw1-GE0/0/1' }]
 );
 assert.deepEqual(extractDevicePorts([], 'switch'), []);
 
 // payloads
-assert.deepEqual(buildConnectPayload('11', '22'), {
+assert.deepEqual(buildConnectPayload(PORT_A, PORT_B), {
   model_asst_id: 'interface_connect_interface',
   src_model_id: 'interface',
   dst_model_id: 'interface',
   asst_id: 'connect',
-  src_inst_id: 11,
-  dst_inst_id: 22,
+  src_inst_uuid: PORT_A,
+  dst_inst_uuid: PORT_B,
 });
-assert.deepEqual(buildBelongPayload('11', '5', 'switch'), {
+assert.deepEqual(buildBelongPayload(PORT_A, DEVICE, 'switch'), {
   model_asst_id: 'interface_belong_switch',
   src_model_id: 'interface',
   dst_model_id: 'switch',
   asst_id: 'belong',
-  src_inst_id: 11,
-  dst_inst_id: 5,
+  src_inst_uuid: PORT_A,
+  dst_inst_uuid: DEVICE,
 });
 
 // validateConnection
@@ -79,14 +92,18 @@ assert.equal(
 // buildLinkFromConnection
 assert.deepEqual(
   buildLinkFromConnection({
-    relationshipId: '77',
+    srcInstUuid: PORT_A,
+    dstInstUuid: PORT_B,
     sourceDevice: 'a',
     targetDevice: 'b',
     sourcePortName: 'sw1-GE0/0/1',
     targetPortName: 'r1-Eth1',
   }),
   {
-    relationship_id: '77',
+    relationship_id: `${PORT_A}:${PORT_B}:${CONNECT_MODEL_ASST_ID}`,
+    src_inst_uuid: PORT_A,
+    dst_inst_uuid: PORT_B,
+    model_asst_id: CONNECT_MODEL_ASST_ID,
     source_device: 'a',
     source_inst_name: 'sw1-GE0/0/1',
     target_device: 'b',
@@ -118,5 +135,49 @@ assert.equal(relationshipIdFromEdgeId('123'), '123');
 const p0 = nextFloatingPosition(0);
 assert.ok(Math.abs(p0.x - 320) < 1e-6 && Math.abs(p0.y) < 1e-6);
 assert.notDeepEqual(nextFloatingPosition(1), nextFloatingPosition(0));
+
+// Visual contract: CMDB network topo uses icon-centric shape + plain port labels
+// (aligned with ops-analysis network status topology).
+{
+  const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const visualSrc = fs.readFileSync(
+    path.join(webRoot, 'src/app/cmdb/components/networkTopology/x6Visual.ts'),
+    'utf8'
+  );
+  const topoSrc = fs.readFileSync(
+    path.join(
+      webRoot,
+      'src/app/cmdb/(pages)/assetData/detail/relationships/networkTopo.tsx'
+    ),
+    'utf8'
+  );
+  assert.match(visualSrc, /shape:\s*'topo-network-device-v3'/);
+  assert.match(visualSrc, /iconSize:\s*72/);
+  assert.match(visualSrc, /activeGlow/);
+  const portFn = visualSrc.slice(visualSrc.indexOf('buildNetworkTopoPortLabel'));
+  assert.equal(/tagName:\s*'rect',\s*selector:\s*'bg'/.test(portFn), false);
+  assert.match(topoSrc, /NETWORK_TOPO_VISUAL\.shape/);
+  assert.match(topoSrc, /activeGlow|iconFilter/);
+  assert.match(topoSrc, /selector:\s*'edgeHull'/);
+  assert.match(topoSrc, /NETWORK_TOPO_DEFAULT_CENTER_HOP/);
+  assert.match(topoSrc, /handleContextExpand/);
+  assert.match(topoSrc, /setSelectedNodeId\(id\)/);
+  assert.match(topoSrc, /HopDepthControl/);
+  assert.match(topoSrc, /networkTopoExpandOne/);
+  assert.doesNotMatch(topoSrc, /expandedRef\.current\.has\(id\)/);
+
+  const zhSrc = fs.readFileSync(path.join(webRoot, 'src/app/cmdb/locales/zh.json'), 'utf8');
+  assert.match(zhSrc, /"networkTopoHopLabel": "展开跳数"/);
+  assert.match(zhSrc, /"networkTopoExpandOne": "展开下一跳"/);
+  const enSrc = fs.readFileSync(path.join(webRoot, 'src/app/cmdb/locales/en.json'), 'utf8');
+  assert.match(enSrc, /"networkTopoHopLabel": "Hop depth"/);
+}
+
+assert.deepEqual([...NETWORK_TOPO_HOP_OPTIONS], [1, 2, 3]);
+assert.equal(NETWORK_TOPO_DEFAULT_CENTER_HOP, 1);
+assert.equal(parseNetworkTopoHop(2), 2);
+assert.equal(parseNetworkTopoHop('3'), 3);
+assert.equal(parseNetworkTopoHop(9), 1);
+assert.equal(parseNetworkTopoHop('nope'), 1);
 
 console.log('cmdb-network-topo-editing-test passed');

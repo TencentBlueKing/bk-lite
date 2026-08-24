@@ -46,6 +46,7 @@ export interface ApplicationResourceInstanceColumn {
 
 export interface ApplicationResourceInstanceGroup {
   model_id: string;
+  model_name?: string;
   columns: string[];
   column_defs: ApplicationResourceInstanceColumn[];
   count: number;

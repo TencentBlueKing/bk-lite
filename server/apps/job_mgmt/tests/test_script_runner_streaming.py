@@ -20,15 +20,21 @@ def test_ssh_branch_calls_execute_ssh_stream_with_topic():
     fake_exec = MagicMock()
     fake_exec.execute_ssh_stream.return_value = {"stdout": "hi", "stderr": "", "exit_code": 0}
 
-    with patch("apps.job_mgmt.services.script_execution_runner.Executor", return_value=fake_exec), \
-         patch.object(ScriptExecutionRunner, "is_cancelled", return_value=False), \
-         patch.object(ScriptExecutionRunner, "get_ssh_credentials", return_value={
-             "node_id": "region-1", "host": "1.2.3.4", "username": "root",
-             "password": "p", "private_key": None, "port": 22,
-         }):
-        result = runner.execute_script_on_target(
-            target, TargetSource.MANUAL, "echo hi", ScriptType.SHELL, 60, 99
-        )
+    with patch("apps.job_mgmt.services.script_execution_runner.Executor", return_value=fake_exec), patch.object(
+        ScriptExecutionRunner, "is_cancelled", return_value=False
+    ), patch.object(
+        ScriptExecutionRunner,
+        "get_ssh_credentials",
+        return_value={
+            "node_id": "region-1",
+            "host": "1.2.3.4",
+            "username": "root",
+            "password": "p",
+            "private_key": None,
+            "port": 22,
+        },
+    ):
+        result = runner.execute_script_on_target(target, TargetSource.MANUAL, "echo hi", ScriptType.SHELL, 60, 99)
 
     assert fake_exec.execute_ssh_stream.called
     kwargs = fake_exec.execute_ssh_stream.call_args.kwargs
@@ -45,8 +51,9 @@ def test_crlf_script_normalized_to_lf_for_shell():
     fake_exec.execute_local_stream.return_value = {"stdout": "", "stderr": "", "exit_code": 0}
     crlf = "#!/bin/bash\r\necho hi\r\nfor i in 1 2; do echo $i; done\r\n"
 
-    with patch("apps.job_mgmt.services.script_execution_runner.Executor", return_value=fake_exec), \
-         patch.object(ScriptExecutionRunner, "is_cancelled", return_value=False):
+    with patch("apps.job_mgmt.services.script_execution_runner.Executor", return_value=fake_exec), patch.object(
+        ScriptExecutionRunner, "is_cancelled", return_value=False
+    ):
         runner.execute_script_on_target(target, TargetSource.NODE_MGMT, crlf, ScriptType.SHELL, 60, 99)
 
     sent = fake_exec.execute_local_stream.call_args.args[0]
@@ -61,8 +68,9 @@ def test_crlf_preserved_for_windows_bat():
     fake_exec = MagicMock()
     fake_exec.execute_local_stream.return_value = {"stdout": "", "stderr": "", "exit_code": 0}
 
-    with patch("apps.job_mgmt.services.script_execution_runner.Executor", return_value=fake_exec), \
-         patch.object(ScriptExecutionRunner, "is_cancelled", return_value=False):
+    with patch("apps.job_mgmt.services.script_execution_runner.Executor", return_value=fake_exec), patch.object(
+        ScriptExecutionRunner, "is_cancelled", return_value=False
+    ):
         runner.execute_script_on_target(target, TargetSource.NODE_MGMT, "echo hi\r\n", ScriptType.BAT, 60, 99)
 
     sent = fake_exec.execute_local_stream.call_args.args[0]
@@ -84,17 +92,18 @@ def test_crlf_normalized_for_ansible_shell_path():
     fake_exec = MagicMock()
     crlf = "#!/bin/bash\r\necho hi\r\nfor i in 1 2; do echo $i; done\r\n"
 
-    with patch("apps.job_mgmt.services.execution_base_service.Target") as mock_target_model, \
-         patch.object(ExecutionTaskBaseService, "_get_ansible_node", return_value="node-1"), \
-         patch.object(ExecutionTaskBaseService, "_build_host_credentials", return_value={}), \
-         patch("apps.job_mgmt.services.execution_base_service.AnsibleExecutor", return_value=fake_exec):
-        mock_target_model.objects.filter.return_value = [fake_target]
+    with patch.object(ExecutionTaskBaseService, "_load_manual_targets_for_execution", return_value=[fake_target]), patch.object(
+        ExecutionTaskBaseService, "_get_ansible_node", return_value="node-1"
+    ), patch.object(ExecutionTaskBaseService, "_build_host_credentials", return_value={}), patch(
+        "apps.job_mgmt.services.execution_base_service.AnsibleExecutor", return_value=fake_exec
+    ):
         ExecutionTaskBaseService._execute_script_via_ansible(execution, target_list, crlf, ScriptType.SHELL)
 
     assert fake_exec.adhoc.called
     module_args = fake_exec.adhoc.call_args.kwargs["module_args"]
     assert "\r" not in module_args
     assert "for i in 1 2; do echo $i; done" in module_args
+    assert fake_exec.adhoc.call_args.kwargs["stream_remote_output"] is True
 
 
 def test_crlf_preserved_for_ansible_bat_path():
@@ -107,15 +116,45 @@ def test_crlf_preserved_for_ansible_bat_path():
     fake_target.cloud_region_id = 1
     fake_exec = MagicMock()
 
-    with patch("apps.job_mgmt.services.execution_base_service.Target") as mock_target_model, \
-         patch.object(ExecutionTaskBaseService, "_get_ansible_node", return_value="node-1"), \
-         patch.object(ExecutionTaskBaseService, "_build_host_credentials", return_value={}), \
-         patch("apps.job_mgmt.services.execution_base_service.AnsibleExecutor", return_value=fake_exec):
-        mock_target_model.objects.filter.return_value = [fake_target]
+    with patch.object(ExecutionTaskBaseService, "_load_manual_targets_for_execution", return_value=[fake_target]), patch.object(
+        ExecutionTaskBaseService, "_get_ansible_node", return_value="node-1"
+    ), patch.object(ExecutionTaskBaseService, "_build_host_credentials", return_value={}), patch(
+        "apps.job_mgmt.services.execution_base_service.AnsibleExecutor", return_value=fake_exec
+    ):
         ExecutionTaskBaseService._execute_script_via_ansible(execution, target_list, "echo hi\r\n", ScriptType.BAT)
 
     module_args = fake_exec.adhoc.call_args.kwargs["module_args"]
     assert "\r\n" in module_args
+    assert fake_exec.adhoc.call_args.kwargs["stream_remote_output"] is True
+    assert fake_exec.adhoc.call_args.kwargs["stream_remote_type"] == ScriptType.BAT
+
+
+@pytest.mark.parametrize(
+    ("script_type", "script_content", "expected"),
+    [
+        (ScriptType.PYTHON, "print('hi')", True),
+        (ScriptType.POWERSHELL, "Write-Output hi", True),
+    ],
+)
+def test_ansible_remote_stream_flag_matches_platform(script_type, script_content, expected):
+    execution = MagicMock(id=99, timeout=60)
+    target_list = [{"target_id": 5, "name": "h1", "ip": "1.1.1.1"}]
+    fake_target = MagicMock(cloud_region_id=1)
+    fake_exec = MagicMock()
+
+    with patch.object(ExecutionTaskBaseService, "_load_manual_targets_for_execution", return_value=[fake_target]), patch.object(
+        ExecutionTaskBaseService, "_get_ansible_node", return_value="node-1"
+    ), patch.object(ExecutionTaskBaseService, "_build_host_credentials", return_value={}), patch(
+        "apps.job_mgmt.services.execution_base_service.AnsibleExecutor", return_value=fake_exec
+    ):
+        ExecutionTaskBaseService._execute_script_via_ansible(execution, target_list, script_content, script_type)
+
+    assert fake_exec.adhoc.call_args.kwargs["stream_remote_output"] is expected
+    if script_type == ScriptType.PYTHON:
+        assert fake_exec.adhoc.call_args.kwargs["module_args"].startswith("python -u <<'__SCRIPT__'")
+        assert fake_exec.adhoc.call_args.kwargs["stream_remote_type"] is None
+    else:
+        assert fake_exec.adhoc.call_args.kwargs["stream_remote_type"] == ScriptType.POWERSHELL
 
 
 def test_normalize_script_line_endings_bare_cr_and_idempotent():
@@ -132,11 +171,10 @@ def test_local_branch_calls_execute_local_stream_with_topic():
     fake_exec = MagicMock()
     fake_exec.execute_local_stream.return_value = {"stdout": "hi", "stderr": "", "exit_code": 0}
 
-    with patch("apps.job_mgmt.services.script_execution_runner.Executor", return_value=fake_exec), \
-         patch.object(ScriptExecutionRunner, "is_cancelled", return_value=False):
-        result = runner.execute_script_on_target(
-            target, TargetSource.NODE_MGMT, "echo hi", ScriptType.SHELL, 60, 99
-        )
+    with patch("apps.job_mgmt.services.script_execution_runner.Executor", return_value=fake_exec), patch.object(
+        ScriptExecutionRunner, "is_cancelled", return_value=False
+    ):
+        result = runner.execute_script_on_target(target, TargetSource.NODE_MGMT, "echo hi", ScriptType.SHELL, 60, 99)
 
     assert fake_exec.execute_local_stream.called
     kwargs = fake_exec.execute_local_stream.call_args.kwargs
@@ -154,10 +192,11 @@ def test_sidecar_publishes_done_sentinel_per_target():
     execution.timeout = 60
     target_list = [{"target_id": 5, "name": "h1", "ip": "1.1.1.1"}]
 
-    with patch.object(ScriptExecutionRunner, "execute_script_on_target", return_value={
-            "target_key": "5", "name": "h1", "status": ExecutionStatus.SUCCESS}), \
-         patch.object(ScriptExecutionRunner, "is_cancelled", return_value=False), \
-         patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel") as mock_done:
+    with patch.object(
+        ScriptExecutionRunner, "execute_script_on_target", return_value={"target_key": "5", "name": "h1", "status": ExecutionStatus.SUCCESS}
+    ), patch.object(ScriptExecutionRunner, "is_cancelled", return_value=False), patch(
+        "apps.job_mgmt.services.script_execution_runner.publish_done_sentinel"
+    ) as mock_done:
         runner._run_via_sidecar(execution, target_list, "echo hi")
 
     mock_done.assert_called_once_with(99, "5", ExecutionStatus.SUCCESS)
@@ -177,8 +216,9 @@ def test_dangerous_command_publishes_done_for_all_targets():
     check.can_execute = False
     check.forbidden = [{"rule_name": "rm-rf"}]
 
-    with patch("apps.job_mgmt.services.script_execution_runner.DangerousChecker.check_command", return_value=check), \
-         patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel") as mock_done:
+    with patch("apps.job_mgmt.services.script_execution_runner.DangerousChecker.check_command", return_value=check), patch(
+        "apps.job_mgmt.services.script_execution_runner.publish_done_sentinel"
+    ) as mock_done:
         handled = runner._handle_dangerous_command(execution, target_list)
 
     assert handled is True
@@ -197,9 +237,9 @@ def test_ansible_windows_reject_publishes_done_for_all_targets():
         {"target_id": 5, "name": "h1", "ip": "1.1.1.1"},
         {"target_id": 6, "name": "h2", "ip": "2.2.2.2"},
     ]
-    with patch.object(ScriptExecutionRunner, "_contains_windows_manual_target", return_value=True), \
-         patch.object(ScriptExecutionRunner, "_should_use_ansible", return_value=False), \
-         patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel") as mock_done:
+    with patch.object(ScriptExecutionRunner, "_contains_windows_manual_target", return_value=True), patch.object(
+        ScriptExecutionRunner, "_should_use_ansible", return_value=False
+    ), patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel") as mock_done:
         handled = runner._run_via_ansible_if_needed(execution, target_list, "echo hi")
 
     assert handled is True
@@ -215,10 +255,11 @@ def test_ansible_submit_failure_publishes_done_for_all_targets():
     execution.target_source = TargetSource.MANUAL
     execution.script_type = ScriptType.SHELL
     target_list = [{"target_id": 5, "name": "h1", "ip": "1.1.1.1"}]
-    with patch.object(ScriptExecutionRunner, "_contains_windows_manual_target", return_value=False), \
-         patch.object(ScriptExecutionRunner, "_should_use_ansible", return_value=True), \
-         patch.object(ScriptExecutionRunner, "_execute_script_via_ansible", side_effect=RuntimeError("boom")), \
-         patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel") as mock_done:
+    with patch.object(ScriptExecutionRunner, "_contains_windows_manual_target", return_value=False), patch.object(
+        ScriptExecutionRunner, "_should_use_ansible", return_value=True
+    ), patch.object(ScriptExecutionRunner, "_execute_script_via_ansible", side_effect=RuntimeError("boom")), patch(
+        "apps.job_mgmt.services.script_execution_runner.publish_done_sentinel"
+    ) as mock_done:
         handled = runner._run_via_ansible_if_needed(execution, target_list, "echo hi")
 
     assert handled is True
@@ -250,11 +291,13 @@ def test_sidecar_invokes_cancelled_sweep_when_cancelled():
     execution.timeout = 60
     target_list = [{"target_id": 5, "name": "h1", "ip": "1.1.1.1"}]
 
-    with patch.object(ScriptExecutionRunner, "execute_script_on_target", return_value={
-            "target_key": "5", "name": "h1", "status": ExecutionStatus.SUCCESS}), \
-         patch.object(ScriptExecutionRunner, "is_cancelled", return_value=True), \
-         patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel"), \
-         patch.object(ScriptExecutionRunner, "_publish_cancelled_sentinels") as mock_sweep:
+    with patch.object(
+        ScriptExecutionRunner, "execute_script_on_target", return_value={"target_key": "5", "name": "h1", "status": ExecutionStatus.SUCCESS}
+    ), patch.object(ScriptExecutionRunner, "is_cancelled", return_value=True), patch(
+        "apps.job_mgmt.services.script_execution_runner.publish_done_sentinel"
+    ), patch.object(
+        ScriptExecutionRunner, "_publish_cancelled_sentinels"
+    ) as mock_sweep:
         runner._run_via_sidecar(execution, target_list, "echo hi")
 
     mock_sweep.assert_called_once()

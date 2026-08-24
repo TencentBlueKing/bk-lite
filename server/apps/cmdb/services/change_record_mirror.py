@@ -4,11 +4,9 @@ from datetime import timedelta
 from django.db.models import Q
 from django.utils.timezone import now
 
-from apps.cmdb.models.operation import (
-    ChangeRecordMirrorOutbox,
-    CmdbOperationOutboxStatus,
-)
+from apps.cmdb.models.operation import ChangeRecordMirrorOutbox, CmdbOperationOutboxStatus
 from apps.core.logger import cmdb_logger as logger
+from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.rpc.system_mgmt import SystemMgmt
 
 
@@ -34,11 +32,8 @@ class ChangeRecordMirrorService:
 
     @classmethod
     def enqueue_payloads(cls, payloads: list[dict]) -> list[ChangeRecordMirrorOutbox]:
-        rows = [
-            ChangeRecordMirrorOutbox(payloads=payloads[offset: offset + cls.BATCH_SIZE])
-            for offset in range(0, len(payloads), cls.BATCH_SIZE)
-        ]
-        return ChangeRecordMirrorOutbox.objects.bulk_create(rows)
+        rows = [ChangeRecordMirrorOutbox(payloads=payloads[offset : offset + cls.BATCH_SIZE]) for offset in range(0, len(payloads), cls.BATCH_SIZE)]
+        return bulk_create_with_primary_keys(ChangeRecordMirrorOutbox.objects, rows)
 
     @classmethod
     def claim(cls, event_id, *, owner_token: str) -> bool:
@@ -46,14 +41,16 @@ class ChangeRecordMirrorService:
         event = ChangeRecordMirrorOutbox.objects.filter(event_id=event_id).first()
         if not event:
             return False
-        eligible = event.status in {
-            CmdbOperationOutboxStatus.PENDING,
-            CmdbOperationOutboxStatus.RETRY,
-        } and event.next_attempt_at <= current_time
+        eligible = (
+            event.status
+            in {
+                CmdbOperationOutboxStatus.PENDING,
+                CmdbOperationOutboxStatus.RETRY,
+            }
+            and event.next_attempt_at <= current_time
+        )
         eligible = eligible or (
-            event.status == CmdbOperationOutboxStatus.SENDING
-            and event.lease_expires_at is not None
-            and event.lease_expires_at <= current_time
+            event.status == CmdbOperationOutboxStatus.SENDING and event.lease_expires_at is not None and event.lease_expires_at <= current_time
         )
         if not eligible:
             return False
@@ -82,15 +79,9 @@ class ChangeRecordMirrorService:
             for payload in event.payloads[: cls.BATCH_SIZE]:
                 client.save_operation_log(**payload)
         except Exception as exc:
-            status = (
-                CmdbOperationOutboxStatus.FAILED
-                if event.attempt_count >= cls.MAX_ATTEMPTS
-                else CmdbOperationOutboxStatus.RETRY
-            )
+            status = CmdbOperationOutboxStatus.FAILED if event.attempt_count >= cls.MAX_ATTEMPTS else CmdbOperationOutboxStatus.RETRY
             delay = min(3600, 2 ** max(0, event.attempt_count - 1) * 30)
-            ChangeRecordMirrorOutbox.objects.filter(
-                id=event.id, status=CmdbOperationOutboxStatus.SENDING, owner_token=token
-            ).update(
+            ChangeRecordMirrorOutbox.objects.filter(id=event.id, status=CmdbOperationOutboxStatus.SENDING, owner_token=token).update(
                 status=status,
                 owner_token="",
                 lease_expires_at=None,
@@ -99,9 +90,7 @@ class ChangeRecordMirrorService:
             )
             return False
         return bool(
-            ChangeRecordMirrorOutbox.objects.filter(
-                id=event.id, status=CmdbOperationOutboxStatus.SENDING, owner_token=token
-            ).update(
+            ChangeRecordMirrorOutbox.objects.filter(id=event.id, status=CmdbOperationOutboxStatus.SENDING, owner_token=token).update(
                 status=CmdbOperationOutboxStatus.SUCCESS,
                 owner_token="",
                 lease_expires_at=None,

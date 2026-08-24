@@ -362,7 +362,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
     if (fieldInfo?.attr_id === 'cloud' && proxyOptions.length) {
       return (
         <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseSelectValue') }]}>
-          <Select placeholder={t('FilterBar.pleaseSelect')} allowClear showSearch style={{ width: '100%' }}>
+          <Select placeholder={t('FilterBar.pleaseSelect')} allowClear showSearch className="w-full">
             {proxyOptions.map((opt) => (
               <Select.Option key={opt.proxy_id} value={opt.proxy_id}>
                 {opt.proxy_name}
@@ -384,7 +384,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
               placeholder={t('FilterBar.pleaseSelectUser')}
               allowClear
               showSearch
-              style={{ width: '100%' }}
+              className="w-full"
               filterOption={(input, opt: any) => {
                 if (typeof opt?.children?.props?.text === 'string') {
                   return opt?.children?.props?.text
@@ -406,7 +406,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
       case 'user':
         return (
           <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseSelectUser') }]}>
-            <Select mode="multiple" placeholder={t('FilterBar.pleaseSelectUser')} allowClear showSearch style={{ width: '100%' }}>
+            <Select mode="multiple" placeholder={t('FilterBar.pleaseSelectUser')} allowClear showSearch className="w-full">
               {userList.map((user) => {
                 // 筛选项的修改弹窗
                 return (
@@ -423,7 +423,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
         const enumOpts = Array.isArray(fieldInfo?.option) ? fieldInfo.option : [];
         return (
           <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseSelectValue') }]}>
-            <Select placeholder={t('FilterBar.pleaseSelect')} allowClear showSearch style={{ width: '100%' }}>
+            <Select placeholder={t('FilterBar.pleaseSelect')} allowClear showSearch className="w-full">
               {enumOpts.map((opt) => (
                 <Select.Option key={opt.id} value={opt.id}>
                   {opt.name}
@@ -435,7 +435,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
       case 'bool':
         return (
           <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseSelectValue') }]}>
-            <Select placeholder={t('FilterBar.pleaseSelect')} allowClear style={{ width: '100%' }}>
+            <Select placeholder={t('FilterBar.pleaseSelect')} allowClear className="w-full">
               <Select.Option value={true}>{t('yes')}</Select.Option>
               <Select.Option value={false}>{t('no')}</Select.Option>
             </Select>
@@ -447,14 +447,14 @@ const FilterBar: React.FC<FilterBarProps> = ({
             <RangePicker
               showTime={{ format: 'HH:mm' }}
               format="YYYY-MM-DD HH:mm"
-              style={{ width: '100%' }}
+              className="w-full"
             />
           </Form.Item>
         );
       case 'int':
         return (
           <Form.Item name="value" rules={[{ required: true, message: t('FilterBar.pleaseEnterNumber') }]}>
-            <InputNumber style={{ width: '100%' }} placeholder={t('FilterBar.pleaseEnterNumber')} />
+            <InputNumber className="w-full" placeholder={t('FilterBar.pleaseEnterNumber')} />
           </Form.Item>
         );
       case 'str':
@@ -469,26 +469,25 @@ const FilterBar: React.FC<FilterBarProps> = ({
                 placeholder={t('FilterBar.pleaseSelect')}
                 allowClear
                 showSearch
-                style={{ width: '100%' }}
+                className="w-full"
                 options={getTagOptions(fieldInfo)}
               />
             </Form.Item>
           );
         }
         return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+          <div className="flex w-full items-center gap-2">
             <Form.Item
               name="value"
               rules={[{ required: true, message: t('FilterBar.pleaseEnterValue') }]}
-              style={{ marginBottom: 0, flex: 1 }}
+              className="mb-0! flex-1"
             >
               <Input placeholder={t('FilterBar.pleaseEnterValue')} allowClear className={styles.filterInput} />
             </Form.Item>
             <Form.Item
               name="isExact"
               valuePropName="checked"
-              style={{ marginBottom: 0 }}
-              className={styles.exactMatchCheckbox}
+              className={`mb-0! ${styles.exactMatchCheckbox}`}
             >
               <Checkbox>{t('FilterBar.exactMatch')}</Checkbox>
             </Form.Item>
@@ -524,7 +523,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
                         <Form.Item label={formatFilterLabelForPopover(filter)}>
                           {renderEditInput()}
                         </Form.Item>
-                        <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
+                        <Form.Item className="mb-0! text-right">
                           <Space>
                             <span className={styles.actionLinkPrimary} onClick={handleEditConfirm}>
                               {t('common.confirm')}

@@ -8,9 +8,9 @@ const IFMIB_DEVICE_TOTAL_METRICS = new Set([
 
 export const isIfmibMetric = (metric: MetricItem) => metric.is_ifmib === true;
 
-/** 默认只展开第一个可见分组，避免 IF-MIB 归并后首屏过长。 */
+/** 进入指标页时默认全部折叠，由用户按组展开或一键全部展开。 */
 export const getDefaultMetricGroupOpenState = (groups: MetricListItem[]) => (
-  new Map(groups.map((group, index) => [group.id, index === 0]))
+  new Map(groups.map((group) => [group.id, false]))
 );
 
 const IFMIB_METRIC_GROUPS = [

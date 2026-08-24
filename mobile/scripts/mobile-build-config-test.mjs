@@ -72,6 +72,28 @@ test('Tauri 构建拒绝外部明文 HTTP API 地址', () => {
   );
 });
 
+test('Tauri 明文本地 API 只接受可被图片 CSP 精确表达的标准回环地址', () => {
+  for (const apiUrl of [
+    'http://localhost:8011',
+    'http://127.0.0.1:8011',
+  ]) {
+    assert.equal(
+      resolveBuildSettings({ target: 'tauri', env: { NEXT_PUBLIC_API_URL: apiUrl } }).env.NEXT_PUBLIC_API_URL,
+      apiUrl,
+    );
+  }
+
+  for (const apiUrl of ['http://127.0.0.2:8011', 'http://[::1]:8011']) {
+    assert.throws(
+      () => resolveBuildSettings({
+        target: 'tauri',
+        env: { NEXT_PUBLIC_API_URL: apiUrl },
+      }),
+      /外部地址必须使用 HTTPS/,
+    );
+  }
+});
+
 test('Tauri 构建从 API 地址派生 Rust 代理白名单', () => {
   const settings = resolveBuildSettings({
     target: 'tauri',
@@ -187,4 +209,30 @@ test('Tauri 白名单在打包时固化到 Rust 二进制', async () => {
   const apiProxy = await readProjectFile('src-tauri/src/api_proxy.rs');
 
   assert.match(apiProxy, /option_env!\("TAURI_ALLOWED_HOSTS"\)/);
+});
+
+test('Tauri 图片策略允许生产 HTTPS 和本地回环资源', async () => {
+  const tauriConfig = JSON.parse(await readProjectFile('src-tauri/tauri.conf.json'));
+  const directives = Object.fromEntries(
+    tauriConfig.app.security.csp
+      .split(';')
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map((value) => {
+        const [name, ...sources] = value.split(/\s+/);
+        return [name, sources];
+      }),
+  );
+
+  assert.deepEqual(
+    directives['img-src'],
+    [
+      "'self'",
+      'data:',
+      'blob:',
+      'https:',
+      'http://localhost:*',
+      'http://127.0.0.1:*',
+    ],
+  );
 });

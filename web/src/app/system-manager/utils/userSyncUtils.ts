@@ -195,6 +195,21 @@ export function isManualInputMode(template: BusinessTemplate | null): boolean {
   return getRootDepartmentInputMode(template) === 'manual_input';
 }
 
+export function getUserSyncEditFormBusinessConfig(
+  businessConfig: Record<string, unknown> | undefined,
+  template: BusinessTemplate | null,
+  rootScopeFieldKey: string,
+): Record<string, unknown> {
+  const configForForm = isManualInputMode(template)
+    ? { ...(businessConfig || {}) }
+    : excludeUserSyncRootScope(businessConfig, rootScopeFieldKey);
+
+  return mergeUserSyncBusinessConfigWithDefaults(configForForm, template, {
+    excludeRootScope: true,
+    rootScopeFieldKey,
+  });
+}
+
 export function shouldFetchDepartmentOptions(input: {
   selectedInstanceId: number | undefined;
   template: BusinessTemplate | null;

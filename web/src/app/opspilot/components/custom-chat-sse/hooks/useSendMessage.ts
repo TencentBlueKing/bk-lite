@@ -71,15 +71,17 @@ export const useSendMessage = ({
       currentBotMessageRef.current = botLoadingMessage;
 
       const messagesToUse = currentMessages || messages;
-      const updatedMessages = [...messagesToUse, newUserMessage, botLoadingMessage];
-      updateMessages(updatedMessages);
+      // 用函数式更新追加，避免绝对数组覆盖正在流式写入的正文
+      updateMessages(prev => [...prev, newUserMessage, botLoadingMessage]);
 
       try {
         if (handleSendMessage) {
           const result = await handleSendMessage(content, messagesToUse, newUserMessage);
 
           if (result === null) {
-            updateMessages(messagesToUse);
+            updateMessages(prev => prev.filter(
+              msg => msg.id !== newUserMessage.id && msg.id !== botLoadingMessage.id
+            ));
             setLoading(false);
             return;
           }

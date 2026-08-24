@@ -22,7 +22,7 @@ def test_view_get_user_all_passes_actor_context(monkeypatch):
     )
     monkeypatch.setattr(sm_view.WebUtils, "response_success", staticmethod(lambda data: data))
 
-    request = types.SimpleNamespace(COOKIES={"current_team": "7"})
+    request = types.SimpleNamespace(COOKIES={"current_team": "7"}, GET={})
     sm_view.SystemMgmtView().get_user_all(request)
 
     # 视图必须把 actor_context 透传给 util（不再无作用域取全量）
@@ -46,7 +46,7 @@ def test_view_get_user_all_passes_include_children(monkeypatch):
     )
     monkeypatch.setattr(sm_view.WebUtils, "response_success", staticmethod(lambda data: data))
 
-    request = types.SimpleNamespace(COOKIES={"current_team": "7", "include_children": "1"})
+    request = types.SimpleNamespace(COOKIES={"current_team": "7", "include_children": "1"}, GET={})
     sm_view.SystemMgmtView().get_user_all(request)
 
     assert captured["actor_context"] == actor_context
@@ -75,3 +75,65 @@ def test_util_get_user_all_routes_to_scoped(monkeypatch):
     assert calls[0][0] == "scoped"
     assert calls[0][1] == {"current_team": 7}
     assert calls[1][0] == "unscoped"
+
+
+def test_view_get_user_all_routes_organization_ids(monkeypatch):
+    captured = {}
+    actor_context = {"current_team": 7, "username": "u", "include_children": False}
+    monkeypatch.setattr(sm_view, "_build_actor_context", lambda request: actor_context)
+    monkeypatch.setattr(
+        sm_view.SystemMgmtUtils,
+        "get_users_by_organizations",
+        staticmethod(
+            lambda actor_context=None, organization_ids=None: captured.update(
+                actor_context=actor_context,
+                organization_ids=organization_ids,
+            )
+            or [{"id": 1, "username": "alice", "display_name": "Alice"}]
+        ),
+    )
+    monkeypatch.setattr(sm_view.WebUtils, "response_success", staticmethod(lambda data: data))
+
+    request = types.SimpleNamespace(
+        COOKIES={"current_team": "7"},
+        GET={"organization_ids": "7,8"},
+    )
+    result = sm_view.SystemMgmtView().get_user_all(request)
+
+    assert captured == {
+        "actor_context": actor_context,
+        "organization_ids": "7,8",
+    }
+    assert result == [{"id": 1, "username": "alice", "display_name": "Alice"}]
+
+
+def test_get_users_by_organizations_intersects_assignable(monkeypatch, db):
+    from apps.system_mgmt.models import User
+
+    user_a = User.objects.create(
+        username="org-a-user",
+        display_name="A用户",
+        email="a@example.com",
+        password="x",
+        group_list=[7],
+    )
+    User.objects.create(
+        username="org-c-user",
+        display_name="C用户",
+        email="c@example.com",
+        password="x",
+        group_list=[9],
+    )
+
+    class _Client:
+        def get_assignable_groups(self, actor_context):
+            return {"result": True, "data": [7, 8]}
+
+    monkeypatch.setattr(system_mgmt_api, "SystemMgmt", _Client)
+
+    users = system_mgmt_api.SystemMgmtUtils.get_users_by_organizations(
+        actor_context={"username": "u", "domain": "domain.com"},
+        organization_ids="7,9",
+    )
+
+    assert [item["id"] for item in users] == [user_a.id]

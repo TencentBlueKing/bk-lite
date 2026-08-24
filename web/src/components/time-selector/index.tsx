@@ -10,6 +10,7 @@ import { Select, Button, DatePicker } from 'antd';
 import { CalendarOutlined, CloseCircleFilled, ReloadOutlined } from '@ant-design/icons';
 import type { SelectProps, TimeRangePickerProps } from 'antd';
 import { useFrequencyList, useTimeRangeList } from '@/constants/shared';
+import { useTranslation } from '@/utils/i18n';
 import timeSelectorStyle from './index.module.scss';
 import dayjs, { Dayjs } from 'dayjs';
 import { ListItem, TimeSelectorDefaultValue } from '@/types';
@@ -21,11 +22,14 @@ interface TimeSelectorProps {
   format?: string; //rangePicker组件属性，格式化
   onlyRefresh?: boolean; // 仅显示刷新按钮
   onlyTimeSelect?: boolean; // 仅显示时间组合组件
+  /** 仪表盘工具栏外观：时间选择器更紧凑，刷新与自动刷新合并为单组边框 */
+  appearance?: 'default' | 'toolbar';
   customFrequencyList?: ListItem[];
   customTimeRangeList?: ListItem[];
   clearable?: boolean; // 组件的值是否能为空
   className?: string; // 外层容器样式类名
   defaultValue?: TimeSelectorDefaultValue; // defaultValue为时间组合组件的默认值
+  frequenceValue?: number; // 受控刷新频率（毫秒），仅同步下拉展示，不改变计时语义
   onFrequenceChange?: (frequence: number) => void;
   onRefresh?: () => void;
   onChange?: (range: number[], originValue: number | null) => void;
@@ -37,18 +41,21 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
     format = 'YYYY-MM-DD HH:mm:ss',
     onlyRefresh = false,
     onlyTimeSelect = false,
+    appearance = 'default',
     clearable = false,
     className,
     defaultValue = {
       selectValue: 15, // 显示select组件时，selectValue填customFrequencyList列表项中对应的value，selectValue为select组件的值。
       rangePickerVaule: null, // 如果想显示为rangePicker组件，selectValue设置为0，rangePickerVaule为rangePicker组件的值。
     },
+    frequenceValue,
     customFrequencyList,
     customTimeRangeList,
     onFrequenceChange,
     onRefresh,
     onChange,
   } = props;
+  const { t } = useTranslation();
   const TIME_RANGE_LIST = useTimeRangeList();
   const FREQUENCY_LIST = useFrequencyList();
   const rangePickerVauleRef = useRef<number[] | null>(null);
@@ -62,7 +69,9 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
       ? defaultValue.selectValue
       : 15
   );
-  const [frequency, setFrequency] = useState<number>(0);
+  const [frequency, setFrequency] = useState<number>(
+    typeof frequenceValue === 'number' ? frequenceValue : 0
+  );
   const [rangePickerOpen, setRangePickerOpen] = useState<boolean>(false);
   const [dropdownOpen, setDropdownOpen] = useState<boolean>(false);
   const selectRef = useRef<HTMLDivElement>(null);
@@ -83,6 +92,12 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
         ? getRecentTimeRange()
         : rangePickerVauleRef.current,
   }));
+
+  useEffect(() => {
+    if (typeof frequenceValue === 'number') {
+      setFrequency(frequenceValue);
+    }
+  }, [frequenceValue]);
 
   useEffect(() => {
     return () => {
@@ -267,17 +282,22 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
     onChange?.(rangeTime, numericValue);
   };
 
+  const isToolbar = appearance === 'toolbar';
+  const timeFieldWidthClass = isToolbar ? 'w-full' : 'w-[350px]';
+
   return (
     <div
       className={`${timeSelectorStyle.timeSelector} ${
-        selectValue === 0 ? timeSelectorStyle.customActive : ''
-      } ${pickerVisible ? timeSelectorStyle.pickerVisible : ''} ${className || ''}`}
+        isToolbar ? timeSelectorStyle.toolbar : ''
+      } ${selectValue === 0 ? timeSelectorStyle.customActive : ''} ${
+        pickerVisible ? timeSelectorStyle.pickerVisible : ''
+      } ${className || ''}`}
     >
       {!onlyRefresh && (
         <div className={timeSelectorStyle.customSlect} ref={selectRef}>
           <Select
             allowClear={clearable}
-            className={`w-[350px] ${timeSelectorStyle.frequence} ${className || ''}`}
+            className={`${timeFieldWidthClass} ${timeSelectorStyle.frequence}`}
             value={selectValue}
             options={customTimeRangeList || TIME_RANGE_LIST}
             open={dropdownOpen}
@@ -285,7 +305,7 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
             onOpenChange={handleDropdownVisibleChange}
           />
           <RangePicker
-            className={`w-[350px] ${timeSelectorStyle.rangePicker} ${className || ''}`}
+            className={`${timeFieldWidthClass} ${timeSelectorStyle.rangePicker}`}
             popupClassName={timeSelectorStyle.rangePickerDropdown}
             open={rangePickerOpen}
             showTime={showTime}
@@ -317,6 +337,7 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
           <Button
             className={timeSelectorStyle.refreshBtn}
             icon={<ReloadOutlined />}
+            aria-label={t('common.refresh')}
             onClick={onRefresh}
           />
           <Select

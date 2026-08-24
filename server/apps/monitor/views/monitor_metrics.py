@@ -14,7 +14,13 @@ from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
-from apps.monitor.utils.snmp_ifmib_capability import IFMIB_ZH_DISPLAY_TEXTS
+from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
+from apps.monitor.utils.snmp_ifmib_capability import (
+    COMMON_IFMIB_METRIC_NAMES,
+    IFMIB_ZH_DISPLAY_TEXTS,
+    get_ifmib_metric_names_matching_keyword,
+    is_ifmib_capable_plugin,
+)
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
@@ -77,6 +83,14 @@ def get_optional_query_param_id(request, param_name):
     return parse_optional_positive_id(request.query_params.get(param_name), param_name)
 
 
+def get_required_query_param_id(request, param_name):
+    """Read a required positive integer query parameter; empty or missing values are rejected."""
+    parsed = get_optional_query_param_id(request, param_name)
+    if parsed is None:
+        raise ValidationAppException(f"{param_name} 不能为空")
+    return parsed
+
+
 def get_snmp_base_plugin(request, monitor_object_id):
     """返回厂商 SNMP 模板应复用的同对象通用 SNMP 指标插件。"""
     plugin_id = get_optional_query_param_id(request, "monitor_plugin_id")
@@ -88,7 +102,7 @@ def get_snmp_base_plugin(request, monitor_object_id):
         or plugin.collect_type == "snmp"
         or not str(plugin.collect_type or "").startswith("snmp_")
         or plugin.template_type != "builtin"
-        or not plugin.monitor_object.filter(type_id="Network Device").exists()
+        or not is_ifmib_capable_plugin(plugin)
     ):
         return None
     return (
@@ -114,7 +128,7 @@ def apply_inherited_group_filters(queryset, query_params):
     return queryset
 
 
-def apply_inherited_metric_filters(queryset, query_params):
+def apply_inherited_metric_filters(queryset, query_params, locale=""):
     """Apply the same catalog filters to inherited IF-MIB metrics without the vendor plugin constraint."""
     metric_id = parse_optional_positive_id(query_params.get("id"), "id")
     if metric_id:
@@ -130,10 +144,12 @@ def apply_inherited_metric_filters(queryset, query_params):
         queryset = queryset.filter(name__in=[value for value in names.split(",") if value])
     keyword = str(query_params.get("keyword") or "").strip()
     if keyword:
+        localized_names = get_ifmib_metric_names_matching_keyword(keyword, locale)
         queryset = queryset.filter(
             Q(name__icontains=keyword)
             | Q(display_name__icontains=keyword)
             | Q(description__icontains=keyword)
+            | Q(name__in=localized_names)
         )
     is_ifmib = query_params.get("is_ifmib")
     if is_ifmib is not None and str(is_ifmib).strip() != "":
@@ -239,17 +255,13 @@ class MetricGroupViewSet(viewsets.ModelViewSet):
         vendor_groups = self.filter_queryset(self.get_queryset()).order_by()
         base_plugin = get_snmp_base_plugin(request, monitor_object_id)
         if base_plugin is not None:
-            vendor_group_names = MetricGroup.objects.filter(
-                monitor_object_id=monitor_object_id,
-                monitor_plugin_id=request.query_params.get("monitor_plugin_id"),
-            )
             base_groups = MetricGroup.objects.filter(
                 monitor_object_id=monitor_object_id,
                 monitor_plugin=base_plugin,
             ).order_by()
             base_groups = apply_inherited_group_filters(base_groups, request.query_params)
             queryset = vendor_groups.union(
-                base_groups.exclude(name__in=Subquery(vendor_group_names.values("name")))
+                base_groups.exclude(name__in=Subquery(vendor_groups.values("name")))
             ).order_by("sort_order", "id")
         else:
             queryset = vendor_groups.order_by("sort_order", "id")
@@ -320,23 +332,43 @@ class MetricViewSet(viewsets.ModelViewSet):
     def list(self, request, *args, **kwargs):
         # Do not union a select_related queryset: joins would make the two SELECT
         # column sets differ. The bounded page is hydrated below in one query.
-        monitor_object_id = get_optional_query_param_id(request, "monitor_object_id")
+        monitor_object_id = get_required_query_param_id(request, "monitor_object_id")
         vendor_metrics = self.filter_queryset(Metric.objects.all()).order_by()
         base_plugin = get_snmp_base_plugin(request, monitor_object_id)
-        if str(request.query_params.get("include_ifmib", "true")).lower() == "false":
+        include_ifmib = str(request.query_params.get("include_ifmib", "true")).lower() != "false"
+        if base_plugin is not None:
+            # 仅在 base 已提供对应公共指标时，才剥掉厂商未标记的同名脏数据，
+            # 避免升级窗口里 base 尚未导入时目录出现空洞。关闭 IF-MIB 时仍需全部隐藏。
+            stale_ifmib_names = (
+                COMMON_IFMIB_METRIC_NAMES
+                if not include_ifmib
+                else set(
+                    Metric.objects.filter(
+                        monitor_object_id=monitor_object_id,
+                        monitor_plugin=base_plugin,
+                        name__in=COMMON_IFMIB_METRIC_NAMES,
+                    ).values_list("name", flat=True)
+                )
+            )
+            if stale_ifmib_names:
+                vendor_metrics = vendor_metrics.exclude(
+                    name__in=stale_ifmib_names,
+                    is_ifmib=False,
+                )
+        if not include_ifmib:
             base_plugin = None
         if base_plugin is not None:
-            vendor_metric_names = Metric.objects.filter(
-                monitor_object_id=monitor_object_id,
-                monitor_plugin_id=request.query_params.get("monitor_plugin_id"),
-            )
             base_metrics = Metric.objects.filter(
                 monitor_object_id=monitor_object_id,
                 monitor_plugin=base_plugin,
             ).order_by()
-            base_metrics = apply_inherited_metric_filters(base_metrics, request.query_params)
+            base_metrics = apply_inherited_metric_filters(
+                base_metrics,
+                request.query_params,
+                request.user.locale,
+            )
             queryset = vendor_metrics.union(
-                base_metrics.exclude(name__in=Subquery(vendor_metric_names.values("name")))
+                base_metrics.exclude(name__in=Subquery(vendor_metrics.values("name")))
             ).order_by("sort_order", "id")
         else:
             queryset = vendor_metrics.order_by("sort_order", "id")
@@ -398,6 +430,11 @@ class MetricViewSet(viewsets.ModelViewSet):
                 or lan.get(f"{lan_key}.desc")
                 or result["description"]
             )
+            if (result.get("data_type") or "").lower() == "enum":
+                result["unit"] = localize_metric_enum_unit(
+                    result.get("unit") or "",
+                    enum_translations=lan.get(f"{lan_key}.enum"),
+                )
 
         metric_groups = MetricGroup.objects.filter(
             id__in={metric.metric_group_id for metric in page}

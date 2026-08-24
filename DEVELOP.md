@@ -27,6 +27,17 @@ make server-init      # batch_init 初始化
 make collect-static   # 收集静态文件
 make init-buckets     # 初始化 MinIO bucket
 ```
+
+运营分析目录父链发布前检查：
+
+```bash
+cd server
+python manage.py audit_directory_cycles
+```
+
+该命令只读列出循环节点，不自动修改存量数据。若发现循环，先备份数据库，再人工把
+循环中的一个目录 `parent` 置空并复跑检查。代码回滚使用 `git revert`；该修复不含
+数据库迁移，回滚代码不会恢复已经拒绝的非法写入。
 单测运行:
 ```bash
 cd server
@@ -45,6 +56,19 @@ pnpm lint      # ESLint
 pnpm type-check
 pnpm storybook # :6006
 ```
+
+### APM 数据面（`deploy/apm/`，契约夹具）
+```bash
+cd deploy/apm
+make up        # 启动契约验证用 Collector/NATS/VictoriaTraces（非生产编排）
+make ps        # 查看状态
+make logs      # 跟随日志
+make down      # 停止夹具
+make test      # Collector 单元测试
+make validate  # Compose 与 Collector 配置校验
+make contract  # 真实 SDK 全链路容器契约
+```
+生产 Stream/VT/系统 Collector 与流水线由运维落地；验收约束见 `deploy/apm/ACCEPTANCE.md`。
 
 ### Mobile（`mobile/`）
 ```bash
@@ -86,12 +110,19 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 - 常见失败:缺 `keystore.properties`/keystore;Android SDK/NDK/Java 异常;3001 端口冲突
 
 ### WebChat
-- release:`webchat/.github/workflows/build.yml` 的 publish job(main push);需 `NPM_TOKEN`/`NODE_AUTH_TOKEN`
+- release:手工触发`.github/workflows/webchat-tests.yml`并显式启用publish输入;需 `NPM_TOKEN`/`NODE_AUTH_TOKEN`
 - 常见失败:token 缺失/权限不足;Node matrix 18/20 不满足
 
 ### Stargazer
 - dev `make run`(`sanic ... --port=8083`);test `make lint`(pre-commit);build `make build`
 - 常见失败:Server/Worker Redis 配置不一致;`.env` 缺 NATS/Redis。**先起 Worker 再起 Server**
+
+### APM 数据面（`deploy/apm/`，契约夹具）
+- dev `make up` → 本地契约夹具就绪（非生产编排）
+- test `make test && make validate`；全链路契约 `make contract`（需 Docker）
+- release 运维按 [deploy/apm/ACCEPTANCE.md](deploy/apm/ACCEPTANCE.md) 验收；容量下界见 `CAPACITY.md`；Server 运行期变量模板见 `server/support-files/env/.env.apm.example`
+- 常见失败:镜像 tag 不存在;NATS ACL/Stream 漂移;4318 对非受信网络开放;把本地 Compose 参数直接当生产容量
+- 回滚:只回退本次上线的区域/系统 Collector、Stream/Consumer 与 VT；不恢复 Edge/APM VM/spanmetrics；编排回退由运维流水线执行
 
 ### K8s 采集器（`deploy/dist/bk-lite-kubernetes-collector/`）
 - release:`kubectl apply -f bk-lite-metric-collector.yaml` / `bk-lite-log-collector.yaml`
@@ -114,7 +145,7 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 | `INSTALL_APPS` | 逗号分隔的加载 app(空=全加载) |
 | `NEXTAPI_URL` | 前端访问后端的 API 地址 |
 
-模板:`server/envs/.env.example`、`server/support-files/env/*.example`、`web/.env.example`、`agents/stargazer/.env.example`、K8s `secret.*.template`。
+模板:`server/envs/.env.example`、`server/support-files/env/*.example`（APM 使用 `.env.apm.example`）、`web/.env.example`、`agents/stargazer/.env.example`、K8s `secret.*.template`。
 > 新增 env 走 `os.getenv` 默认值,不改 `.env.example`(易冲突,见团队约定)。
 
 ## 5. Runbook（常见故障）
@@ -129,5 +160,6 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 8. `webchat publish` 失败 → 检查 `NPM_TOKEN`、npm 权限与版本冲突。
 9. `stargazer` 不接纳采集 → 检查 Redis/NATS 与 `/api/health/ready`；Stargazer 已无独立 ARQ Worker。
 10. K8s 采集器无数据 → 检查 `secret.env` 的 `CLUSTER_NAME/NATS_*` 与 `ca.crt`。
+11. CMDB 推监控「成功但无实例 / ignored」→ 若 `.env` 的 `NATS_SERVERS` 指向远端共享集群，本地 `nats_listener` 与远端消费者抢同一 queue，请求常被远端旧代码接走并 `ignored`。本地 monorepo 开发在 `.env` 设 `IS_LOCAL_RPC=1`（模块间走本进程 `AppClient`），改完后重启 `make dev`（环境变量不随 `--reload` 热更新）。
 
 > 质量门禁与代码红线见 [工程质量规格](specs/capabilities/engineering-quality.md)；回滚与韧性见 [平台可靠性规格](specs/capabilities/platform-reliability.md)。

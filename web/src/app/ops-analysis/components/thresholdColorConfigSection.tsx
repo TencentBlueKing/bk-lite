@@ -5,6 +5,8 @@ import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUti
 
 interface ThresholdColorConfigSectionProps {
   t: (key: string, defaultMessage?: string) => string;
+  label?: React.ReactNode;
+  extra?: React.ReactNode;
   thresholdColors: ThresholdColorConfig[];
   onThresholdChange: (
     index: number,
@@ -15,21 +17,29 @@ interface ThresholdColorConfigSectionProps {
   onAddThreshold: (afterIndex?: number) => void;
   onRemoveThreshold: (index: number) => void;
   readonly?: boolean;
+  /** 允许空列表（指标列表等：未配置时不上色，并可删光） */
+  allowEmpty?: boolean;
 }
 
 export const ThresholdColorConfigSection: React.FC<
   ThresholdColorConfigSectionProps
 > = ({
   t,
+  label,
+  extra,
   thresholdColors,
   onThresholdChange,
   onThresholdBlur,
   onAddThreshold,
   onRemoveThreshold,
   readonly = false,
+  allowEmpty = false,
 }) => {
   return (
-    <Form.Item label={t('topology.nodeConfig.thresholdColors')}>
+    <Form.Item
+      label={label ?? t('topology.nodeConfig.thresholdColors')}
+      extra={extra}
+    >
       <div className="rounded-md border border-(--color-border-1) bg-(--color-fill-1) px-3 py-2">
         {thresholdColors.map((threshold, index) => {
           const isBaseThreshold = index === thresholdColors.length - 1;
@@ -45,13 +55,13 @@ export const ThresholdColorConfigSection: React.FC<
                     onThresholdChange(index, 'value', value || 0)
                   }
                   onBlur={(e) => {
-                    if (!isBaseThreshold && !readonly) {
+                    if (!readonly && (!isBaseThreshold || allowEmpty)) {
                       const value = parseFloat(e.target.value);
                       onThresholdBlur(index, isNaN(value) ? 0 : value);
                     }
                   }}
                   placeholder={t('common.inputMsg')}
-                  disabled={isBaseThreshold || readonly}
+                  disabled={(isBaseThreshold && !allowEmpty) || readonly}
                   style={{ width: '100px' }}
                   size="small"
                   min={0}
@@ -83,11 +93,11 @@ export const ThresholdColorConfigSection: React.FC<
                     size="small"
                     icon={<MinusCircleOutlined />}
                     title={
-                      isBaseThreshold
+                      isBaseThreshold && !allowEmpty
                         ? t('topology.nodeConfig.baseThresholdNotRemovable')
                         : t('topology.nodeConfig.removeThreshold')
                     }
-                    disabled={isBaseThreshold}
+                    disabled={!allowEmpty && isBaseThreshold}
                     onClick={() => onRemoveThreshold(index)}
                   />
                 </div>
@@ -95,6 +105,16 @@ export const ThresholdColorConfigSection: React.FC<
             </div>
           );
         })}
+        {allowEmpty && thresholdColors.length === 0 && !readonly ? (
+          <Button
+            type="dashed"
+            size="small"
+            icon={<PlusCircleOutlined />}
+            onClick={() => onAddThreshold()}
+          >
+            {t('topology.nodeConfig.addThresholdBelow')}
+          </Button>
+        ) : null}
       </div>
     </Form.Item>
   );

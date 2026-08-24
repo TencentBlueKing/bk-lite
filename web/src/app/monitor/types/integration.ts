@@ -46,6 +46,7 @@ export interface MetricInfo {
   data_type?: string;
   unit?: string;
   description?: string;
+  display_description?: string;
   dimensions?: string[];
   is_ifmib?: boolean;
 }
@@ -271,6 +272,7 @@ export interface K8sCommandData {
   instance_id?: string;
   cloud_region_id?: number;
   interval?: number;
+  image_registry_prefix?: string;
 }
 
 export type K3sSignalStatus = 'success' | 'pending' | 'error';

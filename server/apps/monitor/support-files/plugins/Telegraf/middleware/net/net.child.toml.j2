@@ -1,8 +1,5 @@
 [[inputs.net]]
     startup_error_behavior = "retry"
-    url = "{{ url }}"
-    username = "{{ username }}"
-    password = "${PASSWORD__{{ config_id }}}"
     interval = "{{ interval }}s"
     [inputs.net.tags]
         instance_id = "{{ instance_id }}"

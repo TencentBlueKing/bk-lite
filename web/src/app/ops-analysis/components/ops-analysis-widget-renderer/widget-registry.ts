@@ -3,9 +3,11 @@ import {
   OpsAnalysisBar,
   OpsAnalysisBarGauge,
   OpsAnalysisEventTable,
+  OpsAnalysisEventTimeline,
   OpsAnalysisGauge,
   OpsAnalysisLine,
   OpsAnalysisPie,
+  OpsAnalysisRadar,
   OpsAnalysisSingle,
   OpsAnalysisStateTimeline,
   OpsAnalysisTable,
@@ -25,6 +27,8 @@ export const opsAnalysisWidgetRegistry: Record<string, ComponentType<any>> = {
   stateTimeline: OpsAnalysisStateTimeline,
   text: OpsAnalysisTextPanel,
   eventTable: OpsAnalysisEventTable,
+  eventTimeline: OpsAnalysisEventTimeline,
+  radar: OpsAnalysisRadar,
 };
 
 export const getOpsAnalysisWidgetComponent = (chartType?: string) => {

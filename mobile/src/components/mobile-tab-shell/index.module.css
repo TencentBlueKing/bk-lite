@@ -34,13 +34,11 @@
 .navItem {
   position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
   align-items: center;
   justify-content: center;
   min-width: 0;
   min-height: 52px;
-  padding: 2px;
+  padding: 0;
   font-size: var(--font-size-tab-nav);
   line-height: 1.2;
   color: var(--color-text-3);
@@ -56,9 +54,25 @@
   opacity: 0.78;
 }
 
+.navItemInner {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 12px;
+  transition: background-color 160ms ease;
+}
+
 .navItemActive {
   font-weight: 650;
   color: var(--color-primary);
+}
+
+.navItemActive .navItemInner {
+  background: var(--color-primary-bg);
 }
 
 .navItem:focus-visible {
@@ -68,20 +82,17 @@
 
 .navIcon {
   display: grid;
-  width: 38px;
-  height: 28px;
-  font-size: 21px;
-  border-radius: 10px;
+  width: 24px;
+  height: 22px;
+  font-size: 20px;
   transition:
     color 160ms ease,
-    background-color 160ms ease,
     transform 120ms ease;
   place-items: center;
 }
 
 .navItemActive .navIcon {
-  color: var(--color-text-on-primary);
-  background: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .navItem:active .navIcon {
@@ -97,6 +108,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .navItem,
+  .navItemInner,
   .navIcon {
     transition: none;
   }

@@ -5,13 +5,31 @@
 ## web —— Next.js 16【已实现/已存在】
 - 路径 `web/src/app`，App Router。产品模块目录：`alarm`、`cmdb`、`job`、`log`、`monitor`、`mlops`、`node-manager`、`ops-analysis`、`ops-console`、`opspilot`、`system-manager`（11 个）；另有 `(core)`(认证/布局)、`no-permission`(无权限页)。内部 route handlers 实际位于路由组 `(core)/api/` 下（`proxy`、`locales`、`markdown`、`menu`、`auth`、`json`、`versions`、`mlops` 等）；顶层 `app/api` 仅含 `wechat-popup-login`（微信弹窗登录回调）一个 handler【已实现】。
 - **认证**：next-auth（JWT，maxAge 86400），`constants/authOptions.ts` + `lib/auth.ts`；Provider：Credentials（`/api/v1/core/api/login/`）、WeChat OAuth。
+- **认证冷启动与重认证呈现契约【已实现】**：普通受保护页面在后端恢复认证成功前不挂载，避免业务页面以未校验会话初始化；`/ops-analysis/render/execution/{id}` Render 路由例外，允许 Chromium 换票后建立会话而不被普通登录重定向。已挂载页面进入暖态重认证时保持挂载，以保留正在编辑的页面状态。
 - **API 通信（两层）**：客户端 `utils/request.ts` axios baseURL=`/api/proxy`，由 **axios 请求拦截器注入 `Authorization: Bearer {token}`**（`utils/request.ts:56`）；route handler `(core)/api/proxy/[...path]/route.ts` 为**透明代理**（不再注入鉴权），转发到 `NEXTAPI_URL/api/v1`。
 - **响应拦截分支**【已实现】（`utils/request.ts:74-89`）：`460`→`forceLogoutAndRedirect()` 强制登出并跳转；`401`→`emitSessionExpired({reason:'api-session-expired'})` 发出会话过期事件（非直接重登）；`400/403/500/其它`→统一 `message.error(messageText)` 弹错并抛 `HandledRequestError`（静默化已处理错误，避免上层重复弹窗）；无响应时：先放行非 axios 错误与超时（`code==='ECONNABORTED'`）按原始 error 透传（`utils/request.ts:93-95`），其余无响应的网络错误抛 `HandledRequestError('网络异常')`（`utils/request.ts:96`）。
 - **透明代理行为**【已实现】（`(core)/api/proxy/[...path]/route.ts`）：经 `AbortController` 控制超时（`:5-8`、`:88-91`、`:119`）——所有请求先以 `SSE_TIMEOUT_MS=300s` 计时等待响应头（`:91`），收到响应后若为 SSE 则清除计时不再限时（`:113`），若为普通响应则改用 `DEFAULT_TIMEOUT_MS=60s` 计时其余传输（`:118-119`）；目标路径不以 `/` 结尾时自动补 `/`（`:66-69`）；注入 `X-Forwarded-Host`/`X-Forwarded-For`/`X-Forwarded-Proto`（`:84-86`）；检测到 `content-type: text/event-stream` 即判为 SSE，清除超时并设 `X-Accel-Buffering: no`（禁用 Nginx 缓冲，`:110-114`、`:49`）；异常时 `AbortError` 返回 504、其它返回 500（`:129-141`）。
-- **i18n**：react-intl，`locales/{en,zh}.json`，`next.config.mjs:combineLocales()` 合并模块级语言包。
+- **i18n**：react-intl，`locales/{en,zh}.json`；模块级语言包在显式构建资源准备阶段汇总。运行时语言 API 强制动态响应并在成功、回退及错误响应上声明 `Cache-Control: no-store`，LocaleProvider 客户端请求同样使用 `cache: 'no-store'`，形成端到端不缓存契约。
+- **共享 TimeSelector【已实现】**：`frequenceValue` 为受控的自动刷新频率展示值，单位为毫秒；属性变化仅同步下拉选择展示，用户改选通过 `onFrequenceChange` 回传，不改变调用方的计时语义。
 - **UI**：antd v5 + echarts + @antv/g6/x6（拓扑/图）。
 - **本轮功能面扩展**【已实现/已存在】：`alarm` 新增告警丰富、告警处理、执行记录三组设置页；`system-manager` 新增内网白名单页；`ops-analysis` 新增大屏、报表与网络状态拓扑组件入口；`monitor` 集成页新增采集探测任务与资产视图路由组装。
-- **构建**：多阶段 Dockerfile（builder→node:24-alpine），多模块 Docker 构建目标。
+- **构建与资源准备契约**：生产构建经显式入口串行完成企业扩展路由、语言包与菜单汇总、公共资源复制后再启动 Next.js 构建；任一准备步骤失败即中止，不再由框架配置加载时隐式触发副作用。生产类型检查使用面向交付代码的独立配置，排除脚本、端到端用例、故事与单元测试等非交付范围。
+
+> 证据来源：web/src/context/auth.tsx:78-108,339-393,496-567；web/src/context/__tests__/authColdStart.test.tsx:132-193；web/src/app/routeScope.ts:1-6；web/src/app/(core)/api/locales/route.ts:91-120；web/src/context/locale.tsx:45-64；web/src/components/time-selector/index.tsx:20-35,72-100,145-148；web/src/stories/time-selector.stories.tsx:55-72　|　同步基线：b98b782a7　|　【已实现】
+
+> 证据来源：web/scripts/build.mjs:68-119、web/scripts/prepare-build-assets.mjs:8-13、web/next.config.mjs:22-24、web/tsconfig.build.json:1-21　|　同步基线：d2769559　|　【已实现】
+
+- **构建与验证环境契约**：容器构建与运行时统一使用 Node 24、pnpm 11.20，并以锁文件冻结依赖；开发和默认生产构建启用 Turbopack。企业扩展存在时，构建追踪与 Turbopack 的根目录提升至仓库根以覆盖其依赖边界。端到端冒烟验证先完成生产构建，再以本地生产服务校验应用外壳可访问、返回非服务端错误并具备可见页面主体。
+
+> 证据来源：web/package.json:5-15、web/package.json:114-116、web/Dockerfile:1-2、web/Dockerfile:22-23、web/Dockerfile:37-41、web/next.config.mjs:25-34、web/playwright.config.ts:15-25、web/e2e/app-shell.spec.ts:3-9　|　同步基线：d2769559　|　【已实现】
+
+- **按应用裁剪工作区**：`NEXTAPI_INSTALL_APP` 仅在显式执行“生成工作区”流程时用于生成工作区包范围并完成冻结依赖安装；常规构建不自动改变工作区范围。运行期菜单及可安装应用发现仍可读取该配置，二者与后端安装清单的一致性由部署流程保障。
+
+> 证据来源：web/package.json:13-15、web/scripts/generate-workspace.js:69-78、web/src/app/(core)/api/_utils/installApps.ts:23　|　同步基线：d2769559　|　【已实现】
+
+- **共享更多操作菜单**：跨模块的更多操作入口在呈现前按所需权限包装；危险操作必须通过二次确认后才执行。用于表格行、卡片等可点击容器时，可启用事件阻断，使展开菜单及选择操作不触发父容器的点击行为。
+
+> 证据来源：web/src/components/more-actions-dropdown/index.tsx:51-65、web/src/components/more-actions-dropdown/index.tsx:68-112　|　同步基线：d2769559　|　【已实现】
 
 ## mobile —— Next.js 15 + Tauri 2【已实现/已存在】
 - 路径 `mobile/src/app`：`login`、`workbench`(+detail)、`conversation`（opspilot 会话）、`search`、`profile`。功能为 web 子集（聚焦 AI 会话 + 工作台）。
@@ -26,10 +44,20 @@
 - core 提供会话持久化、SSE/自定义 header fetch 与状态机能力（`webchat-core/src/sessionManager.ts:6`、`sse.ts:6`、`stateMachine.ts:6`）。
 - ui 提供 React Chat 组件与 AG-UI 事件桥接（`webchat-ui/src/Chat.tsx:43`、`agui.ts:47`），支持 Vite library/UMD 构建。
 - demo 为 Next 入口（`webchat-demo/app/page.tsx:9`）。
+- **公开配置兼容契约**：`WebChatConfig` 仅接受具名 TypeScript 字段；集成方私有元数据进入 `extensions` 且不随请求发送，请求元数据仍进入 `customData`。`socketUrl`、`socketPath`、`enableSSE`、`reconnectAttempts`、`reconnectDelay` 在兼容窗口内保留并标记 deprecated；`socketUrl` 仅在 `sseUrl` 缺省时归一化为实际 fetch 端点，显式 `sseUrl` 始终优先。未类型 JavaScript 的未知顶层键在运行时仍保留。图片消息默认限制为 4 张、原始总计 16 MiB、并发读取 2、单图 16 Mi pixels（约 64 MiB RGBA）、单条消息 32 Mi pixels（约 128 MiB RGBA）；`maxImageCount`、`maxTotalImageBytes`、`imageReadConcurrency`、`maxImagePixels`、`maxTotalImagePixels` 可用正整数显式调整，非法值回落默认。静态 PNG/JPEG/BMP 在 Data URL/预览解码前读取格式头；动画 PNG/GIF/WebP 与未知尺寸格式仍按旧行为接受和发送，但默认只显示安全占位，不交给浏览器像素解码，集成方可显式设置 `allowUnknownImagePreview: true` 恢复旧预览，同时继续受数量、原始字节和读取并发约束。超预算批次在读取前整批拒绝，既有待发图片不变；错误同时进入输入区可见状态和可选 `onError` 回调，消息请求内容不变，回滚无需改变 SSE 或会话持久化基础结构。
+- **入口一致性**：React `Chat`、`FloatingButton` 与 browser UMD 共享上述配置边界；`FloatingButtonProps` 透传完整 `ChatProps`，`onChatStateChange` 优先于 `onStateChange`，关闭时先通知调用方再隐藏容器。browser UMD 仍由 WebChat 包产出；主 Web 的全局 WebChat 接入暂停期间，不再同步到 `web/public/webchat`。Next demo 仅在客户端加载 UI 包。
+
+> 证据来源：webchat/packages/webchat-core/src/{types.ts,config.ts}、webchat/packages/webchat-ui/src/{Chat.tsx,FloatingButton.tsx,browser-entry.ts,floatingButtonCallbacks.ts,imageBudget.ts}、webchat/packages/webchat-demo/app/chat-wrapper.tsx、webchat/scripts/sync-web-public.mjs、webchat/tests/{webchat-config.issue-4037.test.ts,image-budget.issue-4637.test.ts,chat-image-budget.issue-4637.test.tsx}　|　同步基线：issue-4637　|　【已实现】
 
 ## 风险 / 待确认
-- web 模块按 `NEXTAPI_INSTALL_APP` 启用已实际落地【已实现】：运行期由 `(core)/api/_utils/installApps.ts:23` 解析 `process.env.NEXTAPI_INSTALL_APP`（为空时回退到目录发现）；构建期由 `scripts/generate-workspace.js:10-11`、`scripts/generate-tsconfig.js:9-10` 据其生成 `pnpm-workspace.yaml` 与 `tsconfig.lint.json` 的 include 范围。其与后端 `INSTALL_APPS` 的对齐/同步策略【待确认】。
+- web 模块按 `NEXTAPI_INSTALL_APP` 启用已实际落地【已实现】：运行期解析该配置（为空时回退到目录发现）；工作区裁剪须通过显式生成流程执行，普通构建不会自动改变工作区范围。其与后端 `INSTALL_APPS` 的对齐/同步策略【待确认】。
+
+> 证据来源：web/src/app/(core)/api/_utils/installApps.ts:23、web/scripts/generate-workspace.js:69-78、web/package.json:13-15　|　同步基线：d2769559　|　【已实现】
 - mobile 仅暴露会话+工作台，其余模块是否规划【待确认】。
+- AuthProvider 同挂载实例在登出后再以另一账号登录时，`isProtectedContentReady` 是否会复位并再次完成冷启动恢复，当前代码与既有冷/暖态测试未覆盖，需确认【待确认】。
+- `frequenceValue` / `onFrequenceChange` 为已被多处调用的历史拼写兼容接口；其语义已稳定，但改名会破坏调用方，作为兼容性风险记录，不建议直接改名【风险】。
+
+> 证据来源：web/src/context/auth.tsx:90,107-108,462-524,537-567；web/src/context/__tests__/authColdStart.test.tsx:132-193；web/src/components/time-selector/index.tsx:20-35,72-100,145-148；web/src/app/ops-analysis/(pages)/view/dashBoard/components/dashboardToolbar.tsx:72-76；web/src/app/ops-analysis/(pages)/view/screen/components/screenToolbar.tsx:64-68；web/src/app/ops-analysis/(pages)/view/topology/components/toolbar.tsx:166-170；web/src/app/ops-analysis/(pages)/view/networkTopology/components/networkToolbar.tsx:134-138　|　同步基线：b98b782a7　|　【已实现/待确认】
 
 ## 2026-07-01 Code-ARD 校准
 - `[frontend#20260701-030]` 补录 webchat monorepo、Core/UI/Demo、会话持久化、SSE、自定义 header fetch、状态机、AG-UI 事件桥接、UMD 构建和 Next demo 入口。

@@ -2,7 +2,7 @@
 
 作业进入终态后，按调用方在触发时选择的通道（callback_type）投递执行结果：
 - web:  HTTP POST 到 callback_url（原 web 层方式，带 HMAC 签名，Celery 重试）
-- nats: publish 到 callback_subject（参考 ansible 的 callback_config.subject，fire-and-forget）
+- nats: publish 到 callback_subject，兼容既有 fire-and-forget 消费者
 - both: 两个通道都投
 
 两个通道都走 Celery 任务异步执行（任务定义在 tasks.py，Celery autodiscover 只扫描 apps/*/tasks.py）：
@@ -73,7 +73,7 @@ def _send_web_callback(execution) -> None:
 
 
 def _send_nats_callback(execution) -> None:
-    """nats 通道：仅在 callback_subject 存在时，通过 Celery 异步任务 publish 结果到该主题。"""
+    """nats 通道：仅在 callback_subject 存在时，通过 Celery 异步任务投递结果到该主题。"""
     subject = getattr(execution, "callback_subject", None)
     if not subject:
         logger.warning(f"[callback][nats] callback_type 含 nats 但未配置 callback_subject，跳过: execution_id={execution.id}")
@@ -85,11 +85,12 @@ def _send_nats_callback(execution) -> None:
 
 
 def publish_job_result_to_subject(subject: str, payload: dict) -> None:
-    """把作业结果以 RPC 信封格式 publish 到指定 NATS 主题（在 Celery worker 同步上下文中调用）。
+    """把作业结果以 RPC 信封格式 publish 到指定 NATS 主题。
 
     subject 形如 ``bklite.alert_job_result``：拆成 namespace + 方法名，消费方按
     ``@nats_client.register def alert_job_result(data): ...`` 接收（与 ansible_task_callback 同构）。
-    无命名空间前缀时用默认命名空间。
+    无命名空间前缀时用默认命名空间。completion outbox 只在 publish 调用抛错时使用
+    同一 delivery_id 重试，不要求既有消费者新增 reply 行为。
     """
     namespace, sep, method = subject.partition(".")
     if not sep:

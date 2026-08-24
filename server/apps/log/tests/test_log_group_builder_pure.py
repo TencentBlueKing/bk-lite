@@ -7,6 +7,9 @@ import pytest
 from apps.log.utils.log_group import LogGroupQueryBuilder
 
 
+pytestmark = pytest.mark.unit
+
+
 def _group(gid, name="g", rule=None):
     return SimpleNamespace(id=gid, name=name, rule=rule)
 
@@ -15,8 +18,13 @@ def _group(gid, name="g", rule=None):
 
 
 def test_json_to_logsql_empty_rule_returns_empty():
-    assert LogGroupQueryBuilder.json_to_logsql_expression(None) == ""
     assert LogGroupQueryBuilder.json_to_logsql_expression({}) == ""
+
+
+@pytest.mark.parametrize("rule", [None, [], "", 0, False])
+def test_json_to_logsql_falsey_non_object_rule_raises(rule):
+    with pytest.raises(ValueError, match="AND or OR"):
+        LogGroupQueryBuilder.json_to_logsql_expression(rule)
 
 
 def test_json_to_logsql_single_eq_condition():
@@ -43,13 +51,26 @@ def test_json_to_logsql_or_mode():
             {"field": "b", "op": "endswith", "value": "y"},
         ],
     }
-    assert LogGroupQueryBuilder.json_to_logsql_expression(rule) == "(a:x* OR b:*y)"
+    assert LogGroupQueryBuilder.json_to_logsql_expression(rule) == '(a:"x"* OR b:re(".*y$"))'
+
+
+def test_json_to_logsql_unknown_mode_raises():
+    rule = {
+        "mode": "ADN",
+        "conditions": [
+            {"field": "a", "op": "==", "value": "x"},
+            {"field": "b", "op": "==", "value": "y"},
+        ],
+    }
+
+    with pytest.raises(ValueError, match="AND or OR"):
+        LogGroupQueryBuilder.json_to_logsql_expression(rule)
 
 
 def test_json_to_logsql_contains_escapes_regex():
     rule = {"conditions": [{"field": "msg", "op": "contains", "value": "a.b"}]}
     out = LogGroupQueryBuilder.json_to_logsql_expression(rule)
-    assert out == 'msg:re(".*a\\.b.*")'
+    assert out == r'msg:re(".*a\\.b.*")'
 
 
 def test_json_to_logsql_not_contains():
@@ -57,9 +78,63 @@ def test_json_to_logsql_not_contains():
     assert LogGroupQueryBuilder.json_to_logsql_expression(rule) == '!msg:re(".*x.*")'
 
 
+@pytest.mark.parametrize(
+    "condition",
+    [
+        {"field": 'cluster") OR (*)', "op": "==", "value": "prod"},
+        {"field": "cluster", "op": "==", "value": 'prod") OR (*)'},
+    ],
+)
+def test_json_to_logsql_rejects_values_that_can_change_query_structure(condition):
+    with pytest.raises(ValueError, match="LogsQL syntax"):
+        LogGroupQueryBuilder.json_to_logsql_expression({"conditions": [condition]})
+
+
+def test_json_to_logsql_legacy_mode_preserves_previous_unescaped_expression():
+    rule = {"conditions": [{"field": "cluster", "op": "==", "value": 'prod") OR (*)'}]}
+
+    expression = LogGroupQueryBuilder.json_to_logsql_expression(rule, preserve_legacy_structure=True)
+
+    assert expression == 'cluster:"prod") OR (*)"'
+
+
+@pytest.mark.parametrize("field", ["@timestamp", "http/request"])
+def test_json_to_logsql_quotes_supported_special_field_names(field):
+    rule = {"conditions": [{"field": field, "op": "==", "value": "prod"}]}
+
+    expression = LogGroupQueryBuilder.json_to_logsql_expression(rule)
+
+    assert expression == f'"{field}":"prod"'
+
+
+@pytest.mark.parametrize(
+    ("op", "value", "expected"),
+    [
+        ("startswith", "/var/log", 'cluster:"/var/log"*'),
+        ("startswith", "ops@example.com", 'cluster:"ops@example.com"*'),
+        ("startswith", "GET /api", 'cluster:"GET /api"*'),
+        ("endswith", "/var/log", 'cluster:re(".*/var/log$")'),
+        ("endswith", "ops@example.com", r'cluster:re(".*ops@example\\.com$")'),
+        ("endswith", "GET /api", r'cluster:re(".*GET\\ /api$")'),
+    ],
+)
+def test_json_to_logsql_encodes_normal_wildcard_values(op, value, expected):
+    rule = {"conditions": [{"field": "cluster", "op": op, "value": value}]}
+
+    assert LogGroupQueryBuilder.json_to_logsql_expression(rule) == expected
+
+
+def test_json_to_logsql_strict_mode_quotes_legacy_wildcard_structure():
+    rule = {"conditions": [{"field": "cluster", "op": "startswith", "value": "prod* OR (*)"}]}
+
+    expression = LogGroupQueryBuilder.json_to_logsql_expression(rule)
+
+    assert expression == 'cluster:"prod* OR (*)"*'
+
+
 def test_json_to_logsql_unsupported_op_raises():
     rule = {"conditions": [{"field": "f", "op": "~~", "value": "v"}]}
-    with pytest.raises(ValueError, match="Unsupported operation"):
+    with pytest.raises(ValueError, match="unsupported"):
         LogGroupQueryBuilder.json_to_logsql_expression(rule)
 
 
@@ -91,7 +166,7 @@ def test_build_query_with_default_keeps_user_query():
 
 
 def test_build_query_with_default_and_empty_user_query_returns_star():
-    g = _group("g1", rule=None)
+    g = _group("g1", rule={})
     out, _ = LogGroupQueryBuilder.build_query_with_groups("", ["default", "g1"], resolved_groups=[g])
     assert out == "*"
 
@@ -104,7 +179,7 @@ def test_build_query_combines_user_and_group_filter():
 
 
 def test_build_query_all_empty_rule_groups_returns_user_query():
-    g = _group("g1", rule=None)
+    g = _group("g1", rule={})
     out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
     assert out == "host:web"
     assert info[0]["status"] == "empty_rule"
@@ -114,6 +189,122 @@ def test_build_query_invalid_rule_marks_status_and_denies():
     # rule 触发 json_to_logsql 抛错（不支持的 op）-> invalid_rule -> 无有效条件 -> DENY_ALL
     g = _group("g1", rule={"conditions": [{"field": "f", "op": "??", "value": "v"}]})
     out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+    assert out == LogGroupQueryBuilder.DENY_ALL_QUERY
+    assert info[0]["status"] == "invalid_rule"
+
+
+def test_build_query_unknown_mode_denies_by_default():
+    g = _group(
+        "g1",
+        rule={
+            "mode": "ADN",
+            "conditions": [
+                {"field": "a", "op": "==", "value": "x"},
+                {"field": "b", "op": "==", "value": "y"},
+            ],
+        },
+    )
+
+    out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+
+    assert out == LogGroupQueryBuilder.DENY_ALL_QUERY
+    assert info[0]["status"] == "invalid_rule"
+
+
+@pytest.mark.parametrize("rule", [None, [], "", 0, False])
+def test_build_query_falsey_non_object_rule_denies_by_default(rule):
+    g = _group("g1", rule=rule)
+
+    out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+
+    assert out == LogGroupQueryBuilder.DENY_ALL_QUERY
+    assert info[0]["status"] == "invalid_rule"
+
+
+@pytest.mark.parametrize("rule", [None, [], "", 0, False])
+def test_build_query_legacy_migration_mode_preserves_falsey_rule_behavior(settings, rule):
+    settings.LOG_GROUP_RULE_MODE_ENFORCEMENT = "legacy"
+    g = _group("g1", rule=rule)
+
+    out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+
+    assert out == "host:web"
+    assert info[0]["status"] == "legacy_empty_rule"
+
+
+def test_build_query_explicit_legacy_group_preserves_old_or_semantics(settings):
+    settings.LOG_GROUP_LEGACY_OR_GROUP_IDS = frozenset({"g1"})
+    g = _group(
+        "g1",
+        rule={
+            "mode": "ADN",
+            "conditions": [
+                {"field": "a", "op": "==", "value": "x"},
+                {"field": "b", "op": "==", "value": "y"},
+            ],
+        },
+    )
+
+    out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+
+    assert out == '(host:web) AND ((a:"x" OR b:"y"))'
+    assert info[0]["status"] == "legacy_or"
+
+
+def test_build_query_legacy_migration_mode_preserves_unknown_string_behavior(settings):
+    settings.LOG_GROUP_RULE_MODE_ENFORCEMENT = "legacy"
+    g = _group(
+        "g1",
+        rule={
+            "mode": "ADN",
+            "conditions": [
+                {"field": "a", "op": "==", "value": "x"},
+                {"field": "b", "op": "==", "value": "y"},
+            ],
+        },
+    )
+
+    out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+
+    assert out == '(host:web) AND ((a:"x" OR b:"y"))'
+    assert info[0]["status"] == "legacy_or"
+
+
+def test_build_query_legacy_migration_mode_preserves_old_empty_conditions_behavior(settings):
+    settings.LOG_GROUP_RULE_MODE_ENFORCEMENT = "legacy"
+    g = _group("g1", rule={"mode": "AND", "conditions": ""})
+
+    out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+
+    assert out == "host:web"
+    assert info[0]["status"] == "empty_rule"
+
+
+def test_build_query_strict_mode_denies_non_list_conditions():
+    g = _group("g1", rule={"mode": "AND", "conditions": ""})
+
+    out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+
+    assert out == LogGroupQueryBuilder.DENY_ALL_QUERY
+    assert info[0]["status"] == "invalid_rule"
+
+
+def test_build_query_legacy_allowlist_does_not_apply_to_other_groups(settings):
+    settings.LOG_GROUP_LEGACY_OR_GROUP_IDS = frozenset({"other"})
+    g = _group("g1", rule={"mode": "ADN", "conditions": [{"field": "a", "op": "==", "value": "x"}]})
+
+    out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+
+    assert out == LogGroupQueryBuilder.DENY_ALL_QUERY
+    assert info[0]["status"] == "invalid_rule"
+
+
+def test_build_query_non_string_mode_stays_invalid_even_when_allowlisted(settings):
+    settings.LOG_GROUP_LEGACY_OR_GROUP_IDS = frozenset({"g1"})
+    g = _group("g1", rule={"mode": None, "conditions": [{"field": "a", "op": "==", "value": "x"}]})
+
+    out, info = LogGroupQueryBuilder.build_query_with_groups("host:web", ["g1"], resolved_groups=[g])
+
     assert out == LogGroupQueryBuilder.DENY_ALL_QUERY
     assert info[0]["status"] == "invalid_rule"
 

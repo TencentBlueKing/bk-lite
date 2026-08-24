@@ -39,6 +39,31 @@ const TooltipSwitch: React.FC<{
   return switchEl;
 };
 
+const CompareSwitch: React.FC<{
+  checked?: boolean;
+  onChange?: (checked: boolean) => void;
+  readonly?: boolean;
+  compareAvailable: boolean;
+  unavailableTip: string;
+}> = ({ checked, onChange, readonly, compareAvailable, unavailableTip }) => {
+  const form = Form.useFormInstance();
+  return (
+    <TooltipSwitch
+      checked={checked}
+      disabled={readonly || !compareAvailable}
+      tooltipTitle={
+        !readonly && !compareAvailable ? unavailableTip : undefined
+      }
+      onChange={(nextChecked) => {
+        onChange?.(nextChecked);
+        if (nextChecked && !form.getFieldValue('compareMode')) {
+          form.setFieldValue('compareMode', 'percent');
+        }
+      }}
+    />
+  );
+};
+
 interface SingleValueSettingsSectionProps {
   t: (key: string) => string;
   sectionTitle?: string;
@@ -60,6 +85,8 @@ interface SingleValueSettingsSectionProps {
   compareAvailable: boolean;
   /** 是否只读模式 */
   readonly?: boolean;
+  /** 仪表盘单值说明字段；拓扑等复用方保持关闭 */
+  showDescriptionField?: boolean;
 }
 
 export const SingleValueSettingsSection: React.FC<
@@ -80,6 +107,7 @@ export const SingleValueSettingsSection: React.FC<
   onRemoveThreshold,
   compareAvailable,
   readonly = false,
+  showDescriptionField = false,
 }) => {
   const resolvedSectionTitle =
     sectionTitle || t('topology.nodeConfig.dataSettings');
@@ -91,8 +119,8 @@ export const SingleValueSettingsSection: React.FC<
     (node) => node.children?.length,
   );
   const fieldSelectorClassName = canSelectField
-    ? '[&_.ant-select-selector]:cursor-pointer'
-    : '';
+    ? 'w-full [&_.ant-select-selector]:cursor-pointer'
+    : 'w-full';
   const fieldPopupClassName = hasNestedFieldOptions
     ? ''
     : '[&_.ant-select-tree-switcher]:hidden [&_.ant-select-tree-switcher]:!w-0 [&_.ant-select-tree-indent]:hidden';
@@ -131,7 +159,19 @@ export const SingleValueSettingsSection: React.FC<
   return (
     <div className="mb-6">
       <div className="mb-6">
-        <div className="font-medium mb-4">{resolvedSectionTitle}</div>
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <div className="font-medium">{resolvedSectionTitle}</div>
+          <Button
+            type="text"
+            icon={<ReloadOutlined aria-hidden />}
+            onClick={onFetchSingleValueDataFields}
+            loading={loadingSingleValueData}
+            disabled={!selectedDataSource || readonly}
+            title={t('topology.nodeConfig.refreshDataFields')}
+            aria-label={t('topology.nodeConfig.refreshDataFields')}
+            className="shrink-0"
+          />
+        </div>
 
         <Form.Item
           label={t('topology.nodeConfig.displayField')}
@@ -150,45 +190,66 @@ export const SingleValueSettingsSection: React.FC<
             },
           ]}
         >
-          <div>
-            <div className="flex items-start gap-3">
-              <TreeSelect
-                value={selectedFields[0]}
-                treeData={buildFieldOptions(singleValueTreeData)}
-                treeDefaultExpandAll
-                allowClear
-                showSearch
-                treeNodeFilterProp="searchText"
-                placeholder={
-                  !selectedDataSource
-                    ? t('topology.nodeConfig.selectDataSourceFirst')
-                    : loadingSingleValueData
-                      ? t('topology.nodeConfig.fetchingDataFields')
-                      : singleValueTreeData.length === 0
-                        ? t('topology.nodeConfig.clickRefreshToGetFields')
-                        : t('topology.nodeConfig.selectDisplayField')
-                }
-                disabled={fieldSelectorDisabled}
-                onChange={(value) =>
-                  handleFieldSelect(value as string | undefined)
-                }
-                className={fieldSelectorClassName}
-                popupClassName={fieldPopupClassName}
-                style={{ width: '100%' }}
-                dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
-              />
-              <Button
-                type="text"
-                icon={<ReloadOutlined />}
-                onClick={onFetchSingleValueDataFields}
-                loading={loadingSingleValueData}
-                disabled={!selectedDataSource || readonly}
-                title={t('topology.nodeConfig.refreshDataFields')}
-                className="shrink-0"
-              />
-            </div>
-          </div>
+          <TreeSelect
+            value={selectedFields[0]}
+            treeData={buildFieldOptions(singleValueTreeData)}
+            treeDefaultExpandAll
+            allowClear
+            showSearch
+            treeNodeFilterProp="searchText"
+            placeholder={
+              !selectedDataSource
+                ? t('topology.nodeConfig.selectDataSourceFirst')
+                : loadingSingleValueData
+                  ? t('topology.nodeConfig.fetchingDataFields')
+                  : singleValueTreeData.length === 0
+                    ? t('topology.nodeConfig.clickRefreshToGetFields')
+                    : t('topology.nodeConfig.selectDisplayField')
+            }
+            disabled={fieldSelectorDisabled}
+            onChange={(value) =>
+              handleFieldSelect(value as string | undefined)
+            }
+            className={fieldSelectorClassName}
+            popupClassName={fieldPopupClassName}
+            dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
+          />
         </Form.Item>
+
+        {showDescriptionField ? (
+          <Form.Item
+            label={
+              <span>
+                {t('dashboard.descriptionField')}
+                <Tooltip title={t('dashboard.descriptionFieldTip')}>
+                  <QuestionCircleOutlined className="ml-1 text-(--color-text-3) cursor-help" />
+                </Tooltip>
+              </span>
+            }
+            name="descriptionField"
+          >
+            <TreeSelect
+              treeData={buildFieldOptions(singleValueTreeData)}
+              treeDefaultExpandAll
+              allowClear
+              showSearch
+              treeNodeFilterProp="searchText"
+              placeholder={
+                !selectedDataSource
+                  ? t('topology.nodeConfig.selectDataSourceFirst')
+                  : loadingSingleValueData
+                    ? t('topology.nodeConfig.fetchingDataFields')
+                    : singleValueTreeData.length === 0
+                      ? t('topology.nodeConfig.clickRefreshToGetFields')
+                      : t('dashboard.selectDescriptionField')
+              }
+              disabled={fieldSelectorDisabled}
+              className={fieldSelectorClassName}
+              popupClassName={fieldPopupClassName}
+              dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
+            />
+          </Form.Item>
+        ) : null}
       </div>
 
       <Form.Item
@@ -196,20 +257,17 @@ export const SingleValueSettingsSection: React.FC<
           <span>
             {t('dashboard.compareLabel')}
             <Tooltip title={t('dashboard.comparePreviousPeriodTip')}>
-              <QuestionCircleOutlined className="ml-1 text-gray-400 cursor-help" />
+              <QuestionCircleOutlined className="ml-1 cursor-help text-[var(--color-text-3)]" />
             </Tooltip>
           </span>
         }
         name="compare"
         valuePropName="checked"
       >
-        <TooltipSwitch
-          disabled={readonly || !compareAvailable}
-          tooltipTitle={
-            !readonly && !compareAvailable
-              ? t('dashboard.compareUnavailableTip')
-              : undefined
-          }
+        <CompareSwitch
+          readonly={readonly}
+          compareAvailable={compareAvailable}
+          unavailableTip={t('dashboard.compareUnavailableTip')}
         />
       </Form.Item>
 
@@ -218,10 +276,14 @@ export const SingleValueSettingsSection: React.FC<
         shouldUpdate={(prev, current) => prev.compare !== current.compare}
       >
         {({ getFieldValue }) => getFieldValue('compare') ? (
-          <Form.Item label={t('dashboard.compareMode')} name="compareMode">
+          <Form.Item
+            label={t('dashboard.compareMode')}
+            name="compareMode"
+            initialValue="percent"
+          >
             <Select
               disabled={readonly}
-              style={{ width: '200px' }}
+              className="w-[200px]"
               options={[
                 { value: 'percent', label: t('dashboard.compareModePercent') },
                 { value: 'value', label: t('dashboard.compareModeValue') },
@@ -236,7 +298,7 @@ export const SingleValueSettingsSection: React.FC<
           allowClear
           placeholder={t('common.selectMsg')}
           disabled={readonly}
-          style={{ width: '200px' }}
+          className="w-[200px]"
           options={[
             { value: '', label: t('topology.nodeConfig.customSuffix') },
             ...getUnitCategories().map((cat) => ({
@@ -261,7 +323,7 @@ export const SingleValueSettingsSection: React.FC<
               <Input
                 placeholder={t('common.inputMsg')}
                 disabled={readonly}
-                style={{ width: '200px' }}
+                className="w-[200px]"
               />
             </Form.Item>
           ) : null
@@ -278,7 +340,7 @@ export const SingleValueSettingsSection: React.FC<
           step={0.01}
           placeholder={t('common.inputMsg')}
           disabled={readonly}
-          style={{ width: '120px' }}
+          className="w-[120px]"
         />
       </Form.Item>
 
@@ -292,7 +354,7 @@ export const SingleValueSettingsSection: React.FC<
           step={1}
           placeholder={t('common.inputMsg')}
           disabled={readonly}
-          style={{ width: '120px' }}
+          className="w-[120px]"
         />
       </Form.Item>
 

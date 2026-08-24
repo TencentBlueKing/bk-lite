@@ -30,7 +30,7 @@ export const useCanvasShareApi = () => {
 
   const createShare = useCallback(
     (
-      resourceType: Exclude<CanvasShareResourceType, 'report'>,
+      resourceType: CanvasShareResourceType,
       resourceId: string | number,
     ): Promise<CanvasShareLinkDto> => {
       const endpoint = CANVAS_TYPE_REGISTRY[resourceType].endpoint.replace(/\/$/, '');
@@ -52,10 +52,18 @@ export const useCanvasShareApi = () => {
   );
 
   const querySharedDataSource = useCallback(
-    (sessionId: string, dataSourceId: number, params?: unknown) =>
+    (
+      sessionId: string,
+      dataSourceId: number,
+      params?: unknown,
+      options?: { suppressErrorNotification?: boolean },
+    ) =>
       post(
         `/operation_analysis/api/dashboard_share/session/${sessionId}/query/${dataSourceId}/`,
         params,
+        options?.suppressErrorNotification
+          ? { suppressErrorNotification: true }
+          : undefined,
       ),
     [post],
   );

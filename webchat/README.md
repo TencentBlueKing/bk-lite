@@ -104,6 +104,8 @@ export default function App() {
 }
 ```
 
+`sseUrl` is the single-bot floating embed. To switch among permitted published platform skill channels, pass a `platform` contract (or mount `PlatformChat`) instead — see `INTEGRATION.md`. Platform mode is a full-height right overlay (FAB when closed); only `sseUrl` keeps the 384×650 float.
+
 ### 方式三：CDN 引入（推荐生产环境）
 
 ### 方式三：CDN 引入（推荐生产环境）
@@ -174,7 +176,8 @@ npm run dev
 ```typescript
 interface WebChatConfig {
   sseUrl?: string;                  // SSE 服务端点 URL（必填）
-  customData?: Record<string, any>; // 自定义元数据（如用户ID、来源等）
+  customData?: Record<string, unknown>; // 随请求发送的自定义元数据
+  extensions?: Record<string, unknown>; // 集成方自用扩展，不随请求发送
   title?: string;                   // 聊天窗口标题，默认：'Chat'
   subtitle?: string;                // 聊天窗口副标题
   placeholder?: string;             // 输入框占位符，默认：'Type a message...'
@@ -188,6 +191,17 @@ interface WebChatConfig {
   // 存储配置
   enableStorage?: boolean;          // 启用会话持久化，默认：true
   storageKey?: string;              // localStorage 存储键，默认：'webchat_session'
+
+  // 流式性能与回滚
+  streamingTextBatching?: boolean;  // 每动画帧合并文本提交，默认：true；设为 false 即时回滚
+
+  // 单条消息的图片资源预算
+  maxImageCount?: number;           // 图片数量上限，默认：4
+  maxTotalImageBytes?: number;      // 原始图片总字节上限，默认：16 MiB
+  imageReadConcurrency?: number;    // FileReader 并发数，默认：2
+  maxImagePixels?: number;          // 单图解码像素上限，默认：16 Mi pixels
+  maxTotalImagePixels?: number;     // 单条消息解码像素上限，默认：32 Mi pixels
+  allowUnknownImagePreview?: boolean; // 未知格式浏览器预览开关，默认：false
   
   // 回调函数
   onStateChange?: (state: ChatState) => void;
@@ -197,10 +211,37 @@ interface WebChatConfig {
 }
 ```
 
+### 旧配置迁移
+
+`socketUrl` 仅为 `sseUrl` 的兼容别名；两者同时提供时以 `sseUrl` 为准。`socketPath`、`enableSSE`、`reconnectAttempts`
+和 `reconnectDelay` 不再控制当前基于单次 fetch 流的 UI，类型中只为旧调用保留并标记为 deprecated。
+
+旧调用方无需改动即可继续发送 4 张以内、原始总大小不超过 16 MiB 的图片。确有更大批量需求时，可以显式提高
+`maxImageCount`、`maxTotalImageBytes`、`maxImagePixels` 和 `maxTotalImagePixels`；默认解码预算按 RGBA 估算
+单图约 64 MiB、单条消息约 128 MiB。静态 PNG/JPEG/BMP 会在 Data URL 和预览解码前读取格式头；
+动画 PNG、GIF、WebP 不能用单帧尺寸安全估算总解码内存，因此与其它无法识别尺寸的格式相同，
+无法识别尺寸的格式仍按旧行为接受和发送，但默认只显示安全占位，不交给浏览器像素解码；必须恢复旧预览时可显式设置
+`allowUnknownImagePreview: true`，此时仍受数量、原始总字节和 `imageReadConcurrency` 约束。超出任一预算时，整批新增图片会在读取前拒绝，
+已有待发送图片保持不变，且即使未提供 `onError` 也会在输入区显示错误。
+
+自定义集成配置请放到 `extensions`，需要随聊天请求发送的数据仍放到 `customData`：
+
+```typescript
+const config: WebChatConfig = {
+  sseUrl: 'https://example.com/api/chat',
+  extensions: {
+    pluginMode: 'compact',
+  },
+  customData: {
+    source: 'website',
+  },
+};
+```
+
 ### 浮动按钮额外配置
 
 ```typescript
-interface FloatingButtonProps extends WebChatConfig {
+interface FloatingButtonProps extends ChatProps {
   buttonText?: string;              // 按钮文字，默认：'聊天'
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
   // 默认：'bottom-right'

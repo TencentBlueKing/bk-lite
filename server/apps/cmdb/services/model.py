@@ -2,6 +2,7 @@ import json
 import os
 import uuid
 from dataclasses import asdict
+from hashlib import sha256
 from typing import Any, Callable
 
 from django.core.cache import cache
@@ -73,9 +74,78 @@ PROTECTED_MODEL_ATTR_IDS = frozenset({ORGANIZATION})
 MODEL_ATTR_OPTION_CACHE_TTL = int(os.getenv("CMDB_MODEL_ATTR_OPTION_CACHE_TTL", "300"))
 MODEL_ATTR_ORGANIZATION_OPTION_CACHE_KEY = "cmdb:model_attr_options:organization"
 MODEL_ATTR_USER_OPTION_CACHE_KEY = "cmdb:model_attr_options:user"
+ENUM_DISPLAY_BACKFILL_CHECKPOINT_TTL = 24 * 60 * 60
 
 
 class ModelManage(object):
+    @staticmethod
+    def _enum_display_backfill_checkpoint(model_id: str, attr_id: str, new_options: list) -> tuple[str, str]:
+        options_digest = sha256(json.dumps(new_options, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        return f"cmdb:enum-display-backfill:{model_id}:{attr_id}", options_digest
+
+    @staticmethod
+    def _get_enum_display_backfill_checkpoint(checkpoint_key: str, options_digest: str) -> tuple[int | None, bool]:
+        try:
+            checkpoint = cache.get(checkpoint_key)
+            if not isinstance(checkpoint, dict):
+                return None, True
+            if checkpoint.get("options_digest") != options_digest:
+                cache.delete(checkpoint_key)
+                return None, True
+            return int(checkpoint["cursor"]), True
+        except Exception as e:
+            logger.warning(
+                "[update_enum_instances_display] 读取回填断点失败，将从头幂等执行: error_type=%s, error=%s",
+                type(e).__name__,
+                e,
+            )
+            return None, False
+
+    @staticmethod
+    def _save_enum_display_backfill_checkpoint(checkpoint_key: str, options_digest: str, cursor: int) -> bool:
+        try:
+            cache.set(
+                checkpoint_key,
+                {"options_digest": options_digest, "cursor": cursor},
+                timeout=ENUM_DISPLAY_BACKFILL_CHECKPOINT_TTL,
+            )
+            return True
+        except Exception as e:
+            logger.warning(
+                "[update_enum_instances_display] 保存回填断点失败，后续重试将从头幂等执行: cursor=%s, error_type=%s, error=%s",
+                cursor,
+                type(e).__name__,
+                e,
+            )
+            return False
+
+    @staticmethod
+    def _clear_enum_display_backfill_checkpoint(checkpoint_key: str) -> None:
+        try:
+            cache.delete(checkpoint_key)
+        except Exception as e:
+            logger.warning(
+                "[update_enum_instances_display] 清理回填断点失败，后续会幂等续扫: error_type=%s, error=%s",
+                type(e).__name__,
+                e,
+            )
+
+    @staticmethod
+    def _write_enum_display_batch(ag, display_field_id: str, property_values: list[dict]) -> int:
+        for attempt in range(2):
+            try:
+                written = ag.batch_update_node_property_values(INSTANCE, display_field_id, property_values)
+                return len(written)
+            except Exception as e:
+                if attempt:
+                    raise
+                logger.warning(
+                    "[update_enum_instances_display] 图写失败，将从当前成功游标重试一次: error_type=%s, error=%s",
+                    type(e).__name__,
+                    e,
+                )
+        return 0
+
     @staticmethod
     def _clone_options(option: list[dict]) -> list[dict]:
         return [dict(item) for item in option]
@@ -892,11 +962,7 @@ class ModelManage(object):
                     models,
                     graph=ag,
                 )
-                models = [
-                    model
-                    for model in models
-                    if model["model_id"] in visible_models
-                ]
+                models = [model for model in models if model["model_id"] in visible_models]
 
         lan = SettingLanguage(language)
 
@@ -1123,25 +1189,97 @@ class ModelManage(object):
 
         updated_count = 0
         display_field_id = f"{attr_id}_display"
+        checkpoint_key, options_digest = ModelManage._enum_display_backfill_checkpoint(model_id, attr_id, new_options)
 
         try:
             with GraphClient() as ag:
-                # 查询该模型的所有实例
-                instances, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
+                scan_cursor, checkpoint_available = ModelManage._get_enum_display_backfill_checkpoint(
+                    checkpoint_key,
+                    options_digest,
+                )
+                if not checkpoint_available:
+                    raise RuntimeError("枚举显示字段回填断点不可用，已安全跳过本轮图写")
+                property_values = []
+                while True:
+                    query_params = [{"field": "model_id", "type": "str=", "value": model_id}]
+                    if scan_cursor is not None:
+                        query_params.append(
+                            {
+                                "field": "id",
+                                "type": "id>",
+                                "value": scan_cursor,
+                            }
+                        )
+                    instances, _ = ag.query_entity(
+                        INSTANCE,
+                        query_params,
+                        page={"skip": 0, "limit": MAX_BATCH_UPDATE_PROPERTY_VALUES},
+                        include_count=False,
+                    )
+                    if not instances:
+                        if property_values:
+                            updated_count += ModelManage._write_enum_display_batch(
+                                ag,
+                                display_field_id,
+                                property_values,
+                            )
+                            checkpoint_available = (
+                                ModelManage._save_enum_display_backfill_checkpoint(
+                                    checkpoint_key,
+                                    options_digest,
+                                    property_values[-1]["id"],
+                                )
+                                and checkpoint_available
+                            )
+                        ModelManage._clear_enum_display_backfill_checkpoint(checkpoint_key)
+                        break
 
-                # 批量更新实例的 _display 字段
-                for instance in instances:
-                    # 检查实例是否有该枚举字段
-                    if attr_id in instance and instance[attr_id]:
-                        enum_value = instance[attr_id]
+                    next_instance_id = int(instances[-1]["_id"])
+                    if scan_cursor is not None and next_instance_id <= scan_cursor:
+                        raise RuntimeError(f"枚举显示字段回填游标未推进: cursor={scan_cursor}, next_cursor={next_instance_id}")
 
-                        # 使用统一的转换器生成新的 _display 值
-                        new_display_value = DisplayFieldConverter.convert_enum(enum_value, new_options)
+                    for instance in instances:
+                        if attr_id not in instance or not instance[attr_id]:
+                            continue
+                        property_values.append(
+                            {
+                                "id": instance["_id"],
+                                "value": DisplayFieldConverter.convert_enum(instance[attr_id], new_options),
+                            }
+                        )
+                        if len(property_values) == MAX_BATCH_UPDATE_PROPERTY_VALUES:
+                            updated_count += ModelManage._write_enum_display_batch(
+                                ag,
+                                display_field_id,
+                                property_values,
+                            )
+                            checkpoint_available = (
+                                ModelManage._save_enum_display_backfill_checkpoint(
+                                    checkpoint_key,
+                                    options_digest,
+                                    property_values[-1]["id"],
+                                )
+                                and checkpoint_available
+                            )
+                            property_values = []
 
-                        # 更新实例的 _display 字段
-                        update_data = {display_field_id: new_display_value}
-                        ag.batch_update_node_properties(INSTANCE, [instance["_id"]], update_data)
-                        updated_count += 1
+                    scan_cursor = next_instance_id
+                    if not property_values:
+                        checkpoint_available = (
+                            ModelManage._save_enum_display_backfill_checkpoint(
+                                checkpoint_key,
+                                options_digest,
+                                scan_cursor,
+                            )
+                            and checkpoint_available
+                        )
+
+                if not checkpoint_available:
+                    logger.warning(
+                        "[update_enum_instances_display] 断点写入不可用，本轮写入保持幂等，后续请求将从头执行: 模型=%s, 字段=%s",
+                        model_id,
+                        attr_id,
+                    )
 
                 if updated_count > 0:
                     logger.info(
@@ -1153,7 +1291,7 @@ class ModelManage(object):
                 f"[update_enum_instances_display] 更新实例枚举 _display 字段失败: 模型={model_id}, 字段={attr_id}, 错误={e}",
                 exc_info=True,
             )
-            # 不抛出异常，避免中断主流程
+            raise BaseAppException("枚举属性已更新，但实例展示字段刷新失败，请重试保存") from e
 
         return updated_count
 
@@ -1230,10 +1368,7 @@ class ModelManage(object):
                     updated_count += len(property_values)
 
                 if updated_count > 0:
-                    logger.info(
-                        f"[rebuild_file_instances_display] 已回填 {updated_count} 个实例的 {display_field_id} 字段, "
-                        f"模型: {model_id}, 字段: {attr_id}"
-                    )
+                    logger.info(f"[rebuild_file_instances_display] 已回填 {updated_count} 个实例的 {display_field_id} 字段, " f"模型: {model_id}, 字段: {attr_id}")
 
         except Exception as e:
             logger.error(
@@ -2142,9 +2277,7 @@ class ModelManage(object):
             if associations:
                 if selected_ids is not None:
                     associations = [
-                        a for a in associations
-                        if a.get("src_model_id", "") in selected_ids
-                        and a.get("dst_model_id", "") in selected_ids
+                        a for a in associations if a.get("src_model_id", "") in selected_ids and a.get("dst_model_id", "") in selected_ids
                     ]
                 if associations:
                     ws_asso = workbook.create_sheet(title=f"asso-{model_id}")
@@ -2172,7 +2305,11 @@ class ModelManage(object):
         return file_stream
 
     @staticmethod
-    def _apply_model_config_post_import_extras(model_config: dict[str, list[dict]]):
+    def _apply_model_config_post_import_extras(
+        model_config: dict[str, list[dict]],
+        *,
+        keep_existing_unique_rules_on_conflict: bool = False,
+    ):
         with GraphClient() as ag:
             for sheet_name, rows in model_config.items():
                 if not sheet_name.startswith("attr-"):
@@ -2193,6 +2330,15 @@ class ModelManage(object):
                         exist_items,
                     )
                     if conflicts:
+                        if keep_existing_unique_rules_on_conflict:
+                            logger.warning(
+                                "[UniqueRule] 存量实例与待应用规则冲突，保留原唯一规则并继续初始化 " "model_id=%s sheet_name=%s conflict_count=%s reason=%s",
+                                model_id,
+                                sheet_name,
+                                len(conflicts),
+                                conflicts[0].message,
+                            )
+                            continue
                         raise BaseAppException(conflicts[0].message)
                     ag.set_entity_properties(
                         MODEL,
@@ -2220,11 +2366,7 @@ class ModelManage(object):
 
         ModelManage._import_auto_relation_rule_sets_from_asso_sheets(model_config)
         # push/ingest 依赖可写 node_id / monitor_id；模型导入后对一期支持模型幂等补齐
-        from apps.cmdb.services.module_ingest import (
-            SUPPORTED_INGEST_MODELS,
-            ensure_model_monitor_id_attr,
-            ensure_model_node_id_attr,
-        )
+        from apps.cmdb.services.module_ingest import SUPPORTED_INGEST_MODELS, ensure_model_monitor_id_attr, ensure_model_node_id_attr
 
         for mid in sorted(SUPPORTED_INGEST_MODELS):
             ensure_model_node_id_attr(mid, username="admin")

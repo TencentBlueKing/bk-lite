@@ -97,10 +97,10 @@ export interface CustomReportingOnboardingDocument {
   };
   identity_keys: string[];
   examples: {
-    instances: { instances: Array<Record<string, any>> };
+    instances: { instances: Array<Record<string, unknown>> };
     with_relations: {
-      instances: Array<Record<string, any>>;
-      relations: Array<Record<string, any>>;
+      instances: Array<Record<string, unknown>>;
+      relations: Array<Record<string, unknown>>;
     };
   };
 }

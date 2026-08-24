@@ -6,6 +6,7 @@ ENV SIDECAR_ZONE "default"
 ENV SIDECAR_GROUP "default"
 ENV SIDECAR_NODEID ""
 ENV SIDECAR_NODENAME "telegraf-proxy"
+ENV SSH_KNOWN_HOSTS_FILE ""
 
 RUN apt-get update && \
     apt-get install -y ca-certificates ipmitool vim snmp supervisor zip iputils-ping snmptrapd openjdk-11-jdk sshpass && \

@@ -8,13 +8,28 @@ export { StatCard } from './stat-card';
 export type { StatCardProps, StatCardStyles } from './stat-card';
 
 export { CollectionStatusCard } from './collection-status-card';
-export type { CollectionStatusCardProps, CollectionStatusCardStyles } from './collection-status-card';
+export type {
+  CollectionStatusCardProps,
+  CollectionStatusCardStyles
+} from './collection-status-card';
+export type {
+  CollectionStatusTimelineSegment,
+  CollectionStatusTone
+} from '../utils/collection-status';
 
 export { RingChartPanel } from './ring-chart-panel';
 export type { RingChartPanelProps, RingChartPanelStyles, RingChartDataItem, RingChartInfoRow } from './ring-chart-panel';
 
-export { HorizontalBarPanel, BarList } from './horizontal-bar-panel';
-export type { HorizontalBarPanelProps, HorizontalBarPanelStyles, BarItem, BarListProps } from './horizontal-bar-panel';
+export {
+  BarList,
+  HorizontalBarPanel,
+} from '@/app/monitor/components/monitor-dashboard-widgets/horizontal-bar-panel';
+export type {
+  BarItem,
+  BarListProps,
+  HorizontalBarPanelProps,
+  HorizontalBarPanelStyles,
+} from '@/app/monitor/components/monitor-dashboard-widgets/horizontal-bar-panel';
 
 export { StackedBarPanel } from './stacked-bar-panel';
 export type { StackedBarPanelProps, StackedBarPanelStyles, StackedBarRow } from './stacked-bar-panel';

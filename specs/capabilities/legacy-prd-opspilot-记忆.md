@@ -31,6 +31,10 @@
 - 记忆空间一经创建，其存储引擎不可切换；引擎配置可随时更新。
 - 引擎配置中的敏感项（如 API 密钥）落库前加密存储；对外返回时一律脱敏，仅展示前缀加掩码或占位符。
 - 个人记忆按用户隔离、团队记忆按组织隔离；同一记忆空间内每个用户/组织各自唯一一条记忆主体。
+- 删除记忆空间前，确认操作会展示该空间名称；确认删除后，空间内记忆条目随空间级联删除且不可恢复。
+
+对应交付范围：[[legacy-fuctionlist-10-opspilot-功能清单.md#4. 记忆管理]]
+> 证据来源：web/src/app/opspilot/(pages)/memory/page.tsx:67-75，server/apps/opspilot/models/memory_mgmt.py:112-116，server/apps/opspilot/viewsets/memory_view.py:70-76　|　同步基线：d2769559　|　【已实现】
 
 ## 5. 关键技术架构选择
 

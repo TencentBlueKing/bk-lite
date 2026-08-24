@@ -30,6 +30,18 @@ def _stub_auth_serializer_dependencies(monkeypatch):
         [],
         raising=False,
     )
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.InstanceManage.query_entity_by_uuids",
+        lambda uuids: [{"inst_uuid": inst_uuid, "inst_name": "platform-target", "ip_addr": "10.0.0.8"} for inst_uuid in uuids],
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.CmdbRulesFormatUtil.format_user_groups_permissions",
+        lambda *args, **kwargs: {},
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.InstanceManage._has_topology_view_permission",
+        lambda *args, **kwargs: True,
+    )
 
 
 def _serializer(model_id, credential):
@@ -43,7 +55,7 @@ def _serializer(model_id, credential):
             "access_point": [{"id": 1}],
             "instances": [
                 {
-                    "_id": f"{model_id}-1",
+                    "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
                     "model_id": model_id,
                     "inst_name": f"{model_id}-target",
                     "ip_addr": "10.0.0.8",
@@ -61,7 +73,10 @@ def _serializer(model_id, credential):
     )
 
 
-@pytest.mark.parametrize("model_id,port", [("fusioninsight", 443), ("storage", 8088)])
+@pytest.mark.parametrize(
+    "model_id,port",
+    [("fusioninsight", 443), ("storage", 8088), ("sangforhci", 443)],
+)
 def test_platform_api_accepts_username_password_and_tls(model_id, port):
     serializer = _serializer(
         model_id,

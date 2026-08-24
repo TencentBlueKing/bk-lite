@@ -77,6 +77,22 @@ def test_red_endpoint_requires_one_environment_and_does_not_mix_views(apm_api_cl
     assert metric_query.call_args.args[0].include_breakdown is True
 
 
+def test_red_endpoint_passes_the_selected_endpoint_to_the_bounded_query(apm_api_client, mocker):
+    service = _service()
+    metric_query = mocker.patch(
+        "apps.apm.views.control_plane.DjangoTelemetryQueryService.service_red",
+        return_value=ServiceRed(request_rate=2, error_rate=0, p95_ms=20, p99_ms=30),
+    )
+
+    response = apm_api_client.get(
+        f"/api/v1/apm/services/{service.id}/metrics/",
+        {"environment": "production", "endpoint": "POST /checkout"},
+    )
+
+    assert response.status_code == 200
+    assert metric_query.call_args.args[0].endpoint == "POST /checkout"
+
+
 def test_red_endpoint_treats_explicit_empty_environment_as_its_own_view(apm_api_client, mocker):
     service = _service()
     metric_query = mocker.patch(

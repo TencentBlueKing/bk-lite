@@ -10,10 +10,7 @@ from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.services.infra import InfraService
 from apps.monitor.services.template_access_guide import TemplateAccessGuideService
-from apps.monitor.tasks.monitor_policy import (
-    scan_policy_task,
-    retry_alert_center_lifecycle_notify_task,
-)
+from apps.monitor.tasks.monitor_policy import retry_alert_center_lifecycle_notify_task, scan_policy_task
 
 pytestmark = pytest.mark.django_db
 
@@ -21,9 +18,13 @@ pytestmark = pytest.mark.django_db
 def _make_policy(**kwargs):
     obj = MonitorObject.objects.create(name=kwargs.pop("obj_name", "TaskObj"), level="base")
     base = dict(
-        monitor_object=obj, name="p", algorithm="max",
-        query_condition={"type": "pmq", "query": "up"}, source={},
-        group_by=["instance_id"], enable=True,
+        monitor_object=obj,
+        name="p",
+        algorithm="max",
+        query_condition={"type": "pmq", "query": "up"},
+        source={},
+        group_by=["instance_id"],
+        enable=True,
         period={"type": "min", "value": 5},
     )
     base.update(kwargs)
@@ -69,12 +70,13 @@ class TestRetryAlertCenterNotify:
 
     def test_retries_and_marks_success(self, mocker):
         alert = MonitorAlert.objects.create(
-            policy_id=1, monitor_instance_id="h1", status="recovered",
-            alert_center_notified=False, alert_center_retry_count=0,
+            policy_id=1,
+            monitor_instance_id="h1",
+            status="recovered",
+            alert_center_notified=False,
+            alert_center_retry_count=0,
         )
-        notifier = mocker.patch(
-            "apps.monitor.services.alert_lifecycle_notify.AlertLifecycleNotifier"
-        )
+        notifier = mocker.patch("apps.monitor.services.alert_lifecycle_notify.AlertLifecycleNotifier")
         inst = notifier.return_value
         inst.push_to_alert_center_only.return_value = [(alert, True)]
         out = retry_alert_center_lifecycle_notify_task()
@@ -83,12 +85,13 @@ class TestRetryAlertCenterNotify:
 
     def test_failure_increments_retry_count(self, mocker):
         alert = MonitorAlert.objects.create(
-            policy_id=1, monitor_instance_id="h1", status="closed",
-            alert_center_notified=False, alert_center_retry_count=0,
+            policy_id=1,
+            monitor_instance_id="h1",
+            status="closed",
+            alert_center_notified=False,
+            alert_center_retry_count=0,
         )
-        notifier = mocker.patch(
-            "apps.monitor.services.alert_lifecycle_notify.AlertLifecycleNotifier"
-        )
+        notifier = mocker.patch("apps.monitor.services.alert_lifecycle_notify.AlertLifecycleNotifier")
         notifier.return_value.push_to_alert_center_only.return_value = [(alert, False)]
         out = retry_alert_center_lifecycle_notify_task()
         assert out["failed"] == 1
@@ -96,13 +99,14 @@ class TestRetryAlertCenterNotify:
         assert alert.alert_center_retry_count == 1
 
     def test_group_exception_treated_as_failure(self, mocker):
-        alert = MonitorAlert.objects.create(
-            policy_id=1, monitor_instance_id="h1", status="recovered",
-            alert_center_notified=False, alert_center_retry_count=0,
+        MonitorAlert.objects.create(
+            policy_id=1,
+            monitor_instance_id="h1",
+            status="recovered",
+            alert_center_notified=False,
+            alert_center_retry_count=0,
         )
-        notifier = mocker.patch(
-            "apps.monitor.services.alert_lifecycle_notify.AlertLifecycleNotifier"
-        )
+        notifier = mocker.patch("apps.monitor.services.alert_lifecycle_notify.AlertLifecycleNotifier")
         notifier.return_value.push_to_alert_center_only.side_effect = RuntimeError("boom")
         out = retry_alert_center_lifecycle_notify_task()
         assert out["failed"] == 1
@@ -130,9 +134,7 @@ class TestTemplateAccessGuide:
 
     def test_telegraf_endpoint_builds_url(self, mocker):
         node = mocker.patch("apps.monitor.services.template_access_guide.NodeMgmt")
-        node.return_value.get_cloud_region_envconfig.return_value = {
-            "NODE_SERVER_URL": "https://node.example.com:8080/foo"
-        }
+        node.return_value.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "https://node.example.com:8080/foo"}
         url = TemplateAccessGuideService.get_telegraf_listener_endpoint(1)
         assert url == "https://node.example.com:8080/telegraf/api"
 
@@ -151,10 +153,9 @@ class TestTemplateAccessGuide:
 
 @pytest.fixture
 def locmem_cache(settings):
-    settings.CACHES = {
-        "default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}
-    }
+    settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}}
     from django.core.cache import cache
+
     cache.clear()
     return cache
 
@@ -166,6 +167,7 @@ class TestInfraService:
         data = InfraService.validate_and_get_token_data(token)
         assert data["cluster_name"] == "c1"
         assert data["cloud_region_id"] == "5"
+        assert data["image_registry_prefix"] == "bk-lite.tencentcloudcr.com/bklite"
         assert data["remaining_usage"] >= 0
 
     def test_validate_empty_token_raises(self, locmem_cache):
@@ -180,7 +182,15 @@ class TestInfraService:
         token = InfraService.generate_install_token("c1", "5")
         # 连续使用至超限（max_usage 次）
         from apps.monitor.constants.infra import InfraConstants
+
         for _ in range(InfraConstants.TOKEN_MAX_USAGE):
             InfraService.validate_and_get_token_data(token)
         with pytest.raises(BaseAppException):
             InfraService.validate_and_get_token_data(token)
+
+    def test_custom_image_registry_is_bound_to_token(self, locmem_cache):
+        token = InfraService.generate_install_token("c1", "5", "harbor.internal/bklite")
+
+        data = InfraService.validate_and_get_token_data(token)
+
+        assert data["image_registry_prefix"] == "harbor.internal/bklite"

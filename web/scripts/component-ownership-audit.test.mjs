@@ -59,4 +59,29 @@ assert.match(byName.get('primitive-control').reason, /allowlist/);
 assert.deepEqual(byName.get('root-shell').directApps, ['(root)']);
 assert.equal(byName.get('root-shell').classification, 'app-local');
 
+// Allowlisted + single app consumer must remain shared-primitive (not app-local).
+await fs.writeFile(
+  path.join(rootDir, 'src/app/app-a/primitive-page.tsx'),
+  "import PrimitiveControl from '@/components/primitive-control';\nexport default PrimitiveControl;\n",
+);
+try {
+  const withSingleAppPrimitive = await auditComponentOwnership({
+    rootDir,
+    primitiveAllowlist: {
+      interaction: [{
+        component: 'primitive-control',
+        reason: '通用交互测试原语',
+        contractStory: 'primitive-control.stories.tsx',
+      }],
+    },
+  });
+  const primitive = new Map(withSingleAppPrimitive.map((record) => [record.component, record]))
+    .get('primitive-control');
+  assert.equal(primitive.classification, 'shared-primitive');
+  assert.deepEqual(primitive.directApps, ['app-a']);
+  assert.deepEqual(primitive.transitiveApps, ['app-a']);
+} finally {
+  await fs.unlink(path.join(rootDir, 'src/app/app-a/primitive-page.tsx'));
+}
+
 console.log('component ownership audit fixture tests passed');

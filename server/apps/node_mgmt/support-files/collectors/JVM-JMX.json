@@ -20,5 +20,27 @@
     "package_name": "jmx_jvm",
     "cpu_architecture": "x86_64",
     "default_config": {}
+  },
+  {
+    "id": "jmx_jvm_linux_arm64",
+    "name": "JVM-JMX",
+    "controller_default_run": false,
+    "icon": "",
+    "node_operating_system": "linux",
+    "service_type": "exec",
+    "executable_path": "/usr/bin/java",
+    "execute_parameters": "-jar /opt/fusion-collectors/bin/jmx_jvm.jar $LISTEN_PORT %s",
+    "validation_parameters": "",
+    "default_template": "",
+    "introduction": "JVM-JMX is a Java Management Extensions (JMX) monitoring tool that collects and monitors JVM metrics, providing real-time performance insights.",
+    "tags": [
+      "linux",
+      "jmx",
+      "monitor",
+      "arm64"
+    ],
+    "package_name": "jmx_jvm",
+    "cpu_architecture": "arm64",
+    "default_config": {}
   }
 ]

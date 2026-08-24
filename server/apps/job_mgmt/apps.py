@@ -8,4 +8,5 @@ class JobMgmtConfig(AppConfig):
 
     def ready(self):
         import apps.job_mgmt.nats_api  # noqa
+        import apps.job_mgmt.openapi_api  # noqa
         import apps.job_mgmt.signals  # noqa

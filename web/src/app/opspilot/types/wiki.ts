@@ -632,13 +632,6 @@ export interface BuildRecord {
   updated_at?: string;
 }
 
-export interface BuildMaintenanceBatchRetryResult {
-  retried: number;
-  skipped: number;
-  skipped_ids: number[];
-  items: BuildRecord[];
-}
-
 export interface MarkdownImportResult {
   created: number;
   updated: number;
@@ -808,6 +801,15 @@ export interface CheckPage {
   content_hash?: string;
 }
 
+export interface CheckAlternative extends CheckPage {
+  kind: 'current' | 'candidate';
+  material_name?: string;
+  candidate_version_id?: number | null;
+  body_hash?: string;
+  relation?: string;
+  created_at?: string;
+}
+
 export interface CheckItem {
   id: number;
   knowledge_base: number;
@@ -819,6 +821,7 @@ export interface CheckItem {
   candidate?: { id: number; body: string } | null;
   current_knowledge?: CheckPage | null;
   new_knowledge?: CheckPage | null;
+  alternatives?: CheckAlternative[];
   suggested_actions?: string[];
   assignee?: string;
   due_at?: string | null;
@@ -841,15 +844,17 @@ export type DecisionListView = "pending" | "processed";
 export type CheckDecisionAction =
   // 知识冲突
   | "keep_current"
+  | "keep_all"
   | "use_new"
   | "edit_accept"
   // 页面合并
   | "keep_separate"
   | "merge";
 
-// 知识冲突决策三选一
+// 知识冲突决策
 export const KNOWLEDGE_CONFLICT_ACTIONS: CheckDecisionAction[] = [
   "keep_current",
+  "keep_all",
   "use_new",
   "edit_accept",
 ];

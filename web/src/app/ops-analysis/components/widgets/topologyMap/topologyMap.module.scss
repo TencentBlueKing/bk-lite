@@ -1,0 +1,148 @@
+.root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border-2);
+  border-radius: 8px;
+  background:
+    radial-gradient(
+      circle at 18% 14%,
+      color-mix(in srgb, var(--color-primary) 10%, transparent),
+      transparent 31%
+    ),
+    radial-gradient(
+      circle at 78% 20%,
+      color-mix(in srgb, var(--color-primary) 6%, transparent),
+      transparent 29%
+    ),
+    var(--color-bg-1);
+}
+
+.canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+
+.popoverLayer {
+  position: absolute;
+  z-index: 5;
+  width: 232px;
+  pointer-events: none;
+}
+
+.popover {
+  min-width: 188px;
+  padding: 10px 12px;
+  border: 1px solid rgba(213, 226, 242, 0.96);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 34px rgba(39, 67, 104, 0.16);
+  color: #253244;
+  font-size: 12px;
+  line-height: 18px;
+  backdrop-filter: blur(8px);
+}
+
+.popTitle {
+  overflow: hidden;
+  margin-bottom: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popLine {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  margin-top: 4px;
+  color: #607086;
+
+  > span {
+    flex: none;
+  }
+
+  > strong {
+    overflow: hidden;
+    color: #253244;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.alertCount {
+  color: #dc2626 !important;
+}
+
+.statusPill {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857 !important;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.warning {
+  background: #fffbeb;
+  color: #b45309 !important;
+}
+
+.error,
+.critical {
+  background: #fef2f2;
+  color: #dc2626 !important;
+}
+
+.unknown {
+  background: #f1f5f9;
+  color: #64748b !important;
+}
+
+.centered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+:global(.topology-map-critical-pulse) {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: topology-map-critical-pulse 1.6s ease-out infinite;
+}
+
+@keyframes topology-map-critical-pulse {
+  0% {
+    opacity: 0.45;
+    transform: scale(0.98);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global(.topology-map-critical-pulse) {
+    animation: none;
+    opacity: 0;
+  }
+}

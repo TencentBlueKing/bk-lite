@@ -36,10 +36,14 @@ _PAGE_MD_LOG_CHARS = 400
 
 
 def _snippet(text: str, limit: int = _PAGE_MD_LOG_CHARS) -> str:
+    """截取日志用正文片段；替换控制台不安全字符,避免 Windows GBK 日志炸 emit。"""
     raw = (text or "").replace("\r\n", "\n").strip()
+    # © 等拉丁补充字符在 GBK 控制台会触发 UnicodeEncodeError
+    raw = raw.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+    raw = "".join(ch if (ch == "\n" or ch >= " ") else "?" for ch in raw)
     if len(raw) <= limit:
         return raw
-    return raw[:limit] + f"…(+{len(raw) - limit} chars)"
+    return raw[:limit] + f"...(+{len(raw) - limit} chars)"
 
 
 def _page_table_metrics(page_md: str) -> list[dict]:

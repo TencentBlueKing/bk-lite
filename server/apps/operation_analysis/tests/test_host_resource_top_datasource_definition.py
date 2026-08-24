@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 
-
 SOURCE_API = Path(__file__).parents[1] / "support-files" / "source_api.json"
 
 
@@ -18,6 +17,11 @@ def test_host_resource_top_data_source_supports_topn_table_and_metric_switch():
         "memory",
         "disk",
     }
+    instance_ids = next(item for item in source["params"] if item["name"] == "instance_ids")
+    assert instance_ids["type"] == "stringList"
+    assert instance_ids["filterType"] == "filter"
+    assert instance_ids["inputConfig"]["multiple"] is True
+    assert instance_ids["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "monitor/get_host_instance_list"
     assert {field["key"] for field in source["field_schema"]} >= {
         "rank",
         "display_name",

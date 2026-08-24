@@ -1,658 +1,566 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { ReloadOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Badge,
+  CheckOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+} from '@ant-design/icons';
+import {
+  Avatar,
   Button,
-  Descriptions,
-  Drawer,
   Input,
   message,
-  Radio,
-  Select,
+  Popconfirm,
   Space,
-  Table,
   Tabs,
   Tag,
-  Timeline,
   Typography,
   type TableColumnsType,
 } from 'antd';
-import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
-import type { ApmEvent, ApmEventQuery, ApmNotificationDelivery, ApmPolicyMetric, ApmPolicySeverity } from '@/app/apm/types';
+import { formatDateTime } from '@/app/apm/components/metric-format';
+import Collapse from '@/components/collapse';
+import TimeSelector from '@/components/time-selector';
+import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
+import { ALERT_LEVEL_COLORS } from '@/constants/observabilityChart';
+import type {
+  ApmAlert,
+  ApmAlertMetricSnapshot,
+  ApmAlertEvent,
+  ApmAlertQuery,
+  ApmEventSnapshot,
+  ApmNotificationDelivery,
+  ApmPolicySeverity,
+} from '@/app/apm/types';
+import AlertDetailDrawer from '@/app/apm/events/alerts/alert-detail-drawer';
+import { useTranslation } from '@/utils/i18n';
+import styles from '@/app/apm/events/event-workspace.module.scss';
 
 type PageState = CatalogStateKind | 'ready';
-type AlertTab = 'active' | 'history';
-type DrawerTab = 'alert' | 'event';
-type TimeRange = '1h' | '24h' | '7d';
-
-const RANGE_MS: Record<TimeRange, number> = {
-  '1h': 60 * 60 * 1000,
-  '24h': 24 * 60 * 60 * 1000,
-  '7d': 7 * 24 * 60 * 60 * 1000,
+type AlertView = 'active' | 'history';
+const ALERT_LIST_LIMIT = 100;
+const HISTORY_RANGE_MS = 604_800_000;
+const HISTORY_TIME_DEFAULT = { selectValue: 10080, rangePickerVaule: null };
+const SEVERITY_COLOR: Record<ApmPolicySeverity, string> = { critical: 'red', error: 'orange', warning: 'gold' };
+const SEVERITY_KEY: Record<ApmPolicySeverity, string> = {
+  critical: 'apm.severity.critical',
+  error: 'apm.severity.error',
+  warning: 'apm.severity.warning',
+};
+const METRIC_KEY: Record<ApmAlert['metric_type'], string> = {
+  error_rate: 'apm.common.errorRate',
+  p95: 'apm.common.p95Latency',
+  p99: 'apm.common.p99Latency',
+  throughput: 'apm.common.throughput',
+  no_traffic: 'apm.alerts.noTraffic',
 };
 
-const SEVERITY = {
-  critical: { label: '严重', color: 'red' },
-  error: { label: '错误', color: 'orange' },
-  warning: { label: '警告', color: 'gold' },
-  info: { label: '提醒', color: 'blue' },
-} as const;
+function resolveTimeParams(view: AlertView, historyTimeRange: [number, number] | null) {
+  if (view === 'active') {
+    return {};
+  }
+  if (view === 'history' && historyTimeRange) {
+    return {
+      started_at: new Date(historyTimeRange[0]).toISOString(),
+      ended_at: new Date(historyTimeRange[1]).toISOString(),
+    };
+  }
+  const endedAt = new Date();
+  return {
+    started_at: new Date(endedAt.getTime() - HISTORY_RANGE_MS).toISOString(),
+    ended_at: endedAt.toISOString(),
+  };
+}
 
-const SEVERITY_CHART: Record<'critical' | 'error' | 'warning', string> = {
-  critical: 'var(--color-fail)',
-  error: 'var(--theme-color-status-warning)',
-  warning: 'var(--color-warning, var(--theme-color-status-warning))',
-};
-
-const ALERT_STATUS = {
-  firing: { label: '告警中', color: 'error' },
-  recovered: { label: '已恢复', color: 'success' },
-} as const;
-
-const METRIC_LABELS: Record<ApmPolicyMetric, string> = {
-  error_rate: '错误率',
-  p95: 'P95 延迟',
-  p99: 'P99 延迟',
-  throughput: '吞吐',
-  no_traffic: '无流量',
-};
-
-const ACTION_LABELS: Record<ApmEvent['action'], string> = {
-  created: '触发',
-  recovery: '恢复',
-};
-
-const DELIVERY_STATUS: Record<ApmNotificationDelivery['status'], { label: string; color: string }> = {
-  pending: { label: '待投递', color: 'processing' },
-  delivered: { label: '已送达', color: 'success' },
-  failed: { label: '终止失败', color: 'error' },
-};
-
-export default function ApmEventsPage() {
-  const searchParams = useSearchParams();
-  const { getEvents, isLoading: authLoading, retryNotificationDelivery } = useApmApi();
-  const [events, setEvents] = useState<ApmEvent[]>([]);
+export default function ApmAlertsPage() {
+  const { t } = useTranslation();
+  const {
+    closeAlert,
+    getAlertDistribution,
+    getAlerts,
+    getAlertSnapshots,
+    getEventEvidence,
+    getNotificationDeliveries,
+    retryNotificationDelivery,
+    isLoading: authLoading,
+  } = useApmApi();
+  const [allAlerts, setAllAlerts] = useState<ApmAlert[]>([]);
+  const [distribution, setDistribution] = useState<
+    Array<{ time: string; critical: number; error: number; warning: number }>
+  >([]);
   const [state, setState] = useState<PageState>('loading');
-  const [query, setQuery] = useState<ApmEventQuery>({ limit: 50 });
-  const [activeTab, setActiveTab] = useState<AlertTab>('active');
-  const [timeRange, setTimeRange] = useState<TimeRange>('24h');
-  const [keyword, setKeyword] = useState(
-    () => searchParams.get('service') ?? searchParams.get('q') ?? ''
-  );
-  const [environmentFilter, setEnvironmentFilter] = useState(
-    () => searchParams.get('environment') ?? ''
-  );
-  const [retryingId, setRetryingId] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>('alert');
-  const [selectedAlert, setSelectedAlert] = useState<ApmEvent | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [chartExpanded, setChartExpanded] = useState(true);
+  const [activeTab, setActiveTab] = useState<AlertView>('active');
+  const [historyTimeRange, setHistoryTimeRange] = useState<[number, number] | null>(null);
+  const [keyword, setKeyword] = useState('');
+  const [submittedKeyword, setSubmittedKeyword] = useState('');
+  const [selected, setSelected] = useState<ApmAlert | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<ApmAlertEvent | null>(null);
+  const [eventEvidence, setEventEvidence] = useState<ApmEventSnapshot | null>(null);
+  const [metricSnapshot, setMetricSnapshot] = useState<ApmAlertMetricSnapshot | null>(null);
+  const [metricSnapshotLoading, setMetricSnapshotLoading] = useState(false);
+  const [metricSnapshotError, setMetricSnapshotError] = useState<CatalogStateKind | null>(null);
+  const [deliveries, setDeliveries] = useState<ApmNotificationDelivery[]>([]);
+  const [retryingDeliveryId, setRetryingDeliveryId] = useState<string | null>(null);
+  const [eventEvidenceLoading, setEventEvidenceLoading] = useState(false);
+  const loadSequence = useRef(0);
+  const snapshotLoadSequence = useRef(0);
 
   const load = useCallback(() => {
     if (authLoading) return;
-    setState('loading');
-    const endedAt = new Date();
-    getEvents({
-      ...query,
-      started_at: new Date(endedAt.getTime() - RANGE_MS[timeRange]).toISOString(),
-      ended_at: endedAt.toISOString(),
-    })
-      .then((items) => {
-        setEvents(items);
+    const sequence = loadSequence.current + 1;
+    loadSequence.current = sequence;
+    setIsRefreshing(true);
+    setState((current) => current === 'ready' ? current : 'loading');
+    const timeParams = resolveTimeParams(activeTab, historyTimeRange);
+    const query: ApmAlertQuery = {
+      ...timeParams,
+      status_group: activeTab,
+      limit: ALERT_LIST_LIMIT,
+      keyword: submittedKeyword,
+    };
+    Promise.all([getAlerts(query), getAlertDistribution({ ...timeParams, status_group: activeTab })])
+      .then(([items, buckets]) => {
+        if (sequence !== loadSequence.current) return;
+        setAllAlerts(items);
+        setDistribution(buckets);
         setState(items.length ? 'ready' : 'empty');
       })
-      .catch((error) => setState(catalogErrorKind(error)));
-  }, [authLoading, getEvents, query, timeRange]);
+      .catch((error) => {
+        if (sequence === loadSequence.current) setState(catalogErrorKind(error));
+      })
+      .finally(() => {
+        if (sequence === loadSequence.current) setIsRefreshing(false);
+      });
+  }, [activeTab, authLoading, getAlertDistribution, getAlerts, historyTimeRange, submittedKeyword]);
 
   useEffect(() => load(), [load]);
 
   useEffect(() => {
-    if (!drawerOpen || !selectedAlert) return;
-    const refreshed = events.find((event) => event.id === selectedAlert.id)
-      ?? events.find((event) => event.external_id === selectedAlert.external_id);
-    if (!refreshed || refreshed === selectedAlert) return;
-    setSelectedAlert(refreshed);
-  }, [drawerOpen, events]);
+    const timer = window.setTimeout(() => setSubmittedKeyword(keyword.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [keyword]);
 
-  const alerts = useMemo(() => {
-    const seen = new Set<string>();
-    return events.filter((event) => {
-      if (seen.has(event.external_id)) return false;
-      seen.add(event.external_id);
-      return true;
-    });
-  }, [events]);
-
-  const activeAlerts = useMemo(
-    () => alerts.filter((event) => event.status === 'firing'),
-    [alerts],
+  const alerts = allAlerts;
+  const distributionTotals = useMemo(
+    () => distribution.reduce(
+      (totals, bucket) => ({
+        critical: totals.critical + bucket.critical,
+        error: totals.error + bucket.error,
+        warning: totals.warning + bucket.warning,
+      }),
+      { critical: 0, error: 0, warning: 0 },
+    ),
+    [distribution],
   );
-  const historicalAlerts = useMemo(
-    () => alerts.filter((event) => event.status === 'recovered'),
-    [alerts],
+
+  const chooseEvent = useCallback(
+    (alert: ApmAlert, event: ApmAlertEvent) => {
+      setSelectedEvent(event);
+      setEventEvidence(null);
+      setDeliveries([]);
+      setEventEvidenceLoading(true);
+      Promise.all([
+        getEventEvidence(alert.id, event.event_id),
+        getNotificationDeliveries({ event_id: event.event_id }),
+      ])
+        .then(([snapshots, deliveryItems]) => {
+          setEventEvidence(snapshots[0] ?? null);
+          setDeliveries(deliveryItems);
+        })
+        .finally(() => setEventEvidenceLoading(false));
+    },
+    [getEventEvidence, getNotificationDeliveries],
   );
-  const visibleAlerts = useMemo(() => {
-    const source = activeTab === 'active' ? activeAlerts : historicalAlerts;
-    const normalized = keyword.trim().toLocaleLowerCase();
-    const env = environmentFilter.trim().toLocaleLowerCase();
-    return source.filter((event) => {
-      if (env && (event.environment || '').toLocaleLowerCase() !== env) return false;
-      if (!normalized) return true;
-      return (
-        event.title.toLocaleLowerCase().includes(normalized)
-        || event.service.toLocaleLowerCase().includes(normalized)
-        || event.resource_name.toLocaleLowerCase().includes(normalized)
-        || event.item.toLocaleLowerCase().includes(normalized)
-      );
-    });
-  }, [activeAlerts, activeTab, environmentFilter, historicalAlerts, keyword]);
-  const visibleState: PageState = state === 'ready' && !visibleAlerts.length ? 'empty' : state;
 
-  const distribution = useMemo(() => {
-    const bucketCount = timeRange === '1h' ? 12 : timeRange === '24h' ? 24 : 28;
-    const rangeMs = RANGE_MS[timeRange];
-    const bucketMs = rangeMs / bucketCount;
-    const rangeStart = Date.now() - rangeMs;
-    const buckets = Array.from({ length: bucketCount }, () => ({ critical: 0, error: 0, warning: 0 }));
-    events.forEach((event) => {
-      if (event.severity === 'info') return;
-      const index = Math.min(bucketCount - 1, Math.max(0, Math.floor((new Date(event.start_time).getTime() - rangeStart) / bucketMs)));
-      buckets[index][event.severity] += 1;
-    });
-    return buckets;
-  }, [events, timeRange]);
-  const maxDistribution = Math.max(1, ...distribution.map((bucket) => bucket.critical + bucket.error + bucket.warning));
-
-  const relatedEvents = useMemo(() => {
-    if (!selectedAlert) return [];
-    return events
-      .filter((event) => event.external_id === selectedAlert.external_id)
-      .sort((left, right) => new Date(right.start_time).getTime() - new Date(left.start_time).getTime());
-  }, [events, selectedAlert]);
-
-  const openDrawer = useCallback((alert: ApmEvent, tab: DrawerTab = 'alert') => {
-    setSelectedAlert(alert);
-    setDrawerTab(tab);
-    setDrawerOpen(true);
+  const resetDrawerState = useCallback(() => {
+    snapshotLoadSequence.current += 1;
+    setSelected(null);
+    setSelectedEvent(null);
+    setEventEvidence(null);
+    setMetricSnapshot(null);
+    setMetricSnapshotError(null);
+    setMetricSnapshotLoading(false);
+    setEventEvidenceLoading(false);
+    setDeliveries([]);
+    setRetryingDeliveryId(null);
   }, []);
 
-  const closeDrawer = useCallback(() => {
-    setDrawerOpen(false);
-    setSelectedAlert(null);
-    setDrawerTab('alert');
-  }, []);
-
-  const handleRetry = useCallback(async (event: ApmEvent, delivery: ApmNotificationDelivery) => {
-    setRetryingId(delivery.id);
-    try {
-      const retried = await retryNotificationDelivery(delivery.id);
-      setEvents((items) => items.map((item) => item.id === event.id ? {
-        ...item,
-        notification_deliveries: item.notification_deliveries.map((current) => (
-          current.id === retried.id ? retried : current
-        )),
-      } : item));
-      setSelectedAlert((current) => {
-        if (!current || current.id !== event.id) return current;
-        return {
-          ...current,
-          notification_deliveries: current.notification_deliveries.map((item) => (
-            item.id === retried.id ? retried : item
-          )),
-        };
+  const openDrawer = (alert: ApmAlert) => {
+    const snapshotSequence = snapshotLoadSequence.current + 1;
+    snapshotLoadSequence.current = snapshotSequence;
+    setSelected(alert);
+    setMetricSnapshot(null);
+    setMetricSnapshotError(null);
+    setMetricSnapshotLoading(true);
+    getAlertSnapshots(alert.id)
+      .then((snapshot) => {
+        if (snapshotSequence !== snapshotLoadSequence.current) return;
+        setMetricSnapshot(snapshot);
+      })
+      .catch((error) => {
+        if (snapshotSequence === snapshotLoadSequence.current) {
+          setMetricSnapshotError(catalogErrorKind(error));
+        }
+      })
+      .finally(() => {
+        if (snapshotSequence === snapshotLoadSequence.current) setMetricSnapshotLoading(false);
       });
-      message.success('通知已进入重投队列');
-    } finally {
-      setRetryingId(null);
-    }
-  }, [retryNotificationDelivery]);
-
-  const renderDeliveries = (event: ApmEvent) => {
-    const deliveries = event.notification_deliveries ?? [];
-    if (!deliveries.length) {
-      return <Typography.Text type="secondary">未配置通知渠道</Typography.Text>;
-    }
-    return (
-      <div className="flex flex-col gap-2">
-        {deliveries.map((delivery) => (
-          <div
-            key={delivery.id}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-3 py-2"
-          >
-            <Space direction="vertical" size={0}>
-              <Space wrap>
-                <Typography.Text strong>{delivery.channel_name || `渠道 ${delivery.channel_id ?? '未知'}`}</Typography.Text>
-                <Tag bordered={false}>{delivery.channel_type || '未知类型'}</Tag>
-                <Tag bordered={false} color={delivery.delivery_mode === 'alert_event_copy' ? 'purple' : 'blue'}>
-                  {delivery.delivery_mode === 'alert_event_copy' ? '告警中心事件副本' : '普通通知'}
-                </Tag>
-                <Tag bordered={false} color={DELIVERY_STATUS[delivery.status].color}>
-                  {DELIVERY_STATUS[delivery.status].label}
-                </Tag>
-              </Space>
-              <Typography.Text type="secondary" className="text-xs">
-                尝试 {delivery.attempts} 次
-                {delivery.recipients.length ? ` · 接收人 ${delivery.recipients.join('、')}` : ''}
-                {delivery.last_error_message ? ` · ${delivery.last_error_code || 'delivery_failed'}：${delivery.last_error_message}` : ''}
-              </Typography.Text>
-            </Space>
-            {delivery.status === 'failed' ? (
-              <Button
-                size="small"
-                loading={retryingId === delivery.id}
-                onClick={() => handleRetry(event, delivery)}
-              >
-                人工重投
-              </Button>
-            ) : null}
-          </div>
-        ))}
-      </div>
-    );
+    const event = alert.events.at(-1) ?? null;
+    if (event) chooseEvent(alert, event);
   };
 
-  const columns: TableColumnsType<ApmEvent> = [
+  const handleRetryDelivery = async (deliveryId: string) => {
+    setRetryingDeliveryId(deliveryId);
+    try {
+      await retryNotificationDelivery(deliveryId);
+      message.success(t('apm.alerts.retrySuccess', '已重新投递'));
+      if (selected && selectedEvent) chooseEvent(selected, selectedEvent);
+    } catch {
+      message.error(t('apm.alerts.retryFailed', '重投失败，请稍后重试'));
+    } finally {
+      setRetryingDeliveryId(null);
+    }
+  };
+
+  const handleCloseAlert = async (alert: ApmAlert) => {
+    await closeAlert(alert.id);
+    message.success(t('apm.alerts.closed', '告警已关闭'));
+    if (selected?.id === alert.id) {
+      resetDrawerState();
+    }
+    load();
+  };
+
+  const handleViewChange = (key: string) => {
+    const nextView = key as AlertView;
+    if (nextView === activeTab) return;
+    if (nextView === 'history') {
+      setHistoryTimeRange(null);
+    }
+    setActiveTab(nextView);
+    setAllAlerts([]);
+    setDistribution([]);
+    setState('loading');
+    resetDrawerState();
+  };
+
+  const columns: TableColumnsType<ApmAlert> = [
     {
-      title: '告警',
-      dataIndex: 'title',
-      fixed: 'left',
-      render: (title, event) => (
-        <Space direction="vertical" size={0}>
-          <Typography.Text strong>{title}</Typography.Text>
-          <Typography.Text type="secondary">
-            {event.resource_name || event.service} · {event.environment || '未设置环境'}
-          </Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      title: '级别',
+      title: t('apm.alerts.level', '级别'),
       dataIndex: 'severity',
-      width: 90,
-      render: (severity: ApmEvent['severity']) => (
-        <Tag bordered={false} color={SEVERITY[severity].color}>{SEVERITY[severity].label}</Tag>
-      ),
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      width: 100,
-      responsive: ['sm'],
-      render: (status: ApmEvent['status']) => (
-        <Tag bordered={false} color={ALERT_STATUS[status].color}>{ALERT_STATUS[status].label}</Tag>
-      ),
-    },
-    {
-      title: '指标',
-      dataIndex: 'item',
-      width: 130,
-      responsive: ['lg'],
-      render: (item: ApmPolicyMetric) => METRIC_LABELS[item] ?? item,
-    },
-    {
-      title: '值',
-      dataIndex: 'value',
-      width: 100,
-      responsive: ['md'],
-      render: (value) => value ?? '—',
-      className: 'tabular-nums',
-    },
-    {
-      title: '通知',
-      width: 130,
-      render: (_, event) => {
-        const deliveries = event.notification_deliveries ?? [];
-        if (!deliveries.length) return <Typography.Text type="secondary">未配置</Typography.Text>;
-        const failed = deliveries.filter((delivery) => delivery.status === 'failed').length;
-        const pending = deliveries.filter((delivery) => delivery.status === 'pending').length;
-        return failed
-          ? <Tag bordered={false} color="error">{failed} 个失败</Tag>
-          : pending
-            ? <Tag bordered={false} color="processing">{pending} 个处理中</Tag>
-            : <Tag bordered={false} color="success">全部送达</Tag>;
+      width: APM_TABLE_COLUMN_WIDTHS.status,
+      render: (value) => {
+        const severity = value as ApmPolicySeverity;
+        return <Tag bordered={false} className="m-0" color={SEVERITY_COLOR[severity]}>{t(SEVERITY_KEY[severity])}</Tag>;
       },
     },
     {
-      title: '发生时间',
-      dataIndex: 'start_time',
-      width: 180,
-      responsive: ['md'],
-      render: (value) => <span className="tabular-nums">{dayjs(value).format('YYYY-MM-DD HH:mm:ss')}</span>,
+      title: t('apm.alerts.triggeredAt', '触发时间'),
+      dataIndex: 'started_at',
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
+      render: (value) => (
+        <span className={styles.alertTimeCell}>
+          {formatDateTime(value, false)}
+        </span>
+      ),
     },
     {
-      title: '操作',
-      key: 'action',
-      width: 90,
-      fixed: 'right',
-      render: (_, event) => (
+      title: t('apm.alerts.alertTitle', '告警标题'),
+      dataIndex: 'title',
+      ellipsis: true,
+      render: (_, item) => (
         <Button
           type="link"
-          className="!px-0"
-          onClick={(clickEvent) => {
-            clickEvent.stopPropagation();
-            openDrawer(event);
+          size="small"
+          className={styles.alertTitleLink}
+          title={item.title}
+          onClick={(event) => {
+            event.stopPropagation();
+            openDrawer(item);
           }}
         >
-          详情
+          {item.title}
         </Button>
+      ),
+    },
+    {
+      title: t('apm.policies.metric', '指标'),
+      dataIndex: 'metric_type',
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
+      render: (value, item) => (
+        <Tag bordered={false} className="m-0" color={SEVERITY_COLOR[item.severity]}>{t(METRIC_KEY[value as ApmAlert['metric_type']])}</Tag>
+      ),
+    },
+    {
+      title: t('apm.alerts.serviceEndpoint', '服务 / 端点'),
+      render: (_, item) => (
+        <div className={styles.alertServiceCell}>
+          <span className={styles.alertServiceName} title={item.service_name}>{item.service_name}</span>
+          <Typography.Text type="secondary" className={styles.alertServiceScope} title={item.endpoint || t('apm.alerts.allEndpoints', '全部端点')}>
+            {item.endpoint || t('apm.alerts.allEndpoints', '全部端点')}
+          </Typography.Text>
+        </div>
+      ),
+    },
+    {
+      title: t('apm.alerts.notification', '通知'),
+      dataIndex: 'notification_status',
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
+      render: (value) => {
+        const status = (value || 'none') as NonNullable<ApmAlert['notification_status']>;
+        if (status === 'none') return <Typography.Text type="secondary">{t('apm.alerts.notificationNone', '未通知')}</Typography.Text>;
+        const color = status === 'delivered' ? 'success' : status === 'pending' ? 'processing' : 'warning';
+        return (
+          <Tag
+            bordered={false}
+            className="m-0"
+            color={status === 'failed' ? 'error' : color}
+            icon={status === 'delivered' ? <CheckOutlined /> : undefined}
+          >
+            {t(`apm.alerts.notification${status[0].toUpperCase()}${status.slice(1)}`)}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: t('apm.alerts.operator', '处置人'),
+      dataIndex: 'operator',
+      width: APM_TABLE_COLUMN_WIDTHS.organization,
+      ellipsis: true,
+      render: (value) => value ? (
+        <Space size={8} className={styles.alertOperatorCell}>
+          <Avatar size={24}>{String(value).slice(0, 1).toUpperCase()}</Avatar>
+          <Typography.Text ellipsis={{ tooltip: String(value) }}>{String(value)}</Typography.Text>
+        </Space>
+      ) : <Typography.Text type="secondary">--</Typography.Text>,
+    },
+    {
+      title: t('apm.common.operation', '操作'),
+      key: 'actions',
+      width: APM_TABLE_COLUMN_WIDTHS.actionPair,
+      fixed: 'right',
+      render: (_, item) => (
+        <Space size={4} className={styles.alertOperationCell}>
+          <Button
+            type="link"
+            size="small"
+            onClick={(event) => {
+              event.stopPropagation();
+              openDrawer(item);
+            }}
+          >
+            {t('apm.alerts.detailAction', '详情')}
+          </Button>
+          <Popconfirm
+            title={t('apm.alerts.closeConfirm', '确定关闭此告警？')}
+            description={t('apm.alerts.closeConfirmDescription', '关闭后会追加人工关闭事件，确认继续？')}
+            okText={t('apm.alerts.confirmAction', '确定')}
+            cancelText={t('common.cancel', '取消')}
+            disabled={item.status !== 'active'}
+            onConfirm={() => handleCloseAlert(item)}
+          >
+            <Button
+              type="link"
+              danger
+              size="small"
+              disabled={item.status !== 'active'}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {t('apm.common.close', '关闭')}
+            </Button>
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
 
   return (
     <ApmRouteShell
-      title="告警"
-      description="集中查看当前告警与已恢复的历史告警，并追踪每次通知投递结果。"
+      title={t('apm.alerts.title', '告警')}
+      description={t('apm.alerts.lifecycleDescription', 'Alert 聚合完整生命周期；Event 记录触发、升级、恢复与人工关闭。')}
       dependency="control"
     >
-      <div className="flex flex-col gap-3">
-        <ApmSurface padding="compact">
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <Input.Search
-              allowClear
-              aria-label="搜索告警标题、服务或规则"
-              className="w-80"
-              placeholder="搜索告警标题 / 服务 / 规则"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-            />
-            <Select
-              allowClear
-              aria-label="按环境筛选告警"
-              className="w-40"
-              placeholder="全部环境"
-              value={environmentFilter || undefined}
-              options={Array.from(new Set(events.map((event) => event.environment).filter(Boolean)))
-                .sort()
-                .map((value) => ({ value, label: value }))}
-              onChange={(value) => setEnvironmentFilter(value ?? '')}
-            />
-            <div className="flex-1" />
-            <Typography.Text type="secondary" className="text-xs">时间范围</Typography.Text>
-            <Radio.Group
-              aria-label="告警时间范围"
-              buttonStyle="solid"
-              size="small"
-              value={timeRange}
-              onChange={(event) => setTimeRange(event.target.value)}
-            >
-              {(Object.keys(RANGE_MS) as TimeRange[]).map((value) => (
-                <Radio.Button key={value} value={value}>{value}</Radio.Button>
-              ))}
-            </Radio.Group>
-            <Button icon={<ReloadOutlined aria-hidden="true" />} onClick={load}>刷新</Button>
-          </div>
-          <div className="mb-3 rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3">
-            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <Typography.Text strong>告警分布（近 {timeRange}）</Typography.Text>
-              <Space size="middle">
-                <Typography.Text type="secondary" className="text-xs">严重 {events.filter((event) => event.severity === 'critical').length}</Typography.Text>
-                <Typography.Text type="secondary" className="text-xs">错误 {events.filter((event) => event.severity === 'error').length}</Typography.Text>
-                <Typography.Text type="secondary" className="text-xs">警告 {events.filter((event) => event.severity === 'warning').length}</Typography.Text>
-              </Space>
-            </div>
-            <div className="flex h-16 items-end gap-1" role="img" aria-label={`近 ${timeRange} 告警分布`}>
-              {distribution.map((bucket, index) => (
-                <div key={index} className="flex h-full min-w-1 flex-1 flex-col justify-end overflow-hidden rounded-t-sm" title={`第 ${index + 1} 时间段：${bucket.critical + bucket.error + bucket.warning} 条`}>
-                  <span className="block" style={{ height: `${(bucket.critical / maxDistribution) * 100}%`, background: SEVERITY_CHART.critical }} />
-                  <span className="block" style={{ height: `${(bucket.error / maxDistribution) * 100}%`, background: SEVERITY_CHART.error }} />
-                  <span className="block" style={{ height: `${(bucket.warning / maxDistribution) * 100}%`, background: SEVERITY_CHART.warning }} />
-                </div>
-              ))}
-            </div>
-          </div>
-          <Tabs
-            activeKey={activeTab}
-            className="mb-3"
-            items={[
-              {
-                key: 'active',
-                label: <Space size={6}>活跃告警<Badge count={activeAlerts.length} showZero color="var(--color-fail)" /></Space>,
-              },
-              {
-                key: 'history',
-                label: <Space size={6}>历史告警<Badge count={historicalAlerts.length} showZero /></Space>,
-              },
-            ]}
-            onChange={(key) => setActiveTab(key as AlertTab)}
-          />
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-border-2)] pt-3">
-            <Space wrap size="middle">
-              <Select
+      <ApmSurface>
+        <div className="flex flex-col gap-4">
+        <Tabs
+          className={styles.alertsViewTabs}
+          activeKey={activeTab}
+          onChange={handleViewChange}
+          items={[
+            { key: 'active', label: t('apm.alerts.active', '活跃告警') },
+            { key: 'history', label: t('apm.alerts.history', '历史告警') },
+          ]}
+        />
+
+        <section className={`${styles.alertsContent} flex flex-col gap-4`} aria-label={t('apm.alerts.workspace', '告警工作区')}>
+          <section className={styles.alertsToolbar} aria-label={t('apm.alerts.filters', '告警筛选')}>
+            <div className={styles.alertsToolbarActions}>
+              <Input
                 allowClear
-                aria-label="按告警级别筛选"
-                className="w-36"
-                placeholder="全部级别"
-                value={query.severity}
-                options={(Object.entries(SEVERITY) as [ApmEvent['severity'], typeof SEVERITY[keyof typeof SEVERITY]][])
-                  .filter(([value]) => value !== 'info')
-                  .map(([value, config]) => ({ value: value as ApmPolicySeverity, label: config.label }))}
-                onChange={(severity) => setQuery((current) => ({ ...current, severity }))}
+                aria-label={t('apm.alerts.listSearchAria', '搜索告警')}
+                placeholder={t('apm.alerts.searchPlaceholder', '搜索告警标题 / 服务 / 规则')}
+                prefix={<SearchOutlined aria-hidden="true" />}
+                value={keyword}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setKeyword(value);
+                  if (!value) setSubmittedKeyword('');
+                }}
+                onPressEnter={() => setSubmittedKeyword(keyword.trim())}
               />
-              <Badge
-                count={visibleAlerts.length}
-                showZero
-                color="var(--color-primary)"
-                className="text-xs text-[var(--color-text-3)]"
-              />
-              <Typography.Text type="secondary" className="text-xs">
-                {activeTab === 'active' ? '当前未恢复' : '最近 7 天已恢复'}
-              </Typography.Text>
-            </Space>
-          </div>
-        </ApmSurface>
-        <ApmSurface padding="none" className="overflow-hidden">
-          {visibleState === 'ready' ? (
-            <Table
-              rowKey="event_id"
-              columns={columns}
-              dataSource={visibleAlerts}
-              pagination={false}
-              onRow={(event) => ({
-                onClick: () => openDrawer(event),
-                className: 'cursor-pointer',
-              })}
-            />
-          ) : (
-            <CatalogState
-              kind={visibleState}
-              description={visibleState === 'empty'
-                ? activeTab === 'active'
-                  ? '当前组织没有活跃 APM 告警。'
-                  : '最近 7 天当前组织没有历史 APM 告警。'
-                : undefined}
-            />
-          )}
-        </ApmSurface>
-      </div>
-
-      <Drawer
-        open={drawerOpen}
-        onClose={closeDrawer}
-        width={880}
-        title={selectedAlert ? (
-          <Space size={8} wrap align="center">
-            <Tag bordered={false} color={ALERT_STATUS[selectedAlert.status].color}>
-              {ALERT_STATUS[selectedAlert.status].label}
-            </Tag>
-            <Tag bordered={false} color={SEVERITY[selectedAlert.severity].color}>
-              {SEVERITY[selectedAlert.severity].label}
-            </Tag>
-            <Tag bordered={false}>{METRIC_LABELS[selectedAlert.item] ?? selectedAlert.item}</Tag>
-            <span className="text-base font-semibold">{selectedAlert.title}</span>
-          </Space>
-        ) : '告警详情'}
-        footer={(
-          <div className="flex justify-end">
-            <Button onClick={closeDrawer}>关闭</Button>
-          </div>
-        )}
-        styles={{
-          body: { paddingTop: 0 },
-        }}
-      >
-        {selectedAlert ? (
-          <div className="flex h-full flex-col">
-            <div className="flex flex-wrap gap-x-4 gap-y-2 border-b border-[var(--color-border)] py-3 text-xs text-[var(--color-text-3)]">
-              <span>
-                所属服务{' '}
-                <Typography.Text className="!text-xs !text-[var(--color-primary)]">{selectedAlert.service}</Typography.Text>
-              </span>
-              {selectedAlert.resource_name ? (
-                <span>
-                  资源{' '}
-                  <Typography.Text className="!text-xs">{selectedAlert.resource_name}</Typography.Text>
-                </span>
+              {activeTab === 'history' ? (
+                <TimeSelector
+                  className={styles.alertsHistoryTimeSelector}
+                  defaultValue={HISTORY_TIME_DEFAULT}
+                  onlyTimeSelect
+                  onChange={(values) => {
+                    if (values.length === 2) {
+                      setHistoryTimeRange([values[0], values[1]]);
+                    }
+                  }}
+                />
               ) : null}
-              <span>
-                环境{' '}
-                <Typography.Text className="!text-xs">{selectedAlert.environment || '未设置环境'}</Typography.Text>
-              </span>
-              <span>
-                触发时间{' '}
-                <Typography.Text className="!text-xs tabular-nums">
-                  {dayjs(selectedAlert.start_time).format('YYYY-MM-DD HH:mm:ss')}
-                </Typography.Text>
-              </span>
+              <Button icon={<ReloadOutlined />} loading={isRefreshing} onClick={load}>
+                {t('apm.common.refresh', '刷新')}
+              </Button>
             </div>
+          </section>
 
-            <Tabs
-              activeKey={drawerTab}
-              className="mt-2"
-              onChange={(key) => setDrawerTab(key as DrawerTab)}
-              items={[
-                { key: 'alert', label: '告警' },
-                { key: 'event', label: `事件 (${relatedEvents.length})` },
-              ]}
-            />
-
-            <div className="min-h-0 flex-1 overflow-y-auto pb-2">
-              {drawerTab === 'alert' ? (
-                <div className="flex flex-col gap-4">
-                  <Descriptions
-                    title="告警信息"
-                    bordered
-                    size="small"
-                    column={2}
-                    labelStyle={{ width: 110, color: 'var(--color-text-3)' }}
-                  >
-                    <Descriptions.Item label="时间">
-                      {dayjs(selectedAlert.start_time).format('YYYY-MM-DD HH:mm:ss')}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="级别">
-                      <span
-                        className="border-l-4 pl-2 font-semibold"
-                        style={{
-                          borderColor: selectedAlert.severity === 'critical'
-                            ? SEVERITY_CHART.critical
-                            : selectedAlert.severity === 'error'
-                              ? SEVERITY_CHART.error
-                              : SEVERITY_CHART.warning,
-                          color: selectedAlert.severity === 'critical'
-                            ? SEVERITY_CHART.critical
-                            : selectedAlert.severity === 'error'
-                              ? SEVERITY_CHART.error
-                              : SEVERITY_CHART.warning,
-                        }}
-                      >
-                        {SEVERITY[selectedAlert.severity].label}
-                      </span>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="状态">
-                      <Tag bordered={false} color={ALERT_STATUS[selectedAlert.status].color}>
-                        {ALERT_STATUS[selectedAlert.status].label}
-                      </Tag>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="度量">
-                      {METRIC_LABELS[selectedAlert.item] ?? selectedAlert.item}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="所属对象" span={2}>
-                      <Space direction="vertical" size={0}>
-                        <Typography.Text>{selectedAlert.service}</Typography.Text>
-                        {selectedAlert.resource_name ? (
-                          <Typography.Text type="secondary" className="text-xs">
-                            {selectedAlert.resource_name}
-                          </Typography.Text>
+          <section className={styles.alertsDistribution} aria-label={t('apm.alerts.distributionSection', '告警分布')}>
+            <Collapse
+              title={t('apm.alerts.distributionChart', '分布图')}
+              isOpen={chartExpanded}
+              onToggle={setChartExpanded}
+              titleClassName={styles.alertsDistributionCollapseTitle}
+              contentClassName={styles.alertsDistributionCollapseContent}
+              icon={(
+                <div
+                  className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs"
+                  aria-label={t('apm.alerts.severityCounts', '三级告警数量')}
+                >
+                  {(['critical', 'error', 'warning'] as const).map((level, index) => {
+                    const count = distributionTotals[level];
+                    const idle = count === 0;
+                    return (
+                      <span key={level} className="inline-flex items-center gap-2.5">
+                        {index > 0 ? (
+                          <span className="text-[var(--color-text-4)]" aria-hidden="true">·</span>
                         ) : null}
-                      </Space>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="环境">
-                      {selectedAlert.environment || '未设置环境'}
-                    </Descriptions.Item>
-                    <Descriptions.Item label="当前值">
-                      <span className="tabular-nums">{selectedAlert.value ?? '—'}</span>
-                    </Descriptions.Item>
-                    <Descriptions.Item label="描述" span={2}>
-                      {selectedAlert.description || '—'}
-                    </Descriptions.Item>
-                    {selectedAlert.end_time ? (
-                      <Descriptions.Item label="结束时间" span={2}>
-                        {dayjs(selectedAlert.end_time).format('YYYY-MM-DD HH:mm:ss')}
-                      </Descriptions.Item>
-                    ) : null}
-                    <Descriptions.Item label="策略 ID" span={2}>
-                      {selectedAlert.policy_id || '—'}
-                    </Descriptions.Item>
-                  </Descriptions>
-
-                  <div>
-                    <Typography.Text strong className="mb-2 block">通知投递</Typography.Text>
-                    {renderDeliveries(selectedAlert)}
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  <Typography.Text type="secondary" className="mb-3 block text-xs">
-                    同一 external_id 关联的事件时间线
-                  </Typography.Text>
-                  {relatedEvents.length ? (
-                    <Timeline
-                      items={relatedEvents.map((event) => ({
-                        color: event.action === 'recovery'
-                          ? 'green'
-                          : event.severity === 'critical'
-                            ? 'red'
-                            : 'blue',
-                        children: (
-                          <div className="flex flex-wrap items-start justify-between gap-3 pb-1">
-                            <Space direction="vertical" size={2}>
-                              <Space wrap size={6}>
-                                <Typography.Text strong className="tabular-nums">
-                                  {dayjs(event.start_time).format('YYYY-MM-DD HH:mm:ss')}
-                                </Typography.Text>
-                                <Tag bordered={false}>{ACTION_LABELS[event.action]}</Tag>
-                                <Tag bordered={false} color={SEVERITY[event.severity].color}>
-                                  {SEVERITY[event.severity].label}
-                                </Tag>
-                                <Tag bordered={false} color={ALERT_STATUS[event.status].color}>
-                                  {ALERT_STATUS[event.status].label}
-                                </Tag>
-                              </Space>
-                              <Typography.Text>{event.title}</Typography.Text>
-                              <Typography.Text type="secondary" className="text-xs">
-                                {METRIC_LABELS[event.item] ?? event.item}
-                                {event.value !== null ? ` · ${event.value}` : ''}
-                                {event.description ? ` · ${event.description}` : ''}
-                              </Typography.Text>
-                            </Space>
-                          </div>
-                        ),
-                      }))}
-                    />
-                  ) : (
-                    <Typography.Text type="secondary">暂无关联事件</Typography.Text>
-                  )}
+                        <span
+                          className={`inline-flex items-center gap-1.5 ${
+                            idle ? 'text-[var(--color-text-4)]' : 'text-[var(--color-text-3)]'
+                          }`}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`h-1.5 w-1.5 rounded-full ${idle ? 'opacity-50' : ''}`}
+                            style={{ background: ALERT_LEVEL_COLORS[level] }}
+                          />
+                          {t(SEVERITY_KEY[level])}
+                          {' '}
+                          <span className={`tabular-nums ${idle ? '' : 'font-medium text-[var(--color-text-1)]'}`}>
+                            {count}
+                          </span>
+                        </span>
+                      </span>
+                    );
+                  })}
                 </div>
               )}
-            </div>
-          </div>
-        ) : null}
-      </Drawer>
+            >
+              <div
+                className={styles.alertsDistributionChart}
+                role="img"
+                aria-label={t('apm.alerts.distributionDetailAria', '{view} alert event distribution grouped by critical, error, and warning', {
+                  view: t(activeTab === 'active' ? 'apm.alerts.active' : 'apm.alerts.history'),
+                })}
+              >
+                <TimeSeriesComposedChart
+                  data={distribution}
+                  xDataKey="time"
+                  getXLabel={(item) => formatDateTime(String(item.time), false)}
+                  series={[
+                    {
+                      name: t('apm.severity.critical', '严重'),
+                      type: 'bar',
+                      dataKey: 'critical',
+                      color: ALERT_LEVEL_COLORS.critical,
+                      stack: 'severity',
+                      barGradient: false,
+                      barMaxWidth: 32,
+                      barBorderRadius: [0, 0, 0, 0],
+                    },
+                    {
+                      name: t('apm.severity.error', '错误'),
+                      type: 'bar',
+                      dataKey: 'error',
+                      color: ALERT_LEVEL_COLORS.error,
+                      stack: 'severity',
+                      barGradient: false,
+                      barMaxWidth: 32,
+                      barBorderRadius: [0, 0, 0, 0],
+                    },
+                    {
+                      name: t('apm.severity.warning', '警告'),
+                      type: 'bar',
+                      dataKey: 'warning',
+                      color: ALERT_LEVEL_COLORS.warning,
+                      stack: 'severity',
+                      barGradient: false,
+                      barMaxWidth: 32,
+                      barBorderRadius: [3, 3, 0, 0],
+                    },
+                  ]}
+                />
+              </div>
+            </Collapse>
+          </section>
+
+          <section className={styles.alertsTableSection} aria-label={t('apm.alerts.list', '告警列表')}>
+            {state === 'ready' && alerts.length ? (
+              <>
+                <ApmDataTable
+                  rowKey="id"
+                  columns={columns}
+                  dataSource={alerts}
+                  pagination={{ pageSize: 20 }}
+                />
+                {alerts.length >= ALERT_LIST_LIMIT ? (
+                  <Typography.Text type="secondary" className="mt-2 block">
+                    {t('apm.alerts.limitHint', '最多显示 {limit} 条，请缩小筛选范围', { limit: ALERT_LIST_LIMIT })}
+                  </Typography.Text>
+                ) : null}
+              </>
+            ) : (
+              <CatalogState kind={state === 'ready' ? 'empty' : state} onRetry={load} />
+            )}
+          </section>
+        </section>
+        </div>
+      </ApmSurface>
+      <AlertDetailDrawer
+        open={Boolean(selected)}
+        alert={selected}
+        metricSnapshot={metricSnapshot}
+        metricSnapshotLoading={metricSnapshotLoading}
+        metricSnapshotError={metricSnapshotError}
+        selectedEvent={selectedEvent}
+        eventEvidence={eventEvidence}
+        eventEvidenceLoading={eventEvidenceLoading}
+        deliveries={deliveries}
+        retryingDeliveryId={retryingDeliveryId}
+        onClose={resetDrawerState}
+        onCloseAlert={handleCloseAlert}
+        onRetrySnapshot={openDrawer}
+        onSelectEvent={chooseEvent}
+        onRetryDelivery={handleRetryDelivery}
+      />
     </ApmRouteShell>
   );
 }

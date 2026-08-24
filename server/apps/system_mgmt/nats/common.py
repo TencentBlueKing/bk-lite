@@ -44,10 +44,14 @@ from apps.system_mgmt.models import (
 )
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.otp_challenge import (
+    RATE_LIMIT_MAX_ATTEMPTS,
+    check_otp_login_account_rate_limit,
     check_rate_limit,
     create_challenge,
     invalidate_challenge,
     record_failed_attempt,
+    reserve_otp_login_account_attempt,
+    reset_otp_login_account_rate_limit,
     reset_rate_limit,
     verify_challenge,
 )
@@ -76,16 +80,17 @@ def _collect_ancestor_group_ids(seed_ids):
 
     仅使用轻量级 values_list 查询（不加载角色关联），避免全表 prefetch。
     返回的集合可用于后续有针对性地加载完整 Group 对象。
+    默认只投影活动组织；归档节点不进入祖先链。
 
     :param seed_ids: 起始组 ID 列表（通常为 user.group_list）
-    :return: 包含 seed_ids 及其所有祖先的 ID set
+    :return: 包含 seed_ids 及其所有祖先的 ID set（仅活动组织）
     """
     if not seed_ids:
         return set()
-    # 一次查询获取全表的 (id, parent_id, allow_inherit_roles)，仅传输轻量列
+    # 一次查询获取活动组织的 (id, parent_id, allow_inherit_roles)，仅传输轻量列
     all_meta = {
         row[0]: (row[1], row[2])
-        for row in Group.objects.values_list("id", "parent_id", "allow_inherit_roles")
+        for row in GroupUtils.active_queryset().values_list("id", "parent_id", "allow_inherit_roles")
     }
     result = set()
     stack = list(seed_ids)
@@ -93,12 +98,14 @@ def _collect_ancestor_group_ids(seed_ids):
         gid = stack.pop()
         if gid in result:
             continue
-        result.add(gid)
         meta = all_meta.get(gid)
-        if meta:
-            parent_id, allow_inherit = meta
-            if parent_id and parent_id not in result:
-                stack.append(parent_id)
+        if not meta:
+            # 缺失或已归档：不进入活动投影
+            continue
+        result.add(gid)
+        parent_id, allow_inherit = meta
+        if parent_id and parent_id not in result:
+            stack.append(parent_id)
     return result
 
 
@@ -121,7 +128,7 @@ def get_user_all_roles(user):
         ancestor_ids = _collect_ancestor_group_ids(user.group_list)
         all_groups = {
             g.id: g
-            for g in Group.objects.prefetch_related("roles").filter(id__in=ancestor_ids)
+            for g in GroupUtils.active_queryset(id__in=ancestor_ids).prefetch_related("roles")
         }
 
         visited = set()
@@ -204,6 +211,6 @@ def _verify_token(token):
             raise Exception("Token is invalid")
 
     user = User.objects.filter(id=user_info["user_id"]).first()
-    if not user:
+    if not user or user.disabled:
         raise Exception(VERIFY_TOKEN_USER_NOT_FOUND_MESSAGE)
     return user

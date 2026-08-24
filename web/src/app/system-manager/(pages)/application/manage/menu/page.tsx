@@ -2,11 +2,13 @@
 
 import React, { useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Button, Input, Tag, Spin, Dropdown, Form, Modal } from 'antd';
-import { PlusOutlined, MoreOutlined } from '@ant-design/icons';
+import { Button, Input, Tag, Spin, Form, Modal } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import type { CustomMenu } from '@/app/system-manager/types/menu';
 import PermissionWrapper from '@/components/permission';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import OperateModal from '@/components/operate-modal';
 import DynamicForm from '@/components/dynamic-form';
 import CustomTable from '@/components/custom-table';
@@ -145,7 +147,21 @@ const CustomMenuPage = () => {
           ];
 
           const directOps = operations.slice(0, 3);
-          const dropdownOps = operations.slice(3);
+          const moreOps: MoreActionsDropdownItem[] = operations.slice(3).map((op) => ({
+            key: op.key,
+            label: op.label,
+            danger: op.danger,
+            disabled: op.disabled,
+            permission: op.permission,
+            onClick: op.onClick,
+            confirm: op.key === 'delete'
+              ? {
+                title: t('common.delConfirm'),
+                okText: t('common.confirm'),
+                cancelText: t('common.cancel'),
+              }
+              : undefined,
+          }));
 
           return (
             <div className="flex space-x-1">
@@ -162,35 +178,13 @@ const CustomMenuPage = () => {
                 </PermissionWrapper>
               ))}
 
-              {dropdownOps.length > 0 && (
-                <PermissionWrapper requiredPermissions={['Delete']}>
-                  <Dropdown
-                    menu={{
-                      items: dropdownOps.map((op) => ({
-                        key: op.key,
-                        label: op.label,
-                        danger: op.danger,
-                        disabled: op.disabled,
-                      })),
-                      onClick: ({ key }) => {
-                        const op = dropdownOps.find((o) => o.key === key);
-                        if (op?.key === 'delete') {
-                          Modal.confirm({
-                            title: t('common.delConfirm'),
-                            okText: t('common.confirm'),
-                            cancelText: t('common.cancel'),
-                            onOk: () => op.onClick(),
-                          });
-                        } else {
-                          op?.onClick();
-                        }
-                      },
-                    }}
-                  >
-                    <Button type="link" icon={<MoreOutlined />} />
-                  </Dropdown>
-                </PermissionWrapper>
-              )}
+              {moreOps.length > 0 ? (
+                <MoreActionsDropdown
+                  items={moreOps}
+                  buttonType="link"
+                  buttonSize="middle"
+                />
+              ) : null}
             </div>
           );
         },

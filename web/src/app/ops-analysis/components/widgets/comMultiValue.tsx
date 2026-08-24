@@ -6,6 +6,7 @@ import { validateMultiValueData } from '@/app/ops-analysis/utils/multiValueData'
 import { getOpsChartThemeByMode } from '@/app/ops-analysis/utils/chartTheme';
 import { scaleScreenMetric } from './shared/screenMetrics';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
+import { resolveMultiValueRowDisplay } from '@/app/ops-analysis/utils/chartValueFormat';
 
 interface ComMultiValueProps {
   rawData: unknown;
@@ -45,20 +46,36 @@ const ComMultiValue: React.FC<ComMultiValueProps> = ({
   return (
     <div className="h-full w-full overflow-y-auto overflow-x-hidden" style={{ padding }}>
       <div className="flex flex-col gap-1">
-        {result.items.map((item, index) => (
+        {result.items.map((item, index) => {
+          const display = resolveMultiValueRowDisplay(
+            item.value,
+            config,
+            theme.pieValueColor,
+          );
+          return (
           <div
             key={`${index}-${item.label}`}
             className="flex min-w-0 items-center justify-between gap-3 rounded px-2 py-1"
-            style={{ color: theme.singleValueColor }}
           >
             <Tooltip title={item.label}>
-              <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+              <span
+                className="min-w-0 flex-1 truncate text-left"
+                style={{ color: theme.axisLabelColor }}
+              >
+                {item.label}
+              </span>
             </Tooltip>
-            <Tooltip title={item.value}>
-              <span className="shrink-0 truncate text-right font-semibold tabular-nums">{item.value}</span>
+            <Tooltip title={display.text}>
+              <span
+                className="shrink-0 truncate text-right font-semibold tabular-nums"
+                style={{ color: display.color }}
+              >
+                {display.text}
+              </span>
             </Tooltip>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

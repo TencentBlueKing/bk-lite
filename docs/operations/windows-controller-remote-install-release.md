@@ -162,6 +162,7 @@ ANSIBLE_PAYLOAD_ENCRYPTION_KEY=<由密钥管理系统注入的随机密钥>
 ```text
 server/apps/node_mgmt/migrations/0037_controllertasknode_winrm_fields.py
 server/apps/node_mgmt/migrations/0039_merge_cloudregion_and_winrm.py
+server/apps/node_mgmt/migrations/0044_encrypt_installer_passwords.py
 ```
 
 按现有发布流程执行：
@@ -170,7 +171,7 @@ server/apps/node_mgmt/migrations/0039_merge_cloudregion_and_winrm.py
 python manage.py migrate --no-input
 ```
 
-迁移仅增加 WinRM 配置字段并合并迁移分支，不删除已有字段。不要只发布 Server 代码而跳过迁移，否则创建或执行控制器安装任务时会发生数据库字段错误。
+迁移增加 WinRM 配置字段、合并迁移分支，并以稳定主键游标分批加密存量非空 `NATS_INSTALLER_PASSWORD`。每批在事务内锁定并重读目标行，滚动升级时不会用旧值覆盖并发轮换；失败后可安全重跑并从尚未转为 `secret` 的行继续。不要只发布 Server 代码而跳过迁移，否则创建或执行控制器安装任务时会发生数据库字段错误，存量安装密码也会继续保持明文类型。
 
 ## 7. 目标环境前置条件
 
@@ -178,14 +179,14 @@ python manage.py migrate --no-input
 
 - Windows 10 或 Windows Server 2016 及以上版本。
 - PowerShell 5.1 或更高版本。
-- 已配置 HTTPS WinRM listener，端口固定为 5986。
+- 已配置 HTTPS WinRM listener，默认端口为 5986；自定义端口必须确认实际承载 HTTPS Listener，不能把通常用于 HTTP 的 5985 作为 HTTPS 端口。
 - 使用 NTLM 认证。
-- WinRM 服务端证书可被 Ansible Executor 所在环境信任。
-- 云区域 `NODE_SERVER_URL` 必须使用受信任证书的 `https://` 地址；Windows 远程 bootstrap 会拒绝 HTTP、HTTPS 降级重定向以及会话返回的非 HTTPS Server URL。
+- Windows 安装与卸载面向可信内网默认跳过证书校验；启用校验时，WinRM 服务端证书必须被 Ansible Executor 所在环境信任。
+- 云区域 `NODE_SERVER_URL` 必须使用 `https://` 地址。默认关闭证书校验时，bootstrap 仍拒绝 HTTP、HTTPS 降级重定向和非 HTTPS Server URL，但会跳过 WinRM 与安装服务 HTTPS 的证书链和名称校验；显式启用校验时，目标 Windows 主机必须信任安装服务证书。
 - 防火墙和网络策略允许云区域 Ansible Executor 访问目标主机 TCP/5986。
 - 使用具备安装 Windows 服务和写入 `C:\fusion-collectors` 权限的管理员账号。
 
-当前稳定支持面不包括 HTTP/5985、Basic、Kerberos、CredSSP、跳过证书校验和 Windows ARM64。流水线或环境模板不要暴露这些组合。
+当前稳定支持面不包括 HTTP/5985、Basic、Kerberos、CredSSP 和 Windows ARM64。证书校验面向可信内网默认关闭，页面持续展示风险提示，并允许用户为当前批次显式开启。
 
 ### NATS 最小权限
 
@@ -208,6 +209,20 @@ Windows 远程安装还要求云区域配置 `NATS_PROTOCOL=tls`，并使用受�
 
 bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`，实时发布失败会自动降级为 Ansible 终态 stdout 回放，不会让安装失败；但页面将无法实时显示下载和解压过程。生产验收必须覆盖实时进度，不能只验证最终成功。
 
+### 安装凭据逐区域切换
+
+`NATS_INSTALLER_CREDENTIALS_MODE` 是云区域级迁移闸，只允许以下值：
+
+- 未配置或 `legacy`：保留 Linux 与 Windows GUI 的管理员凭据兼容回退；Windows 远程安装仍强制使用专用凭据。
+- `strict`：所有安装会话缺少任一 `NATS_INSTALLER_USERNAME/PASSWORD` 时均失败关闭，不再下发管理员凭据。
+
+迁移必须逐区域执行：先配置安装专用账号及 Object Store 读取、`installer.progress.>` 发布权限，完成 Linux 自动/手动、Windows GUI/远程安装验证，再把该区域模式改为 `strict`。保存接口会拒绝空值和未知值；切换后应再执行一次缺配探针，确认请求明确失败且响应中没有管理员凭据。
+
+数据库迁移 `node_mgmt.0044_encrypt_installer_passwords` 会把存量非空
+`NATS_INSTALLER_PASSWORD` 幂等转为 `secret` 加密存储；保存接口也会忽略客户端选择的明文类型并强制加密，列表仅返回掩码。旧版本已能解密 `secret` 类型，因此代码回滚不需要、也不得把密码恢复为明文。
+
+区域级回滚时先把模式改回 `legacy`，并移除或修正错误的专用用户名/密码；只改模式不会覆盖一组已存在但无法认证的专用凭据，因为安装会话始终优先使用专用账号。配置预检失败不会消耗安装 token；若下载等后续步骤已成功消费 token 后才失败，达到次数上限时需重新签发再验证。回滚不得恢复已轮换的旧管理员密码，也不得删除已验证可用的最小权限账号。
+
 ## 8. 发布验收清单
 
 发布完成后逐项确认：
@@ -218,12 +233,12 @@ bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`
 - [ ] 若发布 onedir 产物，`win_copy.ps1` 位于 `_internal/collections/ansible_collections/ansible/windows/plugins/modules/`，且冻结程序 collection 解析冒烟通过。
 - [ ] 所需云区域至少有一个健康的 Ansible Executor。
 - [ ] 所需云区域已配置 `NATS_PROTOCOL=tls`、可信 NATS 证书和专用 `NATS_INSTALLER_USERNAME/PASSWORD`。
-- [ ] NodeMgmt 的 `0037`、`0038`、`0039` 迁移均已应用。
-- [ ] Windows 控制器安装页面显示远程安装，账号默认值为 Administrator；页面不暴露固定安全参数，并实际使用 5986、HTTPS、NTLM 和证书校验。
+- [ ] NodeMgmt 的 `0037`、`0038`、`0039`、`0044` 迁移均已应用；抽查存量 `NATS_INSTALLER_PASSWORD` 已为 `secret`，列表响应仅返回掩码。
+- [ ] Windows 控制器安装和卸载默认使用 5986、HTTPS 和 NTLM，证书校验开关默认关闭并展示风险提示。失败后重试会带入任务节点保存的端口和证书校验状态，并要求重新输入凭据。
 - [ ] 安装执行期间，页面能在 Ansible 任务结束前持续看到下载、解压和服务切换进度，最终回放不产生重复步骤。
 - [ ] 使用测试 Windows 主机完成一次全新远程安装。
 - [ ] 对已安装主机执行一次升级，确认 `cache`、`logs`、`generated` 被保留。
-- [ ] 使用不受信任证书测试一次，确认连接被拒绝。
+- [ ] 分别使用不受信任的 WinRM 证书和安装服务 HTTPS 证书测试，确认默认关闭校验时仍只接受 HTTPS URL；显式开启校验后连接会被拒绝，导入对应 CA 后可恢复。
 - [ ] 模拟新服务注册失败，确认旧安装和旧服务恢复。
 - [ ] 确认目标机 `C:\Windows\Temp` 中本次 bootstrap 和 session 临时文件已清理。
 - [ ] 原 Linux 远程安装和 Windows 手动安装各完成一次冒烟验证。
@@ -236,6 +251,7 @@ bootstrap 只接受 `installer.progress.<32 位小写十六进制 execution_id>`
 | 找不到健康 Executor | 目标云区域是否部署并上报了新版 Ansible Executor |
 | `couldn't resolve module/action 'ansible.windows.win_copy'` 或模块不在搜索路径 | 检查冻结产物是否丢失 `ansible_collections` 层级；这是 Executor 打包问题，不是目标 Windows/WinRM 问题，重新执行 `make package` 并发布完整 onedir 目录 |
 | WinRM 连接失败 | TCP/5986、防火墙、HTTPS listener、NTLM、账号权限 |
+| `WSManFaultError` fault 170、`请求的资源在使用中` 或 `winrm send_input failed` | 目标机 WinRM/WinRS 是否有未结束操作；等待后重试，确认安全时重启 WinRM 服务，并检查 `MaxShellsPerUser`、`MaxConcurrentOperationsPerUser` 配额和主机负载 |
 | 证书校验失败 | 服务端证书链、名称匹配和 Executor 容器 CA 信任 |
 | 提示 PowerShell 或 Windows 版本不支持 | 目标机是否满足 Windows 10/Server 2016、PowerShell 5.1+ |
 | Executor 启动时提示载荷加密密钥缺失 | 检查 `ANSIBLE_PAYLOAD_ENCRYPTION_KEY` 或 NATS 密码注入 |

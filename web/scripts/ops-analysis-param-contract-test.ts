@@ -2,12 +2,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { validateParams } from '../src/app/ops-analysis/(pages)/settings/dataSource/operateModalUtils';
+import {
+  createPrometheusDefaultParams,
+  normalizeParams,
+  validateParams,
+} from '../src/app/ops-analysis/(pages)/settings/dataSource/operateModalUtils';
 import {
   getDataSourceFormParamInitialValue,
   processDataSourceFormParamsForSubmit,
 } from '../src/app/ops-analysis/utils/dataSourceFormParams';
 import { processDataSourceParams } from '../src/app/ops-analysis/utils/widgetDataTransform';
+import { ensurePrometheusQueryRequired } from '../src/app/ops-analysis/utils/dataSourceParamContract';
 import type { ParamItem } from '../src/app/ops-analysis/types/dataSource';
 
 const numberParam: ParamItem = {
@@ -58,6 +63,40 @@ const timeRangeParam: ParamItem = {
   filterType: 'filter',
   value: 10080,
 };
+
+const prometheusParams = createPrometheusDefaultParams();
+const prometheusQuery = prometheusParams.find((param) => param.name === 'query');
+assert.equal(prometheusQuery?.required, true, 'Prometheus Widget 的 PromQL 必须在保存前校验');
+assert.equal(
+  prometheusQuery?.value,
+  '',
+  'Prometheus Widget 的 PromQL 不应从数据源预览查询自动回填',
+);
+assert.equal(
+  normalizeParams(prometheusParams).find((param) => param.name === 'query')?.required,
+  true,
+  'PromQL 必填契约必须持久化到数据源 params',
+);
+const legacyPrometheusParams = prometheusParams.map((param) =>
+  param.name === 'query' ? { ...param, required: undefined } : param,
+);
+const compatiblePrometheusParams = ensurePrometheusQueryRequired(
+  legacyPrometheusParams,
+);
+assert.equal(
+  compatiblePrometheusParams.find((param) => param.name === 'query')?.required,
+  true,
+  '历史 Prometheus Widget 的 PromQL 也必须补齐必填标记',
+);
+assert.deepEqual(
+  compatiblePrometheusParams
+    .filter((param) => param.name !== 'query')
+    .map((param) => ({ name: param.name, value: param.value, required: param.required })),
+  legacyPrometheusParams
+    .filter((param) => param.name !== 'query')
+    .map((param) => ({ name: param.name, value: param.value, required: param.required })),
+  'Prometheus 必填兼容不能修改 query 之外的参数',
+);
 
 assert.equal(
   processDataSourceFormParamsForSubmit({ model_id: '' }, [stringParam])[0].value,
@@ -145,6 +184,7 @@ const paramsConfigSource = readFileSync(
   ),
   'utf8',
 );
+
 assert.match(
   paramsConfigSource,
   /clearable=\{!disabled\}/,

@@ -34,6 +34,14 @@ def _workload_type(instance: dict) -> str:
     return str(value or "").strip().casefold()
 
 
+def _matches_workload_kind(instance: dict, kind: str) -> bool:
+    """应用层分类，兼容 workload_type 为 string 或单元素 list。"""
+    workload_type = _workload_type(instance)
+    if kind == "other_workload":
+        return workload_type not in BUSINESS_WORKLOAD_KINDS
+    return workload_type == str(kind).strip().casefold()
+
+
 class K8sResourceOverviewService:
     PERMISSION_SCAN_PAGE_SIZE = 500
 
@@ -79,6 +87,78 @@ class K8sResourceOverviewService:
                 break
             page += 1
         return visible_ids
+
+    @classmethod
+    def _scan_workload_rows(
+        cls,
+        inst_ids,
+        *,
+        permission_maps=None,
+        user=None,
+        filters=None,
+    ):
+        """分页扫全量候选，避免图侧 list_any[] 对 string enum 报类型错误。"""
+        candidate_ids = sorted({int(inst_id) for inst_id in inst_ids})
+        if not candidate_ids:
+            return []
+
+        rows = []
+        page = 1
+        while True:
+            page_rows, count = cls._query_page(
+                MODEL_WORKLOAD,
+                candidate_ids,
+                page=page,
+                page_size=cls.PERMISSION_SCAN_PAGE_SIZE,
+                order="name",
+                filters=filters or [],
+                permission_maps=permission_maps,
+                user=user,
+            )
+            rows.extend(page_rows)
+            if len(rows) >= count or not page_rows:
+                break
+            page += 1
+        return rows
+
+    @classmethod
+    def _workload_ids_matching_kind(
+        cls,
+        inst_ids,
+        kind,
+        *,
+        permission_maps=None,
+        user=None,
+        filters=None,
+    ):
+        matched_ids = []
+        for row in cls._scan_workload_rows(
+            inst_ids,
+            permission_maps=permission_maps,
+            user=user,
+            filters=filters,
+        ):
+            row_id = _id(row)
+            if row_id is None:
+                continue
+            if _matches_workload_kind(row, kind):
+                matched_ids.append(row_id)
+        return matched_ids
+
+    @classmethod
+    def _count_workloads_by_business_kind(cls, inst_ids, *, permission_maps=None, user=None):
+        business_count = 0
+        other_count = 0
+        for row in cls._scan_workload_rows(
+            inst_ids,
+            permission_maps=permission_maps,
+            user=user,
+        ):
+            if _matches_workload_kind(row, "other_workload"):
+                other_count += 1
+            else:
+                business_count += 1
+        return business_count, other_count
 
     @staticmethod
     def _relation_ids(relation_map: dict[int, list[int]]) -> list[int]:
@@ -180,19 +260,10 @@ class K8sResourceOverviewService:
         )
         topology_edges.extend(cls._edge(cluster_node_id, _id(item), "cluster-node") for item in nodes)
 
-        business_count = cls._count_ids(
-            MODEL_WORKLOAD,
+        business_count, other_count = cls._count_workloads_by_business_kind(
             workload_ids,
             permission_maps=permission_maps,
             user=user,
-            filters=[{"field": "workload_type", "type": "list_any[]", "value": list(BUSINESS_WORKLOAD_KINDS)}],
-        )
-        other_count = cls._count_ids(
-            MODEL_WORKLOAD,
-            workload_ids,
-            permission_maps=permission_maps,
-            user=user,
-            filters=[{"field": "workload_type", "type": "list_none[]", "value": list(BUSINESS_WORKLOAD_KINDS)}],
         )
         return {
             "summary": {
@@ -506,14 +577,21 @@ class K8sResourceOverviewService:
             }
             if normalized_workload_id is not None and normalized_workload_id not in candidate_ids:
                 raise ValidationError("Workload 不属于当前集群或无权限")
-            type_filter = {
-                "field": "workload_type",
-                "type": "list_none[]" if kind == "other_workload" else "list_any[]",
-                "value": list(BUSINESS_WORKLOAD_KINDS) if kind == "other_workload" else [kind],
-            }
+            matched_ids = cls._workload_ids_matching_kind(
+                candidate_ids,
+                kind,
+                permission_maps=permission_maps,
+                user=user,
+                filters=filters,
+            )
             rows, count = cls._query_page(
-                MODEL_WORKLOAD, candidate_ids, page=page, page_size=page_size, order=order,
-                filters=[*filters, type_filter], permission_maps=permission_maps, user=user,
+                MODEL_WORKLOAD,
+                matched_ids,
+                page=page,
+                page_size=page_size,
+                order=order,
+                permission_maps=permission_maps,
+                user=user,
             )
             current_ids = [_id(row) for row in rows]
             pod_map = InstanceManage.instance_association_map(MODEL_WORKLOAD, current_ids, MODEL_POD)

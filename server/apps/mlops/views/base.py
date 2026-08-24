@@ -10,7 +10,7 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.mlops.constants import MLflowRunStatus, TrainJobStatus
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.group_scope import assert_dataset_version_scope
-from apps.mlops.utils.i18n import mlops_message
+from apps.mlops.utils.i18n import mlops_exception_message, mlops_message
 from apps.mlops.utils.webhook_client import WebhookClient, WebhookConnectionError, WebhookError, WebhookTimeoutError
 
 
@@ -120,7 +120,7 @@ class TeamModelViewSet(AuthViewSet):
                 exc_info=True,
             )
             return Response(
-                {"error": mlops_message(self.request, "error.serving_runtime_cleanup_failed", detail=str(e))},
+                {"error": mlops_message(self.request, "error.serving_runtime_cleanup_failed", detail=mlops_exception_message(self.request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except WebhookError as e:
@@ -136,7 +136,7 @@ class TeamModelViewSet(AuthViewSet):
                     exc_info=True,
                 )
                 return Response(
-                    {"error": mlops_message(self.request, "error.serving_runtime_cleanup_failed", detail=str(e))},
+                    {"error": mlops_message(self.request, "error.serving_runtime_cleanup_failed", detail=mlops_exception_message(self.request, e))},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -207,9 +207,9 @@ class TeamModelViewSet(AuthViewSet):
                         errors.extend(str(item) for item in value)
                     else:
                         errors.append(str(value))
-                message = "；".join(errors) if errors else "训练任务关联的数据集版本无权访问"
+                message = "；".join(errors) if errors else mlops_message(request, "error.train_job_dataset_version_access_denied")
             else:
-                message = "训练任务关联的数据集版本无权访问"
+                message = mlops_message(request, "error.train_job_dataset_version_access_denied")
             return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
         return None
 

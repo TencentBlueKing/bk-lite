@@ -12,13 +12,16 @@
     {"name": "Library", "children": [{"id": "patch", "name": "Patch Library", "operation": ["View", "Add", "Edit", "Delete"]}]},
     {"name": "Baseline", "children": [{"id": "patch_baseline", "name": "Baseline", "operation": ["View", "Add", "Edit", "Delete"]}]},
     {"name": "Target", "children": [{"id": "patch_target", "name": "Target", "operation": ["View", "Add", "Edit", "Delete"]}]},
-    {"name": "Settings", "children": [{"id": "patch_source", "name": "Settings", "operation": ["View", "Add", "Edit", "Delete"]}]}
+    {"name": "Settings", "children": [
+      {"id": "patch_source", "name": "Patch Sources", "operation": ["View", "Add", "Edit", "Delete"]},
+      {"id": "patch_scan_setting", "name": "Scan Settings", "operation": ["View", "Edit"]}
+    ]}
   ],
   "roles": [
     {"name": "admin", "role_name": "patch_admin", "menus": []},
     {"name": "normal", "role_name": "patch_normal", "menus": [
       "patch_dashboard-View", "patch_risk-View", "patch_governance-View", "patch-View",
-      "patch_baseline-View", "patch_target-View", "patch_source-View"
+      "patch_baseline-View", "patch_target-View", "patch_source-View", "patch_scan_setting-View"
     ]}
   ]
 }

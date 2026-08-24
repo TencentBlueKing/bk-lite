@@ -1,5 +1,6 @@
 import { ModalRef, ModalProps, TableDataItem } from '@/app/monitor/types';
-import { Form, Button, message, Spin, Empty, Alert } from 'antd';
+import { Form, Button, message, Spin, Alert } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { cloneDeep } from 'lodash';
 import React, {
   useState,
@@ -19,9 +20,13 @@ import {
 } from '@/app/monitor/hooks/integration/snmpFilterMutex';
 import { getSnmpInterfaceFilterModePatch } from '@/app/monitor/hooks/integration/snmpInterfaceFilterMode';
 import { getIfmibSnapshotEnabled } from '../list/detail/configure/ifmibDeploymentState';
+import { normalizePasswordFields } from '@/components/password/normalizePasswordWhitespace';
 
 interface PluginFormField {
   name?: string;
+  type?: string;
+  editable?: boolean;
+  default_value?: unknown;
 }
 
 interface PluginConfig {
@@ -124,6 +129,21 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   };
 
   const handleSubmit = () => {
+    const touchedPasswordFields = (currentConfig?.form_fields || []).filter(
+      (field) =>
+        field.type === 'password' &&
+        field.editable !== false &&
+        typeof field.name === 'string' &&
+        form.isFieldTouched(field.name)
+    );
+    const normalizedForm = normalizePasswordFields(
+      form.getFieldsValue(true),
+      touchedPasswordFields
+    );
+    if (normalizedForm.changedFields.length) {
+      form.setFieldsValue(normalizedForm.values);
+      message.warning(t('common.passwordWhitespaceTrimmed'));
+    }
     form.validateFields().then((values) => {
       const mutexErrors = getSnmpFilterMutexConflicts(values, t);
       if (mutexErrors.length) {
@@ -193,7 +213,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
               />
             )}
             {showEmpty ? (
-              <Empty description={t('monitor.integrations.noConfigData')} />
+              <CompactEmptyState description={t('monitor.integrations.noConfigData')} />
             ) : (
               <Form
                 ref={formRef}
@@ -201,7 +221,13 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
                 name="basic"
                 layout="vertical"
                 onValuesChange={(changed, all) => {
-                  const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(changed);
+                  const defaultIfTypeExclude = currentConfig?.form_fields?.find(
+                    (field) => field.name === 'iftype_exclude'
+                  )?.default_value;
+                  const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(
+                    changed,
+                    defaultIfTypeExclude
+                  );
                   const nextValues = Object.keys(interfaceFilterModePatch).length
                     ? { ...all, ...interfaceFilterModePatch }
                     : all;

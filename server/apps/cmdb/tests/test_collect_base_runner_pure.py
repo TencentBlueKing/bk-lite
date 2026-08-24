@@ -9,9 +9,9 @@
 
 不触 DB：通过 task= 注入 fake task，绕过 CollectModels.objects.get。
 """
-import pydantic.root_model  # noqa: F401
-
 from types import SimpleNamespace
+
+import pydantic.root_model  # noqa: F401
 
 from apps.cmdb.collection.collect_tasks.base import BaseCollect
 from apps.cmdb.constants.constants import DataCleanupStrategy
@@ -90,6 +90,17 @@ def test_format_params_instance_mode_org_from_team_when_missing():
     assert c.organization == [5]
 
 
+def test_format_params_instance_mode_missing_graph_id():
+    t = _task(
+        instances=[{"model_id": "host", "inst_name": "10.0.0.1", "inst_uuid": "123e4567-e89b-42d3-a456-426614174000"}],
+        is_host=True,
+    )
+    c = BaseCollect(instance_id=None, task=t)
+    assert c.model_id == "host"
+    assert c.inst_name == "10.0.0.1"
+    assert c.inst_id is None
+
+
 # --------------------------------------------------------------------------
 # build_plugin_kwargs
 # --------------------------------------------------------------------------
@@ -129,6 +140,7 @@ def test_task_id_returns_task_id():
 
 def test_run_raises_when_no_plugin():
     import pytest
+
     t = _task(instances=[{"_id": "h", "model_id": "host", "inst_name": "x"}])
     c = BaseCollect(instance_id=None, task=t)
     with pytest.raises(NotImplementedError):
@@ -216,7 +228,7 @@ def test_format_collect_data_success_and_failed_buckets(monkeypatch):
                 "success": [{"inst_info": {"_id": 1, "inst_name": "ok"}, "assos_result": {}}],
                 "failed": [{"instance_info": {"inst_name": "bad"}, "error": "boom"}],
             },
-        }
+        },
     }
     out = c.format_collect_data(result)
     assert len(out["add"]) == 2

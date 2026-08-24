@@ -59,7 +59,7 @@ OpsPilot 是 BK-Lite 的智能应用构建与运营平台，提供从基础模�
 
 | 功能项 | 功能说明 | 规格 / 约束 | 状态 |
 |---|---|---|---|
-| 记忆空间 CRUD | 记忆空间的新增、编辑、删除、详情查看 | — | GA |
+| 记忆空间 CRUD | 记忆空间的新增、编辑、删除、详情查看 | 删除确认展示空间名称；确认后级联删除空间内记忆，且不可恢复 | GA |
 | 可见范围 | 记忆空间可见范围设置 | 2 种：个人记忆(personal)、团队记忆(team) | GA |
 | 空间配置 | 配置简介、写入规则与默认模型 | — | GA |
 | 写入测试 | 基于写入规则与默认模型由 LLM 处理输入并返回结果 | 缺少写入规则时直接返回原始输入 | GA |
@@ -67,6 +67,9 @@ OpsPilot 是 BK-Lite 的智能应用构建与运营平台，提供从基础模�
 | 条目可见性 | 个人记忆空间内条目仅创建者可见；团队记忆空间按团队可见性共享 | — | GA |
 | 条目筛选 | 记忆条目按记忆空间筛选 | — | GA |
 | ChatFlow 记忆节点 | 在 ChatFlow 中通过记忆节点引用记忆能力 | 含记忆读取(memory_read)、记忆写入(memory_write)节点 | GA |
+
+产品规则：[[legacy-prd-opspilot-记忆.md#4. 关键规则]]
+> 证据来源：web/src/app/opspilot/(pages)/memory/page.tsx:67-75，server/apps/opspilot/models/memory_mgmt.py:112-116，server/apps/opspilot/viewsets/memory_view.py:70-76　|　同步基线：d2769559　|　【已实现】
 
 ### 5. 智能体管理
 
@@ -96,7 +99,7 @@ OpsPilot 是 BK-Lite 的智能应用构建与运营平台，提供从基础模�
 | 执行与会话日志 | 执行日志检索、会话日志查看、输出数据查看 | 主任务与节点级结果均保留 | GA |
 | 统计视图 | 会话量、活跃用户、Token 消耗等统计 | — | GA |
 
-相关 PRD：[[spec/prd/OpsPilot/工作台.md#3. 关键能力]]；相关架构：[[spec/ARD/modules/opspilot.md#5. 任务与 NATS【已实现/已存在】]]
+相关 PRD：[[legacy-prd-opspilot-工作台.md#3. 关键能力]]；相关架构：[[legacy-ard-modules-opspilot.md#5. 任务与 NATS【已实现/已存在】]]
 > 证据来源：server/apps/opspilot/tasks.py:1257-1299，server/apps/opspilot/utils/workflow_sensitive_config.py:8-118，server/apps/opspilot/utils/chat_flow_utils/nodes/action/action.py:23-59,255-299，web/src/app/opspilot/components/chatflow/components/nodeConfigs/NotificationNodeConfig.tsx:69-84，web/src/app/opspilot/constants/chatflow.ts:130-137　|　同步基线：8a12d3b　|　【已实现】
 
 ### 7. 渠道与会话

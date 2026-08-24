@@ -301,8 +301,8 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                 }
             )
 
-        # 验证组织是否存在
-        groups = Group.objects.filter(id__in=group_ids)
+        # 验证组织是否存在（仅活动组织；归档与不存在同一错误）
+        groups = GroupUtils.active_queryset(id__in=group_ids)
         if len(groups) != len(group_ids):
             return JsonResponse(
                 {
@@ -361,8 +361,8 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                 }
             )
 
-        # 验证组织是否存在
-        groups = Group.objects.filter(id__in=group_ids)
+        # 验证组织是否存在（仅活动组织；归档与不存在同一错误）
+        groups = GroupUtils.active_queryset(id__in=group_ids)
         if len(groups) != len(group_ids):
             return JsonResponse(
                 {
@@ -425,8 +425,8 @@ class RoleViewSet(LanguageViewSet, ViewSetUtils):
                     "message": self.loader.get("error.some_roles_not_exist"),
                 }
             )
-        # 获取拥有该角色的组织，支持按组名筛选
-        queryset = role.group_set.all()
+        # 获取拥有该角色的活动组织，支持按组名筛选
+        queryset = role.group_set.filter(is_delete=False)
         if search:
             queryset = queryset.filter(Q(name__icontains=search) | Q(display_name__icontains=search))
 

@@ -57,6 +57,13 @@ class TestBuildInstancesMap:
         scan = MonitorPolicyScan(policy)
         assert scan.instances_map == {"('h1',)": "主机1"}
 
+    def test_instance_source_accepts_logical_id(self):
+        obj = _make_obj()
+        MonitorInstance.objects.create(id="('h1',)", name="主机1", monitor_object=obj)
+        policy = _make_policy(obj, source={"type": "instance", "values": ["h1"]})
+        scan = MonitorPolicyScan(policy)
+        assert scan.instances_map == {"('h1',)": "主机1"}
+
     def test_organization_source(self):
         obj = _make_obj()
         inst = MonitorInstance.objects.create(id="('h2',)", name="主机2", monitor_object=obj)
@@ -104,6 +111,31 @@ class TestGetInstanceListBySource:
         policy = _make_policy(obj, source={})
         scan = MonitorPolicyScan(policy)
         assert scan._get_instance_list_by_source("bogus", ["x"]) == []
+
+    def test_base_logical_id_expands_to_storage_key(self):
+        obj = _make_obj()
+        policy = _make_policy(obj, source={})
+        scan = MonitorPolicyScan(policy)
+        assert scan._get_instance_list_by_source("instance", ["prod-cluster"]) == [
+            "prod-cluster",
+            "('prod-cluster',)",
+        ]
+
+    def test_derivative_tuple_id_stays_idempotent(self):
+        obj = _make_obj()
+        policy = _make_policy(obj, source={})
+        scan = MonitorPolicyScan(policy)
+        child_id = "('prod-cluster', 'nginx')"
+        assert scan._get_instance_list_by_source("instance", [child_id]) == [child_id]
+
+    def test_child_name_does_not_expand_to_parent_child_tuple(self):
+        obj = _make_obj()
+        policy = _make_policy(obj, source={})
+        scan = MonitorPolicyScan(policy)
+        assert scan._get_instance_list_by_source("instance", ["nginx"]) == [
+            "nginx",
+            "('nginx',)",
+        ]
 
 
 class TestBuildBaselinesMap:

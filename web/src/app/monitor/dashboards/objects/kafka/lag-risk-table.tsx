@@ -66,7 +66,7 @@ export function KafkaLagRiskTable({ dashboard, styles }: KafkaLagRiskTableProps)
     const load = async () => {
       // instant Top 10 在时间窗终点求值（buildSearchParams.time=end），与趋势 range 对齐；负 Lag 不参与排行。
       const lag = await getInstanceInstantQuery(buildSearchParams(
-        KAFKA_LAG_TOP_QUERY, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues,
+        KAFKA_LAG_TOP_QUERY, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues, undefined, false,
       )).catch(() => null);
       if (!active) return;
       const topRows = parseKafkaLagRiskRows({ lag } as KafkaLagRiskResult);
@@ -83,9 +83,9 @@ export function KafkaLagRiskTable({ dashboard, styles }: KafkaLagRiskTableProps)
       const oldestQuery = buildKafkaTopNExactQuery('kafka_topic_partition_oldest_offset_gauge', dimensions, false);
       const historyQuery = buildKafkaTopNExactQuery('kafka_consumergroup_lag_gauge', trendDimensions, true);
       setHistoryLoading(true);
-      const currentOffsetPromise = getInstanceInstantQuery(buildSearchParams(currentQuery, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues)).catch(() => null);
-      const oldestOffsetPromise = getInstanceInstantQuery(buildSearchParams(oldestQuery, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues)).catch(() => null);
-      const historyPromise = getInstanceQuery(buildSearchParams(historyQuery, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues, undefined, undefined, dashboard.currentInstanceInterval)).catch(() => null);
+      const currentOffsetPromise = getInstanceInstantQuery(buildSearchParams(currentQuery, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues, undefined, false)).catch(() => null);
+      const oldestOffsetPromise = getInstanceInstantQuery(buildSearchParams(oldestQuery, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues, undefined, false)).catch(() => null);
+      const historyPromise = getInstanceQuery(buildSearchParams(historyQuery, 'counts', dashboard.idValues, instanceIdKeys, dashboard.timeValues, undefined, false, dashboard.currentInstanceInterval)).catch(() => null);
       const [currentOffset, oldestOffset] = await Promise.all([
         currentOffsetPromise,
         oldestOffsetPromise,

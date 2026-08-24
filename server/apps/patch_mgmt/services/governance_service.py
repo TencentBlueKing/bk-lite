@@ -16,13 +16,7 @@ from django.utils import timezone
 
 from apps.core.logger import logger
 from apps.core.utils.team_utils import get_current_team
-from apps.patch_mgmt.constants import (
-    GovernanceTaskStatus,
-    GovernanceTaskType,
-    RemediationStatus,
-    RebootPolicy,
-    RequirementAssessmentStatus,
-)
+from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType, RebootPolicy, RemediationStatus, RequirementAssessmentStatus
 from apps.patch_mgmt.exceptions import PatchBusinessError
 from apps.patch_mgmt.models import (
     BaselineRequirement,
@@ -33,6 +27,7 @@ from apps.patch_mgmt.models import (
     Patch,
     PatchTarget,
 )
+from apps.patch_mgmt.services.target_node_context import container_target_ids
 
 
 class HostBusyError(PatchBusinessError):
@@ -85,13 +80,9 @@ def _require_manual_task_name(data: dict) -> str:
     """人工治理/重启必须由用户命名；自动评估和子任务不受影响。"""
     name = str(data.get("name") or "").strip()
     if not name:
-        raise PatchBusinessError(
-            "task_name_required", "Task name is required"
-        )
+        raise PatchBusinessError("task_name_required", "Task name is required")
     if len(name) > 128:
-        raise PatchBusinessError(
-            "task_name_too_long", "Task name must not exceed 128 characters"
-        )
+        raise PatchBusinessError("task_name_too_long", "Task name must not exceed 128 characters")
     return name
 
 
@@ -112,14 +103,8 @@ def _trigger_async(task_id: int) -> None:
         from apps.patch_mgmt.tasks import execute_governance_task
 
         task = GovernanceTask.objects.get(pk=task_id)
-        if (
-            task.execution_mode == "window"
-            and task.execution_window_start
-            and task.execution_window_start > _now()
-        ):
-            execute_governance_task.apply_async(
-                args=[task_id], eta=task.execution_window_start
-            )
+        if task.execution_mode == "window" and task.execution_window_start and task.execution_window_start > _now():
+            execute_governance_task.apply_async(args=[task_id], eta=task.execution_window_start)
         else:
             execute_governance_task.delay(task_id)
     except Exception as exc:  # noqa: BLE001
@@ -144,11 +129,16 @@ def _lock_and_assert_hosts_available(target_ids: list[int], execution_mode: str)
     list(PatchTarget.objects.select_for_update().filter(pk__in=target_ids).values_list("id", flat=True))
     if execution_mode == "window":
         return
+    from apps.patch_mgmt.services.governance_convergence import reconcile_stale_history
+
+    reconcile_stale_history(limit=1000, target_ids=target_ids)
     busy = list(
         GovernanceTaskHost.objects.filter(
             target_id__in=target_ids,
             task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
-        ).values_list("target_id", flat=True).distinct()
+        )
+        .values_list("target_id", flat=True)
+        .distinct()
     )
     if busy:
         raise HostBusyError(busy)
@@ -218,11 +208,15 @@ def _source_record_by_pair(items) -> dict[tuple[int, int], int]:
     result: dict[tuple[int, int], int] = {}
     if not wanted:
         return result
-    for install_task in GovernanceTask.objects.filter(
-        parent_task__isnull=True,
-        task_type=GovernanceTaskType.INSTALL,
-        host_results__stage="pending_reboot",
-    ).distinct().order_by("-created_at", "-id"):
+    for install_task in (
+        GovernanceTask.objects.filter(
+            parent_task__isnull=True,
+            task_type=GovernanceTaskType.INSTALL,
+            host_results__stage="pending_reboot",
+        )
+        .distinct()
+        .order_by("-created_at", "-id")
+    ):
         for snapshot in install_task.risk_snapshot or []:
             pair = (
                 int(snapshot.get("host_id") or 0),
@@ -240,12 +234,7 @@ def _build_reboot_scope(target_ids: list[int]) -> tuple[list[dict], str]:
     from apps.patch_mgmt.services.risk_service import compute_risk_items
 
     pending_items = sorted(
-        (
-            item
-            for item in compute_risk_items()
-            if item.remediation == RemediationStatus.PENDING_REBOOT
-            and item.host_id in target_ids
-        ),
+        (item for item in compute_risk_items() if item.remediation == RemediationStatus.PENDING_REBOOT and item.host_id in target_ids),
         key=lambda item: (item.host_id, item.patch_id, item.baseline_id),
     )
     source_by_pair = _source_record_by_pair(pending_items)
@@ -274,13 +263,16 @@ def get_reboot_scope(target_ids: list) -> dict:
     normalized = sorted({int(target_id) for target_id in target_ids if target_id})
     if not normalized:
         raise PatchBusinessError("target_ids_required", "target_ids is required")
-    existing = set(
-        PatchTarget.objects.filter(pk__in=normalized).values_list("id", flat=True)
-    )
+    existing = set(PatchTarget.objects.filter(pk__in=normalized).values_list("id", flat=True))
     missing = [target_id for target_id in normalized if target_id not in existing]
     if missing:
+        raise PatchBusinessError("targets_not_found", "Targets not found: {ids}", params={"ids": missing})
+    container_ids = container_target_ids(normalized)
+    if container_ids:
         raise PatchBusinessError(
-            "targets_not_found", "Targets not found: {ids}", params={"ids": missing}
+            "container_targets_reboot_unsupported",
+            "Container targets do not support host reboot: {ids}",
+            params={"ids": container_ids},
         )
     snapshot, token = _build_reboot_scope(normalized)
     covered = {int(item["host_id"]) for item in snapshot}
@@ -341,9 +333,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
     # 锁内重新读取绑定，避免评估后切换基线与治理创建并发造成 TOCTOU。
     bindings = {
         binding.target_id: binding
-        for binding in HostBaselineBinding.objects.select_for_update()
-        .filter(target_id__in=target_ids)
-        .select_related("baseline", "target")
+        for binding in HostBaselineBinding.objects.select_for_update().filter(target_id__in=target_ids).select_related("baseline", "target")
     }
     bound = set(bindings)
     unbound = [h for h in target_ids if h not in bound]
@@ -361,11 +351,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
             patch_id__in=patch_ids,
         ).values_list("baseline_id", "patch_id")
     )
-    invalid_pairs = [
-        (host_id, patch_id)
-        for host_id, patch_id in pairs
-        if (bindings[host_id].baseline_id, patch_id) not in valid_requirements
-    ]
+    invalid_pairs = [(host_id, patch_id) for host_id, patch_id in pairs if (bindings[host_id].baseline_id, patch_id) not in valid_requirements]
     if invalid_pairs:
         raise PatchBusinessError(
             "patches_not_in_baseline",
@@ -383,10 +369,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
         .filter(requirement__baseline_id=F("binding__baseline_id"))
         .values("binding__target_id", "requirement__patch_id", "evidence")
     )
-    remediable_pairs = {
-        (snapshot["binding__target_id"], snapshot["requirement__patch_id"])
-        for snapshot in remediable_snapshots
-    }
+    remediable_pairs = {(snapshot["binding__target_id"], snapshot["requirement__patch_id"]) for snapshot in remediable_snapshots}
     preview_warnings = {
         (snapshot["binding__target_id"], snapshot["requirement__patch_id"]): str(
             ((snapshot.get("evidence") or {}).get("install_impact") or {}).get("error") or ""
@@ -411,11 +394,7 @@ def create_remediation_task(request, items: list[dict], data: dict) -> Governanc
             "patch_name": patches[patch_id].title,
             "baseline_id": bindings[host_id].baseline_id,
             "baseline_name": bindings[host_id].baseline.name,
-            **(
-                {"preview_warning": preview_warnings[(host_id, patch_id)]}
-                if preview_warnings.get((host_id, patch_id))
-                else {}
-            ),
+            **({"preview_warning": preview_warnings[(host_id, patch_id)]} if preview_warnings.get((host_id, patch_id)) else {}),
         }
         for host_id, patch_id in pairs
     ]
@@ -444,6 +423,13 @@ def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
     missing = [h for h in target_ids if h not in existing]
     if missing:
         raise PatchBusinessError("targets_not_found", "Targets not found: {ids}", params={"ids": missing})
+    container_ids = container_target_ids(target_ids)
+    if container_ids:
+        raise PatchBusinessError(
+            "container_targets_reboot_unsupported",
+            "Container targets do not support host reboot: {ids}",
+            params={"ids": container_ids},
+        )
 
     # 重启必须有窗口
     if data.get("execution_mode") != "window":
@@ -470,18 +456,10 @@ def create_reboot_task(request, target_ids: list, data: dict) -> GovernanceTask:
         name=name,
         task_type=GovernanceTaskType.REBOOT,
         target_ids=target_ids,
-        patch_ids=list(
-            dict.fromkeys(
-                int(item["patch_id"])
-                for item in reboot_snapshot
-                if item.get("patch_id")
-            )
-        ),
+        patch_ids=list(dict.fromkeys(int(item["patch_id"]) for item in reboot_snapshot if item.get("patch_id"))),
         data={**data, "risk_snapshot": reboot_snapshot},
     )
-    source_ids = {
-        int(item.get("source_record_id") or 0) for item in reboot_snapshot
-    } - {0}
+    source_ids = {int(item.get("source_record_id") or 0) for item in reboot_snapshot} - {0}
     if len(source_ids) == 1:
         task.source_record_id = source_ids.pop()
         task.save(update_fields=["source_record", "updated_at"])
@@ -546,25 +524,15 @@ def create_retry_task(
     risk_item_id: str,
 ) -> GovernanceTask:
     """重试单个风险项，并创建独立的新根执行记录。"""
-    from apps.patch_mgmt.services.execution_record_service import (
-        build_risk_item_summaries,
-    )
+    from apps.patch_mgmt.services.execution_record_service import build_risk_item_summaries
 
     original_task = GovernanceTask.objects.select_for_update().get(pk=original_task.pk)
     item = next(
-        (
-            snapshot
-            for snapshot in (original_task.risk_snapshot or [])
-            if str(snapshot.get("id")) == str(risk_item_id)
-        ),
+        (snapshot for snapshot in (original_task.risk_snapshot or []) if str(snapshot.get("id")) == str(risk_item_id)),
         None,
     )
     summary = next(
-        (
-            current
-            for current in build_risk_item_summaries(original_task)
-            if str(current["id"]) == str(risk_item_id)
-        ),
+        (current for current in build_risk_item_summaries(original_task) if str(current["id"]) == str(risk_item_id)),
         None,
     )
     if item is None or summary is None or not summary.get("can_retry"):
@@ -590,17 +558,8 @@ def create_retry_task(
 
     task_type = original_task.task_type
     target_snapshot = [{**item, "source_record_id": original_task.id}]
-    patch_ids = list(
-        dict.fromkeys(
-            int(snapshot["patch_id"])
-            for snapshot in target_snapshot
-            if snapshot.get("patch_id")
-        )
-    )
-    missing_patch_ids = sorted(
-        set(patch_ids)
-        - set(Patch.objects.filter(pk__in=patch_ids).values_list("pk", flat=True))
-    )
+    patch_ids = list(dict.fromkeys(int(snapshot["patch_id"]) for snapshot in target_snapshot if snapshot.get("patch_id")))
+    missing_patch_ids = sorted(set(patch_ids) - set(Patch.objects.filter(pk__in=patch_ids).values_list("pk", flat=True)))
     if missing_patch_ids:
         raise PatchBusinessError(
             "patch_deleted",

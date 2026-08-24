@@ -9,9 +9,9 @@ import {
   useMemo,
   useState,
 } from 'react';
-import { ConfigProvider } from 'antd';
+import { App, ConfigProvider } from 'antd';
 import { createAntdTheme } from './antd-adapter';
-import { applyThemeMode } from './css-adapter';
+import { applyThemeMode, getAppliedThemeMode } from './css-adapter';
 import { defaultTheme } from './defaults';
 import { persistThemeMode, readStoredThemeMode } from './mode-storage';
 import type { SemanticColorTokens, ThemeMode } from './contract';
@@ -60,7 +60,10 @@ export const ThemeProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <ThemeContext.Provider value={value}>
-      <ConfigProvider theme={antdTheme}>{children}</ConfigProvider>
+      <ConfigProvider theme={antdTheme}>
+        {/* App 提供 message/modal/notification 的动态主题上下文，避免静态 API 告警 */}
+        <App>{children}</App>
+      </ConfigProvider>
     </ThemeContext.Provider>
   );
 };
@@ -79,3 +82,12 @@ export const useThemeMode = () => {
 };
 
 export const useThemeTokens = () => useThemeContext().tokens;
+
+/** 无 ThemeProvider 时回退到当前文档主题，避免大屏隔离层在测试里硬依赖全局壳。 */
+export const useOptionalThemeTokens = (): SemanticColorTokens => {
+  const context = useContext(ThemeContext);
+  if (context) {
+    return context.tokens;
+  }
+  return defaultTheme[getAppliedThemeMode()];
+};

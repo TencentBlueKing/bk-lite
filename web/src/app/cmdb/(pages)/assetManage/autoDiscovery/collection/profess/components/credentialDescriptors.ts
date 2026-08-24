@@ -232,6 +232,7 @@ export const CREDENTIAL_DESCRIPTORS = {
     h3c_cas: platformApiDescriptor(443),
     fusioncompute: platformApiDescriptor(7443),
     nutanixhci: platformApiDescriptor(443),
+    sangforhci: platformApiDescriptor(443),
     sangforscp: platformApiDescriptor(443),
     inspurincloudrail: platformApiDescriptor(443),
     zstack: platformApiDescriptor(8080),

@@ -29,5 +29,7 @@ for (const file of files) {
   const source = path.join(sourceDir, file);
   const target = path.join(targetDir, file);
   fs.copyFileSync(source, target);
-  console.log(`[sync-web-public] ${path.relative(rootDir, source)} -> ${path.relative(rootDir, target)}`);
+  console.log(
+    `[sync-web-public] ${path.relative(rootDir, source)} -> ${path.relative(rootDir, target)}`,
+  );
 }

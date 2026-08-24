@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Form, Button, message, Spin, Empty, Dropdown, Modal, Tag } from 'antd';
+import { Form, Button, message, Spin, Dropdown, Modal, Tag } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   CheckCircleOutlined,
@@ -9,6 +9,7 @@ import {
   UploadOutlined
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
+import CompactEmptyState from '@/components/compact-empty-state';
 import CustomTable from '@/components/custom-table';
 import { v4 as uuidv4 } from 'uuid';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -33,6 +34,7 @@ import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
 import PluginGuidePanel from './pluginGuidePanel';
 import GuideEntryButton from './guideEntryButton';
+import { normalizePasswordFields } from '@/components/password/normalizePasswordWhitespace';
 import {
   buildCollectDetectFingerprint as buildCollectDetectFingerprintValue,
   CollectDetectMode,
@@ -52,6 +54,10 @@ import {
   getIfmibDeploymentPatch
 } from './ifmibDeploymentState';
 import { getSnmpInterfaceFilterModePatch } from '@/app/monitor/hooks/integration/snmpInterfaceFilterMode';
+import {
+  countAccessAssets,
+  mergeImportedAssetRows
+} from './automaticAssetCount';
 const { confirm } = Modal;
 
 interface CollectDetectState {
@@ -67,6 +73,11 @@ interface IntegrationTableColumnConfig {
   is_only?: boolean;
   dependency?: FormFieldDependency;
   [key: string]: unknown;
+}
+
+interface TableValidationResult {
+  data: IntegrationMonitoredObject[] | null;
+  trimmedPassword: boolean;
 }
 
 const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
@@ -223,6 +234,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             : form.getFieldValue(field)
       ),
     [currentConfig, formSnapshot, form]
+  );
+  const accessAssetCount = useMemo(
+    () => countAccessAssets(dataSource, visibleTableColumns, initTableItems),
+    [dataSource, visibleTableColumns, initTableItems]
   );
 
   useEffect(() => {
@@ -496,10 +511,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return;
     }
     message.info(
-      t('monitor.integrations.collectDetectBatchStarted').replace(
-        '{{count}}',
-        String(runnableRows.length)
-      )
+      t('monitor.integrations.collectDetectBatchStarted', '', {
+        count: runnableRows.length
+      })
     );
     await Promise.all(
       runnableRows.map((row) => handleCollectDetect(row, 'batch'))
@@ -789,7 +803,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       key: uuidv4(),
       group_ids: row.group_ids || groupId
     }));
-    setDataSource([...dataSource, ...newRows]);
+    setDataSource(
+      mergeImportedAssetRows(
+        dataSource,
+        newRows,
+        visibleTableColumns,
+        initTableItems
+      )
+    );
   };
 
   const batchMenuItems: MenuProps['items'] = [
@@ -852,10 +873,24 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
   };
 
-  const validateTableData = (): boolean => {
-    if (!visibleTableColumns.length) return true;
+  const validateTableData = (): TableValidationResult => {
+    if (!visibleTableColumns.length) {
+      return { data: dataSource, trimmedPassword: false };
+    }
     let hasError = false;
-    const newData = [...dataSource];
+    let trimmedPassword = false;
+    const normalizedData = dataSource.map((row) => {
+      const result = normalizePasswordFields(
+        row as Record<string, unknown>,
+        visibleTableColumns,
+        { includeReadOnly: true }
+      );
+      if (result.changedFields.length) {
+        trimmedPassword = true;
+      }
+      return result.values as IntegrationMonitoredObject;
+    });
+    const newData = [...normalizedData];
     // 先清除所有字段的错误状态
     newData.forEach((row, index) => {
       visibleTableColumns.forEach((column: any) => {
@@ -869,7 +904,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     // 验证所有字段
     visibleTableColumns.forEach((column: any) => {
       const { name, rules = [], required = false } = column;
-      dataSource.forEach((row, index) => {
+      normalizedData.forEach((row, index) => {
         const value = row[name];
         let errorMsg: string | null = null;
         // 如果字段标记为required，进行必填验证
@@ -910,14 +945,27 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     // 更新数据源以显示错误状态
     setDataSource(newData);
     if (hasError) {
-      return false;
+      return { data: null, trimmedPassword };
     }
-    return true;
+    return { data: newData, trimmedPassword };
   };
 
   const handleSave = () => {
+    const normalizedForm = normalizePasswordFields(
+      form.getFieldsValue(true),
+      currentConfig?.form_fields,
+      { includeReadOnly: true }
+    );
+    const trimmedFormPassword = normalizedForm.changedFields.length > 0;
+    if (trimmedFormPassword) {
+      form.setFieldsValue(normalizedForm.values);
+    }
     // 先验证表格数据
-    if (!validateTableData()) {
+    const tableValidation = validateTableData();
+    if (trimmedFormPassword || tableValidation.trimmedPassword) {
+      message.warning(t('common.passwordWhitespaceTrimmed'));
+    }
+    if (!tableValidation.data) {
       return;
     }
     form.validateFields().then((values) => {
@@ -931,7 +979,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         delete row.nodes;
         const params =
           configsInfo?.getParams?.(row, {
-            dataSource,
+            dataSource: tableValidation.data,
             nodeList,
             objectId
           }) || {};
@@ -974,7 +1022,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       className="flex items-center justify-center"
       style={{ minHeight: '400px' }}
     >
-      <Empty description={t('monitor.integrations.noConfigData')} />
+      <CompactEmptyState description={t('monitor.integrations.noConfigData')} />
     </div>
   ) : (
     <Form
@@ -983,7 +1031,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       layout="vertical"
       onValuesChange={(changed, all) => {
         clearCollectDetectState();
-        const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(changed);
+        const defaultIfTypeExclude = currentConfig?.form_fields?.find(
+          (field: { name?: string }) => field.name === 'iftype_exclude'
+        )?.default_value;
+        const interfaceFilterModePatch = getSnmpInterfaceFilterModePatch(
+          changed,
+          defaultIfTypeExclude
+        );
         const nextValues = Object.keys(interfaceFilterModePatch).length
           ? { ...all, ...interfaceFilterModePatch }
           : all;
@@ -1017,15 +1071,28 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         {t('monitor.integrations.basicInformation')}
       </b>
       <div className="flex items-center justify-between mb-[10px]">
-        <span className="text-[14px]">
-          {t('monitor.integrations.MonitoredObject')}
-          <span
-            className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
-            style={{ fontFamily: 'SimSun, sans-serif' }}
-          >
-            *
+        <div className="flex items-center gap-[8px]">
+          <span className="text-[14px]">
+            {t('monitor.integrations.MonitoredObject')}
+            <span
+              className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
+              style={{ fontFamily: 'SimSun, sans-serif' }}
+            >
+              *
+            </span>
           </span>
-        </span>
+          <span
+            aria-live="polite"
+            className="text-[13px] tabular-nums text-[var(--color-text-2)]"
+          >
+            {t('monitor.integrations.accessAssetCount', '', {
+              count: accessAssetCount
+            })}
+          </span>
+          <span className="text-[12px] text-[var(--color-text-3)]">
+            {t('monitor.integrations.accessAssetCountHint')}
+          </span>
+        </div>
         <div className="flex gap-[8px]">
           <Button
             icon={<UploadOutlined />}
@@ -1079,10 +1146,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                     const valueStr = String(value);
                     if (valueSet.has(valueStr)) {
                       const errorMsg = t(
-                        'monitor.integrations.duplicateFieldError'
-                      )
-                        .replace('{{field}}', fieldLabel)
-                        .replace('{{value}}', valueStr);
+                        'monitor.integrations.duplicateFieldError',
+                        '',
+                        {
+                          field: fieldLabel,
+                          value: valueStr
+                        }
+                      );
                       return Promise.reject(new Error(errorMsg));
                     }
                     valueSet.add(valueStr);

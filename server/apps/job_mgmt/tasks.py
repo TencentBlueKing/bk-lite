@@ -1,5 +1,6 @@
 """作业执行 Celery 任务入口"""
 
+from datetime import timedelta
 from uuid import uuid4
 
 from asgiref.sync import async_to_sync
@@ -11,14 +12,24 @@ from django.utils import timezone
 from apps.core.logger import job_logger as logger
 from apps.core.utils.safe_requests import safe_post
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
-from apps.job_mgmt.config import DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE, DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY, SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN
+from apps.job_mgmt.config import (
+    CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS,
+    DISTRIBUTION_FILE_CLEANUP_BATCH_SIZE,
+    DISTRIBUTION_FILE_CLEANUP_MAX_CONCURRENCY,
+    SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN,
+    SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED,
+)
 from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
-from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
-from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
+from apps.job_mgmt.services.scheduled_task_authz import (
+    ScheduledTaskTeamBoundaryError,
+    disable_scheduled_task_and_schedule,
+    validate_scheduled_task_resource_boundary,
+)
+from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 from apps.job_mgmt.utils.callback_signer import get_signed_headers
 from apps.node_mgmt.utils.s3 import delete_s3_files
 
@@ -43,113 +54,171 @@ def execute_playbook_task(execution_id: int):
 def finalize_cancelling_execution(execution_id: int):
     """兜底收敛：CANCELLING 滞留超时后强制收敛为 CANCELLED 终态。
 
-    CAS 仅在仍为 CANCELLING 时生效（真实结果已回写并收敛后即为 no-op）；已有结果保留，
-    对缺失结果的目标补一条"远端结果未知"的 CANCELLED 结果并发 done 哨兵关闭前端面板。
+    与真实回调争用同一执行行锁；已有结果保留，对缺失目标补一条"远端结果未知"的
+    CANCELLED 结果，并在同一事务持久化完成副作用。
     """
-    updated = JobExecution.objects.filter(id=execution_id, status=ExecutionStatus.CANCELLING).update(
-        status=ExecutionStatus.CANCELLED, finished_at=timezone.now()
-    )
-    if not updated:
-        return
-    execution = JobExecution.objects.filter(id=execution_id).first()
-    if execution is None:
-        # CAS 命中后记录被删除（防御分支）：静默返回
-        return
+    from apps.job_mgmt.services.completion_outbox_service import enqueue_terminal_effects
 
-    results = list(execution.execution_results or [])
-    have_keys = {str(r.get("target_key")) for r in results}
-    for t in execution.target_list or []:
-        tk = t.get("node_id") or str(t.get("target_id", ""))
-        if tk in have_keys:
-            continue
-        results.append(
-            {
-                "target_key": tk,
-                "name": t.get("name", ""),
-                "ip": t.get("ip", ""),
-                "status": ExecutionStatus.CANCELLED,
-                "error_message": "任务已取消，远端结果未知",
-            }
+    with transaction.atomic():
+        execution = JobExecution.objects.select_for_update().filter(id=execution_id).first()
+        if execution is None or execution.status != ExecutionStatus.CANCELLING:
+            return
+
+        results = list(execution.execution_results or [])
+        have_keys = {str(result.get("target_key")) for result in results}
+        for target in execution.target_list or []:
+            target_key = str(target.get("node_id") or target.get("target_id", ""))
+            if target_key in have_keys:
+                continue
+            results.append(
+                {
+                    "target_key": target_key,
+                    "name": target.get("name", ""),
+                    "ip": target.get("ip", ""),
+                    "status": ExecutionStatus.CANCELLED,
+                    "error_message": "任务已取消，远端结果未知",
+                }
+            )
+
+        execution.status = ExecutionStatus.CANCELLED
+        execution.terminal_source = JobExecution.TerminalSource.CANCEL_TIMEOUT
+        execution.cancel_finalize_at = None
+        execution.finished_at = timezone.now()
+        execution.execution_results = results
+        execution.success_count = sum(1 for result in results if result.get("status") == ExecutionStatus.SUCCESS)
+        execution.failed_count = sum(1 for result in results if result.get("status") in (ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT))
+        execution.save(
+            update_fields=[
+                "status",
+                "terminal_source",
+                "cancel_finalize_at",
+                "finished_at",
+                "execution_results",
+                "success_count",
+                "failed_count",
+                "updated_at",
+            ]
         )
-        publish_done_sentinel(execution_id, tk, ExecutionStatus.CANCELLED)
+        enqueue_terminal_effects(
+            execution,
+            not_before=timezone.now() + timedelta(seconds=CALLBACK_CANCEL_RECONCILE_GRACE_SECONDS),
+        )
 
-    execution.execution_results = results
-    execution.success_count = sum(1 for r in results if r.get("status") == ExecutionStatus.SUCCESS)
-    execution.failed_count = sum(1 for r in results if r.get("status") in (ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT))
-    execution.save(update_fields=["execution_results", "success_count", "failed_count", "updated_at"])
     logger.info(f"[finalize_cancelling_execution] 取消中任务已强制收敛为 CANCELLED: execution_id={execution_id}")
-    # 超时兜底取消也是终态，补发完成通知（HTTP 回调 + 告警推送）
-    send_callback(execution)
+
+
+@shared_task(max_retries=0)
+def deliver_job_completion_outbox(record_id: int):
+    """投递一条作业完成副作用；失败状态及退避时间由数据库 outbox 记录。"""
+    from apps.job_mgmt.services.completion_outbox_service import deliver_outbox_record
+
+    return deliver_outbox_record(record_id)
+
+
+@shared_task(max_retries=0)
+def dispatch_pending_job_completion_outbox():
+    """重扫待投递副作用，并补偿 broker 入队失败的取消收敛。"""
+    from apps.job_mgmt.services.completion_outbox_service import due_outbox_ids
+
+    record_ids = due_outbox_ids()
+    for record_id in record_ids:
+        try:
+            deliver_job_completion_outbox.delay(record_id)
+        except Exception:
+            logger.exception("job completion outbox reschedule failed: outbox_id=%s", record_id)
+
+    due_execution_ids = list(
+        JobExecution.objects.filter(
+            status=ExecutionStatus.CANCELLING,
+            cancel_finalize_at__isnull=False,
+            cancel_finalize_at__lte=timezone.now(),
+        )
+        .order_by("cancel_finalize_at", "pk")
+        .values_list("pk", flat=True)[:200]
+    )
+    for execution_id in due_execution_ids:
+        try:
+            finalize_cancelling_execution.delay(execution_id)
+        except Exception:
+            logger.exception("cancelling execution reschedule failed: execution_id=%s", execution_id)
+    return {"scheduled": len(record_ids), "cancel_scheduled": len(due_execution_ids)}
 
 
 @shared_task(max_retries=0)
 def execute_scheduled_task(scheduled_task_id: int):
     logger.info(f"[execute_scheduled_task] 开始执行定时任务: scheduled_task_id={scheduled_task_id}")
 
-    # ---- 阶段 1: 锁前预读 + 快速失败 ----
-    # 仅做无锁的纯查询/纯计算,缩短后续临界区持有时间;危险检查、参数解析、目标列表
-    # 解析与"并发策略检查 + run_count 自增 + 创建 PENDING execution"无竞争关系,放锁内只会
-    # 拉长锁等待并放大 broker / cache 抖动对数据库锁的影响。
-    try:
-        st_snapshot = ScheduledTask.objects.select_related("script", "playbook").get(id=scheduled_task_id)
-    except ScheduledTask.DoesNotExist:
-        logger.error(f"[execute_scheduled_task] 定时任务不存在: scheduled_task_id={scheduled_task_id}")
-        return
-    if not st_snapshot.is_enabled:
-        logger.info(f"[execute_scheduled_task] 定时任务已禁用: scheduled_task_id={scheduled_task_id}")
-        return
-
-    team = st_snapshot.team or []
-
-    # 脚本内容和类型：优先从关联的 Script 对象获取，回退到定时任务上的临时输入字段。
-    # 危险命令预检必须使用解析后的脚本内容，不能漏掉脚本库模式。
-    script_content = st_snapshot.script_content or ""
-    script_type = st_snapshot.script_type or ""
-    if st_snapshot.script:
-        script_content = st_snapshot.script.content or script_content
-        script_type = st_snapshot.script.script_type or script_type
-
-    if st_snapshot.job_type == JobType.SCRIPT and script_content:
-        check_result = DangerousChecker.check_command(script_content, team)
-        if not check_result.can_execute:
-            forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-            logger.warning(f"[execute_scheduled_task] 脚本包含高危命令，禁止执行: " f"scheduled_task_id={scheduled_task_id}, rules={forbidden_rules}")
-            return
-    if st_snapshot.job_type == JobType.FILE_DISTRIBUTION and st_snapshot.target_path:
-        check_result = DangerousChecker.check_path(st_snapshot.target_path, team)
-        if not check_result.can_execute:
-            forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-            logger.warning(
-                f"[execute_scheduled_task] 目标路径为高危路径，禁止分发: "
-                f"scheduled_task_id={scheduled_task_id}, path={st_snapshot.target_path}, rules={forbidden_rules}"
-            )
-            return
-
-    target_list = st_snapshot.target_list or []
-    if not target_list:
-        logger.warning(f"[execute_scheduled_task] 定时任务无执行目标: scheduled_task_id={scheduled_task_id}")
-        return
-
-    # 处理参数：解析 is_modified=False 的参数并转换为字符串
-    params = st_snapshot.params if isinstance(st_snapshot.params, list) else []
-    resolved_params = ScriptParamsService.resolve_params(params, script=st_snapshot.script)
-    params_str = ScriptParamsService.params_to_string(resolved_params)
-
-    # ---- 阶段 2: 临界区(行锁 + 事务)----
-    # 只保留"竞争状态相关的 SQL":并发策略检查 + run_count 自增 + 创建 PENDING execution。
-    # run_count 用 F() 表达式走单条 SQL UPDATE,避免 read-modify-write 丢计数;
-    # updated_at 用 QuerySet.update() 时不会触发 auto_now,必须显式带上,否则列表排序/审计失真。
+    # ---- 阶段 1: 临界区(行锁 + 事务)----
+    # 授权复核后一直持有任务与稳定资源行锁，直到创建 PENDING execution，
+    # 防止并发更新让校验结论与执行快照不一致。
     queue_retry_needed = False
     execution_id = None
-    job_type = st_snapshot.job_type
-    playbook_version = st_snapshot.playbook.version if st_snapshot.playbook else ""
+    job_type = None
 
     with transaction.atomic():
-        scheduled_task = ScheduledTask.objects.select_for_update().get(id=scheduled_task_id)
-        # 二次确认 is_enabled:锁前检查后到拿到锁之间可能被关闭
+        try:
+            scheduled_task = ScheduledTask.objects.select_for_update().get(id=scheduled_task_id)
+        except ScheduledTask.DoesNotExist:
+            logger.error(f"[execute_scheduled_task] 定时任务不存在: scheduled_task_id={scheduled_task_id}")
+            return
+
         if not scheduled_task.is_enabled:
+            if not disable_scheduled_task_and_schedule(scheduled_task_id):
+                logger.error(
+                    f"[execute_scheduled_task] 已禁用任务的 Beat 调度同步仍失败，将在下次触发重试: "
+                    f"scheduled_task_id={scheduled_task_id}"
+                )
             logger.info(f"[execute_scheduled_task] 定时任务已禁用: scheduled_task_id={scheduled_task_id}")
             return
+
+        if SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED:
+            try:
+                validate_scheduled_task_resource_boundary({}, instance=scheduled_task, lock_resources=True)
+            except ScheduledTaskTeamBoundaryError as exc:
+                disabled = disable_scheduled_task_and_schedule(scheduled_task_id)
+                outcome = "任务与调度已禁用" if disabled else "调度同步失败，任务保持启用以便下次重试"
+                logger.error(
+                    f"[execute_scheduled_task] 锁内团队资源边界复核失败，{outcome}: "
+                    f"scheduled_task_id={scheduled_task_id}, field={exc.field}, reason={exc.message}"
+                )
+                return
+
+        team = scheduled_task.team or []
+        script_content = scheduled_task.script_content or ""
+        script_type = scheduled_task.script_type or ""
+        if scheduled_task.script:
+            script_content = scheduled_task.script.content or script_content
+            script_type = scheduled_task.script.script_type or script_type
+
+        job_type = scheduled_task.job_type
+        if job_type == JobType.SCRIPT and script_content:
+            check_result = DangerousChecker.check_command(script_content, team)
+            if not check_result.can_execute:
+                forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+                logger.warning(
+                    f"[execute_scheduled_task] 脚本包含高危命令，禁止执行: "
+                    f"scheduled_task_id={scheduled_task_id}, rules={forbidden_rules}"
+                )
+                return
+        if job_type == JobType.FILE_DISTRIBUTION and scheduled_task.target_path:
+            check_result = DangerousChecker.check_path(scheduled_task.target_path, team)
+            if not check_result.can_execute:
+                forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+                logger.warning(
+                    f"[execute_scheduled_task] 目标路径为高危路径，禁止分发: "
+                    f"scheduled_task_id={scheduled_task_id}, path={scheduled_task.target_path}, rules={forbidden_rules}"
+                )
+                return
+
+        target_list = scheduled_task.target_list or []
+        if not target_list:
+            logger.warning(f"[execute_scheduled_task] 定时任务无执行目标: scheduled_task_id={scheduled_task_id}")
+            return
+
+        params = scheduled_task.params if isinstance(scheduled_task.params, list) else []
+        resolved_params = ScriptParamsService.resolve_params(params, script=scheduled_task.script)
+        params_str = ScriptParamsService.params_to_string(resolved_params)
+        playbook_version = scheduled_task.playbook.version if scheduled_task.playbook else ""
 
         # 并发策略检查
         policy = scheduled_task.concurrency_policy
@@ -157,6 +226,7 @@ def execute_scheduled_task(scheduled_task_id: int):
         if policy in (ConcurrencyPolicy.SKIP, ConcurrencyPolicy.QUEUE):
             running_executions = JobExecution.objects.filter(
                 scheduled_task_id=scheduled_task_id,
+                trigger_source=TriggerSource.SCHEDULED,
                 status__in=[ExecutionStatus.PENDING, ExecutionStatus.RUNNING],
             )
             running_count = running_executions.count()
@@ -192,31 +262,32 @@ def execute_scheduled_task(scheduled_task_id: int):
             )
 
             execution = JobExecution.objects.create(
-                name=st_snapshot.name,
+                name=scheduled_task.name,
                 job_type=job_type,
                 trigger_source=TriggerSource.SCHEDULED,
                 status=ExecutionStatus.PENDING,
-                script=st_snapshot.script,
-                playbook=st_snapshot.playbook,
+                script=scheduled_task.script,
+                playbook=scheduled_task.playbook,
                 playbook_version=playbook_version,
                 scheduled_task=scheduled_task,
+                enforce_scheduled_team_boundary=SCHEDULED_TASK_TEAM_BOUNDARY_ENFORCED,
                 params=params_str,
                 script_type=script_type,
                 script_content=script_content,
-                files=st_snapshot.files,
-                target_path=st_snapshot.target_path,
-                timeout=st_snapshot.timeout,
+                files=scheduled_task.files,
+                target_path=scheduled_task.target_path,
+                timeout=scheduled_task.timeout,
                 total_count=len(target_list),
-                target_source=st_snapshot.target_source,
+                target_source=scheduled_task.target_source,
                 target_list=target_list,
-                team=st_snapshot.team,
-                created_by=st_snapshot.created_by,
-                updated_by=st_snapshot.updated_by,
+                team=scheduled_task.team,
+                created_by=scheduled_task.created_by,
+                updated_by=scheduled_task.updated_by,
             )
             execution_id = execution.id
             logger.info(f"[execute_scheduled_task] 创建执行记录: execution_id={execution.id}, targets={len(target_list)}")
 
-    # ---- 阶段 3: 事务外副作用(QUEUE 重试 / broker 派发)----
+    # ---- 阶段 2: 事务外副作用(QUEUE 重试 / broker 派发)----
     if queue_retry_needed:
         execute_scheduled_task.apply_async(
             args=[scheduled_task_id],
@@ -316,10 +387,7 @@ def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
     try:
         updated = JobExecution.objects.filter(id=execution_id).update(celery_task_id=celery_task_id)
     except Exception as e:
-        logger.exception(
-            f"[_dispatch_execution_job] Celery 任务ID持久化失败: "
-            f"execution_id={execution_id}, job_type={job_type}, error={e}"
-        )
+        logger.exception(f"[_dispatch_execution_job] Celery 任务ID持久化失败: " f"execution_id={execution_id}, job_type={job_type}, error={e}")
         return False
     if not updated:
         logger.error(f"[_dispatch_execution_job] 执行记录不存在: execution_id={execution_id}, job_type={job_type}")
@@ -334,8 +402,7 @@ def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
             current_app.control.revoke(celery_task_id)
         except Exception as revoke_error:
             logger.exception(
-                f"[_dispatch_execution_job] Celery 任务撤销失败: "
-                f"execution_id={execution_id}, task_id={celery_task_id}, error={revoke_error}"
+                f"[_dispatch_execution_job] Celery 任务撤销失败: " f"execution_id={execution_id}, task_id={celery_task_id}, error={revoke_error}"
             )
         return False
 
@@ -399,10 +466,11 @@ def do_callback_task(self, url: str, payload: dict, execution_id: int) -> None:
 
 @shared_task(max_retries=0)
 def do_nats_callback_task(subject: str, payload: dict, execution_id: int) -> None:
-    """nats 回调通道：把作业结果 publish 到指定 NATS 主题（fire-and-forget）。
+    """旧的非终态 nats 回调通道：用 request/reply 把作业结果投递到指定主题。
 
-    在 Celery worker（同步上下文）中执行 publish；消费方未注册接收函数时消息被 NATS 安全丢弃。
-    任何异常仅记录不抛出，避免影响 web 通道回调及作业本身。
+    在 Celery worker（同步上下文）中执行；消费方未注册或处理失败时仅记录，不影响
+    作业状态。Ansible 回调与取消兜底终态不走此 best-effort 入口，而由 completion
+    outbox 持久化重试。
     """
     try:
         from apps.job_mgmt.services.callback_service import publish_job_result_to_subject

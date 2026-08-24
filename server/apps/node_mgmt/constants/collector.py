@@ -33,4 +33,10 @@ class CollectorConstants:
     ]
 
     # 忽略的采集器
-    IGNORE_COLLECTORS = ["natsexecutor_windows", "natsexecutor_linux", "ansibleexecutor_linux"]
+    IGNORE_COLLECTORS = [
+        "natsexecutor_windows",
+        "natsexecutor_linux",
+        "natsexecutor_linux_arm64",
+        "ansibleexecutor_linux",
+        "ansibleexecutor_linux_arm64",
+    ]

@@ -91,6 +91,7 @@ error:
   current_team_required: 缺少 current_team 参数
   invalid_current_team: current_team 参数非法
   invalid_group_id: group_id 参数非法
+  invalid_pagination: page 与 page_size 须为正整数，且 page_size 不得超过 100
   group_ids_list_required: group_ids 参数是必填的列表
   group_ids_must_be_list: group_ids 必须是列表
   user_ids_list_required: user_ids 必须是非空列表
@@ -98,8 +99,15 @@ error:
   invalid_user_ids: '非法的用户 ID: {ids}'
   synced_users_delete_forbidden: 同步用户不能直接删除，请从用户同步源中删除。
   synced_group_child_creation_forbidden: 同步组织下不能手动创建子组织
+  cannot_create_under_archived_group: 不能在已归档组织下创建子组织
   synced_child_group_name_immutable: 同步子组织名称不能修改
   synced_groups_delete_forbidden: 同步组织不能直接删除
+  synced_groups_archive_forbidden: 同步组织不能直接归档
+  group_archive_users_need_active_org: 归档后部分用户将没有活动组织，请先为这些用户分配其他活动组织
+  archive_operation_requires_root: 仅允许对归档根执行恢复或永久删除
+  group_restore_not_allowed: 该归档组织不可恢复
+  group_permanent_delete_not_allowed: 该归档组织不可永久删除
+  group_permanent_delete_users_need_active_org: 永久删除后部分用户将没有活动组织，请先为这些用户分配其他活动组织
 success:
   menu_group_disabled: 菜单组已禁用
   batch_create: 批量创建成功

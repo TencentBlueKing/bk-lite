@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Button, Descriptions, Drawer, Empty, Modal, Space, Spin, Tag, message } from 'antd';
+import { Alert, Button, Descriptions, Drawer, Modal, Space, Spin, Tag, message } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import { useCustomReportingApi } from '@/app/cmdb/api/customReporting';
@@ -248,7 +249,7 @@ export default function BatchReviewDrawer({
                 {activity.batches.map(renderBatch)}
               </Space>
             ) : (
-              <Empty description={t('CustomReporting.noBatchData')} />
+              <CompactEmptyState description={t('CustomReporting.noBatchData')} />
             )}
 
             {activity.cleanup_reviews.length ? (
@@ -260,7 +261,7 @@ export default function BatchReviewDrawer({
             )}
           </>
         ) : (
-          !loading && <Empty description={t('CustomReporting.noBatchData')} />
+          !loading && <CompactEmptyState description={t('CustomReporting.noBatchData')} />
         )}
       </Space>
     </Drawer>

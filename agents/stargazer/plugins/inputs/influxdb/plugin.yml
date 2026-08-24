@@ -14,6 +14,8 @@ metadata:
 executors:
   protocol:
     type: protocol
+    execution_mode: async
+    capacity_group: default
     timeout: 30
     collector:
       module: plugins.inputs.influxdb.influxdb_info

@@ -22,6 +22,11 @@ from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 from apps.system_mgmt.models import Channel
 from apps.system_mgmt.utils.network_whitelist_error import build_network_whitelist_error_payload
 
+try:
+    from apps.system_mgmt.enterprise import nats_notifications
+except (ImportError, ModuleNotFoundError):
+    nats_notifications = None
+
 
 def is_valid_webhook_url(url: str) -> bool:
     """验证 Webhook URL 是否允许出站。
@@ -77,6 +82,11 @@ def send_email(channel_obj: Channel, title, content, user_list, attachments=None
     return send_email_to_user(channel_config, content, receivers, title, attachments)
 
 
+def is_smtp_auth_enabled(channel_config: dict) -> bool:
+    """是否启用 SMTP 认证。缺省或非显式 false 时视为启用，保持存量行为。"""
+    return channel_config.get("smtp_auth_enabled", True) is not False
+
+
 def send_personalized_email_messages(channel_obj: Channel, messages: list[dict], timeout: int = 30) -> dict:
     """复用 SMTP 连接发送多封不同正文的邮件，仅供内部批任务调用。"""
     channel_config = dict(channel_obj.config or {})
@@ -90,7 +100,8 @@ def send_personalized_email_messages(channel_obj: Channel, messages: list[dict],
             server = smtplib.SMTP(channel_config["smtp_server"], channel_config["port"], timeout=timeout)
         if channel_config.get("smtp_usetls", False):
             server.starttls()
-        server.login(channel_config["smtp_user"], channel_config["smtp_pwd"])
+        if is_smtp_auth_enabled(channel_config):
+            server.login(channel_config["smtp_user"], channel_config["smtp_pwd"])
         for item in messages:
             msg = MIMEMultipart()
             msg["From"] = channel_config["mail_sender"]
@@ -167,7 +178,9 @@ def send_email_to_user(channel_config, content, receivers, title, attachments=No
         if channel_config.get("smtp_usetls", False):
             server.starttls()
 
-        server.login(channel_config["smtp_user"], channel_config["smtp_pwd"])
+        # 仅在显式启用认证时 login；关闭认证不在失败后降级匿名重试
+        if is_smtp_auth_enabled(channel_config):
+            server.login(channel_config["smtp_user"], channel_config["smtp_pwd"])
         server.send_message(msg)
         server.quit()
 
@@ -288,7 +301,7 @@ def send_by_dingtalk_bot(channel_obj: Channel, title, content, receivers):
         return {"result": False, "message": "failed to send dingtalk bot message"}
 
 
-def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=None):
+def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=None, title="", test=False):
     """
     发送 NATS 消息（Request 模式）
     :param channel_obj: NATS Channel 对象
@@ -296,6 +309,11 @@ def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=N
     :return: 目标服务的响应
     """
     config = channel_obj.config
+    if nats_notifications is not None and nats_notifications.handles_config(config):
+        return nats_notifications.send(channel_obj, content, title=title, test=test)
+    if config.get("nats_mode") not in (None, "request_reply"):
+        return {"result": False, "code": "unsupported_nats_extension_mode", "retryable": False}
+
     namespace = config.get("namespace")
     method_name = config.get("method_name")
     bot_id = config.get("bot_id")

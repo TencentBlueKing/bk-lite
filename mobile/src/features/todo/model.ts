@@ -21,6 +21,14 @@ export interface AlertLevel {
   icon: string;
 }
 
+/** Server 告警等级 ID：0 是合法最高等级，空值不得被 Number() 误转为 0。 */
+export function parseAlertLevelId(value: unknown): number | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  if (typeof value === 'string' && !value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export interface TodoAlert {
   id: number;
   alertId: string;
@@ -75,6 +83,66 @@ export interface AlertAssignee {
 export interface PageResult<T> {
   count: number;
   items: T[];
+}
+
+export type AlertEventPaginationStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+export interface AlertEventPaginationState {
+  items: AlertEvent[];
+  count: number;
+  page: number;
+  generation: number;
+  status: AlertEventPaginationStatus;
+  loadingMore: boolean;
+  failedPage: number | null;
+}
+
+export type AlertEventPaginationAction =
+  | { type: 'reset'; generation: number }
+  | { type: 'load-started'; generation: number; page: number; append: boolean }
+  | { type: 'load-succeeded'; generation: number; page: number; append: boolean; result: PageResult<AlertEvent> }
+  | { type: 'load-failed'; generation: number; page: number; append: boolean };
+
+export const INITIAL_ALERT_EVENT_PAGINATION_STATE: AlertEventPaginationState = {
+  items: [],
+  count: 0,
+  page: 0,
+  generation: 0,
+  status: 'idle',
+  loadingMore: false,
+  failedPage: null,
+};
+
+/** 事件列表首屏失败可整区重试；追加失败必须保留已加载页和失败页码。 */
+export function reduceAlertEventPagination(
+  state: AlertEventPaginationState,
+  action: AlertEventPaginationAction,
+): AlertEventPaginationState {
+  if (action.type === 'reset') {
+    return { ...INITIAL_ALERT_EVENT_PAGINATION_STATE, items: [], generation: action.generation };
+  }
+  if (action.generation !== state.generation) return state;
+  if (action.type === 'load-started') {
+    return action.append
+      ? { ...state, loadingMore: true }
+      : { ...state, status: 'loading', loadingMore: false, failedPage: null };
+  }
+  if (action.type === 'load-succeeded') {
+    return {
+      items: action.append
+        ? mergePage(state.items, action.result.items, (item) => item.id)
+        : action.result.items,
+      count: action.result.count,
+      page: action.page,
+      generation: state.generation,
+      status: 'ready',
+      loadingMore: false,
+      failedPage: null,
+    };
+  }
+  return action.append
+    ? { ...state, status: 'ready', loadingMore: false, failedPage: action.page }
+    : { ...state, status: 'error', loadingMore: false, failedPage: action.page };
 }
 
 export interface AlertListQuery {

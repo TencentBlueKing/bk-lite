@@ -4,13 +4,11 @@ import json
 
 import pytest
 
-from apps.cmdb.services.module_ingest import (
-    HOST_NODE_ID_ATTR,
-    CmdbModuleIngestService,
-    ensure_model_node_id_attr,
-)
+from apps.cmdb.services.module_ingest import HOST_NODE_ID_ATTR, CmdbModuleIngestService, ensure_model_node_id_attr
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.services.module_push_contract import LINK_CONFLICT
+
+INST_UUID = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
 
 
 def _ingest_params(
@@ -50,6 +48,7 @@ def test_ensure_model_node_id_attr_creates_for_switch(mocker):
     mocker.patch(
         "apps.cmdb.services.model.ModelManage.search_model_info",
         return_value={
+            "inst_uuid": INST_UUID,
             "_id": 2,
             "model_id": "switch",
             "attrs": json.dumps([{"attr_id": "ip_addr", "attr_name": "管理IP"}]),
@@ -70,11 +69,10 @@ def test_ensure_model_node_id_attr_ready_when_present(mocker):
     mocker.patch(
         "apps.cmdb.services.model.ModelManage.search_model_info",
         return_value={
+            "inst_uuid": INST_UUID,
             "_id": 2,
             "model_id": "switch",
-            "attrs": json.dumps(
-                [{"attr_id": "node_id", "attr_name": "节点ID", "editable": True}]
-            ),
+            "attrs": json.dumps([{"attr_id": "node_id", "attr_name": "节点ID", "editable": True}]),
         },
     )
     create = mocker.patch("apps.cmdb.services.model.ModelManage.create_model_attr")
@@ -86,7 +84,7 @@ def test_ensure_model_node_id_attr_ready_when_present(mocker):
 def test_ensure_model_node_id_attr_treats_duplicate_as_ready(mocker):
     mocker.patch(
         "apps.cmdb.services.model.ModelManage.search_model_info",
-        return_value={"_id": 2, "model_id": "switch", "attrs": "[]"},
+        return_value={"inst_uuid": INST_UUID, "_id": 2, "model_id": "switch", "attrs": "[]"},
     )
     mocker.patch(
         "apps.cmdb.services.model.ModelManage.create_model_attr",
@@ -110,13 +108,13 @@ def test_ingest_routes_raw_model_id_switch_to_switch_queries(mocker):
     )
     create = mocker.patch(
         "apps.cmdb.services.module_ingest.InstanceManage.instance_create",
-        return_value={"_id": 100, "node_id": "sw-n1", "model_id": "switch"},
+        return_value={"inst_uuid": INST_UUID, "_id": 100, "node_id": "sw-n1", "model_id": "switch"},
     )
 
     result = CmdbModuleIngestService.ingest(_ingest_params(model_id="switch"))
 
     assert result["created"] is True
-    assert result["id"] == 100
+    assert result["id"] == INST_UUID
     # 至少一次按 switch + node_id 查询；创建 model_id=switch
     model_ids_queried = {c.args[0] for c in query.call_args_list}
     assert "switch" in model_ids_queried
@@ -135,7 +133,7 @@ def test_ingest_routes_object_type_fallback(mocker):
     )
     mocker.patch(
         "apps.cmdb.services.module_ingest.InstanceManage.instance_create",
-        return_value={"_id": 101},
+        return_value={"inst_uuid": INST_UUID, "_id": 101},
     )
 
     CmdbModuleIngestService.ingest(
@@ -162,7 +160,7 @@ def test_ingest_defaults_to_host_when_model_missing(mocker):
     )
     mocker.patch(
         "apps.cmdb.services.module_ingest.InstanceManage.instance_create",
-        return_value={"_id": 102},
+        return_value={"inst_uuid": INST_UUID, "_id": 102},
     )
 
     CmdbModuleIngestService.ingest(
@@ -177,9 +175,7 @@ def test_ingest_defaults_to_host_when_model_missing(mocker):
 
 def test_ingest_rejects_unsupported_model():
     with pytest.raises(ValueError, match="unsupported"):
-        CmdbModuleIngestService.ingest(
-            _ingest_params(raw={"model_id": "mysql", "ip": "1.1.1.1", "organization_ids": [1]})
-        )
+        CmdbModuleIngestService.ingest(_ingest_params(raw={"model_id": "mysql", "ip": "1.1.1.1", "organization_ids": [1]}))
 
 
 # ----- switch: upsert / claim / conflict / create -----
@@ -192,11 +188,11 @@ def test_ingest_switch_upserts_by_node_id(mocker):
     )
     mocker.patch(
         "apps.cmdb.services.module_ingest.InstanceManage.query_entity_by_identity",
-        return_value={"_id": 10, "node_id": "sw-n1", "ip_addr": "10.0.0.1", "model_id": "switch"},
+        return_value={"inst_uuid": INST_UUID, "_id": 10, "node_id": "sw-n1", "ip_addr": "10.0.0.1", "model_id": "switch"},
     )
     update = mocker.patch(
         "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
-        return_value={"_id": 10, "node_id": "sw-n1"},
+        return_value={"inst_uuid": INST_UUID, "_id": 10, "node_id": "sw-n1"},
     )
 
     result = CmdbModuleIngestService.ingest(
@@ -211,7 +207,7 @@ def test_ingest_switch_upserts_by_node_id(mocker):
         )
     )
 
-    assert result["id"] == 10
+    assert result["id"] == INST_UUID
     assert result["updated"] is True
     update.assert_called_once()
 
@@ -236,14 +232,12 @@ def test_ingest_switch_claims_by_ip_addr(mocker):
     )
     update = mocker.patch(
         "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
-        return_value={"_id": 20, "node_id": "sw-n2"},
+        return_value={"inst_uuid": INST_UUID, "_id": 20, "node_id": "sw-n2"},
     )
 
-    result = CmdbModuleIngestService.ingest(
-        _ingest_params(node_id="sw-n2", ip="10.0.0.1", model_id="switch")
-    )
+    result = CmdbModuleIngestService.ingest(_ingest_params(node_id="sw-n2", ip="10.0.0.1", model_id="switch"))
 
-    assert result["id"] == 20
+    assert result["id"] == INST_UUID
     assert result["claimed"] is True
     assert update.call_args.kwargs["update_attr"]["node_id"] == "sw-n2"
     # 认领白名单不含 cloud
@@ -262,6 +256,7 @@ def test_ingest_switch_conflict_when_existing_different_node_id(mocker):
             return {}
         return {
             "_id": 20,
+            "inst_uuid": INST_UUID,
             "ip_addr": "10.0.0.1",
             "node_id": "other-node",
             "model_id": "switch",
@@ -273,11 +268,9 @@ def test_ingest_switch_conflict_when_existing_different_node_id(mocker):
     )
     update = mocker.patch("apps.cmdb.services.module_ingest.InstanceManage.instance_update")
 
-    result = CmdbModuleIngestService.ingest(
-        _ingest_params(node_id="sw-n2", ip="10.0.0.1", model_id="switch")
-    )
+    result = CmdbModuleIngestService.ingest(_ingest_params(node_id="sw-n2", ip="10.0.0.1", model_id="switch"))
 
-    assert result["id"] == 20
+    assert result["id"] == INST_UUID
     assert result["conflict"] == LINK_CONFLICT
     assert result["claimed"] is False
     update.assert_not_called()
@@ -294,14 +287,12 @@ def test_ingest_switch_creates_when_miss(mocker):
     )
     create = mocker.patch(
         "apps.cmdb.services.module_ingest.InstanceManage.instance_create",
-        return_value={"_id": 30, "node_id": "sw-n3"},
+        return_value={"inst_uuid": INST_UUID, "_id": 30, "node_id": "sw-n3"},
     )
 
-    result = CmdbModuleIngestService.ingest(
-        _ingest_params(node_id="sw-n3", ip="10.0.0.3", model_id="switch")
-    )
+    result = CmdbModuleIngestService.ingest(_ingest_params(node_id="sw-n3", ip="10.0.0.3", model_id="switch"))
 
-    assert result["id"] == 30
+    assert result["id"] == INST_UUID
     assert result["created"] is True
     assert create.call_args.kwargs["model_id"] == "switch"
     payload = create.call_args.kwargs["instance_info"]
@@ -322,6 +313,7 @@ def test_ingest_physcial_server_upserts_by_node_id(mocker):
     query = mocker.patch(
         "apps.cmdb.services.module_ingest.InstanceManage.query_entity_by_identity",
         return_value={
+            "inst_uuid": INST_UUID,
             "_id": 40,
             "node_id": "ps-n1",
             "ip_addr": "192.168.1.10",
@@ -330,7 +322,7 @@ def test_ingest_physcial_server_upserts_by_node_id(mocker):
     )
     update = mocker.patch(
         "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
-        return_value={"_id": 40, "node_id": "ps-n1"},
+        return_value={"inst_uuid": INST_UUID, "_id": 40, "node_id": "ps-n1"},
     )
 
     result = CmdbModuleIngestService.ingest(
@@ -345,7 +337,7 @@ def test_ingest_physcial_server_upserts_by_node_id(mocker):
         )
     )
 
-    assert result["id"] == 40
+    assert result["id"] == INST_UUID
     assert result["updated"] is True
     assert query.call_args.args[0] == "physcial_server"
     update.assert_called_once()
@@ -371,7 +363,7 @@ def test_ingest_physcial_server_claims_by_ip_addr(mocker):
     )
     update = mocker.patch(
         "apps.cmdb.services.module_ingest.InstanceManage.instance_update",
-        return_value={"_id": 41, "node_id": "ps-n2"},
+        return_value={"inst_uuid": INST_UUID, "_id": 41, "node_id": "ps-n2"},
     )
 
     result = CmdbModuleIngestService.ingest(
@@ -385,7 +377,7 @@ def test_ingest_physcial_server_claims_by_ip_addr(mocker):
         )
     )
 
-    assert result["id"] == 41
+    assert result["id"] == INST_UUID
     assert result["claimed"] is True
     assert update.call_args.kwargs["update_attr"]["node_id"] == "ps-n2"
     assert "cloud" not in update.call_args.kwargs["update_attr"]
@@ -403,6 +395,7 @@ def test_ingest_physcial_server_conflict_when_existing_different_node_id(mocker)
             return {}
         return {
             "_id": 42,
+            "inst_uuid": INST_UUID,
             "ip_addr": "192.168.1.10",
             "node_id": "other-ps",
             "model_id": "physcial_server",
@@ -425,7 +418,7 @@ def test_ingest_physcial_server_conflict_when_existing_different_node_id(mocker)
         )
     )
 
-    assert result["id"] == 42
+    assert result["id"] == INST_UUID
     assert result["conflict"] == LINK_CONFLICT
     assert result["claimed"] is False
     update.assert_not_called()
@@ -442,7 +435,7 @@ def test_ingest_physcial_server_creates_when_miss(mocker):
     )
     create = mocker.patch(
         "apps.cmdb.services.module_ingest.InstanceManage.instance_create",
-        return_value={"_id": 43, "node_id": "ps-n3"},
+        return_value={"inst_uuid": INST_UUID, "_id": 43, "node_id": "ps-n3"},
     )
 
     result = CmdbModuleIngestService.ingest(
@@ -457,7 +450,7 @@ def test_ingest_physcial_server_creates_when_miss(mocker):
         )
     )
 
-    assert result["id"] == 43
+    assert result["id"] == INST_UUID
     assert result["created"] is True
     assert create.call_args.kwargs["model_id"] == "physcial_server"
     payload = create.call_args.kwargs["instance_info"]

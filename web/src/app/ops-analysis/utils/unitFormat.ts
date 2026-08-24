@@ -127,6 +127,15 @@ const scaleByFamily = (
 };
 
 /**
+ * 会随刻度自动换档的单位家族（字节 / bps / 毫秒 / short）。
+ * 这些单位不能只写在 Y 轴名称上，因为同一轴上可能同时出现 `512 B` 和 `1.5 KiB`。
+ */
+export const isAutoScalingUnitId = (unitId?: string): boolean => {
+  const id = unitId?.trim();
+  return Boolean(id && FAMILIES[id]);
+};
+
+/**
  * 主入口。unitId 形如：
  *   'bytesIEC' | 'bytesSI' | 'bps' | 'ms' | 'percent' | 'percentunit'
  *   | 'short' | 'none' | 'custom:<后缀>'

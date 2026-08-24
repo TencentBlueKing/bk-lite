@@ -1,27 +1,21 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { Spin, Tooltip, Drawer, Button, Tag, Empty } from 'antd';
-import { ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Spin, Tooltip, Button, message } from 'antd';
+import { ArrowLeftOutlined } from '@ant-design/icons';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
-import { useModelApi } from '@/app/cmdb/api';
-import { useCommon } from '@/app/cmdb/context/common';
-import { getFieldItem } from '@/app/cmdb/utils/common';
-import { useUserInfoContext } from '@/context/userInfo';
-import type { AttrFieldType, UserItem } from '@/app/cmdb/types/assetManage';
-import { useRouter } from 'next/navigation';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface IpInstance {
-  _id: number | string;
-  ip_addr: string;
-  ip_status?: string[];
-  ip_allocated_status?: string[];
-  inst_name?: string;
-  [key: string]: unknown;
-}
+import usePermissions from '@/hooks/usePermissions';
+import IpDetailDrawer from './IpDetailDrawer';
+import {
+  KIND_COLOR,
+  buildOctetMap,
+  ipToCellKind,
+  type CellKind,
+  type IpInstance,
+} from './ipamCells';
+import { IPAM_ASSET_PERMISSION_PATH, type IpamEditPayload } from './ipamEdit';
 
 interface IpamViewData {
   subnet_address: string;
@@ -35,72 +29,6 @@ interface IpamViewData {
   ips: IpInstance[];
 }
 
-// ─── Color / Status mapping ───────────────────────────────────────────────────
-
-// Cell kind (determines color)
-type CellKind =
-  | 'free'
-  | 'allocated_online'
-  | 'allocated_offline'
-  | 'conflict'
-  | 'reserved'
-  | 'gateway'
-  | 'unknown';
-
-const KIND_COLOR: Record<CellKind, string> = {
-  free: '#52c41a',
-  allocated_online: '#1677ff',
-  allocated_offline: '#8c8c8c',
-  conflict: '#ff4d4f',
-  reserved: '#faad14',
-  gateway: '#722ed1',
-  unknown: '#bfbfbf',
-};
-
-function ipToCellKind(ip: IpInstance): CellKind {
-  const statuses = ip.ip_status ?? [];
-  const allocStatuses = ip.ip_allocated_status ?? [];
-  const ipType = ip.ip_type
-    ? Array.isArray(ip.ip_type)
-      ? (ip.ip_type as string[])
-      : [String(ip.ip_type)]
-    : [];
-
-  if (statuses.includes('conflict')) return 'conflict';
-  if (allocStatuses.includes('reserved')) return 'reserved';
-  if (ipType.includes('gateway')) return 'gateway';
-
-  const isOnline = statuses.includes('online');
-  const isOffline = statuses.includes('offline');
-  const isAllocated = allocStatuses.includes('allocated');
-
-  if (isAllocated && isOnline) return 'allocated_online';
-  if (isAllocated && isOffline) return 'allocated_offline';
-  if (isAllocated) return 'allocated_online'; // fallback
-
-  if (statuses.includes('unknown') || allocStatuses.includes('unknown')) return 'unknown';
-
-  return 'unknown';
-}
-
-// Extract host octet (last segment) from an IP addr string
-function hostOctet(ipAddr: string): number {
-  const parts = ipAddr.split('.');
-  return parseInt(parts[parts.length - 1], 10);
-}
-
-// Build octet → ip map from stored ips
-function buildOctetMap(ips: IpInstance[]): Map<number, IpInstance> {
-  const m = new Map<number, IpInstance>();
-  for (const ip of ips) {
-    const oct = hostOctet(ip.ip_addr);
-    if (!isNaN(oct)) m.set(oct, ip);
-  }
-  return m;
-}
-
-// ─── Summary bar ─────────────────────────────────────────────────────────────
-
 interface SummaryBarProps {
   data: IpamViewData;
 }
@@ -109,34 +37,38 @@ const SummaryBar: React.FC<SummaryBarProps> = ({ data }) => {
   const { t } = useTranslation();
   const pct = Math.round(data.ratio * 100);
   return (
-    <div style={{ display: 'flex', gap: 24, alignItems: 'center', padding: '8px 0 12px', flexWrap: 'wrap' }}>
-      <span style={{ color: 'var(--color-text-3)', fontSize: 13 }}>
+    <div className="flex flex-wrap items-center gap-6 py-2 pb-3">
+      <span className="text-[13px] text-[var(--color-text-3)]">
         {data.subnet_address}/{data.prefixlen}
       </span>
       <span>
-        <span style={{ color: 'var(--color-text-3)', fontSize: 12, marginRight: 4 }}>{t('Model.ipViewCapacity')}:</span>
+        <span className="mr-1 text-xs text-[var(--color-text-3)]">{t('Model.ipViewCapacity')}:</span>
         <strong>{data.capacity}</strong>
       </span>
       <span>
-        <span style={{ color: 'var(--color-text-3)', fontSize: 12, marginRight: 4 }}>{t('Model.ipViewUsed')}:</span>
-        <strong style={{ color: '#1677ff' }}>{data.used}</strong>
+        <span className="mr-1 text-xs text-[var(--color-text-3)]">{t('Model.ipViewUsed')}:</span>
+        <strong className="text-[var(--color-primary)]">{data.used}</strong>
       </span>
       <span>
-        <span style={{ color: 'var(--color-text-3)', fontSize: 12, marginRight: 4 }}>{t('Model.ipViewAvailable')}:</span>
-        <strong style={{ color: '#52c41a' }}>{data.available}</strong>
+        <span className="mr-1 text-xs text-[var(--color-text-3)]">{t('Model.ipViewAvailable')}:</span>
+        <strong className="text-[var(--color-success)]">{data.available}</strong>
       </span>
       <span>
-        <span style={{ color: 'var(--color-text-3)', fontSize: 12, marginRight: 4 }}>{t('Model.ipViewRatio')}:</span>
-        <strong style={{ color: pct > 80 ? '#ff4d4f' : '#1677ff' }}>{pct}%</strong>
+        <span className="mr-1 text-xs text-[var(--color-text-3)]">{t('Model.ipViewRatio')}:</span>
+        <strong className={pct > 80 ? 'text-[var(--color-danger)]' : 'text-[var(--color-primary)]'}>{pct}%</strong>
       </span>
-      <div style={{ flexBasis: '100%', height: 6, background: 'var(--color-fill-2)', borderRadius: 3, overflow: 'hidden', marginTop: 2 }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: pct > 80 ? '#ff4d4f' : '#1677ff', transition: 'width .3s' }} />
+      <div className="mt-0.5 h-1.5 basis-full overflow-hidden rounded-sm bg-[var(--color-fill-2)]">
+        <div
+          className="h-full transition-[width] duration-300"
+          style={{
+            width: `${pct}%`,
+            background: pct > 80 ? 'var(--color-danger)' : 'var(--color-primary)',
+          }}
+        />
       </div>
     </div>
   );
 };
-
-// ─── Legend ──────────────────────────────────────────────────────────────────
 
 const Legend: React.FC = () => {
   const { t } = useTranslation();
@@ -150,211 +82,47 @@ const Legend: React.FC = () => {
     { kind: 'unknown', label: t('Model.ipViewUnknown') },
   ];
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', padding: '8px 0' }}>
+    <div className="flex flex-wrap gap-x-5 gap-y-2 py-2">
       {items.map(({ kind, label }) => (
-        <span key={kind} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+        <span key={kind} className="flex items-center gap-1.5 text-xs">
           <span
-            style={{
-              width: 14, height: 14, borderRadius: 3,
-              background: KIND_COLOR[kind], display: 'inline-block', flexShrink: 0,
-            }}
+            className="inline-block h-3.5 w-3.5 shrink-0 rounded-sm"
+            style={{ background: KIND_COLOR[kind] }}
           />
-          <span style={{ color: 'var(--color-text-2)' }}>{label}</span>
+          <span className="text-[var(--color-text-2)]">{label}</span>
         </span>
       ))}
     </div>
   );
 };
 
-// ─── IP Detail Drawer ─────────────────────────────────────────────────────────
-
-interface IpDetailDrawerProps {
-  ip: IpInstance | null;
-  open: boolean;
-  onClose: () => void;
-}
-
-const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({ ip, open, onClose }) => {
-  const { t } = useTranslation();
-  const router = useRouter();
-  const { getModelAttrGroupsFullInfo } = useModelApi();
-  const { getInstanceShowFieldDetail } = useInstanceApi();
-  const commonContext = useCommon();
-  const { flatGroups } = useUserInfoContext();
-  const users = useRef(commonContext?.userList || []);
-  const userList: UserItem[] = users.current;
-  const [loading, setLoading] = useState(false);
-  const [ipAttrs, setIpAttrs] = useState<AttrFieldType[]>([]);
-  const [showFieldKeys, setShowFieldKeys] = useState<string[] | null>(null);
-  const metaLoadedRef = useRef(false);
-
-  useEffect(() => {
-    if (!open || metaLoadedRef.current) return;
-    let cancelled = false;
-    setLoading(true);
-    Promise.all([
-      getModelAttrGroupsFullInfo('ip').catch(() => null),
-      getInstanceShowFieldDetail('ip').catch(() => null),
-    ])
-      .then(([groupsResp, showFieldsResp]) => {
-        if (cancelled) return;
-        const groups = Array.isArray((groupsResp as any)?.groups) ? (groupsResp as any).groups : [];
-        const attrs = groups.flatMap((group: any) => group?.attrs || []) as AttrFieldType[];
-        setIpAttrs(attrs);
-        setShowFieldKeys(Array.isArray((showFieldsResp as any)?.show_fields) ? (showFieldsResp as any).show_fields : null);
-        metaLoadedRef.current = true;
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
-
-  const jump = useCallback(() => {
-    if (!ip) return;
-    const params = new URLSearchParams({
-      icn: '',
-      model_name: 'ip',
-      model_id: 'ip',
-      classification_id: '',
-      inst_id: String(ip._id),
-      inst_name: ip.ip_addr,
-    }).toString();
-    router.push(`/cmdb/assetData/detail/baseInfo?${params}`);
-  }, [ip, router]);
-
-  const rows = useMemo(() => {
-    if (!ip) {
-      return [];
-    }
-    const attrMap = new Map(ipAttrs.map((attr) => [attr.attr_id, attr]));
-    const fieldOrder = showFieldKeys?.length
-      ? showFieldKeys
-      : ipAttrs.map((attr) => attr.attr_id);
-    const fieldKeys = fieldOrder.filter((key) => key !== 'inst_name' && key !== '_id' && !key.startsWith('_'));
-
-    return fieldKeys
-      .map((key) => {
-        const attr = attrMap.get(key);
-        if (!attr) return null;
-        const rawValue = ip[key];
-        if (
-          rawValue === null ||
-          rawValue === undefined ||
-          rawValue === '' ||
-          (Array.isArray(rawValue) && rawValue.length === 0)
-        ) {
-          return null;
-        }
-        return {
-          key,
-          label: attr.attr_name || attr.attr_id,
-          valueNode: getFieldItem({
-            fieldItem: attr,
-            userList,
-            isEdit: false,
-            value: rawValue,
-            hideUserAvatar: true,
-            flatGroups,
-            modelId: 'ip',
-          }),
-        };
-      })
-      .filter((item): item is { key: string; label: string; valueNode: React.ReactNode } => item !== null);
-  }, [flatGroups, ip, ipAttrs, showFieldKeys, userList]);
-
-  if (!ip) return null;
-
-  const kind = ipToCellKind(ip);
-  const color = KIND_COLOR[kind];
-  const kindLabel: Record<CellKind, string> = {
-    free: t('Model.ipViewFree'),
-    allocated_online: t('Model.ipViewAllocatedOnline'),
-    allocated_offline: t('Model.ipViewAllocatedOffline'),
-    conflict: t('Model.ipViewConflict'),
-    reserved: t('Model.ipViewReserved'),
-    gateway: t('Model.ipViewGateway'),
-    unknown: t('Model.ipViewUnknown'),
-  };
-
-  return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      width={360}
-      title={
-        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span
-            style={{
-              width: 10, height: 10, borderRadius: '50%',
-              background: color, boxShadow: `0 0 8px ${color}`, display: 'inline-block',
-            }}
-          />
-          {ip.ip_addr}
-        </span>
-      }
-      extra={
-        <Button size="small" icon={<ArrowRightOutlined />} onClick={jump}>
-          {t('Model.viewFullInstance')}
-        </Button>
-      }
-    >
-      <div style={{ marginBottom: 12 }}>
-        <Tag color={color} style={{ color: '#fff' }}>{kindLabel[kind]}</Tag>
-      </div>
-      <div>
-        {loading ? (
-          <div style={{ padding: '24px 0', textAlign: 'center' }}>
-            <Spin spinning />
-          </div>
-        ) : rows.map(({ key, label, valueNode }) => (
-          <div
-            key={key}
-            style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              padding: '8px 0',
-              borderBottom: '1px dashed var(--color-border-2)',
-              gap: 12,
-            }}
-          >
-            <span style={{ color: 'var(--color-text-3)', fontSize: 13, flexShrink: 0 }}>{label}</span>
-            <div
-              style={{
-                fontSize: 13, textAlign: 'right', wordBreak: 'break-all',
-                color: 'var(--color-text-1)',
-              }}
-            >
-              {valueNode}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Drawer>
-  );
-};
-
-// ─── Square Grid (prefixlen >= 24) ────────────────────────────────────────────
-
-const CELL_MIN = 40; // px — minimum cell width; grid auto-fills columns to fill the row
-const CELL_H = 36;   // px — readable fixed row height without returning to square wide-screen cells
-const GRID_GAP = 4;
+const CELL_MIN = 40;
+const CELL_H = 36;
 
 interface SquareGridProps {
   data: IpamViewData;
-  baseOffset?: number; // first host number (default 1 for /24)
+  subnetInstUuid: string;
+  baseOffset?: number;
+  onReload: () => Promise<void>;
 }
 
-const SquareGrid: React.FC<SquareGridProps> = ({ data, baseOffset = 1 }) => {
+const SquareGrid: React.FC<SquareGridProps> = ({
+  data,
+  subnetInstUuid,
+  baseOffset = 1,
+  onReload,
+}) => {
   const { t } = useTranslation();
+  const { saveIpamIp } = useInstanceApi();
+  const { hasPermission } = usePermissions(IPAM_ASSET_PERMISSION_PATH);
+  const hasAdd = hasPermission(['Add']);
+  const hasEdit = hasPermission(['Edit']);
+  const hasDelete = hasPermission(['Delete']);
   const octetMap = buildOctetMap(data.ips);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedIp, setSelectedIp] = useState<IpInstance | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const cells: Array<{ hostNum: number; ip: IpInstance | null; kind: CellKind }> = [];
   for (let i = 0; i < data.capacity; i++) {
@@ -364,13 +132,36 @@ const SquareGrid: React.FC<SquareGridProps> = ({ data, baseOffset = 1 }) => {
     cells.push({ hostNum, ip, kind });
   }
 
-  const handleCellClick = (ip: IpInstance | null) => {
-    if (!ip) return; // free cell — nothing to show
-    setSelectedIp(ip);
+  const subnetPrefix = data.subnet_address.split('.').slice(0, 3).join('.');
+
+  const handleCellClick = (hostNum: number, ip: IpInstance | null) => {
+    if (ip) {
+      setSelectedIp(ip);
+      setDrawerOpen(true);
+      return;
+    }
+    if (!hasAdd) return;
+    setSelectedIp({
+      ip_addr: `${subnetPrefix}.${hostNum}`,
+      ip_allocated_status: ['allocated'],
+    });
     setDrawerOpen(true);
   };
 
-  const subnetPrefix = data.subnet_address.split('.').slice(0, 3).join('.');
+  const handleSave = async (payload: IpamEditPayload) => {
+    setSaving(true);
+    try {
+      await saveIpamIp(payload);
+      message.success(t('common.saveSuccess'));
+      setDrawerOpen(false);
+      setSelectedIp(null);
+      await onReload();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <>
@@ -379,23 +170,19 @@ const SquareGrid: React.FC<SquareGridProps> = ({ data, baseOffset = 1 }) => {
         .ipam-cell:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,.18); z-index: 1; }
       `}</style>
       <div
+        className="grid gap-1 rounded-[10px] border border-[var(--color-border-2)] bg-[var(--color-bg-2)] p-4"
         style={{
-          display: 'grid',
           gridTemplateColumns: `repeat(auto-fill, minmax(${CELL_MIN}px, 1fr))`,
-          gap: GRID_GAP,
-          padding: 16,
-          border: '1px solid var(--color-border-2)',
-          borderRadius: 10,
-          background: 'var(--color-bg-2)',
         }}
       >
         {cells.map(({ hostNum, ip, kind }) => {
           const color = KIND_COLOR[kind];
           const isFree = kind === 'free';
           const ipAddr = ip?.ip_addr ?? `${subnetPrefix}.${hostNum}`;
+          const clickable = Boolean(ip) || hasAdd;
 
           const tooltipTitle = (
-            <div style={{ fontSize: 12 }}>
+            <div className="text-xs">
               <div><strong>{ipAddr}</strong></div>
               {ip && (
                 <>
@@ -416,22 +203,13 @@ const SquareGrid: React.FC<SquareGridProps> = ({ data, baseOffset = 1 }) => {
           return (
             <Tooltip key={hostNum} title={tooltipTitle} placement="top" mouseEnterDelay={0.15}>
               <div
-                className="ipam-cell"
-                onClick={() => handleCellClick(ip)}
+                className={`ipam-cell flex select-none items-center justify-center rounded-md text-[11px] tabular-nums ${clickable ? 'cursor-pointer' : 'cursor-default'} ${isFree ? 'font-normal' : 'font-semibold text-white'}`}
+                onClick={() => handleCellClick(hostNum, ip)}
                 style={{
                   height: CELL_H,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: 6,
-                  fontSize: 11,
-                  fontVariantNumeric: 'tabular-nums',
-                  cursor: ip ? 'pointer' : 'default',
                   background: isFree ? 'rgba(82,196,26,0.12)' : color,
                   border: `1px solid ${isFree ? 'rgba(82,196,26,0.35)' : color}`,
-                  color: isFree ? '#389e0d' : '#fff',
-                  fontWeight: isFree ? 400 : 600,
-                  userSelect: 'none',
+                  color: isFree ? '#389e0d' : undefined,
                 }}
               >
                 {hostNum}
@@ -443,17 +221,21 @@ const SquareGrid: React.FC<SquareGridProps> = ({ data, baseOffset = 1 }) => {
       <IpDetailDrawer
         ip={selectedIp}
         open={drawerOpen}
+        subnetInstUuid={subnetInstUuid}
+        hasAdd={hasAdd}
+        hasEdit={hasEdit}
+        hasDelete={hasDelete}
+        saving={saving}
         onClose={() => setDrawerOpen(false)}
+        onSave={handleSave}
       />
     </>
   );
 };
 
-// ─── Heat view for prefixlen < 24 (one block per /24) ────────────────────────
-
 interface HeatBlock {
-  prefix: string; // e.g. "10.0.1"
-  base: string;   // e.g. "10.0.1.0/24"
+  prefix: string;
+  base: string;
   totalSlots: number;
   usedSlots: number;
   ips: IpInstance[];
@@ -467,7 +249,6 @@ interface HeatViewProps {
 const HeatView: React.FC<HeatViewProps> = ({ data, onDrill }) => {
   const { t } = useTranslation();
 
-  // Group stored IPs by their /24 prefix
   const blockMap = new Map<string, IpInstance[]>();
   for (const ip of data.ips) {
     const parts = ip.ip_addr.split('.');
@@ -477,18 +258,13 @@ const HeatView: React.FC<HeatViewProps> = ({ data, onDrill }) => {
     blockMap.get(prefix)!.push(ip);
   }
 
-  // Determine total /24 blocks from subnet
   const prefixlen = data.prefixlen;
   const subnetParts = data.subnet_address.split('.').map(Number);
-
-  // Number of /24 blocks = 2^(24-prefixlen) if prefixlen <= 24
   const numBlocks = prefixlen <= 24 ? Math.pow(2, 24 - prefixlen) : 1;
-  const cappedBlocks = Math.min(numBlocks, 256); // display cap for very large ranges
+  const cappedBlocks = Math.min(numBlocks, 256);
 
-  // Build block list
   const blocks: HeatBlock[] = [];
   for (let i = 0; i < cappedBlocks; i++) {
-    // Compute the /24 subnet address
     let thirdOctet = subnetParts[2] + i;
     const secondOctet = subnetParts[1] + Math.floor(thirdOctet / 256);
     thirdOctet = thirdOctet % 256;
@@ -505,15 +281,15 @@ const HeatView: React.FC<HeatViewProps> = ({ data, onDrill }) => {
 
   return (
     <div>
-      <p style={{ color: 'var(--color-text-3)', fontSize: 13, marginBottom: 12 }}>
+      <p className="mb-3 text-[13px] text-[var(--color-text-3)]">
         {t('Model.ipViewDrillTitle')} — {data.subnet_address}/{data.prefixlen}
         {cappedBlocks < numBlocks && ` (showing first ${cappedBlocks} of ${numBlocks})`}
       </p>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div className="flex flex-wrap gap-2">
         {blocks.map((block) => {
           const ratio = block.totalSlots > 0 ? block.usedSlots / block.totalSlots : 0;
           const pct = Math.round(ratio * 100);
-          const hue = Math.round(120 - ratio * 120); // green → red
+          const hue = Math.round(120 - ratio * 120);
           const bg = `hsl(${hue}, 70%, 45%)`;
           return (
             <Tooltip
@@ -522,26 +298,10 @@ const HeatView: React.FC<HeatViewProps> = ({ data, onDrill }) => {
             >
               <div
                 onClick={() => onDrill(block)}
-                style={{
-                  width: 80,
-                  height: 56,
-                  borderRadius: 6,
-                  background: bg,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  color: '#fff',
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  opacity: 0.88,
-                  transition: 'opacity 0.15s',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.88'; }}
+                className="flex h-14 w-20 cursor-pointer flex-col items-center justify-center rounded-md font-mono text-[11px] text-white opacity-90 transition-opacity hover:opacity-100"
+                style={{ background: bg }}
               >
-                <span style={{ fontWeight: 600 }}>{block.prefix}.x</span>
+                <span className="font-semibold">{block.prefix}.x</span>
                 <span>{pct}%</span>
               </div>
             </Tooltip>
@@ -552,23 +312,15 @@ const HeatView: React.FC<HeatViewProps> = ({ data, onDrill }) => {
   );
 };
 
-// ─── Main IpamMatrix component ─────────────────────────────────────────────────
-
 interface IpamMatrixProps {
-  instId: string;
+  instUuid: string;
 }
 
 interface DrillState {
-  block: {
-    prefix: string;
-    base: string;
-    totalSlots: number;
-    usedSlots: number;
-    ips: IpInstance[];
-  };
+  block: HeatBlock;
 }
 
-const IpamMatrix: React.FC<IpamMatrixProps> = ({ instId }) => {
+const IpamMatrix: React.FC<IpamMatrixProps> = ({ instUuid }) => {
   const { t } = useTranslation();
   const { getIpamView } = useInstanceApi();
 
@@ -577,37 +329,48 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instId }) => {
   const [error, setError] = useState<string | null>(null);
   const [drill, setDrill] = useState<DrillState | null>(null);
 
-  useEffect(() => {
-    if (!instId) return;
-    let cancelled = false;
+  const load = useCallback(async () => {
+    if (!instUuid) return;
     setLoading(true);
     setError(null);
     setDrill(null);
-    getIpamView(instId)
-      .then((res: IpamViewData) => {
-        if (!cancelled) setData(res ?? null);
-      })
-      .catch((err: Error) => {
-        if (!cancelled) setError(err?.message ?? 'Failed to load IPAM data');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [instId]);
+    try {
+      const res = await getIpamView(instUuid);
+      setData((res as IpamViewData) ?? null);
+    } catch (err) {
+      const messageText = err instanceof Error ? err.message : 'Failed to load IPAM data';
+      setError(messageText);
+    } finally {
+      setLoading(false);
+    }
+  }, [instUuid, getIpamView]);
 
-  if (loading) {
+  const reload = useCallback(async () => {
+    if (!instUuid) return;
+    try {
+      const res = await getIpamView(instUuid);
+      setData((res as IpamViewData) ?? null);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [instUuid, getIpamView]);
+
+  useEffect(() => {
+    void load();
+    // 仅在子网切换时重拉；getIpamView 每次 render 都是新函数。
+  }, [instUuid]);
+
+  if (loading && !data) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
+      <div className="flex justify-center p-[60px]">
         <Spin size="large" />
       </div>
     );
   }
 
-  if (error) {
+  if (error && !data) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-danger)' }}>
+      <div className="p-10 text-center text-[var(--color-danger)]">
         {error}
       </div>
     );
@@ -615,53 +378,66 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instId }) => {
 
   if (!data || !data.subnet_address || !data.subnet_mask) {
     return (
-      <div style={{ padding: 40, textAlign: 'center' }}>
-        <Empty description={t('Model.ipViewEmptyHint')} />
+      <div className="p-10 text-center">
+        <CompactEmptyState description={t('Model.ipViewEmptyHint')} />
       </div>
     );
   }
 
   const isSmallSubnet = data.prefixlen >= 24;
 
-  // Drilled-in /24 view for a large subnet block
   if (drill) {
+    const drillIps = data.ips.filter((ip) => {
+      const parts = ip.ip_addr.split('.');
+      return parts.length === 4 && parts.slice(0, 3).join('.') === drill.block.prefix;
+    });
     const drillData: IpamViewData = {
       ...data,
       subnet_address: `${drill.block.prefix}.0`,
       prefixlen: 24,
       capacity: 254,
-      used: drill.block.usedSlots,
-      available: 254 - drill.block.usedSlots,
-      ratio: drill.block.usedSlots / 254,
-      ips: drill.block.ips,
+      used: drillIps.length,
+      available: 254 - drillIps.length,
+      ratio: drillIps.length / 254,
+      ips: drillIps,
     };
     return (
-      <div style={{ padding: '0 4px' }}>
+      <div className="px-1">
         <Button
           icon={<ArrowLeftOutlined />}
           size="small"
           type="link"
-          style={{ paddingLeft: 0, marginBottom: 8 }}
+          className="mb-2 pl-0"
           onClick={() => setDrill(null)}
         >
           {t('Model.ipViewBack')} — {data.subnet_address}/{data.prefixlen}
         </Button>
         <SummaryBar data={drillData} />
         <Legend />
-        <div style={{ marginTop: 8 }}>
-          <SquareGrid data={drillData} baseOffset={1} />
+        <div className="mt-2">
+          <SquareGrid
+            data={drillData}
+            subnetInstUuid={instUuid}
+            baseOffset={1}
+            onReload={reload}
+          />
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '0 4px' }}>
+    <div className="px-1">
       <SummaryBar data={data} />
       <Legend />
-      <div style={{ marginTop: 8 }}>
+      <div className="mt-2">
         {isSmallSubnet ? (
-          <SquareGrid data={data} baseOffset={1} />
+          <SquareGrid
+            data={data}
+            subnetInstUuid={instUuid}
+            baseOffset={1}
+            onReload={reload}
+          />
         ) : (
           <HeatView
             data={data}

@@ -4,7 +4,8 @@ export type NetworkTopologyNodeStatus =
   | 'normal'
   | 'warning'
   | 'error'
-  | 'critical';
+  | 'critical'
+  | 'unknown';
 
 export interface NetworkTopologyNode {
   id: string;

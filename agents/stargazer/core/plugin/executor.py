@@ -1,14 +1,12 @@
 import asyncio
 import importlib
+import inspect
+from collections.abc import Mapping
 from typing import Any, Dict, Optional
 
+from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 from core.logger import logger
-
 from core.plugin.source_resolver import PluginResolution
-from core.collection.contracts import (
-    AccessProbeResult,
-    AccessProbeStatus,
-)
 from core.plugin.yaml_reader import ExecutorConfig
 
 
@@ -26,7 +24,7 @@ class PluginExecutor:
         params: Dict[str, Any],
         plugin_resolution: Optional[PluginResolution] = None,
         fallback_executor_config: Optional[ExecutorConfig] = None,
-        strict_enterprise: bool = False
+        strict_enterprise: bool = False,
     ):
         self.model = model
         self.params = params
@@ -42,21 +40,24 @@ class PluginExecutor:
         Returns:
             采集结果
         """
-        source = self.plugin_resolution.source if self.plugin_resolution else 'oss'
-        logger.info(
-            f'Executing plugin: model_id={self.model}, executor={self.executor_config.executor_type}, source={source}'
+        source = self.plugin_resolution.source if self.plugin_resolution else "oss"
+        logger.debug(
+            "event=plugin_executor_started model_id=%s executor=%s source=%s target=%s",
+            self.model,
+            self.executor_config.executor_type,
+            source,
+            self.params.get("host") or self.params.get("ip") or "logical",
         )
 
         collector_instance = await self._prepare_collector()
-        logger.info("⏳ Executing collection...")
         # 所有注册插件必须暴露异步契约；同步 SDK 由插件自身用 to_thread 包装。
-        result = await collector_instance.list_all_resources()
-        logger.info("✅ Collection completed")
-        return result
+        return await collector_instance.list_all_resources()
 
     async def probe(self) -> AccessProbeResult:
         """执行插件声明的最小协议预检；未声明时不得伪造 READY。"""
         collector_instance = await self._prepare_collector()
+        if inspect.getattr_static(collector_instance, "probe", None) is None:
+            return AccessProbeResult(status=AccessProbeStatus.NOT_SUPPORTED)
         probe = getattr(collector_instance, "probe", None)
         if probe is None:
             return AccessProbeResult(status=AccessProbeStatus.NOT_SUPPORTED)
@@ -73,23 +74,21 @@ class PluginExecutor:
 
     async def _prepare_collector(self):
         collector_info = self.executor_config.get_collector_info()
-        logger.debug(
-            f" Loading collector: {collector_info['module']}.{collector_info['class']}"
-        )
-        collector_class = await asyncio.to_thread(
-            self._load_collector_with_fallback, collector_info
-        )
+        logger.debug(f" Loading collector: {collector_info['module']}.{collector_info['class']}")
+        collector_class = await asyncio.to_thread(self._load_collector_with_fallback, collector_info)
+        collector_params = dict(self.params)
+        trusted_options = (self.executor_config.config.get("collector") or {}).get("options", {})
+        if not isinstance(trusted_options, Mapping):
+            raise ValueError("collector.options must be a mapping")
+        collector_params["_collector_options"] = dict(trusted_options)
         if self.executor_config.is_job:
             os_type = self._determine_os_type()
             script_path = self.executor_config.get_script_path(os_type)
             if not script_path:
-                raise ValueError(
-                    f"Script not found for os_type '{os_type}'. "
-                    f"Available: {self.executor_config.list_available_os()}"
-                )
-            self.params["script_path"] = script_path
+                raise ValueError(f"Script not found for os_type '{os_type}'. " f"Available: {self.executor_config.list_available_os()}")
+            collector_params["script_path"] = script_path
             logger.debug(f"Script path: {script_path}")
-        return await asyncio.to_thread(collector_class, self.params)
+        return await asyncio.to_thread(collector_class, collector_params)
 
     def _determine_os_type(self) -> str:
         """
@@ -101,45 +100,42 @@ class PluginExecutor:
         3. 使用默认值 default_script
         """
         # 优先从参数获取
-        if 'os_type' in self.params:
-            return self.params['os_type']
+        if "os_type" in self.params:
+            return self.params["os_type"]
 
         # 从节点信息获取
-        node_info = self.params.get('node_info', {})
-        if node_info and 'operating_system' in node_info:
-            os_type = node_info['operating_system'].lower()
+        node_info = self.params.get("node_info", {})
+        if node_info and "operating_system" in node_info:
+            os_type = node_info["operating_system"].lower()
             # 映射操作系统名称
-            if os_type in ['windows', 'win']:
-                return 'windows'
+            if os_type in ["windows", "win"]:
+                return "windows"
             else:
-                return 'linux'
+                return "linux"
 
         # 使用默认值
-        return self.executor_config.config.get('default_script', 'linux')
+        return self.executor_config.config.get("default_script", "linux")
 
     @staticmethod
     def _load_collector(module_name: str, class_name: str):
         """动态加载采集器类"""
-        try:
-            module = importlib.import_module(module_name)
-            collector_class = getattr(module, class_name)
-            logger.debug(f"✅ Collector loaded: {module_name}.{class_name}")
-            return collector_class
-        except Exception as e:
-            logger.error(f"❌ Failed to load collector: {e}")
-            raise
+        module = importlib.import_module(module_name)
+        collector_class = getattr(module, class_name)
+        logger.debug(f"✅ Collector loaded: {module_name}.{class_name}")
+        return collector_class
 
     def _load_collector_with_fallback(self, collector_info: Dict[str, str]):
         try:
-            return self._load_collector(collector_info['module'], collector_info['class'])
+            return self._load_collector(collector_info["module"], collector_info["class"])
         except Exception as exc:
-            if not self.plugin_resolution or self.plugin_resolution.source != 'enterprise':
+            if not self.plugin_resolution or self.plugin_resolution.source != "enterprise":
                 raise
 
             if self.strict_enterprise:
                 logger.error(
-                    f'Strict enterprise mode enabled: model_id={self.model}, selected_source=enterprise, '
-                    f'strict=true, failure_reason={exc}'
+                    "event=plugin_enterprise_load_failed model_id=%s selected_source=enterprise " "strict=true error_type=%s",
+                    self.model,
+                    type(exc).__name__,
                 )
                 raise
 
@@ -147,13 +143,12 @@ class PluginExecutor:
                 raise
 
             logger.warning(
-                f'Plugin fallback triggered: model_id={self.model}, failed_source=enterprise, '
-                f'fallback_source=oss, failure_reason={exc}'
+                "event=plugin_fallback model_id=%s failed_source=enterprise " "fallback_source=oss error_type=%s",
+                self.model,
+                type(exc).__name__,
             )
 
             self.executor_config = self.fallback_executor_config
             fallback_collector_info = self.executor_config.get_collector_info()
-            logger.info(
-                f"Retry loading fallback collector: {fallback_collector_info['module']}.{fallback_collector_info['class']}"
-            )
-            return self._load_collector(fallback_collector_info['module'], fallback_collector_info['class'])
+            logger.info(f"Retry loading fallback collector: {fallback_collector_info['module']}.{fallback_collector_info['class']}")
+            return self._load_collector(fallback_collector_info["module"], fallback_collector_info["class"])

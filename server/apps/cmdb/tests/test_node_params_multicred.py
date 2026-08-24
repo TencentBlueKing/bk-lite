@@ -72,6 +72,34 @@ def test_base_node_params_pushes_credentials_pool_to_stargazer_headers():
     assert node.env_config()["PASSWORD_password_cmdb_92_1"] == "second-secret"
 
 
+def test_network_node_params_pushes_snmp_timeout_and_retry_settings():
+    from apps.cmdb.node_configs.network.network import NetworkNodeParams
+
+    instance = SimpleNamespace(
+        id=96,
+        model_id="network",
+        driver_type="protocol",
+        decrypt_credentials=[
+            {
+                "credential_id": "cred-network",
+                "version": "v2c",
+                "community": "secret-community",
+                "snmp_port": 161,
+            }
+        ],
+        params={},
+        timeout=60,
+        access_point=[{"id": 3}],
+        instances=[{"ip_addr": "10.3.252.1"}],
+        ip_range="",
+    )
+
+    headers = NetworkNodeParams(instance).custom_headers()
+
+    assert headers["cmdbtimeout"] == "10"
+    assert headers["cmdbretries"] == "1"
+
+
 def test_base_node_params_push_params_renders_template_with_default_filter():
     from apps.cmdb.node_configs.ssh.host import HostNodeParams
 
@@ -98,7 +126,7 @@ def test_base_node_params_push_params_renders_template_with_default_filter():
     assert 'interval = "300s"' in rendered_lines
     assert 'timeout = "30s"' in rendered_lines
     assert 'response_timeout = "30s"' in rendered_lines
-    assert 'http_headers = {' in result[0]["content"]
+    assert "http_headers = {" in result[0]["content"]
 
 
 def test_base_node_params_push_params_uses_task_cycle_interval_when_present():

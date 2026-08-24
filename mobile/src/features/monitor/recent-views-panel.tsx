@@ -13,12 +13,12 @@ import {
 } from '@/features/monitor/model';
 import { useRecentViews } from '@/features/monitor/use-recent-views';
 import { useAuth } from '@/context/auth';
+import { formatAccountDateTime } from '@/platform/preferences/dateTime';
 import {
   readMobileViewSnapshot,
   restoreMobileViewScroll,
   writeMobileViewSnapshot,
 } from '@/navigation/mobile-view-cache';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/monitor/monitor.module.css';
 
@@ -32,9 +32,9 @@ function entryKey(objectId: number, instanceId: string) {
 
 export default function MonitorRecentViewsPanel() {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
+  const { userInfo, organizationScope } = useAuth();
   const { entries, status, reload } = useRecentViews();
-  const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
+  const cacheScope = organizationScope;
   const initialSnapshot = useRef(readMobileViewSnapshot<MonitorRecentViewsViewState>(cacheScope, 'monitor-recent'));
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const preferences = { locale: userInfo?.locale || 'en', timezone: userInfo?.timezone || 'Asia/Shanghai' };
@@ -141,6 +141,16 @@ export default function MonitorRecentViewsPanel() {
                             )}
                           </span>
                         </span>
+                        {reportingStatus === 'unavailable' && instance.lastReportedAt ? (
+                          <span className={styles.recentLastReported}>
+                            {t('monitor.lastReportedLabel', undefined, {
+                              time: formatAccountDateTime(
+                                new Date(instance.lastReportedAt * 1000).toISOString(),
+                                preferences,
+                              ),
+                            })}
+                          </span>
+                        ) : null}
                         <span className={styles.recentMetaLine}>
                           <span className={styles.recentMetaObject}>
                             {object.displayName}

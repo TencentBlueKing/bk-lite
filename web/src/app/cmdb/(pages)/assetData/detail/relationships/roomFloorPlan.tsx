@@ -1,50 +1,128 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { Spin, Empty, Alert, Drawer, Tag } from 'antd';
+import React, { useEffect, useRef, useState } from 'react';
+import { Spin, Alert, Drawer, Tag, Button, Modal, message, Tooltip } from 'antd';
+import { DisconnectOutlined } from '@ant-design/icons';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import { useThemeMode } from '@/theme';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
+import usePermissions from '@/hooks/usePermissions';
 import type { RoomLayoutData, RoomRack, RackDevice } from '@/app/cmdb/types/rackRoom';
 import {
   CELL, PAD, GAP, cellXY, roomGridSize, rackTypeColor, rackTypeName, TECH,
 } from '@/app/cmdb/utils/rackRoomLayout';
+import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
 import RackElevation from './rackElevation';
 import DeviceDetailDrawer from './deviceDetailDrawer';
+import LayoutPlaceModal, { type LayoutPlaceModalRef } from './layoutPlaceModal';
+import {
+  RACK_ROOM_ASSET_PERMISSION_PATH,
+  buildUnplacePayload,
+  canPlaceOnEmpty,
+  canUnplaceFromLayout,
+  hasInstanceOperate,
+} from './rackRoomEdit';
 
 interface Props {
   modelId: string;
-  instId: string;
+  instUuid: string;
+  /** When set, rack click navigates via callback instead of opening the elevation Drawer. */
+  onRackSelect?: (rack: RoomRack) => void;
+  /** After returning from a rack drill-down, scroll this rack into view and pulse it. */
+  highlightRackId?: string;
 }
 
-const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
+const RoomFloorPlan: React.FC<Props> = ({
+  modelId,
+  instUuid,
+  onRackSelect,
+  highlightRackId,
+}) => {
   const { t } = useTranslation();
   const { mode } = useThemeMode();
-  const { getRoomLayout } = useInstanceApi();
+  const { getRoomLayout, saveRackRoomLayout } = useInstanceApi();
+  const { hasPermission } = usePermissions(RACK_ROOM_ASSET_PERMISSION_PATH);
+  const placeRef = useRef<LayoutPlaceModalRef>(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<RoomLayoutData | null>(null);
   const [rack, setRack] = useState<RoomRack | null>(null);
   const [device, setDevice] = useState<RackDevice | null>(null);
   const [devOpen, setDevOpen] = useState(false);
+  const [activeHighlightId, setActiveHighlightId] = useState<string | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const isDark = mode === 'dark';
+  const hasAdd = hasPermission(['Add']);
+  const hasEdit = hasPermission(['Edit']);
+  const canPlace = canPlaceOnEmpty({ hasAdd, hasEdit });
+
+  const reload = () => setReloadNonce((n) => n + 1);
+
+  const confirmUnplaceRack = (target: RoomRack) => {
+    if (
+      !canUnplaceFromLayout({
+        hasEdit,
+        instOperate: hasInstanceOperate(target.permission),
+      })
+    ) {
+      return;
+    }
+    Modal.confirm({
+      centered: true,
+      title: t('Model.layoutUnplaceConfirmTitle'),
+      content: t('Model.layoutUnplaceRackContent'),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        const targetUuid = resolveCmdbInstUuid(target.inst_uuid);
+        if (!targetUuid) {
+          message.warning('实例缺少合法 inst_uuid，请先完成 UUID 存量清洗');
+          return;
+        }
+        await saveRackRoomLayout(
+          buildUnplacePayload({
+            scope: 'room',
+            containerInstUuid: instUuid,
+            instUuid: targetUuid,
+          })
+        );
+        message.success(t('successfullyDisassociated'));
+        setRack((current) => (current?.inst_uuid === target.inst_uuid ? null : current));
+        reload();
+      },
+    });
+  };
 
   useEffect(() => {
-    if (!modelId || !instId) return;
+    if (!modelId || !instUuid) return;
     let cancelled = false;
     setLoading(true);
-    getRoomLayout(modelId, instId)
+    getRoomLayout(modelId, instUuid)
       .then((res: RoomLayoutData) => !cancelled && setData(res))
       .catch(() => !cancelled && setData(null))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, instId]);
+     
+  }, [modelId, instUuid, reloadNonce]);
 
-  if (loading) return <div style={{ padding: 60, textAlign: 'center' }}><Spin spinning /></div>;
-  if (!data) return <Empty description={t('Model.noRoomLayout')} />;
-  if (!data.racks.length && !data.unplaced.length)
-    return <Empty description={t('Model.emptyRoom')} />;
+  useEffect(() => {
+    if (!highlightRackId || !data || loading) return;
+    const el = document.querySelector(
+      `[data-room-rack-id="${CSS.escape(highlightRackId)}"]`
+    ) as HTMLElement | null;
+    if (!el) return;
+    setActiveHighlightId(highlightRackId);
+    el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'smooth' });
+    const timer = window.setTimeout(() => {
+      setActiveHighlightId((current) =>
+        (current === highlightRackId ? null : current)
+      );
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [highlightRackId, data, loading]);
+
+  if (loading) return <div className="p-[60px] text-center"><Spin spinning /></div>;
+  if (!data) return <CompactEmptyState description={t('Model.noRoomLayout')} />;
 
   const missingLocationRacks = data.unplaced.filter(
     (rack) => rack.unplaced_reason === 'missing_location'
@@ -53,6 +131,7 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
     (rack) => rack.unplaced_reason === 'invalid_location'
   );
   const { cols, rows } = roomGridSize(data);
+  const occupiedCells = new Set(data.racks.map((item) => `${item.row}-${item.col}`));
   const width = PAD + cols * CELL + 16;
   const height = PAD + rows * CELL + 16;
   const box = CELL - GAP;
@@ -69,15 +148,15 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
   return (
     <div className="rf">
       {data.conflicts.length > 0 && (
-        <Alert style={{ marginBottom: 12 }} type="error" showIcon
+        <Alert className="mb-3" type="error" showIcon
           message={t('Model.rackCellConflict')} />
       )}
       {missingLocationRacks.length > 0 && (
-        <Alert style={{ marginBottom: 12 }} type="warning" showIcon
+        <Alert className="mb-3" type="warning" showIcon
           message={`${t('Model.rackLocationMissing')}: ${missingLocationRacks.map((rack) => rack.inst_name).join('、')}`} />
       )}
       {invalidLocationRacks.length > 0 && (
-        <Alert style={{ marginBottom: 12 }} type="warning" showIcon
+        <Alert className="mb-3" type="warning" showIcon
           message={`${t('Model.rackLocationInvalid')}: ${invalidLocationRacks.map((rack) => rack.inst_name).join('、')}`} />
       )}
 
@@ -108,9 +187,22 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           {Array.from({ length: rows }).flatMap((_, ri) =>
             Array.from({ length: cols }).map((__, ci) => {
               const { x, y } = cellXY(ri + 1, ci + 1);
+              const empty = !occupiedCells.has(`${ri + 1}-${ci + 1}`);
+              const clickable = empty && canPlace;
               return (
-                <div key={`g${ri}-${ci}`} className="rf-cell"
-                  style={{ left: x + GAP / 2, top: y + GAP / 2, width: box, height: box }} />
+                <div
+                  key={`g${ri}-${ci}`}
+                  className={`rf-cell${clickable ? ' rf-cell--empty' : ''}`}
+                  style={{ left: x + GAP / 2, top: y + GAP / 2, width: box, height: box }}
+                  onClick={clickable ? () => {
+                    placeRef.current?.show({
+                      scope: 'room',
+                      containerInstUuid: instUuid,
+                      row: ri + 1,
+                      col: ci + 1,
+                    });
+                  } : undefined}
+                />
               );
             })
           )}
@@ -118,8 +210,15 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           {data.racks.map((r) => {
             const { x, y } = cellXY(r.row, r.col);
             const c = rackTypeColor(r.datacenter_type);
+            const canUnplace = canUnplaceFromLayout({
+              hasEdit,
+              instOperate: hasInstanceOperate(r.permission),
+            });
             return (
-              <div key={r.inst_id} className="rf-rack"
+              <div
+                key={r.inst_uuid}
+                className={`rf-rack${activeHighlightId === r.inst_uuid ? ' rf-rack--highlight' : ''}`}
+                data-room-rack-id={r.inst_uuid}
                 style={{
                   left: x + GAP / 2, top: y + GAP / 2, width: box, height: box,
                   borderColor: isDark
@@ -130,8 +229,29 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
                     : '0 1px 2px rgba(24, 39, 63, 0.035), 0 6px 14px rgba(31, 51, 82, 0.025)',
                   ['--rack-tone' as string]: c,
                 }}
-                onClick={() => setRack(r)}>
+                onClick={() => {
+                  if (onRackSelect) {
+                    onRackSelect(r);
+                    return;
+                  }
+                  setRack(r);
+                }}>
                 <span className="rf-rack-led" style={{ background: c, boxShadow: `0 0 0 3px ${c}1f` }} />
+                {canUnplace && (
+                  <Tooltip title={t('Model.layoutUnplaceRackContent')}>
+                    <button
+                      type="button"
+                      className="rf-rack-unplace"
+                      aria-label={t('Model.layoutUnplace')}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        confirmUnplaceRack(r);
+                      }}
+                    >
+                      <DisconnectOutlined />
+                    </button>
+                  </Tooltip>
+                )}
                 <div className="rf-rack-name-slot">
                   <EllipsisWithTooltip text={r.inst_name} className="rf-rack-name" />
                 </div>
@@ -181,7 +301,7 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
                 background: rackTypeColor(rack.datacenter_type),
                 boxShadow: `0 0 0 4px ${rackTypeColor(rack.datacenter_type)}18`,
               }} />
-              <div style={{ minWidth: 0, flex: 1 }}>
+              <div className="min-w-0 flex-1">
                 <EllipsisWithTooltip text={rack.inst_name} className="rd-name" />
                 <div className="rd-sub">
                   <Tag style={{
@@ -192,18 +312,55 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
                   <span className="rd-meta">{rack.col_letter}{rack.row} · {rack.u_count}U · {t('Model.rackUsage')} {rack.usage}%</span>
                 </div>
               </div>
+              {canUnplaceFromLayout({
+                hasEdit,
+                instOperate: hasInstanceOperate(rack.permission),
+              }) && (
+                <Button
+                  danger
+                  className="rd-unplace"
+                  onClick={() => confirmUnplaceRack(rack)}
+                >
+                  {t('Model.layoutUnplace')}
+                </Button>
+              )}
             </div>
-            <RackElevation
-              modelId="rack"
-              instId={rack.inst_id}
-              embedded
-              onDeviceClick={(d) => { setDevice(d); setDevOpen(true); }}
-            />
+            {(() => {
+              const rackUuid = resolveCmdbInstUuid(rack.inst_uuid);
+              if (!rackUuid) {
+                return <CompactEmptyState description="机柜缺少合法 inst_uuid，请先完成 UUID 存量清洗" />;
+              }
+              return (
+                <RackElevation
+                  key={`${rackUuid}-${reloadNonce}`}
+                  modelId="rack"
+                  instUuid={rackUuid}
+                  embedded
+                  onDeviceClick={(d) => { setDevice(d); setDevOpen(true); }}
+                />
+              );
+            })()}
           </div>
         )}
       </Drawer>
 
-      <DeviceDetailDrawer device={device} open={devOpen} onClose={() => setDevOpen(false)} />
+      <DeviceDetailDrawer
+        device={device}
+        open={devOpen}
+        onClose={() => setDevOpen(false)}
+        containerInstUuid={resolveCmdbInstUuid(rack?.inst_uuid) || undefined}
+        canUnplace={canUnplaceFromLayout({
+          hasEdit,
+          instOperate: hasInstanceOperate(device?.permission),
+        })}
+        onUnplaced={reload}
+      />
+      <LayoutPlaceModal
+        ref={placeRef}
+        hasAdd={hasAdd}
+        hasEdit={hasEdit}
+        onPlaced={reload}
+      />
 
       <style jsx>{`
         .rf {
@@ -288,6 +445,27 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           border: 1px solid ${isDark ? 'rgba(148,163,184,0.10)' : 'rgba(75,96,130,0.055)'};
           background: ${cellBg};
         }
+        .rf-cell--empty {
+          cursor: pointer;
+        }
+        .rf-cell--empty:hover {
+          border-color: ${isDark ? 'rgba(122,168,255,0.45)' : 'rgba(43,101,217,0.35)'};
+        }
+        .rf-rack-unplace {
+          position: absolute; top: 6px; left: 6px; z-index: 3;
+          width: 22px; height: 22px; border: 0; border-radius: 6px;
+          background: ${isDark ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.86)'};
+          color: ${TECH.danger}; cursor: pointer; display: flex;
+          align-items: center; justify-content: center; font-size: 12px;
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity .15s ease;
+        }
+        .rf-rack:hover .rf-rack-unplace,
+        .rf-rack-unplace:focus-visible {
+          opacity: 1;
+          pointer-events: auto;
+        }
         .rf-rack {
           position: absolute; z-index: 2; border-radius: 10px; cursor: pointer;
           border: 1px solid; overflow: hidden;
@@ -309,6 +487,16 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           transform: translateY(-2px);
           border-color: var(--rack-tone);
           box-shadow: ${rackHoverShadow} !important;
+        }
+        .rf-rack--highlight {
+          border-color: var(--rack-tone) !important;
+          box-shadow: ${rackHoverShadow} !important;
+          animation: rf-rack-pulse 1.6s ease-out 1;
+        }
+        @keyframes rf-rack-pulse {
+          0% { transform: scale(1); }
+          35% { transform: scale(1.04); }
+          100% { transform: scale(1); }
         }
         .rf-rack-led {
           position: absolute; top: 7px; right: 6px;
@@ -354,6 +542,14 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           min-height: 100%; background: ${isDark ? '#141820' : '#f7fbff'}; }
         .rd-hd { display: flex; align-items: center; gap: 12px; padding: 18px 20px; }
         .rd-led { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+        :global(.rd-unplace) {
+          opacity: 0;
+          transition: opacity .15s ease;
+        }
+        .rd-hd:hover :global(.rd-unplace),
+        :global(.rd-unplace:focus-visible) {
+          opacity: 1;
+        }
         :global(.rd-name) {
           font-size: 17px; font-weight: 600; color: ${isDark ? '#e5edf8' : TECH.text};
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

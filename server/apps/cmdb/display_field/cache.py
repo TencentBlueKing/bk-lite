@@ -5,19 +5,20 @@
 职责：
 1. 项目启动时读取所有模型的 organization/user/enum 类型字段
 2. 缓存到 Redis，TTL 为 1 小时
-3. 模型字段变更时动态更新缓存
+3. 模型字段变更时失效该模型 attrs 缓存，下次按 model_id 回源查询
 4. 为全文检索提供需要排除的字段列表
 
 缓存策略：
 - 缓存key: cmdb:exclude_fields:all
 - TTL: 3600秒（1小时）
 - 数据格式: ["organization", "created_by", "status", ...]
-- 更新时机: 启动时初始化 + 模型字段变更时
+- 预热时机: 启动时若全局缓存缺失则加载一次
+- 模型字段变更: 只失效该 model 的 attrs 缓存，下次 get_model_attrs 按 model_id 回源查询；不拉全量模型预热
 
 设计原则：
-- 单次查询：所有缓存数据来自同一次模型查询，避免重复DB访问
-- 统一管理：初始化/更新/清空/刷新使用统一的内部逻辑
-- 按需构建：根据 cache_key 选择对应的数据构建策略
+- 单次查询：启动预热时所有缓存数据来自同一次模型查询，避免重复DB访问
+- 统一管理：初始化/清空/手动刷新使用统一的内部逻辑
+- 按需构建：根据 cache_key 选择对应的数据构建策略；单模型失效后按需回源
 """
 
 from typing import Any, Dict, List, Set
@@ -42,7 +43,7 @@ class ExcludeFieldsCache:
     """
     排除字段缓存管理器
     管理全文检索时需要排除的原始字段列表（organization/user/enum类型）
-    使用 Redis 缓存，定期刷新，支持统一的缓存管理逻辑
+    使用 Redis 缓存；启动可预热，模型变更只失效对应 attrs，读取未命中时回源查询
 
     常量说明:
     - EXCLUDE_FIELDS_KEY: 缓存 key（从 constants 导入）
@@ -112,7 +113,8 @@ class ExcludeFieldsCache:
         项目启动时预热缓存。
 
         启动路径以“可用即跳过”为主，避免每次进程启动都清缓存、查图库。
-        模型字段变更和手动刷新仍然使用 initialize_all/refresh_cache 的强制刷新语义。
+        手动刷新仍使用 initialize_all/refresh_cache 的强制刷新语义；
+        模型字段变更只失效对应 model 的 attrs，不在变更路径全量预热。
         """
         try:
             if cls._global_caches_ready():
@@ -213,7 +215,10 @@ class ExcludeFieldsCache:
     @classmethod
     def update_on_model_change(cls, model_id: str) -> bool:
         """
-        模型字段变更时更新所有缓存
+        模型字段变更时失效该模型的 attrs 缓存。
+
+        模型变更低频，不在这里拉全量模型预热。下次 get_model_attrs(model_id)
+        缓存未命中时按该模型回源查询。
 
         使用场景：
         - 模型新增字段
@@ -224,28 +229,17 @@ class ExcludeFieldsCache:
             model_id: 发生变更的模型ID
 
         Returns:
-            更新是否成功
+            失效是否成功
         """
-        logger.info(f"[ExcludeFieldsCache] 模型变更触发缓存更新, 模型: {model_id}")
+        logger.info(f"[ExcludeFieldsCache] 模型变更失效 attrs 缓存, 模型: {model_id}")
 
         try:
-            # P2-2.6: 精准删该 model 的 attrs 缓存后再全量刷新,避免在
-            # _refresh_all_caches 重建之前读到陈旧数据(极端时序)。
             cls._purge_model_attrs_cache(model_id)
-
-            # 全量刷新所有缓存（确保完整性）
-            success = cls._refresh_all_caches()
-
-            if success:
-                logger.info(f"[ExcludeFieldsCache] 缓存更新成功, 模型: {model_id}")
-            else:
-                logger.error(f"[ExcludeFieldsCache] 缓存更新失败, 模型: {model_id}")
-
-            return success
-
+            logger.info(f"[ExcludeFieldsCache] 已失效模型 attrs 缓存, 模型: {model_id}")
+            return True
         except Exception as e:
             logger.error(
-                f"[ExcludeFieldsCache] 缓存更新异常, 模型: {model_id}, 错误: {e}",
+                f"[ExcludeFieldsCache] 失效模型 attrs 缓存异常, 模型: {model_id}, 错误: {e}",
                 exc_info=True,
             )
             return False
@@ -498,8 +492,8 @@ class ExcludeFieldsCache:
 
             try:
                 # 延迟导入避免循环依赖
-                from apps.cmdb.services.model import ModelManage
                 from apps.cmdb.model_ops.extensions import is_file_attr_type
+                from apps.cmdb.services.model import ModelManage
 
                 attrs = ModelManage.parse_attrs(attrs_json)
 
@@ -510,11 +504,7 @@ class ExcludeFieldsCache:
                     # 展示型字段（有 _display 冗余）+ 文件型字段（附件/图片，值为元数据 JSON）
                     # + 敏感型字段（pwd，密文）都排除出全文检索；
                     # 缺企业版时 is_file_attr_type 恒 False，社区行为不变。
-                    if (
-                        attr_type in cls.EXCLUDE_FIELD_TYPES
-                        or attr_type in SENSITIVE_FIELD_TYPES
-                        or is_file_attr_type(attr_type)
-                    ):
+                    if attr_type in cls.EXCLUDE_FIELD_TYPES or attr_type in SENSITIVE_FIELD_TYPES or is_file_attr_type(attr_type):
                         all_exclude_fields.add(attr_id)
 
             except Exception as e:

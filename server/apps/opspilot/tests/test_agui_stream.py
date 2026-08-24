@@ -177,6 +177,139 @@ def test_agui_stream_suppresses_narration_when_turn_has_tool_calls(monkeypatch):
     assert all("parameters were passed incorrectly" not in (d or "") for d in text_deltas)
 
 
+def test_agui_stream_show_think_false_suppresses_long_narration_before_tools(monkeypatch):
+    """show_think=False：长旁白即使超过开播阈值也不得进正文，等 tool 后整段丢弃。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    long_narration = (
+        "I'll generate the monthly report based on the fault archives. "
+        "Let me analyze the data: RC-NEW-001 FailedKillPod, RC-NEW-002 Unhealthy, "
+        "metrics calculation and event type distribution before calling the tool."
+    )
+    assert len(long_narration) >= 96
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content=long_narration,
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content="",
+                        tool_call_chunks=[{"id": "tool-att", "name": "generate_attachment_file"}],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content=long_narration,
+                        tool_calls=[
+                            {
+                                "id": "tool-att",
+                                "name": "generate_attachment_file",
+                                "args": {"filename": "report.md"},
+                            }
+                        ],
+                    )
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(
+        thread_id="thread-long-narration",
+        extra_config={"show_think": False},
+    )
+
+    async def _collect_payloads():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect_payloads())
+    text_deltas = [p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT"]
+    assert text_deltas == []
+    assert any(p.get("toolCallName") == "generate_attachment_file" for p in payloads if p["type"] == "TOOL_CALL_START")
+    assert all(p.get("name") != "assistant_text_retract" for p in payloads if p["type"] == "CUSTOM")
+
+
+def test_agui_stream_show_think_false_still_emits_plain_answer_at_end(monkeypatch):
+    """show_think=False 的纯文本轮：不提前开播，chat_model_end 再发出全文。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    answer = "广州是广东省省会，" + ("历史悠久文化多元。" * 20)
+    assert len(answer) >= 96
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content=answer[:40],
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_stream",
+                "data": {
+                    "chunk": SimpleNamespace(
+                        content=answer[40:],
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                    )
+                },
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content=answer,
+                        tool_calls=[],
+                    )
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(
+        thread_id="thread-plain-no-think",
+        extra_config={"show_think": False},
+    )
+
+    async def _collect_payloads():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect_payloads())
+    text_deltas = [p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT"]
+    assert "".join(text_deltas) == answer
+    assert sum(1 for p in payloads if p["type"] == "TEXT_MESSAGE_START") == 1
+
+
 @pytest.mark.parametrize(
     ("capabilities", "expected_started_count"),
     [
@@ -243,11 +376,7 @@ def test_agui_stream_starts_report_only_for_matching_capability(
         return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
 
     payloads = asyncio.run(_collect_payloads())
-    report_starts = [
-        payload
-        for payload in payloads
-        if payload.get("type") == "CUSTOM" and payload.get("name") == "report_started"
-    ]
+    report_starts = [payload for payload in payloads if payload.get("type") == "CUSTOM" and payload.get("name") == "report_started"]
 
     assert len(report_starts) == expected_started_count
 
@@ -352,26 +481,18 @@ def test_agui_stream_preserves_text_and_forwards_completed_reports_in_event_orde
 
     payloads = asyncio.run(_collect_payloads())
     lifecycle_events = [
-        payload
-        for payload in payloads
-        if payload.get("type") == "CUSTOM"
-        and payload.get("name") in {"report_queued", "report_started"}
+        payload for payload in payloads if payload.get("type") == "CUSTOM" and payload.get("name") in {"report_queued", "report_started"}
     ]
     analysis_report_index = next(
-        index
-        for index, payload in enumerate(payloads)
-        if payload.get("type") == "CUSTOM" and payload.get("name") == "config_analysis_report"
+        index for index, payload in enumerate(payloads) if payload.get("type") == "CUSTOM" and payload.get("name") == "config_analysis_report"
     )
     summary_text_index = next(
         index
         for index, payload in enumerate(payloads)
-        if payload.get("type") == "TEXT_MESSAGE_CONTENT"
-        and "巡检最终报告" in str(payload.get("delta") or "")
+        if payload.get("type") == "TEXT_MESSAGE_CONTENT" and "巡检最终报告" in str(payload.get("delta") or "")
     )
     repair_report_index = next(
-        index
-        for index, payload in enumerate(payloads)
-        if payload.get("type") == "CUSTOM" and payload.get("name") == "repair_diff_report"
+        index for index, payload in enumerate(payloads) if payload.get("type") == "CUSTOM" and payload.get("name") == "repair_diff_report"
     )
 
     assert lifecycle_events == []
@@ -416,8 +537,8 @@ def test_agui_stream_does_not_synthesize_report_terminal_events(monkeypatch, ter
                 "event": "on_custom_event",
                 "name": "config_analysis_report",
                 "data": {"report_id": "config_analysis_report_exec-report-close"},
-                }
-            )
+            }
+        )
     elif terminal_source == "interrupted":
         events.append(
             {
@@ -446,9 +567,7 @@ def test_agui_stream_does_not_synthesize_report_terminal_events(monkeypatch, ter
 
     payloads = asyncio.run(_collect_payloads())
     terminal_events = [
-        payload
-        for payload in payloads
-        if payload.get("type") == "CUSTOM" and payload.get("name") in {"report_failed", "report_cancelled"}
+        payload for payload in payloads if payload.get("type") == "CUSTOM" and payload.get("name") in {"report_failed", "report_cancelled"}
     ]
 
     assert terminal_events == []
@@ -1182,6 +1301,95 @@ def test_chain_end_does_not_duplicate_text_already_emitted_by_chat_model_end(mon
     ), f"Final answer should be emitted once; got {len(content_deltas)} chunk(s). chunks={content_deltas!r}"
 
 
+def test_chain_end_does_not_duplicate_long_text_split_into_deltas(monkeypatch):
+    """长回答被拆成多段 TEXT_MESSAGE_CONTENT 后，chain_end 仍须按全文去重。
+
+    复现场景:用户反馈同一段「已获取集群上下文…」完整出现两次。
+    根因:_AGUI_LIVE_DELTA_CHARS=64 会把 chat_model_end 的正文拆段登记指纹,
+    chain_end 用整段 AIMessage.content 比对落空,又把全文再发一遍。
+    """
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    final_answer = (
+        "已获取集群上下文并验证连接成功。\n\n"
+        "**当前步骤结果**\n"
+        "- **集群实例**: Kubernetes - 2 (instance_id: kubernetes-1784018234906-56tq0t)\n"
+        "- **上下文**: `orbstack`（当前使用，命名空间: default）\n"
+        "- **连接状态**: 成功\n"
+        "- **Kubernetes 版本**: v1.33.9+orb1\n"
+        "- **平台**: linux/arm64\n"
+        "- **API Server**: 可访问\n"
+        "- **权限**: 有基本读取权限，namespace 访问正常\n\n"
+        "集群连接与权限验证通过，可以继续后续步骤对工作负载进行配置检查。"
+    )
+    assert len(final_answer) > 64
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        tool_calls=[
+                            {
+                                "id": "tool-1",
+                                "name": "execute",
+                                "args": {"command": "kubectl get deploy -n production"},
+                            }
+                        ]
+                    )
+                },
+            },
+            {
+                "event": "on_tool_end",
+                "name": "execute",
+                "run_id": "run-tool-1",
+                "data": {"output": "ok"},
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content=final_answer,
+                        tool_calls=[],
+                    )
+                },
+            },
+            {
+                "event": "on_chain_end",
+                "data": {
+                    "output": {
+                        "messages": [
+                            ToolMessage(content="ok", tool_call_id="tool-1"),
+                            AIMessage(content=final_answer),
+                        ]
+                    }
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(thread_id="thread-long-text-no-dup", extra_config={})
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    content_deltas = [p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT"]
+    joined = "".join(content_deltas)
+
+    assert joined == final_answer, (
+        f"Long final answer should be emitted once; got length={len(joined)} " f"expected={len(final_answer)}; repeats={joined.count(final_answer)}"
+    )
+    assert joined.count("已获取集群上下文并验证连接成功。") == 1
+
+
 def test_multiple_chain_end_with_same_text_only_emits_once(monkeypatch):
     """DeepAgent 父/子图会多次触发 on_chain_end,output.messages 都带同一份最终 AI 文本。
 
@@ -1330,3 +1538,220 @@ def test_chain_end_unwraps_overwrite_messages(monkeypatch):
     assert tool_results[0]["toolCallId"] == "tool-1"
     assert tool_results[0]["content"] == "2026-07-07"
     assert "当前时间已获取" in "".join(content_deltas)
+
+
+def test_chain_end_emits_plain_ai_text_without_tools(monkeypatch):
+    """无工具纯 AIMessage（轻量直答）在 chain_end 也应推送正文。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chain_end",
+                "data": {"output": {"messages": [AIMessage(content="你好！有什么可以帮你的？")]}},
+            }
+        ]
+    )
+    request = BasicLLMRequest(thread_id="thread-plain-chain-end", extra_config={})
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    text = "".join(p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT")
+    assert text == "你好！有什么可以帮你的？"
+
+
+def test_agui_stream_surfaces_node_llm_failure_as_run_error(monkeypatch):
+    """节点内 LLM 失败不得被 _merge_async_streams 吞掉。
+
+    回归：无工具轻量直答里 llm.astream/ainvoke 抛错时，旧实现会只发
+    RUN_STARTED→RUN_FINISHED，前端空白且 llm_call_count=0，日志也看不到原因。
+    """
+    from langchain_core.language_models.chat_models import BaseChatModel
+    from langchain_core.messages import HumanMessage
+    from langgraph.graph import END, StateGraph
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    class BoomLLM(BaseChatModel):
+        @property
+        def _llm_type(self):
+            return "boom"
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            raise RuntimeError("boom: invalid api key")
+
+    llm = BoomLLM()
+
+    async def deep_wrapper(state, config):
+        # 与轻量直答相同：节点内直接 astream
+        response = None
+        async for chunk in llm.astream([HumanMessage(content="hello")], config=config):
+            response = chunk
+        return {"messages": [response] if response is not None else []}
+
+    class _Graph(BasicGraph):
+        async def compile_graph(self, _request):
+            gb = StateGraph(dict)
+            gb.add_node("deep_agent_wrapper", deep_wrapper)
+            gb.set_entry_point("deep_agent_wrapper")
+            gb.add_edge("deep_agent_wrapper", END)
+            return gb.compile()
+
+    request = BasicLLMRequest(thread_id="thread-llm-boom", user_message="hello", extra_config={})
+    accumulator = TokenUsageAccumulator()
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in _Graph().agui_stream(request, token_usage_accumulator=accumulator)])
+
+    payloads = asyncio.run(_collect())
+    types = [p["type"] for p in payloads]
+    assert "RUN_ERROR" in types, f"expected RUN_ERROR, got {types}"
+    err = next(p for p in payloads if p["type"] == "RUN_ERROR")
+    assert "invalid api key" in (err.get("message") or "")
+    assert accumulator.call_count == 0
+    assert "TEXT_MESSAGE_CONTENT" not in types
+
+
+def test_two_chat_model_ends_with_identical_text_emit_once(monkeypatch):
+    """DeepAgent 步骤确认后再来一轮相同正文时，只推一次 TEXT_MESSAGE。
+
+    复现：附件生成后两段一模一样的「已生成附件…」确认文案。
+    """
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    answer = "已生成附件：`K8s_集群运维月报_2026-08.md`\n\n" "本月事件 25 起，根因分析 11 起，重复隐患 3 项（探针配置、KillContainer 竞态、Redis DNS 解析）。"
+    tool_result = (
+        '{"attachment_id": "skill_test", "filename": "K8s_集群运维月报_2026-08.md", '
+        '"file_url": "/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/tok/"}'
+    )
+
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content="",
+                        tool_calls=[
+                            {
+                                "id": "call_att_1",
+                                "name": "generate_attachment_file",
+                                "args": {"filename": "K8s_集群运维月报_2026-08.md"},
+                            }
+                        ],
+                    )
+                },
+            },
+            {
+                "event": "on_tool_end",
+                "name": "generate_attachment_file",
+                "run_id": "run-att-1",
+                "data": {"output": ToolMessage(content=tool_result, tool_call_id="call_att_1")},
+            },
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(content=answer, tool_calls=[]),
+                },
+            },
+            # 步骤结束后再一轮相同确认（此前会再推一遍 TEXT_MESSAGE）
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(content=answer, tool_calls=[]),
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(thread_id="thread-dup-confirm", extra_config={"show_think": False})
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    text_deltas = [p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT"]
+    assert "".join(text_deltas) == answer
+    assert sum(1 for p in payloads if p["type"] == "TEXT_MESSAGE_START") == 1
+    tool_results = [p for p in payloads if p["type"] == "TOOL_CALL_RESULT"]
+    assert len(tool_results) == 1
+    assert tool_results[0]["content"] == tool_result
+    assert "name='generate_attachment_file'" not in tool_results[0]["content"]
+
+
+def test_tool_end_marks_result_sent_so_chain_end_does_not_resend(monkeypatch):
+    """on_tool_end 已回填 RESULT 后，on_chain_end 不得再发同一 toolCallId 的 RESULT。"""
+
+    async def _never_interrupted(_execution_id):
+        return False
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.chain.graph.is_interrupt_requested_async",
+        _never_interrupted,
+    )
+
+    clean = '{"ok": true, "filename": "report.md"}'
+    graph = _FakeBasicGraph(
+        [
+            {
+                "event": "on_chat_model_end",
+                "data": {
+                    "output": SimpleNamespace(
+                        content="",
+                        tool_calls=[{"id": "tool-1", "name": "generate_attachment_file", "args": {}}],
+                    )
+                },
+            },
+            {
+                "event": "on_tool_end",
+                "name": "generate_attachment_file",
+                "run_id": "run-1",
+                "data": {"output": ToolMessage(content=clean, tool_call_id="tool-1", name="generate_attachment_file")},
+            },
+            {
+                "event": "on_chain_end",
+                "data": {
+                    "output": {
+                        "messages": [
+                            AIMessage(
+                                content="",
+                                tool_calls=[{"id": "tool-1", "name": "generate_attachment_file", "args": {}}],
+                            ),
+                            ToolMessage(content=clean, tool_call_id="tool-1"),
+                            AIMessage(content="已生成附件"),
+                        ]
+                    }
+                },
+            },
+        ]
+    )
+    request = BasicLLMRequest(thread_id="thread-tool-result-once", extra_config={"show_think": False})
+
+    async def _collect():
+        return _parse_sse_payloads([line async for line in graph.agui_stream(request)])
+
+    payloads = asyncio.run(_collect())
+    tool_results = [p for p in payloads if p["type"] == "TOOL_CALL_RESULT"]
+    assert len(tool_results) == 1
+    assert tool_results[0]["content"] == clean
+    assert "".join(p["delta"] for p in payloads if p["type"] == "TEXT_MESSAGE_CONTENT") == "已生成附件"

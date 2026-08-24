@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import type { Graph } from '@antv/x6';
-import { HUB_COLOR } from './constants';
 import { relationshipIdFromEdgeId } from './topoEditingUtils';
 import { NETWORK_TOPO_VISUAL } from './visualStyles';
 
@@ -21,6 +20,7 @@ interface UseTopoEditingArgs {
   editing: boolean;
   // 已选「连线起点」（右键菜单点「新增连线」后设置）；非空时点击节点即选目标
   linkingSourceId: string | null;
+  selectedNodeId?: string | null;
   // 图数据版本：rebuild 后变化，用于对新渲染的边重应用光标、对起点重画高亮
   revision: number;
   onContextMenu: (info: ContextMenuInfo) => void;
@@ -28,12 +28,28 @@ interface UseTopoEditingArgs {
   onCancel: () => void;
 }
 
+const ACTIVE_GLOW = NETWORK_TOPO_VISUAL.node.activeGlow;
+
+const setNodeGlow = (
+  node: { attr: (path: string, value: unknown) => void },
+  glowing: boolean
+) => {
+  node.attr('iconRing/fill', glowing ? ACTIVE_GLOW.haloFill : 'transparent');
+  node.attr('iconRing/opacity', glowing ? 1 : 0);
+  node.attr('iconRing/stroke', 'none');
+  node.attr('iconRing/strokeWidth', 0);
+  node.attr('iconRing/strokeDasharray', null);
+  node.attr('iconRing/filter', ACTIVE_GLOW.haloBlur);
+  node.attr('img/filter', glowing ? ACTIVE_GLOW.iconFilter : 'none');
+};
+
 // 右键菜单交互模型：左键拖动=移动设备；右键设备=连线菜单；右键连线=删除菜单。
 // 不再使用磁吸拖拽连线，避免「移动节点」与「拉线」抢手势，且新加设备无需 magnet 即可连。
 export const useTopoEditing = ({
   graph,
   editing,
   linkingSourceId,
+  selectedNodeId,
   revision,
   onContextMenu,
   onPickTarget,
@@ -48,20 +64,15 @@ export const useTopoEditing = ({
       .forEach((e) => e.attr('line/cursor', editing ? 'context-menu' : 'default'));
   }, [graph, editing, revision]);
 
-  // 高亮当前连线起点
+  // 高亮当前连线起点 / 中心节点：icon 边缘模糊高亮（无硬外框）
   useEffect(() => {
     if (!graph) return;
     graph.getNodes().forEach((n) => {
-      const active = n.id === linkingSourceId;
-      const baseBody = n.getData()?.isCenter
-        ? NETWORK_TOPO_VISUAL.node.activeBody
-        : NETWORK_TOPO_VISUAL.node.defaultBody;
-      n.attr('body/strokeDasharray', active ? '6 4' : null);
-      n.attr('body/stroke', active ? HUB_COLOR : baseBody.stroke);
-      n.attr('body/strokeWidth', active ? 2 : baseBody.strokeWidth);
-      n.attr('body/filter', active ? NETWORK_TOPO_VISUAL.node.activeBody.filter : baseBody.filter);
+      const active = n.id === linkingSourceId || n.id === selectedNodeId;
+      const isCenter = Boolean(n.getData()?.isCenter);
+      setNodeGlow(n, active || isCenter);
     });
-  }, [graph, linkingSourceId, revision]);
+  }, [graph, linkingSourceId, selectedNodeId, revision]);
 
   // 右键节点/边 -> 通知父级在点击位置弹上下文菜单
   useEffect(() => {

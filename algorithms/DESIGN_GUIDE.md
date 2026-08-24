@@ -364,16 +364,16 @@ model = ModelRegistry.get("my_model")(**params)
 
 ---
 
-### DummyModel 降级策略（可选）
+### DummyModel 显式降级策略（可选）
 
 **何时实现**：
-- ✅ **生产环境**：需要保证服务可用性，模型加载失败时自动降级
-- ❌ **开发/测试环境**：建议直接报错（快速失败），便于发现问题
+- ✅ **开发/测试环境**：显式选择 `MODEL_SOURCE=dummy`，或明确设置 `ALLOW_DUMMY_FALLBACK=true`
+- ❌ **生产环境**：显式选择 MLflow / 本地模型后，加载失败必须让服务启动失败
 
 **核心作用**：
-- 当 MLflow 或本地模型加载失败时，自动回退到 DummyModel
-- 保证服务不中断，返回安全的默认预测结果
-- 记录降级日志，便于监控和告警
+- 为开发、测试和演示提供明确可识别的占位模型
+- 仅在显式授权时为 MLflow / 本地模型加载失败提供降级
+- 防止生产健康检查正常但实际返回 Dummy 预测
 
 **实现要求**：
 
@@ -389,9 +389,9 @@ model = ModelRegistry.get("my_model")(**params)
    - 日志聚类：特征值求和
    - 根据业务需求选择合理的降级策略
 
-3. **记录降级日志**
+3. **记录显式降级日志**
    ```python
-   logger.warning("模型加载失败，使用 DummyModel 降级")
+   logger.warning("ALLOW_DUMMY_FALLBACK=true，使用 DummyModel 降级")
    logger.info("DummyModel initialized for {domain}")
    ```
 
@@ -431,8 +431,8 @@ class DummyModel:
 from .dummy_model import DummyModel
 
 def load_model(config: ModelConfig):
-    """加载模型，失败时自动降级到 DummyModel."""
-    
+    """加载模型；生产加载失败时快速失败."""
+
     if config.source == "mlflow":
         try:
             model = mlflow.pyfunc.load_model(config.mlflow_model_uri)
@@ -440,15 +440,16 @@ def load_model(config: ModelConfig):
             return model
         except Exception as e:
             logger.error(f"Failed to load MLflow model: {e}")
-            logger.warning("Falling back to dummy model")
-            return DummyModel()  # 自动降级
-    
+            if os.getenv("ALLOW_DUMMY_FALLBACK", "false").lower() == "true":
+                logger.warning("Explicit fallback enabled, using DummyModel")
+                return DummyModel()
+            raise RuntimeError("Failed to load model from MLflow") from e
+
     elif config.source == "dummy":
         return DummyModel()  # 显式使用 DummyModel
-    
+
     else:
-        logger.warning(f"Unknown source '{config.source}', falling back to dummy")
-        return DummyModel()
+        raise ValueError(f"Unknown model source: {config.source}")
 ```
 
 **参考实现**：
@@ -463,12 +464,13 @@ def load_model(config: ModelConfig):
 # bentofile.yaml 或环境变量
 MODEL_SOURCE: "mlflow"  # 优先使用 MLflow
 # MODEL_SOURCE: "dummy"  # 显式使用 DummyModel（测试用）
+ALLOW_DUMMY_FALLBACK: "false"  # 生产默认快速失败
 ```
 
 **注意事项**：
-- DummyModel 仅用于保证服务可用性，**不应用于生产预测**
-- 生产环境应配置监控告警，检测 DummyModel 降级事件
-- 开发环境建议禁用 DummyModel，直接报错以便快速发现问题
+- DummyModel **不应用于生产预测**；生产发布必须保持 `ALLOW_DUMMY_FALLBACK=false`
+- 开发/测试需要降级时必须显式开启，并通过日志区分真实模型与 DummyModel
+- 容器编排应等待服务 readiness；模型加载失败不得被 Supervisor 或容器重启环掩盖
 
 ---
 
@@ -782,9 +784,9 @@ classify_{domain}_server train \
 **核心配置**：
 - 基础镜像：`python:3.12`
 - 包管理：`pip`（Docker 构建阶段用于安装项目依赖）
-- 系统组件：`supervisor`（进程管理）、`fonts-wqy-zenhei`（中文字体）
+- 系统组件：`fonts-wqy-zenhei`（中文字体）；旧镜像中的 Supervisor 仅为待清理构建依赖
 - 构建参数：`NEXUS_PYTHON_REPOSITY`（可选，私有镜像源）
-- 入口点：`startup.sh`（启动 BentoML + MLflow UI）
+- 入口点：`startup.sh` 通过 `exec` 启动 BentoML，使退出码和终止信号直达容器运行时
 
 **安装方式说明**：
 - Dockerfile 中统一通过 `pip3 config set ...` 配置可选镜像源
@@ -792,10 +794,8 @@ classify_{domain}_server train \
 - `uv` 仍可用于本地开发与测试流程，但当前不用于 release Dockerfile 内的依赖安装
 
 **部署结构**：
-- Supervisor 管理多进程：
-  - `supervisord.conf`: 主配置
-  - `conf.d/bentoml.conf`: BentoML 服务
-  - `conf.d/mlflow.conf`: MLflow UI
+- release 容器仅运行一个 BentoML 主进程，不在 serving 镜像中启动 MLflow UI
+- `startup.sh` 必须让 BentoML 成为 PID 1；生产加载失败由容器退出和编排 readiness 直接感知
 
 ---
 
@@ -919,4 +919,3 @@ export MLFLOW_TRACKING_URI=http://mlflow:15000  # ⚠️ 训练脚本必需，�
 6. **容错机制**：启动时配置验证，运行时异常处理
 7. **可观测性**：Prometheus 指标 + 详细日志
 ---
-

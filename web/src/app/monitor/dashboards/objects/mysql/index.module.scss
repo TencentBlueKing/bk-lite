@@ -545,7 +545,18 @@
   font-weight: 700;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
+
+.collectionStatusTimelineHint {
+  flex-shrink: 0;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 
 .collectionStatusTimeline {
   display: grid;
@@ -555,10 +566,13 @@
 }
 
 .collectionStatusSegment {
+  display: block;
   min-width: 0;
+  width: 100%;
   height: 22px;
   border-radius: 4px;
   border: 1px solid transparent;
+  cursor: default;
 }
 
 .collectionStatusSegmentSuccess {

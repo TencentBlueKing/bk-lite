@@ -14,6 +14,10 @@ import {
   syncSessionChunks,
   upsertTextChunk,
 } from './contentChunks';
+import {
+  createStreamingFrameBatcher,
+  type FrameScheduler,
+} from './streamingFrameBatcher';
 
 export interface AGUIEventHandlerDeps {
   currentMessageIdRef: MutableRefObject<string | null>;
@@ -25,22 +29,18 @@ export interface AGUIEventHandlerDeps {
   setIsLoading: Dispatch<SetStateAction<boolean>>;
   setIsThinking: Dispatch<SetStateAction<boolean>>;
   addMessage: (message: Message) => void;
+  frameScheduler?: FrameScheduler;
+  streamingTextBatchingRef?: MutableRefObject<boolean>;
 }
 
-type AGUIEventWithExtras = AGUIEvent & {
-  role?: string;
-  sender?: string;
-  delta?: string;
-  content?: string;
-  message?: string;
-  toolCallId?: string;
-  toolCallName?: string;
-  name?: string;
-  arguments?: unknown;
-};
+export interface AGUIEventDispatcher {
+  (event: AGUIEvent): void;
+  flushPendingText(): void;
+  cancelPendingText(): void;
+}
 
 /** Create the AG-UI protocol event dispatcher used by Chat. */
-export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
+export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDispatcher {
   const {
     currentMessageIdRef,
     streamingContentRef,
@@ -51,7 +51,10 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
     setIsLoading,
     setIsThinking,
     addMessage,
+    frameScheduler,
+    streamingTextBatchingRef,
   } = deps;
+  let streamingSegmentContent = '';
 
   const ensureCurrentMessage = () => {
     if (currentMessageIdRef.current) return;
@@ -69,20 +72,39 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
     onMessageReceivedRef.current?.(newAssistantMsg);
   };
 
-  const applyStreamingText = (text: string) => {
+  const applyStreamingText = (segmentText: string) => {
     const messageId = currentMessageIdRef.current;
     setMessages((prev) =>
-      mapMessageChunks(prev, messageId, (chunks) => upsertTextChunk(chunks, text), text)
+      mapMessageChunks(
+        prev,
+        messageId,
+        (chunks) => upsertTextChunk(chunks, segmentText),
+        streamingContentRef.current
+      )
     );
     syncSessionChunks(
       sessionManagerRef.current?.getSession(),
       messageId,
-      (chunks) => upsertTextChunk(chunks, text),
-      text
+      (chunks) => upsertTextChunk(chunks, segmentText),
+      streamingContentRef.current
     );
   };
 
+  const textBatcher = createStreamingFrameBatcher(
+    applyStreamingText,
+    frameScheduler,
+    () => streamingTextBatchingRef?.current !== false
+  );
+
+  const flushAndPersistPendingText = () => {
+    textBatcher.flush();
+    if (currentMessageIdRef.current) {
+      sessionManagerRef.current?.saveSession();
+    }
+  };
+
   const applyToolPatch = (toolCallId: string, patch: Partial<ToolCall>) => {
+    textBatcher.flush();
     const messageId = currentMessageIdRef.current;
     setMessages((prev) =>
       mapMessageChunks(prev, messageId, (chunks) => patchToolCall(chunks, toolCallId, patch))
@@ -92,15 +114,16 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
     );
   };
 
-  return (event: AGUIEvent) => {
-    const typedEvent = event as AGUIEventWithExtras;
-    const eventType = typedEvent.type;
-
-    switch (eventType) {
+  const dispatch = (event: AGUIEvent) => {
+    switch (event.type) {
       case 'RUN_STARTED':
+        // Preserve the partial response just like immediate mode, while also
+        // cancelling the queued frame before the new run takes ownership.
+        textBatcher.flush();
         setIsThinking(true);
         stateMachineRef.current?.transitionToChatting();
         streamingContentRef.current = '';
+        streamingSegmentContent = '';
         currentMessageIdRef.current = null;
         setIsLoading(true);
         break;
@@ -114,13 +137,16 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
         break;
 
       case 'RUN_ERROR': {
+        textBatcher.flush();
         setIsThinking(false);
-        const error = typedEvent.message || 'Unknown error';
+        const error = event.message || 'Unknown error';
         const errorContent = `\n\n❌ **错误**: ${error}`;
 
         if (currentMessageIdRef.current) {
           streamingContentRef.current += errorContent;
-          applyStreamingText(streamingContentRef.current);
+          streamingSegmentContent += errorContent;
+          textBatcher.schedule(streamingSegmentContent);
+          textBatcher.flush();
           sessionManagerRef.current?.saveSession();
         } else {
           addMessage({
@@ -135,42 +161,48 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
       }
 
       case 'TEXT_MESSAGE_START': {
-        const startRole = typedEvent.role || typedEvent.sender;
-        if (startRole === 'user') {
+        if (event.role === 'user') {
           break;
         }
         ensureCurrentMessage();
         streamingContentRef.current = '';
+        streamingSegmentContent = '';
         setIsThinking(false);
         setIsLoading(true);
         break;
       }
 
       case 'TEXT_MESSAGE_CONTENT': {
-        const delta = typedEvent.delta || typedEvent.content || '';
-        const contentRole = typedEvent.role || typedEvent.sender;
-        if (contentRole === 'user') {
+        ensureCurrentMessage();
+        streamingContentRef.current += event.delta;
+        streamingSegmentContent += event.delta;
+        textBatcher.schedule(streamingSegmentContent);
+        break;
+      }
+
+      case 'TEXT_MESSAGE_CHUNK': {
+        if (event.role === 'user') {
           break;
         }
-        if (!currentMessageIdRef.current) {
-          console.warn('Received CONTENT without START, ignoring');
-          break;
-        }
-        streamingContentRef.current += delta;
-        applyStreamingText(streamingContentRef.current);
+        ensureCurrentMessage();
+        streamingContentRef.current += event.delta || '';
+        streamingSegmentContent += event.delta || '';
+        textBatcher.schedule(streamingSegmentContent);
+        setIsThinking(false);
+        setIsLoading(true);
         break;
       }
 
       case 'TEXT_MESSAGE_END':
-        if (currentMessageIdRef.current && sessionManagerRef.current) {
-          sessionManagerRef.current.saveSession();
-        }
+        flushAndPersistPendingText();
         break;
 
       case 'TOOL_CALL_START': {
+        textBatcher.flush();
+        streamingSegmentContent = '';
         const newToolCall: ToolCall = {
-          id: typedEvent.toolCallId || generateId(),
-          name: typedEvent.toolCallName || typedEvent.name || 'Unknown Tool',
+          id: event.toolCallId || generateId(),
+          name: event.toolCallName || 'Unknown Tool',
           status: 'running',
         };
         ensureCurrentMessage();
@@ -191,37 +223,24 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
       }
 
       case 'TOOL_CALL_ARGS': {
-        const rawArgs = typedEvent.delta ?? typedEvent.arguments;
-        applyToolPatch(typedEvent.toolCallId || '', {
-          args:
-            typeof rawArgs === 'string'
-              ? rawArgs
-              : rawArgs === undefined
-                ? undefined
-                : JSON.stringify(rawArgs),
+        applyToolPatch(event.toolCallId || '', {
+          args: event.delta,
         });
         break;
       }
 
       case 'TOOL_CALL_END':
-        applyToolPatch(typedEvent.toolCallId || '', { status: 'completed' });
+        applyToolPatch(event.toolCallId || '', { status: 'completed' });
         break;
 
       case 'TOOL_CALL_RESULT':
-        applyToolPatch(typedEvent.toolCallId || '', {
-          result:
-            typeof typedEvent.content === 'string'
-              ? typedEvent.content
-              : typedEvent.content === undefined
-                ? undefined
-                : JSON.stringify(typedEvent.content),
+        applyToolPatch(event.toolCallId || '', {
+          result: event.content,
         });
         break;
 
       case 'RUN_FINISHED':
-        if (currentMessageIdRef.current && sessionManagerRef.current) {
-          sessionManagerRef.current.saveSession();
-        }
+        flushAndPersistPendingText();
         setIsThinking(false);
         stateMachineRef.current?.transition('connected');
         break;
@@ -230,4 +249,8 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps) {
         break;
     }
   };
+
+  dispatch.flushPendingText = flushAndPersistPendingText;
+  dispatch.cancelPendingText = () => textBatcher.cancel();
+  return dispatch;
 }

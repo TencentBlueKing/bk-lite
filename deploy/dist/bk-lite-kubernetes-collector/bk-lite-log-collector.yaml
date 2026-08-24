@@ -16,8 +16,16 @@ spec:
     metadata:
       labels:
         app: vector-daemonset
+      annotations:
+        # Static dist copy is directly applyable and keeps Vector default (all paths).
+        # Rendered installs use agents/webhookd/bk-lite-log-collector.yaml placeholders.
+        bklite.io/log-collect-config: "default"
     spec:
       serviceAccount: vector-daemonset
+      # 控制平面默认 NoSchedule；不上这台节点则该节点日志采不到
+      tolerations:
+        - operator: Exists
+          effect: NoSchedule
       containers:
         - name: vector
           image: bk-lite.tencentcloudcr.com/bklite/vector:0.39.0-debian
@@ -92,7 +100,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: vector-daemonset
+  name: bk-lite-vector-daemonset
 rules:
   - apiGroups: [""]
     resources: ["pods", "namespaces", "nodes"]
@@ -104,11 +112,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: vector-daemonset
+  name: bk-lite-vector-daemonset
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: vector-daemonset
+  name: bk-lite-vector-daemonset
 subjects:
   - kind: ServiceAccount
     name: vector-daemonset
@@ -146,12 +154,20 @@ data:
       kubernetes_logs:
         type: kubernetes_logs
         self_node_name: "${VECTOR_NODE_NAME}"
+        # 注意：这些值是「事件字段路径」，默认是 kubernetes.xxx。
+        # 下面把它们改写到了事件根级，因此下游引用必须用 .pod_name 而不是
+        # .kubernetes.pod_name（reduce 的 group_by 尤其容易踩错，见 multiline_merge）。
         pod_annotation_fields:
           container_image: "container_image"
-          container_name: "container_name" 
+          container_name: "container_name"
           pod_name: "pod_name"
           pod_namespace: "pod_namespace"
           pod_node_name: "pod_node_name"
+          # 抑制 pod annotations：kubectl.kubernetes.io/last-applied-configuration
+          # 这类注解可达几百 KB，且会随每一条日志重复发送，是撑爆 NATS
+          # max_payload（默认 1MB）的主要体积来源。pod_labels 体积小且有检索
+          # 价值（按 app/version 过滤），保留在 .kubernetes.pod_labels。
+          pod_annotations: ""
         namespace_annotation_fields:
           namespace_labels: "namespace_labels"
         node_annotation_fields:
@@ -170,15 +186,33 @@ data:
         type: reduce
         inputs:
           - kubernetes_logs
+        # 必须与 pod_annotation_fields 里配置的实际路径一致。这些字段被改写到了
+        # 事件根级，写成 kubernetes.xxx 会全部取到 null，导致整个节点上所有容器的
+        # 日志被合并进同一个分组。
         group_by:
-          - kubernetes.pod_name
-          - kubernetes.container_name
-          - kubernetes.pod_namespace
+          - pod_name
+          - container_name
+          - pod_namespace
         merge_strategies:
           message: concat_newline
-        # 匹配常见的日志开始模式：支持 Log4j、uWSGI、Traefik 等
-        starts_when: match(string!(.message), r'(?i)^(\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}:\d{2}|\d{2}/\w{3}/\d{4}\s+\d{2}:\d{2}:\d{2}|\w{3}\s+\d{1,2},\s+\d{4}|\[[^\]]*\d{2}:\d{2}:\d{2}[^\]]*\]|time="[^"]*").*?(ERROR|WARN|WARNING|INFO|DEBUG|TRACE|FATAL|SEVERE)|^(ERROR|WARN|WARNING|INFO|DEBUG|TRACE|FATAL|SEVERE)[\s\[\(:>-]|^\[pid:\s*\d+\||^\*{3}\s+\w+|^spawned\s+uWSGI')
+        # 判定「新日志的第一行」。这里采用反向判定：默认每一行都是一条新日志，
+        # 只有明显属于上一条日志的续行才合并——缩进行（Java/Python/Node/Go 堆栈）、
+        # Java 的 Caused by/Suppressed/... N more、Python 异常链、Go 的 goroutine 帧、
+        # PHP 的 Stack trace:/#N 栈帧、pretty-print JSON/YAML 的收尾括号。
+        # 反向判定的关键收益是未知日志格式退化为「不合并」而不是「无限合并」：
+        # 正向匹配一旦覆盖不到某种格式（纯 JSON、access log、klog 等），该容器的日志
+        # 会一直 concat 下去，单条事件最终超过 NATS max_payload（默认 1MB）被整条丢弃。
+        # 注意 $$ 是 Vector 配置里 $ 的转义写法。裸 $ 会被当成环境变量引用，
+        # 导致启动时报 "Missing environment variable in config" 并 CrashLoop。
+        starts_when: |-
+          !match(string!(.message), r'(?i)^(\s|at\s+[\w.<]|caused by:|suppressed:|\.{3}\s+\d+\s+more|goroutine\s+\d+\s+\[|during handling of the above|the above exception was|#\d+\s|stack trace:\s*$$|[}\]],?\s*$$)')
+        # expire_after_ms 是「收到最后一条事件之后的静默时长」，不是分组存活上限。
+        # 默认 30s 对持续输出日志的容器等同于永不过期，必须显式收紧。
+        expire_after_ms: 2000
         flush_period_ms: 1000
+        # 行数硬边界。续行判定万一被某种日志格式绕过（例如某个容器持续输出全缩进
+        # 的行），仅靠 expire_after_ms 仍然拦不住——只要它一直有输出就永远不静默。
+        max_events: 500
 
       parse_and_enrich:
         type: remap
@@ -197,10 +231,12 @@ data:
           }
           
           # 提取重要的Kubernetes元数据
-          .k8s_pod_name = .kubernetes.pod_name
-          .k8s_namespace = .kubernetes.pod_namespace
-          .k8s_container_name = .kubernetes.container_name
-          .k8s_node_name = .kubernetes.pod_node_name
+          # 源字段被 pod_annotation_fields 改写到了事件根级，取值必须用根级路径；
+          # 这里保留 k8s_* 一套命名以兼容已入库的历史数据和检索字段契约。
+          .k8s_pod_name = .pod_name
+          .k8s_namespace = .pod_namespace
+          .k8s_container_name = .container_name
+          .k8s_node_name = .pod_node_name
           
     sinks:
       nats_sink:

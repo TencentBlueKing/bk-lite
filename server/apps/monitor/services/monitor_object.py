@@ -4,6 +4,8 @@ import time
 import uuid
 
 from django.db import transaction
+from django.db.models import Q
+from django.db.models.fields.json import KeyTextTransform
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
@@ -18,6 +20,7 @@ from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.display_fields_metrics import display_field_key, extract_field_bindings, extract_metric_bindings
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 
 # 实例 status 映射短 TTL 缓存，缓解列表/轮询重复打 VM。
 _INSTANCE_STATUS_CACHE_TTL_SECONDS = 15.0
@@ -179,6 +182,7 @@ class MonitorObjectService:
         monitor_plugin_id=None,
         visible_organization_ids=None,
         vm_params=None,
+        instance_id=None,
     ):
         """获取监控对象实例"""
         qs = qs.filter(
@@ -186,8 +190,18 @@ class MonitorObjectService:
             is_deleted=False,
             is_active=True,
         )
+        # 可选精确主键过滤（存储键形态，如 "('h1',)"）；与 name 模糊互不干扰。
+        if instance_id:
+            qs = qs.filter(id=instance_id)
         if name:
-            qs = qs.filter(name__icontains=name)
+            # 与列表「IP信息」/ ${resource_ip} 同源：summary_facts['asset.ip'] 优先字段。
+            qs = qs.annotate(
+                _asset_ip_fact=KeyTextTransform("asset.ip", "summary_facts")
+            ).filter(
+                Q(name__icontains=name)
+                | Q(ip__icontains=name)
+                | Q(_asset_ip_fact__icontains=name)
+            )
 
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
         if not monitor_obj:
@@ -397,15 +411,28 @@ class MonitorObjectService:
         plugin_status_qs = (
             MonitorPlugin.objects.filter(monitor_object=monitor_object_id).exclude(status_query="").values_list("name", "status_query").distinct()
         )
+        plugin_queries = []
         for plugin_name, status_query in plugin_status_qs:
             query = (status_query or "").strip()
             if not query:
                 continue
-            try:
-                resp = VictoriaMetricsAPI().query(query)
-            except Exception:
-                logger.warning("回填展示列时查询插件上报状态失败: plugin=%s", plugin_name, exc_info=True)
+            plugin_queries.append((plugin_name, query))
+
+        vm_api = VictoriaMetricsAPI()
+        responses, errors = run_unique_vm_queries(
+            (query for _, query in plugin_queries),
+            vm_api.query,
+        )
+        for plugin_name, query in plugin_queries:
+            if query in errors:
+                error = errors[query]
+                logger.warning(
+                    "回填展示列时查询插件上报状态失败: plugin=%s",
+                    plugin_name,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
                 continue
+            resp = responses[query]
             reported_primary_ids = {metric["metric"].get("instance_id") for metric in resp.get("data", {}).get("result", [])}
             reported_primary_ids.discard(None)
             if not reported_primary_ids:
@@ -616,6 +643,30 @@ class MonitorObjectService:
                     ["order"],
                     batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE,
                 )
+
+    @staticmethod
+    def descendant_object_ids(root_id):
+        """按 parent 关系收集全部后代对象 ID，避免环导致死循环。"""
+        descendant_ids = []
+        frontier = [root_id]
+        seen = {root_id}
+        while frontier:
+            children = list(
+                MonitorObject.objects.filter(parent_id__in=frontier)
+                .exclude(id__in=seen)
+                .values_list("id", flat=True)
+            )
+            descendant_ids.extend(children)
+            seen.update(children)
+            frontier = children
+        return descendant_ids
+
+    @staticmethod
+    def set_object_visibility(obj: MonitorObject, is_visible: bool) -> None:
+        """切换对象可见性，并同步全部子对象，避免父对象隐藏后子对象仍出现在视图中。"""
+        target_ids = [obj.id, *MonitorObjectService.descendant_object_ids(obj.id)]
+        with transaction.atomic():
+            MonitorObject.objects.filter(id__in=target_ids).update(is_visible=is_visible)
 
     @staticmethod
     def update_instance(instance_id, name=None, organizations=None, **extra_fields):

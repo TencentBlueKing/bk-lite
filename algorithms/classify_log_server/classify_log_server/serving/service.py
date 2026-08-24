@@ -1,6 +1,7 @@
 """BentoML service definition."""
 
 import time
+import os
 from collections import Counter
 
 import bentoml
@@ -133,20 +134,17 @@ class MLService:
             
             # 统计基本信息
             total_logs = len(data)
-            matched_logs = len(result_df[result_df['cluster_id'] != -1])
-            
-            # 统计每个模板的出现次数
-            cluster_counts = result_df['cluster_id'].value_counts().to_dict()
+            unknown_mask = result_df["cluster_id"] == -1
+            matched_logs = int((~unknown_mask).sum())
             
             # 构建模板分组
             template_groups = []
-            for cluster_id, count in cluster_counts.items():
-                if cluster_id == -1:
-                    continue  # 未知日志单独处理
-                
-                # 获取该模板的所有日志索引
-                mask = result_df['cluster_id'] == cluster_id
-                indices = result_df[mask].index.tolist()
+            matched_groups = result_df.loc[~unknown_mask].groupby(
+                "cluster_id", sort=False
+            )
+            for cluster_id, group in matched_groups:
+                count = len(group)
+                indices = group.index.tolist()
                 
                 # 采样代表性日志
                 sample_size = min(req_config.max_samples, count)
@@ -154,7 +152,7 @@ class MLService:
                 sample_logs = [data[i] for i in sample_indices]
                 
                 # 获取模板字符串
-                template_str = result_df[mask]['template'].iloc[0]
+                template_str = group["template"].iloc[0]
                 
                 template_groups.append(TemplateGroup(
                     cluster_id=int(cluster_id),
@@ -172,7 +170,6 @@ class MLService:
                 template_groups.sort(key=lambda x: x.cluster_id)
             
             # 处理未知日志
-            unknown_mask = result_df['cluster_id'] == -1
             unknown_logs = []
             if unknown_mask.any():
                 unknown_indices = result_df[unknown_mask].index.tolist()
@@ -260,8 +257,7 @@ class MLService:
         health_check_counter.inc()
         return {
             "status": "healthy",
+            "startup_instance_id": os.getenv("SERVING_INSTANCE_ID", ""),
             "model_source": self.config.source,
             "model_version": getattr(self.model, "version", "unknown"),
         }
-
-

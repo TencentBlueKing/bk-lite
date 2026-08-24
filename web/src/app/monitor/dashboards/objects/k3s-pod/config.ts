@@ -73,7 +73,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'pod_io_reads_rate',
       display_name: '磁盘读 IOPS',
       description: 'Pod 每秒磁盘读操作次数。',
-      unit: 'counts',
+      unit: 'cps',
       query:
         'sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_reads_total{instance_type="k3s",__$labels__}[__$window__]) )',
       color: '#9254de',
@@ -83,7 +83,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'pod_io_writes_rate',
       display_name: '磁盘写 IOPS',
       description: 'Pod 每秒磁盘写操作次数。',
-      unit: 'counts',
+      unit: 'cps',
       query:
         'sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_writes_total{instance_type="k3s",__$labels__}[__$window__]) )',
       color: '#f5a623',
@@ -156,8 +156,8 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '磁盘 I/O',
       subtitle: '读 · 写 IOPS',
       rows: [
-        { label: '读 IOPS', metric: 'pod_io_reads_rate', unit: 'counts' },
-        { label: '写 IOPS', metric: 'pod_io_writes_rate', unit: 'counts' }
+        { label: '读 IOPS', metric: 'pod_io_reads_rate', unit: 'cps' },
+        { label: '写 IOPS', metric: 'pod_io_writes_rate', unit: 'cps' }
       ]
     }
   ]

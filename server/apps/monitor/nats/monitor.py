@@ -3,6 +3,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from typing import Optional
 
+from django.db import transaction
 from django.db.models import Count, F, Q
 from django.utils import timezone
 from rest_framework import serializers
@@ -35,18 +36,30 @@ from apps.monitor.models import (
     MonitorPlugin,
     MonitorPolicy,
     PolicyInstanceBaseline,
+    PolicyOrganization,
 )
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
+from apps.monitor.services.host_dashboard import (
+    HOST_OBJECT_NAME,
+    HostMetricRangeService,
+    HostResourceSnapshotService,
+    build_host_instance_rows,
+    empty_host_snapshot,
+    validate_range_metric_type,
+)
 from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
+from apps.monitor.services.interface_metrics_query import InterfaceMetricsQueryError, normalize_instance_ids, query_interface_metric_items
 from apps.monitor.services.metrics import Metrics
 from apps.monitor.services.network_device_resource_top import NetworkDeviceResourceTopService
 from apps.monitor.services.network_device_resource_top import validate_metric_type as validate_network_metric_type
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
+from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 from apps.rpc.system_mgmt import SystemMgmt
 
 
@@ -323,6 +336,61 @@ def _create_monitor_policy_payload(data: dict, operator: str = "api", domain: st
     return policy, MonitorPolicySerializer(policy).data
 
 
+def _nats_caller_org_ids(user_info: Optional[dict]):
+    if not isinstance(user_info, dict):
+        return frozenset()
+    raw = user_info.get("allowed_org_ids") or user_info.get("organization_ids")
+    if not raw:
+        team = user_info.get("team")
+        raw = [team] if team not in (None, "") else []
+    try:
+        return _normalize_organization_ids(raw)
+    except Exception:
+        return frozenset()
+
+
+def _policy_visible_in_orgs(policy: MonitorPolicy, org_ids) -> bool:
+    if not org_ids:
+        return False
+    if PolicyOrganization.objects.filter(policy_id=policy.id, organization__in=list(org_ids)).exists():
+        return True
+    return bool(set(policy.organizations or []) & set(org_ids))
+
+
+def _delete_monitor_policy_record(policy: MonitorPolicy, operator: str):
+    from django_celery_beat.models import PeriodicTask
+
+    from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALL_CONFIGURED, AlertLifecycleNotifier
+    from apps.monitor.services.policy_baseline import PolicyBaselineService
+
+    policy_id = policy.id
+    view = _get_monitor_policy_viewset()
+    PolicyBaselineService(policy).clear()
+    alerts_to_close = list(MonitorAlert.objects.filter(policy_id=policy_id, status="new"))
+    view._close_alerts_in_tx(policy, alerts_to_close, operator, "policy_deleted")
+    if alerts_to_close:
+        notifier = AlertLifecycleNotifier(policy)
+        notifier.enqueue_alert_center_deliveries(
+            alerts_to_close,
+            "closed",
+            operator=operator,
+            reason="policy_deleted",
+        )
+        transaction.on_commit(
+            lambda alerts=tuple(alerts_to_close): notifier.notify_alerts(
+                alerts,
+                action="closed",
+                operator=operator,
+                reason="policy_deleted",
+                notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED,
+            )
+        )
+    PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").delete()
+    PolicyOrganization.objects.filter(policy_id=policy_id).delete()
+    policy.delete()
+    return policy_id
+
+
 def _require_authenticated_actor(user_info: Optional[dict]):
     """写接口身份闸：必须携带可解析的已认证身份才允许写库。
 
@@ -345,7 +413,8 @@ def _execute_nats_create(create_func, data: dict, user_info: Optional[dict] = No
         return identity_error
     try:
         operator, domain = _resolve_nats_actor(user_info)
-        _, result_data = create_func(data, operator=operator, domain=domain)
+        with transaction.atomic():
+            _, result_data = create_func(data, operator=operator, domain=domain)
         return {"result": True, "data": result_data, "message": ""}
     except (serializers.ValidationError, ValueError) as exc:
         return {"result": False, "data": [], "message": _build_validation_message(exc)}
@@ -629,6 +698,68 @@ def create_monitor_policy(data: dict, *args, **kwargs):
 
 
 @nats_client.register
+def search_monitor_policies(*args, **kwargs):
+    """按名称查询调用方组织范围内的告警策略。
+
+    策略 name 允许重名：可能返回多条（上限 200）。调用方不得假定唯一；
+    删除/更新等写操作必须使用返回结果中的 policy id（见 delete_monitor_policy）。
+    """
+    user_info = kwargs.get("user_info")
+    identity_error = _require_authenticated_actor(user_info)
+    if identity_error:
+        return identity_error
+    name = str(kwargs.get("name") or (args[0] if args else "") or "").strip()
+    if not name:
+        return {"result": False, "data": [], "message": "name 不能为空", "count": 0}
+    org_ids = _nats_caller_org_ids(user_info)
+    if not org_ids:
+        return {"result": False, "data": [], "message": "缺少用户或组织信息", "count": 0}
+    queryset = MonitorPolicy.objects.filter(name=name, policyorganization__organization__in=list(org_ids)).distinct().order_by("id")[:200]
+    serializer = MonitorPolicySerializer(queryset, many=True)
+    data = serializer.data
+    count = len(data)
+    message_parts = []
+    if count > 1:
+        message_parts.append(f"同名策略共 {count} 条，请使用 policy_id 操作，勿假定唯一")
+    if count >= 200:
+        message_parts.append("结果已截断至上限 200 条，请缩小范围或改用 policy_id")
+    return {"result": True, "data": data, "message": "；".join(message_parts), "count": count}
+
+
+@nats_client.register
+def delete_monitor_policy(*args, **kwargs):
+    """删除调用方组织范围内的一条告警策略及其扫描任务。"""
+    user_info = kwargs.get("user_info")
+    identity_error = _require_authenticated_actor(user_info)
+    if identity_error:
+        return identity_error
+    raw_policy_id = kwargs.get("policy_id") if "policy_id" in kwargs else (args[0] if args else None)
+    try:
+        policy_id = int(raw_policy_id)
+    except (TypeError, ValueError):
+        return {"result": False, "data": [], "message": "policy_id 必须是整数"}
+    if policy_id < 1:
+        return {"result": False, "data": [], "message": "policy_id 必须大于等于 1"}
+    org_ids = _nats_caller_org_ids(user_info)
+    if not org_ids:
+        return {"result": False, "data": [], "message": "缺少用户或组织信息"}
+    try:
+        policy = MonitorPolicy.objects.get(id=policy_id)
+    except MonitorPolicy.DoesNotExist:
+        return {"result": False, "data": [], "message": "策略不存在"}
+    if not _policy_visible_in_orgs(policy, org_ids):
+        return {"result": False, "data": [], "message": "策略不存在"}
+    try:
+        operator, _domain = _resolve_nats_actor(user_info)
+        with transaction.atomic():
+            deleted_id = _delete_monitor_policy_record(policy, operator)
+        return {"result": True, "data": {"id": deleted_id}, "message": ""}
+    except Exception as exc:
+        logger.exception("monitor NATS delete policy failed, error=%s", exc)
+        return {"result": False, "data": [], "message": str(exc)}
+
+
+@nats_client.register
 def monitor_objects(*args, **kwargs):
     """查询监控对象列表"""
     logger.info("=== monitor_objects called , args={}, kwargs={}===".format(args, kwargs))
@@ -672,6 +803,11 @@ def monitor_metrics(monitor_obj_id: str, *args, **kwargs):
         lan_key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{monitor_obj.name}.{result['name']}"
         result["display_name"] = lan.get(f"{lan_key}.name") or result.get("display_name") or result["name"]
         result["display_description"] = lan.get(f"{lan_key}.desc") or result.get("description")
+        if (result.get("data_type") or "").lower() == "enum":
+            result["unit"] = localize_metric_enum_unit(
+                result.get("unit") or "",
+                enum_translations=lan.get(f"{lan_key}.enum"),
+            )
     return {"result": True, "data": results, "message": ""}
 
 
@@ -777,11 +913,7 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
     except MonitorObject.DoesNotExist:
         return {"result": False, "data": [], "message": "监控对象或指标不存在"}
 
-    metrics = list(
-        Metric.objects.filter(monitor_object=monitor_obj, name=metric_name)
-        .select_related("monitor_plugin")
-        .order_by("id")
-    )
+    metrics = list(Metric.objects.filter(monitor_object=monitor_obj, name=metric_name).select_related("monitor_plugin").order_by("id"))
     if not metrics:
         return {"result": False, "data": [], "message": "监控对象或指标不存在"}
 
@@ -914,6 +1046,37 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
         end = start + page_size
         metrics = metrics[start:end]
 
+    query_by_metric_id = {}
+    query_has_data = {}
+    query_errors = {}
+    if only_with_data:
+        metrics = list(metrics)
+        lookback_seconds = Metrics.parse_step_to_seconds(lookback)
+        end_seconds = int(time.time())
+        start_seconds = end_seconds - lookback_seconds
+        step_seconds = max(1, min(max(lookback_seconds // 12, 1), 300))
+        for metric in metrics:
+            if metric.query:
+                query_by_metric_id[metric.id] = _build_metric_label_query(
+                    metric.query,
+                    instance_ids=[instance_id],
+                )
+        vm_api = VictoriaMetricsAPI()
+
+        def _query_has_data(query):
+            response = vm_api.query_range(
+                query,
+                start_seconds,
+                end_seconds,
+                str(step_seconds),
+            )
+            return response.get("status") == "success" and bool(response.get("data", {}).get("result"))
+
+        query_has_data, query_errors = run_unique_vm_queries(
+            query_by_metric_id.values(),
+            _query_has_data,
+        )
+
     result_metrics = []
     for metric in metrics:
         metric_info = {
@@ -931,32 +1094,20 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
         }
 
         if only_with_data:
-            if not metric.query:
+            query = query_by_metric_id.get(metric.id)
+            if not query:
                 continue
-            query = _build_metric_label_query(
-                metric.query,
-                instance_ids=[instance_id],
-            )
-            try:
-                lookback_seconds = Metrics.parse_step_to_seconds(lookback)
-                end_seconds = int(time.time())
-                start_seconds = end_seconds - lookback_seconds
-                step_seconds = max(1, min(max(lookback_seconds // 12, 1), 300))
-                resp = VictoriaMetricsAPI().query_range(
-                    query,
-                    start_seconds,
-                    end_seconds,
-                    str(step_seconds),
-                )
-                if not (resp.get("status") == "success" and resp.get("data", {}).get("result")):
-                    continue
-            except Exception as exc:
+            if query in query_errors:
+                error = query_errors[query]
                 logger.warning(
                     "monitor_instance_metrics query failed, instance_id=%s, metric=%s, error=%s",
                     instance_id,
                     metric.name,
-                    exc,
+                    error,
+                    exc_info=(type(error), error, error.__traceback__),
                 )
+                continue
+            if not query_has_data[query]:
                 continue
 
         result_metrics.append(metric_info)
@@ -1077,6 +1228,125 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
     }
 
 
+_MONITOR_ALERT_LEVEL_RANK = {
+    "critical": 3,
+    "error": 2,
+    "warning": 1,
+}
+
+
+def _monitor_alert_level_rank(level) -> int:
+    if level in (None, ""):
+        return 0
+    return _MONITOR_ALERT_LEVEL_RANK.get(str(level).strip().lower(), 1)
+
+
+def _max_monitor_alert_level(levels) -> Optional[str]:
+    best_level = None
+    best_rank = 0
+    for level in levels:
+        rank = _monitor_alert_level_rank(level)
+        if rank > best_rank:
+            best_rank = rank
+            best_level = str(level).strip().lower()
+    return best_level
+
+
+def _parse_latest_active_alerts_query(query_data):
+    limit = _normalize_positive_int(query_data.get("limit", 10), "limit", default=10)
+    if limit > 100:
+        raise ValueError("limit 不能大于 100")
+    instance_ids = query_data.get("instance_ids", [])
+    if instance_ids in (None, ""):
+        instance_ids = []
+    if not isinstance(instance_ids, list):
+        raise ValueError("instance_ids 必须是列表")
+    instance_ids = [str(instance_id) for instance_id in instance_ids if instance_id]
+    instance_id = query_data.get("instance_id")
+    if instance_id:
+        instance_ids.append(str(instance_id))
+    return (
+        limit,
+        instance_ids,
+        _normalize_filter_values(query_data.get("level"), "level"),
+        _normalize_filter_values(query_data.get("alert_type"), "alert_type"),
+    )
+
+
+def _resolve_latest_active_alert_instances(monitor_obj_id, user_info, scope_ids):
+    if monitor_obj_id:
+        try:
+            MonitorObject.objects.get(id=monitor_obj_id)
+        except MonitorObject.DoesNotExist:
+            return None, {"result": False, "data": [], "message": "监控对象不存在"}
+        permission, error = _get_monitor_instance_permission(monitor_obj_id, user_info)
+        if error:
+            return None, error
+        authorized_qs = (
+            _get_authorized_instance_queryset(permission, scope_ids)
+            .filter(
+                monitor_object_id=monitor_obj_id,
+                is_deleted=False,
+                is_active=True,
+            )
+            .select_related("monitor_object")
+        )
+        return {str(instance.id): instance for instance in authorized_qs}, None
+    return _get_authorized_monitor_instances(user_info, scope_ids)
+
+
+def _filter_requested_alert_instances(authorized_instances, instance_ids):
+    authorized_instance_ids = set(authorized_instances.keys())
+    requested_instance_ids = list(dict.fromkeys(instance_ids))
+    if requested_instance_ids:
+        filtered_instance_ids = [instance for instance in requested_instance_ids if instance in authorized_instance_ids]
+        if not filtered_instance_ids:
+            return None, None, {"result": False, "data": [], "message": "没有权限访问指定的实例"}
+        return set(filtered_instance_ids), filtered_instance_ids, None
+    if not authorized_instances:
+        return (
+            None,
+            None,
+            {
+                "result": True,
+                "data": {"count": 0, "max_level": None, "items": [], "instance_summaries": []},
+                "message": "",
+            },
+        )
+    return authorized_instance_ids, [], None
+
+
+def _build_latest_active_alert_items(queryset, authorized_instances, limit):
+    items = []
+    for alert in queryset.order_by("-start_event_time", "-created_at")[:limit]:
+        item = _build_monitor_alert_segment(alert)
+        instance = authorized_instances.get(str(alert.monitor_instance_id))
+        item["monitor_obj_id"] = str(instance.monitor_object_id) if instance else None
+        item["monitor_object_name"] = (
+            (instance.monitor_object.display_name or instance.monitor_object.name) if instance and instance.monitor_object else None
+        )
+        item["end_event_time"] = None
+        items.append(item)
+    return items
+
+
+def _build_active_alert_instance_summaries(queryset, filtered_instance_ids):
+    if not filtered_instance_ids:
+        return []
+    levels_by_instance = {}
+    for row in queryset.values("monitor_instance_id", "level"):
+        instance_id = str(row["monitor_instance_id"])
+        levels_by_instance.setdefault(instance_id, []).append(row["level"])
+    return [
+        {
+            "instance_id": instance_id,
+            "count": len(levels_by_instance.get(instance_id, [])),
+            "max_level": _max_monitor_alert_level(levels_by_instance.get(instance_id, [])),
+        }
+        for instance_id in filtered_instance_ids
+    ]
+
+
 @nats_client.register
 def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwargs):
     if query_data is None:
@@ -1090,20 +1360,7 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
     user_info = kwargs.get("user_info", {})
 
     try:
-        limit = _normalize_positive_int(query_data.get("limit", 10), "limit", default=10)
-        if limit > 100:
-            raise ValueError("limit 不能大于 100")
-        instance_ids = query_data.get("instance_ids", [])
-        if instance_ids in (None, ""):
-            instance_ids = []
-        if not isinstance(instance_ids, list):
-            raise ValueError("instance_ids 必须是列表")
-        instance_ids = [str(instance_id) for instance_id in instance_ids if instance_id]
-        instance_id = query_data.get("instance_id")
-        if instance_id:
-            instance_ids.append(str(instance_id))
-        level_values = _normalize_filter_values(query_data.get("level"), "level")
-        alert_type_values = _normalize_filter_values(query_data.get("alert_type"), "alert_type")
+        limit, instance_ids, level_values, alert_type_values = _parse_latest_active_alerts_query(query_data)
     except ValueError as exc:
         return {"result": False, "data": [], "message": str(exc)}
 
@@ -1111,47 +1368,16 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
     if scope_error:
         return scope_error
 
-    if monitor_obj_id:
-        try:
-            MonitorObject.objects.get(id=monitor_obj_id)
-        except MonitorObject.DoesNotExist:
-            return {"result": False, "data": [], "message": "监控对象不存在"}
+    authorized_instances, error = _resolve_latest_active_alert_instances(monitor_obj_id, user_info, scope_ids)
+    if error:
+        return error
 
-    if monitor_obj_id:
-        permission, error = _get_monitor_instance_permission(monitor_obj_id, user_info)
-        if error:
-            return error
-        authorized_qs = (
-            _get_authorized_instance_queryset(permission, scope_ids)
-            .filter(
-                monitor_object_id=monitor_obj_id,
-                is_deleted=False,
-                is_active=True,
-            )
-            .select_related("monitor_object")
-        )
-        authorized_instances = {str(instance.id): instance for instance in authorized_qs}
-    else:
-        authorized_instances, error = _get_authorized_monitor_instances(
-            user_info,
-            scope_ids,
-        )
-        if error:
-            return error
-
-    if not authorized_instances:
-        return {
-            "result": True,
-            "data": {"count": 0, "items": []},
-            "message": "",
-        }
-
-    authorized_instance_ids = set(authorized_instances.keys())
-    if instance_ids:
-        filtered_instance_ids = [instance for instance in instance_ids if instance in authorized_instance_ids]
-        if not filtered_instance_ids:
-            return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
-        authorized_instance_ids = set(filtered_instance_ids)
+    authorized_instance_ids, filtered_instance_ids, filter_error = _filter_requested_alert_instances(
+        authorized_instances,
+        instance_ids,
+    )
+    if filter_error:
+        return filter_error
 
     accessible_policy_qs, policy_error = _get_nats_accessible_policy_queryset(user_info)
     if policy_error:
@@ -1162,30 +1388,54 @@ def query_latest_active_alerts(query_data: Optional[dict] = None, *args, **kwarg
         policy_id__in=accessible_policy_qs.values_list("id", flat=True),
         status="new",
     )
-
     if level_values:
         queryset = queryset.filter(level__in=level_values)
     if alert_type_values:
         queryset = queryset.filter(alert_type__in=alert_type_values)
 
-    items = []
-    for alert in queryset.order_by("-start_event_time", "-created_at")[:limit]:
-        item = _build_monitor_alert_segment(alert)
-        instance = authorized_instances.get(str(alert.monitor_instance_id))
-        item["monitor_obj_id"] = str(instance.monitor_object_id) if instance else None
-        item["monitor_object_name"] = (
-            (instance.monitor_object.display_name or instance.monitor_object.name) if instance and instance.monitor_object else None
-        )
-        item["end_event_time"] = None
-        items.append(item)
+    total_count = queryset.count()
     return {
         "result": True,
         "data": {
-            "count": len(items),
-            "items": items,
+            "count": total_count,
+            "max_level": _max_monitor_alert_level(queryset.values_list("level", flat=True)) if total_count else None,
+            "items": _build_latest_active_alert_items(queryset, authorized_instances, limit),
+            "instance_summaries": _build_active_alert_instance_summaries(queryset, filtered_instance_ids),
         },
         "message": "",
     }
+
+
+@nats_client.register
+def query_latest_interface_metrics(instance_ids=None, *args, **kwargs):
+    """Return latest IF-MIB values per instance_id + ifDescr for authorized instances."""
+    user_info = kwargs.get("user_info") or {}
+    try:
+        requested_ids = normalize_instance_ids(instance_ids)
+    except InterfaceMetricsQueryError as exc:
+        return {"result": False, "data": {"items": []}, "message": str(exc)}
+
+    if not requested_ids:
+        return {"result": True, "data": {"items": []}, "message": ""}
+
+    _, _, _, scope_ids, _, scope_error = _get_nats_actor_scope(user_info)
+    if scope_error:
+        return scope_error
+
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if error:
+        return error
+
+    allowed_ids = [item for item in requested_ids if item in authorized_instances]
+    if not allowed_ids:
+        return {"result": True, "data": {"items": []}, "message": ""}
+
+    try:
+        items = query_interface_metric_items(VictoriaMetricsAPI(), allowed_ids)
+    except Exception:
+        logger.exception("query_latest_interface_metrics failed")
+        return {"result": False, "data": {"items": []}, "message": "接口指标查询失败"}
+    return {"result": True, "data": {"items": items}, "message": ""}
 
 
 @nats_client.register
@@ -1243,18 +1493,119 @@ def get_host_resource_top(metric_type: str, *args, **kwargs):
     authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
     if error:
         return error
-    if not authorized_instances:
+    if "instance_ids" in kwargs:
+        try:
+            requested_ids = _normalize_filter_values(kwargs.get("instance_ids"), "instance_ids")
+        except ValueError as exc:
+            return {"result": False, "data": [], "message": str(exc)}
+        selected_instances = [authorized_instances[item] for item in requested_ids if item in authorized_instances]
+    else:
+        selected_instances = list(authorized_instances.values())
+    if not selected_instances:
         return {"result": True, "data": [], "message": ""}
 
     try:
         rows = HostResourceTopService(vm_api=VictoriaMetricsAPI()).run(
             metric_type,
-            list(authorized_instances.values()),
+            selected_instances,
         )
     except Exception:
         logger.exception("host resource top query failed metric_type=%s", metric_type)
         return {"result": False, "data": [], "message": "主机资源指标查询失败"}
     return {"result": True, "data": rows, "message": ""}
+
+
+@nats_client.register
+def get_host_instance_list(*args, **kwargs):
+    """Return authorized Host monitor instances for ops-analysis filter options."""
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    host_obj = MonitorObject.objects.filter(name=HOST_OBJECT_NAME).first()
+    if host_obj is None:
+        return {"result": True, "data": [], "message": ""}
+    authorized_instances, error = _get_authorized_monitor_instances(
+        user_info,
+        scope_ids,
+        monitor_obj_id=host_obj.id,
+    )
+    if error:
+        return error
+    return {
+        "result": True,
+        "data": build_host_instance_rows(authorized_instances.values()),
+        "message": "",
+    }
+
+
+@nats_client.register
+def get_host_metric_range(*args, **kwargs):
+    """Return one line per selected host for a host dashboard metric."""
+    try:
+        metric_type = validate_range_metric_type(kwargs.get("metric_type"))
+    except ValueError as exc:
+        return {"result": False, "data": {}, "message": str(exc)}
+    try:
+        instance_ids = _normalize_filter_values(kwargs.get("instance_ids"), "instance_ids")
+    except ValueError as exc:
+        return {"result": False, "data": {}, "message": str(exc)}
+    if not instance_ids:
+        return {"result": True, "data": {}, "message": ""}
+
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if error:
+        return error
+    selected_instances = [authorized_instances[item] for item in instance_ids if item in authorized_instances]
+    if not selected_instances:
+        return {"result": True, "data": {}, "message": ""}
+
+    try:
+        data = HostMetricRangeService(vm_api=VictoriaMetricsAPI()).run(
+            metric_type=metric_type,
+            time_range=kwargs.get("time"),
+            instances=selected_instances,
+            step=kwargs.get("step") or "5m",
+        )
+    except ValueError as exc:
+        return {"result": False, "data": {}, "message": str(exc)}
+    except Exception:
+        logger.exception("host metric range query failed metric_type=%s", metric_type)
+        return {"result": False, "data": {}, "message": "主机指标查询失败"}
+    return {"result": True, "data": data, "message": ""}
+
+
+@nats_client.register
+def get_host_resource_snapshot(*args, **kwargs):
+    """Return avg/max resource snapshot for selected authorized hosts."""
+    try:
+        instance_ids = _normalize_filter_values(kwargs.get("instance_ids"), "instance_ids")
+    except ValueError as exc:
+        return {"result": False, "data": empty_host_snapshot(), "message": str(exc)}
+    if not instance_ids:
+        return {"result": True, "data": empty_host_snapshot(), "message": ""}
+
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if error:
+        return error
+    selected_instances = [authorized_instances[item] for item in instance_ids if item in authorized_instances]
+    if not selected_instances:
+        return {"result": True, "data": empty_host_snapshot(), "message": ""}
+
+    try:
+        snapshot = HostResourceSnapshotService(vm_api=VictoriaMetricsAPI()).run(selected_instances)
+    except Exception:
+        logger.exception("host resource snapshot query failed")
+        return {"result": False, "data": empty_host_snapshot(), "message": "主机资源快照查询失败"}
+    return {"result": True, "data": snapshot, "message": ""}
 
 
 @nats_client.register
@@ -1555,16 +1906,14 @@ def _resolve_monitor_ingest_allowed_org_ids(params):
     if isinstance(user_info, dict):
         team = user_info.get("team")
         if team not in (None, ""):
-            return _normalize_organization_ids(
-                [team] if not isinstance(team, (list, tuple)) else team
-            )
+            return _normalize_organization_ids([team] if not isinstance(team, (list, tuple)) else team)
 
     raise ValueError("authorization scope is required for monitor ingest")
 
 
 @nats_client.register
 def monitor_ingest_from_source(params):
-    """跨模块推送写入监控（node_id 优先，其次 cmdb_id）。
+    """跨模块推送写入监控（node_id → cmdb_id → ip+cloud）。
 
     params 为 IngestEnvelope 扩展字段，另需授权上下文之一：
       allowed_org_ids / service_scope.allowed_org_ids / user_info.team

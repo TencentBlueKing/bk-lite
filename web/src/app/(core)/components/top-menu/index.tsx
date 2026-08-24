@@ -161,37 +161,21 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
   );
 
   return (
-    <div className="z-30 flex flex-col grow-0 shrink-0 w-full basis-auto h-[56px] relative">
-      <div className="flex items-center justify-between px-4 w-full h-full">
-        <div className="flex items-center space-x-2">
+    <div className="relative z-30 h-[56px] w-full shrink-0 grow-0">
+      <div className="grid h-full w-full grid-cols-[1fr_auto_1fr] items-center px-4">
+        <div className="z-10 flex items-center justify-self-start space-x-2">
           <img src={logoUrl} className="block h-10 w-auto object-contain" alt="logo" />
           <div className="font-medium">{portalName}</div>
           <Popover content={renderContent} title={t('common.appList')} trigger="hover">
-            <div className={`flex items-center justify-center cursor-pointer rounded-[10px] px-3 py-2 ${styles.nav}`}>
+            <div className={`flex cursor-pointer items-center justify-center rounded-[10px] px-3 py-2 ${styles.nav}`}>
               <Icon type="caidandaohang" className="mr-1" />
               <CaretDownFilled className={`text-sm ${styles.icons}`} />
             </div>
           </Popover>
         </div>
-        <div className="flex items-center flex-shrink-0 gap-4">
-          <Notifications />
-          {hasViewedTour && (
-            <Tooltip title={t('common.officialDocument')}>
-              <div
-                className="flex items-center justify-center cursor-pointer text-[var(--color-text-3)] hover:text-[var(--color-primary)] transition-colors"
-                onClick={handleDocumentClick}
-              >
-                <Icon type="shiyongwendang" className="text-[16px]" />
-              </div>
-            </Tooltip>
-          )}
-          <UserInfo />
-        </div>
-      </div>
-      {!hideMainMenu && (
-        <div className="absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2">
+        {!hideMainMenu ? (
           <div
-            className="flex items-center space-x-4 overflow-x-auto"
+            className="z-10 flex items-center justify-self-center space-x-4 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
             style={{ whiteSpace: 'nowrap' }}
           >
             {menuItems
@@ -208,16 +192,32 @@ const TopMenu: React.FC<TopMenuProps> = ({ hideMainMenu }) => {
                     prefetch={false}
                     ref={menuRefs.current[item.url] || null}
                     id={item.name}
-                    className={`px-3 py-2 rounded-[10px] flex items-center ${styles.menuCol} ${isActive ? styles.active : ''}`}
+                    className={`flex items-center rounded-[10px] px-3 py-2 ${styles.menuCol} ${isActive ? styles.active : ''}`}
                   >
-                    <Icon type={resolveMenuIcon(item)} className="mr-2 w-4 h-4" />
+                    <Icon type={resolveMenuIcon(item)} className="mr-2 h-4 w-4" />
                     {item.title}
                   </Link>
                 );
               })}
           </div>
+        ) : (
+          <div />
+        )}
+        <div className="z-10 flex flex-shrink-0 items-center justify-self-end gap-4">
+          <Notifications />
+          {hasViewedTour && (
+            <Tooltip title={t('common.officialDocument')}>
+              <div
+                className="flex cursor-pointer items-center justify-center text-[var(--color-text-3)] transition-colors hover:text-[var(--color-primary)]"
+                onClick={handleDocumentClick}
+              >
+                <Icon type="shiyongwendang" className="text-[16px]" />
+              </div>
+            </Tooltip>
+          )}
+          <UserInfo />
         </div>
-      )}
+      </div>
       <Tour
         open={tourOpen}
         onClose={handleCloseTour}

@@ -1,33 +1,55 @@
 'use client';
 import React, {
   useState,
+  useEffect,
   useRef,
   forwardRef,
-  useImperativeHandle,
+  useImperativeHandle
 } from 'react';
-import { Form, Input, InputNumber, message, Select, Button } from 'antd';
+import {
+  Alert,
+  Button,
+  Form,
+  Input,
+  InputNumber,
+  message,
+  Select,
+  Switch
+} from 'antd';
 const { Option } = Select;
 import OperateModal from '@/components/operate-modal';
-import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import {
   ModalRef,
-  ModalSuccess,
-  TableDataItem,
+  ModalSuccess
 } from '@/app/node-manager/types';
-import { RetryInstallParams } from '@/app/node-manager/types/controller';
 import useControllerApi from '@/app/node-manager/api/useControllerApi';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import {
+  buildRetryInstallParams,
+  getRetryInstallInitialValues,
+  validateWindowsRetryPort
+} from './retryInstallForm';
+import type {
+  RetryInstallFormValues,
+  RetryInstallNode
+} from './retryInstallForm';
 
 const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
     const { retryInstallController } = useControllerApi();
-    const formRef = useRef<FormInstance>(null);
+    const [form] = Form.useForm<RetryInstallFormValues>();
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const [visible, setVisible] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
-    const [nodeInfo, setNodeInfo] = useState<TableDataItem>({});
-    const [authType, setAuthType] = useState<string>('password');
+    const [nodeInfo, setNodeInfo] = useState<RetryInstallNode>({});
+    const [authType, setAuthType] = useState<'password' | 'private_key'>('password');
+    const watchedWinrmCertValidation = Form.useWatch(
+      'winrm_cert_validation',
+      form
+    );
+    const winrmCertValidation = watchedWinrmCertValidation === true;
     const [uploadedFileName, setUploadedFileName] = useState<
       string | undefined
     >();
@@ -35,48 +57,58 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
 
     useImperativeHandle(ref, () => ({
       showModal: (config) => {
+        const retryNode = config as RetryInstallNode;
         setVisible(true);
-        setNodeInfo(config);
+        setNodeInfo(retryNode);
         setAuthType('password');
         setUploadedFileName(undefined);
         setPrivateKey('');
       },
     }));
 
+    useEffect(() => {
+      if (!visible) {
+        return;
+      }
+      const initialValues = getRetryInstallInitialValues(nodeInfo);
+      form.setFieldsValue(initialValues);
+      setAuthType(initialValues.auth_type);
+    }, [form, nodeInfo, visible]);
+
     const handleCancel = () => {
       setVisible(false);
       setConfirmLoading(false);
-      formRef.current?.resetFields();
+      form.resetFields();
       setNodeInfo({});
       setAuthType('password');
       setUploadedFileName(undefined);
       setPrivateKey('');
     };
 
-    const handleConfirm = () => {
-      formRef.current?.validateFields().then(async (values) => {
-        if (authType === 'private_key' && !privateKey) {
-          return;
-        }
-        try {
-          setConfirmLoading(true);
-          const params: RetryInstallParams = {
-            task_id: nodeInfo.task_id,
-            task_node_ids: [nodeInfo.task_node_id],
-            port: values.port,
-            username: values.username,
-            password: privateKey ? '' : values.password,
-            private_key: privateKey || '',
-          };
-          await retryInstallController(params);
-          message.success(t('node-manager.cloudregion.node.retrySuccess'));
-          handleCancel();
-          onSuccess?.();
-        } finally {
-          setConfirmLoading(false);
-        }
-      });
+    const handleConfirm = async () => {
+      let values: RetryInstallFormValues;
+      try {
+        values = await form.validateFields();
+      } catch {
+        return;
+      }
+      if (authType === 'private_key' && !privateKey) {
+        return;
+      }
+      try {
+        setConfirmLoading(true);
+        await retryInstallController(
+          buildRetryInstallParams(nodeInfo, values, privateKey)
+        );
+        message.success(t('node-manager.cloudregion.node.retrySuccess'));
+        handleCancel();
+        onSuccess?.();
+      } finally {
+        setConfirmLoading(false);
+      }
     };
+
+    const isWindows = nodeInfo.os === 'windows';
 
     return (
       <OperateModal
@@ -115,19 +147,46 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
           </div>
         </div>
         <Form
-          ref={formRef}
+          form={form}
           layout="vertical"
-          initialValues={{ ...nodeInfo, auth_type: 'password' }}
           colon={false}
         >
+          {isWindows && (
+            <Alert
+              className="mb-[16px]"
+              type="info"
+              showIcon
+              message={t('node-manager.cloudregion.node.winrmRetryProfileTitle')}
+              description={t('node-manager.cloudregion.node.winrmRetryProfileDesc')}
+            />
+          )}
           <Form.Item
             name="port"
             label={t('node-manager.cloudregion.node.loginPort')}
+            extra={
+              isWindows
+                ? t('node-manager.cloudregion.node.winrmHttpsPortHelp')
+                : undefined
+            }
             rules={[
               {
                 required: true,
                 message: t('common.required'),
               },
+              ...(isWindows
+                ? [
+                  {
+                    validator: (_: unknown, value?: number) =>
+                      validateWindowsRetryPort(value)
+                        ? Promise.resolve()
+                        : Promise.reject(
+                          new Error(
+                            t('node-manager.cloudregion.node.winrmHttpPortError')
+                          )
+                        )
+                  }
+                ]
+                : [])
             ]}
           >
             <InputNumber
@@ -150,37 +209,73 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
           >
             <Input placeholder={t('common.inputTip')} />
           </Form.Item>
-          <Form.Item
-            name="auth_type"
-            label={t('node-manager.cloudregion.node.authType')}
-            rules={[
-              {
-                required: true,
-                message: t('common.required'),
-              },
-            ]}
-          >
-            <Select
-              value={authType}
-              onChange={(value) => {
-                setAuthType(value);
-                // 切换验证方式时清空相关字段
-                if (value === 'private_key') {
-                  formRef.current?.setFieldValue('password', undefined);
-                } else {
-                  setUploadedFileName(undefined);
-                  setPrivateKey('');
-                }
-              }}
+          {isWindows ? (
+            <>
+              <div className="grid grid-cols-1 gap-x-[16px] md:grid-cols-2">
+                <Form.Item
+                  name="winrm_scheme"
+                  label={t('node-manager.cloudregion.node.winrmScheme')}
+                >
+                  <Input readOnly />
+                </Form.Item>
+                <Form.Item
+                  name="winrm_transport"
+                  label={t('node-manager.cloudregion.node.winrmTransport')}
+                >
+                  <Input readOnly />
+                </Form.Item>
+              </div>
+              <Form.Item
+                name="winrm_cert_validation"
+                label={t('node-manager.cloudregion.node.winrmCertValidation')}
+                valuePropName="checked"
+              >
+                <Switch />
+              </Form.Item>
+              {!winrmCertValidation && (
+                <Alert
+                  className="mb-[16px]"
+                  type="warning"
+                  showIcon
+                  message={t(
+                    'node-manager.cloudregion.node.winrmCertValidationWarningTitle'
+                  )}
+                  description={t(
+                    'node-manager.cloudregion.node.winrmCertValidationWarningDesc'
+                  )}
+                />
+              )}
+              <Form.Item name="auth_type" hidden>
+                <Input />
+              </Form.Item>
+            </>
+          ) : (
+            <Form.Item
+              name="auth_type"
+              label={t('node-manager.cloudregion.node.authType')}
+              rules={[{ required: true, message: t('common.required') }]}
             >
-              <Option value="password">
-                {t('node-manager.cloudregion.node.password')}
-              </Option>
-              <Option value="private_key">
-                {t('node-manager.cloudregion.node.privateKey')}
-              </Option>
-            </Select>
-          </Form.Item>
+              <Select
+                value={authType}
+                onChange={(value: 'password' | 'private_key') => {
+                  setAuthType(value);
+                  if (value === 'private_key') {
+                    form.setFieldValue('password', undefined);
+                  } else {
+                    setUploadedFileName(undefined);
+                    setPrivateKey('');
+                  }
+                }}
+              >
+                <Option value="password">
+                  {t('node-manager.cloudregion.node.password')}
+                </Option>
+                <Option value="private_key">
+                  {t('node-manager.cloudregion.node.privateKey')}
+                </Option>
+              </Select>
+            </Form.Item>
+          )}
           {authType === 'password' ? (
             <Form.Item
               name="password"
@@ -194,9 +289,9 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
             >
               <Input.Password placeholder={t('common.inputTip')} />
             </Form.Item>
-          ) : (
+          ) : !isWindows ? (
             <Form.Item
-              label={t('node-manager.cloudregion.node.loginPassword')}
+              label={t('node-manager.cloudregion.node.privateKey')}
               required
               validateStatus={!uploadedFileName && !privateKey ? 'error' : ''}
               help={
@@ -209,47 +304,47 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
                     className="overflow-hidden text-ellipsis whitespace-nowrap"
                     text={uploadedFileName}
                   />
-                  <span
-                    className="cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                    style={{
-                      fontSize: 16,
-                      color: 'var(--color-primary)',
-                      fontWeight: 'bold',
-                    }}
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    aria-label={t('common.delete')}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                     onClick={() => {
                       setUploadedFileName(undefined);
                       setPrivateKey('');
                     }}
-                    title={t('common.delete')}
                   >
                     ×
-                  </span>
+                  </Button>
                 </div>
               ) : (
                 <Button
-                  onClick={() => {
-                    const input = document.createElement('input');
-                    input.type = 'file';
-                    input.onchange = (e: any) => {
-                      const file = e.target.files[0];
-                      if (file) {
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                          const content = event.target?.result as string;
-                          setPrivateKey(content);
-                          setUploadedFileName(file.name);
-                        };
-                        reader.readAsText(file);
-                      }
-                    };
-                    input.click();
-                  }}
+                  onClick={() => fileInputRef.current?.click()}
                 >
                   {t('node-manager.cloudregion.node.uploadPrivateKey')}
                 </Button>
               )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = (loadEvent) => {
+                    const content = loadEvent.target?.result;
+                    if (typeof content === 'string') {
+                      setPrivateKey(content);
+                      setUploadedFileName(file.name);
+                    }
+                  };
+                  reader.readAsText(file);
+                }}
+              />
             </Form.Item>
-          )}
+          ) : null}
         </Form>
       </OperateModal>
     );

@@ -1,5 +1,4 @@
 import pydantic.root_model  # noqa
-
 import pytest
 
 from apps.mlops import predict_url_builder as pub
@@ -31,13 +30,14 @@ def test_build_predict_url_missing_port_raises(monkeypatch):
     monkeypatch.setenv("MLOPS_RUNTIME", "docker")
     with pytest.raises(ValueError) as exc:
         pub.build_predict_url("svc-1", {})
-    assert "服务端口未配置" in str(exc.value)
+    assert str(exc.value) == pub.SERVING_PORT_NOT_CONFIGURED
 
 
 def test_build_predict_url_none_container_info_raises(monkeypatch):
     monkeypatch.setenv("MLOPS_RUNTIME", "docker")
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc:
         pub.build_predict_url("svc-1", None)
+    assert str(exc.value) == pub.SERVING_PORT_NOT_CONFIGURED
 
 
 def test_build_predict_url_kubernetes_uses_svc_dns(monkeypatch):
@@ -78,4 +78,16 @@ def test_build_predict_url_other_runtime_no_host_raises(monkeypatch):
     monkeypatch.delenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", raising=False)
     with pytest.raises(ValueError) as exc:
         pub.build_predict_url("svc", {"port": 32000})
-    assert "服务地址未配置" in str(exc.value)
+    assert str(exc.value) == pub.SERVING_HOST_NOT_CONFIGURED
+
+
+def test_predict_url_error_keys_localize_en_and_zh():
+    from apps.mlops.utils.i18n import mlops_message_for_locale
+
+    assert mlops_message_for_locale("en", pub.SERVING_PORT_NOT_CONFIGURED) == "Service port is not configured. Please confirm the service has started"
+    assert mlops_message_for_locale("zh-Hans", pub.SERVING_PORT_NOT_CONFIGURED) == "服务端口未配置，请确认服务已启动"
+    assert (
+        mlops_message_for_locale("en", pub.SERVING_HOST_NOT_CONFIGURED)
+        == "Service address is not configured. Please check the environment variable DEFAULT_ZONE_VAR_NODE_SERVER_URL"
+    )
+    assert mlops_message_for_locale("zh-Hans", pub.SERVING_HOST_NOT_CONFIGURED) == "服务地址未配置，请检查环境变量 DEFAULT_ZONE_VAR_NODE_SERVER_URL"

@@ -4,6 +4,8 @@ from apps.system_mgmt.providers.schemas import ProviderManifest
 PROVIDER_MANIFEST = ProviderManifest.model_validate(
     {
         "key": "wecom",
+        "base_connection_adapter_key": "wecom.base_connection",
+        "base_connection_adapter_path": "apps.system_mgmt.providers.adapters.wecom.WeComBaseConnectionAdapter",
         "name": "WeCom",
         "description": "Built-in WeCom integration provider.",
         "instance_templates": {

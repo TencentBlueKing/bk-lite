@@ -171,11 +171,17 @@ def test_serving_prediction_error_responses_use_i18n():
         '{"error": f"端口 ',
         '{"error": f"模型 ',
         '{"error": f"无法连接到预测服务:',
+        '{"error": f"无法连接预测服务:',
         '{"error": f"无法连接推理服务:',
         '{"error": f"预测调用失败:',
         '{"error": f"推理服务错误:',
         '{"error": f"推理失败:',
         '{"error": "服务未启动或容器信息不可用"',
+        '{"error": f"预测服务返回错误:',
+        '{"error": "预测请求超时（超过',
+        '{"error": f"预测请求超时（超过',
+        '{"error": f"预测请求异常:',
+        'error_info.get("message", "预测失败")',
     )
     for module in (
         "anomaly_detection.py",
@@ -200,6 +206,7 @@ def test_training_data_and_configuration_error_responses_use_i18n():
         '{"error": "系统配置错误，请联系管理员"',
         '{"error": f"系统配置错误:',
         '{"error": f"配置更新未生效，旧服务保持运行:',
+        '{"error": f"配置更新未生效:',
     )
     for module in (
         "timeseries_predict.py",
@@ -309,6 +316,15 @@ def test_serving_creation_and_update_response_messages_use_i18n():
         'response.data["message"] = f"服务已创建但启动异常:',
         'response.data["message"] = "配置已更新并重启服务"',
         'response.data["message"] = f"配置已更新但重启失败:',
+        'response.data["warning"] = "容器已存在，已同步容器信息"',
+        'response.data["warning"] = "请手动调用 start 接口重新启动服务"',
+        '"message": "检测到容器已存在，已同步容器信息"',
+        '"warning": "容器已存在"',
+        '"message": "无法查询容器状态"',
+        '"message": "webhookd 未返回此容器状态"',
+        '"message": "webhookd 未返回容器状态"',
+        '"message": "状态查询未返回目标运行时"',
+        '"message": f"{transition} 结果待对账"',
     )
     for module in (
         "anomaly_detection.py",
@@ -321,3 +337,20 @@ def test_serving_creation_and_update_response_messages_use_i18n():
         source = (views_dir / module).read_text(encoding="utf-8")
         for prefix in direct_message_prefixes:
             assert prefix not in source, f"{module}: {prefix}"
+
+
+def test_webhook_and_config_errors_do_not_passthrough_str_e():
+    views_dir = Path(__file__).resolve().parents[1] / "views"
+    for module in (
+        "anomaly_detection.py",
+        "timeseries_predict.py",
+        "log_clustering.py",
+        "classification.py",
+        "image_classification.py",
+        "object_detection.py",
+        "base.py",
+    ):
+        source = (views_dir / module).read_text(encoding="utf-8")
+        assert '{"error": str(e)}' not in source, module
+        assert 'raise ValueError("环境变量 MLFLOW_TRACKER_URL 未配置")' not in source, module
+        assert '"message": "环境变量 MLFLOW_TRACKER_URL 未配置"' not in source, module

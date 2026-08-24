@@ -700,3 +700,125 @@ def test_nats_latest_alerts_also_inherit_policy_root(mocker):
     assert response["result"] is True
     assert response["data"]["count"] == 1
     assert response["data"]["items"][0]["id"] == current_alert.id
+
+
+def test_nats_latest_alerts_count_is_untruncated_and_exposes_summaries(mocker):
+    from datetime import datetime, timezone
+
+    policy = _policy("latest-summary-policy", [1])
+    quiet = MonitorInstance.objects.create(
+        id="latest-quiet-instance",
+        name="latest-quiet-instance",
+        monitor_object=policy.monitor_object,
+        is_active=True,
+    )
+    noisy = MonitorInstance.objects.create(
+        id="latest-noisy-instance",
+        name="latest-noisy-instance",
+        monitor_object=policy.monitor_object,
+        is_active=True,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=quiet, organization=1)
+    MonitorInstanceOrganization.objects.create(monitor_instance=noisy, organization=1)
+    MonitorAlert.objects.create(
+        policy_id=policy.id,
+        monitor_instance_id=noisy.id,
+        status="new",
+        level="warning",
+        start_event_time=datetime(2026, 1, 1, 10, tzinfo=timezone.utc),
+    )
+    newer_critical = MonitorAlert.objects.create(
+        policy_id=policy.id,
+        monitor_instance_id=noisy.id,
+        status="new",
+        level="critical",
+        start_event_time=datetime(2026, 1, 1, 12, tzinfo=timezone.utc),
+    )
+    MonitorAlert.objects.create(
+        policy_id=policy.id,
+        monitor_instance_id=noisy.id,
+        status="closed",
+        level="error",
+        start_event_time=datetime(2026, 1, 1, 13, tzinfo=timezone.utc),
+    )
+    user_info = _patch_nats_alert_permissions(mocker)
+
+    response = monitor_nats.query_latest_active_alerts(
+        {
+            "instance_ids": [quiet.id, noisy.id],
+            "limit": 1,
+        },
+        user_info=user_info,
+    )
+
+    assert response["result"] is True
+    assert response["data"]["count"] == 2
+    assert response["data"]["max_level"] == "critical"
+    assert [item["id"] for item in response["data"]["items"]] == [newer_critical.id]
+    summaries = {row["instance_id"]: row for row in response["data"]["instance_summaries"]}
+    assert summaries[quiet.id] == {"instance_id": quiet.id, "count": 0, "max_level": None}
+    assert summaries[noisy.id] == {"instance_id": noisy.id, "count": 2, "max_level": "critical"}
+
+
+def test_nats_latest_alerts_omits_unauthorized_instance_from_summaries(mocker):
+    policy = _policy("latest-partial-policy", [1])
+    allowed = MonitorInstance.objects.create(
+        id="latest-allowed-instance",
+        name="latest-allowed-instance",
+        monitor_object=policy.monitor_object,
+        is_active=True,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=allowed, organization=1)
+    MonitorAlert.objects.create(
+        policy_id=policy.id,
+        monitor_instance_id=allowed.id,
+        status="new",
+        level="error",
+    )
+    user_info = _patch_nats_alert_permissions(mocker)
+
+    response = monitor_nats.query_latest_active_alerts(
+        {"instance_ids": [allowed.id, "someone-elses-instance"]},
+        user_info=user_info,
+    )
+
+    assert response["result"] is True
+    assert [row["instance_id"] for row in response["data"]["instance_summaries"]] == [allowed.id]
+    assert response["data"]["max_level"] == "error"
+
+
+def test_nats_latest_alerts_all_requested_instances_unauthorized_still_fails(mocker):
+    user_info = _patch_nats_alert_permissions(mocker)
+
+    response = monitor_nats.query_latest_active_alerts(
+        {"instance_ids": ["no-access-a", "no-access-b"]},
+        user_info=user_info,
+    )
+
+    assert response["result"] is False
+    assert response["message"] == "没有权限访问指定的实例"
+
+
+def test_nats_latest_alerts_without_instance_ids_does_not_emit_summaries(mocker):
+    policy = _policy("latest-global-summary-policy", [1])
+    instance = MonitorInstance.objects.create(
+        id="latest-global-summary-instance",
+        name="latest-global-summary-instance",
+        monitor_object=policy.monitor_object,
+        is_active=True,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=1)
+    MonitorAlert.objects.create(
+        policy_id=policy.id,
+        monitor_instance_id=instance.id,
+        status="new",
+        level="warning",
+    )
+    user_info = _patch_nats_alert_permissions(mocker)
+
+    response = monitor_nats.query_latest_active_alerts({}, user_info=user_info)
+
+    assert response["result"] is True
+    assert response["data"]["count"] == 1
+    assert response["data"]["max_level"] == "warning"
+    assert response["data"]["instance_summaries"] == []

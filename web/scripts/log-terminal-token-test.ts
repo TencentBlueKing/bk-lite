@@ -27,7 +27,7 @@ assert(
 
 assert.match(
   source,
-  /\}, \[query, stopLogStream, t, fetchData, token\]\);/,
+  /\}, \[query, stopLogStream, t, fetchData, token, updateLogs\]\);/,
   'startLogStream dependencies should include token so auth context updates refresh the callback'
 );
 

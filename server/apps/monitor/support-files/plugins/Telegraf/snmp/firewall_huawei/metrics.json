@@ -1,0 +1,372 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_huawei_usg",
+  "plugin": "Firewall Huawei SNMP",
+  "plugin_desc": "Huawei Secospace USG firewall SNMP collection (HUAWEI-ENTITY-EXTENT-MIB, enterprise 2011). Collects IF-MIB + 64-bit HC traffic, and per-entity CPU (hwEntityCpuUsage), memory (hwEntityMemUsage), temperature (hwEntityTemperature), and voltage (hwEntityVoltage, mV→V via /1000), each multi-dimensional by descr (entPhysicalName). Fan operational state (hwEntityFanState) and PSU state (hwEntityPwrState) are absent from the USG6390 Info-Finder MIB export; optical Rx/Tx is USG9500-only and intentionally omitted. Supported brands/models — Huawei USG6300/USG6390 and related Secospace USG appliances.",
+  "status_query": "any({instance_type='firewall', collect_type='snmp_huawei_usg'}) by (instance_id)",
+  "name": "Firewall",
+  "icon": "mm-firewall_防火墙",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='firewall'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_voltage_volts",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "display_fields": [],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='firewall', __$labels__}",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-entity CPU utilization of the Huawei USG firewall (HUAWEI-ENTITY-EXTENT-MIB hwEntityCpuUsage, 0-100). Dimension descr is entPhysicalName; Telegraf also tags SNMP table index. Sustained high CPU on any entity may indicate heavy traffic inspection load or an attack."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_usage",
+      "query": "device_memory_usage{instance_type='firewall', __$labels__}",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-entity memory utilization of the Huawei USG firewall (hwEntityMemUsage; on USG6000 reported as whole-device percentage 0-100). Dimension descr is entPhysicalName. High memory pressure can degrade session-handling performance."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='firewall', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Sensor description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-entity temperature in Celsius of the Huawei USG firewall (hwEntityTemperature). Dimension descr is entPhysicalName. Abnormally high temperatures may indicate cooling issues."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_voltage_volts",
+      "query": "(device_voltage_volts{instance_type='firewall', __$labels__} != 0) / 1000",
+      "display_name": "Entity Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Entity description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-entity voltage of the Huawei USG firewall (HUAWEI-ENTITY-EXTENT-MIB hwEntityVoltage). Device reports millivolts; this query divides by 1000 for volts and drops zero readings. Dimension descr is entPhysicalName. Abnormal voltage can indicate power-rail or board issues."
+    },
+    {
+      "metric_group": "Status",
+      "name": "interface_ifAdminStatus",
+      "query": "interface_ifAdminStatus{instance_type='firewall', __$labels__}",
+      "display_name": "Interface Admin Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the administrative status of the network interface."
+    },
+    {
+      "metric_group": "Status",
+      "name": "interface_ifOperStatus",
+      "query": "interface_ifOperStatus{instance_type='firewall', __$labels__}",
+      "display_name": "Interface Oper Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reflects the actual operational status of the network interface."
+    },
+    {
+      "metric_group": "Bandwidth",
+      "name": "interface_ifSpeed",
+      "query": "interface_ifSpeed{instance_type='firewall', __$labels__}",
+      "display_name": "Interface Bandwidth",
+      "data_type": "Number",
+      "unit": "bitps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the maximum data transmission speed supported by the network interface."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "interface_ifInErrors",
+      "query": "rate(interface_ifInErrors{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Incoming Errors Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of incoming error packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "interface_ifOutErrors",
+      "query": "rate(interface_ifOutErrors{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Outgoing Errors Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing error packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "interface_ifInDiscards",
+      "query": "rate(interface_ifInDiscards{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Incoming Discards Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of incoming discarded packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "interface_ifOutDiscards",
+      "query": "rate(interface_ifOutDiscards{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Outgoing Discards Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing discarded packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet",
+      "name": "interface_ifInUcastPkts",
+      "query": "rate(interface_ifInUcastPkts{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Incoming Unicast Packets Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of incoming unicast packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet",
+      "name": "interface_ifOutUcastPkts",
+      "query": "rate(interface_ifOutUcastPkts{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Outgoing Unicast Packets Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifInOctets",
+      "query": "rate(interface_ifInOctets{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifOutOctets",
+      "query": "rate(interface_ifOutOctets{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average rate of bytes received over the past 5 minutes from the 64-bit IF-MIB ifHCInOctets counter."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average rate of bytes sent over the past 5 minutes from the 64-bit IF-MIB ifHCOutOctets counter."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_traffic",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='firewall', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_traffic",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='firewall', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes."
+    }
+  ]
+}

@@ -7,7 +7,6 @@ import pytest
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.views.open_api_k8s import K8sOpenAPIViewSet
 
-
 pytestmark = pytest.mark.unit
 
 
@@ -26,6 +25,7 @@ def test_k8s_render_forwards_profile_and_reports_remaining_usage(monkeypatch):
             return {
                 "cluster_name": "prod",
                 "cloud_region_id": 7,
+                "image_registry_prefix": "harbor.internal/bklite",
                 "remaining_usage": 2,
             }
 
@@ -44,6 +44,7 @@ def test_k8s_render_forwards_profile_and_reports_remaining_usage(monkeypatch):
             "runtime_profile": "containerd",
             "host_log_path": "/var/log",
             "docker_container_log_path": "/docker",
+            "image_registry_prefix": "attacker.example/override",
         }
     )
 
@@ -51,4 +52,4 @@ def test_k8s_render_forwards_profile_and_reports_remaining_usage(monkeypatch):
 
     assert response.content == b"kind: ConfigMap\n"
     assert response["X-Token-Remaining-Usage"] == "2"
-    assert calls == [("prod", 7, "containerd", "/var/log", "/docker")]
+    assert calls == [("prod", 7, "harbor.internal/bklite")]

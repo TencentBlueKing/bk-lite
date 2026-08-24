@@ -1,0 +1,1076 @@
+.workspace {
+  width: 100%;
+  min-width: 0;
+}
+
+.tabs {
+  margin-bottom: 0;
+}
+
+.filterSection,
+.chartSection,
+.tableSection,
+.policySection {
+  width: 100%;
+  background: var(--color-bg-1);
+}
+
+.filterSection {
+  padding: 10px 0;
+  margin-bottom: 10px;
+}
+
+.filterTitle {
+  margin-bottom: 10px;
+  color: var(--color-text-1);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.filterRow,
+.filterGroup,
+.timeGroup,
+.policyToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.filterRow,
+.policyToolbar {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.filterGroup,
+.timeGroup {
+  gap: 12px;
+}
+
+.filterItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filterLabel {
+  flex: none;
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
+.chartSection {
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.chart {
+  height: 120px;
+  padding: 0 10px;
+}
+
+.alertsViewTabs {
+  margin: 0;
+}
+
+.alertsViewTabs :global(.ant-tabs-nav) {
+  margin-bottom: 0;
+}
+
+.alertsViewTabs :global(.ant-tabs-nav::before) {
+  border-bottom-color: var(--color-border);
+}
+
+.alertsViewTabs :global(.ant-tabs-tab) {
+  padding: 0 0 10px;
+}
+
+.alertsContent {
+  width: 100%;
+}
+
+.alertsToolbar {
+  display: flex;
+  align-items: center;
+}
+
+.alertsToolbarActions,
+.alertsSeveritySummary {
+  display: flex;
+  align-items: center;
+}
+
+.alertsToolbarActions {
+  width: 100%;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.alertsToolbarActions :global(.ant-input-affix-wrapper) {
+  width: 320px;
+  margin-right: auto;
+}
+
+.alertsHistoryTimeSelector {
+  width: 350px;
+}
+
+.alertsHistoryTimeSelector :global(.ant-select),
+.alertsHistoryTimeSelector :global(.ant-picker) {
+  width: 100% !important;
+}
+
+.alertsDistribution {
+  overflow: hidden;
+}
+
+.alertsDistributionChart {
+  height: 150px;
+  padding: 0 10px;
+}
+
+.alertsDistributionCollapseTitle {
+  min-height: 44px;
+}
+
+.alertsDistributionCollapseContent {
+  padding: 10px 0 !important;
+}
+
+.alertsTableSection {
+  min-width: 0;
+}
+
+.alertsTableSection :global(.ant-table-wrapper) {
+  min-width: 0;
+}
+
+.alertTimeCell {
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.alertTitleLink {
+  display: block !important;
+  width: 100%;
+  height: auto !important;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0 !important;
+  font-weight: 500;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alertServiceCell {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.alertServiceName,
+.alertServiceScope {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alertServiceName {
+  color: var(--color-text-1);
+  font-weight: 500;
+}
+
+.alertServiceScope {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.alertOperatorCell {
+  max-width: 100%;
+}
+
+.alertOperatorCell :global(.ant-avatar) {
+  flex: none;
+  background: var(--color-primary);
+}
+
+.alertOperatorCell :global(.ant-typography) {
+  min-width: 0;
+  margin: 0;
+}
+
+.alertOperationCell :global(.ant-btn) {
+  height: auto;
+  min-height: 0;
+}
+
+.alertDetailDrawer :global(.ant-drawer-header) {
+  padding: 12px 16px;
+}
+
+.alertDetailDrawerBody {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 16px 16px;
+}
+
+.alertDetailDrawerFooter {
+  padding: 10px 16px;
+}
+
+.alertDetailTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.alertDetailTitleText {
+  color: var(--color-text-1);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.alertDetailStateTag,
+.alertDetailMetricTag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.alertDetailStateTagActive {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg));
+  border-color: var(--color-primary);
+}
+
+.alertDetailStateTagRecovered {
+  color: var(--color-text-2);
+  background: var(--color-fill-1);
+  border-color: var(--color-border);
+}
+
+.alertDetailStateTagClosed {
+  color: var(--color-text-3);
+  background: var(--color-fill-1);
+  border-color: var(--color-border);
+}
+
+.alertDetailLevelTag {
+  margin: 0 !important;
+  font-weight: 600;
+}
+
+.alertDetailMetricTagError {
+  color: var(--color-fail);
+  background: transparent;
+  border-color: var(--color-fail);
+}
+
+.alertDetailMetricTagLatency {
+  color: var(--theme-color-status-warning);
+  background: transparent;
+  border-color: var(--theme-color-status-warning);
+}
+
+.alertDetailMetricTagThroughput {
+  color: var(--color-primary);
+  background: transparent;
+  border-color: var(--color-primary);
+}
+
+.alertDetailMetricTagIdle {
+  color: var(--color-text-3);
+  background: transparent;
+}
+
+.alertDetailMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border-1);
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
+.alertDetailMetaLink,
+.alertDetailRule {
+  color: var(--color-primary);
+}
+
+.alertDetailRule {
+  padding: 0 4px;
+  background: var(--color-fill-1);
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.alertDetailRule a {
+  color: inherit;
+}
+
+.alertDetailMetaText {
+  font-size: 12px !important;
+}
+
+.alertDetailTabs {
+  flex: none;
+  margin-top: 4px;
+}
+
+.alertDetailTabs :global(.ant-tabs-nav) {
+  margin-bottom: 12px;
+}
+
+.alertDetailBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.alertDetailInfo :global(.ant-descriptions-header) {
+  margin-bottom: 12px;
+}
+
+.alertDetailInfo :global(.ant-descriptions-view table) {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.alertDetailInfo :global(.ant-descriptions-item-label),
+.alertDetailInfo :global(.ant-descriptions-item-content) {
+  padding: 10px 12px !important;
+  vertical-align: middle;
+}
+
+.alertDetailInfo :global(.ant-descriptions-item-label) {
+  width: 110px;
+  color: var(--color-text-3);
+  background: var(--color-fill-1) !important;
+}
+
+.alertDetailInfo :global(.ant-descriptions-item-content) {
+  overflow-wrap: anywhere;
+}
+
+.alertDetailLevel {
+  padding-left: 8px;
+  border-left-width: 4px;
+  border-left-style: solid;
+  font-weight: 600;
+}
+
+.alertDetailObject {
+  line-height: 1.3;
+}
+
+.alertDetailObjectScope {
+  font-size: 11px !important;
+}
+
+.alertDetailTabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.alertDetailNotifyTag {
+  margin: 0 !important;
+}
+
+.alertDetailCloseRow {
+  margin-top: 12px;
+}
+
+.alertDetailChartCard,
+.alertDetailEventCard {
+  padding: 14px 16px;
+  margin-top: 16px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.alertDetailEventCard {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.alertDetailChartTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin: 0 0 4px !important;
+  gap: 8px;
+}
+
+.alertDetailChartHint {
+  font-size: 11px !important;
+  font-weight: 400 !important;
+}
+
+.alertDetailChart {
+  height: 220px;
+}
+
+.alertDetailEventCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.alertDetailEventCardTitle {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+.alertDetailHeatLegend,
+.alertDetailHeatLegendItem,
+.alertDetailHeatFoot {
+  display: flex;
+  align-items: center;
+}
+
+.alertDetailHeatLegend {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.alertDetailHeatLegendItem {
+  gap: 3px;
+}
+
+.alertDetailHeatLegendLabel {
+  font-size: 10px !important;
+}
+
+.alertDetailHeatSwatch,
+.alertDetailHeatCell {
+  border: 1px solid transparent;
+  border-radius: 2px;
+}
+
+.alertDetailHeatSwatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-color: var(--color-border-1);
+}
+
+.alertDetailHeatScroll {
+  overflow-x: auto;
+}
+
+.alertDetailHeatGrid {
+  width: 100%;
+  min-width: 640px;
+}
+
+.alertDetailHeatHours,
+.alertDetailHeatRow {
+  display: grid;
+  grid-template-columns: 64px repeat(24, minmax(14px, 1fr));
+  gap: 2px;
+  margin-bottom: 2px;
+}
+
+.alertDetailHeatHours {
+  margin-bottom: 4px;
+  color: var(--color-text-4);
+  font-size: 10px;
+  text-align: center;
+}
+
+.alertDetailHeatHours span {
+  opacity: 0.4;
+}
+
+.alertDetailHeatHourActive {
+  opacity: 1 !important;
+}
+
+.alertDetailHeatDay,
+.alertDetailHeatDayToday {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+}
+
+.alertDetailHeatDay {
+  color: var(--color-text-2);
+}
+
+.alertDetailHeatDayToday {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.alertDetailHeatCell {
+  display: block;
+  width: 100%;
+  min-width: 14px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--color-border-1);
+  cursor: pointer;
+}
+
+.alertDetailHeatPeak {
+  border-color: color-mix(in srgb, var(--color-fail) 72%, var(--color-text-1));
+}
+
+.alertDetailHeatFoot {
+  margin-top: 8px;
+  color: var(--color-text-4);
+  font-size: 11px;
+  gap: 6px;
+}
+
+.alertDetailHeatFootIcon {
+  color: var(--color-fail);
+}
+
+.alertDetailEventList {
+  overflow-y: auto;
+  max-height: 400px;
+  border: 1px solid var(--color-border-1);
+  border-radius: 6px;
+}
+
+.alertDetailEventRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  color: var(--color-text-1);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-1);
+  text-align: left;
+  cursor: pointer;
+  gap: 12px;
+}
+
+.alertDetailEventRow:last-child {
+  border-bottom: 0;
+}
+
+.alertDetailEventRowActive {
+  background: color-mix(in srgb, var(--color-fail) 4%, transparent);
+}
+
+.alertDetailEventRowSelected {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.alertDetailEventTime {
+  flex: none;
+  width: 72px;
+  color: var(--color-text-1);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.alertDetailEventContent {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alertDetailEventValue {
+  flex: none;
+  width: 100px;
+  color: var(--color-text-2);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.alertDetailEventValueWarn {
+  color: var(--theme-color-status-warning);
+}
+
+.alertDetailEventValueDanger {
+  color: var(--color-fail);
+}
+
+.tableSection {
+  min-width: 0;
+  padding: 10px 0 16px;
+}
+
+.policySection {
+  min-width: 0;
+}
+
+.policyToolbar {
+  margin-bottom: 0;
+}
+
+.policyNameLink,
+.policyServiceName {
+  display: block;
+  overflow: hidden;
+  color: var(--color-text-1);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.policyNameLink:hover {
+  color: var(--color-primary);
+}
+
+.policyServiceCell {
+  min-width: 0;
+  line-height: 1.5;
+}
+
+.policyServiceScope {
+  display: block;
+  overflow: hidden;
+  margin-top: 2px;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.policyCreatorCell {
+  max-width: 100%;
+}
+
+.policyCreatorCell :global(.ant-avatar) {
+  flex: none;
+  background: var(--color-primary);
+}
+
+.policyCreatorCell :global(.ant-typography) {
+  min-width: 0;
+  margin: 0;
+}
+
+.policyTimeCell {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.policyTimeCell :global(.anticon) {
+  color: var(--color-text-4);
+}
+
+.policyOperationCell :global(.ant-btn) {
+  height: auto;
+  min-height: 0;
+}
+
+.editor {
+  width: 100%;
+  min-height: 100%;
+  padding: 0;
+  background: transparent;
+}
+
+.editorTitle {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 40px;
+  margin-bottom: 12px;
+  color: var(--color-text-3);
+  font-size: 14px;
+  gap: 6px;
+}
+
+.editorLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 24px;
+  padding: 0 0 24px;
+}
+
+.editorMain,
+.editorSide {
+  width: 100%;
+  min-width: 0;
+}
+
+.editorSide {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.stepContent {
+  width: 100%;
+  max-width: 840px;
+  padding: 12px 0 24px;
+}
+
+.stepContent :global(.ant-form-item) {
+  margin-bottom: 18px;
+}
+
+.stepContent :global(.ant-input),
+.stepContent :global(.ant-input-number),
+.stepContent :global(.ant-select) {
+  width: 100%;
+  max-width: 560px;
+}
+
+.numberWithUnit {
+  width: 100%;
+  max-width: 560px;
+}
+
+.numberWithUnit :global(.ant-input-number) {
+  flex: 1;
+  min-width: 0;
+}
+
+.numberUnit {
+  display: inline-flex;
+  min-width: 52px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 11px;
+  color: var(--color-text-2);
+  background: var(--color-fill-1);
+  border: 1px solid var(--color-border);
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+}
+
+.scopeHint {
+  display: block;
+  margin: -6px 0 0 120px;
+  font-size: 12px;
+}
+
+.editor :global(.ant-steps-item-description) {
+  width: 100%;
+  max-width: none !important;
+  color: var(--color-text-1) !important;
+}
+
+.editor :global(.ant-steps-item-title) {
+  color: var(--color-text-1) !important;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.editor :global(.ant-steps-item-icon) {
+  font-variant-numeric: tabular-nums;
+}
+
+.editor :global(.ant-steps-item-process > .ant-steps-item-container > .ant-steps-item-tail::after) {
+  background: var(--color-border-2);
+}
+
+.thresholdTitle {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.thresholdTable {
+  width: 100%;
+  max-width: 840px;
+  margin-bottom: 24px;
+}
+
+.thresholdTable :global(.ant-table-cell) {
+  vertical-align: middle;
+}
+
+.thresholdTable :global(.ant-select),
+.thresholdTable :global(.ant-input-number) {
+  width: 100%;
+  max-width: none;
+}
+
+.thresholdTable :global(.ant-tag) {
+  min-width: 44px;
+  margin: 0;
+  text-align: center;
+  font-weight: 600;
+}
+
+.conditionRows {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.conditionRow,
+.conditionSentence {
+  display: flex;
+  align-items: center;
+}
+
+.conditionRow {
+  min-height: 40px;
+}
+
+.conditionLabel {
+  flex: 0 0 120px;
+  padding-right: 12px;
+  color: var(--color-text-1);
+  text-align: right;
+}
+
+.conditionLabel > span {
+  margin-right: 3px;
+  color: var(--color-fail);
+}
+
+.conditionSentence {
+  flex-wrap: wrap;
+  color: var(--color-text-3);
+  gap: 8px;
+}
+
+.conditionSentence :global(.ant-input-number) {
+  width: 72px;
+}
+
+.conditionSentence :global(.ant-select) {
+  width: 176px;
+}
+
+.noDataAlertName {
+  margin-top: 2px;
+  margin-bottom: 0 !important;
+}
+
+.editorFooter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px 0 24px;
+  border-top: 1px solid var(--color-border-1);
+}
+
+.sideSection {
+  min-width: 0;
+}
+
+.sideSection :global(.ant-typography) {
+  margin-top: 0;
+}
+
+.sideSection :global(h2.ant-typography) {
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sideSection :global(.ant-table) {
+  background: var(--color-bg-1);
+}
+
+.sideSection :global(.ant-table-cell) {
+  padding: 10px 12px !important;
+}
+
+.sideSection :global(.ant-btn-link) {
+  min-height: 32px;
+  padding: 0;
+}
+
+.variableCode {
+  color: var(--color-primary);
+  font-size: 12px;
+}
+
+.previewHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.previewHeading :global(.ant-typography-secondary) {
+  display: block;
+  font-size: 12px;
+}
+
+.previewValue {
+  margin-top: 16px;
+}
+
+.previewChart {
+  height: 240px;
+  margin-top: 12px;
+}
+
+.previewEmpty {
+  display: flex;
+  min-height: 220px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  border-bottom: 1px solid var(--color-border-1);
+  text-align: center;
+}
+
+@media (min-width: 1280px) {
+  .editorLayout {
+    grid-template-columns: minmax(680px, 860px) minmax(360px, 1fr);
+    gap: 24px;
+  }
+
+  .editorSide {
+    position: sticky;
+    top: 16px;
+  }
+}
+
+@media (max-width: 900px) {
+  .filterRow,
+  .policyToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .timeGroup {
+    justify-content: space-between;
+  }
+
+  .alertsToolbarActions :global(.ant-input-affix-wrapper) {
+    width: min(100%, 360px);
+  }
+
+  .editor {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .editorLayout {
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .scopeHint {
+    margin-left: 0;
+  }
+
+  .conditionRow {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .conditionLabel {
+    flex-basis: auto;
+    padding-right: 0;
+    text-align: left;
+  }
+}
+
+@media (max-width: 640px) {
+  .alertsToolbarActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .alertsToolbarActions :global(.ant-input-affix-wrapper),
+  .alertsToolbarActions :global(.ant-btn),
+  .alertsHistoryTimeSelector {
+    width: 100%;
+  }
+
+  .alertsDistribution {
+    margin-bottom: 8px;
+  }
+
+  .alertsToolbar,
+  .alertsTableSection {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .alertsDistributionCollapseTitle {
+    padding-right: 12px !important;
+    padding-left: 12px !important;
+  }
+
+  .alertsDistributionChart {
+    height: 180px;
+  }
+
+  .alertDetailMeta {
+    gap: 10px;
+  }
+
+  .alertDetailEventTime,
+  .alertDetailEventValue {
+    width: auto;
+  }
+
+  .alertDetailEventValue {
+    text-align: left;
+  }
+
+  .alertsSeveritySummary {
+    align-items: flex-start;
+  }
+
+  .editor :global(.ant-form-item-row) {
+    flex-direction: column;
+  }
+
+  .editor :global(.ant-form-item-label) {
+    flex: none !important;
+    max-width: 100%;
+    padding-bottom: 6px;
+    text-align: left;
+  }
+
+  .editor :global(.ant-form-item-label > label) {
+    height: auto;
+  }
+
+  .editor :global(.ant-form-item-control) {
+    flex: 0 0 auto !important;
+    width: 100%;
+    max-width: 100%;
+    min-height: 40px;
+  }
+
+  .thresholdTable :global(.ant-table-cell) {
+    padding: 8px !important;
+  }
+
+  .thresholdTable .numberUnit {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace *,
+  .editor * {
+    scroll-behavior: auto !important;
+  }
+}

@@ -14,6 +14,7 @@ YAML导入预检服务
 import yaml
 from pydantic import ValidationError
 
+from apps.operation_analysis.common.datasource_security import LEGACY_RAW_MONITOR_QUERY_ERROR, is_legacy_raw_monitor_query
 from apps.operation_analysis.constants.import_export import (
     CANVAS_TYPES,
     IMPORT_OBJECT_LIMIT,
@@ -279,6 +280,27 @@ class PrecheckService:
         return warnings
 
     @staticmethod
+    def check_excel_needs_upload(doc: YAMLDocument) -> list[dict]:
+        """新格式 Excel（无 imported_items）导入后需重新上传原文件。"""
+        warnings = []
+        for datasource in doc.datasources:
+            if datasource.source_type != "excel":
+                continue
+            query_config = datasource.query_config if isinstance(datasource.query_config, dict) else {}
+            imported_items = query_config.get("imported_items")
+            if isinstance(imported_items, list) and imported_items:
+                continue
+            warnings.append(
+                {
+                    "code": ImportExportWarningCode.EXCEL_NEEDS_UPLOAD,
+                    "message": f"Excel 数据源 '{datasource.name}' 需重新上传原文件后方可运行",
+                    "object_key": datasource.key,
+                    "field": "query_config.imported_items",
+                }
+            )
+        return warnings
+
+    @staticmethod
     def check_dependencies(doc: YAMLDocument) -> list[dict]:
         """检查依赖完整性：画布引用的数据源和命名空间是否在YAML中声明"""
         errors = []
@@ -336,6 +358,34 @@ class PrecheckService:
 
         return errors
 
+    @staticmethod
+    def check_datasource_security(doc: YAMLDocument) -> list[dict]:
+        """在提交导入前拒绝没有可兼容存量记录的监控裸查询数据源。"""
+        raw_items = [
+            item
+            for item in doc.datasources
+            if is_legacy_raw_monitor_query(source_type=item.source_type, rest_api=item.rest_api)
+        ]
+        if not raw_items:
+            return []
+
+        existing_keys = set(
+            DataSourceAPIModel.objects.filter(
+                name__in={item.name for item in raw_items},
+                rest_api__in={item.rest_api for item in raw_items},
+            ).values_list("name", "rest_api")
+        )
+        return [
+            {
+                "code": ImportExportErrorCode.YAML_SCHEMA_INVALID,
+                "message": LEGACY_RAW_MONITOR_QUERY_ERROR,
+                "object_key": item.key,
+                "object_type": ObjectType.DATASOURCE.value,
+            }
+            for item in raw_items
+            if (item.name, item.rest_api) not in existing_keys
+        ]
+
     @classmethod
     def identify_conflicts(cls, doc: YAMLDocument, current_team: int | None = None) -> list[dict]:
         """
@@ -373,12 +423,23 @@ class PrecheckService:
             existing = existing_datasources.get((ds.name, ds.rest_api))
             if existing:
                 has_permission = cls._check_group_permission(existing, current_team)
+                suggested_actions = all_actions if has_permission else rename_only
+                if is_legacy_raw_monitor_query(source_type=ds.source_type, rest_api=ds.rest_api):
+                    if not has_permission:
+                        suggested_actions = []
+                    elif is_legacy_raw_monitor_query(
+                        source_type=existing.source_type,
+                        rest_api=existing.rest_api,
+                    ):
+                        suggested_actions = [ConflictAction.SKIP.value, ConflictAction.OVERWRITE.value]
+                    else:
+                        suggested_actions = [ConflictAction.SKIP.value]
                 conflicts.append(
                     {
                         "object_key": ds.key,
                         "object_type": ObjectType.DATASOURCE.value,
                         "reason": ConflictReason.NAME_CONFLICT if has_permission else ConflictReason.NO_PERMISSION_CONFLICT,
-                        "suggested_actions": all_actions if has_permission else rename_only,
+                        "suggested_actions": suggested_actions,
                     }
                 )
 
@@ -487,6 +548,7 @@ class PrecheckService:
 
         # Step 6: 依赖完整性检查
         all_errors.extend(cls.check_dependencies(doc))
+        all_errors.extend(cls.check_datasource_security(doc))
 
         # Step 7: 画布导入必须指定目录
         if cls.has_canvas_objects(doc) and target_directory_id is None:
@@ -499,6 +561,7 @@ class PrecheckService:
 
         # Step 8: 敏感字段警告
         all_warnings.extend(cls.check_sensitive_placeholders(doc))
+        all_warnings.extend(cls.check_excel_needs_upload(doc))
 
         # Step 9: 冲突识别
         conflicts = cls.identify_conflicts(doc, current_team)

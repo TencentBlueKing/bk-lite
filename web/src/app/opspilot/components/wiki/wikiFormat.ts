@@ -23,12 +23,22 @@ export const TRIGGER_LABEL: Record<string, string> = {
   material: "wiki.triggerMaterial",
   material_delete: "wiki.triggerMaterialDelete",
   material_update: "wiki.triggerMaterialUpdate",
+  material_queue: "wiki.triggerMaterialQueue",
+  material_queue_item: "wiki.triggerMaterialQueueItem",
   rebuild: "wiki.triggerRebuild",
+  build: "wiki.triggerBuildCascade",
+  maintenance_retry: "wiki.triggerMaintenanceRetry",
+  page_delete: "wiki.triggerPageDelete",
+  delete: "wiki.triggerPageDelete",
 };
 export const STAGE_LABEL: Record<string, string> = {
   done: "wiki.stageDone",
   failed: "wiki.stageFailed",
   generating: "wiki.stageGenerating",
+  preparing: "wiki.stagePreparing",
+  parsing: "wiki.stageParsing",
+  queued: "wiki.stageQueued",
+  dispatched: "wiki.stageDispatched",
   running: "wiki.stageRunning",
   cancelled: "wiki.stageCancelled",
 };
@@ -40,11 +50,38 @@ export const BUILD_STATUS_LABEL: Record<string, string> = {
   cancelled: "wiki.buildCancelled",
 };
 
-export type MaterialDisplayStatus = "pending" | "building" | "built" | "failed";
+export type MaterialDisplayStatus =
+  | "pending"
+  | "queued"
+  | "building"
+  | "built"
+  | "failed";
+
+/** 列表筛选项顺序：与界面展示状态一致。 */
+export const MATERIAL_DISPLAY_STATUS_OPTIONS: MaterialDisplayStatus[] = [
+  "pending",
+  "queued",
+  "building",
+  "built",
+  "failed",
+];
+
+/** 展示状态 → 后端原始 status 集合（与列表排序分组对齐）。 */
+export const MATERIAL_RAW_STATUSES_BY_DISPLAY: Record<
+  MaterialDisplayStatus,
+  readonly string[]
+> = {
+  pending: ["pending", "done", "updated"],
+  queued: ["queued"],
+  building: ["parsing", "building"],
+  built: ["built"],
+  failed: ["parse_failed", "build_failed", "failed", "invalid", "partial"],
+};
 
 export const materialDisplayStatus = (
   status?: string,
 ): MaterialDisplayStatus => {
+  if (status === "queued") return "queued";
   if (status === "parsing" || status === "building") return "building";
   if (status === "built") return "built";
   if (
@@ -64,6 +101,7 @@ export const MATERIAL_STATUS_META: Record<
   { color: string; key: string }
 > = {
   pending: { color: "default", key: "wiki.statusPending" },
+  queued: { color: "processing", key: "wiki.statusQueued" },
   building: { color: "processing", key: "wiki.statusBuilding" },
   built: { color: "green", key: "wiki.statusBuilt" },
   failed: { color: "red", key: "wiki.statusFailed" },

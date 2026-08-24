@@ -22,7 +22,7 @@
 
 **存储**：PostgreSQL（ORM）；**Neo4j / FalkorDB**（关系图谱，驱动实现 `graph/{neo4j,falkordb}.py`，运行期由 `graph/drivers/graph_client.py:46-52` 按环境变量 `FALKORDB_HOST` 动态二选一——设置则用 FalkorDB，否则回落 Neo4j，并非两者并存【已实现/已存在】）；Neo4j 搜索/过滤路径已参数化（`graph/neo4j.py:10,301`，引入 `FORMAT_TYPE_PARAMS + ParameterCollector`，`format_search_params/format_final_params` 返回 `(params_str, query_params)` 元组并以 `session.run(**query_params)` 执行，权限过滤条件同步参数化，该路径的 Cypher 注入风险已消除【已实现/已存在】；但写入与按 id 取详情等路径仍为 f-string 拼接、未参数化——`create_entity` `CREATE (n:{label} {properties_str})`（`:197`）、`MATCH (n) WHERE id(n) = {id}`（`:408`），属局部加固而非全面消除【已实现/待确认风险】）；MinIO（配置文件，`cmdb-config-file` bucket）；VictoriaMetrics（K8s 指标查询，`collection/query_vm.py`）。
 
-**内置模型字段（rack / server_room）新增布局属性**【已实现/已存在】：`support-files/model_config.xlsx` 新增以下字段供机房俯视图与机柜正视 U 图使用，消费方为 `services/rack_room.py`（`get_rack_layout`:146-159 读 `rack_u_start`/`u_size`/`u_count`；`get_room_layout`:162-198 读 `row`/`col`/`u_count`）：
+**内置模型字段（rack / server_room）新增布局属性**【已实现/已存在】：`support-files/model_config.xlsx` 新增以下字段供机房俯视图与机柜正视 U 图使用，消费方为 `services/rack_room.py`（`get_rack_layout`:274-298 读取机柜 `u_count` 与设备 `rack_u_start`/`u_size`；`get_room_layout`:301-345 读取机柜位置、容量与柜内设备 U 位并组装网格数据）：
 | 字段 | 所属模型 | 说明 |
 |------|----------|------|
 | `row` | rack | 机柜在机房网格中的行坐标（1-based） |
@@ -31,12 +31,16 @@
 | `rack_u_start` | 服务器等设备 | 设备在机柜中的起始 U 位 |
 | `u_size` | 服务器等设备 | 设备占用 U 数 |
 
-**机房机柜布局服务**（`services/rack_room.py`）【已实现/已存在】：纯只读服务，不写入实例数据。核心函数：
-- `build_room_layout(racks)` — 将机柜列表组装为俯视平面图，计算 `col_letter`/`usage`，标记同格冲突，未定位机柜单独成列不丢弃（`:20-55`）。
-- `build_rack_layout(u_count, devices)` — 将设备列表组装为正视 U 图，检测越界与 U 段重叠，计算空闲 U 统计（`:58-85`）。
-- `free_u_stats(u_count, ranges)` — 计算总空闲 U 与最大连续空闲段（`:88-105`）。
-- `get_room_layout(server_room_id, ...)` — 取数入口：通过 `InstanceManage.instance_association_instance_list` 取机房下关联机柜，按 `_has_topology_view_permission` 过滤，组装利用率（`:162-198`）。
-- `get_rack_layout(rack_id, ...)` — 取数入口：取机柜实体及其 contains 设备，按权限过滤，组装 U 图（`:146-159`）。
+**机房机柜布局读取组件**（`services/rack_room.py`）【已实现/已存在】：负责组装机房网格、机柜 U 图、冲突与空闲容量，不直接写入实例数据。核心函数：
+- `build_room_layout(racks)` — 将机柜列表组装为俯视平面图，计算 `col_letter`/`usage`，标记同格冲突，未定位机柜单独成列不丢弃（`:57-95`）。
+- `build_rack_layout(u_count, devices)` — 将设备列表组装为正视 U 图，检测越界与 U 段重叠，计算空闲 U 统计（`:98-122`）。
+- `free_u_stats(u_count, ranges)` — 计算总空闲 U 与最大连续空闲段（`:125-142`）。
+- `get_room_layout(server_room_id, ...)` — 取数入口：通过 `InstanceManage.instance_association_instance_list` 取机房下关联机柜，按 `_has_topology_view_permission` 过滤，组装利用率（`:301-345`）。
+- `get_rack_layout(rack_id, ...)` — 取数入口：取机柜实体及其 contains 设备，按权限过滤，组装 U 图（`:274-298`）。
+
+**机房机柜布局编辑组件**（`services/rack_room_edit.py`）【已实现】：负责将新建或既有机柜/设备放置到指定机房网格或机柜 U 位，校验格位、U 位、模型与归属冲突；移出布局时解除当前容器关联并清空定位属性，保留实例本身。视图层负责容器与目标实例的权限校验及动作分发（`views/instance.py:1628-1750`）。产品规则见 [[legacy-prd-cmdb-资产.md#3.6.1 资产详情 · IP 地址视图与物理布局]]；交付范围见 [[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#4. 资产检索与视图]]。
+
+> 证据来源：server/apps/cmdb/services/rack_room.py:57-345，server/apps/cmdb/services/rack_room_edit.py:303-441，server/apps/cmdb/views/instance.py:1628-1750　|　同步基线：b98b782a7　|　【已实现】
 
 **IPAM 服务**【已实现/已存在】：围绕内置 `subnet` / `ip` 模型提供子网合法性、视图、发现和对账能力。
 - `services/ipam_subnet.py`：`validate_subnet_no_overlap` 在创建/更新 `subnet` 实例时校验网段重叠；入口挂在 `services/instance.py:553-555` 与 `services/instance.py:630-636`。
@@ -44,6 +48,9 @@
 - `services/ipam_discovery.py`：子网发现任务从采集任务 `instances` 字段读取 `subnet_ids` / `scan_method` / `ports`，下发给 Stargazer，并通过回调结果创建/更新 `ip` 实例、标记离线、回写子网利用率（`:16-218`）。
 - `services/ipam_reconcile.py`：`run_reconciliation` 从 `IPAMReconcileSource` 读取参与对账的 CI 模型与 IP 字段，匹配子网，创建/更新 `ip` 实例、保护手工记录、识别冲突并回写子网利用率（`:37-228`）。
 - `utils/ipam_cidr.py`：承载 CIDR 解析、容量计算、重叠判断与 IP 命中子网等纯逻辑能力。
+- `services/ipam_edit.py`：负责 IP 视图中的手工登记动作判定、子网边界校验、实例写入与子网-IP 关联；创建后关联失败会回滚新建 IP，删除或创建后尝试回写子网利用率。产品规则见 [[legacy-prd-cmdb-资产.md#3.6.1 资产详情 · IP 地址视图与物理布局]]，交付范围见 [[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#3. 资产详情]]。
+
+> 证据来源：server/apps/cmdb/services/ipam_edit.py:81-88，server/apps/cmdb/services/ipam_edit.py:104-121，server/apps/cmdb/services/ipam_edit.py:169-245，server/apps/cmdb/views/instance.py:1452-1540　|　同步基线：b98b782a7　|　【已实现】
 
 ## 3. 接口【已实现/已存在】
 `urls.py` 路由组：`classification`/`model`/`instance`/`change_record`/`collect`/`config_file_versions`/`oid`/`field_groups`/`user_configs`/`public_enum_libraries`/`subscription`/`node_mgmt_sync`/`collect_tool`/`k8s_setup`；开放端点 `open_api/k8s_setup`；企业特性 `custom_reporting/{tasks,ingest}`。
@@ -68,7 +75,7 @@
 | `POST instance/application_resource_export/<model_id>/<inst_id>` | `InstanceViewSet.application_resource_export` | 导出当前选中节点对应的资源实例 Excel |
 | `GET instance/ipam_view/<inst_id>` | `InstanceViewSet.ipam_view` | 返回子网视角的 IP 容量、利用率与地址列表 |
 
-对应 PRD：[[spec/prd/CMDB/自动发现.md#3.1 采集对象树与插件]]、[[spec/prd/CMDB/资产.md#3.8 资产详情 · 应用资源总览]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#3. 资产详情]]
+对应 PRD：[[legacy-prd-cmdb-自动发现.md#3.1 采集对象树与插件]]、[[legacy-prd-cmdb-资产.md#3.8 资产详情 · 应用资源总览]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#3. 资产详情]]
 > 证据来源：server/apps/cmdb/views/collect.py:66-68，server/apps/cmdb/views/instance.py:999-1150　|　同步基线：83091efe　|　【已实现】
 
 ## 4. 依赖与通信【已实现/已存在】
@@ -95,7 +102,16 @@
 - **RPC 客户端**（`apps/rpc/cmdb.py:44-94`）：为上述第五类 NATS handler 中的 8 个新增 RPC 包装方法供跨模块调用：`list_instances`、`search_model_attrs`、`search_models`、`search_classifications`、`search_model_associations`、`search_instance_associations`、`create_instance_association`、`delete_instance_association`；`search_instances`/`search_instances_batch` 为原有包装方法。注意：第五类 NATS handler 中的 `create_instance`、`delete_instance` 暂无对应 RPC 包装方法，仅可经 NATS 主题直接调用【已实现/已存在】。
 - Celery：`tasks/celery_tasks.py` 注册 14 个 `@shared_task`，详见 §5。
 
+**主机跨模块联动**【已实现】：CMDB、监控与节点管理以包含三方关联标识的联动信封进行双向接入。CMDB 接收端优先按节点标识更新，未命中时才认领或新建，并拒绝在存量认领时用另一节点标识覆盖既有关联；监控接收端分别按节点和 CMDB 标识匹配，两类标识命中不同实例时返回冲突。CMDB 主机创建后以尽力而为方式通知节点管理和监控并回填已建立的关联；用户亦可在具备资产编辑权限时显式将单个资产推送至监控。CMDB 主机删除或监控实例删除时，CMDB 侧仅清理相应关联标识；节点退役时，CMDB 侧解除关联，而监控侧会停用并软删除关联监控实例。携带来源链路的回传被抑制，避免循环通知。相关模块：[[legacy-ard-modules-monitor.md#5. 数据流【已实现/已存在】]]、[[legacy-ard-modules-node-mgmt.md#4. 通信机制【已实现/已存在】]]。
+
+> 证据来源：server/apps/cmdb/services/module_ingest.py:254-400，server/apps/cmdb/services/module_ingest.py:403-494，server/apps/cmdb/services/module_push.py:82-152，server/apps/cmdb/services/module_push.py:349-437，server/apps/cmdb/views/instance.py:335-369　|　同步基线：d2769559　|　【已实现】
+
 ## 5. 核心数据流 / 任务
+
+### 实例身份与运行期迁移【已实现】
+`inst_uuid` 是 CMDB 实例对外及跨 app 传递的规范身份：创建时由服务端生成且不可由常规更新修改；关联边持久化两端 UUID。图内部数字 `_id` 仅在过渡期作为查询别名与内部桥接句柄，不再作为跨模块契约。运行期任务定期、幂等地清洗 CMDB 图与 PostgreSQL 活动引用、运营分析引用，以及监控 `MonitorInstance.cmdb_id` 和节点管理 `Node.cmdb_id` 中的历史数字引用；任务调用 `migrate_cmdb_instance_uuid_refs` 与 `migrate_oa_cmdb_instance_uuid_refs` 执行 apply 后 verify，并以分阶段完成判定和分布式锁避免重复执行。`batch_init` 只注册周期任务并异步投递一次，不同步执行清洗；未完成或失败时留待下轮重试，完成后停用周期任务，不阻断启动。产品侧不暴露迁移过程；相关产品能力见 [[legacy-prd-cmdb-资产.md#3.12 跨模块主机联动]]。
+
+> 证据来源：server/apps/cmdb/services/instance_identity.py:11-15，server/apps/cmdb/services/instance_identity.py:55-66，server/apps/cmdb/services/instance_identity.py:123-137，server/apps/cmdb/services/instance.py:813-821，server/apps/cmdb/services/instance.py:1093-1094，server/apps/cmdb/services/instance.py:1813-1821，server/apps/cmdb/services/instance.py:1947-1955，server/apps/cmdb/management/commands/migrate_cmdb_instance_uuid_refs.py:145-173，server/apps/cmdb/management/commands/migrate_cmdb_instance_uuid_refs.py:958-980，server/apps/cmdb/services/uuid_migration_runtime.py:10-70，server/apps/cmdb/tasks/uuid_migration.py:58-108，server/apps/core/management/commands/batch_init.py:125-149　|　同步基线：b98b782a7　|　【已实现】
 
 ### 任务（Celery）【已实现/已存在】
 `tasks/celery_tasks.py` 注册 14 个 `@shared_task`：
@@ -115,6 +131,11 @@
 | `sync_node_mgmt_hosts` | :349 | 同步节点管理主机 |
 | `collect_node_mgmt_hosts` | :361 | 采集节点管理主机 |
 | `reconcile_ipam_task` | :372 | 周期执行 IPAM 与 CMDB 自动对账，调用 `services/ipam_reconcile.run_reconciliation` |
+
+### 主机联动与节点管理同步【已实现】
+主机资产联动为事件推送：节点管理或监控可将主机状态和关联标识写入 CMDB，CMDB 创建主机后会通知两端并回填其建立的关联；显式推送仅面向监控。联动路径保留组织范围和操作人上下文，且以来源链路抑制回声。节点管理拉同步默认打开，与节点→CMDB 推送共用 `node_id` → ip+cloud 认实体，主机实例名为 `{ip}[{云区域}]`，禁止双建。节点删除或拉同步发现 sidecar 节点已从源侧消失时，只清 host 上的 `node_id`，不删实例。`node_id`/`monitor_id` 对用户不可编辑；内部 `skip_permission_check` 写路径必须仍能写入或清空这两个系统联动字段。产品行为见 [[legacy-prd-cmdb-资产.md#3.12 跨模块主机联动]] 与 `specs/changes/cmdb-node-mgmt-sync-shared-identity/spec.md`。
+
+> 证据来源：server/apps/cmdb/services/module_push.py:43-79，server/apps/cmdb/services/module_push.py:82-152，server/apps/cmdb/services/host_sync_identity.py，server/apps/cmdb/services/node_mgmt_sync_service.py　|　【已实现】
 
 ### 管理命令【已实现/已存在】
 - `management/commands/model_init.py:7`：初始化 CMDB 模型种子。
@@ -136,7 +157,7 @@
 - **IP 地址管理发现回写**【已实现/已存在】：对象树新增 `ip_discovery`；服务层从任务的 `instances/params` 合并读取 `subnet_ids`、`scan_method`、`ports`，再把 VictoriaMetrics 中的 `ip_info` 行按子网回写为在线 / 离线地址，同时重算子网利用率；手工维护地址不被覆盖（`constants/constants.py:391-403`、`services/ipam_discovery.py:8-175`）。
 - **IP 发现采集**（task_type=`ip` 且 `input_method=CollectInputMethod.SUBNET`）：`sync_collect_task` 在 `tasks/celery_tasks.py:72-74` 派发子网扫描任务，由 Stargazer 执行；结果经 Stargazer 回传后由 `services/ipam_discovery.py`（`apply_discovery_result` 在 `:205` 创建/更新在线 IP、标记离线并回写子网利用率；`apply_ip_discovery_vm_rows` 在 `:299` 处理 VictoriaMetrics 离线行）落库。**注：原 NATS `receive_ip_discovery_result` handler 与 `services.ipam_discovery.maybe_dispatch_ip_discovery` 函数在本轮已下线（被 `tests/test_ipam_discovery_task.py:64` 显式断言不存在），功能改由服务层直连 Stargazer 回调完成。**
 
-对应 PRD：[[spec/prd/CMDB/自动发现.md#3.2 采集任务]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#5. 自动发现（采集）]]
+对应 PRD：[[legacy-prd-cmdb-自动发现.md#3.2 采集任务]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#5. 自动发现（采集）]]
 
 ## 6. 风险 / 待确认
 - 双图库后端按 `FALKORDB_HOST` 环境变量在运行期单选（`graph/drivers/graph_client.py:46-52`），非并存；切换条件已明确【已实现/已存在】。

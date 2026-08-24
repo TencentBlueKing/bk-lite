@@ -8,7 +8,7 @@ import type {
   FilterBindings,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
-import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   getFilterDefinitionId,
   getBindableFilterParams,
@@ -76,10 +76,10 @@ const FilterBindingPanel: React.FC<FilterBindingPanelProps> = ({
         return (
           <div
             key={filterId}
-            className={`flex items-center justify-between px-3 py-2.5 rounded-lg border ${
+            className={`flex items-center justify-between rounded-lg border px-3 py-2.5 ${
               canBind
-                ? 'bg-gray-50 border-gray-100'
-                : 'bg-gray-100 border-gray-200 opacity-60'
+                ? 'border-(--color-border-1) bg-(--color-fill-2)'
+                : 'border-(--color-border-2) bg-(--color-fill-3) opacity-60'
             }`}
           >
             <div className="flex-1 min-w-0">

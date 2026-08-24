@@ -171,6 +171,7 @@ def test_get_all_users():
     assert "test_user2" in usernames
 
 
+@pytest.mark.django_db
 def test_get_authorized_groups_scoped_rejects_forged_current_team(monkeypatch):
     user = types.SimpleNamespace(
         username="scope-user",
@@ -205,6 +206,7 @@ def test_get_authorized_groups_scoped_rejects_forged_current_team(monkeypatch):
     assert result == {"result": True, "data": [], "is_superuser": False}
 
 
+@pytest.mark.django_db
 def test_get_authorized_groups_scoped_keeps_include_children(monkeypatch):
     user = types.SimpleNamespace(
         username="scope-children-user",

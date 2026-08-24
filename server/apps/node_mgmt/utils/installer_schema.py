@@ -14,6 +14,7 @@ INSTALLER_ACTION_MESSAGES = {
     "bootstrap_running": "Start installation",
     "clock_check": "Check node and Server clocks",
     "download": "Download installer files",
+    "stop_service": "Stop existing controller service",
     "write_config": "Write configuration",
     "install": "Install controller",
     "install_complete": "Finalize installation",
@@ -26,6 +27,8 @@ FAILURE_SUMMARY_MAP = {
     "object_missing": "Required installation package was not found in object storage",
     "bucket_missing": "Object storage bucket is missing or not initialized",
     "connection": "Failed to connect to the required service during installation",
+    "certificate": "HTTPS certificate validation failed; the remote peer certificate is not trusted",
+    "winrm_busy": "The target WinRM session is busy or stalled while receiving the remote command",
     "timeout": "The installation step timed out before completion",
     "auth": "Authentication failed while accessing the required resource",
     "permission": "Insufficient permissions blocked the installation step",
@@ -51,6 +54,10 @@ FAILURE_CONTEXT_FIELDS = (
     "clock_offset_seconds",
     "clock_skew_seconds",
     "max_clock_skew_seconds",
+)
+
+SENSITIVE_QUERY_VALUE_PATTERN = re.compile(
+    r"(?i)([?&](?:token|access_token|password|secret)=)[^&\s\"'<>]+"
 )
 
 
@@ -81,6 +88,13 @@ def _clean_text(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _redact_sensitive_text(value: Any) -> str | None:
+    text = _clean_text(value)
+    if not text:
+        return None
+    return SENSITIVE_QUERY_VALUE_PATTERN.sub(r"\1<redacted>", text)
 
 
 def _extract_target_path(message: str | None) -> str | None:
@@ -145,6 +159,35 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
     if any(
         marker in normalized_text
         for marker in [
+            "certificate_verify_failed",
+            "certificate verify failed",
+            "unable to get local issuer certificate",
+            "sslcerverificationerror",
+            "winrm https certificate validation failed",
+            "does not trust the target",
+            "server certificate validation",
+            "hostname mismatch",
+            "certificate has expired",
+            "certificate signed by unknown authority",
+            "x509: certificate",
+        ]
+    ):
+        return "certificate"
+    if any(
+        marker in normalized_text
+        for marker in [
+            "winrm session is busy",
+            "wsman fault 170",
+            "wsmanfault_code': 170",
+            "wsmanfault_code': '170'",
+            "请求的资源在使用中",
+            "winrm send_input failed",
+        ]
+    ):
+        return "winrm_busy"
+    if any(
+        marker in normalized_text
+        for marker in [
             "authentication failed",
             "unable to authenticate",
             "no supported methods remain",
@@ -156,7 +199,18 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
     ):
         return "auth"
     if explicit_error_type == "connection" or any(
-        marker in normalized_text for marker in ["connection refused", "connection reset", "no route to host", "network is unreachable", "ssh client"]
+        marker in normalized_text
+        for marker in [
+            "connection refused",
+            "connection reset",
+            "no route to host",
+            "network is unreachable",
+            "ssh client",
+            "unreachable!",
+            "unreachable over winrm",
+            "winrm connection",
+            "establish winrm connection",
+        ]
     ):
         return "connection"
     if any(marker in normalized_text for marker in ["permission denied", "operation not permitted", "read-only file system"]):
@@ -188,7 +242,8 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
 
     return (
         explicit_error_type
-        if explicit_error_type in {"connection", "timeout", "manual_recovery_required", "clock_skew"}
+        if explicit_error_type
+        in {"connection", "certificate", "winrm_busy", "timeout", "manual_recovery_required", "clock_skew"}
         else "unknown"
     )
 
@@ -319,7 +374,7 @@ def normalize_failure(message=None, error=None, details=None) -> dict | None:
         "code": failure_code,
         "summary": FAILURE_SUMMARY_MAP.get(failure_type, FAILURE_SUMMARY_MAP["unknown"]),
         "context": failure_context,
-        "retriable": failure_type in {"timeout", "connection"},
+        "retriable": failure_type in {"timeout", "connection", "winrm_busy"},
         "raw_error": _clean_text(error),
     }
 
@@ -339,7 +394,7 @@ def _installer_event_position(event: dict[str, Any], action: str) -> tuple[int |
 
     sequence = (
         InstallerConstants.INSTALLER_STEP_SEQUENCE
-        if action == "clock_check"
+        if action in {"clock_check", "stop_service"}
         else InstallerConstants.LEGACY_INSTALLER_STEP_SEQUENCE
     )
     return installer_step_index(action, sequence), len(sequence)
@@ -347,28 +402,32 @@ def _installer_event_position(event: dict[str, Any], action: str) -> tuple[int |
 
 def build_installer_event_details(event: dict[str, Any]) -> dict:
     """Build canonical details payload for one installer event line."""
-    action = normalize_installer_action(event.get("step"))
+    safe_event = {
+        key: _redact_sensitive_text(value) if isinstance(value, str) else value
+        for key, value in event.items()
+    }
+    action = normalize_installer_action(safe_event.get("step"))
     progress = normalize_progress(
-        percent=event.get("progress"),
-        current=event.get("downloaded_bytes"),
-        total=event.get("total_bytes"),
+        percent=safe_event.get("progress"),
+        current=safe_event.get("downloaded_bytes"),
+        total=safe_event.get("total_bytes"),
     )
     failure = normalize_failure(
-        message=event.get("message"),
-        error=event.get("error"),
-        details=event,
+        message=safe_event.get("message"),
+        error=safe_event.get("error"),
+        details=safe_event,
     )
-    step_index, step_total = _installer_event_position(event, action)
+    step_index, step_total = _installer_event_position(safe_event, action)
     details = {
         "installer_event": True,
-        "raw_step": _clean_text(event.get("step")),
-        "raw_status": _clean_text(event.get("status")),
+        "raw_step": _clean_text(safe_event.get("step")),
+        "raw_status": _clean_text(safe_event.get("status")),
         "step_index": step_index,
         "step_total": step_total,
         "progress": progress,
-        "timestamp": _clean_text(event.get("timestamp")) or now_iso(),
-        "error": _clean_text(event.get("error")),
-        "installer_message": _clean_text(event.get("message")),
+        "timestamp": _clean_text(safe_event.get("timestamp")) or now_iso(),
+        "error": _clean_text(safe_event.get("error")),
+        "installer_message": _clean_text(safe_event.get("message")),
         "failure": failure,
     }
     for field_name in (
@@ -387,7 +446,7 @@ def build_installer_event_details(event: dict[str, Any]) -> dict:
         "clock_skew_seconds",
         "max_clock_skew_seconds",
     ):
-        normalized_value = event.get(field_name)
+        normalized_value = safe_event.get(field_name)
         if normalized_value not in (None, ""):
             details[field_name] = normalized_value
     return details

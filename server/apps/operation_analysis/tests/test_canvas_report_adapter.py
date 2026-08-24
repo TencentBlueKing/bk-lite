@@ -3,14 +3,8 @@
 import pytest
 
 from apps.operation_analysis.models.models import Dashboard, Directory
-from apps.operation_analysis.services.canvas_report.registry import (
-    UnknownCanvasReportType,
-    get_canvas_report_adapter,
-)
-from apps.operation_analysis.services.canvas_report.types import (
-    RESOURCE_TYPE_DASHBOARD,
-)
-
+from apps.operation_analysis.services.canvas_report.registry import UnknownCanvasReportType, get_canvas_report_adapter
+from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD
 
 pytestmark = pytest.mark.django_db
 
@@ -90,17 +84,55 @@ def test_dashboard_adapter_render_snapshot_fields(dashboard):
     assert fields["view_sets"] is not dashboard.view_sets
 
 
+def test_dashboard_adapter_expands_topology_overlay_without_datasource(authenticated_user):
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.operation_analysis.services.network_status_topology_overlay import NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
+
+    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS[:2]
+    cmdb = DataSourceAPIModel.objects.create(
+        name="adapter-overlay-cmdb",
+        rest_api=cmdb_api,
+        is_build_in=True,
+        created_by="s",
+        updated_by="s",
+    )
+    monitor = DataSourceAPIModel.objects.create(
+        name="adapter-overlay-monitor",
+        rest_api=monitor_api,
+        is_build_in=True,
+        created_by="s",
+        updated_by="s",
+    )
+    directory = Directory.objects.create(name="Overlay Adapter 目录", groups=[1])
+    dashboard = Dashboard.objects.create(
+        name="Overlay Adapter 仪表盘",
+        directory=directory,
+        groups=[1],
+        created_by=authenticated_user.username,
+        view_sets=[
+            {
+                "id": "topo-1",
+                "itemType": "widget",
+                "valueConfig": {"chartType": "networkStatusTopology"},
+            }
+        ],
+    )
+    adapter = get_canvas_report_adapter(RESOURCE_TYPE_DASHBOARD)
+    resource = adapter.load_resource(dashboard.id)
+    overlay_ids = {cmdb.id, monitor.id}
+    expected = {("topo-1", "networkStatusTopology", ds_id) for ds_id in overlay_ids}
+    assert {(row["widget_id"], row["widget_type"], row["datasource_id"]) for row in adapter.build_manifest(resource)} == expected
+    snapshot = adapter.build_render_snapshot_fields(resource)
+    assert {(row["widget_id"], row["widget_type"], row["datasource_id"]) for row in snapshot["widget_manifest"]} == expected
+
+
 def test_dashboard_adapter_render_route_key():
     adapter = get_canvas_report_adapter(RESOURCE_TYPE_DASHBOARD)
     assert adapter.render_route_key() == "dashboard"
 
 
-def test_can_view_canvas_superuser_bypasses_instance_check(
-    dashboard, authenticated_user, monkeypatch
-):
-    from apps.operation_analysis.services.canvas_report.permissions import (
-        can_view_canvas,
-    )
+def test_can_view_canvas_superuser_bypasses_instance_check(dashboard, authenticated_user, monkeypatch):
+    from apps.operation_analysis.services.canvas_report.permissions import can_view_canvas
 
     authenticated_user.is_superuser = True
     called = {"value": False}
@@ -123,9 +155,7 @@ def test_can_view_canvas_superuser_bypasses_instance_check(
 
 
 def test_can_view_canvas_requires_team_context(dashboard, authenticated_user):
-    from apps.operation_analysis.services.canvas_report.permissions import (
-        can_view_canvas,
-    )
+    from apps.operation_analysis.services.canvas_report.permissions import can_view_canvas
 
     assert not can_view_canvas(
         authenticated_user,

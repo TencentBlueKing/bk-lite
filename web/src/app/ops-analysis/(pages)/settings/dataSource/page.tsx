@@ -13,6 +13,11 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useImportExportApi } from '@/app/ops-analysis/api/importExport';
 import { ImportModal } from '@/app/ops-analysis/components/importExport';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { useUserInfoContext } from '@/context/userInfo';
+import {
+  canEditBuiltinDatasourceGroups,
+  isBuiltinDatasource,
+} from './operateModalUtils';
 
 const getRestPath = (url?: string) => {
   if (!url) return '';
@@ -27,6 +32,7 @@ const getRestPath = (url?: string) => {
 
 const Datasource: React.FC = () => {
   const { t } = useTranslation();
+  const { isSuperUser } = useUserInfoContext();
   const { convertToLocalizedTime } = useLocalizedTime();
   const { getDataSourceList, deleteDataSource } = useDataSourceApi();
   const { exportObjects, downloadYaml } = useImportExportApi();
@@ -169,6 +175,7 @@ const Datasource: React.FC = () => {
     postgresql: 'PostgreSQL',
     rest_api: 'REST API',
     excel: 'Excel',
+    prometheus: t('dataSource.sourceTypes.prometheus'),
   };
 
   const renderSourceObject = (_: unknown, row: DatasourceItem) => {
@@ -202,6 +209,10 @@ const Datasource: React.FC = () => {
       return connectionConfig.filename || t('dataSource.excelImportedData');
     }
 
+    if (sourceType === 'prometheus') {
+      return connectionConfig.url || '-';
+    }
+
     return '-';
   };
 
@@ -214,7 +225,7 @@ const Datasource: React.FC = () => {
       render: (name: string, row: DatasourceItem) => (
         <Space size={6}>
           <span>{name}</span>
-          {row.is_build_in ? (
+          {isBuiltinDatasource(row) ? (
             <Tag
               bordered={false}
               style={{
@@ -268,16 +279,28 @@ const Datasource: React.FC = () => {
       fixed: 'right' as const,
       render: (_: unknown, row: DatasourceItem) => (
         <div className="space-x-4">
-          {row.is_build_in ? (
-            <PermissionWrapper requiredPermissions={['View']}>
-              <Button
-                type="link"
-                size="small"
-                onClick={() => handleEdit('view', row)}
-              >
-                {t('common.view')}
-              </Button>
-            </PermissionWrapper>
+          {isBuiltinDatasource(row) ? (
+            canEditBuiltinDatasourceGroups(isSuperUser, row) ? (
+              <PermissionWrapper requiredPermissions={['Edit']}>
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => handleEdit('edit', row)}
+                >
+                  {t('common.edit')}
+                </Button>
+              </PermissionWrapper>
+            ) : (
+              <PermissionWrapper requiredPermissions={['View']}>
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() => handleEdit('view', row)}
+                >
+                  {t('common.view')}
+                </Button>
+              </PermissionWrapper>
+            )
           ) : (
             <PermissionWrapper requiredPermissions={['Edit']}>
               <Button
@@ -299,7 +322,7 @@ const Datasource: React.FC = () => {
               {t('common.export')}
             </Button>
           </PermissionWrapper>
-          {!row.is_build_in ? (
+          {!isBuiltinDatasource(row) ? (
             <PermissionWrapper requiredPermissions={['Delete']}>
               <Button type="link" size="small" danger onClick={() => handleDelete(row)}>
                 {t('common.delete')}

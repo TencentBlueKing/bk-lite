@@ -29,9 +29,17 @@ import {
 } from '@/app/ops-analysis/utils/compareQuery';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import { buildFallbackSparkline } from '@/app/ops-analysis/utils/singleValueSparkline';
+import { resolveSingleDescriptionText } from '@/app/ops-analysis/utils/singleDescription';
+import {
+  resolveSingleMainSlotHeight,
+  resolveSingleMetaBlockHeight,
+  resolveSingleMetaTypography,
+  SINGLE_META_TYPOGRAPHY,
+} from '@/app/ops-analysis/utils/singleMetaTypography';
 import { useTranslation } from '@/utils/i18n';
 import OpsAnalysisMetricValue from '@/app/ops-analysis/components/ops-analysis-metric-value';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
+import { useWidgetViewport } from '@/app/ops-analysis/components/widget-viewport';
 import {
   scaleScreenMetric,
   scaleScreenMetricFloat,
@@ -39,7 +47,6 @@ import {
 
 const MAX_SPARKLINE_POINTS = 24;
 const UNIT_FONT_SCALE = 0.48;
-const COMPARE_METRIC_HEIGHT_FILL_RATIO = 0.7;
 
 const toAlphaColor = (color: string, alpha: number) => {
   const normalized = color.trim();
@@ -168,14 +175,18 @@ const ComSingle: React.FC<ComSingleProps> = ({
   onReady,
 }) => {
   const { t } = useTranslation();
+  const { scale } = useWidgetViewport();
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const usesScreenTheme = isScreenChartThemeMode(config?.chartThemeMode);
   const contentAreaRef = useRef<HTMLDivElement>(null);
-  const [compareSpacing, setCompareSpacing] = useState(10);
   const [contentAreaHeight, setContentAreaHeight] = useState(0);
 
   const selectedField = config?.selectedFields?.[0];
   const rawValue = extractComparableValue(rawData, selectedField);
+  const descriptionText = resolveSingleDescriptionText(
+    rawData,
+    config?.descriptionField,
+  );
   const baselineRawValue = extractComparableValue(baselineData, selectedField);
   const numericValue =
     rawValue !== null
@@ -235,7 +246,8 @@ const ComSingle: React.FC<ComSingleProps> = ({
       sourceSparklineData,
     ],
   );
-  const showSparkline = Boolean(config?.compare) && sparklineData.length > 1;
+  const sparklineAvailable =
+    Boolean(config?.compare) && sparklineData.length > 1;
   const displayText = formatWithThousands(displayValue);
   const { main: displayMainValue, unit: displayUnit } = useMemo(
     () => splitValueAndUnit(displayText),
@@ -256,25 +268,17 @@ const ComSingle: React.FC<ComSingleProps> = ({
 
     let frameId = 0;
 
-    const updateCompareSpacing = () => {
+    const updateContentAreaHeight = () => {
       setContentAreaHeight((prev) =>
         prev === contentArea.clientHeight ? prev : contentArea.clientHeight,
       );
-      const nextSpacing = Math.max(
-        scaleScreenMetric(10, screenRenderContext),
-        Math.min(
-          scaleScreenMetric(24, screenRenderContext),
-          Math.round(contentArea.clientHeight * 0.1),
-        ),
-      );
-      setCompareSpacing((prev) => (prev === nextSpacing ? prev : nextSpacing));
     };
 
-    updateCompareSpacing();
+    updateContentAreaHeight();
 
     const observer = new ResizeObserver(() => {
       cancelAnimationFrame(frameId);
-      frameId = requestAnimationFrame(updateCompareSpacing);
+      frameId = requestAnimationFrame(updateContentAreaHeight);
     });
 
     observer.observe(contentArea);
@@ -283,7 +287,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
       cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, [screenRenderContext, showSparkline]);
+  }, [isDataReady, loading]);
 
   // 值映射：命中时覆盖展示文本与颜色（优先于数值/阈值色）
   const valueMappingResult = applyValueMapping(rawValue, config?.valueMappings);
@@ -304,18 +308,46 @@ const ComSingle: React.FC<ComSingleProps> = ({
     compareAmount === null
       ? '--'
       : `${compareAmount > 0 ? '↑' : compareAmount < 0 ? '↓' : ''}${Math.abs(compareAmount).toFixed(config?.compareMode === 'value' ? (config.decimalPlaces ?? 0) : 1)}${config?.compareMode === 'value' ? compareUnitLabel : '%'}`;
-  const heightDrivenCompareSize = Math.round(Math.max(contentAreaHeight, 0) * 0.1);
-  const compareLabelFontSize = Math.max(
-    scaleScreenMetric(11, screenRenderContext),
-    Math.min(
-      scaleScreenMetric(16, screenRenderContext),
-      heightDrivenCompareSize - 3,
-    ),
-  );
-  const compareValueFontSize = Math.max(
-    scaleScreenMetric(13, screenRenderContext),
-    Math.min(scaleScreenMetric(22, screenRenderContext), heightDrivenCompareSize),
-  );
+  const {
+    descriptionFontSize,
+    compareLabelFontSize,
+    compareValueFontSize,
+    spacing: metaSpacing,
+  } = resolveSingleMetaTypography({ contentAreaHeight, scale });
+  const showSparkline = sparklineAvailable;
+  const sparklineHeight = showSparkline
+    ? scaleScreenMetric(28, screenRenderContext) +
+      scaleScreenMetric(6, screenRenderContext)
+    : 0;
+  const hasDescription = Boolean(descriptionText);
+  const descriptionBlockHeight = resolveSingleMetaBlockHeight({
+    hasDescription,
+    hasCompare: false,
+    typography: {
+      descriptionFontSize,
+      compareLabelFontSize,
+      compareValueFontSize,
+      spacing: metaSpacing,
+    },
+  });
+  const compareBlockHeight = resolveSingleMetaBlockHeight({
+    hasDescription: false,
+    hasCompare: Boolean(config?.compare),
+    typography: {
+      descriptionFontSize,
+      compareLabelFontSize,
+      compareValueFontSize,
+      spacing: metaSpacing,
+    },
+  });
+  const mainSlotHeight = hasDescription
+    ? resolveSingleMainSlotHeight({
+      contentAreaHeight,
+      metaBlockHeight: descriptionBlockHeight + compareBlockHeight,
+      sparklineHeight,
+      scale,
+    })
+    : null;
   const sparklineTrendColor = config?.compare ? compareTextColor : metricColor;
   // 命中值映射文本时，用映射文本替换数值并隐藏单位
   const shownMainValue =
@@ -323,31 +355,37 @@ const ComSingle: React.FC<ComSingleProps> = ({
       ? valueMappingResult.text
       : displayMainValue;
   const unitLabel = compareUnitLabel;
-  const sparklineLineColor = {
-    type: 'linear' as const,
-    x: 0,
-    y: 0,
-    x2: 1,
-    y2: 0,
-    colorStops: [
-      { offset: 0, color: toAlphaColor(sparklineTrendColor, 0.05) },
-      { offset: 0.18, color: toAlphaColor(sparklineTrendColor, 0.46) },
-      { offset: 0.82, color: toAlphaColor(sparklineTrendColor, 0.46) },
-      { offset: 1, color: toAlphaColor(sparklineTrendColor, 0.05) },
-    ],
-  };
-  const sparklineAreaColor = {
-    type: 'linear' as const,
-    x: 0,
-    y: 0,
-    x2: 0,
-    y2: 1,
-    colorStops: [
-      { offset: 0, color: toAlphaColor(sparklineTrendColor, 0.2) },
-      { offset: 0.55, color: toAlphaColor(sparklineTrendColor, 0.08) },
-      { offset: 1, color: toAlphaColor(sparklineTrendColor, 0) },
-    ],
-  };
+  const sparklineLineColor = useMemo(
+    () => ({
+      type: 'linear' as const,
+      x: 0,
+      y: 0,
+      x2: 1,
+      y2: 0,
+      colorStops: [
+        { offset: 0, color: toAlphaColor(sparklineTrendColor, 0.05) },
+        { offset: 0.18, color: toAlphaColor(sparklineTrendColor, 0.46) },
+        { offset: 0.82, color: toAlphaColor(sparklineTrendColor, 0.46) },
+        { offset: 1, color: toAlphaColor(sparklineTrendColor, 0.05) },
+      ],
+    }),
+    [sparklineTrendColor],
+  );
+  const sparklineAreaColor = useMemo(
+    () => ({
+      type: 'linear' as const,
+      x: 0,
+      y: 0,
+      x2: 0,
+      y2: 1,
+      colorStops: [
+        { offset: 0, color: toAlphaColor(sparklineTrendColor, 0.2) },
+        { offset: 0.55, color: toAlphaColor(sparklineTrendColor, 0.08) },
+        { offset: 1, color: toAlphaColor(sparklineTrendColor, 0) },
+      ],
+    }),
+    [sparklineTrendColor],
+  );
   const sparklineOption = useMemo(
     () => ({
       animation: false,
@@ -405,36 +443,69 @@ const ComSingle: React.FC<ComSingleProps> = ({
     >
       <div
         ref={contentAreaRef}
-        className="flex min-h-0 flex-1 flex-col justify-center"
+        className="flex min-h-0 flex-1 flex-col"
       >
-        <div className="min-h-0 w-full flex-1">
-          <OpsAnalysisMetricValue
-            main={shownMainValue}
-            unit={unitLabel || undefined}
-            color={metricColor}
-            unitColor={toAlphaColor(metricColor, 0.78)}
-            valueClassName="font-semibold"
-            unitClassName="font-medium"
-            fontVariantNumeric="tabular-nums"
-            textShadow={chartTheme.singleValueGlow}
-            unitScale={UNIT_FONT_SCALE}
-            unitTransform="translateY(-0.02em)"
-            heightFillRatio={
-              config?.compare ? COMPARE_METRIC_HEIGHT_FILL_RATIO : undefined
+        <div className="flex min-h-0 flex-1 flex-col justify-center">
+          <div
+            className={
+              mainSlotHeight == null
+                ? 'min-h-0 w-full flex-1'
+                : 'w-full shrink-0'
             }
-          />
+            style={
+              mainSlotHeight == null ? undefined : { height: mainSlotHeight }
+            }
+          >
+            <OpsAnalysisMetricValue
+              main={shownMainValue}
+              unit={unitLabel || undefined}
+              color={metricColor}
+              unitColor={toAlphaColor(metricColor, 0.78)}
+              className="items-center"
+              valueClassName="font-semibold"
+              unitClassName="font-medium"
+              fontVariantNumeric="tabular-nums"
+              textShadow={chartTheme.singleValueGlow}
+              unitScale={UNIT_FONT_SCALE}
+              unitTransform="translateY(-0.02em)"
+              heightFillRatio={
+                hasDescription
+                  ? SINGLE_META_TYPOGRAPHY.groupedMetricHeightFillRatio
+                  : undefined
+              }
+            />
+          </div>
+
+          {descriptionText ? (
+            <div
+              data-testid="single-description"
+              className="w-full min-w-0 shrink-0"
+              style={{
+                marginTop: metaSpacing,
+                color: chartTheme.singleValueMetaColor,
+                fontSize: descriptionFontSize,
+                lineHeight: SINGLE_META_TYPOGRAPHY.descriptionLineHeight,
+              }}
+            >
+              <div className="line-clamp-2 break-words" title={descriptionText}>
+                {descriptionText}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {config?.compare && (
           <div
-            className="flex shrink-0 flex-wrap items-center gap-1"
+            data-testid="single-compare"
+            className="flex w-full min-w-0 shrink-0 flex-nowrap items-center gap-1 overflow-hidden"
             style={{
-              marginTop: compareSpacing,
+              marginTop: metaSpacing,
               color: chartTheme.singleValueMetaColor,
-              lineHeight: 1.2,
+              lineHeight: SINGLE_META_TYPOGRAPHY.compareLineHeight,
             }}
           >
             <span
+              className="min-w-0 truncate"
               style={{
                 color: chartTheme.singleValueMetaColor,
                 fontSize: compareLabelFontSize,
@@ -443,7 +514,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
               {t('dashboard.comparePreviousShortLabel')}
             </span>
             <span
-              className="font-semibold"
+              className="shrink-0 font-semibold"
               style={{
                 color: compareTextColor,
                 fontSize: compareValueFontSize,

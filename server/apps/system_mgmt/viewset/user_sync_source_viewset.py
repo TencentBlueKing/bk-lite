@@ -1,15 +1,15 @@
 from copy import copy
 
-from django.db.models import Prefetch, Q
+from django.db.models import OuterRef, Prefetch, Q, Subquery
 from django.http import JsonResponse
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from apps.core.logger import logger
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import logger
 from apps.core.utils.viewset_utils import MaintainerViewSet
-from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.models import Group, IntegrationInstance, IntegrationInstanceStatusChoices, UserSyncRun, UserSyncSource
+from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.serializers.user_sync_source_serializer import UserSyncRunSerializer, UserSyncSourceSerializer
 from apps.system_mgmt.services.user_sync_service import (
     delete_user_sync_source,
@@ -22,12 +22,13 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class UserSyncSourceViewSet(MaintainerViewSet):
+    latest_run_id = UserSyncRun.objects.filter(source_id=OuterRef("source_id")).order_by("-started_at", "-id").values("id")[:1]
     queryset = (
         UserSyncSource.objects.select_related("integration_instance")
         .prefetch_related(
             Prefetch(
                 "runs",
-                queryset=UserSyncRun.objects.order_by("-started_at", "-id")[:1],
+                queryset=UserSyncRun.objects.filter(id=Subquery(latest_run_id)),
                 to_attr="_prefetched_latest_run",
             )
         )
@@ -57,9 +58,10 @@ class UserSyncSourceViewSet(MaintainerViewSet):
     @HasPermission("user_sync-Delete")
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
-        obj.delete_sync_periodic_task()
         source_name = obj.name
         result = delete_user_sync_source(obj)
+        if not result.get("result"):
+            return JsonResponse(result, status=400)
         log_operation(request, "delete", "system-manager", f"删除用户同步源: {source_name}")
         return JsonResponse(result)
 
@@ -196,9 +198,7 @@ class UserSyncSourceViewSet(MaintainerViewSet):
             return JsonResponse({"result": False, "message": "Source not found"}, status=404)
 
         # 沿用 records 端点的源可见性判定
-        visible_sources = self.get_queryset_by_permission(
-            request, UserSyncSource.objects.filter(id=source.id)
-        )
+        visible_sources = self.get_queryset_by_permission(request, UserSyncSource.objects.filter(id=source.id))
         if not visible_sources.exists():
             return JsonResponse({"result": False, "message": "Permission denied"}, status=403)
 
@@ -244,8 +244,5 @@ class UserSyncSourceViewSet(MaintainerViewSet):
             )
 
         result = preview_user_sync(preview_source)
-        logger.info(
-            f"User sync preview result: source_id={source_id or 'new'}, "
-            f"payload={request.data}, result={result}"
-        )
+        logger.info(f"User sync preview result: source_id={source_id or 'new'}, " f"payload={request.data}, result={result}")
         return JsonResponse(result)

@@ -142,6 +142,9 @@ def test_controller_retry_dispatches_when_all_task_nodes_are_authorized(
             "port": 2222,
             "username": "replacement-user",
             "private_key": "replacement-key",
+            "winrm_scheme": "https",
+            "winrm_transport": "ntlm",
+            "winrm_cert_validation": False,
         },
         format="json",
     )
@@ -160,6 +163,9 @@ def test_controller_retry_dispatches_when_all_task_nodes_are_authorized(
         "username": "replacement-user",
         "private_key": "replacement-key",
         "passphrase": None,
+        "winrm_scheme": "https",
+        "winrm_transport": "ntlm",
+        "winrm_cert_validation": False,
     }
 
 

@@ -16,6 +16,9 @@ import {
   mergeChartSeries,
   getCollectionStatus,
   buildCollectionStatusTimeline,
+  formatCollectionStatusTimelineHint,
+  resolveCollectionStatusRange,
+  freezeTimeValues,
   buildInstanceDisplayName,
   buildInstanceSearchTokens,
   normalizeDisplayText,
@@ -99,14 +102,6 @@ const sumSeries = (arrs: ChartData[][]): ChartData[] => {
   return Array.from(byTime.values()).sort((a, b) => Number(a.time) - Number(b.time));
 };
 
-// 字节类指标(内存)需禁用服务端单位自动换算:服务端会把 bytes 缩放成 GiB,
-// 前端 bytesDisplay 会再格式化一次,不禁用则双重换算导致数值小约 1e9 倍。
-const RAW_VALUE_METRICS = new Set([
-  'prometheus_remote_write_container_memory_working_set_bytes',
-  'prometheus_remote_write_kube_node_status_allocatable',
-  'prometheus_remote_write_kube_pod_container_resource_requests'
-]);
-
 export default function K8sClusterDashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -141,6 +136,7 @@ export default function K8sClusterDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [raw, setRaw] = useState<RawMap>({});
   const [previousRaw, setPreviousRaw] = useState<RawMap>({});
+  const [queryTimeRange, setQueryTimeRange] = useState<{ startMs: number; endMs: number } | null>(null);
   const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
@@ -205,7 +201,8 @@ export default function K8sClusterDashboardPage() {
     runWithConcurrency(keys, QUERY_CONCURRENCY, async (key) => {
       const q = QUERIES[key];
       try {
-        const result = await getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, tv, RAW_VALUE_METRICS, undefined, currentInstanceInterval));
+        // 前端按声明单位(bytes/counts/percent)格式化，必须关掉服务端自动换算。
+        const result = await getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, tv, undefined, false, currentInstanceInterval));
         return [key, result] as const;
       } catch {
         return [key, null] as const;
@@ -215,15 +212,18 @@ export default function K8sClusterDashboardPage() {
   const loadAll = async (silent = false) => {
     const seq = loadSequence.begin();
     if (!silent) setLoading(true);
-    const heroResults = await runGroup(QUERY_GROUPS.hero, timeValues);
+    const frozenTimeValues = freezeTimeValues(timeValues);
+    const frozenRange = resolveCollectionStatusRange(frozenTimeValues);
+    if (frozenRange) setQueryTimeRange(frozenRange);
+    const heroResults = await runGroup(QUERY_GROUPS.hero, frozenTimeValues);
     if (!loadSequence.isCurrent(seq)) return;
     setRaw((prev) => (silent ? { ...prev, ...Object.fromEntries(heroResults) } : Object.fromEntries(heroResults)));
     if (!silent) setLoading(false);
-    runGroup(QUERY_GROUPS.panels, timeValues).then((panelResults) => {
+    runGroup(QUERY_GROUPS.panels, frozenTimeValues).then((panelResults) => {
       if (loadSequence.isCurrent(seq)) setRaw((prev) => ({ ...prev, ...Object.fromEntries(panelResults) }));
     });
     // KPI 卡「较上一周期」对比:取上一周期同样窗口的计数。
-    const prevTv = buildPreviousPeriodTimeValues(timeValues);
+    const prevTv = buildPreviousPeriodTimeValues(frozenTimeValues);
     runGroup(KPI_COMPARE_KEYS, prevTv).then((prevResults) => {
       if (loadSequence.isCurrent(seq)) setPreviousRaw(Object.fromEntries(prevResults));
     });
@@ -289,7 +289,16 @@ export default function K8sClusterDashboardPage() {
     );
   }, [raw.collection, instanceId, resolvedInstanceName, idValues, instanceIdKeys]);
   const collectionStatus = getCollectionStatus(collectionMetric, objectFallbackName);
-  const collectionTimeline = buildCollectionStatusTimeline(collectionMetric.loadState, collectionMetric.viewData);
+  const collectionStatusRange = queryTimeRange ?? resolveCollectionStatusRange(timeValues);
+  const collectionTimeline = buildCollectionStatusTimeline(
+    collectionMetric.loadState,
+    collectionMetric.viewData,
+    collectionStatusRange?.startMs ?? Date.now() - 15 * 60_000,
+    collectionStatusRange?.endMs ?? Date.now()
+  );
+  const collectionStatusTimelineHint = collectionStatusRange
+    ? formatCollectionStatusTimelineHint(collectionStatusRange.startMs, collectionStatusRange.endMs)
+    : undefined;
 
   // 趋势数据
   const trend = useMemo(() => {
@@ -529,7 +538,8 @@ export default function K8sClusterDashboardPage() {
                 <CollectionStatusCard
                   status={collectionStatus}
                   timeline={collectionTimeline}
-                  guideItems={guide('采集状态', '集群监控采集是否正常。')}
+                  timelineHint={collectionStatusTimelineHint}
+                  guideItems={guide('采集状态', '集群监控采集是否正常。时间线覆盖当前时间窗并均分为 18 段；绿=该段有采集，灰=该段无数据，红=查询异常。')}
                   className={styles.span2}
                   styles={styles}
                 />

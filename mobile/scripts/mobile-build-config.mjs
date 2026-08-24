@@ -32,8 +32,7 @@ function normalizeApiUrl(value) {
 
   const hostname = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
   const isLoopback = hostname === 'localhost'
-    || hostname === '::1'
-    || hostname.startsWith('127.');
+    || hostname === '127.0.0.1';
   if (url.protocol === 'http:' && !isLoopback) {
     throw new Error('NEXT_PUBLIC_API_URL 外部地址必须使用 HTTPS');
   }

@@ -23,7 +23,6 @@ from apps.patch_mgmt.utils.operation_log import (
 )
 from apps.system_mgmt.models.operation_log import OperationLog
 
-
 _BASE = "/api/v1/patch_mgmt"
 
 
@@ -57,9 +56,46 @@ def _mock_request(username="testuser", domain="test.com"):
 
 @pytest.mark.django_db
 class TestPatchPermissionApiBoundaries:
-    def test_patch_batch_delete_requires_delete_permission(
-        self, api_client, authenticated_user, mocker
-    ):
+    def test_scan_setting_view_uses_independent_permission(self, api_client, authenticated_user):
+        client = _permission_client(api_client, authenticated_user, {"patch_scan_setting-View"})
+
+        response = client.get(f"{_BASE}/api/scan_setting/")
+
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_patch_source_permission_cannot_read_scan_setting(self, api_client, authenticated_user):
+        client = _permission_client(api_client, authenticated_user, {"patch_source-View"})
+
+        response = client.get(f"{_BASE}/api/scan_setting/")
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_scan_setting_view_cannot_save(self, api_client, authenticated_user):
+        authenticated_user.timezone = "Asia/Shanghai"
+        client = _permission_client(api_client, authenticated_user, {"patch_scan_setting-View"})
+
+        response = client.patch(
+            f"{_BASE}/api/scan_setting/save/",
+            {"is_enabled": False},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_scan_setting_edit_can_save(self, api_client, authenticated_user, mocker):
+        authenticated_user.timezone = "Asia/Shanghai"
+        client = _permission_client(api_client, authenticated_user, {"patch_scan_setting-Edit"})
+        mocker.patch("apps.patch_mgmt.serializers.scan_setting.ScanSettingSerializer._sync_periodic_task")
+
+        response = client.patch(
+            f"{_BASE}/api/scan_setting/save/",
+            {"is_enabled": False},
+            format="json",
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_patch_batch_delete_requires_delete_permission(self, api_client, authenticated_user, mocker):
         from apps.patch_mgmt.constants import OSType
         from apps.patch_mgmt.models import Patch
 
@@ -76,9 +112,7 @@ class TestPatchPermissionApiBoundaries:
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert Patch.objects.filter(pk=patch.id).exists()
 
-    def test_patch_source_view_permission_uses_patch_application_id(
-        self, api_client, authenticated_user, mocker
-    ):
+    def test_patch_source_view_permission_uses_patch_application_id(self, api_client, authenticated_user, mocker):
         from apps.patch_mgmt.constants import PatchSourceType
         from apps.patch_mgmt.models import PatchSource
 
@@ -99,9 +133,7 @@ class TestPatchPermissionApiBoundaries:
             "Operate",
         ]
 
-    def test_target_update_requires_edit_operation_permission(
-        self, api_client, authenticated_user, mocker
-    ):
+    def test_target_update_requires_edit_operation_permission(self, api_client, authenticated_user, mocker):
         from apps.patch_mgmt.models import PatchTarget
 
         target = PatchTarget.objects.create(name="target", ip="10.0.0.10", team=[1])
@@ -118,9 +150,7 @@ class TestPatchPermissionApiBoundaries:
         target.refresh_from_db()
         assert target.name == "target"
 
-    def test_baseline_edit_permission_can_add_requirement(
-        self, api_client, authenticated_user, mocker
-    ):
+    def test_baseline_edit_permission_can_add_requirement(self, api_client, authenticated_user, mocker):
         from apps.patch_mgmt.constants import OSType
         from apps.patch_mgmt.models import Patch, PatchBaseline
 
@@ -138,9 +168,7 @@ class TestPatchPermissionApiBoundaries:
         assert response.status_code == status.HTTP_200_OK
         assert baseline.requirements.filter(patch=patch).exists()
 
-    def test_baseline_view_permission_cannot_add_requirement(
-        self, api_client, authenticated_user, mocker
-    ):
+    def test_baseline_view_permission_cannot_add_requirement(self, api_client, authenticated_user, mocker):
         from apps.patch_mgmt.constants import OSType
         from apps.patch_mgmt.models import Patch, PatchBaseline
 
@@ -158,21 +186,13 @@ class TestPatchPermissionApiBoundaries:
         assert response.status_code == status.HTTP_403_FORBIDDEN
         assert not baseline.requirements.exists()
 
-    def test_baseline_edit_function_permission_ignores_retired_instance_rule(
-        self, api_client, authenticated_user, mocker
-    ):
+    def test_baseline_edit_function_permission_ignores_retired_instance_rule(self, api_client, authenticated_user, mocker):
         from apps.patch_mgmt.constants import OSType
         from apps.patch_mgmt.models import Patch, PatchBaseline
 
-        baseline = PatchBaseline.objects.create(
-            name="view-only", os_type=OSType.LINUX, team=[1]
-        )
-        patch = Patch.objects.create(
-            title="openssl", os_type=OSType.LINUX, team=[1]
-        )
-        client = _permission_client(
-            api_client, authenticated_user, {"patch_baseline-Edit"}
-        )
+        baseline = PatchBaseline.objects.create(name="view-only", os_type=OSType.LINUX, team=[1])
+        patch = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
+        client = _permission_client(api_client, authenticated_user, {"patch_baseline-Edit"})
         mocker.patch(
             "apps.core.utils.viewset_utils.get_permission_rules",
             return_value={
@@ -193,17 +213,9 @@ class TestPatchPermissionApiBoundaries:
         assert response.status_code == status.HTTP_200_OK
         assert baseline.requirements.filter(patch=patch).exists()
 
-    def test_risk_list_only_contains_targets_in_current_team_scope(
-        self, api_client, authenticated_user, mocker
-    ):
+    def test_risk_list_only_contains_targets_in_current_team_scope(self, api_client, authenticated_user, mocker):
         from apps.patch_mgmt.constants import ComplianceStatus, OSType
-        from apps.patch_mgmt.models import (
-            BaselineRequirement,
-            HostBaselineBinding,
-            Patch,
-            PatchBaseline,
-            PatchTarget,
-        )
+        from apps.patch_mgmt.models import BaselineRequirement, HostBaselineBinding, Patch, PatchBaseline, PatchTarget
 
         baseline = PatchBaseline.objects.create(name="baseline", os_type=OSType.LINUX, team=[1])
         patch = Patch.objects.create(title="openssl", os_type=OSType.LINUX, team=[1])
@@ -228,12 +240,10 @@ class TestPatchPermissionApiBoundaries:
         assert response.status_code == status.HTTP_200_OK
         assert [item["key"] for item in response.data["results"]] == [f"h-{allowed.id}"]
 
-    def test_dashboard_counts_only_targets_in_current_team_scope(
-        self, api_client, authenticated_user, mocker
-    ):
+    def test_dashboard_counts_only_targets_in_current_team_scope(self, api_client, authenticated_user, mocker):
         from apps.patch_mgmt.models import PatchTarget
 
-        allowed = PatchTarget.objects.create(name="allowed", ip="10.0.0.31", team=[1])
+        PatchTarget.objects.create(name="allowed", ip="10.0.0.31", team=[1])
         PatchTarget.objects.create(name="denied", ip="10.0.0.32", team=[2])
         client = _permission_client(api_client, authenticated_user, {"patch_dashboard-View"})
 
@@ -257,63 +267,43 @@ class TestOperationLogWrites:
 
     def test_log_patch_created(self):
         log_patch_created(_mock_request(), "KB5001234")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="create", summary__icontains="KB5001234"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="create", summary__icontains="KB5001234").exists()
 
     def test_log_patch_updated(self):
         log_patch_updated(_mock_request(), "KB5001234")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="update", summary__icontains="KB5001234"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="update", summary__icontains="KB5001234").exists()
 
     def test_log_patch_deleted(self):
         log_patch_deleted(_mock_request(), "KB5001234")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="delete", summary__icontains="KB5001234"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="delete", summary__icontains="KB5001234").exists()
 
     def test_log_target_created(self):
         log_target_created(_mock_request(), "web-server-01")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="create", summary__icontains="web-server-01"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="create", summary__icontains="web-server-01").exists()
 
     def test_log_target_updated(self):
         log_target_updated(_mock_request(), "web-server-01")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="update", summary__icontains="web-server-01"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="update", summary__icontains="web-server-01").exists()
 
     def test_log_target_deleted(self):
         log_target_deleted(_mock_request(), "web-server-01")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="delete", summary__icontains="web-server-01"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="delete", summary__icontains="web-server-01").exists()
 
     def test_log_scan_task_created(self):
         log_scan_task_created(_mock_request(), "scan-2026-06")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="execute", summary__icontains="scan-2026-06"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="execute", summary__icontains="scan-2026-06").exists()
 
     def test_log_scan_task_cancelled(self):
         log_scan_task_cancelled(_mock_request(), "scan-2026-06")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="execute", summary__icontains="scan-2026-06"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="execute", summary__icontains="scan-2026-06").exists()
 
     def test_log_install_task_created(self):
         log_install_task_created(_mock_request(), "install-2026-06")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="execute", summary__icontains="install-2026-06"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="execute", summary__icontains="install-2026-06").exists()
 
     def test_log_install_task_cancelled(self):
         log_install_task_cancelled(_mock_request(), "install-2026-06")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="execute", summary__icontains="install-2026-06"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="execute", summary__icontains="install-2026-06").exists()
 
     def test_log_governance_task_cancelled_includes_reason(self):
         log_governance_task_cancelled(_mock_request(), "install-2026-06", "维护窗口调整")
@@ -326,21 +316,15 @@ class TestOperationLogWrites:
 
     def test_log_reboot_triggered(self):
         log_reboot_triggered(_mock_request(), "install-2026-06")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="execute", summary__icontains="install-2026-06"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="execute", summary__icontains="install-2026-06").exists()
 
     def test_log_source_changed_create(self):
         log_source_changed(_mock_request(), "create", "wsus-1")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="create", summary__icontains="wsus-1"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="create", summary__icontains="wsus-1").exists()
 
     def test_log_windows_version_changed_update(self):
         log_windows_version_changed(_mock_request(), "update", "Windows 10 22H2")
-        assert OperationLog.objects.filter(
-            app="patch", action_type="update", summary__icontains="Windows 10 22H2"
-        ).exists()
+        assert OperationLog.objects.filter(app="patch", action_type="update", summary__icontains="Windows 10 22H2").exists()
 
     def test_all_spec_logs_use_patch_app_name(self):
         """全部 spec 操作的 app 字段必须为 'patch'，不得写错模块名。"""

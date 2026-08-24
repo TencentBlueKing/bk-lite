@@ -2,7 +2,6 @@ import useApiClient from "@/utils/request";
 import { LlmModel } from "@/app/opspilot/types/skill";
 import { Model } from "@/app/opspilot/types/provider";
 import {
-  BuildMaintenanceBatchRetryResult,
   BuildRecord,
   CheckItem,
   CheckDecisionRequest,
@@ -475,8 +474,27 @@ export const useWikiApi = () => {
   const buildMaterial = (
     id: number,
     async = false,
+    config?: { suppressErrorNotification?: boolean },
   ): Promise<BuildRecord | { async: boolean }> =>
-    post(`${BASE}/material/${id}/build/`, { async });
+    post(`${BASE}/material/${id}/build/`, { async }, config);
+
+  const batchBuildMaterials = (
+    kbId: number,
+    materialIds: number[],
+    config?: { suppressErrorNotification?: boolean },
+  ): Promise<{
+    knowledge_base_id: number;
+    queued: number[];
+    already_queued: number[];
+    in_progress: number[];
+    skipped: { id: number; reason: string }[];
+    kicked: boolean;
+  }> =>
+    post(
+      `${BASE}/material/batch_build/`,
+      { knowledge_base: kbId, material_ids: materialIds },
+      config,
+    );
 
   const proposeUpdate = (id: number): Promise<BuildRecord> =>
     post(`${BASE}/material/${id}/propose_update/`, {});
@@ -669,18 +687,6 @@ export const useWikiApi = () => {
       stages ? { stages } : {},
     );
 
-  const batchRetryBuildMaintenance = (
-    kbId: number,
-    ids: number[],
-    stages?: string[],
-  ): Promise<BuildMaintenanceBatchRetryResult> =>
-    post(
-      `${BASE}/build_record/batch_retry_maintenance/`,
-      stages
-        ? { knowledge_base: kbId, ids, stages }
-        : { knowledge_base: kbId, ids },
-    );
-
   const cancelBuild = (id: number): Promise<BuildRecord> =>
     post(`${BASE}/build_record/${id}/cancel/`, {});
 
@@ -763,6 +769,7 @@ export const useWikiApi = () => {
     deleteMaterial,
     ingestMaterial,
     buildMaterial,
+    batchBuildMaterials,
     proposeUpdate,
     reindexMaterial,
     fetchPages,
@@ -789,7 +796,6 @@ export const useWikiApi = () => {
     fetchBuildRecord,
     retryBuild,
     retryBuildMaintenance,
-    batchRetryBuildMaintenance,
     cancelBuild,
     fetchCheckItems,
     fetchDecisionItems,

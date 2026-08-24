@@ -8,6 +8,7 @@ packages/webchat-ui/node_modules
 # Testing
 /coverage
 /.test-dist
+packages/webchat-ui/.test-dist/
 
 # Next.js
 /.next/
@@ -45,7 +46,7 @@ lerna-debug.log*
 .DS_Store
 Thumbs.db
 
-# Package manager lock files (for monorepo)
+# Other package manager lock files; npm uses the tracked root package-lock.json.
 yarn.lock
 pnpm-lock.yaml
-package-lock.json
+packages/*/package-lock.json

@@ -1,9 +1,10 @@
-from django.db import models
+from django.db import models, transaction
 from django.db.models import JSONField
+from django.db.models.expressions import BaseExpression
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.node_mgmt.models import CloudRegion, Node, Collector
+from apps.node_mgmt.models import CloudRegion, Collector, Node
 
 
 class NodeCollectorInstallStatus(models.Model):
@@ -32,6 +33,32 @@ class ControllerTask(TimeInfo, MaintainerInfo):
         ]
 
 
+class ControllerTaskNodeQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        if "organizations" in kwargs:
+            if isinstance(kwargs["organizations"], BaseExpression):
+                raise ValueError("organizations 表达式更新无法安全规范化")
+            kwargs["organizations"] = ControllerTaskNode.normalized_organizations(kwargs["organizations"])
+        return super().update(**kwargs)
+
+    def bulk_create(self, objs, *args, **kwargs):
+        objs = list(objs)
+        for obj in objs:
+            obj.normalize_organizations_snapshot()
+        return super().bulk_create(objs, *args, **kwargs)
+
+    def bulk_update(self, objs, fields, *args, **kwargs):
+        objs = list(objs)
+        if "organizations" in fields:
+            for obj in objs:
+                obj.normalize_organizations_snapshot()
+            with transaction.atomic(using=self.db):
+                for obj in objs:
+                    obj.save(update_fields=fields, using=self.db)
+            return len(objs)
+        return super().bulk_update(objs, fields, *args, **kwargs)
+
+
 class ControllerTaskNode(models.Model):
     task = models.ForeignKey(ControllerTask, on_delete=models.CASCADE, verbose_name="任务")
     node_id = models.CharField(max_length=100, blank=True, default="", db_index=True, verbose_name="节点ID")
@@ -42,15 +69,24 @@ class ControllerTaskNode(models.Model):
     organizations = JSONField(default=list, verbose_name="所属组织")
     port = models.IntegerField(verbose_name="端口")
     username = models.CharField(max_length=100, verbose_name="用户名")
-    password = models.CharField(max_length=100, verbose_name="密码")
+    password = models.TextField(verbose_name="密码")
     private_key = models.TextField(default="", blank=True, verbose_name="SSH私钥")
     passphrase = models.TextField(default="", blank=True, verbose_name="私钥密码短语")
     winrm_scheme = models.CharField(max_length=16, blank=True, default="https", verbose_name="WinRM协议")
     winrm_transport = models.CharField(max_length=32, blank=True, default="ntlm", verbose_name="WinRM认证方式")
-    winrm_cert_validation = models.BooleanField(default=True, verbose_name="WinRM证书校验")
+    winrm_cert_validation = models.BooleanField(default=False, verbose_name="WinRM证书校验")
+    connectivity_observed_at = models.DateTimeField(null=True, blank=True, verbose_name="节点提前回连时间")
+    connectivity_observed_node_id = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        verbose_name="提前回连节点ID",
+    )
     resolved_package_version_id = models.IntegerField(default=0, verbose_name="解析后的控制器版本")
     status = models.CharField(max_length=100, default="", verbose_name="任务状态")
     result = JSONField(default=dict, verbose_name="结果")
+
+    objects = ControllerTaskNodeQuerySet.as_manager()
 
     class Meta:
         verbose_name = "控制器任务节点"
@@ -59,6 +95,21 @@ class ControllerTaskNode(models.Model):
             models.Index(fields=["ip", "status"], name="nm_ctrl_node_ip_st_idx"),
             models.Index(fields=["task", "status"], name="nm_ctrl_tasknode_st_idx"),
         ]
+
+    def normalize_organizations_snapshot(self):
+        self.organizations = self.normalized_organizations(self.organizations)
+
+    @staticmethod
+    def normalized_organizations(organizations):
+        if not isinstance(organizations, list) or any(isinstance(value, bool) or not isinstance(value, int) for value in organizations):
+            # 非规范历史快照必须 fail closed；提前清空可避免 MySQL JSON 将 1.0
+            # 反序列化为 1 后意外获得组织权限。
+            return []
+        return organizations
+
+    def save(self, *args, **kwargs):
+        self.normalize_organizations_snapshot()
+        return super().save(*args, **kwargs)
 
 
 class CollectorTask(TimeInfo, MaintainerInfo):

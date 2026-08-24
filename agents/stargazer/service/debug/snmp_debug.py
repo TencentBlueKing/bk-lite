@@ -4,7 +4,7 @@
 """
 SNMP 协议诊断执行逻辑。
 支持三类操作：
-  - test_connection: 对固定 OID 1.3.6.1.2.1.1.1.0 执行轻量 snmpget
+  - test_connection: 对固定 OID 1.3.6.1.2.1.1.5.0 执行轻量 snmpget
   - raw_collect: 从固定根 OID 1.3.6.1.2.1 执行 snmpbulkwalk
   - get_oid: 对用户指定 OID 执行 snmpbulkwalk
 """
@@ -13,8 +13,8 @@ import asyncio
 import socket
 import time
 
-# Fixed OID for connectivity test
-TEST_OID = "1.3.6.1.2.1.1.1.0"
+# Fixed sysName.0 OID for connectivity test
+TEST_OID = "1.3.6.1.2.1.1.5.0"
 # Fixed root OID for raw collection
 RAW_COLLECT_OID = "1.3.6.1.2.1"
 
@@ -297,7 +297,7 @@ def _run_bulk_walk_sync(target: str, port: int, timeout: int, credential: dict, 
 
 async def run_snmp_test_connection(params: dict) -> dict:
     """
-    对固定 OID 1.3.6.1.2.1.1.1.0 执行一次 snmpget。
+    对固定 OID 1.3.6.1.2.1.1.5.0 执行一次 snmpget。
     timeout: params["timeout"]（由 CMDB 注入，固定 10s）
     """
     target = params["target"]

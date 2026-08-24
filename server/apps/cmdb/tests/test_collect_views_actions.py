@@ -11,10 +11,9 @@
 视图测试经 DRF as_view 完整 dispatch（force_authenticate + superuser 绕过 HasPermission）；
 service / NodeMgmt / 权限规则在真实边界打桩，断言真实 JSON 响应与 DB 副作用。
 """
-import pydantic.root_model  # noqa: F401
-
 import json
 
+import pydantic.root_model  # noqa: F401
 import pytest
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -107,7 +106,9 @@ def test_parse_positive_int_below_one_raises():
 @pytest.mark.django_db
 def test_apply_visibility_filter_excludes_hidden():
     CollectModels.objects.create(name="vis", task_type=CollectPluginTypes.HOST, model_id="host", cycle_value_type="cycle", is_visible=True, team=[1])
-    CollectModels.objects.create(name="hid", task_type=CollectPluginTypes.HOST, model_id="host", driver_type="snmp", cycle_value_type="cycle", is_visible=False, team=[1])
+    CollectModels.objects.create(
+        name="hid", task_type=CollectPluginTypes.HOST, model_id="host", driver_type="snmp", cycle_value_type="cycle", is_visible=False, team=[1]
+    )
     qs = CollectModelViewSet.apply_visibility_filter(CollectModels.objects.all())
     names = sorted(qs.values_list("name", flat=True))
     assert names == ["vis"]
@@ -123,9 +124,7 @@ def test_apply_visibility_filter_excludes_hidden():
         ("post", "exec_task", {}),
     ],
 )
-def test_regular_detail_actions_cannot_access_node_mgmt_system_task(
-    superuser, monkeypatch, mocker, method, action, data
-):
+def test_regular_detail_actions_cannot_access_node_mgmt_system_task(superuser, monkeypatch, mocker, method, action, data):
     _bypass_permission(monkeypatch)
     task = _system_collect_task()
     submit = mocker.patch("apps.cmdb.views.collect.CollectModelService.exec_task")
@@ -139,9 +138,7 @@ def test_regular_detail_actions_cannot_access_node_mgmt_system_task(
 
 
 @pytest.mark.django_db
-def test_disabled_auto_collect_cannot_be_bypassed_through_regular_exec_endpoint(
-    superuser, monkeypatch, mocker
-):
+def test_disabled_auto_collect_cannot_be_bypassed_through_regular_exec_endpoint(superuser, monkeypatch, mocker):
     _bypass_permission(monkeypatch)
     NodeMgmtSyncConfig.objects.create(auto_collect_enabled=False)
     task = _system_collect_task()
@@ -244,9 +241,7 @@ def test_list_regions_unknown_cloud_id(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_list_regions_success(superuser, monkeypatch):
     monkeypatch.setattr("apps.cmdb.views.collect.NodeMgmt.cloud_region_list", lambda self: [{"id": "aws", "name": "AWS"}])
-    monkeypatch.setattr(
-        CollectModelViewSet, "_build_region_query_credential", lambda self, req, params, task_id=None: {"k": "v"}
-    )
+    monkeypatch.setattr(CollectModelViewSet, "_build_region_query_credential", lambda self, req, params, task_id=None: {"k": "v"})
     monkeypatch.setattr(
         "apps.cmdb.views.collect.CollectModelService.list_regions",
         lambda credential, cloud_name: {"success": True, "result": [{"region": "cn-north"}]},
@@ -261,9 +256,7 @@ def test_list_regions_success(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_list_regions_service_failure(superuser, monkeypatch):
     monkeypatch.setattr("apps.cmdb.views.collect.NodeMgmt.cloud_region_list", lambda self: [{"id": "aws", "name": "AWS"}])
-    monkeypatch.setattr(
-        CollectModelViewSet, "_build_region_query_credential", lambda self, req, params, task_id=None: {}
-    )
+    monkeypatch.setattr(CollectModelViewSet, "_build_region_query_credential", lambda self, req, params, task_id=None: {})
     monkeypatch.setattr(
         "apps.cmdb.views.collect.CollectModelService.list_regions",
         lambda credential, cloud_name: {"success": False, "message": "鉴权失败"},
@@ -281,8 +274,18 @@ def test_list_regions_service_failure(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_task_status_aggregates_by_status(superuser, monkeypatch):
     _bypass_permission(monkeypatch)
-    CollectModels.objects.create(name="t1", task_type=CollectPluginTypes.HOST, model_id="host", cycle_value_type="cycle", exec_status=CollectRunStatusType.SUCCESS, team=[1])
-    CollectModels.objects.create(name="t2", task_type=CollectPluginTypes.HOST, model_id="host", driver_type="snmp", cycle_value_type="cycle", exec_status=CollectRunStatusType.ERROR, team=[1])
+    CollectModels.objects.create(
+        name="t1", task_type=CollectPluginTypes.HOST, model_id="host", cycle_value_type="cycle", exec_status=CollectRunStatusType.SUCCESS, team=[1]
+    )
+    CollectModels.objects.create(
+        name="t2",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        driver_type="snmp",
+        cycle_value_type="cycle",
+        exec_status=CollectRunStatusType.ERROR,
+        team=[1],
+    )
     request = _req("get", superuser, current_team="1")
     resp = CollectModelViewSet.as_view({"get": "task_status"})(request)
     body = _body(resp)
@@ -295,8 +298,18 @@ def test_task_status_aggregates_by_status(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_task_overview_counts(superuser, monkeypatch):
     _bypass_permission(monkeypatch)
-    CollectModels.objects.create(name="o1", task_type=CollectPluginTypes.HOST, model_id="host", cycle_value_type="cycle", exec_status=CollectRunStatusType.SUCCESS, team=[1])
-    CollectModels.objects.create(name="o2", task_type=CollectPluginTypes.HOST, model_id="switch", driver_type="snmp", cycle_value_type="cycle", exec_status=CollectRunStatusType.ERROR, team=[1])
+    CollectModels.objects.create(
+        name="o1", task_type=CollectPluginTypes.HOST, model_id="host", cycle_value_type="cycle", exec_status=CollectRunStatusType.SUCCESS, team=[1]
+    )
+    CollectModels.objects.create(
+        name="o2",
+        task_type=CollectPluginTypes.HOST,
+        model_id="switch",
+        driver_type="snmp",
+        cycle_value_type="cycle",
+        exec_status=CollectRunStatusType.ERROR,
+        team=[1],
+    )
     request = _req("get", superuser, current_team="1")
     resp = CollectModelViewSet.as_view({"get": "task_overview"})(request)
     body = _body(resp)["data"]
@@ -307,20 +320,47 @@ def test_task_overview_counts(superuser, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_model_instances_filters_empty_instances(superuser, monkeypatch):
+def test_model_instances_skips_legacy_targets_without_inst_uuid(superuser, monkeypatch):
     _bypass_permission(monkeypatch)
     CollectModels.objects.create(
-        name="mi1", task_type=CollectPluginTypes.HOST, model_id="host", cycle_value_type="cycle", team=[1],
+        name="mi1",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        team=[1],
         instances=[{"_id": "h1", "inst_name": "10.0.0.1"}],
     )
     CollectModels.objects.create(
-        name="mi-empty", task_type=CollectPluginTypes.HOST, model_id="host", driver_type="x", cycle_value_type="cycle", team=[1],
+        name="mi-empty",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        driver_type="x",
+        cycle_value_type="cycle",
+        team=[1],
         instances=[],
     )
     request = _req("get", superuser, query={"task_type": CollectPluginTypes.HOST}, current_team="1")
     resp = CollectModelViewSet.as_view({"get": "model_instances"})(request)
     body = _body(resp)["data"]
-    assert body == [{"id": "h1", "inst_name": "10.0.0.1"}]
+    assert body == []
+
+
+@pytest.mark.django_db
+def test_model_instances_prefers_inst_uuid(superuser, monkeypatch):
+    _bypass_permission(monkeypatch)
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    CollectModels.objects.create(
+        name="mi-uuid",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        team=[1],
+        instances=[{"_id": 7, "inst_uuid": inst_uuid, "inst_name": "10.0.0.1"}],
+    )
+    request = _req("get", superuser, query={"task_type": CollectPluginTypes.HOST}, current_team="1")
+    resp = CollectModelViewSet.as_view({"get": "model_instances"})(request)
+    body = _body(resp)["data"]
+    assert body == [{"id": inst_uuid, "inst_name": "10.0.0.1"}]
 
 
 @pytest.mark.django_db
@@ -352,7 +392,11 @@ def test_tree_returns_obj_tree(superuser, monkeypatch):
 def test_info_returns_instance_info(superuser, monkeypatch):
     _bypass_permission(monkeypatch)
     task = CollectModels.objects.create(
-        name="info1", task_type=CollectPluginTypes.HOST, model_id="host", cycle_value_type="cycle", team=[1],
+        name="info1",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        cycle_value_type="cycle",
+        team=[1],
         format_data={"add": [{"x": 1}], "update": [], "delete": [], "association": [], "__raw_data__": []},
     )
     request = _req("get", superuser, current_team="1")

@@ -5,6 +5,13 @@ import type {
   InputControlConfig,
 } from './dataSource';
 import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
+import type {
+  CardListConfig,
+  CardListLeadingConfig,
+} from '@/app/ops-analysis/utils/cardList';
+
+export type { CardListConfig, CardListLeadingConfig };
+import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import type { Dayjs } from 'dayjs';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import type {
@@ -81,6 +88,12 @@ export interface TableColumnConfigItem {
   order: number;
   width?: number;
   columnType?: 'data' | 'actions';
+  /** 单元格展示形态；缺省为 text */
+  cellType?: 'text' | 'colorBackground';
+  /** 列级值映射（枚举/范围等 → 文案/颜色） */
+  valueMappings?: ValueMapping[];
+  /** 列级数值阈值配色 */
+  cellThresholdColors?: ThresholdColorConfig[];
 }
 
 /** 表格组件配置 */
@@ -88,8 +101,6 @@ export interface TableConfig {
   filterFields?: TableFilterFieldConfig[];
   columns?: TableColumnConfigItem[];
 }
-
-import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 
 export interface ValueConfig {
   chartType?: string;
@@ -104,6 +115,8 @@ export interface ValueConfig {
   tableConfig?: TableConfig;
   filterBindings?: FilterBindings;
   selectedFields?: string[];
+  /** 单值可选说明字段；未设置时不渲染说明行 */
+  descriptionField?: string;
   topNLabelField?: string;
   topNValueField?: string;
   unit?: string;
@@ -118,6 +131,18 @@ export interface ValueConfig {
   gaugeMin?: number;
   gaugeMax?: number;
   gaugeShape?: 'semicircle' | 'circle';
+  eventTimeline?: {
+    sortOrder?: 'asc' | 'desc';
+  };
+  radar?: {
+    min?: number;
+    max?: number;
+    indicators?: Array<{
+      key: string;
+      label?: string;
+    }>;
+  };
+  cardList?: CardListConfig;
   actions?: DashboardActionConfig[];
   appearance?: ScreenWidgetAppearance;
 }
@@ -191,7 +216,8 @@ export type ViewConfigItem = LayoutItem | TopologyNodeData;
 
 export interface ViewConfigProps {
   open: boolean;
-  item: ViewConfigItem;
+  /** Dashboard keeps ViewConfig mounted and may pass undefined while closed. */
+  item?: ViewConfigItem | null;
   onConfirm?: (values: WidgetConfig) => void;
   onClose?: () => void;
   builtinNamespaceId?: number;
@@ -245,7 +271,13 @@ export interface TimeRangeValue {
 }
 
 /** 筛选值类型 */
-export type FilterValue = string | number | TimeRangeValue | DateRangeValue | null;
+export type FilterValue =
+  | string
+  | number
+  | Array<string | number>
+  | TimeRangeValue
+  | DateRangeValue
+  | null;
 
 /** 筛选选项（用于下拉选择） */
 export interface FilterOption {
@@ -258,7 +290,7 @@ export interface UnifiedFilterDefinition {
   id: string;
   key: string; // 参数 key（如 "time_range", "env", "namespace"）
   name: string; // 显示名称（用户可编辑）
-  type: 'timeRange' | 'dateRange' | 'string'; // 参数类型，用于绑定匹配
+  type: 'timeRange' | 'dateRange' | 'string' | 'stringList'; // 参数类型，用于绑定匹配
   defaultValue?: FilterValue; // 默认值
   order: number; // 显示顺序
   enabled: boolean; // 是否启用
@@ -288,7 +320,7 @@ export interface FilterBindings {
 /** 扫描结果结构（用于配置弹窗） */
 export interface ScannedFilterParam {
   key: string;
-  type: 'string' | 'timeRange' | 'dateRange';
+  type: 'string' | 'stringList' | 'timeRange' | 'dateRange';
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;

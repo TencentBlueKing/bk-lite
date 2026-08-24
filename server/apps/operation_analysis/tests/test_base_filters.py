@@ -72,15 +72,15 @@ def test_apply_group_filter_by_team():
 
 
 @pytest.mark.django_db
-def test_apply_group_filter_with_user_created_by():
+def test_apply_group_filter_ignores_user_and_created_by():
+    """可见性只按组织过滤，不因创建人或实例数据权限收缩。"""
     Directory.objects.create(name="mine", groups=[1], created_by="testuser")
     Directory.objects.create(name="theirs", groups=[1], created_by="someoneelse")
     qs = Directory.objects.all()
     user = SimpleNamespace(username="testuser", domain="domain.com")
-    # 提供 user 时叠加 created_by 过滤（permission rules 为空，回退到创建者）
     result = GroupPermissionMixin.apply_group_filter(qs, 1, user=user, permission_key="directory")
     names = set(result.values_list("name", flat=True))
-    assert "mine" in names
+    assert names == {"mine", "theirs"}
 
 
 @pytest.mark.django_db

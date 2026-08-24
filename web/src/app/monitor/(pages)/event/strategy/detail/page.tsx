@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Spin, Button, Form, message, Steps } from 'antd';
+import { Spin, Button, Form, Input, message, Steps } from 'antd';
 import useApiClient from '@/utils/request';
+import OperateModal from '@/components/operate-modal';
 import useMonitorApi from '@/app/monitor/api';
 import {
   fetchAllMetricsGroups,
@@ -55,6 +56,8 @@ import {
   getCalculationUnitOnMetricRowsChange,
   getReverseModeCalculationUnit,
   getThresholdUnitOnCalculationUnitChange,
+  pruneNoticeUsers,
+  shouldRequireNoticeUsers,
   resolveEffectiveCalculationUnit,
   resolveInitialMetricPluginId,
   resolveThresholdUnit,
@@ -85,7 +88,8 @@ const StrategyOperation = () => {
     getMetricsGroup,
     getMonitorMetrics,
     getMonitorPlugin,
-    getMonitorObject
+    getMonitorObject,
+    getAllUsers
   } = useMonitorApi();
   const { getMonitorPolicy, getSystemChannelList, savePolicyTemplate } = useEventApi();
   const commonContext = useCommon();
@@ -97,7 +101,16 @@ const StrategyOperation = () => {
   const searchParams = useSearchParams();
   const [form] = Form.useForm();
   const router = useRouter();
-  const userList: UserItem[] = commonContext?.userList || [];
+  const organizations = Form.useWatch('organizations', form);
+  const [noticeUserList, setNoticeUserList] = useState<UserItem[]>([]);
+  const [noticeUserLoadKey, setNoticeUserLoadKey] = useState('');
+  const organizationKey = useMemo(() => {
+    return (Array.isArray(organizations) ? organizations : [])
+      .map((item) => Number(item))
+      .filter((item) => Number.isFinite(item) && item > 0)
+      .sort((a, b) => a - b)
+      .join(',');
+  }, [organizations]);
   const instRef = useRef<ModalRef>(null);
   const formContainerRef = useRef<HTMLDivElement>(null);
   const basicInfoRef = useRef<HTMLDivElement>(null);
@@ -110,10 +123,28 @@ const StrategyOperation = () => {
   const type = searchParams.get('type') || '';
   const detailId = searchParams.get('id');
   const detailName = searchParams.get('name') || '--';
+  const isCreateFlow = ['builtIn', 'add'].includes(type);
   const { getGroupIds, ready: objectConfigReady } = useObjectConfigInfo(monitorName);
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [templateSaving, setTemplateSaving] = useState<boolean>(false);
+  const [templateSavedOnce, setTemplateSavedOnce] = useState(false);
+  const [templateConfirmVisible, setTemplateConfirmVisible] = useState(false);
+  const [templateMetaDefaults, setTemplateMetaDefaults] = useState({
+    name: '',
+    description: '',
+  });
+  const [templateMetaForm] = Form.useForm<{ name: string; description: string }>();
+  const pendingTemplateConfigRef = useRef<StrategyFields | null>(null);
+  const templateSubmittingRef = useRef(false);
+  // create 流程：从当前页面“保存模版”成功后，只允许创建 1 次（需要重新进入页面才能再创建）。
+  // 用 ref 做同步锁，避免后端请求已完成但弹窗尚未完全关闭前出现重复请求。
+  const templateSavedOnceRef = useRef(false);
+
+  useEffect(() => {
+    if (!templateConfirmVisible) return;
+    templateMetaForm.setFieldsValue(templateMetaDefaults);
+  }, [templateConfirmVisible, templateMetaDefaults, templateMetaForm]);
   const [source, setSource] = useState<SourceFeild>({
     type: '',
     values: []
@@ -146,6 +177,11 @@ const StrategyOperation = () => {
   const [noDataAlertLevel, setNoDataAlertLevel] = useState<string>('none');
   const [noDataAlertName, setNoDataAlertName] = useState<string>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
+  const currentMonitorObject = useMemo(
+    () =>
+      objects.find((item) => String(item.id) === String(monitorObjId)),
+    [objects, monitorObjId]
+  );
   const [groupBy, setGroupBy] = useState<string[]>(
     getGroupIds(monitorName as string)?.default || defaultGroup
   );
@@ -225,6 +261,118 @@ const StrategyOperation = () => {
       });
     }
   }, [isLoading]);
+
+  // 通知人候选按策略所属组织渲染；组织变更后自动剔除越界已选通知人
+  useEffect(() => {
+    const applyPrunedNoticeUsers = (
+      pruned: Array<string | number>
+    ) => {
+      form.setFieldValue('notice_users', pruned);
+      // 开启通知且渠道需要通知人时，清空后立即触发校验，阻止带着空通知人保存
+      if (
+        shouldRequireNoticeUsers({
+          notice: form.getFieldValue('notice'),
+          noticeTypeIds: form.getFieldValue('notice_type_ids') || [],
+          channelList
+        }) &&
+        pruned.length === 0
+      ) {
+        Promise.resolve().then(() => {
+          form.validateFields(['notice_users']).catch(() => undefined);
+        });
+      }
+    };
+
+    const orgIds = organizationKey
+      ? organizationKey.split(',').map((item) => Number(item))
+      : [];
+
+    if (!orgIds.length) {
+      setNoticeUserList([]);
+      setNoticeUserLoadKey('');
+      const current = form.getFieldValue('notice_users') || [];
+      if (Array.isArray(current) && current.length) {
+        applyPrunedNoticeUsers([]);
+      } else if (
+        shouldRequireNoticeUsers({
+          notice: form.getFieldValue('notice'),
+          noticeTypeIds: form.getFieldValue('notice_type_ids') || [],
+          channelList
+        })
+      ) {
+        Promise.resolve().then(() => {
+          form.validateFields(['notice_users']).catch(() => undefined);
+        });
+      }
+      return;
+    }
+
+    let cancelled = false;
+    getAllUsers(orgIds)
+      .then((users) => {
+        if (cancelled) return;
+        const list = Array.isArray(users) ? users : [];
+        setNoticeUserList(list);
+        setNoticeUserLoadKey(organizationKey);
+        const current = form.getFieldValue('notice_users') || [];
+        const pruned = pruneNoticeUsers(current, list);
+        if (
+          Array.isArray(current) &&
+          (pruned.length !== current.length ||
+            pruned.some(
+              (item, index) => String(item) !== String(current[index])
+            ))
+        ) {
+          applyPrunedNoticeUsers(pruned);
+        } else if (
+          pruned.length === 0 &&
+          shouldRequireNoticeUsers({
+            notice: form.getFieldValue('notice'),
+            noticeTypeIds: form.getFieldValue('notice_type_ids') || [],
+            channelList
+          })
+        ) {
+          Promise.resolve().then(() => {
+            form.validateFields(['notice_users']).catch(() => undefined);
+          });
+        }
+      })
+      .catch(() => {
+        // 拉取失败时不改动已选通知人，避免误清空
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationKey, form, channelList]);
+
+  // dealDetail 可能再次用详情里的 notice_users 覆盖表单，候选就绪后需再裁一次
+  useEffect(() => {
+    if (!organizationKey || noticeUserLoadKey !== organizationKey) {
+      return;
+    }
+    const current = form.getFieldValue('notice_users') || [];
+    const pruned = pruneNoticeUsers(current, noticeUserList);
+    if (
+      Array.isArray(current) &&
+      (pruned.length !== current.length ||
+        pruned.some((item, index) => String(item) !== String(current[index])))
+    ) {
+      form.setFieldValue('notice_users', pruned);
+      if (
+        shouldRequireNoticeUsers({
+          notice: form.getFieldValue('notice'),
+          noticeTypeIds: form.getFieldValue('notice_type_ids') || [],
+          channelList
+        }) &&
+        pruned.length === 0
+      ) {
+        Promise.resolve().then(() => {
+          form.validateFields(['notice_users']).catch(() => undefined);
+        });
+      }
+    }
+  }, [formData, noticeUserList, noticeUserLoadKey, organizationKey, form, channelList]);
 
   useEffect(() => {
     form.resetFields();
@@ -319,7 +467,8 @@ const StrategyOperation = () => {
         type: 'instance',
         values: instanceIds
       });
-    } else {
+    } else if (formData?.id != null) {
+      // 等详情接口回填后再 dealDetail，避免空 formData 把频率/组织等字段冲成空值
       dealDetail(formData);
     }
   }, [type, formData, pluginList, channelList, initMetricData]);
@@ -464,7 +613,7 @@ const StrategyOperation = () => {
     setNodataUnit(no_data_period?.type || 'min');
     setNoDataRecovery(no_data_recovery_period?.value || null);
     setNoDataRecoveryUnit(no_data_recovery_period?.type || '');
-    setUnit(schedule?.type || '');
+    setUnit(schedule?.type || 'min');
     setEnableAlerts(enable_alerts?.length ? enable_alerts : ['threshold']);
     // 设置无数据告警级别和名称
     if (enable_alerts?.includes('no_data') && no_data_level) {
@@ -883,13 +1032,23 @@ const StrategyOperation = () => {
   };
 
   const createStrategy = () => {
-    form?.validateFields().then((values) => {
-      const params = buildStrategyParams(values);
-      if (params) void operateStrategy(params);
-    });
+    form
+      ?.validateFields()
+      .then((values) => {
+        const params = buildStrategyParams(values);
+        if (params) void operateStrategy(params);
+      })
+      .catch(() => {
+        // 校验失败（含通知开启且通知人为空）时阻止创建/保存
+      });
   };
 
   const saveTemplate = async () => {
+    if (templateSubmittingRef.current || templateSaving) return;
+    if (isCreateFlow && (templateSavedOnce || templateSavedOnceRef.current)) {
+      message.info(t('monitor.events.templateAlreadySaved', '当前策略已保存为模版'));
+      return;
+    }
     const trapTemplate = isTrap(form.getFieldValue);
     const templateFields = [
       'name',
@@ -914,16 +1073,71 @@ const StrategyOperation = () => {
       ...validated,
     });
     if (!params) return;
+    pendingTemplateConfigRef.current = params;
+    const defaultName = String(params.name || validated.name || '').trim();
+    setTemplateMetaDefaults({
+      name: defaultName,
+      description: defaultName,
+    });
+    setTemplateConfirmVisible(true);
+  };
+
+  const resetTemplateConfirm = () => {
+    setTemplateConfirmVisible(false);
+    pendingTemplateConfigRef.current = null;
+    templateMetaForm.resetFields();
+  };
+
+  const closeTemplateConfirm = () => {
+    if (templateSubmittingRef.current) return;
+    resetTemplateConfirm();
+  };
+
+  const confirmSaveTemplate = async (options?: { exitAfterSave?: boolean }) => {
+    if (templateSubmittingRef.current || templateSaving) return;
+    if (isCreateFlow && (templateSavedOnce || templateSavedOnceRef.current)) {
+      message.info(t('monitor.events.templateAlreadySaved', '当前策略已保存为模版'));
+      return;
+    }
+    const config = pendingTemplateConfigRef.current;
+    if (!config) return;
+    let meta: { name: string; description: string };
     try {
-      setTemplateSaving(true);
+      meta = await templateMetaForm.validateFields();
+    } catch {
+      return;
+    }
+    const name = String(meta.name || '').trim();
+    if (!name) {
+      templateMetaForm.setFields([
+        {
+          name: 'name',
+          errors: [t('common.required')],
+        },
+      ]);
+      return;
+    }
+    templateSubmittingRef.current = true;
+    setTemplateSaving(true);
+    try {
       await savePolicyTemplate({
         monitor_object: monitorObjId,
-        plugin: params.collect_type,
-        name: params.name,
-        config: params,
+        plugin: config.collect_type,
+        name,
+        description: String(meta.description ?? ''),
+        config,
       });
-      message.success('模版保存成功');
+      message.success(t('monitor.events.saveTemplateSuccess', '模版保存成功'));
+      if (isCreateFlow) {
+        templateSavedOnceRef.current = true;
+        setTemplateSavedOnce(true);
+      }
+      resetTemplateConfirm();
+      if (options?.exitAfterSave) {
+        goBack();
+      }
     } finally {
+      templateSubmittingRef.current = false;
       setTemplateSaving(false);
     }
   };
@@ -977,7 +1191,7 @@ const StrategyOperation = () => {
         <div className={strategyStyle.form} ref={formContainerRef}>
           <div className="flex gap-6">
             <div className="w-[820px] flex-shrink-0">
-              <Form form={form} name="basic">
+              <Form form={form} name="basic" scrollToFirstError>
                 <Steps
                   direction="vertical"
                   items={[
@@ -1075,7 +1289,7 @@ const StrategyOperation = () => {
                       description: (
                         <NotificationForm
                           channelList={channelList}
-                          userList={userList}
+                          userList={noticeUserList}
                           onLinkToSystemManage={linkToSystemManage}
                         />
                       ),
@@ -1087,14 +1301,9 @@ const StrategyOperation = () => {
             </div>
             <div className="flex flex-col flex-1 min-w-[400px]">
               <VariablesTable
+                displayFields={currentMonitorObject?.display_fields}
                 onVariableSelect={(variable: string) => {
-                  const currentAlertName =
-                    form.getFieldValue('alert_name') || '';
-                  form.setFieldsValue({
-                    alert_name: currentAlertName + variable
-                  });
-                  // 自动聚焦到告警名称输入框
-                  basicInfoFormRef.current?.focusAlertName();
+                  basicInfoFormRef.current?.insertVariable(variable);
                 }}
               />
               <MetricPreview
@@ -1132,13 +1341,16 @@ const StrategyOperation = () => {
           >
             {t('common.confirm')}
           </Button>
-          <Button
-            loading={templateSaving}
-            onClick={() => void saveTemplate()}
-          >
-            保存模版
-          </Button>
-          <Button onClick={goBack}>{t('common.cancel')}</Button>
+            {isCreateFlow && templateSavedOnce ? (
+            <Button onClick={goBack}>{t('common.back')}</Button>
+          ) : (
+            <>
+              <Button loading={templateSaving} onClick={() => void saveTemplate()}>
+                {t('monitor.events.saveTemplate', '保存模版')}
+              </Button>
+              <Button onClick={goBack}>{t('common.cancel')}</Button>
+            </>
+          )}
         </div>
       </div>
       <SelectAssets
@@ -1147,6 +1359,60 @@ const StrategyOperation = () => {
         objects={objects}
         onSuccess={onChooseAssets}
       />
+      <OperateModal
+        title={t('monitor.events.saveTemplate', '保存模版')}
+        open={templateConfirmVisible}
+        onCancel={closeTemplateConfirm}
+        maskClosable={!templateSaving}
+        closable={!templateSaving}
+        footer={
+          <div>
+            {isCreateFlow ? (
+              <Button
+                className="mr-[10px]"
+                loading={templateSaving}
+                disabled={templateSaving}
+                onClick={() => void confirmSaveTemplate({ exitAfterSave: true })}
+              >
+                {t('monitor.events.saveAndExit', '保存并退出')}
+              </Button>
+            ) : null}
+            <Button
+              className="mr-[10px]"
+              type="primary"
+              loading={templateSaving}
+              disabled={templateSaving}
+              onClick={() => void confirmSaveTemplate()}
+            >
+              {isCreateFlow ? t('monitor.events.saveAndContinue', '保存并继续') : t('common.confirm')}
+            </Button>
+            <Button disabled={templateSaving} onClick={closeTemplateConfirm}>
+              {t('common.cancel')}
+            </Button>
+          </div>
+        }
+      >
+        <Form
+          form={templateMetaForm}
+          layout="vertical"
+          preserve={false}
+          initialValues={templateMetaDefaults}
+        >
+          <Form.Item
+            label={t('monitor.integrations.templateName')}
+            name="name"
+            rules={[{ required: true, whitespace: true, message: t('common.required') }]}
+          >
+            <Input maxLength={100} />
+          </Form.Item>
+          <Form.Item
+            label={t('monitor.integrations.templateDescription')}
+            name="description"
+          >
+            <Input.TextArea rows={4} />
+          </Form.Item>
+        </Form>
+      </OperateModal>
     </Spin>
   );
 };

@@ -66,7 +66,12 @@ class TestCloseNoDataAlertTransaction:
     """正常路径:perform_update 成功 → baseline 与 alert status 都更新"""
 
     def test_close_no_data_alert_with_update_baseline_true(
-        self, api_client, grant_all, stub_notifier, stub_refresh
+        self,
+        api_client,
+        grant_all,
+        stub_notifier,
+        stub_refresh,
+        django_capture_on_commit_callbacks,
     ):
         api_client.cookies["current_team"] = "1"
         policy = _make_policy()
@@ -84,12 +89,14 @@ class TestCloseNoDataAlertTransaction:
             policy=policy, monitor_instance_id="h1", metric_instance_id="m2"
         )
 
-        resp = api_client.patch(
-            f"{BASE}/api/monitor_alert/{alert.id}/",
-            {"status": "closed", "update_baseline": True},
-            format="json",
-        )
+        with django_capture_on_commit_callbacks(execute=True):
+            resp = api_client.patch(
+                f"{BASE}/api/monitor_alert/{alert.id}/",
+                {"status": "closed", "update_baseline": True},
+                format="json",
+            )
         assert resp.status_code == 200
+        assert "alert_center_delivery_backfilled" not in resp.data
         alert.refresh_from_db()
         assert alert.status == "closed"
         # refresh() 已被调用一次
@@ -253,7 +260,12 @@ class TestNonNoDataAlertDoesNotTouchBaseline:
     """非 no_data alert 不走 baseline 路径,事务包裹也不应触发"""
 
     def test_close_regular_alert_does_not_touch_baseline(
-        self, api_client, grant_all, stub_notifier, stub_refresh
+        self,
+        api_client,
+        grant_all,
+        stub_notifier,
+        stub_refresh,
+        django_capture_on_commit_callbacks,
     ):
         api_client.cookies["current_team"] = "1"
         policy = _make_policy()
@@ -268,11 +280,12 @@ class TestNonNoDataAlertDoesNotTouchBaseline:
             policy=policy, monitor_instance_id="h1", metric_instance_id="m1"
         )
 
-        resp = api_client.patch(
-            f"{BASE}/api/monitor_alert/{alert.id}/",
-            {"status": "closed", "update_baseline": True},
-            format="json",
-        )
+        with django_capture_on_commit_callbacks(execute=True):
+            resp = api_client.patch(
+                f"{BASE}/api/monitor_alert/{alert.id}/",
+                {"status": "closed", "update_baseline": True},
+                format="json",
+            )
         assert resp.status_code == 200
         # baseline 完全未被触动
         assert PolicyInstanceBaseline.objects.filter(id=baseline.id).exists()
@@ -286,7 +299,12 @@ class TestNoDataAlertNoMetricInstanceId:
     """no_data 但无 metric_instance_id 时,baseline 路径不走"""
 
     def test_close_no_data_without_metric_instance_id(
-        self, api_client, grant_all, stub_notifier, stub_refresh
+        self,
+        api_client,
+        grant_all,
+        stub_notifier,
+        stub_refresh,
+        django_capture_on_commit_callbacks,
     ):
         api_client.cookies["current_team"] = "1"
         policy = _make_policy()
@@ -297,11 +315,12 @@ class TestNoDataAlertNoMetricInstanceId:
             alert_type="no_data",
             status="new",
         )
-        resp = api_client.patch(
-            f"{BASE}/api/monitor_alert/{alert.id}/",
-            {"status": "closed", "update_baseline": True},
-            format="json",
-        )
+        with django_capture_on_commit_callbacks(execute=True):
+            resp = api_client.patch(
+                f"{BASE}/api/monitor_alert/{alert.id}/",
+                {"status": "closed", "update_baseline": True},
+                format="json",
+            )
         assert resp.status_code == 200
         stub_refresh.assert_not_called()
         stub_notifier.return_value.notify_alerts.assert_called_once()

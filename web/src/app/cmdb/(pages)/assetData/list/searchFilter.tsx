@@ -222,10 +222,10 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   const moreFiltersMenuItems: MenuProps['items'] = moreSavedFilters.map((filter) => ({
     key: filter.id,
     label: (
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="flex items-center justify-between">
         <span onClick={() => handleApplySavedFilter(filter)}>{filter.name}</span>
         <CloseOutlined
-          style={{ marginLeft: 8, color: '#999', fontSize: '10px' }}
+          className="ml-2 text-[10px] text-[var(--color-text-3)]"
           onClick={(e) => handleDeleteSavedFilter(filter, e)}
         />
       </div>
@@ -241,8 +241,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           placeholder={t('common.selectTip')}
           allowClear
           showSearch
-          className="value"
-          style={{ width: 200 }}
+          className="value w-[200px]"
           value={searchValue}
           onChange={(e) => onSearchValueChange(e, isExactSearch)}
           onClear={() => onSearchValueChange('', isExactSearch)}
@@ -263,8 +262,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             mode="multiple"
             allowClear
             showSearch
-            className="value"
-            style={{ minWidth: 200 }}
+            className="value min-w-[200px]"
             value={Array.isArray(searchValue) ? searchValue : searchValue ? [searchValue] : []}
             onChange={(e) => onSearchValueChange(e, isExactSearch)}
             onClear={() => onSearchValueChange('', isExactSearch)}
@@ -298,8 +296,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
               mode="multiple"
               allowClear
               showSearch
-              className="value"
-              style={{ minWidth: 200 }}
+              className="value min-w-[200px]"
               value={Array.isArray(searchValue) ? searchValue : searchValue ? [searchValue] : []}
               onChange={(e) => onSearchValueChange(e, isExactSearch)}
               onClear={() => onSearchValueChange([], isExactSearch)}
@@ -326,8 +323,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           <Select
             allowClear
             showSearch
-            className="value"
-            style={{ width: 200 }}
+            className="value w-[200px]"
             value={searchValue}
             onChange={(e) => onSearchValueChange(e, isExactSearch)}
             onClear={() => onSearchValueChange('', isExactSearch)}
@@ -353,8 +349,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
             mode="multiple"
             allowClear
             showSearch
-            className="value"
-            style={{ minWidth: 260 }}
+            className="value min-w-[260px]"
             value={Array.isArray(searchValue) ? searchValue : searchValue ? [searchValue] : []}
             onChange={(e) => onSearchValueChange(e, true)}
             onClear={() => onSearchValueChange([], true)}
@@ -367,8 +362,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
         return (
           <Select
             allowClear
-            className="value"
-            style={{ width: 200 }}
+            className="value w-[200px]"
             value={searchValue}
             onChange={(e) => onSearchValueChange(e, isExactSearch)}
             onClear={() => onSearchValueChange('', isExactSearch)}
@@ -413,7 +407,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
         return (
           <RangePicker
             allowClear
-            style={{ width: 320 }}
+            className="w-[320px]"
             showTime={{ format: 'HH:mm' }}
             format="YYYY-MM-DD HH:mm"
             value={getTimeValue() as any}
@@ -425,8 +419,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
       case 'int':
         return (
           <InputNumber
-            className="value"
-            style={{ width: 200 }}
+            className="value w-[200px]"
             value={searchValue}
             onChange={(val) => {
               setSearchValue(val);
@@ -445,8 +438,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
         return (
           <Input
             allowClear
-            className="value"
-            style={{ width: 200 }}
+            className="value w-[200px]"
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
             onClear={() => onSearchValueChange('', isExactSearch)}
@@ -464,8 +456,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
     <>
       <div className={searchFilterStyle.searchFilter + ' flex items-center'}>
         <Select
-          className={searchFilterStyle.attrList}
-          style={{ width: 120 }}
+          className={`${searchFilterStyle.attrList} w-[120px]`}
           value={searchAttr}
           onChange={onSearchAttrChange}
         >
@@ -481,12 +472,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           type="primary"
           icon={<SearchOutlined />}
           onClick={handleSearchClick}
-          style={{
-            marginLeft: 0,
-            marginRight: 8,
-            borderTopLeftRadius: 0,
-            borderBottomLeftRadius: 0,
-          }}
+          className="ml-0 mr-2 rounded-l-none!"
         ></Button>
         {showExactSearch && searchAttr !== 'tag' && (
           <Checkbox onChange={onExactSearchChange}>

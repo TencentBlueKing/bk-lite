@@ -76,11 +76,16 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -89,11 +94,16 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "max(device_fan_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
       "display_name": "Fan State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "fanName",
+          "description": "Fan name"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
@@ -102,11 +112,16 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
       "display_name": "PSU State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],

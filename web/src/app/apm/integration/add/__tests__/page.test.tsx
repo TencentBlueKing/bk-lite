@@ -1,9 +1,9 @@
 import React from 'react';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { IntlProvider } from 'react-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApmIntegrationAddPage from '../page';
 
 const api = {
@@ -20,19 +20,15 @@ vi.mock('@/app/apm/components/apm-route-shell', () => ({
 }));
 
 function renderPage() {
-  return render(
-    // @ts-expect-error react-intl type incompatibility with React 19
-    <IntlProvider locale="zh" messages={{
-      'apm.integration.copyEndpoint': '复制 HTTP 上报端点',
-      'apm.integration.copyEndpointSuccess': 'HTTP 上报端点已复制',
-      'apm.integration.copyFailure': '复制失败，请手动选择并复制',
-      'apm.integration.copyShellSnippet': '复制 Shell 接入片段',
-      'apm.integration.copyShellSnippetSuccess': 'Shell 接入片段已复制',
-      'apm.integration.instanceIdentityHelp': '实例 ID 在应用进程启动时生成，每个副本唯一。',
-    }}>
-      <ApmIntegrationAddPage />
-    </IntlProvider>
-  );
+  return renderWithApmIntl(<ApmIntegrationAddPage />);
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver;
+  });
+  return { promise, resolve };
 }
 
 async function generateSnippet(code = 'export FIRST=1\nexport SECOND=2') {
@@ -48,7 +44,7 @@ async function generateSnippet(code = 'export FIRST=1\nexport SECOND=2') {
   renderPage();
   await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
   await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
-  await user.click(screen.getByRole('button', { name: /生成临时配置/ }));
+  await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
   await screen.findByDisplayValue('http://proxy.example.com:4318/v1/traces');
   expect(document.querySelector('pre code')?.textContent).toBe(code);
   return user;
@@ -89,6 +85,15 @@ afterEach(() => {
 });
 
 describe('APM 添加接入', () => {
+  it('为每种接入方式提供可识别的矢量图标', async () => {
+    renderPage();
+
+    const nodeMethod = await screen.findByRole('button', { name: 'Node.js 接入' });
+    const dotnetMethod = screen.getByRole('button', { name: '.NET 接入，尚未开放' });
+    expect(nodeMethod.querySelector('.anticon')).not.toBeNull();
+    expect(dotnetMethod.querySelector('.anticon')).not.toBeNull();
+  });
+
   it('点击 SDK 接入方式后从右侧打开配置抽屉', async () => {
     const user = userEvent.setup();
     renderPage();
@@ -115,7 +120,7 @@ describe('APM 添加接入', () => {
     expect(screen.queryByDisplayValue('生成配置后显示')).toBeNull();
 
     await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
-    await user.click(screen.getByRole('button', { name: /生成临时配置/ }));
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
 
     expect(await screen.findByDisplayValue('http://proxy.example.com:4318/v1/traces')).not.toBeNull();
     expect(screen.queryByText('OTLP/gRPC 端点')).toBeNull();
@@ -130,6 +135,54 @@ describe('APM 添加接入', () => {
     await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
 
     expect(screen.getByRole('radiogroup', { name: '运行方式' })).not.toBeNull();
+    expect(screen.getByRole('radio', { name: 'Kubernetes Pod（Downward API）' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /生成临时配置/ })).toBeNull();
+  });
+
+  it('选择 Kubernetes SDK 运行方式后请求 Pod 运行时配置', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
+      environment: {},
+      code: 'spec:\n  template: {}',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Python 接入' }));
+    await user.click(screen.getByText('Kubernetes Pod（Downward API）'));
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
+
+    expect(api.getIngestSnippet).toHaveBeenCalledWith(expect.objectContaining({
+      language: 'python',
+      runtime: 'kubernetes',
+    }));
+    expect(await screen.findByText('Kubernetes 配置片段')).not.toBeNull();
+  });
+
+  it('明确把 Go 呈现为手动 SDK 接入而不是自动探针', async () => {
+    api.getIngestSnippet.mockResolvedValue({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://proxy.example.com:4318/v1/traces',
+      environment: {},
+      code: 'Go 无通用零代码探针',
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    expect((await screen.findAllByText('手动 SDK')).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'Go 接入' }));
+    expect(screen.getByRole('radio', { name: 'Go 手动 SDK' })).not.toBeNull();
+    expect(screen.queryByRole('radio', { name: 'Go 自动探针' })).toBeNull();
+    await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
+
+    expect(await screen.findByText('Go SDK 接入指南')).not.toBeNull();
   });
 
   it('将区域接收地址缺失转换为可恢复的用户提示', async () => {
@@ -145,9 +198,46 @@ describe('APM 添加接入', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
     await user.type(screen.getByRole('textbox', { name: /服务名称/ }), 'checkout');
-    await user.click(screen.getByRole('button', { name: /生成临时配置/ }));
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalled(), { timeout: 3000 });
 
     expect(await screen.findByText('所选云区域没有可用的接收地址，请联系管理员检查云区域代理配置后重试。')).not.toBeNull();
+  });
+
+  it('忽略晚到的旧配置响应', async () => {
+    const first = deferred<Record<string, unknown>>();
+    const second = deferred<Record<string, unknown>>();
+    api.getIngestSnippet.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Node.js 接入' }));
+    const serviceName = screen.getByRole('textbox', { name: /服务名称/ });
+    await user.type(serviceName, 'checkout');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    await user.clear(serviceName);
+    await user.type(serviceName, 'payment');
+    await waitFor(() => expect(api.getIngestSnippet).toHaveBeenCalledTimes(2), { timeout: 3000 });
+
+    second.resolve({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://new.example.com:4318/v1/traces',
+      environment: {},
+      code: 'export OTEL_SERVICE_NAME=payment',
+    });
+    expect(await screen.findByDisplayValue('http://new.example.com:4318/v1/traces')).not.toBeNull();
+
+    first.resolve({
+      application_id: 'bklite',
+      application_name: 'BK-Lite',
+      cloud_region: { id: 1, name: '默认云区域' },
+      http_endpoint: 'http://old.example.com:4318/v1/traces',
+      environment: {},
+      code: 'export OTEL_SERVICE_NAME=checkout',
+    });
+    await waitFor(() => expect(screen.queryByDisplayValue('http://old.example.com:4318/v1/traces')).toBeNull());
+    expect(screen.getByDisplayValue('http://new.example.com:4318/v1/traces')).not.toBeNull();
   });
 
   it('复制完整 Shell 代码并反馈成功', async () => {

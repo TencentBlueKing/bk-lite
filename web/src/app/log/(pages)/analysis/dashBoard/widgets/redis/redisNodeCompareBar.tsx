@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Empty } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import useChartColors from '../docker/useChartColors';
 import { createHorizontalBarGradient } from '../chartStyle';
 
@@ -116,11 +116,7 @@ const RedisNodeCompareBar: React.FC<RedisNodeCompareBarProps> = ({
   }
 
   if (!chartOption) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <ChartEmptyState compact />;
   }
 
   return (

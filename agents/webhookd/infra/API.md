@@ -54,6 +54,7 @@ Content-Type: application/json
   "nats_username": "admin",
   "nats_password": "secret123",
   "nats_ca": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
+  "image_registry_prefix": "bk-lite.tencentcloudcr.com/bklite",
   "runtime_profile": "standard",
   "host_log_path": "/var/log/pods",
   "docker_container_log_path": "/var/lib/docker/containers"
@@ -70,9 +71,12 @@ Content-Type: application/json
 | nats_username | string | 是 | NATS 用户名 |
 | nats_password | string | 是 | NATS 密码 |
 | nats_ca | string | 是 | NATS CA 证书内容（PEM 格式） |
+| image_registry_prefix | string | 否 | 采集器镜像仓库前缀，默认 `bk-lite.tencentcloudcr.com/bklite`。离线环境可改为已同步同名镜像的私有仓库前缀；不包含协议头、镜像名或 tag |
 | runtime_profile | string | 否 | 日志采集器运行环境预设，枚举值：`standard`（默认，仅挂载 `/var/log`）、`docker`（额外挂载 `/var/lib/docker/containers`）、`custom`（节点 Pod 日志根目录不在默认位置时使用）。仅 `type=log` 时生效 |
 | host_log_path | string | 条件必填 | 节点侧 Kubernetes Pod 日志根目录绝对路径。仅当 `type=log` 且 `runtime_profile=custom` 时必填，容器内会统一挂载到 `/var/log/pods`，建议填写真实的 Pod 日志目录，如 `/var/log/pods` |
 | docker_container_log_path | string | 否 | Docker 容器原始日志目录绝对路径。仅当节点仍使用 Docker 且需要额外挂载容器原始日志目录时填写，常见值为 `/var/lib/docker/containers` |
+| namespace_patterns | string[] | 否 | 仅 `type=log` 时生效。采集 Namespace 通配列表，语法为 glob（`*` / `?`），仅允许小写字母、数字、`-`、`.`、`*`、`?`。留空或省略表示全部 Namespace |
+| pod_patterns | string[] | 否 | 仅 `type=log` 时生效。采集 Pod 名称通配列表，规则同 `namespace_patterns`。与 Namespace 为「且」关系；两者都空时不下发 `include_paths_glob_patterns`，保持全量采集 |
 
 **成功响应**:
 ```json
@@ -196,6 +200,8 @@ curl -s -X POST \
 - `docker`: 挂载 `/var/log` 和 `/var/lib/docker/containers`
 - `custom`: 将节点侧 `host_log_path` 挂载到容器内 `/var/log/pods`，并按需附加 `docker_container_log_path`
 
+日志采集范围由 `namespace_patterns` 与 `pod_patterns` 渲染为 Vector `include_paths_glob_patterns`。任一维度变化都会改写 DaemonSet Pod 模板 annotation `bklite.io/log-collect-config`，使 `kubectl apply` 触发滚动重启。
+
 可直接用于 `kubectl apply -f` 部署。
 
 ---
@@ -214,6 +220,7 @@ curl -s -X POST \
 3. **nats_ca 格式**: 需要完整的 PEM 格式证书
 4. **Content-Type**: 请求必须设置 `Content-Type: application/json`
 5. **runtime_profile=custom**: 必须同时提供节点侧 `host_log_path`，且路径必须为绝对路径；该目录应为 Kubernetes Pod 日志根目录，渲染后会在容器内映射为 `/var/log/pods`
+6. **namespace_patterns / pod_patterns**: 仅 `type=log` 时生效；单维最多 50 项，笛卡尔积展开后最多 200 条。不支持正则、排除列表或 Label 选择器
 
 ---
 
@@ -468,6 +475,8 @@ Content-Type: application/json
   "proxy_ip": "192.168.1.50",
   "nats_monitor_username": "monitor_1",
   "nats_monitor_password": "monitor-secret",
+  "apm_nats_username": "apm_region_1",
+  "apm_nats_password": "generated-apm-secret",
   "traefik_web_port": "443",
   "install_path": "/opt/bk-lite/proxy"
 }
@@ -489,6 +498,8 @@ Content-Type: application/json
 | proxy_ip | string | 是 | - | Proxy 节点 IP 地址，用于证书 SAN |
 | nats_monitor_username | string | 是 | - | NATS 监控用户名，用于本地 NATS 监控认证 |
 | nats_monitor_password | string | 是 | - | NATS 监控密码 |
+| apm_nats_username | string | 是 | - | 区域 APM Collector 专用 NATS 用户名 |
+| apm_nats_password | string | 是 | - | 区域 APM Collector 专用 NATS 密码 |
 | traefik_web_port | string | 是 | - | Traefik HTTPS 服务端口 |
 | install_path | string | 否 | /opt/bk-lite/proxy | Proxy 安装目录 |
 
@@ -532,6 +543,8 @@ curl -X POST \
     "proxy_ip": "192.168.1.50",
     "nats_monitor_username": "monitor_2",
     "nats_monitor_password": "monitor-secret-789",
+    "apm_nats_username": "apm_region_2",
+    "apm_nats_password": "apm-secret-789",
     "traefik_web_port": "443"
   }' \
   http://localhost:8080/infra/proxy
@@ -555,6 +568,8 @@ curl -s -X POST \
     "proxy_ip": "192.168.1.50",
     "nats_monitor_username": "monitor_2",
     "nats_monitor_password": "monitor-secret",
+    "apm_nats_username": "apm_region_2",
+    "apm_nats_password": "apm-secret",
     "traefik_web_port": "443"
   }' \
   http://localhost:8080/infra/proxy | jq -r '.install_script' > install-proxy.sh
@@ -578,6 +593,8 @@ jq -n \
   --arg proxy_ip "${PROXY_IP}" \
   --arg nats_monitor_username "${NATS_MONITOR_USERNAME}" \
   --arg nats_monitor_password "${NATS_MONITOR_PASSWORD}" \
+  --arg apm_nats_username "${APM_NATS_USERNAME}" \
+  --arg apm_nats_password "${APM_NATS_PASSWORD}" \
   --arg traefik_web_port "${TRAEFIK_WEB_PORT}" \
   '{
     node_id: $node_id,
@@ -592,6 +609,8 @@ jq -n \
     proxy_ip: $proxy_ip,
     nats_monitor_username: $nats_monitor_username,
     nats_monitor_password: $nats_monitor_password,
+    apm_nats_username: $apm_nats_username,
+    apm_nats_password: $apm_nats_password,
     traefik_web_port: $traefik_web_port
   }' | curl -X POST -H "Content-Type: application/json" -d @- \
   http://localhost:8080/infra/proxy
@@ -615,6 +634,8 @@ curl -s -X POST \
     "proxy_ip": "10.0.0.50",
     "nats_monitor_username": "monitor_1",
     "nats_monitor_password": "monitor-pwd",
+    "apm_nats_username": "apm_region_1",
+    "apm_nats_password": "apm-pwd",
     "traefik_web_port": "8443",
     "install_path": "/data/bklite/proxy"
   }' \
@@ -709,5 +730,7 @@ docker compose restart
 10. **proxy_ip**: 必填，Proxy 节点 IP 地址
 11. **nats_monitor_username**: 必填，NATS 监控用户名
 12. **nats_monitor_password**: 必填，NATS 监控密码
-13. **traefik_web_port**: 必填，Traefik HTTPS 服务端口
-14. **install_path**: 可选，默认 `/opt/bk-lite/proxy`
+13. **apm_nats_username**: 必填，只允许发布本区域 `apm.traces.<zone_id>` 并订阅 ACK inbox
+14. **apm_nats_password**: 必填，独立于 NATS 管理员和监控凭据
+15. **traefik_web_port**: 必填，Traefik HTTPS 服务端口
+16. **install_path**: 可选，默认 `/opt/bk-lite/proxy`

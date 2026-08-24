@@ -18,8 +18,17 @@ def test_validate_requested_teams_accepts_owned_teams():
     assert validate_requested_teams(request, ["1", 2]) == [1, 2]
 
 
-def test_validate_requested_teams_rejects_unowned_team():
+def test_validate_requested_teams_rejects_unowned_team_en():
     request = _request([{"id": 1}], locale="en")
+
+    with pytest.raises(serializers.ValidationError) as exc:
+        validate_requested_teams(request, [1, 3])
+
+    assert exc.value.detail == {"team": "Only teams that belong to the current user can be selected"}
+
+
+def test_validate_requested_teams_rejects_unowned_team_zh():
+    request = _request([{"id": 1}], locale="zh-Hans")
 
     with pytest.raises(serializers.ValidationError) as exc:
         validate_requested_teams(request, [1, 3])

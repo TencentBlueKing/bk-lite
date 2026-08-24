@@ -2,6 +2,7 @@ from django.db.models import Q
 from django_filters import BaseInFilter, BooleanFilter, CharFilter, FilterSet, NumberFilter
 
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
+from apps.monitor.utils.snmp_ifmib_capability import get_ifmib_metric_names_matching_keyword
 
 
 class MetricGroupFilter(FilterSet):
@@ -43,15 +44,14 @@ class MetricFilter(FilterSet):
     include_ifmib = BooleanFilter(method="filter_include_ifmib", label="是否包含IF-MIB指标")
     is_ifmib = BooleanFilter(field_name="is_ifmib", label="是否为IF-MIB指标")
 
-    @staticmethod
-    def filter_keyword(queryset, _name, value):
+    def filter_keyword(self, queryset, _name, value):
         keyword = str(value or "").strip()
         if not keyword:
             return queryset
+        locale = getattr(getattr(self.request, "user", None), "locale", "")
+        localized_names = get_ifmib_metric_names_matching_keyword(keyword, locale)
         return queryset.filter(
-            Q(name__icontains=keyword)
-            | Q(display_name__icontains=keyword)
-            | Q(description__icontains=keyword)
+            Q(name__icontains=keyword) | Q(display_name__icontains=keyword) | Q(description__icontains=keyword) | Q(name__in=localized_names)
         )
 
     @staticmethod

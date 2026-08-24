@@ -1,0 +1,8 @@
+# 构建与 NSIS 生成物（可由 Makefile / gen_icon.py 重生）
+bklite-controller-bootstrap.exe
+bklite-controller-installer
+bklite-controller-installer.exe
+setup-worker.exe
+installer.ico
+header.bmp
+wizard.bmp

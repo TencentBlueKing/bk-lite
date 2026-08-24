@@ -124,12 +124,14 @@ export function useSingleValueConfig({
         } else {
           newValue = Math.max(currentValue - 5, nextValue + 1);
         }
-      } else {
+      } else if (prev.length > 0) {
         const values = prev
           .map((t) => parseFloat(t.value))
           .filter((v) => !isNaN(v));
         const maxValue = Math.max(...values);
-        newValue = Math.min(maxValue + 10, 100);
+        newValue = Number.isFinite(maxValue)
+          ? Math.min(maxValue + 10, 100)
+          : 50;
       }
       const existingValues = prev
         .map((t) => parseFloat(t.value))
@@ -182,7 +184,7 @@ export function useSingleValueConfig({
         requestParams.namespace_id = builtinNamespaceId;
       }
 
-      const data = await getSourceDataByApiId(resolvedId, requestParams);
+      const { data } = await getSourceDataByApiId(resolvedId, requestParams);
       const tree = buildTreeData(data, selectedDataSource.field_schema);
       setSingleValueTreeData(tree);
     } catch (error) {

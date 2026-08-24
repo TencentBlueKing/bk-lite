@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
-from apps.opspilot.viewsets.llm_view import LLMViewSet
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt
+from apps.opspilot.viewsets.llm_view import LLMViewSet
 
 pytestmark = pytest.mark.unit
 
@@ -72,7 +72,14 @@ def test_apply_skill_packages_enabled_independent_of_match_score():
             skill_prompt="",
             skill_packages=[
                 {"id": 1, "name": "PDF Reader", "description": "Extract PDF text.", "required_tools": [], "triggers": ["pdf"], "skill_markdown": ""},
-                {"id": 2, "name": "Markitdown", "description": "Convert files to markdown.", "required_tools": [], "triggers": ["pdf"], "skill_markdown": ""},
+                {
+                    "id": 2,
+                    "name": "Markitdown",
+                    "description": "Convert files to markdown.",
+                    "required_tools": [],
+                    "triggers": ["pdf"],
+                    "skill_markdown": "",
+                },
                 {"id": 3, "name": "Kubernetes Specialist", "description": "k8s.", "required_tools": [], "triggers": ["k8s"], "skill_markdown": ""},
                 {"id": 4, "name": "XGet", "description": "fetch urls.", "required_tools": [], "triggers": ["xget"], "skill_markdown": ""},
             ],
@@ -126,3 +133,5 @@ def test_skill_package_prompt_requires_tool_execution_for_real_tasks():
     assert len(matched) == 1
     assert "不要只输出安装步骤" in prompt
     assert "execute" in prompt
+    assert "Use MarkItDown CLI." not in prompt
+    assert "SKILL.md" in prompt

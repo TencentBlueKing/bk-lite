@@ -204,23 +204,22 @@ class FormatDBResult:
                     continue
 
                 _edge = _edges[0]
-                _id = getattr(_edge, "id", 0)
-                properties = getattr(_edge, "properties", {})
-                properties["_id"] = _id
-                edge_info["edge"] = _edge
-                edge_info["edge"] = properties
-                src_model = properties["src_model_id"]
-                dst_model = properties["dst_model_id"]
+                edge_properties = dict(getattr(_edge, "properties", {}) or {})
+                edge_properties["_id"] = getattr(_edge, "id", 0)
+                edge_info["edge"] = edge_properties
 
-                _nodes = getattr(_re, "_nodes", [])
-                for _node in _nodes:
-                    _id = getattr(_node, "id", 0)
-                    properties = getattr(_node, "properties", {})
-                    properties["_id"] = _id
-                    if properties.get("model_id") == src_model:
-                        edge_info["src"] = properties
-                    elif properties.get("model_id") == dst_model:
-                        edge_info["dst"] = properties
+                # MATCH p=(a)-[e]->(b) 的路径节点顺序就是源/目标。
+                # 不能按 model_id 匹配：同模型关系（如 host_run_host）两端 model_id 相同，
+                # 否则 dst 会被留空，UUID 清洗和关联查询都会失败。
+                _nodes = list(getattr(_re, "_nodes", []) or [])
+                if _nodes:
+                    src_properties = dict(getattr(_nodes[0], "properties", {}) or {})
+                    src_properties["_id"] = getattr(_nodes[0], "id", 0)
+                    edge_info["src"] = src_properties
+                if len(_nodes) > 1:
+                    dst_properties = dict(getattr(_nodes[1], "properties", {}) or {})
+                    dst_properties["_id"] = getattr(_nodes[1], "id", 0)
+                    edge_info["dst"] = dst_properties
 
                 result.append(edge_info)
 

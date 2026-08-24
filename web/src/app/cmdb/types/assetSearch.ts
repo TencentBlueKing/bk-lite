@@ -1,6 +1,7 @@
 export interface AssetListItem {
   model_id: string;
-  _id: number;
+  inst_uuid?: string;
+  _id?: number | string;
   inst_name?: string;
   organization?: number[];
   organization_display?: string;
@@ -51,5 +52,6 @@ export interface InstDetailItem {
   key: string;
   label?: string;
   children: unknown;
-  id: number;
+  id: number | string;
+  inst_uuid?: string;
 }

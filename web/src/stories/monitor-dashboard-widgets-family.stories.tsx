@@ -27,6 +27,8 @@ import {
   TrendChartPanel,
   UnackedIcon,
   type CollectionStatusCardStyles,
+  type CollectionStatusTimelineSegment,
+  type CollectionStatusTone,
   type DashboardPageHeaderStyles,
   type DashboardPanelStyles,
   type DashboardInstanceCardStyles,
@@ -42,6 +44,7 @@ import {
   type TrendChartPanelStyles,
 } from '@/app/monitor/components/monitor-dashboard-widgets';
 import type { ChartData, MetricItem } from '@/app/monitor/components/monitor-dashboard-widgets/types';
+import { useThemeMode } from '@/theme';
 
 const statStyles: StatCardStyles = {
   statCard:
@@ -198,9 +201,10 @@ const collectionStatusStyles: CollectionStatusCardStyles = {
   collectionStatusTimelineBlock:
     'rounded-[14px] bg-[var(--color-fill-1)] px-4 py-3',
   collectionStatusTimelineTitle:
-    'mb-2 text-[12px] font-medium text-[var(--color-text-3)]',
+    'mb-2 flex items-center justify-between gap-2 text-[12px] font-medium text-[var(--color-text-3)]',
+  collectionStatusTimelineHint: 'shrink-0 text-[11px] font-normal text-[var(--color-text-4)]',
   collectionStatusTimeline: 'mb-3 flex gap-1.5',
-  collectionStatusSegment: 'h-2 flex-1 rounded-full',
+  collectionStatusSegment: 'block h-2 w-full flex-1 cursor-default rounded-full',
   collectionStatusSegmentSuccess: 'bg-[var(--color-success)]',
   collectionStatusSegmentWarning: 'bg-[#f59e0b]',
   collectionStatusSegmentError: 'bg-[#f04438]',
@@ -424,14 +428,14 @@ const dashboardGuideItems = [
 
 const selectorOptions = [
   {
-    label: 'mysql-prod-01 / 10.10.1.21',
+    label: 'mysql-prod-01 / mysql-prod-01.example.test',
     value: 'mysql-prod-01',
-    searchTokens: ['mysql-prod-01', 'mysql', '10.10.1.21', 'production'],
+    searchTokens: ['mysql-prod-01', 'mysql', 'mysql-prod-01.example.test', 'production'],
   },
   {
-    label: 'mysql-report-02 / 10.10.1.34',
+    label: 'mysql-report-02 / mysql-report-02.example.test',
     value: 'mysql-report-02',
-    searchTokens: ['mysql-report-02', 'mysql', '10.10.1.34', 'reporting'],
+    searchTokens: ['mysql-report-02', 'mysql', 'mysql-report-02.example.test', 'reporting'],
   },
   {
     label: 'redis-cache-01 / cache-shanghai-a',
@@ -479,10 +483,23 @@ const collectionStatusGuideItems = [
   },
   {
     label: '状态时间线',
-    detail: '绿色表示正常，橙色表示警告，红色表示严重。',
+    detail: '时间线覆盖当前时间窗并均分为若干段；绿色表示正常，橙色表示警告，红色表示严重。',
   },
 ];
 
+const buildDemoTimeline = (
+  tones: CollectionStatusTone[],
+  windowMinutes = 15
+): CollectionStatusTimelineSegment[] => {
+  const endMs = Date.now();
+  const startMs = endMs - windowMinutes * 60_000;
+  const width = (endMs - startMs) / tones.length;
+  return tones.map((tone, index) => ({
+    tone,
+    startMs: startMs + index * width,
+    endMs: index === tones.length - 1 ? endMs : startMs + (index + 1) * width,
+  }));
+};
 const metricIconItems = [
   { label: 'Health', color: '#16a34a', icon: <HealthIcon /> },
   { label: 'Memory', color: '#2563eb', icon: <MemoryIcon /> },
@@ -576,7 +593,7 @@ const FamilyOverview = () => {
       <DashboardInstanceCard
         styles={instanceStyles}
         instanceName="mysql-prod-01"
-        metaItems={['MySQL', '10.0.0.21', 'Production']}
+        metaItems={['MySQL', 'mysql-prod.example.test', 'Production']}
         icon={<DatabaseOutlined />}
         selectorOptions={[
           { label: 'mysql-prod-01', value: 'mysql-prod-01' },
@@ -701,7 +718,8 @@ const FamilyOverview = () => {
               summary: '采集稳定',
               tagColor: 'success',
             }}
-            timeline={[
+            timelineHint="每格约 75 秒"
+            timeline={buildDemoTimeline([
               'success',
               'success',
               'success',
@@ -714,7 +732,7 @@ const FamilyOverview = () => {
               'success',
               'success',
               'success',
-            ]}
+            ])}
           />
 
           <CollectionStatusCard
@@ -725,7 +743,8 @@ const FamilyOverview = () => {
               summary: '连续缺口',
               tagColor: 'error',
             }}
-            timeline={[
+            timelineHint="每格约 75 秒"
+            timeline={buildDemoTimeline([
               'success',
               'success',
               'error',
@@ -738,7 +757,7 @@ const FamilyOverview = () => {
               'success',
               'error',
               'error',
-            ]}
+            ])}
           />
 
           <CollectionStatusCard
@@ -748,7 +767,8 @@ const FamilyOverview = () => {
               detail: '该实例尚未返回最近时间窗内的指标数据。',
               summary: '等待首次采集',
             }}
-            timeline={Array.from({ length: 12 }, () => 'empty' as const)}
+            timelineHint="每格约 75 秒"
+            timeline={buildDemoTimeline(Array.from({ length: 12 }, () => 'empty' as const))}
           />
 
           <CollectionStatusCard
@@ -762,7 +782,8 @@ const FamilyOverview = () => {
             }}
             statusTone="warning"
             guideItems={collectionStatusGuideItems}
-            timeline={[
+            timelineHint="每格约 75 秒"
+            timeline={buildDemoTimeline([
               'success',
               'success',
               'warning',
@@ -775,7 +796,7 @@ const FamilyOverview = () => {
               'warning',
               'success',
               'success',
-            ]}
+            ])}
             legendItems={[
               { key: 'success', label: '正常', color: '#22c55e' },
               { key: 'warning', label: '警告', color: '#f59e0b' },
@@ -825,7 +846,7 @@ const FamilyOverview = () => {
         <div className="grid gap-4 xl:grid-cols-2">
           <DashboardInstanceCard
             instanceName="mysql-report-02"
-            metaItems={['MySQL 8.0.36', '10.0.0.22', '报表库']}
+            metaItems={['MySQL 8.0.36', 'mysql-report.example.test', '报表库']}
             icon={<DatabaseOutlined />}
             selectorOptions={[
               { label: 'db-prod-01', value: 'db-prod-01' },
@@ -840,7 +861,7 @@ const FamilyOverview = () => {
 
           <DashboardInstanceCard
             instanceName="mysql-primary-01"
-            metaItems={['MySQL 8.0.36', '10.0.0.21', '主库']}
+            metaItems={['MySQL 8.0.36', 'mysql-primary.example.test', '主库']}
             icon={<DatabaseOutlined />}
             selectorOptions={[
               { label: 'db-prod-01', value: 'db-prod-01' },
@@ -1128,7 +1149,7 @@ const FamilyOverview = () => {
           guide={rankingGuideItems}
           styles={horizontalBarStyles}
           items={[
-            { label: 'db-prod-01', value: 82, display: '82%', color: '#2563eb', max: 100 },
+            { label: '/var/lib/kubelet/pods/checkout-production-7f8b9c6d5/volumes/data', value: 82, display: '82%', color: '#2563eb', max: 100 },
             { label: 'db-prod-02', value: 68, display: '68%', color: '#14b8a6', max: 100 },
             { label: 'db-report-01', value: 54, display: '54%', color: '#f59e0b', max: 100 },
           ]}
@@ -1141,7 +1162,7 @@ const FamilyOverview = () => {
           styles={horizontalBarStyles}
           items={[
             {
-              label: 'node-a',
+              label: 'checkout-production-payment-reconciliation-worker-container',
               value: 0,
               display: '182 MiB/s',
               color: '#2563eb',
@@ -1166,12 +1187,25 @@ const FamilyOverview = () => {
           styles={horizontalBarStyles}
           tiered
           items={[
-            { label: 'payments/api-7f6c9', value: 910, display: '910m', color: '#ef4444', max: 1000, rank: 1 },
+            { label: 'payments/checkout-production-api-7f6c9d877b-x9k2m', value: 910, display: '910m', color: '#ef4444', max: 1000, rank: 1 },
             { label: 'checkout/worker-5d4aa', value: 740, display: '740m', color: '#f59e0b', max: 1000, rank: 2 },
             { label: 'search/indexer-66fb2', value: 620, display: '620m', color: '#2563eb', max: 1000, rank: 3 },
             { label: 'report/scheduler-21aaf', value: 410, display: '410m', color: '#14b8a6', max: 1000, rank: 4 },
           ]}
         />
+
+        <div className="w-full max-w-[360px]">
+          <HorizontalBarPanel
+            title="窄容器数据库排行"
+            subtitle="用于验证数据库名不会挤压进度条和数值列"
+            guide={rankingGuideItems}
+            styles={horizontalBarStyles}
+            items={[
+              { label: 'customer_order_archive_production_database_2026', value: 76, display: '76%', color: '#2563eb', max: 100 },
+              { label: 'billing', value: 51, display: '51%', color: '#14b8a6', max: 100 },
+            ]}
+          />
+        </div>
 
         <StackedBarPanel
           title="容量配比"
@@ -1299,9 +1333,94 @@ const FamilyOverview = () => {
   );
 };
 
+const HorizontalBarOverflowContract = () => {
+  const { mode, setMode } = useThemeMode();
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-semibold text-[var(--color-text-1)]">长标签溢出契约</div>
+        <div className="inline-flex rounded-lg bg-[var(--color-fill-1)] p-1">
+          <button
+            type="button"
+            aria-pressed={mode === 'light'}
+            className="rounded-md px-3 py-1 text-sm text-[var(--color-text-1)]"
+            onClick={() => setMode('light')}
+          >
+            亮色
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode === 'dark'}
+            className="rounded-md px-3 py-1 text-sm text-[var(--color-text-1)]"
+            onClick={() => setMode('dark')}
+          >
+            暗色
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <HorizontalBarPanel
+          title="挂载路径 Top"
+          styles={horizontalBarStyles}
+          items={[
+            { label: '/var/lib/kubelet/pods/checkout-production-7f8b9c6d5/volumes/data', value: 82, display: '82%', color: '#2563eb', max: 100 },
+            { label: '/data', value: 54, display: '54%', color: '#14b8a6', max: 100 },
+          ]}
+        />
+        <HorizontalBarPanel
+          title="容器网络趋势"
+          styles={horizontalBarStyles}
+          items={[
+            {
+              label: 'checkout-production-payment-reconciliation-worker-container',
+              value: 0,
+              display: '182 MiB/s',
+              color: '#2563eb',
+              max: 1,
+              trend: makeRankingTrend([110, 124, 132, 141, 154, 149, 160, 171, 176, 182]),
+            },
+          ]}
+        />
+        <HorizontalBarPanel
+          title="Pod CPU 排行"
+          styles={horizontalBarStyles}
+          tiered
+          items={[
+            { label: 'payments/checkout-production-api-7f6c9d877b-x9k2m', value: 910, display: '910m', color: '#ef4444', max: 1000, rank: 1 },
+            { label: 'checkout/worker-5d4aa', value: 740, display: '740m', color: '#f59e0b', max: 1000, rank: 2 },
+          ]}
+        />
+        <HorizontalBarPanel
+          title="数据库连接使用率"
+          styles={horizontalBarStyles}
+          items={[
+            { label: 'customer_order_archive_production_database_2026', value: 76, display: '76%', color: '#2563eb', max: 100 },
+            { label: 'billing', value: 51, display: '51%', color: '#14b8a6', max: 100 },
+          ]}
+        />
+        <HorizontalBarPanel
+          title="空态"
+          styles={horizontalBarStyles}
+          items={[]}
+          isEmpty
+          emptyDescription="No ranking data"
+        />
+      </div>
+    </div>
+  );
+};
+
 const meta = {
   title: 'Business/Monitor/Widgets/FamilyOverview',
   component: FamilyOverview,
+  parameters: {
+    nextjs: {
+      appDirectory: true,
+      navigation: { pathname: '/ops-analysis/render/execution/1' },
+    },
+  },
   decorators: [
     (Story) => (
       <div style={{ maxWidth: 1180, padding: 24, background: 'var(--color-bg-2)' }}>
@@ -1316,3 +1435,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = {};
+
+export const HorizontalBarOverflow: Story = {
+  render: () => <HorizontalBarOverflowContract />,
+};

@@ -113,8 +113,8 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
     user_id = challenge_data.get("user_id")
 
     # Check rate limit
-    is_limited, remaining = check_rate_limit(client_ip, username)
-    if is_limited:
+    ip_limited, _ = check_rate_limit(client_ip, username)
+    if ip_limited:
         return {"result": False, "message": "Too many failed attempts. Please try again later."}
 
     # Get user
@@ -124,6 +124,10 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
 
     if not user.otp_secret:
         return {"result": False, "message": "OTP not configured for this user"}
+
+    # Reserve before verification so concurrent requests cannot all pass a stale check.
+    if reserve_otp_login_account_attempt(user_id) > RATE_LIMIT_MAX_ATTEMPTS:
+        return {"result": False, "message": "Too many failed attempts. Please try again later."}
 
     # Verify OTP code
     totp = pyotp.TOTP(user.otp_secret)
@@ -137,6 +141,7 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
 
     # Reset rate limit
     reset_rate_limit(client_ip, username)
+    reset_otp_login_account_rate_limit(user_id)
 
     # Issue JWT token
     secret_key = os.getenv("SECRET_KEY")

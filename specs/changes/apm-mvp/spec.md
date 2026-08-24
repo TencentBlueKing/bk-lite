@@ -2,7 +2,7 @@
 
 Status: superseded by `specs/changes/apm-nats-vt-pipeline/spec.md`
 
-> 本文件保留为 APM MVP 的历史设计记录。后续产品决定已经废弃其中的 `ApmIngestSource`、APM Token、Edge Nginx、VictoriaMetrics Span Metrics 与尾采样方案。当前应用由用户创建，服务和实例由遥测发现，接入配置即时生成且不持久化；APM 数据面、查询和验收以 `apm-nats-vt-pipeline` 为唯一变更契约。告警生命周期与控制面/数据面分离原则仍分别遵循 ADR 0004 与 ADR 0006。
+> 本文件保留为 APM MVP 的历史设计记录，方案从未正式部署，不代表任何生产存量或迁移/回滚路径。后续产品决定已经废弃其中的 `ApmIngestSource`、APM Token、Edge Nginx、VictoriaMetrics Span Metrics 与尾采样方案。当前应用由用户创建，服务和实例由遥测发现，接入配置即时生成且不持久化；APM 数据面、查询和验收以 `apm-nats-vt-pipeline` 为唯一变更契约。告警生命周期与控制面/数据面分离原则仍分别遵循 ADR 0004 与 ADR 0006。
 
 ## Problem Statement
 

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Empty, Tag } from 'antd';
+import { Button, Tag } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
@@ -319,7 +320,7 @@ const ExecutionPreviewPanel: React.FC<ExecutionPreviewPanelProps> = ({
             {t('chatflow.preview.loading')}
           </div>
         ) : sortedItems.length === 0 ? (
-          <Empty description={t('chatflow.preview.empty')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <CompactEmptyState description={t('chatflow.preview.empty')} />
         ) : (
           <div className="space-y-3">
             {sortedItems.map((item) => {

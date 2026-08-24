@@ -233,7 +233,7 @@ class LLMSkill(MaintainerInfo):
     name = models.CharField(max_length=255, verbose_name="名称")
     llm_model = models.ForeignKey(
         "LLMModel",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         verbose_name="LLM模型",
         blank=True,
         null=True,
@@ -246,11 +246,14 @@ class LLMSkill(MaintainerInfo):
 
     introduction = models.TextField(blank=True, null=True, default="", verbose_name="介绍")
     team = models.JSONField(default=list, verbose_name="分组")
+    # 使用组织：平台/Web/嵌入式对话准入；不变式 team ⊆ usage_team（与 Bot 对齐）。
+    usage_team = models.JSONField(default=list, verbose_name="使用组织")
 
     show_think = models.BooleanField(default=True)
     tools = models.JSONField(default=list)
     skill_params = models.JSONField(default=list, verbose_name="技能参数")
     skill_packages = models.JSONField(default=list, verbose_name="技能包")
+    skill_package_params = models.JSONField(default=dict, verbose_name="技能包参数")
 
     temperature = models.FloatField(default=0.7, verbose_name="温度")
     skill_type = models.IntegerField(

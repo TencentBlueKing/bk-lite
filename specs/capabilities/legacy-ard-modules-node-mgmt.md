@@ -10,7 +10,7 @@
 ## 2. 数据模型与存储【已实现/已存在】
 | 模型 | 文件 | 说明 |
 |------|------|------|
-| Node / Collector / Controller | `models/sidecar.py` | 节点、采集组件、管理 agent；Node 含 `node_type`（默认 host，支持容器节点类型）与 `install_method` 字段，二者影响安装与采集行为（`models/sidecar.py:44-49`），migration `0035_backfill_container_node_cpu_architecture.py` 对容器节点 CPU 架构做回填 |
+| Node / Collector / Controller | `models/sidecar.py` | 节点、采集组件、管理 agent；Node 含 `node_type`（默认 host，支持容器节点类型）与 `install_method` 字段，二者影响安装与采集行为；同时持久化 CMDB、监控两侧的关联标识及各目标最近一次推送结果，用于后续补推和退役联动 |
 | SidecarApiToken | `models/sidecar.py:162` | sidecar 鉴权令牌（`node_id` + `token`），节点激活后注册获得（对齐 PRD 云区域.md §5） |
 | NodeCollectorConfiguration | `models/sidecar.py:120` | 节点与采集器配置的关联 |
 | NodeCollectorInstallStatus | `models/installer.py:9` | 节点-采集器安装状态跟踪 |
@@ -20,10 +20,20 @@
 | ControllerTask(Node) / CollectorActionTask(Node) | `models/{installer,action}.py` | 安装/升级、采集器启停动作及节点级状态 |
 | NodeComponentVersion | `models/node_version.py` | 组件版本与可升级标记 |
 
+> 证据来源：server/apps/node_mgmt/models/sidecar.py:50-52　|　同步基线：d2769559　|　【已实现】
+
 **存储**：PostgreSQL（ORM）；MinIO（安装包，`utils/s3.py`）。
 
 ## 3. 接口【已实现/已存在】
 REST 路由组：`node`/`cloud_region`/`sidecar_env`/`collector`/`controller`/`configuration`/`child_config`/`installer`/`package`；`open_api`（sidecar 可访问，`OpenSidecarViewSet`）。
+
+节点跨模块同步【已实现】：节点管理可将已纳管节点显式推送至 CMDB 或监控系统；详情页可按所选目标补推。推送会携带节点、云区域、组织归属及已有对端关联标识，并在节点侧记录各目标的结果；两个对端均已建立关联时会补齐双方关联标识。该能力以 [[legacy-ard-modules-cmdb.md#4. 依赖与通信【已实现/已存在】]] 和 [[legacy-ard-modules-monitor.md#3. 接口【已实现/已存在】]] 的接收契约为准。
+
+> 证据来源：server/apps/node_mgmt/models/sidecar.py:50-52，server/apps/node_mgmt/services/module_push.py:129-193,370-400　|　同步基线：d2769559　|　【已实现】
+
+节点退役联动【已实现】：删除节点时必须向 CMDB 发送 lifecycle，只清除该主机上的 `node_id`（实例保留，避免悬挂指针）。调用方显式选择 `retire_linked` 时，才额外向已关联的监控对象发送退役事件。对端不可用或退役失败不会阻断节点删除。拉同步在源侧节点消失后同样只清 sidecar `node_id`，不删主机。
+
+> 证据来源：server/apps/node_mgmt/views/node.py:296-310，server/apps/node_mgmt/services/module_push.py:98-149,221-273　|　同步基线：d2769559　|　【已实现】
 
 `open_api` 安装链路【已实现/已存在】：安装令牌有效期 30 分钟、最多 5 次使用；下载令牌有效期 10 分钟、最多 3 次使用；脚本渲染会调用 webhook，Linux bootstrap 入口生成安装会话，安装会话为 sidecar 生成 NATS 下载配置并按 CPU 架构选择包（证据：`views/sidecar.py:338,395,532,564,583`、`services/install_token.py:11,103`、`services/installer_session.py:51`）。
 
@@ -33,6 +43,9 @@ NATS handlers（`@nats_client.register`，`nats/node.py`）：
 
 ## 4. 通信机制【已实现/已存在】
 - NATS：`nats/{node,permission}.py` 节点数据同步与权限。安装日志事件流走 NATS core 订阅：`installer.py` 通过 `subscribe_lines_sync` 订阅普通 subject `executor.stream.{execution_id}`，并未使用 JetStream 持久消费者（`tasks/installer.py:591-604`）。`subscribe_lines_sync` 定义在服务端顶层包 `server/nats_client/clients.py:256-285`（用 `nc.subscribe(subject, cb=...)` 即 core 订阅）；同文件另有 JetStream 原语 `ensure_stream`/`iter_jetstream_subject`（`server/nats_client/clients.py:304,332`），但 node_mgmt installer 未引用。
+- **CMDB 身份依赖**【已实现】：`Node.cmdb_id` 的规范值为 CMDB `inst_uuid`（UUIDv4）；节点管理直接 import CMDB 的身份工具来识别 UUID、数字图 ID 与候选别名。upsert 与 lifecycle 均以节点 ID 优先，并可按 CMDB UUID 及其旧数字 alias 定位既有关联；存量数字 `cmdb_id` 可被入站 UUID 升级。除数字升级路径外，不同现值按冲突处理并不回填；数字升级在 aliases 为空时未强制验证同一性，边界见 §5。安装请求中的推送目标仅对已存在的节点立即生效；首次 Sidecar 注册后的延迟推送尚未接线，不能表述为“安装完成即自动同步”的闭环。产品行为见 [[legacy-prd-节点管理-云区域.md#3.1 节点]]，交付范围见 [[legacy-fuctionlist-06-节点管理-功能清单.md#4. 节点管理]]。
+
+> 证据来源：server/apps/node_mgmt/services/module_ingest.py:32-65，server/apps/node_mgmt/services/module_ingest.py:85-153，server/apps/node_mgmt/services/module_link.py:21-47，server/apps/node_mgmt/services/module_link.py:123-159，server/apps/cmdb/services/instance_identity.py:24-32，server/apps/cmdb/services/instance_identity.py:87-106　|　同步基线：b98b782a7　|　【已实现】
 - SSH：`utils/installer.py` 远程安装控制器。
 - WinRM：Windows 控制器远程安装由云区域内健康的 Ansible Executor 连接目标主机，固定使用 HTTPS/5986、NTLM 和服务端证书校验；Executor 将原生 `bklite-controller-bootstrap.exe` 分发到目标主机并执行，不新增独立 WinRM 服务。
 - Celery：
@@ -42,9 +55,14 @@ NATS handlers（`@nats_client.register`，`nats/node.py`）：
   - 其他：`discover_node_versions`、`sync_node_properties_to_sidecar`（推送配置到 sidecar.yaml）、`check_all_region_services`（健康检查 nats-executor/stargazer）。
 - 管理命令【已实现/已存在】：`node_init` 初始化内置节点数据；`collector_package_init` / `controller_package_init` 上传 collector/controller 包；`installer_init` 上传 latest 安装器对象，其中 Windows GUI 安装器使用默认 `installer` variant，Windows 远程安装产物使用 `--variant bootstrap` 上传到 `installer/windows/x86_64/bklite-controller-bootstrap.exe`；`node_token_init` / `reset_node_token` 生成或重置节点 token；`backfill_node_cpu_architecture`、`backfill_package_storage_paths`、`verify_architecture_rollout` 分别用于 CPU 架构回填、包对象路径回填与架构发布校验。
 
+> 证据来源：server/apps/node_mgmt/services/module_ingest.py:32-65，server/apps/node_mgmt/services/module_ingest.py:85-153，server/apps/node_mgmt/services/module_link.py:123-159，server/apps/node_mgmt/views/installer.py:86-103　|　同步基线：b98b782a7　|　【已实现】
+
 ## 5. 风险 / 待确认
 - 安装日志事件流采用 NATS core 订阅（`subscribe_lines_sync` 订阅 `executor.stream.{execution_id}`），不依赖 JetStream，订阅在超时或 `stop_event` 后即解订阅、不做持久化与重放，进程/网络中断期间的日志行可能丢失【已实现，见 `tasks/installer.py:591-604`、`server/nats_client/clients.py:256-285`】。
 - SSH 凭据/私钥的存储与保护（部分存 MinIO）【待确认】。
+- CMDB UUID 入站时若 `cmdb_id_aliases` 为空，数字 `Node.cmdb_id` 仍会被升级覆盖；代码未能证明该数字必定属于同一 CMDB 实例，不能表述为已实现的同实例保障【待确认】。
+
+> 证据来源：server/apps/node_mgmt/services/module_link.py:131-151　|　同步基线：b98b782a7　|　【待确认】
 
 ## 2026-07-01 Code-ARD 校准
 - `[node_mgmt#20260701-015]` 补录初始化、包上传、安装器 latest 对象上传、token 生成/重置、CPU 架构回填、包对象路径回填与架构发布校验命令。

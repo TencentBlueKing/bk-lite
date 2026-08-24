@@ -177,6 +177,9 @@ const UserSyncPage: React.FC = () => {
         latestStatusText,
         latestStatusTone: latestStatus ? STATUS_TONE_MAP[latestStatus] : 'default',
         syncDisabled: !source.enabled || !source.dependency_status?.available,
+        deleteDisabled: latestStatus === 'running',
+        deleteDisabledReason:
+          latestStatus === 'running' ? t('system.user.userSyncPage.deleteDisabledWhileRunning') : undefined,
         dependencyStatusText,
       };
     });

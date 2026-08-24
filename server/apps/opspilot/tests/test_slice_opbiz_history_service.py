@@ -7,7 +7,6 @@ import pydantic.root_model  # noqa
 
 from apps.opspilot.services.history_service import HistoryService, history_service
 
-
 # ---------------------------------------------------------------------------
 # process_user_message_and_images
 # ---------------------------------------------------------------------------
@@ -118,6 +117,14 @@ class TestProcessChatHistory:
         history = [{"event": "user", "message": "上一句"}]
         out = HistoryService.process_chat_history(history, window_size=10, image_data=["new_img"])
         assert out[-1] == {"event": "user", "message": "", "image_data": ["new_img"]}
+
+    def test_role_content_openai_shape_accepted(self):
+        history = [
+            {"role": "user", "content": "问"},
+            {"role": "assistant", "content": "答"},
+        ]
+        out = HistoryService.process_chat_history(history, window_size=10, image_data=[])
+        assert out == [{"event": "user", "message": "问"}, {"event": "bot", "message": "答"}]
 
     def test_text_key_fallback_for_user(self):
         history = [{"event": "user", "text": "用 text 键"}]

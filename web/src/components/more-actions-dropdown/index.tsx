@@ -110,6 +110,9 @@ const MoreActionsDropdown: React.FC<MoreActionsDropdownProps> = ({
         onClick={(e) => {
           if (stopPropagation) e.stopPropagation();
         }}
+        onMouseDown={(e) => {
+          if (stopPropagation) e.stopPropagation();
+        }}
       />
     </Dropdown>
   );

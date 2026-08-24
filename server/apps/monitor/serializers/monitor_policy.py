@@ -35,7 +35,9 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         data_team_ids = self.context.get("data_team_ids")
-        if data_team_ids is not None:
+        # 列表/告警嵌套投影可按当前数据范围裁剪可见组织；详情与编辑必须返回完整归属，
+        # 否则跨组织编辑会把兄弟组织从表单中抹掉，保存时造成配置丢失。
+        if self.context.get("filter_organizations") and data_team_ids is not None:
             representation["organizations"] = [
                 organization for organization in representation.get("organizations", []) if organization in data_team_ids
             ]
@@ -260,6 +262,16 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 primary_key,
             )
             value = [primary_key] + [k for k in value if k != primary_key]
+
+        # 多键对象（如 Docker Container、Process）若缺少子身份维度，扫描侧无法唯一归属实例。
+        for key in instance_id_keys[1:]:
+            if key not in value:
+                logger.warning(
+                    "group_by missing identity key %s for monitor object %s, auto-appending",
+                    key,
+                    getattr(monitor_object, "name", monitor_object),
+                )
+                value.append(key)
 
         return value
 

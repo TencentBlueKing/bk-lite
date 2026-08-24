@@ -1,6 +1,6 @@
 'use client';
 
-import { AuthProvider } from '@/context/auth';
+import { AuthProvider, useAuth } from '@/context/auth';
 import { ConversationProvider } from '@/context/conversation';
 import { LocaleProvider } from '@/context/locale';
 import { ThemeProvider } from '@/context/theme';
@@ -10,7 +10,12 @@ import {
   MobileAvailabilityProvider,
 } from '@/platform/availability/context';
 import { applyNativeViewportZoomPolicy } from '@/utils/viewportZoom';
-import { useEffect, type ReactNode } from 'react';
+import { Fragment, useEffect, type ReactNode } from 'react';
+
+function OrganizationScopeTree({ children }: { children: ReactNode }) {
+  const { organizationScope } = useAuth();
+  return <Fragment key={organizationScope}>{children}</Fragment>;
+}
 
 export function AppProviders({ children }: { children: ReactNode }) {
   useEffect(() => applyNativeViewportZoomPolicy(), []);
@@ -22,7 +27,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
           <AuthProvider>
             <MobileAvailabilityProvider>
               <MobileAccessGate>
-                <ConversationProvider>{children}</ConversationProvider>
+                <ConversationProvider>
+                  <OrganizationScopeTree>{children}</OrganizationScopeTree>
+                </ConversationProvider>
               </MobileAccessGate>
             </MobileAvailabilityProvider>
           </AuthProvider>

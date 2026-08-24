@@ -9,6 +9,7 @@ import {
   getOpsChartThemeByMode,
 } from '@/app/ops-analysis/utils/chartTheme';
 import WidgetRenderer from '@/app/ops-analysis/components/widgetRenderer';
+import ScreenWidgetThemeProvider from '@/app/ops-analysis/components/screenWidgetThemeProvider';
 import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
 
 interface ChartNodeProps {
@@ -177,17 +178,19 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
             }}
           >
             <ConfigProvider getPopupContainer={() => document.body}>
-              <WidgetRenderer
-                chartType={chartType}
-                {...widgetProps}
-                fallback={
-                  <div className="h-full flex flex-col items-center justify-center">
-                    <div className="text-xs text-gray-500">
-                      Unknown chart type: {chartType}
+              <ScreenWidgetThemeProvider mode={valueConfig?.chartThemeMode}>
+                <WidgetRenderer
+                  chartType={chartType}
+                  {...widgetProps}
+                  fallback={
+                    <div className="h-full flex flex-col items-center justify-center">
+                      <div className="text-xs text-gray-500">
+                        Unknown chart type: {chartType}
+                      </div>
                     </div>
-                  </div>
-                }
-              />
+                  }
+                />
+              </ScreenWidgetThemeProvider>
             </ConfigProvider>
           </div>
         )}

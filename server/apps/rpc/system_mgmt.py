@@ -1,3 +1,4 @@
+from apps.core.utils.internal_event_auth import build_internal_event_payload, sign_internal_event
 from apps.rpc.base import AppClient
 
 
@@ -54,6 +55,10 @@ class SystemMgmt(object):
     def get_all_groups(self):
         return_data = self.client.run("get_all_groups")
         return return_data
+
+    def get_archived_groups(self, page=1, page_size=100):
+        """分页查询已归档组织，供其他模块自行处理资产/数据。"""
+        return self.client.run("get_archived_groups", page=page, page_size=page_size)
 
     def get_all_users(self):
         return_data = self.client.run("get_all_users")
@@ -298,20 +303,34 @@ class SystemMgmt(object):
         title,
         body,
         event_payload,
+        required_delivery_mode="",
+        producer="lite-apm",
+        ack_mode="",
+        ack_token="",
+        internal_caller="",
     ):
+        request_payload = build_internal_event_payload("system_mgmt.dispatch_notification", locals())
+        internal_auth = None
+        if internal_caller:
+            if internal_caller != producer:
+                raise ValueError("Internal notification caller must match producer.")
+            internal_auth = sign_internal_event(
+                "system_mgmt.dispatch_notification",
+                request_payload,
+                caller=internal_caller,
+            )
         return self.client.run(
             "dispatch_notification",
-            delivery_key=delivery_key,
-            channel_id=channel_id,
-            organization_ids=organization_ids,
-            recipients=recipients,
-            title=title,
-            body=body,
-            event_payload=event_payload,
+            **request_payload,
+            internal_auth=internal_auth,
         )
 
-    def probe_notification_channel(self, channel_id):
-        return self.client.run("probe_notification_channel", channel_id=channel_id)
+    def probe_notification_channel(self, channel_id, capability_only=False):
+        return self.client.run(
+            "probe_notification_channel",
+            channel_id=channel_id,
+            capability_only=capability_only,
+        )
 
     def search_groups(self, query_params):
         """
@@ -349,7 +368,7 @@ class SystemMgmt(object):
         return_data = self.client.run("send_email_to_receiver", title=title, content=content, receiver=receiver)
         return return_data
 
-    def send_msg_with_channel(self, channel_id, title, content, receivers, attachments=None):
+    def send_msg_with_channel(self, channel_id, title, content, receivers, attachments=None, *, internal_caller=""):
         """
         通过指定通道发送消息
         :param channel_id: 1 通道id
@@ -360,15 +379,21 @@ class SystemMgmt(object):
             [{"filename": "文件名.pdf", "content": "base64编码的文件内容"}, ...]
             注意: 附件内容必须是base64编码的字符串，因为NATS使用JSON序列化传输
         """
-        return_data = self.client.run(
+        request_payload = build_internal_event_payload("system_mgmt.send_msg_with_channel", locals())
+        internal_auth = None
+        if internal_caller:
+            if not isinstance(content, dict) or content.get("pusher") != internal_caller:
+                raise ValueError("Internal notification caller must match payload pusher.")
+            internal_auth = sign_internal_event(
+                "system_mgmt.send_msg_with_channel",
+                request_payload,
+                caller=internal_caller,
+            )
+        return self.client.run(
             "send_msg_with_channel",
-            channel_id=channel_id,
-            title=title,
-            content=content,
-            receivers=receivers,
-            attachments=attachments,
+            **request_payload,
+            internal_auth=internal_auth,
         )
-        return return_data
 
     def sync_opspilot_nats_channels(self, bot_id, bot_name, team, nodes, timeout=60):
         """对账 OpsPilot 某个 bot 的 NATS 触发节点对应的通道（增/改/删）。

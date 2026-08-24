@@ -159,6 +159,7 @@ const useRedisFilebeatFormItems = () => {
                             name={['slowlog', 'password']}
                           >
                             <Password
+                              trimOuterWhitespace
                               placeholder={t(
                                 'log.integration.redisPasswordPlaceholder'
                               )}

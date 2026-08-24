@@ -82,6 +82,32 @@ def test_augment_prompt_noop_without_kb_or_match():
     assert p2 == "base" and c2 == []
 
 
+def test_should_skip_wiki_retrieval_for_greetings():
+    from apps.opspilot.services.wiki.wiki_context_service import should_skip_wiki_retrieval
+
+    assert should_skip_wiki_retrieval("你好") is True
+    assert should_skip_wiki_retrieval("Hello!") is True
+    assert should_skip_wiki_retrieval("谢谢") is True
+    assert should_skip_wiki_retrieval("在吗") is True
+    assert should_skip_wiki_retrieval("如何重启 tomcat 服务") is False
+    assert should_skip_wiki_retrieval("告警 Unhealthy startup probe 怎么排查") is False
+
+
+@pytest.mark.django_db
+def test_augment_prompt_skips_retrieval_for_chitchat():
+    from apps.opspilot.services.wiki.wiki_context_service import augment_prompt, augment_prompt_with_trace
+
+    kb = _kb()
+
+    prompt, citations = augment_prompt("你是运维助手", [kb.id], "你好")
+    assert prompt == "你是运维助手"
+    assert citations == []
+
+    _, _, trace = augment_prompt_with_trace("你是运维助手", [kb.id], "hello")
+    assert trace.get("overview_status") == "skipped_chitchat"
+    assert (trace.get("llm_budget") or {}).get("used_calls") == 0
+
+
 @pytest.mark.django_db
 def test_skill_can_reference_wiki_knowledge_bases():
     from apps.opspilot.models import LLMSkill
@@ -101,7 +127,7 @@ def test_chat_service_passes_wiki_context_options(monkeypatch):
 
     captured = {}
 
-    def fake_augment_prompt(system_prompt, kb_ids, query, **options):
+    def fake_augment_prompt_with_trace(system_prompt, kb_ids, query, **options):
         captured.update(
             {
                 "system_prompt": system_prompt,
@@ -110,9 +136,14 @@ def test_chat_service_passes_wiki_context_options(monkeypatch):
                 "options": options,
             }
         )
-        return "augmented prompt", [{"title": "服务操作手册"}]
+        return "augmented prompt", [{"title": "服务操作手册"}], {"overview_status": "routed", "llm_budget": {"used_calls": 0}}
 
-    monkeypatch.setattr(chat_service, "augment_prompt", fake_augment_prompt, raising=False)
+    monkeypatch.setattr(chat_service, "augment_prompt_with_trace", fake_augment_prompt_with_trace)
+    monkeypatch.setattr(
+        chat_service,
+        "load_wiki_budget_config",
+        lambda: SimpleNamespace(qa_max_llm_calls=3, qa_max_output_tokens=1024),
+    )
 
     chat_kwargs, _, _ = chat_service.ChatService.format_chat_server_kwargs(
         {
@@ -136,11 +167,56 @@ def test_chat_service_passes_wiki_context_options(monkeypatch):
             model_name="model",
             protocol_type="openai",
             vendor_id=None,
+            pk=1,
         ),
     )
 
     assert captured["kb_ids"] == [1]
     assert captured["query"] == "请重启服务"
-    assert captured["options"] == {"retrieval_mode": "chunk", "graph_hops": 0, "token_budget": 64}
+    assert captured["options"]["retrieval_mode"] == "chunk"
+    assert captured["options"]["graph_hops"] == 0
+    assert captured["options"]["token_budget"] == 64
     assert chat_kwargs["system_message_prompt"] == "augmented prompt"
     assert chat_kwargs["extra_config"]["wiki_citations"] == [{"title": "服务操作手册"}]
+    assert chat_kwargs["max_model_calls"] == 1
+
+
+def test_chat_service_skips_wiki_path_for_greeting(monkeypatch):
+    from apps.opspilot.models import SkillTypeChoices
+    from apps.opspilot.services import chat_service
+
+    called = {"augment": 0}
+
+    def fake_augment_prompt_with_trace(*_args, **_kwargs):
+        called["augment"] += 1
+        raise AssertionError("寒暄不应触发 Wiki 检索")
+
+    monkeypatch.setattr(chat_service, "augment_prompt_with_trace", fake_augment_prompt_with_trace)
+
+    chat_kwargs, _, _ = chat_service.ChatService.format_chat_server_kwargs(
+        {
+            "show_think": True,
+            "user_message": "你好",
+            "chat_history": [],
+            "conversation_window_size": 10,
+            "skill_prompt": "你是运维助手",
+            "skill_params": [],
+            "wiki_kb_ids": [1],
+            "temperature": 0.2,
+            "user_id": "u1",
+            "skill_type": SkillTypeChoices.KNOWLEDGE_TOOL,
+        },
+        SimpleNamespace(
+            openai_api_base="http://llm",
+            openai_api_key="key",
+            model_name="model",
+            protocol_type="openai",
+            vendor_id=None,
+            pk=1,
+        ),
+    )
+
+    assert called["augment"] == 0
+    assert chat_kwargs["system_message_prompt"] == "你是运维助手"
+    assert "max_model_calls" not in chat_kwargs
+    assert chat_kwargs["extra_config"]["wiki_budget"]["overview_status"] == "skipped_chitchat"

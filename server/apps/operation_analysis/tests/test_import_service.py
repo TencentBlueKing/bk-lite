@@ -101,7 +101,7 @@ def _report_section(key="report::report-a", name="report-a", **over):
         "name": name,
         "desc": "",
         "other": {},
-        "view_sets": {"time_range": None, "sections": []},
+        "view_sets": {"schema_version": 1, "filters": [], "sections": []},
         "refs": {"datasource_keys": [], "namespace_keys": []},
     }
     base.update(over)
@@ -222,15 +222,11 @@ def test_import_datasource_relation_queries_do_not_grow_with_datasource_count():
     relation_selects = [
         query["sql"]
         for query in queries.captured_queries
-        if " INNER JOIN " not in query["sql"]
-        and any(f"FROM {table}" in query["sql"] for table in relation_tables)
+        if " INNER JOIN " not in query["sql"] and any(f"FROM {table}" in query["sql"] for table in relation_tables)
     ]
     assert result["success"] is True
     assert len(relation_selects) == 2, relation_selects
-    assert (
-        DataSourceAPIModel.objects.filter(namespaces__name="shared-ns", tag__name="Shared").distinct().count()
-        == 2
-    )
+    assert DataSourceAPIModel.objects.filter(namespaces__name="shared-ns", tag__name="Shared").distinct().count() == 2
 
 
 @pytest.mark.django_db
@@ -262,6 +258,103 @@ def test_import_datasource_overwrite_existing():
     assert result["summary"]["overwritten"] == 1
     existing.refresh_from_db()
     assert existing.desc == "new desc"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("rest_api", ["monitor/mm_query", "monitor/mm_query_range"])
+def test_import_rejects_new_raw_monitor_query_datasource(rest_api):
+    doc = _doc(datasources=[_ds_section(key=f"raw::{rest_api}", name="raw-query", rest_api=rest_api)])
+
+    result = _service(doc).execute()
+
+    assert result["success"] is False
+    assert result["summary"]["failed"] == 1
+    assert result["results"][0]["message"] == "该监控裸查询接口已停止新增，仅保留存量数据源兼容"
+    assert not DataSourceAPIModel.objects.filter(name="raw-query").exists()
+
+
+@pytest.mark.django_db
+def test_precheck_rejects_new_raw_monitor_query_and_limits_legacy_conflict_actions():
+    new_doc = _doc(datasources=[_ds_section(key="raw::monitor/mm_query", name="raw-query", rest_api="monitor/mm_query")])
+    payload = new_doc.model_dump(mode="json")
+    payload["meta"]["object_counts"] = {"datasources": 1}
+    yaml_content = new_doc.__class__(**payload).model_dump_json()
+
+    precheck = PrecheckService.precheck(yaml_content)
+
+    assert precheck["valid"] is False
+    assert precheck["errors"] == [
+        {
+            "code": "OA_YAML_SCHEMA_INVALID",
+            "message": "该监控裸查询接口已停止新增，仅保留存量数据源兼容",
+            "object_key": "raw::monitor/mm_query",
+            "object_type": "datasource",
+        }
+    ]
+
+    DataSourceAPIModel.objects.create(
+        name="raw-query",
+        rest_api="monitor/mm_query",
+        source_type="nats",
+        created_by="system",
+        updated_by="system",
+    )
+    legacy_precheck = PrecheckService.precheck(yaml_content)
+
+    assert legacy_precheck["valid"] is True
+    assert legacy_precheck["conflicts"][0]["suggested_actions"] == ["skip", "overwrite"]
+
+
+@pytest.mark.django_db
+def test_import_allows_overwriting_existing_raw_monitor_query_datasource():
+    existing = DataSourceAPIModel.objects.create(
+        name="raw-query",
+        rest_api="monitor/mm_query_range",
+        source_type="nats",
+        desc="old",
+        created_by="system",
+        updated_by="system",
+    )
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                key="raw::monitor/mm_query_range",
+                name="raw-query",
+                rest_api="monitor/mm_query_range",
+                desc="new",
+            )
+        ]
+    )
+
+    result = _service(
+        doc,
+        conflict_decisions={"raw::monitor/mm_query_range": ConflictAction.OVERWRITE.value},
+    ).execute()
+
+    assert result["success"] is True
+    existing.refresh_from_db()
+    assert existing.desc == "new"
+
+
+@pytest.mark.django_db
+def test_import_rejects_converting_existing_non_nats_datasource_to_raw_monitor_query():
+    existing = DataSourceAPIModel.objects.create(
+        name="raw-query",
+        rest_api="monitor/mm_query",
+        source_type="rest_api",
+        created_by="system",
+        updated_by="system",
+    )
+    doc = _doc(datasources=[_ds_section(key="raw::monitor/mm_query", name="raw-query", rest_api="monitor/mm_query")])
+
+    result = _service(
+        doc,
+        conflict_decisions={"raw::monitor/mm_query": ConflictAction.OVERWRITE.value},
+    ).execute()
+
+    assert result["success"] is False
+    existing.refresh_from_db()
+    assert existing.source_type == "rest_api"
 
 
 @pytest.mark.django_db
@@ -394,6 +487,29 @@ def test_import_dashboard_into_target_directory():
     assert result["success"] is True
     db = Dashboard.objects.get(name="db-a")
     assert db.directory_id == directory.id
+    assert db.refresh_interval == 0
+
+
+@pytest.mark.django_db
+def test_import_dashboard_illegal_refresh_interval_becomes_off():
+    directory = Directory.objects.create(name="目标目录", groups=[1], created_by="s")
+    doc = _doc(dashboards=[_dashboard_section(refresh_interval=60)])
+    result = _service(doc, target_directory_id=directory.id).execute()
+
+    assert result["success"] is True
+    db = Dashboard.objects.get(name="db-a")
+    assert db.refresh_interval == 0
+
+
+@pytest.mark.django_db
+def test_import_dashboard_keeps_legal_refresh_interval():
+    directory = Directory.objects.create(name="目标目录", groups=[1], created_by="s")
+    doc = _doc(dashboards=[_dashboard_section(refresh_interval=60000)])
+    result = _service(doc, target_directory_id=directory.id).execute()
+
+    assert result["success"] is True
+    db = Dashboard.objects.get(name="db-a")
+    assert db.refresh_interval == 60000
 
 
 @pytest.mark.django_db
@@ -442,7 +558,66 @@ def test_import_screen_and_report_into_target_directory():
     assert screen.view_sets["viewport"]["width"] == 1920
     assert report.directory_id == directory.id
     assert report.groups == [3]
-    assert report.view_sets == {"time_range": None, "sections": []}
+    assert report.view_sets == {"schema_version": 1, "filters": [], "sections": []}
+
+
+def test_yaml_report_view_sets_accept_portable_datasource_keys():
+    datasource_key = "report-source::api/table"
+    report = _report_section(
+        view_sets={
+            "schema_version": 1,
+            "filters": [],
+            "sections": [
+                {
+                    "id": "report-table",
+                    "valueConfig": {
+                        "dataSource": datasource_key,
+                        "chartType": "table",
+                        "name": "账单表",
+                    },
+                }
+            ],
+        }
+    )
+
+    doc = _doc(reports=[report])
+
+    assert doc.reports[0].view_sets["sections"][0]["valueConfig"]["dataSource"] == datasource_key
+
+
+@pytest.mark.django_db
+def test_import_report_rewrites_datasource_key_before_view_sets_validation():
+    from apps.operation_analysis.models.models import Report
+
+    datasource_key = "report-source::api/table"
+    report = _report_section(
+        view_sets={
+            "schema_version": 1,
+            "filters": [],
+            "sections": [
+                {
+                    "id": "report-table",
+                    "valueConfig": {
+                        "dataSource": datasource_key,
+                        "chartType": "table",
+                        "name": "账单表",
+                    },
+                }
+            ],
+        },
+        refs={"datasource_keys": [datasource_key], "namespace_keys": []},
+    )
+    doc = _doc(
+        datasources=[_ds_section(key=datasource_key, chart_type=["table"])],
+        reports=[report],
+    )
+
+    result = _service(doc).execute()
+
+    assert result["success"] is True
+    imported = Report.objects.get(name="report-a")
+    datasource = DataSourceAPIModel.objects.get(name="ds-a")
+    assert imported.view_sets["sections"][0]["valueConfig"]["dataSource"] == datasource.id
 
 
 @pytest.mark.django_db
@@ -515,3 +690,73 @@ def test_generate_rename_name_uses_one_query_for_conflict_chain():
 
     assert new_name == "ns-a_copy_copy_copy_copy"
     assert len(queries) == 1, queries.captured_queries
+
+
+@pytest.mark.django_db
+def test_precheck_warns_excel_needs_upload_without_imported_items():
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                key="excel-a::",
+                name="excel-a",
+                source_type="excel",
+                rest_api="",
+                connection_config={"filename": "a.xlsx"},
+                query_config={},
+                transform_config={"enabled": False, "language": "python", "script": ""},
+            )
+        ]
+    )
+    warnings = PrecheckService.check_excel_needs_upload(doc)
+    assert warnings
+    assert warnings[0]["code"] == "OA_EXCEL_NEEDS_UPLOAD"
+
+
+@pytest.mark.django_db
+def test_import_excel_without_imported_items_is_needs_upload():
+    from apps.operation_analysis.services.excel_materialize import resolve_excel_runtime_status
+
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                key="excel-b::",
+                name="excel-b",
+                source_type="excel",
+                rest_api="",
+                connection_config={"filename": "b.xlsx"},
+                query_config={},
+                transform_config={
+                    "enabled": True,
+                    "language": "python",
+                    "script": "def transform(rows, params):\n    return rows\n",
+                },
+            )
+        ]
+    )
+    result = _service(doc).execute()
+    assert result["success"] is True
+    ds = DataSourceAPIModel.objects.get(name="excel-b")
+    assert ds.transform_config.get("enabled") is True
+    assert resolve_excel_runtime_status(ds) == "needs_upload"
+
+
+@pytest.mark.django_db
+def test_import_excel_legacy_imported_items_stays_ready():
+    from apps.operation_analysis.services.excel_materialize import resolve_excel_runtime_status
+
+    doc = _doc(
+        datasources=[
+            _ds_section(
+                key="excel-legacy::",
+                name="excel-legacy",
+                source_type="excel",
+                rest_api="",
+                connection_config={"filename": "legacy.xlsx"},
+                query_config={"imported_items": [{"name": "a", "value": 1}]},
+            )
+        ]
+    )
+    result = _service(doc).execute()
+    assert result["success"] is True
+    ds = DataSourceAPIModel.objects.get(name="excel-legacy")
+    assert resolve_excel_runtime_status(ds) == "ready"
