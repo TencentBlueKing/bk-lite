@@ -23,8 +23,10 @@ const WinrmSchemeField: React.FC<WinrmSchemeFieldProps> = ({
       className={className}
       label={t('node-manager.cloudregion.node.winrmScheme')}
     >
-      <div className="flex max-w-[640px] flex-col gap-3">
+      <div className="flex max-w-[640px] flex-col items-start gap-3">
         <Segmented
+          block
+          className="w-44"
           value={value}
           onChange={(nextValue) => onChange(nextValue as WinrmScheme)}
           options={[
