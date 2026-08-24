@@ -279,14 +279,10 @@ async def nats_publish(subject: str, data: Any) -> None:
     Example:
         >>> await nats_publish("logs.info", {"message": "Task completed"})
     """
-    try:
-        nc = await get_shared_nats("control")
-        payload = json.dumps(data).encode()
-        await nc.publish(subject, payload)
-        await nc.flush()
-    except Exception as e:
-        logger.error(f"NATS publish failed [{subject}]: {type(e).__name__}: {e}")
-        raise
+    nc = await get_shared_nats("control")
+    payload = json.dumps(data).encode()
+    await nc.publish(subject, payload)
+    await nc.flush()
 
 
 async def nats_publish_lines(
