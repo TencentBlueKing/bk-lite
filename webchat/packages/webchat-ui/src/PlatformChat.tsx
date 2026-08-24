@@ -524,7 +524,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
           : 'fixed bottom-0 right-0 top-0 z-[1200] flex flex-col overflow-hidden font-sans'
       }
       style={{
-        width: isFullscreen ? undefined : historyOpen ? DOCK_CHAT_WIDTH + HISTORY_RAIL_DOCK : DOCK_CHAT_WIDTH,
+        width: isFullscreen ? undefined : DOCK_CHAT_WIDTH,
         background: WC.white,
         borderLeft: isFullscreen ? undefined : `1px solid ${WC.dockEdge}`,
         boxShadow: isFullscreen ? undefined : WC.dockShadow,
