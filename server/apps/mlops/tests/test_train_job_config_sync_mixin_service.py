@@ -34,6 +34,19 @@ def _mock_config_storage(monkeypatch, job):
     return deleted
 
 
+def _mock_config_pointer_update(monkeypatch, outcome):
+    real_update = QuerySet.update
+
+    def update_config_pointer(queryset, **kwargs):
+        if set(kwargs) != {"config_url"}:
+            return real_update(queryset, **kwargs)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(QuerySet, "update", update_config_pointer)
+
+
 def test_replacing_config_keeps_old_object_until_outer_transaction_commits(
     monkeypatch,
 ):
@@ -126,14 +139,7 @@ def test_database_pointer_failure_cleans_new_upload_without_deleting_old(
 ):
     job = _create_job_with_config_path()
     deleted = _mock_config_storage(monkeypatch, job)
-    real_update = QuerySet.update
-
-    def fail_config_pointer_update(queryset, **kwargs):
-        if set(kwargs) == {"config_url"}:
-            raise RuntimeError("pointer update failed")
-        return real_update(queryset, **kwargs)
-
-    monkeypatch.setattr(QuerySet, "update", fail_config_pointer_update)
+    _mock_config_pointer_update(monkeypatch, RuntimeError("pointer update failed"))
 
     job.hyperopt_config = {"hyperparams": {"epochs": 3}}
     with pytest.raises(RuntimeError, match="pointer update failed"):
@@ -156,14 +162,7 @@ def test_initial_create_pointer_failure_rolls_back_row_and_cleans_upload(
         hyperopt_config={"hyperparams": {"epochs": 3}},
     )
     deleted = _mock_config_storage(monkeypatch, job)
-    real_update = QuerySet.update
-
-    def fail_config_pointer_update(queryset, **kwargs):
-        if set(kwargs) == {"config_url"}:
-            raise RuntimeError("pointer update failed")
-        return real_update(queryset, **kwargs)
-
-    monkeypatch.setattr(QuerySet, "update", fail_config_pointer_update)
+    _mock_config_pointer_update(monkeypatch, RuntimeError("pointer update failed"))
 
     with pytest.raises(RuntimeError, match="pointer update failed"):
         job.save()
@@ -179,14 +178,7 @@ def test_clearing_pointer_failure_preserves_old_object_and_pointer(
 ):
     job = _create_job_with_config_path()
     deleted = _mock_config_storage(monkeypatch, job)
-    real_update = QuerySet.update
-
-    def fail_config_pointer_update(queryset, **kwargs):
-        if set(kwargs) == {"config_url"}:
-            raise RuntimeError("pointer update failed")
-        return real_update(queryset, **kwargs)
-
-    monkeypatch.setattr(QuerySet, "update", fail_config_pointer_update)
+    _mock_config_pointer_update(monkeypatch, RuntimeError("pointer update failed"))
 
     job.hyperopt_config = {}
     with pytest.raises(RuntimeError, match="pointer update failed"):
@@ -202,14 +194,7 @@ def test_missing_database_row_cleans_new_upload_without_deleting_old(
 ):
     job = _create_job_with_config_path()
     deleted = _mock_config_storage(monkeypatch, job)
-    real_update = QuerySet.update
-
-    def miss_config_pointer_update(queryset, **kwargs):
-        if set(kwargs) == {"config_url"}:
-            return 0
-        return real_update(queryset, **kwargs)
-
-    monkeypatch.setattr(QuerySet, "update", miss_config_pointer_update)
+    _mock_config_pointer_update(monkeypatch, 0)
 
     job.hyperopt_config = {"hyperparams": {"epochs": 3}}
     with pytest.raises(ConfigSyncError, match="数据库指针更新失败"):
@@ -227,29 +212,53 @@ def test_config_sync_uses_explicit_database_alias_for_update_and_cleanup(
 ):
     job = _create_job_with_config_path()
     deleted = _mock_config_storage(monkeypatch, job)
+    locked_read_aliases = []
     update_aliases = []
-    cleanup_aliases = []
+    atomic_aliases = []
+    on_commit_aliases = []
+    real_using = QuerySet.using
+    real_get = QuerySet.get
     real_update = QuerySet.update
-    real_schedule = type(job)._delete_config_file_on_commit
+    real_atomic = transaction.atomic
+    real_on_commit = transaction.on_commit
+
+    def record_using(queryset, alias):
+        clone = real_using(queryset, alias)
+        clone._explicit_config_alias = alias
+        return clone
+
+    def record_get(queryset, *args, **kwargs):
+        if queryset.model is type(job) and kwargs == {"pk": job.pk}:
+            locked_read_aliases.append(getattr(queryset, "_explicit_config_alias", None))
+        return real_get(queryset, *args, **kwargs)
 
     def record_update(queryset, **kwargs):
         if set(kwargs) == {"config_url"}:
-            update_aliases.append(queryset.db)
+            update_aliases.append(getattr(queryset, "_explicit_config_alias", None))
         return real_update(queryset, **kwargs)
 
-    def record_schedule(instance, *, file_name, using):
-        cleanup_aliases.append(using)
-        return real_schedule(instance, file_name=file_name, using=using)
+    def record_atomic(using=None, savepoint=True, durable=False):
+        atomic_aliases.append(using)
+        return real_atomic(using=using, savepoint=savepoint, durable=durable)
 
+    def record_on_commit(func, using=None, robust=False):
+        on_commit_aliases.append(using)
+        return real_on_commit(func, using=using, robust=robust)
+
+    monkeypatch.setattr(QuerySet, "using", record_using)
+    monkeypatch.setattr(QuerySet, "get", record_get)
     monkeypatch.setattr(QuerySet, "update", record_update)
-    monkeypatch.setattr(type(job), "_delete_config_file_on_commit", record_schedule)
+    monkeypatch.setattr(transaction, "atomic", record_atomic)
+    monkeypatch.setattr(transaction, "on_commit", record_on_commit)
 
     with django_capture_on_commit_callbacks(execute=True):
         job.hyperopt_config = {"hyperparams": {"epochs": 3}}
         job.save(using="default")
 
+    assert locked_read_aliases == ["default"]
     assert update_aliases == ["default"]
-    assert cleanup_aliases == ["default"]
+    assert atomic_aliases == ["default"]
+    assert on_commit_aliases == ["default"]
     assert deleted == ["configs/old.json"]
 
 

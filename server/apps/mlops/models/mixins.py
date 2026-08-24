@@ -50,7 +50,6 @@ class TrainDataFileCleanupMixin:
         4. Deletes the old file after the surrounding transaction commits
         """
         from django.db import router, transaction
-
         from apps.mlops.services.train_data_file_cleanup import (
             _assert_file_reference_available,
             _lock_file_reference_guards,
@@ -60,7 +59,9 @@ class TrainDataFileCleanupMixin:
         file_field_name = self._file_field_name
         file_field = self._meta.get_field(file_field_name)
         update_fields = kwargs.get("update_fields")
-        using = kwargs.get("using") or router.db_for_write(self.__class__, instance=self)
+        using = kwargs.get("using") or router.db_for_write(
+            self.__class__, instance=self
+        )
 
         # New records and partial saves that exclude the file keep normal Model.save semantics.
         if not self.pk:
@@ -95,7 +96,11 @@ class TrainDataFileCleanupMixin:
 
         with transaction.atomic(using=using):
             try:
-                old_instance = self.__class__.objects.using(using).select_for_update().get(pk=self.pk)
+                old_instance = (
+                    self.__class__.objects.using(using)
+                    .select_for_update()
+                    .get(pk=self.pk)
+                )
                 old_file = getattr(old_instance, file_field_name)
                 old_path = old_file.name if old_file else None
             except self.__class__.DoesNotExist:
@@ -104,11 +109,17 @@ class TrainDataFileCleanupMixin:
 
             new_file = getattr(self, file_field_name)
             new_path = new_file.name if new_file else None
-            loaded_path = getattr(self, "_loaded_file_path", self._loaded_file_path_missing)
+            loaded_path = getattr(
+                self, "_loaded_file_path", self._loaded_file_path_missing
+            )
 
             # A stale instance that did not change the file must not overwrite a
             # replacement committed by another request.
-            if loaded_path is not self._loaded_file_path_missing and new_path == loaded_path and old_path != loaded_path:
+            if (
+                loaded_path is not self._loaded_file_path_missing
+                and new_path == loaded_path
+                and old_path != loaded_path
+            ):
                 setattr(self, file_field_name, old_file)
                 new_file = getattr(self, file_field_name)
                 new_path = old_path
@@ -146,7 +157,9 @@ class TrainDataFileCleanupMixin:
                 }
 
                 def delete_old_file():
-                    from apps.mlops.services.train_data_file_cleanup import delete_train_data_file_with_retry
+                    from apps.mlops.services.train_data_file_cleanup import (
+                        delete_train_data_file_with_retry,
+                    )
 
                     delete_train_data_file_with_retry(**cleanup_kwargs)
 
@@ -227,7 +240,12 @@ class TrainJobConfigSyncMixin:
         with transaction.atomic(using=using):
             if self.pk:
                 try:
-                    persisted = self.__class__.objects.using(using).select_for_update().only("config_url").get(pk=self.pk)
+                    persisted = (
+                        self.__class__.objects.select_for_update()
+                        .only("config_url")
+                        .using(using)
+                        .get(pk=self.pk)
+                    )
                 except self.__class__.DoesNotExist:
                     pass
                 else:
@@ -254,7 +272,11 @@ class TrainJobConfigSyncMixin:
 
                 # 3. If config_url changed, update database (use queryset.update to avoid recursive save)
                 if config_updated:
-                    updated = self.__class__.objects.using(using).filter(pk=self.pk).update(config_url=self.config_url)
+                    updated = (
+                        self.__class__.objects.filter(pk=self.pk)
+                        .using(using)
+                        .update(config_url=self.config_url)
+                    )
                     if updated != 1:
                         raise ConfigSyncError(f"训练配置数据库指针更新失败: TrainJob {self.pk} 不存在")
             except Exception:

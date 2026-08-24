@@ -11,9 +11,13 @@ from rest_framework.response import Response
 from apps.mlops.management.commands.init_algorithm_config import Command
 from apps.mlops.models.mixins import ConfigSyncError
 from apps.mlops.models.object_detection import ObjectDetectionTrainJob
-from apps.mlops.utils.webhook_client import WebhookConnectionError, WebhookError
+from apps.mlops.utils.webhook_client import (
+    WebhookConnectionError,
+    WebhookError,
+)
 from apps.mlops.views import base as base_views
 from apps.mlops.views.base import TeamModelViewSet
+
 
 pytestmark = [pytest.mark.unit, pytest.mark.django_db]
 
@@ -103,9 +107,13 @@ def test_config_sync_wraps_upload_failure_and_preserves_old_file(monkeypatch):
     monkeypatch.setattr(
         type(field),
         "save",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("storage offline")),
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError("storage offline")
+        ),
     )
-    monkeypatch.setattr(field.storage, "delete", lambda path: deleted.append(path))
+    monkeypatch.setattr(
+        field.storage, "delete", lambda path: deleted.append(path)
+    )
 
     with pytest.raises(ConfigSyncError, match="storage offline"):
         job._sync_config_to_minio()
@@ -183,7 +191,9 @@ def test_authorized_object_or_none_maps_http404():
         ({}, "训练任务关联的数据集版本无权访问"),
     ],
 )
-def test_dataset_scope_error_is_flattened_for_api_clients(monkeypatch, detail, expected):
+def test_dataset_scope_error_is_flattened_for_api_clients(
+    monkeypatch, detail, expected
+):
     def reject(*_args):
         raise serializers.ValidationError(detail)
 
@@ -201,7 +211,9 @@ def test_destroy_train_job_stops_on_first_runtime_cleanup_error():
     blocked = Response({"error": "cleanup failed"}, status=500)
     job = SimpleNamespace(
         id=4,
-        servings=SimpleNamespace(all=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)]),
+        servings=SimpleNamespace(
+            all=lambda: [SimpleNamespace(id=1), SimpleNamespace(id=2)]
+        ),
     )
     view.get_object = lambda: job
     calls = []
@@ -262,7 +274,9 @@ def _valid_algorithm_payload(name):
         ),
     ],
 )
-def test_algorithm_config_file_validation_reports_specific_reason(tmp_path, content, filename, reason):
+def test_algorithm_config_file_validation_reports_specific_reason(
+    tmp_path, content, filename, reason
+):
     path = tmp_path / filename
     path.write_text(content, encoding="utf-8")
     valid, payload, actual_reason = Command()._load_and_validate_file(path)
