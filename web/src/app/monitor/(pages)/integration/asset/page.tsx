@@ -15,6 +15,8 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import { findByMonitorId, sameMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
+import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
+import { resolveMonitorObjectQueryId } from '@/app/monitor/utils/monitorObjectQuery';
 import assetStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -67,7 +69,11 @@ const Asset = () => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const searchparams = useSearchParams();
   const router = useRouter();
-  const urlObjId = searchparams.get('objId');
+  const { syncObjectId } = useMonitorObjectQuery();
+  const urlObjId = resolveMonitorObjectQueryId({
+    searchParams: searchparams,
+    fallback: ''
+  });
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -418,6 +424,7 @@ const Asset = () => {
     setTableData([]);
     setSelectedRowKeys([]);
     setObjectId(id);
+    syncObjectId(id);
   };
 
   const openInstanceModal = (row = {}, type: string) => {
@@ -485,9 +492,13 @@ const Asset = () => {
       setObjects(data);
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
-      const defaultKey = toMonitorIdString(defaultSelectObj || data[0]?.id || '');
+      const defaultKey = resolveMonitorObjectQueryId({
+        searchParams: searchparams,
+        objects: data,
+        fallback: defaultSelectObj || data[0]?.id
+      });
       if (defaultKey) {
-        setDefaultSelectObj(defaultKey);
+        setDefaultSelectObj(toMonitorIdString(defaultKey));
       }
     } finally {
       setTreeLoading(false);
