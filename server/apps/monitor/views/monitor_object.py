@@ -43,6 +43,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
         未自定义的默认列取绑定指标在当前账号语言下的译名；用户通过弹窗自定义过展示列后，
         display_fields[].name 是明确的列头配置，必须原样返回，不能再被指标译名覆盖。
+        type=field 的列（如 IP 地址）从指标标签取值，列名与绑定指标译名无关，同样保留 name。
         不就地修改入参，返回新副本。
         """
         if not display_fields:
@@ -54,7 +55,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             metrics = col.get("metrics") or []
             metric_name = metrics[0].get("metric") if metrics else None
             new_name = col.get("name")
-            if metric_name:
+            if metric_name and col.get("type") != "field":
                 key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{object_name}.{metric_name}.name"
                 new_name = lan.get(key) or new_name
             translated.append({**col, "name": new_name})
