@@ -32,6 +32,22 @@ _COLLECT_TERMINAL_STATUSES = (
     CollectRunStatusType.FORCE_STOP,
     CollectRunStatusType.PARTIAL_SUCCESS,
 )
+_COLLECT_STATUS_LOG_NAMES = {
+    CollectRunStatusType.NOT_START: "NOT_START",
+    CollectRunStatusType.RUNNING: "RUNNING",
+    CollectRunStatusType.SUCCESS: "SUCCESS",
+    CollectRunStatusType.ERROR: "ERROR",
+    CollectRunStatusType.TIME_OUT: "TIME_OUT",
+    CollectRunStatusType.WRITING: "WRITING",
+    CollectRunStatusType.FORCE_STOP: "FORCE_STOP",
+    CollectRunStatusType.PARTIAL_SUCCESS: "PARTIAL_SUCCESS",
+}
+_COLLECT_WARNING_LOG_STATUSES = {
+    CollectRunStatusType.ERROR,
+    CollectRunStatusType.TIME_OUT,
+    CollectRunStatusType.FORCE_STOP,
+    CollectRunStatusType.PARTIAL_SUCCESS,
+}
 _NODE_MGMT_RAW_DATA_MAX_ROWS = 50_000
 _NODE_MGMT_RAW_DATA_MAX_BYTES = 64 * 1024 * 1024
 _NODE_MGMT_RAW_METRIC_TYPES = {
@@ -455,7 +471,7 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
     """
     同步采集任务
     """
-    logger.info("[CollectTask] 开始采集任务 task_id=%s", instance_id)
+    run_started_at = time.monotonic()
     start_time = now()
     execution_id = execution_id or self.request.id or str(uuid4())
     if not _node_mgmt_collect_version_allowed(
@@ -476,6 +492,11 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
         return
     execution_id = instance.task_id
     claim_token = instance.claim_token
+    logger.info(
+        "event=collect_task_execution_started task_id=%s execution_id=%s",
+        instance_id,
+        execution_id,
+    )
     from apps.cmdb.services.collect_service import CollectModelService
 
     exec_error_message = ""
@@ -483,6 +504,8 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
     exec_traceback_location = ""
     task_exec_status = CollectRunStatusType.SUCCESS
     config_file_pending = False
+    failed_stage = "-"
+    result_persisted = False
     try:
         CollectModelService.repair_host_cloud_snapshot(instance)
         if CollectDispatchService.should_dispatch(instance):
@@ -505,10 +528,13 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
         import traceback
 
         traceback_text = traceback.format_exc()
-        logger.error(
-            "[CollectTask] 同步采集数据失败 task_id=%s, error=%s",
+        failed_stage = "collection"
+        logger.exception(
+            "event=collect_task_stage_failed task_id=%s execution_id=%s " "failed_stage=%s error_type=%s",
             instance_id,
-            traceback_text,
+            execution_id,
+            failed_stage,
+            type(err).__name__,
         )
         exec_error_message = "采集任务执行失败（task_id={}）：{}".format(instance_id, _build_safe_error_message(err))
         exec_traceback_excerpt = _build_traceback_excerpt(traceback_text)
@@ -600,6 +626,7 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
             claim_token,
             update_values,
         )
+        result_persisted = updated
         if not updated:
             logger.info(
                 "[CollectTask] 忽略旧执行结果 stale_execution_result " "task_id=%s, execution_id=%s",
@@ -607,14 +634,15 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
                 execution_id,
             )
     except Exception as err:
-        import traceback
-
-        logger.error(
-            "[CollectTask] 保存采集结果失败 task_id=%s, error=%s",
+        failed_stage = "result_persistence"
+        logger.exception(
+            "event=collect_task_stage_failed task_id=%s execution_id=%s " "failed_stage=%s error_type=%s",
             instance_id,
-            traceback.format_exc(),
+            execution_id,
+            failed_stage,
+            type(err).__name__,
         )
-        _save_collect_result_if_current(
+        result_persisted = _save_collect_result_if_current(
             instance_id,
             execution_id,
             claim_token,
@@ -630,7 +658,19 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
             },
         )
 
-    logger.info("[CollectTask] 采集任务执行结束 task_id=%s", instance_id)
+    terminal_status = CollectRunStatusType.ERROR if failed_stage == "result_persistence" else instance.exec_status
+    log_terminal = logger.warning if terminal_status in _COLLECT_WARNING_LOG_STATUSES else logger.info
+    log_terminal(
+        "event=collect_task_execution_finished task_id=%s execution_id=%s "
+        "status=%s failed_stage=%s result_persisted=%s callback_pending=%s duration_ms=%.2f",
+        instance_id,
+        execution_id,
+        _COLLECT_STATUS_LOG_NAMES.get(terminal_status, str(terminal_status)),
+        failed_stage,
+        result_persisted,
+        config_file_pending,
+        (time.monotonic() - run_started_at) * 1000,
+    )
 
 
 @shared_task

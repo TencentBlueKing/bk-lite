@@ -4,7 +4,16 @@ from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.apm.models import ApmApplication, ApmPolicy, ApmPolicyTargetState, ApmService, ApmServiceInstance, ApmSlo
+from apps.apm.models import (
+    ApmApplication,
+    ApmDeploymentEvent,
+    ApmPolicy,
+    ApmPolicyTargetState,
+    ApmService,
+    ApmServiceInstance,
+    ApmSlo,
+)
+from apps.apm.services.identity import normalize_identity
 from apps.apm.services.status import catalog_status
 
 
@@ -536,6 +545,52 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         if not valid:
             raise serializers.ValidationError({"thresholds": "多级阈值必须按严重、错误、警告保持单调。"})
         return normalized
+
+
+class ApmDeploymentEventSerializer(serializers.ModelSerializer):
+    service_id = serializers.UUIDField(read_only=True)
+    service_namespace = serializers.CharField(source="service.namespace", read_only=True)
+    service_name = serializers.CharField(source="service.name", read_only=True)
+
+    class Meta:
+        model = ApmDeploymentEvent
+        fields = (
+            "id",
+            "service_id",
+            "service_namespace",
+            "service_name",
+            "environment",
+            "version",
+            "deployed_at",
+            "deployed_by",
+            "status",
+            "source",
+        )
+
+
+class ApmDeploymentQuerySerializer(serializers.Serializer):
+    service_id = serializers.UUIDField(required=False)
+    environment = serializers.CharField(max_length=256, required=False, allow_blank=True)
+    status = serializers.ChoiceField(choices=ApmDeploymentEvent.Status.choices, required=False)
+    started_at = serializers.DateTimeField(required=False)
+    ended_at = serializers.DateTimeField(required=False)
+
+    def validate_environment(self, value):
+        return normalize_identity(value)
+
+    def validate(self, attrs):
+        ended_at = attrs.get("ended_at") or timezone.now()
+        started_at = attrs.get("started_at") or ended_at - timedelta(days=7)
+        if ended_at <= started_at:
+            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+        if ended_at - started_at > timedelta(days=90):
+            raise serializers.ValidationError("部署事件查询时间窗不能超过 90 天")
+        attrs["started_at"] = started_at
+        attrs["ended_at"] = ended_at
+        if not attrs.get("environment"):
+            attrs.pop("environment", None)
+        return attrs
+
 
 class ApmDashboardQuerySerializer(serializers.Serializer):
     window = serializers.ChoiceField(

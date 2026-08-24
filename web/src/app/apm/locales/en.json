@@ -151,6 +151,10 @@
       "releasesTitle": "Release changes",
       "releasesSubtitle": "Last 7 days",
       "releasesEmpty": "No releases in the last 7 days",
+      "releaseSuccess": "Success",
+      "releaseInProgress": "In progress",
+      "releaseRollback": "Rollback",
+      "releaseFailed": "Failed",
       "window15m": "Last 15 minutes",
       "window1h": "Last 1 hour",
       "window4h": "Last 4 hours",
@@ -698,13 +702,21 @@
       "noDownstream": "No downstream calls in the recent window",
       "recentTraces": "Recent-window trace samples",
       "runtimeEmpty": "This service has not enabled runtime metric collection (JVM / Go Runtime, etc.)",
-      "deployEmpty": "Deployment events will appear after release instrumentation. For now, investigate changes via version and Trace attributes.",
+      "deployEmpty": "No version changes observed in the last 90 days",
+      "deployHint": "Release records inferred from telemetry",
       "manage": "Manage",
       "configureSlo": "Configure SLO",
       "dependencyMeta": "{calls}/window · Pavg {duration} · errors {errors}",
       "errorsWithCount": "Errors ({count})",
       "ownerApplication": "Owner application",
       "endpointMeta": "{throughput} · P99 {latency}"
+    },
+    "deployments": {
+      "version": "Version",
+      "deployedAt": "Deployed at",
+      "source": "Source",
+      "sourceInferred": "Inferred",
+      "sourceReported": "Reported"
     },
     "slo": {
       "title": "SLO",
