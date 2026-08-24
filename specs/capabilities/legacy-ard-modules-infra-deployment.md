@@ -14,11 +14,12 @@
 | Redis / LocMem | 缓存：`REDIS_CACHE_URL` 非空时 `default`=Redis，否则=LocMem；另预置 `db`(DatabaseCache)/`dummy` 命名别名 | `cache.py:6-25` |
 | RabbitMQ | Celery broker（默认 `amqp://admin:password@rabbitmq.lite/`） | `celery.py` |
 | NATS | RPC / pub-sub / 权限同步（namespace `bklite`，JetStream 默认关闭）；支持 TLS（`_create_ssl_context()`）与 user/password/token 认证、重连参数【已实现】 | `nats.py:10-72` |
-| MinIO / S3 | 对象存储；private buckets：`rewind-private`、`munchkin-private`、`log-alert-raw-data`、`monitor-alert-raw-data`、`job-mgmt-private`、`cmdb-config-file`；public buckets：`rewind-public`、`munchkin-public`【已实现】 | `minio.py:19-27` |
+| MinIO / S3 | 对象存储；private buckets：`rewind-private`、`munchkin-private`、`log-alert-raw-data`、`monitor-alert-raw-data`、`apm-alert-snapshots`、`job-mgmt-private`、`cmdb-config-file`、`patch-mgmt-private`、`patch-mgmt-packages`、`operation-analysis-private`；public buckets：`rewind-public`、`munchkin-public`【已实现】 | `minio.py:19-31` |
 | VictoriaMetrics | 指标时序 | `monitor/utils/victoriametrics_api.py` |
 | VictoriaLogs | 日志（`VICTORIALOGS_*`） | `log/constants/victoriametrics.py` |
+| VictoriaTraces | APM 调用链唯一遥测库（`APM_VICTORIATRACES_*`）；数据面契约夹具 `deploy/apm/`【已实现】 | `apm/adapters/victoriatraces.py:151-156` |
 | Neo4j / FalkorDB | CMDB 图谱 | `cmdb/graph/*` |
-| pgvector | opspilot 向量 | opspilot |
+| Wiki 嵌入 | OpsPilot Wiki 当前以结构化页面/材料为主；历史 pgvector RAG 路径已移除，不再作为部署硬依赖【已实现】 | `opspilot/models/wiki_mgmt.py` |
 | Elasticsearch | opspilot metis 工具 | opspilot/metis |
 | MLflow | 模型注册（`MLFLOW_TRACKER_URL`） | `mlflow.py` |
 | Kubernetes | 采集 DaemonSet、opspilot bot 部署 | `deploy/*`、opspilot |
