@@ -78,7 +78,15 @@ class ImportExportAuthorizationService:
         return current_team
 
     @classmethod
-    def filter_export_object_ids(cls, request, object_type: str, object_ids: list[int], current_team: int | None) -> list[int]:
+    def filter_export_object_ids(
+        cls,
+        request,
+        object_type: str,
+        object_ids: list[int],
+        current_team: int | None,
+        *,
+        allow_partial: bool = False,
+    ) -> list[int]:
         object_enum = ObjectType(object_type)
         cls.validate_current_team(request, current_team)
 
@@ -89,9 +97,13 @@ class ImportExportAuthorizationService:
         group_ids = cls._get_export_group_ids(request, current_team)
         filtered_ids = cls._filter_ids_by_org(object_enum, object_ids, current_team, group_ids)
         filtered_ids = cls._filter_ids_by_scope(request, object_enum, filtered_ids, current_team)
-        if set(filtered_ids) != set(object_ids):
+        if not filtered_ids or (not allow_partial and set(filtered_ids) != set(object_ids)):
             raise PermissionDenied("无权导出所选对象或对象不存在")
         return filtered_ids
+
+    @classmethod
+    def is_legacy_export_dependency_permission_mode(cls) -> bool:
+        return os.getenv(cls.EXPORT_DEPENDENCY_PERMISSION_MODE_ENV, "enforce").strip().lower() == "legacy"
 
     @classmethod
     def validate_export_dependencies(
@@ -101,11 +113,11 @@ class ImportExportAuthorizationService:
         object_type: str,
         object_ids: list[int],
         current_team: int | None,
-    ) -> tuple[set[int], set[int]]:
+    ) -> tuple[set[int], set[int], dict[int, set[int]]]:
         """校验导出闭包中的每类依赖，避免顶层授权后的隐式扩展绕过权限。"""
         from apps.operation_analysis.services.import_export.export_service import ExportService
 
-        datasource_ids, namespace_ids = ExportService.collect_export_dependencies(
+        datasource_ids, namespace_ids, datasource_namespace_ids = ExportService.collect_export_dependencies(
             scope_type,
             object_type,
             object_ids,
@@ -115,12 +127,12 @@ class ImportExportAuthorizationService:
         if set(locked_root_ids) != set(object_ids):
             raise PermissionDenied("导出对象的权限范围已发生变化")
 
-        if os.getenv(cls.EXPORT_DEPENDENCY_PERMISSION_MODE_ENV, "enforce").strip().lower() == "legacy":
-            return datasource_ids, namespace_ids
+        if cls.is_legacy_export_dependency_permission_mode():
+            return datasource_ids, namespace_ids, datasource_namespace_ids
 
         cls._validate_export_dependency_ids(request, ObjectType.DATASOURCE, datasource_ids, current_team)
         cls._validate_export_dependency_ids(request, ObjectType.NAMESPACE, namespace_ids, current_team)
-        return datasource_ids, namespace_ids
+        return datasource_ids, namespace_ids, datasource_namespace_ids
 
     @classmethod
     def _validate_export_dependency_ids(

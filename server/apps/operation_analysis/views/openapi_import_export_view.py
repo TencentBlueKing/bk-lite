@@ -173,6 +173,7 @@ class OpenImportExportViewSet(OpenAPIViewSet):
                 object_type,
                 object_ids,
                 current_team=organization_id,
+                allow_partial=ImportExportAuthorizationService.is_legacy_export_dependency_permission_mode(),
             )
             authorized_dependencies = ImportExportAuthorizationService.validate_export_dependencies(
                 request,

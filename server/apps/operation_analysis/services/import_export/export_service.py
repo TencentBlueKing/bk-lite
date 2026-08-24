@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from typing import Any
 
 import yaml
-from django.db.models import Prefetch
 
 from apps.operation_analysis.constants.canvas_refresh import CANVAS_REFRESH_OBJECT_TYPES, normalize_canvas_refresh_interval
 from apps.operation_analysis.constants.import_export import (
@@ -121,13 +120,14 @@ class ExportService:
         )
 
     @staticmethod
-    def convert_datasource_to_yaml(ds: DataSourceAPIModel) -> dict:
+    def convert_datasource_to_yaml(ds: DataSourceAPIModel, *, namespace_keys: list[str] | None = None) -> dict:
         """将数据源对象转换为YAML结构。
 
         - 公共连接不作为一级对象；引用连接时展开为脱敏内联配置。
         - 新 Excel 不导出原文件/物化行；旧 imported_items 仅在仍存在时导出以保持兼容。
         """
-        namespace_keys = [ns.name for ns in ds.namespaces.all()]
+        if namespace_keys is None:
+            namespace_keys = [ns.name for ns in ds.namespaces.all()]
         tag_names = [tag.name for tag in ds.tag.all()]
 
         # 共享连接展开为可导入的脱敏内联配置，不导出 connection_id。
@@ -316,24 +316,26 @@ class ExportService:
         object_ids: list[int],
         *,
         lock: bool = False,
-    ) -> tuple[set, set]:
-        """返回导出实际会携带的数据源与命名空间依赖闭包。"""
+    ) -> tuple[set[int], set[int], dict[int, set[int]]]:
+        """返回导出依赖闭包及数据源到命名空间的同一时点关系快照。"""
         if scope_type == ScopeType.CANVAS.value:
             datasource_ids, namespace_ids = cls._collect_canvas_dependencies(object_type, object_ids, lock=lock)
         else:
             datasource_ids, namespace_ids = cls._collect_config_objects(object_type, object_ids)
 
+        datasource_namespace_ids: dict[int, set[int]] = {datasource_id: set() for datasource_id in datasource_ids}
         if datasource_ids:
             if lock:
                 list(DataSourceAPIModel.objects.select_for_update().filter(id__in=datasource_ids).only("id"))
-            related_namespace_ids = DataSourceAPIModel.objects.filter(id__in=datasource_ids).values_list(
-                "namespaces__id",
-                flat=True,
-            )
-            namespace_ids.update(namespace_id for namespace_id in related_namespace_ids if namespace_id is not None)
+            related_namespaces = DataSourceAPIModel.objects.filter(id__in=datasource_ids).values_list("id", "namespaces__id")
+            for datasource_id, namespace_id in related_namespaces:
+                if namespace_id is None:
+                    continue
+                datasource_namespace_ids[datasource_id].add(namespace_id)
+                namespace_ids.add(namespace_id)
         if lock and namespace_ids:
             list(NameSpace.objects.select_for_update().filter(id__in=namespace_ids).only("id"))
-        return datasource_ids, namespace_ids
+        return datasource_ids, namespace_ids, datasource_namespace_ids
 
     @classmethod
     def _convert_canvases_to_yaml(
@@ -360,7 +362,7 @@ class ExportService:
         object_type: str,
         object_ids: list[int],
         organization_id: int = 0,
-        authorized_dependencies: tuple[set[int], set[int]] | None = None,
+        authorized_dependencies: tuple[set[int], set[int], dict[int, set[int]]] | None = None,
     ) -> dict:
         """
         导出对象为YAML
@@ -391,13 +393,13 @@ class ExportService:
             export_data[section] = []
 
         if authorized_dependencies is None:
-            collected_datasource_ids, collected_namespace_ids = cls.collect_export_dependencies(
+            collected_datasource_ids, collected_namespace_ids, datasource_namespace_ids = cls.collect_export_dependencies(
                 scope_type,
                 object_type,
                 object_ids,
             )
         else:
-            collected_datasource_ids, collected_namespace_ids = authorized_dependencies
+            collected_datasource_ids, collected_namespace_ids, datasource_namespace_ids = authorized_dependencies
 
         ns_key_map = {}
         if collected_namespace_ids:
@@ -408,20 +410,16 @@ class ExportService:
 
         ds_key_map = {}
         if collected_datasource_ids:
-            authorized_namespaces = NameSpace.objects.filter(id__in=collected_namespace_ids)
-            datasources = DataSourceAPIModel.objects.filter(id__in=collected_datasource_ids).prefetch_related(
-                Prefetch("namespaces", queryset=authorized_namespaces),
-                "tag",
-            )
+            datasources = DataSourceAPIModel.objects.filter(id__in=collected_datasource_ids).prefetch_related("tag")
             for ds in datasources:
                 ds_key = cls.generate_business_key(ds, ObjectType.DATASOURCE)
                 ds_key_map[ds.id] = ds_key
-                export_data["datasources"].append(cls.convert_datasource_to_yaml(ds))
-
-                for ns in ds.namespaces.all():
-                    if ns.id not in ns_key_map:
-                        ns_key_map[ns.id] = ns.name
-                        export_data["namespaces"].append(cls.convert_namespace_to_yaml(ns))
+                namespace_keys = sorted(
+                    ns_key_map[namespace_id]
+                    for namespace_id in datasource_namespace_ids.get(ds.id, set())
+                    if namespace_id in ns_key_map
+                )
+                export_data["datasources"].append(cls.convert_datasource_to_yaml(ds, namespace_keys=namespace_keys))
 
         cls._convert_canvases_to_yaml(scope_type, object_type, object_ids, ds_key_map, ns_key_map, export_data)
 

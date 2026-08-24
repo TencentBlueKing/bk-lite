@@ -146,6 +146,7 @@ def _permission_rules_for_export(*, dashboard_id: int, datasource_ids: list[int]
     return get_rules
 
 
+@pytest.mark.unit
 def test_export_request_rejects_unbounded_object_id_list():
     serializer = ExportRequestSerializer(
         data={"object_type": "dashboard", "object_ids": list(range(1, ExportRequestSerializer.MAX_OBJECT_IDS + 2))}
@@ -196,6 +197,7 @@ def test_openapi_export_rejects_authenticated_token_without_module_permission(au
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_backend_canvas_export_rejects_dependency_without_datasource_permission(authenticated_user, monkeypatch):
     authenticated_user.permission = {"ops-analysis": {"view-View", "namespace-View"}}
     dashboard, datasource, _ = _create_canvas_dependency_graph(datasource_groups=[1])
@@ -217,6 +219,7 @@ def test_backend_canvas_export_rejects_dependency_without_datasource_permission(
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_backend_canvas_export_rejects_cross_team_datasource_dependency(authenticated_user, monkeypatch):
     authenticated_user.permission = {"ops-analysis": {"view-View", "data_source-View", "namespace-View"}}
     dashboard, datasource, _ = _create_canvas_dependency_graph(datasource_groups=[2])
@@ -238,6 +241,7 @@ def test_backend_canvas_export_rejects_cross_team_datasource_dependency(authenti
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_backend_canvas_export_rejects_partially_visible_dependency_closure(authenticated_user, monkeypatch):
     authenticated_user.permission = {"ops-analysis": {"view-View", "data_source-View", "namespace-View"}}
     dashboard, visible_datasource, _ = _create_canvas_dependency_graph(datasource_groups=[1])
@@ -271,6 +275,7 @@ def test_backend_canvas_export_rejects_partially_visible_dependency_closure(auth
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_openapi_canvas_export_rejects_dependency_without_namespace_permission(authenticated_user, monkeypatch):
     authenticated_user.permission = {"ops-analysis": {"view-View", "data_source-View"}}
     authenticated_user.group_list = [{"id": 1, "name": "Default Team"}]
@@ -294,6 +299,7 @@ def test_openapi_canvas_export_rejects_dependency_without_namespace_permission(a
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_backend_canvas_export_keeps_authorized_dependency_closure(authenticated_user, monkeypatch):
     authenticated_user.permission = {"ops-analysis": {"view-View", "data_source-View", "namespace-View"}}
     dashboard, datasource, namespace = _create_canvas_dependency_graph(datasource_groups=[1])
@@ -321,6 +327,7 @@ def test_backend_canvas_export_keeps_authorized_dependency_closure(authenticated
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_backend_canvas_export_never_expands_past_authorized_dependency_plan(authenticated_user, monkeypatch):
     authenticated_user.permission = {"ops-analysis": {"view-View", "data_source-View", "namespace-View"}}
     dashboard, datasource, authorized_namespace = _create_canvas_dependency_graph(datasource_groups=[1])
@@ -363,10 +370,12 @@ def test_backend_canvas_export_never_expands_past_authorized_dependency_plan(aut
     assert collect_calls == 1
     assert lock_values == [True]
     assert [namespace["name"] for namespace in exported["namespaces"]] == [authorized_namespace.name]
+    assert exported["datasources"][0]["namespace_keys"] == [authorized_namespace.name]
     assert hidden_namespace.name not in response.rendered_content.decode()
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_backend_canvas_export_legacy_mode_is_an_explicit_rollback(authenticated_user, monkeypatch):
     authenticated_user.permission = {"ops-analysis": {"view-View"}}
     dashboard, datasource, namespace = _create_canvas_dependency_graph(datasource_groups=[2])
@@ -661,6 +670,7 @@ def test_backend_import_submit_logs_success_results_as_create_and_update(authent
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_backend_export_rejects_partially_authorized_root_set(authenticated_user, monkeypatch):
     authenticated_user.permission = {"ops-analysis": {"view-View"}}
     allowed_dashboard = Dashboard.objects.create(name="allowed-dashboard", groups=[1], view_sets=[])
@@ -689,6 +699,54 @@ def test_backend_export_rejects_partially_authorized_root_set(authenticated_user
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("view", "path", "api_pass"),
+    [
+        (ImportExportViewSet, "/operation_analysis/api/import_export/export", False),
+        (OpenImportExportViewSet, "/operation_analysis/open_api/import_export/export", True),
+    ],
+)
+def test_legacy_export_preserves_partially_authorized_root_set(
+    authenticated_user,
+    monkeypatch,
+    view,
+    path,
+    api_pass,
+):
+    authenticated_user.permission = {"ops-analysis": {"view-View"}}
+    authenticated_user.group_list = [{"id": 1, "name": "Default Team"}]
+    monkeypatch.setenv("OPS_ANALYSIS_EXPORT_DEPENDENCY_PERMISSION_MODE", "legacy")
+    allowed_dashboard = Dashboard.objects.create(name="legacy-allowed-dashboard", groups=[1], view_sets=[])
+    hidden_dashboard = Dashboard.objects.create(name="legacy-hidden-dashboard", groups=[1], view_sets=[])
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        lambda user, current_team, app_name, permission_key, include_children=False: {
+            "instance": [{"id": allowed_dashboard.id, "permission": ["View", "Operate"]}],
+            "team": [],
+        },
+    )
+
+    request = _build_request(
+        path,
+        authenticated_user,
+        data={"object_type": "dashboard", "object_ids": [allowed_dashboard.id, hidden_dashboard.id]},
+        api_pass=api_pass,
+    )
+
+    response = view.as_view({"post": "export_objects"})(request)
+    response.render()
+    payload = json.loads(response.rendered_content)
+
+    assert response.status_code == status.HTTP_200_OK
+    yaml_content = _unwrap_payload(payload)["yaml_content"]
+    assert allowed_dashboard.name in yaml_content
+    assert hidden_dashboard.name not in yaml_content
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
 def test_backend_legacy_export_rechecks_root_after_competing_transaction(authenticated_user, monkeypatch):
     authenticated_user.permission = {"ops-analysis": {"view-View"}}
     monkeypatch.setenv("OPS_ANALYSIS_EXPORT_DEPENDENCY_PERMISSION_MODE", "legacy")
