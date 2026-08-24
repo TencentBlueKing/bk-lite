@@ -37,9 +37,12 @@ import {
 } from './viewColumnPreference';
 import {
   INSTANCE_VIEW_ACTION_KEY,
+  RESOURCE_IP_ROLE,
   buildInstanceViewColumns,
   buildReportTimeColumn,
-  buildReportingStatusColumn
+  buildReportingStatusColumn,
+  displayFieldKey,
+  displayFieldParamKey
 } from './instanceViewColumns';
 const { Option } = Select;
 
@@ -128,6 +131,10 @@ const ViewList: React.FC<ViewListProps> = ({
     {}
   );
   const [ipFilterOptions, setIpFilterOptions] = useState<string[]>([]);
+  // 字段展示列（云平台子对象 IP）的候选取值，来源与 asset.ip 的候选值互相独立。
+  const [fieldFilterOptions, setFieldFilterOptions] = useState<
+    Record<string, string[]>
+  >({});
   const [queryData, setQueryData] = useState<any[]>([]);
   const [nodeList, setNodeList] = useState<ListItem[]>([]);
 
@@ -200,6 +207,13 @@ const ViewList: React.FC<ViewListProps> = ({
     return summaryColumns.some((column) => column.fact === 'asset.ip');
   }, [objects, objectId]);
 
+  // 云平台子对象的内置 IP 列（role=resource_ip）：候选值需要后端下发，走同一个枚举接口。
+  const roleFieldColumns = useMemo(() => {
+    return (findByMonitorId(objects, objectId)?.display_fields || []).filter(
+      (column) => column.type === 'field' && column.role === RESOURCE_IP_ROLE
+    );
+  }, [objects, objectId]);
+
   const showMultipleConditions = useMemo(() => {
     const derivativeNames = getDerivativeObjectNames(objects).filter(
       (name) => !['Pod', 'Node'].includes(name)
@@ -254,6 +268,33 @@ const ViewList: React.FC<ViewListProps> = ({
       value: ip
     }));
 
+    // 字段展示列候选值：后端下发 + 当前页取值 + 已选值，与 asset.ip 的合并方式一致。
+    const fieldFilters: Record<string, { text: string; value: string }[]> = {};
+    roleFieldColumns.forEach((column) => {
+      const binding = column.metrics?.[0];
+      const paramKey = displayFieldParamKey(binding?.field);
+      const dataKey = displayFieldKey(
+        binding?.plugin,
+        binding?.metric,
+        binding?.field
+      );
+      const pageValues = tableData
+        .map((row) => row?.[dataKey])
+        .filter((value) => value != null && value !== '')
+        .map((value) => String(value).trim());
+      fieldFilters[paramKey] = Array.from(
+        new Set(
+          [
+            ...(fieldFilterOptions[paramKey] || []),
+            ...(columnFilters[paramKey] || []),
+            ...pageValues
+          ].filter(Boolean)
+        )
+      )
+        .sort()
+        .map((value) => ({ text: value, value }));
+    });
+
     return resolvedColumns.columns.map((col: ColumnItem) => {
       let next: ColumnItem = col;
       if (col.type === 'progress') {
@@ -279,6 +320,13 @@ const ViewList: React.FC<ViewListProps> = ({
           filters: assetIpFilters.length ? assetIpFilters : undefined
         };
       }
+      if (col.role === RESOURCE_IP_ROLE) {
+        const options = fieldFilters[String(col.filterParam)] || [];
+        next = {
+          ...next,
+          filters: options.length ? options : undefined
+        };
+      }
       const filterParam = next.filterParam as string | undefined;
       if (filterParam) {
         const selected = columnFilters[filterParam] || [];
@@ -294,7 +342,9 @@ const ViewList: React.FC<ViewListProps> = ({
     tableData,
     colony,
     columnFilters,
-    ipFilterOptions
+    ipFilterOptions,
+    fieldFilterOptions,
+    roleFieldColumns
   ]);
 
   const fieldGroups = useMemo(() => {
@@ -346,6 +396,7 @@ const ViewList: React.FC<ViewListProps> = ({
       setColumnFilters({});
       columnFiltersRef.current = {};
       setIpFilterOptions([]);
+      setFieldFilterOptions({});
       getColoumnAndData();
     }
     // searchParams host 过滤变更时也要重载（同对象再次跳转）
@@ -407,14 +458,16 @@ const ViewList: React.FC<ViewListProps> = ({
   };
 
   const getParams = () => {
-    const vm_params: Record<string, string> = {
+    // field:* 可能含逗号拼接的多 IP，必须传数组，不能 join(',')，否则后端拆开后无法精确匹配。
+    const vm_params: Record<string, string | string[]> = {
       instance_id: colonyRef.current.join(','),
       node: nodeRef.current || ''
     };
     Object.entries(columnFiltersRef.current).forEach(([key, values]) => {
-      if (values?.length) {
-        vm_params[key] = values.join(',');
+      if (!values?.length) {
+        return;
       }
+      vm_params[key] = key.startsWith('field:') ? [...values] : values.join(',');
     });
     return {
       page: paginationRef.current.current,
@@ -451,7 +504,7 @@ const ViewList: React.FC<ViewListProps> = ({
       config
     );
     const shouldFetchQueryParams =
-      showMultipleConditions || needsAssetIpFilter;
+      showMultipleConditions || needsAssetIpFilter || roleFieldColumns.length > 0;
     setTableLoading(true);
     try {
       const res = await Promise.all([
@@ -497,6 +550,16 @@ const ViewList: React.FC<ViewListProps> = ({
           .filter(Boolean)
         : [];
       setIpFilterOptions(nextIpOptions);
+      const rawFieldOptions = k8sQuery?.field_options;
+      const nextFieldOptions: Record<string, string[]> = {};
+      if (rawFieldOptions && typeof rawFieldOptions === 'object') {
+        Object.entries(rawFieldOptions).forEach(([key, values]) => {
+          nextFieldOptions[key] = Array.isArray(values)
+            ? values.map((value) => String(value || '').trim()).filter(Boolean)
+            : [];
+        });
+      }
+      setFieldFilterOptions(nextFieldOptions);
       setQueryData(queryForm);
       if (objName === 'Process' && colonyRef.current.length) {
         const resolved = resolveProcessHostFilterIds(
@@ -524,6 +587,7 @@ const ViewList: React.FC<ViewListProps> = ({
             objectId,
             queryData: queryForm,
             ipFilterOptions: nextIpOptions,
+            fieldFilterOptions: nextFieldOptions,
             includeStatusFilters: true,
             includeDimensionTooltip: true
           }),

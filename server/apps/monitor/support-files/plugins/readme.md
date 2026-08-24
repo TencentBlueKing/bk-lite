@@ -364,7 +364,46 @@ apps/monitor/support-files/plugins/<collector>/<collect_type>/<instance_type>/
 - Web/Ping：`selected_nodes -> collector.nodes`，目标输入 -> `probe.target`；
 - TCP：`selected_nodes -> collector.nodes`，`compose_endpoint(host, port) -> probe.target`。
 
-### 6.6 实例身份约定
+### 6.6 云平台子对象 IP 展示列
+
+云平台与虚拟化平台的派生子对象（虚拟机、宿主机等）的 IP 由采集器写入指标 label，不经过
+`instance_fact_bindings`。这类 IP 与 6.5 的 `asset.ip` 是两套机制：`asset.ip` 是接入平台时
+填写的连接地址，属于基础对象；子对象 IP 是被纳管资源自身的地址，只存在于指标 label。禁止把
+子对象 IP 写入 `asset.ip`。
+
+子对象在 `display_fields` 中用 `type: "field"` 加 `role: "resource_ip"` 声明该列：
+
+```json
+{
+  "name": "IP 地址",
+  "type": "field",
+  "role": "resource_ip",
+  "variable_id": "vm_ip",
+  "sort_order": 0,
+  "metrics": [
+    {"plugin": "SangforSCP", "metric": "vm_power_status", "field": "resource_ip"}
+  ]
+}
+```
+
+`role` 让页面把该列按内置 IP 列渲染（列标题与位置和 `asset.ip` 摘要列一致），因此不同平台的
+label 名不需要统一：绑定的 `field` 写各自采集器实际上报的 label 即可。绑定的 `metric` 应选该
+子对象上稳定持续上报的指标（如状态类指标），避免指标断报导致 IP 列空白。
+
+`variable_id` 供告警名称使用（如 `${vm_ip}`），**不得**写成保留字
+`resource_ip`（保留字 `${resource_ip}` 固定取 `summary_facts['asset.ip']`，与子对象指标
+label 不是同一来源）。云平台子对象（宿主机 / 虚拟机）统一用 `vm_ip`，与配置页占位示例一致。
+展示列 `name` 用「IP 地址」，与列表文案一致。
+
+采集器写入该 label 时遵守：
+
+- 取值优先内网 / 管理 IP，其次公网 / 弹性 IP。
+- 多个 IP 用逗号拼接，必须去重并保持稳定排序。顺序抖动会不断产生新 series。
+- 取不到 IP 时不写该 label。Prometheus 数据模型中空值 label 等价于 label 不存在，写空串没有意义；
+  展示列由配置生成，缺值时页面渲染为 `--`。
+- IP 是可变值，不得写进 `metrics.json` 的 `dimensions`，也不得作为告警策略的分组维度。
+
+### 6.7 实例身份约定
 
 VictoriaMetrics / Prometheus 中的实例身份不是数据库中的 tuple 字符串，而是多个 label 维度。`MonitorObject.instance_id_keys` 和 `Metric.instance_id_keys` 定义了从 VM labels 到 BK-Lite `MonitorInstance.id` 的投影顺序。
 
@@ -388,7 +427,7 @@ instance_id="cluster-a", pod="pod-1"
 
 因此，涉及实例匹配、权限过滤、插件状态、告警归属或实例详情查询的逻辑，都必须按 `instance_id_keys` 从 VM labels 重建完整实例 ID，不能直接把 VM label 中的 `instance_id` 当作完整数据库 ID。基础对象通常只有 `["instance_id"]`；派生对象通常使用 `["instance_id", "<child_label>"]`，其中第二个字段必须与真实上报 label 名一致。
 
-### 6.7 隐式规则
+### 6.8 隐式规则
 
 - `collector` 与 `collect_type` 的最终导入值优先取 `metrics.json` 显式声明；字段缺失或为空时，再回退到文件路径。
 - 路径回退是逐字段生效的：只声明 `collect_type` 时，`collector` 仍可从路径回退。

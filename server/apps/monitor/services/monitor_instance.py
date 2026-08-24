@@ -24,6 +24,13 @@ PLUGIN_STATUS_QUERY_MAX_WORKERS = int(os.getenv("MONITOR_PLUGIN_STATUS_QUERY_MAX
 # vm_params 中非 Enum 指标名的保留键（不参与通用 Enum 过滤）。
 _VM_PARAM_RESERVED_KEYS = frozenset({"instance_id", "node", "status", "asset.ip"})
 
+# 字段展示列（云平台子对象 IP 等）的筛选参数前缀。与主机 asset.ip 的筛选参数彼此独立，
+# 取值来自指标 label 而非 summary_facts。
+FIELD_PARAM_PREFIX = "field:"
+
+# 字段展示列候选项上限：label 取值是开放集合，配合下拉内检索使用，避免下发超大列表。
+FIELD_OPTION_LIMIT = int(os.getenv("MONITOR_FIELD_OPTION_LIMIT", "500"))
+
 
 class InstanceSearch:
     def __init__(self, monitor_obj, query_data, qs=None, locale=None, visible_organization_ids=None):
@@ -121,6 +128,20 @@ class InstanceSearch:
 
     @staticmethod
     def get_query_params_enum(monitor_obj_name, monitor_object_id=None):
+        """获取查询参数枚举。
+
+        在对象各自的枚举之上，合并字段展示列（云平台子对象 IP 等）的候选取值。
+        """
+        data = InstanceSearch._get_query_params_enum(monitor_obj_name, monitor_object_id)
+        field_options = InstanceSearch.collect_display_field_options(monitor_object_id)
+        if not field_options:
+            return data
+        merged = dict(data) if isinstance(data, dict) else {}
+        merged["field_options"] = field_options
+        return merged
+
+    @staticmethod
+    def _get_query_params_enum(monitor_obj_name, monitor_object_id=None):
         """获取查询参数枚举"""
         if monitor_obj_name == "Host":
             return {"asset_ips": InstanceSearch.collect_asset_ip_options("Host")}
@@ -542,13 +563,104 @@ class InstanceSearch:
 
     @staticmethod
     def apply_process_instance_filters(qs, monitor_obj_name, vm_params, monitor_object_id=None):
-        """按 vm_params 过滤实例：Process 主机多选 + asset.ip 多选 + Enum 指标多选。"""
+        """按 vm_params 过滤实例：Process 主机多选 + asset.ip 多选 + 字段展示列多选 + Enum 指标多选。"""
         qs = InstanceSearch.apply_process_host_filters(qs, monitor_obj_name, vm_params)
         qs = InstanceSearch.apply_asset_ip_filters(qs, vm_params)
         object_id = monitor_object_id
         if object_id is None and monitor_obj_name:
             object_id = MonitorObject.objects.filter(name=monitor_obj_name).values_list("id", flat=True).first()
+        qs = InstanceSearch.apply_display_field_filters(qs, object_id, vm_params)
         return InstanceSearch.apply_enum_metric_filters(qs, object_id, vm_params)
+
+    @staticmethod
+    def display_field_param_key(field):
+        """字段展示列的筛选参数键，与 asset.ip 等既有键隔离。"""
+        return f"{FIELD_PARAM_PREFIX}{field}"
+
+    @staticmethod
+    def role_display_field_bindings(monitor_object_id):
+        """取该对象带 role 的字段展示列绑定（当前为云平台子对象 IP）。
+
+        只认 role 列：普通字段展示列由用户自由配置，不承诺筛选能力。
+        """
+        if not monitor_object_id:
+            return []
+        display_fields = (
+            MonitorObject.objects.filter(id=monitor_object_id).values_list("display_fields", flat=True).first() or []
+        )
+        bindings = []
+        seen = set()
+        for col in display_fields:
+            if not isinstance(col, dict) or (col.get("type") or "metric") != "field" or not col.get("role"):
+                continue
+            for binding in col.get("metrics") or []:
+                if not isinstance(binding, dict):
+                    continue
+                field = (binding.get("field") or "").strip()
+                metric = (binding.get("metric") or "").strip()
+                if not field or not metric:
+                    continue
+                plugin = (binding.get("plugin") or "").strip()
+                dedup_key = (plugin, metric, field)
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+                bindings.append({"plugin": plugin, "metric": metric, "field": field})
+                break
+        return bindings
+
+    @staticmethod
+    def _resolve_field_metric(monitor_object_id, binding):
+        qs = Metric.objects.filter(monitor_object_id=monitor_object_id, name=binding["metric"])
+        if binding["plugin"]:
+            qs = qs.filter(monitor_plugin__name=binding["plugin"])
+        return qs.first()
+
+    @staticmethod
+    def apply_display_field_filters(qs, monitor_object_id, vm_params):
+        """按字段展示列 label 取值过滤实例：同列多值 OR，多列 AND。"""
+        if not monitor_object_id or not isinstance(vm_params, dict):
+            return qs
+        if not any(str(key).startswith(FIELD_PARAM_PREFIX) for key in vm_params):
+            return qs
+
+        for binding in InstanceSearch.role_display_field_bindings(monitor_object_id):
+            raw = vm_params.get(InstanceSearch.display_field_param_key(binding["field"]))
+            if raw is None or raw == "" or raw == []:
+                continue
+            metric_obj = InstanceSearch._resolve_field_metric(monitor_object_id, binding)
+            if not metric_obj:
+                continue
+            value_map = MonitorObjectService.query_field_label_values(metric_obj, binding["field"])
+            # 候选取值本身可能含逗号（多网卡 IP），不能先按逗号拆再匹配。
+            selected = InstanceSearch.normalize_field_filter_values(raw, value_map.values())
+            if not selected:
+                continue
+            matched_ids = [instance_id for instance_id, value in value_map.items() if str(value) in selected]
+            qs = qs.filter(id__in=matched_ids)
+        return qs
+
+    @staticmethod
+    def collect_display_field_options(monitor_object_id):
+        """收集字段展示列的候选取值，供列头筛选下拉使用。"""
+        options = {}
+        for binding in InstanceSearch.role_display_field_bindings(monitor_object_id):
+            metric_obj = InstanceSearch._resolve_field_metric(monitor_object_id, binding)
+            if not metric_obj:
+                continue
+            try:
+                value_map = MonitorObjectService.query_field_label_values(metric_obj, binding["field"])
+            except Exception:
+                logger.warning(
+                    "收集字段展示列候选值失败: monitor_object_id=%s field=%s",
+                    monitor_object_id,
+                    binding["field"],
+                    exc_info=True,
+                )
+                continue
+            values = sorted({str(value).strip() for value in value_map.values() if str(value).strip()})
+            options[InstanceSearch.display_field_param_key(binding["field"])] = values[:FIELD_OPTION_LIMIT]
+        return options
 
     @staticmethod
     def apply_instance_vm_param_filters(qs, monitor_object_id, monitor_obj_name, vm_params):
@@ -601,6 +713,38 @@ class InstanceSearch:
         else:
             parts = [part.strip() for part in str(raw).split(",")]
         return {part for part in parts if part}
+
+    @staticmethod
+    def normalize_field_filter_values(raw, known_values):
+        """解析字段展示列筛选值；已知候选取值优先整串匹配，避免多 IP 被逗号拆开。"""
+        if raw is None:
+            return set()
+        if isinstance(raw, (list, tuple, set)):
+            return {str(item).strip() for item in raw if str(item).strip()}
+
+        text = str(raw).strip()
+        if not text:
+            return set()
+
+        known = sorted(
+            {str(value).strip() for value in known_values if str(value).strip()},
+            key=len,
+            reverse=True,
+        )
+        if text in known:
+            return {text}
+
+        selected = set()
+        remaining = text
+        while remaining:
+            matched = next((value for value in known if remaining == value or remaining.startswith(value + ",")), None)
+            if not matched:
+                # 多 IP label 本身含逗号，禁止按逗号拆；整串作为单一筛选值。
+                selected.add(remaining)
+                break
+            selected.add(matched)
+            remaining = remaining[len(matched) :].lstrip(",")
+        return selected
 
     @staticmethod
     def parse_enum_unit_option_ids(unit):
@@ -675,6 +819,8 @@ class InstanceSearch:
         unique_metrics = []
         for metric in metrics:
             if metric.name in seen_names or metric.name in _VM_PARAM_RESERVED_KEYS:
+                continue
+            if str(metric.name).startswith(FIELD_PARAM_PREFIX):
                 continue
             seen_names.add(metric.name)
             unique_metrics.append(metric)
