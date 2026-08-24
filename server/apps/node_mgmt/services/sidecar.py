@@ -331,7 +331,7 @@ class Sidecar:
             )
 
     @staticmethod
-    def _fallback_cpu_architecture(node_id: str, request_data: dict) -> str:
+    def _fallback_cpu_architecture(node_id: str, request_data: dict, existing_cpu_architecture: str = "") -> str:
         cpu_architecture = normalize_cpu_architecture(request_data.get("cpu_architecture"))
         if cpu_architecture:
             return cpu_architecture
@@ -348,6 +348,10 @@ class Sidecar:
                 normalized_tag_arch = normalize_cpu_architecture(cpu_architectures[0])
                 if normalized_tag_arch:
                     return normalized_tag_arch
+
+        existing = normalize_cpu_architecture(existing_cpu_architecture)
+        if existing:
+            return existing
 
         operating_system = str(request_data.get("operating_system", "")).lower()
         node_ip = request_data.get("ip", "")
@@ -399,7 +403,7 @@ class Sidecar:
     def _cached_heartbeat_updates(node_id: str, node_details: dict) -> tuple[dict, str, bool]:
         """Build the bounded metadata update allowed on an ETag cache hit."""
         request_data = dict(node_details)
-        existing_node = Node.objects.filter(id=node_id).values("ip", "operating_system").first() or {}
+        existing_node = Node.objects.filter(id=node_id).values("ip", "operating_system", "cpu_architecture").first() or {}
         for field in ("ip", "operating_system"):
             if not request_data.get(field):
                 request_data[field] = existing_node.get(field, "")
@@ -413,8 +417,13 @@ class Sidecar:
         }
         if ip_changed:
             updates["ip"] = resolved_ip
-        cpu_architecture = Sidecar._fallback_cpu_architecture(node_id, request_data)
-        if cpu_architecture:
+        existing_arch = normalize_cpu_architecture(existing_node.get("cpu_architecture", ""))
+        cpu_architecture = Sidecar._fallback_cpu_architecture(
+            node_id,
+            request_data,
+            existing_node.get("cpu_architecture", ""),
+        )
+        if cpu_architecture and cpu_architecture != existing_arch:
             updates["cpu_architecture"] = cpu_architecture
 
         return updates, resolved_ip, ip_changed
@@ -530,13 +539,19 @@ class Sidecar:
         # 操作系统转小写
         request_data.update(operating_system=request_data["operating_system"].lower())
         request_data.update(ip=Sidecar._resolve_reported_ip(node_id, request_data.get("ip", "")))
-        request_data.update(cpu_architecture=Sidecar._fallback_cpu_architecture(node_id, request_data))
-        request_data.pop("architecture", None)
-
-        logger.debug(f"node data: {request_data}")
 
         # 更新或创建 Sidecar 信息
         node = Node.objects.filter(id=node_id).first()
+        request_data.update(
+            cpu_architecture=Sidecar._fallback_cpu_architecture(
+                node_id,
+                request_data,
+                getattr(node, "cpu_architecture", "") if node else "",
+            )
+        )
+        request_data.pop("architecture", None)
+
+        logger.debug(f"node data: {request_data}")
 
         # 处理标签数据
         allowed_prefixes = [

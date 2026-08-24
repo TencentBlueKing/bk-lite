@@ -147,6 +147,14 @@ def attach_mlflow_mocks(monkeypatch, module_path):
     def delete_run(run_id):
         calls["delete_run"] += 1
 
+    monkeypatch.setattr(
+        f"{module_path}.mlflow_service.get_experiment_by_name",
+        lambda name: types.SimpleNamespace(experiment_id="experiment-1"),
+    )
+    monkeypatch.setattr(
+        f"{module_path}.mlflow_service.run_belongs_to_experiment",
+        lambda experiment_id, run_id: False,
+    )
     monkeypatch.setattr(f"{module_path}.mlflow_service.get_run_metrics", get_run_metrics)
     monkeypatch.setattr(f"{module_path}.mlflow_service.get_metric_history", get_metric_history)
     monkeypatch.setattr(f"{module_path}.mlflow_service.get_run_info", get_run_info)
