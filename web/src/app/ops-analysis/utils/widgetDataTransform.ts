@@ -12,6 +12,12 @@ import {
   type BindableDataSourceParamType,
 } from '@/app/ops-analysis/utils/dataSourceParamContract';
 import {
+  coerceRequestValueForMultiple,
+  isMultipleSelectInputConfig,
+  migrateFilterBindings,
+  migrateParamItemsFromStringList,
+} from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
+import {
   DateRangeResolutionContext,
   getDateRangeTimezone,
   resolveDateRange,
@@ -71,10 +77,16 @@ export const sanitizeUnifiedFilterDefinition = <T extends UnifiedFilterDefinitio
     staticOptions = definition.options;
   }
 
+  const multiple =
+    definition.type === 'string'
+    && definition.inputConfig
+    && definition.inputConfig.control !== 'input'
+    && Boolean(definition.inputConfig.multiple);
+
   const defaultValue = sanitizeFilterDefaultValue(
-    definition.type,
     definition.defaultValue,
     staticOptions,
+    multiple,
   );
 
   return {
@@ -89,11 +101,11 @@ const isScalarFilterValue = (value: unknown): value is string | number =>
   typeof value === 'string' || typeof value === 'number';
 
 const sanitizeFilterDefaultValue = (
-  type: UnifiedFilterDefinition['type'],
   defaultValue: FilterValue | undefined,
   staticOptions?: InputOption[],
+  multiple = false,
 ): FilterValue | undefined => {
-  if (type === 'stringList') {
+  if (multiple) {
     const asList = Array.isArray(defaultValue)
       ? defaultValue.filter(isScalarFilterValue)
       : isScalarFilterValue(defaultValue)
@@ -128,21 +140,26 @@ export const getFilterDefinitionId = (
 
 export const getBindableFilterParams = (
   params?: ParamItem[],
-): Array<ParamItem & { type: BindableParamType }> =>
-  (Array.isArray(params) ? params : []).filter(
+): Array<ParamItem & { type: BindableParamType }> => {
+  const { params: migratedParams } = migrateParamItemsFromStringList(params);
+  return migratedParams.filter(
     (param): param is ParamItem & { type: BindableParamType } =>
       param.filterType === 'filter' &&
       isBindableDataSourceParamType(param.type),
   );
+};
 
 export const buildDefaultFilterBindings = (
   params: ParamItem[] | undefined,
   definitions: UnifiedFilterDefinition[],
   existingBindings?: FilterBindings,
 ): FilterBindings | undefined => {
+  const migratedExisting = existingBindings
+    ? migrateFilterBindings(existingBindings)
+    : undefined;
   const bindableParams = getBindableFilterParams(params);
   if (!bindableParams.length || !definitions.length) {
-    return existingBindings;
+    return migratedExisting ?? existingBindings;
   }
 
   const autoBindings = definitions.reduce<FilterBindings>((acc, definition) => {
@@ -156,10 +173,10 @@ export const buildDefaultFilterBindings = (
   }, {});
 
   if (!Object.keys(autoBindings).length) {
-    return existingBindings;
+    return migratedExisting ?? existingBindings;
   }
 
-  const retainedBindings = Object.entries(existingBindings || {}).reduce<FilterBindings>(
+  const retainedBindings = Object.entries(migratedExisting || {}).reduce<FilterBindings>(
     (bindings, [filterId, enabled]) => {
       if (filterId in autoBindings) bindings[filterId] = enabled;
       return bindings;
@@ -171,6 +188,21 @@ export const buildDefaultFilterBindings = (
     ...autoBindings,
     ...retainedBindings,
   };
+};
+
+/**
+ * 已有 bindings：仅 remap legacy `__stringList` → `__string`，保留显式 enabled/disabled。
+ * 无 bindings：才按定义生成默认绑定。
+ */
+export const resolveEffectiveFilterBindings = (
+  params: ParamItem[] | undefined,
+  definitions: UnifiedFilterDefinition[],
+  existingBindings?: FilterBindings | null,
+): FilterBindings | undefined => {
+  if (existingBindings && Object.keys(existingBindings).length > 0) {
+    return migrateFilterBindings(existingBindings);
+  }
+  return buildDefaultFilterBindings(params, definitions, undefined);
 };
 
 const getRelativeTimeRangeMinutes = (timeParams: unknown): number | null => {
@@ -540,6 +572,7 @@ export const processDataSourceParams = ({
   }
 
   const processedParams: Record<string, unknown> = { ...userParams };
+  const migratedSourceParams = migrateParamItemsFromStringList(sourceParams).params;
   const setProcessedParam = (name: string, type: string, value: unknown) => {
     const formatted = formatDataSourceParamValue(
       type,
@@ -564,10 +597,16 @@ export const processDataSourceParams = ({
   // - hasBinding: 组件是否绑定了统一筛选
   // - bindingDisabled: 绑定的统一筛选是否被禁用
   // - value: 统一筛选的当前值
+  // - definition: 匹配到的筛选项（用于 multiple 形状）
   const getUnifiedFilterValue = (
     paramName: string,
     paramType: string,
-  ): { hasBinding: boolean; bindingDisabled: boolean; value: FilterValue | undefined } => {
+  ): {
+    hasBinding: boolean;
+    bindingDisabled: boolean;
+    value: FilterValue | undefined;
+    definition?: UnifiedFilterDefinition;
+  } => {
     if (!filterBindings || !unifiedFilterValues) {
       return { hasBinding: false, bindingDisabled: false, value: undefined };
     }
@@ -579,79 +618,149 @@ export const processDataSourceParams = ({
       if (def && def.key === paramName && def.type === paramType) {
         // 组件配置的 filterBindings 开关关闭：不传该参数
         if (!isEnabled) {
-          return { hasBinding: true, bindingDisabled: true, value: undefined };
+          return {
+            hasBinding: true,
+            bindingDisabled: true,
+            value: undefined,
+            definition: def,
+          };
         }
         // 头部筛选配置的 enabled 开关关闭：不传该参数
         if (!def.enabled) {
-          return { hasBinding: true, bindingDisabled: true, value: undefined };
+          return {
+            hasBinding: true,
+            bindingDisabled: true,
+            value: undefined,
+            definition: def,
+          };
         }
         const value = unifiedFilterValues[filterId];
-        return { hasBinding: true, bindingDisabled: false, value };
+        return {
+          hasBinding: true,
+          bindingDisabled: false,
+          value,
+          definition: def,
+        };
       }
     }
     return { hasBinding: false, bindingDisabled: false, value: undefined };
   };
 
-  sourceParams.forEach((param: any) => {
+  const resolveConsumerMultiple = (
+    param: ParamItem,
+    boundDefinition?: UnifiedFilterDefinition,
+  ): boolean => {
+    if (boundDefinition) {
+      return isMultipleSelectInputConfig(boundDefinition.inputConfig);
+    }
+    return isMultipleSelectInputConfig(param.inputConfig);
+  };
+
+  const setShapedParam = (
+    name: string,
+    type: string,
+    value: unknown,
+    multiple: boolean,
+  ) => {
+    // 仅字符串侧按 multiple 规范形状；timeRange/dateRange 等保持原协议
+    if (type === 'string') {
+      const shaped = coerceRequestValueForMultiple(value, multiple);
+      if (shaped === null) {
+        delete processedParams[name];
+        return;
+      }
+      setProcessedParam(name, type, shaped);
+      return;
+    }
+    if (
+      value === null ||
+      value === undefined ||
+      value === '' ||
+      (Array.isArray(value) && value.length === 0)
+    ) {
+      delete processedParams[name];
+      return;
+    }
+    setProcessedParam(name, type, value);
+  };
+
+  migratedSourceParams.forEach((param: any) => {
     const { name, filterType, value: defaultValue, type } = param;
 
     // 优先级：fixed > 统一筛选 > params > 默认值
     switch (filterType) {
       case 'fixed':
-        // 固定参数：直接使用配置值
-        setProcessedParam(name, type, defaultValue);
+        // 固定参数：直接使用配置值（形状仍按参数自身 multiple）
+        setShapedParam(
+          name,
+          type,
+          defaultValue,
+          resolveConsumerMultiple(param),
+        );
         break;
 
       case 'filter': {
         // 筛选参数：检查统一筛选绑定
-        const { hasBinding, bindingDisabled, value: unifiedValue } = getUnifiedFilterValue(name, type);
-        
+        const {
+          hasBinding,
+          bindingDisabled,
+          value: unifiedValue,
+          definition,
+        } = getUnifiedFilterValue(name, type);
+
         if (hasBinding) {
           if (bindingDisabled) {
             // 绑定的统一筛选被禁用：不传该参数
             delete processedParams[name];
-          } else if (unifiedValue !== null && unifiedValue !== undefined && unifiedValue !== '' && !(Array.isArray(unifiedValue) && unifiedValue.length === 0)) {
-            // 有绑定且有值：使用统一筛选值
-            setProcessedParam(name, type, unifiedValue);
           } else {
-            // 有绑定但无值：不传该参数
-            delete processedParams[name];
+            // 有绑定：按筛选项 multiple 决定形状；空则省略
+            setShapedParam(
+              name,
+              type,
+              unifiedValue,
+              resolveConsumerMultiple(param, definition),
+            );
           }
         } else {
-          // 无绑定：使用默认值
-          if (defaultValue !== null && defaultValue !== undefined && defaultValue !== '') {
-            setProcessedParam(name, type, defaultValue);
-          }
+          // 无绑定：使用默认值，按参数自身 multiple
+          setShapedParam(
+            name,
+            type,
+            defaultValue,
+            resolveConsumerMultiple(param),
+          );
         }
         break;
       }
 
       case 'params':
-        // 私有参数：使用用户传入的参数值
+        // 私有参数：使用用户传入的参数值，按组件参数/覆盖的 multiple
         if (Object.prototype.hasOwnProperty.call(processedParams, name)) {
-          const paramValue = processedParams[name];
-          if (
-            paramValue === null ||
-            paramValue === undefined ||
-            paramValue === ''
-          ) {
-            delete processedParams[name];
-          } else {
-            setProcessedParam(name, type, paramValue);
-          }
-        } else if (
-          defaultValue !== null &&
-          defaultValue !== undefined &&
-          defaultValue !== ''
-        ) {
-          setProcessedParam(name, type, defaultValue);
+          setShapedParam(
+            name,
+            type,
+            processedParams[name],
+            resolveConsumerMultiple(param),
+          );
+        } else {
+          setShapedParam(
+            name,
+            type,
+            defaultValue,
+            resolveConsumerMultiple(param),
+          );
         }
         break;
 
       default:
         // 默认：使用配置的默认值
         if (defaultValue !== undefined) {
-          setProcessedParam(name, type, defaultValue);
+          setShapedParam(
+            name,
+            type,
+            defaultValue,
+            resolveConsumerMultiple(param),
+          );
         }
     }
   });

@@ -32,6 +32,7 @@ from apps.operation_analysis.services.import_export.view_sets import (
 )
 from apps.operation_analysis.services.named_option_datasources import collect_named_option_datasource_ids_from_filters
 from apps.operation_analysis.services.network_status_topology_overlay import overlay_datasource_ids_for_view_sets
+from apps.operation_analysis.services.string_param_multiple_migrate import migrate_filters_payload, migrate_param_items
 
 
 class ExportService:
@@ -167,7 +168,7 @@ class ExportService:
                 "desc": ds.desc or "",
                 # [内部预留] is_active 字段仅内部使用，无产品功能依赖
                 "is_active": ds.is_active,
-                "params": normalize_date_range_param_values(ds.params or []),
+                "params": normalize_date_range_param_values(migrate_param_items(ds.params or [])[0]),
                 "tags": tag_names,
                 "chart_type": ds.chart_type or [],
                 "field_schema": ds.field_schema or [],
@@ -261,7 +262,7 @@ class ExportService:
 
         # Dashboard有额外的filters字段
         if object_type == ObjectType.DASHBOARD and hasattr(canvas, "filters"):
-            base_data["filters"] = canvas.filters or []
+            base_data["filters"] = migrate_filters_payload(canvas.filters or [])[0]
 
         if object_type == ObjectType.NETWORK_TOPOLOGY:
             base_data["base_url"] = canvas.base_url

@@ -70,10 +70,11 @@ interface SortableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
 
 interface ScannedParam {
   key: string;
-  type: 'string' | 'stringList' | 'timeRange';
+  type: 'string' | 'timeRange';
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;
+  sampleInputConfig?: UnifiedFilterDefinition['inputConfig'];
 }
 
 const SortableRow: React.FC<SortableRowProps> = (props) => {
@@ -198,6 +199,8 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
         defaultValue: param.sampleDefaultValue,
         order: initialDefinitions.length + index,
         enabled: true,
+        inputConfig: param.sampleInputConfig,
+        inputMode: param.sampleInputConfig?.control,
       };
     });
 
@@ -266,18 +269,46 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     if (editingFilterId) {
       const optionValues = options.map((item) => item.value);
       setDefinitions(
-        definitions.map((d) =>
-          d.id === editingFilterId
-            ? sanitizeUnifiedFilterDefinition({
-              ...d,
-              options,
-              defaultValue:
-                 typeof d.defaultValue === 'string' && !optionValues.includes(d.defaultValue)
-                   ? null
-                   : d.defaultValue,
-            })
-            : d
-        )
+        definitions.map((d) => {
+          if (d.id !== editingFilterId) return d;
+          const isMultiple = Boolean(
+            d.inputConfig
+            && d.inputConfig.control !== 'input'
+            && d.inputConfig.multiple,
+          );
+          let nextDefault: FilterValue = d.defaultValue ?? null;
+          if (isMultiple) {
+            const asList = Array.isArray(d.defaultValue)
+              ? d.defaultValue
+              : (typeof d.defaultValue === 'string' || typeof d.defaultValue === 'number')
+                ? [d.defaultValue]
+                : null;
+            nextDefault = Array.isArray(asList)
+              ? asList.filter((item) => optionValues.includes(item as string))
+              : null;
+            if (Array.isArray(nextDefault) && nextDefault.length === 0) {
+              nextDefault = null;
+            }
+          } else if (
+            typeof d.defaultValue === 'string' &&
+            !optionValues.includes(d.defaultValue)
+          ) {
+            nextDefault = null;
+          } else if (Array.isArray(d.defaultValue)) {
+            nextDefault = d.defaultValue[0] ?? null;
+            if (
+              typeof nextDefault === 'string' &&
+              !optionValues.includes(nextDefault)
+            ) {
+              nextDefault = null;
+            }
+          }
+          return sanitizeUnifiedFilterDefinition({
+            ...d,
+            options,
+            defaultValue: nextDefault,
+          });
+        })
       );
     }
     setEditingFilterId(null);
@@ -398,11 +429,36 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
         const currentMode = normalizeUnifiedFilterInputMode(record.inputMode);
 
         if (currentMode === 'select') {
+          const isMultiple = Boolean(
+            record.inputConfig
+            && record.inputConfig.control !== 'input'
+            && record.inputConfig.multiple,
+          );
+          const selectValue = Array.isArray(value)
+            ? value
+            : (typeof value === 'string' || typeof value === 'number')
+              ? (isMultiple ? [value] : value)
+              : undefined;
           return (
             <div className="flex items-center gap-2">
               <Select
-                value={(typeof value === 'string' || typeof value === 'number') ? value : undefined}
-                onChange={(nextValue) => handleFieldChange(record.id, 'defaultValue', nextValue ?? null)}
+                value={selectValue}
+                mode={isMultiple ? 'multiple' : undefined}
+                onChange={(nextValue) => {
+                  if (isMultiple) {
+                    if (Array.isArray(nextValue)) {
+                      handleFieldChange(record.id, 'defaultValue', nextValue);
+                      return;
+                    }
+                    if (typeof nextValue === 'string' || typeof nextValue === 'number') {
+                      handleFieldChange(record.id, 'defaultValue', [nextValue]);
+                      return;
+                    }
+                    handleFieldChange(record.id, 'defaultValue', null);
+                    return;
+                  }
+                  handleFieldChange(record.id, 'defaultValue', nextValue ?? null);
+                }}
                 placeholder={record.options?.length ? t('common.selectTip') : t('dashboard.configOptionsFirst')}
                 allowClear
                 disabled={!record.options?.length}

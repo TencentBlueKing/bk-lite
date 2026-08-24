@@ -51,11 +51,11 @@ dashboards:
           selectedFields:
           - host_count
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
           dataSourceParams:
           - &id001
             name: instance_ids
-            type: stringList
+            type: string
             value: []
             alias_name: 主机
             filterType: filter
@@ -93,7 +93,7 @@ dashboards:
           unitId: percent
           decimalPlaces: 1
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
           dataSourceParams:
           - *id001
           thresholdColors: *id002
@@ -113,7 +113,7 @@ dashboards:
           unitId: percent
           decimalPlaces: 1
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
           dataSourceParams:
           - *id001
           thresholdColors:
@@ -139,7 +139,7 @@ dashboards:
           unitId: percent
           decimalPlaces: 1
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
           dataSourceParams:
           - *id001
           thresholdColors:
@@ -166,7 +166,7 @@ dashboards:
           unitId: percent
           decimalPlaces: 1
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
           dataSourceParams:
           - *id001
           thresholdColors: &id003
@@ -193,7 +193,7 @@ dashboards:
           unitId: percent
           decimalPlaces: 1
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
           dataSourceParams:
           - *id001
           thresholdColors: *id003
@@ -221,7 +221,7 @@ dashboards:
           chartType: line
           dataSource: 主机指标趋势::monitor/get_host_metric_range
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
             time__timeRange: true
           dataSourceParams:
           - *id001
@@ -280,7 +280,7 @@ dashboards:
           chartType: line
           dataSource: 主机指标趋势::monitor/get_host_metric_range
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
             time__timeRange: true
           dataSourceParams:
           - *id001
@@ -334,7 +334,7 @@ dashboards:
           chartType: line
           dataSource: 主机指标趋势::monitor/get_host_metric_range
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
             time__timeRange: true
           dataSourceParams:
           - *id001
@@ -404,7 +404,7 @@ dashboards:
           unitId: percent
           decimalPlaces: 1
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
           dataSourceParams:
           - *id001
           - name: metric_type
@@ -441,7 +441,7 @@ dashboards:
           unitId: percent
           decimalPlaces: 1
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
           dataSourceParams:
           - *id001
           - name: metric_type
@@ -472,7 +472,7 @@ dashboards:
           unitId: percent
           decimalPlaces: 1
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
           dataSourceParams:
           - *id001
           - name: metric_type
@@ -511,7 +511,7 @@ dashboards:
           chartType: line
           dataSource: 主机指标趋势::monitor/get_host_metric_range
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
             time__timeRange: true
           dataSourceParams:
           - *id001
@@ -564,7 +564,7 @@ dashboards:
           chartType: line
           dataSource: 主机指标趋势::monitor/get_host_metric_range
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
             time__timeRange: true
           dataSourceParams:
           - *id001
@@ -618,7 +618,7 @@ dashboards:
           chartType: line
           dataSource: 主机指标趋势::monitor/get_host_metric_range
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
             time__timeRange: true
           dataSourceParams:
           - *id001
@@ -684,7 +684,7 @@ dashboards:
           chartType: line
           dataSource: 主机指标趋势::monitor/get_host_metric_range
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
             time__timeRange: true
           dataSourceParams:
           - *id001
@@ -738,7 +738,7 @@ dashboards:
           chartType: line
           dataSource: 主机指标趋势::monitor/get_host_metric_range
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
             time__timeRange: true
           dataSourceParams:
           - *id001
@@ -792,7 +792,7 @@ dashboards:
           chartType: line
           dataSource: 主机指标趋势::monitor/get_host_metric_range
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
             time__timeRange: true
           dataSourceParams:
           - *id001
@@ -858,7 +858,7 @@ dashboards:
           chartType: line
           dataSource: 主机指标趋势::monitor/get_host_metric_range
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
             time__timeRange: true
           dataSourceParams:
           - *id001
@@ -912,7 +912,7 @@ dashboards:
           chartType: line
           dataSource: 主机指标趋势::monitor/get_host_metric_range
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
             time__timeRange: true
           dataSourceParams:
           - *id001
@@ -965,7 +965,7 @@ dashboards:
           chartType: line
           dataSource: 主机指标趋势::monitor/get_host_metric_range
           filterBindings:
-            instance_ids__stringList: true
+            instance_ids__string: true
             time__timeRange: true
           dataSourceParams:
           - *id001
@@ -1014,10 +1014,10 @@ dashboards:
     - 主机资源使用率Top10::monitor/get_host_resource_top
     namespace_keys: []
   filters:
-  - id: instance_ids__stringList
+  - id: instance_ids__string
     key: instance_ids
     name: 主机
-    type: stringList
+    type: string
     defaultValue: []
     order: 0
     enabled: true
@@ -1061,7 +1061,7 @@ datasources:
   is_active: true
   params:
   - name: instance_ids
-    type: stringList
+    type: string
     value: []
     alias_name: 主机
     filterType: filter
@@ -1130,7 +1130,7 @@ datasources:
   is_active: true
   params:
   - name: instance_ids
-    type: stringList
+    type: string
     value: []
     alias_name: 主机
     filterType: filter
@@ -1201,7 +1201,7 @@ datasources:
         - label: 磁盘使用率
           value: disk
   - name: instance_ids
-    type: stringList
+    type: string
     value: []
     alias_name: 主机
     filterType: filter

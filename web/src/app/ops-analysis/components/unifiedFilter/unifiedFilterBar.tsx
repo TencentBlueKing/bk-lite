@@ -206,7 +206,6 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         );
 
       case 'string':
-      case 'stringList':
       default: {
         if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'organization') {
           return (
@@ -222,22 +221,10 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           );
         }
 
-        const isStringList = definition.type === 'stringList';
         const inputConfig = getFilterInputConfig(definition);
-        const selectConfig = isStringList
-          ? {
-            ...(inputConfig && inputConfig.control !== 'input'
-              ? inputConfig
-              : {
-                control: 'select' as const,
-                optionsSource: { type: 'static' as const, staticItems: [] },
-              }),
-            control: 'select' as const,
-            multiple: inputConfig && 'multiple' in inputConfig
-              ? Boolean(inputConfig.multiple)
-              : true,
-          }
-          : inputConfig;
+        const isMultiple = Boolean(
+          inputConfig && inputConfig.control !== 'input' && inputConfig.multiple,
+        );
 
         const fallbackInput = (
           <Input
@@ -259,11 +246,11 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
 
         return (
           <ParamInputControl
-            inputConfig={selectConfig}
+            inputConfig={inputConfig}
             fallback={fallbackInput}
             value={controlValue}
             onChange={(nextValue) => {
-              if (isStringList) {
+              if (isMultiple) {
                 if (Array.isArray(nextValue)) {
                   handleLocalValueChange(definition.id, nextValue);
                   return;
