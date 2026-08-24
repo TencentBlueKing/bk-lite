@@ -8,9 +8,7 @@ from django_celery_beat.models import CrontabSchedule, IntervalSchedule, Periodi
 from apps.core.utils import celery_utils as celery_utils_module
 from apps.core.utils.celery_utils import CeleryUtils, crontab_format
 
-pytestmark = pytest.mark.django_db
-
-
+@pytest.mark.unit
 class TestCrontabFormat:
     def test_cycle(self):
         assert crontab_format("cycle", "5") == (True, "*/5 * * * *")
@@ -30,6 +28,8 @@ class TestCrontabFormat:
             crontab_format("nope", "1")
 
 
+@pytest.mark.integration
+@pytest.mark.django_db
 class TestGetOrCreateCrontabSchedule:
     def test_creates_and_reuses(self):
         s1 = CeleryUtils.get_or_create_crontab_schedule("0", "1", "*", "*", "*")
@@ -46,6 +46,8 @@ class TestGetOrCreateCrontabSchedule:
         assert result.id == sched.id
 
 
+@pytest.mark.integration
+@pytest.mark.django_db
 class TestPeriodicTaskCRUD:
     def test_create_with_crontab(self, mocker):
         info = mocker.patch.object(celery_utils_module.logger, "info")

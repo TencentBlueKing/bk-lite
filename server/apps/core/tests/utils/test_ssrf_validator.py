@@ -17,6 +17,8 @@ import pytest
 from apps.core.utils import ssrf_validator as ssrf_validator_module
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 
+pytestmark = pytest.mark.unit
+
 # ===========================================================================
 # validate() 严格模式测试
 # ===========================================================================
