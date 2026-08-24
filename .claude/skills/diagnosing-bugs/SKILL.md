@@ -11,16 +11,10 @@ When exploring the codebase, read `CONTEXT.md` (if it exists) to get a clear men
 
 ### Architecture evidence routing
 
-If the failing path is cross-module, async/concurrent, stateful, performance-sensitive, involves an
-external side effect, or is still unclear, follow the repository guide to locate the affected module's
-architecture artifacts. Use the current architecture and relevant workflow/data-flow/lifecycle as a
-map for choosing the feedback-loop seam and identifying observations to capture. Read only the affected
-module and directly involved neighbours.
-
-Do not read the target architecture before the feedback loop and current path are understood: it can
-anchor diagnosis on a proposed future design. A diagram edge is a lead to verify in code, configuration,
-runtime evidence, or tests—not a root-cause conclusion and not a substitute for the red-capable command
-required below. A tightly reproduced local defect may skip architecture artifacts entirely.
+For BK-Lite `server/` defects, read
+[`docs/design-docs/agent-architecture-evidence.md`](../../../docs/design-docs/agent-architecture-evidence.md)
+when its repair/diagnosis trigger criteria match. Use the selected current diagram and core flow to
+choose a feedback-loop seam; do not read a target diagram before the current path is understood.
 
 ## Phase 1 — Build a feedback loop
 

@@ -9,21 +9,10 @@ Design **deep modules**: a lot of behaviour behind a small interface, placed at 
 
 ## Repository architecture evidence
 
-When the repository contains module architecture artifacts, use them as scoped evidence rather than
-starting from a blind scan:
-
-1. Follow the repository guide to locate the affected module from its architecture index or roadmap.
-   Read only that module's report and current architecture first.
-2. Read the relevant workflow, data-flow, sequence, or lifecycle specification when the design touches
-   execution order, facts and projections, async/concurrency, state changes, capacity, or external side
-   effects.
-3. Treat a target architecture as a prior proposal, not a requirement. Compare it with at least one
-   independently reasoned alternative before selecting an interface or seam.
-4. Trace important nodes and edges back to current code, configuration, and tests. Record stale or
-   unsupported diagram claims instead of designing around them.
-
-Use diagrams to reduce navigation cost and expose cross-module effects; do not use them as proof that
-an import, runtime call, transaction, ordering guarantee, or ownership rule exists.
+For BK-Lite `server/` module design, read
+[`docs/design-docs/agent-architecture-evidence.md`](../../../docs/design-docs/agent-architecture-evidence.md)
+when its trigger criteria match. It explains how to select only the affected current architecture and
+core flow, verify them against code, and treat target diagrams as proposals rather than requirements.
 
 ## Glossary
 
