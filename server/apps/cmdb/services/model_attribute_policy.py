@@ -4,6 +4,7 @@
 避免改变现有 HTTP、OpenAPI、NATS、内部服务和测试 patch 接缝。
 """
 
+from collections.abc import Callable
 from typing import Any
 
 from apps.cmdb.constants.constants import ENUM_SELECT_MODE_DEFAULT
@@ -32,13 +33,29 @@ class ModelAttributePolicy:
 
     @staticmethod
     def sanitize_attr_default_value(attr: dict, log_context: str = "") -> dict:
+        return ModelAttributePolicy._sanitize_attr_default_value(
+            attr,
+            log_context,
+            ModelAttributePolicy._normalize_default_value,
+            ModelAttributePolicy.resolve_runtime_enum_options,
+            logger,
+        )
+
+    @staticmethod
+    def _sanitize_attr_default_value(
+        attr: dict,
+        log_context: str,
+        normalize_default_value: Callable[[Any], list[str]],
+        resolve_runtime_enum_options: Callable[[dict], list[dict]],
+        active_logger: Any,
+    ) -> dict:
         item = dict(attr)
-        normalized = ModelAttributePolicy._normalize_default_value(item.get("default_value"))
+        normalized = normalize_default_value(item.get("default_value"))
         if item.get("attr_type") != "enum":
             item["default_value"] = normalized
             return item
 
-        runtime_options = ModelAttributePolicy.resolve_runtime_enum_options(item)
+        runtime_options = resolve_runtime_enum_options(item)
         valid_ids = {str(option.get("id")).strip() for option in runtime_options if isinstance(option, dict) and str(option.get("id", "")).strip()}
         sanitized = [value for value in normalized if value in valid_ids]
         select_mode = item.get("enum_select_mode", ENUM_SELECT_MODE_DEFAULT)
@@ -47,7 +64,7 @@ class ModelAttributePolicy:
 
         removed_values = [value for value in normalized if value not in sanitized]
         if removed_values:
-            logger.info(
+            active_logger.info(
                 "[ModelDefaultValue] pruned stale defaults context=%s attr_id=%s removed=%s rule_type=%s",
                 log_context or "runtime",
                 item.get("attr_id"),
@@ -61,6 +78,10 @@ class ModelAttributePolicy:
     @staticmethod
     def normalize_enum_public_binding(attr_info: dict, current_attr: dict | None = None) -> dict:
         """规范化 enum 公共选项库绑定信息并回填 option 快照。"""
+        return ModelAttributePolicy._normalize_enum_public_binding(attr_info, current_attr, logger)
+
+    @staticmethod
+    def _normalize_enum_public_binding(attr_info: dict, current_attr: dict | None, active_logger: Any) -> dict:
         if attr_info.get("attr_type") != "enum":
             return attr_info
 
@@ -86,11 +107,9 @@ class ModelAttributePolicy:
             attr_info["option"] = library.options
             attr_info["public_library_id"] = public_library_id
 
-            logger.info(
-                "[EnumPublicBinding] normalized attr_id=%s, enum_rule_type=%s, public_library_id=%s",
-                attr_info.get("attr_id"),
-                enum_rule_type,
-                public_library_id,
+            active_logger.info(
+                f"[EnumPublicBinding] normalized attr_id={attr_info.get('attr_id')}, "
+                f"enum_rule_type={enum_rule_type}, public_library_id={public_library_id}"
             )
         else:
             attr_info["enum_rule_type"] = "custom"
@@ -140,6 +159,10 @@ class ModelAttributePolicy:
     @staticmethod
     def resolve_runtime_enum_options(attr: dict) -> list[dict]:
         """解析枚举运行时选项，公共库不可用时回退字段快照。"""
+        return ModelAttributePolicy._resolve_runtime_enum_options(attr, logger)
+
+    @staticmethod
+    def _resolve_runtime_enum_options(attr: dict, active_logger: Any) -> list[dict]:
         if attr.get("attr_type") != "enum":
             return []
 
@@ -160,9 +183,8 @@ class ModelAttributePolicy:
             runtime_options = library.options
             return runtime_options if isinstance(runtime_options, list) else []
         except Exception as e:
-            logger.warning(
-                "[EnumPublicBinding] resolve_runtime_enum_options fallback to snapshot, public_library_id=%s, error=%s",
-                public_library_id,
-                e,
+            active_logger.warning(
+                f"[EnumPublicBinding] resolve_runtime_enum_options fallback to snapshot, "
+                f"public_library_id={public_library_id}, error={e}"
             )
             return option if isinstance(option, list) else []

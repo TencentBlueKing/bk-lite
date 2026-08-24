@@ -151,13 +151,39 @@ class ModelManage(object):
     def _clone_options(option: list[dict]) -> list[dict]:
         return [dict(item) for item in option]
 
-    _normalize_default_value = staticmethod(ModelAttributePolicy._normalize_default_value)
-    sanitize_attr_default_value = staticmethod(ModelAttributePolicy.sanitize_attr_default_value)
-    normalize_enum_public_binding = staticmethod(ModelAttributePolicy.normalize_enum_public_binding)
-    validate_enum_rule_immutable = staticmethod(ModelAttributePolicy.validate_enum_rule_immutable)
-    ensure_enum_select_mode = staticmethod(ModelAttributePolicy.ensure_enum_select_mode)
-    validate_enum_select_mode_immutable = staticmethod(ModelAttributePolicy.validate_enum_select_mode_immutable)
-    resolve_runtime_enum_options = staticmethod(ModelAttributePolicy.resolve_runtime_enum_options)
+    @staticmethod
+    def _normalize_default_value(raw_value: Any) -> list[str]:
+        return ModelAttributePolicy._normalize_default_value(raw_value)
+
+    @staticmethod
+    def sanitize_attr_default_value(attr: dict, log_context: str = "") -> dict:
+        return ModelAttributePolicy._sanitize_attr_default_value(
+            attr,
+            log_context,
+            ModelManage._normalize_default_value,
+            ModelManage.resolve_runtime_enum_options,
+            logger,
+        )
+
+    @staticmethod
+    def normalize_enum_public_binding(attr_info: dict, current_attr: dict | None = None) -> dict:
+        return ModelAttributePolicy._normalize_enum_public_binding(attr_info, current_attr, logger)
+
+    @staticmethod
+    def validate_enum_rule_immutable(current_attr: dict, incoming_attr: dict) -> None:
+        return ModelAttributePolicy.validate_enum_rule_immutable(current_attr, incoming_attr)
+
+    @staticmethod
+    def ensure_enum_select_mode(attr_info: dict) -> dict:
+        return ModelAttributePolicy.ensure_enum_select_mode(attr_info)
+
+    @staticmethod
+    def validate_enum_select_mode_immutable(current_attr: dict, incoming_attr: dict) -> None:
+        return ModelAttributePolicy.validate_enum_select_mode_immutable(current_attr, incoming_attr)
+
+    @staticmethod
+    def resolve_runtime_enum_options(attr: dict) -> list[dict]:
+        return ModelAttributePolicy._resolve_runtime_enum_options(attr, logger)
 
     @staticmethod
     def _normalize_attr_constraints(attrs: list[dict]) -> list[dict]:
