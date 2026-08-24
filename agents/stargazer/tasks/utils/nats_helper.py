@@ -11,7 +11,6 @@ import asyncio
 import json
 import os
 import time
-import traceback
 from collections import deque
 from typing import Any, Dict, Iterable, Iterator
 
@@ -166,7 +165,13 @@ async def publish_callback_to_nats(result: Dict[str, Any], params: Dict[str, Any
         await nats_publish(subject, payload)
         logger.debug(f"[NATS Helper] Published callback to {subject} for task {task_id}")
     except Exception as err:
-        logger.error(f"[NATS Helper] Failed to publish callback for task {task_id}: {err}\n{traceback.format_exc()}")
+        logger.exception(
+            "event=callback_publish_failed task_id=%s subject=%s "
+            "failed_stage=callback_publish error_type=%s",
+            task_id,
+            subject,
+            type(err).__name__,
+        )
         raise
 
 
@@ -182,7 +187,13 @@ async def publish_credential_result_to_nats(result: Dict[str, Any], params: Dict
         await nats_publish(subject, payload)
         logger.debug(f"[NATS Helper] Published credential result to {subject} for task {task_id}")
     except Exception as err:
-        logger.error(f"[NATS Helper] Failed to publish credential result for task {task_id}: {err}\n{traceback.format_exc()}")
+        logger.exception(
+            "event=credential_result_publish_failed task_id=%s subject=%s "
+            "failed_stage=credential_result_publish error_type=%s",
+            task_id,
+            subject,
+            type(err).__name__,
+        )
         raise
 
 
