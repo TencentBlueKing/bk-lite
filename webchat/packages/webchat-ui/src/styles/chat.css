@@ -343,3 +343,136 @@
   font-size: 15px;
   letter-spacing: 0.3px;
 }
+
+/* Process rail: thinking + tool steps (scoped names to avoid host leakage) */
+.webchat-thinking-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    var(--color-text-3, #7588a3) 0%,
+    var(--color-text-1, #1e252e) 46%,
+    var(--color-text-3, #7588a3) 100%
+  );
+  background-size: 220% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: webchat-shimmer 1.8s ease-in-out infinite;
+}
+
+.webchat-thinking-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.webchat-thinking-dots span {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--color-primary, #155AEF);
+  animation: webchat-dot 1.2s ease-in-out infinite;
+}
+
+.webchat-thinking-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.webchat-thinking-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.webchat-thinking-caret {
+  display: inline-block;
+  width: 1.5px;
+  height: 0.85em;
+  margin-left: 3px;
+  vertical-align: -1px;
+  background: var(--color-text-3, #7588a3);
+  animation: webchat-caret 1s steps(1) infinite;
+}
+
+.webchat-thinking-scroll {
+  max-height: 9rem;
+  overflow-y: auto;
+  padding: 0 0 2px 10px;
+}
+
+.webchat-thinking-scroll.is-live {
+  mask-image: linear-gradient(to bottom, transparent, #000 18px);
+}
+
+.webchat-fold {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms ease-out;
+}
+
+.webchat-fold.is-open {
+  grid-template-rows: 1fr;
+}
+
+.webchat-fold-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.webchat-tool-row {
+  animation: webchat-process-in 180ms ease-out;
+}
+
+@keyframes webchat-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -20% 0;
+  }
+}
+
+@keyframes webchat-dot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.75);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes webchat-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes webchat-process-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .webchat-thinking-shimmer,
+  .webchat-thinking-caret,
+  .webchat-thinking-dots span,
+  .webchat-tool-row,
+  .webchat-fold {
+    animation: none;
+    transition: none;
+  }
+
+  .webchat-thinking-shimmer {
+    color: var(--color-text-3, #7588a3);
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+  }
+}

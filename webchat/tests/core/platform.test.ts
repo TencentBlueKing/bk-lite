@@ -13,6 +13,7 @@ import {
   mapPlatformSessions,
   readDockCollapsed,
   resolvePlatformSelection,
+  shouldFetchPlatformMessages,
   unwrapPlatformPayload,
   writeDockCollapsed,
 } from '../../packages/webchat-core/src/platform';
@@ -133,6 +134,46 @@ test('maps published platform skill channels and restores last selection', () =>
     resolvePlatformSelection(apps, sessions, { appId: 'missing', sessionId: 'gone' }),
     { app: apps[0], sessionId: 's-new' }
   );
+  assert.deepEqual(
+    resolvePlatformSelection([apps[0]], sessions, { appId: '1', sessionId: 's-old' }),
+    { app: apps[0], sessionId: 's-new' }
+  );
+});
+
+test('draft sessions do not refetch history; clicking the current session does not either', () => {
+  const sessions = [{ id: 's-real' }];
+  assert.equal(
+    shouldFetchPlatformMessages({
+      sessionId: 'session_1',
+      loadedSessionId: null,
+      sessions,
+    }),
+    false
+  );
+  assert.equal(
+    shouldFetchPlatformMessages({
+      sessionId: 's-real',
+      loadedSessionId: 's-real',
+      sessions,
+    }),
+    false
+  );
+  assert.equal(
+    shouldFetchPlatformMessages({
+      sessionId: 's-real',
+      loadedSessionId: 'session_1',
+      sessions,
+    }),
+    true
+  );
+  assert.equal(
+    shouldFetchPlatformMessages({
+      sessionId: 'session_1',
+      loadedSessionId: 'session_1',
+      sessions: [{ id: 'session_1' }],
+    }),
+    false
+  );
 });
 
 test('maps history messages to readable text, including object payloads', () => {
@@ -210,6 +251,25 @@ test('drops protocol-only AG-UI dumps and keeps assistant text from mixed dumps'
     },
   ]);
   assert.equal(mixed[0].content, '工作负载正常');
+});
+
+test('history replay keeps THINKING text on metadata, not in the answer bubble', () => {
+  const replayed = mapPlatformMessages([
+    {
+      id: 13,
+      conversation_role: 'bot',
+      conversation_content: JSON.stringify([
+        { type: 'RUN_STARTED' },
+        { type: 'THINKING', delta: 'Guang' },
+        { type: 'THINKING', delta: 'zhou is the capital' },
+        { type: 'TEXT_MESSAGE_CONTENT', delta: '广州是广东省省会' },
+        { type: 'RUN_FINISHED' },
+      ]),
+    },
+  ]);
+  assert.equal(replayed[0].content, '广州是广东省省会');
+  assert.equal(replayed[0].metadata?.thinking, 'Guangzhou is the capital');
+  assert.equal(replayed[0].metadata?.isThinking, false);
 });
 
 test('planned execution CUSTOM events stay out of chat bubbles', () => {

@@ -696,7 +696,8 @@ export default function RiskPendingPage() {
                   setHostIdFilter(undefined);
                   setFilters((f) => ({ ...f, host_name: v || undefined }));
                 }}
-                className="w-[180px]"
+                className="w-[200px]"
+                enterButton
               />
               <Select
                 placeholder={t('patchManager.osType')}
@@ -723,6 +724,7 @@ export default function RiskPendingPage() {
                 }}
                 onSearch={(v) => { setFilters((f) => ({ ...f, patch_name: v || undefined })); }}
                 className="w-[200px]"
+                enterButton
               />
               <Select
                 placeholder={t('patchManager.severity')}
@@ -748,12 +750,15 @@ export default function RiskPendingPage() {
               }}
               onSearch={(v) => { setFilters((f) => ({ ...f, baseline_name: v || undefined })); }}
               className="w-[200px]"
+              enterButton
             />
           )}
           <Select
             placeholder={t('patchManager.risk.remediationStatus')}
             className="w-[130px]"
             allowClear
+            showSearch
+            optionFilterProp="label"
             value={filters.remediation}
             onChange={(v) => setFilters((f) => ({ ...f, remediation: v }))}
             options={(['unplanned', 'scheduled', 'installing', 'pending_reboot', 'rebooting', 'verifying', 'failed'] as const).map((value) => ({ label: t(`patchManager.remediationStatus.${value}`), value }))}

@@ -153,7 +153,8 @@ class Command(BaseCommand):
 
         password_file = os.getenv("BK_INIT_ADMIN_PASSWORD_FILE", "").strip()
         if not password_file:
-            raise CommandError("初始化管理员必须配置 BK_INIT_ADMIN_PASSWORD 或 BK_INIT_ADMIN_PASSWORD_FILE")
+            logger.warning("未配置管理员引导凭据，按产品默认使用内置初始密码；请登录后尽快修改")
+            return "password"
         try:
             with Path(password_file).open(encoding="utf-8") as file:
                 password = file.read(_ADMIN_PASSWORD_FILE_MAX_CHARS + 1)

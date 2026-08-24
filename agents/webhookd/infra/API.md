@@ -57,7 +57,11 @@ Content-Type: application/json
   "image_registry_prefix": "bk-lite.tencentcloudcr.com/bklite",
   "runtime_profile": "standard",
   "host_log_path": "/var/log/pods",
-  "docker_container_log_path": "/var/lib/docker/containers"
+  "docker_container_log_path": "/var/lib/docker/containers",
+  "tolerations": [
+    {"key": "node-role.kubernetes.io/control-plane", "effect": "NoSchedule"},
+    {"key": "dedicated", "value": "edge", "effect": "NoSchedule"}
+  ]
 }
 ```
 
@@ -77,6 +81,7 @@ Content-Type: application/json
 | docker_container_log_path | string | 否 | Docker 容器原始日志目录绝对路径。仅当节点仍使用 Docker 且需要额外挂载容器原始日志目录时填写，常见值为 `/var/lib/docker/containers` |
 | namespace_patterns | string[] | 否 | 仅 `type=log` 时生效。采集 Namespace 通配列表，语法为 glob（`*` / `?`），仅允许小写字母、数字、`-`、`.`、`*`、`?`。留空或省略表示全部 Namespace |
 | pod_patterns | string[] | 否 | 仅 `type=log` 时生效。采集 Pod 名称通配列表，规则同 `namespace_patterns`。与 Namespace 为「且」关系；两者都空时不下发 `include_paths_glob_patterns`，保持全量采集 |
+| tolerations | object[] | 否 | DaemonSet 的污点容忍清单，仅注入节点级 DaemonSet，Deployment 一律遵循集群默认调度。每项仅允许 `key`（必填，K8s qualified name）、`effect`（必填，`NoSchedule` 或 `NoExecute`）、`value`（可选：提供渲染为 `operator: Equal`，省略渲染为限定 key 的 `operator: Exists`）；最多 16 项，不允许无 key 的通配容忍，非法输入整单拒绝。省略或显式 `null` 时默认注入 `node-role.kubernetes.io/control-plane:NoSchedule` 与 `node-role.kubernetes.io/master:NoSchedule` 两条精确容忍；显式 `[]` 表示不容忍任何污点。`value` 为空串表示精确匹配空值污点（渲染为 `operator: Equal, value: ""`）。`key`/`value` 中不允许出现 `__`（模板占位符保留字）。注意：`type=resource` 模板没有 DaemonSet，清单照常校验但不会落地到任何 workload。单节点集群保留 control-plane 污点时中心组件会 Pending——按 Kubernetes 管理实践应由管理员移除该污点 |
 
 **成功响应**:
 ```json

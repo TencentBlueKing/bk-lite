@@ -344,13 +344,14 @@ class ImportExportAuthorizationService:
         if getattr(request.user, "is_superuser", False):
             return True
 
-        if (
-            object_type in cls.ORG_SCOPED_OBJECT_TYPES
-            and current_team
-            and hasattr(existing, "groups")
-            and current_team not in (getattr(existing, "groups", None) or [])
-        ):
-            return False
+        if object_type in cls.ORG_SCOPED_OBJECT_TYPES and current_team and hasattr(existing, "groups"):
+            if object_type == ObjectType.DATASOURCE:
+                from apps.operation_analysis.common.datasource_visibility import can_access_datasource_in_org
+
+                if not can_access_datasource_in_org(existing, int(current_team)):
+                    return False
+            elif current_team not in (getattr(existing, "groups", None) or []):
+                return False
 
         export_config = cls.EXPORT_PERMISSION_MAP[object_type]
         permission_key = export_config.get("permission_key")
@@ -422,6 +423,10 @@ class ImportExportAuthorizationService:
                 org_query = Q()
                 for group_id in group_ids or [current_team]:
                     org_query |= Q(groups__contains=int(group_id))
+                if object_type == ObjectType.DATASOURCE:
+                    from apps.operation_analysis.common.datasource_visibility import expand_datasource_org_query
+
+                    org_query = expand_datasource_org_query(org_query, include_all_builtins=False)
                 queryset = queryset.filter(org_query)
             return list(queryset.values_list("id", flat=True))
 

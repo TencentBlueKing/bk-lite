@@ -148,5 +148,8 @@ describe('ApmDataTable', () => {
     expect(APM_TABLE_COLUMN_WIDTHS.actionGroup).toBe(192);
     expect(APM_TABLE_COLUMN_WIDTHS.actionPair).toBe(160);
     expect(APM_TABLE_COLUMN_WIDTHS.singleAction).toBe(96);
+    expect(APM_TABLE_COLUMN_WIDTHS.traceId).toBe(288);
+    expect(APM_TABLE_COLUMN_WIDTHS.entryService).toBe(152);
+    expect(APM_TABLE_COLUMN_WIDTHS.resource).toBe(168);
   });
 });

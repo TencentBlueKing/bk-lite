@@ -108,8 +108,8 @@ describe('APM 调用链探索', () => {
     renderWithApmIntl(<ApmTracesPage />);
 
     expect((await screen.findAllByText('POST /pay')).length).toBeGreaterThan(0);
-    expect(screen.getByRole('columnheader', { name: '入口服务' })).not.toBeNull();
-    expect(screen.getByRole('columnheader', { name: 'Trace ID' })).not.toBeNull();
+    const columnHeaders = screen.getAllByRole('columnheader').map((header) => header.textContent);
+    expect(columnHeaders.indexOf('Trace ID')).toBeLessThan(columnHeaders.indexOf('入口服务'));
     expect(screen.queryByRole('columnheader', { name: '入口服务 / Trace ID' })).toBeNull();
     expect(screen.getByText('快速筛选')).not.toBeNull();
     expect(screen.getByText('耗时分布')).not.toBeNull();

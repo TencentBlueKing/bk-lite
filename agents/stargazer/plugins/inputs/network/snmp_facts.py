@@ -5,6 +5,7 @@
 
 import socket
 
+from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
 from plugins.inputs.network_topo.snmp_topo import SnmpTopo
 from pysnmp.hlapi.asyncio import (
     CommunityData,
@@ -92,8 +93,8 @@ class SnmpFacts:
         self.privacy = kwargs.get("privacy")
         self.authkey = kwargs.get("authkey")
         self.privkey = kwargs.get("privkey")
-        self.timeout = int(kwargs.get("timeout", 5))
-        self.retries = int(kwargs.get("retries", 2))
+        self.timeout = int(kwargs.get("timeout", 10))
+        self.retries = int(kwargs.get("retries", 1))
         self.snmp_port = int(kwargs.get("snmp_port", 161))  # 默认 SNMP 端口为 161
         # 支持 has_network_topo 和 topo 两个参数名，保持向后兼容
         self.has_network_topo = kwargs.get("has_network_topo", "False") == "True" or kwargs.get("topo", "False") == "true"
@@ -248,7 +249,7 @@ class SnmpFacts:
         """
         采集 SNMP 数据，包括系统信息、接口信息和 IP 信息。
         """
-        probe_timeout = min(self.timeout, 5)
+        probe_timeout = min(self.timeout, 10)
         snmp_auth = self._get_snmp_auth()
         engine = SnmpEngine()
         context = ContextData()
@@ -358,13 +359,13 @@ class SnmpFacts:
         from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 
         oid = DefineOid(dotprefix=True)
-        # access_probe：固定 5 秒超时、重试 2 次（与正式采集 timeout 解耦）
+        # access_probe：固定 10 秒超时、重试 1 次（与正式采集 timeout 解耦）
         engine = SnmpEngine()
         try:
             error_indication, error_status, _error_index, var_binds = await getCmd(
                 engine,
                 self._get_snmp_auth(),
-                self._transport_target(timeout=5, retries=2),
+                self._transport_target(timeout=10, retries=1),
                 ContextData(),
                 ObjectType(ObjectIdentity(oid.sysName.lstrip("."))),
                 lookupMib=False,
@@ -429,25 +430,32 @@ class SnmpFacts:
                             topo_data,
                             enabled_protocols=self.topology_protocols,
                         )
-                    except Exception:  # noqa
-                        import traceback
-
-                        logger.error(f"Network topology fact build failed: {traceback.format_exc()}")
+                    except Exception as error:  # noqa
+                        self._log_exception(error, level="warning")
                         model_data["network_topology_facts"] = []
-                    logger.info(f"Network topo collection completed, {len(topo_data)} records collected")
                 except Exception as topo_err:  # noqa
-                    import traceback
-
-                    logger.error(f"Network topo collection failed: {traceback.format_exc()}")
+                    self._log_exception(topo_err, level="warning")
                     # 拓扑采集失败不影响设备采集结果，返回空列表
                     model_data["network_topo"] = []
                     model_data["network_topology_facts"] = []
 
             inst_data = {"result": model_data, "success": True}
         except Exception as err:
-            import traceback
-
-            logger.error(f"snmp_facts collect error! {traceback.format_exc()}")
+            self._log_exception(err)
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         return inst_data
+
+    def _log_exception(self, error: BaseException, *, level: str = "error") -> None:
+        if not should_log_plugin_exception(self.kwargs):
+            return
+        log_plugin_exception(
+            logger,
+            error=error,
+            task_id=self.kwargs.get("collection_task_id"),
+            plugin_ref=self.kwargs.get("collection_plugin_ref"),
+            model_id=self.kwargs.get("model_id", "network"),
+            plugin_name=self.kwargs.get("plugin_name", "snmp_facts"),
+            target=self.host,
+            level=level,
+        )

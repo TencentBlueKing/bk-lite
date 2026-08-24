@@ -30,6 +30,12 @@ export interface AGUIConfig {
   debug?: boolean;
 }
 
+export interface ThinkingDeltaEvent {
+  type: 'THINKING';
+  delta: string;
+  timestamp?: number;
+}
+
 export type AGUIEvent =
   | TextMessageStartEvent
   | TextMessageContentEvent
@@ -37,6 +43,7 @@ export type AGUIEvent =
   | TextMessageEndEvent
   | ThinkingStartEvent
   | ThinkingEndEvent
+  | ThinkingDeltaEvent
   | RunStartedEvent
   | RunFinishedEvent
   | RunErrorEvent
@@ -128,6 +135,24 @@ function normalizeLegacyEvent(data: Record<string, unknown>): Record<string, unk
   return data;
 }
 
+function parseBkLiteThinkingEvent(data: Record<string, unknown>): AGUIEvent | null {
+  const type = data.type;
+  if (type === 'THINKING' || type === 'THINKING_TEXT_MESSAGE_CONTENT') {
+    return {
+      type: 'THINKING',
+      delta: data.delta == null ? '' : String(data.delta),
+      ...(typeof data.timestamp === 'number' ? { timestamp: data.timestamp } : {}),
+    };
+  }
+  if (type === 'THINKING_TEXT_MESSAGE_START') {
+    return { type: EventType.THINKING_START } as ThinkingStartEvent;
+  }
+  if (type === 'THINKING_TEXT_MESSAGE_END') {
+    return { type: EventType.THINKING_END } as ThinkingEndEvent;
+  }
+  return null;
+}
+
 /**
  * AG-UI Event Handler
  * Processes AG-UI protocol events and converts them to our message format
@@ -209,6 +234,10 @@ export class AGUIHandler {
    * Parse AG-UI event from SSE data
    */
   private parseAGUIEvent(data: Record<string, unknown>): AGUIEvent | null {
+    const thinkingEvent = parseBkLiteThinkingEvent(data);
+    if (thinkingEvent) {
+      return thinkingEvent;
+    }
     const candidate = normalizeLegacyEvent(data);
     const parsed = EventSchemas.safeParse(candidate);
 

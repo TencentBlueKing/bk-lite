@@ -54,9 +54,7 @@ class CollectionRequest:
                 {
                     "credential_id": credential.get("credential_id"),
                     "credential_version": credential.get("credential_version"),
-                    "target_host": (
-                        credential.get("target_host") or credential.get("host")
-                    ),
+                    "target_host": (credential.get("target_host") or credential.get("host")),
                 }
             )
         canonical = {
@@ -116,9 +114,7 @@ class CollectionRuntimeSettings:
         if self.lease_heartbeat_seconds <= 0:
             raise ValueError("lease_heartbeat_seconds must be greater than zero")
         if self.lease_heartbeat_seconds >= self.lease_ttl_seconds:
-            raise ValueError(
-                "lease_heartbeat_seconds must be less than lease_ttl_seconds"
-            )
+            raise ValueError("lease_heartbeat_seconds must be less than lease_ttl_seconds")
         if self.run_deadline_seconds < 0:
             raise ValueError("run_deadline_seconds cannot be negative")
 
@@ -132,10 +128,10 @@ class RunStateStore(Protocol):
         owner_id: str,
         ttl_seconds: float,
     ) -> LeaseAcquisition:
-        ...
+        raise NotImplementedError
 
     async def heartbeat(self, lease: RunLease, *, ttl_seconds: float) -> bool:
-        ...
+        raise NotImplementedError
 
     async def finish(
         self,
@@ -143,7 +139,7 @@ class RunStateStore(Protocol):
         status: RunStatus,
         summary: Mapping[str, Any] | None = None,
     ) -> bool:
-        ...
+        raise NotImplementedError
 
 
 @dataclass
@@ -172,14 +168,8 @@ class InMemoryRunStateStore:
         async with self._lock:
             now = time.monotonic()
             record = self._records.get(task_id)
-            if (
-                record
-                and record.status == RunStatus.RUNNING
-                and record.lease.expires_at > now
-            ):
-                return LeaseAcquisition(
-                    LeaseAcquireStatus.DUPLICATE_ACTIVE, record.lease
-                )
+            if record and record.status == RunStatus.RUNNING and record.lease.expires_at > now:
+                return LeaseAcquisition(LeaseAcquireStatus.DUPLICATE_ACTIVE, record.lease)
 
             # 薄租约：固定 fence=1 仅作回调身份，不做递增接管
             lease = RunLease(
@@ -207,11 +197,7 @@ class InMemoryRunStateStore:
             record = self._records.get(lease.task_id)
             if not record:
                 return False
-            if (
-                record.lease.owner_id != lease.owner_id
-                or record.lease.fence != lease.fence
-                or record.lease.attempt_id != lease.attempt_id
-            ):
+            if record.lease.owner_id != lease.owner_id or record.lease.fence != lease.fence or record.lease.attempt_id != lease.attempt_id:
                 return False
             # 结束后释放，允许同 task_id 下周期重新接纳
             self._records.pop(lease.task_id, None)
@@ -222,11 +208,7 @@ class InMemoryRunStateStore:
             record = self._records.get(lease.task_id)
             if not record or record.status != RunStatus.RUNNING:
                 return False
-            if (
-                record.lease.owner_id != lease.owner_id
-                or record.lease.fence != lease.fence
-                or record.lease.attempt_id != lease.attempt_id
-            ):
+            if record.lease.owner_id != lease.owner_id or record.lease.fence != lease.fence or record.lease.attempt_id != lease.attempt_id:
                 return False
             record.lease = RunLease(
                 task_id=lease.task_id,
@@ -335,8 +317,19 @@ class CollectionRuntime:
             self._active_runs = max(0, self._active_runs - 1)
 
     async def _run(self, request: CollectionRequest, lease: RunLease) -> None:
+        run_started_at = time.monotonic()
         status = RunStatus.COMPLETED
         summary: Mapping[str, Any] = {}
+        logger.info(
+            "event=collection_run_started %s " "plugin_ref=%s plugin_name=%s model_id=%s | " "任务开始 目标数=%s 凭据数=%s 租约=%s",
+            _run_log_identity(request),
+            request.plugin_ref,
+            request.params.get("plugin_name") or "-",
+            request.params.get("model_id") or "-",
+            len(request.targets),
+            len(request.credentials),
+            lease.fence,
+        )
         run_task = asyncio.current_task()
         heartbeat_task = asyncio.create_task(
             self._heartbeat_loop(lease, run_task),
@@ -370,15 +363,19 @@ class CollectionRuntime:
             except asyncio.CancelledError:
                 pass
             await self._state_store.finish(lease, status, summary)
+            duration_ms = round((time.monotonic() - run_started_at) * 1000, 2)
             logger.info(
-                "event=collection_run_terminal task_id=%s plugin_ref=%s "
-                "model_id=%s fence=%s status=%s summary=%s",
-                request.task_id,
+                "event=collection_run_terminal %s plugin_ref=%s "
+                "model_id=%s status=%s duration_ms=%s | "
+                "任务结束 最终状态=%s 总耗时=%sms 执行批次=%s",
+                _run_log_identity(request),
                 request.plugin_ref,
                 request.params.get("model_id") or "-",
-                lease.fence,
                 status.value,
-                summary,
+                duration_ms,
+                _run_status_zh(status),
+                duration_ms,
+                lease.fence,
             )
             await self._release_admission()
 
@@ -395,9 +392,7 @@ class CollectionRuntime:
         if pending:
             await asyncio.gather(*pending, return_exceptions=True)
 
-    async def _heartbeat_loop(
-        self, lease: RunLease, run_task: asyncio.Task | None
-    ) -> None:
+    async def _heartbeat_loop(self, lease: RunLease, run_task: asyncio.Task | None) -> None:
         while True:
             await asyncio.sleep(self._settings.lease_heartbeat_seconds)
             try:
@@ -428,17 +423,32 @@ class CollectionRuntime:
 
 def _redact_secrets(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return {
-            str(key): (
-                "<redacted>"
-                if str(key).lower() in SECRET_KEYS
-                else _redact_secrets(item)
-            )
-            for key, item in value.items()
-        }
+        return {str(key): ("<redacted>" if str(key).lower() in SECRET_KEYS else _redact_secrets(item)) for key, item in value.items()}
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_redact_secrets(item) for item in value]
     return value
+
+
+def _instance_id(params: Mapping[str, Any]) -> str:
+    tags = params.get("tags")
+    tagged_instance_id = tags.get("instance_id") if isinstance(tags, Mapping) else None
+    return str(params.get("instance_id") or tagged_instance_id or "-")
+
+
+def _run_log_identity(request: CollectionRequest) -> str:
+    instance_id = _instance_id(request.params)
+    if instance_id != "-":
+        return f"instance_id={instance_id}"
+    return f"task_id={request.task_id}"
+
+
+def _run_status_zh(status: RunStatus) -> str:
+    return {
+        RunStatus.COMPLETED: "完成",
+        RunStatus.COMPLETED_WITH_ERRORS: "部分失败",
+        RunStatus.FAILED: "失败",
+        RunStatus.ABANDONED: "已终止",
+    }.get(status, status.value)
 
 
 def _normalize_summary(value: Any) -> Mapping[str, Any]:

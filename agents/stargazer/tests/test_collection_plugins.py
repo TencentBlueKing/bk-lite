@@ -282,6 +282,37 @@ async def test_configuration_plugin_classifies_auth_failure_for_internal_rotatio
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error,expected_status,expected_code",
+    [
+        ("HCI TLS validation failed", CollectOutcomeStatus.UNREACHABLE, "tls_validation_failed"),
+        ("HCI product/API mismatch at public-key endpoint", CollectOutcomeStatus.FAILED, "product_api_mismatch"),
+    ],
+)
+async def test_configuration_plugin_preserves_hci_failure_classification(error, expected_status, expected_code):
+    class Service:
+        def __init__(self, params):
+            pass
+
+        async def collect(self):
+            return StructuredMetricsPayload(data={}, error=error)
+
+    outcome = await ConfigurationCollectionPlugin(service_factory=Service).collect(
+        "192.0.2.17",
+        {"credential_id": "credential-1"},
+        TargetCollectionContext(
+            task_id="config-hci-error",
+            plugin_ref="sangforhci.config",
+            fence=1,
+            params={"model_id": "sangforhci", "executor_type": "protocol"},
+        ),
+    )
+
+    assert outcome.status == expected_status
+    assert outcome.error_code == expected_code
+
+
+@pytest.mark.asyncio
 async def test_snmp_no_response_rotates_without_auth_cooldown():
     class Service:
         def __init__(self, params):

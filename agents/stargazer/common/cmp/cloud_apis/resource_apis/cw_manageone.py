@@ -64,19 +64,21 @@ def handle_request(method, url, **kwargs):
     try:
         resp = requests.request(method, url, **kwargs)
     except Exception:
-        logger.exception(f"请求失败,url:{url},method:{method},kwargs:{kwargs}")
+        logger.exception("请求失败,url:%s,method:%s", url, method)
         return {"result": False, "message": f"请求失败,url:{url},method:{method},kwargs:{kwargs}", "data": {}}
     if resp.status_code > 300:
-        logger.exception(
-            f"请求失败,url:{url},method:{method},kwargs:{kwargs},status_code:{resp.status_code}"
-            f"message:{resp.content.decode('utf-8')}"
+        logger.error(
+            "请求失败,url:%s,method:%s,status_code:%s",
+            url,
+            method,
+            resp.status_code,
         )
         return {
             "result": False,
             "message": f"请求错误,status_code:{resp.status_code},message:{resp.content.decode('utf-8')}",
             "data": {},
         }
-    logger.debug(f"请求成功,url:{url},method:{method},kwargs:{kwargs}")
+    logger.debug("请求成功,url:%s,method:%s", url, method)
     return {"result": True, "data": resp.json()}
 
 
@@ -116,7 +118,10 @@ class CwManageOne(object):
         if not resp["result"]:
             return ""
         auth_token = resp["data"].get("accessSession", "")
-        logger.debug(f"获取运维面token成功,auth_token:{auth_token}")
+        logger.debug(
+            "获取运维面token成功,token_present:%s",
+            bool(auth_token),
+        )
         return auth_token
 
     def __call__(self, *args, **kwargs):

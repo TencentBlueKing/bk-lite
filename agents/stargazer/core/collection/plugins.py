@@ -18,6 +18,8 @@ from core.collection.contracts import (
 )
 from core.collection.node_info_lookup import RunNodeInfoLookup
 from core.collection.runtime import CollectionRequest
+from core.logger import logger
+from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
 
 
 class ConfigurationCollectionPlugin:
@@ -147,6 +149,16 @@ class MonitorCollectionPlugin:
         try:
             metrics = await factory(params).collect()
         except Exception as error:  # noqa: BLE001 - 转为稳定领域错误
+            if should_log_plugin_exception(context.params):
+                log_plugin_exception(
+                    logger,
+                    error=error,
+                    task_id=context.task_id,
+                    plugin_ref=context.plugin_ref,
+                    model_id=context.params.get("model_id"),
+                    plugin_name=monitor_type,
+                    target=target,
+                )
             return _failure_outcome(str(error))
         if not metrics:
             return CollectOutcome(
@@ -240,6 +252,7 @@ def _target_params(
         params["host"] = params.pop("_validated_connect_host", "") or target
         params.setdefault("target_hostname", target)
     params["collection_task_id"] = context.task_id
+    params["collection_plugin_ref"] = context.plugin_ref
     params["collection_fence"] = context.fence
     return params
 
@@ -273,7 +286,13 @@ def _extract_collection_error(value: Any) -> str:
 
 def _failure_outcome(error: str, *, value: Any = None) -> CollectOutcome:
     normalized = str(error or "").lower()
-    if any(word in normalized for word in SNMP_NO_RESPONSE_WORDS):
+    if "tls validation failed" in normalized:
+        status = CollectOutcomeStatus.UNREACHABLE
+        error_code = "tls_validation_failed"
+    elif "product/api mismatch" in normalized:
+        status = CollectOutcomeStatus.FAILED
+        error_code = "product_api_mismatch"
+    elif any(word in normalized for word in SNMP_NO_RESPONSE_WORDS):
         status = CollectOutcomeStatus.RETRY_CREDENTIAL
         error_code = "credential_probe_no_response"
     elif any(word in normalized for word in AUTH_ERROR_WORDS):

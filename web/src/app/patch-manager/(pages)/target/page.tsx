@@ -813,6 +813,7 @@ export default function TargetPage() {
             onChange={(e) => setIpQuery(e.target.value)}
             onSearch={(v) => loadData(1, pagination.pageSize, { ip: v || null })}
             allowClear
+            enterButton
           />
           <Select
             placeholder={t('patchManager.targetPage.baseline')}
@@ -839,6 +840,8 @@ export default function TargetPage() {
               loadData(1, pagination.pageSize, { compliance_status: v || null });
             }}
             allowClear
+            showSearch
+            optionFilterProp="label"
             options={[
               ...(['compliant', 'non_compliant', 'pending', 'evaluating', 'failed', 'unknown', 'not_applicable', 'unconfigured'] as const).map((value) => ({ label: t(`patchManager.complianceStatus.${value}`), value })),
             ]}
@@ -1121,6 +1124,7 @@ export default function TargetPage() {
           onChange={(e) => setNodeSearch(e.target.value)}
           className="mb-3 w-[360px] max-w-full"
           allowClear
+          enterButton
         />
         <DualSelector
           rowKey="id"

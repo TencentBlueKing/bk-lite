@@ -6,11 +6,11 @@ import json
 import ntpath
 import posixpath
 import time
-import traceback
 from typing import Any, Dict, Optional
 
 from core.collection.contracts import AccessProbeResult, StructuredMetricsPayload
 from core.logger import logger
+from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
 from core.plugin.executor import PluginExecutor
 from core.plugin.yaml_reader import yaml_reader
 from plugins.base_utils import convert_to_prometheus_format
@@ -88,17 +88,19 @@ class CollectionService:
         Returns:
             采集结果（Prometheus 格式字符串 或 字典）
         """
-        logger.info(f"{'=' * 30}")
-        logger.info(f"🎯 Starting collection V2: model={self.model_id} Plugin: {self.plugin_name}")
-        if self.host:
-            logger.info(f"📍 Host: {self.host}")
-        else:
-            logger.info("📍 No host specified (cloud collection or default endpoint)")
-
         try:
             # 根据参数确定执行器类型（job 或 protocol）
             executor_type = self.params["executor_type"]
-            logger.info(f"🔧 Executor type: {executor_type}")
+            instance_id = self.params.get("instance_id", "")
+            logger.debug(
+                "start collect.  instance_id=%s task_id=%s model_id=%s plugin_name=%s target=%s executor=%s",
+                instance_id,
+                self.params.get("collection_task_id") or "-",
+                self.model_id,
+                self.plugin_name or "-",
+                self.host or "logical",
+                executor_type,
+            )
 
             prefer_enterprise = self._get_bool_param(self.params, "prefer_enterprise", True)
             strict_enterprise = self._get_bool_param(self.params, "strict_enterprise", False)
@@ -115,11 +117,6 @@ class CollectionService:
             executor_config = resolved_executor.executor_config
             plugin_resolution = resolved_executor.plugin_resolution
 
-            logger.info(
-                f"Plugin source selected: model_id={self.model_id}, selected_source={plugin_resolution.source}, "
-                f"selected_plugin_path={plugin_resolution.plugin_path}, has_fallback={plugin_resolution.has_oss_fallback}"
-            )
-
             # 执行单次采集
             executor = PluginExecutor(
                 self.model_id,
@@ -130,15 +127,8 @@ class CollectionService:
                 strict_enterprise=strict_enterprise,
             )
             result = await executor.execute()
-            logger.info(
-                "Plugin collection completed: model=%s, success=%s",
-                self.model_id,
-                result.get("success"),
-            )
 
             if self.params.get("callback_subject"):
-                logger.info("✅ Collection completed successfully (callback mode)")
-                logger.info("=" * 60)
                 return (
                     result.get("result", {})
                     if result.get("success")
@@ -191,28 +181,28 @@ class CollectionService:
             else:
                 final_result = await asyncio.to_thread(convert_to_prometheus_format, processed)
 
-            if result.get("success", True):
-                logger.info("✅ Collection completed successfully")
-            else:
-                logger.warning(
-                    "event=plugin_result_failed task_id=%s model_id=%s " "plugin_name=%s host=%s",
-                    self.params.get("collection_task_id") or "-",
-                    self.model_id,
-                    self.plugin_name or "-",
-                    self.host or "logical",
-                )
-            logger.info("=" * 60)
             return final_result
 
-        except FileNotFoundError as e:
-            logger.error(f"❌ YAML config not found: {e}")
-            logger.info(f"{'=' * 60}")
+        except FileNotFoundError as error:
+            self._log_plugin_exception(error)
             return self._generate_error_response(f"Plugin config not found for model '{self.model_id}'")
 
         except Exception as e:
-            logger.error(f"❌ Collection failed: {traceback.format_exc()}")
-            logger.info(f"{'=' * 60}")
+            self._log_plugin_exception(e)
             return self._generate_error_response(str(e))
+
+    def _log_plugin_exception(self, error: BaseException) -> None:
+        if not should_log_plugin_exception(self.params):
+            return
+        log_plugin_exception(
+            logger,
+            error=error,
+            task_id=self.params.get("collection_task_id"),
+            plugin_ref=self.params.get("collection_plugin_ref"),
+            model_id=self.model_id,
+            plugin_name=self.plugin_name,
+            target=self.host,
+        )
 
     async def probe(self) -> AccessProbeResult:
         """通过当前解析出的协议 Adapter 执行最小凭据感知预检。"""
@@ -248,8 +238,6 @@ class CollectionService:
 
         # 处理采集失败的情况
         if not result.get("success", True):
-            logger.warning(f"⚠️  Collection failed for {self.host or 'default endpoint'}")
-
             # 提取错误信息
             result_data = result.get("result", {})
             error_msg = result_data.get("cmdb_collect_error", result.get("error", "Unknown error"))

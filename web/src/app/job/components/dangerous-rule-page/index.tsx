@@ -552,7 +552,7 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
             {resolvedPatternHelp}
           </div>
           <div
-            className="mb-6 rounded-md bg-[#f5f7fa] px-4 py-3 text-xs leading-relaxed"
+            className="mb-6 rounded-md bg-[var(--color-fill-1)] px-4 py-3 text-xs leading-relaxed"
             style={{ color: 'var(--color-text-2)' }}
           >
             <div className="mb-1 font-medium">
