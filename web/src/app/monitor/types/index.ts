@@ -245,6 +245,7 @@ export interface ObjectItem {
     column_key?: string;
     name: string;
     type?: 'metric' | 'field';
+    role?: 'resource_ip';
     sort_order: number;
     variable_id?: string;
     metrics: { plugin: string; metric: string; field?: string }[];

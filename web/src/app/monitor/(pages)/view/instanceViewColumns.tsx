@@ -26,6 +26,16 @@ const FIELD_DISPLAY_KEY_PREFIX = 'field';
 
 export const INSTANCE_VIEW_ACTION_KEY = 'action';
 
+// 云平台子对象的 IP 由采集 label 提供，走展示字段列；标记为该 role 后按内置 IP 列渲染，
+// 与基础对象的 asset.ip 摘要列保持同一列头与位置。
+export const RESOURCE_IP_ROLE = 'resource_ip';
+
+// 字段展示列的筛选参数键，与主机 asset.ip 的筛选参数互不影响（后端 FIELD_PARAM_PREFIX）。
+export const displayFieldParamKey = (field?: string) => `field:${field ?? ''}`;
+
+const isResourceIpColumn = (col: DisplayCol) =>
+  col.type === 'field' && col.role === RESOURCE_IP_ROLE;
+
 export const displayFieldKey = (
   plugin?: string,
   metric?: string,
@@ -158,6 +168,8 @@ interface BuildDisplayFieldColumnsOptions {
   ) => string;
   objectId?: React.Key;
   includeDimensionTooltip?: boolean;
+  t?: (key: string) => string;
+  fieldFilterOptions?: Record<string, string[]>;
 }
 
 export const buildDisplayFieldColumns = ({
@@ -165,7 +177,9 @@ export const buildDisplayFieldColumns = ({
   metrics,
   getEnumValueUnit,
   objectId,
-  includeDimensionTooltip = true
+  includeDimensionTooltip = true,
+  t,
+  fieldFilterOptions
 }: BuildDisplayFieldColumnsOptions): ColumnItem[] => {
   const displayCols = (displayFields || [])
     .slice()
@@ -188,8 +202,23 @@ export const buildDisplayFieldColumns = ({
     };
 
     if (col.type === 'field') {
+      const isResourceIp = isResourceIpColumn(col);
+      const filterParam = displayFieldParamKey(col.metrics?.[0]?.field);
+      const fieldFilters = (fieldFilterOptions?.[filterParam] || []).map(
+        (value) => ({ text: value, value })
+      );
       return {
-        title: col.name,
+        title:
+          isResourceIp && t ? t('monitor.views.assetIp') : col.name,
+        ...(isResourceIp
+          ? {
+            role: RESOURCE_IP_ROLE,
+            filterMultiple: true,
+            filterSearch: true,
+            filterParam,
+            filters: fieldFilters.length ? fieldFilters : undefined
+          }
+          : {}),
         dataIndex: dataKey,
         key: dataKey,
         onCell: () => ({ style: { minWidth: 150 } }),
@@ -327,6 +356,7 @@ interface BuildInstanceViewColumnsOptions {
   objectId?: React.Key;
   queryData?: any[];
   ipFilterOptions?: string[];
+  fieldFilterOptions?: Record<string, string[]>;
   includeStatusFilters?: boolean;
   includeDimensionTooltip?: boolean;
 }
@@ -341,6 +371,7 @@ export const buildInstanceViewColumns = ({
   objectId,
   queryData,
   ipFilterOptions,
+  fieldFilterOptions,
   includeStatusFilters = true,
   includeDimensionTooltip = true
 }: BuildInstanceViewColumnsOptions): ColumnItem[] => {
@@ -349,8 +380,17 @@ export const buildInstanceViewColumns = ({
     metrics,
     getEnumValueUnit,
     objectId,
-    includeDimensionTooltip
+    includeDimensionTooltip,
+    t,
+    fieldFilterOptions
   });
+  // 内置 IP 列紧跟基础列，与基础对象的 asset.ip 摘要列同位置；其余展示列仍排在状态列之后。
+  const resourceIpColumns = displayColumns.filter(
+    (column) => column.role === RESOURCE_IP_ROLE
+  );
+  const restDisplayColumns = displayColumns.filter(
+    (column) => column.role !== RESOURCE_IP_ROLE
+  );
   return [
     ...getBaseInstanceColumn({
       objects,
@@ -359,8 +399,9 @@ export const buildInstanceViewColumns = ({
       queryData,
       ipFilterOptions
     }),
+    ...resourceIpColumns,
     buildReportTimeColumn({ t, convertToLocalizedTime }),
     buildReportingStatusColumn({ t, includeFilters: includeStatusFilters }),
-    ...displayColumns
+    ...restDisplayColumns
   ];
 };

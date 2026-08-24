@@ -84,10 +84,15 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
         continue;
       }
       seen.add(variableId);
+      const columnName = col.name || variableId;
       extra.push({
         key: variableId,
         variable: `\${${variableId}}`,
-        description: col.name || variableId
+        description: t(
+          'monitor.events.variableDisplayField',
+          '展示指标配置 · {name}',
+          { name: columnName }
+        )
       });
     }
     return [...builtin, ...extra];
