@@ -10,17 +10,13 @@ MaterialVersion 也会被级联删除,因此在 MaterialVersion 的 post_delete 
 wiki/media/<kb>/<material>/ 下的解析嵌入图片在 Material post_delete 中一并清理。
 """
 
-import logging
-
-from django.db import transaction
-from django.db.models.signals import post_delete
-from django.dispatch import receiver
-
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import Material, MaterialVersion
 from apps.opspilot.services.wiki.material_service import delete_parsed_markdown, is_parsed_markdown_locator_for_material
 from apps.opspilot.services.wiki.parsed_media_service import delete_material_media
-
-logger = logging.getLogger("opspilot")
+from django.db import transaction
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 
 
 @receiver(post_delete, sender=Material, dispatch_uid="wiki_material_delete_minio_file")

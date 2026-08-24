@@ -1,8 +1,5 @@
-import logging
-
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.ocr.base_ocr import BaseOCR
-
-logger = logging.getLogger(__name__)
 
 
 class TesseractOCR(BaseOCR):

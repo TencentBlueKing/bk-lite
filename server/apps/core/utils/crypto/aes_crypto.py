@@ -1,11 +1,10 @@
 import hashlib
-import logging
+from base64 import urlsafe_b64decode, urlsafe_b64encode
+
+from apps.core.logger import logger
+from config.components.base import SECRET_KEY
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import pad, unpad
-from base64 import urlsafe_b64decode, urlsafe_b64encode
-from config.components.base import SECRET_KEY
-
-logger = logging.getLogger(__name__)
 
 
 class AESCryptor:

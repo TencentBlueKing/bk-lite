@@ -1,57 +1,40 @@
 import hashlib
 import json
-import logging
 import queue
 import threading
 import time
 import uuid
 
-from celery import shared_task
-from django.db import transaction
-from django.db.models import Q
-from django.utils import timezone
-
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
-
 from apps.node_mgmt.models import (
-    ControllerTask,
     CollectorTask,
-    PackageVersion,
+    ControllerTask,
+    ControllerTaskNode,
     Node,
     NodeCollectorInstallStatus,
-)
-from apps.node_mgmt.models import ControllerTaskNode
-
-from apps.node_mgmt.utils.installer import (
-    exec_command_to_remote,
-    exec_command_to_remote_stream,
-    download_to_local,
-    exec_command_to_local,
-    get_uninstall_command,
-    unzip_file,
+    PackageVersion,
 )
 from apps.node_mgmt.services.installer import InstallerService
-from apps.node_mgmt.utils.winrm import default_winrm_port, winrm_profile_error
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.services.windows_remote_bootstrap import (
     WindowsBootstrapTarget,
     WindowsRemoteBootstrapService,
 )
+from apps.node_mgmt.tasks.version_discovery import discover_node_versions
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
-from apps.node_mgmt.utils.step_tracker import (
-    advance_step,
-    append_step,
-    append_steps,
-    build_step,
-    clone_steps,
-    now_iso,
-    update_latest_step_by_action,
-    update_last_running_step,
+from apps.node_mgmt.utils.installer import (
+    download_to_local,
+    exec_command_to_local,
+    exec_command_to_remote,
+    exec_command_to_remote_stream,
+    get_uninstall_command,
+    unzip_file,
 )
 from apps.node_mgmt.utils.installer_schema import (
     build_installer_event_record,
@@ -59,16 +42,28 @@ from apps.node_mgmt.utils.installer_schema import (
     normalize_overall_status,
     summarize_installer_progress,
 )
+from apps.node_mgmt.utils.step_tracker import (
+    advance_step,
+    append_step,
+    append_steps,
+    build_step,
+    clone_steps,
+    now_iso,
+    update_last_running_step,
+    update_latest_step_by_action,
+)
 from apps.node_mgmt.utils.task_result_schema import (
     _extract_latest_failure_from_steps,
     _extract_latest_installer_failure_from_steps,
     apply_result_envelope,
 )
-from apps.node_mgmt.tasks.version_discovery import discover_node_versions
+from apps.node_mgmt.utils.winrm import default_winrm_port, winrm_profile_error
+from celery import shared_task
 from config.components.nats import NATS_NAMESPACE
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 from nats_client.clients import subscribe_lines_sync
-
-logger = logging.getLogger(__name__)
 
 CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS = InstallerConstants.CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS
 

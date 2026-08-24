@@ -1,11 +1,9 @@
 import json
-import logging
 import re
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import KnowledgePage, PageVersion
 from apps.opspilot.services.wiki.relation_service import normalize_wikilink_key
-
-logger = logging.getLogger("opspilot")
 
 JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 WIKILINK_RE = re.compile(r"\[\[[^\]\n]+?\]\]")

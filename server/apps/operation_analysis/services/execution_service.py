@@ -1,14 +1,8 @@
-import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 
-from django.core.exceptions import ValidationError
-from django.db import IntegrityError, transaction
-from django.utils import timezone
-from rest_framework.exceptions import PermissionDenied
-from rest_framework.exceptions import ValidationError as DRFValidationError
-
+from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportExecutionSnapshot,
@@ -25,8 +19,11 @@ from apps.operation_analysis.services.schedule_calculator import (
 from apps.operation_analysis.services.subscription_service import (
     DashboardSubscriptionService,
 )
-
-logger = logging.getLogger(__name__)
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError, transaction
+from django.utils import timezone
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
 
 IN_FLIGHT_STATUSES = (
     DashboardReportExecution.Status.PENDING,

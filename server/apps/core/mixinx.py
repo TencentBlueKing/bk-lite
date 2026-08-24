@@ -1,12 +1,10 @@
 import base64
 import hashlib
-import logging
 from typing import Any, Dict, Optional
 
+from apps.core.logger import logger
 from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
-
-logger = logging.getLogger(__name__)
 
 
 class EncryptMixin:

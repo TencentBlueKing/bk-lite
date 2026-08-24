@@ -8,9 +8,11 @@
 
 import sys
 import types
+from io import StringIO
 from unittest.mock import MagicMock, patch  # noqa: F401
 
 import pytest
+from loguru import logger as real_logger
 from pydantic import ValidationError
 
 
@@ -315,9 +317,54 @@ class TestMLServicePredict:
             "DB timeout after 10s",
         ]
         mock_model = self._make_mock_model(data, [0, 1], ["User login *", "DB timeout *"])
+        from classify_log_server.serving import service as service_module
+
         svc = self._make_service(mock_model)
-        response = await svc.predict(LogClusterRequest(data=data))
+        logger = MagicMock()
+        with patch.object(service_module, "logger", logger):
+            response = await svc.predict(LogClusterRequest(data=data))
         assert response.summary.total_logs == 2
+        assert any(call.args[0].startswith("event=log_classification_completed") for call in logger.info.call_args_list)
+        assert "聚类完成" not in repr(logger.mock_calls)
+
+    @pytest.mark.asyncio
+    async def test_predict_failure_preserves_exception_contract_and_single_traceback(self):
+        from classify_log_server.serving import service as service_module
+        from classify_log_server.serving.exceptions import ModelInferenceError
+
+        secret = "cluster-response-secret-must-not-enter-logs"
+        frame_secret = "frame-local-secret-must-not-enter-logs"
+        mock_model = MagicMock()
+        error = RuntimeError(secret)
+        def fail_with_sensitive_local(*_args, **_kwargs):
+            sensitive_local = frame_secret
+            assert sensitive_local
+            raise error
+
+        mock_model.predict.side_effect = fail_with_sensitive_local
+        svc = self._make_service(mock_model)
+        output = StringIO()
+        service_module._configure_production_logger(output)
+        try:
+            with patch.object(service_module, "logger", real_logger), pytest.raises(ModelInferenceError, match=secret):
+                await svc.predict(LogClusterRequest(data=["safe input"]))
+        finally:
+            service_module._configure_production_logger()
+
+        rendered = output.getvalue()
+        safe_type, safe_error, safe_traceback = service_module._safe_exception_info(error)
+        assert safe_traceback is error.__traceback__
+        assert safe_error is not error
+        assert safe_type.__name__ == "_SafeLogException"
+        assert isinstance(safe_error, RuntimeError)
+        assert str(safe_error) == "RuntimeError"
+        assert str(error) == secret
+        assert "event=log_classification_failed failed_stage=model_predict error_type=RuntimeError" in rendered
+        assert "call_chain=" in rendered
+        assert "Traceback" in rendered
+        assert "service.py" in rendered
+        assert secret not in rendered
+        assert frame_secret not in rendered
 
     @pytest.mark.asyncio
     async def test_predict_coverage_rate_in_unit_interval(self):
