@@ -5,7 +5,7 @@ from django.db.models.query import QuerySet
 from apps.mlops.models.mixins import ConfigSyncError
 from apps.mlops.models.object_detection import ObjectDetectionTrainJob
 
-pytestmark = [pytest.mark.unit, pytest.mark.django_db]
+pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 
 def _create_job_with_config_path(path="configs/old.json"):
