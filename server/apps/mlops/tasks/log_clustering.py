@@ -8,6 +8,8 @@ from celery.exceptions import SoftTimeLimitExceeded
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.tasks.base import (
     DatasetPublishConfig,
+    DatasetReleaseAttempt,
+    DatasetReleaseBusy,
     build_base_metadata,
     count_txt_samples,
     mark_release_as_failed,
@@ -46,10 +48,7 @@ def _build_log_clustering_metadata(
 
 def _get_config():
     """延迟加载配置，避免循环导入"""
-    from apps.mlops.models.log_clustering import (
-        LogClusteringDatasetRelease,
-        LogClusteringTrainData,
-    )
+    from apps.mlops.models.log_clustering import LogClusteringDatasetRelease, LogClusteringTrainData
 
     return DatasetPublishConfig(
         release_model=LogClusteringDatasetRelease,
@@ -63,12 +62,14 @@ def _get_config():
 
 
 @shared_task(
+    bind=True,
+    max_retries=None,
     soft_time_limit=3600,  # 60 分钟
     time_limit=3660,
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_file_id):
+def publish_dataset_release_async(self, release_id, train_file_id, val_file_id, test_file_id):
     """
     异步发布日志聚类数据集版本
 
@@ -81,22 +82,43 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
     Returns:
         dict: 执行结果
     """
+    attempt = DatasetReleaseAttempt()
     try:
         config = _get_config()
         return publish_dataset_release_base(
-            config, release_id, train_file_id, val_file_id, test_file_id
+            config,
+            release_id,
+            train_file_id,
+            val_file_id,
+            test_file_id,
+            attempt=attempt,
         )
+
+    except DatasetReleaseBusy as exc:
+        raise self.retry(exc=exc, countdown=exc.retry_after, max_retries=None)
 
     except SoftTimeLimitExceeded:
         logger.error(f"数据集发布超时 - Release ID: {release_id}")
-        from apps.mlops.models.log_clustering import LogClusteringDatasetRelease
+        if attempt.can_mark_failure():
+            from apps.mlops.models.log_clustering import LogClusteringDatasetRelease
 
-        mark_release_as_failed(LogClusteringDatasetRelease, release_id)
+            mark_release_as_failed(
+                LogClusteringDatasetRelease,
+                release_id,
+                owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
+            )
         raise
 
     except Exception:
         logger.error(f"数据集发布失败 - Release ID: {release_id}", exc_info=True)
-        from apps.mlops.models.log_clustering import LogClusteringDatasetRelease
+        if attempt.can_mark_failure():
+            from apps.mlops.models.log_clustering import LogClusteringDatasetRelease
 
-        mark_release_as_failed(LogClusteringDatasetRelease, release_id)
+            mark_release_as_failed(
+                LogClusteringDatasetRelease,
+                release_id,
+                owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
+            )
         raise

@@ -10,6 +10,8 @@ from celery.exceptions import SoftTimeLimitExceeded
 from apps.core.logger import mlops_logger as logger
 from apps.mlops.tasks.base import (
     DatasetPublishConfig,
+    DatasetReleaseAttempt,
+    DatasetReleaseBusy,
     build_base_metadata,
     count_csv_samples,
     mark_release_as_failed,
@@ -61,9 +63,7 @@ def _build_anomaly_detection_metadata(
             "val_anomaly_count": val_anomaly_count,
             "test_anomaly_count": test_anomaly_count,
             "total_anomaly_count": total_anomaly_count,
-            "anomaly_rate": round(total_anomaly_count / total_samples, 4)
-            if total_samples > 0
-            else 0,
+            "anomaly_rate": round(total_anomaly_count / total_samples, 4) if total_samples > 0 else 0,
             "features": ["timestamp", "value"],
             "data_types": {"timestamp": "string", "value": "float"},
         },
@@ -72,10 +72,7 @@ def _build_anomaly_detection_metadata(
 
 def _get_config() -> DatasetPublishConfig:
     """延迟加载配置，避免循环导入"""
-    from apps.mlops.models.anomaly_detection import (
-        AnomalyDetectionDatasetRelease,
-        AnomalyDetectionTrainData,
-    )
+    from apps.mlops.models.anomaly_detection import AnomalyDetectionDatasetRelease, AnomalyDetectionTrainData
 
     return DatasetPublishConfig(
         release_model=AnomalyDetectionDatasetRelease,
@@ -89,14 +86,14 @@ def _get_config() -> DatasetPublishConfig:
 
 
 @shared_task(
+    bind=True,
+    max_retries=None,
     soft_time_limit=3600,  # 60 分钟
     time_limit=3660,
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def publish_dataset_release_async(
-    release_id: int, train_file_id: int, val_file_id: int, test_file_id: int
-) -> dict[str, Any]:
+def publish_dataset_release_async(self, release_id: int, train_file_id: int, val_file_id: int, test_file_id: int) -> dict[str, Any]:
     """
     异步发布异常检测数据集版本
 
@@ -109,22 +106,43 @@ def publish_dataset_release_async(
     Returns:
         dict: 执行结果
     """
+    attempt = DatasetReleaseAttempt()
     try:
         config = _get_config()
         return publish_dataset_release_base(
-            config, release_id, train_file_id, val_file_id, test_file_id
+            config,
+            release_id,
+            train_file_id,
+            val_file_id,
+            test_file_id,
+            attempt=attempt,
         )
+
+    except DatasetReleaseBusy as exc:
+        raise self.retry(exc=exc, countdown=exc.retry_after, max_retries=None)
 
     except SoftTimeLimitExceeded:
         logger.error(f"数据集发布超时 - Release ID: {release_id}")
-        from apps.mlops.models.anomaly_detection import AnomalyDetectionDatasetRelease
+        if attempt.can_mark_failure():
+            from apps.mlops.models.anomaly_detection import AnomalyDetectionDatasetRelease
 
-        mark_release_as_failed(AnomalyDetectionDatasetRelease, release_id)
+            mark_release_as_failed(
+                AnomalyDetectionDatasetRelease,
+                release_id,
+                owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
+            )
         raise
 
     except Exception:
         logger.error(f"数据集发布失败 - Release ID: {release_id}", exc_info=True)
-        from apps.mlops.models.anomaly_detection import AnomalyDetectionDatasetRelease
+        if attempt.can_mark_failure():
+            from apps.mlops.models.anomaly_detection import AnomalyDetectionDatasetRelease
 
-        mark_release_as_failed(AnomalyDetectionDatasetRelease, release_id)
+            mark_release_as_failed(
+                AnomalyDetectionDatasetRelease,
+                release_id,
+                owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
+            )
         raise
