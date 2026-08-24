@@ -137,12 +137,20 @@ def _patch_mlflow(monkeypatch, suffix, **overrides):
     """Patch the module-level ``mlflow_service`` reference for a view module."""
     mod = _view_module(suffix)
     ms = mod.mlflow_service
+
+    def run_belongs_to_experiment(experiment_id, run_id):
+        runs = ms.get_experiment_runs(experiment_id)
+        if runs is None or runs.empty:
+            return False
+        return str(run_id) in {str(value) for value in runs["run_id"]}
+
     defaults = {
         "build_experiment_name": lambda **kw: "exp-name",
         "build_model_name": lambda **kw: "model-name",
         "build_job_id": lambda **kw: "job-id",
         "get_experiment_by_name": lambda name: None,
         "get_experiment_runs": lambda eid, **kw: pd.DataFrame({"run_id": []}),
+        "run_belongs_to_experiment": run_belongs_to_experiment,
         "get_model_versions": lambda name: [],
         "resolve_model_uri": lambda name, version: "models:/model-name/1",
         "delete_run": lambda run_id: None,
