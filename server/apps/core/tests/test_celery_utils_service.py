@@ -5,11 +5,10 @@ import json
 import pytest
 from django_celery_beat.models import CrontabSchedule, IntervalSchedule, PeriodicTask
 
+from apps.core.utils import celery_utils as celery_utils_module
 from apps.core.utils.celery_utils import CeleryUtils, crontab_format
 
-pytestmark = pytest.mark.django_db
-
-
+@pytest.mark.unit
 class TestCrontabFormat:
     def test_cycle(self):
         assert crontab_format("cycle", "5") == (True, "*/5 * * * *")
@@ -29,6 +28,8 @@ class TestCrontabFormat:
             crontab_format("nope", "1")
 
 
+@pytest.mark.integration
+@pytest.mark.django_db
 class TestGetOrCreateCrontabSchedule:
     def test_creates_and_reuses(self):
         s1 = CeleryUtils.get_or_create_crontab_schedule("0", "1", "*", "*", "*")
@@ -45,15 +46,33 @@ class TestGetOrCreateCrontabSchedule:
         assert result.id == sched.id
 
 
+@pytest.mark.integration
+@pytest.mark.django_db
 class TestPeriodicTaskCRUD:
-    def test_create_with_crontab(self):
+    def test_create_with_crontab(self, mocker):
+        info = mocker.patch.object(celery_utils_module.logger, "info")
+
         task = CeleryUtils.create_or_update_periodic_task(
             name="t_cron", crontab="*/10 * * * *", task="apps.x.task", args=[1], kwargs={"a": 1}
         )
+
         assert task.crontab is not None
         assert task.interval is None
         assert json.loads(task.args) == [1]
         assert json.loads(task.kwargs) == {"a": 1}
+        info.assert_has_calls(
+            [
+                mocker.call(
+                    "创建或更新周期任务: name=%s, crontab=%s, interval=%s, task=%s, enabled=%s",
+                    "t_cron",
+                    "*/10 * * * *",
+                    None,
+                    "apps.x.task",
+                    True,
+                ),
+                mocker.call("%s周期任务成功: %s", "创建", "t_cron"),
+            ]
+        )
 
     def test_create_with_interval(self):
         task = CeleryUtils.create_or_update_periodic_task(name="t_int", interval=30, task="apps.x.task")

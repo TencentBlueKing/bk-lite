@@ -18,7 +18,7 @@ class RSACryptor:
             self.key = RSA.generate(bits)
             self.private_key = self.key.export_key()
             self.public_key = self.key.publickey().export_key()
-            logger.info(f"RSA 密钥对生成成功，长度: {bits} 位")
+            logger.info("RSA 密钥对生成成功，长度: %s 位", bits)
         except Exception as e:
             logger.error(f"RSA 密钥生成失败: {e}")
             raise
