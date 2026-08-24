@@ -48,11 +48,7 @@ def _trigger(*, organization=10, suffix=""):
         metric_type="error_rate",
         thresholds=[{"severity": "error", "comparator": "gt", "value": "0.1"}],
         trigger_after=1,
-        comparator="gt",
-        threshold="0.1",
-        duration_window=1,
-        recovery_window=1,
-        severity="error",
+        recover_after=1,
     )
     DjangoApmPolicyService(MetricStore(at), InMemoryNotificationDispatcher()).evaluate(policy.id, evaluated_at=at)
     return policy, ApmAlert.objects.get(policy=policy), at
@@ -64,15 +60,23 @@ def test_alert_and_snapshot_reads_are_organization_scoped(apm_api_client):
 
     listed = apm_api_client.get("/api/v1/apm/alerts/")
     visible_snapshots = apm_api_client.get(f"/api/v1/apm/alerts/{visible.id}/snapshots/")
+    visible_evidence = apm_api_client.get(f"/api/v1/apm/alerts/{visible.id}/event-evidence/")
     hidden = ApmAlert.objects.get(organizations=[20])
     hidden_snapshots = apm_api_client.get(f"/api/v1/apm/alerts/{hidden.id}/snapshots/")
+    hidden_evidence = apm_api_client.get(f"/api/v1/apm/alerts/{hidden.id}/event-evidence/")
 
     assert listed.status_code == 200
     assert [str(item["id"]) for item in listed.data] == [str(visible.id)]
     assert listed.data[0]["notification_status"] == "none"
     assert visible_snapshots.status_code == 200
-    assert visible_snapshots.data[0]["payload_status"] == "pending"
+    assert visible_snapshots.data["evaluation_interval"] == 1
+    assert visible_snapshots.data["snapshots"][0]["type"] == "event"
+    assert visible_snapshots.data["snapshots"][0]["value"] == "0.2"
+    assert visible_snapshots.data["snapshots"][0]["threshold"]["value"] == "0.1"
+    assert visible_evidence.status_code == 200
+    assert visible_evidence.data[0]["payload_status"] == "pending"
     assert hidden_snapshots.status_code == 404
+    assert hidden_evidence.status_code == 404
 
 
 def test_alert_list_summarizes_notification_delivery_status(apm_api_client):
@@ -133,6 +137,7 @@ def test_alert_status_group_filters_list_and_distribution_together(apm_api_clien
 
 def test_manual_close_appends_canonical_event_and_snapshot(apm_api_client):
     _, alert, _ = _trigger()
+    snapshot_count = len(alert.metric_snapshot.snapshots)
 
     response = apm_api_client.post(f"/api/v1/apm/alerts/{alert.id}/close/")
 
@@ -141,6 +146,8 @@ def test_manual_close_appends_canonical_event_and_snapshot(apm_api_client):
     assert [event["action"] for event in response.data["events"]] == ["triggered", "closed"]
     assert list(alert.snapshots.order_by("occurred_at").values_list("action", flat=True)) == ["triggered", "closed"]
     assert ApmEvent.objects.filter(alert=alert, action=ApmEvent.Action.CLOSED).count() == 1
+    alert.metric_snapshot.refresh_from_db()
+    assert len(alert.metric_snapshot.snapshots) == snapshot_count
 
 
 def test_close_requires_operate_permission(apm_user):

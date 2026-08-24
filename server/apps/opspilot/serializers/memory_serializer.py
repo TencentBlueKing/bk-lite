@@ -89,3 +89,10 @@ class MemorySerializer(serializers.ModelSerializer):
             "organization_id",
         ]
         read_only_fields = ("owner_username", "owner_domain")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # 编辑记忆内容时只提交 content；空间与标题已在记录上，更新不必再传。
+        if self.instance is not None:
+            self.fields["memory_space"].required = False
+            self.fields["title"].required = False

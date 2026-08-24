@@ -108,10 +108,19 @@ class TestUploadAndLoadRoundTrip:
         assert json.loads(raw.decode("utf-8")) == data
         assert field._load_from_s3(path) == data
 
-    def test_load_non_gzip_raw_json(self):
+    def test_load_non_gzip_raw_json(self, mocker):
         field = _make_field(compressed=True)
         field.storage.objects["p.json"] = b'{"plain": true}'
+        info = mocker.patch.object(mod.logger, "info")
+
         assert field._load_from_s3("p.json") == {"plain": True}
+        info.assert_has_calls(
+            [
+                mocker.call("[S3JSONField] Loading from S3: %s", "p.json"),
+                mocker.call("[S3JSONField] Read %s bytes from S3", 15),
+                mocker.call("[S3JSONField] Not gzipped, using raw content"),
+            ]
+        )
 
 
 class TestLoadFromS3EdgeCases:

@@ -63,16 +63,22 @@ function DisplayFieldsColumnBlock({
   title,
   tag,
   field,
+  variableId,
 }: {
   title: string;
   tag: string;
   field?: string;
+  variableId?: string;
 }) {
   return (
-    <div className="rounded border border-[#d9d9d9] bg-[#f5f7fa] p-3">
+    <div className="rounded border border-[var(--color-border-2)] bg-[var(--color-fill-1)] p-3">
       <div className="mb-2 flex items-center gap-2">
-        <HolderOutlined className="cursor-move text-[#8c8c8c]" />
+        <HolderOutlined className="cursor-move text-[var(--color-text-3)]" />
         <Input className="flex-1" value={title} />
+        <Input className="w-[160px]" value={variableId || ''} placeholder="变量 ID，如 vm_ip" />
+        {variableId ? (
+          <span className="font-mono text-xs text-[var(--color-text-3)]">{`\${${variableId}}`}</span>
+        ) : null}
         <Tag color={field ? 'geekblue' : 'blue'}>{tag}</Tag>
         <Button type="text" danger icon={<CloseOutlined />} />
       </div>
@@ -98,7 +104,7 @@ function DisplayFieldsModalPreview() {
       <div className="mx-auto w-[900px] rounded bg-white shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
         <div className="flex h-14 items-center justify-between border-b border-[#edf0f5] px-5">
           <strong>展示指标配置 - 主机</strong>
-          <CloseOutlined className="text-[#8c8c8c]" />
+          <CloseOutlined className="text-[var(--color-text-3)]" />
         </div>
         <div className="p-5">
           <div className="mb-3 flex justify-end gap-2">
@@ -107,7 +113,7 @@ function DisplayFieldsModalPreview() {
           </div>
           <div className="space-y-3">
             <DisplayFieldsColumnBlock title="CPU使用率" tag="指标列" />
-            <DisplayFieldsColumnBlock title="采集节点IP" tag="展示列" field="collector_ip" />
+            <DisplayFieldsColumnBlock title="采集节点IP" tag="展示列" field="collector_ip" variableId="collector_ip" />
             <DisplayFieldsColumnBlock title="设备型号" tag="展示列" field="model" />
           </div>
         </div>

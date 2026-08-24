@@ -14,7 +14,7 @@ def partial_update_groups_with_auth(viewset, request, instance):
     """锁内校验并更新内置对象的组织可见性；内置对象不维护实例权限规则。"""
     groups_data = _validate_groups_payload(request.data)
     with transaction.atomic():
-        locked_instance = viewset.get_queryset().select_for_update().get(pk=instance.pk)
+        locked_instance = viewset.get_queryset().select_related(None).select_for_update().get(pk=instance.pk)
         if not getattr(request.user, "is_superuser", False):
             access_error = viewset._validate_update_access(request, locked_instance, groups_data)
             if access_error is not None:

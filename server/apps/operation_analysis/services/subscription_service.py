@@ -1,26 +1,17 @@
+import logging
 from copy import deepcopy
+
 from django.db import DatabaseError, OperationalError, transaction
 from django.db.models import F
-from rest_framework import status
-from rest_framework.exceptions import APIException
-from rest_framework.exceptions import PermissionDenied, ValidationError
 from django.utils import timezone
-import logging
+from rest_framework import status
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 
 from apps.core.utils.team_utils import get_current_team
 from apps.operation_analysis.models.models import Dashboard
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-    DashboardReportSubscription,
-)
-from apps.operation_analysis.services.filter_snapshot import (
-    normalize_applied_filter_values,
-)
-from apps.operation_analysis.services.schedule_calculator import (
-    ScheduleSpec,
-    next_run,
-    validate_iana_timezone,
-)
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportSubscription
+from apps.operation_analysis.services.filter_snapshot import normalize_applied_filter_values
+from apps.operation_analysis.services.schedule_calculator import ScheduleSpec, next_run, validate_iana_timezone
 from apps.system_mgmt.models import Channel
 
 logger = logging.getLogger(__name__)
@@ -55,12 +46,8 @@ class DashboardSubscriptionService:
 
     @staticmethod
     def can_view_dashboard(request, dashboard: Dashboard) -> bool:
-        from apps.operation_analysis.services.canvas_report.permissions import (
-            can_view_canvas,
-        )
-        from apps.operation_analysis.services.canvas_report.types import (
-            RESOURCE_TYPE_DASHBOARD,
-        )
+        from apps.operation_analysis.services.canvas_report.permissions import can_view_canvas
+        from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD
 
         return can_view_canvas(
             request,
@@ -85,12 +72,8 @@ class DashboardSubscriptionService:
         Dashboard 仍经 can_view_dashboard，以保留 MVP 测试缝与既有错误语义；
         其他类型一律走 can_view_canvas → Adapter → ViewSet。
         """
-        from apps.operation_analysis.services.canvas_report.permissions import (
-            can_view_canvas,
-        )
-        from apps.operation_analysis.services.canvas_report.types import (
-            RESOURCE_TYPE_DASHBOARD,
-        )
+        from apps.operation_analysis.services.canvas_report.permissions import can_view_canvas
+        from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD
 
         if resource_type == RESOURCE_TYPE_DASHBOARD:
             try:
@@ -110,13 +93,9 @@ class DashboardSubscriptionService:
         missing_message: str = "源画布已不存在，不能执行该操作",
         denied_message: str = "无权查看该画布",
     ) -> None:
-        from apps.operation_analysis.services.canvas_report.permissions import (
-            canvas_resource_exists,
-        )
+        from apps.operation_analysis.services.canvas_report.permissions import canvas_resource_exists
 
-        if resource_id is None or not canvas_resource_exists(
-            resource_type, resource_id
-        ):
+        if resource_id is None or not canvas_resource_exists(resource_type, resource_id):
             raise PermissionDenied(missing_message)
         if not cls.can_view_resource(request, resource_type, resource_id):
             raise PermissionDenied(denied_message)
@@ -145,10 +124,7 @@ class DashboardSubscriptionService:
         成功规则形如 {"team": [...], "instance": [...]}；
         get_permission_rules 在 RPC 失败时返回 {}，亦视为瞬时。
         """
-        from apps.core.utils.permission_cache import (
-            get_cached_permission_rules,
-            set_cached_permission_rules,
-        )
+        from apps.core.utils.permission_cache import get_cached_permission_rules, set_cached_permission_rules
         from apps.core.utils.permission_utils import set_rules_module_params
 
         cached = get_cached_permission_rules(
@@ -183,13 +159,9 @@ class DashboardSubscriptionService:
             )
             return None, True
 
-        if not isinstance(permission_data, dict) or (
-            "team" not in permission_data and "instance" not in permission_data
-        ):
+        if not isinstance(permission_data, dict) or ("team" not in permission_data and "instance" not in permission_data):
             # 与 get_permission_rules 失败回落 {} 对齐：无结构视为依赖不可用
-            logger.warning(
-                "创建期 DataSource 权限规则不可用（空/无结构），允许保存"
-            )
+            logger.warning("创建期 DataSource 权限规则不可用（空/无结构），允许保存")
             return None, True
 
         set_cached_permission_rules(
@@ -215,14 +187,10 @@ class DashboardSubscriptionService:
             return "allowed"
 
         from apps.core.utils.user_group import normalize_user_group_ids
-        from apps.operation_analysis.services.import_export.authorization_service import (
-            ImportExportAuthorizationService,
-        )
+        from apps.operation_analysis.services.import_export.authorization_service import ImportExportAuthorizationService
 
         # 功能权限为本地判定，缺失即明确拒绝
-        if not ImportExportAuthorizationService.has_permission(
-            request, "data_source-View"
-        ):
+        if not ImportExportAuthorizationService.has_permission(request, "data_source-View"):
             return "denied"
 
         current_team = get_current_team(request)
@@ -232,11 +200,12 @@ class DashboardSubscriptionService:
             return "denied"
 
         user_groups = normalize_user_group_ids(getattr(user, "group_list", []))
-        include_children = (
-            request.COOKIES.get("include_children", "0") == "1"
-        )
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        from apps.operation_analysis.common.datasource_visibility import is_builtin_globally_visible
+
         org_value = getattr(datasource, "groups", None) or []
-        if not set(org_value).intersection(set(user_groups)):
+        # 内置空名单全员可见；其它仍要求与用户组织有交集。
+        if not is_builtin_globally_visible(datasource) and not set(org_value).intersection(set(user_groups)):
             return "denied"
 
         rules, transient = cls._load_datasource_rules_for_create_scan(
@@ -293,33 +262,21 @@ class DashboardSubscriptionService:
         明确无权限/不存在 → 拒绝；瞬时网络/DB/权限规则 RPC 错误 → 允许保存并记 warning。
         不发起真实业务查询。复用 Adapter widget→datasource 解析。
         """
-        from apps.operation_analysis.models.datasource_models import (
-            DataSourceAPIModel,
-        )
-        from apps.operation_analysis.services.canvas_report.registry import (
-            get_canvas_report_adapter,
-        )
+        from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+        from apps.operation_analysis.services.canvas_report.registry import get_canvas_report_adapter
 
         resource_id = getattr(resource, "id", None)
         try:
             adapter = get_canvas_report_adapter(resource_type)
             manifest = adapter.build_manifest(resource)
-            ds_ids = {
-                entry["datasource_id"]
-                for entry in manifest
-                if entry.get("datasource_id") is not None
-            }
+            ds_ids = {entry["datasource_id"] for entry in manifest if entry.get("datasource_id") is not None}
             if not ds_ids:
                 return
 
-            found = {
-                ds.id: ds
-                for ds in DataSourceAPIModel.objects.filter(id__in=ds_ids)
-            }
+            found = {ds.id: ds for ds in DataSourceAPIModel.objects.filter(id__in=ds_ids)}
         except (OperationalError, DatabaseError, ConnectionError, TimeoutError) as exc:
             logger.warning(
-                "创建期 DataSource 扫描瞬时失败，允许保存: "
-                "resource_type=%s resource_id=%s err=%s",
+                "创建期 DataSource 扫描瞬时失败，允许保存: " "resource_type=%s resource_id=%s err=%s",
                 resource_type,
                 resource_id,
                 type(exc).__name__,
@@ -328,19 +285,11 @@ class DashboardSubscriptionService:
 
         missing = sorted(ds_ids - set(found))
         if missing:
-            raise ValidationError(
-                {
-                    "resource_id": (
-                        f"画布引用的数据源不存在: {', '.join(map(str, missing))}"
-                    )
-                }
-            )
+            raise ValidationError({"resource_id": (f"画布引用的数据源不存在: {', '.join(map(str, missing))}")})
 
         for ds_id in sorted(found):
             try:
-                outcome = cls.evaluate_datasource_for_create_scan(
-                    request, found[ds_id]
-                )
+                outcome = cls.evaluate_datasource_for_create_scan(request, found[ds_id])
             except (
                 OperationalError,
                 DatabaseError,
@@ -348,8 +297,7 @@ class DashboardSubscriptionService:
                 TimeoutError,
             ) as exc:
                 logger.warning(
-                    "创建期 DataSource 权限检查瞬时失败，允许保存: "
-                    "resource_type=%s resource_id=%s err=%s",
+                    "创建期 DataSource 权限检查瞬时失败，允许保存: " "resource_type=%s resource_id=%s err=%s",
                     resource_type,
                     resource_id,
                     type(exc).__name__,
@@ -358,23 +306,18 @@ class DashboardSubscriptionService:
 
             if outcome == "transient":
                 logger.warning(
-                    "创建期 DataSource 权限依赖不可用，允许保存: "
-                    "resource_type=%s resource_id=%s datasource_id=%s",
+                    "创建期 DataSource 权限依赖不可用，允许保存: " "resource_type=%s resource_id=%s datasource_id=%s",
                     resource_type,
                     resource_id,
                     ds_id,
                 )
                 return
             if outcome == "denied":
-                raise PermissionDenied(
-                    f"无权查看画布引用的数据源: {ds_id}"
-                )
+                raise PermissionDenied(f"无权查看画布引用的数据源: {ds_id}")
 
     @classmethod
     def scan_dashboard_datasources(cls, request, dashboard: Dashboard) -> None:
-        from apps.operation_analysis.services.canvas_report.types import (
-            RESOURCE_TYPE_DASHBOARD,
-        )
+        from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD
 
         cls.scan_resource_datasources(
             request,
@@ -411,26 +354,15 @@ class DashboardSubscriptionService:
         required_team_id: int | None = None,
     ) -> None:
         if channel is None:
-            raise ValidationError(
-                {"email_channel": "报告订阅必须指定邮件通道"}
-            )
+            raise ValidationError({"email_channel": "报告订阅必须指定邮件通道"})
         if channel.channel_type != "email":
-            raise ValidationError(
-                {"email_channel": "所选通道不是邮件类型"}
-            )
+            raise ValidationError({"email_channel": "所选通道不是邮件类型"})
         current_team_id = cls.require_current_team_id(request)
         resolved_team_id = required_team_id or current_team_id
-        if (
-            not getattr(request.user, "is_superuser", False)
-            and current_team_id != resolved_team_id
-        ):
-            raise ValidationError(
-                {"email_channel": "只能在订阅所属组织内修改邮件通道"}
-            )
+        if not getattr(request.user, "is_superuser", False) and current_team_id != resolved_team_id:
+            raise ValidationError({"email_channel": "只能在订阅所属组织内修改邮件通道"})
         if resolved_team_id not in (channel.team or []):
-            raise ValidationError(
-                {"email_channel": "无权使用该邮件通道"}
-            )
+            raise ValidationError({"email_channel": "无权使用该邮件通道"})
 
     @classmethod
     def build_schedule_spec(
@@ -445,9 +377,7 @@ class DashboardSubscriptionService:
         if schedule_type is None:
             return None
         if schedule_hour is None or schedule_minute is None:
-            raise ValidationError(
-                {"schedule_hour": "已配置调度时必须指定时分"}
-            )
+            raise ValidationError({"schedule_hour": "已配置调度时必须指定时分"})
         return ScheduleSpec(
             schedule_type=schedule_type,
             hour=schedule_hour,
@@ -478,9 +408,7 @@ class DashboardSubscriptionService:
         if spec is None:
             return None
         if not timezone_name:
-            raise ValidationError(
-                {"timezone": "已配置调度时必须指定 IANA 时区"}
-            )
+            raise ValidationError({"timezone": "已配置调度时必须指定 IANA 时区"})
         try:
             tz = validate_iana_timezone(timezone_name)
             spec.validate()
@@ -490,9 +418,7 @@ class DashboardSubscriptionService:
         return result.utc
 
     @classmethod
-    def _schedule_values_from_instance(
-        cls, subscription: DashboardReportSubscription
-    ) -> dict:
+    def _schedule_values_from_instance(cls, subscription: DashboardReportSubscription) -> dict:
         return {
             "schedule_type": subscription.schedule_type,
             "schedule_hour": subscription.schedule_hour,
@@ -539,17 +465,10 @@ class DashboardSubscriptionService:
 
     @classmethod
     def create(cls, request, serializer) -> DashboardReportSubscription:
-        from apps.operation_analysis.services.canvas_report.registry import (
-            get_canvas_report_adapter,
-        )
-        from apps.operation_analysis.services.canvas_report.types import (
-            RESOURCE_TYPE_DASHBOARD,
-        )
+        from apps.operation_analysis.services.canvas_report.registry import get_canvas_report_adapter
+        from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD
 
-        resource_type = (
-            serializer.validated_data.get("resource_type")
-            or RESOURCE_TYPE_DASHBOARD
-        )
+        resource_type = serializer.validated_data.get("resource_type") or RESOURCE_TYPE_DASHBOARD
         resource_id = serializer.validated_data.get("resource_id")
         if resource_id is None and serializer.validated_data.get("dashboard"):
             resource_id = serializer.validated_data["dashboard"].id
@@ -559,11 +478,7 @@ class DashboardSubscriptionService:
             resource_type,
             resource_id,
             missing_message="源画布已不存在，不能创建该订阅",
-            denied_message=(
-                "无权查看该仪表盘"
-                if resource_type == RESOURCE_TYPE_DASHBOARD
-                else "无权查看该画布"
-            ),
+            denied_message=("无权查看该仪表盘" if resource_type == RESOURCE_TYPE_DASHBOARD else "无权查看该画布"),
         )
         from django.core.exceptions import ObjectDoesNotExist
 
@@ -611,42 +526,27 @@ class DashboardSubscriptionService:
         subscription: DashboardReportSubscription,
         serializer,
     ) -> DashboardReportSubscription:
-        if (
-            (
-                subscription.creator != request.user.username
-                or subscription.creator_domain != request.user.domain
-            )
-            and not getattr(request.user, "is_superuser", False)
+        if (subscription.creator != request.user.username or subscription.creator_domain != request.user.domain) and not getattr(
+            request.user, "is_superuser", False
         ):
             raise PermissionDenied("只能修改自己的报告订阅")
         if subscription.deleted_at is not None:
             raise PermissionDenied("已删除的报告订阅不可修改")
         if subscription.status == DashboardReportSubscription.Status.TERMINATED:
-            raise ValidationError(
-                {"status": "已终止的报告订阅不可修改或恢复"}
-            )
+            raise ValidationError({"status": "已终止的报告订阅不可修改或恢复"})
         if subscription.resource_id is None and subscription.dashboard is None:
             raise PermissionDenied("源画布已不存在，不能修改该订阅")
 
-        from apps.operation_analysis.services.canvas_report.registry import (
-            get_canvas_report_adapter,
-        )
-        from apps.operation_analysis.services.canvas_report.types import (
-            RESOURCE_TYPE_DASHBOARD,
-        )
+        from apps.operation_analysis.services.canvas_report.registry import get_canvas_report_adapter
+        from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD
 
         resource_type = subscription.resource_type or RESOURCE_TYPE_DASHBOARD
-        resource_id = (
-            subscription.resource_id
-            if subscription.resource_id is not None
-            else subscription.dashboard_id
-        )
+        resource_id = subscription.resource_id if subscription.resource_id is not None else subscription.dashboard_id
 
         requested_fields = set(serializer.validated_data)
         pause_only = (
             subscription.status == DashboardReportSubscription.Status.ACTIVE
-            and serializer.validated_data.get("status")
-            == DashboardReportSubscription.Status.PAUSED
+            and serializer.validated_data.get("status") == DashboardReportSubscription.Status.PAUSED
             and requested_fields <= {"status", "revision", "version"}
         )
         if not pause_only:
@@ -655,11 +555,7 @@ class DashboardSubscriptionService:
                 resource_type,
                 resource_id,
                 missing_message="源画布已不存在，不能修改该订阅",
-                denied_message=(
-                    "无权查看该仪表盘"
-                    if resource_type == RESOURCE_TYPE_DASHBOARD
-                    else "无权查看该画布"
-                ),
+                denied_message=("无权查看该仪表盘" if resource_type == RESOURCE_TYPE_DASHBOARD else "无权查看该画布"),
             )
             cls.validate_email_channel(
                 request,
@@ -674,29 +570,14 @@ class DashboardSubscriptionService:
         expected_version = serializer.validated_data.pop("version", None)
         applied_provided = "applied_filter_values" in serializer.validated_data
         applied = serializer.validated_data.pop("applied_filter_values", None)
-        schedule_changed = cls._schedule_changed(
-            subscription, serializer.validated_data
-        )
+        schedule_changed = cls._schedule_changed(subscription, serializer.validated_data)
         if schedule_changed:
-            if (
-                expected_version is not None
-                and expected_version != subscription.version
-            ):
-                raise ValidationError(
-                    {"version": "调度配置版本冲突，请刷新后重试"}
-                )
+            if expected_version is not None and expected_version != subscription.version:
+                raise ValidationError({"version": "调度配置版本冲突，请刷新后重试"})
 
-        new_status = serializer.validated_data.get(
-            "status", subscription.status
-        )
-        pausing = (
-            subscription.status == DashboardReportSubscription.Status.ACTIVE
-            and new_status == DashboardReportSubscription.Status.PAUSED
-        )
-        resuming = (
-            subscription.status == DashboardReportSubscription.Status.PAUSED
-            and new_status == DashboardReportSubscription.Status.ACTIVE
-        )
+        new_status = serializer.validated_data.get("status", subscription.status)
+        pausing = subscription.status == DashboardReportSubscription.Status.ACTIVE and new_status == DashboardReportSubscription.Status.PAUSED
+        resuming = subscription.status == DashboardReportSubscription.Status.PAUSED and new_status == DashboardReportSubscription.Status.ACTIVE
 
         # 重新启用 active 时重跑 DS 扫描；改名/筛选等不强制扫描
         if resuming:
@@ -708,9 +589,7 @@ class DashboardSubscriptionService:
                 resource=resource,
             )
 
-        schedule = cls._merge_schedule_values(
-            subscription, serializer.validated_data
-        )
+        schedule = cls._merge_schedule_values(subscription, serializer.validated_data)
         extra = {}
         if schedule_changed:
             extra["next_run_at"] = cls.compute_next_run_at(
@@ -735,9 +614,7 @@ class DashboardSubscriptionService:
 
         if pausing or resuming:
             extra["last_lifecycle_action"] = (
-                DashboardReportSubscription.LifecycleAction.PAUSE
-                if pausing
-                else DashboardReportSubscription.LifecycleAction.RESUME
+                DashboardReportSubscription.LifecycleAction.PAUSE if pausing else DashboardReportSubscription.LifecycleAction.RESUME
             )
             extra["last_lifecycle_actor"] = request.user.username
             extra["last_lifecycle_actor_domain"] = request.user.domain
@@ -758,9 +635,7 @@ class DashboardSubscriptionService:
         for field_name, value in update_values.items():
             field = DashboardReportSubscription._meta.get_field(field_name)
             if field.is_relation:
-                normalized_updates[field.attname] = (
-                    value.pk if value is not None else None
-                )
+                normalized_updates[field.attname] = value.pk if value is not None else None
             else:
                 normalized_updates[field_name] = value
         normalized_updates["revision"] = F("revision") + 1
@@ -785,12 +660,8 @@ class DashboardSubscriptionService:
     ) -> DashboardReportSubscription:
         """逻辑删除 Subscription；不取消已有 pending/running Execution。"""
         locked = DashboardReportSubscription.all_objects.get(pk=subscription.pk)
-        if (
-            (
-                locked.creator != request.user.username
-                or locked.creator_domain != request.user.domain
-            )
-            and not getattr(request.user, "is_superuser", False)
+        if (locked.creator != request.user.username or locked.creator_domain != request.user.domain) and not getattr(
+            request.user, "is_superuser", False
         ):
             raise PermissionDenied("只能删除自己的报告订阅")
         if locked.deleted_at is not None:
@@ -800,9 +671,7 @@ class DashboardSubscriptionService:
         try:
             expected_revision = int(request.query_params.get("revision", ""))
         except (TypeError, ValueError) as exc:
-            raise ValidationError(
-                {"revision": "删除订阅必须携带当前 revision"}
-            ) from exc
+            raise ValidationError({"revision": "删除订阅必须携带当前 revision"}) from exc
         updated = DashboardReportSubscription.all_objects.filter(
             pk=locked.pk,
             revision=expected_revision,
@@ -854,9 +723,7 @@ class DashboardSubscriptionService:
             status__in=in_flight,
         ).update(source_canvas_deleted_during_execution=True)
 
-        DashboardReportSubscription.all_objects.filter(
-            pk__in=subscription_ids
-        ).update(
+        DashboardReportSubscription.all_objects.filter(pk__in=subscription_ids).update(
             status=DashboardReportSubscription.Status.TERMINATED,
             terminated_at=now,
             terminated_by=actor or "",
@@ -879,9 +746,7 @@ class DashboardSubscriptionService:
         reason: str = TERMINATION_REASON_DASHBOARD_DELETED,
     ) -> int:
         """Dashboard 删除前终止关联未删除订阅（兼容入口）。"""
-        from apps.operation_analysis.services.canvas_report.types import (
-            RESOURCE_TYPE_DASHBOARD,
-        )
+        from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD
 
         return cls.terminate_for_resource_deletion(
             resource_type=RESOURCE_TYPE_DASHBOARD,

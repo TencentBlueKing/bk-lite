@@ -159,14 +159,34 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
       }
 
       case 'string':
-      default:
-        if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'select') {
+      case 'stringList':
+      default: {
+        const isStringList = definition.type === 'stringList';
+        if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'select' || isStringList) {
+          const selectValue = Array.isArray(value)
+            ? value
+            : (typeof value === 'string' || typeof value === 'number')
+              ? (isStringList ? [value] : value)
+              : undefined;
           return (
             <Select
-              value={(typeof value === 'string' || typeof value === 'number') ? value : undefined}
-              onChange={(val) =>
-                handleLocalValueChange(definition.id, val ?? null)
-              }
+              value={selectValue}
+              mode={isStringList ? 'multiple' : undefined}
+              onChange={(val) => {
+                if (isStringList) {
+                  if (Array.isArray(val)) {
+                    handleLocalValueChange(definition.id, val);
+                    return;
+                  }
+                  if (typeof val === 'string' || typeof val === 'number') {
+                    handleLocalValueChange(definition.id, [val]);
+                    return;
+                  }
+                  handleLocalValueChange(definition.id, null);
+                  return;
+                }
+                handleLocalValueChange(definition.id, val ?? null);
+              }}
               placeholder={definition.name}
               allowClear
               style={{ minWidth: 160 }}
@@ -214,6 +234,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
             style={{ minWidth: 160 }}
           />
         );
+      }
     }
   };
 

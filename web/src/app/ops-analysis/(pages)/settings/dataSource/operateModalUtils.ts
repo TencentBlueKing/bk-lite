@@ -704,3 +704,29 @@ export function buildConnectionLibraryCreateFromDatasourceForm(
 
   throw new Error(options.t("dataConnection.operationFailed"));
 }
+
+export function isBuiltinDatasource(row?: { is_build_in?: boolean }): boolean {
+  return Boolean(row?.is_build_in);
+}
+
+export function isDatasourceDefinitionReadOnly(
+  mode: string,
+  row?: { is_build_in?: boolean },
+): boolean {
+  return mode === "view" || isBuiltinDatasource(row);
+}
+
+export function canEditBuiltinDatasourceGroups(
+  isSuperUser: boolean,
+  row?: { is_build_in?: boolean },
+): boolean {
+  return isBuiltinDatasource(row) && isSuperUser;
+}
+
+export function buildBuiltinGroupsPayload(groups: unknown): { groups: number[] } {
+  return {
+    groups: Array.isArray(groups)
+      ? groups.filter((id) => Number.isInteger(id) && id > 0)
+      : [],
+  };
+}

@@ -251,22 +251,20 @@ const MemoryPage = () => {
 
   return (
     <div className="w-full">
-      <div className="mb-4 flex justify-end">
-        <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-          <Search
-            allowClear
-            enterButton
-            placeholder={`${t('common.search')}...`}
-            onSearch={(value) => setSearchTerm(value)}
-            onChange={(e) => !e.target.value && setSearchTerm('')}
-            className="w-full sm:w-60"
-          />
-          <PermissionWrapper requiredPermissions={['Add']}>
-            <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd} className="w-full sm:w-auto">
-              {t('memory.createMemory')}
-            </Button>
-          </PermissionWrapper>
-        </div>
+      <div className="mb-4 flex items-center justify-end gap-3">
+        <Search
+          allowClear
+          enterButton
+          placeholder={`${t('common.search')}...`}
+          onSearch={(value) => setSearchTerm(value)}
+          onChange={(e) => !e.target.value && setSearchTerm('')}
+          className="w-60"
+        />
+        <PermissionWrapper requiredPermissions={['Add']}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+            {t('memory.createMemory')}
+          </Button>
+        </PermissionWrapper>
       </div>
 
       <Spin spinning={loading}>

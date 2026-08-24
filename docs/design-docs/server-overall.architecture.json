@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "BK-Lite Server 总体模块架构",
+    "output": "server-overall.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/zhouzhuangjie/bk-lite-1",
+      "revision": "cc36d89964b3585f049fd3c8ae4f42247676d9dd"
+    },
+    "viewBox": [1500, 740],
+    "views": [
+      {
+        "id": "access-interface",
+        "label": "接入与平台 Interface",
+        "focus": ["clients", "platform_interface", "system_mgmt"],
+        "note": "请求先进入统一认证、OpenAPI 与 RPC 适配，再以组织和权限上下文调用业务模块。"
+      },
+      {
+        "id": "asset-execution",
+        "label": "资产与执行控制面",
+        "focus": ["cmdb", "node_mgmt", "execution", "runtime_adapters", "platform_state"],
+        "note": "CMDB 拥有资产事实，NodeMgmt 拥有节点运行状态，JobMgmt 与 PatchMgmt 编排远程副作用。"
+      },
+      {
+        "id": "observability-loop",
+        "label": "可观测闭环",
+        "focus": ["observability", "alerts", "runtime_adapters", "telemetry_data", "execution"],
+        "note": "采集、遥测、检测、告警与自动化动作形成闭环，但各模块仍保留独立事实。"
+      },
+      {
+        "id": "analytics-intelligence",
+        "label": "分析与智能能力",
+        "focus": ["intelligence", "platform_state", "telemetry_data", "platform_interface"],
+        "note": "OpsPilot、OperationAnalysis 与 MLOps 共享平台 Adapter，不共享业务生命周期。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "clients",
+      "type": "frontend",
+      "label": "交互与集成入口",
+      "sublabel": "Web / Mobile / WebChat / 外部调用方",
+      "pos": [55, 92],
+      "size": [210, 72],
+      "sources": [
+        { "path": "web/package.json", "label": "Web" },
+        { "path": "mobile/package.json", "label": "Mobile" },
+        { "path": "webchat/package.json", "label": "WebChat" }
+      ]
+    },
+    {
+      "id": "platform_interface",
+      "type": "security",
+      "label": "平台 Interface",
+      "sublabel": "base / core / console_mgmt / rpc / nats_client",
+      "tag": "Auth · OpenAPI · RPC",
+      "pos": [390, 88],
+      "size": [285, 80],
+      "sources": [
+        { "path": "docs/design-docs/platform-core-module-architecture-analysis.md", "label": "平台基础分析" },
+        { "path": "server/apps/core/openapi/dispatcher.py", "label": "OpenAPI 分发" },
+        { "path": "server/apps/rpc/base.py", "label": "RPC Adapter" }
+      ]
+    },
+    {
+      "id": "system_mgmt",
+      "type": "security",
+      "label": "SystemMgmt",
+      "sublabel": "身份 · 组织 · 角色 · 权限 · 集成 · 审计",
+      "pos": [800, 92],
+      "size": [245, 72],
+      "sources": [
+        { "path": "docs/design-docs/system-mgmt-module-architecture-analysis.md", "label": "身份权限分析" }
+      ]
+    },
+    {
+      "id": "cmdb",
+      "type": "backend",
+      "label": "CMDB",
+      "sublabel": "模型 · 实例 · 关系 · 采集事实",
+      "pos": [42, 296],
+      "size": [190, 76],
+      "sources": [
+        { "path": "docs/design-docs/cmdb-module-architecture-analysis.md", "label": "CMDB 分析" }
+      ]
+    },
+    {
+      "id": "node_mgmt",
+      "type": "backend",
+      "label": "NodeMgmt",
+      "sublabel": "节点 · 控制器 · 采集器 · 配置下发",
+      "pos": [282, 296],
+      "size": [190, 76],
+      "sources": [
+        { "path": "docs/design-docs/node-mgmt-module-architecture-analysis.md", "label": "节点管理分析" }
+      ]
+    },
+    {
+      "id": "execution",
+      "type": "backend",
+      "label": "JobMgmt / PatchMgmt",
+      "sublabel": "作业执行 · 定时任务 · 补丁治理",
+      "pos": [522, 296],
+      "size": [205, 76],
+      "sources": [
+        { "path": "docs/design-docs/job-mgmt-module-architecture-analysis.md", "label": "作业分析" },
+        { "path": "docs/design-docs/patch-mgmt-module-architecture-analysis.md", "label": "补丁分析" }
+      ]
+    },
+    {
+      "id": "observability",
+      "type": "backend",
+      "label": "Monitor / Log / APM",
+      "sublabel": "采集控制 · 查询 · 策略 · 遥测目录",
+      "pos": [777, 296],
+      "size": [205, 76],
+      "sources": [
+        { "path": "docs/design-docs/monitor-module-architecture-analysis.md", "label": "Monitor 分析" },
+        { "path": "docs/design-docs/log-module-architecture-analysis.md", "label": "Log 分析" },
+        { "path": "docs/design-docs/apm-module-architecture-analysis.md", "label": "APM 分析" }
+      ]
+    },
+    {
+      "id": "alerts",
+      "type": "backend",
+      "label": "Alerts",
+      "sublabel": "事件接入 · 富化 · 聚合 · 动作 · 通知",
+      "pos": [1032, 296],
+      "size": [190, 76],
+      "sources": [
+        { "path": "docs/design-docs/alerts-module-architecture-analysis.md", "label": "告警分析" }
+      ]
+    },
+    {
+      "id": "intelligence",
+      "type": "backend",
+      "label": "智能与分析能力",
+      "sublabel": "OpsPilot / OperationAnalysis / MLOps",
+      "pos": [1272, 296],
+      "size": [190, 76],
+      "sources": [
+        { "path": "docs/design-docs/opspilot-module-architecture-analysis.md", "label": "OpsPilot 分析" },
+        { "path": "docs/design-docs/operation-analysis-module-architecture-analysis.md", "label": "操作分析" },
+        { "path": "docs/design-docs/mlops-module-architecture-analysis.md", "label": "MLOps 分析" }
+      ]
+    },
+    {
+      "id": "runtime_adapters",
+      "type": "external",
+      "label": "运行时与执行 Adapter",
+      "sublabel": "Stargazer · Executor · Ansible · Webhookd",
+      "pos": [608, 515],
+      "size": [285, 78],
+      "sources": [
+        { "path": "docs/design-docs/node-mgmt-module-architecture-analysis.md", "label": "采集与下发" },
+        { "path": "docs/design-docs/job-mgmt-module-architecture-analysis.md", "label": "执行 Adapter" },
+        { "path": "docs/design-docs/mlops-module-architecture-analysis.md", "label": "训练运行时" }
+      ]
+    },
+    {
+      "id": "platform_state",
+      "type": "messagebus",
+      "label": "平台状态与异步基础设施",
+      "sublabel": "Django DB · Redis/Celery · NATS/JetStream · MinIO",
+      "pos": [98, 515],
+      "size": [310, 78],
+      "sources": [
+        { "path": "docs/design-docs/platform-core-module-architecture-analysis.md", "label": "平台调用协议" },
+        { "path": "docs/design-docs/server-module-analysis-roadmap.md", "label": "模块事实索引" }
+      ]
+    },
+    {
+      "id": "telemetry_data",
+      "type": "database",
+      "label": "遥测与模型数据面",
+      "sublabel": "VictoriaMetrics / Logs / Traces · MLflow",
+      "pos": [1100, 515],
+      "size": [285, 78],
+      "sources": [
+        { "path": "docs/design-docs/monitor-module-architecture-analysis.md", "label": "指标数据面" },
+        { "path": "docs/design-docs/log-module-architecture-analysis.md", "label": "日志数据面" },
+        { "path": "docs/design-docs/apm-module-architecture-analysis.md", "label": "Trace 数据面" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "接入、身份与平台 Interface",
+      "wraps": ["platform_interface", "system_mgmt"],
+      "pad": 22
+    },
+    {
+      "kind": "region",
+      "label": "Server 业务能力模块",
+      "wraps": ["cmdb", "node_mgmt", "execution", "observability", "alerts", "intelligence"],
+      "pad": 20
+    },
+    {
+      "kind": "region",
+      "label": "运行时、消息与数据面",
+      "wraps": ["runtime_adapters", "platform_state", "telemetry_data"],
+      "pad": 24
+    }
+  ],
+  "connections": [
+    { "id": "client-entry", "from": "clients", "to": "platform_interface", "label": "HTTPS / OpenAPI", "variant": "emphasis" },
+    { "id": "identity-context", "from": "platform_interface", "to": "system_mgmt", "label": "身份 · 组织 · 权限", "variant": "security" },
+    { "id": "access-cmdb", "from": "platform_interface", "to": "cmdb", "fromSide": "bottom", "toSide": "top" },
+    { "id": "access-node", "from": "platform_interface", "to": "node_mgmt", "fromSide": "bottom", "toSide": "top" },
+    { "id": "access-execution", "from": "platform_interface", "to": "execution", "fromSide": "bottom", "toSide": "top" },
+    { "id": "access-observability", "from": "platform_interface", "to": "observability", "fromSide": "bottom", "toSide": "top" },
+    { "id": "access-alerts", "from": "platform_interface", "to": "alerts", "fromSide": "bottom", "toSide": "top" },
+    { "id": "access-intelligence", "from": "platform_interface", "to": "intelligence", "fromSide": "bottom", "toSide": "top" },
+    { "id": "asset-node-sync", "from": "cmdb", "to": "node_mgmt", "label": "资产 / 实例同步", "variant": "dashed", "fromSide": "right", "toSide": "left", "route": "straight", "labelAt": [257, 386] },
+    { "id": "node-runtime", "from": "node_mgmt", "to": "runtime_adapters", "label": "安装 · 配置下发", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "execution-runtime", "from": "execution", "to": "runtime_adapters", "label": "脚本 · Playbook · 补丁", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "observability-runtime", "from": "observability", "to": "runtime_adapters", "label": "采集配置", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "runtime-events", "from": "runtime_adapters", "to": "platform_state", "label": "NATS / 任务状态", "variant": "dashed", "fromSide": "left", "toSide": "right", "route": "straight", "labelDy": -20 },
+    { "id": "runtime-telemetry", "from": "runtime_adapters", "to": "telemetry_data", "label": "遥测写入", "variant": "emphasis", "fromSide": "right", "toSide": "left", "route": "straight", "labelDy": -20 },
+    { "id": "observability-query", "from": "observability", "to": "telemetry_data", "label": "查询与策略评估", "variant": "emphasis", "fromSide": "bottom", "toSide": "top" },
+    { "id": "detect-alert", "from": "observability", "to": "alerts", "label": "检测事件", "fromSide": "right", "toSide": "left", "route": "straight", "labelDy": -20 },
+    { "id": "intelligence-data", "from": "intelligence", "to": "telemetry_data", "label": "分析数据 / 模型运行", "variant": "dashed", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "平台 Interface",
+      "items": [
+        "HTTP、OpenAPI、RPC 与 NATS 是入口 Adapter，不应各自重新定义身份和错误语义",
+        "SystemMgmt 拥有身份、组织和权限事实；业务模块消费授权上下文"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "事实所有权",
+      "items": [
+        "CMDB 拥有资产事实，NodeMgmt 拥有节点运行状态，各业务模块拥有自己的生命周期",
+        "Victoria*、MLflow、缓存和对象存储是数据面或投影，不替代模块业务事实"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "控制面与数据面",
+      "items": [
+        "Server 负责配置、编排、查询和治理；Stargazer/Executor/Webhookd 执行远程副作用",
+        "遥测主数据流进入 Victoria*，长任务与跨进程调用经 Celery、NATS/JetStream 协调",
+        "跨模块依赖明确 Interface；运行使用 run/generation/token 与可对账副作用意图；并发、队列、字节和 deadline 使用显式预算"
+      ]
+    }
+  ]
+}

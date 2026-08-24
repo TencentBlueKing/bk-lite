@@ -3,6 +3,7 @@
 import React from 'react';
 import EntityCard from '@/app/opspilot/components/entity-card';
 import { Skill } from '@/app/opspilot/types/skill';
+import { useTranslation } from '@/utils/i18n';
 
 interface StudioCardProps extends Skill {
   index: number;
@@ -10,6 +11,7 @@ interface StudioCardProps extends Skill {
 }
 
 const StudioCard: React.FC<StudioCardProps> = (props) => {
+  const { t } = useTranslation();
   const { id, name, introduction, created_by, team_name, team, llm_model_name, skill_type, is_pinned, permissions, onMenuClick } = props;
   const iconTypeMapping: [string, string] = ['jiqirenjiaohukapian', 'jiqiren'];
 
@@ -21,6 +23,7 @@ const StudioCard: React.FC<StudioCardProps> = (props) => {
       created_by={created_by}
       team_name={team_name}
       team={team}
+      teamLabel={t('skill.form.manageGroup')}
       modelName={llm_model_name as string}
       skill_type={skill_type as number}
       is_pinned={is_pinned}

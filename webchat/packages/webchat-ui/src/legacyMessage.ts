@@ -83,12 +83,18 @@ export function parseLegacyMessage(data: unknown): LegacyMessage | null {
   if (data.id !== undefined && (typeof data.id !== 'string' || data.id.length === 0)) return null;
   const type = data.type ?? 'text';
   if (!isMessageType(type)) return null;
-  if (data.metadata !== undefined && !isMetadata(data.metadata)) return null;
+  const metadata = data.metadata;
+  if (metadata !== undefined && !isMetadata(metadata)) return null;
 
-  return {
-    ...(typeof data.id === 'string' ? { id: data.id } : {}),
+  const message: LegacyMessage = {
     type,
     content: data.content,
-    ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
   };
+  if (typeof data.id === 'string') {
+    message.id = data.id;
+  }
+  if (isMetadata(metadata)) {
+    message.metadata = metadata;
+  }
+  return message;
 }

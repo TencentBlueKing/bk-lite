@@ -81,6 +81,8 @@ describe('APM 错误页信息层级', () => {
     expect(await screen.findByText('PaymentError')).not.toBeNull();
     expect(screen.getByText('card declined')).not.toBeNull();
     expect(screen.getByText('完整堆栈与分布')).not.toBeNull();
+    expect(document.querySelector('details pre')?.textContent).toContain('at charge(payment.py:42)');
+    expect(document.querySelector('details pre')?.className).not.toMatch(/bg-/);
   });
 
   it('权限过滤造成当前页为空时仍保留游标入口', async () => {

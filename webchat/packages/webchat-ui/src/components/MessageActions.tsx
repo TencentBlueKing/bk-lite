@@ -24,14 +24,14 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
 }) => {
   return (
     <div
-      className={`flex items-center gap-0.5 px-2 text-xs h-6 ${
-        isBot ? 'ml-10' : 'mr-10 justify-end'
-      } ${showActions ? 'opacity-100' : 'opacity-0'} transition-opacity`}
+      className={`flex h-6 items-center gap-0.5 px-2 text-xs ${
+        isBot ? '' : 'justify-end'
+      } ${showActions ? 'opacity-100' : 'opacity-0'}`}
     >
       {isLastBotMessage && (
         <button
           onClick={() => onRegenerate?.(messageId)}
-          className="p-1 hover:bg-gray-100 rounded transition-colors"
+          className="rounded p-1 text-[var(--color-text-3,#86909c)] hover:bg-[var(--color-fill-2,#f4f6fa)] hover:text-[var(--color-text-1,#1d2129)]"
           title="重新生成"
         >
           <svg
@@ -44,7 +44,6 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             strokeWidth="2"
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="text-gray-500"
           >
             <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
           </svg>
@@ -61,7 +60,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           navigator.clipboard.writeText(text);
           onCopy?.(text);
         }}
-        className="p-1 hover:bg-gray-100 rounded transition-colors"
+        className="rounded p-1 text-[var(--color-text-3,#86909c)] hover:bg-[var(--color-fill-2,#f4f6fa)] hover:text-[var(--color-text-1,#1d2129)]"
         title="复制"
       >
         <svg
@@ -74,7 +73,6 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="text-gray-500"
         >
           <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
           <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
@@ -82,7 +80,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       </button>
       <button
         onClick={() => onDelete?.(messageId)}
-        className="p-1 hover:bg-gray-100 rounded transition-colors"
+        className="rounded p-1 text-[var(--color-text-3,#86909c)] hover:bg-[var(--color-fill-2,#f4f6fa)] hover:text-[var(--color-text-1,#1d2129)]"
         title="删除"
       >
         <svg
@@ -95,7 +93,6 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="text-gray-500"
         >
           <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
         </svg>

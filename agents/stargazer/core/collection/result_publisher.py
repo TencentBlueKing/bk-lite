@@ -42,6 +42,10 @@ class _PublishAttemptState:
         self._processing = False
         self._delivery_started = False
         self._cancelled = False
+        self._enqueued_at = time.monotonic()
+        self._queue_wait_seconds = 0.0
+        self._queue_depth_at_enqueue = 0
+        self._queue_residence_seconds = 0.0
 
     @property
     def cancelled(self) -> bool:
@@ -50,6 +54,29 @@ class _PublishAttemptState:
     @property
     def delivery_started(self) -> bool:
         return self._delivery_started
+
+    @property
+    def queue_wait_seconds(self) -> float:
+        return self._queue_wait_seconds
+
+    @property
+    def queue_depth_at_enqueue(self) -> int:
+        return self._queue_depth_at_enqueue
+
+    @property
+    def queue_age_seconds(self) -> float:
+        return max(0.0, time.monotonic() - self._enqueued_at)
+
+    @property
+    def queue_residence_seconds(self) -> float:
+        if self._delivery_started:
+            return self._queue_residence_seconds
+        return self.queue_age_seconds
+
+    def mark_enqueued(self, *, queue_wait_seconds: float, queue_depth: int) -> None:
+        self._enqueued_at = time.monotonic()
+        self._queue_wait_seconds = max(0.0, float(queue_wait_seconds))
+        self._queue_depth_at_enqueue = max(0, int(queue_depth))
 
     def mark_processing(self) -> bool:
         if self._cancelled:
@@ -62,6 +89,7 @@ class _PublishAttemptState:
             return False
         self._processing = True
         self._delivery_started = True
+        self._queue_residence_seconds = self.queue_age_seconds
         return True
 
     def cancel_if_unattempted(self) -> bool:
@@ -101,6 +129,22 @@ class FuturePublishReceipt:
     @property
     def delivery_started(self) -> bool:
         return self._state.delivery_started
+
+    @property
+    def queue_wait_seconds(self) -> float:
+        return self._state.queue_wait_seconds
+
+    @property
+    def queue_depth_at_enqueue(self) -> int:
+        return self._state.queue_depth_at_enqueue
+
+    @property
+    def queue_age_seconds(self) -> float:
+        return self._state.queue_age_seconds
+
+    @property
+    def queue_residence_seconds(self) -> float:
+        return self._state.queue_residence_seconds
 
 
 class PublishShutdownError(RuntimeError):
@@ -153,10 +197,17 @@ class BufferedResultPublisher:
         self._closed = False
         self._pending: set[asyncio.Future[PublishOutcome | None]] = set()
         self.peak_queue_depth = 0
+        self._current_batch_started_at = 0.0
 
     @property
     def queue_depth(self) -> int:
         return self._queue.qsize()
+
+    @property
+    def current_batch_age_seconds(self) -> float:
+        if self._current_batch_started_at <= 0:
+            return 0.0
+        return max(0.0, time.monotonic() - self._current_batch_started_at)
 
     async def enqueue(self, request, result, lease) -> FuturePublishReceipt:
         if self._closed:
@@ -170,8 +221,14 @@ class BufferedResultPublisher:
         self._ensure_writer()
         enqueue_started = time.monotonic()
         await self._queue.put(item)
+        queue_wait_seconds = time.monotonic() - enqueue_started
+        state.mark_enqueued(
+            queue_wait_seconds=queue_wait_seconds,
+            # writer 可能在 put 返回前已取走当前项；至少记入刚被接纳的这一项。
+            queue_depth=max(1, self._queue.qsize()),
+        )
         if self._metrics is not None:
-            self._metrics.observe("publish_queue_wait_seconds", time.monotonic() - enqueue_started)
+            self._metrics.observe("publish_queue_wait_seconds", queue_wait_seconds)
         self.peak_queue_depth = max(self.peak_queue_depth, self._queue.qsize())
         return FuturePublishReceipt(completion, state)
 
@@ -249,10 +306,11 @@ class BufferedResultPublisher:
         if tracks_transport_attempts:
             batch = [item for item in batch if not item.state.cancelled]
         else:
-            batch = [item for item in batch if item.state.mark_processing()]
+            batch = [item for item in batch if item.state.mark_delivery_started()]
         if not batch:
             return
         flush_started = time.monotonic()
+        self._current_batch_started_at = flush_started
         if self._metrics is not None:
             self._metrics.increment("publish_batch_total")
             self._metrics.increment("publish_batch_items_total", len(batch))
@@ -299,6 +357,7 @@ class BufferedResultPublisher:
                 else:
                     item.completion.set_result(PublishOutcome(status=PublishStatus.CONFIRMED))
         finally:
+            self._current_batch_started_at = 0.0
             if self._metrics is not None:
                 self._metrics.observe("publish_flush_duration_seconds", time.monotonic() - flush_started)
 

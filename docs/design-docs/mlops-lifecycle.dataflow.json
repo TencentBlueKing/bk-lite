@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "MLOps 数据发布、训练与服务生命周期",
+    "output": "mlops-lifecycle.dataflow.html",
+    "quality_profile": "showcase",
+    "viewBox": [1500, 760],
+    "views": [
+      {"id": "dataset-release", "label": "数据集发布", "focus": ["train_data", "release", "publish_worker", "dataset_artifact"], "note": "PENDING/PROCESSING 状态与本地 ZIP 工作区共同形成发布链。"},
+      {"id": "training-run", "label": "训练运行", "focus": ["train_job", "webhookd", "container", "mlflow_run", "poller"], "note": "TrainJob status、容器和 MLflow Run 由 expected_run_count 轮询关联。"},
+      {"id": "serving-predict", "label": "服务与推理", "focus": ["mlflow_run", "serving", "predict", "container"], "note": "Serving 直接调用 runtime controller，预测请求同步占用 API worker。"}
+    ]
+  },
+  "stages": [
+    {"label": "01 / 训练数据"},
+    {"label": "02 / 发布制品"},
+    {"label": "03 / 训练调度"},
+    {"label": "04 / 运行事实"},
+    {"label": "05 / 服务消费"}
+  ],
+  "nodes": [
+    {"id": "train_data", "type": "cloud", "label": "TrainData Objects", "sublabel": "MinIO files + metadata", "stage": 0, "row": 1, "width": 132},
+    {"id": "release", "type": "database", "label": "DatasetRelease", "sublabel": "pending → processing → published", "stage": 0, "row": 3, "width": 132},
+    {"id": "publish_worker", "type": "backend", "label": "Publish Worker", "sublabel": "temp disk + ZIP workspace", "stage": 1, "row": 2, "width": 132},
+    {"id": "dataset_artifact", "type": "cloud", "label": "Dataset Artifact", "sublabel": "ZIP + metadata + path", "stage": 1, "row": 4, "width": 132},
+    {"id": "train_job", "type": "database", "label": "TrainJob", "sublabel": "status + config path", "stage": 2, "row": 2, "width": 132},
+    {"id": "webhookd", "type": "external", "label": "Webhookd", "sublabel": "train / serve / stop / status", "stage": 3, "row": 0, "width": 132},
+    {"id": "container", "type": "external", "label": "Algorithm Container", "sublabel": "shared MinIO credentials", "stage": 3, "row": 2, "width": 132},
+    {"id": "mlflow_run", "type": "database", "label": "MLflow Run + Model", "sublabel": "external execution truth", "stage": 3, "row": 4, "width": 132},
+    {"id": "serving", "type": "database", "label": "Serving Record", "sublabel": "container_info JSON", "stage": 4, "row": 1, "width": 132},
+    {"id": "predict", "type": "frontend", "label": "Synchronous Predict", "sublabel": "batch request / API worker", "stage": 4, "row": 3, "width": 132},
+    {"id": "poller", "type": "messagebus", "label": "Status Poller", "sublabel": "30s retry / status CAS", "stage": 4, "row": 4, "width": 132}
+  ],
+  "flows": [
+    {"id": "data_publish", "from": "train_data", "to": "publish_worker", "label": "3 split files", "classification": "large object", "variant": "emphasis", "route": "auto", "labelDy": -24},
+    {"id": "release_publish", "from": "release", "to": "publish_worker", "label": "release id", "classification": "at-least-once", "variant": "dashed", "route": "auto", "labelDy": 24},
+    {"id": "publish_artifact", "from": "publish_worker", "to": "dataset_artifact", "label": "ZIP + metadata", "classification": "no generation token", "variant": "security", "route": "straight", "labelAt": [180, 656]},
+    {"id": "artifact_train", "from": "dataset_artifact", "to": "train_job", "label": "dataset path", "classification": "mutable reference", "variant": "default", "route": "auto", "labelAt": [423, 656]},
+    {"id": "train_webhook", "from": "train_job", "to": "webhookd", "label": "train request", "classification": "sync HTTP", "variant": "security", "route": "auto", "labelDy": -24},
+    {"id": "webhook_container", "from": "webhookd", "to": "container", "label": "create runtime", "classification": "image tag + secrets", "variant": "security", "route": "straight", "labelAt": [1070, 390]},
+    {"id": "container_mlflow", "from": "container", "to": "mlflow_run", "label": "metrics + artifact", "classification": "run fact", "variant": "emphasis", "route": "straight", "labelAt": [620, 500]},
+    {"id": "mlflow_poller", "from": "mlflow_run", "to": "poller", "label": "latest run", "classification": "no run generation", "variant": "security", "route": "straight", "labelAt": [853, 656]},
+    {"id": "webhook_serving", "from": "webhookd", "to": "serving", "label": "runtime result", "classification": "variant-specific", "variant": "default", "route": "auto", "labelAt": [855, 210]},
+    {"id": "mlflow_serving", "from": "mlflow_run", "to": "serving", "label": "model version", "classification": "latest or number", "variant": "default", "route": "auto", "labelAt": [855, 542]},
+    {"id": "serving_predict", "from": "serving", "to": "predict", "label": "runtime endpoint", "classification": "sync proxy", "variant": "emphasis", "route": "straight", "labelAt": [1042, 314]}
+  ],
+  "cards": [
+    {"dot": "rose", "title": "发布并非 fenced work item", "items": ["PROCESSING 仍可被重复 delivery 再次执行，失败重试复用同一 Release 且没有 generation", "图片 ZIP 无 safe extraction 和展开预算，最多 120 分钟任务可占满本地磁盘"]},
+    {"dot": "violet", "title": "训练事实由三个系统拼接", "items": ["TrainJob 只有 running 状态，没有本地 TrainingRun/attempt；poller 以最新 MLflow run 和数量启发式关联", "Webhook 超时后副作用可能已发生，状态恢复与 poll task 投递都没有 run token 对账"]},
+    {"dot": "orange", "title": "服务控制与推理占用 API 请求", "items": ["六套 serving 生命周期语义不同；删除多个 runtime 可能部分成功后中止", "预测、MLflow 全量列表/指标与模型打包缺少团队级并发、字节和临时盘预算"]}
+  ]
+}

@@ -7,37 +7,41 @@
     /skills/<name>/scripts/...
     /skills/<name>/references/...
     /skills/<name>/assets/...
+    /skills/<name>/bin/...
 
 SKILL.md 由 YAML frontmatter（name + description）加 markdown 正文组成：
 - name：小写、仅含字母数字与连字符，长度 <= 64
 - description：长度 <= 1024
 
 **资源真相源是磁盘上的 extracted_root**（由 hydrate_skill_packages 注入），
-本物化器对附属资源采用流式读盘（Path.rglob 扫描按需 read_text），
+本物化器对附属资源采用流式读盘（Path.rglob 扫描按需 read_text / read_bytes），
 不在 snapshot 里复制文件内容，避免 mb 级包占用内存。
 
-设计上保持后端无关：只调用 ``backend.write(file_path, content)``。
+设计上保持后端无关：文本走 ``backend.write``，二进制走 ``backend.upload_files``。
 backend 是 deepagents BackendProtocol 抽象（Phase 1 将 LocalShellBackend
 替换为 NATS worker / 容器沙箱），调用方不变。
 """
 from __future__ import annotations
 
-import logging
 import re
+import stat
 from pathlib import Path
 from posixpath import normpath
 from typing import Any
 
 import yaml
 
-logger = logging.getLogger("apps.opspilot.skill_package.materializer")
+from apps.core.logger import opspilot_logger as logger
 
 # Agent Skills 规范约束
 NAME_MAX_LEN = 64
 DESCRIPTION_MAX_LEN = 1024
 SKILLS_ROOT = "/skills"
-# 允许从 package 中复制的附属资源子目录
+# 允许从 package 中复制的附属资源子目录（dict 后向兼容路径仍用这三项）
 ASSET_DIRS = ("scripts", "references", "assets")
+# 根级清单文件由 render_skill_md 处理，不原样拷贝
+_SKIP_ROOT_FILES = frozenset({"SKILL.md", "skill.yaml"})
+_EXEC_MASK = stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
 
 
 def _get(package: Any, key: str, default: Any = None) -> Any:
@@ -110,20 +114,65 @@ def _safe_join(base: str, rel: str) -> str | None:
     return joined
 
 
+def _is_executable(path: Path) -> bool:
+    try:
+        return bool(path.stat().st_mode & _EXEC_MASK)
+    except OSError:
+        return False
+
+
+def _chmod_executable(backend: Any, target: str) -> None:
+    chmod = getattr(backend, "chmod", None)
+    if callable(chmod):
+        try:
+            chmod(target, 0o755)
+            return
+        except Exception as exc:
+            logger.warning("技能资源 chmod 失败(%s): %r", target, exc)
+            return
+    execute = getattr(backend, "execute", None)
+    if callable(execute):
+        try:
+            execute(f"chmod 755 {target}")
+        except Exception as exc:
+            logger.warning("技能资源 chmod 失败(%s): %r", target, exc)
+
+
+def _write_extracted_file(backend: Any, target: str, file: Path, name: str, rel: str) -> bool:
+    """文本走 write，二进制回退 upload_files；源文件带执行位则补 chmod。"""
+    try:
+        try:
+            content = file.read_text(encoding="utf-8")
+            backend.write(target, content)
+        except Exception:
+            raw = file.read_bytes()
+            upload = getattr(backend, "upload_files", None)
+            if not callable(upload):
+                logger.warning("技能资源跳过二进制(%s/%s): 后端无 upload_files", name, rel)
+                return False
+            upload([(target, raw)])
+        if _is_executable(file):
+            _chmod_executable(backend, target)
+        return True
+    except Exception as exc:
+        logger.warning("技能资源写入失败(%s/%s): %r", name, rel, exc)
+        return False
+
+
 def materialize_skill_package(package: Any, backend: Any, skills_root: str = SKILLS_ROOT) -> list[str]:
     """把 package 物化为后端中的 SKILL.md 与附属资源，返回写入的路径列表。
 
     Args:
         package: SkillPackage（或等价 dict）。
-        backend: 任意 deepagents BackendProtocol 后端（只用到 ``write``）。
+        backend: 任意 deepagents BackendProtocol 后端（``write`` / ``upload_files``）。
         skills_root: 技能目录父路径。默认 ``/skills``；当后端使用真实主机路径
             （如 ``LocalShellBackend(virtual_mode=False)``）时，传入工作目录下的
             绝对路径（如 ``{root_dir}/skills``）以避免写到主机根目录。
 
     资源路径分支：
-        - **流式路径（新）**：package 含 ``extracted_root: Path`` + ``asset_roots: dict``，
-          则用 Path.rglob 扫描 extracted_root/{scripts,references,assets}/ 按需 read_text，
-          真相源是磁盘，不在内存里复制文件内容。
+        - **流式路径（新）**：package 含 ``extracted_root: Path``，扫描整个
+          extracted/（排除根级 SKILL.md / skill.yaml），文本 write、二进制
+          upload_files。
         - **dict 路径（旧/后向兼容）**：package 含 ``scripts``/``references``/``assets``
           作为 ``{rel_path: content}`` dict，直接 backend.write。
     """
@@ -136,31 +185,22 @@ def materialize_skill_package(package: Any, backend: Any, skills_root: str = SKI
     backend.write(skill_md_path, render_skill_md(package))
     written.append(skill_md_path)
 
-    # 分支 1：流式路径（extracted_root + asset_roots），Phase 0 新增
+    # 分支 1：流式路径（整个 extracted/）
     extracted_root = _get(package, "extracted_root", None)
-    asset_roots = _get(package, "asset_roots", None)
-    if isinstance(extracted_root, Path) and isinstance(asset_roots, dict):
-        for asset_dir in ASSET_DIRS:
-            sub_root = asset_roots.get(asset_dir)
-            if not isinstance(sub_root, Path) or not sub_root.is_dir():
+    if isinstance(extracted_root, Path) and extracted_root.is_dir():
+        for file in sorted(extracted_root.rglob("*")):
+            if not file.is_file():
                 continue
-            base = f"{skill_dir}/{asset_dir}"
-            for file in sorted(sub_root.rglob("*")):
-                if not file.is_file():
-                    continue
-                try:
-                    rel = file.relative_to(sub_root).as_posix()
-                except ValueError:
-                    continue
-                target = _safe_join(base, rel)
-                if target is None:
-                    continue
-                try:
-                    content = file.read_text(encoding="utf-8")
-                except Exception as read_error:
-                    logger.debug("技能资源跳过(%s/%s): %r", name, rel, read_error)
-                    continue
-                backend.write(target, content)
+            try:
+                rel = file.relative_to(extracted_root).as_posix()
+            except ValueError:
+                continue
+            if rel in _SKIP_ROOT_FILES:
+                continue
+            target = _safe_join(skill_dir, rel)
+            if target is None:
+                continue
+            if _write_extracted_file(backend, target, file, name, rel):
                 written.append(target)
         return written
 

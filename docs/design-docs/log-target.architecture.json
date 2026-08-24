@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Log 模块目标架构",
+    "output": "log-target.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1480, 790],
+    "views": [
+      {"id": "command", "label": "统一命令与查询边界", "focus": ["adapters", "gate", "queryplan", "budget", "vm"], "note": "所有 HTTP/NATS/Beat 输入都生成带 ActorContext、ScopeSnapshot、复杂度和成本估算的 QueryPlan。"},
+      {"id": "config", "label": "采集配置收敛", "focus": ["gate", "desired", "reconciler", "configInfra"], "note": "Log 保存 desired generation 与操作事实，NodeMgmt/Vector 的 effective generation 通过 reconcile 和 ACK 收敛。"},
+      {"id": "lifecycle", "label": "策略生命周期与投递", "focus": ["queryplan", "budget", "reducer", "facts", "outbox", "deliveryInfra"], "note": "检测结果由唯一 reducer 写领域事实与 outbox；快照、通知和 broker 任务均通过租约投递并可重扫。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "security-group", "label": "可信接入与范围快照", "wraps": ["adapters", "gate"], "pad": 18},
+    {"kind": "region", "label": "查询规划与共享容量", "wraps": ["queryplan", "budget", "vm"], "pad": 18},
+    {"kind": "region", "label": "Log 领域事实与收敛", "wraps": ["desired", "reconciler", "reducer", "facts", "outbox"], "pad": 18},
+    {"kind": "region", "label": "基础设施适配器", "wraps": ["configInfra", "deliveryInfra"], "pad": 18}
+  ],
+  "components": [
+    {"id": "adapters", "type": "frontend", "label": "HTTP / NATS / Beat", "sublabel": "认证入口与周期触发", "pos": [20, 310], "size": [175, 100]},
+    {"id": "gate", "type": "security", "label": "Log Command Gate", "sublabel": "ActorContext + ScopeSnapshot", "tag": "统一 fail-closed", "pos": [235, 310], "size": [220, 100]},
+    {"id": "queryplan", "type": "backend", "label": "Query Planner", "sublabel": "typed AST + cost + time bounds", "tag": "禁止字符串降级", "pos": [505, 310], "size": [220, 100]},
+    {"id": "budget", "type": "messagebus", "label": "Budgeted Scheduler", "sublabel": "team / policy / VM / SSE quotas", "tag": "公平与背压", "pos": [775, 310], "size": [220, 100]},
+    {"id": "vm", "type": "database", "label": "VictoriaLogs", "sublabel": "bounded query execution", "pos": [1045, 310], "size": [210, 100]},
+    {"id": "desired", "type": "database", "label": "Collector Desired State", "sublabel": "operation + generation + checksum", "tag": "可审计意图", "pos": [505, 85], "size": [220, 100]},
+    {"id": "reconciler", "type": "backend", "label": "Config Reconciler", "sublabel": "claim / apply / observe / converge", "tag": "租约与幂等", "pos": [775, 85], "size": [220, 100]},
+    {"id": "reducer", "type": "security", "label": "Alert Lifecycle Reducer", "sublabel": "fencing + deterministic identity", "tag": "唯一状态裁决", "pos": [1045, 555], "size": [210, 100]},
+    {"id": "facts", "type": "database", "label": "Alert / Event / Evidence", "sublabel": "不可变 evidence + current projection", "tag": "大对象独立存储", "pos": [775, 555], "size": [220, 100]},
+    {"id": "outbox", "type": "database", "label": "Delivery Outbox", "sublabel": "snapshot / notify / broker intents", "tag": "unique + lease + retry", "pos": [505, 555], "size": [220, 100]},
+    {"id": "configInfra", "type": "external", "label": "Config Consumers", "sublabel": "NodeMgmt / Vector", "tag": "effective generation + ACK", "pos": [1045, 85], "size": [210, 100]},
+    {"id": "deliveryInfra", "type": "external", "label": "Delivery Consumers", "sublabel": "MinIO / Channels / broker", "tag": "幂等消费", "pos": [235, 555], "size": [220, 100]}
+  ],
+  "connections": [
+    {"id": "adapters_gate", "from": "adapters", "to": "gate", "variant": "security"},
+    {"id": "gate_query", "from": "gate", "to": "queryplan", "variant": "emphasis"},
+    {"id": "gate_desired", "from": "gate", "to": "desired", "variant": "security"},
+    {"id": "desired_reconciler", "from": "desired", "to": "reconciler", "variant": "emphasis"},
+    {"id": "reconciler_infra", "from": "reconciler", "to": "configInfra", "variant": "security"},
+    {"id": "query_budget", "from": "queryplan", "to": "budget", "variant": "emphasis"},
+    {"id": "budget_vm", "from": "budget", "to": "vm", "variant": "emphasis"},
+    {"id": "vm_reducer", "from": "vm", "to": "reducer", "variant": "security"},
+    {"id": "reducer_facts", "from": "reducer", "to": "facts", "variant": "security"},
+    {"id": "facts_outbox", "from": "facts", "to": "outbox", "variant": "emphasis"},
+    {"id": "outbox_infra", "from": "outbox", "to": "deliveryInfra", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "短期：先封住范围与分布式一致性", "items": ["策略分组构建失败 fail-closed；为 alert_condition 建 typed schema 和字段白名单，限制查询跨度、group 数、样本数与 SSE 并发", "新增 CollectorConfigOperation 与 DeliveryIntent；本地事务只写意图，NodeMgmt、MinIO、通知和 broker 均由可重扫 worker 收敛"]},
+    {"dot": "violet", "title": "中期：建立查询计划与共享预算", "items": ["把 raw query + group rules 编译为 typed QueryPlan，记录 scope digest、窗口、估算成本、截断与执行统计", "按团队、策略、VictoriaLogs 集群和 SSE 连接实行并发/速率预算；grouped sample 使用分片和背压，不在单任务内创建私有线程池"]},
+    {"dot": "emerald", "title": "长期：统一 desired / effective 与审计事实", "items": ["采集配置和 Vector 配置都采用 desired generation、consumer effective generation、checksum、last error 与 rollout ACK", "EventRawData/AlertEvidence 使用不可变对象；AlertSnapshot 只是可重建读模型，生命周期副作用共享 outbox 协议"]}
+  ]
+}

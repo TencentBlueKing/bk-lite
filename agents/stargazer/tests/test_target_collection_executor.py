@@ -10,16 +10,11 @@ from core.collection.contracts import (
     PreflightStatus,
     TargetExecutorSettings,
 )
-from core.collection.credential_policy import (
-    CredentialPolicy,
-    InMemoryCredentialStateStore,
-)
+from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
 from core.collection.executor import TargetCollectionExecutor, TargetWorkerBudget
 from core.collection.metrics import CollectionMetrics
-from core.collection.result_publisher import (
-    BufferedResultPublisher,
-    NatsResultPublisher,
-)
+from core.collection.plugins import UnifiedPluginFactory
+from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher
 from core.collection.runtime import CollectionRequest, RunLease
 from tasks.utils import metrics_helper
 
@@ -89,9 +84,7 @@ class RecordingReachablePreflight:
 
 class PinnedReachablePreflight:
     async def check(self, target, request, *, timeout_seconds, plan=None):
-        return PreflightResult(
-            status=PreflightStatus.REACHABLE, connect_host="10.0.0.8"
-        )
+        return PreflightResult(status=PreflightStatus.REACHABLE, connect_host="10.0.0.8")
 
 
 class FirstTargetBrokenPreflight:
@@ -102,6 +95,112 @@ class FirstTargetBrokenPreflight:
 
 
 @pytest.mark.asyncio
+async def test_job_node_info_loads_after_preflight_before_probe_and_collect_service():
+    order = []
+
+    class OrderedPreflight:
+        async def check(self, target, request, *, timeout_seconds, plan=None):
+            order.append("preflight")
+            return PreflightResult(
+                status=PreflightStatus.REACHABLE,
+                connect_host=target,
+            )
+
+    async def load(ips, **_context):
+        order.append("node_info")
+        return [{"id": "node-1", "ip": ips[0], "operating_system": "linux"}]
+
+    class Service:
+        def __init__(self, params):
+            assert params["node_info"]["id"] == "node-1"
+            order.append("service")
+
+        async def probe(self):
+            order.append("probe")
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+
+        async def collect(self):
+            order.append("collect")
+            return 'host{collect_status="success"} 1'
+
+    request = CollectionRequest(
+        task_id="job-node-info-order",
+        plugin_ref="host.config",
+        targets=("10.0.0.1",),
+        credentials=({"credential_id": "credential-1"},),
+        params={
+            "plugin_family": "configuration",
+            "model_id": "host",
+            "executor_type": "job",
+            "collect_task_id": 91,
+        },
+    )
+    plugin = UnifiedPluginFactory(
+        configuration_service_factory=Service,
+        configuration_node_info_loader=load,
+    ).resolve(request)
+    executor = TargetCollectionExecutor(
+        preflight=OrderedPreflight(),
+        access_probe=plugin,
+        plugin=plugin,
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+    await plugin.close()
+
+    assert summary.collection_succeeded == 1
+    assert order == [
+        "preflight",
+        "node_info",
+        "service",
+        "probe",
+        "service",
+        "collect",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_all_preflight_failures_do_not_start_job_node_info_lookup():
+    async def unexpected_load(*_args, **_kwargs):
+        raise AssertionError("node info lookup must wait for an eligible target")
+
+    request = CollectionRequest(
+        task_id="job-no-eligible-target",
+        plugin_ref="host.config",
+        targets=("10.0.0.1", "10.0.0.2"),
+        credentials=({"credential_id": "credential-1"},),
+        params={
+            "plugin_family": "configuration",
+            "model_id": "host",
+            "executor_type": "job",
+            "collect_task_id": 91,
+        },
+    )
+    plugin = UnifiedPluginFactory(
+        configuration_service_factory=lambda params: params,
+        configuration_node_info_loader=unexpected_load,
+    ).resolve(request)
+    executor = TargetCollectionExecutor(
+        preflight=UnreachablePreflight(),
+        access_probe=plugin,
+        plugin=plugin,
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=2, target_task_window=2),
+    )
+
+    summary = await executor.execute(
+        request,
+        RunLease(request.task_id, request.digest, "pod-a", 1, 999999),
+    )
+    await plugin.close()
+
+    assert summary.unreachable == 2
+
+
+@pytest.mark.asyncio
 async def test_preflight_failure_detail_logs_are_bounded_per_run(monkeypatch):
     logged = []
 
@@ -109,7 +208,6 @@ async def test_preflight_failure_detail_logs_are_bounded_per_run(monkeypatch):
         logged.append(message % args if args else message)
 
     monkeypatch.setattr("core.collection.executor.logger.warning", capture)
-    monkeypatch.setattr("core.collection.executor.logger.info", capture)
     executor = TargetCollectionExecutor(
         preflight=UnreachablePreflight(),
         plugin=RecordingPlugin(),
@@ -130,25 +228,31 @@ async def test_preflight_failure_detail_logs_are_bounded_per_run(monkeypatch):
     target_details = [item for item in logged if "event=target_unreachable" in item]
     run_summaries = [item for item in logged if "event=collection_run_summary" in item]
     assert summary.unreachable == 25
-    assert len(target_details) == 20
+    assert len(target_details) == 3
     assert all("plugin_ref=network.config" in item for item in target_details)
     assert all("model_id=network" in item for item in target_details)
     assert len(run_summaries) == 1
-    assert "unreachable=25" in run_summaries[0]
+    assert "任务汇总" in run_summaries[0]
+    assert "不可达=25" in run_summaries[0]
 
 
 @pytest.mark.asyncio
 async def test_plugin_failure_has_central_searchable_log_without_secret(monkeypatch):
-    logged = []
+    warning_logs = []
+    error_logs = []
 
-    def capture(message, *args):
-        logged.append(message % args if args else message)
+    def capture_warning(message, *args):
+        warning_logs.append(message % args if args else message)
+
+    def capture_error(message, *args):
+        error_logs.append(message % args if args else message)
 
     class BrokenPlugin:
         async def collect(self, target, credential, context):
             raise RuntimeError("password=must-not-be-logged")
 
-    monkeypatch.setattr("core.collection.executor.logger.warning", capture)
+    monkeypatch.setattr("core.collection.executor.logger.warning", capture_warning)
+    monkeypatch.setattr("core.collection.executor.logger.error", capture_error)
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
         plugin=BrokenPlugin(),
@@ -166,18 +270,102 @@ async def test_plugin_failure_has_central_searchable_log_without_secret(monkeypa
 
     summary = await executor.execute(request, lease)
 
-    failures = [item for item in logged if "event=plugin_collection_failed" in item]
+    failures = [item for item in warning_logs if "event=collection_run_summary" in item]
+    call_chains = [item for item in error_logs if "event=plugin_exception" in item]
     assert summary.failed == 1
     assert len(failures) == 1
     assert "task_id=vmware-plugin-failure-log" in failures[0]
+    assert "instance_id=" not in failures[0]
     assert "plugin_ref=vmware_vc.config" in failures[0]
     assert "model_id=vmware_vc" in failures[0]
-    assert "target=10.10.16.254" in failures[0]
-    assert "credential_id=credential-1" in failures[0]
-    assert "error_code=plugin_error" in failures[0]
-    assert "detail=RuntimeError" in failures[0]
+    assert "失败类型=plugin_error:1" in failures[0]
+    assert "失败样本=10.10.16.254|credential-1|plugin_error|RuntimeError" in failures[0]
     assert "must-not-be-logged" not in failures[0]
     assert "secret" not in failures[0]
+    assert len(call_chains) == 1
+    assert "task_id=vmware-plugin-failure-log" in call_chains[0]
+    assert "plugin_ref=vmware_vc.config" in call_chains[0]
+    assert "model_id=vmware_vc" in call_chains[0]
+    assert "target=10.10.16.254" in call_chains[0]
+    assert "error_type=RuntimeError" in call_chains[0]
+    assert ":collect" in call_chains[0]
+    assert "must-not-be-logged" not in call_chains[0]
+    assert "secret" not in call_chains[0]
+
+
+@pytest.mark.asyncio
+async def test_plugin_exception_call_chains_are_bounded_per_run(monkeypatch):
+    error_logs = []
+
+    def capture_error(message, *args):
+        error_logs.append(message % args if args else message)
+
+    class BrokenPlugin:
+        async def collect(self, target, credential, context):
+            raise RuntimeError("community=must-not-be-logged")
+
+    monkeypatch.setattr("core.collection.executor.logger.error", capture_error)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=BrokenPlugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=10, target_task_window=10),
+    )
+    request = CollectionRequest(
+        task_id="bounded-plugin-call-chains",
+        plugin_ref="network.config",
+        targets=tuple(f"10.10.69.{index}" for index in range(10)),
+        credentials=({"credential_id": "credential-1", "community": "secret"},),
+        params={"model_id": "network", "plugin_name": "snmp_facts"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    call_chains = [item for item in error_logs if "event=plugin_exception" in item]
+    assert summary.failed == 10
+    assert len(call_chains) == 3
+    assert all("plugin_name=snmp_facts" in item for item in call_chains)
+    assert all("community" not in item for item in call_chains)
+    assert all("secret" not in item for item in call_chains)
+
+
+@pytest.mark.asyncio
+async def test_late_plugin_exception_still_gets_run_sample(monkeypatch):
+    error_logs = []
+
+    def capture_error(message, *args):
+        error_logs.append(message % args if args else message)
+
+    class LateBrokenPlugin:
+        async def collect(self, target, credential, context):
+            if target.endswith(".9"):
+                raise RuntimeError("late-secret")
+            return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value={"ok": True})
+
+    monkeypatch.setattr("core.collection.executor.logger.error", capture_error)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=LateBrokenPlugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    request = CollectionRequest(
+        task_id="late-plugin-call-chain",
+        plugin_ref="network.config",
+        targets=tuple(f"10.10.69.{index}" for index in range(10)),
+        credentials=({"credential_id": "credential-1"},),
+        params={"model_id": "network", "plugin_name": "snmp_facts"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    call_chains = [item for item in error_logs if "event=plugin_exception" in item]
+    assert summary.failed == 1
+    assert len(call_chains) == 1
+    assert "target=10.10.69.9" in call_chains[0]
+    assert "late-secret" not in call_chains[0]
 
 
 @pytest.mark.asyncio
@@ -212,10 +400,12 @@ async def test_plugin_failure_detail_logs_are_bounded_per_run(monkeypatch):
 
     summary = await executor.execute(request, lease)
 
-    failures = [item for item in logged if "event=plugin_collection_failed" in item]
+    failures = [item for item in logged if "event=collection_run_summary" in item]
     assert summary.failed == 25
     assert len(failures) == 1
-    assert "failed_targets=25" in failures[0]
+    assert "采集失败=25" in failures[0]
+    assert "失败类型=plugin_timeout:25" in failures[0]
+    assert failures[0].count("|credential-1|plugin_timeout|") == 3
 
 
 @pytest.mark.asyncio
@@ -335,9 +525,7 @@ async def test_slow_publish_does_not_hold_target_collection_window():
             await release.wait()
 
     plugin = RecordingPlugin()
-    publisher = BufferedResultPublisher(
-        SlowDelegate(), capacity=2, batch_size=2, flush_interval_seconds=0.01
-    )
+    publisher = BufferedResultPublisher(SlowDelegate(), capacity=2, batch_size=2, flush_interval_seconds=0.01)
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
         plugin=plugin,
@@ -574,10 +762,7 @@ async def test_credentials_rotate_inside_target_and_success_gets_affinity():
     ]
     assert publisher.results[0][1].credential_id == "credential-3"
     assert publisher.results[0][1].attempts == 3
-    assert [
-        (failure.credential_id, failure.error_code)
-        for failure in publisher.results[0][1].credential_failures
-    ] == [
+    assert [(failure.credential_id, failure.error_code) for failure in publisher.results[0][1].credential_failures] == [
         ("credential-1", "unauthorized"),
         ("credential-2", "authentication_failed"),
     ]
@@ -686,9 +871,7 @@ async def test_protocol_no_response_stops_after_default_attempt_limit():
         task_id="collect-no-response-limit",
         plugin_ref="snmp.config",
         targets=("10.10.24.1",),
-        credentials=tuple(
-            {"credential_id": f"credential-{index}"} for index in range(1, 6)
-        ),
+        credentials=tuple({"credential_id": f"credential-{index}"} for index in range(1, 6)),
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -704,6 +887,168 @@ async def test_protocol_no_response_stops_after_default_attempt_limit():
     assert publisher.results[0][1].attempts == 3
     assert publisher.results[0][1].error_code == "no_response_attempt_limit"
     assert plugin.calls == []
+
+
+@pytest.mark.asyncio
+async def test_single_snmp_no_response_is_visible_as_timeout_without_plugin_traceback(monkeypatch):
+    warning_logs = []
+    error_logs = []
+
+    def capture_warning(message, *args):
+        warning_logs.append(message % args if args else message)
+
+    def capture_error(message, *args):
+        error_logs.append(message % args if args else message)
+
+    monkeypatch.setattr("core.collection.executor.logger.warning", capture_warning)
+    monkeypatch.setattr("core.collection.executor.logger.error", capture_error)
+    publisher = RecordingPublisher()
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        access_probe=AlwaysNoResponseProbe(),
+        plugin=MustNotCollectPlugin(),
+        publisher=publisher,
+        settings=TargetExecutorSettings(
+            max_active_targets=1,
+            target_task_window=1,
+            connect_timeout_seconds=10,
+        ),
+    )
+    request = CollectionRequest(
+        task_id="snmp-timeout-visible",
+        plugin_ref="network.config",
+        targets=("10.10.69.245",),
+        credentials=({"credential_id": "credential-1"},),
+        params={"model_id": "network", "plugin_name": "snmp_facts"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    assert summary.failed == 1
+    assert publisher.results[0][1].error_code == "protocol_no_response"
+    target_failures = [item for item in warning_logs if "event=target_collection_failed" in item]
+    run_summaries = [item for item in warning_logs if "event=collection_run_summary" in item]
+    assert len(target_failures) == 1
+    assert "stage=access_probe" in target_failures[0]
+    assert "reason=timeout" in target_failures[0]
+    assert "timeout_seconds=10" in target_failures[0]
+    assert "target=10.10.69.245" in target_failures[0]
+    assert "失败类型=protocol_no_response:1" in run_summaries[0]
+    assert not any("event=plugin_exception" in item for item in error_logs)
+
+
+@pytest.mark.asyncio
+async def test_collection_info_is_bounded_and_target_details_are_debug(monkeypatch):
+    info_logs = []
+    debug_logs = []
+
+    def capture_info(message, *args):
+        info_logs.append(message % args if args else message)
+
+    def capture_debug(message, *args):
+        debug_logs.append(message % args if args else message)
+
+    monkeypatch.setattr("core.collection.executor.logger.info", capture_info)
+    monkeypatch.setattr("core.collection.executor.logger.debug", capture_debug)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=RecordingPlugin(),
+        publisher=RecordingPublisher(),
+        settings=TargetExecutorSettings(max_active_targets=5, target_task_window=5),
+    )
+    request = CollectionRequest(
+        task_id="bounded-progress",
+        plugin_ref="network.config",
+        targets=tuple(f"10.10.70.{index}" for index in range(25)),
+        credentials=({"credential_id": "credential-1"},),
+        params={
+            "model_id": "network",
+            "plugin_name": "snmp_facts",
+            "instance_id": "cmdb-network-1",
+        },
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    await executor.execute(request, lease)
+
+    progress = [item for item in info_logs if "event=collection_progress" in item]
+    summaries = [item for item in info_logs if "event=collection_run_summary" in item]
+    assert 2 <= len(progress) <= 12
+    assert len(summaries) == 1
+    assert not any("event=target_collection_started" in item for item in info_logs)
+    assert not any("event=target_collection_succeeded" in item for item in info_logs)
+    assert "plugin_ref=network.config" in progress[0]
+    assert "plugin_name=snmp_facts" in progress[0]
+    assert "instance_id=cmdb-network-1" in progress[0]
+    assert "采集进度" in progress[0]
+    assert "已完成=" in progress[0]
+    assert "当前目标样本=" in progress[0]
+    assert "已完成=25/25" in progress[-1]
+    assert "最近结果=成功" in progress[-1]
+    starts = [item for item in debug_logs if "event=target_collection_started" in item]
+    successes = [item for item in debug_logs if "event=target_collection_succeeded" in item]
+    assert len(starts) == 25
+    assert all("plugin_name=snmp_facts" in item for item in starts)
+    assert all("target=" in item for item in starts)
+    assert len(successes) == 25
+    assert all("SNMP采集成功" in item for item in successes)
+    assert all("task_id=" not in item for item in successes)
+    assert all("instance_id=cmdb-network-1" in item for item in successes)
+    assert all("credential_id=credential-1" in item for item in successes)
+    assert all("耗时=" in item for item in successes)
+
+
+@pytest.mark.asyncio
+async def test_publish_failures_are_sampled_and_aggregated(monkeypatch):
+    warning_logs = []
+
+    def capture_warning(message, *args):
+        warning_logs.append(message % args if args else message)
+
+    class BlockingEnqueuePublisher:
+        async def enqueue(self, request, result, lease):
+            await asyncio.sleep(60)
+
+    monkeypatch.setattr("core.collection.executor.logger.warning", capture_warning)
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=RecordingPlugin(),
+        publisher=BlockingEnqueuePublisher(),
+        settings=TargetExecutorSettings(
+            max_active_targets=10,
+            target_task_window=10,
+            publish_queue_timeout_seconds=0.001,
+            publish_total_timeout_seconds=1,
+            publish_max_attempts=2,
+        ),
+    )
+    request = CollectionRequest(
+        task_id="publish-timeout-sampled",
+        plugin_ref="network.config",
+        targets=tuple(f"10.10.71.{index}" for index in range(10)),
+        credentials=({"credential_id": "credential-1"},),
+        params={"model_id": "network", "instance_id": "cmdb-network-2"},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    summary = await executor.execute(request, lease)
+
+    publish_failures = [item for item in warning_logs if "event=result_publish_failed" in item]
+    old_terminal = [item for item in warning_logs if "event=result_publish_terminal" in item]
+    run_summaries = [item for item in warning_logs if "event=collection_run_summary" in item]
+    assert summary.publish_failed == 10
+    assert len(publish_failures) == 3
+    assert old_terminal == []
+    assert all("phase=enqueue" in item for item in publish_failures)
+    assert all("reason=publish_queue_timeout" in item for item in publish_failures)
+    assert all("timeout_seconds=0.001" in item for item in publish_failures)
+    assert all("instance_id=cmdb-network-2" in item for item in publish_failures)
+    assert all("task_id=" not in item for item in publish_failures)
+    assert "instance_id=cmdb-network-2" in run_summaries[0]
+    assert "task_id=" not in run_summaries[0]
+    assert "发布失败类型=publish_queue_timeout:10" in run_summaries[0]
+    assert run_summaries[0].count("|publish_queue_timeout") == 3
 
 
 @pytest.mark.asyncio
@@ -785,7 +1130,7 @@ async def test_access_probe_failure_logs_target_and_credential_id(monkeypatch):
     def capture(message, *args):
         logged.append(message % args if args else message)
 
-    monkeypatch.setattr("core.collection.executor.logger.info", capture)
+    monkeypatch.setattr("core.collection.executor.logger.warning", capture)
     publisher = RecordingPublisher()
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
@@ -798,9 +1143,7 @@ async def test_access_probe_failure_logs_target_and_credential_id(monkeypatch):
         task_id="probe-log",
         plugin_ref="network.config",
         targets=("10.10.69.240",),
-        credentials=(
-            {"credential_id": "cred-snmp-1", "community": "secret-community"},
-        ),
+        credentials=({"credential_id": "cred-snmp-1", "community": "secret-community"},),
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -812,14 +1155,20 @@ async def test_access_probe_failure_logs_target_and_credential_id(monkeypatch):
 
     await executor.execute(request, lease)
 
-    assert any("event=target_unreachable" in item for item in logged)
-    assert any("target=10.10.69.240" in item for item in logged)
-    assert any("credential_id=cred-snmp-1" in item for item in logged)
+    assert any("event=collection_run_summary" in item for item in logged)
+    assert any("失败类型=target_unreachable:1" in item for item in logged)
+    assert any("失败样本=10.10.69.240|cred-snmp-1|target_unreachable|-" in item for item in logged)
     assert not any("secret-community" in item for item in logged)
 
 
 @pytest.mark.asyncio
-async def test_access_probe_exception_fails_only_current_target():
+async def test_access_probe_exception_fails_only_current_target(monkeypatch):
+    error_logs = []
+
+    def capture_error(message, *args):
+        error_logs.append(message % args if args else message)
+
+    monkeypatch.setattr("core.collection.executor.logger.error", capture_error)
     publisher = RecordingPublisher()
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
@@ -833,6 +1182,7 @@ async def test_access_probe_exception_fails_only_current_target():
         plugin_ref="mysql.config",
         targets=("10.10.24.1",),
         credentials=({"credential_id": "credential-1"},),
+        params={"model_id": "mysql", "plugin_name": "mysql_info"},
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -847,6 +1197,12 @@ async def test_access_probe_exception_fails_only_current_target():
     assert summary.failed == 1
     assert publisher.results[0][1].error_code == "access_probe_error"
     assert "secret-do-not-publish" not in publisher.results[0][1].error_code
+    assert len(error_logs) == 1
+    assert "event=plugin_exception" in error_logs[0]
+    assert "plugin_ref=mysql.config" in error_logs[0]
+    assert "plugin_name=mysql_info" in error_logs[0]
+    assert ":probe" in error_logs[0]
+    assert "secret-do-not-publish" not in error_logs[0]
 
 
 @pytest.mark.asyncio
@@ -902,9 +1258,7 @@ async def test_access_probe_timeout_rotates_to_next_credential():
         (AccessProbeStatus.RATE_LIMITED, "rate_limited", "deferred"),
     ],
 )
-async def test_target_scoped_access_probe_result_stops_credential_rotation(
-    probe_status, error_code, result_status
-):
+async def test_target_scoped_access_probe_result_stops_credential_rotation(probe_status, error_code, result_status):
     publisher = RecordingPublisher()
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
@@ -974,10 +1328,9 @@ async def test_capability_denied_probe_cools_credential_without_collecting():
 
     assert summary.failed == 1
     assert publisher.results[0][1].error_code == "credentials_exhausted"
-    assert [
-        (failure.credential_id, failure.error_code)
-        for failure in publisher.results[0][1].credential_failures
-    ] == [("credential-1", "capability_denied")]
+    assert [(failure.credential_id, failure.error_code) for failure in publisher.results[0][1].credential_failures] == [
+        ("credential-1", "capability_denied")
+    ]
     assert await credential_policy.eligible_credentials(request, "10.10.24.1") == ()
 
 
@@ -1332,13 +1685,13 @@ async def test_total_timeout_cancels_queued_result_without_false_unknown_or_late
         targets=("10.10.24.1", "10.10.24.2"),
         credentials=({"credential_id": "c1"},),
     )
-    lease = RunLease(
-        request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a"
-    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
+    metrics = CollectionMetrics()
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
         plugin=RecordingPlugin(),
         publisher=publisher,
+        metrics=metrics,
         settings=TargetExecutorSettings(
             max_active_targets=2,
             target_task_window=2,
@@ -1355,6 +1708,7 @@ async def test_total_timeout_cancels_queued_result_without_false_unknown_or_late
     assert summary.publish_unknown == 1
     assert summary.publish_failed == 1
     assert delivered == ["10.10.24.1"]
+    assert metrics.snapshot()["publish_queue_residence_seconds_p99"] > 0
 
 
 @pytest.mark.asyncio
@@ -1372,9 +1726,7 @@ async def test_safe_publish_retry_reuses_identical_encoded_error_payload(monkeyp
 
     class FailingCollectionPlugin:
         async def collect(self, target, credential, context):
-            return CollectOutcome(
-                status=CollectOutcomeStatus.FAILED, error_code="collection_failed"
-            )
+            return CollectOutcome(status=CollectOutcomeStatus.FAILED, error_code="collection_failed")
 
     publisher = BufferedResultPublisher(
         NatsResultPublisher(metrics_publish_batch=publish_metrics_batch),
@@ -1388,16 +1740,12 @@ async def test_safe_publish_retry_reuses_identical_encoded_error_payload(monkeyp
         credentials=({"credential_id": "c1"},),
         params={"plugin_family": "configuration", "model_id": "network"},
     )
-    lease = RunLease(
-        request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a"
-    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999, attempt_id="attempt-a")
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
         plugin=FailingCollectionPlugin(),
         publisher=publisher,
-        settings=TargetExecutorSettings(
-            max_active_targets=1, target_task_window=1, publish_max_attempts=2
-        ),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1, publish_max_attempts=2),
     )
 
     summary = await executor.execute(request, lease)

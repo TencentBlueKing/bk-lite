@@ -70,6 +70,45 @@ async def test_enqueue_returns_receipt_before_slow_delivery_finishes():
 
 
 @pytest.mark.asyncio
+async def test_publish_receipt_exposes_queue_and_delivery_telemetry():
+    delivery_started = asyncio.Event()
+    release = asyncio.Event()
+
+    class ObservableDelegate:
+        tracks_transport_attempts = True
+
+        async def publish_batch(self, items):
+            assert items[0][3].mark_delivery_started() is True
+            delivery_started.set()
+            await release.wait()
+
+    publisher = BufferedResultPublisher(ObservableDelegate(), capacity=2, batch_size=1, flush_interval_seconds=0.01)
+    request = CollectionRequest(
+        task_id="publish-telemetry",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    receipt = await publisher.enqueue(
+        request,
+        TargetCollectionResult(target="10.10.24.1", status="success", attempts=1, value="metric 1"),
+        lease,
+    )
+    await delivery_started.wait()
+
+    assert receipt.delivery_started is True
+    assert receipt.queue_depth_at_enqueue == 1
+    assert receipt.queue_wait_seconds >= 0
+    assert receipt.queue_age_seconds >= 0
+    assert receipt.queue_residence_seconds >= 0
+
+    release.set()
+    await receipt.wait()
+    await publisher.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_queued_receipt_can_be_cancelled_before_transport_and_is_not_delivered_later():
     release = asyncio.Event()
     delivered = []

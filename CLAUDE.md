@@ -15,6 +15,7 @@
 | UI 与组件约定 | `DESIGN.md`、`web/DESIGN.md`、`web/COMPONENT_GOVERNANCE.md` |
 | 开发、验证与运行命令 | `DEVELOP.md` |
 | Server 启动顺序与依赖边界 | `docs/operations/server-startup-dependencies.md` |
+| Server 模块架构、数据流与使用指引 | `docs/design-docs/agent-architecture-evidence.md` |
 | 长期架构决定 | `docs/adr/` |
 | 发布记录 | `docs/changelog/` |
 
@@ -29,6 +30,9 @@
 
 - **布局**：优先 Tailwind `className`；禁止新增大段行内布局，也勿为普通布局新建 SCSS Module。
   行内 `style` 仅限动态值 / AntD 契约 / 画布瞬时尺寸。
+- **统一尺寸常量勿拆**：若多处表单控件共用 `FORM_CONTROL_WIDTH`（或同类常量）以
+  `style={{ width: CONST }}` 对齐，**保留该常量**；禁止为了「改成 Tailwind」拆成
+  多处散落的 `w-[300px]` 等任意值，否则失去单点改宽能力。
 - **颜色**：语义 token（`var(--color-*)` / `globals.css`）；禁止硬编码主题色。
 - **组件**：Ant Design → `src/components` → app-local；升 shared 须 ≥2 真实 app，
   并遵守 `web/COMPONENT_GOVERNANCE.md`。
@@ -63,6 +67,14 @@
 - 向目标主机下发或执行操作必须有资源边界、幂等/回滚和相应测试。
 - Web 改动优先复用 Ant Design、现有组件和 Storybook；共享抽象必须已有多个真实使用方。
   视觉与布局细则见上文「Web UI 硬约束」，勿每次通读 `web/DESIGN.md`。
+
+## Cursor Cloud specific instructions
+
+云上默认没有本机 Postgres/Redis/NATS。开发依赖由 `.cursor/environment.json` 的 `install` 安装（`server`/`stargazer` 的 `uv sync --all-groups --all-extras`，`web` 的 `pnpm install`，`webchat` 的 `npm ci`）。验证时用 sqlite，不要为跑单测去起整套中间件。
+
+- Server：`cd server && DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABLE_CELERY=true uv run pytest <paths> --no-cov`
+- Web：`cd web && pnpm lint` / 相关 `pnpm test:*`；改了类型或布局再跑 `pnpm type-check`
+- 缺 `server/.env` 时按上面的 sqlite 变量补一份即可；不要写入真实密钥
 
 ## 交付
 

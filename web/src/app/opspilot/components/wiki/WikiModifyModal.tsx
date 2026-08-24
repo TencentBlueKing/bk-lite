@@ -10,6 +10,10 @@ import {
   WikiKnowledgeBase,
 } from "@/app/opspilot/types/wiki";
 import { LlmModel } from "@/app/opspilot/types/skill";
+import {
+  getModelOptionText,
+  renderModelOptionLabel,
+} from "@/app/opspilot/utils/modelOption";
 
 interface WikiModifyModalProps {
   visible: boolean;
@@ -168,9 +172,11 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
         >
           <Select
             placeholder={t("wiki.llmModelPlaceholder")}
+            optionFilterProp="title"
             options={llmModels.map((m) => ({
               value: m.id,
-              label: m.name,
+              label: renderModelOptionLabel(m),
+              title: getModelOptionText(m),
               disabled: !m.enabled,
             }))}
           />
@@ -183,9 +189,11 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({
           <Select
             allowClear
             placeholder={t("wiki.visionModelPlaceholder")}
+            optionFilterProp="title"
             options={llmModels.map((m) => ({
               value: m.id,
-              label: m.name,
+              label: renderModelOptionLabel(m),
+              title: getModelOptionText(m),
               disabled: !m.enabled,
             }))}
           />

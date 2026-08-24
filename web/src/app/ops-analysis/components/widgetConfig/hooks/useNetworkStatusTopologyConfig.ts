@@ -7,13 +7,20 @@ import {
   getNetworkTopologyModelIds,
 } from '@/app/ops-analysis/utils/networkTopologyModels';
 import { isValidCmdbInstanceUuid } from '@/app/ops-analysis/utils/cmdbInstanceUuid';
-
-const NETWORK_INSTANCE_PAGE_SIZE = 100;
-const SELECT_SCROLL_LOAD_OFFSET = 24;
+import {
+  NETWORK_STATUS_TOPOLOGY_INSTANCE_PAGE_SIZE,
+  applyInstancePageSlices,
+  collectSettledModelCounts,
+  planCrossModelInstancePage,
+  sumModelCounts,
+  uniqueInstancePageRequests,
+} from '../utils/networkStatusTopologyDevicePage';
 
 export interface NetworkSelectOption {
   label: string;
   value: string;
+  name?: string;
+  modelLabel?: string;
 }
 
 interface UseNetworkStatusTopologyConfigInput {
@@ -31,8 +38,32 @@ export const mergeNetworkSelectOptions = (
   return Array.from(optionMap.values());
 };
 
+export const collectSettledInstancePages = (
+  results: PromiseSettledResult<{ insts?: unknown[]; count?: number } | null | undefined>[],
+): { insts: unknown[]; total: number } => {
+  const insts: unknown[] = [];
+  let total = 0;
+  results.forEach((result) => {
+    if (result.status !== 'fulfilled' || !result.value) return;
+    insts.push(...(result.value.insts || []));
+    total += Number(result.value.count) || 0;
+  });
+  return { insts, total };
+};
+
+export const keepSelectedNetworkOptions = (
+  selectedValues: string[],
+  cached: NetworkSelectOption[],
+  listed: NetworkSelectOption[],
+): NetworkSelectOption[] =>
+  mergeNetworkSelectOptions(
+    cached.filter((item) => selectedValues.includes(item.value)),
+    listed,
+  );
+
 export const mapNetworkInstanceOptions = (
   instances: unknown[],
+  modelLabelById?: Map<string, string>,
 ): NetworkSelectOption[] => {
   return instances.flatMap((instance) => {
     if (!instance || typeof instance !== 'object') return [];
@@ -40,9 +71,14 @@ export const mapNetworkInstanceOptions = (
     const record = instance as Record<string, unknown>;
     if (!isValidCmdbInstanceUuid(record.inst_uuid)) return [];
 
+    const modelId = typeof record.model_id === 'string' ? record.model_id : '';
+    const modelLabel = (modelLabelById?.get(modelId) || modelId).trim();
+    const name = String(record.inst_name || record.name || record.inst_uuid);
     return [{
-      label: String(record.inst_name || record.name || record.inst_uuid),
-      value: record.inst_uuid,
+      label: modelLabel ? `${name} · ${modelLabel}` : name,
+      value: String(record.inst_uuid),
+      name,
+      modelLabel,
     }];
   });
 };
@@ -57,21 +93,42 @@ export const useNetworkStatusTopologyConfig = ({
   const [modelOptions, setModelOptions] = useState<
     { label: string; value: string }[]
   >([]);
+  const [modelFilter, setModelFilter] = useState<string>();
   const [instanceOptions, setInstanceOptions] = useState<NetworkSelectOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
   const [instancesLoading, setInstancesLoading] = useState(false);
   const [instancePage, setInstancePage] = useState(1);
+  const [instancePageSize, setInstancePageSize] = useState(
+    NETWORK_STATUS_TOPOLOGY_INSTANCE_PAGE_SIZE,
+  );
   const [instanceTotal, setInstanceTotal] = useState(0);
   const [instanceKeyword, setInstanceKeyword] = useState('');
   const instanceRequestIdRef = useRef(0);
   const instanceSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sceneModelId = Form.useWatch(['networkStatusTopology', 'modelId'], form);
+  const selectedOptionsRef = useRef<NetworkSelectOption[]>([]);
+  const modelCountsRef = useRef<ReturnType<typeof collectSettledModelCounts>>([]);
+  const countCacheKeyRef = useRef('');
+  const instanceKeywordRef = useRef('');
+  const instancePageSizeRef = useRef(NETWORK_STATUS_TOPOLOGY_INSTANCE_PAGE_SIZE);
+  const modelOptionsRef = useRef(modelOptions);
+  modelOptionsRef.current = modelOptions;
+  const modelFilterRef = useRef(modelFilter);
+  modelFilterRef.current = modelFilter;
+  const selectedInstUuids = Form.useWatch(['networkStatusTopology', 'instUuids'], form);
+  const selectedValues = Array.isArray(selectedInstUuids) ? selectedInstUuids.map(String) : [];
+  const selectedValuesRef = useRef(selectedValues);
+  selectedValuesRef.current = selectedValues;
 
   const resetInstanceOptions = useCallback(() => {
     setInstanceOptions([]);
     setInstancePage(1);
+    setInstancePageSize(NETWORK_STATUS_TOPOLOGY_INSTANCE_PAGE_SIZE);
+    instancePageSizeRef.current = NETWORK_STATUS_TOPOLOGY_INSTANCE_PAGE_SIZE;
     setInstanceTotal(0);
     setInstanceKeyword('');
+    instanceKeywordRef.current = '';
+    modelCountsRef.current = [];
+    countCacheKeyRef.current = '';
   }, []);
 
   useEffect(() => {
@@ -108,52 +165,109 @@ export const useNetworkStatusTopologyConfig = ({
     return () => {
       cancelled = true;
     };
-    // API hooks return fresh function references; this load is driven by panel/component state.
-     
   }, [enabled, modelOptions.length, open]);
 
   const fetchNetworkInstances = async ({
     page,
     keyword,
-    append,
+    pageSize,
+    refreshCounts,
   }: {
     page: number;
     keyword: string;
-    append: boolean;
+    pageSize: number;
+    refreshCounts: boolean;
   }) => {
-    if (!sceneModelId) return;
+    const models = modelFilterRef.current
+      ? [modelFilterRef.current]
+      : modelOptionsRef.current.map((item) => item.value);
+    if (!models.length) return;
 
     const requestId = instanceRequestIdRef.current + 1;
     instanceRequestIdRef.current = requestId;
     setInstancesLoading(true);
+    const modelLabelById = new Map(
+      modelOptionsRef.current.map((item) => [item.value, item.label]),
+    );
+    const trimmedKeyword = keyword.trim();
+    const queryList = trimmedKeyword
+      ? [{ field: 'inst_name', type: 'str*', value: trimmedKeyword }]
+      : [];
+    const countCacheKey = `${models.join('|')}::${trimmedKeyword}`;
 
     try {
-      const trimmedKeyword = keyword.trim();
-      const instanceRes = await searchInstances({
-        model_id: sceneModelId,
-        query_list: trimmedKeyword
-          ? [{ field: 'inst_name', type: 'str*', value: trimmedKeyword }]
-          : [],
+      if (
+        refreshCounts
+        || countCacheKeyRef.current !== countCacheKey
+        || modelCountsRef.current.length === 0
+      ) {
+        const countPages = await Promise.allSettled(
+          models.map((modelId) =>
+            searchInstances({
+              model_id: modelId,
+              query_list: queryList,
+              page: 1,
+              page_size: 1,
+              order: '',
+              role: '',
+              case_sensitive: false,
+            }),
+          ),
+        );
+        if (requestId !== instanceRequestIdRef.current) return;
+        modelCountsRef.current = collectSettledModelCounts(models, countPages);
+        countCacheKeyRef.current = countCacheKey;
+        setInstanceTotal(sumModelCounts(modelCountsRef.current));
+      }
+
+      const slices = planCrossModelInstancePage(
+        modelCountsRef.current,
         page,
-        page_size: NETWORK_INSTANCE_PAGE_SIZE,
-        order: '',
-        role: '',
-        case_sensitive: false,
-      });
+        pageSize,
+      );
+      const requests = uniqueInstancePageRequests(slices);
+      const pages = await Promise.allSettled(
+        requests.map((request) =>
+          searchInstances({
+            model_id: request.modelId,
+            query_list: queryList,
+            page: request.requestPage,
+            page_size: request.pageSize,
+            order: '',
+            role: '',
+            case_sensitive: false,
+          }),
+        ),
+      );
 
       if (requestId !== instanceRequestIdRef.current) return;
 
-      const nextOptions = mapNetworkInstanceOptions(instanceRes?.insts || []);
-      setInstanceOptions((previous) =>
-        append ? mergeNetworkSelectOptions(previous, nextOptions) : nextOptions,
+      const pagesByKey = new Map<string, unknown[]>();
+      requests.forEach((request, index) => {
+        const result = pages[index];
+        if (result.status !== 'fulfilled' || !result.value) return;
+        pagesByKey.set(
+          `${request.modelId}:${request.requestPage}`,
+          Array.isArray(result.value.insts) ? result.value.insts : [],
+        );
+      });
+
+      const nextOptions = mapNetworkInstanceOptions(
+        applyInstancePageSlices(slices, pagesByKey),
+        modelLabelById,
       );
+      selectedOptionsRef.current = mergeNetworkSelectOptions(
+        selectedOptionsRef.current,
+        nextOptions.filter((item) => selectedValuesRef.current.includes(item.value)),
+      );
+      setInstanceOptions(nextOptions);
       setInstancePage(page);
-      setInstanceTotal(Number(instanceRes?.count) || nextOptions.length);
+      setInstancePageSize(pageSize);
     } catch (error) {
       console.error('获取网络拓扑实例失败:', error);
       if (requestId === instanceRequestIdRef.current) {
-        setInstanceOptions((previous) => (append ? previous : []));
-        setInstanceTotal((previous) => (append ? previous : 0));
+        setInstanceOptions([]);
+        setInstanceTotal(0);
       }
     } finally {
       if (requestId === instanceRequestIdRef.current) {
@@ -163,20 +277,58 @@ export const useNetworkStatusTopologyConfig = ({
   };
 
   useEffect(() => {
-    if (!open || !enabled || !sceneModelId) {
-      resetInstanceOptions();
+    if (!open || !enabled || modelOptions.length === 0) {
+      if (!open || !enabled) resetInstanceOptions();
       return;
     }
 
     resetInstanceOptions();
-    void fetchNetworkInstances({ page: 1, keyword: '', append: false });
-    // API hooks return fresh function references; this load is driven by model/panel state.
-     
-  }, [
-    enabled,
-    open,
-    sceneModelId,
-  ]);
+    void fetchNetworkInstances({
+      page: 1,
+      keyword: '',
+      pageSize: NETWORK_STATUS_TOPOLOGY_INSTANCE_PAGE_SIZE,
+      refreshCounts: true,
+    });
+  }, [enabled, modelFilter, modelOptions, open, resetInstanceOptions]);
+
+  useEffect(() => {
+    if (!open || !enabled || modelOptions.length === 0) return;
+    const missing = selectedValuesRef.current.filter(
+      (id) => !selectedOptionsRef.current.some((item) => item.value === id),
+    );
+    if (!missing.length) return;
+
+    let cancelled = false;
+    const hydrate = async () => {
+      const modelLabelById = new Map(
+        modelOptionsRef.current.map((item) => [item.value, item.label]),
+      );
+      const pages = await Promise.allSettled(
+        modelOptionsRef.current.map((item) =>
+          searchInstances({
+            model_id: item.value,
+            query_list: [{ field: 'inst_uuid', type: 'str[]', value: missing }],
+            page: 1,
+            page_size: Math.max(missing.length, 1),
+            order: '',
+            role: '',
+            case_sensitive: false,
+          }),
+        ),
+      );
+      if (cancelled) return;
+      const { insts } = collectSettledInstancePages(pages);
+      const hydrated = mapNetworkInstanceOptions(insts, modelLabelById);
+      selectedOptionsRef.current = mergeNetworkSelectOptions(
+        selectedOptionsRef.current,
+        hydrated,
+      );
+    };
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, modelOptions, open, selectedValues.join(',')]);
 
   useEffect(() => {
     return () => {
@@ -188,47 +340,53 @@ export const useNetworkStatusTopologyConfig = ({
 
   const handleInstanceSearch = (keyword: string) => {
     setInstanceKeyword(keyword);
+    instanceKeywordRef.current = keyword;
     if (instanceSearchTimerRef.current) {
       clearTimeout(instanceSearchTimerRef.current);
     }
     instanceSearchTimerRef.current = setTimeout(() => {
-      resetInstanceOptions();
-      void fetchNetworkInstances({ page: 1, keyword, append: false });
+      setInstancePage(1);
+      modelCountsRef.current = [];
+      countCacheKeyRef.current = '';
+      void fetchNetworkInstances({
+        page: 1,
+        keyword,
+        pageSize: instancePageSizeRef.current,
+        refreshCounts: true,
+      });
     }, 300);
   };
 
-  const handleInstancePopupScroll = (event: React.UIEvent<HTMLDivElement>) => {
-    const target = event.currentTarget;
-    const hasMore = instanceOptions.length < instanceTotal;
-    const isNearBottom =
-      target.scrollTop + target.offsetHeight >=
-      target.scrollHeight - SELECT_SCROLL_LOAD_OFFSET;
-
-    if (!hasMore || instancesLoading || !isNearBottom) {
-      return;
-    }
-
+  const handleInstancePageChange = (page: number, pageSize: number) => {
+    const nextPageSize = pageSize || instancePageSizeRef.current;
+    const sizeChanged = nextPageSize !== instancePageSizeRef.current;
+    instancePageSizeRef.current = nextPageSize;
+    setInstancePageSize(nextPageSize);
     void fetchNetworkInstances({
-      page: instancePage + 1,
-      keyword: instanceKeyword,
-      append: true,
+      page: sizeChanged ? 1 : page,
+      keyword: instanceKeywordRef.current,
+      pageSize: nextPageSize,
+      refreshCounts: false,
     });
   };
 
-  const handleModelChange = () => {
-    form.setFieldValue(['networkStatusTopology', 'instUuid'], undefined);
-    resetInstanceOptions();
+  const handleModelFilterChange = (value?: string) => {
+    setModelFilter(value || undefined);
   };
 
   return {
-    sceneModelId,
+    modelFilter,
     modelOptions,
     instanceOptions,
+    instancePage,
+    instancePageSize,
+    instanceTotal,
+    instanceKeyword,
     modelsLoading,
     instancesLoading,
     resetInstanceOptions,
-    handleModelChange,
+    handleModelFilterChange,
     handleInstanceSearch,
-    handleInstancePopupScroll,
+    handleInstancePageChange,
   };
 };

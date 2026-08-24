@@ -22,6 +22,7 @@ from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.agui_chat import _build_sse_line
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
+from apps.opspilot.utils.skill_package_params import annotate_packages_missing_params
 
 
 def _build_wiki_citations_event(extra_config: dict | None) -> dict | None:
@@ -232,6 +233,7 @@ class AgentNode(BaseNodeExecutor):
         effective_node_id = node_id or self.variable_manager.get_variable("current_node_id", "")
         resolved_prompt = resolve_skill_params(skill.skill_prompt, skill.skill_params)
         skill_packages = hydrate_skill_packages(getattr(skill, "skill_packages", []) or [])
+        skill_packages = annotate_packages_missing_params(skill_packages, getattr(skill, "skill_package_params", None) or {})
         resolved_prompt, matched_skill_packages = build_skill_package_prompt(
             base_prompt=resolved_prompt,
             skill_packages=skill_packages,
@@ -247,6 +249,8 @@ class AgentNode(BaseNodeExecutor):
             # chat_service 透传到 extra_config,node._resolve_skill_packages 优先使用。
             # 报告门禁 capabilities 只来自 matched，避免寒暄轮误开报告闭环。
             "enabled_skill_packages": skill_packages,
+            "skill_id": getattr(skill, "id", None),
+            "skill_package_params_overlay": getattr(skill, "skill_package_params", None) or {},
             **skill_package_strategy,
             "temperature": skill.temperature,
             "chat_history": [{"event": "user", "message": final_message}],

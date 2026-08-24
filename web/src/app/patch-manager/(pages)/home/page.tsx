@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Space, Card, Button, message, Tag, Popconfirm, Spin } from 'antd';
+import { useIntl } from 'react-intl';
 import PermissionWrapper from '@/components/permission';
 import CustomTable from '@/components/custom-table';
 import {
   ArrowRightOutlined,
   PlayCircleOutlined,
-  PlusOutlined,
   FileTextOutlined,
   DesktopOutlined,
   CheckCircleOutlined,
@@ -16,6 +16,9 @@ import {
   ExclamationCircleOutlined,
   ToolOutlined,
   AlertOutlined,
+  SafetyCertificateOutlined,
+  ThunderboltOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import { useRouter } from 'next/navigation';
@@ -31,44 +34,16 @@ import {
   resolveDashboardSectionHeight,
   resolveDashboardTableScrollY,
 } from './tableLayout';
-
-interface KpiProps {
-  label: string;
-  value: string | number;
-  color?: string;
-  arrow?: boolean;
-  icon?: React.ReactNode;
-  onClick?: () => void;
-}
-
-function Kpi({ label, value, color, arrow, icon, onClick }: KpiProps) {
-  return (
-    <div
-      onClick={onClick}
-      className={`min-w-[130px] flex-1 rounded-[10px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-4 py-3.5 transition-shadow ${onClick ? 'cursor-pointer' : 'cursor-default'}`}
-      onMouseEnter={(e) => {
-        if (onClick) e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)';
-      }}
-      onMouseLeave={(e) => {
-        if (onClick) e.currentTarget.style.boxShadow = 'none';
-      }}
-    >
-      <div className="mb-1.5 flex items-start justify-between">
-        <div className="flex items-center gap-1 text-[13px] text-[var(--color-text-2)]">
-          {label}{arrow && <ArrowRightOutlined className="text-xs" />}
-        </div>
-        {icon && <span className="text-lg" style={{ color: color || 'var(--color-primary)' }}>{icon}</span>}
-      </div>
-      <div className="text-[26px] font-medium" style={{ color: color || 'var(--color-text-1)' }}>{value}</div>
-    </div>
-  );
-}
+import { formatCompactKpiValue } from './kpiPresentation';
+import KpiGrid from './_components/kpi-grid';
+import type { KpiCardProps } from './_components/kpi-card';
 
 export default function HomePage() {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
   const api = usePatchManagerApi();
   const { isLoading } = useApiClient();
+  const { locale } = useIntl();
   const router = useRouter();
   const [stats, setStats] = useState<PatchDashboardStats | null>(null);
   const [assessLoading, setAssessLoading] = useState(false);
@@ -124,14 +99,14 @@ export default function HomePage() {
     }
   };
 
-  const kpis = [
-    { label: t('patchManager.dashboard.managedTargets'), value: stats?.target_total ?? '—', icon: <DesktopOutlined /> },
-    { label: t('patchManager.dashboard.complianceRate'), value: stats?.compliance_rate != null ? `${stats.compliance_rate}%` : '—', color: '#0F6E56', icon: <CheckCircleOutlined /> },
-    { label: t('patchManager.dashboard.coverageRate'), value: stats?.coverage_rate != null ? `${stats.coverage_rate}%` : '—', icon: <EyeOutlined /> },
-    { label: t('patchManager.dashboard.nonCompliantTargets'), value: stats?.non_compliant_hosts ?? '—', color: '#A32D2D', icon: <WarningOutlined /> },
-    { label: t('patchManager.dashboard.unconfiguredBaselines'), value: stats?.unconfigured_hosts ?? '—', color: '#854F0B', icon: <ExclamationCircleOutlined /> },
-    { label: t('patchManager.dashboard.pendingRisks'), value: stats?.pending_risk_count ?? '—', color: '#854F0B', icon: <ToolOutlined /> },
-    { label: t('patchManager.dashboard.remediationFailures'), value: stats?.failed_tasks ?? '—', color: '#A32D2D', icon: <AlertOutlined /> },
+  const kpis: Omit<KpiCardProps, 'maxFontSize'>[] = [
+    { label: t('patchManager.dashboard.managedTargets'), ...formatCompactKpiValue(stats?.target_total, locale), icon: <DesktopOutlined /> },
+    { label: t('patchManager.dashboard.complianceRate'), value: stats?.compliance_rate != null ? `${stats.compliance_rate}%` : '--', tone: 'success', icon: <CheckCircleOutlined /> },
+    { label: t('patchManager.dashboard.coverageRate'), value: stats?.coverage_rate != null ? `${stats.coverage_rate}%` : '--', icon: <EyeOutlined /> },
+    { label: t('patchManager.dashboard.nonCompliantTargets'), ...formatCompactKpiValue(stats?.non_compliant_hosts, locale), tone: 'danger', icon: <WarningOutlined /> },
+    { label: t('patchManager.dashboard.unconfiguredBaselines'), ...formatCompactKpiValue(stats?.unconfigured_hosts, locale), tone: 'warning', icon: <ExclamationCircleOutlined /> },
+    { label: t('patchManager.dashboard.pendingRisks'), ...formatCompactKpiValue(stats?.pending_risk_count, locale), tone: 'warning', icon: <ToolOutlined /> },
+    { label: t('patchManager.dashboard.remediationFailures'), ...formatCompactKpiValue(stats?.failed_tasks, locale), tone: 'danger', icon: <AlertOutlined /> },
   ];
 
   const dist: ComplianceDistributionItem[] = stats?.compliance_distribution || [];
@@ -146,8 +121,8 @@ export default function HomePage() {
   const coverageHint = targetTotal > 0 ? ` = ${assessedCount} / ${targetTotal} ≈ ${Math.round(assessedCount / targetTotal * 100)}%` : '';
   const recentExecutionText = (record: RecentTaskItem) => {
     if (record.execution_mode !== 'window') return t('patchManager.risk.executeNow');
-    const start = record.execution_window_start ? convertToLocalizedTime(record.execution_window_start) : '—';
-    const end = record.execution_window_end ? convertToLocalizedTime(record.execution_window_end) : '—';
+    const start = record.execution_window_start ? convertToLocalizedTime(record.execution_window_start) : '--';
+    const end = record.execution_window_end ? convertToLocalizedTime(record.execution_window_end) : '--';
     return `${t('patchManager.risk.executionWindow')} ${start}–${end}`;
   };
   const tableScrollY = resolveDashboardTableScrollY(tableHeight);
@@ -191,15 +166,11 @@ export default function HomePage() {
   return (
     <div className="relative overflow-x-hidden">
       {pageLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-white/50">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--color-bg-1)]/50">
           <Spin />
         </div>
       )}
-      <div className="mb-3.5 flex flex-wrap gap-3">
-        {kpis.map((kpi) => (
-          <Kpi key={kpi.label} label={kpi.label} value={kpi.value} color={kpi.color} icon={kpi.icon} />
-        ))}
-      </div>
+      <KpiGrid items={kpis} />
       {/* 第2行：主机合规分布 */}
       <div className="mb-3.5 flex flex-wrap gap-3.5">
         <div className="flex min-h-0 min-w-0 max-w-full flex-[1_1_100%] flex-col overflow-hidden rounded-[10px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-4 py-3">
@@ -226,51 +197,98 @@ export default function HomePage() {
 
       {/* 快捷操作 */}
       <Card
-        title={<span><PlayCircleOutlined className="mr-1.5" />{t('patchManager.dashboard.quickActions')}</span>}
+        title={<span><ThunderboltOutlined className="mr-1.5" />{t('patchManager.dashboard.quickActions')}</span>}
         className="mb-3.5 rounded-[10px]"
-        styles={{ body: { padding: '12px 16px' } }}
+        styles={{ body: { padding: 16 } }}
       >
-        <div className="flex flex-wrap gap-3">
-          <Card size="small" className="min-w-[200px] flex-[1_1_200px] rounded-lg" styles={{ body: { padding: 14 } }}>
-            <div className="mb-2 flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-primary)]"><PlayCircleOutlined /></div>
-              <div className="font-medium">{t('patchManager.dashboard.assessNow')}</div>
+        <div className="grid grid-cols-4 gap-3">
+          <div className="flex min-h-[144px] min-w-0 flex-col rounded-lg bg-[var(--color-fill-1)] p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)] text-base text-[var(--color-primary)]">
+                <PlayCircleOutlined aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-medium leading-5 text-[var(--color-text-1)]">{t('patchManager.dashboard.assessNow')}</div>
+                <div className="mt-1 text-xs leading-5 text-[var(--color-text-3)]">{t('patchManager.dashboard.assessNowDescription')}</div>
+              </div>
             </div>
-            <div className="mb-3 min-h-[34px] text-xs text-[var(--color-text-3)]">{t('patchManager.dashboard.assessNowDescription')}</div>
             <PermissionWrapper
               requiredPermissions={['Add']}
               permissionPath="/patch-manager/risk-execution"
-              className="block!"
+              className="block! mt-auto pt-3"
             >
               <Popconfirm title={t('patchManager.dashboard.confirmAssessAll')} onConfirm={handleImmediateAssess} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')}>
-                <Button type="primary" block icon={<PlayCircleOutlined />} loading={assessLoading}>{t('patchManager.dashboard.assessNow')}</Button>
+                <Button
+                  type="primary"
+                  block
+                  icon={<PlayCircleOutlined aria-hidden="true" />}
+                  loading={assessLoading}
+                >
+                  {t('patchManager.dashboard.assessNow')}
+                </Button>
               </Popconfirm>
             </PermissionWrapper>
-          </Card>
-          <Card size="small" className="min-w-[200px] flex-[1_1_200px] rounded-lg" styles={{ body: { padding: 14 } }}>
-            <div className="mb-2 flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-primary)]"><PlusOutlined /></div>
-              <div className="font-medium">{t('patchManager.dashboard.addTarget')}</div>
+          </div>
+
+          <div className="flex min-h-[144px] min-w-0 flex-col rounded-lg bg-[var(--color-fill-1)] p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)] text-base text-[var(--color-primary)]">
+                <DesktopOutlined aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-medium leading-5 text-[var(--color-text-1)]">{t('patchManager.dashboard.addTarget')}</div>
+                <div className="mt-1 text-xs leading-5 text-[var(--color-text-3)]">{t('patchManager.dashboard.addTargetDescription')}</div>
+              </div>
             </div>
-            <div className="mb-3 min-h-[34px] text-xs text-[var(--color-text-3)]">{t('patchManager.dashboard.addTargetDescription')}</div>
-            <Button type="primary" block icon={<PlusOutlined />} onClick={() => router.push('/patch-manager/target')}>{t('patchManager.dashboard.addTarget')}</Button>
-          </Card>
-          <Card size="small" className="min-w-[200px] flex-[1_1_200px] rounded-lg" styles={{ body: { padding: 14 } }}>
-            <div className="mb-2 flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-primary)]"><PlusOutlined /></div>
-              <div className="font-medium">{t('patchManager.dashboard.createBaseline')}</div>
+            <Button
+              block
+              icon={<PlusOutlined aria-hidden="true" />}
+              className="mt-auto"
+              onClick={() => router.push('/patch-manager/target')}
+            >
+              {t('patchManager.dashboard.addTarget')}
+            </Button>
+          </div>
+
+          <div className="flex min-h-[144px] min-w-0 flex-col rounded-lg bg-[var(--color-fill-1)] p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)] text-base text-[var(--color-primary)]">
+                <SafetyCertificateOutlined aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-medium leading-5 text-[var(--color-text-1)]">{t('patchManager.dashboard.createBaseline')}</div>
+                <div className="mt-1 text-xs leading-5 text-[var(--color-text-3)]">{t('patchManager.dashboard.createBaselineDescription')}</div>
+              </div>
             </div>
-            <div className="mb-3 min-h-[34px] text-xs text-[var(--color-text-3)]">{t('patchManager.dashboard.createBaselineDescription')}</div>
-            <Button type="primary" block icon={<PlusOutlined />} onClick={() => router.push('/patch-manager/baseline')}>{t('patchManager.dashboard.createBaseline')}</Button>
-          </Card>
-          <Card size="small" className="min-w-[200px] flex-[1_1_200px] rounded-lg" styles={{ body: { padding: 14 } }}>
-            <div className="mb-2 flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--color-fill-2)] text-[var(--color-primary)]"><FileTextOutlined /></div>
-              <div className="font-medium">{t('patchManager.dashboard.executionRecords')}</div>
+            <Button
+              block
+              icon={<PlusOutlined aria-hidden="true" />}
+              className="mt-auto"
+              onClick={() => router.push('/patch-manager/baseline')}
+            >
+              {t('patchManager.dashboard.createBaseline')}
+            </Button>
+          </div>
+
+          <div className="flex min-h-[144px] min-w-0 flex-col rounded-lg bg-[var(--color-fill-1)] p-4">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-primary-bg-active)] text-base text-[var(--color-primary)]">
+                <FileTextOutlined aria-hidden="true" />
+              </div>
+              <div className="min-w-0">
+                <div className="font-medium leading-5 text-[var(--color-text-1)]">{t('patchManager.dashboard.executionRecords')}</div>
+                <div className="mt-1 text-xs leading-5 text-[var(--color-text-3)]">{t('patchManager.dashboard.executionRecordsDescription')}</div>
+              </div>
             </div>
-            <div className="mb-3 min-h-[34px] text-xs text-[var(--color-text-3)]">{t('patchManager.dashboard.executionRecordsDescription')}</div>
-            <Button type="primary" block icon={<FileTextOutlined />} onClick={() => router.push('/patch-manager/risk-execution')}>{t('patchManager.dashboard.viewRecords')}</Button>
-          </Card>
+            <Button
+              block
+              icon={<EyeOutlined aria-hidden="true" />}
+              className="mt-auto"
+              onClick={() => router.push('/patch-manager/risk-execution')}
+            >
+              {t('patchManager.dashboard.viewRecords')}
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -294,7 +312,7 @@ export default function HomePage() {
                 { title: t('patchManager.execution.type'), dataIndex: 'task_type_display', width: 90, render: (value: string) => <Tag>{value}</Tag> },
                 { title: t('patchManager.risk.executionMode'), dataIndex: 'execution_mode', width: 110, render: (_: unknown, r: RecentTaskItem) => recentExecutionText(r) },
                 { title: t('patchManager.execution.status'), dataIndex: 'status', width: 110, render: (_: unknown, r: RecentTaskItem) => <Tag color={r.status_color}>{t(`patchManager.execution.statuses.${r.status_code}`, r.status)}</Tag> },
-                { title: t('patchManager.createTime'), dataIndex: 'created_at', width: 170, render: (_: string, r: RecentTaskItem) => <span className="text-[var(--color-text-3)]">{convertToLocalizedTime(r.created_at) || '—'}</span> },
+                { title: t('patchManager.createTime'), dataIndex: 'created_at', width: 170, render: (_: string, r: RecentTaskItem) => <span className="text-[var(--color-text-3)]">{convertToLocalizedTime(r.created_at) || '--'}</span> },
               ]}
             />
           </div>

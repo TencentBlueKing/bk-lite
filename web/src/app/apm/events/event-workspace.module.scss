@@ -16,7 +16,7 @@
 }
 
 .filterSection {
-  padding: 10px 20px;
+  padding: 10px 0;
   margin-bottom: 10px;
 }
 
@@ -69,21 +69,20 @@
   padding: 0 10px;
 }
 
-.alertsWorkspace {
-  min-height: calc(100vh - 146px);
-  padding: 0 0 24px;
-}
-
 .alertsViewTabs {
-  padding: 0 20px;
-  margin: 0 0 10px;
-  background: var(--color-bg-1);
-  border-bottom: 1px solid var(--color-border-1);
+  margin: 0;
 }
 
 .alertsViewTabs :global(.ant-tabs-nav) {
-  min-height: 56px;
   margin-bottom: 0;
+}
+
+.alertsViewTabs :global(.ant-tabs-nav::before) {
+  border-bottom-color: var(--color-border);
+}
+
+.alertsViewTabs :global(.ant-tabs-tab) {
+  padding: 0 0 10px;
 }
 
 .alertsContent {
@@ -92,11 +91,7 @@
 
 .alertsToolbar {
   display: flex;
-  min-height: 60px;
   align-items: center;
-  padding: 10px 20px;
-  margin-bottom: 10px;
-  background: var(--color-bg-1);
 }
 
 .alertsToolbarActions,
@@ -126,19 +121,7 @@
 }
 
 .alertsDistribution {
-  margin-bottom: 10px;
   overflow: hidden;
-  background: var(--color-bg-1);
-}
-
-.alertsSeveritySummary {
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.alertsSeveritySummary :global(.ant-tag) {
-  margin: 0;
-  font-variant-numeric: tabular-nums;
 }
 
 .alertsDistributionChart {
@@ -148,7 +131,6 @@
 
 .alertsDistributionCollapseTitle {
   min-height: 44px;
-  padding: 10px 20px !important;
 }
 
 .alertsDistributionCollapseContent {
@@ -157,8 +139,6 @@
 
 .alertsTableSection {
   min-width: 0;
-  padding: 10px 20px 20px;
-  background: var(--color-bg-1);
 }
 
 .alertsTableSection :global(.ant-table-wrapper) {
@@ -166,22 +146,16 @@
 }
 
 .alertTimeCell {
-  display: inline-flex;
-  align-items: center;
   color: var(--color-text-3);
   font-variant-numeric: tabular-nums;
-  gap: 6px;
   white-space: nowrap;
-}
-
-.alertTimeCell :global(.anticon) {
-  color: var(--color-text-4);
 }
 
 .alertTitleLink {
   display: block !important;
   width: 100%;
-  min-height: 40px;
+  height: auto !important;
+  min-height: 0;
   overflow: hidden;
   padding: 0 !important;
   font-weight: 500;
@@ -228,21 +202,424 @@
 }
 
 .alertOperationCell :global(.ant-btn) {
-  min-height: 40px;
+  height: auto;
+  min-height: 0;
+}
+
+.alertDetailDrawer :global(.ant-drawer-header) {
+  padding: 12px 16px;
+}
+
+.alertDetailDrawerBody {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0 16px 16px;
+}
+
+.alertDetailDrawerFooter {
+  padding: 10px 16px;
+}
+
+.alertDetailTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.alertDetailTitleText {
+  color: var(--color-text-1);
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.alertDetailStateTag,
+.alertDetailMetricTag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.alertDetailStateTagActive {
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, var(--color-bg));
+  border-color: var(--color-primary);
+}
+
+.alertDetailStateTagRecovered {
+  color: var(--color-text-2);
+  background: var(--color-fill-1);
+  border-color: var(--color-border);
+}
+
+.alertDetailStateTagClosed {
+  color: var(--color-text-3);
+  background: var(--color-fill-1);
+  border-color: var(--color-border);
+}
+
+.alertDetailLevelTag {
+  margin: 0 !important;
+  font-weight: 600;
+}
+
+.alertDetailMetricTagError {
+  color: var(--color-fail);
+  background: transparent;
+  border-color: var(--color-fail);
+}
+
+.alertDetailMetricTagLatency {
+  color: var(--theme-color-status-warning);
+  background: transparent;
+  border-color: var(--theme-color-status-warning);
+}
+
+.alertDetailMetricTagThroughput {
+  color: var(--color-primary);
+  background: transparent;
+  border-color: var(--color-primary);
+}
+
+.alertDetailMetricTagIdle {
+  color: var(--color-text-3);
+  background: transparent;
+}
+
+.alertDetailMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border-1);
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
+.alertDetailMetaLink,
+.alertDetailRule {
+  color: var(--color-primary);
+}
+
+.alertDetailRule {
+  padding: 0 4px;
+  background: var(--color-fill-1);
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.alertDetailRule a {
+  color: inherit;
+}
+
+.alertDetailMetaText {
+  font-size: 12px !important;
+}
+
+.alertDetailTabs {
+  flex: none;
+  margin-top: 4px;
+}
+
+.alertDetailTabs :global(.ant-tabs-nav) {
+  margin-bottom: 12px;
+}
+
+.alertDetailBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.alertDetailInfo :global(.ant-descriptions-header) {
+  margin-bottom: 12px;
+}
+
+.alertDetailInfo :global(.ant-descriptions-view table) {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.alertDetailInfo :global(.ant-descriptions-item-label),
+.alertDetailInfo :global(.ant-descriptions-item-content) {
+  padding: 10px 12px !important;
+  vertical-align: middle;
+}
+
+.alertDetailInfo :global(.ant-descriptions-item-label) {
+  width: 110px;
+  color: var(--color-text-3);
+  background: var(--color-fill-1) !important;
+}
+
+.alertDetailInfo :global(.ant-descriptions-item-content) {
+  overflow-wrap: anywhere;
+}
+
+.alertDetailLevel {
+  padding-left: 8px;
+  border-left-width: 4px;
+  border-left-style: solid;
+  font-weight: 600;
+}
+
+.alertDetailObject {
+  line-height: 1.3;
+}
+
+.alertDetailObjectScope {
+  font-size: 11px !important;
+}
+
+.alertDetailTabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.alertDetailNotifyTag {
+  margin: 0 !important;
+}
+
+.alertDetailCloseRow {
+  margin-top: 12px;
+}
+
+.alertDetailChartCard,
+.alertDetailEventCard {
+  padding: 14px 16px;
+  margin-top: 16px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+
+.alertDetailEventCard {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.alertDetailChartTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin: 0 0 4px !important;
+  gap: 8px;
+}
+
+.alertDetailChartHint {
+  font-size: 11px !important;
+  font-weight: 400 !important;
+}
+
+.alertDetailChart {
+  height: 220px;
+}
+
+.alertDetailEventCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 12px;
+}
+
+.alertDetailEventCardTitle {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+.alertDetailHeatLegend,
+.alertDetailHeatLegendItem,
+.alertDetailHeatFoot {
+  display: flex;
+  align-items: center;
+}
+
+.alertDetailHeatLegend {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.alertDetailHeatLegendItem {
+  gap: 3px;
+}
+
+.alertDetailHeatLegendLabel {
+  font-size: 10px !important;
+}
+
+.alertDetailHeatSwatch,
+.alertDetailHeatCell {
+  border: 1px solid transparent;
+  border-radius: 2px;
+}
+
+.alertDetailHeatSwatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-color: var(--color-border-1);
+}
+
+.alertDetailHeatScroll {
+  overflow-x: auto;
+}
+
+.alertDetailHeatGrid {
+  width: 100%;
+  min-width: 640px;
+}
+
+.alertDetailHeatHours,
+.alertDetailHeatRow {
+  display: grid;
+  grid-template-columns: 64px repeat(24, minmax(14px, 1fr));
+  gap: 2px;
+  margin-bottom: 2px;
+}
+
+.alertDetailHeatHours {
+  margin-bottom: 4px;
+  color: var(--color-text-4);
+  font-size: 10px;
+  text-align: center;
+}
+
+.alertDetailHeatHours span {
+  opacity: 0.4;
+}
+
+.alertDetailHeatHourActive {
+  opacity: 1 !important;
+}
+
+.alertDetailHeatDay,
+.alertDetailHeatDayToday {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+}
+
+.alertDetailHeatDay {
+  color: var(--color-text-2);
+}
+
+.alertDetailHeatDayToday {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.alertDetailHeatCell {
+  display: block;
+  width: 100%;
+  min-width: 14px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--color-border-1);
+  cursor: pointer;
+}
+
+.alertDetailHeatPeak {
+  border-color: color-mix(in srgb, var(--color-fail) 72%, var(--color-text-1));
+}
+
+.alertDetailHeatFoot {
+  margin-top: 8px;
+  color: var(--color-text-4);
+  font-size: 11px;
+  gap: 6px;
+}
+
+.alertDetailHeatFootIcon {
+  color: var(--color-fail);
+}
+
+.alertDetailEventList {
+  overflow-y: auto;
+  max-height: 400px;
+  border: 1px solid var(--color-border-1);
+  border-radius: 6px;
+}
+
+.alertDetailEventRow {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 12px;
+  color: var(--color-text-1);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--color-border-1);
+  text-align: left;
+  cursor: pointer;
+  gap: 12px;
+}
+
+.alertDetailEventRow:last-child {
+  border-bottom: 0;
+}
+
+.alertDetailEventRowActive {
+  background: color-mix(in srgb, var(--color-fail) 4%, transparent);
+}
+
+.alertDetailEventRowSelected {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+}
+
+.alertDetailEventTime {
+  flex: none;
+  width: 72px;
+  color: var(--color-text-1);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.alertDetailEventContent {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alertDetailEventValue {
+  flex: none;
+  width: 100px;
+  color: var(--color-text-2);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.alertDetailEventValueWarn {
+  color: var(--theme-color-status-warning);
+}
+
+.alertDetailEventValueDanger {
+  color: var(--color-fail);
 }
 
 .tableSection {
   min-width: 0;
-  padding: 10px 20px 20px;
+  padding: 10px 0 16px;
 }
 
 .policySection {
-  min-height: calc(100vh - 146px);
-  padding: 20px;
+  min-width: 0;
 }
 
 .policyToolbar {
-  margin-bottom: 20px;
+  margin-bottom: 0;
 }
 
 .policyNameLink,
@@ -301,13 +678,14 @@
 }
 
 .policyOperationCell :global(.ant-btn) {
-  min-height: 40px;
+  height: auto;
+  min-height: 0;
 }
 
 .editor {
   width: 100%;
   min-height: 100%;
-  padding: 16px 20px 0;
+  padding: 0;
   background: transparent;
 }
 
@@ -386,11 +764,6 @@
   display: block;
   margin: -6px 0 0 120px;
   font-size: 12px;
-}
-
-.legacyScopeAlert {
-  max-width: 720px;
-  margin: 12px 0 0 120px;
 }
 
 .editor :global(.ant-steps-item-description) {
@@ -585,29 +958,6 @@
     justify-content: space-between;
   }
 
-  .tableSection,
-  .filterSection,
-  .policySection {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
-
-  .alertsViewTabs {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
-
-  .alertsToolbar,
-  .alertsTableSection {
-    padding-right: 16px;
-    padding-left: 16px;
-  }
-
-  .alertsDistributionCollapseTitle {
-    padding-right: 16px !important;
-    padding-left: 16px !important;
-  }
-
   .alertsToolbarActions :global(.ant-input-affix-wrapper) {
     width: min(100%, 360px);
   }
@@ -622,8 +972,7 @@
     padding-left: 0;
   }
 
-  .scopeHint,
-  .legacyScopeAlert {
+  .scopeHint {
     margin-left: 0;
   }
 
@@ -641,16 +990,6 @@
 }
 
 @media (max-width: 640px) {
-  .alertsWorkspace {
-    padding: 0 0 12px;
-  }
-
-  .alertsViewTabs {
-    padding-right: 12px;
-    padding-left: 12px;
-    margin-bottom: 12px;
-  }
-
   .alertsToolbarActions {
     align-items: stretch;
     flex-direction: column;
@@ -679,6 +1018,19 @@
 
   .alertsDistributionChart {
     height: 180px;
+  }
+
+  .alertDetailMeta {
+    gap: 10px;
+  }
+
+  .alertDetailEventTime,
+  .alertDetailEventValue {
+    width: auto;
+  }
+
+  .alertDetailEventValue {
+    text-align: left;
   }
 
   .alertsSeveritySummary {

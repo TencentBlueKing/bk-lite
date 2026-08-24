@@ -43,8 +43,8 @@
   - `management/commands/create_monitor_instance.py:14,21`：YAML 驱动的监控实例创建入口，支持输入/输出文件参数，调用 `InstanceConfigService` 创建或更新实例配置（命令说明见同目录 `create_monitor_instance.md:5`）。
 - NATS【已实现/已存在】：`nats/monitor.py` 注册大量 handler，经 `apps/rpc/monitor.py` 暴露并被 operation_analysis、opspilot 消费：
   - 创建类（`monitor.py`）：`create_monitor_object_type` / `create_monitor_object` / `create_monitor_plugin` / `create_metric_group` / `create_metric` / `create_monitor_policy`。
-  - 策略维护类：`search_monitor_policies`（按名称、调用方组织范围查询，上限 200）/ `delete_monitor_policy`（身份闸 + 组织可见性，清理 PeriodicTask / PolicyOrganization / 策略）。
-  - 查询类：`monitor_objects` / `monitor_object_instance_count` / `monitor_metrics` / `monitor_object_instances` / `query_monitor_data_by_metric` / `monitor_instance_metrics` / `query_monitor_alert_segments` / `query_latest_active_alerts` / `mm_query_range` / `mm_query` / `get_monitor_statistics`。
+  - 策略维护类：`search_monitor_policies`（按名称、调用方组织范围查询，上限 200；**策略名允许重名，可返回多条并带 `count`，写操作须用 `policy_id`**）/ `delete_monitor_policy`（身份闸 + 组织可见性，清理 PeriodicTask / PolicyOrganization / 策略）。
+  - 查询类：`monitor_objects` / `monitor_object_instance_count` / `monitor_metrics` / `monitor_object_instances` / `query_monitor_data_by_metric` / `monitor_instance_metrics` / `query_monitor_alert_segments` / `query_latest_active_alerts` / `mm_query_range` / `mm_query` / `get_monitor_statistics` / `get_host_instance_list` / `get_host_metric_range` / `get_host_resource_snapshot` / `get_host_resource_top`。
     - `query_monitor_data_by_metric` 以“监控对象 + 指标名”查询时，会对所有匹配的插件指标定义分别执行 PromQL 并合并序列；每条序列附加 `metric_id` 和 `monitor_plugin`（`id/name/display_name/template_id/template_type/collector/collect_type`）以标识来源，同时保留原 VictoriaMetrics 外层返回结构。
   - 权限授权类：`_get_authorized_monitor_instances` 等内部辅助（`monitor.py:491-...`）；`nats/permission.py:7,33` 另注册 `get_monitor_module_data` / `get_monitor_module_list`，按组织过滤实例/策略/条件。
 - 流量监控接入（NetFlow/sFlow）【已实现/已存在】：服务层 `services/flow_*.py` 承载流量接入能力，对应 PRD「集成·流量监控接入」：
@@ -85,6 +85,9 @@
 - `[monitor#20260709-001]` 补录告警策略与监控条件 ViewSet 的对象级权限围栏：list/retrieve 受 `View` 权限、create/update/partial_update/destroy 受 `Operate` 权限，写操作前对 `organizations` 字段做授权校验，批量模板创建前对 `asset_ids` 做整体授权预校验（越权 401 整体回滚）。
 - `[monitor#20260709-002]` 前端社区版 4 个企业版 EE 中间件占位 hook 已在 `web/src/app/monitor/hooks/integration/{index.tsx,objects/middleware/{jboss,jetty,tongWeb,webLogic}.tsx}` 删除，社区版不渲染 WebLogic/JBoss/Jetty/TongWeb 卡片；企业版由 `useEnterpriseConfig` 覆盖提供。
 - `[monitor#20260709-003]` i18n `monitor_object_type.OS` 文案由「操作系统」改为「主机资源」（zh-Hans/en），并配套 `migrations/0044_rename_monitor_object_type_os_to_host_resource.py` 同步 DB 兜底字段（仅 `id='os'`）。
+
+## 2026-08-20 Code-ARD 校准
+- `[monitor#20260820-001]` 新增主机看板 NATS：`get_host_instance_list`、`get_host_metric_range`、`get_host_resource_snapshot`；`get_host_resource_top` 增加可选 `instance_ids` 收窄。未选主机的趋势/快照不退化为全量。权限与现有监控实例可见范围一致，fail-closed。
 
 ## 7. 证据来源
 `server/apps/monitor/{urls.py,config.py,constants/alert_policy.py,models/*,tasks/*,views/monitor_policy.py:38-69,92-153,285-295,528-609,views/monitor_condition.py:23-54,63-112,140-176,views/collect_detect.py:15-86,services/flow_*.py,services/flow_access_guide.py:10,13,14,services/flow_sampling.py,services/collect_detect.py:29-69,198-213,utils/victoriametrics_api.py,nats/monitor.py,language/zh-Hans.yaml:4867,language/en.yaml:4865,migrations/0044_rename_monitor_object_type_os_to_host_resource.py:1-28,management/commands/{plugin_init.py:9,autodiscover.py:5,backfill_metric_instance_id_keys.py:12,gen_display_fields.py:59,refresh_display_fields.py:26,create_monitor_instance.py:14,21,create_monitor_instance.md:5},support-files/plugins/Telegraf/snmp/{access_topvision/policy.json,access_icotera/policy.json,switch_ipinfusion/policy.json,transmission_ifotec/policy.json,wireless_xirrus/policy.json}}`、`server/apps/rpc/monitor.py`、`web/src/app/monitor/api/integration.ts:220-239`、`web/src/app/monitor/hooks/integration/{index.tsx,objects/middleware/{jboss,jetty,tongWeb,webLogic}.tsx}`。

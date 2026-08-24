@@ -67,7 +67,7 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
         return self.client.run("create_monitor_policy", data=data, **kwargs)
 
     def search_monitor_policies(self, name: str, **kwargs):
-        """按名称查询监控告警策略"""
+        """按名称查询监控告警策略（允许同名多条；写操作请用 policy_id）。"""
         return self.client.run("search_monitor_policies", name=name, **kwargs)
 
     def delete_monitor_policy(self, policy_id, **kwargs):
@@ -215,3 +215,27 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
         monitor_obj_id 为可选，用于收窄到指定监控对象。
         """
         return self.client.run("query_latest_active_alerts", query_data=query_data, **kwargs)
+
+    def query_latest_interface_metrics(self, instance_ids=None, **kwargs):
+        """按监控实例批量查询接口最新 IF-MIB 值（含 ifDescr）。"""
+        return self.client.run(
+            "query_latest_interface_metrics",
+            instance_ids=instance_ids,
+            **kwargs,
+        )
+
+    def get_host_instance_list(self, **kwargs):
+        """查询当前组织权限范围内的主机实例，供下拉选项使用。"""
+        return self.client.run("get_host_instance_list", **kwargs)
+
+    def get_host_metric_range(self, **kwargs):
+        """按所选主机查询单一指标时序，返回 {display_name: [[ts, value], ...]}。"""
+        return self.client.run("get_host_metric_range", **kwargs)
+
+    def get_host_resource_snapshot(self, **kwargs):
+        """按所选主机返回 CPU/内存/磁盘均值与最高值快照。"""
+        return self.client.run("get_host_resource_snapshot", **kwargs)
+
+    def get_host_resource_top(self, metric_type: str, **kwargs):
+        """查询主机资源使用率 Top10，可选 instance_ids 收窄。"""
+        return self.client.run("get_host_resource_top", metric_type=metric_type, **kwargs)

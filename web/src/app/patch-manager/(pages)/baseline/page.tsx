@@ -342,7 +342,7 @@ export default function BaselineManagementPage() {
       dataIndex: 'requirement_names',
       width: 220,
       render: (names: string[]) => {
-        const text = (names || []).join(',') || '—';
+        const text = (names || []).join(',') || '--';
         return <EllipsisWithTooltip text={text} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />;
       },
     },
@@ -373,7 +373,7 @@ export default function BaselineManagementPage() {
       render: (dist: any[], r: any) => {
         const items = dist || [];
         if (!items.length) {
-          return r.bound_host_count ? '—' : <span className="text-[var(--color-text-4)]">{t('patchManager.baseline.unbound')}</span>;
+          return r.bound_host_count ? '--' : <span className="text-[var(--color-text-4)]">{t('patchManager.baseline.unbound')}</span>;
         }
         return (
           <Space size={6} wrap>
@@ -391,8 +391,8 @@ export default function BaselineManagementPage() {
         );
       },
     },
-    { title: t('patchManager.baseline.recentAssessment'), dataIndex: 'last_evaluated_at', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
-    { title: t('patchManager.updateTime'), dataIndex: 'updated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.baseline.recentAssessment'), dataIndex: 'last_evaluated_at', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '--' },
+    { title: t('patchManager.updateTime'), dataIndex: 'updated_at', width: 180, render: (v: string | null) => convertToLocalizedTime(v) || '--' },
     {
       title: t('patchManager.operation'),
       dataIndex: 'op',
@@ -531,6 +531,7 @@ export default function BaselineManagementPage() {
             onChange={(e) => setBaselineSearch(e.target.value)}
             onSearch={(v) => { setPagination((p) => ({ ...p, current: 1 })); loadData(1, pagination.pageSize, v); }}
             className="w-[220px]"
+            enterButton
           />
           <Select
             mode="multiple"
@@ -542,7 +543,7 @@ export default function BaselineManagementPage() {
             placeholder={t('patchManager.baseline.patchFilter')}
             optionFilterProp="label"
             maxTagCount="responsive"
-            className="w-[360px]"
+            className="w-[220px]"
             options={patchFilterOptions.map((patch) => ({
               value: patch.id,
               label: patch.windows_detail?.kb_number || patch.linux_detail?.pkg_name || patch.title,
@@ -852,6 +853,7 @@ export default function BaselineManagementPage() {
               onSearch={(v) => { setPatchPickerPagination((p) => ({ ...p, current: 1 })); loadPatches(1, patchPickerPagination.pageSize, v); }}
               onChange={(e) => setPatchSearch(e.target.value)}
               allowClear
+              enterButton
               className="mb-3 w-[300px]"
             />
           }

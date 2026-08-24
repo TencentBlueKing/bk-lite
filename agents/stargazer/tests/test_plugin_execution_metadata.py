@@ -4,9 +4,7 @@ import pytest
 import yaml
 
 PLUGIN_ROOT = Path(__file__).parents[1] / "plugins" / "inputs"
-ASYNC_MATRIX_DOCUMENT = (
-    Path(__file__).parents[1] / "docs" / "configuration-plugin-async-matrix.md"
-)
+ASYNC_MATRIX_DOCUMENT = Path(__file__).parents[1] / "docs" / "configuration-plugin-async-matrix.md"
 
 EXPECTED_PROTOCOL_EXECUTION_MODES = {
     "aliyun": "sync",
@@ -62,17 +60,13 @@ CLOUD_AND_VMWARE_COLLECTION_PLUGINS = (
     ),
 )
 def test_native_protocol_executor_is_declared_async(model):
-    config = yaml.safe_load(
-        (PLUGIN_ROOT / model / "plugin.yml").read_text(encoding="utf-8")
-    )
+    config = yaml.safe_load((PLUGIN_ROOT / model / "plugin.yml").read_text(encoding="utf-8"))
 
     assert config["executors"]["protocol"]["execution_mode"] == "async"
 
 
 def test_thread_backed_mssql_executor_is_not_declared_native_async():
-    config = yaml.safe_load(
-        (PLUGIN_ROOT / "mssql" / "plugin.yml").read_text(encoding="utf-8")
-    )
+    config = yaml.safe_load((PLUGIN_ROOT / "mssql" / "plugin.yml").read_text(encoding="utf-8"))
 
     protocol = config["executors"]["protocol"]
     assert protocol["execution_mode"] == "sync"
@@ -98,9 +92,7 @@ def test_thread_backed_mssql_executor_is_not_declared_native_async():
     ),
 )
 def test_native_non_snmp_executor_is_not_classified_as_sync_sdk(model):
-    config = yaml.safe_load(
-        (PLUGIN_ROOT / model / "plugin.yml").read_text(encoding="utf-8")
-    )
+    config = yaml.safe_load((PLUGIN_ROOT / model / "plugin.yml").read_text(encoding="utf-8"))
 
     assert config["executors"]["protocol"]["capacity_group"] == "default"
 
@@ -118,19 +110,20 @@ def test_all_registered_protocol_executors_have_truthful_execution_mode():
 
 def test_async_matrix_document_lists_every_registered_plugin():
     document = ASYNC_MATRIX_DOCUMENT.read_text(encoding="utf-8")
-    missing = [
-        path.parent.name
-        for path in sorted(PLUGIN_ROOT.glob("*/plugin.yml"))
-        if f"`{path.parent.name}`" not in document
-    ]
+    missing = [path.parent.name for path in sorted(PLUGIN_ROOT.glob("*/plugin.yml")) if f"`{path.parent.name}`" not in document]
 
     assert missing == []
 
 
 @pytest.mark.parametrize("model", CLOUD_AND_VMWARE_COLLECTION_PLUGINS)
 def test_cloud_and_vmware_collection_timeout_is_300_seconds(model):
-    config = yaml.safe_load(
-        (PLUGIN_ROOT / model / "plugin.yml").read_text(encoding="utf-8")
-    )
+    config = yaml.safe_load((PLUGIN_ROOT / model / "plugin.yml").read_text(encoding="utf-8"))
+
+    assert config["executors"]["protocol"]["timeout"] == 300
+
+
+@pytest.mark.parametrize("model", ("network", "network_topo"))
+def test_snmp_collection_timeout_is_300_seconds(model):
+    config = yaml.safe_load((PLUGIN_ROOT / model / "plugin.yml").read_text(encoding="utf-8"))
 
     assert config["executors"]["protocol"]["timeout"] == 300

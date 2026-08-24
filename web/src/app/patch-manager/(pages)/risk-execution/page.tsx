@@ -93,8 +93,8 @@ const ACTIVE_RECORD_STATUSES = new Set(['waiting', 'running']);
 
 function executionText(task: any, formatTime: (value: string) => string, translate: (key: string) => string) {
   if (task.execution_mode !== 'window') return translate('patchManager.risk.executeNow');
-  const start = task.execution_window_start ? formatTime(task.execution_window_start) : '—';
-  const end = task.execution_window_end ? formatTime(task.execution_window_end) : '—';
+  const start = task.execution_window_start ? formatTime(task.execution_window_start) : '--';
+  const end = task.execution_window_end ? formatTime(task.execution_window_end) : '--';
   return `${translate('patchManager.risk.executionWindow')} ${start}–${end}`;
 }
 
@@ -119,7 +119,7 @@ async function exportTasks(
       );
       const attemptTime = (step: any) => {
         const attempt = step?.attempts?.[step.attempts.length - 1];
-        if (!attempt) return '—';
+        if (!attempt) return '--';
         return `${formatTime(attempt.started_at)}${attempt.finished_at ? ` ～ ${formatTime(attempt.finished_at)}` : ''}`;
       };
       const attempts = (risk.steps || []).flatMap((step: any) => step.attempts || []);
@@ -127,11 +127,11 @@ async function exportTasks(
         ...row,
         host: risk.host_name || risk.host_id,
         patch: risk.patch_name || risk.patch_id,
-        installStatus: stepMap.install ? translate(`patchManager.execution.statuses.${stepMap.install.status}`) : '—',
+        installStatus: stepMap.install ? translate(`patchManager.execution.statuses.${stepMap.install.status}`) : '--',
         installTime: attemptTime(stepMap.install),
-        rebootStatus: stepMap.reboot ? translate(`patchManager.execution.statuses.${stepMap.reboot.status}`) : '—',
+        rebootStatus: stepMap.reboot ? translate(`patchManager.execution.statuses.${stepMap.reboot.status}`) : '--',
         rebootTime: attemptTime(stepMap.reboot),
-        verifyStatus: stepMap.verify ? translate(`patchManager.execution.statuses.${stepMap.verify.status}`) : '—',
+        verifyStatus: stepMap.verify ? translate(`patchManager.execution.statuses.${stepMap.verify.status}`) : '--',
         verifyTime: attemptTime(stepMap.verify),
         status: translate(`patchManager.execution.statuses.${risk.status}`),
         reason: attempts.map((attempt: any) => attempt.reason).filter(Boolean).at(-1) || '',
@@ -212,7 +212,7 @@ export default function RiskExecutionPage() {
   }, []);
 
   const formatDateTime = useCallback((value?: string | null) => (
-    value ? localizedTimeRef.current(value) : '—'
+    value ? localizedTimeRef.current(value) : '--'
   ), []);
 
   const mapTaskRows = useCallback((items: any[]): TaskRow[] => (
@@ -574,7 +574,7 @@ export default function RiskExecutionPage() {
             search: value,
             taskType: taskType as ExecutionListQuery['taskType'],
           });
-        }} className="w-[220px]" />
+        }} className="w-[220px]" enterButton />
         <Select allowClear placeholder={t('patchManager.execution.taskType')} value={taskType} className="w-[130px]" options={[{ label: t('patchManager.risk.remediate'), value: 'install' }, { label: t('patchManager.risk.reboot'), value: 'reboot' }]} onChange={(value) => {
           setTaskType(value);
           setPagination((current) => ({ ...current, current: 1 }));
@@ -641,10 +641,15 @@ export default function RiskExecutionPage() {
     >
       {detailLoading && !detailTask ? <Spin className="m-auto" /> : <>
         <div className="w-[310px] overflow-auto border-r border-[var(--color-border-1)] p-3">
-          <Input.Search placeholder={t('patchManager.execution.riskSearch')} value={riskSearch} onChange={(event) => setRiskSearch(event.target.value)} className="mb-3" />
+          <Input.Search placeholder={t('patchManager.execution.riskSearch')} value={riskSearch} onChange={(event) => setRiskSearch(event.target.value)} className="mb-3" enterButton />
           {filteredRiskItems.length ? filteredRiskItems.map((item) => {
             const selected = item.id === selectedRiskId;
-            return <div key={item.id} onClick={() => handleSelectRisk(item.id)} style={{ padding: '10px 12px', marginBottom: 8, cursor: 'pointer', borderRadius: 7, border: '1px solid var(--color-border-1, #e8e8e8)', borderLeft: `3px solid ${STEP_BORDER[item.status] || '#d9d9d9'}`, background: selected ? 'var(--color-fill-1, #f4f6f9)' : 'var(--color-bg-1, #fff)' }}>
+            return <div
+              key={item.id}
+              onClick={() => handleSelectRisk(item.id)}
+              className={`mb-2 cursor-pointer rounded-[7px] border border-[var(--color-border-1)] border-l-[3px] px-3 py-2.5 ${selected ? 'bg-[var(--color-fill-1)]' : 'bg-[var(--color-bg-1)]'}`}
+              style={{ borderLeftColor: STEP_BORDER[item.status] || 'var(--color-border-1)' }}
+            >
               <EllipsisWithTooltip
                 className="overflow-hidden text-ellipsis whitespace-nowrap font-medium"
                 text={`${item.host_name || ''}-${item.patch_name || t('patchManager.risk.patch')}`}
@@ -653,7 +658,7 @@ export default function RiskExecutionPage() {
                 <Tag color={item.status_color} className="shrink-0 !me-0">{t(`patchManager.execution.statuses.${item.status}`, item.status_display)}</Tag>
                 <EllipsisWithTooltip
                   className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-(--color-text-3)"
-                  text={item.host_ip || '—'}
+                  text={item.host_ip || '--'}
                 />
               </div>
             </div>;
@@ -666,9 +671,9 @@ export default function RiskExecutionPage() {
               showIcon
               message={t('patchManager.execution.cancelInfo')}
               description={<Space direction="vertical" size={2}>
-                <span>{t('patchManager.execution.cancelledBy')}：{detailTask.cancelled_by || '—'}</span>
+                <span>{t('patchManager.execution.cancelledBy')}：{detailTask.cancelled_by || '--'}</span>
                 <span>{t('patchManager.execution.cancelledAt')}：{formatDateTime(detailTask.cancelled_at)}</span>
-                <span>{t('patchManager.execution.cancelReason')}：{detailTask.cancel_reason || '—'}</span>
+                <span>{t('patchManager.execution.cancelReason')}：{detailTask.cancel_reason || '--'}</span>
               </Space>}
               className="mb-4"
             />}
@@ -681,17 +686,34 @@ export default function RiskExecutionPage() {
             <div className="mb-4 flex justify-between">
               <div>
                 <div className="text-base font-semibold">{riskDetail.display_name}</div>
-                <div className="mt-1 text-[var(--color-text-3)]">{riskDetail.host_ip || '—'} · {riskDetail.baseline_name || '—'}</div>
+                <div className="mt-1 text-[var(--color-text-3)]">{riskDetail.host_ip || '--'} · {riskDetail.baseline_name || '--'}</div>
               </div>
               {riskDetail.can_retry && <PermissionWrapper requiredPermissions={['Edit']} instPermissions={detailTask?.permission}><Button type="link" size="small" onClick={handleRetry}>{t('patchManager.execution.retry')}</Button></PermissionWrapper>}
             </div>
-            {(riskDetail.steps || []).map((step: any, stepIndex: number) => <div key={step.key} style={{ position: 'relative', paddingLeft: 28, paddingBottom: stepIndex === riskDetail.steps.length - 1 ? 0 : 18 }}>
-              {stepIndex < riskDetail.steps.length - 1 && <div style={{ position: 'absolute', left: 9, top: 20, bottom: -2, width: 2, background: STEP_BORDER[step.status] || '#d9d9d9' }} />}
-              <div style={{ position: 'absolute', left: 0, top: 2, width: 20, height: 20, borderRadius: '50%', background: STEP_BORDER[step.status] || '#d9d9d9', color: '#fff', textAlign: 'center', lineHeight: '20px', fontSize: 12 }}>{stepIndex + 1}</div>
+            {(riskDetail.steps || []).map((step: any, stepIndex: number) => <div key={step.key} className={`relative pl-7 ${stepIndex === riskDetail.steps.length - 1 ? 'pb-0' : 'pb-[18px]'}`}>
+              {stepIndex < riskDetail.steps.length - 1 && (
+                <div
+                  className="absolute bottom-[-2px] left-[9px] top-5 w-0.5"
+                  style={{ background: STEP_BORDER[step.status] || 'var(--color-border-1)' }}
+                />
+              )}
+              <div
+                className="absolute left-0 top-0.5 flex h-5 w-5 items-center justify-center rounded-full text-xs leading-5 text-[var(--color-text-1)]"
+                style={{
+                  background: STEP_BORDER[step.status] || 'var(--color-border-1)',
+                  color: 'var(--color-bg-1)',
+                }}
+              >
+                {stepIndex + 1}
+              </div>
               <div className="mb-2 flex items-center gap-2"><strong>{t(`patchManager.execution.steps.${step.key}`, step.name)}</strong><Tag color={step.status_color}>{t(`patchManager.execution.statuses.${step.status}`, step.status_display)}</Tag></div>
               <div className="grid gap-2">
                 {(step.attempts?.length ? step.attempts : [{ id: `${step.key}-empty`, status: step.status, status_display: step.status_display, status_color: step.status_color, reason: step.reason, log: '' }]).map((attempt: any, attemptIndex: number) => {
-                  return <div key={attempt.id} style={{ borderLeft: `3px solid ${STEP_BORDER[attempt.status] || '#d9d9d9'}`, background: 'var(--color-fill-1, #f4f6f9)', borderRadius: 6, padding: '10px 12px' }}>
+                  return <div
+                    key={attempt.id}
+                    className="rounded-md bg-[var(--color-fill-1)] px-3 py-2.5 border-l-[3px]"
+                    style={{ borderLeftColor: STEP_BORDER[attempt.status] || 'var(--color-border-1)' }}
+                  >
                     <div className="flex justify-between gap-3">
                       <span>{step.attempts?.length > 1 ? t('patchManager.execution.attempt', undefined, { count: attemptIndex + 1 }) : t(`patchManager.execution.steps.${step.key}`, step.name)}</span>
                       <span className="text-[var(--color-text-3)]">{formatDateTime(attempt.started_at)}{attempt.finished_at ? ` ～ ${formatDateTime(attempt.finished_at)}` : ''}</span>

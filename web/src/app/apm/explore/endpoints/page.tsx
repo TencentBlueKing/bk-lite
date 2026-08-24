@@ -7,7 +7,6 @@ import {
   Alert,
   Button,
   Drawer,
-  Empty,
   Input,
   Radio,
   Select,
@@ -17,8 +16,8 @@ import {
   Typography,
   type TableColumnsType,
 } from 'antd';
-import dayjs from 'dayjs';
 import FilterToolbar from '@/components/filter-toolbar';
+import CompactEmptyState from '@/components/compact-empty-state';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -26,8 +25,13 @@ import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm
 import HealthDot from '@/app/apm/components/health-dot';
 import {
   formatErrorRate,
+  formatClockTime,
+  formatDateTime,
   formatLatency,
+  formatPerSecond,
+  formatPercentage,
   formatRelativeTime,
+  formatRequestRate,
   formatThroughput,
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
@@ -276,9 +280,7 @@ export default function ApmEndpointsPage() {
       responsive: ['md'],
       render: (value) => (
         <span className="tabular-nums">
-          <strong>{formatThroughput(value)}</strong>
-          {' '}
-          <Typography.Text type="secondary" className="text-xs">/s</Typography.Text>
+          <strong>{formatRequestRate(value, false, t)}</strong>
         </span>
       ),
     },
@@ -292,7 +294,7 @@ export default function ApmEndpointsPage() {
       responsive: ['md'],
       render: (value: number | null) => value === null
         ? '—'
-        : <Tag bordered={false} color={errorRateColor(value)}>{formatErrorRate(value)}</Tag>,
+        : <Tag bordered={false} color={errorRateColor(value)}>{formatErrorRate(value, false, t)}</Tag>,
     },
     {
       title: t('apm.common.p95', 'P95'),
@@ -302,7 +304,7 @@ export default function ApmEndpointsPage() {
       sorter: true,
       sortOrder: sortKey === 'p95_ms' ? sortOrder : null,
       responsive: ['lg'],
-      render: (value: number | null) => <span className="tabular-nums">{formatLatency(value)}</span>,
+      render: (value: number | null) => <span className="tabular-nums">{formatLatency(value, false, t)}</span>,
     },
     {
       title: t('apm.common.lastSeen', '最近活跃'),
@@ -310,7 +312,7 @@ export default function ApmEndpointsPage() {
       align: 'right',
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       responsive: ['xl'],
-      render: (value) => <Typography.Text type="secondary" className="text-xs">{formatRelativeTime(value)}</Typography.Text>,
+      render: (value) => <Typography.Text type="secondary" className="text-xs">{formatRelativeTime(value, t)}</Typography.Text>,
     },
     {
       title: t('apm.common.operation', '操作'),
@@ -454,14 +456,14 @@ export default function ApmEndpointsPage() {
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {[
-                { label: t('apm.explore.throughputShort', '吞吐'), value: `${formatThroughput(selected.requestRate)}/s` },
+                { label: t('apm.explore.throughputShort', '吞吐'), value: formatPerSecond(formatThroughput(selected.requestRate, false, t), t) },
                 {
                   label: t('apm.common.errorRate', '错误率'),
-                  value: formatErrorRate(selected.errorRate),
+                  value: formatErrorRate(selected.errorRate, false, t),
                   danger: isErrorRateDanger(selected.errorRate),
                 },
-                { label: t('apm.common.p95', 'P95'), value: formatLatency(selected.p95Ms) },
-                { label: t('apm.common.p99', 'P99'), value: formatLatency(selected.p99Ms) },
+                { label: t('apm.common.p95', 'P95'), value: formatLatency(selected.p95Ms, false, t) },
+                { label: t('apm.common.p99', 'P99'), value: formatLatency(selected.p99Ms, false, t) },
               ].map((metric) => (
                 <SummaryMetricCard
                   key={metric.label}
@@ -486,15 +488,15 @@ export default function ApmEndpointsPage() {
                     error_rate_percent: point.error_rate === null ? null : point.error_rate * 100,
                   }))}
                   xDataKey="timestamp"
-                  getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')}
+                  getXLabel={(item) => formatClockTime(String(item.timestamp), false)}
                   xAxisBoundaryGap={false}
-                  yAxes={[{ formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)} req/s` }]}
+                  yAxes={[{ formatter: (value) => formatRequestRate(value, false, t) }]}
                   series={[{ name: t('apm.common.throughputReq', '吞吐量 req/s'), type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true }]}
                   surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }}
                 />
                 </div>
-                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.errorRate', '错误率')}</Typography.Text><TimeSeriesComposedChart data={(endpointRed?.timeseries ?? []).map((point) => ({ ...point, error_rate_percent: point.error_rate === null ? null : point.error_rate * 100 }))} xDataKey="timestamp" getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')} xAxisBoundaryGap={false} yAxes={[{ formatter: (value) => `${value.toFixed(1)}%` }]} series={[{ name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, showArea: true, showSymbol: true }]} surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }} /></div>
-                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.latency', '时延')}</Typography.Text><TimeSeriesComposedChart data={(endpointRed?.timeseries ?? []).map((point) => ({ ...point }))} xDataKey="timestamp" getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')} xAxisBoundaryGap={false} yAxes={[{ formatter: (value) => `${value.toFixed(0)} ms` }]} series={[{ name: 'P95', type: 'line', dataKey: 'p95_ms', color: token.colorPrimary, showArea: true }, { name: 'P99', type: 'line', dataKey: 'p99_ms', color: token.colorWarning, lineType: 'dotted', showSymbol: true }]} surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }} /></div>
+                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.errorRate', '错误率')}</Typography.Text><TimeSeriesComposedChart data={(endpointRed?.timeseries ?? []).map((point) => ({ ...point, error_rate_percent: point.error_rate === null ? null : point.error_rate * 100 }))} xDataKey="timestamp" getXLabel={(item) => formatClockTime(String(item.timestamp), false)} xAxisBoundaryGap={false} yAxes={[{ formatter: (value) => formatPercentage(value, 1) }]} series={[{ name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, showArea: true, showSymbol: true }]} surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }} /></div>
+                <div className="h-64"><Typography.Text type="secondary" className="mb-2 block !text-xs">{t('apm.common.latency', '时延')}</Typography.Text><TimeSeriesComposedChart data={(endpointRed?.timeseries ?? []).map((point) => ({ ...point }))} xDataKey="timestamp" getXLabel={(item) => formatClockTime(String(item.timestamp), false)} xAxisBoundaryGap={false} yAxes={[{ formatter: (value) => formatLatency(value, false, t) }]} series={[{ name: 'P95', type: 'line', dataKey: 'p95_ms', color: token.colorPrimary, showArea: true }, { name: 'P99', type: 'line', dataKey: 'p99_ms', color: token.colorWarning, lineType: 'dotted', showSymbol: true }]} surfaceProps={{ emptyStateProps: { description: t('apm.explore.noEndpointTrend', '当前时间窗暂无端点趋势') } }} /></div>
               </div>
             </div>
             <div>
@@ -539,24 +541,24 @@ export default function ApmEndpointsPage() {
                       title: t('apm.common.latency', '耗时'),
                       dataIndex: 'duration_ms',
                       width: APM_TABLE_COLUMN_WIDTHS.metric,
-                      render: (value: number) => <span className="tabular-nums">{formatLatency(value)}</span>,
+                      render: (value: number) => <span className="tabular-nums">{formatLatency(value, false, t)}</span>,
                     },
                     {
                       title: t('apm.common.time', '时间'),
                       dataIndex: 'started_at',
                       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
                       render: (value: string) => (
-                        <span className="text-xs text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
+                        <span className="text-xs text-[var(--color-text-3)]">{formatRelativeTime(value, t)}</span>
                       ),
                     },
                   ]}
                 />
               ) : (
-                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('apm.explore.noSampleTraces', '暂无匹配样本 Trace')} />
+                <CompactEmptyState description={t('apm.explore.noSampleTraces', '暂无匹配样本 Trace')} />
               )}
             </div>
             <Typography.Text type="secondary" className="!text-xs">
-              {t('apm.explore.endpointSourceHint', '端点指标来自服务 RED Top endpoint 聚合；最近活跃参考服务发现时间 {time}。', { time: dayjs(selected.lastSeenAt).format('YYYY-MM-DD HH:mm:ss') })}
+              {t('apm.explore.endpointSourceHint', '端点指标来自服务 RED Top endpoint 聚合；最近活跃参考服务发现时间 {time}。', { time: formatDateTime(selected.lastSeenAt) })}
             </Typography.Text>
           </div>
         ) : null}

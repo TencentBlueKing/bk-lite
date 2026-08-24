@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "平台基础能力模块现状架构",
+    "output": "platform-core-current.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1560, 780],
+    "repository": {
+      "url": "https://github.com/zhouzhuangjie/bk-lite-1",
+      "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"
+    },
+    "views": [
+      {"id": "identity-scope", "label": "身份与数据范围", "focus": ["entry", "auth", "openapi", "base_user", "system_identity", "permission"], "note": "JWT、API Secret、Session、current_team cookie 和 permission cache 分别构建身份与组织范围。"},
+      {"id": "invocation", "label": "三种调用语义", "focus": ["openapi", "app_views", "rpc", "local", "nats", "listener"], "note": "本地 import、OpenAPI 线程池与 NATS 请求可到达相同业务函数，但契约、超时和错误语义不同。"},
+      {"id": "shared-runtime", "label": "透明基础设施", "focus": ["shared", "app_views", "base_user"], "note": "S3 JSON、HTTP/SSRF、公共 View/Mixin 通过透明封装进入多个业务模块。"}
+    ]
+  },
+  "components": [
+    {"id": "entry", "type": "frontend", "label": "HTTP / Browser / API Clients", "sublabel": "JWT cookie / Bearer / API Secret", "pos": [35, 320], "size": [185, 76]},
+    {"id": "auth", "type": "security", "label": "AuthMiddleware + Backends", "sublabel": "verify token + auth.login", "pos": [265, 205], "size": [205, 76], "sources": [{"path": "server/apps/core/middlewares/auth_middleware.py", "line": 20, "label": "平台认证中间件"}]},
+    {"id": "openapi", "type": "security", "label": "OpenAPI Gateway", "sublabel": "identity + schema + thread timeout", "pos": [265, 455], "size": [205, 76], "sources": [{"path": "server/apps/core/openapi/dispatcher.py", "line": 1, "label": "公开能力分发"}]},
+    {"id": "base_user", "type": "database", "label": "base.User + API Secret", "sublabel": "local projection + team-bound token", "pos": [520, 85], "size": [210, 76], "sources": [{"path": "server/apps/base/models/user.py", "line": 13, "label": "本地用户与密钥"}]},
+    {"id": "system_identity", "type": "external", "label": "SystemMgmt Identity Facts", "sublabel": "user / group / role / token / menu", "pos": [780, 85], "size": [215, 76]},
+    {"id": "permission", "type": "backend", "label": "Permission + Team Helpers", "sublabel": "cookie scope + maps + cache generation", "pos": [650, 280], "size": [225, 76]},
+    {"id": "app_views", "type": "backend", "label": "Django App Views / Use Cases", "sublabel": "decorators + optional scope calls", "pos": [900, 280], "size": [210, 76]},
+    {"id": "rpc", "type": "backend", "label": "RPC Facades", "sublabel": "string methods + positional kwargs", "pos": [900, 500], "size": [210, 76], "sources": [{"path": "server/apps/rpc/base.py", "line": 10, "label": "本地与远程调用入口"}]},
+    {"id": "local", "type": "backend", "label": "AppClient Local Import", "sublabel": "direct Python call", "pos": [1150, 280], "size": [180, 76]},
+    {"id": "nats", "type": "messagebus", "label": "Sync NATS Client", "sublabel": "asyncio.run + connect/request/close", "pos": [1150, 500], "size": [180, 76], "sources": [{"path": "server/nats_client/clients.py", "line": 106, "label": "每请求 NATS 连接"}]},
+    {"id": "listener", "type": "messagebus", "label": "Registry + NATS Listener", "sublabel": "global bounded queue + workers", "pos": [1360, 390], "size": [165, 76], "sources": [{"path": "server/nats_client/management/commands/nats_listener.py", "line": 37, "label": "消息执行运行时"}]},
+    {"id": "shared", "type": "cloud", "label": "Shared Fields + Egress Utils", "sublabel": "S3JSON / SafeRequests / SSRF", "pos": [650, 590], "size": [225, 76], "sources": [{"path": "server/apps/core/fields/s3_json_field.py", "line": 35, "label": "透明对象存储字段"}]}
+  ],
+  "boundaries": [
+    {"kind": "security-group", "label": "身份、认证与组织范围", "wraps": ["entry", "auth", "openapi", "base_user", "system_identity", "permission"], "pad": 18},
+    {"kind": "region", "label": "应用调用与协议适配", "wraps": ["app_views", "rpc", "local", "nats", "listener"], "pad": 18}
+  ],
+  "connections": [
+    {"id": "entry_auth", "from": "entry", "to": "auth", "label": "JWT / session", "variant": "security", "fromSide": "right", "toSide": "left", "labelAt": [243, 295]},
+    {"id": "entry_openapi", "from": "entry", "to": "openapi", "label": "Bearer", "variant": "security", "fromSide": "right", "toSide": "left"},
+    {"id": "auth_base", "from": "auth", "to": "base_user", "label": "sync projection", "variant": "default", "fromSide": "top", "toSide": "left"},
+    {"id": "base_system", "from": "base_user", "to": "system_identity", "label": "dual user facts", "variant": "dashed", "labelDy": 62},
+    {"id": "system_permission", "from": "system_identity", "to": "permission", "label": "role + group facts", "variant": "security", "fromSide": "bottom", "toSide": "top"},
+    {"id": "auth_permission", "from": "auth", "to": "permission", "label": "mutable user context", "variant": "security", "labelAt": [570, 245]},
+    {"id": "openapi_permission", "from": "openapi", "to": "permission", "label": "CallerIdentity", "variant": "security", "labelDy": 62},
+    {"id": "permission_views", "from": "permission", "to": "app_views", "label": "decorator + optional scope", "variant": "security", "labelDy": 62},
+    {"id": "views_local", "from": "app_views", "to": "local", "label": "in-process", "variant": "emphasis", "labelAt": [1080, 260]},
+    {"id": "views_rpc", "from": "app_views", "to": "rpc", "label": "facade call", "variant": "default", "fromSide": "bottom", "toSide": "top", "labelAt": [1070, 420]},
+    {"id": "rpc_local", "from": "rpc", "to": "local", "label": "is_local_client", "variant": "dashed", "fromSide": "right", "toSide": "left", "via": [[1130, 538], [1130, 318]], "labelAt": [1145, 430]},
+    {"id": "rpc_nats", "from": "rpc", "to": "nats", "label": "sync request", "variant": "security", "labelDy": 62},
+    {"id": "nats_listener", "from": "nats", "to": "listener", "label": "JSON envelope", "variant": "emphasis", "fromSide": "right", "toSide": "bottom"},
+    {"id": "listener_local", "from": "listener", "to": "local", "label": "registered function", "variant": "default", "fromSide": "top", "toSide": "right"},
+    {"id": "shared_views", "from": "shared", "to": "app_views", "label": "transparent I/O", "variant": "dashed", "fromSide": "top", "toSide": "bottom"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "已有的安全与并发基础", "items": ["API Secret 已哈希并绑定团队；权限缓存使用 generation 围栏，失败时多数路径 fail-closed", "NATS listener 已有 bounded queue、并发 worker、pending bytes、JetStream ack progress 与 graceful shutdown"]},
+    {"dot": "rose", "title": "请求上下文与能力契约分裂", "items": ["JWT/API Secret/OpenAPI 分别构造 user、permission、group/current_team；数据 scope 仍由各 View 选择性调用", "同一函数经 AppClient、OpenAPI 线程池、NATS 到达时，序列化、超时、取消、错误和调用者身份语义不同"]},
+    {"dot": "orange", "title": "透明 I/O 扩大性能与一致性风险", "items": ["S3JSONField 在属性访问和 model pre_save 中执行全量对象 I/O，失败返回 None，DB 回滚不能回滚已上传对象", "SafeRequests 校验一次 DNS 后仍按 hostname 二次连接，且公共封装不限制响应字节"]}
+  ]
+}

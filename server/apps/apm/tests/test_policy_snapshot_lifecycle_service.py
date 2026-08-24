@@ -1,10 +1,18 @@
 from datetime import timedelta
-
 import pytest
 from django.utils import timezone
 
 from apps.apm.adapters import InMemoryNotificationDispatcher
-from apps.apm.models import ApmAlert, ApmEvent, ApmEventSnapshot, ApmPolicy, ApmPolicyTargetState, ApmService, ApmServiceOrganization
+from apps.apm.models import (
+    ApmAlert,
+    ApmAlertMetricSnapshot,
+    ApmEvent,
+    ApmEventSnapshot,
+    ApmPolicy,
+    ApmPolicyTargetState,
+    ApmService,
+    ApmServiceOrganization,
+)
 from apps.apm.services import ApmEventSnapshotStore, DjangoApmPolicyService
 from apps.apm.services.contracts import ServiceRed, ServiceRedPoint
 
@@ -60,11 +68,6 @@ def multilevel_policy():
         ],
         trigger_after=2,
         recover_after=2,
-        comparator="gt",
-        threshold="0.05",
-        duration_window=5,
-        recovery_window=2,
-        severity="warning",
     )
 
 
@@ -104,6 +107,25 @@ def test_multilevel_lifecycle_creates_trigger_escalation_recovery_and_immutable_
     ]
     assert [event.severity for event in events] == ["error", "critical", "critical"]
     assert ApmEventSnapshot.objects.filter(alert=alert).count() == 3
+    metric_snapshot = alert.metric_snapshot
+    assert ApmAlertMetricSnapshot.objects.filter(alert=alert).count() == 1
+    assert [item["snapshot_time"] for item in metric_snapshot.snapshots] == [
+        (started_at + timedelta(minutes=1)).isoformat(),
+        (started_at + timedelta(minutes=2)).isoformat(),
+        (started_at + timedelta(minutes=3)).isoformat(),
+        (started_at + timedelta(minutes=4)).isoformat(),
+        (started_at + timedelta(minutes=5)).isoformat(),
+    ]
+    assert [item["type"] for item in metric_snapshot.snapshots] == ["event", "info", "event", "info", "event"]
+    assert [item["value"] for item in metric_snapshot.snapshots] == ["0.12", "0.25", "0.25", "0.01", "0.01"]
+    assert [item["threshold"]["value"] for item in metric_snapshot.snapshots] == ["0.10", "0.20", "0.20", "0.20", "0.20"]
+    assert [item["event_id"] for item in metric_snapshot.snapshots] == [
+        events[0].event_id,
+        None,
+        events[1].event_id,
+        None,
+        events[2].event_id,
+    ]
     for snapshot in ApmEventSnapshot.objects.filter(alert=alert):
         assert snapshot.payload_status == ApmEventSnapshot.PayloadStatus.PENDING
         ApmEventSnapshotStore.persist(snapshot.id)
@@ -148,6 +170,18 @@ def test_no_data_event_has_snapshot_and_does_not_fabricate_a_metric_value(multil
     assert state.status == ApmPolicyTargetState.Status.ACTIVE
     assert event.snapshot.evaluation_snapshot["data_state"] == "no_data"
     assert event.snapshot.evaluation_snapshot["value"] is None
+    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=2))
+    metric_store.red = _red(started_at + timedelta(minutes=3), 0.01)
+    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=3))
+    evaluator.evaluate(multilevel_policy.id, evaluated_at=started_at + timedelta(minutes=4))
+
+    metric_snapshots = event.alert.metric_snapshot.snapshots
+    assert [item["type"] for item in metric_snapshots] == ["no_data", "no_data", "info", "event"]
+    assert [item["data_state"] for item in metric_snapshots] == ["no_data", "no_data", "available", "available"]
+    assert metric_snapshots[0]["threshold"]["comparator"] == "no_data"
+    assert metric_snapshots[1]["threshold"] is None
+    assert [item["threshold"]["comparator"] for item in metric_snapshots[2:]] == ["gt", "gt"]
+    assert metric_snapshots[-1]["event_id"].endswith(":recovered:critical")
 
 
 def test_snapshot_payload_failure_keeps_domain_event_and_retryable_evidence(multilevel_policy, mocker):

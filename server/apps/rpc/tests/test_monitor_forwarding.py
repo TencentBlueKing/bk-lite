@@ -174,3 +174,40 @@ def test_query_latest_active_alerts(ana_rpc):
     qd = {"limit": 5}
     ana_rpc.query_latest_active_alerts(qd)
     assert _last(ana_rpc.client) == ("query_latest_active_alerts", (), {"query_data": qd})
+
+
+def test_query_latest_interface_metrics(ana_rpc):
+    ana_rpc.query_latest_interface_metrics(["mon-1", "mon-2"])
+    assert _last(ana_rpc.client) == (
+        "query_latest_interface_metrics",
+        (),
+        {"instance_ids": ["mon-1", "mon-2"]},
+    )
+
+
+def test_get_host_instance_list(ana_rpc):
+    ana_rpc.get_host_instance_list(user_info={"team": 1})
+    assert _last(ana_rpc.client) == ("get_host_instance_list", (), {"user_info": {"team": 1}})
+
+
+def test_get_host_metric_range(ana_rpc):
+    ana_rpc.get_host_metric_range(instance_ids=["host-a"], metric_type="cpu")
+    assert _last(ana_rpc.client) == (
+        "get_host_metric_range",
+        (),
+        {"instance_ids": ["host-a"], "metric_type": "cpu"},
+    )
+
+
+def test_get_host_resource_snapshot(ana_rpc):
+    ana_rpc.get_host_resource_snapshot(instance_ids=["host-a"])
+    assert _last(ana_rpc.client) == ("get_host_resource_snapshot", (), {"instance_ids": ["host-a"]})
+
+
+def test_get_host_resource_top(ana_rpc):
+    ana_rpc.get_host_resource_top("cpu", instance_ids=["host-a"])
+    assert _last(ana_rpc.client) == (
+        "get_host_resource_top",
+        (),
+        {"metric_type": "cpu", "instance_ids": ["host-a"]},
+    )

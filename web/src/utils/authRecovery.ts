@@ -18,6 +18,7 @@ type RecoveryFetch = (
 
 export const fetchRecoveredAuth = async (
   request: RecoveryFetch = fetch,
+  signal?: AbortSignal,
 ): Promise<RecoveredAuthUser | null> => {
   const response = await request('/api/auth/recovery-check', {
     method: 'GET',
@@ -27,6 +28,7 @@ export const fetchRecoveredAuth = async (
     },
     credentials: 'include',
     cache: 'no-store',
+    signal,
   });
 
   if (!response.ok) {
@@ -69,6 +71,7 @@ export const recoverAuthWithRetry = async (
   checkAuth: () => Promise<RecoveredAuthUser | null> = fetchRecoveredAuth,
   retryDelays: readonly number[] = [0, 1000, 3000],
   waitForDelay: (milliseconds: number) => Promise<void> = wait,
+  signal?: AbortSignal,
 ): Promise<AuthRecoveryResult> => {
   if (!expectedUserIdentity) {
     return { status: 'unavailable' };
@@ -76,6 +79,10 @@ export const recoverAuthWithRetry = async (
 
   let previousDelay = 0;
   for (const delay of retryDelays) {
+    if (signal?.aborted) {
+      return { status: 'unavailable' };
+    }
+
     const waitTime = Math.max(0, delay - previousDelay);
     previousDelay = delay;
     if (waitTime > 0) {
@@ -84,6 +91,9 @@ export const recoverAuthWithRetry = async (
 
     try {
       const recoveredUser = await checkAuth();
+      if (signal?.aborted) {
+        return { status: 'unavailable' };
+      }
       if (!recoveredUser) {
         continue;
       }
@@ -93,7 +103,10 @@ export const recoverAuthWithRetry = async (
       }
 
       return { status: 'recovered', user: recoveredUser };
-    } catch {
+    } catch (error) {
+      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+        return { status: 'unavailable' };
+      }
       // Only the authentication check is retried; business requests are never replayed.
     }
   }

@@ -127,3 +127,13 @@ def test_send_msg_with_channel_passthrough_returns_full_result():
         out = SystemMgmtUtils.send_msg_with_channel(7, "t", "c", ["r"])
     inst.send_msg_with_channel.assert_called_once_with(7, "t", "c", ["r"])
     assert out == {"result": True}
+
+
+def test_send_msg_with_channel_forwards_internal_caller_only_when_explicit():
+    with patch("apps.monitor.utils.system_mgmt_api.SystemMgmt") as MockSM:
+        inst = MockSM.return_value
+        inst.send_msg_with_channel.return_value = {"result": True}
+        SystemMgmtUtils.send_msg_with_channel(7, "", {"pusher": "lite-monitor"}, [], internal_caller="lite-monitor")
+    inst.send_msg_with_channel.assert_called_once_with(
+        7, "", {"pusher": "lite-monitor"}, [], internal_caller="lite-monitor"
+    )

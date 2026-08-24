@@ -1,6 +1,6 @@
 import os
 
-from apps.rpc.base import RpcClient, AppClient
+from apps.rpc.base import AppClient, RpcClient
 
 
 class NodeMgmt(object):
@@ -125,6 +125,14 @@ class NodeMgmt(object):
         """
         return_data = self.client.run("get_child_configs_by_ids", ids)
         return return_data
+
+    def get_child_config_nodes_by_ids(self, ids, organization_ids):
+        """按子配置 ID 批量获取当前组织范围内的采集节点。"""
+        return self.client.run(
+            "get_child_config_nodes_by_ids",
+            ids,
+            organization_ids,
+        )
 
     def get_configs_by_ids(self, ids):
         """

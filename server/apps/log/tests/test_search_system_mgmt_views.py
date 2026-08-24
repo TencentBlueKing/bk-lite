@@ -12,8 +12,9 @@ import json
 import pytest
 from rest_framework.parsers import JSONParser
 from rest_framework.request import Request
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIClient, APIRequestFactory
 
+from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.log.models.log_group import SearchCondition
 from apps.log.services.access_scope import LogAccessScope
 from apps.log.utils import system_mgmt as log_system_mgmt
@@ -28,6 +29,12 @@ factory = APIRequestFactory()
 class _User:
     username = "tester"
     is_authenticated = True
+
+
+class _ScopedUser(_User):
+    domain = "domain.com"
+    is_superuser = True
+    group_list = [{"id": "8"}, {"id": 9}, {"id": "invalid"}]
 
 
 def _drf(wsgi_request, cookies=None, user=None):
@@ -554,24 +561,72 @@ def test_get_users_by_organizations_intersects_assignable(monkeypatch):
     assert [item["id"] for item in users] == [user_a.id]
 
 
-def test_search_channel_list_builds_teams_from_team_cookie(mocker):
+def test_search_channel_list_uses_scoped_rpc_with_authenticated_actor(mocker):
     rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+    rpc.return_value.search_channel_list_scoped.return_value = {"data": [{"id": "ch"}]}
     rpc.return_value.search_channel_list.return_value = {"data": [{"id": "ch"}]}
 
-    request = get_req({"channel_type": "email"}, cookies={"current_team": "8"})
+    request = get_req(
+        {"channel_type": "email"},
+        cookies={"current_team": "8", "include_children": "1"},
+        user=_ScopedUser(),
+    )
     response = SystemMgmtView().search_channel_list(request)
 
     assert response.status_code == 200
     assert _json(response)["data"] == [{"id": "ch"}]
-    rpc.return_value.search_channel_list.assert_called_once_with(
-        channel_type="email", teams=[8], include_children=False
+    rpc.return_value.search_channel_list_scoped.assert_called_once_with(
+        {
+            "username": "tester",
+            "domain": "domain.com",
+            "current_team": 8,
+            "include_children": True,
+            "is_superuser": True,
+            "group_list": [8, 9],
+        },
+        channel_type="email",
+        teams=None,
+        include_children=True,
     )
+    rpc.return_value.search_channel_list.assert_not_called()
 
 
-def test_search_channel_list_teams_none_without_team_cookie(mocker):
+def test_search_channel_list_missing_team_fails_closed(mocker):
     rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
-    rpc.return_value.search_channel_list.return_value = {"data": []}
 
-    SystemMgmtView().search_channel_list(get_req())
+    response = SystemMgmtView().search_channel_list(get_req(user=_User()))
 
-    assert rpc.return_value.search_channel_list.call_args.kwargs["teams"] is None
+    assert response.status_code == 200
+    assert _json(response)["data"] == []
+    rpc.return_value.search_channel_list.assert_not_called()
+    rpc.return_value.search_channel_list_scoped.assert_not_called()
+
+
+def test_search_channel_list_invalid_team_fails_closed(mocker):
+    rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+    client = APIClient()
+    client.force_authenticate(user=_User())
+    client.cookies["current_team"] = "invalid"
+
+    response = client.get("/api/v1/log/system_mgmt/search_channel_list/")
+
+    assert response.status_code == ValidationAppException.STATUS_CODE
+    assert _json(response)["message"] == "current_team 参数非法"
+    rpc.return_value.search_channel_list.assert_not_called()
+    rpc.return_value.search_channel_list_scoped.assert_not_called()
+
+
+def test_search_channel_list_preserves_scoped_failure_message(mocker):
+    rpc = mocker.patch("apps.log.views.system_mgmt.SystemMgmt")
+    rpc.return_value.search_channel_list_scoped.return_value = {
+        "result": False,
+        "message": "current_team 对应组织已归档或不存在",
+    }
+    client = APIClient()
+    client.force_authenticate(user=_ScopedUser())
+    client.cookies["current_team"] = "8"
+
+    response = client.get("/api/v1/log/system_mgmt/search_channel_list/")
+
+    assert response.status_code == 403
+    assert _json(response)["message"] == "current_team 对应组织已归档或不存在"

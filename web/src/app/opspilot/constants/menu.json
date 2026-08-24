@@ -69,6 +69,19 @@
           "url": "/opspilot/skill/detail/settings",
           "icon": "shezhi",
           "name": "skill_setting"
+        },
+        {
+          "title": "发布",
+          "url": "/opspilot/skill/detail/channel",
+          "icon": "channel1",
+          "name": "skill_channel",
+          "withParentPermission": true
+        },
+        {
+          "title": "Web对话",
+          "url": "/opspilot/skill/chat",
+          "name": "skill_chat",
+          "isNotMenuItem": true
         }
       ]
     },
@@ -203,6 +216,19 @@
           "url": "/opspilot/skill/detail/settings",
           "icon": "shezhi",
           "name": "skill_setting"
+        },
+        {
+          "title": "Channel Publish",
+          "url": "/opspilot/skill/detail/channel",
+          "icon": "channel1",
+          "name": "skill_channel",
+          "withParentPermission": true
+        },
+        {
+          "title": "Web Chat",
+          "url": "/opspilot/skill/chat",
+          "name": "skill_chat",
+          "isNotMenuItem": true
         }
       ]
     },

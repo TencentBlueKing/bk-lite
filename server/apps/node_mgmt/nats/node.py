@@ -1,36 +1,60 @@
+import threading
 import uuid
+from collections import defaultdict
 
-from django.db import connection, transaction
-from django.db import IntegrityError
+from django.db import IntegrityError, connection, transaction
+from django.db.models import F
 
 import nats_client
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
+from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.safe_template import build_sandboxed_env
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants, EnvVariableConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.management.services.node_init.collector_init import import_collector
-from apps.node_mgmt.models import CloudRegion, SidecarEnv
-from apps.node_mgmt.services.node import NodeService
-from apps.node_mgmt.services.installer import InstallerService
-from apps.node_mgmt.services.cloudregion import RegionService
-from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
-from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
-
-from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.models import (
-    CollectorConfiguration,
     ChildConfig,
+    CloudRegion,
     Collector,
+    CollectorConfiguration,
     Node,
     NodeCollectorConfiguration,
     NodeOrganization,
+    SidecarEnv,
 )
-from apps.node_mgmt.services.sidecar_cache import (
-    invalidate_bulk_child_config_etags,
-    invalidate_bulk_config_node_etags,
+from apps.node_mgmt.services.cloudregion import RegionService
+from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.services.sidecar_cache import invalidate_bulk_child_config_etags, invalidate_bulk_config_node_etags
+from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
+from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
+
+LEGACY_NODE_LIST_CALLSITES = frozenset(
+    {
+        "alerts.target_resolver",
+        "cmdb.node_sync",
+        "job_mgmt.connection_test",
+        "job_mgmt.execution",
+        "stargazer.node_info",
+    }
 )
-from apps.core.utils.crypto.aes_crypto import AESCryptor
+_observed_legacy_node_list_callsites: set[str] = set()
+_legacy_node_list_observation_lock = threading.Lock()
+
+
+def _observe_legacy_node_list_callsite(declared_callsite: str) -> None:
+    with _legacy_node_list_observation_lock:
+        if declared_callsite in _observed_legacy_node_list_callsites:
+            return
+        _observed_legacy_node_list_callsites.add(declared_callsite)
+
+    logger.warning(
+        "legacy node_list skip_permission used; declared_callsite=%s authorization_source=untrusted_payload",
+        declared_callsite,
+    )
 
 
 class NatsService:
@@ -56,7 +80,7 @@ class NatsService:
         )
         return NatsService._resolve_collector_from_candidates(node, collectors)
 
-    def _ensure_parent_configs_for_child_configs(self, configs: list):
+    def _ensure_parent_configs_for_child_configs(self, configs: list):  # noqa: C901
         if not configs:
             return
 
@@ -120,9 +144,7 @@ class NatsService:
                 default_sidecar_mode = variables.get("SIDECAR_INPUT_MODE", "nats")
                 config_template = collector.default_config.get(default_sidecar_mode)
                 if not config_template:
-                    raise BaseAppException(
-                        f"节点 {node.id} 的采集器 {collector.name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量"
-                    )
+                    raise BaseAppException(f"节点 {node.id} 的采集器 {collector.name} 父配置自动创建失败，请检查 default_config、SIDECAR_INPUT_MODE 和云区域环境变量")
 
                 if node.node_type == ControllerConstants.NODE_TYPE_CONTAINER:
                     add_config = collector.default_config.get("add_config", "")
@@ -180,9 +202,7 @@ class NatsService:
             raise BaseAppException(f"批量创建采集器父配置失败: {error}") from error
         created_configs = {
             item["name"]: item
-            for item in CollectorConfiguration.objects.select_for_update()
-            .filter(name__in=expected_by_name)
-            .values("id", "name", "collector_id")
+            for item in CollectorConfiguration.objects.select_for_update().filter(name__in=expected_by_name).values("id", "name", "collector_id")
         }
         conflicting_config_ids = {
             created_configs[config_name]["id"]
@@ -227,9 +247,7 @@ class NatsService:
                             NodeCollectorConfiguration.objects.select_for_update()
                             .filter(
                                 node_id__in=[association.node_id for association in associations_to_create],
-                                collector_config_id__in=[
-                                    association.collector_config_id for association in associations_to_create
-                                ],
+                                collector_config_id__in=[association.collector_config_id for association in associations_to_create],
                             )
                             .values_list("node_id", "collector_config_id")
                         )
@@ -539,9 +557,7 @@ class NatsService:
                 ChildConfig.objects.bulk_create(node_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
             except IntegrityError as e:
                 sample_ids = [config.id for config in node_objs[:3]]
-                raise BaseAppException(
-                    f"批量创建子配置失败，可能存在重复子配置ID或无效父配置关联: count={len(node_objs)}, sample_ids={sample_ids}, error={e}"
-                ) from e
+                raise BaseAppException(f"批量创建子配置失败，可能存在重复子配置ID或无效父配置关联: count={len(node_objs)}, sample_ids={sample_ids}, error={e}") from e
             except Exception as e:
                 sample_ids = [config.id for config in node_objs[:3]]
                 raise BaseAppException(f"批量创建子配置失败: count={len(node_objs)}, sample_ids={sample_ids}, error={e}") from e
@@ -571,6 +587,41 @@ class NatsService:
             }
             for config in child_configs
         ]
+
+    def get_child_config_nodes_by_ids(self, ids: list, organization_ids: list):
+        """批量解析子配置绑定的采集节点，并限定在调用方已授权的组织范围。"""
+        if not isinstance(ids, (list, tuple, set)) or not isinstance(organization_ids, (list, tuple, set)):
+            return []
+        normalized_ids = sorted({str(config_id) for config_id in ids if config_id not in (None, "")})
+        if not normalized_ids or not organization_ids:
+            return []
+        try:
+            normalized_organization_ids = _normalize_organization_ids(organization_ids)
+        except BaseAppException:
+            return []
+
+        rows = (
+            ChildConfig.objects.filter(
+                id__in=normalized_ids,
+                collector_config__nodes__nodeorganization__organization__in=normalized_organization_ids,
+            )
+            .values(
+                "id",
+                node_id=F("collector_config__nodes__id"),
+                node_name=F("collector_config__nodes__name"),
+            )
+            .order_by("id", "node_name", "node_id")
+            .distinct()
+        )
+        nodes_by_config = defaultdict(list)
+        for row in rows:
+            nodes_by_config[row["id"]].append(
+                {
+                    "id": row["node_id"],
+                    "name": row["node_name"],
+                }
+            )
+        return [{"id": config_id, "nodes": nodes_by_config[config_id]} for config_id in sorted(nodes_by_config)]
 
     def get_configs_by_ids(self, ids: list):
         """根据配置ID列表获取配置对象"""
@@ -769,6 +820,11 @@ def node_list(query_data: dict):
     is_container = query_data.get("is_container")
     permission_data = query_data.get("permission_data", {})
     skip_permission = query_data.get("skip_permission", False)
+    if skip_permission:
+        declared_callsite = query_data.get("legacy_callsite")
+        if not isinstance(declared_callsite, str) or declared_callsite not in LEGACY_NODE_LIST_CALLSITES:
+            declared_callsite = "unknown"
+        _observe_legacy_node_list_callsite(declared_callsite)
     return NodeService.get_node_list(
         organization_ids,
         cloud_region_id,
@@ -783,6 +839,63 @@ def node_list(query_data: dict):
         permission_data,
         skip_permission,
     )
+
+
+@nats_client.register
+def get_nodes_by_ips(query_data: dict):
+    """按 IP 集合查询 Job 执行所需的最小节点信息。"""
+    if not isinstance(query_data, dict):
+        raise BaseAppException("query_data 必须是对象")
+    if any(key in query_data for key in ("organization_ids", "permission_data", "skip_permission")):
+        raise BaseAppException("不允许通过消息参数覆盖节点查询权限")
+    _validate_node_info_query_shape(query_data)
+    organization_ids = _collect_task_organization_ids(query_data.get("collect_task_id"))
+    return NodeService.get_nodes_by_ips(
+        query_data.get("ips"),
+        organization_ids=organization_ids,
+        cloud_region_id=query_data.get("cloud_region_id"),
+    )
+
+
+def _validate_node_info_query_shape(query_data):
+    allowed_keys = {
+        "ips",
+        "collect_task_id",
+        "cloud_region_id",
+    }
+    if set(query_data) - allowed_keys:
+        raise BaseAppException("节点查询包含未知参数")
+    ips = query_data.get("ips")
+    if not isinstance(ips, list):
+        raise BaseAppException("ips 必须是 IP 列表")
+    if not ips or len(ips) > NodeService.NODE_LIST_PAGE_SIZE_MAX:
+        raise BaseAppException(f"单次必须查询 1 到 {NodeService.NODE_LIST_PAGE_SIZE_MAX} 个 IP")
+    if any(not isinstance(ip, str) or not ip.strip() or len(ip) > 64 for ip in ips):
+        raise BaseAppException("ips 只能包含有界非空 IP 字符串")
+
+
+def _collect_task_organization_ids(collect_task_id):
+    """从服务端可信任务记录解析组织范围，不信任 RPC 消息体中的组织字段。"""
+    if type(collect_task_id) not in (int, str):
+        raise BaseAppException("collect_task_id 参数非法")
+    try:
+        task_id = int(str(collect_task_id).strip())
+    except (TypeError, ValueError) as error:
+        raise BaseAppException("collect_task_id 参数非法") from error
+    if task_id <= 0:
+        raise BaseAppException("collect_task_id 参数非法")
+
+    from apps.cmdb.models import CollectModels
+
+    task = CollectModels.objects.filter(id=task_id, driver_type="job").only("team").first()
+    if task is None:
+        raise BaseAppException("Job 采集任务不存在")
+    if not task.team:
+        raise BaseAppException("Job 采集任务缺少组织范围")
+    organization_ids = list(_normalize_organization_ids(task.team))
+    if not organization_ids:
+        raise BaseAppException("Job 采集任务缺少组织范围")
+    return organization_ids
 
 
 @nats_client.register
@@ -839,6 +952,12 @@ def batch_add_node_config(configs: list):
 def get_child_configs_by_ids(ids: list):
     """根据ID获取子配置"""
     return NatsService().get_child_configs_by_ids(ids)
+
+
+@nats_client.register
+def get_child_config_nodes_by_ids(ids: list, organization_ids: list):
+    """按子配置 ID 批量获取授权组织范围内的采集节点。"""
+    return NatsService().get_child_config_nodes_by_ids(ids, organization_ids)
 
 
 @nats_client.register

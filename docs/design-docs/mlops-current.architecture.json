@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "MLOps 模块现状架构",
+    "output": "mlops-current.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1540, 760],
+    "repository": {
+      "url": "https://github.com/zhouzhuangjie/bk-lite-1",
+      "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"
+    },
+    "views": [
+      {"id": "six-variants", "label": "六类算法复制面", "focus": ["api", "views", "models", "publish"], "note": "六套 Dataset、Release、TrainJob、Serving 路由与代码承载同一生命周期。"},
+      {"id": "training-runtime", "label": "训练与运行事实", "focus": ["models", "webhook", "controller", "compute", "mlflow_port", "mlflow"], "note": "Django 状态、容器状态和 MLflow Run 通过同步调用与轮询拼接。"},
+      {"id": "artifacts-cleanup", "label": "制品与清理", "focus": ["publish", "temp_zip", "minio", "cleanup", "controller", "mlflow"], "note": "发布、删除与补偿跨数据库、临时盘、MinIO、Webhookd 和 MLflow。"}
+    ]
+  },
+  "components": [
+    {"id": "api", "type": "frontend", "label": "HTTP / NATS API", "sublabel": "36 routes + module data", "pos": [40, 310], "size": [170, 72]},
+    {"id": "views", "type": "backend", "label": "6 Algorithm ViewSets", "sublabel": "train / serve / predict / runs", "pos": [260, 310], "size": [190, 72], "sources": [{"path": "server/apps/mlops/urls.py", "line": 1, "label": "六类路由"}]},
+    {"id": "models", "type": "database", "label": "Django Resource Models", "sublabel": "Dataset / Release / Job / Serving", "pos": [500, 310], "size": [205, 72]},
+    {"id": "webhook", "type": "backend", "label": "WebhookClient", "sublabel": "train / serve / stop / status", "pos": [755, 310], "size": [180, 72], "sources": [{"path": "server/apps/mlops/utils/webhook_client.py", "line": 67, "label": "运行时客户端"}]},
+    {"id": "controller", "type": "external", "label": "Webhookd Runtime Controller", "sublabel": "Docker / Kubernetes", "pos": [985, 310], "size": [205, 72]},
+    {"id": "compute", "type": "external", "label": "Training / Serving Containers", "sublabel": "algorithm image + predict API", "pos": [1240, 310], "size": [220, 72]},
+    {"id": "cleanup", "type": "security", "label": "Signals + Cleanup Branches", "sublabel": "best effort / TimeSeries intent", "pos": [500, 90], "size": [205, 72]},
+    {"id": "publish", "type": "messagebus", "label": "Dataset Publish Tasks", "sublabel": "Celery acks_late / processing", "pos": [260, 545], "size": [190, 72], "sources": [{"path": "server/apps/mlops/tasks/base.py", "line": 292, "label": "发布主流程"}]},
+    {"id": "temp_zip", "type": "backend", "label": "Worker Temp FS / ZIP", "sublabel": "download / extract / reorganize", "pos": [500, 545], "size": [205, 72]},
+    {"id": "minio", "type": "cloud", "label": "MinIO", "sublabel": "train data / release / config", "pos": [755, 545], "size": [180, 72]},
+    {"id": "mlflow_port", "type": "backend", "label": "MLflow Client + Poller", "sublabel": "all-runs DataFrame / 30s retry", "pos": [985, 545], "size": [205, 72]},
+    {"id": "mlflow", "type": "external", "label": "MLflow Tracking + Registry", "sublabel": "experiments / runs / artifacts", "pos": [1240, 545], "size": [220, 72]}
+  ],
+  "boundaries": [
+    {"kind": "security-group", "label": "Django MLOps 控制面", "wraps": ["api", "views", "models", "cleanup", "publish", "temp_zip", "webhook", "mlflow_port"], "pad": 18},
+    {"kind": "region", "label": "外部对象、实验与计算运行面", "wraps": ["minio", "controller", "compute", "mlflow"], "pad": 18}
+  ],
+  "connections": [
+    {"id": "api_views", "from": "api", "to": "views", "label": "algorithm action", "variant": "security", "labelDy": 60},
+    {"id": "views_models", "from": "views", "to": "models", "label": "resource state", "variant": "default", "labelDy": 60},
+    {"id": "models_webhook", "from": "models", "to": "webhook", "label": "runtime command", "variant": "security", "labelDy": 60},
+    {"id": "webhook_controller", "from": "webhook", "to": "controller", "label": "HTTP + secrets", "variant": "security", "labelDy": 60},
+    {"id": "controller_compute", "from": "controller", "to": "compute", "label": "create / remove", "variant": "emphasis", "labelDy": 60},
+    {"id": "models_publish", "from": "models", "to": "publish", "label": "release id + file ids", "variant": "dashed", "fromSide": "bottom", "toSide": "top"},
+    {"id": "publish_temp", "from": "publish", "to": "temp_zip", "label": "package", "variant": "emphasis", "labelDy": 60},
+    {"id": "temp_minio", "from": "temp_zip", "to": "minio", "label": "artifact", "variant": "emphasis", "labelDy": 60},
+    {"id": "minio_compute", "from": "minio", "to": "compute", "label": "dataset + config", "variant": "default", "fromSide": "right", "toSide": "bottom"},
+    {"id": "compute_mlflow", "from": "compute", "to": "mlflow", "label": "run + model", "variant": "emphasis", "fromSide": "bottom", "toSide": "top", "labelAt": [1350, 470]},
+    {"id": "mlflow_port_mlflow", "from": "mlflow_port", "to": "mlflow", "label": "SDK query", "variant": "default", "labelDy": 60},
+    {"id": "models_cleanup", "from": "models", "to": "cleanup", "label": "delete / rollback", "variant": "dashed", "fromSide": "top", "toSide": "bottom", "labelDx": 74}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "已形成的可靠性基础", "items": ["团队 scope 校验、训练状态 CAS、流式模型下载与 TrainData 文件引用 guard 已存在", "TimeSeries 已实现 runtime generation、查询 token 和 orphan cleanup intent，可作为统一协议样板"]},
+    {"dot": "rose", "title": "复制导致生命周期分叉", "items": ["六套 ViewSet/Model/Serializer/Task 复制同一资源链，TimeSeries 与其他算法的并发、补偿、清理语义不同", "Django status、Webhookd container、MLflow Run 无本地统一 run/deployment identity"]},
+    {"dot": "orange", "title": "制品与容量边界不足", "items": ["图片 ZIP 直接 extractall，无路径、文件数、展开字节和压缩比预算", "可变镜像 tag 获得共享 MinIO 凭据；发布、推理、MLflow 列表与下载缺少共享资源预算"]}
+  ]
+}

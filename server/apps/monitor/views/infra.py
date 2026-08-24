@@ -9,7 +9,7 @@ from apps.monitor.services.infra import InfraService
 class InfraViewSet(OpenAPIViewSet):
     """基础设施配置视图 - 代理外部 infra render API"""
 
-    @action(methods=['post'], detail=False, url_path='render')
+    @action(methods=["post"], detail=False, url_path="render")
     def render(self, request):
         """
         渲染基础设施配置 YAML（使用限时令牌）
@@ -37,10 +37,11 @@ class InfraViewSet(OpenAPIViewSet):
             cluster_name=cluster_name,
             cloud_region_id=cloud_region_id,
             config_type="metric",
+            image_registry_prefix=token_data.get("image_registry_prefix"),
         )
 
         # 在响应头中添加剩余使用次数信息
-        response = HttpResponse(yaml_content, content_type='text/yaml; charset=utf-8')
-        response['X-Token-Remaining-Usage'] = str(remaining_usage)
+        response = HttpResponse(yaml_content, content_type="text/yaml; charset=utf-8")
+        response["X-Token-Remaining-Usage"] = str(remaining_usage)
 
         return response

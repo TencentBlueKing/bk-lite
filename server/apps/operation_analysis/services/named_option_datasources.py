@@ -5,12 +5,20 @@ from typing import Iterable
 
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 
+UNIFIED_FILTER_MANIFEST_WIDGET_ID = "__unified_filter__"
+
 
 def collect_named_option_datasource_ids(primary_ids: Iterable[int]) -> set[int]:
     extras: set[int] = set()
     for option_ids in collect_named_option_datasource_ids_by_primary(primary_ids).values():
         extras.update(option_ids)
     return extras
+
+
+def collect_named_option_datasource_ids_from_filters(filters) -> set[int]:
+    """从画布筛选项 inputConfig 收集能点名的动态选项源。"""
+    source_ids, rest_apis = _collect_option_refs(_iter_dynamic_options_sources(filters if isinstance(filters, list) else []))
+    return _resolve_option_datasource_ids(source_ids, rest_apis)
 
 
 def collect_named_option_datasource_ids_by_primary(primary_ids: Iterable[int]) -> dict[int, set[int]]:
@@ -27,30 +35,9 @@ def collect_named_option_datasource_ids_by_primary(primary_ids: Iterable[int]) -
     source_ids_by_primary: dict[int, set[int]] = defaultdict(set)
     rest_apis_by_primary: dict[int, set[str]] = defaultdict(set)
     for ds_id, params in DataSourceAPIModel.objects.filter(id__in=ids).values_list("id", "params"):
-        if not isinstance(params, list):
-            continue
-        for param in params:
-            if not isinstance(param, dict):
-                continue
-            input_config = param.get("inputConfig")
-            if not isinstance(input_config, dict):
-                continue
-            options_source = input_config.get("optionsSource")
-            if not isinstance(options_source, dict) or options_source.get("type") != "dynamic":
-                continue
-            source_id = options_source.get("sourceId")
-            if source_id is not None:
-                try:
-                    parsed = int(source_id)
-                except (TypeError, ValueError):
-                    parsed = None
-                if parsed is not None:
-                    source_ids_by_primary[ds_id].add(parsed)
-            source_ref = options_source.get("sourceRef")
-            if isinstance(source_ref, dict) and source_ref.get("type") == "rest_api":
-                value = source_ref.get("value")
-                if isinstance(value, str) and value:
-                    rest_apis_by_primary[ds_id].add(value)
+        source_ids, rest_apis = _collect_option_refs(_iter_dynamic_options_sources(params if isinstance(params, list) else []))
+        source_ids_by_primary[ds_id].update(source_ids)
+        rest_apis_by_primary[ds_id].update(rest_apis)
 
     all_source_ids = {item for values in source_ids_by_primary.values() for item in values}
     existing_source_ids: set[int] = set()
@@ -68,43 +55,102 @@ def collect_named_option_datasource_ids_by_primary(primary_ids: Iterable[int]) -
     return result
 
 
-def expand_widget_manifest_with_named_option_datasources(manifest: list[dict] | None) -> list[dict]:
+def expand_widget_manifest_with_named_option_datasources(
+    manifest: list[dict] | None,
+    filters=None,
+) -> list[dict]:
     """在 widget_manifest 追加能点名的选项源 identity，字段仍是 identity + datasource_id。"""
     if not manifest:
-        return list(manifest or [])
-
-    primary_ids: list[int] = []
-    for item in manifest:
-        if not isinstance(item, dict) or item.get("datasource_id") is None:
-            continue
-        try:
-            primary_ids.append(int(item["datasource_id"]))
-        except (TypeError, ValueError):
-            continue
-
-    extras_by_primary = collect_named_option_datasource_ids_by_primary(primary_ids)
-    expanded = list(manifest)
-    seen = {(item.get("widget_id"), item.get("datasource_id")) for item in manifest if isinstance(item, dict)}
-    for item in manifest:
-        if not isinstance(item, dict) or item.get("datasource_id") is None:
-            continue
-        try:
-            primary = int(item["datasource_id"])
-        except (TypeError, ValueError):
-            continue
-        for extra_id in extras_by_primary.get(primary, ()):
-            key = (item.get("widget_id"), extra_id)
-            if key in seen:
+        expanded = list(manifest or [])
+    else:
+        primary_ids: list[int] = []
+        for item in manifest:
+            if not isinstance(item, dict) or item.get("datasource_id") is None:
                 continue
-            seen.add(key)
-            expanded.append(
-                {
-                    "widget_id": item.get("widget_id"),
-                    "widget_type": item.get("widget_type"),
-                    "datasource_id": extra_id,
-                }
-            )
+            try:
+                primary_ids.append(int(item["datasource_id"]))
+            except (TypeError, ValueError):
+                continue
+
+        extras_by_primary = collect_named_option_datasource_ids_by_primary(primary_ids)
+        expanded = list(manifest)
+        seen = {(item.get("widget_id"), item.get("datasource_id")) for item in manifest if isinstance(item, dict)}
+        for item in manifest:
+            if not isinstance(item, dict) or item.get("datasource_id") is None:
+                continue
+            try:
+                primary = int(item["datasource_id"])
+            except (TypeError, ValueError):
+                continue
+            for extra_id in extras_by_primary.get(primary, ()):
+                key = (item.get("widget_id"), extra_id)
+                if key in seen:
+                    continue
+                seen.add(key)
+                expanded.append(
+                    {
+                        "widget_id": item.get("widget_id"),
+                        "widget_type": item.get("widget_type"),
+                        "datasource_id": extra_id,
+                    }
+                )
+
+    filter_ids = collect_named_option_datasource_ids_from_filters(filters)
+    seen_ids = {item.get("datasource_id") for item in expanded if isinstance(item, dict)}
+    for extra_id in sorted(filter_ids):
+        if extra_id in seen_ids:
+            continue
+        seen_ids.add(extra_id)
+        expanded.append(
+            {
+                "widget_id": UNIFIED_FILTER_MANIFEST_WIDGET_ID,
+                "widget_type": "unifiedFilter",
+                "datasource_id": extra_id,
+            }
+        )
     return expanded
+
+
+def _iter_dynamic_options_sources(items: Iterable) -> list[dict]:
+    sources: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        input_config = item.get("inputConfig")
+        if not isinstance(input_config, dict):
+            continue
+        options_source = input_config.get("optionsSource")
+        if isinstance(options_source, dict) and options_source.get("type") == "dynamic":
+            sources.append(options_source)
+    return sources
+
+
+def _collect_option_refs(options_sources: Iterable[dict]) -> tuple[set[int], set[str]]:
+    source_ids: set[int] = set()
+    rest_apis: set[str] = set()
+    for options_source in options_sources:
+        source_id = options_source.get("sourceId")
+        if source_id is not None:
+            try:
+                parsed = int(source_id)
+            except (TypeError, ValueError):
+                parsed = None
+            if parsed is not None:
+                source_ids.add(parsed)
+        source_ref = options_source.get("sourceRef")
+        if isinstance(source_ref, dict) and source_ref.get("type") == "rest_api":
+            value = source_ref.get("value")
+            if isinstance(value, str) and value:
+                rest_apis.add(value)
+    return source_ids, rest_apis
+
+
+def _resolve_option_datasource_ids(source_ids: set[int], rest_apis: set[str]) -> set[int]:
+    resolved: set[int] = set()
+    if source_ids:
+        resolved.update(DataSourceAPIModel.objects.filter(id__in=source_ids).values_list("id", flat=True))
+    resolved.update(_resolve_unique_rest_api_ids(rest_apis).values())
+    return resolved
 
 
 def _resolve_unique_rest_api_ids(rest_apis: set[str]) -> dict[str, int]:

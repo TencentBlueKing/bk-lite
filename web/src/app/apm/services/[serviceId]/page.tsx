@@ -28,7 +28,7 @@ import {
 } from 'antd';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
-import dayjs from 'dayjs';
+import CompactEmptyState from '@/components/compact-empty-state';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -39,10 +39,14 @@ import CatalogState, {
 import HealthDot from '@/app/apm/components/health-dot';
 import {
   deriveHealth,
+  formatClockTime,
+  formatDateTime,
   formatErrorRate,
   formatLatency,
+  formatNumber,
   formatPercentage,
   formatRelativeTime,
+  formatRequestRate,
   formatThroughput,
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
@@ -306,28 +310,37 @@ export default function ApmServiceDetailPage() {
 
   const traceColumns: TableColumnsType<ApmTraceSummary> = [
     {
-      title: t('apm.explore.entryTrace', '入口服务 / Trace ID'),
-      key: 'identity',
+      title: t('apm.explore.traceId', 'Trace ID'),
+      dataIndex: 'trace_id',
+      width: APM_TABLE_COLUMN_WIDTHS.traceId,
+      render: (value: string) => (
+        <Link
+          href={`/apm/explore/traces/${value}`}
+          className="block truncate font-mono text-xs text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
+        >
+          {value}
+        </Link>
+      ),
+    },
+    {
+      title: t('apm.explore.entryService', '入口服务'),
+      key: 'service',
+      width: APM_TABLE_COLUMN_WIDTHS.entryService,
+      ellipsis: true,
       render: (_, item) => (
-        <Space direction="vertical" size={2}>
-          <Space size={6}>
-            <HealthDot level={item.status === 'error' ? 1 : 5} />
-            <span className="text-sm font-medium">{item.service_name}</span>
-          </Space>
-          <Link
-            href={`/apm/explore/traces/${item.trace_id}`}
-            className="font-mono text-xs text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
-          >
-            {item.trace_id}
-          </Link>
-        </Space>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <HealthDot level={item.status === 'error' ? 1 : 5} />
+          <span className="truncate text-sm font-medium">{item.service_name}</span>
+        </span>
       ),
     },
     {
       title: t('apm.explore.resource', '资源'),
       dataIndex: 'root_span_name',
+      width: APM_TABLE_COLUMN_WIDTHS.resource,
+      ellipsis: true,
       responsive: ['md'],
-      render: (value) => <span className="font-mono text-xs">{value}</span>,
+      render: (value) => <span className="truncate font-mono text-xs">{value}</span>,
     },
     {
       title: t('apm.explore.totalDuration', '总耗时'),
@@ -336,7 +349,7 @@ export default function ApmServiceDetailPage() {
       align: 'right',
       className: 'tabular-nums',
       responsive: ['sm'],
-      render: (value: number) => formatLatency(value),
+      render: (value: number) => formatLatency(value, false, t),
     },
     {
       title: t('apm.explore.spanCount', '跨度数'),
@@ -363,7 +376,9 @@ export default function ApmServiceDetailPage() {
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       responsive: ['xl'],
       render: (value: string) => (
-        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
+        <span className="text-xs tabular-nums text-[var(--color-text-3)]" title={formatDateTime(value)}>
+          {formatRelativeTime(value, t)}
+        </span>
       ),
     },
   ];
@@ -372,10 +387,10 @@ export default function ApmServiceDetailPage() {
     <Tag bordered={false} key={item.node.id} className="!mb-1 !max-w-full !whitespace-normal">
       {item.node.service_name}
       {' · '}
-      {t('apm.serviceDetail.dependencyMeta', '{calls}/窗 · Pavg {ms}ms · 错误 {errors}', {
-        calls: item.edge.sampled_calls,
-        ms: Math.round(item.edge.average_duration_ms),
-        errors: item.edge.error_calls,
+      {t('apm.serviceDetail.dependencyMeta', '{calls}/窗 · Pavg {duration} · 错误 {errors}', {
+        calls: formatNumber(item.edge.sampled_calls),
+        duration: formatLatency(item.edge.average_duration_ms, false, t),
+        errors: formatNumber(item.edge.error_calls),
       })}
     </Tag>
   );
@@ -465,26 +480,26 @@ export default function ApmServiceDetailPage() {
               <Col xs={12} lg={6}>
                 <ServiceMetricCard
                   label={t('apm.explore.throughputShort', '吞吐')}
-                  value={formatThroughput(red.request_rate)}
-                  suffix={red.request_rate === null ? undefined : '/s'}
+                  value={formatThroughput(red.request_rate, false, t)}
+                  suffix={red.request_rate === null ? undefined : t('apm.common.requestsPerSecondUnit', 'req/s')}
                 />
               </Col>
               <Col xs={12} lg={6}>
                 <ServiceMetricCard
                   label={t('apm.common.errorRate', '错误率')}
-                  value={formatErrorRate(red.error_rate)}
+                  value={formatErrorRate(red.error_rate, false, t)}
                   danger={isErrorRateDanger(red.error_rate)}
                 />
               </Col>
               <Col xs={12} lg={6}>
                 <ServiceMetricCard
                   label={t('apm.common.p99', 'P99')}
-                  value={formatLatency(red.p99_ms)}
+                  value={formatLatency(red.p99_ms, false, t)}
                   danger={red.p99_ms !== null && red.p99_ms >= 500}
                 />
               </Col>
               <Col xs={12} lg={6}>
-                <ServiceMetricCard label={t('apm.common.p95', 'P95')} value={formatLatency(red.p95_ms)} />
+                <ServiceMetricCard label={t('apm.common.p95', 'P95')} value={formatLatency(red.p95_ms, false, t)} />
               </Col>
             </Row>
           ) : null}
@@ -506,9 +521,9 @@ export default function ApmServiceDetailPage() {
                             <TimeSeriesComposedChart<RedChartPoint>
                               data={chartData}
                               xDataKey="timestamp"
-                              getXLabel={(item) => dayjs(item.timestamp).format('HH:mm')}
+                              getXLabel={(item) => formatClockTime(item.timestamp, false)}
                               xAxisBoundaryGap={false}
-                              yAxes={[{ formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)} req/s` }]}
+                              yAxes={[{ formatter: (value) => formatRequestRate(value, false, t) }]}
                               series={[
                                 { name: t('apm.serviceDetail.requestRate', '请求速率 req/s'), type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
                               ]}
@@ -524,9 +539,9 @@ export default function ApmServiceDetailPage() {
                             <TimeSeriesComposedChart<RedChartPoint>
                               data={chartData}
                               xDataKey="timestamp"
-                              getXLabel={(item) => dayjs(item.timestamp).format('HH:mm')}
+                              getXLabel={(item) => formatClockTime(item.timestamp, false)}
                               xAxisBoundaryGap={false}
-                              yAxes={[{ formatter: (value) => `${value.toFixed(1)}%` }]}
+                              yAxes={[{ formatter: (value) => formatPercentage(value, 1) }]}
                               series={[{ name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, showArea: true, showSymbol: true }]}
                               surfaceProps={{ emptyStateProps: { description: t('apm.serviceDetail.noRedTrend', '当前时间窗暂无 RED 趋势点') } }}
                             />
@@ -540,9 +555,9 @@ export default function ApmServiceDetailPage() {
                             <TimeSeriesComposedChart<RedChartPoint>
                               data={chartData}
                               xDataKey="timestamp"
-                              getXLabel={(item) => dayjs(item.timestamp).format('HH:mm')}
+                              getXLabel={(item) => formatClockTime(item.timestamp, false)}
                               xAxisBoundaryGap={false}
-                              yAxes={[{ formatter: (value) => `${value.toFixed(0)} ms` }]}
+                              yAxes={[{ formatter: (value) => formatLatency(value, false, t) }]}
                               series={[
                                 { name: t('apm.common.p95', 'P95'), type: 'line', dataKey: 'p95_ms', color: token.colorPrimary, showArea: true },
                                 { name: t('apm.common.p99', 'P99'), type: 'line', dataKey: 'p99_ms', color: token.colorWarning, lineType: 'dotted', showSymbol: true },
@@ -573,9 +588,9 @@ export default function ApmServiceDetailPage() {
                                       {item.endpoint}
                                     </Link>
                                     <span className="shrink-0 text-xs tabular-nums text-[var(--color-text-3)]">
-                                      {t('apm.serviceDetail.endpointMeta', '{throughput}/s · P99 {latency}', {
-                                        throughput: formatThroughput(item.request_rate),
-                                        latency: formatLatency(item.p99_ms),
+                                      {t('apm.serviceDetail.endpointMeta', '{throughput} · P99 {latency}', {
+                                        throughput: formatRequestRate(item.request_rate, false, t),
+                                        latency: formatLatency(item.p99_ms, false, t),
                                       })}
                                     </span>
                                   </div>
@@ -693,11 +708,11 @@ export default function ApmServiceDetailPage() {
                             </div>
                             <div className="text-center">
                               <Typography.Text type="secondary" className="!text-xs">{t('apm.common.latency', '耗时')}</Typography.Text>
-                              <div className="text-sm font-semibold tabular-nums">{formatLatency(item.duration_ms)}</div>
+                              <div className="text-sm font-semibold tabular-nums">{formatLatency(item.duration_ms, false, t)}</div>
                             </div>
                             <div className="text-center">
                               <Typography.Text type="secondary" className="!text-xs">{t('apm.explore.lastSeen', '最近出现')}</Typography.Text>
-                              <div className="text-sm tabular-nums">{formatRelativeTime(item.started_at)}</div>
+                              <div className="text-sm tabular-nums">{formatRelativeTime(item.started_at, t)}</div>
                             </div>
                           </Space>
                         </div>
@@ -706,7 +721,7 @@ export default function ApmServiceDetailPage() {
                   </div>
                 ) : (
                   <ApmSurface className="py-16 text-center">
-                    <Empty description={t('apm.serviceDetail.noErrorTraces', '当前时间窗暂无错误 Trace')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    <CompactEmptyState description={t('apm.serviceDetail.noErrorTraces', '当前时间窗暂无错误 Trace')} />
                   </ApmSurface>
                 ),
               },

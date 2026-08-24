@@ -73,7 +73,10 @@ def _serializer(model_id, credential):
     )
 
 
-@pytest.mark.parametrize("model_id,port", [("fusioninsight", 443), ("storage", 8088)])
+@pytest.mark.parametrize(
+    "model_id,port",
+    [("fusioninsight", 443), ("storage", 8088), ("sangforhci", 443)],
+)
 def test_platform_api_accepts_username_password_and_tls(model_id, port):
     serializer = _serializer(
         model_id,

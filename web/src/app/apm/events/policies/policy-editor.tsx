@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeftOutlined, DeleteOutlined } from '@ant-design/icons';
 import {
-  Alert,
   Button,
   Form,
   Input,
@@ -24,6 +23,7 @@ import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState from '@/app/apm/components/catalog-state';
+import { formatClockTime, formatErrorRate } from '@/app/apm/components/metric-format';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
 import { ALERT_LEVEL_COLORS, OBSERVABILITY_SERIES_COLORS } from '@/constants/observabilityChart';
 import { useTranslation } from '@/utils/i18n';
@@ -56,10 +56,10 @@ interface PolicyEditorValues extends Omit<
   thresholds: ThresholdEditorRow[];
 }
 
-const SEVERITIES: Array<{ value: ApmPolicySeverity; label: string; color: string }> = [
-  { value: 'critical', label: '严重', color: 'red' },
-  { value: 'error', label: '错误', color: 'orange' },
-  { value: 'warning', label: '警告', color: 'gold' },
+const SEVERITIES: Array<{ value: ApmPolicySeverity; i18nKey: string; color: string }> = [
+  { value: 'critical', i18nKey: 'apm.severity.critical', color: 'red' },
+  { value: 'error', i18nKey: 'apm.severity.error', color: 'orange' },
+  { value: 'warning', i18nKey: 'apm.severity.warning', color: 'gold' },
 ];
 
 const DEFAULT_VALUES: PolicyEditorValues = {
@@ -80,30 +80,30 @@ const DEFAULT_VALUES: PolicyEditorValues = {
   recover_after: 3,
   no_data_after: null,
   no_data_severity: '',
-  no_data_alert_name: '${service} ${metric} 无数据告警',
+  no_data_alert_name: '${service} ${metric}',
   notification_channel_ids: [],
   notification_recipients: [],
 };
 
-const METRICS: Array<{ value: ApmPolicyMetric; label: string }> = [
-  { value: 'error_rate', label: '错误率' },
-  { value: 'p95', label: 'P95 延迟' },
-  { value: 'p99', label: 'P99 延迟' },
-  { value: 'throughput', label: '吞吐量' },
-  { value: 'no_traffic', label: '无流量' },
+const METRICS: Array<{ value: ApmPolicyMetric; i18nKey: string }> = [
+  { value: 'error_rate', i18nKey: 'apm.common.errorRate' },
+  { value: 'p95', i18nKey: 'apm.common.p95Latency' },
+  { value: 'p99', i18nKey: 'apm.common.p99Latency' },
+  { value: 'throughput', i18nKey: 'apm.common.throughput' },
+  { value: 'no_traffic', i18nKey: 'apm.alerts.noTraffic' },
 ];
 
 const TEMPLATE_VARIABLES = [
-  { name: '${service}', source: '服务名' },
-  { name: '${endpoint}', source: '端点' },
-  { name: '${version}', source: '版本' },
-  { name: '${metric}', source: '指标' },
-  { name: '${current_value}', source: '当前值' },
-  { name: '${threshold}', source: '阈值' },
-  { name: '${level}', source: '告警级别' },
-  { name: '${alert_name}', source: '告警名' },
-  { name: '${trigger_at}', source: '触发时间' },
-  { name: '${group_by}', source: '分组维度' },
+  { name: '${service}', i18nKey: 'apm.policies.variableService' },
+  { name: '${endpoint}', i18nKey: 'apm.policies.variableEndpoint' },
+  { name: '${version}', i18nKey: 'apm.policies.variableVersion' },
+  { name: '${metric}', i18nKey: 'apm.policies.variableMetric' },
+  { name: '${current_value}', i18nKey: 'apm.policies.variableCurrentValue' },
+  { name: '${threshold}', i18nKey: 'apm.policies.variableThreshold' },
+  { name: '${level}', i18nKey: 'apm.policies.variableLevel' },
+  { name: '${alert_name}', i18nKey: 'apm.policies.variableAlertName' },
+  { name: '${trigger_at}', i18nKey: 'apm.policies.variableTriggeredAt' },
+  { name: '${group_by}', i18nKey: 'apm.policies.variableGroupBy' },
 ];
 
 function encodeServiceScope(serviceId: string, environment: string) {
@@ -146,7 +146,7 @@ function NumberWithUnit({ unit, ...props }: ComponentProps<typeof InputNumber> &
   );
 }
 
-function toEditorValues(policy: ApmPolicy): PolicyEditorValues {
+function toEditorValues(policy: ApmPolicy, defaultNoDataAlertName: string): PolicyEditorValues {
   const thresholds = new Map(policy.thresholds.map((item) => [item.severity, item]));
   const commonComparator = policy.thresholds[0]?.comparator ?? 'gt';
   return {
@@ -169,7 +169,7 @@ function toEditorValues(policy: ApmPolicy): PolicyEditorValues {
     recover_after: policy.recover_after,
     no_data_after: policy.no_data_after,
     no_data_severity: policy.no_data_severity,
-    no_data_alert_name: policy.no_data_alert_name || '${service} ${metric} 无数据告警',
+    no_data_alert_name: policy.no_data_alert_name || defaultNoDataAlertName,
     endpoints: policy.endpoints,
     notification_channel_ids: policy.notification_targets.map((target) => target.channel_id),
     notification_recipients: Array.from(
@@ -181,6 +181,7 @@ function toEditorValues(policy: ApmPolicy): PolicyEditorValues {
 function buildMetricPreviewPayload(
   values: PolicyEditorValues,
   loadedPolicy: ApmPolicy | null,
+  previewName: string,
 ): ApmPolicyInput | null {
   const scope = decodeServiceScope(values.service_scope ?? '');
   const thresholds = normalizeThresholds(values.metric_type, values.thresholds);
@@ -197,7 +198,7 @@ function buildMetricPreviewPayload(
     : null;
   const preserveLegacyScope = Boolean(loadedPolicy && values.service_scope === originalScope);
   return {
-    name: values.name?.trim() || '指标预览',
+    name: values.name?.trim() || previewName,
     service_id: scope.serviceId,
     environment: scope.environment,
     alert_name: values.alert_name || '',
@@ -221,6 +222,20 @@ function buildMetricPreviewPayload(
 export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const { t } = useTranslation();
   const router = useRouter();
+  const defaultNoDataAlertName = `${'${service}'} ${'${metric}'} ${t('apm.policies.noDataAlertSuffix', '无数据告警')}`;
+  const defaultNoDataAlertNameRef = useRef(defaultNoDataAlertName);
+  const severityOptions = useMemo(
+    () => SEVERITIES.map((item) => ({ ...item, label: t(item.i18nKey) })),
+    [t],
+  );
+  const metricOptions = useMemo(
+    () => METRICS.map((item) => ({ ...item, label: t(item.i18nKey) })),
+    [t],
+  );
+  const templateVariables = useMemo(
+    () => TEMPLATE_VARIABLES.map((item) => ({ ...item, source: t(item.i18nKey) })),
+    [t],
+  );
   const {
     createPolicy,
     deletePolicy,
@@ -269,7 +284,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
         setChannels(channelItems);
         setLoadedPolicy(policy);
         setNoticeEnabled(Boolean(policy?.notification_targets.length));
-        form.setFieldsValue(policy ? toEditorValues(policy) : DEFAULT_VALUES);
+        form.setFieldsValue(policy
+          ? toEditorValues(policy, defaultNoDataAlertNameRef.current)
+          : { ...DEFAULT_VALUES, no_data_alert_name: defaultNoDataAlertNameRef.current });
       })
       .finally(() => setLoading(false));
   }, [form, getNotificationChannels, getPolicy, getServices, isLoading, policyId]);
@@ -339,7 +356,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     }));
     for (const target of loadedPolicy?.notification_targets || []) {
       if (options.some((item) => item.value === target.channel_id)) continue;
-      const name = target.channel_name || t('apm.events.channel', '渠道 {id}', { id: target.channel_id });
+      const name = target.channel_name || t('apm.alerts.channel', '渠道 {id}', { id: target.channel_id });
       options.push({
         value: target.channel_id,
         label: t('apm.policies.unavailableChannelOption', '{name}（当前不可用）', { name }),
@@ -371,8 +388,11 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   );
 
   const selectedScope = decodeServiceScope(serviceScope ?? '');
-  const hasLegacyVersionScope = Boolean(loadedPolicy && loadedPolicy.version_mode !== 'all');
-  const thresholdUnit = metricType === 'error_rate' ? '%' : metricType === 'p95' || metricType === 'p99' ? 'ms' : '次/秒';
+  const thresholdUnit = metricType === 'error_rate'
+    ? t('apm.common.percentUnit', '%')
+    : metricType === 'p95' || metricType === 'p99'
+      ? t('apm.common.millisecondUnit', 'ms')
+      : t('apm.policies.perSecondUnit', 'req/s');
   const previewRows = useMemo(
     () =>
       (preview?.series ?? []).map((point) => ({
@@ -403,16 +423,17 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     const scope = decodeServiceScope(values.service_scope);
     const thresholds = normalizeThresholds(values.metric_type, values.thresholds);
     if (!thresholds.length) {
-      form.setFields([{ name: ['thresholds', 2, 'value'], errors: ['至少启用一个告警级别'] }]);
-      message.error('至少启用一个告警级别');
+      const error = t('apm.policies.thresholdRequiredOne', '至少启用一个告警级别');
+      form.setFields([{ name: ['thresholds', 2, 'value'], errors: [error] }]);
+      message.error(error);
       return null;
     }
     if (noticeEnabled && !values.notification_channel_ids?.length) {
-      message.error('启用通知后请至少选择一个通知渠道');
+      message.error(t('apm.policies.channelRequiredWhenEnabled', '启用通知后请至少选择一个通知渠道'));
       return null;
     }
     if (noticeEnabled && needsNotificationRecipients && !values.notification_recipients?.length) {
-      message.error('所选通知渠道需要配置通知对象');
+      message.error(t('apm.policies.recipientsRequiredForChannel', '所选通知渠道需要配置通知对象'));
       return null;
     }
     const originalScope = loadedPolicy
@@ -450,7 +471,11 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
 
   useEffect(() => {
     if (loading) return;
-    const payload = buildMetricPreviewPayload(form.getFieldsValue(true), loadedPolicy);
+    const payload = buildMetricPreviewPayload(
+      form.getFieldsValue(true),
+      loadedPolicy,
+      t('apm.policies.metricPreview', '指标预览'),
+    );
     if (previewDebounceRef.current !== null) window.clearTimeout(previewDebounceRef.current);
     if (!payload) {
       previewRequestRef.current += 1;
@@ -482,7 +507,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       if (previewDebounceRef.current !== null) window.clearTimeout(previewDebounceRef.current);
       previewRequestRef.current += 1;
     };
-  }, [form, loadedPolicy, loading, previewConfiguration, previewPolicy]);
+  }, [form, loadedPolicy, loading, previewConfiguration, previewPolicy, t]);
 
   const submit = async (values: PolicyEditorValues) => {
     const payload = buildPayload(values);
@@ -492,7 +517,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       if (policyId) await updatePolicy(policyId, payload);
       else await createPolicy(payload);
       message.success(
-        policyId ? '策略已更新；后续评估使用新配置，历史快照保持不变' : '策略已创建；后续启停只在列表操作',
+        policyId
+          ? t('apm.policies.updatedDetail', '策略已更新；后续评估使用新配置，历史快照保持不变')
+          : t('apm.policies.createdDetail', '策略已创建；后续启停只在列表操作'),
       );
       router.push('/apm/events/policies');
     } finally {
@@ -501,9 +528,13 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   };
 
   const runPreview = async () => {
-    const payload = buildMetricPreviewPayload(form.getFieldsValue(true), loadedPolicy);
+    const payload = buildMetricPreviewPayload(
+      form.getFieldsValue(true),
+      loadedPolicy,
+      t('apm.policies.metricPreview', '指标预览'),
+    );
     if (!payload) {
-      message.info('请先选择服务并至少启用一个告警阈值');
+      message.info(t('apm.policies.previewPrerequisite', '请先选择服务并至少启用一个告警阈值'));
       return;
     }
     if (previewDebounceRef.current !== null) window.clearTimeout(previewDebounceRef.current);
@@ -526,7 +557,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
     setDeleting(true);
     try {
       await deletePolicy(policyId);
-      message.success('策略已删除');
+      message.success(t('apm.policies.deleted', '策略已删除'));
       router.push('/apm/events/policies');
     } finally {
       setDeleting(false);
@@ -536,9 +567,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   const copyVariable = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
-      message.success(`已复制 ${value}`);
+      message.success(t('apm.policies.copied', '已复制 {value}', { value }));
     } catch {
-      message.error('复制失败，请手动复制');
+      message.error(t('apm.policies.copyFailed', '复制失败，请手动复制'));
     }
   };
 
@@ -550,73 +581,77 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
   if (loading)
     return (
       <ApmRouteShell
-        title={policyId ? '编辑告警策略' : '新建告警策略'}
-        description="正在加载 APM 策略编辑器"
+        title={t(policyId ? 'apm.policies.editEditorTitle' : 'apm.policies.createEditorTitle', policyId ? '编辑告警策略' : '新建告警策略')}
+        description={t('apm.policies.editorLoading', '正在加载 APM 策略编辑器')}
         dependency="control"
-        spacing="flush"
       >
-        <ApmSurface className="m-5"><CatalogState kind="loading" /></ApmSurface>
+        <ApmSurface><CatalogState kind="loading" /></ApmSurface>
       </ApmRouteShell>
     );
 
   const stepItems = [
     {
-      title: '基本信息',
+      title: t('apm.policies.basic', '基本信息'),
       status: 'process' as const,
       description: (
         <div className={styles.stepContent}>
-          <Form.Item name="name" label="策略名称" rules={[{ required: true, message: '请输入策略名称' }]}>
-            <Input maxLength={256} placeholder="如：结账错误率" />
+          <Form.Item name="name" label={t('apm.policies.name', '策略名称')} rules={[{ required: true, message: t('apm.policies.nameRequired', '请输入策略名称') }]}>
+            <Input maxLength={256} placeholder={t('apm.policies.nameExample', '如：结账错误率')} />
           </Form.Item>
           <Form.Item
             name="alert_name"
-            label="告警名称"
-            tooltip="变量可从右侧变量表复制"
-            rules={[{ required: true, message: '请输入告警名称' }]}
+            label={t('apm.policies.alertName', '告警名称')}
+            tooltip={t('apm.policies.variableCopyHint', '变量可从右侧变量表复制')}
+            rules={[{ required: true, message: t('apm.policies.alertNameRequired', '请输入告警名称') }]}
           >
-            <Input maxLength={512} placeholder="${service} 错误率 > ${threshold}" />
+            <Input
+              maxLength={512}
+              placeholder={`${'${service}'} ${t('apm.common.errorRate', '错误率')} > ${'${threshold}'}`}
+            />
           </Form.Item>
-          <Form.Item name="evaluation_interval" label="检测频率" rules={[{ required: true, message: '请输入检测频率' }]}>
-            <NumberWithUnit min={1} max={60} unit="分钟" />
+          <Form.Item name="evaluation_interval" label={t('apm.policies.evaluationInterval', '检测频率')} rules={[{ required: true, message: t('apm.policies.evaluationIntervalRequired', '请输入检测频率') }]}>
+            <NumberWithUnit min={1} max={60} unit={t('apm.policies.minutes', '分钟')} />
           </Form.Item>
         </div>
       ),
     },
     {
-      title: '指标定义',
+      title: t('apm.policies.metricDefinition', '指标定义'),
       status: 'process' as const,
       description: (
         <div className={styles.stepContent}>
-          <Form.Item name="service_scope" label="服务" rules={[{ required: true, message: '请选择服务' }]}>
+          <Form.Item name="service_scope" label={t('apm.common.service', '服务')} rules={[{ required: true, message: t('apm.policies.serviceRequired', '请选择服务') }]}>
             <Select
               showSearch
               optionFilterProp="label"
               options={serviceOptions}
-              placeholder="选择服务"
+              placeholder={t('apm.common.selectService', '选择服务')}
               onChange={() => {
                 form.setFieldValue('endpoints', []);
                 setPreview(null);
               }}
             />
           </Form.Item>
-          <Form.Item name="endpoints" label="端点" extra="不选则按服务级别监控（整体聚合）">
+          <Form.Item name="endpoints" label={t('apm.common.endpoint', '端点')} extra={t('apm.policies.endpointScopeHint', '不选则按服务级别监控（整体聚合）')}>
             <Select
               mode="multiple"
               allowClear
               showSearch
               optionFilterProp="label"
               options={endpointOptions}
-              placeholder={serviceScope ? '选择端点，不选表示全部端点' : '请先选择服务'}
+              placeholder={serviceScope
+                ? t('apm.policies.endpointPlaceholder', '选择端点，不选表示全部端点')
+                : t('apm.policies.selectServiceFirst', '请先选择服务')}
               disabled={!serviceScope}
             />
           </Form.Item>
-          <Form.Item name="metric_type" label="指标" rules={[{ required: true, message: '请选择指标' }]}>
-            <Select options={METRICS} />
+          <Form.Item name="metric_type" label={t('apm.policies.metric', '指标')} rules={[{ required: true, message: t('apm.policies.metricRequired', '请选择指标') }]}>
+            <Select options={metricOptions} />
           </Form.Item>
-          <Form.Item name="metric_window" label="汇聚周期" rules={[{ required: true, message: '请输入汇聚周期' }]}>
-            <NumberWithUnit min={1} max={1440} unit="分钟" />
+          <Form.Item name="metric_window" label={t('apm.policies.metricWindow', '汇聚周期')} rules={[{ required: true, message: t('apm.policies.metricWindowRequired', '请输入汇聚周期') }]}>
+            <NumberWithUnit min={1} max={1440} unit={t('apm.policies.minutes', '分钟')} />
           </Form.Item>
-          <Form.Item name="aggregation" label="汇聚方法" rules={[{ required: true, message: '请选择汇聚方法' }]}>
+          <Form.Item name="aggregation" label={t('apm.policies.aggregation', '汇聚方法')} rules={[{ required: true, message: t('apm.policies.aggregationRequired', '请选择汇聚方法') }]}>
             <Select
               options={[
                 { value: 'avg', label: 'avg_over_time' },
@@ -627,46 +662,38 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
             />
           </Form.Item>
           <Typography.Text type="secondary" className={styles.scopeHint}>
-            环境已并入服务范围；版本固定为全部版本。
+            {t('apm.policies.scopeHint', '环境已并入服务范围；版本固定为全部版本。')}
           </Typography.Text>
-          {hasLegacyVersionScope ? (
-            <Alert
-              className={styles.legacyScopeAlert}
-              type="info"
-              showIcon
-              message="当前历史策略含版本范围，保存时继续保留；更换服务后自动切换为全部版本。"
-            />
-          ) : null}
         </div>
       ),
     },
     {
-      title: '告警条件',
+      title: t('apm.policies.condition', '告警条件'),
       status: 'process' as const,
       description: (
         <div className={styles.stepContent}>
-          <Typography.Text strong className={styles.thresholdTitle}>3 级别阈值</Typography.Text>
+          <Typography.Text strong className={styles.thresholdTitle}>{t('apm.policies.threeLevelThresholds', '3 级别阈值')}</Typography.Text>
           <Table
             className={styles.thresholdTable}
             size="small"
             pagination={false}
             rowKey="value"
-            dataSource={SEVERITIES}
+            dataSource={severityOptions}
             columns={[
               {
-                title: '级别',
+                title: t('apm.alerts.level', '级别'),
                 dataIndex: 'value',
                 width: '26%',
                 render: (severity: ApmPolicySeverity, row) => <Tag color={row.color}>{row.label}</Tag>,
               },
               {
-                title: '比较符',
+                title: t('apm.policies.comparator', '比较符'),
                 dataIndex: 'value',
                 width: '32%',
                 render: (_, __, index) => (
                   <Form.Item name={['thresholds', index, 'comparator']} noStyle>
                     <Select
-                      aria-label={`${SEVERITIES[index].label}比较符`}
+                      aria-label={t('apm.policies.comparatorAria', '{severity}比较符', { severity: severityOptions[index].label })}
                       onChange={syncComparator}
                       options={[
                         { value: 'gt', label: '>' },
@@ -679,15 +706,15 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                 ),
               },
               {
-                title: '阈值',
+                title: t('apm.policies.threshold', '阈值'),
                 dataIndex: 'value',
                 render: (_, __, index) => (
                   <Form.Item name={['thresholds', index, 'value']} noStyle>
                     <NumberWithUnit
-                      aria-label={`${SEVERITIES[index].label}阈值`}
+                      aria-label={t('apm.policies.thresholdAria', '{severity}阈值', { severity: severityOptions[index].label })}
                       min={0}
                       max={metricType === 'error_rate' ? 100 : undefined}
-                      placeholder="不启用"
+                      placeholder={t('apm.policies.notEnabled', '不启用')}
                       unit={thresholdUnit}
                     />
                   </Form.Item>
@@ -697,29 +724,29 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
           />
           <div className={styles.conditionRows}>
             <div className={styles.conditionRow}>
-              <span className={styles.conditionLabel}><span aria-hidden="true">*</span>触发条件：</span>
+              <span className={styles.conditionLabel}><span aria-hidden="true">*</span>{t('apm.policies.triggerCondition', '触发条件：')}</span>
               <span className={styles.conditionSentence}>
-                连续
+                {t('apm.policies.consecutive', '连续')}
                 <Form.Item name="trigger_after" noStyle rules={[{ required: true }]}>
-                  <InputNumber min={1} max={60} aria-label="连续触发次数" />
+                  <InputNumber min={1} max={60} aria-label={t('apm.policies.triggerCountAria', '连续触发次数')} />
                 </Form.Item>
-                个汇聚周期满足阈值时触发告警。
+                {t('apm.policies.triggerSentenceSuffix', '个汇聚周期满足阈值时触发告警。')}
               </span>
             </div>
             <div className={styles.conditionRow}>
-              <span className={styles.conditionLabel}>自动恢复：</span>
+              <span className={styles.conditionLabel}>{t('apm.policies.autoRecovery', '自动恢复：')}</span>
               <span className={styles.conditionSentence}>
-                连续
+                {t('apm.policies.consecutive', '连续')}
                 <Form.Item name="recover_after" noStyle rules={[{ required: true }]}>
-                  <InputNumber min={1} max={60} aria-label="连续恢复次数" />
+                  <InputNumber min={1} max={60} aria-label={t('apm.policies.recoveryCountAria', '连续恢复次数')} />
                 </Form.Item>
-                个周期不满足阈值时自动恢复。
+                {t('apm.policies.recoverySentenceSuffix', '个周期不满足阈值时自动恢复。')}
               </span>
             </div>
             <div className={styles.conditionRow}>
-              <span className={styles.conditionLabel}>无数据告警：</span>
+              <span className={styles.conditionLabel}>{t('apm.policies.noDataAlert', '无数据告警：')}</span>
               <span className={styles.conditionSentence}>
-                连续
+                {t('apm.policies.consecutive', '连续')}
                 <Form.Item
                   name="no_data_after"
                   noStyle
@@ -727,14 +754,14 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                     {
                       validator: async (_, value) => {
                         if (!value || form.getFieldValue('no_data_severity')) return;
-                        throw new Error('请选择无数据告警级别');
+                        throw new Error(t('apm.policies.noDataSeverityRequired', '请选择无数据告警级别'));
                       },
                     },
                   ]}
                 >
-                  <InputNumber min={1} max={60} placeholder="关闭" aria-label="无数据持续次数" />
+                  <InputNumber min={1} max={60} placeholder={t('apm.common.close', '关闭')} aria-label={t('apm.policies.noDataCountAria', '无数据持续次数')} />
                 </Form.Item>
-                个周期无数据时
+                {t('apm.policies.noDataSentenceSuffix', '个周期无数据时')}
                 <Form.Item
                   name="no_data_severity"
                   noStyle
@@ -742,16 +769,19 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                     {
                       validator: async (_, value) => {
                         if (!value || form.getFieldValue('no_data_after')) return;
-                        throw new Error('请填写无数据持续次数');
+                        throw new Error(t('apm.policies.noDataCountRequired', '请填写无数据持续次数'));
                       },
                     },
                   ]}
                 >
                   <Select
-                    aria-label="无数据告警级别"
+                    aria-label={t('apm.policies.noDataSeverityAria', '无数据告警级别')}
                     allowClear
-                    placeholder="不触发告警"
-                    options={SEVERITIES.map((item) => ({ value: item.value, label: `触发${item.label}告警` }))}
+                    placeholder={t('apm.policies.noDataDisabled', '不触发告警')}
+                    options={severityOptions.map((item) => ({
+                      value: item.value,
+                      label: t('apm.policies.triggerSeverityAlert', '触发{severity}告警', { severity: item.label }),
+                    }))}
                   />
                 </Form.Item>
               </span>
@@ -759,12 +789,12 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
             {noDataSeverity ? (
               <Form.Item
                 name="no_data_alert_name"
-                label="无数据告警名称"
+                label={t('apm.policies.noDataAlertName', '无数据告警名称')}
                 className={styles.noDataAlertName}
-                extra="告警名称模板，变量可从右侧变量表复制"
-                rules={[{ required: true, message: '请输入无数据告警名称' }]}
+                extra={t('apm.policies.noDataAlertNameHint', '告警名称模板，变量可从右侧变量表复制')}
+                rules={[{ required: true, message: t('apm.policies.noDataAlertNameRequired', '请输入无数据告警名称') }]}
               >
-                <Input maxLength={512} placeholder="${service} ${metric} 无数据告警" />
+                <Input maxLength={512} placeholder={defaultNoDataAlertName} />
               </Form.Item>
             ) : null}
           </div>
@@ -772,11 +802,11 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
       ),
     },
     {
-      title: '通知配置',
+      title: t('apm.policies.notificationConfig', '通知配置'),
       status: 'process' as const,
       description: (
         <div className={styles.stepContent}>
-          <Form.Item label="通知" required>
+          <Form.Item label={t('apm.alerts.notification', '通知')} required>
             <Space>
               <Switch
                 checked={noticeEnabled}
@@ -787,18 +817,18 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                     form.setFieldValue('notification_recipients', []);
                   }
                 }}
-                aria-label="启用通知"
+                aria-label={t('apm.policies.enableNotification', '启用通知')}
               />
-              <Typography.Text type="secondary">{noticeEnabled ? '已开启' : '未开启'}</Typography.Text>
+              <Typography.Text type="secondary">{t(noticeEnabled ? 'apm.policies.notificationEnabled' : 'apm.policies.notificationDisabled', noticeEnabled ? '已开启' : '未开启')}</Typography.Text>
             </Space>
           </Form.Item>
           {noticeEnabled ? (
             <>
               <Form.Item
                 name="notification_channel_ids"
-                label="通知通道"
+                label={t('apm.policies.notificationChannelLabel', '通知通道')}
                 rules={[
-                  { required: true, message: '请选择通知通道' },
+                  { required: true, message: t('apm.policies.notificationChannelRequired', '请选择通知通道') },
                   {
                     validator: async (_, channelIds: number[] | undefined) => {
                       const invalid = channelIds?.some(
@@ -816,17 +846,17 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   mode="multiple"
                   allowClear
                   options={channelOptions}
-                  placeholder="选择一个或多个通知通道"
+                  placeholder={t('apm.policies.notificationChannelPlaceholder', '选择一个或多个通知通道')}
                 />
               </Form.Item>
               {needsNotificationRecipients ? (
                 <Form.Item
                   name="notification_recipients"
-                  label="通知对象"
-                  extra="仅需要接收人的通知通道使用此配置"
-                  rules={[{ required: true, message: '请输入通知对象' }]}
+                  label={t('apm.policies.notificationRecipients', '通知对象')}
+                  extra={t('apm.policies.notificationRecipientsHint', '仅需要接收人的通知通道使用此配置')}
+                  rules={[{ required: true, message: t('apm.policies.notificationRecipientsRequired', '请输入通知对象') }]}
                 >
-                  <Select mode="tags" placeholder="输入接收人后回车" />
+                  <Select mode="tags" placeholder={t('apm.policies.recipientsPlaceholder', '输入接收人后回车')} />
                 </Form.Item>
               ) : null}
             </>
@@ -838,10 +868,9 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
 
   return (
     <ApmRouteShell
-      title={policyId ? '编辑告警策略' : '新建告警策略'}
-      description="四步完成范围、指标、条件和通知配置；预览直接查询 VictoriaTraces。"
+      title={t(policyId ? 'apm.policies.editEditorTitle' : 'apm.policies.createEditorTitle', policyId ? '编辑告警策略' : '新建告警策略')}
+      description={t('apm.policies.editorDescription', '四步完成范围、指标、条件和通知配置；预览直接查询 VictoriaTraces。')}
       dependency="control"
-      spacing="flush"
     >
       <Form
         form={form}
@@ -853,95 +882,97 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
         <div className={styles.editor}>
           <Link href="/apm/events/policies" className={styles.editorTitle}>
             <ArrowLeftOutlined aria-hidden="true" />
-            返回策略列表
+            {t('apm.policies.backToList', '返回策略列表')}
           </Link>
           <div className={styles.editorLayout}>
             <div className={styles.editorMain}>
               <Steps direction="vertical" current={0} items={stepItems} />
               <div className={styles.editorFooter}>
-                <Link href="/apm/events/policies"><Button>取消</Button></Link>
+                <Link href="/apm/events/policies"><Button>{t('common.cancel', '取消')}</Button></Link>
                 {policyId ? (
                   <Popconfirm
-                    title="确认删除该策略？"
-                    description="删除后将停止后续评估，历史告警和事件快照不受影响。"
-                    okText="删除"
-                    cancelText="取消"
+                    title={t('apm.policies.deleteEditorConfirm', '确认删除该策略？')}
+                    description={t('apm.policies.deleteEditorDescription', '删除后将停止后续评估，历史告警和事件快照不受影响。')}
+                    okText={t('common.delete', '删除')}
+                    cancelText={t('common.cancel', '取消')}
                     okButtonProps={{ danger: true, loading: deleting }}
                     onConfirm={() => void removePolicy()}
                   >
-                    <Button danger icon={<DeleteOutlined />}>删除</Button>
+                    <Button danger icon={<DeleteOutlined />}>{t('common.delete', '删除')}</Button>
                   </Popconfirm>
                 ) : null}
                 <Button type="primary" htmlType="submit" loading={saving}>
-                  {policyId ? '保存策略' : '创建策略'}
+                  {t(policyId ? 'apm.policies.saveAction' : 'apm.policies.createAction', policyId ? '保存策略' : '创建策略')}
                 </Button>
               </div>
             </div>
             <aside className={styles.editorSide}>
               <section className={styles.sideSection}>
-                <Typography.Title level={2}>模板变量</Typography.Title>
+                <Typography.Title level={2}>{t('apm.policies.templateVariables', '模板变量')}</Typography.Title>
                 <Table
                   size="small"
                   pagination={false}
                   rowKey="name"
                   columns={[
                     {
-                      title: '变量',
+                      title: t('apm.policies.variable', '变量'),
                       dataIndex: 'name',
                       render: (value: string) => <code className={styles.variableCode}>{value}</code>,
                     },
-                    { title: '说明', dataIndex: 'source' },
+                    { title: t('apm.policies.variableDescription', '说明'), dataIndex: 'source' },
                     {
-                      title: '操作',
+                      title: t('apm.common.operation', '操作'),
                       dataIndex: 'name',
                       width: 64,
                       render: (value: string) => (
-                        <Button type="link" size="small" aria-label={`复制 ${value}`} onClick={() => void copyVariable(value)}>
-                          复制
+                        <Button type="link" size="small" aria-label={t('apm.policies.copyAria', '复制 {value}', { value })} onClick={() => void copyVariable(value)}>
+                          {t('apm.policies.copy', '复制')}
                         </Button>
                       ),
                     },
                   ]}
-                  dataSource={TEMPLATE_VARIABLES}
+                  dataSource={templateVariables}
                 />
               </section>
               <section className={styles.sideSection}>
                 <div className={styles.previewHeading}>
                   <div>
-                    <Typography.Title level={2}>指标预览</Typography.Title>
+                    <Typography.Title level={2}>{t('apm.policies.metricPreview', '指标预览')}</Typography.Title>
                     <Typography.Text type="secondary">
-                      {METRICS.find((item) => item.value === metricType)?.label ?? metricType}（{thresholdUnit}） · {form.getFieldValue('metric_window') ?? 5} 分钟
+                      {metricOptions.find((item) => item.value === metricType)?.label ?? metricType}（{thresholdUnit}） · {t('apm.policies.minuteCount', '{count} 分钟', { count: form.getFieldValue('metric_window') ?? 5 })}
                       {selectedScope.environment ? ` · ${selectedScope.environment}` : ''}
-                      {previewing ? ' · 正在更新' : ' · 配置变化后自动刷新'}
+                      {previewing
+                        ? ` · ${t('apm.policies.previewUpdating', '正在更新')}`
+                        : ` · ${t('apm.policies.previewAutoRefresh', '配置变化后自动刷新')}`}
                     </Typography.Text>
                   </div>
-                  <Button type="link" loading={previewing} onClick={() => void runPreview()}>刷新</Button>
+                  <Button type="link" loading={previewing} onClick={() => void runPreview()}>{t('apm.common.refresh', '刷新')}</Button>
                 </div>
                 {preview ? (
                   <>
                     <Space className={styles.previewValue}>
                       <Typography.Text strong>
                         {preview.value === null
-                          ? '无数据'
+                          ? t('apm.common.noData', '无数据')
                           : metricType === 'error_rate'
-                            ? `${Number(preview.value) * 100}%`
+                            ? formatErrorRate(Number(preview.value), false, t)
                             : preview.value}
                       </Typography.Text>
                       <Typography.Text type="secondary">
                         {preview.data_state === 'no_data'
-                          ? 'VictoriaTraces 当前窗口无样本'
-                          : dayjs(preview.evaluated_at).format('HH:mm:ss')}
+                          ? t('apm.policies.previewNoSamples', 'VictoriaTraces 当前窗口无样本')
+                          : formatClockTime(preview.evaluated_at)}
                       </Typography.Text>
                     </Space>
                     <div className={styles.previewChart}>
                       <TimeSeriesComposedChart
                         data={previewRows}
                         xDataKey="timestamp"
-                        getXLabel={(item) => dayjs(String(item.timestamp)).format('HH:mm')}
+                        getXLabel={(item) => formatClockTime(String(item.timestamp), false)}
                         xAxisBoundaryGap={false}
                         series={[
                           {
-                            name: METRICS.find((item) => item.value === metricType)?.label ?? metricType,
+                            name: metricOptions.find((item) => item.value === metricType)?.label ?? metricType,
                             type: 'line',
                             dataKey: 'value',
                             color: OBSERVABILITY_SERIES_COLORS[0],
@@ -951,7 +982,7 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                             lineWidth: 1,
                           },
                           {
-                            name: '当前阈值',
+                            name: t('apm.policies.currentThreshold', '当前阈值'),
                             type: 'line',
                             dataKey: 'threshold',
                             color: ALERT_LEVEL_COLORS[preview.threshold?.severity ?? 'critical'],
@@ -965,10 +996,10 @@ export default function ApmPolicyEditor({ policyId }: { policyId?: string }) {
                   <div className={styles.previewEmpty}>
                     <Typography.Text type="secondary" role="status">
                       {previewing
-                        ? '正在查询真实指标趋势…'
+                        ? t('apm.policies.previewLoading', '正在查询真实指标趋势…')
                         : previewFailed
-                          ? '自动预览暂不可用，可点击右上角刷新重试。'
-                          : '选择服务并至少启用一个告警阈值后，将自动加载真实指标趋势。'}
+                          ? t('apm.policies.previewUnavailable', '自动预览暂不可用，可点击右上角刷新重试。')
+                          : t('apm.policies.previewEmpty', '选择服务并至少启用一个告警阈值后，将自动加载真实指标趋势。')}
                     </Typography.Text>
                   </div>
                 )}

@@ -26,11 +26,17 @@ Agent 日常入口：根 `CLAUDE.md` / `AGENTS.md`「Web UI 硬约束」；**勿
 3. **行内样式白名单**  
    仅保留：AntD 组件契约（如 Modal `styles.body` 限高）、运行时动态值（进度/拖拽/图表坐标）、画布类瞬时尺寸。其余布局行内视为债；新代码不得扩大比例。
 
-4. **不为样式分叉组件**  
+4. **统一尺寸常量勿拆散（Cycle 28 教训）**  
+   若同一表单/区块用 `FORM_CONTROL_WIDTH`（或同类命名常量）经 `style={{ width: CONST }}`  
+   对齐多处控件，该行内是**有意的单点改宽契约**，不是布局债。治理时**保留常量**；  
+   禁止机械替换成多处 `className="w-[300px]"` / `w-20` 等任意值。若要 className 化，  
+   须先抽出可共享的单一 class / CSS 变量，且仍能一处改宽。
+
+5. **不为样式分叉组件**  
    仅因间距、圆角、边框色不同而复制 app-local 平行实现 → 删除分叉，复用 shared variant 或补稳定 props；样式差异优先用 `className` / token，不新开目录。
 
-5. **交付自检（非所有权脚本）**  
-   `check:component-ownership` 只校验目录所有权，不替代样式审查。治理 PR / cycle 说明中应点明：触及区块是否已按 `DESIGN.md` 改为 className；若刻意保留行内，写明例外类别（动态值 / AntD 契约 / 未触及历史债）。
+6. **交付自检（非所有权脚本）**  
+   `check:component-ownership` 只校验目录所有权，不替代样式审查。治理 PR / cycle 说明中应点明：触及区块是否已按 `DESIGN.md` 改为 className；若刻意保留行内，写明例外类别（动态值 / AntD 契约 / 统一尺寸常量 / 未触及历史债）。
 
 ## 当前终态
 
@@ -379,6 +385,25 @@ Agent 日常入口：根 `CLAUDE.md` / `AGENTS.md`「Web UI 硬约束」；**勿
 - FieldGuideTip：删除 Monitor 薄封装 `configure/fieldGuideTip.tsx`，`useConfigRenderer` 直接消费 `@/components/field-guide-tip`（Log K8s 采集 + Monitor 接入已构成跨 app）。
 - 样式：shared tip 正文改为 className；K8s 采集/接入表单宽 `w-[300px]`；Monitor `batchEditModal` 双列布局 Tailwind。`GroupTreeSelect` 仍走组件 `style` 契约；图表 tooltip / 机柜画布 / 动态图标尺寸不迁。
 - 门禁：`pnpm check:component-ownership` 通过（113 records；Node v24.18.0）。
+
+### 合并最新 master 后事件驱动(2026-08 Cycle 27)
+
+- 快进合并 `origin/master`（`ffb17f781` → `8bf11504a`，约 86 提交），无冲突。
+- CompactEmptyState：`apm-route-shell`、Monitor 指标目录空态、APM 服务错误 Trace 空态、explore endpoints 样本 Trace 空态。
+- 样式：`reportToolbar` 图标字号 → `text-base`；`singleValueSettingsSection` 控件宽 → Tailwind（保留 AntD `dropdownStyle` 滚动契约）；触摸处 `text-gray-400` → token。
+- 门禁修复：`chart-legend` 测试去掉对 `@/app/ops-analysis` 的反向引用（ops 图例契约留在 app-local）。
+- 显式不迁：带 CTA 的 Empty（应用筛选清除、报表添加组件、SLO 配置）；订阅/List 表内 emptyText；图表 legend / auto-fit 动态尺寸；ops-analysis `chartLegend` 仍为 app-local（含 scale/主题语义）。
+- 门禁：`pnpm check:component-ownership`。
+
+### 合并最新 master 后事件驱动(2026-08 Cycle 28)
+
+- 快进合并 `origin/master`（`337c19439` → `7d791dd44`），审计相对 Cycle 27 的 web 增量。
+- 样式：patch `risk-execution` 列表/时间线静态布局 → Tailwind，状态色保留行内动态值；patch home 遮罩 `bg-white/50` → `bg-[var(--color-bg-1)]/50`。Monitor K8s `accessConfig` 的 `FORM_CONTROL_WIDTH` 保留（统一改宽用），勿拆成散落 `w-[300px]`。
+- 门禁修复：master 再次带回 `chart-legend` 测试对 `@/app/ops-analysis/components/chartLegend` 的反向引用 → 去掉；ops 图例契约仍留 app-local。
+- 显式不迁：OpsPilot skill 渠道 Empty（含「添加渠道」CTA）；画布/拓扑大 Empty（screenCanvas、topologyMap、networkStatusTopology）；patch home 图表 hex 色（图表例外）；`unifiedFilter` vs `ops-analysis-unified-filter` 双路径仍为 ops-analysis 域内演进，不晋升 shared。
+- CompactEmpty：本轮增量中多处已接入；无新增无 CTA 低成本空态可迁。
+- 门禁：`pnpm check:component-ownership` 通过（113 records；Node v24.18.0）。
+- 回滚：将 `accessConfig` 的 `FORM_CONTROL_WIDTH` 误拆为散落 `w-[300px]` 已还原；并写入上文规则 4，避免再犯。
 
 ### 已知 Storybook 构建阻塞
 

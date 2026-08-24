@@ -29,6 +29,9 @@ import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import { useCommon } from '@/app/monitor/context/common';
 import { formatUserDisplayName } from '@/utils/userDisplay';
+import {
+  getPolicyNameDisambiguation
+} from '@/app/monitor/utils/policyDisplayName';
 
 const Strategy: React.FC = () => {
   const { t } = useTranslation();
@@ -64,7 +67,28 @@ const Strategy: React.FC = () => {
     {
       title: t('common.name'),
       dataIndex: 'name',
-      key: 'name'
+      key: 'name',
+      render: (_, record) => {
+        const monitorObj = objects.find((item) => item.id === record.monitor_object);
+        const enriched = {
+          ...record,
+          monitor_object_display_name: monitorObj?.display_name || monitorObj?.name
+        };
+        const secondary = getPolicyNameDisambiguation(enriched, tableData);
+        return (
+          <div>
+            <div title={String(record.name || '--')}>{record.name || '--'}</div>
+            {secondary ? (
+              <div
+                className="mt-0.5 text-[12px] leading-4 text-[var(--color-text-3)]"
+                title={secondary}
+              >
+                {secondary}
+              </div>
+            ) : null}
+          </div>
+        );
+      }
     },
     {
       title: t('monitor.events.monitoringTarget'),

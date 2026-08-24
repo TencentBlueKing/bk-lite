@@ -1,5 +1,9 @@
+import pytest
+
 from apps.apm.adapters import SystemMgmtNotificationDispatcher
 from apps.apm.services.contracts import NotificationDelivery
+
+pytestmark = pytest.mark.unit
 
 
 class FakeClient:
@@ -46,6 +50,7 @@ def test_dispatcher_uses_public_system_management_contract():
         "title": "APM 告警",
         "body": "checkout 错误率过高",
         "event_payload": {"title": "APM 告警", "action": "created"},
+        "internal_caller": "lite-apm",
     }]
 
 

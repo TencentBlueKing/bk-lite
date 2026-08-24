@@ -10,6 +10,21 @@ export interface ThresholdColorConfig {
   color: string;
 }
 
+/** 写盘时保留用户显式给出的列表（含空数组）；缺省或非数组则省略。 */
+export const persistThresholdColorConfig = (
+  colors: unknown,
+): ThresholdColorConfig[] | undefined => {
+  if (!Array.isArray(colors)) return undefined;
+  return colors.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const row = item as Record<string, unknown>;
+    const value = String(row.value ?? '').trim();
+    const color = String(row.color ?? '').trim();
+    if (!value && !color) return [];
+    return [{ value, color }];
+  });
+};
+
 /** InputNumber 清空后是 null；只有有限数字才视为用户显式配置。 */
 export const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);

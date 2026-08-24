@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import useApiClient from '@/utils/request';
-import { Form, Input, Select, InputNumber, Button, Radio } from 'antd';
+import { Form, Input, Select, InputNumber, Button, Radio, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import Icon from '@/components/icon';
@@ -13,14 +13,17 @@ import { AccessConfigProps } from '@/app/monitor/types/integration';
 import IntegrationStepCallout, {
   createMonitorK8sStepCalloutPreset,
 } from '@/components/integration-step-callout';
+import {
+  DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
+  isValidK8sImageRegistryPrefix,
+} from '@/utils/k8sImageRegistry';
+import { parseIntegrationObjectId } from '@/app/monitor/utils/integrationEntryContext';
 
 const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
   const searchParams = useSearchParams();
-  const objectId = searchParams.get('id')
-    ? Number(searchParams.get('id'))
-    : undefined;
+  const objectId = parseIntegrationObjectId(searchParams.get('id'));
   const { isLoading } = useApiClient();
   const { getCloudRegionList, createK8sInstance, getK8sCommand } =
     useIntegrationApi();
@@ -38,7 +41,9 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   useEffect(() => {
     if (!isLoading) {
       getCloudRegions();
-      getK8sClusters();
+      if (objectId) {
+        getK8sClusters();
+      }
     }
   }, [isLoading]);
 
@@ -48,6 +53,8 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
       form.setFieldsValue({
         accessType: 'existing',
         interval: commandData.interval,
+        image_registry_prefix:
+          commandData.image_registry_prefix || DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
       });
     }
   }, [commandData, form]);
@@ -83,12 +90,17 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
   };
 
   const handleSubmit = async () => {
+    if (!objectId) {
+      message.error(t('monitor.integrations.missingEntryContext'));
+      return;
+    }
     try {
       setSubmitLoading(true);
       const values = await form.validateFields();
       const commandParams = {
         cloud_region_id: values.cloud_region_id,
         interval: values.interval,
+        image_registry_prefix: values.image_registry_prefix,
       };
       if (values.accessType === 'new') {
         // 新建资产：先创建实例，再获取命令
@@ -141,6 +153,7 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
         initialValues={{
           accessType: 'new',
           interval: 60,
+          image_registry_prefix: DEFAULT_K8S_IMAGE_REGISTRY_PREFIX,
         }}
       >
         {/* 接入配置标题 */}
@@ -307,6 +320,39 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
             </div>
           </div>
         </Form.Item>
+        <Form.Item
+          label={t('monitor.integrations.k8s.imageRegistryPrefix')}
+          required
+        >
+          <div className="flex items-start gap-4">
+            <Form.Item
+              name="image_registry_prefix"
+              noStyle
+              validateTrigger="onBlur"
+              rules={[
+                { required: true, message: t('common.required') },
+                {
+                  validator: (_, value) =>
+                    isValidK8sImageRegistryPrefix(value)
+                      ? Promise.resolve()
+                      : Promise.reject(
+                        new Error(
+                          t('monitor.integrations.k8s.imageRegistryInvalid')
+                        )
+                      ),
+                },
+              ]}
+            >
+              <Input
+                placeholder={DEFAULT_K8S_IMAGE_REGISTRY_PREFIX}
+                style={{ width: FORM_CONTROL_WIDTH }}
+              />
+            </Form.Item>
+            <div className="text-[var(--color-text-3)] flex-1">
+              {t('monitor.integrations.k8s.imageRegistryPrefixDesc')}
+            </div>
+          </div>
+        </Form.Item>
         {/* 上报间隔 */}
         <Form.Item
           label={t('monitor.integrations.k8s.uploadInterval')}
@@ -357,7 +403,12 @@ const AccessConfig: React.FC<AccessConfigProps> = ({ onNext, commandData }) => {
 
         {/* 下一步按钮 */}
         <div className="flex justify-end mt-6">
-          <Button type="primary" loading={submitLoading} onClick={handleSubmit}>
+          <Button
+            type="primary"
+            loading={submitLoading}
+            disabled={!objectId}
+            onClick={handleSubmit}
+          >
             {t('common.next')} →
           </Button>
         </div>

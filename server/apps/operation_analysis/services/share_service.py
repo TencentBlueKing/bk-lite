@@ -10,6 +10,10 @@ from django.utils import timezone
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.operation_analysis.models.share_models import DashboardShareLink, DashboardShareSession
 from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
+from apps.operation_analysis.services.network_status_topology_overlay import (
+    NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS,
+    overlay_datasource_ids_for_view_sets,
+)
 from apps.operation_analysis.services.share_token import InvalidShareToken, build_share_token, parse_share_token
 from apps.system_mgmt.models.user import User
 
@@ -512,6 +516,9 @@ def allowed_share_query_keys(*, dashboard, data_source_id: int) -> set[str]:
 
     if matched_widget and allow_query_list:
         allowed.add("query_list")
+
+    if data_source_id in overlay_datasource_ids_for_view_sets(getattr(dashboard, "view_sets", None)):
+        allowed |= NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS
 
     return allowed
 

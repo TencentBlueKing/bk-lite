@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   DEFAULT_NETWORK_STATUS_TOPOLOGY_LAYOUT_MODE,
+  applyNetworkStatusTopologyLayoutPatch,
   applyNodePositionsToLayout,
   buildPersistedNetworkStatusTopologyConfig,
   canPersistNetworkStatusTopologyLayout,
   cellPositionToLayoutPoint,
+  hasNetworkStatusTopologyDeviceSelection,
   layoutPointToCellPosition,
+  networkStatusTopologySelectionExceedsLimit,
   normalizeManualEdgeVertices,
   patchLayoutByMode,
   pruneNetworkStatusTopologyLayout,
@@ -76,17 +79,15 @@ test('applyNodePositionsToLayout overrides only matching node ids', () => {
 test('widget instance layouts stay isolated by their own valueConfig', () => {
   const sharedTopology = baseLayout();
   const widgetA = buildPersistedNetworkStatusTopologyConfig({
-    modelId: 'switch',
-    instUuid: '1',
-    depth: 2,
+    instUuids: ['1'],
+    nodeLimit: 100,
     layoutByMode: {
       hierarchical: { nodePositions: { a: { x: 11, y: 22 } } },
     },
   });
   const widgetB = buildPersistedNetworkStatusTopologyConfig({
-    modelId: 'switch',
-    instUuid: '1',
-    depth: 2,
+    instUuids: ['1'],
+    nodeLimit: 100,
     layoutByMode: {
       hierarchical: { nodePositions: { a: { x: 77, y: 88 } } },
     },
@@ -190,9 +191,8 @@ test('resolveLinkEdgeGeometry prefers manual vertices over parallel offset', () 
 
 test('buildPersistedNetworkStatusTopologyConfig keeps layoutByMode and drops flat fields', () => {
   const next = buildPersistedNetworkStatusTopologyConfig({
-    modelId: 'router',
-    instUuid: '99',
-    depth: 3,
+    instUuids: ['99'],
+    nodeLimit: 100,
     layoutMode: 'force',
     layoutByMode: {
       hierarchical: { nodePositions: { a: { x: 1, y: 2 } } },
@@ -201,9 +201,8 @@ test('buildPersistedNetworkStatusTopologyConfig keeps layoutByMode and drops fla
     nodePositions: { legacy: { x: 9, y: 9 } },
   });
   assert.deepEqual(next, {
-    modelId: 'router',
-    instUuid: '99',
-    depth: 3,
+    instUuids: ['99'],
+    nodeLimit: 100,
     layoutMode: 'force',
     layoutByMode: {
       hierarchical: { nodePositions: { a: { x: 1, y: 2 } } },
@@ -216,17 +215,15 @@ test('buildPersistedNetworkStatusTopologyConfig keeps layoutByMode and drops fla
 
 test('buildPersistedNetworkStatusTopologyConfig migrates legacy flat into layoutMode bucket', () => {
   const next = buildPersistedNetworkStatusTopologyConfig({
-    modelId: 'router',
-    instUuid: '1',
-    depth: 2,
+    instUuids: ['1'],
+    nodeLimit: 100,
     layoutMode: 'circular',
     nodePositions: { a: { x: 1, y: 2 } },
     linkVertices: { l1: [{ x: 0, y: 0 }] },
   });
   assert.deepEqual(next, {
-    modelId: 'router',
-    instUuid: '1',
-    depth: 2,
+    instUuids: ['1'],
+    nodeLimit: 100,
     layoutMode: 'circular',
     layoutByMode: {
       circular: {
@@ -239,15 +236,52 @@ test('buildPersistedNetworkStatusTopologyConfig migrates legacy flat into layout
 
 test('buildPersistedNetworkStatusTopologyConfig omits empty layout fields', () => {
   const next = buildPersistedNetworkStatusTopologyConfig({
-    modelId: 'router',
-    instUuid: '1',
-    depth: 2,
+    instUuids: ['1'],
+    nodeLimit: 100,
   });
   assert.deepEqual(next, {
-    modelId: 'router',
-    instUuid: '1',
-    depth: 2,
+    instUuids: ['1'],
+    nodeLimit: 100,
   });
+});
+
+test('buildPersistedNetworkStatusTopologyConfig keeps empty linkTrafficDisplays', () => {
+  const next = buildPersistedNetworkStatusTopologyConfig({
+    instUuids: ['1'],
+    nodeLimit: 100,
+    linkTrafficDisplays: [],
+  });
+  assert.deepEqual(next.linkTrafficDisplays, []);
+});
+
+test('buildPersistedNetworkStatusTopologyConfig omits missing linkTrafficDisplays', () => {
+  const next = buildPersistedNetworkStatusTopologyConfig({
+    instUuids: ['1'],
+    nodeLimit: 100,
+  });
+  assert.equal('linkTrafficDisplays' in next, false);
+});
+
+test('buildPersistedNetworkStatusTopologyConfig keeps empty traffic thresholds', () => {
+  const next = buildPersistedNetworkStatusTopologyConfig({
+    instUuids: ['1'],
+    nodeLimit: 100,
+    inboundTrafficThresholds: [],
+    outboundTrafficThresholds: [{ value: '1024', color: '#dc2626' }],
+  });
+  assert.deepEqual(next.inboundTrafficThresholds, []);
+  assert.deepEqual(next.outboundTrafficThresholds, [
+    { value: '1024', color: '#dc2626' },
+  ]);
+});
+
+test('buildPersistedNetworkStatusTopologyConfig omits missing traffic thresholds', () => {
+  const next = buildPersistedNetworkStatusTopologyConfig({
+    instUuids: ['1'],
+    nodeLimit: 100,
+  });
+  assert.equal('inboundTrafficThresholds' in next, false);
+  assert.equal('outboundTrafficThresholds' in next, false);
 });
 
 test('pruneNetworkStatusTopologyLayout drops missing node and link geometry across buckets', () => {
@@ -278,11 +312,52 @@ test('pruneNetworkStatusTopologyLayout drops missing node and link geometry acro
   });
 });
 
+test('layout writeback keeps traffic thresholds and link displays', () => {
+  const topoConfig = {
+    instUuids: ['1'],
+    nodeLimit: 100,
+    layoutMode: 'circular' as const,
+    linkTrafficDisplays: ['inbound'] as Array<'inbound' | 'outbound'>,
+    inboundTrafficThresholds: [{ value: '1024', color: '#dc2626' }],
+    outboundTrafficThresholds: [],
+    layoutByMode: {
+      circular: { nodePositions: { a: { x: 11, y: 22 } } },
+    },
+  };
+  const pruned = pruneNetworkStatusTopologyLayout(
+    {
+      layoutMode: 'force',
+      layoutByMode: {
+        ...topoConfig.layoutByMode,
+        force: { nodePositions: { a: { x: 90, y: 91 } } },
+      },
+    },
+    ['a'],
+    [],
+  );
+  const emitted = applyNetworkStatusTopologyLayoutPatch(
+    {
+      ...topoConfig,
+      instUuids: ['1'],
+      nodeLimit: 100,
+    },
+    pruned,
+  );
+  assert.deepEqual(emitted.linkTrafficDisplays, ['inbound']);
+  assert.deepEqual(emitted.inboundTrafficThresholds, [
+    { value: '1024', color: '#dc2626' },
+  ]);
+  assert.deepEqual(emitted.outboundTrafficThresholds, []);
+  assert.equal(emitted.layoutMode, 'force');
+  assert.deepEqual(emitted.layoutByMode?.force?.nodePositions, {
+    a: { x: 90, y: 91 },
+  });
+});
+
 test('layoutByMode mode switch preserves all buckets and only changes layoutMode', () => {
   const topoConfig = {
-    modelId: 'router',
-    instUuid: '1',
-    depth: 2,
+    instUuids: ['1'],
+    nodeLimit: 100,
     layoutMode: 'hierarchical' as const,
     layoutByMode: {
       hierarchical: {
@@ -304,14 +379,13 @@ test('layoutByMode mode switch preserves all buckets and only changes layoutMode
   );
   const emitted = buildPersistedNetworkStatusTopologyConfig({
     modelId: topoConfig.modelId,
-    instUuid: topoConfig.instUuid,
-    depth: topoConfig.depth,
+    instUuids: topoConfig.instUuids,
+    nodeLimit: topoConfig.nodeLimit,
     ...pruned,
   });
   assert.deepEqual(emitted, {
-    modelId: 'router',
-    instUuid: '1',
-    depth: 2,
+    instUuids: ['1'],
+    nodeLimit: 100,
     layoutMode: 'force',
     layoutByMode: {
       hierarchical: {
@@ -327,9 +401,8 @@ test('layoutByMode mode switch preserves all buckets and only changes layoutMode
 
 test('persisted layoutMode restores geometry for that mode on reopen', () => {
   const saved = buildPersistedNetworkStatusTopologyConfig({
-    modelId: 'router',
-    instUuid: '1',
-    depth: 2,
+    instUuids: ['1'],
+    nodeLimit: 100,
     layoutMode: 'circular',
     layoutByMode: {
       hierarchical: { nodePositions: { a: { x: 1, y: 2 } } },
@@ -353,8 +426,8 @@ test('resetNetworkStatusTopologyLayout clears only the current mode bucket', () 
   const reset = resetNetworkStatusTopologyLayout(
     {
       modelId: 'router',
-      instUuid: '1',
-      depth: 2,
+      instUuids: ['1'],
+      nodeLimit: 100,
       layoutMode: 'force',
       layoutByMode: {
         hierarchical: { nodePositions: { a: { x: 1, y: 2 } } },
@@ -367,9 +440,8 @@ test('resetNetworkStatusTopologyLayout clears only the current mode bucket', () 
     'force',
   );
   assert.deepEqual(reset, {
-    modelId: 'router',
-    instUuid: '1',
-    depth: 2,
+    instUuids: ['1'],
+    nodeLimit: 100,
     layoutMode: 'force',
     layoutByMode: {
       hierarchical: { nodePositions: { a: { x: 1, y: 2 } } },
@@ -383,8 +455,8 @@ test('patchLayoutByMode writes into the active mode without touching others', ()
   const next = patchLayoutByMode(
     {
       modelId: 'router',
-      instUuid: '1',
-      depth: 2,
+      instUuids: ['1'],
+      nodeLimit: 100,
       layoutMode: 'hierarchical',
       layoutByMode: {
         hierarchical: { nodePositions: { a: { x: 1, y: 2 } } },
@@ -474,5 +546,27 @@ test('resolveLinkEdgeGeometry falls back to parallel after cleared vertices', ()
       vertices: [],
       parallelOffset: 12,
     },
+  );
+});
+
+test('hasNetworkStatusTopologyDeviceSelection requires a non-empty instUuids list', () => {
+  assert.equal(
+    hasNetworkStatusTopologyDeviceSelection({
+      instUuids: ['123e4567-e89b-42d3-a456-426614174000'],
+    }),
+    true,
+  );
+  assert.equal(hasNetworkStatusTopologyDeviceSelection({ instUuids: [] }), false);
+  assert.equal(hasNetworkStatusTopologyDeviceSelection({}), false);
+});
+
+test('networkStatusTopologySelectionExceedsLimit compares unique uuids to the node limit', () => {
+  assert.equal(
+    networkStatusTopologySelectionExceedsLimit(['a', 'b'], 1),
+    true,
+  );
+  assert.equal(
+    networkStatusTopologySelectionExceedsLimit(['a', 'b'], 2),
+    false,
   );
 });

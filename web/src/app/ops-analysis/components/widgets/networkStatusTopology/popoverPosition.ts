@@ -21,10 +21,39 @@ export const POPOVER_GAP = 10;
 export const POPOVER_PADDING = 8;
 export const CURSOR_OFFSET = { x: 12, y: 12 };
 
-/** 节点浮层预估尺寸（用于边缘翻转，略大于实际卡片） */
-export const NODE_POPOVER_ESTIMATE: PopoverSize = { width: 220, height: 96 };
+/** zoom=1 时的浮层预估（本地像素）；展示时再乘画布缩放 */
+export const NODE_POPOVER_ESTIMATE: PopoverSize = { width: 248, height: 124 };
 /** 边浮层预估尺寸 */
-export const EDGE_POPOVER_ESTIMATE: PopoverSize = { width: 260, height: 140 };
+export const EDGE_POPOVER_ESTIMATE: PopoverSize = { width: 320, height: 236 };
+
+export const POPOVER_TYPE_BASE = { fontSize: 13, pad: 12 } as const;
+
+export const normalizeGraphScale = (scale?: number) =>
+  Number.isFinite(scale) && Number(scale) > 0 ? Number(scale) : 1;
+
+/** fitView / X6 缩放会抖小数；低于此差不触发 React 重绘 */
+export const GRAPH_SCALE_EPSILON = 0.001;
+
+export const nextGraphScale = (zoom: number, prev: number): number => {
+  const next = normalizeGraphScale(zoom);
+  return Math.abs(prev - next) < GRAPH_SCALE_EPSILON ? prev : next;
+};
+
+/** 浮层字号/热区随拓扑画布缩放，不跟大屏组件 CSS scale 对着干 */
+export const scalePopoverChrome = (graphScale?: number) => {
+  const scale = normalizeGraphScale(graphScale);
+  const fontSize = POPOVER_TYPE_BASE.fontSize * scale;
+  const pad = POPOVER_TYPE_BASE.pad * scale;
+  return { fontSize, padding: pad, margin: -pad };
+};
+
+export const scalePopoverEstimate = (
+  base: PopoverSize,
+  graphScale?: number,
+): PopoverSize => {
+  const scale = normalizeGraphScale(graphScale);
+  return { width: base.width * scale, height: base.height * scale };
+};
 
 /** 与 widget-viewport.toCanvasPixels 一致：屏幕像素 → 缩放前本地像素 */
 export const normalizeViewportScale = (scale?: number) =>

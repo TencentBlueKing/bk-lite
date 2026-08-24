@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "平台身份上下文与能力调用数据流",
+    "output": "platform-core-request-rpc.dataflow.html",
+    "quality_profile": "showcase",
+    "viewBox": [1500, 720],
+    "views": [
+      {"id": "browser-auth", "label": "浏览器认证", "focus": ["jwt", "session_auth", "context"], "note": "每次 JWT 请求验证后登录 Session，并把远端身份同步到 base.User 投影。"},
+      {"id": "api-auth", "label": "API 与 OpenAPI", "focus": ["api_secret", "openapi_identity", "context"], "note": "API Secret 绑定单团队；OpenAPI 自建 CallerIdentity，普通 View 则依赖 request.user 与 cookie。"},
+      {"id": "capability", "label": "能力执行", "focus": ["context", "appclient", "rpcclient", "openapi_pool", "local_effect", "nats_effect"], "note": "本地直调与 NATS 远程调用缺少统一 schema、deadline、idempotency 和 caller context。"}
+    ]
+  },
+  "stages": [
+    {"label": "01 / 凭据"},
+    {"label": "02 / 身份验证"},
+    {"label": "03 / 上下文与分发"},
+    {"label": "04 / 调用适配"},
+    {"label": "05 / 能力与副作用"}
+  ],
+  "nodes": [
+    {"id": "jwt", "type": "frontend", "label": "JWT / Browser Request", "sublabel": "token + current_team cookie", "stage": 0, "row": 0, "width": 150},
+    {"id": "api_secret", "type": "security", "label": "API Secret Request", "sublabel": "64 hex + bound team", "stage": 0, "row": 3, "width": 150},
+    {"id": "session_auth", "type": "security", "label": "AuthMiddleware", "sublabel": "verify + auth.login + user sync", "stage": 1, "row": 0, "width": 155},
+    {"id": "openapi_identity", "type": "security", "label": "OpenAPI Identity", "sublabel": "JWT or API token shape routing", "stage": 1, "row": 3, "width": 155},
+    {"id": "context", "type": "database", "label": "Context + Dispatch", "sublabel": "mutable user + optional data scope", "stage": 2, "row": 2, "width": 170},
+    {"id": "appclient", "type": "backend", "label": "AppClient", "sublabel": "import + direct Python call", "stage": 3, "row": 0, "width": 150},
+    {"id": "rpcclient", "type": "messagebus", "label": "RpcClient", "sublabel": "asyncio.run + new connection", "stage": 3, "row": 2, "width": 150},
+    {"id": "openapi_pool", "type": "messagebus", "label": "OpenAPI Invoke Pool", "sublabel": "8 threads + timeout response", "stage": 3, "row": 4, "width": 150},
+    {"id": "local_effect", "type": "external", "label": "Local Function + Effect", "sublabel": "may outlive thread timeout", "stage": 4, "row": 1, "width": 170},
+    {"id": "nats_effect", "type": "messagebus", "label": "NATS Listener + Function", "sublabel": "shared queue + error envelope", "stage": 4, "row": 3, "width": 170}
+  ],
+  "flows": [
+    {"id": "jwt_auth", "from": "jwt", "to": "session_auth", "label": "JWT", "classification": "browser identity", "variant": "security", "route": "straight", "labelAt": [206, 200]},
+    {"id": "secret_identity", "from": "api_secret", "to": "openapi_identity", "label": "hashed lookup", "classification": "single team", "variant": "security", "route": "straight", "labelAt": [206, 542]},
+    {"id": "auth_context", "from": "session_auth", "to": "context", "label": "user projection", "classification": "mutable request attrs", "variant": "default", "route": "auto"},
+    {"id": "identity_context", "from": "openapi_identity", "to": "context", "label": "CallerIdentity", "classification": "separate model", "variant": "security", "route": "auto"},
+    {"id": "context_local", "from": "context", "to": "appclient", "label": "local facade", "classification": "Python objects", "variant": "emphasis", "route": "auto"},
+    {"id": "context_rpc", "from": "context", "to": "rpcclient", "label": "remote facade", "classification": "JSON args / kwargs", "variant": "dashed", "route": "straight", "labelAt": [720, 320]},
+    {"id": "context_pool", "from": "context", "to": "openapi_pool", "label": "invoke", "classification": "future timeout", "variant": "security", "route": "auto"},
+    {"id": "local_effect_call", "from": "appclient", "to": "local_effect", "label": "direct call", "classification": "no wire contract", "variant": "emphasis", "route": "auto"},
+    {"id": "rpc_effect_call", "from": "rpcclient", "to": "nats_effect", "label": "request/reply", "classification": "new connection + shared queue", "variant": "dashed", "fromSide": "right", "toSide": "left", "via": [[840, 385], [840, 499]], "labelAt": [760, 440]},
+    {"id": "pool_effect_call", "from": "openapi_pool", "to": "local_effect", "label": "timed invoke", "classification": "cancel does not stop", "variant": "security", "fromSide": "bottom", "toSide": "top", "via": [[745, 660], [1070, 660], [1070, 220], [960, 220]], "labelAt": [1080, 570]}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "现有围栏值得保留", "items": ["API Secret 使用随机值哈希、团队绑定和权限 generation；OpenAPI endpoint opt-in、schema 校验、fail-closed 权限与审计已形成", "NATS 输入队列、pending bytes、worker 数与 graceful shutdown 有明确容量参数"]},
+    {"dot": "rose", "title": "调用成功与实际副作用可分离", "items": ["OpenAPI future 超时只能取消尚未开始的任务；已运行函数继续写库或触发外部动作，而调用方已收到 timeout", "RpcClient 每次 asyncio.run、连接、请求、关闭；同一请求内多次 RPC 形成连接风暴"]},
+    {"dot": "orange", "title": "上下文和协议缺少单一事实", "items": ["JWT 和 API Secret 生成两类身份对象，current_team/include_children 再由 cookie 或属性读取，业务 View 可遗漏 data scope", "本地直调不经过 JSON/error envelope；NATS handler 仍发送 jsonpickle exception，且协议无版本、caller、deadline 与 idempotency key"]}
+  ]
+}

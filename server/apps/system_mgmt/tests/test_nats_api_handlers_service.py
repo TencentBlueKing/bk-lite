@@ -9,15 +9,34 @@ from unittest.mock import Mock
 
 import pytest
 from django.db import connection
-from nats_client.registry import default_registry
 
 import nats_client
+from apps.core.utils.internal_event_auth import sign_internal_event, verify_internal_event
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt import nats_api
 from apps.system_mgmt.models import App, Channel, Group, GroupDataRule, Menu, Role, User
 from apps.system_mgmt.models.channel import ChannelChoices
+from nats_client.registry import default_registry
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
+
+
+def _authenticated_dispatch(**kwargs):
+    request_payload = {
+        "required_delivery_mode": "",
+        "producer": "lite-apm",
+        "ack_mode": "",
+        "ack_token": "",
+        **kwargs,
+    }
+    return nats_api.dispatch_notification(
+        **request_payload,
+        internal_auth=sign_internal_event(
+            "system_mgmt.dispatch_notification",
+            request_payload,
+            caller=request_payload["producer"],
+        ),
+    )
 
 
 def test_nats_api_compat_exports_local_and_nats_entrypoints():
@@ -380,9 +399,7 @@ def test_get_authorized_groups_scoped_rejects_archived_current_team():
         role_list=[admin_role.id],
         group_list=[archived.id],
     )
-    result = nats_api.get_authorized_groups_scoped(
-        {"username": "arch-team-admin", "domain": "domain.com", "current_team": archived.id}
-    )
+    result = nats_api.get_authorized_groups_scoped({"username": "arch-team-admin", "domain": "domain.com", "current_team": archived.id})
     assert result["result"] is False
     assert "归档" in result["message"] or "archived" in result["message"].lower()
 
@@ -446,6 +463,105 @@ def test_search_channel_list_filters_by_team_and_type():
     result = nats_api.search_channel_list(channel_type=ChannelChoices.EMAIL, teams=[5])
     names = {c["name"] for c in result["data"]}
     assert "c1" in names and "c2" not in names
+
+
+def test_search_channel_list_scoped_without_actor_returns_empty():
+    Channel.objects.create(
+        name="hidden-without-actor",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="d",
+        team=[7],
+    )
+
+    result = nats_api.search_channel_list_scoped(None, teams=[7])
+
+    assert result == {"result": True, "data": []}
+
+
+def test_search_channel_list_scoped_intersects_requested_teams_with_persisted_user_scope():
+    allowed_group = Group.objects.create(name="channel-scope-allowed", parent_id=0)
+    forbidden_group = Group.objects.create(name="channel-scope-forbidden", parent_id=0)
+    actor = User.objects.create(
+        username="channel-scope-user",
+        domain="domain.com",
+        password="x",
+        group_list=[allowed_group.id],
+    )
+    Channel.objects.create(
+        name="allowed-channel",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="allowed",
+        team=[allowed_group.id],
+    )
+    Channel.objects.create(
+        name="forbidden-channel",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="forbidden",
+        team=[forbidden_group.id],
+    )
+
+    result = nats_api.search_channel_list_scoped(
+        {
+            "username": actor.username,
+            "domain": actor.domain,
+            "current_team": allowed_group.id,
+            "is_superuser": True,
+        },
+        teams=[allowed_group.id, forbidden_group.id],
+    )
+
+    assert [channel["name"] for channel in result["data"]] == ["allowed-channel"]
+
+
+def test_search_channel_list_scoped_include_children_returns_only_authorized_descendants():
+    parent = Group.objects.create(name="channel-scope-parent", parent_id=0)
+    authorized_child = Group.objects.create(name="channel-scope-authorized-child", parent_id=parent.id)
+    unauthorized_child = Group.objects.create(name="channel-scope-unauthorized-child", parent_id=parent.id)
+    actor = User.objects.create(
+        username="channel-scope-child-user",
+        domain="domain.com",
+        password="x",
+        group_list=[parent.id, authorized_child.id],
+    )
+    Channel.objects.create(
+        name="parent-channel",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="parent",
+        team=[parent.id],
+    )
+    Channel.objects.create(
+        name="authorized-child-channel",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="authorized-child",
+        team=[authorized_child.id],
+    )
+    Channel.objects.create(
+        name="unauthorized-child-channel",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="unauthorized-child",
+        team=[unauthorized_child.id],
+    )
+
+    result = nats_api.search_channel_list_scoped(
+        {
+            "username": actor.username,
+            "domain": actor.domain,
+            "current_team": parent.id,
+        },
+        teams=None,
+        include_children=True,
+    )
+
+    assert {channel["name"] for channel in result["data"]} == {
+        "parent-channel",
+        "authorized-child-channel",
+    }
 
 
 @pytest.mark.skipif(
@@ -593,9 +709,7 @@ def test_probe_notification_channel_capability_only_does_not_touch_responder(
         lambda *args, **kwargs: pytest.fail("capability-only probe must not call responder"),
     )
 
-    response = nats_api.probe_notification_channel(
-        channel.id, capability_only=True
-    )
+    response = nats_api.probe_notification_channel(channel.id, capability_only=True)
 
     assert response["result"] is True
     assert response["delivery_mode"] == "alert_event_copy"
@@ -693,13 +807,13 @@ def test_public_notification_dispatch_builds_alert_center_event_copy(monkeypatch
     )
     sent = {}
 
-    def fake_send(channel_id, title, content, receivers, attachments=None):
-        sent.update(channel_id=channel_id, title=title, content=content, receivers=receivers)
+    def fake_send(channel_obj, content, **kwargs):
+        sent.update(channel_id=channel_obj.id, content=content)
         return {"result": True, "data": {"ingestion": {"accepted": 1, "skipped": 0, "errored": 0}}}
 
-    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", fake_send)
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_nats_message", fake_send)
 
-    result = nats_api.dispatch_notification(
+    result = _authenticated_dispatch(
         delivery_key="apm:event:copy",
         channel_id=channel.id,
         organization_ids=[9],
@@ -710,12 +824,86 @@ def test_public_notification_dispatch_builds_alert_center_event_copy(monkeypatch
     )
 
     assert result["result"] is True
+    receiver_auth = sent["content"].pop("internal_auth")
     assert sent["content"] == {
         "source_id": "nats",
         "pusher": "lite-apm",
         "events": [{"event_key": "event-1", "organizations": [9]}],
     }
-    assert sent["receivers"] == []
+    assert verify_internal_event(
+        "alerts.receive_alert_events", sent["content"], receiver_auth, caller="lite-apm"
+    ) is True
+
+
+@pytest.mark.parametrize("producer", ["lite-apm", "lite-patch"])
+def test_rpc_dispatch_reaches_alerts_with_authenticated_bounded_organization(monkeypatch, producer):
+    """覆盖 producer RPC -> system_mgmt -> alerts 的真实认证与落库接缝。"""
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.alert_source import AlertSource
+    from apps.alerts.models.models import Event, Level
+    from apps.alerts.nats import nats as alerts_nats
+
+    for level_id in (0, 1, 2, 3):
+        Level.objects.create(
+            level_id=level_id,
+            level_name=f"L{level_id}",
+            level_display_name=f"等级{level_id}",
+            level_type=LevelType.EVENT,
+        )
+    AlertSource.objects.create(
+        name="端到端 NATS 源",
+        source_id="nats",
+        source_type="nats",
+        secret="x",
+        team_secrets={},
+        is_active=True,
+        is_effective=True,
+        config={
+            "event_fields_mapping": {
+                "title": "title",
+                "level": "level",
+                "item": "item",
+                "start_time": "start_time",
+            }
+        },
+    )
+    channel = Channel.objects.create(
+        name="告警中心端到端",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[9],
+    )
+
+    def deliver_to_alerts(_channel, content, **_kwargs):
+        return alerts_nats.receive_alert_events(**content)
+
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_nats_message", deliver_to_alerts)
+    monkeypatch.setenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", "false")
+    monkeypatch.setenv(f"ALERTS_INTERNAL_EVENT_AUTH_{producer.upper().replace('-', '_')}_KEY", f"{producer}-secret")
+
+    event_title = f"{producer} 端到端认证告警"
+    result = SystemMgmt().dispatch_notification(
+        delivery_key=f"{producer}:event:e2e-auth",
+        channel_id=channel.id,
+        organization_ids=[9, 99],
+        recipients=[],
+        title="ignored",
+        body="ignored",
+        event_payload={
+            "title": event_title,
+            "level": "0",
+            "item": "cpu",
+            "start_time": "1700000000",
+            "organizations": [99],
+        },
+        required_delivery_mode="alert_event_copy",
+        producer=producer,
+        internal_caller=producer,
+    )
+
+    assert result == {"result": True, "code": "delivered", "retryable": False, "message": "success"}
+    assert Event.objects.get(title=event_title).team == [9]
 
 
 def test_public_notification_dispatch_uses_shared_channel_organization_for_nats(monkeypatch):
@@ -816,6 +1004,185 @@ def test_send_msg_with_channel_channel_not_found():
     assert result["result"] is False
 
 
+@pytest.mark.parametrize("content", [None, {"pusher": []}, {"pusher": ""}])
+def test_send_msg_with_channel_rejects_invalid_alert_event_envelope(content):
+    channel = Channel.objects.create(
+        name="告警中心非法入参",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[3],
+    )
+
+    result = nats_api.send_msg_with_channel(channel.id, "", content, [])
+
+    assert result == {
+        "result": False,
+        "code": "invalid_payload",
+        "retryable": False,
+        "message": "告警事件内容无效。",
+    }
+
+
+def test_send_msg_with_channel_rejects_unsigned_alert_center_copy(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[3],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.setenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", "false")
+    monkeypatch.setenv("ALERTS_INTERNAL_EVENT_AUTH_LITE_MONITOR_KEY", "monitor-secret")
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", send)
+
+    result = nats_api.send_msg_with_channel(
+        channel.id,
+        "",
+        {"source_id": "nats", "pusher": "lite-monitor", "events": [{"organizations": [3]}]},
+        [],
+    )
+
+    assert result == {
+        "result": False,
+        "code": "internal_auth_required",
+        "retryable": False,
+        "message": "内部告警事件认证失败。",
+    }
+    send.assert_not_called()
+
+    content = {"source_id": "nats", "pusher": "lite-monitor", "events": [{"organizations": [3]}]}
+    request_payload = {
+        "channel_id": channel.id,
+        "title": "",
+        "content": content,
+        "receivers": [],
+        "attachments": None,
+    }
+    result = nats_api.send_msg_with_channel(
+        channel.id,
+        "",
+        content,
+        [],
+        internal_auth=sign_internal_event(
+            "system_mgmt.send_msg_with_channel",
+            request_payload,
+            caller="lite-monitor",
+        ),
+    )
+
+    assert result == {"result": True}
+    signed_content = send.call_args.args[1]
+    receiver_auth = signed_content.pop("internal_auth")
+    assert verify_internal_event(
+        "alerts.receive_alert_events", signed_content, receiver_auth, caller="lite-monitor"
+    ) is True
+
+
+def test_send_msg_with_channel_legacy_sender_is_accepted_during_rolling_upgrade(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心 rolling",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[3],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.delenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", raising=False)
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", send)
+
+    result = nats_api.send_msg_with_channel(
+        channel.id,
+        "",
+        {"source_id": "nats", "pusher": "lite-monitor", "events": [{"organizations": [3]}]},
+        [],
+    )
+
+    assert result == {"result": True}
+    assert send.call_args.args[1]["internal_auth"]["caller"] == "lite-monitor"
+
+
+def test_send_msg_with_channel_rejects_caller_or_channel_organization_mismatch(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心 bounded",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[3],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.delenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", raising=False)
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", send)
+
+    content = {"source_id": "nats", "pusher": "lite-monitor", "events": [{"organizations": [3]}]}
+    request_payload = {
+        "channel_id": channel.id,
+        "title": "",
+        "content": content,
+        "receivers": [],
+        "attachments": None,
+    }
+    wrong_caller = sign_internal_event(
+        "system_mgmt.send_msg_with_channel", request_payload, caller="lite-log"
+    )
+    assert nats_api.send_msg_with_channel(channel.id, "", content, [], internal_auth=wrong_caller)["code"] == "internal_auth_required"
+
+    forbidden = {**content, "events": [{"organizations": [99]}]}
+    forbidden_payload = {**request_payload, "content": forbidden}
+    forbidden_auth = sign_internal_event(
+        "system_mgmt.send_msg_with_channel", forbidden_payload, caller="lite-monitor"
+    )
+    assert nats_api.send_msg_with_channel(channel.id, "", forbidden, [], internal_auth=forbidden_auth)["code"] == "channel_forbidden"
+    send.assert_not_called()
+
+
+def test_send_msg_with_channel_preserves_registered_external_source_contract(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心外部来源",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[99],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.setenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", "false")
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", send)
+    content = {
+        "source_id": "registered-source",
+        "pusher": "external-agent",
+        "events": [{"title": "external", "organizations": [3]}],
+    }
+
+    result = nats_api.send_msg_with_channel(channel.id, "", content, [])
+
+    assert result == {"result": True}
+    assert send.call_args.args[1] == content
+
+
+def test_send_msg_with_channel_unsigned_event_without_organizations_keeps_legacy_behavior(monkeypatch):
+    channel = Channel.objects.create(
+        name="告警中心 ordinary",
+        channel_type=ChannelChoices.NATS,
+        config={"namespace": "bklite", "method_name": "receive_alert_events"},
+        description="copy",
+        team=[3],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.setenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", "false")
+    monkeypatch.setenv("ALERTS_INTERNAL_EVENT_AUTH_LITE_MONITOR_KEY", "monitor-secret")
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", send)
+
+    result = nats_api.send_msg_with_channel(
+        channel.id,
+        "",
+        {"source_id": "nats", "pusher": "lite-monitor", "events": [{"title": "ordinary"}]},
+        [],
+    )
+
+    assert result == {"result": True}
+
+
 def test_monitor_alert_copy_dispatch_is_capability_scoped_and_returns_ack(monkeypatch):
     channel = Channel.objects.create(
         name="告警中心",
@@ -827,19 +1194,16 @@ def test_monitor_alert_copy_dispatch_is_capability_scoped_and_returns_ack(monkey
 
     sent = {}
 
-    def fake_send(channel_id, title, content, receivers, attachments=None):
+    def fake_send(channel_id, title, content, receivers, attachments=None, internal_auth=None):
         sent["content"] = content
+        sent["internal_auth"] = internal_auth
         return {
             "result": True,
-            "data": {
-                "event_results": [
-                    {"delivery_id": "delivery-1", "status": "accepted", "retryable": False}
-                ]
-            },
+            "data": {"event_results": [{"delivery_id": "delivery-1", "status": "accepted", "retryable": False}]},
         }
 
     monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", fake_send)
-    result = nats_api.dispatch_notification(
+    result = _authenticated_dispatch(
         delivery_key="delivery-1",
         channel_id=channel.id,
         organization_ids=[1],
@@ -856,8 +1220,9 @@ def test_monitor_alert_copy_dispatch_is_capability_scoped_and_returns_ack(monkey
     assert result["result"] is True
     assert result["data"]["event_results"][0]["delivery_id"] == "delivery-1"
     assert sent["content"]["ack_token"] == "receiver-secret"
+    assert sent["internal_auth"] is not None
 
-    bounded = nats_api.dispatch_notification(
+    bounded = _authenticated_dispatch(
         delivery_key="delivery-bounded",
         channel_id=channel.id,
         organization_ids=[1, 999],
@@ -871,7 +1236,7 @@ def test_monitor_alert_copy_dispatch_is_capability_scoped_and_returns_ack(monkey
     assert bounded["result"] is True
     assert sent["content"]["events"][0]["organizations"] == [1]
 
-    forbidden = nats_api.dispatch_notification(
+    forbidden = _authenticated_dispatch(
         delivery_key="delivery-2",
         channel_id=channel.id,
         organization_ids=[999],
@@ -900,15 +1265,11 @@ def test_monitor_alert_copy_dispatch_preserves_retryable_per_event_rejection(mon
         lambda *args, **kwargs: {
             "result": False,
             "message": "Alert events were only partially accepted.",
-            "data": {
-                "event_results": [
-                    {"delivery_id": "delivery-rejected", "status": "rejected", "retryable": True}
-                ]
-            },
+            "data": {"event_results": [{"delivery_id": "delivery-rejected", "status": "rejected", "retryable": True}]},
         },
     )
 
-    result = nats_api.dispatch_notification(
+    result = _authenticated_dispatch(
         delivery_key="delivery-rejected",
         channel_id=channel.id,
         organization_ids=[1],
@@ -924,9 +1285,7 @@ def test_monitor_alert_copy_dispatch_preserves_retryable_per_event_rejection(mon
 
     assert result["result"] is False
     assert result["retryable"] is True
-    assert result["data"]["event_results"] == [
-        {"delivery_id": "delivery-rejected", "status": "rejected", "retryable": True}
-    ]
+    assert result["data"]["event_results"] == [{"delivery_id": "delivery-rejected", "status": "rejected", "retryable": True}]
 
 
 def test_get_wechat_settings():

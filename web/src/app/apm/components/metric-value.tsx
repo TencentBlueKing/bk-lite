@@ -29,8 +29,8 @@ export default function MetricValue({
   const { t } = useTranslation();
   const noData = t('apm.common.noData', '无数据');
   const queryFailed = t('apm.common.queryFailed', '查询失败');
-  const empty = text === noData || text === queryFailed || text === '无数据' || text === '查询失败';
-  const hint = empty ? metricEmptyHint(unavailable) : undefined;
+  const empty = text === noData || text === queryFailed;
+  const hint = empty ? metricEmptyHint(unavailable, t) : undefined;
   const sizeClass = size === 'lg'
     ? 'text-base font-semibold tabular-nums leading-6'
     : 'tabular-nums';
@@ -38,7 +38,7 @@ export default function MetricValue({
     ? 'text-[var(--theme-color-status-warning)]'
     : danger
       ? 'font-semibold text-[var(--color-fail)]'
-      : muted || text === noData || text === '无数据'
+      : muted || text === noData
         ? 'text-[var(--color-text-3)]'
         : 'text-[var(--color-text-1)]';
 

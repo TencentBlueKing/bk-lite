@@ -119,13 +119,13 @@ def test_explicit_push_with_node_id_merges_on_monitor(mocker, host_object, host_
 
     push = CmdbToMonitorPushService.push_instance(INST_UUID, actor_scope={"allowed_org_ids": [1], "operator": "alice"})
     monitor_result = push["monitor_result"]
-    assert monitor_result["updated"] is True
+    assert monitor_result.get("claimed") is True
     assert monitor_result["id"] == first["id"]
     assert MonitorInstance.objects.filter(is_deleted=False).count() == 1
     inst = MonitorInstance.objects.get(id=first["id"])
     assert inst.node_id == "n-shared"
     assert inst.cmdb_id == INST_UUID
-    assert inst.name == "host-from-cmdb"
+    assert inst.name == "from-node"
 
 
 @pytest.mark.django_db
@@ -144,23 +144,27 @@ def test_explicit_push_without_node_id_uses_cmdb_id(mocker, host_object):
     assert first["monitor_result"]["ignored"] is True
     assert first["monitor_result"]["id"] is None
     assert first["node_id"] is None
+    assert first["link_status"] == "not_found"
     assert MonitorInstance.objects.filter(cmdb_id=INST_UUID).count() == 0
 
-    # 先有按旧数字 cmdb_id 关联的监控实例，再推 UUID → 命中并升级
+    # 先有同 IP+云区域的监控实例，再推 → 命中并认领 cmdb_id（无凭据不改名称）
     existing = MonitorInstance.objects.create(
         id="('cmdb-42',)",
         name="stock",
         monitor_object=host_object,
-        cmdb_id="42",
+        ip="10.0.0.42",
+        cloud_region_id=1,
     )
     second = CmdbToMonitorPushService.push_instance(INST_UUID, actor_scope={"allowed_org_ids": [1], "operator": "alice"})
-    assert second["monitor_result"]["updated"] is True
+    assert second["link_status"] == "ok"
+    assert second["monitor_id"] == existing.id
+    assert second["monitor_result"].get("claimed") is True
     assert second["monitor_result"]["id"] == existing.id
     assert MonitorInstance.objects.filter(cmdb_id=INST_UUID, is_deleted=False).count() == 1
     existing.refresh_from_db()
     assert existing.node_id is None
     assert existing.cmdb_id == INST_UUID
-    assert existing.name == "host-from-cmdb"
+    assert existing.name == "stock"
 
 
 @pytest.mark.django_db
@@ -239,6 +243,50 @@ def test_push_envelope_carries_causation(mocker, host_object):
     assert kwargs["link_ids"]["cmdb_id"] == INST_UUID
     assert kwargs["link_ids"]["cmdb_id_aliases"] == ["42"]
     assert kwargs["link_ids"]["node_id"] == "n1"
+
+
+@pytest.mark.django_db
+def test_push_instance_backfills_monitor_id_on_link(mocker, host_object):
+    mocker.patch(
+        "apps.cmdb.services.module_push.InstanceManage.query_entity_by_uuid",
+        return_value=_cmdb_instance(ip_addr="10.0.0.42", cloud=1),
+    )
+    MonitorInstance.objects.create(
+        id="('m-42',)",
+        name="already-monitored",
+        monitor_object=host_object,
+        ip="10.0.0.42",
+        cloud_region_id=1,
+    )
+    mocker.patch(
+        "apps.cmdb.services.module_push.Monitor"
+    ).return_value.ingest_from_source.side_effect = lambda **kwargs: MonitorModuleIngestService.ingest(kwargs)
+    backfill = mocker.patch(
+        "apps.cmdb.services.module_push.CmdbToMonitorPushService._backfill_monitor_id",
+        side_effect=lambda instance, monitor_id, **kwargs: {**instance, "monitor_id": monitor_id},
+    )
+
+    push = CmdbToMonitorPushService.push_instance(INST_UUID, actor_scope={"allowed_org_ids": [1], "operator": "alice"})
+    assert push["link_status"] == "ok"
+    assert push["monitor_id"] == "('m-42',)"
+    backfill.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_push_instance_not_found_does_not_backfill(mocker, host_object):
+    mocker.patch(
+        "apps.cmdb.services.module_push.InstanceManage.query_entity_by_uuid",
+        return_value=_cmdb_instance(),
+    )
+    mocker.patch(
+        "apps.cmdb.services.module_push.Monitor"
+    ).return_value.ingest_from_source.side_effect = lambda **kwargs: MonitorModuleIngestService.ingest(kwargs)
+    backfill = mocker.patch("apps.cmdb.services.module_push.CmdbToMonitorPushService._backfill_monitor_id")
+
+    push = CmdbToMonitorPushService.push_instance(INST_UUID, actor_scope={"allowed_org_ids": [1], "operator": "alice"})
+    assert push["link_status"] == "not_found"
+    assert not push.get("monitor_id")
+    backfill.assert_not_called()
 
 
 @pytest.mark.django_db

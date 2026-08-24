@@ -1,9 +1,9 @@
 import React from 'react';
 import { cleanup, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import dayjs from 'dayjs';
 
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
+import { formatDateTime } from '@/app/apm/components/metric-format';
 import ApmIntegrationInstancesPage from '../page';
 
 const api = {
@@ -101,7 +101,7 @@ describe('APM 接入实例目录', () => {
     const columnWidths = Array.from(document.querySelectorAll('.ant-table colgroup col'))
       .map((column) => (column as HTMLElement).style.width);
 
-    expect(columnWidths).toEqual(['', '', '', '112px', '112px', '168px', '168px', '96px', '160px', '88px']);
+    expect(columnWidths).toEqual(['', '', '', '112px', '112px', '168px', '168px', '96px', '160px', '96px']);
     expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual([
       '实例 ID',
       '服务',
@@ -120,10 +120,10 @@ describe('APM 接入实例目录', () => {
     const actionHeader = screen.getByRole('columnheader', { name: '操作' });
     expect(getComputedStyle(actionHeader).textAlign).toBe('left');
     expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
-    const lastSeenText = dayjs(activeInstance.last_seen_at).format('YYYY-MM-DD HH:mm');
+    const lastSeenText = formatDateTime(activeInstance.last_seen_at, false);
     const lastSeen = screen.getByText(lastSeenText);
     expect(lastSeen.closest('td')?.textContent).toBe(lastSeenText);
-    expect(lastSeen.getAttribute('title')).toBe(dayjs(activeInstance.last_seen_at).format('YYYY-MM-DD HH:mm:ss'));
+    expect(lastSeen.getAttribute('title')).toBe(formatDateTime(activeInstance.last_seen_at));
     expect(screen.getByRole('columnheader', { name: '所属组织' })).not.toBeNull();
     expect(screen.getByRole('button', { name: '调整组织' })).not.toBeNull();
   });

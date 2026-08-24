@@ -716,6 +716,121 @@ def test_primary_object_plugin_list_deduplicates_flow_configured_and_reported_pl
     assert plugins[0]["config_source"] == "configured_reported"
 
 
+def test_primary_object_plugin_list_batches_and_aggregates_collection_nodes(db, monkeypatch):
+    from apps.monitor.services import monitor_instance
+
+    monitor_object = MonitorObject.objects.create(
+        name="CollectionNodeHost",
+        display_name="Collection Node Host",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('host-a',)",
+        name="Host A",
+        monitor_object=monitor_object,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=7)
+    automatic_plugin = MonitorPlugin.objects.create(
+        name="AutomaticPlugin",
+        display_name="Automatic Plugin",
+        collector="Telegraf",
+        collect_type="host",
+        status_query="automatic_query",
+    )
+    automatic_plugin.monitor_object.add(monitor_object)
+    manual_plugin = MonitorPlugin.objects.create(
+        name="ManualPlugin",
+        display_name="Manual Plugin",
+        collector="push_api",
+        collect_type="push_api",
+        status_query="manual_query",
+    )
+    manual_plugin.monitor_object.add(monitor_object)
+    unbound_plugin = MonitorPlugin.objects.create(
+        name="UnboundPlugin",
+        display_name="Unbound Plugin",
+        collector="Telegraf",
+        collect_type="disk",
+        status_query="unbound_query",
+    )
+    unbound_plugin.monitor_object.add(monitor_object)
+    for config_id, config_type in (("child-b", "mem"), ("child-a", "cpu")):
+        CollectConfig.objects.create(
+            id=config_id,
+            monitor_instance=instance,
+            monitor_plugin=automatic_plugin,
+            collector="Telegraf",
+            collect_type="host",
+            config_type=config_type,
+            file_type="toml",
+            is_child=True,
+        )
+    CollectConfig.objects.create(
+        id="child-unbound",
+        monitor_instance=instance,
+        monitor_plugin=unbound_plugin,
+        collector="Telegraf",
+        collect_type="disk",
+        config_type="disk",
+        file_type="toml",
+        is_child=True,
+    )
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, **kwargs):
+            return {
+                "data": {
+                    "result": [
+                        {
+                            "metric": {"instance_id": "host-a"},
+                            "value": [100, "1"],
+                        }
+                    ]
+                }
+            }
+
+    calls = []
+
+    class StubNodeMgmt:
+        def get_child_config_nodes_by_ids(self, ids, organization_ids):
+            calls.append((ids, organization_ids))
+            return [
+                {
+                    "id": "child-a",
+                    "nodes": [
+                        {"id": "node-2", "name": "Beta"},
+                        {"id": "node-1", "name": "Alpha"},
+                    ],
+                },
+                {
+                    "id": "child-b",
+                    "nodes": [
+                        {"id": "node-1", "name": "Alpha"},
+                    ],
+                },
+            ]
+
+    monkeypatch.setattr(monitor_instance, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+    monkeypatch.setattr(monitor_instance, "NodeMgmt", StubNodeMgmt)
+
+    result = monitor_instance.InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": 10},
+        qs=MonitorInstance.objects.all(),
+        locale="zh-Hans",
+        visible_organization_ids=frozenset({7}),
+    ).search_by_primary_object()
+
+    assert calls == [(["child-a", "child-b", "child-unbound"], [7])]
+    plugins = {plugin["name"]: plugin for plugin in result["results"][0]["plugins"]}
+    assert plugins["AutomaticPlugin"]["collector_nodes"] == [
+        {"id": "node-1", "name": "Alpha"},
+        {"id": "node-2", "name": "Beta"},
+    ]
+    assert plugins["UnboundPlugin"]["collector_nodes"] == []
+    assert plugins["ManualPlugin"]["collector_nodes"] == []
+
+
 def test_get_instance_configs_uses_plugin_id_over_collector_for_child_configs(db, monkeypatch):
     from apps.monitor.services import node_mgmt
 

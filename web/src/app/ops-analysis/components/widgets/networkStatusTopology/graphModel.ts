@@ -15,8 +15,6 @@ export interface FaultPathResult {
   linkIds: string[];
 }
 
-const ACTIVE_ALERT_STATUS = 'pending,processing,unassigned';
-
 const normalizeId = (value: unknown) => String(value ?? '');
 
 export const getLinkId = (link: NetworkStatusTopologyLink) =>
@@ -26,21 +24,6 @@ export const getLinkEndpoints = (link: NetworkStatusTopologyLink) => ({
   source: normalizeId(link.source || link.source_device),
   target: normalizeId(link.target || link.target_device),
 });
-
-export const buildAlertListUrl = ({
-  resourceType,
-  resourceId,
-}: {
-  resourceType: string;
-  resourceId: string;
-}) => {
-  const params = new URLSearchParams();
-  params.set('resource_type', resourceType);
-  params.set('resource_id', resourceId);
-  params.set('activate', '1');
-  params.set('status', ACTIVE_ALERT_STATUS);
-  return `/alarm/alarms?${params.toString()}`;
-};
 
 export const buildInstanceDetailUrl = ({
   modelId,

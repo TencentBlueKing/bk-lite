@@ -54,6 +54,10 @@ import {
   getIfmibDeploymentPatch
 } from './ifmibDeploymentState';
 import { getSnmpInterfaceFilterModePatch } from '@/app/monitor/hooks/integration/snmpInterfaceFilterMode';
+import {
+  countAccessAssets,
+  mergeImportedAssetRows
+} from './automaticAssetCount';
 const { confirm } = Modal;
 
 interface CollectDetectState {
@@ -230,6 +234,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             : form.getFieldValue(field)
       ),
     [currentConfig, formSnapshot, form]
+  );
+  const accessAssetCount = useMemo(
+    () => countAccessAssets(dataSource, visibleTableColumns, initTableItems),
+    [dataSource, visibleTableColumns, initTableItems]
   );
 
   useEffect(() => {
@@ -795,7 +803,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       key: uuidv4(),
       group_ids: row.group_ids || groupId
     }));
-    setDataSource([...dataSource, ...newRows]);
+    setDataSource(
+      mergeImportedAssetRows(
+        dataSource,
+        newRows,
+        visibleTableColumns,
+        initTableItems
+      )
+    );
   };
 
   const batchMenuItems: MenuProps['items'] = [
@@ -1056,15 +1071,28 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         {t('monitor.integrations.basicInformation')}
       </b>
       <div className="flex items-center justify-between mb-[10px]">
-        <span className="text-[14px]">
-          {t('monitor.integrations.MonitoredObject')}
-          <span
-            className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
-            style={{ fontFamily: 'SimSun, sans-serif' }}
-          >
-            *
+        <div className="flex items-center gap-[8px]">
+          <span className="text-[14px]">
+            {t('monitor.integrations.MonitoredObject')}
+            <span
+              className="text-[#ff4d4f] align-middle text-[14px] ml-[4px]"
+              style={{ fontFamily: 'SimSun, sans-serif' }}
+            >
+              *
+            </span>
           </span>
-        </span>
+          <span
+            aria-live="polite"
+            className="text-[13px] tabular-nums text-[var(--color-text-2)]"
+          >
+            {t('monitor.integrations.accessAssetCount', '', {
+              count: accessAssetCount
+            })}
+          </span>
+          <span className="text-[12px] text-[var(--color-text-3)]">
+            {t('monitor.integrations.accessAssetCountHint')}
+          </span>
+        </div>
         <div className="flex gap-[8px]">
           <Button
             icon={<UploadOutlined />}

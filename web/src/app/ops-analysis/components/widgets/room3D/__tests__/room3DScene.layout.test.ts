@@ -61,25 +61,44 @@ describe("room3D scene layout", () => {
     );
   });
 
-  it("maps letter columns horizontally and numeric rows into scene depth", () => {
+  it("maps numeric aisle columns horizontally and lettered rows into scene depth", () => {
     const bounds = { maxRow: 9, maxCol: 2 };
-    const firstRow = getRoom3DRackScenePosition(
+    const firstInAisle = getRoom3DRackScenePosition(
       { row: 1, col: 1 },
       bounds,
     );
-    const ninthRow = getRoom3DRackScenePosition(
-      { row: 9, col: 1 },
-      bounds,
-    );
-    const nextColumn = getRoom3DRackScenePosition(
+    const nextInAisle = getRoom3DRackScenePosition(
       { row: 1, col: 2 },
       bounds,
     );
+    const nextRow = getRoom3DRackScenePosition(
+      { row: 9, col: 1 },
+      bounds,
+    );
 
-    expect(ninthRow.x).toBe(firstRow.x);
-    expect(ninthRow.z).toBeLessThan(firstRow.z);
-    expect(nextColumn.x).toBeGreaterThan(firstRow.x);
-    expect(nextColumn.z).toBe(firstRow.z);
+    expect(nextInAisle.x).toBeGreaterThan(firstInAisle.x);
+    expect(nextInAisle.z).toBe(firstInAisle.z);
+    expect(nextRow.x).toBe(firstInAisle.x);
+    expect(nextRow.z).toBeLessThan(firstInAisle.z);
+  });
+
+  it("keeps a compact A01-A05 cluster from expanding into a wide plaza", () => {
+    const layout = buildRoom3DSceneLayout([
+      { row: 1, col: 1 },
+      { row: 1, col: 2 },
+      { row: 1, col: 3 },
+      { row: 1, col: 4 },
+      { row: 1, col: 5 },
+      { row: 2, col: 2 },
+      { row: 2, col: 3 },
+      { row: 3, col: 3 },
+    ]);
+
+    expect(layout.maxCol).toBe(5);
+    expect(layout.maxRow).toBe(3);
+    expect(layout.floorWidth).toBeLessThan(9.5);
+    expect(layout.floorWidth).toBeGreaterThan(5);
+    expect(layout.floorDepth).toBeGreaterThan(18);
   });
 
   it("preserves service aisles and fits a row-dominant room from its long side", () => {
@@ -95,8 +114,8 @@ describe("room3D scene layout", () => {
     expect(ROOM3D_ROW_GAP).toBe(5.4);
     expect(layout.floorDepth).toBeGreaterThan(layout.floorWidth);
     expect(layout.floorDepth / layout.floorWidth).toBeLessThanOrEqual(2.8);
-    expect(Math.abs(layout.initialCameraPosition.x)).toBeGreaterThan(
-      Math.abs(layout.initialCameraPosition.z),
+    expect(Math.abs(layout.initialCameraPosition.z)).toBeGreaterThan(
+      Math.abs(layout.initialCameraPosition.x),
     );
   });
 

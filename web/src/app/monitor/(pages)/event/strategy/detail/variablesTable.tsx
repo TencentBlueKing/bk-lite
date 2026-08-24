@@ -4,6 +4,7 @@ import { Button } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
+import { ObjectItem } from '@/app/monitor/types';
 
 interface VariableItem {
   key: string;
@@ -13,16 +14,17 @@ interface VariableItem {
 
 interface VariablesTableProps {
   onVariableSelect?: (variable: string) => void;
+  displayFields?: ObjectItem['display_fields'];
 }
 
 const VariablesTable: React.FC<VariablesTableProps> = ({
-  onVariableSelect
+  onVariableSelect,
+  displayFields
 }) => {
   const { t } = useTranslation();
 
-  // 可选变量数据
-  const variableData: VariableItem[] = useMemo(
-    () => [
+  const variableData: VariableItem[] = useMemo(() => {
+    const builtin: VariableItem[] = [
       {
         key: 'monitor_object',
         variable: '${monitor_object}',
@@ -37,6 +39,11 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
         key: 'resource_name',
         variable: '${resource_name}',
         description: t('monitor.events.variableResourceName')
+      },
+      {
+        key: 'resource_ip',
+        variable: '${resource_ip}',
+        description: t('monitor.events.variableResourceIp')
       },
       {
         key: 'parent_resource_id',
@@ -68,9 +75,28 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
         variable: '${dimension_value}',
         description: t('monitor.events.variableDimensionValue')
       }
-    ],
-    [t]
-  );
+    ];
+    const extra: VariableItem[] = [];
+    const seen = new Set(builtin.map((item) => item.key));
+    for (const col of displayFields || []) {
+      const variableId = (col.variable_id || '').trim();
+      if (!variableId || seen.has(variableId)) {
+        continue;
+      }
+      seen.add(variableId);
+      const columnName = col.name || variableId;
+      extra.push({
+        key: variableId,
+        variable: `\${${variableId}}`,
+        description: t(
+          'monitor.events.variableDisplayField',
+          '展示指标配置 · {name}',
+          { name: columnName }
+        )
+      });
+    }
+    return [...builtin, ...extra];
+  }, [displayFields, t]);
 
   const variableColumns: ColumnsType<VariableItem> = [
     {

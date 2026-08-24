@@ -354,6 +354,11 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
                   (item) => String(item.id) === String(groupForm.metric_group)
                 )?.display_name || '--'}
               </Descriptions.Item>
+              <Descriptions.Item label={t('monitor.integrations.formula')}>
+                <div className="whitespace-pre-wrap break-all">
+                  {groupForm.query || '--'}
+                </div>
+              </Descriptions.Item>
               <Descriptions.Item label={t('monitor.integrations.dimension')}>
                 {dimensions.some((item) => item.name)
                   ? dimensions
@@ -361,11 +366,6 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
                     .map((item) => item.name)
                     .join(', ')
                   : '--'}
-              </Descriptions.Item>
-              <Descriptions.Item label={t('monitor.integrations.formula')}>
-                <div className="whitespace-pre-wrap break-all">
-                  {groupForm.query || '--'}
-                </div>
               </Descriptions.Item>
               <Descriptions.Item label={t('monitor.integrations.dataType')}>
                 {groupForm.data_type || '--'}
@@ -428,6 +428,13 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
               </Select>
             </Form.Item>
             <Form.Item<MetricInfo>
+              label={t('monitor.integrations.formula')}
+              name="query"
+              rules={[{ required: true, message: t('common.required') }]}
+            >
+              <Input.TextArea rows={4} />
+            </Form.Item>
+            <Form.Item<MetricInfo>
               label={t('monitor.integrations.dimension')}
               name="dimensions"
             >
@@ -461,13 +468,6 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
                   </li>
                 ))}
               </ul>
-            </Form.Item>
-            <Form.Item<MetricInfo>
-              label={t('monitor.integrations.formula')}
-              name="query"
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Input.TextArea rows={4} />
             </Form.Item>
             <Form.Item<MetricInfo>
               label={t('monitor.integrations.dataType')}

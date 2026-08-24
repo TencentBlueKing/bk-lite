@@ -1,21 +1,27 @@
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.viewsets import ViewSet
 
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
 from apps.log.utils.system_mgmt import SystemMgmtUtils
 from apps.rpc.system_mgmt import SystemMgmt
-from apps.core.utils.team_utils import get_current_team
 
 
-def _build_actor_context(request):
+def _build_actor_context(request, *, require_current_team=False):
     current_team = get_current_team(request)
     if current_team not in (None, ""):
         try:
             current_team = int(current_team)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as exc:
+            if require_current_team:
+                raise ValidationAppException("current_team 参数非法") from exc
             current_team = None
     else:
+        if require_current_team:
+            return None
         current_team = None
 
     user = getattr(request, "user", None)
@@ -49,8 +55,18 @@ class SystemMgmtView(ViewSet):
     @action(methods=["get"], detail=False, url_path="search_channel_list")
     def search_channel_list(self, request):
         channel_type = request.GET.get("channel_type", "")
-        current_team = get_current_team(request)
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-        teams = [int(current_team)] if current_team else None
-        result = SystemMgmt().search_channel_list(channel_type=channel_type, teams=teams, include_children=include_children)
-        return WebUtils.response_success(result["data"])
+        actor_context = _build_actor_context(request, require_current_team=True)
+        if actor_context is None:
+            return WebUtils.response_success([])
+
+        result = SystemMgmt().search_channel_list_scoped(
+            actor_context,
+            channel_type=channel_type,
+            teams=None,
+            include_children=actor_context["include_children"],
+        )
+        if not isinstance(result, dict):
+            raise BaseAppException("通知通道查询失败")
+        if result.get("result") is False:
+            raise PermissionDenied(result.get("message") or "通知通道查询失败")
+        return WebUtils.response_success(result.get("data") or [])

@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Monitor 目标模块架构",
+    "output": "monitor-target.architecture.html",
+    "animation": "none",
+    "quality_profile": "showcase",
+    "viewBox": [1500, 830],
+    "views": [
+      {
+        "id": "shared-use-case",
+        "label": "统一应用用例",
+        "focus": ["entry_adapters", "contracts", "application"],
+        "note": "HTTP、NATS、Celery 共享 Command、Query、DTO、权限上下文和错误语义。"
+      },
+      {
+        "id": "capability-slices",
+        "label": "能力切片",
+        "focus": ["catalog", "onboarding", "observation", "policy_engine", "alerting"],
+        "note": "目录按业务所有权组织，使新增能力主要在一个切片内完成。"
+      },
+      {
+        "id": "ports-and-state",
+        "label": "端口与事实源",
+        "focus": ["onboarding", "observation", "alerting", "outbound_ports", "external_systems"],
+        "note": "能力域只依赖端口；DB、VM、NodeMgmt 和通知系统保持清晰事实边界。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "entry_adapters",
+      "type": "external",
+      "label": "入口适配器",
+      "sublabel": "HTTP / NATS / Celery",
+      "pos": [40, 390],
+      "size": [180, 76],
+      "tag": "协议转换"
+    },
+    {
+      "id": "contracts",
+      "type": "security",
+      "label": "Contracts",
+      "sublabel": "Command / Query / DTO / Error",
+      "pos": [280, 390],
+      "size": [210, 76],
+      "tag": "稳定契约"
+    },
+    {
+      "id": "application",
+      "type": "backend",
+      "label": "Application Services",
+      "sublabel": "统一用例 / ActorContext / 幂等",
+      "pos": [550, 390],
+      "size": [220, 76],
+      "tag": "编排层"
+    },
+    {
+      "id": "catalog",
+      "type": "backend",
+      "label": "catalog/",
+      "sublabel": "对象 / 插件 / 指标 / 模板版本",
+      "pos": [850, 90],
+      "size": [220, 76],
+      "tag": "定义所有权"
+    },
+    {
+      "id": "onboarding",
+      "type": "backend",
+      "label": "onboarding/",
+      "sublabel": "预检 / ApplyOperation / 对账",
+      "pos": [850, 240],
+      "size": [220, 76],
+      "tag": "期望采集状态"
+    },
+    {
+      "id": "observation",
+      "type": "backend",
+      "label": "observation/",
+      "sublabel": "ObservedInstance / MetricQueryPort",
+      "pos": [850, 390],
+      "size": [220, 76],
+      "tag": "观测投影"
+    },
+    {
+      "id": "policy_engine",
+      "type": "backend",
+      "label": "policy_engine/",
+      "sublabel": "调度 / ScanPlanner / 检测 / 基线",
+      "pos": [850, 540],
+      "size": [220, 76],
+      "tag": "扫描所有权"
+    },
+    {
+      "id": "alerting",
+      "type": "backend",
+      "label": "alerting/",
+      "sublabel": "状态机 / 快照 / Outbox",
+      "pos": [850, 690],
+      "size": [220, 76],
+      "tag": "告警事实"
+    },
+    {
+      "id": "outbound_ports",
+      "type": "cloud",
+      "label": "Outbound Ports",
+      "sublabel": "VM / NodeMgmt / SystemMgmt / S3",
+      "pos": [1240, 390],
+      "size": [220, 76],
+      "tag": "依赖倒置"
+    },
+    {
+      "id": "external_systems",
+      "type": "external",
+      "label": "事实源与运行系统",
+      "sublabel": "RDB / VictoriaMetrics / RPC / NATS",
+      "pos": [1240, 570],
+      "size": [220, 76],
+      "tag": "外部基础设施"
+    },
+    {
+      "id": "legacy_models",
+      "type": "database",
+      "label": "迁移期 models/",
+      "sublabel": "兼容出口 / 逐步收回写权限",
+      "pos": [550, 610],
+      "size": [220, 76],
+      "tag": "渐进迁移"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Monitor 模块化单体",
+      "wraps": ["contracts", "application", "catalog", "onboarding", "observation", "policy_engine", "alerting", "outbound_ports", "legacy_models"],
+      "pad": 28
+    },
+    {
+      "kind": "security-group",
+      "label": "能力域：禁止跨域直接写表",
+      "wraps": ["catalog", "onboarding", "observation", "policy_engine", "alerting"],
+      "pad": 18
+    }
+  ],
+  "connections": [
+    { "id": "entry_to_contracts", "from": "entry_adapters", "to": "contracts", "label": "协议输入", "variant": "emphasis" },
+    { "id": "contracts_to_application", "from": "contracts", "to": "application", "label": "已验证 Command / Query", "variant": "security", "labelAt": [520, 480] },
+    { "id": "app_to_catalog", "from": "application", "to": "catalog" },
+    { "id": "app_to_onboarding", "from": "application", "to": "onboarding" },
+    { "id": "app_to_observation", "from": "application", "to": "observation", "variant": "emphasis" },
+    { "id": "app_to_policy", "from": "application", "to": "policy_engine" },
+    { "id": "app_to_alerting", "from": "application", "to": "alerting" },
+    { "id": "onboarding_to_ports", "from": "onboarding", "to": "outbound_ports", "label": "预检与下发端口", "variant": "security", "labelAt": [1110, 250] },
+    { "id": "observation_to_ports", "from": "observation", "to": "outbound_ports", "label": "MetricQueryPort", "variant": "emphasis", "labelAt": [1155, 485] },
+    { "id": "alerting_to_ports", "from": "alerting", "to": "outbound_ports", "label": "Outbox 投递端口", "variant": "dashed", "fromSide": "right", "toSide": "bottom", "via": [[1200, 728], [1200, 500], [1350, 500]] },
+    { "id": "ports_to_systems", "from": "outbound_ports", "to": "external_systems" },
+    { "id": "legacy_compatibility", "from": "application", "to": "legacy_models", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "P0｜边界与可靠性",
+      "items": [
+        "统一事实源、领域词汇和跨入口应用用例",
+        "接入 ApplyOperation、通知 Outbox、调度对账、查询预算"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "P1｜能力切片",
+      "items": [
+        "引入 ObservedInstance 与 MetricQueryPort",
+        "插件采用 Validate → Diff → Apply，策略队列隔离与抖动"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "P2｜规模化",
+      "items": [
+        "达到容量阈值后引入 ScanPlanner 与观测状态索引",
+        "保持模块化单体，只有独立容量与发布节奏明确时才拆服务"
+      ]
+    }
+  ]
+}

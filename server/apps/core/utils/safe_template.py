@@ -126,14 +126,14 @@ def check_dangerous_patterns(template_str: str) -> None:
 
     description = _find_dangerous_pattern(template_lower, GLOBAL_DANGEROUS_PATTERNS)
     if description:
-        logger.warning(f"[SSTI] 检测到危险模式: {description}, template={template_str[:100]}...")
+        logger.warning("[SSTI] 检测到危险模式: %s, template=%s...", description, template_str[:100])
         raise TemplateSecurityError(f"模板包含禁止的模式: {description}")
 
     # 仅在真正的 Jinja2 表达式内部检查高危替代，避免将普通文本字符误判为 SSTI。
     for expression in JINJA_EXPRESSION_PATTERN.findall(template_lower):
         description = _find_dangerous_pattern(expression, EXPRESSION_DANGEROUS_PATTERNS)
         if description:
-            logger.warning(f"[SSTI] 检测到危险模式: {description}, template={template_str[:100]}...")
+            logger.warning("[SSTI] 检测到危险模式: %s, template=%s...", description, template_str[:100])
             raise TemplateSecurityError(f"模板包含禁止的模式: {description}")
 
 

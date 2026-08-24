@@ -52,6 +52,11 @@ DEVICE=$(echo "$JSON_DATA" | jq -r '.device // empty')
 REPLICAS=$(echo "$JSON_DATA" | jq -r '.replicas // "1"')
 TIMESERIES_PREDICT_TIMEOUT_SECONDS=$(echo "$JSON_DATA" | jq -r '.timeseries_predict_timeout_seconds // empty')
 MAX_RECURSIVE_FEATURE_ENGINEERING_WORK=$(echo "$JSON_DATA" | jq -r '.max_recursive_feature_engineering_work // empty')
+IMAGE_BUDGET_MODE=$(echo "$JSON_DATA" | jq -r '.image_budget_mode // empty')
+MAX_IMAGE_BYTES=$(echo "$JSON_DATA" | jq -r '.max_image_bytes // empty')
+MAX_IMAGE_BATCH_BASE64_BYTES=$(echo "$JSON_DATA" | jq -r '.max_image_batch_base64_bytes // empty')
+MAX_IMAGE_BATCH_BYTES=$(echo "$JSON_DATA" | jq -r '.max_image_batch_bytes // empty')
+MAX_IMAGE_BATCH_PIXELS=$(echo "$JSON_DATA" | jq -r '.max_image_batch_pixels // empty')
 
 # 使用默认命名空间（如果未指定）
 if [ -z "$NAMESPACE" ]; then
@@ -87,6 +92,21 @@ if [ -n "$MAX_RECURSIVE_FEATURE_ENGINEERING_WORK" ]; then
         exit 1
     fi
 fi
+
+if [ -n "$IMAGE_BUDGET_MODE" ] && [ "$IMAGE_BUDGET_MODE" != "observe" ] && [ "$IMAGE_BUDGET_MODE" != "enforce" ]; then
+    json_error "INVALID_IMAGE_BUDGET_MODE" "$ID" "image_budget_mode must be observe or enforce"
+    exit 1
+fi
+if [ -n "$IMAGE_BUDGET_MODE" ] && { [ -z "$MAX_IMAGE_BYTES" ] || [ -z "$MAX_IMAGE_BATCH_BASE64_BYTES" ] || [ -z "$MAX_IMAGE_BATCH_BYTES" ] || [ -z "$MAX_IMAGE_BATCH_PIXELS" ]; }; then
+    json_error "INVALID_IMAGE_BUDGET" "$ID" "image budget mode requires all image budget values"
+    exit 1
+fi
+for IMAGE_BUDGET_VALUE in "$MAX_IMAGE_BYTES" "$MAX_IMAGE_BATCH_BASE64_BYTES" "$MAX_IMAGE_BATCH_BYTES" "$MAX_IMAGE_BATCH_PIXELS"; do
+    if [ -n "$IMAGE_BUDGET_VALUE" ] && ! [[ "$IMAGE_BUDGET_VALUE" =~ ^[1-9][0-9]*$ ]]; then
+        json_error "INVALID_IMAGE_BUDGET" "$ID" "image budget values must be positive integers"
+        exit 1
+    fi
+done
 
 # 将服务短名称解析为 FQDN（跨 namespace 访问时必需）
 MLFLOW_TRACKING_URI=$(resolve_endpoint_fqdn "$MLFLOW_TRACKING_URI")
@@ -156,6 +176,22 @@ if [ -n "$MAX_RECURSIVE_FEATURE_ENGINEERING_WORK" ]; then
 EOF
 )
 fi
+IMAGE_BUDGET_ENV_YAML=""
+if [ -n "$IMAGE_BUDGET_MODE" ]; then
+    IMAGE_BUDGET_ENV_YAML=$(cat <<EOF
+        - name: MLOPS_PREDICT_IMAGE_BUDGET_MODE
+          value: "${IMAGE_BUDGET_MODE}"
+        - name: MLOPS_PREDICT_MAX_IMAGE_BYTES
+          value: "${MAX_IMAGE_BYTES}"
+        - name: MLOPS_PREDICT_MAX_IMAGE_BATCH_BASE64_BYTES
+          value: "${MAX_IMAGE_BATCH_BASE64_BYTES}"
+        - name: MLOPS_PREDICT_MAX_IMAGE_BATCH_BYTES
+          value: "${MAX_IMAGE_BATCH_BYTES}"
+        - name: MLOPS_PREDICT_MAX_IMAGE_BATCH_PIXELS
+          value: "${MAX_IMAGE_BATCH_PIXELS}"
+EOF
+)
+fi
 
 # 生成 Kubernetes Deployment YAML
 DEPLOYMENT_YAML=$(cat <<EOF
@@ -203,6 +239,7 @@ spec:
           value: "false"
 ${PREDICT_TIMEOUT_ENV_YAML}
 ${RECURSIVE_FEATURE_WORK_ENV_YAML}
+${IMAGE_BUDGET_ENV_YAML}
         livenessProbe:
           httpGet:
             path: /healthz

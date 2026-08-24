@@ -504,7 +504,7 @@ class CollectModelSerializer(AuthSerializer):
             self._validate_influxdb_credential(attrs)
         elif model_id == "hwcloud":
             self._validate_hwcloud_credential(attrs)
-        elif model_id in {"fusioninsight", "storage"}:
+        elif model_id in {"fusioninsight", "storage", "sangforhci"}:
             self._validate_platform_api_credential(attrs)
 
         if model_id == "winsphere":

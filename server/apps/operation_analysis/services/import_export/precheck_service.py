@@ -361,11 +361,7 @@ class PrecheckService:
     @staticmethod
     def check_datasource_security(doc: YAMLDocument) -> list[dict]:
         """在提交导入前拒绝没有可兼容存量记录的监控裸查询数据源。"""
-        raw_items = [
-            item
-            for item in doc.datasources
-            if is_legacy_raw_monitor_query(source_type=item.source_type, rest_api=item.rest_api)
-        ]
+        raw_items = [item for item in doc.datasources if is_legacy_raw_monitor_query(source_type=item.source_type, rest_api=item.rest_api)]
         if not raw_items:
             return []
 
@@ -399,9 +395,7 @@ class PrecheckService:
         all_actions = [ConflictAction.SKIP.value, ConflictAction.OVERWRITE.value, ConflictAction.RENAME.value]
         rename_only = [ConflictAction.RENAME.value]
 
-        existing_namespace_names = set(
-            NameSpace.objects.filter(name__in=[ns.name for ns in doc.namespaces]).values_list("name", flat=True)
-        )
+        existing_namespace_names = set(NameSpace.objects.filter(name__in=[ns.name for ns in doc.namespaces]).values_list("name", flat=True))
         for ns in doc.namespaces:
             if ns.name in existing_namespace_names:
                 conflicts.append(
@@ -422,9 +416,9 @@ class PrecheckService:
         for ds in doc.datasources:
             existing = existing_datasources.get((ds.name, ds.rest_api))
             if existing:
-                has_permission = cls._check_group_permission(existing, current_team)
+                has_permission = cls._check_datasource_group_permission(existing, current_team)
                 suggested_actions = all_actions if has_permission else rename_only
-                if is_legacy_raw_monitor_query(source_type=ds.source_type, rest_api=ds.rest_api):
+                if is_legacy_raw_monitor_query(source_type=getattr(ds, "source_type", None), rest_api=ds.rest_api):
                     if not has_permission:
                         suggested_actions = []
                     elif is_legacy_raw_monitor_query(
@@ -453,9 +447,7 @@ class PrecheckService:
         ]
 
         for canvas_list, obj_type, model in canvas_checks:
-            existing_canvases = {
-                canvas.name: canvas for canvas in model.objects.filter(name__in=[item.name for item in canvas_list])
-            }
+            existing_canvases = {canvas.name: canvas for canvas in model.objects.filter(name__in=[item.name for item in canvas_list])}
             for canvas in canvas_list:
                 existing = existing_canvases.get(canvas.name)
                 if existing:
@@ -473,13 +465,22 @@ class PrecheckService:
 
     @staticmethod
     def _check_group_permission(obj, current_team: int | None) -> bool:
-        """检查当前组织是否有权限访问对象"""
+        """检查当前组织是否有权限访问对象（画布等非数据源对象）。"""
         if current_team is None:
             return True
         groups = getattr(obj, "groups", None)
         if groups is None:
             return True
         return int(current_team) in groups
+
+    @staticmethod
+    def _check_datasource_group_permission(obj, current_team: int | None) -> bool:
+        """数据源组织可见性：内置空名单视为全员可访问。"""
+        if current_team is None:
+            return True
+        from apps.operation_analysis.common.datasource_visibility import can_access_datasource_in_org
+
+        return can_access_datasource_in_org(obj, int(current_team))
 
     @classmethod
     def has_canvas_objects(cls, doc: YAMLDocument) -> bool:

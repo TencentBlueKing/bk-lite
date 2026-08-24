@@ -287,7 +287,7 @@ def get_cached_permission_rules(
     )
     cached = cache.get(cache_key)
     if cached is not None and get_user_permission_version(username, domain) == permission_version:
-        logger.debug(f"Permission rules cache hit: {username}@{app_name}/{permission_key}")
+        logger.debug("Permission rules cache hit: %s@%s/%s", username, app_name, permission_key)
         return cached
     return None
 
@@ -345,7 +345,13 @@ def set_cached_permission_rules(
         existing_keys.add(cache_key)
         cache.set(user_keys_index, existing_keys, PERMISSION_CACHE_TTL + 60)
 
-    logger.debug(f"Permission rules cached: {username}@{app_name}/{permission_key}, TTL={PERMISSION_CACHE_TTL}s")
+    logger.debug(
+        "Permission rules cached: %s@%s/%s, TTL=%ss",
+        username,
+        app_name,
+        permission_key,
+        PERMISSION_CACHE_TTL,
+    )
     return get_user_permission_version(username, domain) == permission_version
 
 
@@ -356,7 +362,7 @@ def _clear_user_permission_cache_entries(username: str, domain: str) -> None:
             user_prefix = _get_user_perm_prefix(username, domain)
             try:
                 cache.delete_pattern(f"{user_prefix}*")
-                logger.info(f"Cleared permission cache (pattern) for user: {username}")
+                logger.info("Cleared permission cache (pattern) for user: %s", username)
             except Exception as e:
                 logger.warning(
                     "Failed to clear permission cache by pattern for %s, falling back to index: %s",
@@ -393,9 +399,9 @@ def _clear_user_cache_by_index(username: str, domain: str) -> None:
     if cached_keys:
         cache.delete_many(list(cached_keys))
         cache.delete(user_keys_index)
-        logger.info(f"Cleared {len(cached_keys)} permission cache entries (index) for user: {username}")
+        logger.info("Cleared %s permission cache entries (index) for user: %s", len(cached_keys), username)
     else:
-        logger.debug(f"No permission cache index found for user: {username}")
+        logger.debug("No permission cache index found for user: %s", username)
 
 
 def clear_users_permission_cache(users: List[Dict]) -> None:

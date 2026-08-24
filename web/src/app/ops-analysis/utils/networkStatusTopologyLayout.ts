@@ -6,6 +6,7 @@ import type {
   NetworkStatusTopologyLayoutMode,
   NetworkStatusTopologyModeLayout,
 } from '@/app/ops-analysis/types/sceneWidget';
+import { persistThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 
 export {
   MANUAL_EDGE_VERTEX_COLLINEAR_TOLERANCE,
@@ -16,6 +17,42 @@ export type { EdgeGeometryPoint } from '@/app/cmdb/components/networkTopology/ed
 
 export const DEFAULT_NETWORK_STATUS_TOPOLOGY_LAYOUT_MODE: NetworkTopologyLayoutMode =
   'hierarchical';
+
+export const NETWORK_STATUS_TOPOLOGY_DEFAULT_NODE_LIMIT = 100;
+export const NETWORK_STATUS_TOPOLOGY_MAX_NODE_LIMIT = 200;
+
+export const normalizeNetworkStatusTopologyNodeLimit = (value?: number | null) => {
+  const next = Number(value);
+  if (!Number.isFinite(next)) return NETWORK_STATUS_TOPOLOGY_DEFAULT_NODE_LIMIT;
+  return Math.min(
+    NETWORK_STATUS_TOPOLOGY_MAX_NODE_LIMIT,
+    Math.max(1, Math.round(next)),
+  );
+};
+
+export const normalizeNetworkStatusTopologyInstUuids = (value?: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  value.forEach((item) => {
+    const id = String(item || '').trim();
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    unique.push(id);
+  });
+  return unique;
+};
+
+export const hasNetworkStatusTopologyDeviceSelection = (
+  config?: Pick<NetworkStatusTopologyConfig, 'instUuids'> | null,
+) => normalizeNetworkStatusTopologyInstUuids(config?.instUuids).length > 0;
+
+export const networkStatusTopologySelectionExceedsLimit = (
+  instUuids: unknown,
+  nodeLimit?: number | null,
+) =>
+  normalizeNetworkStatusTopologyInstUuids(instUuids).length
+  > normalizeNetworkStatusTopologyNodeLimit(nodeLimit);
 
 export interface TopologyPoint { x: number; y: number }
 
@@ -241,10 +278,23 @@ export const buildPersistedNetworkStatusTopologyConfig = (
   }
 
   const next: NetworkStatusTopologyConfig = {
-    modelId: config.modelId || '',
-    instUuid: config.instUuid || '',
-    depth: config.depth || 2,
+    instUuids: normalizeNetworkStatusTopologyInstUuids(config.instUuids),
+    nodeLimit: normalizeNetworkStatusTopologyNodeLimit(config.nodeLimit),
   };
+
+  if (Array.isArray(config.linkTrafficDisplays)) {
+    next.linkTrafficDisplays = config.linkTrafficDisplays.filter(
+      (item): item is 'inbound' | 'outbound' => item === 'inbound' || item === 'outbound',
+    );
+  }
+  if (Array.isArray(config.inboundTrafficThresholds)) {
+    next.inboundTrafficThresholds =
+      persistThresholdColorConfig(config.inboundTrafficThresholds) || [];
+  }
+  if (Array.isArray(config.outboundTrafficThresholds)) {
+    next.outboundTrafficThresholds =
+      persistThresholdColorConfig(config.outboundTrafficThresholds) || [];
+  }
 
   if (layoutMode) {
     next.layoutMode = layoutMode;
@@ -271,9 +321,8 @@ export const pruneNetworkStatusTopologyLayout = (
 
   // 先归一成 layoutByMode（含旧扁平迁入），再修剪各桶
   const normalized = buildPersistedNetworkStatusTopologyConfig({
-    modelId: '',
-    instUuid: '',
-    depth: 2,
+    instUuids: [],
+    nodeLimit: NETWORK_STATUS_TOPOLOGY_DEFAULT_NODE_LIMIT,
     layoutMode: layout.layoutMode,
     layoutByMode: layout.layoutByMode,
     nodePositions: layout.nodePositions,
@@ -300,6 +349,23 @@ export const pruneNetworkStatusTopologyLayout = (
   };
 };
 
+/** 几何写回时保留流量展示与阈值，只替换布局字段。 */
+export const applyNetworkStatusTopologyLayoutPatch = (
+  config: NetworkStatusTopologyConfig,
+  layout: Pick<NetworkStatusTopologyConfig, 'layoutMode' | 'layoutByMode'>,
+): NetworkStatusTopologyConfig => {
+  const normalized = buildPersistedNetworkStatusTopologyConfig(config);
+  return buildPersistedNetworkStatusTopologyConfig({
+    instUuids: normalized.instUuids,
+    nodeLimit: normalized.nodeLimit,
+    linkTrafficDisplays: normalized.linkTrafficDisplays,
+    inboundTrafficThresholds: normalized.inboundTrafficThresholds,
+    outboundTrafficThresholds: normalized.outboundTrafficThresholds,
+    layoutMode: layout.layoutMode,
+    layoutByMode: layout.layoutByMode,
+  });
+};
+
 /** 只清空指定 mode 的手工几何，保留其它桶与当前 layoutMode */
 export const resetNetworkStatusTopologyLayout = (
   config: NetworkStatusTopologyConfig,
@@ -313,13 +379,21 @@ export const resetNetworkStatusTopologyLayout = (
   delete layoutByMode[layoutMode];
 
   const next: NetworkStatusTopologyConfig = {
-    modelId: config.modelId || '',
-    instUuid: config.instUuid || '',
-    depth: config.depth || 2,
+    instUuids: normalizeNetworkStatusTopologyInstUuids(config.instUuids),
+    nodeLimit: normalizeNetworkStatusTopologyNodeLimit(config.nodeLimit),
     layoutMode: normalizeNetworkStatusTopologyLayoutMode(
       config.layoutMode ?? layoutMode,
     ),
   };
+  if (normalized.linkTrafficDisplays !== undefined) {
+    next.linkTrafficDisplays = normalized.linkTrafficDisplays;
+  }
+  if (normalized.inboundTrafficThresholds !== undefined) {
+    next.inboundTrafficThresholds = normalized.inboundTrafficThresholds;
+  }
+  if (normalized.outboundTrafficThresholds !== undefined) {
+    next.outboundTrafficThresholds = normalized.outboundTrafficThresholds;
+  }
   if (Object.keys(layoutByMode).length > 0) {
     next.layoutByMode = layoutByMode;
   }

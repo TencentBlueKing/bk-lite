@@ -43,6 +43,7 @@
 - URL 自动路由 `api/v1/<app>/`（`server/urls.py`）。
 - split_settings：`config/components/*.py`。
 - 关键环境变量：`DB_*`、`INSTALL_APPS`、`NEXTAPI_URL`、`NATS_*`、`MINIO_*`、`CELERY_BROKER_URL`、`MLFLOW_TRACKER_URL`、`VICTORIALOGS_*`；模板 `server/envs/.env.example`、`server/support-files/env/*.example`。
+- 管理员鲜装引导默认创建 `admin/password`，保证零配置安装可登录；`BK_INIT_ADMIN_PASSWORD` 或 `BK_INIT_ADMIN_PASSWORD_FILE` 可覆盖默认密码。存量同名管理员不覆盖，`BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING=true` 仅配合显式受管凭据迁移仍使用默认密码的管理员。该默认凭据是产品确认接受的便利性取舍，部署方应在首次登录后修改。【已确认】
 - NATS 连接环境变量（`nats.py:10-72`）【已实现】：
   - TLS：`NATS_TLS_ENABLED`（默认 `false`）、`NATS_TLS_INSECURE`（跳过证书验证，默认 `false`）、`NATS_TLS_CA_FILE`（自定义 CA）、`NATS_TLS_HOSTNAME`（强制校验主机名）、`NATS_TLS_CERT_FILE`/`NATS_TLS_KEY_FILE`（客户端证书）。
   - 认证：`NATS_USER`/`NATS_PASSWORD`、`NATS_TOKEN`。

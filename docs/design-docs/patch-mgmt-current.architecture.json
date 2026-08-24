@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "PatchMgmt 模块现状架构",
+    "output": "patch-mgmt-current.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/zhouzhuangjie/bk-lite-1.git",
+      "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"
+    },
+    "viewBox": [1450, 760],
+    "views": [
+      {"id": "catalog", "label": "来源与基线事实", "focus": ["entry", "source", "catalogDb", "baseline", "compliance"], "note": "补丁源、补丁主数据、当前基线要求与当前合规投影共同决定可治理范围。"},
+      {"id": "governance", "label": "治理执行内核", "focus": ["entry", "governance", "celery", "hostRuntime", "external", "taskDb"], "note": "父任务一次性扇出逐主机 Celery 子任务，主机 execution_token 隔离陈旧结果。"},
+      {"id": "recovery", "label": "收敛与后续动作", "focus": ["taskDb", "convergence", "followup", "external"], "note": "超时核验和通知已有补偿；自动重启、验证仍在终态事务之后即时创建与投递。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "region", "label": "目录与合规事实", "wraps": ["source", "catalogDb", "baseline", "compliance"], "pad": 18},
+    {"kind": "region", "label": "治理任务运行时", "wraps": ["governance", "celery", "taskDb", "hostRuntime", "convergence", "followup"], "pad": 18},
+    {"kind": "region", "label": "外部执行与通知边界", "wraps": ["external"], "pad": 18}
+  ],
+  "components": [
+    {"id": "entry", "type": "frontend", "label": "HTTP API / Beat", "sublabel": "8 routers + 全局周期扫描", "tag": "先全库再权限过滤", "pos": [25, 310], "size": [170, 100], "sources": [{"path": "server/apps/patch_mgmt/urls.py", "line": 1, "label": "API 路由"}, {"path": "server/apps/patch_mgmt/tasks.py", "line": 72, "label": "周期扫描"}]},
+    {"id": "source", "type": "cloud", "label": "Source Sync", "sublabel": "Repo / WSUS preview + ingest", "tag": "布尔锁无租约", "pos": [240, 80], "size": [210, 98], "sources": [{"path": "server/apps/patch_mgmt/views/patch_source.py", "line": 47, "label": "同步 claim"}, {"path": "server/apps/patch_mgmt/services/source_sync_service.py", "line": 187, "label": "同步入库"}]},
+    {"id": "catalogDb", "type": "database", "label": "Patch Catalog", "sublabel": "Patch + OS detail + sources", "tag": "依赖/替代为 JSON IDs", "pos": [500, 80], "size": [210, 98]},
+    {"id": "baseline", "type": "database", "label": "Baseline Current State", "sublabel": "Requirement + Host Binding", "tag": "无基线版本", "pos": [760, 80], "size": [210, 98], "sources": [{"path": "server/apps/patch_mgmt/models/baseline.py", "line": 1, "label": "基线模型"}]},
+    {"id": "compliance", "type": "database", "label": "Compliance Projection", "sublabel": "当前 HostComplianceSnapshot", "tag": "每次评估覆盖", "pos": [1020, 80], "size": [215, 98], "sources": [{"path": "server/apps/patch_mgmt/services/patch_execution_service.py", "line": 1227, "label": "快照写回"}]},
+    {"id": "governance", "type": "backend", "label": "Governance Application", "sublabel": "assess / install / reboot / verify", "tag": "风险查询运行时聚合", "pos": [240, 315], "size": [225, 108], "sources": [{"path": "server/apps/patch_mgmt/services/governance_service.py", "line": 1, "label": "任务创建"}, {"path": "server/apps/patch_mgmt/services/risk_service.py", "line": 258, "label": "风险计算"}]},
+    {"id": "celery", "type": "messagebus", "label": "Celery Parent Fan-out", "sublabel": "每目标一个子任务", "tag": "无共享并发预算", "pos": [515, 315], "size": [205, 108], "sources": [{"path": "server/apps/patch_mgmt/tasks.py", "line": 341, "label": "父任务派发"}]},
+    {"id": "taskDb", "type": "database", "label": "GovernanceTask / Host", "sublabel": "父状态 + 每主机 stage/token", "tag": "主机 fencing 已具备", "pos": [770, 315], "size": [220, 108]},
+    {"id": "hostRuntime", "type": "backend", "label": "Host Execution Kernel", "sublabel": "2703 行，多协议与状态并置", "tag": "SSH / WinRM / Ansible", "pos": [1040, 315], "size": [225, 108], "sources": [{"path": "server/apps/patch_mgmt/services/patch_execution_service.py", "line": 1, "label": "执行内核"}]},
+    {"id": "convergence", "type": "security", "label": "Watchdog / Reconcile", "sublabel": "超时后只读核验再裁决", "tag": "正确的副作用恢复", "pos": [770, 560], "size": [220, 100]},
+    {"id": "followup", "type": "backend", "label": "Terminal Follow-ups", "sublabel": "自动重启 / 验证 / 通知", "tag": "仅通知有 durable intent", "pos": [1040, 560], "size": [225, 100]},
+    {"id": "external", "type": "external", "label": "外部基础设施", "sublabel": "目标 / 补丁源 / Broker / 通知", "pos": [1300, 400], "size": [125, 115]}
+  ],
+  "connections": [
+    {"id": "entrySource", "from": "entry", "to": "source", "variant": "default"},
+    {"id": "sourceCatalog", "from": "source", "to": "catalogDb", "variant": "emphasis"},
+    {"id": "catalogBaseline", "from": "catalogDb", "to": "baseline", "variant": "default"},
+    {"id": "baselineCompliance", "from": "baseline", "to": "compliance", "variant": "emphasis"},
+    {"id": "entryGovernance", "from": "entry", "to": "governance", "variant": "emphasis"},
+    {"id": "complianceGovernance", "from": "compliance", "to": "governance", "variant": "security", "fromSide": "bottom", "toSide": "top"},
+    {"id": "governanceCelery", "from": "governance", "to": "celery", "variant": "emphasis"},
+    {"id": "celeryTask", "from": "celery", "to": "taskDb", "variant": "default"},
+    {"id": "taskRuntime", "from": "taskDb", "to": "hostRuntime", "label": "claim / 写回", "variant": "security", "labelAt": [1015, 300]},
+    {"id": "runtimeRemote", "from": "hostRuntime", "to": "external", "variant": "emphasis"},
+    {"id": "taskConverge", "from": "taskDb", "to": "convergence", "variant": "security"},
+    {"id": "convergeTask", "from": "convergence", "to": "taskDb", "variant": "dashed"},
+    {"id": "taskFollowup", "from": "taskDb", "to": "followup", "variant": "security"},
+    {"id": "followupExternal", "from": "followup", "to": "external", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "应保留的可靠性基础", "items": ["GovernanceTaskHost 逐主机状态、execution_token fencing 与终态父任务行锁形成明确裁决点", "安装/重启超时进入 reconciling，再用只读事实判断结果，不自动重放副作用"]},
+    {"dot": "rose", "title": "一致性与租户边界", "items": ["终态提交后才即时创建自动重启/验证，崩溃会丢后续步骤；创建后 broker 失败也无可靠补偿", "全局 ScanSetting 把全部团队目标合入一个周期任务；风险读侧先算全库再按目标权限过滤"]},
+    {"dot": "amber", "title": "容量与演进约束", "items": ["父任务一次性向 broker 扇出所有目标，无团队/区域/协议预算与背压", "当前合规快照覆盖历史，文本日志反复整行追加；风险计算在主机×要求循环内继续查询任务"]}
+  ]
+}

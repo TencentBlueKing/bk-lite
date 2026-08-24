@@ -71,7 +71,7 @@ class GroupQueryMixin:
         )
 
         if not query_groups:
-            logger.warning(f"用户对组织 {current_team} 没有权限或该组织不存在")
+            logger.warning("用户对组织 %s 没有权限或该组织不存在", current_team)
 
         return query_groups
 
@@ -94,7 +94,7 @@ class GroupQueryMixin:
                 return []
             return list(GroupUtils.active_queryset(id__in=group_ids).values_list("id", flat=True))
 
-        logger.warning(f"无法获取用户 {request.user.username} 的组织列表")
+        logger.warning("无法获取用户 %s 的组织列表", request.user.username)
         return []
 
     def filter_by_groups(self, queryset, request):

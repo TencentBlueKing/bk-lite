@@ -77,14 +77,14 @@ function formatEvidenceValue(value: unknown): string {
       .map(([key, item]) => `${key.replaceAll('_', ' ')}=${formatEvidenceValue(item)}`)
       .join(', ');
   }
-  if (value === null || value === undefined || value === '') return '—';
+  if (value === null || value === undefined || value === '') return '--';
   return String(value);
 }
 
 export function formatComplianceEvidence(
   evidence: Record<string, unknown> | null | undefined,
 ): string {
-  if (!evidence || Object.keys(evidence).length === 0) return '—';
+  if (!evidence || Object.keys(evidence).length === 0) return '--';
   return Object.entries(evidence)
     .map(([key, value]) => `${key.replaceAll('_', ' ')}: ${formatEvidenceValue(value)}`)
     .join('\n');

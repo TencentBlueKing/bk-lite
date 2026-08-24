@@ -2,6 +2,7 @@ import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ComCardList from '../comCardList';
+import ScreenWidgetThemeProvider from '../../screenWidgetThemeProvider';
 
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({
@@ -126,5 +127,27 @@ describe('ComCardList layout branch', () => {
     expect(accent?.textContent).toBe('1项警告');
     expect(accent?.style.color).toBe('rgb(240, 160, 0)');
     expect(accent?.style.backgroundColor).toBe('rgba(240, 160, 0, 0.16)');
+  });
+
+  it('remaps dashboard color tokens when rendered in a screen theme', () => {
+    const { container } = render(
+      <ScreenWidgetThemeProvider mode="screen-dark">
+        <ComCardList
+          rawData={records}
+          config={{
+            ...titleConfig,
+            chartThemeMode: 'screen-dark',
+          }}
+        />
+      </ScreenWidgetThemeProvider>,
+    );
+
+    const root = container.querySelector(
+      '[data-screen-widget-theme="screen-dark"]',
+    ) as HTMLElement;
+    expect(root.style.getPropertyValue('--color-text-1')).toBe('#e8eef7');
+    expect(root.style.getPropertyValue('--color-bg')).toBe(
+      'rgba(91, 143, 249, 0.08)',
+    );
   });
 });

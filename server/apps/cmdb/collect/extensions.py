@@ -15,6 +15,7 @@ class CollectEnterpriseExtension:
     collect_tree: list = field(default_factory=list)
     plugin_packages: tuple = ()
     node_param_packages: tuple = ()
+    doc_dirs: tuple = ()
 
     def on_collect_instances_applied(self, *, management, result):
         """采集实例变更应用完成后的企业版扩展点。"""

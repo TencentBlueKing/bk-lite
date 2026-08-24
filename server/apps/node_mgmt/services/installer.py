@@ -494,7 +494,8 @@ class InstallerService:
 
     @staticmethod
     def get_linux_bootstrap_command(token: str, install_mode: str = MANUAL_INSTALL_MODE) -> str:
-        session = InstallerSessionService.build_session_config(token)
+        token_data = InstallTokenService.inspect_token_data(token)
+        session = InstallerSessionService.build_session_config(token, token_data=token_data)
         server_url = session["server_url"].replace("/api/v1/node_mgmt/open_api/node", "")
         bootstrap_url = f"{server_url}/api/v1/node_mgmt/open_api/installer/linux_bootstrap?token={token}"
         quoted_bootstrap_url = shlex.quote(bootstrap_url)

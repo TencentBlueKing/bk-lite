@@ -3,13 +3,13 @@ from types import SimpleNamespace
 
 import pytest
 from langchain.agents.middleware import ModelRequest, ModelResponse
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 
 from apps.opspilot.metis.llm.agent.tool_execution_planner import CompletedExecutionStep, ToolExecutionPlanner
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
 from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
-from apps.opspilot.metis.llm.middleware.tool_runtime import ToolVisibilityMiddleware
+from apps.opspilot.metis.llm.middleware.tool_runtime import SkillExecutionGuardMiddleware, ToolVisibilityMiddleware
 
 pytestmark = pytest.mark.unit
 
@@ -25,10 +25,10 @@ def _tool(name, description=None):
     )
 
 
-def _request(tools):
+def _request(tools, messages=None):
     return ModelRequest(
         model=SimpleNamespace(),
-        messages=[HumanMessage(content="K8s Warning Failed on Pod/ns/pod-1")],
+        messages=messages or [HumanMessage(content="K8s Warning Failed on Pod/ns/pod-1")],
         system_prompt=None,
         tool_choice=None,
         tools=tools,
@@ -37,6 +37,208 @@ def _request(tools):
         runtime=SimpleNamespace(),
         model_settings={},
     )
+
+
+def test_skills_only_visibility_keeps_execute_when_fs_hidden():
+    """回归：纯技能步必须把 execute 放进 always_visible。
+
+    只从 hidden discard 不够——allow_unregistered_tools=False 时模型会看到 0 工具，
+    只能空谈「需要域配置」而不会真正跑脚本。
+    """
+    execute = _tool("execute")
+    read_file = _tool("read_file")
+    write_todos = _tool("write_todos")
+    middleware = ToolVisibilityMiddleware(
+        business_tools=[],
+        active_tools=[],
+        always_visible_tools={"execute"},
+        hidden_tools={"write_todos", "task"},
+        allow_unregistered_tools=False,
+    )
+    visible = []
+
+    def _handler(request):
+        visible.append([tool.name for tool in request.tools])
+        return ModelResponse(result=[AIMessage(content="ok")])
+
+    middleware.wrap_model_call(_request([execute, read_file, write_todos]), _handler)
+    assert visible == [["execute"]]
+
+
+def test_visibility_wrap_tool_call_blocks_hidden_fs_tools():
+    middleware = ToolVisibilityMiddleware(
+        business_tools=[],
+        active_tools=[],
+        always_visible_tools={"execute"},
+        hidden_tools={"write_todos", "task"},
+        allow_unregistered_tools=False,
+    )
+    called = {"n": 0}
+
+    def handler(req):
+        called["n"] += 1
+        return "EXECUTED"
+
+    req = SimpleNamespace(tool_call={"name": "read_file", "args": {"file_path": "/skills/ad-domain-ops/SKILL.md"}, "id": "c1"})
+    result = middleware.wrap_tool_call(req, handler)
+    assert called["n"] == 0
+    assert result.status == "error"
+    assert "不可用" in result.content
+    assert "[OPSPILOT_POLICY]" in result.content
+    assert "execute 本步技能脚本" in result.content
+
+
+def test_visibility_wrap_tool_call_blocks_unplanned_business_tool():
+    list_pods = _tool("list_pods")
+    middleware = ToolVisibilityMiddleware(
+        business_tools=[list_pods],
+        active_tools=[list_pods],
+        always_visible_tools={"request_user_choice"},
+        hidden_tools={"write_todos", "task", "execute"},
+        allow_unregistered_tools=False,
+    )
+    called = {"n": 0}
+
+    def handler(req):
+        called["n"] += 1
+        return "EXECUTED"
+
+    req = SimpleNamespace(tool_call={"name": "delete_pod", "args": {}, "id": "c1"})
+    result = middleware.wrap_tool_call(req, handler)
+    assert called["n"] == 0
+    assert result.status == "error"
+    assert "[OPSPILOT_POLICY]" in result.content
+    assert "业务工具" in result.content
+    assert "execute `/skills/" not in result.content
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import is_tool_result_failure
+
+    assert not is_tool_result_failure(result.content, result.status)
+
+
+def test_skill_guard_blocks_read_file_and_strips_tools_after_fail_then_probe():
+    execute = _tool("execute")
+    read_file = _tool("read_file")
+    guard = SkillExecutionGuardMiddleware(enabled=True)
+    fail = ToolMessage(
+        content="ldap timeout\n[OPSPILOT_SKILL_RESULT] 脚本失败。最多修正参数后重试 1 次。",
+        tool_call_id="e1",
+        name="execute",
+    )
+    probe = ToolMessage(
+        content="[OPSPILOT_SKILL_RESULT] 禁止 read_file/ls/grep 扫技能包。",
+        tool_call_id="r1",
+        name="read_file",
+        status="error",
+    )
+    called = {"n": 0}
+
+    def handler(req):
+        called["n"] += 1
+        return "EXECUTED"
+
+    blocked = guard.wrap_tool_call(
+        SimpleNamespace(
+            tool_call={"name": "read_file", "args": {"file_path": "SKILL.md"}, "id": "c2"},
+            state={"messages": [fail]},
+        ),
+        handler,
+    )
+    assert called["n"] == 0
+    assert "禁止 read_file" in blocked.content
+
+    visible = []
+
+    def model_handler(request):
+        visible.append([tool.name for tool in request.tools])
+        return ModelResponse(result=[AIMessage(content="ok")])
+
+    guard.wrap_model_call(_request([execute, read_file], messages=[HumanMessage(content="查用户"), fail, probe]), model_handler)
+    assert visible == [[]]
+
+
+def test_skill_guard_allows_one_script_retry_after_failure():
+    guard = SkillExecutionGuardMiddleware(enabled=True)
+    fail = ToolMessage(
+        content="timed out\n[OPSPILOT_SKILL_RESULT] 脚本失败。最多修正参数后重试 1 次。",
+        tool_call_id="e1",
+        name="execute",
+    )
+    called = {"n": 0}
+
+    def handler(req):
+        called["n"] += 1
+        return "EXECUTED"
+
+    retry = SimpleNamespace(
+        tool_call={
+            "name": "execute",
+            "args": {"command": "python3 /skills/ad-domain-ops/scripts/ad_search.py --query '*' --attrs sAMAccountName"},
+            "id": "e2",
+        },
+        state={"messages": [fail]},
+    )
+    assert guard.wrap_tool_call(retry, handler) == "EXECUTED"
+    assert called["n"] == 1
+
+    cat = SimpleNamespace(
+        tool_call={"name": "execute", "args": {"command": "cat /skills/ad-domain-ops/SKILL.md"}, "id": "e3"},
+        state={"messages": [fail]},
+    )
+    denied = guard.wrap_tool_call(cat, handler)
+    assert called["n"] == 1
+    assert "不要再用" in denied.content
+
+    listing = SimpleNamespace(
+        tool_call={"name": "execute", "args": {"command": "ls -la /skills/ad-domain-ops/scripts/"}, "id": "e4"},
+        state={"messages": [fail]},
+    )
+    denied_ls = guard.wrap_tool_call(listing, handler)
+    assert called["n"] == 1
+    assert "不要再用" in denied_ls.content
+
+
+def test_skill_guard_stops_immediately_on_auth_script_failure():
+    """凭据失败与业务工具同一套分型：第一次 execute 后禁止再跑脚本。"""
+    guard = SkillExecutionGuardMiddleware(enabled=True)
+    fail = ToolMessage(
+        content='{"ok":false,"error":"invalid credentials"}\n[OPSPILOT_SKILL_RESULT] 脚本失败。最多修正参数后重试 1 次。',
+        tool_call_id="e1",
+        name="execute",
+    )
+    called = {"n": 0}
+
+    def handler(req):
+        called["n"] += 1
+        return "EXECUTED"
+
+    retry = SimpleNamespace(
+        tool_call={
+            "name": "execute",
+            "args": {"command": "python3 /skills/ad-domain-ops/scripts/ad_search.py --query '*' --attrs sAMAccountName"},
+            "id": "e2",
+        },
+        state={"messages": [fail]},
+    )
+    denied = guard.wrap_tool_call(retry, handler)
+    assert called["n"] == 0
+    assert "不要再调用工具" in denied.content or "OPSPILOT_SKILL_STOP" in denied.content
+
+
+def test_tool_exception_middleware_returns_error_tool_message():
+    from apps.opspilot.metis.llm.middleware.tool_runtime import ToolExceptionAsResultMiddleware
+
+    middleware = ToolExceptionAsResultMiddleware()
+
+    def boom(_req):
+        raise Exception("无法加载 Kubernetes 配置: Invalid base64-encoded string. 请检查 kubeconfig 配置内容或集群连接。")
+
+    req = SimpleNamespace(tool_call={"name": "diagnose_kubernetes_pod_issues", "id": "c1", "args": {}})
+    result = middleware.wrap_tool_call(req, boom)
+    assert isinstance(result, ToolMessage)
+    assert result.status == "error"
+    assert result.tool_call_id == "c1"
+    assert "无法加载 Kubernetes 配置" in result.content
+    assert "Invalid base64" in result.content
 
 
 def test_dynamic_tool_visibility_exposes_step_tools_plus_always_on_fs():
@@ -416,6 +618,84 @@ def test_is_tool_result_failure_detects_json_error_payload():
     assert is_tool_result_failure("ok", status="error")
     assert not is_tool_result_failure('{"phase": "Running"}')
     assert not is_tool_result_failure("connection refused detail")
+    assert not is_tool_result_failure(
+        "工具 glob 当前不可用。不要用 read_file/ls/grep 扫技能包；直接 execute `/skills/<包名>/scripts/...`。",
+        status="error",
+    )
+    assert not is_tool_result_failure(
+        "[OPSPILOT_SKILL_RESULT] 脚本不存在，不要 ls/glob/read_file。请直接改跑：python3 /skills/ad-domain-ops/scripts/ad_search.py",
+        status="error",
+    )
+    assert not is_tool_result_failure(
+        "[OPSPILOT_POLICY] 工具 delete_pod 当前不可用。只调用本步骤可见的业务工具。",
+        status="error",
+    )
+
+
+def test_classify_tool_failure_kind_separates_auth_from_retryable():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        TOOL_FAILURE_AUTHN,
+        TOOL_FAILURE_AUTHZ,
+        TOOL_FAILURE_CONFIG,
+        TOOL_FAILURE_INTERNAL,
+        TOOL_FAILURE_OTHER,
+        classify_tool_failure_kind,
+        is_non_replanable_tool_failure,
+    )
+    from apps.opspilot.metis.llm.common.tool_failure import unrecoverable_skill_result_hint
+
+    assert classify_tool_failure_kind('{"error": "获取Pod列表失败: (401)\\nReason: Unauthorized"}') == TOOL_FAILURE_AUTHN
+    assert classify_tool_failure_kind("无法加载 Kubernetes 配置: invalid certificate") == TOOL_FAILURE_AUTHN
+    assert classify_tool_failure_kind('{"error": "获取Deployment列表失败: (403)\\nReason: Forbidden"}') == TOOL_FAILURE_AUTHZ
+    assert (
+        classify_tool_failure_kind(
+            {"error": "connection_failed", "message": "无法连接 Kubernetes 集群"},
+            status="success",
+        )
+        == TOOL_FAILURE_CONFIG
+    )
+    assert classify_tool_failure_kind("MySQL host is required", status="error") == TOOL_FAILURE_CONFIG
+    assert classify_tool_failure_kind("Failed to decrypt field 'value': InvalidToken", status="error") == TOOL_FAILURE_CONFIG
+    assert (
+        classify_tool_failure_kind(
+            "AttributeError: 'NoneType' object has no attribute 'items'",
+            status="error",
+        )
+        == TOOL_FAILURE_INTERNAL
+    )
+    assert classify_tool_failure_kind('{"error": "Pod x 在命名空间 y 中不存在"}') == TOOL_FAILURE_OTHER
+    assert classify_tool_failure_kind("connection refused", status="error") == TOOL_FAILURE_OTHER
+    assert classify_tool_failure_kind("namespace is required", status="error") == TOOL_FAILURE_OTHER
+    assert classify_tool_failure_kind('{"phase": "Running"}') == TOOL_FAILURE_OTHER
+    assert is_non_replanable_tool_failure('{"error": "401 Unauthorized"}')
+    assert is_non_replanable_tool_failure('{"error": "403 Forbidden"}')
+    assert is_non_replanable_tool_failure('{"error": "connection_failed"}')
+    assert is_non_replanable_tool_failure("CredentialValidationError: Redis host/url is required")
+    assert is_non_replanable_tool_failure("AttributeError: 'NoneType' object has no attribute 'metadata'", status="error")
+    assert not is_non_replanable_tool_failure('{"error": "Pod x 在命名空间 y 中不存在"}')
+    assert not is_non_replanable_tool_failure("connection refused", status="error")
+    assert not is_non_replanable_tool_failure("namespace is required", status="error")
+    assert not is_non_replanable_tool_failure(
+        "[OPSPILOT_POLICY] 工具 delete_pod 当前不可用。只调用本步骤可见的业务工具。",
+        status="error",
+    )
+    skill_auth = '{"ok":false,"error":"invalid credentials"}\n[OPSPILOT_SKILL_RESULT] 脚本失败。最多修正参数后重试 1 次。'
+    skill_auth_stop = '{"ok":false,"error":"invalid credentials"}\n' "[OPSPILOT_SKILL_RESULT] 连接、凭据、权限或脚本实现失败，禁止重试。" "把错误原样告诉用户并结束，不要改参，不要 read_file。"
+    skill_timeout = "timed out\n[OPSPILOT_SKILL_RESULT] 脚本失败。最多修正参数后重试 1 次。"
+    skill_missing = "[OPSPILOT_SKILL_RESULT] 脚本不存在，不要 ls/glob/read_file。请直接改跑：python3 /skills/ad-domain-ops/scripts/ad_search.py"
+    skill_args = "[OPSPILOT_SKILL_RESULT] 参数错误，禁止 read_file。立刻再 execute 一次"
+    assert classify_tool_failure_kind(skill_auth) == TOOL_FAILURE_AUTHN
+    assert is_non_replanable_tool_failure(skill_auth)
+    assert classify_tool_failure_kind(skill_auth_stop) == TOOL_FAILURE_AUTHN
+    assert is_non_replanable_tool_failure(skill_auth_stop)
+    assert classify_tool_failure_kind(skill_timeout) == TOOL_FAILURE_OTHER
+    assert not is_non_replanable_tool_failure(skill_timeout)
+    assert not is_non_replanable_tool_failure(skill_missing, status="error")
+    assert not is_non_replanable_tool_failure(skill_args, status="error")
+    hint = unrecoverable_skill_result_hint('{"ok":false,"error":"invalid credentials"}')
+    assert hint is not None and "禁止重试" in hint
+    assert unrecoverable_skill_result_hint("timed out") is None
+    assert unrecoverable_skill_result_hint('{"ok":false,"error":{"code":6,"message":"Cannot reach"}}') is None
 
 
 def test_compact_planned_execution_messages_truncates_tool_and_ai_text():
@@ -433,6 +713,58 @@ def test_compact_planned_execution_messages_truncates_tool_and_ai_text():
     assert out[0].content.endswith("...(truncated)")
     assert len(out[1].content) <= 80
     assert out[2].content == "keep tool call"
+
+
+def test_compact_execute_skill_json_keeps_all_entries_under_budget():
+    """AD 列举结果被 1500 字预算压缩后仍应保留全部 sAMAccountName。"""
+    import json
+
+    from langchain_core.messages import ToolMessage
+
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import compact_planned_execution_messages
+
+    entries = []
+    for index in range(10):
+        entries.append(
+            {
+                "sAMAccountName": f"user{index:02d}",
+                "displayName": f"User {index:02d}",
+                "mail": f"user{index:02d}@bktest.com.cn",
+                "distinguishedName": f"CN=User{index:02d},CN=Users,DC=bktest,DC=com,DC=cn",
+                "userAccountControl": 512,
+                "description": "很长的描述" * 40,
+                "lastLogonTimestamp": "2026-08-13 09:59:33.351587+00:00",
+                "whenCreated": "2024-05-24 01:27:18+00:00",
+                "whenChanged": "2026-08-13 09:59:33+00:00",
+                "userPrincipalName": f"user{index:02d}@bktest.com.cn",
+                "department": [],
+                "title": [],
+            }
+        )
+    payload = {
+        "ok": True,
+        "data": {
+            "type": "user",
+            "query": "*",
+            "base_dn": "DC=bktest,DC=com,DC=cn",
+            "count": 10,
+            "entries": entries,
+        },
+    }
+    raw = json.dumps(payload, ensure_ascii=False, indent=2)
+    assert len(raw) > 1500
+    out = compact_planned_execution_messages(
+        [ToolMessage(content=raw, tool_call_id="c1", name="execute")],
+        max_tool_chars=1500,
+    )
+    parsed = json.loads(out[0].content)
+    assert parsed["ok"] is True
+    assert parsed["data"]["count"] == 10
+    assert len(parsed["data"]["entries"]) == 10
+    names = [(item.get("sAMAccountName") if isinstance(item, dict) else item) for item in parsed["data"]["entries"]]
+    assert names[0] == "user00"
+    assert names[4] == "user04"
+    assert names[9] == "user09"
 
 
 def test_compact_analyze_deployment_keeps_parseable_issues_detail_under_budget():

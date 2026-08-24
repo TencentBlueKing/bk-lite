@@ -5,7 +5,6 @@ import {
   Button,
   message,
   Dropdown,
-  Tag,
   Popconfirm,
   Space,
   Tooltip,
@@ -53,6 +52,7 @@ import { cloneDeep } from 'lodash';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { buildAssetViewUrl } from './viewRoute';
+import PluginTooltipContent, { PluginTooltipTrigger } from './pluginTooltip';
 
 type TableRowSelection<T extends object = object> =
   TableProps<T>['rowSelection'];
@@ -147,7 +147,7 @@ const Asset = () => {
 
           return (
             <div className="flex flex-wrap gap-1">
-              {plugins.map((plugin: any, index: number) => {
+              {plugins.map((plugin: any) => {
                 const isAuto = plugin.collect_mode === 'auto';
                 const statusInfo = {
                   color: ['normal', 'online'].includes(plugin.status)
@@ -165,37 +165,45 @@ const Asset = () => {
                 const timeText = plugin.time
                   ? convertToLocalizedTime(plugin.time)
                   : '--';
-                const tooltipTitle = `${statusText} - ${t(
-                  'monitor.integrations.lastReportTime'
-                )}：${timeText}`;
+                const tooltipTitle = (
+                  <PluginTooltipContent
+                    statusText={statusText}
+                    lastReportTimeLabel={t(
+                      'monitor.integrations.lastReportTime'
+                    )}
+                    timeText={timeText}
+                    collectionNodeLabel={t(
+                      'monitor.integrations.collectionNode'
+                    )}
+                    notAssociatedText={t(
+                      'monitor.integrations.notAssociated'
+                    )}
+                    collectMode={plugin.collect_mode}
+                    collectorNodes={plugin.collector_nodes}
+                  />
+                );
 
                 return (
-                  <>
+                  <React.Fragment key={plugin.name}>
                     <style>{`
                       .asset-tooltip.ant-tooltip {
                         max-width: none;
                       }
                     `}</style>
-                    <Tooltip
-                      key={`${plugin.name}-${index}`}
+                    <PluginTooltipTrigger
+                      ariaLabel={`${plugin.display_name || '--'}，${statusText}`}
+                      color={statusInfo.color}
+                      onActivate={() =>
+                        openTemplateDrawer(record, {
+                          selectedConfigId: isAuto ? plugin.name : undefined,
+                          showTemplateList: false
+                        })
+                      }
                       title={tooltipTitle}
-                      color="#000"
-                      overlayClassName="asset-tooltip"
                     >
-                      <Tag
-                        color={statusInfo.color}
-                        className="cursor-pointer"
-                        onClick={() =>
-                          openTemplateDrawer(record, {
-                            selectedConfigId: isAuto ? plugin.name : undefined,
-                            showTemplateList: false
-                          })
-                        }
-                      >
-                        {plugin.display_name || '--'}
-                      </Tag>
-                    </Tooltip>
-                  </>
+                      {plugin.display_name || '--'}
+                    </PluginTooltipTrigger>
+                  </React.Fragment>
                 );
               })}
             </div>

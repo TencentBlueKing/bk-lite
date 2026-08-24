@@ -123,6 +123,12 @@ def test_cmdb_model_inst_count(cmdb):
     assert _last(cmdb.client) == ("run", "model_inst_count", (), {"model_id": "host"})
 
 
+def test_cmdb_get_monitor_ids_by_inst_uuids(cmdb):
+    payload = {"inst_uuids": ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"], "user_info": {"team": 1}}
+    cmdb.get_monitor_ids_by_inst_uuids(**payload)
+    assert _last(cmdb.client) == ("run", "get_monitor_ids_by_inst_uuids", (), payload)
+
+
 def test_cmdb_ingest_from_source_wraps_flat_kwargs_as_params(cmdb):
     """NATS handler 是 ingest_from_source(params)；RPC 必须整包，不能摊成顶层 kwargs。"""
     cmdb.ingest_from_source(
@@ -439,8 +445,16 @@ def op_ana():
 
 
 def test_op_ana_get_module_data(op_ana):
-    op_ana.get_module_data(module="x")
-    assert _last(op_ana.client) == ("run", "get_operation_analysis_module_data", (), {"module": "x"})
+    from apps.operation_analysis.nats.auth import verify_module_data_request
+
+    params = {"module": "directory", "child_module": "dashboard", "page": 1, "page_size": 100, "group_id": 7}
+
+    op_ana.get_module_data(**params, _internal_auth="caller-controlled")
+
+    call_type, method_name, args, kwargs = _last(op_ana.client)
+    token = kwargs.pop("_internal_auth")
+    assert (call_type, method_name, args, kwargs) == ("run", "get_operation_analysis_module_data_v2", (), params)
+    verify_module_data_request(token, **params)
 
 
 def test_op_ana_get_module_list(op_ana):

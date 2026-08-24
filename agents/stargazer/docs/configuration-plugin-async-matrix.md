@@ -1,6 +1,6 @@
 # Stargazer 配置采集插件异步矩阵
 
-更新日期：2026-08-14
+更新日期：2026-08-20
 
 本文记录 `plugins/inputs` 中配置采集插件的真实 I/O 模型。判断依据是底层网络依赖，不能只看
 入口是否写成 `async def`。
@@ -45,6 +45,16 @@
 
 当前 21 个 protocol executor 中：15 个原生异步，6 个同步隔离。同步隔离项继续受到
 `MAX_ACTIVE_TARGETS` 全局边界保护，不新增插件级并发参数。
+
+## Enterprise protocol executor
+
+| 插件 | 是否原生异步 | 异步方法/当前依赖 | 说明 |
+| --- | --- | --- | --- |
+| `sangforscp` | 是 | `httpx.AsyncClient.stream()` | RSA 加密在线程中执行；登录、分页、重试和响应流读取均原生 `await`。单次完整快照共用 300 秒总预算，并限制页数、对象数、单响应与总响应字节；任一阶段失败不返回半截快照 |
+
+Sangfor 配置采集不再调用同步 `requests.Session`。`legacy_tls.py` 仍为旧监控指标链路提供
+TLS 1.0/1.1 兼容，不能据此把配置采集判定为同步。配置采集使用相同的 legacy SSL context，
+但连接由 `httpx.AsyncClient` 管理并在每次目标采集结束时关闭。
 
 ## Job executor
 

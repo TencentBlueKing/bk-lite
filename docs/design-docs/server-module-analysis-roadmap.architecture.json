@@ -1,0 +1,263 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Server 后端模块分析路线图",
+    "output": "server-module-analysis-roadmap.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/zhouzhuangjie/bk-lite-1",
+      "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"
+    },
+    "viewBox": [1420, 760],
+    "views": [
+      {
+        "id": "priority-zero",
+        "label": "优先分析模块",
+        "focus": ["cmdb", "node_mgmt", "alerts", "opspilot"],
+        "note": "优先处理体量、跨模块依赖、外部副作用或并发模型复杂度较高的模块。"
+      },
+      {
+        "id": "resource-execution",
+        "label": "资源与执行链",
+        "focus": ["system_mgmt", "cmdb", "node_mgmt", "job_mgmt", "patch_mgmt"],
+        "note": "沿组织与集成、配置资产、节点运行时、作业和补丁治理识别真实事实源。"
+      },
+      {
+        "id": "observability",
+        "label": "可观测业务域",
+        "focus": ["log", "alerts", "apm"],
+        "note": "三个模块保持独立分析，再核对与 Monitor 的事件、告警和通知接口。"
+      },
+      {
+        "id": "data-ai",
+        "label": "数据与智能域",
+        "focus": ["operation_analysis", "mlops", "opspilot"],
+        "note": "分别分析数据编排、算法运行时与智能体平台，不因共同依赖 Core 而合并。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "platform_foundation",
+      "type": "backend",
+      "label": "平台基础能力",
+      "sublabel": "base + core + rpc + console_mgmt + nats_client",
+      "tag": "合并分析 / P2",
+      "pos": [510, 40],
+      "size": [400, 70],
+      "sources": [
+        {"path": "server/config/components/app.py", "line": 30, "label": "Django 应用装配"},
+        {"path": "server/apps/core/urls.py", "line": 11, "label": "认证与公共入口"},
+        {"path": "server/apps/rpc/base.py", "label": "跨模块 RPC 适配"}
+      ]
+    },
+    {
+      "id": "system_mgmt",
+      "type": "security",
+      "label": "SystemMgmt",
+      "sublabel": "身份、组织、权限、集成与通知渠道",
+      "tag": "独立分析 / P1 / 22.0k 行",
+      "pos": [510, 150],
+      "size": [400, 70],
+      "sources": [
+        {"path": "server/apps/system_mgmt/urls.py", "line": 23, "label": "模块入口"},
+        {"path": "server/apps/system_mgmt/models/app.py", "label": "业务事实示例"}
+      ]
+    },
+    {
+      "id": "cmdb",
+      "type": "database",
+      "label": "CMDB",
+      "sublabel": "模型、实例、采集、图关系与变更记录",
+      "tag": "独立分析 / P0 / 68.6k 行",
+      "pos": [90, 310],
+      "size": [260, 72],
+      "sources": [
+        {"path": "server/apps/cmdb/urls.py", "line": 22, "label": "模块入口"},
+        {"path": "server/apps/cmdb/services/subscription_trigger.py", "label": "应用与领域实现"}
+      ]
+    },
+    {
+      "id": "node_mgmt",
+      "type": "backend",
+      "label": "NodeMgmt",
+      "sublabel": "节点、控制器、采集器与配置下发",
+      "tag": "独立分析 / P0 / 16.9k 行",
+      "pos": [390, 310],
+      "size": [260, 72],
+      "sources": [
+        {"path": "server/apps/node_mgmt/urls.py", "line": 15, "label": "模块入口"},
+        {"path": "server/apps/node_mgmt/nats/node.py", "label": "异步控制入口"}
+      ]
+    },
+    {
+      "id": "job_mgmt",
+      "type": "backend",
+      "label": "JobMgmt",
+      "sublabel": "脚本、Playbook、执行与定时任务",
+      "tag": "独立分析 / P1 / 11.4k 行",
+      "pos": [690, 310],
+      "size": [260, 72],
+      "sources": [
+        {"path": "server/apps/job_mgmt/urls.py", "line": 29, "label": "模块入口"},
+        {"path": "server/apps/job_mgmt/services/execution_stream_service.py", "label": "执行编排"}
+      ]
+    },
+    {
+      "id": "patch_mgmt",
+      "type": "security",
+      "label": "PatchMgmt",
+      "sublabel": "补丁、基线、风险与治理任务",
+      "tag": "独立分析 / P1 / 17.1k 行",
+      "pos": [990, 310],
+      "size": [260, 72],
+      "sources": [
+        {"path": "server/apps/patch_mgmt/urls.py", "line": 19, "label": "模块入口"},
+        {"path": "server/apps/patch_mgmt/tasks.py", "label": "治理执行"}
+      ]
+    },
+    {
+      "id": "log",
+      "type": "backend",
+      "label": "Log",
+      "sublabel": "采集配置、检索、策略与日志告警",
+      "tag": "独立分析 / P1 / 11.4k 行",
+      "pos": [90, 480],
+      "size": [260, 72],
+      "sources": [
+        {"path": "server/apps/log/urls.py", "line": 17, "label": "模块入口"},
+        {"path": "server/apps/log/services/search.py", "label": "检索与采集能力"}
+      ]
+    },
+    {
+      "id": "alerts",
+      "type": "backend",
+      "label": "Alerts",
+      "sublabel": "事件接入、富化、聚合、动作与通知",
+      "tag": "独立分析 / P0 / 20.2k 行",
+      "pos": [390, 480],
+      "size": [260, 72],
+      "sources": [
+        {"path": "server/apps/alerts/ARCHITECTURE.md", "label": "模块架构说明"},
+        {"path": "server/apps/alerts/aggregation/engine/connection.py", "label": "聚合引擎"}
+      ]
+    },
+    {
+      "id": "apm",
+      "type": "backend",
+      "label": "APM",
+      "sublabel": "遥测目录、策略评估、事件与通知",
+      "tag": "独立分析 / P1 / 8.8k 行",
+      "pos": [690, 480],
+      "size": [260, 72],
+      "sources": [
+        {"path": "server/apps/apm/urls.py", "line": 25, "label": "模块入口"},
+        {"path": "server/apps/apm/services/policies.py", "label": "应用能力"}
+      ]
+    },
+    {
+      "id": "operation_analysis",
+      "type": "backend",
+      "label": "OperationAnalysis",
+      "sublabel": "数据源、画布、报表与拓扑分析",
+      "tag": "独立分析 / P1 / 24.8k 行",
+      "pos": [240, 645],
+      "size": [280, 72],
+      "sources": [
+        {"path": "server/apps/operation_analysis/urls.py", "line": 27, "label": "模块入口"},
+        {"path": "server/apps/operation_analysis/services/dashboard_report_renderer.py", "label": "数据编排能力"}
+      ]
+    },
+    {
+      "id": "mlops",
+      "type": "cloud",
+      "label": "MLOps",
+      "sublabel": "算法、数据集、训练、发布与运行时",
+      "tag": "独立分析 / P1 / 21.3k 行",
+      "pos": [570, 645],
+      "size": [280, 72],
+      "sources": [
+        {"path": "server/apps/mlops/urls.py", "line": 55, "label": "模块入口"},
+        {"path": "server/apps/mlops/services/algorithm_config_service.py", "label": "生命周期能力"}
+      ]
+    },
+    {
+      "id": "opspilot",
+      "type": "cloud",
+      "label": "OpsPilot",
+      "sublabel": "模型接入、智能体、工作流、记忆与知识库",
+      "tag": "独立分析 / P0 / 115.4k 行",
+      "pos": [900, 645],
+      "size": [280, 72],
+      "sources": [
+        {"path": "server/apps/opspilot/urls.py", "line": 36, "label": "模块入口"},
+        {"path": "server/apps/opspilot/metis/llm/agent/deep_agent.py", "label": "智能体运行时"},
+        {"path": "server/apps/opspilot/memory/engines/base.py", "label": "记忆能力"}
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "平台公共能力",
+      "wraps": ["platform_foundation", "system_mgmt"],
+      "pad": 18
+    },
+    {
+      "kind": "region",
+      "label": "资源与执行域",
+      "wraps": ["cmdb", "node_mgmt", "job_mgmt", "patch_mgmt"],
+      "pad": 18
+    },
+    {
+      "kind": "region",
+      "label": "可观测业务域（Monitor 已完成基线分析）",
+      "wraps": ["log", "alerts", "apm"],
+      "pad": 18
+    },
+    {
+      "kind": "region",
+      "label": "数据与智能域",
+      "wraps": ["operation_analysis", "mlops", "opspilot"],
+      "pad": 18
+    }
+  ],
+  "connections": [
+    {
+      "id": "foundation-to-system",
+      "from": "platform_foundation",
+      "to": "system_mgmt",
+      "label": "认证、异常与 RPC 基础",
+      "variant": "emphasis",
+      "labelAt": [710, 130]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "P0：优先处理",
+      "items": [
+        "CMDB：中心资产事实与跨模块依赖最多",
+        "NodeMgmt / Alerts：远程副作用和并发链路突出",
+        "OpsPilot：单应用体量最大，报告内必须再按能力域拆解"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "默认独立分析",
+      "items": [
+        "每个业务模块单独输出现状架构、核心数据流与目标架构",
+        "Monitor 作为格式与分析深度基线，不把相似告警概念强行合并"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "唯一合并项",
+      "items": [
+        "base / core / rpc / console_mgmt / nats_client 共同分析平台接口与适配器",
+        "它们规模较小且业务接口高度重叠，拆开会得到多个浅模块报告"
+      ]
+    }
+  ]
+}
