@@ -3,8 +3,10 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from apps.apm.services.contracts import (
+    DeploymentReleaseQuery,
     InstanceActivity,
     InstanceActivityQuery,
+    InferredDeploymentRelease,
     NotificationDelivery,
     NotificationDeliveryResult,
     ServiceDependency,
@@ -108,10 +110,12 @@ class InMemoryMetricStore:
         service_metrics: Iterable[tuple[ServiceMetricQuery, ServiceRed]] = (),
         slo_measurements: Iterable[tuple[SloMetricQuery, SloMeasurement]] = (),
         activities: Iterable[InstanceActivity] = (),
+        deployment_releases: Iterable[InferredDeploymentRelease] = (),
     ):
         self._service_metrics = list(service_metrics)
         self._slo_measurements = list(slo_measurements)
         self._activities = list(activities)
+        self._deployment_releases = list(deployment_releases)
 
     def set_service_red(self, query: ServiceMetricQuery, value: ServiceRed) -> None:
         self._service_metrics = [(key, item) for key, item in self._service_metrics if key != query]
@@ -132,6 +136,13 @@ class InMemoryMetricStore:
 
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]:
         return [item for item in self._activities if query.started_at <= item.last_seen_at <= query.ended_at]
+
+    def deployment_releases(self, query: DeploymentReleaseQuery) -> list[InferredDeploymentRelease]:
+        return [
+            item
+            for item in self._deployment_releases
+            if query.started_at <= item.first_seen_at <= query.ended_at
+        ]
 
 
 class InMemoryNotificationDispatcher:

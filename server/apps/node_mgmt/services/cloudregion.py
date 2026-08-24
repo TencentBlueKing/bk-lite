@@ -149,8 +149,17 @@ class RegionService:
             logger.error(f"Missing WEBHOOK_SERVER_URL for cloud region {cloud_region_id}")
             raise BaseAppException("Webhook configuration missing")
 
-        server_url = env_vars.get("NODE_SERVER_URL")
-        nats_url = env_vars.get("NATS_SERVERS")
+        # 自定义区域会把 NODE_SERVER_URL / NATS_SERVERS 改成代理地址，供区域内节点访问。
+        # Traefik 与 NATS leaf 的上游必须仍指向平台中心，否则代理会反代/连回自己。
+        hub_env_vars = RegionService._get_env_vars_dict(
+            CloudRegionConstants.DEFAULT_CLOUD_REGION_ID
+        )
+        server_url = hub_env_vars.get("NODE_SERVER_URL") or os.getenv(
+            "DEFAULT_ZONE_VAR_NODE_SERVER_URL"
+        )
+        nats_url = hub_env_vars.get("NATS_SERVERS") or os.getenv(
+            "DEFAULT_ZONE_VAR_NATS_SERVERS"
+        )
         nats_username = env_vars.get("NATS_USERNAME")
         nats_password = env_vars.get(NodeConstants.NATS_PASSWORD_KEY)
         nats_monitor_username = os.getenv("NATS_ADMIN_USERNAME") or os.getenv("DEFAULT_ZONE_VAR_NATS_ADMIN_USERNAME")
