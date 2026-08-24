@@ -8,6 +8,7 @@ import { loadDashboardComponent } from '@/app/monitor/dashboards/component-loade
 import { normalizeDashboardKey } from '@/app/monitor/dashboards/shared/utils';
 import { useResolveObjectId } from '@/app/monitor/dashboards/shared/utils/use-resolve-object-id';
 import { DashboardLayout } from '@/app/monitor/dashboards/components/dashboard-layout';
+import './register-dashboard-pilot';
 
 export default function ProfessionalDashboardPage() {
   const params = useParams<{ objectKey: string }>();
