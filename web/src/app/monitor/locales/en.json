@@ -152,6 +152,7 @@
       "variableValue": "Alert Value (empty for no-data alerts)",
       "variableInstanceId": "Instance ID",
       "variableDimensionValue": "Dimension Value",
+      "variableMetricDimension": "Metric dimension {name}",
       "noDataAlertNameDefault": "${monitor_object}${resource_name} triggered ${metric_name} no data alert",
       "channelTypeEmail": "Email",
       "channelTypeWechatBot": "Group Chat Assistant",
