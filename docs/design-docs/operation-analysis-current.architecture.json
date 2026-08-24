@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "OperationAnalysis 模块现状架构",
+    "output": "operation-analysis-current.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1500, 720],
+    "repository": {"url": "https://github.com/zhouzhuangjie/bk-lite-1.git", "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"},
+    "views": [
+      {"id": "canvas", "label": "画布与数据源", "focus": ["entry", "access", "canvas", "datasource", "connector", "external"], "note": "画布 JSON 嵌入 datasource id；查询由 NATS、DB、REST、Prometheus、Excel 和 WeOps Connector 执行。"},
+      {"id": "report", "label": "订阅报告执行", "focus": ["subscription", "execution", "snapshot", "browser", "artifact", "smtp"], "note": "Execution 冻结筛选和画布快照，Chromium 通过 scoped session 查询实时数据源后生成 PDF 并发邮件。"},
+      {"id": "risk", "label": "能力与容量缺口", "focus": ["datasource", "connector", "external", "execution", "browser"], "note": "NATS method、数据库 SELECT、网络目标和每画布查询扇出缺少统一 read-only registry、成本预算与 worker fencing。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "security-group", "label": "运营分析入口与组织范围", "wraps": ["entry", "access"], "pad": 18},
+    {"kind": "region", "label": "画布与数据执行面", "wraps": ["canvas", "datasource", "connector", "external"], "pad": 18},
+    {"kind": "region", "label": "订阅、渲染与投递", "wraps": ["subscription", "execution", "snapshot", "browser", "artifact", "smtp"], "pad": 18}
+  ],
+  "components": [
+    {"id": "entry", "type": "frontend", "label": "Editor / Viewer / Share", "sublabel": "HTTP + Render Session", "pos": [20, 80], "size": [190, 100]},
+    {"id": "access", "type": "security", "label": "Feature + Team Access", "sublabel": "instance permission / share principal", "tag": "多入口重复裁决", "pos": [255, 80], "size": [210, 100]},
+    {"id": "canvas", "type": "database", "label": "Canvas / Directory JSON", "sublabel": "Dashboard / Screen / Report / Topology", "tag": "嵌入 datasource id", "pos": [510, 80], "size": [220, 100]},
+    {"id": "datasource", "type": "database", "label": "DataSource / Connection", "sublabel": "config + groups + credentials", "tag": "引用无 FK", "pos": [775, 80], "size": [220, 100], "sources": [{"path": "server/apps/operation_analysis/views/datasource_view.py", "line": 502, "label": "数据源入口"}]},
+    {"id": "connector", "type": "backend", "label": "Connector Executors", "sublabel": "NATS / SQL / REST / Prom / Excel", "tag": "无统一预算", "pos": [1040, 80], "size": [210, 100], "sources": [{"path": "server/apps/operation_analysis/services/datasource_preview/database.py", "line": 19, "label": "数据库 Connector"}]},
+    {"id": "external", "type": "external", "label": "External Data Systems", "sublabel": "NATS / DB / API / WeOps / Runner", "pos": [1295, 80], "size": [185, 100]},
+    {"id": "subscription", "type": "messagebus", "label": "Due Subscription Scanner", "sublabel": "next_run_at / batch 50", "pos": [20, 525], "size": [190, 100]},
+    {"id": "execution", "type": "database", "label": "Execution Orchestrator", "sublabel": "status CAS + retry classifier", "tag": "无 claim token", "pos": [255, 525], "size": [210, 100], "sources": [{"path": "server/apps/operation_analysis/services/execution_orchestrator.py", "line": 406, "label": "报告执行状态机"}]},
+    {"id": "snapshot", "type": "database", "label": "Input / Render Snapshot", "sublabel": "filters + canvas + widget manifest", "tag": "数据计划仍实时", "pos": [510, 525], "size": [220, 100]},
+    {"id": "browser", "type": "backend", "label": "Chromium Render Worker", "sublabel": "scoped token + widget query fanout", "tag": "每任务浏览器", "pos": [775, 525], "size": [220, 100]},
+    {"id": "artifact", "type": "database", "label": "PDF / Excel / MinIO", "sublabel": "temp artifact + materialized slots", "tag": "多套 lease 语义", "pos": [1040, 525], "size": [210, 100]},
+    {"id": "smtp", "type": "external", "label": "SMTP Delivery", "sublabel": "delivered / unknown / failed", "pos": [1295, 525], "size": [185, 100]}
+  ],
+  "connections": [
+    {"id": "entry_access", "from": "entry", "to": "access", "variant": "security"},
+    {"id": "access_canvas", "from": "access", "to": "canvas", "variant": "security"},
+    {"id": "canvas_datasource", "from": "canvas", "to": "datasource", "variant": "default"},
+    {"id": "datasource_connector", "from": "datasource", "to": "connector", "variant": "emphasis"},
+    {"id": "connector_external", "from": "connector", "to": "external", "variant": "emphasis"},
+    {"id": "subscription_execution", "from": "subscription", "to": "execution", "variant": "emphasis"},
+    {"id": "execution_snapshot", "from": "execution", "to": "snapshot", "variant": "security"},
+    {"id": "snapshot_browser", "from": "snapshot", "to": "browser", "variant": "emphasis"},
+    {"id": "browser_artifact", "from": "browser", "to": "artifact", "variant": "emphasis"},
+    {"id": "artifact_smtp", "from": "artifact", "to": "smtp", "variant": "dashed"},
+    {"id": "browser_datasource", "from": "browser", "to": "datasource", "variant": "security"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "已形成的可靠性基础", "items": ["Connection 密文和脱敏、REST/Prometheus SSRF 防护、隔离 Transform Runner、Excel candidate/success generation 均值得保留", "Execution 输入与渲染快照不可变；状态终态 CAS、一次性 Render Token、分享 session 和参数白名单已形成清晰门禁"]},
+    {"dot": "rose", "title": "数据源能力过宽", "items": ["NATS 数据源以字符串选择任意 func_name；数据库仅用 SELECT 前缀判断，仍可调用耗时/副作用函数且没有 statement timeout", "数据库和 WeOps 目标未走统一 egress policy；Canvas JSON 引用 datasource id，删除数据源不产生依赖冲突"]},
+    {"dot": "amber", "title": "运行身份与预算未贯通", "items": ["报告重试复用画布快照，却继续读取当前 DataSource/Connection/query_config；同一 Execution 不保证同一查询计划和输出", "Chromium、画布刷新、分享查询、网络拓扑 batch 与 Excel materialize 使用不同限流/claim 协议；PROCESSING Excel 无 reaper"]}
+  ]
+}

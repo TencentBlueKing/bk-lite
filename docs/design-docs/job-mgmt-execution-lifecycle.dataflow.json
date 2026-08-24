@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "JobMgmt 核心执行与终态数据流",
+    "output": "job-mgmt-execution-lifecycle.dataflow.html",
+    "viewBox": [1420, 735],
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {"id": "intake", "label": "接入与裁决", "focus": ["command", "pending"], "note": "命令经 scope/risk gate 后持久化、派发并行锁 claim；legacy NATS 的 team 仍来自消息体。"},
+      {"id": "execute", "label": "双执行运行时", "focus": ["pending", "sidecar", "ansible"], "note": "两个 runtime 共享 JobExecution，却采用不同选路、结果收集与失败恢复语义。"},
+      {"id": "complete", "label": "终态与副作用", "focus": ["sidecar", "ansible", "direct", "transactional", "effects"], "note": "Sidecar 和早退走 direct finalize；Ansible 回调走受认证的事务终态与 Outbox。"}
+    ]
+  },
+  "stages": [
+    {"label": "01 / 命令与信任"},
+    {"label": "02 / 持久化与 claim"},
+    {"label": "03 / 远端运行"},
+    {"label": "04 / 终态协议"},
+    {"label": "05 / 完成消费"}
+  ],
+  "nodes": [
+    {"id": "command", "type": "security", "label": "Command Gate", "sublabel": "HTTP / OpenAPI / NATS / Schedule", "stage": 0, "row": 2, "width": 130, "tag": "actor + scope + risk"},
+    {"id": "pending", "type": "database", "label": "Persist / Dispatch / Claim", "sublabel": "JobExecution + Celery + row lock", "stage": 1, "row": 2, "width": 160, "tag": "无运行 lease"},
+    {"id": "sidecar", "type": "backend", "label": "Sidecar Batch", "sublabel": "thread pool / results in memory", "stage": 2, "row": 1, "width": 155, "tag": "无全局预算"},
+    {"id": "ansible", "type": "backend", "label": "Ansible Async", "sublabel": "first driver / first region / token", "stage": 2, "row": 3, "width": 155, "tag": "等待回调"},
+    {"id": "direct", "type": "backend", "label": "Direct Finalize", "sublabel": "results JSON + direct callback", "stage": 3, "row": 1, "width": 160, "tag": "best effort"},
+    {"id": "transactional", "type": "database", "label": "Callback + Outbox", "sublabel": "one-time token / row lock / lease", "stage": 3, "row": 3, "width": 160, "tag": "可恢复终态"},
+    {"id": "effects", "type": "external", "label": "Completion Consumers", "sublabel": "SSE / Webhook / NATS / cleanup", "stage": 4, "row": 2, "width": 155, "tag": "副作用"}
+  ],
+  "flows": [
+    {"id": "command_pending", "from": "command", "to": "pending", "label": "accepted", "variant": "security", "labelAt": [200, 340]},
+    {"id": "pending_sidecar", "from": "pending", "to": "sidecar", "label": "sidecar", "variant": "emphasis", "labelAt": [424, 330]},
+    {"id": "pending_ansible", "from": "pending", "to": "ansible", "label": "ansible", "variant": "default", "labelAt": [424, 440]},
+    {"id": "sidecar_direct", "from": "sidecar", "to": "direct", "label": "results", "variant": "dashed", "labelAt": [636, 220]},
+    {"id": "ansible_transactional", "from": "ansible", "to": "transactional", "label": "callback", "variant": "security", "labelAt": [636, 558]},
+    {"id": "direct_effects", "from": "direct", "to": "effects", "label": "direct", "variant": "dashed", "labelAt": [854, 330]},
+    {"id": "transactional_effects", "from": "transactional", "to": "effects", "label": "outbox", "variant": "emphasis", "labelAt": [854, 440]}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "正确的裁决点已经存在", "items": ["worker 用行锁原子 claim PENDING→RUNNING；取消、Ansible callback 和 outbox lease 都重新校验数据库状态", "一次性 callback attempt/token 阻断陈旧回调，Outbox 的 delivery_id 使下游能够去重"]},
+    {"dot": "rose", "title": "核心生命周期没有唯一 reducer", "items": ["Sidecar、危险规则早退、Ansible 提交失败和 Playbook 失败直接写终态，绕过 Completion Outbox", "执行 worker 硬退出后没有 heartbeat/lease/reaper，RUNNING 可永久滞留且调度 queue/skip 被持续阻塞"]},
+    {"dot": "amber", "title": "计划与结果都缺少显式容量单位", "items": ["入口 target_list 多数无 max_length，Ansible 接受混合区域后只处理第一组", "所有逐目标结果和输出汇总到 execution_results JSON，扩大内存、行锁、详情响应与回调载荷"]}
+  ]
+}

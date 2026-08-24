@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "JobMgmt 目标模块架构",
+    "output": "job-mgmt-target.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 790],
+    "views": [
+      {"id": "command", "label": "可信执行命令", "focus": ["adapters", "application", "policy", "catalog"], "note": "身份由传输层/网关注入，应用层只接受规范 ActorContext、资源引用和有界 ExecutionCommand。"},
+      {"id": "runtime", "label": "分区执行运行时", "focus": ["application", "planner", "scheduler", "kernel", "executors", "targets"], "note": "ExecutionPlan 先按 driver、region、team 分区，再由全局预算和短 lease 领取 WorkItem。"},
+      {"id": "facts", "label": "逐目标事实与统一终态", "focus": ["kernel", "facts", "events", "completion", "effects"], "note": "每目标状态可增量提交；唯一 Terminal Reducer 在同一事务写聚合终态与 Completion Outbox。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "region", "label": "稳定命令与查询接口", "wraps": ["adapters", "application", "catalog", "policy"], "pad": 18},
+    {"kind": "region", "label": "可恢复执行内核", "wraps": ["planner", "scheduler", "kernel", "executors", "completion"], "pad": 18},
+    {"kind": "region", "label": "规范事实与外部 Ports", "wraps": ["facts", "events", "effects", "targets"], "pad": 18}
+  ],
+  "components": [
+    {"id": "adapters", "type": "backend", "label": "Interface Adapters", "sublabel": "HTTP / OpenAPI / NATS v2 / Schedule", "pos": [20, 295], "size": [205, 92]},
+    {"id": "application", "type": "backend", "label": "Job Application", "sublabel": "Execute / Cancel / Query / Schedule", "pos": [270, 285], "size": [225, 102]},
+    {"id": "catalog", "type": "backend", "label": "Job Catalog", "sublabel": "Script / Playbook / Target / File / Schedule", "pos": [270, 70], "size": [225, 88]},
+    {"id": "policy", "type": "security", "label": "Execution Policy Gate", "sublabel": "trusted actor / scope / risk / approval", "pos": [270, 535], "size": [225, 94]},
+    {"id": "planner", "type": "backend", "label": "Execution Planner", "sublabel": "freeze refs / driver-region partitions / budget", "pos": [555, 70], "size": [235, 92]},
+    {"id": "scheduler", "type": "messagebus", "label": "Budgeted Scheduler", "sublabel": "team / region / executor quotas + backpressure", "pos": [555, 270], "size": [235, 100]},
+    {"id": "kernel", "type": "backend", "label": "Execution Kernel", "sublabel": "claim / heartbeat / cancel / retry / deadline", "pos": [555, 470], "size": [235, 100]},
+    {"id": "executors", "type": "backend", "label": "Executor Ports", "sublabel": "Sidecar / SSH / WinRM / Ansible", "pos": [850, 70], "size": [220, 90]},
+    {"id": "completion", "type": "security", "label": "Terminal Reducer", "sublabel": "single state machine + transactional outbox", "pos": [850, 470], "size": [220, 98]},
+    {"id": "facts", "type": "database", "label": "Execution Fact Store", "sublabel": "Execution / Attempt / TargetWorkItem / Result", "pos": [850, 270], "size": [220, 100]},
+    {"id": "events", "type": "database", "label": "Event & Completion Store", "sublabel": "log pointer / outbox / receipt / dead letter", "pos": [1130, 470], "size": [235, 98]},
+    {"id": "effects", "type": "external", "label": "Completion Ports", "sublabel": "SSE / Webhook / NATS / cleanup", "pos": [1130, 650], "size": [235, 84]},
+    {"id": "targets", "type": "external", "label": "Remote Targets", "sublabel": "bounded partitions with explicit capability", "pos": [1130, 70], "size": [235, 90]}
+  ],
+  "connections": [
+    {"id": "adapter_app", "from": "adapters", "to": "application", "variant": "emphasis"},
+    {"id": "catalog_app", "from": "catalog", "to": "application"},
+    {"id": "app_policy", "from": "application", "to": "policy", "variant": "security"},
+    {"id": "app_planner", "from": "application", "to": "planner", "variant": "emphasis"},
+    {"id": "planner_scheduler", "from": "planner", "to": "scheduler", "variant": "emphasis"},
+    {"id": "scheduler_kernel", "from": "scheduler", "to": "kernel", "variant": "security"},
+    {"id": "kernel_executors", "from": "kernel", "to": "executors", "variant": "emphasis"},
+    {"id": "executors_targets", "from": "executors", "to": "targets", "variant": "dashed"},
+    {"id": "kernel_facts", "from": "kernel", "to": "facts", "variant": "emphasis"},
+    {"id": "facts_completion", "from": "facts", "to": "completion", "variant": "security"},
+    {"id": "kernel_completion", "from": "kernel", "to": "completion", "variant": "security"},
+    {"id": "completion_events", "from": "completion", "to": "events", "variant": "emphasis"},
+    {"id": "events_effects", "from": "events", "to": "effects", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "深 Module 的稳定接口", "items": ["Job Application 隐藏多入口差异；Planner 隐藏快照、能力匹配与分区；Kernel 隐藏 lease、取消和重试", "调用方只持 ExecutionCommand、ExecutionId 和受范围约束的 Query，不读取 JobExecution/Target ORM"]},
+    {"dot": "emerald", "title": "并发与失败成为持久化协议", "items": ["TargetWorkItem 以唯一键和短 lease 增量提交结果，worker 退出后可重新领取", "Terminal Reducer 是唯一终态入口，同事务生成 done、callback、cleanup outbox；既有 Outbox lease 机制直接复用"]},
+    {"dot": "amber", "title": "演进顺序", "items": ["先关闭 legacy 无身份执行入口、统一所有终态到 Outbox，并补 RUNNING reaper", "再引入 driver/region 分区和全局预算，最后迁移逐目标事实并把大输出移到对象/日志存储"]}
+  ]
+}

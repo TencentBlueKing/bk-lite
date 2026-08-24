@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "SystemMgmt 目标模块架构",
+    "output": "system-mgmt-target.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 790],
+    "views": [
+      {"id": "directory", "label": "规范身份目录", "focus": ["adapters", "application", "identity", "organization", "assignments", "fact_store"], "note": "User、Organization、Membership 和 Assignment 成为唯一规范事实，跨模块不再读取内部 ORM/JSON。"},
+      {"id": "access", "label": "授权编译与查询", "focus": ["application", "organization", "assignments", "policy", "projection_store", "cache"], "note": "组织图索引和有版本的 Policy Projection 分离写入模型与高频读取。"},
+      {"id": "delivery", "label": "可靠通知投递", "focus": ["application", "notification", "operation_store", "external_ports"], "note": "delivery_key 在数据库唯一裁决，按目标记录 receipt，worker 重试不重复投递。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "region", "label": "稳定应用接口", "wraps": ["adapters", "application"], "pad": 18},
+    {"kind": "region", "label": "按变化轴组织的深 Module", "wraps": ["identity", "organization", "assignments", "policy", "integration", "notification"], "pad": 18},
+    {"kind": "region", "label": "规范事实、投影与外部 Ports", "wraps": ["fact_store", "projection_store", "operation_store", "cache", "external_ports"], "pad": 18}
+  ],
+  "components": [
+    {"id": "adapters", "type": "backend", "label": "Interface Adapters", "sublabel": "HTTP / Login / NATS v2 / Celery", "pos": [25, 300], "size": [205, 88]},
+    {"id": "application", "type": "backend", "label": "SystemMgmt Application", "sublabel": "Directory / Access / Integration / Delivery", "pos": [275, 290], "size": [240, 98]},
+    {"id": "identity", "type": "backend", "label": "Identity Directory", "sublabel": "User / Login / Credential / Lifecycle", "pos": [575, 45], "size": [235, 82]},
+    {"id": "organization", "type": "backend", "label": "Organization Graph", "sublabel": "Group / closure / archive / move invariant", "pos": [575, 165], "size": [235, 86]},
+    {"id": "assignments", "type": "backend", "label": "Membership & Assignment", "sublabel": "membership / role grant / data scope", "pos": [575, 290], "size": [235, 88]},
+    {"id": "policy", "type": "security", "label": "Policy Compiler & Query", "sublabel": "typed policy / version / explain", "pos": [575, 420], "size": [235, 88]},
+    {"id": "integration", "type": "backend", "label": "Integration Sync Runtime", "sublabel": "manifest / page checkpoint / run budget", "pos": [575, 550], "size": [235, 86]},
+    {"id": "notification", "type": "backend", "label": "Notification Delivery", "sublabel": "command / capability / receipt / retry", "pos": [575, 670], "size": [235, 78]},
+    {"id": "fact_store", "type": "database", "label": "Canonical Directory Store", "sublabel": "identity / organization / membership / grant", "pos": [865, 290], "size": [235, 88]},
+    {"id": "projection_store", "type": "database", "label": "Access Projection Store", "sublabel": "closure / compiled policy / generation", "pos": [865, 420], "size": [235, 88]},
+    {"id": "operation_store", "type": "database", "label": "Run & Delivery Store", "sublabel": "sync checkpoint / outbox / receipt / dead letter", "pos": [865, 548], "size": [235, 90]},
+    {"id": "cache", "type": "database", "label": "Versioned Read Cache", "sublabel": "permission projection / directory view", "pos": [1150, 420], "size": [220, 84]},
+    {"id": "external_ports", "type": "external", "label": "Provider & Channel Ports", "sublabel": "IdP / IM / Email / Webhook / NATS", "pos": [1150, 570], "size": [220, 90]}
+  ],
+  "connections": [
+    {"id": "adapters_app", "from": "adapters", "to": "application", "variant": "emphasis"},
+    {"id": "app_identity", "from": "application", "to": "identity", "variant": "emphasis"},
+    {"id": "app_org", "from": "application", "to": "organization"},
+    {"id": "app_assign", "from": "application", "to": "assignments", "variant": "emphasis"},
+    {"id": "app_policy", "from": "application", "to": "policy", "variant": "security"},
+    {"id": "app_integration", "from": "application", "to": "integration"},
+    {"id": "app_notification", "from": "application", "to": "notification"},
+    {"id": "identity_fact", "from": "identity", "to": "fact_store"},
+    {"id": "org_fact", "from": "organization", "to": "fact_store"},
+    {"id": "assign_fact", "from": "assignments", "to": "fact_store", "route": "straight"},
+    {"id": "policy_projection", "from": "policy", "to": "projection_store", "variant": "security"},
+    {"id": "projection_cache", "from": "projection_store", "to": "cache", "variant": "emphasis"},
+    {"id": "integration_operation", "from": "integration", "to": "operation_store", "variant": "emphasis", "route": "straight"},
+    {"id": "notification_operation", "from": "notification", "to": "operation_store", "variant": "emphasis"},
+    {"id": "operation_external", "from": "operation_store", "to": "external_ports", "variant": "dashed"},
+    {"id": "integration_external", "from": "integration", "to": "external_ports", "variant": "dashed", "fromSide": "right", "toSide": "top", "via": [[830, 593], [830, 525], [1260, 525]]}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "深 Module 与唯一事实", "items": ["Identity、Organization、Assignment 分别隐藏生命周期、树不变量和授权关系", "仓内模块只调用 DirectoryQuery、AccessQuery 和 NotificationCommand，不再直引 ORM/GroupUtils"]},
+    {"dot": "emerald", "title": "读写与并发裁决", "items": ["Closure 与 Policy Projection 是可重建、带 generation 的读取投影", "同步 checkpoint、通知 Outbox/Receipt 和 delivery_key 唯一约束提供可恢复幂等"]},
+    {"dot": "amber", "title": "渐进迁移顺序", "items": ["先收紧无签名/无 scope 入口并补通知 receipt，再建立应用接口", "随后迁移规范 Membership/Assignment 与组织 closure，最后删除 JSON 授权投影和跨模块模型直引"]}
+  ]
+}

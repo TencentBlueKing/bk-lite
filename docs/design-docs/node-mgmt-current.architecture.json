@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "NodeMgmt 模块现状架构",
+    "output": "node-mgmt-current.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/zhouzhuangjie/bk-lite-1", "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"},
+    "viewBox": [1420, 720],
+    "views": [
+      {"id": "desired-runtime", "label": "期望与实际状态", "focus": ["protocol_adapters", "desired_config", "node_runtime", "sidecar_agents"], "note": "DB 保存节点和期望配置，Sidecar 心跳回报实际运行状态。"},
+      {"id": "install", "label": "安装与回连", "focus": ["protocol_adapters", "installer", "task_state", "remote_execution", "sidecar_agents"], "note": "安装命令成功后仍需等待 Sidecar 回连，任务才收敛。"},
+      {"id": "delivery", "label": "跨模块投影", "focus": ["node_runtime", "module_push", "downstream"], "note": "CMDB/Monitor 推送采用请求内重试与 best-effort，缺少持久化投递意图。"}
+    ]
+  },
+  "components": [
+    {"id": "callers", "type": "external", "label": "调用方", "sublabel": "控制台 / 内部模块 / Sidecar", "pos": [20, 290], "size": [160, 72]},
+    {"id": "protocol_adapters", "type": "backend", "label": "协议入口", "sublabel": "9 ViewSets / 27 NATS / Celery", "pos": [215, 280], "size": [210, 92], "sources": [
+      {"path": "server/apps/node_mgmt/urls.py", "line": 15, "label": "HTTP Interface"},
+      {"path": "server/apps/node_mgmt/nats/node.py", "line": 703, "label": "NATS Interface"},
+      {"path": "server/apps/node_mgmt/apps.py", "line": 8, "label": "启动注册"}
+    ]},
+    {"id": "desired_config", "type": "backend", "label": "云区域与期望配置", "sublabel": "Region / Collector / Config / ChildConfig", "pos": [520, 55], "size": [245, 82], "sources": [
+      {"path": "server/apps/node_mgmt/models/sidecar.py", "line": 69, "label": "采集器与配置"},
+      {"path": "server/apps/node_mgmt/services/cloudregion.py", "line": 35, "label": "云区域环境"}
+    ]},
+    {"id": "node_runtime", "type": "backend", "label": "节点与 Sidecar 实现", "sublabel": "注册 / 心跳 / ETag / 配置渲染", "tag": "1,036 行服务", "pos": [520, 215], "size": [245, 88], "sources": [
+      {"path": "server/apps/node_mgmt/services/sidecar.py", "line": 36, "label": "Sidecar Service"},
+      {"path": "server/apps/node_mgmt/models/sidecar.py", "line": 32, "label": "Node 运行投影"}
+    ]},
+    {"id": "installer", "type": "backend", "label": "安装与动作编排", "sublabel": "安装 / 卸载 / start / restart / stop", "tag": "1,676 行安装任务", "pos": [520, 405], "size": [245, 92], "sources": [
+      {"path": "server/apps/node_mgmt/tasks/installer.py", "line": 545, "label": "并发派发"},
+      {"path": "server/apps/node_mgmt/services/node.py", "line": 256, "label": "批量动作"},
+      {"path": "server/apps/node_mgmt/tasks/action_task.py", "line": 158, "label": "状态收敛"}
+    ]},
+    {"id": "task_state", "type": "database", "label": "Django 任务与配置状态", "sublabel": "Node / TaskNode / Config / Action / JSON result", "pos": [830, 410], "size": [235, 90], "sources": [
+      {"path": "server/apps/node_mgmt/models/installer.py", "line": 21, "label": "安装状态"},
+      {"path": "server/apps/node_mgmt/models/action.py", "line": 10, "label": "动作状态"}
+    ]},
+    {"id": "module_push", "type": "backend", "label": "跨模块推送", "sublabel": "有限重试 / link id 回填 / best-effort", "pos": [830, 560], "size": [235, 82], "sources": [
+      {"path": "server/apps/node_mgmt/services/module_push.py", "line": 66, "label": "推送编排"}
+    ]},
+    {"id": "remote_execution", "type": "external", "label": "远程执行环境", "sublabel": "Executor / Ansible / SSH / WinRM", "pos": [1140, 415], "size": [225, 84], "sources": [
+      {"path": "server/apps/node_mgmt/utils/installer.py", "line": 108, "label": "Executor Adapter"},
+      {"path": "server/apps/node_mgmt/services/windows_remote_bootstrap.py", "line": 537, "label": "Windows Adapter"}
+    ]},
+    {"id": "sidecar_agents", "type": "external", "label": "Sidecar / Collector", "sublabel": "心跳 / 拉配置 / 回报动作状态", "pos": [1140, 220], "size": [225, 84], "sources": [
+      {"path": "server/apps/node_mgmt/views/sidecar.py", "line": 216, "label": "Sidecar API"},
+      {"path": "server/apps/node_mgmt/services/sidecar.py", "line": 495, "label": "心跳更新"}
+    ]},
+    {"id": "downstream", "type": "external", "label": "资产与监控投影", "sublabel": "CMDB / Monitor", "pos": [1140, 560], "size": [225, 82], "sources": [
+      {"path": "server/apps/node_mgmt/services/module_push.py", "line": 147, "label": "跨模块写入"}
+    ]}
+  ],
+  "boundaries": [
+    {"kind": "region", "label": "NodeMgmt Interface Adapters", "wraps": ["protocol_adapters"], "pad": 18},
+    {"kind": "region", "label": "按技术层组织的 NodeMgmt Implementation", "wraps": ["desired_config", "node_runtime", "installer", "task_state", "module_push"], "pad": 20},
+    {"kind": "region", "label": "节点运行时与外部投影", "wraps": ["remote_execution", "sidecar_agents", "downstream"], "pad": 18}
+  ],
+  "connections": [
+    {"id": "callers_adapters", "from": "callers", "to": "protocol_adapters", "variant": "emphasis"},
+    {"id": "adapter_config", "from": "protocol_adapters", "to": "desired_config"},
+    {"id": "adapter_node", "from": "protocol_adapters", "to": "node_runtime", "variant": "emphasis"},
+    {"id": "adapter_installer", "from": "protocol_adapters", "to": "installer"},
+    {"id": "config_node", "from": "desired_config", "to": "node_runtime"},
+    {"id": "installer_state", "from": "installer", "to": "task_state"},
+    {"id": "state_remote", "from": "task_state", "to": "remote_execution", "variant": "dashed"},
+    {"id": "config_sidecar", "from": "node_runtime", "to": "sidecar_agents", "label": "ETag / 配置 / 动作", "variant": "emphasis"},
+    {"id": "push_downstream", "from": "module_push", "to": "downstream", "label": "同步重试", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "已有可靠性基础", "items": ["安装已有 attempt、execution claim、deadline、并发槽和 Sidecar 回连确认", "敏感安装凭据加密保存，并在完成、超时或派发失败时清空"]},
+    {"dot": "rose", "title": "状态机被 JSON 与大文件隐藏", "items": ["安装和动作阶段同时分散在 status、result.steps、常量和 Celery 分支", "Node.status、metrics、push_status 混合实际状态、投影和投递结果"]},
+    {"dot": "amber", "title": "可靠性交付不一致", "items": ["配置依靠 Sidecar ETag 拉取收敛，CMDB/Monitor 推送仍是请求内 best-effort", "27 个 NATS Handler 同时承担查询、权限、配置写入和安装入口"]}
+  ]
+}

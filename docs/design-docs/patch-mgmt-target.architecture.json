@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "PatchMgmt 目标架构",
+    "output": "patch-mgmt-target.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1480, 760],
+    "views": [
+      {"id": "catalog", "label": "版本化目录与基线", "focus": ["adapters", "patchCatalog", "baselineVersion", "evidence"], "note": "来源同步有租约与运行记录；补丁关系和基线版本成为可审计事实。"},
+      {"id": "orchestration", "label": "分区治理与容量", "focus": ["adapters", "command", "planner", "scheduler", "workItem", "executor"], "note": "可信命令生成不可变计划，按团队/区域/协议分区并通过共享预算派发。"},
+      {"id": "convergence", "label": "统一收敛与副作用", "focus": ["workItem", "executor", "reducer", "outbox", "infrastructure"], "note": "所有终态、链路步骤和通知意图在同一事务写入，再由租约 worker 投递和补偿。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "security-group", "label": "可信命令与团队范围", "wraps": ["adapters", "command"], "pad": 18},
+    {"kind": "region", "label": "PatchMgmt 领域事实", "wraps": ["patchCatalog", "baselineVersion", "evidence"], "pad": 18},
+    {"kind": "region", "label": "治理编排与执行内核", "wraps": ["planner", "scheduler", "workItem", "executor", "reducer", "outbox"], "pad": 18},
+    {"kind": "region", "label": "基础设施适配器", "wraps": ["infrastructure"], "pad": 18}
+  ],
+  "components": [
+    {"id": "adapters", "type": "frontend", "label": "HTTP / Beat Adapters", "sublabel": "认证、功能权限、周期触发", "pos": [25, 310], "size": [175, 100]},
+    {"id": "command", "type": "security", "label": "Patch Command API", "sublabel": "ActorContext + scoped TargetRefs", "tag": "拒绝调用方覆盖团队", "pos": [240, 310], "size": [220, 100]},
+    {"id": "patchCatalog", "type": "database", "label": "Versioned Patch Catalog", "sublabel": "同步运行 + 来源身份 + 关系图", "tag": "lease / cursor / outcome", "pos": [375, 80], "size": [240, 98]},
+    {"id": "baselineVersion", "type": "database", "label": "Baseline Version", "sublabel": "不可变 requirements + effective time", "tag": "审计可重放", "pos": [780, 80], "size": [220, 98]},
+    {"id": "evidence", "type": "database", "label": "Assessment Evidence", "sublabel": "run + per-host requirement facts", "tag": "当前投影另行维护", "pos": [1050, 80], "size": [220, 98]},
+    {"id": "planner", "type": "backend", "label": "Governance Planner", "sublabel": "validate + freeze + partition", "pos": [510, 310], "size": [220, 100]},
+    {"id": "scheduler", "type": "messagebus", "label": "Budgeted Scheduler", "sublabel": "team / region / protocol budgets", "tag": "分片与背压", "pos": [780, 310], "size": [220, 100]},
+    {"id": "workItem", "type": "database", "label": "Governance WorkItem", "sublabel": "host + phase + attempt + lease", "tag": "唯一链步骤", "pos": [1050, 310], "size": [220, 100]},
+    {"id": "executor", "type": "backend", "label": "Execution Kernel", "sublabel": "统一 Port + 协议 Adapter", "tag": "只暴露深接口", "pos": [1050, 550], "size": [220, 100]},
+    {"id": "reducer", "type": "security", "label": "Terminal Reducer", "sublabel": "fencing + chain state machine", "tag": "唯一终态裁决", "pos": [780, 550], "size": [220, 100]},
+    {"id": "outbox", "type": "database", "label": "Transition Outbox", "sublabel": "chain / notify / broker intents", "tag": "唯一键 + lease + retry", "pos": [510, 550], "size": [220, 100]},
+    {"id": "infrastructure", "type": "external", "label": "基础设施适配器", "sublabel": "目标 / 源 / Celery / 通知", "pos": [1310, 550], "size": [140, 100]}
+  ],
+  "connections": [
+    {"id": "adapterCommand", "from": "adapters", "to": "command", "variant": "security"},
+    {"id": "commandPlan", "from": "command", "to": "planner", "variant": "emphasis"},
+    {"id": "catalogBaseline", "from": "patchCatalog", "to": "baselineVersion", "variant": "default"},
+    {"id": "baselineEvidence", "from": "baselineVersion", "to": "evidence", "variant": "emphasis"},
+    {"id": "catalogPlan", "from": "patchCatalog", "to": "planner", "variant": "default", "fromSide": "bottom", "toSide": "top"},
+    {"id": "baselinePlan", "from": "baselineVersion", "to": "planner", "variant": "security"},
+    {"id": "planScheduler", "from": "planner", "to": "scheduler", "variant": "emphasis"},
+    {"id": "schedulerWork", "from": "scheduler", "to": "workItem", "variant": "emphasis"},
+    {"id": "workExecutor", "from": "workItem", "to": "executor", "variant": "security"},
+    {"id": "executorTargets", "from": "executor", "to": "infrastructure", "variant": "emphasis", "fromSide": "right", "toSide": "left"},
+    {"id": "executorReducer", "from": "executor", "to": "reducer", "variant": "security"},
+    {"id": "reducerWork", "from": "reducer", "to": "workItem", "variant": "security"},
+    {"id": "reducerOutbox", "from": "reducer", "to": "outbox", "variant": "emphasis"},
+    {"id": "outboxConsumers", "from": "outbox", "to": "infrastructure", "variant": "dashed", "fromSide": "bottom", "toSide": "bottom", "via": [[620, 690], [1380, 690]]}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "短期：统一可靠性语义", "items": ["父任务用原子 claim；治理链步骤建立唯一 intent，并与终态在同一事务写 Transition Outbox", "补丁源同步用 SyncRun lease/heartbeat 替代永久布尔锁；周期扫描按团队分区并设置每批上限"]},
+    {"dot": "violet", "title": "中期：可扩展执行模型", "items": ["Planner 生成团队×区域×协议分区，WorkItem 持有 attempt/lease，Scheduler 负责共享预算和公平性", "Execution Kernel 拆分命令规划、协议适配、结果解析、收敛策略四条变化轴，不拆微服务"]},
+    {"dot": "emerald", "title": "长期：可审计领域事实", "items": ["BaselineVersion、AssessmentRun 与不可变 evidence 支持按时间重放；CurrentCompliance 仅是读模型", "PatchSourceIdentity 与规范化关系边保证去重、删除、替代链和循环约束可验证"]}
+  ]
+}

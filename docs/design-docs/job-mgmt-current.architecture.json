@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "JobMgmt 模块现状架构",
+    "output": "job-mgmt-current.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/zhouzhuangjie/bk-lite-1.git",
+      "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"
+    },
+    "viewBox": [1420, 790],
+    "views": [
+      {"id": "intake", "label": "入口与执行命令", "focus": ["callers", "adapters", "application", "catalog", "execution"], "note": "HTTP、OpenAPI、NATS 与定时任务最终都创建 JobExecution，但 legacy NATS 仍信任消息体 team。"},
+      {"id": "runtime", "label": "双执行运行时", "focus": ["execution", "celery", "sidecar", "ansible", "targets"], "note": "Sidecar 每个 execution 自建线程池；Ansible 根据首目标选路且多云区域只执行第一组。"},
+      {"id": "completion", "label": "终态与完成副作用", "focus": ["execution", "sidecar", "ansible", "state", "outbox", "stream"], "note": "Ansible 回调与取消进入 Outbox；Sidecar 和同步早退仍直接回调，终态可靠性分叉。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "region", "label": "JobMgmt 接口与应用层", "wraps": ["adapters", "application", "catalog"], "pad": 18},
+    {"kind": "region", "label": "执行与生命周期运行时", "wraps": ["execution", "celery", "sidecar", "ansible", "state", "outbox"], "pad": 18},
+    {"kind": "region", "label": "基础设施与远端边界", "wraps": ["stream", "targets"], "pad": 18}
+  ],
+  "components": [
+    {"id": "callers", "type": "external", "label": "用户与仓内模块", "sublabel": "Web / Patch / Alerts / Schedule", "pos": [20, 305], "size": [170, 90]},
+    {"id": "adapters", "type": "backend", "label": "HTTP / OpenAPI / NATS", "sublabel": "9 routers + 11 NATS handlers", "tag": "legacy + scoped 双轨", "pos": [225, 290], "size": [205, 105], "sources": [{"path": "server/apps/job_mgmt/urls.py", "line": 1, "label": "HTTP 路由"}, {"path": "server/apps/job_mgmt/nats_api.py", "line": 201, "label": "NATS 执行入口"}]},
+    {"id": "application", "type": "backend", "label": "Execution Application", "sublabel": "ExecutionService + 701 行 nats_api", "tag": "第二应用层", "pos": [475, 290], "size": [215, 105], "sources": [{"path": "server/apps/job_mgmt/services/execution_service.py", "line": 1, "label": "HTTP 执行服务"}, {"path": "server/apps/job_mgmt/nats_api.py", "line": 1, "label": "NATS 应用逻辑"}]},
+    {"id": "catalog", "type": "database", "label": "作业资源目录", "sublabel": "Script / Playbook / Target / Schedule / File", "pos": [475, 85], "size": [215, 92]},
+    {"id": "execution", "type": "database", "label": "JobExecution", "sublabel": "状态 + target_list + 全量 results JSON", "tag": "单行事实与锁热点", "pos": [745, 285], "size": [220, 110], "sources": [{"path": "server/apps/job_mgmt/models/execution.py", "line": 12, "label": "执行聚合"}]},
+    {"id": "celery", "type": "messagebus", "label": "Celery / Beat", "sublabel": "dispatch / schedule / cancel fallback", "tag": "无执行 lease", "pos": [745, 85], "size": [220, 92], "sources": [{"path": "server/apps/job_mgmt/tasks.py", "line": 37, "label": "执行任务"}]},
+    {"id": "sidecar", "type": "backend", "label": "Sidecar Runners", "sublabel": "Script / File + ThreadPoolExecutor", "tag": "每 execution ≤10 线程", "pos": [1015, 83], "size": [225, 96], "sources": [{"path": "server/apps/job_mgmt/services/script_execution_runner.py", "line": 97, "label": "Sidecar 批执行"}]},
+    {"id": "ansible", "type": "backend", "label": "Ansible Async Path", "sublabel": "首目标选路 / callback attempt", "tag": "仅第一云区域", "pos": [1015, 270], "size": [225, 100], "sources": [{"path": "server/apps/job_mgmt/services/execution_base_service.py", "line": 221, "label": "Ansible 脚本提交"}, {"path": "server/apps/job_mgmt/services/playbook_execution.py", "line": 107, "label": "Playbook 区域分组"}]},
+    {"id": "state", "type": "security", "label": "Terminal State Services", "sublabel": "claim / callback / cancellation / timeout", "tag": "两套终态路径", "pos": [745, 535], "size": [220, 104]},
+    {"id": "outbox", "type": "database", "label": "Completion Outbox", "sublabel": "lease / retry / idempotency / rescan", "tag": "可靠基础已存在", "pos": [1015, 535], "size": [225, 100], "sources": [{"path": "server/apps/job_mgmt/models/completion_outbox.py", "line": 8, "label": "完成副作用"}]},
+    {"id": "stream", "type": "messagebus", "label": "Runtime Stores", "sublabel": "JetStream / DB / MinIO", "pos": [1265, 535], "size": [135, 100]},
+    {"id": "targets", "type": "external", "label": "远端执行边界", "sublabel": "Sidecar / SSH / WinRM / Ansible", "pos": [1270, 175], "size": [130, 100]}
+  ],
+  "connections": [
+    {"id": "caller_adapter", "from": "callers", "to": "adapters", "variant": "emphasis"},
+    {"id": "adapter_app", "from": "adapters", "to": "application", "variant": "emphasis"},
+    {"id": "catalog_app", "from": "catalog", "to": "application"},
+    {"id": "app_execution", "from": "application", "to": "execution", "variant": "security"},
+    {"id": "app_celery", "from": "application", "to": "celery", "variant": "emphasis"},
+    {"id": "celery_sidecar", "from": "celery", "to": "sidecar", "variant": "emphasis"},
+    {"id": "celery_ansible", "from": "celery", "to": "ansible"},
+    {"id": "sidecar_targets", "from": "sidecar", "to": "targets", "variant": "emphasis"},
+    {"id": "ansible_targets", "from": "ansible", "to": "targets", "variant": "dashed"},
+    {"id": "ansible_state", "from": "ansible", "to": "state", "variant": "security"},
+    {"id": "state_execution", "from": "state", "to": "execution", "variant": "security"},
+    {"id": "state_outbox", "from": "state", "to": "outbox", "variant": "emphasis"},
+    {"id": "outbox_stream", "from": "outbox", "to": "stream", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "应保留的并发与可靠性机制", "items": ["PENDING→RUNNING claim、取消行锁与 Ansible 一次性 callback identity 已形成明确裁决点", "Completion Outbox 具备唯一幂等键、短 lease、退避重试与 Beat 重扫；TargetTeamMembership 可检测并发团队变更"]},
+    {"dot": "rose", "title": "信任与生命周期发生分叉", "items": ["legacy NATS 执行/文件分发信任消息体 team，目标列表与状态查询可无 scope 枚举", "Sidecar/同步失败直接写终态并 best-effort 回调；只有 Ansible 回调和取消进入 Outbox"]},
+    {"dot": "amber", "title": "容量边界隐含在单行与进程内", "items": ["目标与 stdout/stderr 聚合成一个 JSON 行，终态重写和回调复制完整结果", "每个 execution 自建线程池但没有团队、区域和执行器级全局预算；worker 中断后无 RUNNING 租约回收"]}
+  ]
+}

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "CMDB 核心资产写入流程",
+    "output": "cmdb-core-vertical.workflow.html",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 730],
+    "views": [
+      {
+        "id": "main-write-path",
+        "label": "纵向资产主链",
+        "focus": ["accept", "dispatch", "normalize", "write_fact", "project"],
+        "note": "从准入请求一路向下，直到资产图事实和派生投影完成。"
+      },
+      {
+        "id": "collection-branch",
+        "label": "外部采集支线",
+        "focus": ["dispatch", "external_runtime", "normalize"],
+        "note": "NodeMgmt、Stargazer 和 Job 返回结果后进入统一规范化阶段。"
+      },
+      {
+        "id": "reliability",
+        "label": "幂等与补偿",
+        "focus": ["write_fact", "operation_ledger", "recovery", "project", "delivery"],
+        "note": "操作账本、租约和补偿需要覆盖所有写入口。"
+      }
+    ]
+  },
+  "lanes": [
+    {"id": "admission", "label": "01 / 触发与准入"},
+    {"id": "execution", "label": "02 / 采集与扫描"},
+    {"id": "normalization", "label": "03 / 结果与规范化"},
+    {"id": "commit", "label": "04 / 事实提交"},
+    {"id": "projection", "label": "05 / 派生与交付"}
+  ],
+  "mainPath": ["accept", "dispatch", "normalize", "write_fact", "project"],
+  "nodes": [
+    {"id": "model_rules", "lane": "admission", "col": 0, "width": 64, "type": "database", "label": "模型规则", "sublabel": "属性 / 约束"},
+    {"id": "accept", "lane": "admission", "col": 2, "width": 142, "type": "security", "label": "准入资产写入请求", "sublabel": "鉴权 / UUID / 幂等键"},
+    {"id": "dispatch", "lane": "execution", "col": 2, "width": 144, "type": "backend", "label": "采集、扫描或直接写入", "sublabel": "Collect / Scan / Module Ingest"},
+    {"id": "external_runtime", "lane": "execution", "col": 4, "width": 112, "type": "external", "label": "外部执行", "sublabel": "NodeMgmt / Stargazer / Job"},
+    {"id": "normalize", "lane": "normalization", "col": 2, "width": 142, "type": "messagebus", "label": "接收结果并规范化", "sublabel": "回调 / 身份归一 / 字段校验"},
+    {"id": "write_fact", "lane": "commit", "col": 2, "width": 128, "type": "database", "label": "提交资产图事实", "sublabel": "模型 / 实例 / 关系"},
+    {"id": "operation_ledger", "lane": "commit", "col": 4, "width": 112, "type": "database", "label": "操作账本与 Outbox", "sublabel": "PG / lease / retry"},
+    {"id": "recovery", "lane": "projection", "col": 0, "width": 68, "type": "security", "label": "对账与补偿", "sublabel": "lease / retry"},
+    {"id": "project", "lane": "projection", "col": 2, "width": 132, "type": "backend", "label": "派生关系与变更事实", "sublabel": "Auto Relation / ChangeRecord"},
+    {"id": "delivery", "lane": "projection", "col": 4, "width": 124, "type": "external", "label": "投影与通知", "sublabel": "Monitor / NodeMgmt / SystemMgmt"}
+  ],
+  "edges": [
+    {"id": "accept_dispatch", "from": "accept", "to": "dispatch", "role": "main", "variant": "emphasis", "route": "drop", "fromSide": "bottom", "toSide": "top"},
+    {"id": "dispatch_normalize", "from": "dispatch", "to": "normalize", "role": "main", "variant": "emphasis", "route": "drop", "fromSide": "bottom", "toSide": "top"},
+    {"id": "normalize_write", "from": "normalize", "to": "write_fact", "role": "main", "variant": "emphasis", "route": "drop", "fromSide": "bottom", "toSide": "top"},
+    {"id": "write_project", "from": "write_fact", "to": "project", "role": "main", "variant": "emphasis", "route": "drop", "fromSide": "bottom", "toSide": "top"},
+    {"id": "rules_accept", "from": "model_rules", "to": "accept", "label": "校验契约", "role": "branch", "labelDy": -20},
+    {"id": "dispatch_runtime", "from": "dispatch", "to": "external_runtime", "label": "异步执行", "role": "async", "variant": "dashed", "route": "bottom-channel", "fromSide": "bottom", "toSide": "bottom", "labelDy": 24},
+    {"id": "runtime_normalize", "from": "external_runtime", "to": "normalize", "role": "return", "variant": "dashed"},
+    {"id": "write_ledger", "from": "write_fact", "to": "operation_ledger", "label": "变更与投递意图", "role": "async", "variant": "dashed"},
+    {"id": "project_delivery", "from": "project", "to": "delivery", "label": "异步投影", "role": "async", "variant": "dashed"},
+    {"id": "recovery_write", "from": "recovery", "to": "write_fact", "label": "发现事实后收敛", "role": "return", "variant": "security", "route": "up-channel", "fromSide": "top", "toSide": "left"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "纵向主链", "items": ["所有来源进入同一鉴权、规范化和资产写入用例", "外部执行只是支线，不能拥有另一套写入规则"]},
+    {"dot": "rose", "title": "当前断点", "items": ["HTTP 创建/更新已有 Operation + Outbox", "NATS、批量与部分采集路径仍直接写图"]},
+    {"dot": "amber", "title": "容量关注", "items": ["任务分区、查询预算、批量上限和背压必须统一", "写图和下游投影分别设置并发与重试预算"]}
+  ]
+}

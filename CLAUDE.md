@@ -15,6 +15,7 @@
 | UI 与组件约定 | `DESIGN.md`、`web/DESIGN.md`、`web/COMPONENT_GOVERNANCE.md` |
 | 开发、验证与运行命令 | `DEVELOP.md` |
 | Server 启动顺序与依赖边界 | `docs/operations/server-startup-dependencies.md` |
+| Server 模块架构、数据流与使用指引 | `docs/design-docs/agent-architecture-evidence.md` |
 | 长期架构决定 | `docs/adr/` |
 | 发布记录 | `docs/changelog/` |
 
