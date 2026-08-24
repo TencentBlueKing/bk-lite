@@ -6,6 +6,31 @@ from config.components.locale import TIME_ZONE
 
 logger = logging.getLogger("celery_config")
 
+
+def _load_beat_schedule(installed_apps, importer=importlib.import_module):
+    beat_schedule = {}
+    complete = True
+    for app_label in installed_apps:
+        config_module = f"{app_label}.config"
+        try:
+            mod = importer(config_module)
+            app_schedule = getattr(mod, "CELERY_BEAT_SCHEDULE", None)
+            if app_schedule:
+                beat_schedule.update(app_schedule)
+        except ModuleNotFoundError as exc:
+            if exc.name == config_module:
+                continue
+            complete = False
+            logger.exception("Failed to load CELERY_BEAT_SCHEDULE from %s", config_module)
+        except ImportError:
+            complete = False
+            logger.exception("Failed to load CELERY_BEAT_SCHEDULE from %s", config_module)
+        except Exception:
+            complete = False
+            logger.exception("Failed to load CELERY_BEAT_SCHEDULE from %s", config_module)
+    return beat_schedule, complete
+
+
 IS_USE_CELERY = os.getenv("ENABLE_CELERY", "False").lower() == "true"
 # celery
 CELERY_IMPORTS = ()
@@ -29,15 +54,5 @@ if IS_USE_CELERY:
     CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND")
     DJANGO_CELERY_BEAT_TZ_AWARE = True
 
-    CELERY_BEAT_SCHEDULE = {}
-    for app_label in INSTALLED_APPS:
-        config_module = f"{app_label}.config"
-        try:
-            mod = importlib.import_module(config_module)
-            app_schedule = getattr(mod, "CELERY_BEAT_SCHEDULE", None)
-            if app_schedule:
-                CELERY_BEAT_SCHEDULE.update(app_schedule)
-        except ImportError:
-            pass
-        except Exception:
-            logger.exception("Failed to load CELERY_BEAT_SCHEDULE from %s", config_module)
+    CELERY_BEAT_SCHEDULE, CELERY_BEAT_SCHEDULE_COMPLETE = _load_beat_schedule(INSTALLED_APPS)
+    CELERY_BEAT_SCHEDULE_RECONCILE_MODE = os.getenv("CELERY_BEAT_SCHEDULE_RECONCILE_MODE", "shadow")
