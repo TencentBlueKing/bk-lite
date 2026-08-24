@@ -1,9 +1,11 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 import yaml
+from django.db import close_old_connections, transaction
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -659,7 +661,7 @@ def test_backend_import_submit_logs_success_results_as_create_and_update(authent
 
 
 @pytest.mark.django_db
-def test_backend_export_filters_to_instance_permissions_with_real_dashboards(authenticated_user, monkeypatch):
+def test_backend_export_rejects_partially_authorized_root_set(authenticated_user, monkeypatch):
     authenticated_user.permission = {"ops-analysis": {"view-View"}}
     allowed_dashboard = Dashboard.objects.create(name="allowed-dashboard", groups=[1], view_sets=[])
     hidden_dashboard = Dashboard.objects.create(name="hidden-dashboard", groups=[1], view_sets=[])
@@ -681,13 +683,59 @@ def test_backend_export_filters_to_instance_permissions_with_real_dashboards(aut
     response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
     response.render()
     payload = json.loads(response.rendered_content)
-    data = _unwrap_payload(payload)
-    yaml_content = data["yaml_content"]
 
-    assert response.status_code == status.HTTP_200_OK
-    assert payload["result"] is True
-    assert "allowed-dashboard" in yaml_content
-    assert "hidden-dashboard" not in yaml_content
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert payload["result"] is False
+
+
+@pytest.mark.django_db
+def test_backend_legacy_export_rechecks_root_after_competing_transaction(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View"}}
+    monkeypatch.setenv("OPS_ANALYSIS_EXPORT_DEPENDENCY_PERMISSION_MODE", "legacy")
+
+    def run_committed(callback):
+        def execute():
+            close_old_connections()
+            try:
+                with transaction.atomic():
+                    return callback()
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(execute).result(timeout=5)
+
+    dashboard_id = run_committed(
+        lambda: Dashboard.objects.create(name="permission-race-dashboard", groups=[1], view_sets=[]).id
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        lambda user, current_team, app_name, permission_key, include_children=False: {
+            "instance": [{"id": dashboard_id, "permission": ["View"]}],
+            "team": [],
+        },
+    )
+    original_collect = ExportService.collect_export_dependencies
+
+    def collect_after_permission_change(cls, scope_type, object_type, object_ids, *, lock=False):
+        del cls
+        run_committed(lambda: Dashboard.objects.filter(id=dashboard_id).update(groups=[2]))
+        return original_collect(scope_type, object_type, object_ids, lock=lock)
+
+    monkeypatch.setattr(ExportService, "collect_export_dependencies", classmethod(collect_after_permission_change))
+    request = _build_request(
+        "/operation_analysis/api/import_export/export",
+        authenticated_user,
+        data={"object_type": "dashboard", "object_ids": [dashboard_id]},
+    )
+
+    try:
+        response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
+        response.render()
+    finally:
+        run_committed(lambda: Dashboard.objects.filter(id=dashboard_id).delete())
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 @pytest.mark.django_db

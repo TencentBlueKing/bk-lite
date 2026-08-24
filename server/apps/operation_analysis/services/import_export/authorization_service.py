@@ -89,7 +89,7 @@ class ImportExportAuthorizationService:
         group_ids = cls._get_export_group_ids(request, current_team)
         filtered_ids = cls._filter_ids_by_org(object_enum, object_ids, current_team, group_ids)
         filtered_ids = cls._filter_ids_by_scope(request, object_enum, filtered_ids, current_team)
-        if not filtered_ids:
+        if set(filtered_ids) != set(object_ids):
             raise PermissionDenied("无权导出所选对象或对象不存在")
         return filtered_ids
 
@@ -111,12 +111,12 @@ class ImportExportAuthorizationService:
             object_ids,
             lock=True,
         )
-        if os.getenv(cls.EXPORT_DEPENDENCY_PERMISSION_MODE_ENV, "enforce").strip().lower() == "legacy":
-            return datasource_ids, namespace_ids
-
         locked_root_ids = cls.filter_export_object_ids(request, object_type, object_ids, current_team)
         if set(locked_root_ids) != set(object_ids):
             raise PermissionDenied("导出对象的权限范围已发生变化")
+
+        if os.getenv(cls.EXPORT_DEPENDENCY_PERMISSION_MODE_ENV, "enforce").strip().lower() == "legacy":
+            return datasource_ids, namespace_ids
 
         cls._validate_export_dependency_ids(request, ObjectType.DATASOURCE, datasource_ids, current_team)
         cls._validate_export_dependency_ids(request, ObjectType.NAMESPACE, namespace_ids, current_team)
