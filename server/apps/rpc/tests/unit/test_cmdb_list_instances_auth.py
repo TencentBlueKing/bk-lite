@@ -49,6 +49,24 @@ def test_list_instances_rpc_preserves_v2_by_default_for_mixed_version_deploy(mon
     assert "_auth" not in rpc.client.run.call_args.kwargs["params"]
 
 
+def test_new_rpc_default_remains_callable_by_pre_v3_handler(monkeypatch):
+    monkeypatch.delenv("CMDB_NATS_LIST_INSTANCES_SIGN_V3", raising=False)
+    rpc = CMDB(is_local_client=True)
+
+    def pre_v3_handler(method_name, *, params):
+        assert method_name == "list_instances"
+        if params.get("protocol_version") != "2":
+            raise ValueError("unsupported CMDB protocol version")
+        return {"count": 0, "items": []}
+
+    rpc.client = Mock()
+    rpc.client.run.side_effect = pre_v3_handler
+
+    result = rpc.list_instances(protocol_version="2", model_id="host", organization_ids=[1])
+
+    assert result == {"count": 0, "items": []}
+
+
 def test_list_instances_rpc_can_roll_back_from_v3_to_v2(monkeypatch):
     rpc = CMDB(is_local_client=True)
     rpc.client = Mock()
