@@ -6,7 +6,7 @@ import type {
   UnifiedFilterDefinition,
 } from '@/app/ops-analysis/components/ops-analysis-widgets';
 
-export type BindableParamType = 'string' | 'stringList' | 'timeRange';
+export type BindableParamType = 'string' | 'timeRange';
 export type UnifiedFilterInputMode =
   | 'input'
   | 'select'
@@ -62,8 +62,13 @@ export const sanitizeUnifiedFilterDefinition = <
 
   const options = Array.isArray(definition.options) ? definition.options : [];
   const optionValues: Array<string | number> = options.map((item) => item.value);
+  const multiple = Boolean(
+    definition.inputConfig
+    && definition.inputConfig.control !== 'input'
+    && definition.inputConfig.multiple,
+  );
   const defaultValue = (() => {
-    if (definition.type === 'stringList') {
+    if (multiple) {
       const asList = Array.isArray(definition.defaultValue)
         ? definition.defaultValue.filter(
           (item): item is string | number =>
@@ -81,6 +86,12 @@ export const sanitizeUnifiedFilterDefinition = <
       }
       const allowed = asList.filter((item) => optionValues.includes(item));
       return allowed.length === asList.length ? asList : allowed.length ? allowed : null;
+    }
+    if (Array.isArray(definition.defaultValue)) {
+      const first = definition.defaultValue[0];
+      return typeof first === 'string' || typeof first === 'number'
+        ? (optionValues.length && !optionValues.includes(first) ? null : first)
+        : null;
     }
     return typeof definition.defaultValue === 'string' &&
       optionValues.includes(definition.defaultValue)
@@ -107,7 +118,7 @@ export const getBindableFilterParams = (
   (Array.isArray(params) ? params : []).filter(
     (param): param is ParamItem & { type: BindableParamType } =>
       param.filterType === 'filter' &&
-      (param.type === 'string' || param.type === 'stringList' || param.type === 'timeRange'),
+      (param.type === 'string' || param.type === 'timeRange'),
   );
 
 export const buildDefaultFilterBindings = (
@@ -152,6 +163,7 @@ export const scanUnifiedFilterParams = (
       componentCount: number;
       sampleAlias: string;
       sampleDefaultValue: FilterValue;
+      sampleInputConfig?: UnifiedFilterDefinition['inputConfig'];
     }
   >();
 
@@ -179,6 +191,7 @@ export const scanUnifiedFilterParams = (
           componentCount: 1,
           sampleAlias: param.alias_name || param.name,
           sampleDefaultValue: (param.value as FilterValue) ?? null,
+          sampleInputConfig: param.inputConfig,
         });
       }
     });

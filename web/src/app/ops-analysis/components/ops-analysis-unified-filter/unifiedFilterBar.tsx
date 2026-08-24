@@ -37,6 +37,13 @@ const toFilterValue = (value: number | number[] | undefined): FilterValue => {
   return value ?? null;
 };
 
+const isMultipleStringFilter = (definition: UnifiedFilterDefinition): boolean =>
+  Boolean(
+    definition.inputConfig
+    && definition.inputConfig.control !== 'input'
+    && definition.inputConfig.multiple,
+  );
+
 const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   definitions,
   values,
@@ -159,21 +166,22 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
       }
 
       case 'string':
-      case 'stringList':
       default: {
-        const isStringList = definition.type === 'stringList';
-        if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'select' || isStringList) {
+        const isMultiple = isMultipleStringFilter(definition);
+        const inputMode = normalizeUnifiedFilterInputMode(definition.inputMode);
+
+        if (inputMode === 'select' || isMultiple) {
           const selectValue = Array.isArray(value)
             ? value
             : (typeof value === 'string' || typeof value === 'number')
-              ? (isStringList ? [value] : value)
+              ? (isMultiple ? [value] : value)
               : undefined;
           return (
             <Select
               value={selectValue}
-              mode={isStringList ? 'multiple' : undefined}
+              mode={isMultiple ? 'multiple' : undefined}
               onChange={(val) => {
-                if (isStringList) {
+                if (isMultiple) {
                   if (Array.isArray(val)) {
                     handleLocalValueChange(definition.id, val);
                     return;
@@ -195,7 +203,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           );
         }
 
-        if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'radio') {
+        if (inputMode === 'radio') {
           return (
             <Radio.Group
               value={(typeof value === 'string' || typeof value === 'number') ? value : undefined}
@@ -209,7 +217,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           );
         }
 
-        if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'organization') {
+        if (inputMode === 'organization') {
           return (
             <GroupTreeSelect
               value={toSingleOrganizationValue(value)}

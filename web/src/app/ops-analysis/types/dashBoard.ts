@@ -290,7 +290,7 @@ export interface UnifiedFilterDefinition {
   id: string;
   key: string; // 参数 key（如 "time_range", "env", "namespace"）
   name: string; // 显示名称（用户可编辑）
-  type: 'timeRange' | 'dateRange' | 'string' | 'stringList'; // 参数类型，用于绑定匹配
+  type: 'timeRange' | 'dateRange' | 'string'; // 参数类型，用于绑定匹配；列表传参由 inputConfig.multiple 表达
   defaultValue?: FilterValue; // 默认值
   order: number; // 显示顺序
   enabled: boolean; // 是否启用
@@ -320,7 +320,7 @@ export interface FilterBindings {
 /** 扫描结果结构（用于配置弹窗） */
 export interface ScannedFilterParam {
   key: string;
-  type: 'string' | 'stringList' | 'timeRange' | 'dateRange';
+  type: 'string' | 'timeRange' | 'dateRange';
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;

@@ -75,6 +75,7 @@ import {
   SOURCE_TYPE_REST_API,
   TABLE_CHART_TYPE,
 } from "./operateModalUtils";
+import { migrateParamItemsFromStringList } from "@/app/ops-analysis/utils/stringParamMultipleMigrate";
 
 type FormSectionId = "basic" | "process";
 type FormSubsectionId = "connect" | "preview" | "fields";
@@ -723,7 +724,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         row.params && Array.isArray(row.params) && row.params.length > 0;
 
       if (hasValidParams) {
-        const restoredParams = row.params.map((param: any) => ({
+        const restoredParams = migrateParamItemsFromStringList(row.params).params.map((param: any) => ({
           ...param,
           type: param.type || "string",
           filterType:

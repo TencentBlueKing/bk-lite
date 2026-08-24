@@ -31,7 +31,11 @@ import {
   syncReportFiltersFromSections,
   updateReportSection,
 } from '@/app/ops-analysis/utils/reportBuilder';
-import { buildResetFilterValues, syncFilterValuesWithDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
+import {
+  buildFilterConfigConfirmSnapshot,
+  buildResetFilterValues,
+  syncFilterValuesWithDefinitions,
+} from '@/app/ops-analysis/utils/unifiedFilterState';
 import {
   canPersistCanvasRefreshInterval,
   normalizeCanvasRefreshInterval,
@@ -269,8 +273,15 @@ const Report = forwardRef<ReportRef, ReportProps>(({
   };
 
   const handleFilterConfigConfirm = (definitions: UnifiedFilterDefinition[]) => {
-    setDraftViewSets((previous) => ({ ...previous, filters: definitions }));
-    setFilterValues((previous) => syncFilterValuesWithDefinitions(definitions, previous));
+    const snapshot = buildFilterConfigConfirmSnapshot(
+      definitions,
+      filterValues,
+      appliedFilterValues,
+    );
+    setDraftViewSets((previous) => ({ ...previous, filters: snapshot.definitions }));
+    setAppliedFilterDefinitions(snapshot.definitions);
+    setFilterValues(snapshot.filterValues);
+    setAppliedFilterValues(snapshot.appliedFilterValues);
     setFilterConfigOpen(false);
   };
 

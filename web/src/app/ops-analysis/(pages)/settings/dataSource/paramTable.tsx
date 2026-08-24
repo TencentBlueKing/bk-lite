@@ -121,7 +121,6 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
 
     const paramTypeOptions = [
       { label: t("dataSource.paramTypes.string"), value: "string" },
-      { label: t("dataSource.paramTypes.stringList"), value: "stringList" },
       { label: t("dataSource.paramTypes.number"), value: "number" },
       { label: t("dataSource.paramTypes.boolean"), value: "boolean" },
       { label: t("dataSource.paramTypes.date"), value: "date" },

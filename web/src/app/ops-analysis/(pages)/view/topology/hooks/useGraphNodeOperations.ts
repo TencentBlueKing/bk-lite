@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import type { Node, Graph as X6Graph } from '@antv/x6';
 import { v4 as uuidv4 } from 'uuid';
-import { buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { resolveEffectiveFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { useDataSourceApi, withRuntimeSourceDataErrorSuppression } from '@/app/ops-analysis/api/dataSource';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
@@ -197,13 +197,11 @@ export const useGraphNodeOperations = ({
       }
 
       try {
-        const effectiveFilterBindings =
-          valueConfig.filterBindings ||
-          buildDefaultFilterBindings(
-            valueConfig.dataSourceParams || [],
-            filterDefinitions || [],
-            undefined,
-          );
+        const effectiveFilterBindings = resolveEffectiveFilterBindings(
+          valueConfig.dataSourceParams || [],
+          filterDefinitions || [],
+          valueConfig.filterBindings,
+        );
 
         const compareResult = await fetchCompareData({
           dataSourceId: Number(valueConfig.dataSource),
