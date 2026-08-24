@@ -4,25 +4,543 @@ MLOps 任务通用工具函数
 
 import codecs
 import json
+import math
 import os
 import tempfile
+import uuid
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import timedelta
 from itertools import chain
 from pathlib import Path
 from typing import Any, Callable, Optional, Type
 
+from django.apps import apps as django_apps
 from django.db import models, transaction
 from django.utils import timezone
 from django_minio_backend import MinioBackend, iso_date_prefix
 
 from apps.core.logger import mlops_logger as logger
+from apps.mlops.models.dataset_release_execution import DatasetReleaseExecution, DatasetReleaseObjectCleanup
+
+_EXECUTION_MODE_ENV = "MLOPS_DATASET_RELEASE_EXECUTION_MODE"
+_LEASE_SECONDS_ENV = "MLOPS_DATASET_RELEASE_LEASE_SECONDS"
+_DEFAULT_LEASE_SECONDS = 7500
+_MIN_LEASE_SECONDS = 7320
+_MAX_RETRY_SECONDS = 300
+_CLEANUP_LEASE_SECONDS = 300
+
+
+@dataclass(frozen=True)
+class DatasetReleaseClaim:
+    release: models.Model
+    acquired: bool
+    owner_token: Optional[str]
+    reason: Optional[str] = None
+    stale_object_paths: tuple[str, ...] = ()
+
+    @property
+    def stale_object_path(self) -> Optional[str]:
+        return self.stale_object_paths[0] if self.stale_object_paths else None
+
+
+class DatasetReleaseBusy(Exception):
+    def __init__(self, retry_after: int):
+        self.retry_after = retry_after
+        super().__init__(f"Dataset release lease is active; retry after {retry_after}s")
+
+
+@dataclass
+class DatasetReleaseAttempt:
+    """把本次任务候选 token 与实际领取 token 传回异常收口路径。"""
+
+    candidate_token: str = field(default_factory=lambda: uuid.uuid4().hex)
+    owner_token: Optional[str] = None
+    mode: str = field(default_factory=lambda: get_dataset_release_execution_mode())
+    claimed: bool = False
+
+    def can_mark_failure(self) -> bool:
+        return self.mode == "shadow" or self.claimed
+
+
+@dataclass(frozen=True)
+class DatasetReleaseObjectCleanupClaim:
+    intent_id: int
+    cleanup_token: str
+    object_path: str
+
+
+def get_dataset_release_execution_mode() -> str:
+    mode = os.getenv(_EXECUTION_MODE_ENV, "shadow").strip().lower()
+    if mode not in {"shadow", "enforce"}:
+        logger.warning(
+            "数据集发布执行模式无效，回退 shadow - value=%s",
+            mode,
+        )
+        return "shadow"
+    return mode
+
+
+def _get_dataset_release_lease_seconds() -> int:
+    configured = os.getenv(_LEASE_SECONDS_ENV, str(_DEFAULT_LEASE_SECONDS))
+    try:
+        lease_seconds = int(configured)
+    except (TypeError, ValueError):
+        lease_seconds = _DEFAULT_LEASE_SECONDS
+    return max(_MIN_LEASE_SECONDS, lease_seconds)
+
+
+def _release_type(release_model: Type[models.Model]) -> str:
+    return release_model._meta.label_lower
+
+
+def _retry_after(lease_expires_at) -> int:
+    remaining = math.ceil((lease_expires_at - timezone.now()).total_seconds())
+    return min(_MAX_RETRY_SECONDS, max(1, remaining))
+
+
+def claim_dataset_release(
+    release_model: Type[models.Model],
+    release_id: int,
+    owner_token: Optional[str] = None,
+    *,
+    attempt: Optional[DatasetReleaseAttempt] = None,
+) -> DatasetReleaseClaim:
+    """短事务领取发布任务；enforce 模式下持久化租约与执行归属。"""
+
+    mode = get_dataset_release_execution_mode()
+    token = owner_token or (attempt.candidate_token if attempt else uuid.uuid4().hex)
+    busy_retry_after = None
+    if attempt is not None:
+        attempt.mode = mode
+        attempt.owner_token = None
+        attempt.claimed = False
+
+    with transaction.atomic():
+        release = release_model.objects.select_for_update().get(id=release_id)
+        release_type = _release_type(release_model)
+
+        if release.status in ["published", "failed"]:
+            execution = (
+                DatasetReleaseExecution.objects.select_for_update()
+                .filter(release_type=release_type, release_id=release_id)
+                .first()
+            )
+            stale_object_paths = tuple(
+                DatasetReleaseObjectCleanup.objects.select_for_update()
+                .filter(release_type=release_type, release_id=release_id)
+                .values_list("object_path", flat=True)
+            )
+            if execution is not None:
+                execution.delete()
+            return DatasetReleaseClaim(
+                release=release,
+                acquired=False,
+                owner_token=None,
+                reason=f"Task already {release.status}",
+                stale_object_paths=stale_object_paths,
+            )
+
+        if mode == "shadow":
+            if release.status == "processing":
+                logger.warning(
+                    "数据集发布重复领取 shadow 命中 - Model: %s, Release ID: %s",
+                    release_model.__name__,
+                    release_id,
+                )
+            release.status = "processing"
+            release.save(update_fields=["status"])
+            if attempt is not None:
+                attempt.claimed = True
+            return DatasetReleaseClaim(
+                release=release,
+                acquired=True,
+                owner_token=None,
+            )
+
+        current_time = timezone.now()
+        lease_until = current_time + timedelta(
+            seconds=_get_dataset_release_lease_seconds()
+        )
+        execution = (
+            DatasetReleaseExecution.objects.select_for_update()
+            .filter(release_type=release_type, release_id=release_id)
+            .first()
+        )
+
+        if release.status == "processing" and execution is None:
+            execution = DatasetReleaseExecution.objects.create(
+                release_type=release_type,
+                release_id=release_id,
+                owner_token="",
+                lease_expires_at=lease_until,
+                attempt=0,
+            )
+            busy_retry_after = _retry_after(execution.lease_expires_at)
+        elif (
+            release.status == "processing" and execution.lease_expires_at > current_time
+        ):
+            busy_retry_after = _retry_after(execution.lease_expires_at)
+        else:
+            if execution is None:
+                execution = DatasetReleaseExecution(
+                    release_type=release_type,
+                    release_id=release_id,
+                )
+            stale_object_paths = tuple(
+                DatasetReleaseObjectCleanup.objects.select_for_update()
+                .filter(release_type=release_type, release_id=release_id)
+                .exclude(owner_token=token)
+                .values_list("object_path", flat=True)
+            )
+            execution.owner_token = token
+            execution.lease_expires_at = lease_until
+            execution.attempt += 1
+            execution.save()
+            release.status = "processing"
+            release.save(update_fields=["status"])
+
+    if busy_retry_after is not None:
+        raise DatasetReleaseBusy(retry_after=busy_retry_after)
+
+    if attempt is not None:
+        attempt.owner_token = token
+        attempt.claimed = True
+    return DatasetReleaseClaim(
+        release=release,
+        acquired=True,
+        owner_token=token,
+        stale_object_paths=stale_object_paths,
+    )
+
+
+def record_dataset_release_object_path(
+    release_model: Type[models.Model],
+    release_id: int,
+    owner_token: str,
+    object_path: str,
+) -> bool:
+    """上传前持久化补偿路径，仅当前 owner 可登记。"""
+
+    with transaction.atomic():
+        release = (
+            release_model.objects.select_for_update().filter(id=release_id).first()
+        )
+        execution = (
+            DatasetReleaseExecution.objects.select_for_update()
+            .filter(
+                release_type=_release_type(release_model),
+                release_id=release_id,
+                owner_token=owner_token,
+            )
+            .first()
+        )
+        if release is None or execution is None:
+            return False
+        DatasetReleaseObjectCleanup.objects.update_or_create(
+            release_type=_release_type(release_model),
+            release_id=release_id,
+            owner_token=owner_token,
+            defaults={
+                "object_path": object_path,
+            },
+        )
+        return True
+
+
+def finalize_dataset_release(
+    release_model: Type[models.Model],
+    release_id: int,
+    owner_token: Optional[str],
+    *,
+    file_size: int,
+    metadata: dict[str, Any],
+    saved_path: str,
+) -> bool:
+    """仅允许当前执行者发布结果；shadow 调用维持旧无 token 行为。"""
+
+    if owner_token is None:
+        with transaction.atomic():
+            release = release_model.objects.select_for_update().get(id=release_id)
+            execution = (
+                DatasetReleaseExecution.objects.select_for_update()
+                .filter(
+                    release_type=_release_type(release_model),
+                    release_id=release_id,
+                )
+                .first()
+            )
+            release.status = "published"
+            release.file_size = file_size
+            release.metadata = metadata
+            release.dataset_file.name = saved_path
+            release.save(
+                update_fields=["status", "file_size", "metadata", "dataset_file"]
+            )
+            if execution is not None:
+                execution.delete()
+        return True
+
+    release_type = _release_type(release_model)
+    with transaction.atomic():
+        release = (
+            release_model.objects.select_for_update().filter(id=release_id).first()
+        )
+        execution = (
+            DatasetReleaseExecution.objects.select_for_update()
+            .filter(
+                release_type=release_type,
+                release_id=release_id,
+                owner_token=owner_token,
+            )
+            .first()
+        )
+        if execution is None:
+            return False
+        if release is None:
+            execution.delete()
+            return False
+        release.status = "published"
+        release.file_size = file_size
+        release.metadata = metadata
+        release.dataset_file.name = saved_path
+        release.save(update_fields=["status", "file_size", "metadata", "dataset_file"])
+        DatasetReleaseObjectCleanup.objects.filter(
+            release_type=release_type,
+            release_id=release_id,
+            owner_token=owner_token,
+        ).delete()
+        execution.delete()
+        return True
+
+
+def build_publish_object_name(filename: str, owner_token: Optional[str]) -> str:
+    if owner_token is None:
+        return filename
+    path = Path(filename)
+    return f"{path.stem}_{owner_token}{path.suffix}"
+
+
+def delete_stale_publish_object(storage, saved_path: str) -> bool:
+    try:
+        storage.delete(saved_path)
+        return True
+    except Exception as exc:
+        logger.error(
+            "清理陈旧数据集发布对象失败 - path=%s error_type=%s",
+            saved_path,
+            exc.__class__.__name__,
+        )
+        return False
+
+
+def cleanup_claim_stale_object(storage, claim: DatasetReleaseClaim) -> None:
+    for object_path in claim.stale_object_paths:
+        if delete_stale_publish_object(storage, object_path):
+            DatasetReleaseObjectCleanup.objects.filter(
+                object_path=object_path
+            ).delete()
+
+
+def prepare_claim_storage(claim: DatasetReleaseClaim):
+    """清理领取时发现的旧对象；终态补偿失败不反向改写业务终态。"""
+
+    if not claim.stale_object_paths:
+        return None
+    try:
+        storage = MinioBackend(
+            bucket_name="munchkin-public",
+            replace_existing=claim.owner_token is not None,
+        )
+    except Exception as exc:
+        if claim.acquired:
+            raise
+        logger.error(
+            "终态数据集发布对象补偿暂不可用 - error_type=%s",
+            exc.__class__.__name__,
+        )
+        return None
+    cleanup_claim_stale_object(storage, claim)
+    return storage
+
+
+def cleanup_release_object_intents(
+    storage,
+    release_model: Type[models.Model],
+    release_id: int,
+    *,
+    owner_token: Optional[str] = None,
+) -> bool:
+    intents = DatasetReleaseObjectCleanup.objects.filter(
+        release_type=_release_type(release_model),
+        release_id=release_id,
+    )
+    if owner_token is not None:
+        intents = intents.filter(owner_token=owner_token)
+    all_cleaned = True
+    for intent in list(intents):
+        if delete_stale_publish_object(storage, intent.object_path):
+            intent.delete()
+        else:
+            all_cleaned = False
+    return all_cleaned
+
+
+def claim_dataset_release_object_cleanup(
+    intent_id: int,
+    cleanup_token: Optional[str] = None,
+) -> Optional[DatasetReleaseObjectCleanupClaim]:
+    """在固定锁序下 fence 过期 owner，并领取一个持久对象补偿意图。"""
+
+    snapshot = (
+        DatasetReleaseObjectCleanup.objects.filter(id=intent_id)
+        .values("release_type", "release_id", "owner_token", "object_path")
+        .first()
+    )
+    if snapshot is None:
+        return None
+    release_model = django_apps.get_model(snapshot["release_type"])
+    token = cleanup_token or uuid.uuid4().hex
+    current_time = timezone.now()
+
+    with transaction.atomic():
+        release = (
+            release_model.objects.select_for_update()
+            .filter(id=snapshot["release_id"])
+            .first()
+        )
+        execution = (
+            DatasetReleaseExecution.objects.select_for_update()
+            .filter(
+                release_type=snapshot["release_type"],
+                release_id=snapshot["release_id"],
+            )
+            .first()
+        )
+        intent = (
+            DatasetReleaseObjectCleanup.objects.select_for_update()
+            .filter(id=intent_id, **snapshot)
+            .first()
+        )
+        if intent is None:
+            return None
+        published_path = getattr(getattr(release, "dataset_file", None), "name", "")
+        if (
+            release is not None
+            and release.status == "published"
+            and published_path == intent.object_path
+        ):
+            intent.delete()
+            return None
+        if (
+            intent.cleanup_token
+            and intent.cleanup_lease_expires_at is not None
+            and intent.cleanup_lease_expires_at > current_time
+        ):
+            return None
+        if execution is not None and execution.owner_token == intent.owner_token:
+            if execution.lease_expires_at > current_time:
+                return None
+            execution.delete()
+
+        intent.cleanup_token = token
+        intent.cleanup_lease_expires_at = current_time + timedelta(
+            seconds=_CLEANUP_LEASE_SECONDS
+        )
+        intent.save(update_fields=["cleanup_token", "cleanup_lease_expires_at"])
+        return DatasetReleaseObjectCleanupClaim(
+            intent_id=intent.id,
+            cleanup_token=token,
+            object_path=intent.object_path,
+        )
+
+
+def complete_dataset_release_object_cleanup(
+    claim: DatasetReleaseObjectCleanupClaim,
+    *,
+    cleaned: bool,
+) -> bool:
+    """仅凭当前 cleanup token 消费意图；失败时释放领取供后续重试。"""
+
+    with transaction.atomic():
+        intent = (
+            DatasetReleaseObjectCleanup.objects.select_for_update()
+            .filter(id=claim.intent_id, cleanup_token=claim.cleanup_token)
+            .first()
+        )
+        if intent is None:
+            return False
+        if cleaned:
+            intent.delete()
+        else:
+            intent.cleanup_token = ""
+            intent.cleanup_lease_expires_at = None
+            intent.save(update_fields=["cleanup_token", "cleanup_lease_expires_at"])
+        return True
+
+
+def finalize_uploaded_dataset_release(
+    storage,
+    saved_path: str,
+    release_model: Type[models.Model],
+    release_id: int,
+    owner_token: Optional[str],
+    *,
+    file_size: int,
+    metadata: dict[str, Any],
+) -> bool:
+    """提交已上传对象；提交失败或 owner 陈旧时回收本次对象。"""
+
+    try:
+        finalized = finalize_dataset_release(
+            release_model,
+            release_id,
+            owner_token,
+            file_size=file_size,
+            metadata=metadata,
+            saved_path=saved_path,
+        )
+    except Exception:
+        if owner_token is not None:
+            cleanup_release_object_intents(
+                storage,
+                release_model,
+                release_id,
+                owner_token=owner_token,
+            )
+        raise
+    if not finalized and owner_token is not None:
+        cleanup_release_object_intents(
+            storage,
+            release_model,
+            release_id,
+            owner_token=owner_token,
+        )
+    elif finalized:
+        cleanup_release_object_intents(storage, release_model, release_id)
+    return finalized
+
+
+def get_storage_display_url(storage, saved_path: str) -> str:
+    """URL 仅用于日志，不让展示信息失败回滚已提交发布。"""
+
+    try:
+        return storage.url(saved_path)
+    except Exception as exc:
+        logger.warning(
+            "获取数据集发布对象 URL 失败 - path=%s error_type=%s",
+            saved_path,
+            exc.__class__.__name__,
+        )
+        return saved_path
 
 
 def mark_release_as_failed(
     release_model: Type[models.Model],
     release_id: int,
     error_message: Optional[str] = None,
+    *,
+    owner_token: Optional[str] = None,
 ) -> bool:
     """
     标记数据集发布记录为失败状态
@@ -44,19 +562,83 @@ def mark_release_as_failed(
         mark_release_as_failed(ClassificationDatasetRelease, release_id, "任务超时")
     """
     try:
-        release = release_model.objects.get(id=release_id)
-        release.status = "failed"
+        with transaction.atomic():
+            release = (
+                release_model.objects.select_for_update()
+                .filter(id=release_id)
+                .first()
+            )
+            execution = (
+                DatasetReleaseExecution.objects.select_for_update()
+                .filter(
+                    release_type=_release_type(release_model),
+                    release_id=release_id,
+                )
+                .first()
+            )
+            if owner_token is not None:
+                if release is None:
+                    if execution is not None:
+                        execution.delete()
+                    logger.error(
+                        "发布记录不存在 - Model: %s, Release ID: %s",
+                        release_model.__name__,
+                        release_id,
+                    )
+                    return False
+                if (
+                    execution is None or execution.owner_token != owner_token
+                ) and (
+                    execution is not None
+                    or release.status in ["published", "failed"]
+                    or get_dataset_release_execution_mode() == "enforce"
+                ):
+                    return False
+            elif release is None:
+                if execution is not None:
+                    execution.delete()
+                logger.error(
+                    "发布记录不存在 - Model: %s, Release ID: %s",
+                    release_model.__name__,
+                    release_id,
+                )
+                return False
 
-        update_fields = ["status"]
+            release.status = "failed"
 
-        if error_message:
-            release.metadata = {
-                "error": error_message,
-                "failed_at": timezone.now().isoformat(),
-            }
-            update_fields.append("metadata")
+            update_fields = ["status"]
 
-        release.save(update_fields=update_fields)
+            if error_message:
+                release.metadata = {
+                    "error": error_message,
+                    "failed_at": timezone.now().isoformat(),
+                }
+                update_fields.append("metadata")
+
+            release.save(update_fields=update_fields)
+            if execution is not None:
+                execution.delete()
+
+        cleanup_intents = DatasetReleaseObjectCleanup.objects.filter(
+            release_type=_release_type(release_model),
+            release_id=release_id,
+        )
+        if owner_token is not None:
+            cleanup_intents = cleanup_intents.filter(owner_token=owner_token)
+        if cleanup_intents.exists():
+            try:
+                cleanup_release_object_intents(
+                    MinioBackend(bucket_name="munchkin-public"),
+                    release_model,
+                    release_id,
+                    owner_token=owner_token,
+                )
+            except Exception as exc:
+                logger.error(
+                    "失败终态对象补偿暂不可用 - Release ID: %s error_type=%s",
+                    release_id,
+                    exc.__class__.__name__,
+                )
 
         logger.info(
             f"标记发布记录为失败 - Model: {release_model.__name__}, "
@@ -295,6 +877,9 @@ def publish_dataset_release_base(
     train_file_id: int,
     val_file_id: int,
     test_file_id: int,
+    *,
+    owner_token: Optional[str] = None,
+    attempt: Optional[DatasetReleaseAttempt] = None,
 ) -> dict[str, Any]:
     """
     数据集发布的通用基础逻辑
@@ -324,20 +909,28 @@ def publish_dataset_release_base(
     release_model = config.release_model
     train_data_model = config.train_data_model
 
-    # 使用行锁防止并发执行
-    with transaction.atomic():
-        release = release_model.objects.select_for_update().get(id=release_id)
+    claim = claim_dataset_release(
+        release_model,
+        release_id,
+        owner_token,
+        attempt=attempt,
+    )
+    storage = prepare_claim_storage(claim)
+    if not claim.acquired:
+        logger.info(
+            "任务未领取 - Release ID: %s, 原因: %s",
+            release_id,
+            claim.reason,
+        )
+        return {"result": False, "reason": claim.reason}
 
-        # 防止重复执行：检查当前状态
-        if release.status in ["published", "failed"]:
-            logger.info(
-                f"任务已结束 - Release ID: {release_id}, 状态: {release.status}, 跳过执行"
-            )
-            return {"result": False, "reason": f"Task already {release.status}"}
-
-        # 更新状态为 processing
-        release.status = "processing"
-        release.save(update_fields=["status"])
+    release = claim.release
+    execution_token = claim.owner_token
+    if storage is None:
+        storage = MinioBackend(
+            bucket_name="munchkin-public",
+            replace_existing=execution_token is not None,
+        )
 
     dataset = release.dataset
     version = release.version
@@ -350,8 +943,6 @@ def publish_dataset_release_base(
     logger.info(
         f"开始发布{config.task_type}数据集 - Dataset: {dataset.id}, Version: {version}, Release ID: {release_id}"
     )
-
-    storage = MinioBackend(bucket_name="munchkin-public")
 
     # 创建临时目录用于存放文件
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -423,23 +1014,39 @@ def publish_dataset_release_base(
 
         # 上传 ZIP 文件到 MinIO
         with open(zip_path, "rb") as f:
-            date_prefixed_path = iso_date_prefix(dataset, zip_filename)
-            zip_object_path = f"{config.storage_prefix}/{dataset.id}/{date_prefixed_path}"
+            object_name = build_publish_object_name(zip_filename, execution_token)
+            date_prefixed_path = iso_date_prefix(dataset, object_name)
+            zip_object_path = (
+                f"{config.storage_prefix}/{dataset.id}/{date_prefixed_path}"
+            )
+
+            if execution_token is not None and not record_dataset_release_object_path(
+                release_model,
+                release_id,
+                execution_token,
+                zip_object_path,
+            ):
+                logger.warning(
+                    "数据集发布上传前 owner 已失效 - Release ID: %s", release_id
+                )
+                return {"result": False, "reason": "Stale execution"}
 
             saved_path = storage.save(zip_object_path, f)
-            zip_url = storage.url(saved_path)
+        finalized = finalize_uploaded_dataset_release(
+            storage,
+            saved_path,
+            release_model,
+            release_id,
+            execution_token,
+            file_size=zip_size,
+            metadata=dataset_metadata,
+        )
+        if not finalized:
+            logger.warning("陈旧数据集发布结果已丢弃 - Release ID: %s", release_id)
+            return {"result": False, "reason": "Stale execution"}
 
+        zip_url = get_storage_display_url(storage, saved_path)
         logger.info(f"数据集上传成功: {zip_url}")
-
-        # 更新发布记录
-        with transaction.atomic():
-            release.status = "published"
-            release.file_size = zip_size
-            release.metadata = dataset_metadata
-            release.dataset_file.name = saved_path
-            release.save(
-                update_fields=["status", "file_size", "metadata", "dataset_file"]
-            )
 
         logger.info(
             f"{config.task_type}数据集发布成功 - Release ID: {release.id}, 样本数: {train_samples}/{val_samples}/{test_samples}"

@@ -13,6 +13,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 from apps.mlops.constants import DatasetReleaseStatus
 from apps.mlops.tasks import image_classification as ic_task
 from apps.mlops.tasks import object_detection as od_task
+from apps.mlops.tasks.base import DatasetReleaseBusy
 from apps.mlops.tasks.object_detection import prepare_class_mappings
 
 pytestmark = pytest.mark.unit
@@ -171,3 +172,48 @@ def test_image_classification_soft_timeout_marks_failed(monkeypatch):
     assert result["reason"] == "Task timeout"
     rel.refresh_from_db()
     assert rel.status == "failed"
+
+
+@pytest.mark.parametrize("task_module", [ic_task, od_task])
+def test_image_task_retries_busy_release_without_marking_failed(
+    monkeypatch, task_module
+):
+    assert task_module.publish_dataset_release_async.max_retries is None
+
+    def busy(*args, **kwargs):
+        raise DatasetReleaseBusy(retry_after=23)
+
+    retry_error = RuntimeError("celery retry requested")
+    retry_mock = Mock(return_value=retry_error)
+    mark_mock = Mock()
+    monkeypatch.setattr(task_module, "claim_dataset_release", busy)
+    monkeypatch.setattr(task_module, "mark_release_as_failed", mark_mock)
+    monkeypatch.setattr(task_module.publish_dataset_release_async, "retry", retry_mock)
+
+    with pytest.raises(RuntimeError, match="celery retry requested"):
+        task_module.publish_dataset_release_async.run(88, 1, 2, 3)
+
+    retry_kwargs = retry_mock.call_args.kwargs
+    assert isinstance(retry_kwargs["exc"], DatasetReleaseBusy)
+    assert retry_kwargs["countdown"] == 23
+    assert retry_kwargs["max_retries"] is None
+    mark_mock.assert_not_called()
+
+
+@pytest.mark.parametrize("task_module", [ic_task, od_task])
+def test_enforce_image_task_does_not_fail_release_before_claim(
+    monkeypatch, task_module
+):
+    monkeypatch.setenv("MLOPS_DATASET_RELEASE_EXECUTION_MODE", "enforce")
+
+    def claim_error(*args, **kwargs):
+        raise RuntimeError("claim unavailable")
+
+    mark_mock = Mock()
+    monkeypatch.setattr(task_module, "claim_dataset_release", claim_error)
+    monkeypatch.setattr(task_module, "mark_release_as_failed", mark_mock)
+
+    result = task_module.publish_dataset_release_async.run(89, 1, 2, 3)
+
+    assert result == {"result": False, "error": "claim unavailable"}
+    mark_mock.assert_not_called()

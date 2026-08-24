@@ -4,8 +4,6 @@
 
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
-from django.utils import timezone
-from django.db import transaction
 from django_minio_backend import MinioBackend, iso_date_prefix
 
 import tempfile
@@ -17,8 +15,17 @@ from pathlib import Path
 from collections import defaultdict
 
 from apps.core.logger import mlops_logger as logger
-from apps.mlops.tasks.base import mark_release_as_failed
-
+from apps.mlops.tasks.base import (
+    DatasetReleaseAttempt,
+    DatasetReleaseBusy,
+    build_publish_object_name,
+    claim_dataset_release,
+    finalize_uploaded_dataset_release,
+    get_storage_display_url,
+    mark_release_as_failed,
+    prepare_claim_storage,
+    record_dataset_release_object_path,
+)
 
 ZIP_COPY_CHUNK_SIZE = 64 * 1024
 
@@ -186,12 +193,16 @@ def prepare_class_mappings(
 
 
 @shared_task(
+    bind=True,
+    max_retries=None,
     soft_time_limit=7200,  # 120 分钟（图片处理较慢）
     time_limit=7260,
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_file_id):
+def publish_dataset_release_async(
+    self, release_id, train_file_id, val_file_id, test_file_id
+):
     """
     异步发布目标检测数据集版本（YOLO 格式）
 
@@ -205,30 +216,29 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
         dict: 执行结果
     """
     release = None
+    attempt = DatasetReleaseAttempt()
 
     try:
-        from django.db import transaction
         from apps.mlops.models.object_detection import (
             ObjectDetectionDatasetRelease,
             ObjectDetectionTrainData,
         )
 
-        # 使用行锁防止并发执行
-        with transaction.atomic():
-            release = ObjectDetectionDatasetRelease.objects.select_for_update().get(
-                id=release_id
+        claim = claim_dataset_release(
+            ObjectDetectionDatasetRelease,
+            release_id,
+            attempt=attempt,
+        )
+        storage = prepare_claim_storage(claim)
+        if not claim.acquired:
+            return {"result": False, "reason": claim.reason}
+        release = claim.release
+        execution_token = claim.owner_token
+        if storage is None:
+            storage = MinioBackend(
+                bucket_name="munchkin-public",
+                replace_existing=execution_token is not None,
             )
-
-            # 防止重复执行:检查当前状态
-            if release.status in ["published", "failed"]:
-                logger.info(
-                    f"任务已结束 - Release ID: {release_id}, 状态: {release.status}, 跳过执行"
-                )
-                return {"result": False, "reason": f"Task already {release.status}"}
-
-            # 更新状态为processing
-            release.status = "processing"
-            release.save(update_fields=["status"])
 
         dataset = release.dataset
         version = release.version
@@ -406,28 +416,42 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
             logger.info(f"数据集打包完成: {zip_filename}, 大小: {zip_size_mb:.2f} MB")
 
             # 上传 ZIP 文件到 MinIO
-            storage = MinioBackend(bucket_name="munchkin-public")
-
             with open(zip_path, "rb") as f:
-                date_prefixed_path = iso_date_prefix(dataset, zip_filename)
+                object_name = build_publish_object_name(zip_filename, execution_token)
+                date_prefixed_path = iso_date_prefix(dataset, object_name)
                 zip_object_path = (
                     f"object_detection_datasets/{dataset.id}/{date_prefixed_path}"
                 )
 
+                if execution_token is not None and not record_dataset_release_object_path(
+                    ObjectDetectionDatasetRelease,
+                    release_id,
+                    execution_token,
+                    zip_object_path,
+                ):
+                    logger.warning(
+                        "目标检测发布上传前 owner 已失效 - Release ID: %s",
+                        release_id,
+                    )
+                    return {"result": False, "reason": "Stale execution"}
+
                 saved_path = storage.save(zip_object_path, f)
-                zip_url = storage.url(saved_path)
 
+            finalized = finalize_uploaded_dataset_release(
+                storage,
+                saved_path,
+                ObjectDetectionDatasetRelease,
+                release_id,
+                execution_token,
+                file_size=zip_size,
+                metadata=dataset_metadata,
+            )
+            if not finalized:
+                logger.warning("陈旧目标检测发布结果已丢弃 - Release ID: %s", release_id)
+                return {"result": False, "reason": "Stale execution"}
+
+            zip_url = get_storage_display_url(storage, saved_path)
             logger.info(f"数据集上传成功: {zip_url}")
-
-            # 更新发布记录
-            with transaction.atomic():
-                release.status = "published"
-                release.file_size = zip_size
-                release.metadata = dataset_metadata
-                release.dataset_file.name = saved_path
-                release.save(
-                    update_fields=["status", "file_size", "metadata", "dataset_file"]
-                )
 
             logger.info(
                 f"目标检测数据集发布成功 - Release ID: {release_id}, Version: {version}"
@@ -441,18 +465,37 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
                 "metadata": dataset_metadata,
             }
 
+    except DatasetReleaseBusy as exc:
+        raise self.retry(exc=exc, countdown=exc.retry_after, max_retries=None)
+
     except SoftTimeLimitExceeded:
         logger.error(f"任务超时 - Release ID: {release_id}")
-        from apps.mlops.models.object_detection import ObjectDetectionDatasetRelease
+        if attempt.can_mark_failure():
+            from apps.mlops.models.object_detection import (
+                ObjectDetectionDatasetRelease,
+            )
 
-        mark_release_as_failed(ObjectDetectionDatasetRelease, release_id, "任务超时")
+            mark_release_as_failed(
+                ObjectDetectionDatasetRelease,
+                release_id,
+                "任务超时",
+                owner_token=attempt.owner_token,
+            )
         return {"result": False, "reason": "Task timeout"}
 
     except Exception as e:
         logger.error(f"数据集发布失败: {str(e)}", exc_info=True)
-        from apps.mlops.models.object_detection import ObjectDetectionDatasetRelease
+        if attempt.can_mark_failure():
+            from apps.mlops.models.object_detection import (
+                ObjectDetectionDatasetRelease,
+            )
 
-        mark_release_as_failed(ObjectDetectionDatasetRelease, release_id, str(e))
+            mark_release_as_failed(
+                ObjectDetectionDatasetRelease,
+                release_id,
+                str(e),
+                owner_token=attempt.owner_token,
+            )
         return {"result": False, "error": str(e)}
 
 
