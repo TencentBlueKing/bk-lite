@@ -2,7 +2,10 @@
 
 import time
 import os
+import sys
+import traceback
 from collections import Counter
+from pathlib import Path
 
 import bentoml
 from loguru import logger
@@ -23,6 +26,26 @@ from .schemas import (
     LogClusterResult,
     TemplateGroup,
 )
+
+def _configure_production_logger(sink=sys.stderr) -> None:
+    logger.configure(handlers=[{"sink": sink, "diagnose": False, "backtrace": True}])
+
+
+_configure_production_logger()
+
+
+def _safe_exception_call_chain(error: BaseException, max_frames: int = 12) -> str:
+    frames = traceback.extract_tb(error.__traceback__)
+    return ">".join(f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}" for frame in frames[-max_frames:]) or "-"
+
+
+class _SafeLogException(RuntimeError):
+    pass
+
+
+def _safe_exception_info(error: BaseException):
+    safe_error = _SafeLogException(type(error).__name__)
+    return _SafeLogException, safe_error, error.__traceback__
 
 
 @bentoml.service(
@@ -48,19 +71,23 @@ class MLService:
 
     def __init__(self) -> None:
         """初始化服务,加载配置和模型."""
-        logger.info("Service instance initializing...")
+        logger.debug("event=log_classification_service_initializing")
         self.config = get_model_config()
-        logger.info(f"Config loaded: {self.config}")
+        logger.debug("event=log_classification_config_loaded model_source={}", self.config.source)
 
         try:
             self.model = load_model(self.config)
             model_load_counter.labels(
                 source=self.config.source, status="success").inc()
-            logger.info("Model loaded successfully")
+            logger.info("event=log_classification_model_load_succeeded model_source={}", self.config.source)
         except Exception as e:
             model_load_counter.labels(
                 source=self.config.source, status="failure").inc()
-            logger.error(f"Failed to load model: {e}")
+            logger.opt(exception=_safe_exception_info(e)).error(
+                "event=log_classification_model_load_failed failed_stage=model_load error_type={} call_chain={}",
+                type(e).__name__,
+                _safe_exception_call_chain(e),
+            )
             raise
 
     @bentoml.on_shutdown
@@ -103,9 +130,11 @@ class MLService:
         req_config = request.config
         
         start_time = time.time()
-        logger.info(
-            f"收到日志聚类请求: {len(data)} 条日志, "
-            f"return_details={req_config.return_details}, sort_by={req_config.sort_by}"
+        logger.debug(
+            "event=log_classification_request_received logs={} return_details={} sort_by={}",
+            len(data),
+            req_config.return_details,
+            req_config.sort_by,
         )
 
         try:
@@ -223,17 +252,24 @@ class MLService:
             ).inc()
             
             logger.info(
-                f"聚类完成: {summary.num_templates} 个模板, "
-                f"覆盖率 {summary.coverage_rate:.2%}, "
-                f"未知日志 {summary.unknown_logs} 条, "
-                f"耗时 {total_time:.0f}ms (预测={predict_time:.0f}ms, 聚合={aggregate_time:.0f}ms)"
+                "event=log_classification_completed templates={} coverage_rate={:.4f} unknown_logs={} "
+                "duration_ms={:.3f} predict_duration_ms={:.3f} aggregate_duration_ms={:.3f}",
+                summary.num_templates,
+                summary.coverage_rate,
+                summary.unknown_logs,
+                total_time,
+                predict_time,
+                aggregate_time,
             )
             
             return response
             
         except ValueError as e:
             # 输入验证错误
-            logger.error(f"输入验证失败: {e}")
+            logger.warning(
+                "event=log_classification_failed failed_stage=input_validation error_type={}",
+                type(e).__name__,
+            )
             prediction_counter.labels(
                 model_source=self.config.source,
                 status="failure",
@@ -246,7 +282,11 @@ class MLService:
                 model_source=self.config.source,
                 status="failure",
             ).inc()
-            logger.error(f"日志聚类失败: {type(e).__name__}: {e}")
+            logger.opt(exception=_safe_exception_info(e)).error(
+                "event=log_classification_failed failed_stage=model_predict error_type={} call_chain={}",
+                type(e).__name__,
+                _safe_exception_call_chain(e),
+            )
             raise ModelInferenceError(f"Log clustering failed: {str(e)}") from e
 
     @bentoml.api

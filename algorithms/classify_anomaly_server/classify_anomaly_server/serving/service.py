@@ -4,6 +4,9 @@ import bentoml
 from loguru import logger
 import time
 import os
+import sys
+import traceback
+from pathlib import Path
 
 from .config import get_model_config
 from .exceptions import ModelInferenceError
@@ -15,6 +18,26 @@ from .metrics import (
 )
 from .models import load_model
 from .schemas import PredictRequest, PredictResponse, PREDICT_MAX_DATA_POINTS
+
+def _configure_production_logger(sink=sys.stderr) -> None:
+    logger.configure(handlers=[{"sink": sink, "diagnose": False, "backtrace": True}])
+
+
+_configure_production_logger()
+
+
+def _safe_exception_call_chain(error: BaseException, max_frames: int = 12) -> str:
+    frames = traceback.extract_tb(error.__traceback__)
+    return ">".join(f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}" for frame in frames[-max_frames:]) or "-"
+
+
+class _SafeLogException(RuntimeError):
+    pass
+
+
+def _safe_exception_info(error: BaseException):
+    safe_error = _SafeLogException(type(error).__name__)
+    return _SafeLogException, safe_error, error.__traceback__
 
 
 @bentoml.service(
@@ -59,9 +82,10 @@ class MLService:
 
         except Exception as e:
             model_load_counter.labels(source=self.config.source, status="failure").inc()
-            logger.exception(
-                "event=anomaly_model_load_failed failed_stage=model_load error_type={}",
+            logger.opt(exception=_safe_exception_info(e)).error(
+                "event=anomaly_model_load_failed failed_stage=model_load error_type={} call_chain={}",
                 type(e).__name__,
+                _safe_exception_call_chain(e),
             )
 
             # 根据环境变量决定是否允许降级到 DummyModel
@@ -346,9 +370,10 @@ class MLService:
 
         except Exception as e:
             # 其他错误（模型检测失败等）
-            logger.exception(
-                "event=anomaly_detection_failed failed_stage=model_predict error_type={}",
+            logger.opt(exception=_safe_exception_info(e)).error(
+                "event=anomaly_detection_failed failed_stage=model_predict error_type={} call_chain={}",
                 type(e).__name__,
+                _safe_exception_call_chain(e),
             )
 
             prediction_counter.labels(

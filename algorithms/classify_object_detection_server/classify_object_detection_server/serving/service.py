@@ -5,7 +5,9 @@ import os
 import resource
 import sys
 import time
+import traceback
 from io import BytesIO
+from pathlib import Path
 
 import bentoml
 from loguru import logger
@@ -39,6 +41,26 @@ from .schemas.api_schema import (
     validate_image_budget_config,
 )
 
+def _configure_production_logger(sink=sys.stderr) -> None:
+    logger.configure(handlers=[{"sink": sink, "diagnose": False, "backtrace": True}])
+
+
+_configure_production_logger()
+
+
+def _safe_exception_call_chain(error: BaseException, max_frames: int = 12) -> str:
+    frames = traceback.extract_tb(error.__traceback__)
+    return ">".join(f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}" for frame in frames[-max_frames:]) or "-"
+
+
+class _SafeLogException(RuntimeError):
+    pass
+
+
+def _safe_exception_info(error: BaseException):
+    safe_error = _SafeLogException(type(error).__name__)
+    return _SafeLogException, safe_error, error.__traceback__
+
 
 def _process_peak_rss_bytes() -> int:
     """返回进程峰值 RSS；macOS 以字节、Linux 以 KiB 报告。"""
@@ -69,18 +91,22 @@ class MLService:
 
     def __init__(self) -> None:
         """初始化服务,加载配置和模型."""
-        logger.info("Service instance initializing...")
+        logger.debug("event=object_detection_service_initializing")
         validate_image_budget_config()
         self.config = get_model_config()
-        logger.info(f"Config loaded: {self.config}")
+        logger.debug("event=object_detection_config_loaded model_source={}", self.config.source)
 
         try:
             self.model = load_model(self.config)
             model_load_counter.labels(source=self.config.source, status="success").inc()
-            logger.info("Model loaded successfully")
+            logger.info("event=object_detection_model_load_succeeded model_source={}", self.config.source)
         except Exception as e:
             model_load_counter.labels(source=self.config.source, status="failure").inc()
-            logger.error(f"Failed to load model: {e}")
+            logger.opt(exception=_safe_exception_info(e)).error(
+                "event=object_detection_model_load_failed failed_stage=model_load error_type={} call_chain={}",
+                type(e).__name__,
+                _safe_exception_call_chain(e),
+            )
             raise
 
     @bentoml.on_shutdown
@@ -185,7 +211,10 @@ class MLService:
             predict_config = PredictConfig(**config) if config else PredictConfig()
             request = PredictRequest(images=images, config=predict_config)
         except Exception as e:
-            logger.error(f"Request validation failed: {e}")
+            logger.warning(
+                "event=object_detection_request_rejected reason=invalid_request error_type={}",
+                type(e).__name__,
+            )
             return PredictResponse(
                 results=[],
                 metadata=PredictionMetadata(
@@ -213,9 +242,11 @@ class MLService:
 
         batch_size = len(request.images)
 
-        logger.info(
-            f"📥 Received detection request: batch_size={batch_size}, "
-            f"conf={request.config.conf_threshold}, iou={request.config.iou_threshold}"
+        logger.debug(
+            "event=object_detection_request_received batch_size={} conf={} iou={}",
+            batch_size,
+            request.config.conf_threshold,
+            request.config.iou_threshold,
         )
 
         # ========== 阶段1：批量解码 ==========
@@ -273,7 +304,7 @@ class MLService:
 
         # 全部解码失败，提前返回
         if not valid_images:
-            logger.error("event=image_batch_decode_failed reason=all_images_failed")
+            logger.warning("event=image_batch_decode_failed reason=all_images_failed")
             return PredictResponse(
                 results=[
                     ImageResult(
@@ -349,9 +380,10 @@ class MLService:
             image_process_peak_rss.observe(_process_peak_rss_bytes())
             predict_error = str(e)
 
-            logger.exception(
-                "event=object_detection_failed failed_stage=model_predict error_type={}",
+            logger.opt(exception=_safe_exception_info(e)).error(
+                "event=object_detection_failed failed_stage=model_predict error_type={} call_chain={}",
                 type(e).__name__,
+                _safe_exception_call_chain(e),
             )
 
             # 预测失败，标记所有有效图片为失败

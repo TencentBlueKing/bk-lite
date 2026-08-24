@@ -12,9 +12,11 @@ import importlib
 import sys
 import time
 import types
+from io import StringIO
 from unittest.mock import MagicMock, patch
 
 import pytest
+from loguru import logger as real_logger
 from pydantic import ValidationError
 
 
@@ -284,13 +286,63 @@ class TestMLServicePredict:
         """
         steps = 3
         svc = self._make_service(steps=steps)
+        logger = MagicMock()
         # 规则间隔 60 秒，可以被 infer_freq 识别为 "min"
         data = [{"timestamp": 1700000000 + i * 60, "value": float(i)} for i in range(5)]
         config = {"steps": steps}
-        response = await svc.predict(data, config)
+        with patch.dict(svc.predict.__func__.__globals__, {"logger": logger}):
+            response = await svc.predict(data, config)
         assert response.success is True
         assert response.prediction is not None
         assert len(response.prediction) == steps
+        logger.debug.assert_any_call(
+            "event=timeseries_request_received steps={} data_points={}",
+            steps,
+            len(data),
+        )
+        assert any(call.args[0].startswith("event=timeseries_prediction_completed") for call in logger.info.call_args_list)
+        assert "📥" not in repr(logger.mock_calls)
+
+    @pytest.mark.asyncio
+    async def test_predict_failure_keeps_response_and_owns_one_traceback(self):
+        secret = "model-response-secret-must-not-enter-logs"
+        frame_secret = "frame-local-secret-must-not-enter-logs"
+        svc = self._make_service(steps=3)
+        error = RuntimeError(secret)
+        def fail_with_sensitive_local(*_args, **_kwargs):
+            sensitive_local = frame_secret
+            assert sensitive_local
+            raise error
+
+        svc.model.predict.side_effect = fail_with_sensitive_local
+        data = [{"timestamp": 1700000000 + i * 60, "value": float(i)} for i in range(5)]
+        output = StringIO()
+        configure_logger = svc.predict.__func__.__globals__["_configure_production_logger"]
+        configure_logger(output)
+        try:
+            with patch.dict(svc.predict.__func__.__globals__, {"logger": real_logger}):
+                response = await svc.predict(data, {"steps": 3})
+        finally:
+            configure_logger()
+
+        assert response.success is False
+        assert response.error.code == "E2002"
+        assert secret in response.error.message
+        safe_exception_info = svc.predict.__func__.__globals__["_safe_exception_info"]
+        safe_type, safe_error, safe_traceback = safe_exception_info(error)
+        assert safe_traceback is error.__traceback__
+        assert safe_error is not error
+        assert safe_type.__name__ == "_SafeLogException"
+        assert isinstance(safe_error, RuntimeError)
+        assert str(safe_error) == "RuntimeError"
+        assert str(error) == secret
+        rendered = output.getvalue()
+        assert "event=timeseries_prediction_failed failed_stage=model_predict error_type=RuntimeError" in rendered
+        assert "call_chain=" in rendered
+        assert "Traceback" in rendered
+        assert "service.py" in rendered
+        assert secret not in rendered
+        assert frame_secret not in rendered
 
     @pytest.mark.asyncio
     async def test_max_steps_completes_within_scaled_service_budget(self):

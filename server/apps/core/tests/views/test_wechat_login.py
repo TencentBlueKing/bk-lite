@@ -7,6 +7,8 @@ Tests cover:
 """
 
 import json
+import io
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -67,12 +69,15 @@ class TestVerifyWechatCode:
         assert result["success"] is False
         assert result["errcode"] == 40029
         warning.assert_called_once_with(
-            "event=wechat_token_exchange_failed http_status=%s errcode=%s error_type=%s",
+            "event=wechat_token_exchange_failed failed_stage=token_exchange "
+            "http_status=%s errcode=%s error_type=%s",
             400,
             40029,
             "wechat_api_error",
         )
-        assert "wechat-token-must-not-enter-logs" not in str(warning.call_args)
+        rendered = warning.call_args.args[0] % warning.call_args.args[1:]
+        assert "wechat-token-must-not-enter-logs" not in rendered
+        assert result["error"] == "invalid code"
 
     @patch("apps.core.views.index_view.requests")
     @patch("apps.core.views.index_view.LoginModule")
@@ -124,6 +129,43 @@ class TestVerifyWechatCode:
 
     @patch("apps.core.views.index_view.requests")
     @patch("apps.core.views.index_view.LoginModule")
+    def test_unexpected_response_error_keeps_return_without_leaking_log(self, mock_login_module, mock_requests):
+        import requests as real_requests
+
+        from apps.core.views import index_view
+
+        secret = "wechat-response-secret-must-not-enter-logs"
+        mock_module = MagicMock(app_id="test_app", decrypted_app_secret="test_secret")
+        mock_login_module.objects.filter.return_value.first.return_value = mock_module
+        error = RuntimeError(secret)
+        mock_requests.get.return_value.json.side_effect = error
+        mock_requests.Timeout = real_requests.Timeout
+        output = io.StringIO()
+        handler = logging.StreamHandler(output)
+        handler.setFormatter(logging.Formatter("%(message)s"))
+        index_view.logger.addHandler(handler)
+        try:
+            result = index_view.verify_wechat_code("test_code")
+        finally:
+            index_view.logger.removeHandler(handler)
+
+        assert result == {"success": False, "error": secret}
+        safe_type, safe_error, safe_traceback = index_view.safe_exception_info(error)
+        assert safe_traceback is error.__traceback__
+        assert safe_error is not error
+        assert safe_type.__name__ == "SafeLogException"
+        assert isinstance(safe_error, RuntimeError)
+        assert str(safe_error) == "RuntimeError"
+        assert str(error) == secret
+        rendered = output.getvalue()
+        assert "event=wechat_verification_failed failed_stage=verification error_type=RuntimeError" in rendered
+        assert "call_chain=" in rendered
+        assert "Traceback" in rendered
+        assert "verify_wechat_code" in rendered
+        assert secret not in rendered
+
+    @patch("apps.core.views.index_view.requests")
+    @patch("apps.core.views.index_view.LoginModule")
     def test_returns_error_on_userinfo_failure(self, mock_login_module, mock_requests):
         """Should return error when userinfo fetch fails."""
         from apps.core.views import index_view
@@ -154,12 +196,15 @@ class TestVerifyWechatCode:
         assert result["success"] is False
         assert result["errcode"] == 40003
         warning.assert_called_once_with(
-            "event=wechat_userinfo_fetch_failed http_status=%s errcode=%s error_type=%s",
+            "event=wechat_userinfo_fetch_failed failed_stage=userinfo_fetch "
+            "http_status=%s errcode=%s error_type=%s",
             400,
             40003,
             "wechat_api_error",
         )
-        assert "openid-must-not-enter-logs" not in str(warning.call_args)
+        rendered = warning.call_args.args[0] % warning.call_args.args[1:]
+        assert "openid-must-not-enter-logs" not in rendered
+        assert result["error"] == "invalid openid"
 
 
 @pytest.mark.unit

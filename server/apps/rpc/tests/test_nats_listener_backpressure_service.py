@@ -1,4 +1,6 @@
 import asyncio
+import io
+import logging
 from contextlib import suppress
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -65,7 +67,8 @@ async def _start_listener(monkeypatch, settings, *, handler, nats, name, js, con
 async def test_jetstream_fetch_logs_subject_without_payload(monkeypatch, mocker):
     command = nats_listener.Command()
     secret = "payload-secret-must-not-enter-logs"
-    message = SimpleNamespace(data=secret.encode(), subject="bklite.js.collect")
+    subject = "bklite.js.collect\r\n" + "x" * 300
+    message = SimpleNamespace(data=secret.encode(), subject=subject)
 
     class OneMessageSubscription:
         async def fetch(self, timeout):
@@ -78,13 +81,18 @@ async def test_jetstream_fetch_logs_subject_without_payload(monkeypatch, mocker)
 
     await command._fetch(OneMessageSubscription(), progress_interval=10)
 
-    enqueue.assert_awaited_once_with(message, secret, "bklite.js.collect", 10)
+    enqueue.assert_awaited_once_with(message, secret, subject, 10)
+    logged_subject = debug.call_args.args[1]
     debug.assert_called_once_with(
         "event=nats_jetstream_message_received subject=%s payload_bytes=%s",
-        "bklite.js.collect",
+        logged_subject,
         len(message.data),
     )
-    assert secret not in str(debug.call_args)
+    rendered = debug.call_args.args[0] % debug.call_args.args[1:]
+    assert secret not in rendered
+    assert "\r" not in logged_subject
+    assert "\n" not in logged_subject
+    assert len(logged_subject) == nats_listener.LOG_SUBJECT_MAX_LENGTH
 
 
 @pytest.mark.parametrize("registered_js", [False, True])
@@ -551,7 +559,9 @@ async def test_core_worker_preserves_success_and_failure_reply_envelopes(monkeyp
         async def publish(self, reply, payload):
             published.append((reply, payload))
 
-    dispatch = AsyncMock(side_effect=[{"value": 1}, ValueError("invalid payload")])
+    secret = "payload-error-secret-must-not-enter-logs"
+    error = ValueError(secret)
+    dispatch = AsyncMock(side_effect=[{"value": 1}, error])
     monkeypatch.setattr(nats_listener, "nats_handler", dispatch)
     settings.NATS_HANDLER_CONCURRENCY = 1
     settings.NATS_HANDLER_QUEUE_SIZE = 2
@@ -559,9 +569,16 @@ async def test_core_worker_preserves_success_and_failure_reply_envelopes(monkeyp
     command = nats_listener.Command()
     command.nats = FakeNats()
     command._start_workers()
-    await command._enqueue("bklite.success", '{"args": [], "kwargs": {}}', reply="_INBOX.success")
-    await command._enqueue("bklite.failure", '{"args": [], "kwargs": {}}', reply="_INBOX.failure")
-    await asyncio.wait_for(command._message_queue.join(), timeout=1)
+    output = io.StringIO()
+    handler = logging.StreamHandler(output)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    nats_listener.logger.addHandler(handler)
+    try:
+        await command._enqueue("bklite.success", '{"args": [], "kwargs": {}}', reply="_INBOX.success")
+        await command._enqueue("bklite.failure", '{"args": [], "kwargs": {}}', reply="_INBOX.failure")
+        await asyncio.wait_for(command._message_queue.join(), timeout=1)
+    finally:
+        nats_listener.logger.removeHandler(handler)
 
     try:
         success = nats_listener.json.loads(published[0][1])
@@ -571,7 +588,23 @@ async def test_core_worker_preserves_success_and_failure_reply_envelopes(monkeyp
         assert published[1][0] == "_INBOX.failure"
         assert failure["success"] is False
         assert failure["error"] == "ValueError"
-        assert failure["message"] == "invalid payload"
+        assert failure["message"] == secret
+        safe_type, safe_error, safe_traceback = nats_listener.safe_exception_info(error)
+        assert safe_traceback is error.__traceback__
+        assert safe_error is not error
+        assert safe_type.__name__ == "SafeLogException"
+        assert isinstance(safe_error, RuntimeError)
+        assert str(safe_error) == "ValueError"
+        assert str(error) == secret
+        rendered = output.getvalue()
+        assert (
+            "event=nats_handler_failed failed_stage=handler_dispatch transport=core "
+            "subject=bklite.failure error_type=ValueError"
+        ) in rendered
+        assert "call_chain=" in rendered
+        assert "Traceback" in rendered
+        assert "handler" in rendered
+        assert secret not in rendered
     finally:
         await command.shutdown()
         await cancel_tasks_created_after(existing_tasks)

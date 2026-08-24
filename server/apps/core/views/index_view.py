@@ -3,7 +3,7 @@ import os
 from urllib.parse import urlencode, urlparse
 
 import requests
-from apps.core.logger import logger
+from apps.core.logger import logger, safe_exception_call_chain, safe_exception_info
 from apps.core.services.login_auth_request_service import (
     AUTH_REQUEST_TTL,
     build_auth_request_state,
@@ -207,7 +207,8 @@ def verify_wechat_code(code: str) -> dict:
 
         if "errcode" in token_data:
             logger.warning(
-                "event=wechat_token_exchange_failed http_status=%s errcode=%s error_type=%s",
+                "event=wechat_token_exchange_failed failed_stage=token_exchange "
+                "http_status=%s errcode=%s error_type=%s",
                 token_resp.status_code,
                 token_data.get("errcode"),
                 "wechat_api_error",
@@ -228,7 +229,8 @@ def verify_wechat_code(code: str) -> dict:
 
         if "errcode" in userinfo_data:
             logger.warning(
-                "event=wechat_userinfo_fetch_failed http_status=%s errcode=%s error_type=%s",
+                "event=wechat_userinfo_fetch_failed failed_stage=userinfo_fetch "
+                "http_status=%s errcode=%s error_type=%s",
                 userinfo_resp.status_code,
                 userinfo_data.get("errcode"),
                 "wechat_api_error",
@@ -251,7 +253,12 @@ def verify_wechat_code(code: str) -> dict:
         logger.error("WeChat API timeout")
         return {"success": False, "error": "WeChat API timeout"}
     except Exception as e:
-        logger.exception("event=wechat_verification_failed error_type=%s", type(e).__name__)
+        logger.error(
+            "event=wechat_verification_failed failed_stage=verification error_type=%s call_chain=%s",
+            type(e).__name__,
+            safe_exception_call_chain(e),
+            exc_info=safe_exception_info(e),
+        )
         return {"success": False, "error": str(e)}
 
 

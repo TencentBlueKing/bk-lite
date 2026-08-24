@@ -74,7 +74,7 @@
 
 - ✅ **稳定模板 + 惰性参数**：stdlib logging 使用 `logger.info("event=task_completed task_id=%s", task_id)`；独立算法服务沿用 loguru 的 `{}` 参数风格。禁止用 f-string、字符串拼接、`%` 或 `.format()` 预先把动态值固化进模板。
 - ✅ **等级表达运行语义**：INFO 只记录可独立检索的 accepted、lifecycle、terminal 或有界批次汇总；逐项成功、循环进度、函数开始/结束和内部 read/decode/retry 阶段使用 DEBUG 或删除；可恢复降级、跳过和业务失败使用 WARNING；真正需要运维处理的失败才使用 ERROR。
-- ✅ **一个失败只有一个 traceback 所有者**：由最接近业务语义且拥有 task/run/execution/callback ID 的边界在 `except` 中使用 `logger.exception`；下层继续上抛时不得重复 ERROR，也不得手工调用 `traceback.format_exc()`。上层可记录不带重复堆栈的有界终态汇总。
+- ✅ **一个失败只有一个 traceback 所有者**：由最接近业务语义且拥有 task/run/execution/callback ID 的边界在 `except` 中持有真实 traceback；通常使用 `logger.exception`。异常正文可能含 payload、响应或凭据时，必须改用原始 `error.__traceback__` + 脱敏替代异常正文的 `exc_info` / Loguru `opt(exception=...)`，同时记录稳定 `error_type`；Loguru 生产 handler 必须显式 `diagnose=False`，禁止从 traceback 帧展开 locals。仅记录字符串 call-chain 不能替代 traceback。下层继续上抛时不得重复 ERROR，也不得手工调用 `traceback.format_exc()`。上层可记录不带重复堆栈的有界终态汇总。
 - ✅ **失败字段可关联**：失败日志至少包含稳定 event、可用的业务关联 ID、`failed_stage` 和 `error_type`；异步链路分别表达执行结果、持久化结果与投递/ACK 结果，不用单一 `success` 掩盖部分失败。
 
 ### 8.3 安全、容量与业务兼容
@@ -86,8 +86,8 @@
 
 ### 8.4 日志测试契约
 
-- ✅ **测试日志行为而非文案镜像**：稳定模板改动需断言模板与独立参数，并用 `LogRecord.getMessage()` 或等价 formatter 验证最终渲染；异常链需断言语义边界恰好一条 traceback ERROR、`exc_info` 为真实异常且关联字段完整。
-- ✅ **安全断言覆盖完整输出**：使用唯一哨兵值验证 message、参数和带 traceback 的完整格式化结果均不包含凭据、payload、响应正文或其他禁记内容；只断言“截断后看不到完整值”不算通过。
+- ✅ **测试日志行为而非文案镜像**：稳定模板改动需断言模板与独立参数，并用 `LogRecord.getMessage()` 或等价 formatter 验证最终渲染；异常链需断言语义边界恰好一条 traceback ERROR、保留真实 traceback 对象且关联字段完整；异常正文安全时可用原异常，可能敏感时必须使用受控代理异常且不修改原异常。
+- ✅ **安全断言覆盖完整输出**：使用唯一哨兵值验证 message、参数和带 traceback 的完整格式化结果均不包含凭据、payload、响应正文或其他禁记内容；脱敏异常代理还必须证明 `exc_info` / Loguru exception tuple 保留原始 traceback 对象和调用帧、替代正文受控且不修改原异常。Loguru 测试必须直接使用生产 handler，并断言 `diagnose=False`，不得另加测试专用安全 sink 绕过生产配置。只断言 mock 调用或“截断后看不到完整值”不算通过。
 - ✅ **回归同时锁定业务契约**：日志测试必须同步证明原返回值、用户可见错误、异常类型与对象身份、状态/持久化及协议字段保持不变；不得只验证 mock logger 被调用。
 
 ## 9. 架构卫生

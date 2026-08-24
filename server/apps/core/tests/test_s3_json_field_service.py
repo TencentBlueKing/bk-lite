@@ -9,6 +9,9 @@ descriptor 读写拦截、pre_save/get_prep_value 类型分支、deconstruct 迁
 import gzip
 import io
 import json
+import logging
+from contextlib import contextmanager
+from types import SimpleNamespace
 
 import pytest
 from apps.core.fields import s3_json_field as mod
@@ -17,6 +20,18 @@ from apps.core.fields.s3_json_field import (
     S3JSONFieldDescriptor,
     s3_json_upload_path,
 )
+
+
+@contextmanager
+def _capture_real_logger():
+    output = io.StringIO()
+    handler = logging.StreamHandler(output)
+    handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+    mod.logger.addHandler(handler)
+    try:
+        yield output
+    finally:
+        mod.logger.removeHandler(handler)
 
 pytestmark = pytest.mark.unit
 
@@ -161,15 +176,49 @@ class TestLoadFromS3EdgeCases:
         field.storage.objects["empty"] = b""
         assert field._load_from_s3("empty") is None
 
-    def test_invalid_json_returns_none(self):
+    def test_invalid_json_returns_none_without_logging_raw_path_or_content(self):
         field = _make_field()
-        field.storage.objects["bad"] = b"{not valid json"
-        assert field._load_from_s3("bad") is None
+        path = "bad\r\n" + "x" * 600
+        payload = b"{s3-json-secret-must-not-enter-logs"
+        field.storage.objects[path] = payload
+        with _capture_real_logger() as output:
+            assert field._load_from_s3(path) is None
 
-    def test_storage_error_returns_none(self, mocker):
+        rendered = output.getvalue().rstrip("\n")
+        message = rendered.splitlines()[0]
+        assert "s3-json-secret-must-not-enter-logs" not in rendered
+        assert "\r" not in message
+        assert "\n" not in message
+        assert "bad\\r\\n" in message
+        assert "x" * 501 not in message
+        assert "failed_stage=json_decode" in rendered
+        assert "call_chain=" in rendered
+        assert "Traceback" in rendered
+        assert "_load_from_s3" in rendered
+
+    def test_storage_error_returns_none_without_logging_exception_body(self, mocker):
         field = _make_field()
-        mocker.patch.object(field.storage, "open", side_effect=RuntimeError("s3 down"))
-        assert field._load_from_s3("x") is None
+        secret = "storage-response-secret-must-not-enter-logs"
+        error = RuntimeError(secret)
+        mocker.patch.object(field.storage, "open", side_effect=error)
+
+        with _capture_real_logger() as output:
+            assert field._load_from_s3("x") is None
+
+        rendered = output.getvalue().rstrip("\n")
+        safe_type, safe_error, safe_traceback = mod.safe_exception_info(error)
+        assert safe_traceback is error.__traceback__
+        assert safe_error is not error
+        assert safe_type.__name__ == "SafeLogException"
+        assert isinstance(safe_error, RuntimeError)
+        assert str(safe_error) == "RuntimeError"
+        assert str(error) == secret
+        assert secret not in rendered
+        assert "failed_stage=storage_or_decode" in rendered
+        assert "error_type=RuntimeError" in rendered
+        assert "call_chain=" in rendered
+        assert "Traceback" in rendered
+        assert "_load_from_s3" in rendered
 
 
 class TestToPythonAndPrep:
@@ -204,6 +253,49 @@ class TestToPythonAndPrep:
 
     def test_get_internal_type(self):
         assert _make_field().get_internal_type() == "CharField"
+
+
+def test_post_save_cleanup_failure_keeps_original_delete_path_without_leaking_log(mocker):
+    old_path = "old\r\n" + "x" * 600
+    new_path = "new.json"
+    secret = "delete-response-secret-must-not-enter-logs"
+    storage = mocker.Mock()
+    error = RuntimeError(secret)
+    storage.delete.side_effect = error
+    instance = SimpleNamespace(pk=42)
+    setattr(
+        instance,
+        S3JSONField.CLEANUP_TASKS_ATTR,
+        [{"old_path": old_path, "new_path": new_path, "storage": storage, "using": "default"}],
+    )
+    sender = SimpleNamespace(_meta=SimpleNamespace(label="app.Model"))
+    mocker.patch.object(mod.transaction, "on_commit", side_effect=lambda callback, using: callback())
+
+    with _capture_real_logger() as output:
+        mod._handle_s3jsonfield_post_save_cleanup(sender, instance)
+
+    storage.delete.assert_called_once_with(old_path)
+    assert getattr(instance, S3JSONField.CLEANUP_TASKS_ATTR) == []
+    rendered = output.getvalue().rstrip("\n")
+    message = rendered.splitlines()[0]
+    safe_type, safe_error, safe_traceback = mod.safe_exception_info(error)
+    assert safe_traceback is error.__traceback__
+    assert safe_error is not error
+    assert safe_type.__name__ == "SafeLogException"
+    assert isinstance(safe_error, RuntimeError)
+    assert str(safe_error) == "RuntimeError"
+    assert str(error) == secret
+    assert "event=s3_json_previous_object_delete_failed" in rendered
+    assert rendered.startswith("ERROR ")
+    assert "failed_stage=cleanup" in rendered
+    assert "error_type=RuntimeError" in rendered
+    assert "call_chain=" in rendered
+    assert "Traceback" in rendered
+    assert "_cleanup_old_object" in rendered
+    assert secret not in rendered
+    assert "\r" not in message
+    assert "\n" not in message
+    assert "old\\r\\n" in message
 
 
 class TestPreSave:
@@ -253,9 +345,26 @@ class TestPreSave:
         field = _make_field()
         inst = _Instance()
         inst.__dict__["data"] = [{"k": 1}]
-        mocker.patch.object(field.storage, "save", side_effect=RuntimeError("upload fail"))
-        with pytest.raises(RuntimeError):
+        secret = "upload-response-secret-must-not-enter-logs"
+        error = RuntimeError(secret)
+        mocker.patch.object(field.storage, "save", side_effect=error)
+        with _capture_real_logger() as output, pytest.raises(RuntimeError) as caught:
             field.pre_save(inst, add=True)
+
+        assert caught.value is error
+        safe_type, safe_error, safe_traceback = mod.safe_exception_info(error)
+        assert safe_traceback is error.__traceback__
+        assert safe_error is not error
+        assert safe_type.__name__ == "SafeLogException"
+        assert isinstance(safe_error, RuntimeError)
+        assert str(safe_error) == "RuntimeError"
+        assert str(error) == secret
+        rendered = output.getvalue()
+        assert "event=s3_json_upload_failed failed_stage=storage_write error_type=RuntimeError" in rendered
+        assert "call_chain=" in rendered
+        assert "Traceback" in rendered
+        assert "pre_save" in rendered
+        assert secret not in rendered
 
     def test_previous_path_is_loaded_through_model_manager(self, mocker):
         field = S3JSONField(bucket_name="b1", delete_previous_on_update=True)

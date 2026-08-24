@@ -4,7 +4,10 @@ import bentoml
 from loguru import logger
 import mlflow
 import os
+import sys
 import time
+import traceback
+from pathlib import Path
 
 import mlflow.sklearn
 
@@ -26,6 +29,26 @@ from .schemas.api_schema import MAX_INPUT_DATA_POINTS, MAX_PREDICTION_STEPS, Pre
 
 
 MAX_TIMESERIES_PREDICT_TIMEOUT_SECONDS = 290
+
+def _configure_production_logger(sink=sys.stderr) -> None:
+    logger.configure(handlers=[{"sink": sink, "diagnose": False, "backtrace": True}])
+
+
+_configure_production_logger()
+
+
+def _safe_exception_call_chain(error: BaseException, max_frames: int = 12) -> str:
+    frames = traceback.extract_tb(error.__traceback__)
+    return ">".join(f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}" for frame in frames[-max_frames:]) or "-"
+
+
+class _SafeLogException(RuntimeError):
+    pass
+
+
+def _safe_exception_info(error: BaseException):
+    safe_error = _SafeLogException(type(error).__name__)
+    return _SafeLogException, safe_error, error.__traceback__
 
 
 def get_timeseries_predict_timeout_seconds() -> int:
@@ -68,9 +91,9 @@ class MLService:
 
     def __init__(self) -> None:
         """初始化服务,加载配置和模型."""
-        logger.info("Service instance initializing...")
+        logger.debug("event=timeseries_service_initializing")
         self.config = get_model_config()
-        logger.info(f"Config loaded: {self.config}")
+        logger.debug("event=timeseries_config_loaded model_source={}", self.config.source)
 
         # 配置验证与模型加载使用同一个显式降级策略：生产默认快速失败，
         # 仅开发/测试明确设置 ALLOW_DUMMY_FALLBACK=true 时降级。
@@ -90,9 +113,10 @@ class MLService:
 
         except Exception as e:
             model_load_counter.labels(source=self.config.source, status="failure").inc()
-            logger.exception(
-                "event=timeseries_model_load_failed failed_stage=model_load error_type={}",
+            logger.opt(exception=_safe_exception_info(e)).error(
+                "event=timeseries_model_load_failed failed_stage=model_load error_type={} call_chain={}",
                 type(e).__name__,
+                _safe_exception_call_chain(e),
             )
 
             # 根据环境变量决定是否允许降级到 DummyModel
@@ -109,10 +133,6 @@ class MLService:
                     source="dummy_fallback", status="success"
                 ).inc()
             else:
-                logger.error(
-                    "Model loading failed and fallback is disabled. "
-                    "Set ALLOW_DUMMY_FALLBACK=true to enable DummyModel fallback."
-                )
                 raise RuntimeError(
                     f"Failed to load model from source '{self.config.source}'. "
                     "Service cannot start without a valid model. "
@@ -123,7 +143,7 @@ class MLService:
         """验证模型配置（启动时快速检查）."""
         from pathlib import Path
 
-        logger.info("Validating model configuration...")
+        logger.debug("event=timeseries_model_config_validation_started")
 
         if self.config.source == "local":
             # 本地模式：检查路径和关键文件
@@ -217,7 +237,10 @@ class MLService:
             pred_config = PredictionConfig(**config)
             request = PredictRequest(data=data_points, config=pred_config)
         except Exception as e:
-            logger.error(f"Request validation failed: {e}")
+            logger.warning(
+                "event=timeseries_request_rejected reason=invalid_request error_type={}",
+                type(e).__name__,
+            )
             # 返回验证失败响应
             return PredictResponse(
                 success=False,
@@ -237,8 +260,10 @@ class MLService:
                 ),
             )
 
-        logger.info(
-            f"📥 Received prediction request: steps={request.config.steps}, data_points={len(request.data)}"
+        logger.debug(
+            "event=timeseries_request_received steps={} data_points={}",
+            request.config.steps,
+            len(request.data),
         )
 
         try:
@@ -329,7 +354,10 @@ class MLService:
 
         except ValueError as e:
             # 验证错误（频率推断失败等）
-            logger.error(f"Validation error: {e}")
+            logger.warning(
+                "event=timeseries_prediction_failed failed_stage=result_validation error_type={}",
+                type(e).__name__,
+            )
             return PredictResponse(
                 success=False,
                 history=None,
@@ -368,10 +396,11 @@ class MLService:
 
         except Exception as e:
             # 其他错误（模型预测失败等）
-            logger.error(f"Prediction failed: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+            logger.opt(exception=_safe_exception_info(e)).error(
+                "event=timeseries_prediction_failed failed_stage=model_predict error_type={} call_chain={}",
+                type(e).__name__,
+                _safe_exception_call_chain(e),
+            )
             return PredictResponse(
                 success=False,
                 history=None,
