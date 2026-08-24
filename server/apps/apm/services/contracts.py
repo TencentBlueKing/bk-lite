@@ -365,6 +365,22 @@ class InstanceActivity:
 
 
 @dataclass(frozen=True)
+class DeploymentReleaseQuery:
+    started_at: datetime
+    ended_at: datetime
+
+
+@dataclass(frozen=True)
+class InferredDeploymentRelease:
+    service_namespace: str
+    service_name: str
+    environment: str
+    version: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+@dataclass(frozen=True)
 class PublishResult:
     accepted: int
     duplicates: int = 0
@@ -442,6 +458,9 @@ class MetricStore(Protocol):
         ...
 
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]:
+        ...
+
+    def deployment_releases(self, query: DeploymentReleaseQuery) -> list[InferredDeploymentRelease]:
         ...
 
 

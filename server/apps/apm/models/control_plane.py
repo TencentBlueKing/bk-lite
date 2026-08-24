@@ -246,6 +246,56 @@ class ApmSlo(AuditedModel):
         return super().save(*args, **kwargs)
 
 
+class ApmDeploymentEvent(AuditedModel):
+    class Status(models.TextChoices):
+        SUCCESS = "success", "成功"
+        IN_PROGRESS = "in_progress", "进行中"
+        ROLLBACK = "rollback", "回滚"
+        FAILED = "failed", "失败"
+
+    class Source(models.TextChoices):
+        INFERRED = "inferred", "推断"
+        REPORTED = "reported", "上报"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    service = models.ForeignKey(
+        ApmService,
+        on_delete=models.CASCADE,
+        related_name="deployment_events",
+    )
+    environment = models.CharField(max_length=256)
+    version = models.CharField(max_length=256)
+    deployed_at = models.DateTimeField(db_index=True)
+    deployed_by = models.CharField(max_length=128, blank=True, default="")
+    status = models.CharField(max_length=16, choices=Status.choices, db_index=True)
+    source = models.CharField(
+        max_length=16,
+        choices=Source.choices,
+        default=Source.INFERRED,
+    )
+
+    objects = ApmConstraintQuerySet.as_manager()
+
+    class Meta:
+        verbose_name = "APM 部署事件"
+        verbose_name_plural = "APM 部署事件"
+        ordering = ("-deployed_at", "-id")
+        constraints = [
+            models.CheckConstraint(
+                check=~Q(version=""),
+                name="apm_deployment_event_version_not_empty",
+            ),
+        ]
+
+    def _validate_database_constraints(self):
+        if self.version == "":
+            raise IntegrityError("apm_deployment_event_version_not_empty")
+
+    def save(self, *args, **kwargs):
+        self._validate_database_constraints()
+        return super().save(*args, **kwargs)
+
+
 class ApmPolicy(AuditedModel):
     class MetricType(models.TextChoices):
         ERROR_RATE = "error_rate", "错误率"

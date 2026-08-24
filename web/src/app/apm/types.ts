@@ -174,6 +174,19 @@ export interface ApmDashboardTopRow {
   sub_value: number | null;
 }
 
+export type ApmDeploymentStatus = 'success' | 'in_progress' | 'rollback' | 'failed';
+
+export interface ApmDashboardReleaseRow {
+  id: string;
+  service_id: string;
+  service_name: string;
+  environment: string;
+  version: string;
+  deployed_at: string;
+  deployed_by: string;
+  status: ApmDeploymentStatus;
+}
+
 export interface ApmDashboard {
   empty: boolean;
   window: ApmTimeWindow;
@@ -183,7 +196,7 @@ export interface ApmDashboard {
   alerts: ApmDashboardSection<{ items: ApmDashboardAlertRow[] }>;
   top_error_rate: ApmDashboardSection<{ items: ApmDashboardTopRow[] }>;
   top_p95: ApmDashboardSection<{ items: ApmDashboardTopRow[] }>;
-  releases: ApmDashboardSection<{ items: [] }>;
+  releases: ApmDashboardSection<{ items: ApmDashboardReleaseRow[] }>;
 }
 
 export interface ApmTopologyNode {

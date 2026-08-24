@@ -10,7 +10,9 @@ from django.utils import timezone
 
 from apps.apm.adapters.errors import TelemetryStoreUnavailable
 from apps.apm.models import ApmAlert, ApmService, ApmServiceInstance, ApmSlo
-from apps.apm.services.contracts import ServiceMetricQuery, ServiceRed
+from apps.apm.services.contracts import DeploymentReleaseQuery, ServiceMetricQuery, ServiceRed
+from apps.apm.services.deployments import annotate_inferred_deployment_status
+from apps.apm.services.identity import normalize_identity
 from apps.apm.services.reliability import DjangoApmReliabilityService
 from apps.apm.services.status import catalog_status
 from apps.core.logger import apm_logger as logger
@@ -35,6 +37,8 @@ MAX_METRIC_TARGETS = 40
 MAX_TOP_ROWS = 5
 MAX_SLO_ROWS = 5
 MAX_ALERT_ROWS = 5
+MAX_RELEASE_ROWS = 5
+RELEASE_LOOKBACK = timedelta(days=7)
 SECTION_WORKERS = 8
 
 
@@ -166,7 +170,7 @@ class ApmDashboardService:
             "alerts": self._safe_section(lambda: self._build_alerts(organization_id)),
             "top_error_rate": self._safe_section(lambda: self._build_top_error_rate(targets, red_by_key)),
             "top_p95": self._safe_section(lambda: self._build_top_p95(targets, red_by_key)),
-            "releases": _section_empty({"items": []}),
+            "releases": self._safe_section(lambda: self._build_releases(organization_id)),
         }
 
     @staticmethod
@@ -451,6 +455,57 @@ class ApmDashboardService:
             )
             if len(rows) >= MAX_SLO_ROWS:
                 break
+        if not rows:
+            return _section_empty({"items": []})
+        return {"items": rows}
+
+    def _build_releases(self, organization_id: int) -> dict[str, Any]:
+        if self.metric_store is None:
+            raise RuntimeError("MetricStore 未配置")
+        ended_at = self.now_fn()
+        started_at = ended_at - RELEASE_LOOKBACK
+        inferred = self.metric_store.deployment_releases(
+            DeploymentReleaseQuery(started_at=started_at, ended_at=ended_at)
+        )
+        visible = {
+            (service.normalized_namespace, service.normalized_name): service
+            for service in ApmService.objects.filter(
+                organization_links__organization=organization_id,
+                archived_at__isnull=True,
+            )
+        }
+        visible_inferred = [
+            release
+            for release in inferred
+            if (
+                normalize_identity(release.service_namespace),
+                normalize_identity(release.service_name),
+            )
+            in visible
+        ]
+        annotated = annotate_inferred_deployment_status(visible_inferred, observed_at=ended_at)
+        annotated.sort(key=lambda item: item[0].first_seen_at, reverse=True)
+        rows = []
+        for release, status in annotated[:MAX_RELEASE_ROWS]:
+            service = visible[
+                (
+                    normalize_identity(release.service_namespace),
+                    normalize_identity(release.service_name),
+                )
+            ]
+            rows.append(
+                {
+                    "id": f"{service.id}:{release.environment}:{release.version}:{int(release.first_seen_at.timestamp())}",
+                    "service_id": str(service.id),
+                    "service_name": service.name,
+                    "environment": release.environment,
+                    "version": release.version,
+                    "deployed_at": release.first_seen_at,
+                    "deployed_by": "",
+                    "status": status,
+                    "source": "inferred",
+                }
+            )
         if not rows:
             return _section_empty({"items": []})
         return {"items": rows}
