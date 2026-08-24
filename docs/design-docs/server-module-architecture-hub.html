@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Server 后端模块架构中心</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef3f8;
+      --surface: #ffffff;
+      --surface-soft: #f6f8fb;
+      --border: #d6e0eb;
+      --border-strong: #b9cadb;
+      --text: #172033;
+      --muted: #64748b;
+      --accent: #0891b2;
+      --accent-soft: #e0f7fb;
+      --accent-strong: #0e7490;
+      --shadow: 0 14px 36px rgba(30, 64, 96, 0.12);
+    }
+
+    [data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0b1220;
+      --surface: #111a2b;
+      --surface-soft: #172238;
+      --border: #293750;
+      --border-strong: #3a4d6a;
+      --text: #e6edf7;
+      --muted: #9aabc1;
+      --accent: #22d3ee;
+      --accent-soft: #123849;
+      --accent-strong: #67e8f9;
+      --shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    button, input, a { font: inherit; }
+
+    .app {
+      display: grid;
+      grid-template-rows: 72px minmax(0, 1fr);
+      width: 100%;
+      height: 100%;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 12px 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 4px 18px rgba(30, 64, 96, 0.06);
+      z-index: 2;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      min-width: 330px;
+      gap: 13px;
+    }
+
+    .brand-mark {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 0 7px var(--accent-soft);
+    }
+
+    .brand-copy h1 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-copy p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .view-tabs {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .view-tab,
+    .icon-button,
+    .module-button {
+      border: 1px solid var(--border);
+      background: var(--surface-soft);
+      color: var(--text);
+      cursor: pointer;
+      transition: border-color 140ms ease, background 140ms ease, color 140ms ease, transform 140ms ease;
+    }
+
+    .view-tab {
+      min-height: 38px;
+      padding: 8px 15px;
+      border-radius: 10px;
+      white-space: nowrap;
+    }
+
+    .view-tab:hover,
+    .icon-button:hover,
+    .module-button:hover {
+      border-color: var(--accent);
+      color: var(--accent-strong);
+    }
+
+    .view-tab[aria-selected="true"] {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent-strong);
+      font-weight: 700;
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .icon-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 40px;
+      height: 38px;
+      padding: 0 12px;
+      border-radius: 10px;
+      text-decoration: none;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      min-height: 0;
+      padding: 14px;
+      gap: 14px;
+    }
+
+    .sidebar,
+    .viewer {
+      min-height: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .sidebar {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      padding: 13px;
+    }
+
+    .search {
+      width: 100%;
+      height: 38px;
+      padding: 0 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      outline: none;
+      background: var(--surface-soft);
+      color: var(--text);
+    }
+
+    .search:focus { border-color: var(--accent); }
+
+    .module-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-height: 0;
+      margin-top: 12px;
+      overflow-y: auto;
+      padding-right: 3px;
+    }
+
+    .module-button {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      min-height: 43px;
+      padding: 7px 9px;
+      border-radius: 10px;
+      text-align: left;
+    }
+
+    .module-button[aria-current="true"] {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent-strong);
+      font-weight: 700;
+    }
+
+    .module-index {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .module-button[aria-current="true"] .module-index { color: var(--accent-strong); }
+
+    .sidebar-footer {
+      padding: 11px 4px 1px;
+      color: var(--muted);
+      font-size: 11px;
+      border-top: 1px solid var(--border);
+      margin-top: 10px;
+    }
+
+    .viewer {
+      display: grid;
+      grid-template-rows: 46px minmax(0, 1fr);
+      overflow: hidden;
+    }
+
+    .viewer-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-soft);
+    }
+
+    .viewer-title {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .viewer-file {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #f5f7fa;
+    }
+
+    .empty {
+      padding: 20px 10px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 12px;
+    }
+
+    @media (max-width: 900px) {
+      .app { grid-template-rows: auto minmax(0, 1fr); }
+      .topbar { flex-wrap: wrap; }
+      .brand { min-width: 0; flex: 1; }
+      .view-tabs { order: 3; width: 100%; overflow-x: auto; }
+      .workspace { grid-template-columns: 190px minmax(0, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div class="brand-copy">
+          <h1>Server 后端模块架构中心</h1>
+          <p>13 个模块 · 39 张交互图 · 1 张全局路线图</p>
+        </div>
+      </div>
+      <nav id="viewTabs" class="view-tabs" aria-label="图件视角"></nav>
+      <div class="top-actions">
+        <button id="themeToggle" class="icon-button" type="button" aria-label="切换导航页主题">◐</button>
+        <a id="openStandalone" class="icon-button" target="_blank" rel="noopener" aria-label="在新标签页打开当前图">↗</a>
+      </div>
+    </header>
+
+    <section class="workspace">
+      <aside class="sidebar">
+        <input id="moduleSearch" class="search" type="search" placeholder="搜索模块…" aria-label="搜索模块">
+        <nav id="moduleList" class="module-list" aria-label="后端模块"></nav>
+        <footer class="sidebar-footer">方向键可切换模块；URL hash 可直接分享当前视角。</footer>
+      </aside>
+
+      <section class="viewer" aria-live="polite">
+        <div class="viewer-header">
+          <div id="viewerTitle" class="viewer-title"></div>
+          <div id="viewerFile" class="viewer-file"></div>
+        </div>
+        <iframe id="diagramFrame" title="模块架构图"></iframe>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const catalog = [
+      { id: "overview", label: "全局路线图", views: { overview: ["路线图", "server-module-analysis-roadmap.architecture.html"] } },
+      { id: "monitor", label: "Monitor", views: {
+        current: ["现状架构", "monitor-current.architecture.html"],
+        core: ["核心数据流", "monitor-core.dataflow.html"],
+        target: ["目标架构", "monitor-target.architecture.html"]
+      } },
+      { id: "cmdb", label: "CMDB", views: {
+        current: ["现状架构", "cmdb-current.architecture.html"],
+        core: ["核心纵向流程", "cmdb-core-vertical.workflow.html"],
+        target: ["目标架构", "cmdb-target.architecture.html"]
+      } },
+      { id: "node-mgmt", label: "NodeMgmt", views: {
+        current: ["现状架构", "node-mgmt-current.architecture.html"],
+        core: ["安装与回连流程", "node-mgmt-install.workflow.html"],
+        target: ["目标架构", "node-mgmt-target.architecture.html"]
+      } },
+      { id: "alerts", label: "Alerts", views: {
+        current: ["现状架构", "alerts-current.architecture.html"],
+        core: ["告警数据流", "alerts-core.dataflow.html"],
+        target: ["目标架构", "alerts-target.architecture.html"]
+      } },
+      { id: "opspilot", label: "OpsPilot", views: {
+        current: ["现状架构", "opspilot-current.architecture.html"],
+        core: ["对话与知识数据流", "opspilot-chat-knowledge.dataflow.html"],
+        target: ["目标架构", "opspilot-target.architecture.html"]
+      } },
+      { id: "system-mgmt", label: "SystemMgmt", views: {
+        current: ["现状架构", "system-mgmt-current.architecture.html"],
+        core: ["身份权限数据流", "system-mgmt-identity-access.dataflow.html"],
+        target: ["目标架构", "system-mgmt-target.architecture.html"]
+      } },
+      { id: "job-mgmt", label: "JobMgmt", views: {
+        current: ["现状架构", "job-mgmt-current.architecture.html"],
+        core: ["执行生命周期", "job-mgmt-execution-lifecycle.dataflow.html"],
+        target: ["目标架构", "job-mgmt-target.architecture.html"]
+      } },
+      { id: "patch-mgmt", label: "PatchMgmt", views: {
+        current: ["现状架构", "patch-mgmt-current.architecture.html"],
+        core: ["治理数据流", "patch-mgmt-governance.dataflow.html"],
+        target: ["目标架构", "patch-mgmt-target.architecture.html"]
+      } },
+      { id: "log", label: "Log", views: {
+        current: ["现状架构", "log-current.architecture.html"],
+        core: ["策略生命周期", "log-policy-lifecycle.dataflow.html"],
+        target: ["目标架构", "log-target.architecture.html"]
+      } },
+      { id: "apm", label: "APM", views: {
+        current: ["现状架构", "apm-current.architecture.html"],
+        core: ["策略生命周期", "apm-policy-lifecycle.dataflow.html"],
+        target: ["目标架构", "apm-target.architecture.html"]
+      } },
+      { id: "operation-analysis", label: "OperationAnalysis", views: {
+        current: ["现状架构", "operation-analysis-current.architecture.html"],
+        core: ["报表数据流", "operation-analysis-report.dataflow.html"],
+        target: ["目标架构", "operation-analysis-target.architecture.html"]
+      } },
+      { id: "mlops", label: "MLOps", views: {
+        current: ["现状架构", "mlops-current.architecture.html"],
+        core: ["训练与服务生命周期", "mlops-lifecycle.dataflow.html"],
+        target: ["目标架构", "mlops-target.architecture.html"]
+      } },
+      { id: "platform-core", label: "平台基础能力", views: {
+        current: ["现状架构", "platform-core-current.architecture.html"],
+        core: ["请求与 RPC 数据流", "platform-core-request-rpc.dataflow.html"],
+        target: ["目标架构", "platform-core-target.architecture.html"]
+      } }
+    ];
+
+    const moduleList = document.getElementById("moduleList");
+    const moduleSearch = document.getElementById("moduleSearch");
+    const viewTabs = document.getElementById("viewTabs");
+    const diagramFrame = document.getElementById("diagramFrame");
+    const viewerTitle = document.getElementById("viewerTitle");
+    const viewerFile = document.getElementById("viewerFile");
+    const openStandalone = document.getElementById("openStandalone");
+    const themeToggle = document.getElementById("themeToggle");
+
+    let state = { module: "overview", view: "overview" };
+
+    function readHash() {
+      const [moduleId, viewId] = location.hash.slice(1).split("/");
+      const module = catalog.find(item => item.id === moduleId) || catalog[0];
+      const view = module.views[viewId] ? viewId : Object.keys(module.views)[0];
+      state = { module: module.id, view };
+    }
+
+    function updateHash(moduleId, viewId) {
+      const nextHash = `${moduleId}/${viewId}`;
+      if (location.hash.slice(1) === nextHash) {
+        readHash();
+        render();
+      } else {
+        location.hash = nextHash;
+      }
+    }
+
+    function renderModules(filter = moduleSearch.value) {
+      const query = filter.trim().toLocaleLowerCase();
+      moduleList.replaceChildren();
+      const visible = catalog.filter(item => item.label.toLocaleLowerCase().includes(query));
+
+      if (!visible.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "没有匹配模块";
+        moduleList.appendChild(empty);
+        return;
+      }
+
+      visible.forEach(item => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "module-button";
+        button.dataset.module = item.id;
+        button.setAttribute("aria-current", String(item.id === state.module));
+
+        const index = document.createElement("span");
+        index.className = "module-index";
+        index.textContent = String(catalog.indexOf(item)).padStart(2, "0");
+        const label = document.createElement("span");
+        label.textContent = item.label;
+        button.append(index, label);
+
+        button.addEventListener("click", () => updateHash(item.id, Object.keys(item.views)[0]));
+        moduleList.appendChild(button);
+      });
+    }
+
+    function renderViews(module) {
+      viewTabs.replaceChildren();
+      Object.entries(module.views).forEach(([viewId, [label]]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "view-tab";
+        button.textContent = label;
+        button.setAttribute("aria-selected", String(viewId === state.view));
+        button.addEventListener("click", () => updateHash(module.id, viewId));
+        viewTabs.appendChild(button);
+      });
+    }
+
+    function render() {
+      const module = catalog.find(item => item.id === state.module) || catalog[0];
+      const [viewLabel, filename] = module.views[state.view] || Object.values(module.views)[0];
+      renderModules();
+      renderViews(module);
+      viewerTitle.textContent = `${module.label} · ${viewLabel}`;
+      viewerFile.textContent = filename;
+      diagramFrame.title = `${module.label} ${viewLabel}`;
+      if (diagramFrame.getAttribute("src") !== filename) diagramFrame.src = filename;
+      openStandalone.href = filename;
+    }
+
+    moduleSearch.addEventListener("input", event => renderModules(event.target.value));
+    window.addEventListener("hashchange", () => { readHash(); render(); });
+    window.addEventListener("keydown", event => {
+      if (event.target === moduleSearch || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+      event.preventDefault();
+      const currentIndex = catalog.findIndex(item => item.id === state.module);
+      const offset = event.key === "ArrowDown" ? 1 : -1;
+      const nextIndex = (currentIndex + offset + catalog.length) % catalog.length;
+      const next = catalog[nextIndex];
+      updateHash(next.id, Object.keys(next.views)[0]);
+    });
+
+    themeToggle.addEventListener("click", () => {
+      const root = document.documentElement;
+      root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    });
+
+    readHash();
+    if (!location.hash) {
+      updateHash(state.module, state.view);
+    } else {
+      render();
+    }
+  </script>
+</body>
+</html>
