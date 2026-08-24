@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Alerts 事件到处置核心数据流",
+    "output": "alerts-core.dataflow.html",
+    "viewBox": [1420, 790],
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {"id": "event-to-alert", "label": "事件到告警", "focus": ["sources", "adapters", "enrichment", "events", "shield", "instant", "batch", "lease", "alerts"], "note": "先形成可审计 Event，再经屏蔽、即时或周期检测形成 Alert。"},
+      {"id": "recovery", "label": "恢复闭环", "focus": ["events", "recovery", "alerts", "lifecycle_outbox", "effects"], "note": "恢复事件按来源、推送源、外部标识和团队匹配活跃告警。"},
+      {"id": "side-effects", "label": "可靠副作用", "focus": ["alerts", "lifecycle_outbox", "effects"], "note": "分派、通知和 Action 先记录 Outbox，再由 Worker 投递。"}
+    ]
+  },
+  "stages": [
+    {"label": "01 / 来源"},
+    {"label": "02 / 接入治理"},
+    {"label": "03 / 检测与恢复"},
+    {"label": "04 / 事实与可靠性"},
+    {"label": "05 / 运营副作用"}
+  ],
+  "nodes": [
+    {"id": "sources", "type": "external", "label": "原始事件", "sublabel": "HTTP / NATS / 监控源", "stage": 0, "row": 2, "width": 120, "tag": "多租户来源"},
+    {"id": "adapters", "type": "backend", "label": "Source Adapter", "sublabel": "认证 / 映射 / 校验 / 幂等", "stage": 1, "row": 0, "width": 150, "tag": "批次 100"},
+    {"id": "enrichment", "type": "backend", "label": "Enrichment", "sublabel": "CMDB 批量查询 / 60s 缓存", "stage": 1, "row": 1, "width": 150, "tag": "同步 best-effort"},
+    {"id": "events", "type": "database", "label": "Event Facts", "sublabel": "原文 / 标准字段 / team / action", "stage": 1, "row": 2, "width": 150, "tag": "唯一 ingest_key"},
+    {"id": "shield", "type": "security", "label": "Shield Gate", "sublabel": "匹配活跃屏蔽策略", "stage": 1, "row": 3, "width": 150, "tag": "先于建警"},
+    {"id": "instant", "type": "backend", "label": "即时检测", "sublabel": "缓存策略 / 有界异步建警", "stage": 2, "row": 0, "width": 150, "tag": "旁路"},
+    {"id": "batch", "type": "backend", "label": "周期聚合与缺失检测", "sublabel": "单例锁 / Pandas + DuckDB", "stage": 2, "row": 2, "width": 150, "tag": "每分钟"},
+    {"id": "recovery", "type": "backend", "label": "恢复匹配", "sublabel": "来源 / 外部标识 / team", "stage": 2, "row": 4, "width": 150, "tag": "禁止跨源"},
+    {"id": "lease", "type": "database", "label": "Active Fingerprint", "sublabel": "数据库唯一活跃租约", "stage": 3, "row": 0, "width": 150, "tag": "并发裁决"},
+    {"id": "alerts", "type": "database", "label": "Alert Facts", "sublabel": "状态 / 责任人 / 维度 / 事件", "stage": 3, "row": 2, "width": 150, "tag": "运营事实"},
+    {"id": "lifecycle_outbox", "type": "messagebus", "label": "Lifecycle + Outbox", "sublabel": "分派 / 通知 / action", "stage": 3, "row": 4, "width": 150, "tag": "幂等重试"},
+    {"id": "effects", "type": "external", "label": "运营与自动化", "sublabel": "责任人 / 通道 / Job / Incident", "stage": 4, "row": 2, "width": 155, "tag": "外部副作用"}
+  ],
+  "flows": [
+    {"id": "source_adapter", "from": "sources", "to": "adapters", "label": "payload", "variant": "emphasis", "route": "vertical-channel", "labelAt": [200, 270]},
+    {"id": "adapter_enrichment", "from": "adapters", "to": "enrichment", "label": "标准事件", "variant": "default", "route": "vertical-channel", "labelDx": 35},
+    {"id": "enrichment_events", "from": "enrichment", "to": "events", "label": "丰富结果", "variant": "emphasis", "route": "vertical-channel", "labelDx": 35},
+    {"id": "events_shield", "from": "events", "to": "shield", "label": "屏蔽判定", "variant": "security", "route": "vertical-channel", "labelDx": 35},
+    {"id": "shield_instant", "from": "shield", "to": "instant", "label": "即时旁路", "variant": "emphasis", "fromSide": "right", "toSide": "left", "via": [[430, 499], [430, 157]], "labelAt": [430, 330], "labelDx": -28},
+    {"id": "shield_batch", "from": "shield", "to": "batch", "label": "窗口候选", "variant": "default", "fromSide": "right", "toSide": "left", "via": [[440, 499], [440, 385]], "labelAt": [480, 450]},
+    {"id": "shield_recovery", "from": "shield", "to": "recovery", "label": "恢复事件", "variant": "default", "fromSide": "right", "toSide": "left", "via": [[445, 499], [445, 613]], "labelAt": [445, 560], "labelDx": 28},
+    {"id": "instant_lease", "from": "instant", "to": "lease", "label": "claim", "variant": "emphasis", "route": "straight", "labelDy": -30},
+    {"id": "batch_lease", "from": "batch", "to": "lease", "label": "聚合指纹", "variant": "emphasis", "fromSide": "right", "toSide": "left", "via": [[635, 385], [635, 157]], "labelAt": [635, 250], "labelDx": 28},
+    {"id": "lease_alerts", "from": "lease", "to": "alerts", "label": "创建 Alert", "variant": "emphasis", "route": "vertical-channel", "labelDx": 35},
+    {"id": "recovery_alerts", "from": "recovery", "to": "alerts", "label": "自动恢复", "variant": "default", "fromSide": "right", "toSide": "left", "via": [[640, 613], [640, 385]], "labelAt": [640, 520], "labelDx": -28},
+    {"id": "alerts_outbox", "from": "alerts", "to": "lifecycle_outbox", "label": "副作用意图", "variant": "emphasis", "route": "vertical-channel", "labelDx": 35},
+    {"id": "outbox_effects", "from": "lifecycle_outbox", "to": "effects", "label": "分派 / 通知 / Action", "variant": "dashed", "route": "vertical-channel", "labelDy": 26}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "事实与副作用分离", "items": ["Event 与 Alert 是可查询事实，外部副作用由 Outbox 持久化", "唯一 ingest_key 和活跃 fingerprint 分别裁决接入与建警重复"]},
+    {"dot": "amber", "title": "两条检测路径", "items": ["即时策略在接入请求后旁路建警，周期策略由 Beat 扫描数据库窗口", "两者共享 Alert 构建约束，但实现和错误传播仍不完全统一"]},
+    {"dot": "rose", "title": "增长拐点", "items": ["周期成本近似策略数 × 窗口事件数，并重复构造 DataFrame", "慢轮次占住全局锁时，下一分钟调度只跳过而不形成可追踪积压"]}
+  ]
+}

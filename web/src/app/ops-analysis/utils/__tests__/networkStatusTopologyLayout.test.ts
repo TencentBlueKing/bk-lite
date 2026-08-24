@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   DEFAULT_NETWORK_STATUS_TOPOLOGY_LAYOUT_MODE,
+  applyNetworkStatusTopologyLayoutPatch,
   applyNodePositionsToLayout,
   buildPersistedNetworkStatusTopologyConfig,
   canPersistNetworkStatusTopologyLayout,
@@ -308,6 +309,48 @@ test('pruneNetworkStatusTopologyLayout drops missing node and link geometry acro
       hierarchical: { nodePositions: { a: { x: 1, y: 2 } } },
       force: { linkVertices: { l1: [{ x: 0, y: 1 }] } },
     },
+  });
+});
+
+test('layout writeback keeps traffic thresholds and link displays', () => {
+  const topoConfig = {
+    instUuids: ['1'],
+    nodeLimit: 100,
+    layoutMode: 'circular' as const,
+    linkTrafficDisplays: ['inbound'] as Array<'inbound' | 'outbound'>,
+    inboundTrafficThresholds: [{ value: '1024', color: '#dc2626' }],
+    outboundTrafficThresholds: [],
+    layoutByMode: {
+      circular: { nodePositions: { a: { x: 11, y: 22 } } },
+    },
+  };
+  const pruned = pruneNetworkStatusTopologyLayout(
+    {
+      layoutMode: 'force',
+      layoutByMode: {
+        ...topoConfig.layoutByMode,
+        force: { nodePositions: { a: { x: 90, y: 91 } } },
+      },
+    },
+    ['a'],
+    [],
+  );
+  const emitted = applyNetworkStatusTopologyLayoutPatch(
+    {
+      ...topoConfig,
+      instUuids: ['1'],
+      nodeLimit: 100,
+    },
+    pruned,
+  );
+  assert.deepEqual(emitted.linkTrafficDisplays, ['inbound']);
+  assert.deepEqual(emitted.inboundTrafficThresholds, [
+    { value: '1024', color: '#dc2626' },
+  ]);
+  assert.deepEqual(emitted.outboundTrafficThresholds, []);
+  assert.equal(emitted.layoutMode, 'force');
+  assert.deepEqual(emitted.layoutByMode?.force?.nodePositions, {
+    a: { x: 90, y: 91 },
   });
 });
 

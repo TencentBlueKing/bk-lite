@@ -4,23 +4,13 @@ from rest_framework import serializers
 from apps.operation_analysis.models.datasource_models import DataConnection, DataSourceAPIModel
 from apps.operation_analysis.serializers.data_connection_serializers import (
     DataConnectionSerializer,
-    validate_rest_headers,
     validate_datasource_connection_binding,
+    validate_rest_headers,
 )
-from apps.operation_analysis.services.data_connection.config_crypto import (
-    decrypt_connection_config,
-    encrypt_connection_config,
-)
+from apps.operation_analysis.services.data_connection.config_crypto import decrypt_connection_config, encrypt_connection_config
 from apps.operation_analysis.services.data_connection.groups import is_groups_subset
-from apps.operation_analysis.services.data_connection.resolver import (
-    ConnectionResolveError,
-    resolve_datasource_connection,
-)
-from apps.operation_analysis.views.data_connection_view import (
-    REFERENCE_SUMMARY_LIMIT,
-    extract_inline_connection,
-    visible_connection_references,
-)
+from apps.operation_analysis.services.data_connection.resolver import ConnectionResolveError, resolve_datasource_connection
+from apps.operation_analysis.views.data_connection_view import REFERENCE_SUMMARY_LIMIT, extract_inline_connection, visible_connection_references
 
 pytestmark = [pytest.mark.django_db]
 
@@ -232,9 +222,7 @@ def test_binding_clears_connection_when_source_type_forbids_it():
     assert attrs["connection"] is None
     assert attrs["connection_overrides"] == {}
 
-    nats_attrs = validate_datasource_connection_binding(
-        {"source_type": DataSourceAPIModel.SOURCE_TYPE_NATS, "groups": [1], "connection": connection}
-    )
+    nats_attrs = validate_datasource_connection_binding({"source_type": DataSourceAPIModel.SOURCE_TYPE_NATS, "groups": [1], "connection": connection})
     assert nats_attrs["connection"] is None
     assert nats_attrs["connection_overrides"] == {}
 
@@ -416,6 +404,38 @@ def test_connection_references_are_team_scoped_and_bounded():
 
     assert len(references) == REFERENCE_SUMMARY_LIMIT
     assert all(reference.groups == [1] for reference in references)
+
+
+def test_visible_connection_references_include_empty_groups_builtin():
+    connection = DataConnection.objects.create(
+        name="shared-for-builtin",
+        connection_type=DataConnection.TYPE_REST_API,
+        groups=[1],
+        config=encrypt_connection_config({"base_url": "https://example.com", "headers": {}}),
+    )
+    builtin = DataSourceAPIModel.objects.create(
+        name="builtin-empty-groups-ref",
+        source_type=DataSourceAPIModel.SOURCE_TYPE_REST_API,
+        groups=[],
+        is_build_in=True,
+        build_in_key="builtin::empty-groups-ref",
+        connection=connection,
+        created_by="system",
+        updated_by="system",
+    )
+    other_org = DataSourceAPIModel.objects.create(
+        name="other-org-ref",
+        source_type=DataSourceAPIModel.SOURCE_TYPE_REST_API,
+        groups=[2],
+        connection=connection,
+        created_by="u",
+        updated_by="u",
+    )
+
+    references = list(visible_connection_references(connection, 1))
+
+    assert builtin in references
+    assert other_org not in references
 
 
 def test_resolve_preview_connection_config_for_unsaved_shared_connection():

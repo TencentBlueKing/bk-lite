@@ -214,7 +214,7 @@ class TargetCollectionExecutor:
                     target = targets[index]
                     target_started_at = time.monotonic()
                     active_targets.add(target)
-                    logger.info(
+                    logger.debug(
                         "event=target_collection_started instance_id=%s "
                         "plugin_ref=%s plugin_name=%s model_id=%s target=%s",
                         instance_id,
@@ -236,7 +236,7 @@ class TargetCollectionExecutor:
                             plugin_name=request.params.get("plugin_name"),
                         ):
                             duration_ms = round((time.monotonic() - target_started_at) * 1000, 2)
-                            logger.info(
+                            logger.debug(
                                 "event=target_collection_succeeded %s "
                                 "plugin_ref=%s plugin_name=%s model_id=%s target=%s "
                                 "credential_id=%s duration_ms=%s | SNMP采集成功 IP=%s 耗时=%sms",

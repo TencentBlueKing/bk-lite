@@ -353,6 +353,42 @@ class MonitorObjectService:
             return False
 
     @staticmethod
+    def _build_field_query(metric_obj, labels_str):
+        """按实例标签过滤条件拼出字段展示列的取数查询。"""
+        query_template = (getattr(metric_obj, "query", "") or "").strip()
+        if "__$labels__" in query_template:
+            return query_template.replace("__$labels__", labels_str)
+        metric_name = (getattr(metric_obj, "name", "") or "").strip()
+        if metric_name:
+            return f"{metric_name}{{{labels_str}}}" if labels_str else metric_name
+        return query_template
+
+    @staticmethod
+    def query_field_label_values(metric_obj, field):
+        """查询该指标全部 series 的 label 取值,返回 {instance_id: field_value}(同实例取最新样本)。
+
+        与 ``_query_metric_field_values`` 的区别是不限定目标实例,供字段展示列的筛选取值与
+        候选项收集复用。
+        """
+        metrics = VictoriaMetricsAPI().query(MonitorObjectService._build_field_query(metric_obj, ""))
+        value_map = {}
+        time_map = {}
+        for metric in metrics.get("data", {}).get("result", []):
+            labels = metric.get("metric", {})
+            field_value = labels.get(field)
+            if field_value in (None, ""):
+                continue
+            parts = [labels.get(key) for key in metric_obj.instance_id_keys]
+            if any(part in (None, "") for part in parts):
+                continue
+            instance_id = str(tuple(str(part) for part in parts))
+            timestamp = metric.get("value", [0])[0]
+            if instance_id not in value_map or timestamp >= time_map.get(instance_id, 0):
+                value_map[instance_id] = field_value
+                time_map[instance_id] = timestamp
+        return value_map
+
+    @staticmethod
     def _query_metric_field_values(metric_obj, target_instances, field):
         """对 target_instances 查询指标,返回 VM label 字段值 {instance_id: field_value}。"""
         target_ids = [parse_instance_id(inst["instance_id"]) for inst in target_instances]
@@ -365,15 +401,7 @@ class MonitorObjectService:
             query_parts.append(f'{key}=~"{values}"')
 
         labels_str = f"{', '.join(query_parts)}"
-        query_template = (getattr(metric_obj, "query", "") or "").strip()
-        if "__$labels__" in query_template:
-            query = query_template.replace("__$labels__", labels_str)
-        else:
-            metric_name = (getattr(metric_obj, "name", "") or "").strip()
-            if metric_name:
-                query = f"{metric_name}{{{labels_str}}}" if labels_str else metric_name
-            else:
-                query = query_template
+        query = MonitorObjectService._build_field_query(metric_obj, labels_str)
         metrics = VictoriaMetricsAPI().query(query)
         target_instance_ids = {inst["instance_id"] for inst in target_instances}
         value_map = {}

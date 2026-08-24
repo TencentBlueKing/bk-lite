@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Log 策略扫描与告警生命周期数据流",
+    "output": "log-policy-lifecycle.dataflow.html",
+    "quality_profile": "showcase",
+    "viewBox": [1460, 755],
+    "views": [
+      {"id": "window", "label": "窗口与范围", "focus": ["policy", "window", "scope"], "note": "任务从成功游标构造延迟窗口与有界回补；日志分组解析失败却回退为更宽 collect_type 范围。"},
+      {"id": "detect", "label": "查询与检测", "focus": ["scope", "query", "grouped", "events"], "note": "关键字/聚合扫描访问 VictoriaLogs；分组关键字为每个 group 再发一次样本查询且仅取前 1000 组。"},
+      {"id": "commit", "label": "事实与副作用", "focus": ["events", "snapshot", "notice", "cursor"], "note": "确定性事件先落 DB/MinIO，再更新整份快照并同步通知；全部成功后游标 CAS 前进。"}
+    ]
+  },
+  "stages": [
+    {"label": "01 / 策略与游标"},
+    {"label": "02 / 范围构建"},
+    {"label": "03 / 检测查询"},
+    {"label": "04 / 生命周期事实"},
+    {"label": "05 / 副作用与收敛"}
+  ],
+  "nodes": [
+    {"id": "policy", "type": "database", "label": "Policy / Beat", "sublabel": "schedule + period + last_run_time", "stage": 0, "row": 2, "width": 150, "tag": "每策略 singleton"},
+    {"id": "window", "type": "backend", "label": "Window Planner", "sublabel": "delay + overlap + bounded backfill", "stage": 1, "row": 4, "width": 150, "tag": "execution_key"},
+    {"id": "scope", "type": "security", "label": "LogGroup Query Builder", "sublabel": "groups + collect_type + base query", "stage": 1, "row": 2, "width": 170, "tag": "异常时扩大范围"},
+    {"id": "query", "type": "database", "label": "VictoriaLogs Query", "sublabel": "keyword / aggregate / limit 1000", "stage": 2, "row": 2, "width": 165, "tag": "无共享预算"},
+    {"id": "grouped", "type": "backend", "label": "Grouped Sample Fan-out", "sublabel": "每组一次样本查询 / pool ≤10", "stage": 2, "row": 4, "width": 175, "tag": "最多 1000+1 查询"},
+    {"id": "events", "type": "database", "label": "Alert + Event + RawData", "sublabel": "row lock + deterministic event id", "stage": 3, "row": 2, "width": 175, "tag": "MinIO 在事务内"},
+    {"id": "snapshot", "type": "database", "label": "AlertSnapshot", "sublabel": "read-modify-write S3 list ≤500", "stage": 3, "row": 4, "width": 170, "tag": "整份对象重写"},
+    {"id": "notice", "type": "external", "label": "Notice Delivery", "sublabel": "SystemMgmt / Alerts + compensation", "stage": 4, "row": 2, "width": 165, "tag": "锁内发送 / best effort"},
+    {"id": "cursor", "type": "security", "label": "Cursor CAS", "sublabel": "only after successful window", "stage": 4, "row": 4, "width": 150, "tag": "单调前进"}
+  ],
+  "flows": [
+    {"id": "policy_window", "from": "policy", "to": "window", "label": "cursor", "variant": "default"},
+    {"id": "policy_scope", "from": "policy", "to": "scope", "label": "rules", "variant": "security", "route": "straight"},
+    {"id": "window_query", "from": "window", "to": "query", "label": "time window", "variant": "emphasis"},
+    {"id": "scope_query", "from": "scope", "to": "query", "label": "LogsQL", "variant": "security", "route": "straight", "fromSide": "right", "toSide": "left"},
+    {"id": "query_grouped", "from": "query", "to": "grouped", "label": "groups", "variant": "dashed"},
+    {"id": "query_events", "from": "query", "to": "events", "label": "matches", "variant": "emphasis", "route": "straight", "fromSide": "right", "toSide": "left"},
+    {"id": "grouped_events", "from": "grouped", "to": "events", "label": "samples", "variant": "dashed"},
+    {"id": "events_snapshot", "from": "events", "to": "snapshot", "label": "raw evidence", "variant": "default"},
+    {"id": "events_notice", "from": "events", "to": "notice", "label": "created / closed", "variant": "dashed", "labelAt": [855, 428]},
+    {"id": "snapshot_cursor", "from": "snapshot", "to": "cursor", "label": "success", "variant": "security"},
+    {"id": "notice_cursor", "from": "notice", "to": "cursor", "label": "attempted", "variant": "emphasis"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "重试身份和游标语义清晰", "items": ["同一成功游标后的重试共享 execution_key；Event 主键由 policy、execution_key、source_id 确定", "游标只在完整窗口完成后 CAS 前进，并对异常并发完成汇合到最大时间"]},
+    {"dot": "rose", "title": "范围错误不能降级为宽查询", "items": ["配置了日志分组却构建失败时必须标记 scan failed，禁止回退为 collect_type；失败时不得推进游标", "alert_condition 应在写入时验证 schema、字段标识符、函数/operator 白名单、group 上限和查询复杂度"]},
+    {"dot": "amber", "title": "外部 I/O 和容量需要独立状态", "items": ["Grouped detection 要拆为有界 QueryPlan，记录截断并由共享 VictoriaLogs budget 调度", "Event/Alert 事务只写领域事实与 DeliveryIntent；MinIO 快照和通知由 lease worker 执行，保留幂等键、attempt 与结果"]}
+  ]
+}

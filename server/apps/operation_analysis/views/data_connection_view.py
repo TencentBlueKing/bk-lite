@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Count, ProtectedError
+from django.db.models import Count, ProtectedError, Q
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.operation_analysis.common.datasource_visibility import expand_datasource_org_query
 from apps.operation_analysis.models.datasource_models import DataConnection, DataSourceAPIModel
 from apps.operation_analysis.serializers.data_connection_serializers import (
     DataConnectionReferenceSerializer,
@@ -25,7 +26,9 @@ REFERENCE_SUMMARY_LIMIT = 50
 
 
 def visible_connection_references(instance, current_team):
-    return instance.data_sources.filter(groups__contains=[current_team]).order_by("id")
+    membership = Q(groups__contains=current_team)
+    query = expand_datasource_org_query(membership, include_all_builtins=False)
+    return instance.data_sources.filter(query).order_by("id")
 
 
 class DataConnectionViewSet(AuthViewSet):

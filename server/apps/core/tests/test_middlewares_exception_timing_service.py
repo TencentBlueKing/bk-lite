@@ -173,7 +173,11 @@ class TestRequestTimingMiddleware:
 
         warn = mocker.patch.object(mod.logger, "warning")
         self.mw._log_request(_Req(path="/api/slow"), _Resp(200), elapsed_time_ms=99999)
-        warn.assert_called_once()
+        warn.assert_called_once_with(
+            "Slow %s (threshold: %sms)",
+            "Request: GET /api/slow - 200 - 99999.00ms",
+            self.mw.SLOW_REQUEST_THRESHOLD_MS,
+        )
 
     def test_log_request_500_error(self, mocker):
         from apps.core.middlewares import request_timing_middleware as mod

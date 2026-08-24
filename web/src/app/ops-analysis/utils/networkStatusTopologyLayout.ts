@@ -349,6 +349,23 @@ export const pruneNetworkStatusTopologyLayout = (
   };
 };
 
+/** 几何写回时保留流量展示与阈值，只替换布局字段。 */
+export const applyNetworkStatusTopologyLayoutPatch = (
+  config: NetworkStatusTopologyConfig,
+  layout: Pick<NetworkStatusTopologyConfig, 'layoutMode' | 'layoutByMode'>,
+): NetworkStatusTopologyConfig => {
+  const normalized = buildPersistedNetworkStatusTopologyConfig(config);
+  return buildPersistedNetworkStatusTopologyConfig({
+    instUuids: normalized.instUuids,
+    nodeLimit: normalized.nodeLimit,
+    linkTrafficDisplays: normalized.linkTrafficDisplays,
+    inboundTrafficThresholds: normalized.inboundTrafficThresholds,
+    outboundTrafficThresholds: normalized.outboundTrafficThresholds,
+    layoutMode: layout.layoutMode,
+    layoutByMode: layout.layoutByMode,
+  });
+};
+
 /** 只清空指定 mode 的手工几何，保留其它桶与当前 layoutMode */
 export const resetNetworkStatusTopologyLayout = (
   config: NetworkStatusTopologyConfig,

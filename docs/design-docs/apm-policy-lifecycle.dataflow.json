@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "APM 策略评估与告警投递数据流",
+    "output": "apm-policy-lifecycle.dataflow.html",
+    "quality_profile": "showcase",
+    "viewBox": [1460, 720],
+    "views": [
+      {"id": "dispatch", "label": "调度与目标展开", "focus": ["beat", "targets", "query"], "note": "每分钟全表扫描启用策略；endpoint 与 version 做笛卡尔积，缺少 ScanRun 和全局预算。"},
+      {"id": "reduce", "label": "查询与状态裁决", "focus": ["query", "state", "facts"], "note": "外部查询先于目标行锁；事务内按策略版本、cursor 和连续窗口推进生命周期事实。"},
+      {"id": "deliver", "label": "证据与投递收敛", "focus": ["facts", "evidence", "outbox", "notify"], "note": "Event 事务生成 snapshot staging 和每渠道 outbox；后台任务上传对象并投递通知。"}
+    ]
+  },
+  "stages": [{"label": "01 / 周期调度"}, {"label": "02 / 目标计划"}, {"label": "03 / 遥测查询"}, {"label": "04 / 领域事实"}, {"label": "05 / 副作用收敛"}],
+  "nodes": [
+    {"id": "beat", "type": "messagebus", "label": "Minute Dispatcher", "sublabel": "enabled policies / modulo interval", "stage": 0, "row": 2, "width": 150, "tag": "无 durable run"},
+    {"id": "targets", "type": "backend", "label": "Target Expansion", "sublabel": "endpoints × versions", "stage": 1, "row": 2, "width": 155, "tag": "最多 10k"},
+    {"id": "query", "type": "database", "label": "VictoriaTraces RED", "sublabel": "window + breakdown + series", "stage": 2, "row": 2, "width": 160, "tag": "锁前外部 I/O"},
+    {"id": "state", "type": "security", "label": "TargetState Reducer", "sublabel": "cursor + consecutive windows", "stage": 3, "row": 2, "width": 165, "tag": "策略版本校验"},
+    {"id": "facts", "type": "database", "label": "Alert + Event", "sublabel": "trigger / escalate / recover / close", "stage": 3, "row": 4, "width": 165, "tag": "确定性 event key"},
+    {"id": "evidence", "type": "database", "label": "Event Evidence", "sublabel": "staging JSON → MinIO ≤8 attempts", "stage": 4, "row": 4, "width": 165, "tag": "锁内上传"},
+    {"id": "outbox", "type": "database", "label": "Channel Outbox", "sublabel": "unique event/channel + retry", "stage": 4, "row": 2, "width": 165, "tag": "无 fencing token"},
+    {"id": "notify", "type": "external", "label": "SystemMgmt / Alerts", "sublabel": "message / alert event copy", "stage": 4, "row": 0, "width": 165, "tag": "幂等键下游处理"}
+  ],
+  "flows": [
+    {"id": "beat_targets", "from": "beat", "to": "targets", "label": "policy task", "variant": "emphasis", "route": "straight", "labelAt": [208, 428]},
+    {"id": "targets_query", "from": "targets", "to": "query", "label": "per target", "variant": "default", "route": "straight"},
+    {"id": "query_state", "from": "query", "to": "state", "label": "PolicyQueryResult", "variant": "security", "route": "straight", "labelAt": [636, 428]},
+    {"id": "state_facts", "from": "state", "to": "facts", "label": "transition", "variant": "security"},
+    {"id": "facts_evidence", "from": "facts", "to": "evidence", "label": "snapshot intent", "variant": "default", "route": "straight", "labelAt": [853, 656]},
+    {"id": "facts_outbox", "from": "facts", "to": "outbox", "label": "delivery intent", "variant": "emphasis"},
+    {"id": "outbox_notify", "from": "outbox", "to": "notify", "label": "lease / retry", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "事务内事实边界较完整", "items": ["策略 updated_at、启用状态和 target cursor 在写入前重检；同一 cursor 重复任务不会重复创建生命周期事件", "EventSnapshot 先保存不可变语义和 pending payload；每事件/渠道 Outbox 唯一并支持退避、终止失败与人工重投审计"]},
+    {"dot": "rose", "title": "运行身份没有贯穿查询与投递", "items": ["没有 PolicyScanRun/Partition claim，重复 delivery 会先重复 VictoriaTraces 查询；调度或 broker 丢失也没有可追踪的缺口与补扫", "Outbox claim 只有时间戳，陈旧 worker 可在 lease 过期后覆盖新 worker 结果；必须使用 claim token 条件更新"]},
+    {"dot": "amber", "title": "大范围目标和大对象需要预算", "items": ["限制 endpoints、versions 各 100 仍允许 10,000 笛卡尔积；目标应在保存时计算成本并按分区、配额调度", "AlertMetricSnapshot 每个成功窗口向同一 JSON 列表追加且无上限；应改为逐窗口事实或有界 rollup"]}
+  ]
+}

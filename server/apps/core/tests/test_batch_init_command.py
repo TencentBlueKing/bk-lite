@@ -161,15 +161,16 @@ class TestHandleDispatch:
 
         assert [call[0] for call in calls][-1] == "reconcile_node_mgmt_sync"
 
-    def test_fresh_system_mgmt_without_managed_secret_fails_closed(self, calls, monkeypatch):
+    def test_fresh_system_mgmt_without_managed_secret_uses_default_password(self, calls, monkeypatch):
         monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
         monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_FILE", raising=False)
         monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_MIGRATE_EXISTING", raising=False)
 
-        with pytest.raises(CommandError, match="必须配置"):
-            _make_command().handle(apps="system_mgmt", continue_on_error=False)
+        _make_command().handle(apps="system_mgmt", continue_on_error=False)
 
-        assert not [call for call in calls if call[0] == "create_user"]
+        create_user = [call for call in calls if call[0] == "create_user"]
+        assert create_user[0][1] == ("admin", "password")
+        assert create_user[0][2]["update_existing_password"] is False
 
     def test_fresh_system_mgmt_uses_explicit_managed_secret(self, calls):
         _make_command().handle(apps="system_mgmt", continue_on_error=False)
@@ -391,11 +392,12 @@ class TestGetAdminPassword:
         monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD", "  s3cret  ")
         assert bi.Command._get_admin_password() == "s3cret"
 
-    def test_blank_env_without_file_fails_closed(self, monkeypatch):
+    def test_blank_env_without_file_uses_default_password(self, monkeypatch, caplog):
         monkeypatch.setenv("BK_INIT_ADMIN_PASSWORD", "   ")
         monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD_FILE", raising=False)
-        with pytest.raises(CommandError, match="必须配置"):
-            bi.Command._get_admin_password()
+        with caplog.at_level("WARNING", logger="app"):
+            assert bi.Command._get_admin_password() == "password"
+        assert "使用内置初始密码" in caplog.text
 
     def test_missing_env_reads_secret_file(self, monkeypatch, tmp_path):
         monkeypatch.delenv("BK_INIT_ADMIN_PASSWORD", raising=False)
