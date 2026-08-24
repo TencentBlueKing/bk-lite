@@ -39,6 +39,8 @@ assert.match(serviceDetail, /key: 'traces'/, '服务详情必须内嵌调用链 
 assert.match(serviceDetail, /key: 'errors'/, '服务详情必须内嵌错误 Tab');
 assert.match(serviceDetail, /getTraces/, '服务详情调用链 Tab 必须读取真实 Trace');
 assert.match(serviceDetail, /getTopology/, '服务详情依赖关系必须读取真实拓扑');
+assert.match(serviceDetail, /getDeployments/, '服务详情部署 Tab 必须读取物化部署事件');
+assert.doesNotMatch(serviceDetail, /部署事件将在发布埋点接入后展示/, '部署 Tab 不得继续使用埋点占位文案');
 assert.match(serviceDetail, /跳到首个错误|依赖关系/, '服务详情概览必须提供依赖或错误下钻能力');
 assert.doesNotMatch(serviceDetail, /color:\s*'var\(--/, 'Canvas 图表不得直接使用 CSS 变量颜色');
 

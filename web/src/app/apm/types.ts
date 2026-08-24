@@ -175,6 +175,20 @@ export interface ApmDashboardTopRow {
 }
 
 export type ApmDeploymentStatus = 'success' | 'in_progress' | 'rollback' | 'failed';
+export type ApmDeploymentSource = 'inferred' | 'reported';
+
+export interface ApmDeploymentEvent {
+  id: string;
+  service_id: string;
+  service_namespace: string;
+  service_name: string;
+  environment: string;
+  version: string;
+  deployed_at: string;
+  deployed_by: string;
+  status: ApmDeploymentStatus;
+  source: ApmDeploymentSource;
+}
 
 export interface ApmDashboardReleaseRow {
   id: string;
@@ -185,7 +199,7 @@ export interface ApmDashboardReleaseRow {
   deployed_at: string;
   deployed_by: string;
   status: ApmDeploymentStatus;
-  source?: 'inferred' | 'reported';
+  source?: ApmDeploymentSource;
 }
 
 export interface ApmDashboard {

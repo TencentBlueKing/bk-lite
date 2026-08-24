@@ -31,6 +31,12 @@
           "name": "services"
         },
         {
+          "title": "部署",
+          "icon": "mulu",
+          "url": "/apm/services/deployments",
+          "name": "services"
+        },
+        {
           "url": "/apm/services/[serviceId]",
           "name": "service_detail",
           "isNotMenuItem": true
@@ -108,15 +114,16 @@
           "name": "applications"
         },
         {
+          "title": "添加接入",
+          "icon": "settings-fill",
+          "url": "/apm/integration/add",
+          "name": "integration_add"
+        },
+        {
           "title": "接入实例",
           "icon": "caijiqi",
           "url": "/apm/integration/instances",
           "name": "integration_instances"
-        },
-        {
-          "url": "/apm/integration/add",
-          "name": "integration_add",
-          "isNotMenuItem": true
         },
         {
           "url": "/apm/integration/applications/[applicationId]",
@@ -160,6 +167,12 @@
           "title": "SLO",
           "icon": "mulu",
           "url": "/apm/services/slo",
+          "name": "services"
+        },
+        {
+          "title": "Deployments",
+          "icon": "mulu",
+          "url": "/apm/services/deployments",
           "name": "services"
         },
         {
@@ -240,15 +253,16 @@
           "name": "applications"
         },
         {
+          "title": "Add integration",
+          "icon": "settings-fill",
+          "url": "/apm/integration/add",
+          "name": "integration_add"
+        },
+        {
           "title": "Reporting instances",
           "icon": "caijiqi",
           "url": "/apm/integration/instances",
           "name": "integration_instances"
-        },
-        {
-          "url": "/apm/integration/add",
-          "name": "integration_add",
-          "isNotMenuItem": true
         },
         {
           "url": "/apm/integration/applications/[applicationId]",

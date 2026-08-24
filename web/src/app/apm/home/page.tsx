@@ -18,6 +18,7 @@ import {
 import { Button, Col, Row, Segmented, Skeleton, Space, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import DonutChart, { HEALTH_DONUT_COLORS } from '@/app/apm/components/home/donut-chart';
+import { DEPLOYMENT_STATUS_META } from '@/app/apm/components/deployment-status';
 import SectionCard, {
   SectionEmpty,
   StatusPill,
@@ -275,22 +276,12 @@ function SloOverviewList({ items }: { items: ApmDashboardSloRow[] }) {
   );
 }
 
-const RELEASE_STATUS_META: Record<
-  ApmDashboardReleaseRow['status'],
-  { labelKey: string; defaultLabel: string; tone: 'success' | 'info' | 'warning' | 'danger' }
-> = {
-  success: { labelKey: 'apm.home.releaseSuccess', defaultLabel: '成功', tone: 'success' },
-  in_progress: { labelKey: 'apm.home.releaseInProgress', defaultLabel: '进行中', tone: 'info' },
-  rollback: { labelKey: 'apm.home.releaseRollback', defaultLabel: '回滚', tone: 'warning' },
-  failed: { labelKey: 'apm.home.releaseFailed', defaultLabel: '失败', tone: 'danger' },
-};
-
 function ReleaseOverviewList({ items }: { items: ApmDashboardReleaseRow[] }) {
   const { t } = useTranslation();
   return (
     <div className="flex flex-col">
       {items.map((row, index) => {
-        const status = RELEASE_STATUS_META[row.status] ?? RELEASE_STATUS_META.success;
+        const status = DEPLOYMENT_STATUS_META[row.status] ?? DEPLOYMENT_STATUS_META.success;
         return (
           <div
             key={row.id}
@@ -316,7 +307,7 @@ function ReleaseOverviewList({ items }: { items: ApmDashboardReleaseRow[] }) {
                 {row.deployed_by ? ` · ${row.deployed_by}` : ''}
               </div>
             </div>
-            <StatusPill label={t(status.labelKey, status.defaultLabel)} tone={status.tone} />
+            <StatusPill label={t(status.labelKey, status.fallback)} tone={status.tone} />
           </div>
         );
       })}
@@ -634,7 +625,7 @@ export default function ApmHomePage() {
                 icon={<TagsOutlined aria-hidden="true" className="text-[var(--color-primary)]" />}
                 title={t('apm.home.releasesTitle', '版本发布变更')}
                 subtitle={t('apm.home.releasesSubtitle', '近 7 天')}
-                viewAllHref="/apm/services"
+                viewAllHref="/apm/services/deployments"
                 failed={sectionFailed(dashboard?.releases)}
                 onRetry={load}
               >

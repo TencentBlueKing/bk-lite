@@ -14,6 +14,7 @@ from apps.apm.views.control_plane import (
     ApmSloViewSet,
 )
 from apps.apm.views.dashboard import ApmDashboardViewSet
+from apps.apm.views.deployments import ApmDeploymentEventViewSet
 from apps.apm.views.health import ApmHealthViewSet
 from apps.apm.views.issues import ApmIssueViewSet
 from apps.apm.views.open_probe import ApmOpenProbeViewSet
@@ -28,6 +29,7 @@ router.register(r"instances", ApmServiceInstanceViewSet, basename="apm-instance"
 router.register(r"services", ApmServiceViewSet, basename="apm-service")
 router.register(r"slos", ApmSloViewSet, basename="apm-slo")
 router.register(r"dashboard", ApmDashboardViewSet, basename="apm-dashboard")
+router.register(r"deployments", ApmDeploymentEventViewSet, basename="apm-deployment")
 router.register(r"health", ApmHealthViewSet, basename="apm-health")
 router.register(r"traces", ApmTraceViewSet, basename="apm-trace")
 router.register(r"spans", ApmSpanViewSet, basename="apm-span")

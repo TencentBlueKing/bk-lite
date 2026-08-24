@@ -702,13 +702,26 @@
       "noDownstream": "No downstream calls in the recent window",
       "recentTraces": "Recent-window trace samples",
       "runtimeEmpty": "This service has not enabled runtime metric collection (JVM / Go Runtime, etc.)",
-      "deployEmpty": "Deployment events will appear after release instrumentation. For now, investigate changes via version and Trace attributes.",
+      "deployEmpty": "No version changes observed in the last 90 days",
+      "deployHint": "Release records inferred from telemetry",
       "manage": "Manage",
       "configureSlo": "Configure SLO",
       "dependencyMeta": "{calls}/window · Pavg {duration} · errors {errors}",
       "errorsWithCount": "Errors ({count})",
       "ownerApplication": "Owner application",
       "endpointMeta": "{throughput} · P99 {latency}"
+    },
+    "deployments": {
+      "title": "Deployments",
+      "description": "Releases are inferred from telemetry service.version. CI/CD reporting will add deployers and failed statuses.",
+      "refresh": "Refresh deployments",
+      "version": "Version",
+      "deployedAt": "Deployed at",
+      "deployedBy": "Deployed by",
+      "source": "Source",
+      "sourceInferred": "Inferred",
+      "sourceReported": "Reported",
+      "empty": "No deployment events"
     },
     "slo": {
       "title": "SLO",

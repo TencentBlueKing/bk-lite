@@ -702,13 +702,26 @@
       "noDownstream": "近窗内无向下调用",
       "recentTraces": "近窗调用链样本",
       "runtimeEmpty": "该服务尚未接入运行时指标采集（JVM / Go Runtime 等）",
-      "deployEmpty": "部署事件将在发布埋点接入后展示；当前可先通过版本与 Trace 属性排查变更。",
+      "deployEmpty": "近 90 天未观测到版本变化",
+      "deployHint": "由遥测推断的发布记录",
       "manage": "管理",
       "configureSlo": "去配置 SLO",
       "dependencyMeta": "{calls}/窗 · Pavg {duration} · 错误 {errors}",
       "errorsWithCount": "错误 ({count})",
       "ownerApplication": "所属应用",
       "endpointMeta": "{throughput} · P99 {latency}"
+    },
+    "deployments": {
+      "title": "部署",
+      "description": "发布由遥测 service.version 推断；接入 CI/CD 上报后将补充部署人与失败状态。",
+      "refresh": "刷新部署事件",
+      "version": "版本",
+      "deployedAt": "发布时间",
+      "deployedBy": "部署人",
+      "source": "来源",
+      "sourceInferred": "推断",
+      "sourceReported": "上报",
+      "empty": "暂无部署事件"
     },
     "slo": {
       "title": "SLO",
