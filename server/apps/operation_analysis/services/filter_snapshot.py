@@ -173,12 +173,21 @@ def normalize_applied_filter_values(
                 is_custom_static = kind == VALUE_KIND_STATIC and isinstance(static_value, dict) and "start" in static_value and "end" in static_value
                 if kind != VALUE_KIND_DYNAMIC_TIME_RANGE and not is_custom_static and not (kind == VALUE_KIND_STATIC and static_value is None):
                     raise ValidationError({"applied_filter_values": (f"筛选 {filter_id} 类型与 timeRange 定义不匹配")})
-            elif expected_type == "string":
-                if kind != VALUE_KIND_STATIC or isinstance(static_value, (dict, list)):
+            elif expected_type in ("string", "stringList"):
+                # Legacy stringList is read-compat only: treat as string+multiple for shape.
+                definition = definitions[filter_id]
+                input_config = definition.get("inputConfig")
+                if expected_type == "stringList":
+                    is_multiple = True
+                else:
+                    is_multiple = isinstance(input_config, dict) and input_config.get("control") != "input" and bool(input_config.get("multiple"))
+                if kind != VALUE_KIND_STATIC:
                     raise ValidationError({"applied_filter_values": (f"筛选 {filter_id} 类型与 string 定义不匹配")})
-            elif expected_type == "stringList":
-                if kind != VALUE_KIND_STATIC or (static_value is not None and not isinstance(static_value, list)):
-                    raise ValidationError({"applied_filter_values": (f"筛选 {filter_id} 类型与 stringList 定义不匹配")})
+                if is_multiple:
+                    if static_value is not None and not isinstance(static_value, list):
+                        raise ValidationError({"applied_filter_values": (f"筛选 {filter_id} 开启多选时值必须是列表")})
+                elif isinstance(static_value, (dict, list)):
+                    raise ValidationError({"applied_filter_values": (f"筛选 {filter_id} 类型与 string 定义不匹配")})
 
     moment = captured_at or datetime.now(dt_timezone.utc)
     return {

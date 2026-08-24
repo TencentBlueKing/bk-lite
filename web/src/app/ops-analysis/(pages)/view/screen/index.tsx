@@ -775,7 +775,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
             dataSources,
           );
           setDraftViewSets(nextViewSets);
-          queryState.setDefinitions(definitions);
+          queryState.applyFilterConfigConfirm(definitions);
           setFilterConfigOpen(false);
         }}
         definitions={queryState.definitions}
