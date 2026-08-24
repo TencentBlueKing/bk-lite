@@ -921,20 +921,34 @@ def delete_instance_association(params):
 @nats_client.register
 def receive_config_file_result(data: dict):
     """接收 Stargazer 回传的配置文件采集结果并落库。"""
-    logger.info("==[ConfigFileCollect] 接收配置文件采集结果")
     result = ConfigFileService.process_collect_result(data)
-    logger.info(
-        "==[ConfigFileCollect] 处理配置文件采集结果完成",
-    )
+    payload = ConfigFileService._normalize_collect_payload(data)
     error_lines = str(result.get("error") or "").splitlines()
     error = (error_lines[0] if error_lines else "")[:500]
-    return {
+    response = {
         "result": True,
         "processed": not bool(error),
         "error": error,
         "changed": bool(result.get("changed", False)),
         "task_updated": bool(result.get("task_updated", False)),
     }
+    callback_status = str(payload.get("status") or "error").lower()
+    if callback_status not in ConfigFileService.STATUS_MAP:
+        callback_status = "unknown"
+    execution_id = str(payload.get("execution_id") or "-").replace("\r", "\\r").replace("\n", "\\n")[:64]
+    callback_failed = callback_status != "success"
+    log_terminal = logger.warning if error or callback_failed else logger.info
+    log_terminal(
+        "event=config_file_callback_finished task_id=%s execution_id=%s " "callback_status=%s processed=%s changed=%s task_updated=%s stale=%s",
+        payload.get("collect_task_id") or payload.get("task_id") or "-",
+        execution_id,
+        callback_status,
+        response["processed"],
+        response["changed"],
+        response["task_updated"],
+        bool(result.get("stale", False)),
+    )
+    return response
 
 
 def _manual_config_file_already_exists(instance_uuid, file_path) -> bool:
