@@ -38,9 +38,6 @@ export const applyWinrmScheme = <T extends object>(
   rows.map((row) => ({
     ...row,
     winrm_scheme: scheme,
-    port: syncWinrmPort(
-      (row as { port?: number }).port,
-      scheme
-    ),
+    port: syncWinrmPort((row as { port?: number }).port, scheme),
     ...(scheme === 'http' ? { winrm_cert_validation: false } : {})
   }));
