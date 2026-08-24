@@ -70,6 +70,23 @@ def test_clearing_config_keeps_old_object_until_outer_transaction_commits(
     assert deleted == []
 
 
+def test_replacing_config_locks_and_cleans_current_database_pointer(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
+    stale_job = _create_job_with_config_path("configs/stale.json")
+    deleted = _mock_config_storage(monkeypatch, stale_job)
+    ObjectDetectionTrainJob.objects.filter(pk=stale_job.pk).update(config_url="configs/current.json")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        stale_job.hyperopt_config = {"hyperparams": {"epochs": 3}}
+        stale_job.save()
+
+    stale_job.refresh_from_db()
+    assert stale_job.config_url.name.startswith("uploaded/config_")
+    assert deleted == ["configs/current.json"]
+
+
 def test_replacing_config_deletes_old_object_after_commit(
     monkeypatch,
     django_capture_on_commit_callbacks,

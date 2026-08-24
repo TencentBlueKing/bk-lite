@@ -220,11 +220,19 @@ class TrainJobConfigSyncMixin:
             return
 
         using = kwargs.get("using") or router.db_for_write(self.__class__, instance=self)
-        old_file_name = self.config_url.name if self.config_url else None
+        old_file_name = None
         uploaded_file_name = None
 
         # Wrap in transaction so DB changes roll back if MinIO sync fails
         with transaction.atomic(using=using):
+            if self.pk:
+                try:
+                    persisted = self.__class__.objects.using(using).select_for_update().only("config_url").get(pk=self.pk)
+                except self.__class__.DoesNotExist:
+                    pass
+                else:
+                    old_file_name = persisted.config_url.name if persisted.config_url else None
+
             # 1. Save to database first to get pk
             super().save(*args, **kwargs)
 
