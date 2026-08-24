@@ -131,21 +131,22 @@ const Integration = () => {
   };
 
   const handleObjectChange = async (id: string) => {
+    const nextObjectType =
+      id && id !== 'all' && isTypeNodeKey(String(id)) ? String(id) : '';
+    const nextObjectId = !id || id === 'all' || nextObjectType ? '' : id;
+    // URL 回写同一节点时不要 abort 刚发出的插件列表请求，否则右侧会停在上一对象。
+    if (
+      String(objectId) === String(nextObjectId) &&
+      String(objectType) === String(nextObjectType)
+    ) {
+      syncObjectId(id || 'all');
+      return;
+    }
     cancelAllRequests();
     setPagination((prev) => ({ ...prev, current: 1 }));
     syncObjectId(id || 'all');
-    if (id === 'all' || !id) {
-      setObjectId('');
-      setObjectType('');
-      return;
-    }
-    if (isTypeNodeKey(String(id))) {
-      setObjectId('');
-      setObjectType(String(id));
-      return;
-    }
-    setObjectType('');
-    setObjectId(id);
+    setObjectId(nextObjectId);
+    setObjectType(nextObjectType);
   };
 
   const getPluginList = async (
@@ -201,6 +202,10 @@ const Integration = () => {
         current: page,
         total: count
       }));
+    } catch (error: any) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+        return;
+      }
     } finally {
       if (currentRequestId === pluginRequestIdRef.current) {
         setPageLoading(false);
