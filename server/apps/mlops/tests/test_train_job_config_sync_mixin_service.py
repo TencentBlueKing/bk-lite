@@ -221,6 +221,38 @@ def test_missing_database_row_cleans_new_upload_without_deleting_old(
     assert deleted[0].startswith("uploaded/config_")
 
 
+def test_config_sync_uses_explicit_database_alias_for_update_and_cleanup(
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
+    job = _create_job_with_config_path()
+    deleted = _mock_config_storage(monkeypatch, job)
+    update_aliases = []
+    cleanup_aliases = []
+    real_update = QuerySet.update
+    real_schedule = type(job)._delete_config_file_on_commit
+
+    def record_update(queryset, **kwargs):
+        if set(kwargs) == {"config_url"}:
+            update_aliases.append(queryset.db)
+        return real_update(queryset, **kwargs)
+
+    def record_schedule(instance, *, file_name, using):
+        cleanup_aliases.append(using)
+        return real_schedule(instance, file_name=file_name, using=using)
+
+    monkeypatch.setattr(QuerySet, "update", record_update)
+    monkeypatch.setattr(type(job), "_delete_config_file_on_commit", record_schedule)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        job.hyperopt_config = {"hyperparams": {"epochs": 3}}
+        job.save(using="default")
+
+    assert update_aliases == ["default"]
+    assert cleanup_aliases == ["default"]
+    assert deleted == ["configs/old.json"]
+
+
 def test_old_object_cleanup_failure_does_not_roll_back_committed_pointer(
     monkeypatch,
     django_capture_on_commit_callbacks,
