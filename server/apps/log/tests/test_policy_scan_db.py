@@ -80,7 +80,7 @@ class TestKeywordAlertDetection:
         assert ev["value"] == 7
         assert ev["level"] == "warning"
         assert "7 条匹配日志" in ev["content"]
-        assert ev["raw_data"] == [{"_msg": "error A"}, {"_msg": "error B"}]
+        assert ev["raw_data"] == [{"message": "error A"}, {"message": "error B"}]
 
     def test_empty_query_returns_no_events(self):
         policy = _make_policy(alert_condition={"query": ""})

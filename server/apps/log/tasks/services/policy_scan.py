@@ -28,8 +28,9 @@ from apps.log.constants.web import WebConstants
 from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData
 from apps.log.services.aggregate_group_identity import build_aggregate_group_identity
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
+from apps.log.services.log_event_contract import to_logical_event
+from apps.log.services.search import SearchService
 from apps.log.tasks.utils.policy import period_to_seconds
-from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
 
@@ -188,6 +189,11 @@ class LogPolicyScan:
         digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
         return f"policy_{self.policy.id}_{digest}"
 
+    def _to_logical_logs(self, logs):
+        if not isinstance(logs, list):
+            return []
+        return [to_logical_event(item) for item in logs]
+
     def _get_keyword_match_count(self, query, start_timestamp, end_timestamp):
         """获取关键字告警真实命中数量"""
         count_query = f"{query} | stats count() as total_count"
@@ -252,7 +258,7 @@ class LogPolicyScan:
                         "level": self.policy.alert_level,
                         "content": content,
                         "value": total_count,
-                        "raw_data": logs[:sample_limit],  # 只保留少量样本日志作为原始数据
+                        "raw_data": self._to_logical_logs(logs[:sample_limit]),  # 只保留少量样本日志作为原始数据
                     }
                 )
 
@@ -275,7 +281,7 @@ class LogPolicyScan:
             "level": self.policy.alert_level,
             "content": self._render_alert_name(group_values, group_by),
             "value": total_count,
-            "raw_data": (logs or [])[:sample_limit],
+            "raw_data": self._to_logical_logs((logs or [])[:sample_limit]),
         }
         return idx, event
 
@@ -397,38 +403,17 @@ class LogPolicyScan:
             raise
 
     def _build_query_with_log_groups(self, base_query):
-        """构建包含日志分组规则的查询语句
-
-        Args:
-            base_query: 策略的基础查询条件
-
-        Returns:
-            str: 组合了日志分组规则的最终查询语句
-        """
+        """构建包含日志分组规则的查询语句，并按检索同一套契约映射 message → _msg。"""
+        log_groups = getattr(self.policy, "log_groups", [])
         try:
-            # 获取策略配置的日志分组
-            log_groups = getattr(self.policy, "log_groups", [])
-
-            if not log_groups:
-                # 没有配置日志分组，使用原有逻辑（添加采集类型过滤）
-                return self._add_collect_type_filter(base_query)
-
-            # 使用日志分组查询构建器
-            query_with_groups, group_info = LogGroupQueryBuilder.build_query_with_groups(base_query, log_groups)
-
-            # 记录应用的日志分组信息
+            query_with_groups, group_info = SearchService._build_storage_query(base_query, log_groups)
             if group_info:
                 logger.info(f"Policy {self.policy.id} applied log groups: {[g['name'] for g in group_info]}")
-
-            # 添加采集类型过滤
-            final_query = self._add_collect_type_filter(query_with_groups)
-
-            return final_query
-
+            return self._add_collect_type_filter(query_with_groups)
         except Exception as e:
             logger.warning(f"Failed to apply log groups for policy {self.policy.id}: {e}")
-            # 发生错误时回退到原有逻辑
-            return self._add_collect_type_filter(base_query)
+            mapped_query, _ = SearchService._build_storage_query(base_query, None)
+            return self._add_collect_type_filter(mapped_query)
 
     def _add_collect_type_filter(self, query):
         """添加采集类型过滤条件"""
