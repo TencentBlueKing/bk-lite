@@ -14,6 +14,7 @@ const SKIP_CUSTOM_EVENTS = new Set([
   'wiki_citations',
   'user_choice_result',
   'assistant_text_retract',
+  'stream_keepalive',
 ]);
 
 /**

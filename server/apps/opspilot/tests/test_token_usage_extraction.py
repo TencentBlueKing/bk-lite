@@ -73,6 +73,20 @@ def test_accumulator_sums_openai_style_usage_metadata():
     }
 
 
+def test_restore_usage_on_dumped_stream_chunk():
+    """流式 model_dump 把 usage 变成全 0 时，用原始 chunk.usage 回填。"""
+    from apps.opspilot.metis.llm.chain.lc_patches import restore_usage_on_dumped_chunk, usage_payload_from_raw
+
+    raw = SimpleNamespace(usage=SimpleNamespace(prompt_tokens=41, completion_tokens=9, total_tokens=50))
+    dumped = {"id": "chunk-1", "choices": [], "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}}
+    restored = restore_usage_on_dumped_chunk(raw, dumped)
+    assert usage_payload_from_raw(restored["usage"]) == {
+        "prompt_tokens": 41,
+        "completion_tokens": 9,
+        "total_tokens": 50,
+    }
+
+
 def test_openai_client_does_not_force_stream_usage():
     """不强制 stream_usage：部分兼容网关会因 stream_options 直接报错。"""
     created = {}

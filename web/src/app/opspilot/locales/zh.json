@@ -1829,8 +1829,14 @@
       "availableGroupsRequired": "请选择组织",
       "availableGroupsPlaceholder": "请选择组织...",
       "enabled": "启停",
+      "multimodal": "支持多模态",
+      "multimodalHint": "关闭后，页面上下文对话将不传截图，仅保留文字说明",
       "deleteConfirmContent": "删除后将移除模型“{name}”，请谨慎操作。",
-      "deleteConfirmTitle": "删除二次确认"
+      "deleteConfirmTitle": "删除二次确认",
+      "sync": "同步模型",
+      "syncSuccess": "同步成功",
+      "syncFailed": "同步失败",
+      "syncNotSupported": "当前供应商不支持同步"
     },
     "form": {
       "url": "网址",

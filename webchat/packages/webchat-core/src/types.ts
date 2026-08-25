@@ -51,7 +51,7 @@ export interface PageContext {
   images?: PageContextImage[];
 }
 
-export type CollectPageContext = () => Promise<PageContext | null | undefined>;
+export type CollectPageContext = (hint?: { message?: string }) => Promise<PageContext | null | undefined>;
 
 export interface WebChatConfig {
   sseUrl?: string;
@@ -108,13 +108,9 @@ export interface WebChatConfig {
   extensions?: Record<string, unknown>;
   /**
    * Host callback: collect current page snapshot immediately before send.
-   * WebChat never calls this unless the page-context chip is on.
+   * When provided, WebChat calls this on every send; return null when no page context applies.
    */
   collectContext?: CollectPageContext;
-  /**
-   * Cheap availability probe for the page-context chip. Must not collect data.
-   */
-  hasPageContext?: () => boolean;
   /**
    * Host-injected platform assistant contract. When present with required URLs,
    * WebChat runs in platform mode and ignores top-level `sseUrl`.
@@ -127,6 +123,8 @@ export interface PlatformContract {
   applicationsUrl: string;
   sessionsUrl: string;
   messagesUrl: string;
+  /** POST JSON `{ session_id }` to delete one persisted conversation. */
+  deleteSessionUrl?: string;
   chatUrlTemplate: string;
   interruptUrl?: string;
   approvalUrl?: string;

@@ -38,6 +38,40 @@ const CHANNEL_TYPE_TAG: Record<string, { color: string; label: string }> = {
 
 const newSessionTitle = () => `新会话 ${new Date().toLocaleString('zh-CN', { hour12: false })}`;
 
+/** 与平台悬浮壳一致：渠道名；撞名或与智能体名不同时展示「渠道名（智能体名）」 */
+const mapWebChatChannels = (data: any[]): WebChatChannel[] => {
+  const prepared = (Array.isArray(data) ? data : []).map((item) => {
+    const channelName =
+      String(item?.name || item?.app_name || '').trim() ||
+      String(item?.skill_name || '').trim() ||
+      `渠道 ${item?.id ?? ''}`;
+    const skillName = String(item?.skill_name || '').trim() || undefined;
+    return { item, channelName, skillName };
+  });
+
+  const channelNameCounts = new Map<string, number>();
+  for (const row of prepared) {
+    channelNameCounts.set(row.channelName, (channelNameCounts.get(row.channelName) || 0) + 1);
+  }
+
+  return prepared.map(({ item, channelName, skillName }) => {
+    const collision = (channelNameCounts.get(channelName) || 0) > 1;
+    const name =
+      skillName && (collision || skillName !== channelName)
+        ? `${channelName}（${skillName}）`
+        : channelName;
+    return {
+      id: item.id,
+      name,
+      skill_name: skillName,
+      app_name: item.name || item.app_name,
+      app_description: item.introduction || item.app_description || '',
+      introduction: item.introduction || '',
+      icon: 'duihuazhinengti',
+    };
+  });
+};
+
 const SkillWebChatPage: React.FC = () => {
   const { fetchWebChatSkillChannels, fetchSkillConversations, fetchSkillSessionMessages, deleteSkillSession } = useSkillApi();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -64,15 +98,7 @@ const SkillWebChatPage: React.FC = () => {
       setAgentLoading(true);
       try {
         const data = await fetchWebChatSkillChannels();
-        const agents = (data || []).map((item: any) => ({
-          id: item.id,
-          name: item.name || item.app_name || item.skill_name || `渠道 ${item.id}`,
-          skill_name: item.skill_name,
-          app_name: item.name || item.app_name,
-          app_description: item.introduction || item.app_description || '',
-          introduction: item.introduction || '',
-          icon: 'duihuazhinengti',
-        }));
+        const agents = mapWebChatChannels(data);
         setAgentList(agents);
         setCurrentAgent(agents[0] || null);
       } catch {
@@ -309,9 +335,6 @@ const SkillWebChatPage: React.FC = () => {
             <Button type="primary" className="w-full" icon={<Icon type="tianjia" />} onClick={handleNewChat} disabled={!currentAgent}>
               开启新对话
             </Button>
-            {currentAgent?.app_description ? (
-              <div className="mt-2 text-xs text-gray-500 line-clamp-3">{currentAgent.app_description}</div>
-            ) : null}
           </div>
           <div className="flex-1 overflow-y-auto min-h-0">
             <div className="p-2">

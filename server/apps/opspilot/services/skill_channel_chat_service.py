@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from typing import Any
 
@@ -12,6 +13,7 @@ from django.http import StreamingHttpResponse
 from apps.base.models import UserAPISecret
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import SKILL_CHANNEL_SKIP_ORG_CHECK, SkillChannelChoices
+from apps.opspilot.metis.llm.chain.token_utils import count_text_tokens
 from apps.opspilot.models import LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
 from apps.opspilot.services.history_service import HistoryService
@@ -25,7 +27,23 @@ from apps.opspilot.utils.sse_chat import create_error_stream_response
 PAGE_CONTEXT_TEXT_BUDGET = 8000
 PAGE_CONTEXT_MAX_IMAGES = 6
 PAGE_CONTEXT_MAX_IMAGE_CHARS = 500 * 1024
-PAGE_CONTEXT_GUIDE = "以下是用户当前正在查看的页面快照，仅当问题与页面相关时参考。"
+PAGE_CONTEXT_GUIDE = (
+    "以下是用户当前正在查看的页面快照，仅当问题与页面相关时参考。" "只回答用户这一轮提出的问题，不要复述历史里已分析过、且本轮未点名的图表。" "时间范围、横轴起止与 KPI 一律以 <current_page> 本轮快照为准，" "禁止沿用对话历史里过期的时间窗描述。"
+)
+PAGE_CONTEXT_FOCUSED_GUIDE = (
+    "本轮用户问题是「{question}」，已定位到图表{names}。"
+    "只根据本轮 <current_page> 中的截图与文字回答这一问，"
+    "不要沿用上一问的结论、表格、图表名或时间范围。"
+    "截图上可能没有标题，以这段文字中的图表名与「时间筛选/横轴」说明为准。"
+    "禁止回答、复述或续写历史对话里已经分析过的其它图表。"
+)
+# ~600px 截图按 OpenAI high-detail 估算：ceil(600/512)^2 * 170 + 85
+PAGE_CONTEXT_IMAGE_TOKEN_ESTIMATE = 765
+# 单轮页面内容（快照+图）估算超限：拒绝问答；会话累计超限：提示新开会话。测试可 patch。
+PAGE_CONTEXT_SINGLE_TURN_MAX_TOKENS = 20000
+PAGE_CONTEXT_SESSION_MAX_TOKENS = 80000
+PAGE_CONTEXT_TOO_LARGE_MESSAGE = "当前页面内容过多，无法进行问答"
+PAGE_CONTEXT_SESSION_OVERFLOW_MESSAGE = "上下文过长，请新开会话"
 
 
 class SkillChannelChatError(Exception):
@@ -119,6 +137,140 @@ def _section_priority(section) -> int:
         return 0
 
 
+def _caption_title(caption: str) -> str:
+    return str(caption or "").split("；", 1)[0].strip()
+
+
+def _normalize_chart_text(value: str) -> str:
+    return "".join(str(value or "").split()).lower()
+
+
+def _is_generic_chart_title(title: str) -> bool:
+    text = str(title or "").strip()
+    return (not text) or text == "图表" or bool(re.fullmatch(r"(value|series)\d*", text, re.I))
+
+
+# 标题与问法常共用的主题词；只匹配图名，不匹配图例，避免「CPU 使用时间」命中「资源使用趋势」里的 CPU 使用率。
+_CHART_TOPIC_MARKERS = (
+    "时间分布",
+    "使用时间",
+    "iowait",
+    "cpu",
+    "负载",
+    "磁盘",
+    "内存",
+    "网络",
+    "吞吐",
+    "错误",
+)
+_QUESTION_TITLE_ALIASES = (
+    ("使用时间", "时间分布"),
+    ("时间分布", "使用时间"),
+)
+
+
+def chart_title_matches_question(title: str, question: str) -> bool:
+    t = _normalize_chart_text(title)
+    q = _normalize_chart_text(question)
+    if not t or _is_generic_chart_title(title) or len(q) < 2:
+        return False
+    if len(t) >= 2 and t in q:
+        return True
+    core = t[:-3] if t.endswith("top") else t
+    if core.endswith("趋势"):
+        core = core[:-2]
+    if len(core) >= 2 and core in q:
+        return True
+    if 2 <= len(q) <= 12 and q in t:
+        return True
+    if any(alias in q and target in t for alias, target in _QUESTION_TITLE_ALIASES):
+        return True
+    return any(marker in t and marker in q for marker in _CHART_TOPIC_MARKERS)
+
+
+def _visible_chart_titles(snapshot: dict) -> list[str]:
+    titles: list[str] = []
+    for image in snapshot.get("images") or []:
+        title = _caption_title(str(image.get("caption") or ""))
+        if title and not _is_generic_chart_title(title):
+            titles.append(title)
+    for section in snapshot.get("sections") or []:
+        if section.get("id") != "visible-charts":
+            continue
+        for line in str(section.get("content") or "").splitlines():
+            text = line.split(".", 1)[-1].strip() if "." in line[:4] else line.strip()
+            title = _caption_title(text)
+            if title and not _is_generic_chart_title(title):
+                titles.append(title)
+    return titles
+
+
+def _unique_titles(titles: list[str]) -> list[str]:
+    seen: set[str] = set()
+    kept: list[str] = []
+    for title in titles:
+        key = _normalize_chart_text(title)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        kept.append(title)
+    return kept
+
+
+def _page_context_guide(focused_titles: list[str], question: str = "") -> str:
+    titles = _unique_titles(focused_titles)
+    if not titles:
+        return PAGE_CONTEXT_GUIDE
+    names = "、".join(f"《{title}》" for title in titles)
+    return PAGE_CONTEXT_FOCUSED_GUIDE.format(question=str(question or "").strip(), names=names)
+
+
+def _focused_titles_from_page_context(question: str, page_context) -> list[str]:
+    snapshot = _sanitize_page_context(page_context)
+    if not snapshot:
+        return []
+    snapshot = _focus_page_context(question, snapshot)
+    return [str(title) for title in (snapshot.get("_focused_titles") or []) if title]
+
+
+def _history_for_focused_charts(history: list[dict], focused_titles: list[str]) -> list[dict]:
+    """本轮已点名图表时丢掉历史。
+
+     每轮都会重新采集页面截图；保留历史会让模型复述上一问结论
+    （含用户切换时间筛选后仍沿用旧时间窗）。未点名图表的追问仍保留历史。
+    """
+    if not focused_titles or not history:
+        return history
+    return []
+
+
+def _focus_page_context(question: str, snapshot: dict) -> dict:
+    """问题点名了图表时，只保留对应截图，避免把上一问的图再喂一遍。"""
+    images = [item for item in (snapshot.get("images") or []) if isinstance(item, dict)]
+    if not images or not str(question or "").strip():
+        return snapshot
+    matched = _unique_titles([title for title in _visible_chart_titles(snapshot) if chart_title_matches_question(title, question)])
+    if not matched:
+        return snapshot
+    kept = []
+    for image in images:
+        title = _caption_title(str(image.get("caption") or ""))
+        if any(chart_title_matches_question(title, match) or chart_title_matches_question(match, title) or title == match for match in matched):
+            kept.append(image)
+    next_snapshot = {**snapshot, "images": kept, "_focused_titles": matched, "_focus_question": str(question or "").strip()}
+    sections = []
+    for section in snapshot.get("sections") or []:
+        if section.get("id") != "visible-charts":
+            sections.append(section)
+            continue
+        lines = [f"{idx}. {image.get('caption')}" for idx, image in enumerate(kept, start=1) if image.get("caption")]
+        if not lines:
+            continue
+        sections.append({**section, "content": "\n".join(lines)})
+    next_snapshot["sections"] = sections
+    return next_snapshot
+
+
 def _sanitize_page_context(page_context) -> dict | None:
     if not isinstance(page_context, dict) or not page_context:
         return None
@@ -170,8 +322,10 @@ def _sanitize_page_context(page_context) -> dict | None:
     }
 
 
-def _render_page_context_block(snapshot: dict) -> str:
-    lines = [PAGE_CONTEXT_GUIDE, "<current_page>"]
+def _render_page_context_block(snapshot: dict, question: str = "") -> str:
+    focused = [str(title) for title in (snapshot.get("_focused_titles") or []) if title]
+    q = str(question or snapshot.get("_focus_question") or "")
+    lines = [_page_context_guide(focused, q), "<current_page>"]
     if snapshot.get("url"):
         lines.append(f"url: {snapshot['url']}")
     if snapshot.get("app"):
@@ -186,6 +340,172 @@ def _render_page_context_block(snapshot: dict) -> str:
     return "\n".join(lines).strip()
 
 
+def _count_prompt_tokens(text: str) -> int:
+    return count_text_tokens(str(text or ""))
+
+
+def _injected_user_text(user_message) -> str:
+    if isinstance(user_message, list):
+        text, _images = HistoryService.process_user_message_and_images(user_message)
+        return text if isinstance(text, str) else ""
+    return str(user_message or "")
+
+
+def _history_token_count(history) -> tuple[int, int]:
+    parts = []
+    for item in history or []:
+        if isinstance(item, dict):
+            parts.append(str(item.get("message") or ""))
+    return len(history or []), _count_prompt_tokens("\n".join(parts))
+
+
+def build_page_context_ingest_report(
+    *,
+    persist_text: str,
+    injected_user_message,
+    page_context,
+    skill_prompt: str = "",
+    chat_history=None,
+) -> dict | None:
+    """统计当轮入库 prompt：用户原文、页面快照、系统提示、历史；图片只记估算、不落 base64。"""
+    snapshot = _sanitize_page_context(page_context)
+    if snapshot:
+        snapshot = _focus_page_context(persist_text, snapshot)
+    if not snapshot:
+        return None
+    captions = [item.get("caption") for item in snapshot.get("images") or [] if item.get("caption")]
+    snapshot_text = _render_page_context_block(snapshot, persist_text)
+    if captions:
+        snapshot_text = snapshot_text + "\n图表说明:\n" + "\n".join(f"- {caption}" for caption in captions)
+    injected_text = _injected_user_text(injected_user_message)
+    sections = []
+    for section in snapshot.get("sections") or []:
+        content = str(section.get("content") or "")
+        sections.append(
+            {
+                "id": section.get("id") or "",
+                "label": section.get("label") or "",
+                "chars": len(content),
+                "tokens": _count_prompt_tokens(content),
+            }
+        )
+    images = []
+    for idx, item in enumerate(snapshot.get("images") or []):
+        data_url = str(item.get("dataUrl") or "")
+        images.append(
+            {
+                "idx": idx,
+                "caption": str(item.get("caption") or ""),
+                "chars": len(data_url),
+                "est_tokens": PAGE_CONTEXT_IMAGE_TOKEN_ESTIMATE,
+            }
+        )
+    history_count, history_tokens = _history_token_count(chat_history)
+    question_tokens = _count_prompt_tokens(persist_text)
+    snapshot_tokens = _count_prompt_tokens(snapshot_text)
+    skill_prompt_tokens = _count_prompt_tokens(skill_prompt)
+    injected_tokens = _count_prompt_tokens(injected_text)
+    image_est_tokens = PAGE_CONTEXT_IMAGE_TOKEN_ESTIMATE * len(images)
+    return {
+        "url": snapshot.get("url") or "",
+        "app": snapshot.get("app") or "",
+        "title": snapshot.get("title") or "",
+        "user_question": persist_text,
+        "user_question_tokens": question_tokens,
+        "snapshot_text": snapshot_text,
+        "snapshot_tokens": snapshot_tokens,
+        "injected_user_text": injected_text,
+        "injected_user_tokens": injected_tokens,
+        "sections": sections,
+        "images": images,
+        "image_count": len(images),
+        "image_est_tokens": image_est_tokens,
+        "skill_prompt_tokens": skill_prompt_tokens,
+        "history_messages": history_count,
+        "history_tokens": history_tokens,
+        "estimated_input_tokens": question_tokens + snapshot_tokens + skill_prompt_tokens + history_tokens + image_est_tokens,
+    }
+
+
+def log_page_context_ingest(report: dict) -> None:
+    """页面身份与问答摘要写 INFO；分节、图片与 token 明细写 DEBUG。"""
+    logger.info(
+        "page_context ingest: title=%s app=%s url=%s images=%s estimated_tokens=%s question=%s",
+        report.get("title") or "-",
+        report.get("app") or "-",
+        report.get("url") or "-",
+        report.get("image_count") or 0,
+        report.get("estimated_input_tokens") or 0,
+        report.get("user_question") or "",
+    )
+    logger.debug(
+        "page_context user_question tokens=%s text=%s",
+        report.get("user_question_tokens") or 0,
+        report.get("user_question") or "",
+    )
+    for section in report.get("sections") or []:
+        logger.debug(
+            "page_context section id=%s label=%s chars=%s tokens=%s",
+            section.get("id") or "-",
+            section.get("label") or "-",
+            section.get("chars") or 0,
+            section.get("tokens") or 0,
+        )
+    for image in report.get("images") or []:
+        logger.debug(
+            "page_context image idx=%s caption=%s chars=%s est_tokens=%s",
+            image.get("idx"),
+            image.get("caption") or "-",
+            image.get("chars") or 0,
+            image.get("est_tokens") or 0,
+        )
+    logger.debug(
+        "page_context ingest_total user_question_tokens=%s snapshot_tokens=%s "
+        "image_est_tokens=%s skill_prompt_tokens=%s history_messages=%s history_tokens=%s "
+        "estimated_input_tokens=%s (image_est uses %s/image; billed usage is AGUI token usage after stream)",
+        report.get("user_question_tokens") or 0,
+        report.get("snapshot_tokens") or 0,
+        report.get("image_est_tokens") or 0,
+        report.get("skill_prompt_tokens") or 0,
+        report.get("history_messages") or 0,
+        report.get("history_tokens") or 0,
+        report.get("estimated_input_tokens") or 0,
+        PAGE_CONTEXT_IMAGE_TOKEN_ESTIMATE,
+    )
+
+
+def drop_images_from_user_message(user_message):
+    """非多模态模型：去掉全部 image_url，保留文本与图表说明。"""
+    if not isinstance(user_message, list):
+        return user_message
+    kept = []
+    dropped = 0
+    for item in user_message:
+        if isinstance(item, dict) and item.get("type") == "image_url":
+            dropped += 1
+            continue
+        kept.append(item)
+    if dropped:
+        logger.info("page_context images dropped: count=%s reason=model_not_multimodal", dropped)
+    if len(kept) == 1 and isinstance(kept[0], dict) and kept[0].get("type") == "message":
+        return kept[0].get("message") or ""
+    return kept
+
+
+def page_context_budget_error(ingest_report: dict | None) -> str | None:
+    """单轮页面内容超限 / 会话累计超限时返回错误文案。"""
+    if not ingest_report:
+        return None
+    snapshot_tokens = int(ingest_report.get("snapshot_tokens") or 0)
+    image_est = int(ingest_report.get("image_est_tokens") or 0)
+    if snapshot_tokens + image_est > PAGE_CONTEXT_SINGLE_TURN_MAX_TOKENS:
+        return PAGE_CONTEXT_TOO_LARGE_MESSAGE
+    estimated = int(ingest_report.get("estimated_input_tokens") or 0)
+    if estimated > PAGE_CONTEXT_SESSION_MAX_TOKENS:
+        return PAGE_CONTEXT_SESSION_OVERFLOW_MESSAGE
+    return None
+
+
 def inject_page_context(user_message, page_context, mode: str = "inline"):
     """把当轮 page_context 拼进当前用户消息；不写入会话历史。mode 仅实现 inline。"""
     if not page_context:
@@ -198,12 +518,16 @@ def inject_page_context(user_message, page_context, mode: str = "inline"):
         if not snapshot:
             return user_message
         text, existing_images = _split_user_content(user_message)
+        snapshot = _focus_page_context(text, snapshot)
         page_images = [{"type": "image_url", "image_url": item["dataUrl"]} for item in snapshot.get("images") or []]
         captions = [item.get("caption") for item in snapshot.get("images") or [] if item.get("caption")]
-        block = _render_page_context_block(snapshot)
+        block = _render_page_context_block(snapshot, text)
         if captions:
             block = block + "\n图表说明:\n" + "\n".join(f"- {caption}" for caption in captions)
-        merged_text = f"{text}\n\n{block}".strip() if text else block
+        focused = [str(title) for title in (snapshot.get("_focused_titles") or []) if title]
+        constraint = _page_context_guide(focused, text) if focused else ""
+        head = "\n\n".join(part for part in (constraint, text) if part)
+        merged_text = f"{head}\n\n{block}".strip() if head else block
         if not page_images and not existing_images:
             return merged_text
         return [*existing_images, *page_images, {"type": "message", "message": merged_text}]
@@ -348,7 +672,7 @@ def parse_sse_json_payloads(text: str) -> list[dict]:
 
 def assemble_assistant_persist_content(events: list[dict]) -> str:
     """助手落库：有 AG-UI type 时存事件数组，供前端分步回放；否则拼 OpenAI 正文。"""
-    typed = [item for item in events if item.get("type")]
+    typed = [item for item in events if item.get("type") and not (item.get("type") == "CUSTOM" and item.get("name") == "stream_keepalive")]
     if typed:
         return json.dumps(typed, ensure_ascii=False)
     parts = []
@@ -519,8 +843,38 @@ def stream_skill_channel_chat(
     user = identity_user or request.user
     params = build_skill_chat_params(skill, persist_text, user)
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
+    focused_titles = _focused_titles_from_page_context(persist_text, page_context)
+    params["chat_history"] = _history_for_focused_charts(params["chat_history"], focused_titles)
     params["user_message"] = inject_page_context(user_message, page_context, mode="inline")
+    llm_model = getattr(skill, "llm_model", None)
+    report_context = page_context
+    if llm_model is not None and not getattr(llm_model, "is_multimodal", True):
+        params["user_message"] = drop_images_from_user_message(params["user_message"])
+        if isinstance(page_context, dict):
+            report_context = {**page_context, "images": []}
     params["browser_use_force_task"] = True
+    ingest_kwargs: dict[str, Any] = {}
+    ingest_report = build_page_context_ingest_report(
+        persist_text=persist_text,
+        injected_user_message=params["user_message"],
+        page_context=report_context,
+        skill_prompt=params.get("skill_prompt") or "",
+        chat_history=params.get("chat_history") or [],
+    )
+    if ingest_report:
+        log_page_context_ingest(ingest_report)
+        ingest_kwargs["page_context_ingest"] = ingest_report
+        budget_error = page_context_budget_error(ingest_report)
+        if budget_error:
+            logger.info(
+                "page_context rejected: error=%s title=%s estimated_tokens=%s snapshot_tokens=%s history_messages=%s",
+                budget_error,
+                ingest_report.get("title") or "-",
+                ingest_report.get("estimated_input_tokens") or 0,
+                ingest_report.get("snapshot_tokens") or 0,
+                ingest_report.get("history_messages") or 0,
+            )
+            return create_error_stream_response(budget_error)
     try:
         params[CALLER_IDENTITY_CONFIG_KEY] = capture_caller_identity(request, user)
     except CallerIdentityError as e:
@@ -532,7 +886,7 @@ def stream_skill_channel_chat(
     else:
         current_ip = request.META.get("REMOTE_ADDR", "")
 
-    base_response = stream_agui_chat(params, skill.name, {}, current_ip, persist_text, skill_id=skill.id)
+    base_response = stream_agui_chat(params, skill.name, ingest_kwargs, current_ip, persist_text, skill_id=skill.id)
     return _wrap_stream_persist_assistant(base_response, conversation.id)
 
 

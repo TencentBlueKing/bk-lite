@@ -651,12 +651,7 @@ const SkillSettingsPage: React.FC = () => {
                       name="llmModel"
                       rules={[{ required: true, message: `${t('common.input')} ${t('skill.form.llmModel')}` }]}
                     >
-                      <Select
-                        onChange={(value: number) => {
-                          const selected = llmModels.find(model => model.id === value);
-                          form.setFieldsValue({ show_think: selected && selected.llm_model_type === 'deep-seek' ? false : true });
-                        }}
-                      >
+                      <Select>
                         {llmModels.map(model => (
                           <Option key={model.id} value={model.id} disabled={!model.enabled} title={getModelOptionText(model)}>
                             {renderModelOptionLabel(model)}
