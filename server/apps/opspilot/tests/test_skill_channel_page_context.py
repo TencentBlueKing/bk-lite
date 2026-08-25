@@ -240,6 +240,20 @@ class TestInjectPageContext:
         assert len(image_items) == 6
         assert all(len(item["image_url"]) <= chat_svc.PAGE_CONTEXT_MAX_IMAGE_CHARS for item in image_items)
 
+    def test_rejects_remote_image_urls(self):
+        page_context = {
+            "images": [
+                {"caption": "ok", "dataUrl": _tiny_png_data_url()},
+                {"caption": "remote", "dataUrl": "https://evil.example/x.png"},
+                {"caption": "http", "dataUrl": "http://127.0.0.1/secret.png"},
+                {"caption": "text-data", "dataUrl": "data:text/plain;base64,YQ=="},
+            ],
+        }
+        result = chat_svc.inject_page_context("q", page_context)
+        image_items = [item for item in result if item.get("type") == "image_url"]
+        assert len(image_items) == 1
+        assert image_items[0]["image_url"].startswith("data:image/")
+
 
 class TestStreamPageContext:
     def test_injects_into_llm_params_but_persists_plain_text(self):
