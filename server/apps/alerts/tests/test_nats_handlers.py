@@ -6,6 +6,8 @@
 import datetime
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from apps.alerts.constants.constants import AlertStatus, LevelType
@@ -920,15 +922,29 @@ def test_get_alert_source_distribution_returns_full_distribution_and_unknown():
             source_name="zabbix" if index < 3 else (None if index == 11 else f"source-{index}"),
             team=[1],
         )
-    result = N.get_alert_source_distribution(user_info={"team": 1, "is_superuser": True})
+    for index, source_name in enumerate([" zabbix ", "", "   "], start=12):
+        Alert.objects.create(
+            alert_id=f"DIST-{index}",
+            level="0",
+            title="t",
+            content="c",
+            fingerprint=f"dist-{index}",
+            source_name=source_name,
+            team=[1],
+        )
+
+    with CaptureQueriesContext(connection) as queries:
+        result = N.get_alert_source_distribution(user_info={"team": 1, "is_superuser": True})
 
     assert result["result"] is True
     assert result["data"] == [
-        {"name": "zabbix", "value": 3},
+        {"name": "zabbix", "value": 4},
         {"name": "source-10", "value": 1},
         *[{"name": f"source-{index}", "value": 1} for index in range(3, 10)],
-        {"name": "未知来源", "value": 1},
+        {"name": "未知来源", "value": 3},
     ]
+    assert len(queries) == 1
+    assert "GROUP BY" in queries[0]["sql"].upper()
 
 
 @pytest.mark.django_db
