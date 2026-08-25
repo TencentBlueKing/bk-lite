@@ -41,6 +41,8 @@ const mutexValuesEqual = (left: any, right: any) => {
 
 export const useConfigRenderer = () => {
   const { t } = useTranslation();
+  // Select 的 antd 样式默认 width:100%，仅靠 Tailwind 类会被覆盖；与 Input 对齐用同一数值。
+  const FORM_WIDGET_WIDTH = 300;
   const FORM_WIDGET_WIDTH_CLASS = 'w-[300px]';
   const fieldGuideTitle = t('monitor.integrations.fieldGuideTip');
 
@@ -326,9 +328,10 @@ export const useConfigRenderer = () => {
         case 'select': {
           const allowCustomTags =
             name === 'iftype_exclude' || name === 'iftype_include';
+          const { style: widgetStyle, ...restSelectProps } = widget_props;
           return (
             <Select
-              {...widget_props}
+              {...restSelectProps}
               mode={allowCustomTags ? 'tags' : widget_props.mode}
               tokenSeparators={
                 allowCustomTags
@@ -345,6 +348,10 @@ export const useConfigRenderer = () => {
               showSearch
               optionFilterProp="label"
               className={`${FORM_WIDGET_WIDTH_CLASS} mr-[10px]`}
+              style={{
+                ...(widgetStyle && typeof widgetStyle === 'object' ? widgetStyle : {}),
+                width: FORM_WIDGET_WIDTH,
+              }}
             >
               {options.map((option: any) => (
                 <Select.Option key={option.value} value={option.value} label={option.label}>
