@@ -77,7 +77,10 @@ const getStoredDisplayFields = () => {
     }
 
     const normalized = parsed.filter(
-      (field): field is string => typeof field === 'string' && !!field
+      (field): field is string =>
+        typeof field === 'string' &&
+        !!field &&
+        !['@timestamp', '_stream', '_stream_id', '_time'].includes(field)
     );
     const result = [...normalized];
     DEFAULT_DISPLAY_FIELDS.forEach((field) => {
@@ -374,7 +377,11 @@ const SearchView: React.FC = () => {
     const currentText = searchTextRef.current;
     const trimmedText = currentText.trim();
     if (type === 'field') {
-      const fieldLabel = `${String(row.label || '')}:`;
+      const fieldName = String(row.label || '');
+      const encodedField = /^[A-Za-z_][A-Za-z0-9_.]*$/.test(fieldName)
+        ? fieldName
+        : quoteLogsqlToken(fieldName);
+      const fieldLabel = `${encodedField}:`;
       if (!trimmedText) {
         searchTextRef.current = fieldLabel;
       } else if (QUERY_CONNECTOR_REGEXP.test(trimmedText)) {

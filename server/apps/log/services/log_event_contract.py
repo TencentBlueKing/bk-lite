@@ -5,11 +5,19 @@
 """
 
 import json
+import re
 from typing import Any
 
 LOGICAL_MESSAGE_FIELD = "message"
 STORAGE_MESSAGE_FIELD = "_msg"
 LEGACY_MESSAGE_FIELDS = ("_msg", "log_message", "raw_message", "trap_message")
+# VictoriaLogs 内部字段不能当成普通 field:value 过滤器；检索侧用 timestamp / message。
+HIDDEN_LOGICAL_FIELDS = frozenset({"@timestamp", "_stream", "_stream_id", "_time"})
+# _stream / _stream_id / _time 的值不能是 *，空的 field: 也不能补成 exists 过滤。
+SPECIAL_LOGSQL_FIELDS = frozenset({"_stream", "_stream_id", "_time"})
+SIMPLE_LOGSQL_FIELD = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*$")
+UNQUOTED_LOGSQL_FIELD = re.compile(r"[A-Za-z_@][A-Za-z0-9_.@/-]*")
+LOGSQL_VALUE_BOUNDARY = re.compile(r"^(?:AND|OR)(?:\s|$|\|)", re.IGNORECASE)
 
 
 NORMALIZE_TIMESTAMP_VRL = r'''
@@ -93,6 +101,111 @@ def to_storage_field(field: str) -> str:
 def to_logical_field(field: str) -> str:
     """隐藏 VictoriaLogs 物理字段名。"""
     return LOGICAL_MESSAGE_FIELD if field == STORAGE_MESSAGE_FIELD else field
+
+
+def to_public_logical_field(field: str) -> str | None:
+    """转换成可展示/可检索的逻辑字段；内部字段返回 None。"""
+    logical = to_logical_field(field)
+    if logical in HIDDEN_LOGICAL_FIELDS:
+        return None
+    return logical
+
+
+def quote_logsql_field(field: str) -> str:
+    """把字段名编码成 LogsQL 过滤器左侧。"""
+    if SIMPLE_LOGSQL_FIELD.fullmatch(field):
+        return field
+    return json.dumps(field, ensure_ascii=False)
+
+
+def _empty_logsql_field_value(query: str, index: int) -> bool:
+    while index < len(query) and query[index].isspace():
+        index += 1
+    if index >= len(query):
+        return True
+    current = query[index]
+    if current in "|)":
+        return True
+    return LOGSQL_VALUE_BOUNDARY.match(query[index:]) is not None
+
+
+def normalize_user_logsql_query(query: str) -> str:
+    """补全空的 field: 过滤器，并给 @metadata.beat 这类字段名加引号。"""
+    if not isinstance(query, str) or not query:
+        return query
+
+    result: list[str] = []
+    index = 0
+    quote = None
+    escaped = False
+    while index < len(query):
+        current = query[index]
+        if quote is not None:
+            result.append(current)
+            if escaped:
+                escaped = False
+            elif current == "\\":
+                escaped = True
+            elif current == quote:
+                quote = None
+            index += 1
+            continue
+
+        if current in {'"', "'", "`"}:
+            quote_start = index
+            quote = current
+            result.append(current)
+            index += 1
+            while index < len(query):
+                char = query[index]
+                result.append(char)
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = None
+                    index += 1
+                    break
+                index += 1
+            else:
+                continue
+            next_index = index
+            while next_index < len(query) and query[next_index].isspace():
+                result.append(query[next_index])
+                next_index += 1
+            if next_index < len(query) and query[next_index] == ":":
+                quoted_field = query[quote_start + 1 : index - 1]
+                result.append(":")
+                index = next_index + 1
+                if quoted_field not in SPECIAL_LOGSQL_FIELDS and _empty_logsql_field_value(
+                    query, index
+                ):
+                    result.append("*")
+            else:
+                index = next_index
+            continue
+
+        match = UNQUOTED_LOGSQL_FIELD.match(query, index)
+        if match:
+            field = match.group(0)
+            token_end = match.end()
+            next_index = token_end
+            while next_index < len(query) and query[next_index].isspace():
+                next_index += 1
+            if next_index < len(query) and query[next_index] == ":":
+                result.append(quote_logsql_field(field))
+                if token_end < next_index:
+                    result.append(query[token_end:next_index])
+                result.append(":")
+                index = next_index + 1
+                if field not in SPECIAL_LOGSQL_FIELDS and _empty_logsql_field_value(query, index):
+                    result.append("*")
+                continue
+
+        result.append(current)
+        index += 1
+    return "".join(result)
 
 
 def to_logical_event(event: Any) -> Any:
