@@ -196,16 +196,26 @@ def test_filter_operator_log_no_team_returns_none():
 
 
 @pytest.mark.django_db
-def test_filter_operator_log_scoped_to_alert():
+def test_filter_operator_log_scope_is_lazy_and_keeps_alert_incident_visibility(django_assert_num_queries):
     from apps.alerts.constants.constants import LogTargetType
     from apps.alerts.models.operator_log import OperatorLog
 
     Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1])
+    Incident.objects.create(incident_id="I1", level="0", title="i", fingerprint="ifp", team=["1"])
     OperatorLog.objects.create(action="add", target_type=LogTargetType.ALERT, operator="u", target_id="A1", overview="x")
     OperatorLog.objects.create(action="add", target_type=LogTargetType.ALERT, operator="u", target_id="A-other", overview="x")
+    OperatorLog.objects.create(action="add", target_type=LogTargetType.INCIDENT, operator="u", target_id="I1", overview="x")
+    OperatorLog.objects.create(action="add", target_type=LogTargetType.INCIDENT, operator="u", target_id="I-other", overview="x")
+    OperatorLog.objects.create(action="add", target_type=LogTargetType.SYSTEM, operator="u", target_id="A1", overview="x")
     request = _request(current_team="1", is_superuser=True)
-    result = ps.filter_operator_log_queryset_for_request(OperatorLog.objects.all(), request)
-    assert result.count() == 1
+
+    with django_assert_num_queries(0):
+        result = ps.filter_operator_log_queryset_for_request(OperatorLog.objects.all(), request)
+
+    assert set(result.values_list("target_type", "target_id")) == {
+        (LogTargetType.ALERT, "A1"),
+        (LogTargetType.INCIDENT, "I1"),
+    }
 
 
 @pytest.mark.django_db
