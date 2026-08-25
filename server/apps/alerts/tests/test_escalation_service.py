@@ -187,6 +187,7 @@ def _due_task(alert, assignment, index=0, minutes_ago=15):
     task = ES.create_escalation_task(alert, assignment)
     task.current_layer_index = index
     task.layer_started_at = timezone.now() - timedelta(minutes=minutes_ago)
+    task.next_escalation_at = ES._next_escalation_at(task.layers, index, task.layer_started_at)
     task.save()
     return task
 
@@ -215,6 +216,20 @@ def test_scan_not_due_does_nothing(mock_send):
     _due_task(alert, assignment, index=0, minutes_ago=3)
     ES.check_and_process_escalations()
     assert AlertEscalationTask.objects.get(alert=alert).current_layer_index == 0
+    mock_send.assert_not_called()
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.escalation_service.EscalationService._send_escalation_notification")
+def test_scan_filters_future_tasks_before_opening_per_task_transactions(mock_send):
+    assignment = _make_assignment(escalation=_chain())
+    for index in range(10):
+        alert = _make_alert(alert_id=f"future-{index}", status="pending")
+        _due_task(alert, assignment, index=0, minutes_ago=0)
+
+    result = ES.check_and_process_escalations()
+
+    assert result == {"processed": 0, "escalated": 0}
     mock_send.assert_not_called()
 
 
