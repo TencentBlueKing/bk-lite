@@ -130,6 +130,11 @@ import {
   WindowsEventTrend
 } from '../widgets/windowsEvent';
 import { SearchParams } from '@/app/log/types/search';
+import {
+  buildNetworkDashboardMock,
+  isLogAnalysisMockEnabled,
+  isNetworkDashboardChartType
+} from '../networkDashboardMock';
 
 const buildInstanceFilterQuery = (
   queryText: string,
@@ -549,10 +554,12 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   ]);
 
   useEffect(() => {
+    const useNetworkMock =
+      isLogAnalysisMockEnabled() && isNetworkDashboardChartType(chartType);
     if (
       config?.dataSource &&
       !isLoading &&
-      otherConfig.groupIds
+      (useNetworkMock || otherConfig.groupIds)
     ) {
       fetchData();
     }
@@ -665,7 +672,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   };
 
   const fetchData = async (silent = false) => {
-    if (!otherConfig?.groupIds?.length) {
+    const useNetworkMock =
+      isLogAnalysisMockEnabled() && isNetworkDashboardChartType(chartType);
+
+    if (!useNetworkMock && !otherConfig?.groupIds?.length) {
       setLoading(false);
       return;
     }
@@ -679,7 +689,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       const times = globalTimeRangeRef.current;
 
       let data: any;
-      if (isMultiQuery) {
+      if (useNetworkMock) {
+        data = buildNetworkDashboardMock(chartType, config, times);
+      } else if (isMultiQuery) {
         data = await fetchMultiQueryData(
           config,
           times,
@@ -705,7 +717,12 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         try {
           const [prevStart, prevEnd] = getPrevTimeRange(times);
           let prevResult: any;
-          if (isMultiQuery) {
+          if (useNetworkMock) {
+            prevResult = buildNetworkDashboardMock(chartType, config, [
+              prevStart,
+              prevEnd
+            ]);
+          } else if (isMultiQuery) {
             prevResult = await fetchMultiQueryData(
               config,
               [prevStart, prevEnd],
