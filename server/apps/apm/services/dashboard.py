@@ -9,7 +9,7 @@ from django.db.models import Prefetch, QuerySet
 from django.utils import timezone
 
 from apps.apm.adapters.errors import TelemetryStoreUnavailable
-from apps.apm.models import ApmAlert, ApmService, ApmServiceInstance, ApmSlo
+from apps.apm.models import ApmAlert, ApmDeploymentEvent, ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services.contracts import ServiceMetricQuery, ServiceRed
 from apps.apm.services.reliability import DjangoApmReliabilityService
 from apps.apm.services.status import catalog_status
@@ -35,6 +35,8 @@ MAX_METRIC_TARGETS = 40
 MAX_TOP_ROWS = 5
 MAX_SLO_ROWS = 5
 MAX_ALERT_ROWS = 5
+MAX_RELEASE_ROWS = 5
+RELEASE_LOOKBACK = timedelta(days=7)
 SECTION_WORKERS = 8
 
 
@@ -166,7 +168,7 @@ class ApmDashboardService:
             "alerts": self._safe_section(lambda: self._build_alerts(organization_id)),
             "top_error_rate": self._safe_section(lambda: self._build_top_error_rate(targets, red_by_key)),
             "top_p95": self._safe_section(lambda: self._build_top_p95(targets, red_by_key)),
-            "releases": _section_empty({"items": []}),
+            "releases": self._safe_section(lambda: self._build_releases(organization_id)),
         }
 
     @staticmethod
@@ -454,6 +456,41 @@ class ApmDashboardService:
         if not rows:
             return _section_empty({"items": []})
         return {"items": rows}
+
+    def _build_releases(self, organization_id: int) -> dict[str, Any]:
+        ended_at = self.now_fn()
+        started_at = ended_at - RELEASE_LOOKBACK
+        visible_ids = ApmService.objects.filter(
+            organization_links__organization=organization_id,
+            archived_at__isnull=True,
+        ).values_list("id", flat=True)
+        events = list(
+            ApmDeploymentEvent.objects.filter(
+                service_id__in=visible_ids,
+                deployed_at__gte=started_at,
+                deployed_at__lte=ended_at,
+            )
+            .select_related("service")
+            .order_by("-deployed_at", "-id")[:MAX_RELEASE_ROWS]
+        )
+        if not events:
+            return _section_empty({"items": []})
+        return {
+            "items": [
+                {
+                    "id": str(event.id),
+                    "service_id": str(event.service_id),
+                    "service_name": event.service.name,
+                    "environment": event.environment,
+                    "version": event.version,
+                    "deployed_at": event.deployed_at,
+                    "deployed_by": event.deployed_by,
+                    "status": event.status,
+                    "source": event.source,
+                }
+                for event in events
+            ]
+        }
 
     def _build_alerts(self, organization_id: int) -> dict[str, Any]:
         alerts = list(self._active_alert_queryset(organization_id).order_by("-last_event_at", "-id")[:MAX_ALERT_ROWS])

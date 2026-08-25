@@ -108,15 +108,16 @@
           "name": "applications"
         },
         {
+          "title": "添加接入",
+          "icon": "settings-fill",
+          "url": "/apm/integration/add",
+          "name": "integration_add"
+        },
+        {
           "title": "接入实例",
           "icon": "caijiqi",
           "url": "/apm/integration/instances",
           "name": "integration_instances"
-        },
-        {
-          "url": "/apm/integration/add",
-          "name": "integration_add",
-          "isNotMenuItem": true
         },
         {
           "url": "/apm/integration/applications/[applicationId]",
@@ -240,15 +241,16 @@
           "name": "applications"
         },
         {
+          "title": "Add integration",
+          "icon": "settings-fill",
+          "url": "/apm/integration/add",
+          "name": "integration_add"
+        },
+        {
           "title": "Reporting instances",
           "icon": "caijiqi",
           "url": "/apm/integration/instances",
           "name": "integration_instances"
-        },
-        {
-          "url": "/apm/integration/add",
-          "name": "integration_add",
-          "isNotMenuItem": true
         },
         {
           "url": "/apm/integration/applications/[applicationId]",

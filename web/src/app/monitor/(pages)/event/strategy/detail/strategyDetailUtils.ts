@@ -394,3 +394,25 @@ export const getReverseModeCalculationUnit = ({
   }
   return undefined;
 };
+
+export const METRIC_DIMENSION_VARIABLE_PREFIX = 'metric__';
+
+export const buildMetricDimensionVariable = (dimension: string) =>
+  `\${${METRIC_DIMENSION_VARIABLE_PREFIX}${dimension}}`;
+
+/** 所选分组维度渲染为后端可替换的 ${metric__key} 名称变量。 */
+export const buildMetricDimensionVariables = (groupBy?: string[] | null) => {
+  const seen = new Set<string>();
+  const items: Array<{ key: string; variable: string; dimension: string }> = [];
+  for (const raw of groupBy || []) {
+    const dimension = String(raw || '').trim();
+    if (!dimension || seen.has(dimension)) continue;
+    seen.add(dimension);
+    items.push({
+      key: `${METRIC_DIMENSION_VARIABLE_PREFIX}${dimension}`,
+      variable: buildMetricDimensionVariable(dimension),
+      dimension
+    });
+  }
+  return items;
+};

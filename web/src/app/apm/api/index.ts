@@ -6,6 +6,8 @@ import type {
   ApmApplicationInput,
   ApmCloudRegion,
   ApmDashboard,
+  ApmDeploymentEvent,
+  ApmDeploymentStatus,
   ApmIngestSnippet,
   ApmIngestSnippetInput,
   ApmTimeWindow,
@@ -137,6 +139,19 @@ const useApmApi = () => {
   );
 
   const getHealth = useCallback(() => get<ApmHealth>('/apm/health/'), [get]);
+
+  const getDeployments = useCallback(
+    (params: {
+      service_id?: string;
+      environment?: string;
+      status?: ApmDeploymentStatus;
+      started_at?: string;
+      ended_at?: string;
+      page?: number;
+      page_size?: number;
+    } = {}) => get<ApmPage<ApmDeploymentEvent>>('/apm/deployments/', { params }),
+    [get]
+  );
 
   const getDashboard = useCallback(
     (window: ApmTimeWindow) => get<ApmDashboard>('/apm/dashboard/', { params: { window } }),
@@ -315,6 +330,7 @@ const useApmApi = () => {
     updateApplication,
     getIngestSnippet,
     getHealth,
+    getDeployments,
     getDashboard,
     getServiceRed,
     getSlos,

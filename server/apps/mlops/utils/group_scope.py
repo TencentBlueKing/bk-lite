@@ -9,14 +9,11 @@ so that mlops-specific code does not depend on the core ViewSet class hierarchy.
 
 from types import SimpleNamespace
 
-import logging
-
-from rest_framework import serializers
-from rest_framework.exceptions import PermissionDenied
+from apps.core.logger import mlops_logger as logger
 from apps.core.utils.team_utils import get_current_team as _get_current_team_str
 from apps.mlops.utils.i18n import mlops_message
-
-logger = logging.getLogger(__name__)
+from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
 
 def get_current_team(request, default=0):

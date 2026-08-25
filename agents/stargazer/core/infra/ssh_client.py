@@ -4,13 +4,17 @@
 # @Author: windyzhao
 import os
 import time
+from dataclasses import dataclass
+from typing import Optional
 
 import paramiko
-from typing import Optional
-from dataclasses import dataclass
-
+from core.logger import logger
 
 # from sanic.log import logger
+
+
+def _safe_log_host(host: str) -> str:
+    return str(host).replace("\r", "\\r").replace("\n", "\\n")[:255]
 
 
 @dataclass
@@ -55,7 +59,12 @@ class SSHClient:
         :raises: ConnectionError 如果连接失败
         """
         try:
-            print(f"Connecting to {host}:{port} as {username}...")
+            log_host = _safe_log_host(host)
+            logger.debug(
+                "event=ssh_connection_started host=%s port=%s",
+                log_host,
+                port,
+            )
             self._client.connect(
                 hostname=host,
                 port=port,
@@ -67,7 +76,7 @@ class SSHClient:
                 allow_agent=False,
                 look_for_keys=False
             )
-            print(f"Connected to {host} successfully")
+            logger.debug("event=ssh_connection_succeeded host=%s port=%s", log_host, port)
         except Exception as e:
             self.close()
             raise ConnectionError(f"SSH connection failed to {host}: {str(e)}")
@@ -112,7 +121,7 @@ class SSHClient:
 
         # 记录命令执行时间
         exec_time = time.time() - start_time
-        print(f"Command executed in {exec_time:.2f}s")
+        logger.debug("event=ssh_command_completed duration_ms=%.3f", exec_time * 1000)
 
         # 如果输出是二进制，转换为字符串
         if isinstance(stdout_data, bytes):
@@ -121,7 +130,11 @@ class SSHClient:
             stderr_data = stderr_data.decode('utf-8', errors='replace')
 
         # 打印原始输出大小以便调试
-        print(f"DEBUG: Raw stdout size: {len(stdout_data)}, stderr size: {len(stderr_data)}")
+        logger.debug(
+            "event=ssh_command_output_summary stdout_bytes=%s stderr_bytes=%s",
+            len(stdout_data),
+            len(stderr_data),
+        )
 
         return SSHResult(stdout_data, stderr_data, exit_status, exec_time)
 

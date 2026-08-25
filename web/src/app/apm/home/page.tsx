@@ -18,6 +18,7 @@ import {
 import { Button, Col, Row, Segmented, Skeleton, Space, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import DonutChart, { HEALTH_DONUT_COLORS } from '@/app/apm/components/home/donut-chart';
+import { DEPLOYMENT_STATUS_META } from '@/app/apm/components/deployment-status';
 import SectionCard, {
   SectionEmpty,
   StatusPill,
@@ -41,6 +42,7 @@ import type {
   ApmDashboardAlertRow,
   ApmDashboardHealthBucket,
   ApmDashboardKpiData,
+  ApmDashboardReleaseRow,
   ApmDashboardSection,
   ApmDashboardSloRow,
   ApmDashboardTopRow,
@@ -274,6 +276,45 @@ function SloOverviewList({ items }: { items: ApmDashboardSloRow[] }) {
   );
 }
 
+function ReleaseOverviewList({ items }: { items: ApmDashboardReleaseRow[] }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col">
+      {items.map((row, index) => {
+        const status = DEPLOYMENT_STATUS_META[row.status] ?? DEPLOYMENT_STATUS_META.success;
+        return (
+          <div
+            key={row.id}
+            className={`flex items-center gap-2.5 py-2.5 ${
+              index < items.length - 1 ? 'border-b border-[var(--color-border)]' : ''
+            }`}
+          >
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <Link
+                  href={`/apm/services/${row.service_id}`}
+                  className="truncate text-sm font-medium text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+                  title={row.service_name}
+                >
+                  {row.service_name}
+                </Link>
+                <span className="shrink-0 rounded bg-[var(--color-bg)] px-1.5 py-px font-mono text-[11px] text-[var(--color-text-3)]">
+                  {row.version}
+                </span>
+              </div>
+              <div className="mt-0.5 text-xs text-[var(--color-text-4)]">
+                {formatRelativeTime(row.deployed_at, t)}
+                {row.deployed_by ? ` · ${row.deployed_by}` : ''}
+              </div>
+            </div>
+            <StatusPill label={t(status.labelKey, status.fallback)} tone={status.tone} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ApmHomePage() {
   const { t } = useTranslation();
   const { getDashboard, isLoading: authLoading } = useApmApi();
@@ -326,6 +367,12 @@ export default function ApmHomePage() {
       : [];
   const topP95Items: ApmDashboardTopRow[] =
     dashboard?.top_p95.status === 'ok' && dashboard.top_p95.data?.items ? dashboard.top_p95.data.items : [];
+  const releaseItems: ApmDashboardReleaseRow[] =
+    dashboard?.releases.status === 'ok' && dashboard.releases.data?.items
+      ? dashboard.releases.data.items
+      : dashboard?.releases.status === 'empty'
+        ? []
+        : [];
 
   const sectionFailed = (section: ApmDashboardSection<unknown> | undefined) => section?.status === 'failed';
 
@@ -578,11 +625,14 @@ export default function ApmHomePage() {
                 icon={<TagsOutlined aria-hidden="true" className="text-[var(--color-primary)]" />}
                 title={t('apm.home.releasesTitle', '版本发布变更')}
                 subtitle={t('apm.home.releasesSubtitle', '近 7 天')}
-                viewAllHref="/apm/services"
                 failed={sectionFailed(dashboard?.releases)}
                 onRetry={load}
               >
-                <SectionEmpty>{t('apm.home.releasesEmpty', '近 7 天无发布')}</SectionEmpty>
+                {releaseItems.length === 0 ? (
+                  <SectionEmpty>{t('apm.home.releasesEmpty', '近 7 天无发布')}</SectionEmpty>
+                ) : (
+                  <ReleaseOverviewList items={releaseItems} />
+                )}
               </SectionCard>
             </Col>
           </Row>

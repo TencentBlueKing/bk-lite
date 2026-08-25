@@ -171,6 +171,8 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
         未自定义的默认列取绑定指标在当前账号语言下的译名；用户通过弹窗自定义过展示列后，
         display_fields[].name 是明确的列头配置，必须原样返回，不能再被指标译名覆盖。
+        带 role 的语义列（如云平台子对象 IP）只借指标定位 label，列头由前端按 role 渲染，
+        同样不能被指标译名覆盖。
         不就地修改入参，返回新副本。
         """
         if not display_fields:
@@ -180,7 +182,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             metrics = col.get("metrics") or []
             metric_name = metrics[0].get("metric") if metrics else None
             new_name = col.get("name")
-            if metric_name and not customized:
+            if metric_name and not customized and not col.get("role"):
                 key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{object_name}.{metric_name}.name"
                 new_name = lan.get(key) or new_name
             translated.append(

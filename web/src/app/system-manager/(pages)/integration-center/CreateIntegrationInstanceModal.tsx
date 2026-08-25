@@ -12,8 +12,6 @@ import {
   getIntegrationCapabilityLabel,
   canEnterCreateInfoStep,
   getCreateModalFooterMode,
-  getIntegrationProviderDisplayName,
-  getIntegrationProviderDescription
 } from '@/app/system-manager/utils/integrationCenter';
 import ProviderCapabilityTags from './ProviderCapabilityTags';
 
@@ -90,9 +88,9 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
     () => {
       const cards = providers.map((provider) => ({
         id: provider.key,
-        name: getIntegrationProviderDisplayName(provider.key, t),
+        name: provider.name || provider.key,
         icon: resolveIntegrationProviderIcon(provider.key),
-        description: getIntegrationProviderDescription(provider.key, t, provider.description),
+        description: provider.description || '',
         tagList: [],
         raw: provider,
       }));
@@ -194,9 +192,9 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
                   <Icon type={resolveIntegrationProviderIcon(selectedProvider.key)} className="text-2xl" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-base font-semibold text-[var(--color-text)]">{getIntegrationProviderDisplayName(selectedProvider.key, t)}</div>
+                  <div className="text-base font-semibold text-[var(--color-text)]">{selectedProvider.name || selectedProvider.key}</div>
                   <div className="mt-1 text-sm text-[var(--color-text-3)]">
-                    {getIntegrationProviderDescription(selectedProvider.key, t, selectedProvider.description) || '--'}
+                    {selectedProvider.description || '--'}
                   </div>
                 </div>
               </div>

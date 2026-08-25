@@ -11,6 +11,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.viewset_utils import MaintainerViewSet
 from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices
 from apps.system_mgmt.providers import RuntimeApplicationService, get_provider_registry
+from apps.system_mgmt.providers.pack_i18n import localize_public_manifest, request_locale, resolve_registered_provider_name
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 from apps.system_mgmt.serializers import IntegrationInstanceSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -165,7 +166,8 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
     @action(methods=["GET"], detail=False)
     @HasPermission("integration_center-View")
     def providers(self, request, *args, **kwargs):
-        data = [manifest.to_public_dict() for manifest in get_provider_registry().list()]
+        locale = request_locale(request)
+        data = [localize_public_manifest(manifest, locale) for manifest in get_provider_registry().list()]
         return Response(data)
 
     @action(methods=["GET"], detail=True)
@@ -246,17 +248,16 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         ).exclude(provider_key=self.builtin_provider_key)
 
         instances = []
+        locale = request_locale(request)
         for item in queryset.order_by("name", "id"):
             if (
                 item.capability_enabled.get(capability) is True
                 and item.capability_status.get(capability) == IntegrationInstanceStatusChoices.READY
             ):
-                manifest = get_provider_registry().get(item.provider_key)
-                provider_name = manifest.name if manifest else item.provider_key
                 instances.append({
                     "id": item.id,
                     "name": item.name,
                     "provider_key": item.provider_key,
-                    "provider_name": provider_name,
+                    "provider_name": resolve_registered_provider_name(item.provider_key, locale),
                 })
         return Response(instances)

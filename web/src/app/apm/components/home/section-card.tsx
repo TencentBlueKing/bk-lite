@@ -95,7 +95,7 @@ export function StatusPill({
   tone,
 }: {
   label: string;
-  tone: 'success' | 'danger' | 'warning';
+  tone: 'success' | 'danger' | 'warning' | 'info';
 }) {
   const styles =
     tone === 'success'
@@ -108,10 +108,15 @@ export function StatusPill({
           color: 'var(--color-fail)',
           background: 'color-mix(in srgb, var(--color-fail) 12%, var(--color-bg))',
         }
-        : {
-          color: 'var(--theme-color-status-warning)',
-          background: 'color-mix(in srgb, var(--theme-color-status-warning) 12%, var(--color-bg))',
-        };
+        : tone === 'info'
+          ? {
+            color: 'var(--color-primary)',
+            background: 'color-mix(in srgb, var(--color-primary) 12%, var(--color-bg))',
+          }
+          : {
+            color: 'var(--theme-color-status-warning)',
+            background: 'color-mix(in srgb, var(--theme-color-status-warning) 12%, var(--color-bg))',
+          };
 
   return (
     <span

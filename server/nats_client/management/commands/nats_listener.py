@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import jsonpickle
 import nats.errors
+from apps.core.logger import nats_logger as logger
+from apps.core.logger import safe_exception_call_chain, safe_exception_info, safe_log_value
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.management import BaseCommand
@@ -13,11 +15,15 @@ from nats.aio.client import Client
 from nats.aio.errors import ErrNoServers, ErrTimeout
 from nats.aio.msg import Msg
 
-from apps.core.logger import nats_logger as logger
-
 from ...clients import get_nc_client
 from ...handlers import nats_handler
 from ...registry import default_registry
+
+LOG_SUBJECT_MAX_LENGTH = 255
+
+
+def _safe_log_subject(subject) -> str:
+    return safe_log_value(subject, max_length=LOG_SUBJECT_MAX_LENGTH)
 
 
 @dataclass
@@ -58,14 +64,14 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         reload = options.get("reload", False)
-        print("** Starting NATS listener" + (" with reload enabled" if reload else ""))
+        logger.info("event=nats_listener_starting reload=%s", reload)
         if reload:
             autoreload.run_with_reloader(self.inner_run, *args, **options)
         else:
             self.inner_run(*args, **options)
 
     def inner_run(self, *args, **options):
-        print("** Initializing Loop")
+        logger.debug("event=nats_listener_event_loop_initializing")
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -88,8 +94,10 @@ class Command(BaseCommand):
             error = completed_task.exception()
             if error is not None:
                 logger.error(
-                    "NATS listener setup failed",
-                    exc_info=(type(error), error, error.__traceback__),
+                    "event=nats_listener_setup_failed failed_stage=setup error_type=%s call_chain=%s",
+                    type(error).__name__,
+                    safe_exception_call_chain(error),
+                    exc_info=safe_exception_info(error),
                 )
                 loop.stop()
 
@@ -107,9 +115,11 @@ class Command(BaseCommand):
             error = completed_task.exception()
             if error is not None:
                 logger.error(
-                    "NATS %s task stopped unexpectedly",
-                    description,
-                    exc_info=(type(error), error, error.__traceback__),
+                    "event=nats_listener_task_failed failed_stage=background_task task=%s error_type=%s call_chain=%s",
+                    _safe_log_subject(description),
+                    type(error).__name__,
+                    safe_exception_call_chain(error),
+                    exc_info=safe_exception_info(error),
                 )
 
         task.add_done_callback(task_done)
@@ -132,17 +142,37 @@ class Command(BaseCommand):
                 await self.handler(message.func_name, message.data, reply=message.reply)
             except asyncio.CancelledError:
                 raise
-            except Exception:  # pylint: disable=broad-except
+            except Exception as error:  # pylint: disable=broad-except
                 if message.jetstream_message is not None:
-                    logger.exception("JetStream handler failed; message left unacked: %s", message.func_name)
+                    logger.error(
+                        "event=nats_handler_failed failed_stage=handler_dispatch transport=jetstream "
+                        "subject=%s error_type=%s call_chain=%s",
+                        _safe_log_subject(message.func_name),
+                        type(error).__name__,
+                        safe_exception_call_chain(error),
+                        exc_info=safe_exception_info(error),
+                    )
                 else:
-                    logger.exception("NATS handler failed: %s", message.func_name)
+                    logger.error(
+                        "event=nats_handler_failed failed_stage=handler_dispatch transport=core "
+                        "subject=%s error_type=%s call_chain=%s",
+                        _safe_log_subject(message.func_name),
+                        type(error).__name__,
+                        safe_exception_call_chain(error),
+                        exc_info=safe_exception_info(error),
+                    )
             else:
                 if message.jetstream_message is not None:
                     try:
                         await message.jetstream_message.ack()
-                    except Exception:  # pylint: disable=broad-except
-                        logger.exception("JetStream ack failed; message will be redelivered: %s", message.func_name)
+                    except Exception as error:  # pylint: disable=broad-except
+                        logger.error(
+                            "event=nats_ack_failed failed_stage=ack subject=%s error_type=%s call_chain=%s",
+                            _safe_log_subject(message.func_name),
+                            type(error).__name__,
+                            safe_exception_call_chain(error),
+                            exc_info=safe_exception_info(error),
+                        )
             finally:
                 if message.progress_task is not None:
                     message.progress_task.cancel()
@@ -166,8 +196,14 @@ class Command(BaseCommand):
                 await message.in_progress()
             except asyncio.CancelledError:
                 raise
-            except Exception:  # pylint: disable=broad-except
-                logger.exception("JetStream in-progress heartbeat failed: %s", message.subject)
+            except Exception as error:  # pylint: disable=broad-except
+                logger.error(
+                    "event=nats_in_progress_failed failed_stage=heartbeat subject=%s error_type=%s call_chain=%s",
+                    _safe_log_subject(message.subject),
+                    type(error).__name__,
+                    safe_exception_call_chain(error),
+                    exc_info=safe_exception_info(error),
+                )
             await asyncio.sleep(interval)
 
     async def _enqueue_jetstream(self, message, data, func_name, progress_interval):
@@ -197,15 +233,24 @@ class Command(BaseCommand):
                 raise
             except nats.errors.TimeoutError:
                 continue
-            except Exception:  # pylint: disable=broad-except
-                logger.exception("JetStream fetch failed; retrying")
+            except Exception as error:  # pylint: disable=broad-except
+                logger.error(
+                    "event=nats_jetstream_fetch_failed failed_stage=fetch action=retry error_type=%s call_chain=%s",
+                    type(error).__name__,
+                    safe_exception_call_chain(error),
+                    exc_info=safe_exception_info(error),
+                )
                 await asyncio.sleep(retry_delay)
                 continue
 
             for msg in msgs:
                 data = msg.data.decode()
                 func_name = msg.subject
-                print(f"Received a message on JetStream function `{func_name}`: {data}")
+                logger.debug(
+                    "event=nats_jetstream_message_received subject=%s payload_bytes=%s",
+                    _safe_log_subject(func_name),
+                    len(msg.data),
+                )
                 await self._enqueue_jetstream(msg, data, func_name, progress_interval)
 
     async def _jetstream_progress_interval(self, psub, subject):
@@ -214,8 +259,14 @@ class Command(BaseCommand):
             consumer_info = await psub.consumer_info()
         except AttributeError:
             return configured_interval
-        except Exception:  # pylint: disable=broad-except
-            logger.exception("Unable to read JetStream consumer ack_wait: %s", subject)
+        except Exception as error:  # pylint: disable=broad-except
+            logger.error(
+                "event=nats_consumer_info_failed failed_stage=consumer_info subject=%s error_type=%s call_chain=%s",
+                _safe_log_subject(subject),
+                type(error).__name__,
+                safe_exception_call_chain(error),
+                exc_info=safe_exception_info(error),
+            )
             return configured_interval
 
         config = consumer_info.config
@@ -248,15 +299,24 @@ class Command(BaseCommand):
             for result in drain_results:
                 if isinstance(result, Exception):
                     logger.error(
-                        "NATS listener input drain failed",
-                        exc_info=(type(result), result, result.__traceback__),
+                        "event=nats_listener_drain_failed failed_stage=drain error_type=%s call_chain=%s",
+                        type(result).__name__,
+                        safe_exception_call_chain(result),
+                        exc_info=safe_exception_info(result),
                     )
             await self._message_queue.join()
 
         try:
             await asyncio.wait_for(drain_accepted_messages(), timeout=shutdown_timeout)
-        except asyncio.TimeoutError:
-            logger.error("NATS listener graceful shutdown timed out after %.1fs", shutdown_timeout)
+        except asyncio.TimeoutError as error:
+            logger.error(
+                "event=nats_listener_shutdown_failed failed_stage=shutdown reason=timeout timeout_seconds=%.1f "
+                "error_type=%s call_chain=%s",
+                shutdown_timeout,
+                type(error).__name__,
+                safe_exception_call_chain(error),
+                exc_info=safe_exception_info(error),
+            )
 
         tasks = [*self._fetch_tasks, *self._worker_tasks, *self._progress_tasks]
         for task in tasks:
@@ -297,20 +357,23 @@ class Command(BaseCommand):
 
         try:
             await get_nc_client(self.nats)
-            print("** Connected to NATS server")
+            logger.info("event=nats_listener_connected")
 
             if getattr(settings, "NATS_JETSTREAM_ENABLED", True):
                 self.js = self.nats.jetstream()
-                print("** Initialized JetStream")
+                logger.info("event=nats_jetstream_initialized")
         except (ErrNoServers, ErrTimeout) as e:
             raise e
 
         if not default_registry.registry:
-            print("** No function found!")
+            logger.warning("event=nats_listener_no_handlers")
             return
 
         if self.js is not None and create_stream:
-            print("** Creating stream")
+            logger.info(
+                "event=nats_jetstream_creation_started namespace=%s",
+                _safe_log_subject(namespace),
+            )
             stream_config.pop("name", None)
             stream_config.pop("subjects", None)
             await self.js.add_stream(
@@ -325,7 +388,11 @@ class Command(BaseCommand):
             data = msg.data.decode()
             reply = msg.reply
             func_name = msg.subject
-            print(f"Received a message on function `{func_name}`")
+            logger.debug(
+                "event=nats_core_message_received subject=%s payload_bytes=%s",
+                _safe_log_subject(func_name),
+                len(msg.data),
+            )
             try:
                 await asyncio.wait_for(
                     self._enqueue(func_name, data, reply=reply),
@@ -333,12 +400,18 @@ class Command(BaseCommand):
                 )
             except asyncio.TimeoutError:
                 error = _ListenerOverloadedError("NATS listener handler queue is full")
-                logger.warning("NATS handler queue full; rejecting message: %s", func_name)
+                logger.warning(
+                    "event=nats_handler_rejected failed_stage=enqueue subject=%s error_type=%s reason=queue_full",
+                    _safe_log_subject(func_name),
+                    type(error).__name__,
+                )
                 if reply:
                     await self._publish_failure(reply, error)
 
-        print("** Listened on:")
+        core_subscription_count = 0
+        jetstream_subscription_count = 0
         for data in default_registry.registry.values():
+            subscription_ready = False
             if data["js"]:
                 full_name = f'{data["namespace"]}.js.{data["name"]}'
                 if self.js is None:
@@ -355,6 +428,8 @@ class Command(BaseCommand):
                     self._fetch_tasks,
                     f"JetStream fetch {full_name}",
                 )
+                jetstream_subscription_count += 1
+                subscription_ready = True
             else:
                 full_name = f'{data["namespace"]}.{data["name"]}'
 
@@ -368,7 +443,27 @@ class Command(BaseCommand):
                 )
                 if subscription is not None:
                     self._core_subscriptions.append(subscription)
-            print(f"     - {full_name}" + (" (JetStream)" if data["js"] else ""))
+                    core_subscription_count += 1
+                    subscription_ready = True
+            if subscription_ready:
+                logger.debug(
+                    "event=nats_listener_subscription_ready subject=%s transport=%s",
+                    _safe_log_subject(full_name),
+                    "jetstream" if data["js"] else "core",
+                )
+        subscription_count = core_subscription_count + jetstream_subscription_count
+        if subscription_count:
+            logger.info(
+                "event=nats_listener_ready subscriptions=%s core_subscriptions=%s jetstream_subscriptions=%s",
+                subscription_count,
+                core_subscription_count,
+                jetstream_subscription_count,
+            )
+        else:
+            logger.warning(
+                "event=nats_listener_no_active_subscriptions configured_subscriptions=%s",
+                len(default_registry.registry),
+            )
 
     async def handler(self, func_name: str, body, reply=None):
         try:

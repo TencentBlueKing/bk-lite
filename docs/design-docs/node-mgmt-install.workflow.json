@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "NodeMgmt 控制器安装与回连流程",
+    "output": "node-mgmt-install.workflow.html",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 730],
+    "views": [
+      {"id": "main-install", "label": "纵向安装主链", "focus": ["accept", "persist", "bootstrap", "wait_connect", "converge"], "note": "远程命令成功不是终态，必须等待 Sidecar 回连。"},
+      {"id": "fencing", "label": "并发与 fencing", "focus": ["persist", "timeout", "bootstrap", "converge"], "note": "attempt、execution ID、deadline 和行锁共同隔离重复投递。"},
+      {"id": "runtime", "label": "节点实际状态", "focus": ["bootstrap", "sidecar", "wait_connect", "converge"], "note": "Sidecar 心跳将节点事实和任务状态收敛。"}
+    ]
+  },
+  "lanes": [
+    {"id": "admission", "label": "01 / 请求与准入"},
+    {"id": "persistence", "label": "02 / 持久化与派发"},
+    {"id": "execution", "label": "03 / 远程 Bootstrap"},
+    {"id": "connectivity", "label": "04 / 回连与确认"},
+    {"id": "terminal", "label": "05 / 终态与后处理"}
+  ],
+  "mainPath": ["accept", "persist", "bootstrap", "wait_connect", "converge"],
+  "nodes": [
+    {"id": "accept", "lane": "admission", "col": 2, "width": 120, "type": "security", "label": "准入安装请求", "sublabel": "权限 / OS / 架构 / 批次"},
+    {"id": "package", "lane": "admission", "col": 0, "width": 70, "type": "database", "label": "安装包目录", "sublabel": "版本 / OS"},
+    {"id": "persist", "lane": "persistence", "col": 2, "width": 144, "type": "database", "label": "创建并领取 TaskNode", "sublabel": "凭据加密 / attempt / deadline"},
+    {"id": "bootstrap", "lane": "execution", "col": 2, "width": 144, "type": "backend", "label": "执行远程 Bootstrap", "sublabel": "Executor / SSH / WinRM"},
+    {"id": "timeout", "lane": "execution", "col": 4, "width": 112, "type": "security", "label": "超时与凭据清理", "sublabel": "fencing / cleanup"},
+    {"id": "sidecar", "lane": "connectivity", "col": 0, "width": 76, "type": "external", "label": "Sidecar 启动", "sublabel": "注册 / 心跳"},
+    {"id": "wait_connect", "lane": "connectivity", "col": 2, "width": 142, "type": "messagebus", "label": "等待实际回连", "sublabel": "connectivity_waiting"},
+    {"id": "converge", "lane": "terminal", "col": 2, "width": 142, "type": "backend", "label": "收敛任务终态", "sublabel": "success / error / timeout"},
+    {"id": "post_actions", "lane": "terminal", "col": 4, "width": 118, "type": "external", "label": "版本发现与投影", "sublabel": "Node / CMDB / Monitor"}
+  ],
+  "edges": [
+    {"id": "accept_persist", "from": "accept", "to": "persist", "role": "main", "variant": "emphasis", "route": "drop", "fromSide": "bottom", "toSide": "top"},
+    {"id": "persist_bootstrap", "from": "persist", "to": "bootstrap", "role": "main", "variant": "emphasis", "route": "drop", "fromSide": "bottom", "toSide": "top"},
+    {"id": "bootstrap_wait", "from": "bootstrap", "to": "wait_connect", "role": "main", "variant": "emphasis", "route": "drop", "fromSide": "bottom", "toSide": "top"},
+    {"id": "wait_converge", "from": "wait_connect", "to": "converge", "role": "main", "variant": "emphasis", "route": "drop", "fromSide": "bottom", "toSide": "top"},
+    {"id": "package_accept", "from": "package", "to": "accept", "role": "branch"},
+    {"id": "bootstrap_timeout", "from": "bootstrap", "to": "timeout", "role": "async", "variant": "dashed"},
+    {"id": "bootstrap_sidecar", "from": "bootstrap", "to": "sidecar", "label": "安装并启动", "role": "async", "variant": "dashed"},
+    {"id": "sidecar_wait", "from": "sidecar", "to": "wait_connect", "label": "心跳确认", "role": "return", "variant": "emphasis", "route": "bottom-channel", "fromSide": "bottom", "toSide": "bottom"},
+    {"id": "converge_post", "from": "converge", "to": "post_actions", "role": "async", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "正确终态", "items": ["Bootstrap 成功只进入 connectivity_waiting", "Sidecar 实际回连后安装任务才标记成功"]},
+    {"dot": "cyan", "title": "并发保护", "items": ["每批限制并发槽，重复投递按 attempt 与 execution ID 隔离", "行锁校验 owner 后再写事件、终态和清理凭据"]},
+    {"dot": "rose", "title": "当前结构限制", "items": ["状态迁移、远程执行、错误解析和后处理集中在 installer.py", "阶段大量存于 result JSON，缺少显式状态模型与统一事件账本"]}
+  ]
+}

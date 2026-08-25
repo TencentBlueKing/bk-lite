@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeftOutlined, CloseCircleFilled, CopyOutlined } from '@ant-design/icons';
-import { Alert, Badge, Button, Form, Input, InputNumber, Modal, Select, Spin, Switch, Tabs, Tooltip, message } from 'antd';
+import { Alert, App, Badge, Button, Form, Input, InputNumber, Select, Spin, Switch, Tabs, Tooltip } from 'antd';
 
 import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
 import type {
@@ -41,6 +41,7 @@ const saveAndTestMessageKey = 'integration-center-save-and-test';
 
 const IntegrationDetailPage: React.FC = () => {
   const { t } = useTranslation();
+  const { message, modal } = App.useApp();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [form] = Form.useForm<IntegrationDetailFormValues>();
@@ -293,7 +294,7 @@ const IntegrationDetailPage: React.FC = () => {
 
   const handleTestConnection = async () => {
     if (isFormDirty) {
-      Modal.confirm({
+      modal.confirm({
         title: t('system.integrationCenter.saveAndTestTitle'),
         content: t('system.integrationCenter.saveAndTestContent'),
         okText: t('system.integrationCenter.saveAndTest'),

@@ -5,6 +5,12 @@ import type {
 } from '../../api/importExport';
 
 export const SECRET_PLACEHOLDER_WARNING_CODE = 'OA_SECRET_PLACEHOLDER';
+export const STRING_LIST_MIGRATION_WARNING_CODE = 'OA_STRING_LIST_MIGRATION';
+
+/** 信息性 warning：展示但不阻断「开始导入」。 */
+export const NON_BLOCKING_IMPORT_WARNING_CODES = new Set<string>([
+  STRING_LIST_MIGRATION_WARNING_CODE,
+]);
 
 export type ConflictDecisions = Record<string, ConflictAction>;
 export type SecretSupplementValues = Record<string, string>;
@@ -30,6 +36,9 @@ export const hasBlockingImportWarnings = (
   conflictDecisions: ConflictDecisions,
   secretSupplementValues: SecretSupplementValues,
 ) => getVisibleImportWarnings(warnings, conflictDecisions).some((warning) => {
+  if (NON_BLOCKING_IMPORT_WARNING_CODES.has(warning.code)) {
+    return false;
+  }
   if (warning.code !== SECRET_PLACEHOLDER_WARNING_CODE) return true;
   if (warning.object_key && conflictDecisions[warning.object_key] === 'overwrite') {
     return false;

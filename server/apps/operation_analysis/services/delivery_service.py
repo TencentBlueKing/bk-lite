@@ -1,7 +1,7 @@
-import logging
 import re
 import smtplib
 
+from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportExecutionSnapshot,
@@ -20,8 +20,6 @@ from apps.operation_analysis.services.execution_service import (
 from apps.operation_analysis.services.report_render_service import (
     DashboardReportRenderService,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class DashboardReportDeliveryError(RuntimeError):

@@ -5,8 +5,9 @@ from unittest.mock import patch
 import pytest
 from ldap3.core.exceptions import LDAPBindError
 
-from apps.system_mgmt.providers.adapters.ad import ADLoginAuthAdapter, ADUserSyncAdapter
-from apps.system_mgmt.providers.adapters.common.ldap import build_connection_config, resolve_ldap_server_target
+from apps.system_mgmt.providers.builtin.ad.adapters.login_auth import ADLoginAuthAdapter
+from apps.system_mgmt.providers.builtin.ad.adapters.user_sync import ADUserSyncAdapter
+from apps.system_mgmt.providers.common.ldap import LDAPSearchError, build_connection_config, resolve_ldap_server_target
 
 
 pytestmark = pytest.mark.unit
@@ -24,8 +25,36 @@ def _base_config():
     }
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.bind_user_dn")
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+def test_normalize_business_config_canonicalizes_root_dns_and_drops_legacy_field():
+    normalized = ADUserSyncAdapter.normalize_business_config(
+        {
+            "root_dn": "OU=BizA,DC=corp,DC=example,DC=com\nOU=Dev,OU=BizA,DC=corp,DC=example,DC=com",
+            "user_filter": "(&(objectCategory=Person)(sAMAccountName=*))",
+        }
+    )
+    assert normalized["root_dns"] == ["OU=BizA,DC=corp,DC=example,DC=com"]
+    assert "root_dn" not in normalized
+    assert normalized["user_filter"] == "(&(objectCategory=Person)(sAMAccountName=*))"
+
+
+def test_resolve_root_scope_value_single_dn_vs_multi_dn():
+    single = ADUserSyncAdapter.resolve_root_scope_value(
+        {"root_dns": ["OU=PAAS,DC=corp,DC=com"]}, field="root_dns"
+    )
+    multi = ADUserSyncAdapter.resolve_root_scope_value(
+        {"root_dns": ["OU=BizA,DC=corp,DC=com", "OU=BizC,DC=corp,DC=com"]},
+        field="root_dns",
+    )
+    legacy = ADUserSyncAdapter.resolve_root_scope_value(
+        {"root_dn": "OU=PAAS,DC=corp,DC=com"}, field="root_dns"
+    )
+    assert single == "OU=PAAS,DC=corp,DC=com"
+    assert multi == "__local_root__"
+    assert legacy == "OU=PAAS,DC=corp,DC=com"
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.bind_user_dn")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_login_auth_searches_single_user_and_binds_password(mock_search_single_user, mock_bind_user_dn):
     mock_search_single_user.return_value = {
         "sAMAccountName": "alice",
@@ -49,8 +78,8 @@ def test_ad_login_auth_searches_single_user_and_binds_password(mock_search_singl
     mock_bind_user_dn.assert_called_once()
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.bind_user_dn")
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.bind_user_dn")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_login_auth_requests_identity_match_and_dn_attributes(mock_search_single_user, mock_bind_user_dn):
     mock_search_single_user.return_value = {
         "sAMAccountName": "alice",
@@ -76,8 +105,8 @@ def test_ad_login_auth_requests_identity_match_and_dn_attributes(mock_search_sin
     assert result.payload["external_user"]["mail"] == "alice@example.com"
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.bind_user_dn")
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.bind_user_dn")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_login_auth_unwraps_single_value_lists(mock_search_single_user, mock_bind_user_dn):
     mock_search_single_user.return_value = {
         "sAMAccountName": ["alice"],
@@ -104,7 +133,7 @@ def test_ad_login_auth_unwraps_single_value_lists(mock_search_single_user, mock_
     )
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_login_auth_fails_when_search_returns_multiple_users(mock_search_single_user):
     mock_search_single_user.side_effect = ValueError("multiple")
 
@@ -122,7 +151,7 @@ def test_ad_login_auth_fails_when_search_returns_multiple_users(mock_search_sing
     assert "multiple" in result.errors[0].message
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_login_auth_fails_when_user_not_found(mock_search_single_user):
     mock_search_single_user.return_value = None
 
@@ -138,9 +167,9 @@ def test_ad_login_auth_fails_when_user_not_found(mock_search_single_user):
     assert result.errors[0].field == "sAMAccountName"
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.logger")
-@patch("apps.system_mgmt.providers.adapters.ad.bind_user_dn")
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.login_auth.logger")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.bind_user_dn")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_login_auth_invalid_credentials_are_treated_as_auth_failure_without_exception_log(
     mock_search_single_user,
     mock_bind_user_dn,
@@ -167,8 +196,8 @@ def test_ad_login_auth_invalid_credentials_are_treated_as_auth_failure_without_e
     mock_logger.warning.assert_not_called()
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.logger")
-@patch("apps.system_mgmt.providers.adapters.ad.search_single_user")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.login_auth.logger")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_single_user")
 def test_ad_authenticate_logs_unexpected_failure_without_raw_exception(mock_search_single_user, mock_logger):
     mock_search_single_user.side_effect = RuntimeError(
         "ldap://private.example?bind_password=private-secret"
@@ -188,8 +217,8 @@ def test_ad_authenticate_logs_unexpected_failure_without_raw_exception(mock_sear
     assert "RuntimeError" in str(mock_logger.debug.call_args_list)
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.logger")
-@patch("apps.system_mgmt.providers.adapters.ad.search_entries")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.user_sync.logger")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
 def test_ad_user_sync_logs_failure_without_raw_exception(mock_search_entries, mock_logger):
     mock_search_entries.side_effect = RuntimeError(
         "ldap://private.example?bind_password=private-secret"
@@ -209,7 +238,7 @@ def test_ad_user_sync_logs_failure_without_raw_exception(mock_search_entries, mo
     assert "RuntimeError" in str(mock_logger.debug.call_args_list)
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.search_entries")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
 def test_ad_user_sync_returns_payload_compatible_with_existing_field_mapping(mock_search_entries):
     mock_search_entries.side_effect = [
         [
@@ -261,7 +290,7 @@ def test_ad_user_sync_returns_payload_compatible_with_existing_field_mapping(moc
     assert mock_search_entries.call_args_list[1].args[2] == "(objectClass=organizationalUnit)"
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.search_entries")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
 def test_ad_user_sync_uses_default_directory_query_parameters(mock_search_entries):
     mock_search_entries.side_effect = [[], []]
 
@@ -286,10 +315,258 @@ def test_ad_user_sync_requires_root_dn():
     )
 
     assert result.success is False
-    assert result.errors[0].field == "root_dn"
+    assert result.errors[0].field == "root_dns"
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_multi_pull_dns_include_ou_roots_under_local_root(mock_search_entries):
+    """多个拉取 DN 时，每个 OU 本身进入 group_list，parent 指向合成本地根。"""
+    dn_a = "OU=BizA,OU=Company,DC=corp,DC=example,DC=com"
+    dn_c = "OU=BizC,OU=Company,DC=corp,DC=example,DC=com"
+    child_a = "OU=Dev,OU=BizA,OU=Company,DC=corp,DC=example,DC=com"
+
+    mock_search_entries.side_effect = [
+        # users under A
+        [
+            {
+                "sAMAccountName": "alice",
+                "displayName": "Alice",
+                "distinguishedName": f"CN=Alice,{child_a}",
+            }
+        ],
+        # orgs under A
+        [
+            {"distinguishedName": dn_a},
+            {"distinguishedName": child_a},
+        ],
+        # users under C
+        [
+            {
+                "sAMAccountName": "carol",
+                "displayName": "Carol",
+                "distinguishedName": f"CN=Carol,{dn_c}",
+            }
+        ],
+        # orgs under C
+        [{"distinguishedName": dn_c}],
+    ]
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=type(
+            "Source",
+            (),
+            {"business_config": {"root_dns": [dn_a, dn_c]}},
+        )(),
+    )
+
+    assert result.success is True
+    assert result.payload["local_root_scope_id"] == "__local_root__"
+    groups_by_id = {item["id"]: item for item in result.payload["group_list"]}
+    assert groups_by_id[dn_a] == {"id": dn_a, "name": "BizA", "parent_id": "__local_root__"}
+    assert groups_by_id[dn_c] == {"id": dn_c, "name": "BizC", "parent_id": "__local_root__"}
+    assert groups_by_id[child_a]["parent_id"] == dn_a
+    users_by_name = {u["sAMAccountName"]: u for u in result.payload["user_list"]}
+    assert users_by_name["alice"]["department_ids"] == [child_a]
+    assert users_by_name["carol"]["department_ids"] == [dn_c]
+    assert mock_search_entries.call_count == 4
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_drops_descendant_pull_dn_covered_by_ancestor(mock_search_entries):
+    parent = "OU=PAAS,DC=corp,DC=example,DC=com"
+    child = "OU=Dev,OU=PAAS,DC=corp,DC=example,DC=com"
+    mock_search_entries.side_effect = [[], [{"distinguishedName": parent}, {"distinguishedName": child}]]
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=type(
+            "Source",
+            (),
+            {"business_config": {"root_dns": [parent, child]}},
+        )(),
+    )
+
+    assert result.success is True
+    # 规范化后只搜父 DN，行为退回单 DN 折迭：父 OU 不出现在 group_list
+    assert result.payload["local_root_scope_id"] == parent
+    assert result.payload["group_list"] == [
+        {"id": child, "name": "Dev", "parent_id": parent},
+    ]
+    assert mock_search_entries.call_count == 2
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_multi_non_ou_pull_hangs_children_under_local_root(mock_search_entries):
+    """拉取 DN 不是 OU 时，其下子 OU 直接挂到合成本地根。"""
+    domain_a = "DC=corp,DC=example,DC=com"
+    domain_b = "DC=other,DC=example,DC=com"
+    child_a = "OU=Sales,DC=corp,DC=example,DC=com"
+    child_b = "OU=HR,DC=other,DC=example,DC=com"
+    mock_search_entries.side_effect = [
+        [],
+        [{"distinguishedName": child_a}],
+        [],
+        [{"distinguishedName": child_b}],
+    ]
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=type(
+            "Source",
+            (),
+            {"business_config": {"root_dns": [domain_a, domain_b]}},
+        )(),
+    )
+
+    assert result.success is True
+    assert result.payload["local_root_scope_id"] == "__local_root__"
+    groups_by_id = {item["id"]: item for item in result.payload["group_list"]}
+    assert domain_a not in groups_by_id
+    assert domain_b not in groups_by_id
+    assert groups_by_id[child_a]["parent_id"] == "__local_root__"
+    assert groups_by_id[child_b]["parent_id"] == "__local_root__"
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_fails_entirely_when_one_pull_dn_search_fails(mock_search_entries):
+    mock_search_entries.side_effect = [
+        [],
+        [],
+        RuntimeError("ldap search failed"),
+    ]
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=type(
+            "Source",
+            (),
+            {
+                "business_config": {
+                    "root_dns": [
+                        "OU=A,DC=corp,DC=example,DC=com",
+                        "OU=C,DC=corp,DC=example,DC=com",
+                    ]
+                }
+            },
+        )(),
+    )
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.request_failed"
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_maps_missing_pull_dn_to_invalid_config(mock_search_entries):
+    missing = "OU=yhd,OU=yhd,DC=bktest,DC=com"
+    mock_search_entries.side_effect = LDAPSearchError(missing, 32, description="noSuchObject")
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=SimpleNamespace(business_config={"root_dns": [missing]}),
+    )
+
+    assert result.success is False
+    error = result.errors[0]
+    assert error.code == "provider.invalid_config"
+    assert error.field == "root_dns"
+    assert error.external_code == "32"
+    assert error.detail == missing
+    assert missing in error.message
+    assert "NameErr" not in error.message
+    assert "DSID" not in (error.detail or "")
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_maps_invalid_dn_syntax_like_missing_object(mock_search_entries):
+    bad_dn = "OU=yhd,DC=bktest,DC=com,DC=1"
+    mock_search_entries.side_effect = LDAPSearchError(bad_dn, 34, description="invalidDNSyntax")
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=SimpleNamespace(business_config={"root_dns": [bad_dn]}),
+    )
+
+    error = result.errors[0]
+    assert result.success is False
+    assert error.code == "provider.invalid_config"
+    assert error.field == "root_dns"
+    assert error.external_code == "34"
+    assert bad_dn in error.message
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_maps_referral_pull_dn_to_invalid_config(mock_search_entries):
+    referral_dn = "OU=yhd,DC=bktest,DC=com,DC=1"
+    mock_search_entries.side_effect = LDAPSearchError(referral_dn, 10, description="referral")
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=SimpleNamespace(business_config={"root_dns": [referral_dn]}),
+    )
+
+    assert result.success is False
+    error = result.errors[0]
+    assert error.code == "provider.invalid_config"
+    assert error.field == "root_dns"
+    assert error.external_code == "10"
+    assert error.detail == referral_dn
+    assert referral_dn in error.message
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_fails_entirely_when_second_pull_dn_is_missing(mock_search_entries):
+    good = "OU=A,DC=corp,DC=example,DC=com"
+    missing = "OU=C,DC=corp,DC=example,DC=com"
+    mock_search_entries.side_effect = [
+        [{"distinguishedName": f"CN=alice,{good}", "sAMAccountName": "alice"}],
+        [{"distinguishedName": good}],
+        LDAPSearchError(missing, 32, description="noSuchObject"),
+    ]
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=SimpleNamespace(business_config={"root_dns": [good, missing]}),
+    )
+
+    assert result.success is False
+    assert result.payload == {}
+    assert result.errors[0].detail == missing
+    assert result.errors[0].code == "provider.invalid_config"
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_bind_failure_uses_connection_mapping(mock_search_entries):
+    mock_search_entries.side_effect = LDAPBindError("invalidCredentials - 49")
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=SimpleNamespace(business_config={"root_dn": "DC=corp,DC=example,DC=com"}),
+    )
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.auth_failed"
+    assert result.errors[0].external_code == "49"
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
 def test_ad_connection_tests_use_root_dse_probe(mock_probe_root_dse):
     login_result = ADLoginAuthAdapter.test_connection(
         config=_base_config(),
@@ -307,9 +584,12 @@ def test_ad_connection_tests_use_root_dse_probe(mock_probe_root_dse):
     assert mock_probe_root_dse.call_count == 2
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.logger")
-@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
-def test_ad_connection_test_returns_failure_without_adapter_error_log(mock_probe_root_dse, mock_logger):
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.user_sync.logger")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.login_auth.logger")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
+def test_ad_connection_test_returns_failure_without_adapter_error_log(
+    mock_probe_root_dse, mock_login_logger, mock_sync_logger
+):
     mock_probe_root_dse.side_effect = RuntimeError("connection refused")
 
     login_result = ADLoginAuthAdapter.test_connection(
@@ -325,10 +605,11 @@ def test_ad_connection_test_returns_failure_without_adapter_error_log(mock_probe
 
     assert login_result.success is False
     assert sync_result.success is False
-    mock_logger.exception.assert_not_called()
+    mock_login_logger.exception.assert_not_called()
+    mock_sync_logger.exception.assert_not_called()
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
 def test_ad_connection_test_exposes_sanitized_ldap_bind_diagnostics(mock_probe_root_dse):
     mock_probe_root_dse.side_effect = LDAPBindError("LDAP result 49: invalidCredentials")
 
@@ -345,8 +626,8 @@ def test_ad_connection_test_exposes_sanitized_ldap_bind_diagnostics(mock_probe_r
     assert result.errors[0].detail == "LDAP bind rejected the configured credentials"
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
-@patch("apps.system_mgmt.providers.adapters.ad.build_connection_config")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.build_connection_config")
 def test_ad_user_sync_test_connection_succeeds_without_base_dn(
     mock_build_connection_config,
     mock_probe_root_dse,
@@ -365,8 +646,8 @@ def test_ad_user_sync_test_connection_succeeds_without_base_dn(
     assert result.success is True
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
-@patch("apps.system_mgmt.providers.adapters.ad.build_connection_config")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.build_connection_config")
 def test_ad_login_auth_test_connection_succeeds_without_base_dn(
     mock_build_connection_config,
     mock_probe_root_dse,
@@ -451,7 +732,7 @@ def test_ad_authenticate_returns_invalid_config_when_base_dn_missing():
 # ---------------------------------------------------------------------------
 
 
-@patch("apps.system_mgmt.providers.adapters.ad.search_entries")
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
 def test_ad_user_sync_requests_only_mapped_external_fields(mock_search_entries):
     """用户同步不请求未被当前源映射的可选 LDAP 字段。"""
     mock_search_entries.side_effect = [

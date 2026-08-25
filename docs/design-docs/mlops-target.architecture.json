@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "MLOps 模块目标架构",
+    "output": "mlops-target.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1540, 760],
+    "views": [
+      {"id": "plugin-contract", "label": "算法插件契约", "focus": ["adapters", "scope", "registry", "dataset"], "note": "六类算法只提供 schema、archive、train、serve 与 predict 策略，不复制生命周期。"},
+      {"id": "durable-runs", "label": "持久运行协议", "focus": ["dataset", "publish_run", "sandbox", "training_run", "coordinator", "runtime_ports"], "note": "每次发布、训练和运行时变更都带 generation、lease token 与 outcome。"},
+      {"id": "serving-boundary", "label": "服务与推理边界", "focus": ["training_run", "serving", "inference", "runtime_ports"], "note": "Deployment 与推理网关共享镜像、模型、租户和容量策略。"}
+    ]
+  },
+  "components": [
+    {"id": "adapters", "type": "frontend", "label": "HTTP / NATS Adapters", "sublabel": "thin commands + queries", "pos": [30, 330], "size": [150, 74]},
+    {"id": "scope", "type": "security", "label": "MLOpsAccessScope", "sublabel": "actor + team + revision", "pos": [220, 330], "size": [165, 74]},
+    {"id": "registry", "type": "security", "label": "AlgorithmCapabilityRegistry", "sublabel": "schema + image digest + policy", "pos": [425, 330], "size": [190, 74]},
+    {"id": "dataset", "type": "database", "label": "Dataset Aggregate", "sublabel": "typed immutable versions", "pos": [655, 330], "size": [175, 74]},
+    {"id": "publish_run", "type": "database", "label": "DatasetPublishRun", "sublabel": "generation + lease + retry_at", "pos": [655, 90], "size": [175, 74]},
+    {"id": "sandbox", "type": "backend", "label": "Archive Sandbox + Budget", "sublabel": "paths / files / bytes / ratio", "pos": [870, 90], "size": [190, 74]},
+    {"id": "minio", "type": "cloud", "label": "Content-addressed Artifacts", "sublabel": "digest + reference guard", "pos": [1100, 90], "size": [195, 74]},
+    {"id": "training_run", "type": "database", "label": "TrainingRun Aggregate", "sublabel": "dataset/config/image digests", "pos": [870, 330], "size": [190, 74]},
+    {"id": "coordinator", "type": "messagebus", "label": "Runtime Work Coordinator", "sublabel": "lease + heartbeat + effect intent", "pos": [1100, 330], "size": [195, 74]},
+    {"id": "runtime_ports", "type": "external", "label": "Runtime Ports", "sublabel": "Webhookd / MLflow / Compute", "pos": [1335, 330], "size": [175, 74]},
+    {"id": "serving", "type": "database", "label": "ServingDeployment", "sublabel": "desired/observed generation", "pos": [1100, 570], "size": [195, 74]},
+    {"id": "inference", "type": "backend", "label": "Inference Budget Gateway", "sublabel": "slots + bytes + deadline", "pos": [1335, 570], "size": [175, 74]}
+  ],
+  "boundaries": [
+    {"kind": "security-group", "label": "访问与算法供应链", "wraps": ["adapters", "scope", "registry"], "pad": 18},
+    {"kind": "region", "label": "数据、训练与服务运行协议", "wraps": ["dataset", "publish_run", "sandbox", "minio", "training_run", "coordinator", "runtime_ports", "serving", "inference"], "pad": 18}
+  ],
+  "connections": [
+    {"id": "adapters_scope", "from": "adapters", "to": "scope", "label": "authorized", "variant": "security", "labelDy": 60},
+    {"id": "scope_registry", "from": "scope", "to": "registry", "label": "capability", "variant": "security", "labelDy": 60},
+    {"id": "registry_dataset", "from": "registry", "to": "dataset", "label": "typed contract", "variant": "emphasis", "labelDy": 60},
+    {"id": "dataset_publish", "from": "dataset", "to": "publish_run", "label": "immutable source digest", "variant": "default", "fromSide": "top", "toSide": "bottom"},
+    {"id": "publish_sandbox", "from": "publish_run", "to": "sandbox", "label": "leased work", "variant": "security", "labelDy": 60},
+    {"id": "sandbox_minio", "from": "sandbox", "to": "minio", "label": "validated artifact", "variant": "emphasis", "labelDy": 60},
+    {"id": "dataset_training", "from": "dataset", "to": "training_run", "label": "dataset revision", "variant": "emphasis", "labelDy": 60},
+    {"id": "training_coordinator", "from": "training_run", "to": "coordinator", "label": "run token", "variant": "security", "labelDy": 60},
+    {"id": "coordinator_runtime", "from": "coordinator", "to": "runtime_ports", "label": "idempotent effect", "variant": "emphasis", "labelDy": 60},
+    {"id": "training_serving", "from": "training_run", "to": "serving", "label": "model version", "variant": "emphasis", "fromSide": "bottom", "toSide": "left"},
+    {"id": "serving_coordinator", "from": "serving", "to": "coordinator", "label": "desired generation", "variant": "security", "fromSide": "top", "toSide": "bottom", "labelDx": 84},
+    {"id": "serving_inference", "from": "serving", "to": "inference", "label": "endpoint lease", "variant": "emphasis", "labelDy": 60},
+    {"id": "inference_runtime", "from": "inference", "to": "runtime_ports", "label": "bounded prediction", "variant": "emphasis", "fromSide": "top", "toSide": "bottom", "labelDx": 84}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "短期：统一安全与容量底线", "items": ["安全解压、磁盘/文件/字节/压缩比预算；镜像强制 digest/allowlist/扫描结果", "训练改用最小权限短期对象凭据；发布只允许 PENDING+generation 的 worker claim"]},
+    {"dot": "violet", "title": "中期：统一生命周期而保留算法差异", "items": ["AlgorithmCapabilityRegistry 提供 dataset schema、packager、train/serve/predict adapter", "TrainingRun、DatasetPublishRun、ServingDeployment 使用同一 token lease、heartbeat、retry 与 reducer"]},
+    {"dot": "emerald", "title": "长期：可重放运行与公平资源边界", "items": ["dataset/config/image/model/artifact digest 贯穿发布、训练、部署和推理审计链", "Inference/MLflow/Artifact gateway 按团队与运行分配并发、字节、deadline 和临时盘预算"]}
+  ]
+}

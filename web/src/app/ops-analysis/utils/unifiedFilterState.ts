@@ -5,6 +5,12 @@ import type {
 import { normalizeTimeRangeFilterValue } from '@/app/ops-analysis/utils/filterValue';
 import { validateDateRangeValue } from '@/app/ops-analysis/utils/dateRange';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
+import {
+  coerceFilterValuesForDefinitions,
+  logStringParamMigrationWarnings,
+  migrateUnifiedFilterDefinitions,
+  type LegacyUnifiedFilterDefinition,
+} from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 
 export const hasInvalidDateRangeDefinitions = (
   definitions: UnifiedFilterDefinition[],
@@ -36,31 +42,61 @@ export const buildResetFilterValues = (
   {},
 );
 
-export const normalizeStoredFilterDefinitions = (
+const parseStoredFilterDefinitions = (
   rawFilters: unknown,
-): UnifiedFilterDefinition[] => {
+): LegacyUnifiedFilterDefinition[] => {
   if (Array.isArray(rawFilters)) {
-    return rawFilters as UnifiedFilterDefinition[];
+    return rawFilters as LegacyUnifiedFilterDefinition[];
   }
-
   if (!rawFilters || typeof rawFilters !== 'object') {
     return [];
   }
-
   const candidate = rawFilters as {
     definitions?: unknown;
     unifiedFilters?: unknown;
   };
-
   if (Array.isArray(candidate.definitions)) {
-    return candidate.definitions as UnifiedFilterDefinition[];
+    return candidate.definitions as LegacyUnifiedFilterDefinition[];
   }
-
   if (Array.isArray(candidate.unifiedFilters)) {
-    return candidate.unifiedFilters as UnifiedFilterDefinition[];
+    return candidate.unifiedFilters as LegacyUnifiedFilterDefinition[];
   }
-
   return [];
+};
+
+export const normalizeStoredFilterDefinitions = (
+  rawFilters: unknown,
+  options?: { canvasId?: string | number; values?: Record<string, FilterValue> },
+): UnifiedFilterDefinition[] => {
+  const migrated = migrateUnifiedFilterDefinitions(
+    parseStoredFilterDefinitions(rawFilters),
+    options?.values || {},
+  );
+  logStringParamMigrationWarnings(migrated.warnings, {
+    canvasId: options?.canvasId,
+  });
+  return migrated.definitions;
+};
+
+export const normalizeStoredFilterState = (
+  rawFilters: unknown,
+  values: Record<string, FilterValue> = {},
+  options?: { canvasId?: string | number },
+): {
+  definitions: UnifiedFilterDefinition[];
+  values: Record<string, FilterValue>;
+} => {
+  const migrated = migrateUnifiedFilterDefinitions(
+    parseStoredFilterDefinitions(rawFilters),
+    values,
+  );
+  logStringParamMigrationWarnings(migrated.warnings, {
+    canvasId: options?.canvasId,
+  });
+  return {
+    definitions: migrated.definitions,
+    values: migrated.values,
+  };
 };
 
 export const syncFilterValuesWithDefinitions = (
@@ -121,5 +157,28 @@ export const syncFilterValuesWithDefinitions = (
     updatedValues[definition.id] = definition.defaultValue;
   });
 
-  return updatedValues;
+  return coerceFilterValuesForDefinitions(nextDefinitions, updatedValues);
 };
+
+/** 筛选配置确认：draft/applied 使用同一版 definitions 规范化 values。 */
+export interface FilterConfigConfirmSnapshot {
+  definitions: UnifiedFilterDefinition[];
+  filterValues: Record<string, FilterValue>;
+  appliedFilterValues: Record<string, FilterValue>;
+}
+
+export const buildFilterConfigConfirmSnapshot = (
+  newDefinitions: UnifiedFilterDefinition[],
+  currentFilterValues: Record<string, FilterValue>,
+  currentAppliedFilterValues: Record<string, FilterValue>,
+): FilterConfigConfirmSnapshot => ({
+  definitions: newDefinitions,
+  filterValues: syncFilterValuesWithDefinitions(
+    newDefinitions,
+    currentFilterValues,
+  ),
+  appliedFilterValues: syncFilterValuesWithDefinitions(
+    newDefinitions,
+    currentAppliedFilterValues,
+  ),
+});

@@ -47,6 +47,10 @@ export interface ParamItem {
   desc?: string;
   required?: boolean;
   options?: Array<{ label: string; value: string | number }>;
+  inputConfig?: {
+    control?: 'input' | 'select' | 'radio';
+    multiple?: boolean;
+  };
 }
 
 export interface DatasourceItem {
@@ -96,12 +100,16 @@ export interface UnifiedFilterDefinition {
   id: string;
   key: string;
   name: string;
-  type: 'timeRange' | 'string' | 'stringList';
+  type: 'timeRange' | 'string';
   defaultValue?: FilterValue;
   order: number;
   enabled: boolean;
   inputMode?: 'input' | 'select' | 'radio' | 'organization';
   options?: FilterOption[];
+  inputConfig?: {
+    control?: 'input' | 'select' | 'radio';
+    multiple?: boolean;
+  };
 }
 
 export interface DashboardFiltersState {
@@ -117,7 +125,7 @@ export interface FilterBindings {
 
 export interface ScannedFilterParam {
   key: string;
-  type: 'string' | 'stringList' | 'timeRange';
+  type: 'string' | 'timeRange';
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;

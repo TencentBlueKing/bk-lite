@@ -16,11 +16,10 @@ Description，按空行分割。该文件中的每个包都是安全更新，但
 """
 
 import gzip
-import logging
 from typing import List, Optional
 
 import requests
-
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.constants import PatchSourceType
 from apps.patch_mgmt.models import PatchSource
 from apps.patch_mgmt.services.linux_repo_sync import (
@@ -29,8 +28,6 @@ from apps.patch_mgmt.services.linux_repo_sync import (
     RepoSyncError,
 )
 from apps.patch_mgmt.utils.architecture import X86_64, normalize_architecture, repository_architecture
-
-logger = logging.getLogger("app")
 
 USN_API_URL = "https://ubuntu.com/security/notices.json"
 USN_FETCH_TIMEOUT = (5, 30)

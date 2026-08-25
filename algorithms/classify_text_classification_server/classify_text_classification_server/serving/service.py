@@ -2,7 +2,10 @@
 
 import time
 import os
+import sys
+import traceback
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 import numpy as np
 import pandas as pd
@@ -32,6 +35,26 @@ from .schemas import (
     ErrorDetail,
 )
 
+def _configure_production_logger(sink=sys.stderr) -> None:
+    logger.configure(handlers=[{"sink": sink, "diagnose": False, "backtrace": True}])
+
+
+_configure_production_logger()
+
+
+def _safe_exception_call_chain(error: BaseException, max_frames: int = 12) -> str:
+    frames = traceback.extract_tb(error.__traceback__)
+    return ">".join(f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}" for frame in frames[-max_frames:]) or "-"
+
+
+class _SafeLogException(RuntimeError):
+    pass
+
+
+def _safe_exception_info(error: BaseException):
+    safe_error = _SafeLogException(type(error).__name__)
+    return _SafeLogException, safe_error, error.__traceback__
+
 
 # 常量定义
 MAX_TEXT_LENGTH = 5000
@@ -53,14 +76,13 @@ class MLService:
         用于预热缓存、下载资源等全局操作.
         不接收 self 参数,类似静态方法.
         """
-        logger.info("=== Deployment setup started ===")
-        logger.info("=== Deployment setup completed ===")
+        logger.info("event=text_classification_deployment_setup_completed")
 
     def __init__(self) -> None:
         """初始化服务,加载配置和模型."""
-        logger.info("Service instance initializing...")
+        logger.debug("event=text_classification_service_initializing")
         self.config = get_model_config()
-        logger.info(f"Config loaded: {self.config}")
+        logger.debug("event=text_classification_config_loaded model_source={}", self.config.source)
 
         try:
             load_start = time.time()
@@ -68,11 +90,19 @@ class MLService:
             load_time = time.time() - load_start
 
             model_load_counter.labels(source=self.config.source, status="success").inc()
-            logger.info(f"⏱️  Model loaded successfully in {load_time:.3f}s")
+            logger.info(
+                "event=text_classification_model_load_succeeded model_source={} duration_ms={:.3f}",
+                self.config.source,
+                load_time * 1000,
+            )
 
         except Exception as e:
             model_load_counter.labels(source=self.config.source, status="failure").inc()
-            logger.error(f"❌ Failed to load model: {e}", exc_info=True)
+            logger.opt(exception=_safe_exception_info(e)).error(
+                "event=text_classification_model_load_failed failed_stage=model_load error_type={} call_chain={}",
+                type(e).__name__,
+                _safe_exception_call_chain(e),
+            )
             raise RuntimeError(
                 f"Failed to load model from source '{self.config.source}'. "
                 "Service cannot start without a valid model."
@@ -85,8 +115,7 @@ class MLService:
 
         用于释放资源、关闭连接等.
         """
-        logger.info("=== Service shutdown: cleaning up resources ===")
-        logger.info("=== Cleanup completed ===")
+        logger.info("event=text_classification_cleanup_completed")
 
     @bentoml.api
     async def predict(self, texts: list[str], config: dict = None) -> PredictResponse:
@@ -116,7 +145,10 @@ class MLService:
             request = PredictRequest(texts=texts, config=pred_config)
 
         except Exception as e:
-            logger.error(f"Request validation failed: {e}")
+            logger.warning(
+                "event=text_classification_request_rejected reason=invalid_request error_type={}",
+                type(e).__name__,
+            )
             return self._create_error_response(
                 code="E1000",
                 message=f"请求验证失败: {str(e)}",
@@ -128,16 +160,17 @@ class MLService:
                 execution_time_ms=(time.time() - request_start) * 1000,
             )
 
-        logger.info(f"📥 Received classification request: {len(request.texts)} texts")
+        logger.debug("event=text_classification_request_received texts={}", len(request.texts))
 
         # 2. 文本预处理（截断处理）
         processed_texts, text_warnings = self._preprocess_texts(request.texts)
         text_batch_summary = self._summarize_text_batch(
             processed_texts, text_warnings
         )
-        logger.debug(f"Preprocessed text summary: {text_batch_summary}")
         logger.debug(
-            f"Processed texts type: {type(processed_texts)}, length: {len(processed_texts) if processed_texts else 0}"
+            "event=text_classification_preprocessed texts={} truncated={}",
+            text_batch_summary["count"],
+            text_batch_summary["truncated_count"],
         )
 
         try:
@@ -149,12 +182,17 @@ class MLService:
                 # MLflow加载后的模型使用标准接口：predict(data)
                 # MLflow内部会自动将data传递给自定义包装器的model_input参数
                 logger.debug(
-                    f"Calling model.predict with text summary: {text_batch_summary}"
+                    "event=text_classification_model_predict_started texts={} truncated={}",
+                    text_batch_summary["count"],
+                    text_batch_summary["truncated_count"],
                 )
                 model_output = self.model.predict(processed_texts)
 
                 predict_time = (time.time() - predict_start) * 1000
-                logger.info(f"⏱️  Model prediction completed in {predict_time:.1f}ms")
+                logger.debug(
+                    "event=text_classification_model_predict_completed duration_ms={:.1f}",
+                    predict_time,
+                )
 
             # 4. 解析模型输出并构造结果
             results = self._build_results(
@@ -183,9 +221,10 @@ class MLService:
             ).inc()
 
             logger.info(
-                f"✅ Classification completed: {summary.total_samples} texts, "
-                f"avg_probability={summary.avg_probability:.4f}, "
-                f"time={summary.processing_time_ms:.1f}ms"
+                "event=text_classification_completed texts={} avg_probability={:.4f} duration_ms={:.1f}",
+                summary.total_samples,
+                summary.avg_probability,
+                summary.processing_time_ms,
             )
 
             return PredictResponse(
@@ -197,7 +236,11 @@ class MLService:
             )
 
         except Exception as e:
-            logger.error(f"❌ Prediction failed: {e}", exc_info=True)
+            logger.opt(exception=_safe_exception_info(e)).error(
+                "event=text_classification_failed failed_stage=model_predict error_type={} call_chain={}",
+                type(e).__name__,
+                _safe_exception_call_chain(e),
+            )
 
             prediction_counter.labels(
                 model_source=self.config.source, status="failure"
@@ -245,7 +288,9 @@ class MLService:
                     )
                 )
                 logger.warning(
-                    f"Text truncated: {len(text)} -> {MAX_TEXT_LENGTH} chars"
+                    "event=text_classification_input_truncated original_length={} truncated_length={}",
+                    len(text),
+                    MAX_TEXT_LENGTH,
                 )
 
             processed_texts.append(processed_text)
@@ -466,7 +511,10 @@ class MLService:
             return features
 
         except Exception as e:
-            logger.warning(f"Failed to extract real feature importance: {e}; returning None")
+            logger.warning(
+                "event=text_feature_importance_unavailable error_type={}",
+                type(e).__name__,
+            )
             return None
 
     def _compute_summary(

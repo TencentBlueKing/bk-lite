@@ -5,7 +5,7 @@ import pytest
 from django.db import IntegrityError
 from django.utils import timezone
 
-from apps.apm.adapters import InMemoryMetricStore
+from apps.apm.adapters import InMemoryMetricStore, TelemetryStoreUnavailable
 from apps.apm.models import ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services import DjangoApmReliabilityService
 from apps.apm.services.contracts import MetricDataState, SloMeasurement, SloMetricQuery
@@ -168,3 +168,16 @@ def test_slo_evaluation_preserves_no_data_and_disabled_semantics():
     assert no_data.budget_remaining is None
     assert no_data.reason == "no_samples"
     assert disabled.reason == "disabled"
+
+
+def test_slo_evaluation_treats_telemetry_unavailable_as_no_data():
+    slo = _slo()
+    evaluated_at = datetime(2026, 8, 3, 12, tzinfo=UTC)
+    store = InMemoryMetricStore()
+    store.slo_measurement = lambda query: (_ for _ in ()).throw(TelemetryStoreUnavailable("VictoriaTraces 查询不可用"))
+
+    result = DjangoApmReliabilityService(store).evaluate(slo, evaluated_at=evaluated_at)
+
+    assert result.current_rate is None
+    assert result.data_state == "no_data"
+    assert "VictoriaTraces" in result.reason

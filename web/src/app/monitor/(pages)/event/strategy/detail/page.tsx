@@ -1302,6 +1302,7 @@ const StrategyOperation = () => {
             <div className="flex flex-col flex-1 min-w-[400px]">
               <VariablesTable
                 displayFields={currentMonitorObject?.display_fields}
+                groupBy={sanitizeGroupBy(metricRows[0]?.groupBy || groupBy)}
                 onVariableSelect={(variable: string) => {
                   basicInfoFormRef.current?.insertVariable(variable);
                 }}

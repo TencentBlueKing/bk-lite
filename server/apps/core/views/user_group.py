@@ -1,12 +1,9 @@
-import logging
-from rest_framework import viewsets
-from rest_framework.decorators import action
-
+from apps.core.logger import logger
 from apps.core.services.user_group import UserGroup
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.system_mgmt import SystemMgmt
-
-logger = logging.getLogger(__name__)
+from rest_framework import viewsets
+from rest_framework.decorators import action
 
 
 class UserGroupViewSet(viewsets.ViewSet):

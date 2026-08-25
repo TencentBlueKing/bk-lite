@@ -1,11 +1,9 @@
 """Local Memory Engine - Uses PostgreSQL database for memory storage."""
 
-import logging
 from typing import Any, Dict, List, Optional
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.memory.engines.base import BaseMemoryEngine, MemoryEntity, MemoryReadResult, MemoryWriteResult
-
-logger = logging.getLogger(__name__)
 
 
 class LocalMemoryEngine(BaseMemoryEngine):

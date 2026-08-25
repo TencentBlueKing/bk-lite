@@ -225,7 +225,7 @@
   },
   "dataSource": {
     "duplicateParamNames": "参数名重复：",
-    "invalidFilterParamType": "只有字符串、字符串列表、时间范围和日期范围参数可以配置为筛选。",
+    "invalidFilterParamType": "只有字符串、时间范围和日期范围参数可以配置为筛选。",
     "addParam": "添加参数",
     "paramTypes": {
       "timeRange": "时间范围",
@@ -233,7 +233,6 @@
       "number": "数字",
       "boolean": "布尔",
       "date": "日期",
-      "stringList": "字符串列表",
       "string": "字符串"
     },
     "title": "数据源",
@@ -673,6 +672,7 @@
     "duplicateFieldKey": "字段 key 不能重复",
     "componentSwitch": "组件内切换",
     "componentSwitchOccupied": "参数「{label}」已启用组件内切换，每个组件最多只能配置一个",
+    "componentSwitchDisabledByMultiple": "已开启多选，无法同时启用组件内切换",
     "multipleComponentSwitchParams": "每个组件最多只能配置一个组件内切换参数",
     "selectDashboardFirst": "请先选择一个仪表盘",
     "fetchDataFieldsFailed": "获取数据字段失败",
@@ -1220,6 +1220,8 @@
   "paramInput": {
     "title": "参数输入配置",
     "controlType": "控件类型",
+    "multiple": "多选",
+    "multipleDisabledByComponentSwitch": "已启用组件内切换，无法同时开启多选",
     "control": {
       "input": "输入框",
       "select": "下拉选择",
