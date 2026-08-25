@@ -19,31 +19,34 @@ function Bone({ width }: { width: string }) {
 
 export function ConversationSkeleton() {
   return (
-    <div className="flex flex-col gap-4" aria-busy="true" aria-label="加载对话">
+    <div className="flex flex-col gap-5" aria-busy="true" aria-label="加载对话">
       {bars.map((row, index) => {
         const isBot = row.side === 'bot';
         return (
           <div
             key={index}
-            className={`flex w-full items-start gap-2 ${isBot ? 'justify-start' : 'flex-row-reverse justify-start'}`}
+            className={`flex w-full items-start ${isBot ? 'justify-start' : 'flex-row-reverse justify-start'}`}
           >
-            <div
-              className="h-8 w-8 flex-shrink-0 animate-pulse rounded-full"
-              style={{ background: isBot ? WC.indigoHi : WC.success, opacity: 0.35 }}
-            />
-            <div
-              className={`flex flex-col gap-2 px-3.5 py-3 ${isBot ? 'min-w-0 flex-1' : 'w-[42%]'}`}
-              style={{
-                background: isBot ? WC.botBubble : WC.primaryBg,
-                borderRadius: 18,
-                borderBottomLeftRadius: isBot ? 6 : 18,
-                borderBottomRightRadius: isBot ? 18 : 6,
-              }}
-            >
-              {row.widths.map((width) => (
-                <Bone key={width} width={width} />
-              ))}
-            </div>
+            {isBot ? (
+              <div className="flex min-w-0 flex-1 flex-col gap-2">
+                {row.widths.map((width) => (
+                  <Bone key={width} width={width} />
+                ))}
+              </div>
+            ) : (
+              <div
+                className="flex w-[42%] flex-col gap-2 px-3.5 py-2"
+                style={{
+                  background: WC.botBubble,
+                  borderRadius: 16,
+                  borderBottomRightRadius: 4,
+                }}
+              >
+                {row.widths.map((width) => (
+                  <Bone key={width} width={width} />
+                ))}
+              </div>
+            )}
           </div>
         );
       })}

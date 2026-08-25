@@ -405,6 +405,56 @@ Agent 日常入口：根 `CLAUDE.md` / `AGENTS.md`「Web UI 硬约束」；**勿
 - 门禁：`pnpm check:component-ownership` 通过（113 records；Node v24.18.0）。
 - 回滚：将 `accessConfig` 的 `FORM_CONTROL_WIDTH` 误拆为散落 `w-[300px]` 已还原；并写入上文规则 4，避免再犯。
 
+### 合并最新 master 后事件驱动(2026-08 Cycle 29)
+
+- 快进合并 `origin/master`（`277533fb8` → `d6374bd70`，含 PR #4902–#4905：APM 列表密度、Monitor 告警选资产对齐视图列等）。
+- 样式/空态（触及即改）：Monitor `displayFieldsModal` 选中态 `#e6f4ff/#1677ff/#1890ff` → `primary-bg-active` + `primary` token；字段选择空态 → `CompactEmptyState`。
+- 显式不迁：APM 带 CTA Empty（SLO 去配置）；服务列表筛选 Empty；告警等级/拓扑/zoom 动态色；`CatalogState` 域空态；`viewList` 两处 `style={{ width: 240 }}` 与 Input `w-[240px]` 并存但本轮未统一改宽常量（避免再拆散，留待触及筛选条时引入 `FILTER_CONTROL_WIDTH`）。
+- 门禁：`pnpm check:component-ownership` 通过（113 records）。未 commit/push（待确认）。
+
+### 合并最新 master 后事件驱动(2026-08 Cycle 30)
+
+- 快进合并 `origin/master`（`d6374bd70` → `ba15becf0`，PR #4907：OpsPilot 规划 CUSTOM 事件不再渲成气泡）。
+- 审计 web 增量：主要为 `custom-chat-sse` 消息协议与 `plannedExecutionPayload`；渠道页仅文案/列对齐微调。
+- 显式不迁：渠道 Empty（含添加 CTA）；聊天壳 `calc(100vh-56px)` / `bg-white`/`border-gray-200` 历史债未在本轮协议修复中触及即改；内联 HTML `#1890ff` 为流式 guide/引用链接动态片段。
+- 门禁：`pnpm check:component-ownership` 通过（113）。无新增共享组件迁移。Cycle 29 未提交改动仍保留在工作区。
+
+### 合并最新 master 后事件驱动(2026-08 Cycle 31)
+
+- 快进合并 `origin/master`（`ba15becf0` → `d6f2eeec6`）：`web/package.json` type-check 去掉 `rm -rf .next/dev`，避免打断开发服。
+- 无 UI/组件增量；门禁通过。Cycle 29–30 工作区改动仍未 commit。
+
+### 合并最新 master 后事件驱动(2026-08 Cycle 32)
+
+- 快进合并 `origin/master`（`d6f2eeec6` → `7b8dfd60d`，含 Monitor Excel 批量导入校验与 Node 推送死锁修复等）。
+- web 增量：`automatic` / `automaticAssetCount` / `excelImportModal` 为导入校验逻辑；无新增 Empty/共享分叉/静态布局债可迁。
+- 门禁通过。Cycle 29–31 工作区改动仍未 commit。
+
+### 合并最新 master 后事件驱动(2026-08 Cycle 33)
+
+- 快进合并 `origin/master`（`7b8dfd60d` → `e5ca9654a`）：webchat 悬浮展开态改为内存态（`top-menu` / OpsPilot `memory`）。
+- 无 Empty/共享分叉/静态布局可迁；门禁通过。Cycle 29 起工作区改动仍未 commit。
+
+### 合并最新 master 后事件驱动(2026-08 Cycle 34)
+
+- 快进合并 `origin/master`（`e5ca9654a` → `60fbcfe47`）：同一 webchat 展开态修复落到 `global-webchat` / 打包产物。
+- 无 UI 空态/共享可迁；门禁通过。Cycle 29 起工作区改动仍未 commit。
+
+### 合并最新 master 后事件驱动(2026-08 Cycle 35)
+
+- 快进合并 `origin/master`（`60fbcfe47` → `69eddb480`，约 45 提交 / 147+ web 文件：运营分析空态画布、APM i18n、webchat 侧栏、内置数据源可见性、`ai-page-context` 等）。
+- 门禁修复：`ai-page-context/pilots` 去掉对 monitor `dashboard.pilot` 的静态反向依赖；改为 `registerPageContextPilot`，由 Monitor 仪表盘页 `register-dashboard-pilot.ts` 注册。
+- 显式不迁：OpsPilot 渠道 Empty（CTA）；APM 筛选 Empty；`ViewEmptyState` 为 ops-analysis 域空态（含最近访问/产品入口）；entity-list / dashboardCanvas 表内 Empty。
+- 门禁：`pnpm check:component-ownership` 通过（114 records）。Cycle 29 `displayFieldsModal` 等 WIP 仍在工作区未 commit。
+
+### 合并最新 master 后事件驱动(2026-08 Cycle 36)
+
+- 快进合并 `origin/master`（`69eddb480` → `25b022e17`，约 75 提交 / ~83 web 文件：Monitor 云资源 IP、策略变量、Node WinRM、日志提取器、APM/Job 等）。
+- 冲突：`displayFieldsModal` 与本地 Cycle 29 样式改动冲突 → 保留上游 Tooltip/名称提示，选中色继续走 `primary` token，字段空态继续 `CompactEmptyState`。
+- 显式不迁：日志提取器 Empty（含添加 CTA）；拓扑 `networkStatusTopology` 域 Empty/画布色；`ViewEmptyState`；Node 安装表 `#ff4d4f` 校验图标（AntD 危险色惯例，未触及即全改）；`viewList`/`alert` 筛选宽 `style={{ width: 200|240 }}`（未引入统一宽度常量，避免散落拆改）。
+- Cycle 35 的 `ai-page-context` pilot 注册修复一并提交。
+- 门禁：`pnpm check:component-ownership` 通过（114）。顺带放宽 `applyWinrmScheme` 泛型以通过 type-check（TableDataItem 调用点）。
+
 ### 已知 Storybook 构建阻塞
 
 - Node 24 全量 `pnpm build-storybook` 在 webpack `WasmHash._updateWithBuffer` 崩溃(#0125)。MoreActionsDropdown 的 Storybook 契约暂时以单文件 + 定向 ESLint 保障。

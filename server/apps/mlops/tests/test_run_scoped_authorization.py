@@ -91,6 +91,30 @@ def test_scoped_run_endpoints_require_run_membership(
     "route_prefix,train_job_model,module_path",
     RUN_SCOPED_CASES,
 )
+def test_scoped_run_endpoints_authorize_train_job_before_mlflow(
+    mlops_api_client,
+    monkeypatch,
+    route_prefix,
+    train_job_model,
+    module_path,
+):
+    train_job = create_train_job(train_job_model, team=2)
+    calls = attach_mlflow_mocks(monkeypatch, module_path)
+    monkeypatch.setattr(
+        f"{module_path}.{train_job.__class__.__name__}ViewSet.train_job_has_run",
+        lambda *args: pytest.fail("MLflow membership must not run before team authorization"),
+    )
+
+    response = mlops_api_client.get(f"/api/v1/mlops/{route_prefix}/{train_job.id}/runs/owned-run/metrics_list/")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert calls["metrics"] == 0
+
+
+@pytest.mark.parametrize(
+    "route_prefix,train_job_model,module_path",
+    RUN_SCOPED_CASES,
+)
 def test_scoped_run_metrics_allow_owned_run(
     mlops_api_client,
     monkeypatch,

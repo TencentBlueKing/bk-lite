@@ -71,6 +71,7 @@ class ExtraConfig(BaseModel):
     skill_package_workflows: Dict[str, Any] = Field(default_factory=dict)
     skill_id: Optional[Any] = None
     skill_package_params_overlay: Optional[Dict[str, Any]] = None
+    current_image_data: List[str] = Field(default_factory=list)
 
     # 多实例强制选择
     instance_name: Optional[str] = None

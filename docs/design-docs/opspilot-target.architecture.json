@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "OpsPilot 目标模块架构",
+    "output": "opspilot-target.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 790],
+    "views": [
+      {"id": "online-control", "label": "在线执行控制面", "focus": ["clients", "adapters", "conversation_app", "execution_kernel", "model_port", "tool_control", "external_services"], "note": "所有协议适配器调用同一会话与执行接口，模型和工具都经过显式预算、取消与策略控制。"},
+      {"id": "knowledge-plane", "label": "知识发布平面", "focus": ["adapters", "knowledge_authoring", "knowledge_read", "job_runtime", "operation_store", "object_store"], "note": "知识写模型继续维护不可变 Generation；在线读取只通过稳定的 Knowledge Read Port。"},
+      {"id": "durable-hitl", "label": "持久执行与 HITL", "focus": ["execution_kernel", "tool_control", "job_runtime", "operation_store"], "note": "执行、checkpoint、审批和用户选择共享持久化 Run/Step/Decision 事实，缓存仅作加速。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "region", "label": "Interface Adapters", "wraps": ["adapters"], "pad": 18},
+    {"kind": "region", "label": "OpsPilot Capability Modules", "wraps": ["conversation_app", "execution_kernel", "knowledge_authoring", "knowledge_read", "tool_control"], "pad": 20},
+    {"kind": "region", "label": "Ports 与受预算基础设施", "wraps": ["model_port", "job_runtime", "operation_store", "object_store", "external_services"], "pad": 18}
+  ],
+  "components": [
+    {"id": "clients", "type": "external", "label": "用户与渠道", "sublabel": "Web / API / IM / Embedded", "pos": [20, 115], "size": [150, 86]},
+    {"id": "adapters", "type": "backend", "label": "协议适配器", "sublabel": "认证上下文 / DTO / 流协议映射", "tag": "无业务规则", "pos": [200, 110], "size": [180, 96]},
+    {"id": "conversation_app", "type": "backend", "label": "Conversation Application", "sublabel": "统一会话身份 / 历史 / 渠道投递", "tag": "单一会话事实", "pos": [410, 110], "size": [180, 96]},
+    {"id": "execution_kernel", "type": "backend", "label": "Execution Kernel", "sublabel": "Run / Step / Stream / Cancel / Checkpoint", "tag": "共享运行语义", "pos": [620, 105], "size": [180, 100]},
+    {"id": "knowledge_authoring", "type": "backend", "label": "Knowledge Authoring", "sublabel": "Material / Build / Governance / Generation", "tag": "保留深模块", "pos": [200, 545], "size": [180, 100]},
+    {"id": "knowledge_read", "type": "backend", "label": "Knowledge Read Port", "sublabel": "活动代际 / 检索 / 引用 / 预算", "pos": [410, 545], "size": [180, 94]},
+    {"id": "tool_control", "type": "security", "label": "Tool Control Plane", "sublabel": "Capability / Scope / Risk / Approval / Audit", "tag": "默认拒绝", "pos": [830, 105], "size": [190, 102]},
+    {"id": "model_port", "type": "external", "label": "Model Gateway Port", "sublabel": "Provider / Timeout / Token / Tenant Budget", "pos": [1060, 320], "size": [205, 96]},
+    {"id": "job_runtime", "type": "messagebus", "label": "隔离的 Job Runtime", "sublabel": "chat / wiki / channel / memory 队列", "tag": "队列预算", "pos": [620, 320], "size": [180, 94]},
+    {"id": "operation_store", "type": "database", "label": "Operation Store", "sublabel": "Run / Step / Decision / Outbox / Usage", "tag": "持久 checkpoint", "pos": [830, 320], "size": [190, 100]},
+    {"id": "object_store", "type": "database", "label": "Object / Cache Adapters", "sublabel": "MinIO 事实 / Redis 加速", "pos": [830, 545], "size": [190, 92]},
+    {"id": "external_services", "type": "external", "label": "隔离执行与外部服务", "sublabel": "LLM / RAG / MCP / K8s / DB / Sandbox", "tag": "资源边界 + 回滚", "pos": [1060, 105], "size": [205, 96]}
+  ],
+  "connections": [
+    {"id": "clients_adapters", "from": "clients", "to": "adapters", "variant": "emphasis"},
+    {"id": "adapters_conversation", "from": "adapters", "to": "conversation_app"},
+    {"id": "adapters_authoring", "from": "adapters", "to": "knowledge_authoring", "label": "KnowledgeCommand", "labelAt": [290, 235]},
+    {"id": "conversation_execution", "from": "conversation_app", "to": "execution_kernel", "variant": "emphasis"},
+    {"id": "authoring_read", "from": "knowledge_authoring", "to": "knowledge_read", "label": "激活 Generation", "labelAt": [500, 520], "variant": "emphasis"},
+    {"id": "knowledge_read_execution", "from": "knowledge_read", "to": "execution_kernel", "label": "检索结果", "labelAt": [605, 455], "fromSide": "right", "toSide": "bottom", "via": [[605, 592], [605, 250], [710, 250]]},
+    {"id": "execution_tool", "from": "execution_kernel", "to": "tool_control", "variant": "security"},
+    {"id": "tool_external", "from": "tool_control", "to": "external_services", "variant": "security"},
+    {"id": "execution_jobs", "from": "execution_kernel", "to": "job_runtime", "label": "durable run", "labelAt": [770, 260], "variant": "dashed"},
+    {"id": "authoring_jobs", "from": "knowledge_authoring", "to": "job_runtime", "label": "build job", "labelAt": [500, 685], "fromSide": "bottom", "toSide": "bottom", "via": [[290, 675], [710, 675]], "variant": "dashed"},
+    {"id": "jobs_store", "from": "job_runtime", "to": "operation_store", "label": "checkpoint / outbox", "labelAt": [815, 300]},
+    {"id": "store_objects", "from": "operation_store", "to": "object_store"},
+    {"id": "execution_model", "from": "execution_kernel", "to": "model_port", "label": "ModelRequest", "fromSide": "bottom", "toSide": "left", "via": [[710, 275], [1045, 275], [1045, 368]]},
+    {"id": "model_external", "from": "model_port", "to": "external_services", "label": "受预算调用", "labelDx": 78}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "先统一运行语义", "items": ["Execution Kernel 统一 Run、Step、事件、取消、超时与 checkpoint，不要求立即合并两种编排 DSL", "HTTP 流只订阅持久 Run；客户端断连不再决定业务执行终态"]},
+    {"dot": "emerald", "title": "保持知识模块深度", "items": ["继续以不可变 Generation、活动指针和输入指纹承载发布一致性", "对外只暴露 Authoring Command 与 Read Port，隐藏 Wiki 内部服务数量"]},
+    {"dot": "rose", "title": "高权限工具默认拒绝", "items": ["每个 Capability 声明租户范围、风险、审批、幂等、超时、资源和回滚元数据", "Shell/浏览器/数据库/K8s 在独立执行环境运行，黑名单只保留为纵深防御"]}
+  ]
+}

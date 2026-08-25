@@ -1,0 +1,82 @@
+name: WeCom
+description: WeCom integration for login authentication, user sync, notifications, and group collaboration.
+
+templates:
+  base_connection:
+    title: Base Connection
+    groups:
+      credentials:
+        title: App credentials
+        fields:
+          corp_id:
+            label: Corp ID
+            help_text: WeCom Admin → My Company → Company Information → Corp ID
+          corp_secret:
+            label: App Secret
+            placeholder: Leave blank if unchanged
+          agent_id:
+            label: Agent ID
+            help_text: WeCom Admin → App Management → Self-built App → AgentId
+      endpoints:
+        title: Public endpoints
+        fields:
+          access_token_url:
+            label: Access token URL
+          proxy_url:
+            label: Proxy URL
+            help_text: Optional. HTTP(S) proxy used by the BK-Lite backend to reach this WeCom instance. Leave blank to connect directly. HTTP/HTTPS only; SOCKS is not supported.
+  login_auth_form:
+    title: Login authentication
+    groups:
+      mapping:
+        title: Field mapping
+        fields:
+          display_name:
+            label: Display name
+          icon:
+            label: Icon
+          description:
+            label: Description
+          external_field:
+            label: External field
+          platform_field:
+            label: Platform field
+  user_sync_form:
+    title: User sync
+    groups:
+      pull:
+        title: Pull settings
+        fields:
+          root_department_id:
+            label: Root department ID
+          include_child_departments:
+            label: Include child departments
+            help_text: By default, sync members of the root department and all child departments. Turn this off to sync only direct members of that department.
+  im_notification_form:
+    title: IM notification
+    groups:
+      send:
+        title: Send settings
+        fields:
+          mapping_strategy:
+            label: Mapping strategy
+
+capabilities:
+  login_auth:
+    fields:
+      login_auth_authorize_url:
+        label: QR authorization URL
+      login_auth_user_info_url:
+        label: User identity URL
+  user_sync:
+    fields:
+      user_sync_departments_url:
+        label: Department URL
+      user_sync_users_url:
+        label: Member URL
+  im_notification:
+    fields:
+      im_notification_users_url:
+        label: Member URL
+      im_notification_send_message_url:
+        label: App message URL

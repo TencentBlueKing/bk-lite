@@ -73,10 +73,10 @@ def test_token_only_verification_cannot_make_channel_ready(user, channel):
     }
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         return_value=application_response,
     ):
         result = RuntimeApplicationService().test_connection(

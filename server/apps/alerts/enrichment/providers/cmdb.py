@@ -1,11 +1,9 @@
-import logging
 from collections import defaultdict
 from typing import Dict, List
 
 from apps.alerts.enrichment.providers.base import EnrichmentProvider, register_provider
+from apps.core.logger import alert_logger as logger
 from apps.rpc.cmdb import CMDB
-
-logger = logging.getLogger(__name__)
 
 
 @register_provider

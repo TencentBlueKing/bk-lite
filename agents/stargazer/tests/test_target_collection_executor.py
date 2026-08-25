@@ -943,13 +943,18 @@ async def test_single_snmp_no_response_is_visible_as_timeout_without_plugin_trac
 
 
 @pytest.mark.asyncio
-async def test_collection_progress_is_bounded_and_shows_plugin_and_targets(monkeypatch):
+async def test_collection_info_is_bounded_and_target_details_are_debug(monkeypatch):
     info_logs = []
+    debug_logs = []
 
     def capture_info(message, *args):
         info_logs.append(message % args if args else message)
 
+    def capture_debug(message, *args):
+        debug_logs.append(message % args if args else message)
+
     monkeypatch.setattr("core.collection.executor.logger.info", capture_info)
+    monkeypatch.setattr("core.collection.executor.logger.debug", capture_debug)
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
         plugin=RecordingPlugin(),
@@ -972,9 +977,11 @@ async def test_collection_progress_is_bounded_and_shows_plugin_and_targets(monke
     await executor.execute(request, lease)
 
     progress = [item for item in info_logs if "event=collection_progress" in item]
-    starts = [item for item in info_logs if "event=target_collection_started" in item]
-    successes = [item for item in info_logs if "event=target_collection_succeeded" in item]
+    summaries = [item for item in info_logs if "event=collection_run_summary" in item]
     assert 2 <= len(progress) <= 12
+    assert len(summaries) == 1
+    assert not any("event=target_collection_started" in item for item in info_logs)
+    assert not any("event=target_collection_succeeded" in item for item in info_logs)
     assert "plugin_ref=network.config" in progress[0]
     assert "plugin_name=snmp_facts" in progress[0]
     assert "instance_id=cmdb-network-1" in progress[0]
@@ -983,7 +990,11 @@ async def test_collection_progress_is_bounded_and_shows_plugin_and_targets(monke
     assert "当前目标样本=" in progress[0]
     assert "已完成=25/25" in progress[-1]
     assert "最近结果=成功" in progress[-1]
-    assert starts == []
+    starts = [item for item in debug_logs if "event=target_collection_started" in item]
+    successes = [item for item in debug_logs if "event=target_collection_succeeded" in item]
+    assert len(starts) == 25
+    assert all("plugin_name=snmp_facts" in item for item in starts)
+    assert all("target=" in item for item in starts)
     assert len(successes) == 25
     assert all("SNMP采集成功" in item for item in successes)
     assert all("task_id=" not in item for item in successes)

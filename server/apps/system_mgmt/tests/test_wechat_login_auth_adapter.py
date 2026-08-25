@@ -12,7 +12,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 import requests
 
-from apps.system_mgmt.providers.adapters.wechat import WechatLoginAuthAdapter
+from apps.system_mgmt.providers.builtin.wechat.adapters.login_auth import WechatLoginAuthAdapter
 
 
 WECHAT_CONFIG = {
@@ -39,7 +39,7 @@ def test_authenticate_decodes_utf8_nickname_from_text_plain_userinfo_response():
         b'{"openid":"oxxx","nickname":"\xe5\xbc\xa0\xe4\xb8\x89\xf0\x9f\x98\x80"}'
     )
 
-    with patch("apps.system_mgmt.providers.adapters.wechat.requests.get", side_effect=[token_response, userinfo_response]):
+    with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]):
         result = WechatLoginAuthAdapter.authenticate(
             config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
         )
@@ -58,7 +58,7 @@ def test_authenticate_returns_external_user_with_real_field_names():
         "headimgurl": "https://wx.qq.com/avatar.png",
     })
 
-    with patch("apps.system_mgmt.providers.adapters.wechat.requests.get", side_effect=[token_response, userinfo_response]), \
+    with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]), \
          patch("apps.system_mgmt.nats_api.wechat_user_register") as mock_register:
         result = WechatLoginAuthAdapter.authenticate(
             config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code-123"
@@ -82,7 +82,7 @@ def test_authenticate_handles_userinfo_missing_fields_gracefully():
     token_response = _mock_response({"access_token": "AT", "openid": "oxxx"})
     userinfo_response = _mock_response({"openid": "oxxx"})  # 只返回 openid
 
-    with patch("apps.system_mgmt.providers.adapters.wechat.requests.get", side_effect=[token_response, userinfo_response]):
+    with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]):
         result = WechatLoginAuthAdapter.authenticate(
             config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
         )
@@ -101,7 +101,7 @@ def test_authenticate_falls_back_to_token_openid_when_userinfo_lacks_openid():
     token_response = _mock_response({"access_token": "AT", "openid": "oxxx"})
     userinfo_response = _mock_response({"errcode": 0, "errmsg": "ok"})  # 畸形:无 openid
 
-    with patch("apps.system_mgmt.providers.adapters.wechat.requests.get", side_effect=[token_response, userinfo_response]):
+    with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]):
         result = WechatLoginAuthAdapter.authenticate(
             config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
         )
@@ -115,7 +115,7 @@ def test_authenticate_rejects_when_both_token_and_userinfo_lack_openid():
     token_response = _mock_response({"access_token": "AT"})  # 缺 openid
     userinfo_response = _mock_response({"errcode": 0, "errmsg": "ok"})  # 也缺 openid
 
-    with patch("apps.system_mgmt.providers.adapters.wechat.requests.get", side_effect=[token_response, userinfo_response]):
+    with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]):
         result = WechatLoginAuthAdapter.authenticate(
             config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
         )
@@ -130,7 +130,7 @@ def test_authenticate_rejects_userinfo_errcode():
     token_response = _mock_response({"access_token": "AT", "openid": "oxxx"})
     userinfo_response = _mock_response({"errcode": 40001, "errmsg": "invalid credential"})
 
-    with patch("apps.system_mgmt.providers.adapters.wechat.requests.get", side_effect=[token_response, userinfo_response]):
+    with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", side_effect=[token_response, userinfo_response]):
         result = WechatLoginAuthAdapter.authenticate(
             config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
         )
@@ -145,7 +145,7 @@ def test_authenticate_rejects_token_missing_openid():
     """token 响应缺 openid → failed_result(已有逻辑保留)。"""
     token_response = _mock_response({"access_token": "AT"})  # 缺 openid
 
-    with patch("apps.system_mgmt.providers.adapters.wechat.requests.get", return_value=token_response):
+    with patch("apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get", return_value=token_response):
         result = WechatLoginAuthAdapter.authenticate(
             config=WECHAT_CONFIG, provider_key="wechat", capability_key="login_auth", auth_code="auth-code"
         )
@@ -160,9 +160,9 @@ def test_authenticate_does_not_log_secret_or_auth_code_on_token_request_failure(
     )
 
     with patch(
-        "apps.system_mgmt.providers.adapters.wechat.requests.get",
+        "apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get",
         side_effect=error,
-    ), patch("apps.system_mgmt.providers.adapters.wechat.logger") as logger:
+    ), patch("apps.system_mgmt.providers.builtin.wechat.adapters.login_auth.logger") as logger:
         result = WechatLoginAuthAdapter.authenticate(
             config=WECHAT_CONFIG,
             provider_key="wechat",
@@ -184,9 +184,9 @@ def test_authenticate_does_not_log_access_token_on_user_info_failure():
     )
 
     with patch(
-        "apps.system_mgmt.providers.adapters.wechat.requests.get",
+        "apps.system_mgmt.providers.builtin.wechat.adapters.client.requests.get",
         side_effect=[token_response, error],
-    ), patch("apps.system_mgmt.providers.adapters.wechat.logger") as logger:
+    ), patch("apps.system_mgmt.providers.builtin.wechat.adapters.login_auth.logger") as logger:
         result = WechatLoginAuthAdapter.authenticate(
             config=WECHAT_CONFIG,
             provider_key="wechat",

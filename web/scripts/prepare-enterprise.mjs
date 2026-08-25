@@ -454,6 +454,17 @@ const updateTsconfigPaths = async (moduleNames) => {
 /* ── main ── */
 
 export const prepareEnterpriseRoutes = async () => {
+  // Page-context pilots: always regenerate (community + enterprise).
+  try {
+    const { generateAiPilots } = await import('./generate-ai-pilots.mjs');
+    const pilots = generateAiPilots();
+    if (pilots.ok) {
+      console.log(`  ✓ ai-pilots: ${pilots.count} file(s)${pilots.changed ? ' (updated)' : ' (unchanged)'}`);
+    }
+  } catch (error) {
+    console.warn('  ⚠️ ai-pilots generation failed (non-blocking):', error);
+  }
+
   if (!(await fs.pathExists(enterpriseWebRoot))) {
     await cleanupGenerated();
     // community 模式：清掉上次 enterprise 启动注入到 web/public/assets/icons/ 的 EE 副本

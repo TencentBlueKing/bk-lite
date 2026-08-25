@@ -14,8 +14,8 @@ from apps.system_mgmt.models import (
     LoginAuthBindingUnmatchedActionChoices,
     User,
 )
-from apps.system_mgmt.providers.adapters.feishu import FeishuLoginAuthAdapter
-from apps.system_mgmt.providers.adapters.base import BaseUserSyncAdapter
+from apps.system_mgmt.providers.builtin.feishu.adapters.login_auth import FeishuLoginAuthAdapter
+from apps.system_mgmt.providers.base import BaseUserSyncAdapter
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult, RuntimeApplicationService
 from apps.system_mgmt.services.login_auth_binding_service import (
     build_login_auth_redirect,

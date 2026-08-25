@@ -17,14 +17,15 @@ import {
 } from './visibility';
 import './global-webchat.css';
 
-const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20260821-1';
-const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20260821-1';
+const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20260825-2';
+const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20260825-2';
 const WEBCHAT_ROOT_ID = 'webchat-root';
 
 const PLATFORM = {
   applicationsUrl: '/api/proxy/opspilot/skill_channel/platform/',
   sessionsUrl: '/api/proxy/opspilot/skill_channel/conversations/?channel_id={channelId}',
   messagesUrl: '/api/proxy/opspilot/skill_channel/conversations/messages/?session_id={sessionId}',
+  deleteSessionUrl: '/api/proxy/opspilot/skill_channel/conversations/delete/',
   chatUrlTemplate: '/api/proxy/opspilot/skill_channel/{channelId}/chat/',
   interruptUrl: '/api/proxy/opspilot/bot_mgmt/interrupt_chat_flow_execution/',
   approvalUrl: '/api/proxy/opspilot/bot_mgmt/submit_approval/',
@@ -40,8 +41,7 @@ interface WebChatPlatformConfig {
   platform: typeof PLATFORM & { storageKey: string };
   userId: string;
   teamId: string;
-  collectContext?: () => Promise<unknown>;
-  hasPageContext?: () => boolean;
+  collectContext?: (hint?: { message?: string }) => Promise<unknown>;
 }
 
 interface WebChatBrowserApi {
@@ -153,13 +153,9 @@ const GlobalWebchat = () => {
           },
           userId: resolvedUserId,
           teamId,
-          collectContext: async () => {
+          collectContext: async (hint) => {
             installPageContextBridge();
-            return window.__BK_AI_PAGE_CONTEXT__?.collect() ?? null;
-          },
-          hasPageContext: () => {
-            installPageContextBridge();
-            return Boolean(window.__BK_AI_PAGE_CONTEXT__?.hasAvailable());
+            return window.__BK_AI_PAGE_CONTEXT__?.collect(hint) ?? null;
           },
         },
         null,

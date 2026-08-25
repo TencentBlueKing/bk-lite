@@ -5,14 +5,12 @@ Purpose 描述目标/范围/关键问题/成功标准；结构化模板定义知
 + 用户描述生成说明草稿，失败时回退到模板骨架。
 """
 
-import logging
 from copy import deepcopy
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import LLMModel
-
-logger = logging.getLogger("opspilot")
 
 
 def _directory(key, name, page_type, description):

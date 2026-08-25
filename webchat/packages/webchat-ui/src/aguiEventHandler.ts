@@ -39,6 +39,19 @@ export interface AGUIEventDispatcher {
   cancelPendingText(): void;
 }
 
+/** Show the extra typing bubble only while waiting for the first bot message. */
+export function shouldShowTypingPlaceholder(
+  isLoading: boolean,
+  isThinking: boolean,
+  messages: Array<{ sender: string }>
+): boolean {
+  if (!isLoading && !isThinking) {
+    return false;
+  }
+  const last = messages[messages.length - 1];
+  return last?.sender !== 'bot';
+}
+
 /** Create the AG-UI protocol event dispatcher used by Chat. */
 export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDispatcher {
   const {
@@ -103,6 +116,49 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
     }
   };
 
+  const applyThinkingDelta = (delta: string) => {
+    ensureCurrentMessage();
+    const messageId = currentMessageIdRef.current;
+    if (!messageId) return;
+    const patch = (message: Message): Message => {
+      if (message.id !== messageId) return message;
+      const previous = typeof message.metadata?.thinking === 'string' ? message.metadata.thinking : '';
+      return {
+        ...message,
+        metadata: {
+          ...message.metadata,
+          thinking: previous + delta,
+          isThinking: true,
+        },
+      };
+    };
+    setMessages((prev) => prev.map(patch));
+    const session = sessionManagerRef.current?.getSession();
+    if (session) {
+      session.messages = session.messages.map(patch);
+    }
+  };
+
+  const setMessageThinking = (thinking: boolean) => {
+    const messageId = currentMessageIdRef.current;
+    if (!messageId) return;
+    const patch = (message: Message): Message => {
+      if (message.id !== messageId) return message;
+      return {
+        ...message,
+        metadata: {
+          ...message.metadata,
+          isThinking: thinking,
+        },
+      };
+    };
+    setMessages((prev) => prev.map(patch));
+    const session = sessionManagerRef.current?.getSession();
+    if (session) {
+      session.messages = session.messages.map(patch);
+    }
+  };
+
   const applyToolPatch = (toolCallId: string, patch: Partial<ToolCall>) => {
     textBatcher.flush();
     const messageId = currentMessageIdRef.current;
@@ -129,11 +185,19 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
         break;
 
       case 'THINKING_START':
+        ensureCurrentMessage();
         setIsThinking(true);
+        setMessageThinking(true);
+        break;
+
+      case 'THINKING':
+        setIsThinking(true);
+        applyThinkingDelta(event.delta || '');
         break;
 
       case 'THINKING_END':
         setIsThinking(false);
+        setMessageThinking(false);
         break;
 
       case 'RUN_ERROR': {
@@ -168,6 +232,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
         streamingContentRef.current = '';
         streamingSegmentContent = '';
         setIsThinking(false);
+        setMessageThinking(false);
         setIsLoading(true);
         break;
       }
@@ -177,6 +242,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
         streamingContentRef.current += event.delta;
         streamingSegmentContent += event.delta;
         textBatcher.schedule(streamingSegmentContent);
+        setIsThinking(false);
         break;
       }
 
@@ -242,6 +308,8 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
       case 'RUN_FINISHED':
         flushAndPersistPendingText();
         setIsThinking(false);
+        setMessageThinking(false);
+        setIsLoading(false);
         stateMachineRef.current?.transition('connected');
         break;
 

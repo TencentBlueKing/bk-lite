@@ -1,0 +1,76 @@
+name: Active Directory
+description: Active Directory integration for login authentication and user sync.
+
+templates:
+  base_connection:
+    title: Base Connection
+    groups:
+      connection:
+        title: Connection
+        fields:
+          connection_url:
+            label: Server IP
+            help_text: Enter the server IP only. Protocol and default port are filled in automatically based on SSL settings.
+          ssl_encryption:
+            label: SSL encryption
+            options:
+              "none": None
+              ssl: SSL
+          timeout:
+            label: Timeout
+          bind_dn:
+            label: Bind account
+            help_text: Prefer a UPN (for example administrator@corp.example.com) or a full DN (for example CN=svc_ad,OU=Service,DC=corp,DC=example,DC=com). Avoid relying on a bare username for domain resolution.
+          bind_password:
+            label: Bind password
+  login_auth_form:
+    title: Login authentication
+    groups:
+      mapping:
+        title: Field mapping
+        fields:
+          display_name:
+            label: Display name
+          icon:
+            label: Icon
+          description:
+            label: Description
+          external_field:
+            label: External field
+          platform_field:
+            label: Platform field
+          unmatched_user_action:
+            label: Unmatched user action
+          default_group_name:
+            label: Default user group name
+  user_sync_form:
+    title: User sync
+    groups:
+      scope:
+        title: Sync scope
+        fields:
+          root_dns:
+            label: Sync pull DNs
+            placeholder: "OU=BizA,DC=example,DC=com\nOU=BizC,DC=example,DC=com"
+            help_text: One complete DN per line. With one DN, child organizations attach under this sync source's root group. With multiple OUs, each appears as its own organization under that root.
+          user_object_class:
+            label: User object class
+            help_text: Object class for user accounts in AD/LDAP. The common value is user; keep the default unless you need a different class.
+          user_filter:
+            label: User object filter
+            help_text: Extra filter on user accounts that decides who is pulled. Keep the default unless you need a different filter.
+          organization_object_class:
+            label: Organization object class
+            help_text: Object class for organization/department entries in AD/LDAP. The AD default is organizationalUnit; keep it unless you need a different class.
+
+capabilities:
+  login_auth:
+    fields:
+      base_dn:
+        label: Login search Base DN
+        help_text: "LDAP search root used during login. This is not the same as sync pull DNs (root_dns): root_dns limits what is synced, base_dn limits where login search looks."
+      login_auth_identity_field:
+        label: Login account type
+        options:
+          sAMAccountName: Username (sAMAccountName)
+          userPrincipalName: Email account (userPrincipalName)

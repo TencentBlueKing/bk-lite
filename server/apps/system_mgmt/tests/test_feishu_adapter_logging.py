@@ -2,8 +2,8 @@ from unittest.mock import patch
 
 import pytest
 
-from apps.system_mgmt.providers.adapters import feishu
-from apps.system_mgmt.providers.adapters.feishu import _request_tenant_access_token
+from apps.system_mgmt.providers.builtin.feishu.adapters import client as feishu
+from apps.system_mgmt.providers.builtin.feishu.adapters.client import _request_tenant_access_token
 
 
 class _SuccessfulTokenResponse:
@@ -34,9 +34,9 @@ def test_sanitize_url_for_log_only_keeps_valid_http_origin(url, expected):
 
 def test_feishu_connection_probe_logs_success_start_at_debug_only():
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.post",
         return_value=_SuccessfulTokenResponse(),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.logger") as logger:
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.logger") as logger:
         result = _request_tenant_access_token(
             {"app_id": "cli_123456789", "app_secret": "secret"},
             "login_auth",
@@ -55,9 +55,9 @@ def test_feishu_connection_probe_returns_failure_without_adapter_warning():
     response.json = lambda: {"code": 99991663, "msg": "invalid token"}
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.post",
         return_value=response,
-    ), patch("apps.system_mgmt.providers.adapters.feishu.logger") as logger:
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.logger") as logger:
         result = _request_tenant_access_token(
             {"app_id": "cli_123456789", "app_secret": "secret"},
             "login_auth",
@@ -82,9 +82,9 @@ def test_feishu_token_refresh_logs_sanitized_debug_details_only():
 
     try:
         with patch(
-            "apps.system_mgmt.providers.adapters.feishu.requests.post",
+            "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.post",
             return_value=_SuccessfulTokenResponse(),
-        ), patch("apps.system_mgmt.providers.adapters.feishu.logger") as logger:
+        ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.logger") as logger:
             token, error = feishu._fetch_tenant_access_token(config)
     finally:
         feishu._FEISHU_TENANT_TOKEN_CACHE.pop(cache_key, None)
@@ -113,12 +113,12 @@ def test_feishu_contact_auth_retry_is_debug_only():
     }
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get",
         side_effect=[unauthorized_response, successful_response],
     ), patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client._fetch_tenant_access_token",
         return_value=("new-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.logger") as logger:
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.logger") as logger:
         result, error = feishu._feishu_get_paginated(
             "https://private.example/contact?credential=hidden",
             "old-token",
@@ -141,12 +141,12 @@ def test_feishu_contact_response_log_includes_request_duration():
     }
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get",
         return_value=response,
     ), patch(
-        "apps.system_mgmt.providers.adapters.feishu.time.perf_counter",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.time.perf_counter",
         side_effect=[100.0, 101.25],
-    ), patch("apps.system_mgmt.providers.adapters.feishu.logger") as logger:
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.logger") as logger:
         result, error = feishu._feishu_get_paginated("https://private.example/contact", "token")
 
     assert error is None
@@ -163,10 +163,10 @@ def test_feishu_contact_permission_denied_does_not_refresh_token():
     }
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get",
         return_value=permission_denied_response,
     ), patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client._fetch_tenant_access_token",
     ) as refresh:
         result, error = feishu._feishu_get_paginated(
             "https://private.example/contact",

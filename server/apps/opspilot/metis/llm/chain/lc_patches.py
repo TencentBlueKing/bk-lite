@@ -26,6 +26,11 @@ from langchain_openai.chat_models.base import _convert_delta_to_message_chunk as
 from langchain_openai.chat_models.base import _convert_dict_to_message as _original_convert_dict_to_message
 from langchain_openai.chat_models.base import _convert_message_to_dict as _original_convert_message_to_dict
 
+try:
+    from openai.types.chat.chat_completion_chunk import ChatCompletionChunk as _ChatCompletionChunk
+except Exception:  # pragma: no cover - openai 版本缺该类型时跳过
+    _ChatCompletionChunk = None
+
 # --- Patch 1: Response deserialization (preserve reasoning_content) ----------
 #
 # Different providers use different field names for thinking/reasoning content:
@@ -33,6 +38,74 @@ from langchain_openai.chat_models.base import _convert_message_to_dict as _origi
 #   - Qwen: "reasoning"
 # We normalize to "reasoning_content" in additional_kwargs for internal use.
 _REASONING_FIELD_NAMES = ("reasoning_content", "reasoning")
+
+
+def _int_token(value) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def usage_payload_from_raw(raw_usage) -> dict | None:
+    """从 OpenAI usage 对象/字典取出非零 token 计数。dump 成全 0 时返回 None。"""
+    if raw_usage is None:
+        return None
+    if isinstance(raw_usage, dict):
+        prompt = raw_usage.get("prompt_tokens", raw_usage.get("input_tokens"))
+        completion = raw_usage.get("completion_tokens", raw_usage.get("output_tokens"))
+        total = raw_usage.get("total_tokens")
+    else:
+        prompt = getattr(raw_usage, "prompt_tokens", None)
+        if prompt is None:
+            prompt = getattr(raw_usage, "input_tokens", None)
+        completion = getattr(raw_usage, "completion_tokens", None)
+        if completion is None:
+            completion = getattr(raw_usage, "output_tokens", None)
+        total = getattr(raw_usage, "total_tokens", None)
+    prompt_i = _int_token(prompt)
+    completion_i = _int_token(completion)
+    total_i = _int_token(total) or (prompt_i + completion_i)
+    if not (prompt_i or completion_i or total_i):
+        return None
+    return {
+        "prompt_tokens": prompt_i,
+        "completion_tokens": completion_i,
+        "total_tokens": total_i,
+    }
+
+
+def restore_usage_on_dumped_chunk(raw_chunk, dumped):
+    """流式 chunk.model_dump() 丢掉 usage 时，用原始 chunk.usage 填回去。"""
+    if not isinstance(dumped, dict):
+        return dumped
+    if usage_payload_from_raw(dumped.get("usage")):
+        return dumped
+    restored = usage_payload_from_raw(getattr(raw_chunk, "usage", None))
+    if not restored:
+        return dumped
+    dumped = dict(dumped)
+    dumped["usage"] = restored
+    return dumped
+
+
+def _install_chat_completion_chunk_usage_patch() -> None:
+    """LangChain 流式路径会 chunk.model_dump()；兼容网关常把 usage dump 成空/全 0。"""
+    if _ChatCompletionChunk is None:
+        return
+    original = _ChatCompletionChunk.model_dump
+    if getattr(original, "_opspilot_usage_preserve", False):
+        return
+
+    def _model_dump(self, *args, **kwargs):
+        data = original(self, *args, **kwargs)
+        return restore_usage_on_dumped_chunk(self, data)
+
+    _model_dump._opspilot_usage_preserve = True
+    _ChatCompletionChunk.model_dump = _model_dump
+
+
+_install_chat_completion_chunk_usage_patch()
 
 
 def _patched_convert_dict_to_message(_dict, *args, **kwargs):
@@ -87,43 +160,32 @@ def _patched_create_chat_result(self, response, generation_info=None):
 
     # MiniMax 等兼容网关:model_dump 后 usage 可能变空/全 0,但从原始 response.usage
     # 仍能读到 prompt_tokens/completion_tokens。这里回填到 AIMessage。
-    raw_usage = getattr(response, "usage", None)
-    if raw_usage is not None and result.generations:
-        prompt = getattr(raw_usage, "prompt_tokens", None)
-        completion = getattr(raw_usage, "completion_tokens", None)
-        total = getattr(raw_usage, "total_tokens", None)
-        if prompt is None and isinstance(raw_usage, dict):
-            prompt = raw_usage.get("prompt_tokens")
-            completion = raw_usage.get("completion_tokens")
-            total = raw_usage.get("total_tokens")
-        try:
-            prompt_i = int(prompt or 0)
-            completion_i = int(completion or 0)
-            total_i = int(total or 0) or (prompt_i + completion_i)
-        except (TypeError, ValueError):
-            prompt_i = completion_i = total_i = 0
-        if prompt_i or completion_i or total_i:
-            for generation in result.generations:
-                gen_msg = generation.message
-                if not isinstance(gen_msg, AIMessage):
-                    continue
-                existing = getattr(gen_msg, "usage_metadata", None) or {}
-                existing_total = int(existing.get("total_tokens") or 0) if isinstance(existing, dict) else 0
-                existing_input = int(existing.get("input_tokens") or existing.get("prompt_tokens") or 0) if isinstance(existing, dict) else 0
-                if existing_total or existing_input:
-                    continue
-                gen_msg.usage_metadata = {
-                    "input_tokens": prompt_i,
-                    "output_tokens": completion_i,
-                    "total_tokens": total_i,
-                }
-                metadata = dict(getattr(gen_msg, "response_metadata", None) or {})
-                metadata["token_usage"] = {
-                    "prompt_tokens": prompt_i,
-                    "completion_tokens": completion_i,
-                    "total_tokens": total_i,
-                }
-                gen_msg.response_metadata = metadata
+    usage_payload = usage_payload_from_raw(getattr(response, "usage", None))
+    if usage_payload and result.generations:
+        prompt_i = usage_payload["prompt_tokens"]
+        completion_i = usage_payload["completion_tokens"]
+        total_i = usage_payload["total_tokens"]
+        for generation in result.generations:
+            gen_msg = generation.message
+            if not isinstance(gen_msg, AIMessage):
+                continue
+            existing = getattr(gen_msg, "usage_metadata", None) or {}
+            existing_total = int(existing.get("total_tokens") or 0) if isinstance(existing, dict) else 0
+            existing_input = int(existing.get("input_tokens") or existing.get("prompt_tokens") or 0) if isinstance(existing, dict) else 0
+            if existing_total or existing_input:
+                continue
+            gen_msg.usage_metadata = {
+                "input_tokens": prompt_i,
+                "output_tokens": completion_i,
+                "total_tokens": total_i,
+            }
+            metadata = dict(getattr(gen_msg, "response_metadata", None) or {})
+            metadata["token_usage"] = {
+                "prompt_tokens": prompt_i,
+                "completion_tokens": completion_i,
+                "total_tokens": total_i,
+            }
+            gen_msg.response_metadata = metadata
 
     return result
 

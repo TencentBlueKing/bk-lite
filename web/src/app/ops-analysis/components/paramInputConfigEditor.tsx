@@ -136,6 +136,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   const [control, setControl] = useState<InputControlConfig['control']>('input');
   const [picker, setPicker] = useState<'dropdown' | 'table'>('dropdown');
   const [componentSwitch, setComponentSwitch] = useState(false);
+  const [multiple, setMultiple] = useState(false);
   const [sourceType, setSourceType] = useState<'static' | 'dynamic'>('static');
   const [staticRows, setStaticRows] = useState<StaticRow[]>([createRow()]);
   const [dataSourceList, setDataSourceList] = useState<DatasourceItem[]>([]);
@@ -159,6 +160,7 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
       setControl('input');
       setPicker('dropdown');
       setComponentSwitch(false);
+      setMultiple(false);
       setSourceType('static');
       setStaticRows([createRow()]);
       setDynamicSourceId(undefined);
@@ -173,6 +175,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
     setPicker(value.control === 'select' && value.picker === 'table' ? 'table' : 'dropdown');
     setComponentSwitch(
       value.control === 'input' ? false : Boolean(value.componentSwitch),
+    );
+    setMultiple(
+      value.control === 'select' ? Boolean(value.multiple) : false,
     );
     if (value.control === 'input') {
       setSourceType('static');
@@ -376,7 +381,9 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
   > => {
     const current = value && value.control !== 'input' ? value : undefined;
     return {
-      ...(current?.multiple ? { multiple: true, maxCount: current.maxCount } : {}),
+      ...(control === 'select' && multiple
+        ? { multiple: true as const, maxCount: current?.maxCount }
+        : {}),
       ...(control === 'select' && picker === 'table' ? { picker: 'table' as const } : {}),
     };
   };
@@ -511,6 +518,30 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
           </Form.Item>
         )}
 
+        {control === 'select' && (
+          <Form.Item label={t('paramInput.multiple')} className="mb-3">
+            <Tooltip
+              title={
+                componentSwitch
+                  ? t('paramInput.multipleDisabledByComponentSwitch')
+                  : undefined
+              }
+            >
+              <Switch
+                size="small"
+                checked={multiple}
+                disabled={componentSwitch}
+                onChange={(checked) => {
+                  setMultiple(checked);
+                  if (checked) {
+                    setComponentSwitch(false);
+                  }
+                }}
+              />
+            </Tooltip>
+          </Form.Item>
+        )}
+
         {control !== 'input' && (
           <>
             {componentSwitchEnabled && (
@@ -525,17 +556,25 @@ export const ParamInputConfigEditor: React.FC<ParamInputConfigEditorProps> = ({
                       ? t('dashboard.componentSwitchOccupied', undefined, {
                         label: componentSwitchOwner.label,
                       })
-                      : undefined
+                      : multiple
+                        ? t('dashboard.componentSwitchDisabledByMultiple')
+                        : undefined
                   }
                 >
                   <Switch
                     size='small'
                     checked={componentSwitch}
                     disabled={Boolean(
-                      componentSwitchOwner &&
-                      componentSwitchOwner.name !== editingParamName,
+                      (componentSwitchOwner &&
+                        componentSwitchOwner.name !== editingParamName) ||
+                      multiple,
                     )}
-                    onChange={setComponentSwitch}
+                    onChange={(checked) => {
+                      setComponentSwitch(checked);
+                      if (checked) {
+                        setMultiple(false);
+                      }
+                    }}
                   />
                 </Tooltip>
               </Form.Item>

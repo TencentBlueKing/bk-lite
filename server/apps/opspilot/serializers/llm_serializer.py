@@ -5,6 +5,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import AuthSerializer, TeamSerializer
 from apps.opspilot.models import LLMModel, LLMSkill, SkillPackage, SkillRequestLog, SkillTools, UserPin
 from apps.opspilot.serializers.model_vendor_serializer import CustomProviderSerializer
+from apps.opspilot.utils.skill_package_params import mask_package_params
 
 
 class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
@@ -27,6 +28,7 @@ class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
             "team",
             "is_build_in",
             "is_demo",
+            "is_multimodal",
             "vendor",
             "model",
             "label",
@@ -138,8 +140,6 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
     @staticmethod
     def get_skill_package_params(instance: LLMSkill):
         """返回技能包参数，password 类型的 value 掩码为 '******'。"""
-        from apps.opspilot.utils.skill_package_params import mask_package_params
-
         return mask_package_params(getattr(instance, "skill_package_params", None))
 
 

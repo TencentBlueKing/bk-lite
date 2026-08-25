@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "NodeMgmt 目标模块架构",
+    "output": "node-mgmt-target.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 720],
+    "views": [
+      {"id": "stable-interface", "label": "统一应用 Interface", "focus": ["inbound", "application", "registry", "installation", "configuration"], "note": "HTTP、NATS、Celery 和 Sidecar API 只做协议适配。"},
+      {"id": "runtime-seam", "label": "期望与实际状态", "focus": ["configuration", "agent_port", "sidecar", "registry"], "note": "配置是期望事实，心跳是实际状态观测，两者由 Reconciler 收敛。"},
+      {"id": "reliability", "label": "可靠副作用", "focus": ["installation", "operation_store", "remote_port", "delivery", "downstream"], "note": "远程执行和跨模块投影都有持久化 operation、lease 与 outbox。"}
+    ]
+  },
+  "components": [
+    {"id": "inbound", "type": "backend", "label": "Interface Adapters", "sublabel": "HTTP / NATS / Celery / Sidecar API", "pos": [30, 285], "size": [210, 86]},
+    {"id": "application", "type": "backend", "label": "NodeMgmt Application Interface", "sublabel": "NodeCommand / InstallCommand / ConfigQuery", "pos": [285, 275], "size": [245, 96]},
+    {"id": "catalog", "type": "backend", "label": "Region & Package Module", "sublabel": "云区域 / 服务 / 包 / 版本", "pos": [610, 40], "size": [235, 78]},
+    {"id": "registry", "type": "backend", "label": "Node Registry Module", "sublabel": "节点身份 / 组织 / 实际状态投影", "pos": [610, 170], "size": [235, 82]},
+    {"id": "installation", "type": "backend", "label": "Installation Module", "sublabel": "状态机 / claim / deadline / compensation", "pos": [610, 305], "size": [235, 84]},
+    {"id": "configuration", "type": "backend", "label": "Configuration Reconciler", "sublabel": "期望配置 / ETag / Action / 回报收敛", "pos": [610, 445], "size": [235, 84]},
+    {"id": "delivery", "type": "backend", "label": "Projection & Delivery Module", "sublabel": "CMDB / Monitor link / retire / replay", "pos": [610, 583], "size": [235, 78]},
+    {"id": "remote_port", "type": "external", "label": "Remote Execution Port", "sublabel": "SSH / WinRM / Executor Adapters", "pos": [935, 305], "size": [225, 82]},
+    {"id": "agent_port", "type": "external", "label": "Agent Transport Port", "sublabel": "config / action / heartbeat 契约", "pos": [935, 445], "size": [225, 82]},
+    {"id": "operation_store", "type": "database", "label": "Operation & State Store", "sublabel": "Task / phase / attempt / lease / outbox", "pos": [935, 580], "size": [225, 84]},
+    {"id": "sidecar", "type": "external", "label": "Sidecar / Collector", "sublabel": "节点运行时", "pos": [1220, 445], "size": [170, 78]},
+    {"id": "downstream", "type": "external", "label": "CMDB / Monitor", "sublabel": "可重放投影", "pos": [1220, 584], "size": [170, 76]}
+  ],
+  "boundaries": [
+    {"kind": "region", "label": "稳定的 NodeMgmt Interface", "wraps": ["inbound", "application"], "pad": 18},
+    {"kind": "region", "label": "按能力组织的深 Module", "wraps": ["catalog", "registry", "installation", "configuration", "delivery"], "pad": 18},
+    {"kind": "region", "label": "Ports 与可靠性基础", "wraps": ["remote_port", "agent_port", "operation_store"], "pad": 18}
+  ],
+  "connections": [
+    {"id": "inbound_application", "from": "inbound", "to": "application", "variant": "emphasis"},
+    {"id": "app_catalog", "from": "application", "to": "catalog"},
+    {"id": "app_registry", "from": "application", "to": "registry", "variant": "emphasis"},
+    {"id": "app_installation", "from": "application", "to": "installation"},
+    {"id": "app_configuration", "from": "application", "to": "configuration"},
+    {"id": "app_delivery", "from": "application", "to": "delivery"},
+    {"id": "install_remote", "from": "installation", "to": "remote_port", "label": "有界副作用", "variant": "dashed"},
+    {"id": "config_agent", "from": "configuration", "to": "agent_port", "label": "期望 / 回报", "variant": "emphasis"},
+    {"id": "agent_sidecar", "from": "agent_port", "to": "sidecar", "variant": "emphasis"},
+    {"id": "delivery_store", "from": "delivery", "to": "operation_store", "label": "Outbox / 投递状态"},
+    {"id": "delivery_downstream", "from": "operation_store", "to": "downstream", "label": "幂等投影", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "期望与实际分离", "items": ["配置、分配和动作命令是服务端期望事实", "Sidecar 心跳保存 observed_at 和版本，仅作为实际状态投影"]},
+    {"dot": "cyan", "title": "显式状态机", "items": ["安装阶段从 result JSON 提升为可查询 phase、attempt、owner、deadline", "Linux 与 Windows 共享状态机，远程执行细节留在 Adapter"]},
+    {"dot": "amber", "title": "渐进迁移", "items": ["先让入口委托 Application Interface，再拆 installer 与 NATS 大文件", "最后引入投递 Outbox，不需要先拆服务或替换协议"]}
+  ]
+}

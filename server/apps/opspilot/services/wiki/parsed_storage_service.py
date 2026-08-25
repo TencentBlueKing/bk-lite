@@ -1,10 +1,7 @@
 """Wiki parsed markdown 对象存储清理。"""
 
-import logging
-
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.services.wiki import material_service
-
-logger = logging.getLogger("opspilot")
 
 
 def _parsed_markdown_prefix_for_knowledge_base(knowledge_base_id):

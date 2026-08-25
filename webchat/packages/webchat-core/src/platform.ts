@@ -1,5 +1,5 @@
-import type { Message, PlatformContract, WebChatConfig } from './types';
-import { assembleAguiHistoryText } from './aguiHistoryText';
+import type { ChatState, Message, PlatformContract, WebChatConfig } from './types';
+import { assembleAguiHistoryParts, assembleAguiHistoryText } from './aguiHistoryText';
 
 const TEMPLATE_TOKEN = /\{(\w+)\}/g;
 
@@ -217,15 +217,22 @@ export function mapPlatformMessages(rows: Record<string, unknown>[]): Message[] 
         typeof timeValue === 'number'
           ? timeValue
           : Date.parse(String(timeValue ?? '')) || Date.now() + index;
+      const rawContent = item.conversation_content ?? item.content;
+      const parts = assembleAguiHistoryParts(rawContent);
+      const text = parts ? parts.text : extractMessageText(rawContent);
+      const thinking = parts?.thinking?.trim() || '';
       return {
         id: String(item.id ?? `history_${index}`),
         type: 'text' as const,
-        content: extractMessageText(item.conversation_content ?? item.content),
+        content: text,
         sender: role,
         timestamp,
+        ...(thinking
+          ? { metadata: { thinking, isThinking: false } }
+          : {}),
       };
     })
-    .filter((item) => String(item.content).trim() !== '');
+    .filter((item) => String(item.content).trim() !== '' || Boolean(item.metadata?.thinking));
 }
 
 export function lastSessionStorageKey(prefix: string, userId: string, teamId: string): string {
@@ -314,14 +321,75 @@ export function resolvePlatformSelection(
     return { app: null, sessionId: null };
   }
   const app = apps.find((item) => item.id === stored?.appId) ?? apps[0];
-  const sessionId = sessions.some((item) => item.id === stored?.sessionId)
-    ? stored!.sessionId
-    : sessions[0]?.id ?? null;
+  const restoreStoredSession =
+    stored?.appId === app.id && sessions.some((item) => item.id === stored.sessionId);
+  const sessionId = restoreStoredSession ? stored!.sessionId : sessions[0]?.id ?? null;
   return { app, sessionId };
 }
 
 export function createPlatformSessionId(): string {
   return `session_${Date.now()}`;
+}
+
+export function isPlatformDraftSession(
+  sessionId: string | null | undefined,
+  sessions: Array<{ id: string }>
+): boolean {
+  return Boolean(
+    sessionId?.startsWith('session_') && !sessions.some((item) => item.id === sessionId)
+  );
+}
+
+export function shouldFetchPlatformMessages(input: {
+  sessionId: string | null;
+  loadedSessionId: string | null;
+  sessions: Array<{ id: string }>;
+}): boolean {
+  if (!input.sessionId) {
+    return false;
+  }
+  if (isPlatformDraftSession(input.sessionId, input.sessions)) {
+    return false;
+  }
+  return input.loadedSessionId !== input.sessionId;
+}
+
+export function isPersistedPlatformSession(
+  sessionId: string | null | undefined,
+  sessions: PlatformSession[]
+): boolean {
+  return Boolean(sessionId && sessions.some((item) => item.id === sessionId));
+}
+
+export function sessionTitleFromUserContent(content: Message['content'], max = 50): string {
+  let text = '';
+  if (typeof content === 'string') {
+    text = content;
+  } else if (Array.isArray(content)) {
+    text = content
+      .map((part) => (typeof part.message === 'string' ? part.message : part.text) || '')
+      .join('');
+  }
+  text = text.trim().replace(/\s+/g, ' ');
+  if (!text) return '新会话';
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+/** 发完一轮后才拉历史：握手阶段的 connected 不刷新，避免会话还没落库。 */
+export function shouldRefreshPlatformSessions(from: ChatState, to: ChatState): boolean {
+  return to === 'idle' || (from === 'chatting' && to === 'connected');
+}
+
+/** Drop a session from the list. If it was current, `currentId` becomes null. */
+export function removePlatformSession(
+  sessions: PlatformSession[],
+  deletedId: string,
+  currentId: string | null
+): { sessions: PlatformSession[]; currentId: string | null } {
+  return {
+    sessions: sessions.filter((item) => item.id !== deletedId),
+    currentId: currentId === deletedId ? null : currentId,
+  };
 }
 
 export function isRequiredPlatformContract(

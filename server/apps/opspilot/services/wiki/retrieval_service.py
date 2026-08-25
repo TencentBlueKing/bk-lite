@@ -7,11 +7,9 @@ pgvector 语义检索为后期可选增强(P6),不在此处。
 
 import hashlib
 import json
-import logging
 import re
 
-from django.core.cache import cache
-
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import LLMModel, Material, PageVersion, WikiGenerationIndexEntry
@@ -24,8 +22,7 @@ from apps.opspilot.services.wiki.active_generation_query_service import (
 )
 from apps.opspilot.services.wiki.embedding_service import cosine, embed_texts, rrf_fuse
 from apps.opspilot.services.wiki.title_service import title_identity_key
-
-logger = logging.getLogger("opspilot")
+from django.core.cache import cache
 
 
 def _has_cjk(text):

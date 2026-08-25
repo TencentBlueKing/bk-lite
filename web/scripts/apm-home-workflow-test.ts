@@ -19,6 +19,7 @@ assert.doesNotMatch(homePage, /<header/, '首页不得再渲染可见页头介�
 assert.match(rootRedirect, /\/apm\/home/, 'APM 根路径必须兼容跳转到首页');
 assert.match(homePage, /\/apm\/services\/slo/, '首页 SLO 入口必须指向目录化路径');
 assert.match(homePage, /\/apm\/events\/alerts/, '首页告警入口必须指向目录化路径');
+assert.doesNotMatch(homePage, /\/apm\/services\/deployments/, '首页发布段暂不下钻到独立部署列表');
 
 const top5Chart = readFileSync(join(webRoot, 'src/app/apm/components/home/top5-bar-chart.tsx'), 'utf8');
 assert.match(top5Chart, /Top5BarChart/, '首页 TOP5 图表组件必须存在');

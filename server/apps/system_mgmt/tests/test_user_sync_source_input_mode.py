@@ -75,14 +75,14 @@ def test_mode_resolver_reads_manual_input_from_manifest():
                     "key": "user_sync",
                     "name": "User Sync",
                     "adapter_key": "demo_manual.user_sync",
-                    "adapter_path": "apps.system_mgmt.providers.adapters.base.BaseUserSyncAdapter",
+                    "adapter_path": "apps.system_mgmt.providers.base.BaseUserSyncAdapter",
                     "business_template": "user_sync_form",
                 }
             ],
         }
     )
     from apps.system_mgmt.providers.registry import get_provider_registry, get_capability_adapter_registry
-    from apps.system_mgmt.providers.adapters.base import BaseUserSyncAdapter
+    from apps.system_mgmt.providers.base import BaseUserSyncAdapter
     from apps.system_mgmt.providers.loader import load_builtin_providers
 
     load_builtin_providers()
@@ -98,8 +98,8 @@ def test_mode_resolver_reads_manual_input_from_manifest():
         adapter_registry._adapters.pop("demo_manual.user_sync", None)
 
 
-def test_ad_root_scope_field_resolves_to_root_dn():
-    assert get_user_sync_root_scope_field("ad") == "root_dn"
+def test_ad_root_scope_field_resolves_to_root_dns():
+    assert get_user_sync_root_scope_field("ad") == "root_dns"
 
 
 def test_ad_root_dn_uses_manual_input_mode():
@@ -109,7 +109,7 @@ def test_ad_root_dn_uses_manual_input_mode():
 @pytest.fixture
 def manual_input_instance(db):
     from apps.system_mgmt.providers.registry import get_provider_registry, get_capability_adapter_registry
-    from apps.system_mgmt.providers.adapters.base import BaseUserSyncAdapter
+    from apps.system_mgmt.providers.base import BaseUserSyncAdapter
     from apps.system_mgmt.providers.loader import load_builtin_providers
     from apps.system_mgmt.providers.schemas import ProviderManifest
 
@@ -142,7 +142,7 @@ def manual_input_instance(db):
                     "key": "user_sync",
                     "name": "User Sync",
                     "adapter_key": "test_manual.user_sync",
-                    "adapter_path": "apps.system_mgmt.providers.adapters.base.BaseUserSyncAdapter",
+                    "adapter_path": "apps.system_mgmt.providers.base.BaseUserSyncAdapter",
                     "business_template": "user_sync_form",
                 }
             ],
@@ -250,7 +250,52 @@ def test_ad_manual_input_accepts_root_dn_and_skips_department_listing(ready_ad_i
         assert serializer.is_valid(), serializer.errors
 
     mock_execute.assert_not_called()
-    assert serializer.validated_data["business_config"]["root_dn"] == "OU=PAAS,DC=corp,DC=example,DC=com"
+    assert serializer.validated_data["business_config"]["root_dns"] == [
+        "OU=PAAS,DC=corp,DC=example,DC=com"
+    ]
+    assert "root_dn" not in serializer.validated_data["business_config"]
+
+
+@pytest.mark.django_db
+def test_ad_manual_input_accepts_multi_line_root_dns(ready_ad_integration_instance):
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "ad-source-multi",
+            "integration_instance": ready_ad_integration_instance.id,
+            "root_group_name": "AD Root Multi",
+            "business_config": {
+                "root_dns": (
+                    "OU=BizA,DC=corp,DC=example,DC=com\n"
+                    "OU=BizC,DC=corp,DC=example,DC=com\n"
+                ),
+            },
+            "field_mapping": {"username": "sAMAccountName"},
+            "schedule_config": {"mode": "disabled"},
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["business_config"]["root_dns"] == [
+        "OU=BizA,DC=corp,DC=example,DC=com",
+        "OU=BizC,DC=corp,DC=example,DC=com",
+    ]
+
+
+@pytest.mark.django_db
+def test_ad_manual_input_rejects_empty_root_dns_list(ready_ad_integration_instance):
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "ad-source-empty-list",
+            "integration_instance": ready_ad_integration_instance.id,
+            "root_group_name": "AD Empty List",
+            "business_config": {"root_dns": ["  ", "\n"]},
+            "field_mapping": {"username": "sAMAccountName"},
+            "schedule_config": {"mode": "disabled"},
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "business_config" in serializer.errors
 
 
 @pytest.mark.django_db

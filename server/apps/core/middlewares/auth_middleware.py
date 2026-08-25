@@ -1,16 +1,11 @@
-import logging
-
 import jwt
-
-from django.conf import settings
-from django.contrib import auth
-from django.utils.deprecation import MiddlewareMixin
-
+from apps.core.logger import logger
 from apps.core.utils.custom_error import DoesNotExist
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
-
-logger = logging.getLogger(__name__)
+from django.conf import settings
+from django.contrib import auth
+from django.utils.deprecation import MiddlewareMixin
 
 
 class AuthMiddleware(MiddlewareMixin):

@@ -216,6 +216,15 @@ class TargetCollectionExecutor:
                     await self._activity_tracker.enter()
                     target_started_at = time.monotonic()
                     active_targets.add(target)
+                    logger.debug(
+                        "event=target_collection_started instance_id=%s "
+                        "plugin_ref=%s plugin_name=%s model_id=%s target=%s",
+                        instance_id,
+                        request.plugin_ref,
+                        request.params.get("plugin_name") or "-",
+                        request.params.get("model_id") or "-",
+                        target,
+                    )
                     try:
                         result = await self._execute_target(request, target, lease)
                         if result.status == "success" and _is_snmp_plugin(
@@ -223,7 +232,7 @@ class TargetCollectionExecutor:
                             plugin_name=request.params.get("plugin_name"),
                         ):
                             duration_ms = round((time.monotonic() - target_started_at) * 1000, 2)
-                            logger.info(
+                            logger.debug(
                                 "event=target_collection_succeeded %s "
                                 "plugin_ref=%s plugin_name=%s model_id=%s target=%s "
                                 "credential_id=%s duration_ms=%s | SNMP采集成功 IP=%s 耗时=%sms",
@@ -1021,7 +1030,7 @@ class TargetCollectionExecutor:
                 error_code=error_code,
             )
             logger.debug(
-                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "event=access_probe_failed task_id=%s plugin_ref=%s "
                 "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s action=rotate",
                 request.task_id,
@@ -1043,7 +1052,7 @@ class TargetCollectionExecutor:
         if access.status == AccessProbeStatus.NO_RESPONSE:
             no_response_attempts += 1
             logger.debug(
-                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "event=access_probe_failed task_id=%s plugin_ref=%s "
                 "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s "
                 "no_response_attempts=%s",
@@ -1074,7 +1083,7 @@ class TargetCollectionExecutor:
             )
         if access.status == AccessProbeStatus.TARGET_UNREACHABLE:
             logger.debug(
-                "🚫 event=target_unreachable task_id=%s plugin_ref=%s "
+                "event=target_unreachable task_id=%s plugin_ref=%s "
                 "model_id=%s target=%s "
                 "credential_id=%s reason=%s",
                 request.task_id,
@@ -1097,7 +1106,7 @@ class TargetCollectionExecutor:
             )
         if access.status == AccessProbeStatus.RATE_LIMITED:
             logger.debug(
-                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "event=access_probe_failed task_id=%s plugin_ref=%s "
                 "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s action=defer",
                 request.task_id,
@@ -1126,7 +1135,7 @@ class TargetCollectionExecutor:
             AccessProbeStatus.MISCONFIGURED,
         }:
             logger.debug(
-                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "event=access_probe_failed task_id=%s plugin_ref=%s "
                 "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s action=stop",
                 request.task_id,

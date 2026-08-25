@@ -14,6 +14,7 @@ const SKIP_CUSTOM_EVENTS = new Set([
   'wiki_citations',
   'user_choice_result',
   'assistant_text_retract',
+  'stream_keepalive',
 ]);
 
 /**
@@ -255,6 +256,20 @@ function customEventText(value: unknown): string {
   return '';
 }
 
+function assembleThinkingFromEvents(events: Record<string, unknown>[]): string {
+  let thinking = '';
+  for (const event of events) {
+    const type = event.type;
+    if (
+      (type === 'THINKING' || type === 'THINKING_TEXT_MESSAGE_CONTENT') &&
+      event.delta != null
+    ) {
+      thinking += String(event.delta);
+    }
+  }
+  return thinking;
+}
+
 function assembleTextFromEvents(events: Record<string, unknown>[]): string {
   let text = '';
   for (const event of events) {
@@ -299,11 +314,22 @@ function eventsFromUnknown(content: unknown): Record<string, unknown>[] | null {
   return null;
 }
 
-/** Collapse stored AG-UI event dumps into readable assistant text. */
-export function assembleAguiHistoryText(content: unknown): string | null {
+/** Collapse stored AG-UI event dumps into readable assistant text and thinking. */
+export function assembleAguiHistoryParts(
+  content: unknown
+): { text: string; thinking: string } | null {
   const events = eventsFromUnknown(content);
   if (!events || events.length === 0) {
     return null;
   }
-  return assembleTextFromEvents(events);
+  return {
+    text: assembleTextFromEvents(events),
+    thinking: assembleThinkingFromEvents(events),
+  };
+}
+
+/** Collapse stored AG-UI event dumps into readable assistant text. */
+export function assembleAguiHistoryText(content: unknown): string | null {
+  const parts = assembleAguiHistoryParts(content);
+  return parts ? parts.text : null;
 }

@@ -1,26 +1,33 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   PlatformAccessDeniedError,
   createPlatformSessionId,
   fillUrlTemplate,
   formatSessionTime,
+  isPersistedPlatformSession,
   isPlatformMode,
   lastSessionStorageKey,
   readLastSelection,
+  removePlatformSession,
   resolvePlatformSelection,
+  sessionTitleFromUserContent,
+  shouldFetchPlatformMessages,
+  shouldRefreshPlatformSessions,
   writeLastSelection,
   type Message,
   type PlatformApplication,
   type PlatformContract,
   type PlatformSession,
+  type ChatState,
 } from '@webchat/core';
 import type { ChatProps } from './chatProps';
 import { WC } from './chrome';
 import { ConversationSkeleton } from './components/ConversationSkeleton';
-import { PillComposer } from './components/PillComposer';
 import {
+  deletePlatformSession,
   fetchPlatformApplications,
   fetchPlatformMessages,
   fetchPlatformSessions,
@@ -32,7 +39,9 @@ const Chat = React.lazy(async () => {
   return { default: mod.Chat };
 });
 
-type DockView = 'sessions' | 'chat';
+const DOCK_CHAT_WIDTH = 380;
+const HISTORY_RAIL_DOCK = 176;
+const HISTORY_RAIL_FULL = 240;
 
 export interface PlatformChatProps extends ChatProps {
   platform: PlatformContract;
@@ -55,10 +64,14 @@ const QuietIcon: React.FC<{
     aria-pressed={active}
     onClick={onClick}
     onMouseDown={(event) => event.stopPropagation()}
-    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border-none"
+    className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border-none hover:bg-[var(--color-fill-2,#f4f5f8)]"
     style={{
       color: onAccent ? WC.onPrimary : active ? WC.indigo : WC.muted,
-      background: active ? (onAccent ? WC.onPrimaryHover : WC.primaryBg) : 'transparent',
+      background: active
+        ? onAccent
+          ? WC.onPrimaryHover
+          : WC.primaryBg
+        : 'transparent',
     }}
   >
     {children}
@@ -66,11 +79,219 @@ const QuietIcon: React.FC<{
 ));
 QuietIcon.displayName = 'QuietIcon';
 
-const FabChatIcon = () => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12 3a9 9 0 0 0-7.8 13.5L3 21l4.7-1.1A9 9 0 1 0 12 3zm-3.2 8.2a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2zm3.2 0a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2zm3.2 0a1.1 1.1 0 1 1 0-2.2 1.1 1.1 0 0 1 0 2.2z" />
-  </svg>
-);
+const HistoryRail: React.FC<{
+  items: PlatformSession[];
+  sessionId: string | null;
+  loading: boolean;
+  wide: boolean;
+  onSelect: (id: string) => void;
+  canDelete: (id: string) => boolean;
+  confirmingDeleteId: string | null;
+  deletingId: string | null;
+  onRequestDelete: (id: string) => void;
+  onConfirmDelete: (id: string) => void;
+  onCancelDelete: () => void;
+}> = React.memo(({
+  items,
+  sessionId,
+  loading,
+  wide,
+  onSelect,
+  canDelete,
+  confirmingDeleteId,
+  deletingId,
+  onRequestDelete,
+  onConfirmDelete,
+  onCancelDelete,
+}) => {
+  const [tip, setTip] = useState<{ text: string; top: number; left: number } | null>(null);
+
+  const hideTip = useCallback(() => setTip(null), []);
+
+  const showTip = useCallback((event: React.SyntheticEvent<HTMLButtonElement>, text: string) => {
+    const titleEl = event.currentTarget.querySelector('[data-session-title]');
+    if (!(titleEl instanceof HTMLElement) || titleEl.scrollWidth <= titleEl.clientWidth) {
+      setTip(null);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    setTip({
+      text,
+      top: rect.top + rect.height / 2,
+      left: rect.right + 8,
+    });
+  }, []);
+
+  return (
+    <aside
+      className="flex h-full min-h-0 flex-shrink-0 flex-col"
+      style={{
+        width: wide ? HISTORY_RAIL_FULL : HISTORY_RAIL_DOCK,
+        background: WC.historyRail,
+        borderRight: `1px solid ${WC.botBorder}`,
+      }}
+      aria-label="历史会话"
+    >
+      <div className="flex-shrink-0 px-3 py-2.5 text-xs" style={{ color: WC.muted }}>
+        历史对话
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2" onScroll={hideTip}>
+        {loading ? (
+          <p className="px-2 py-2 text-xs" style={{ color: WC.muted }}>
+            加载中…
+          </p>
+        ) : items.length === 0 ? (
+          <p className="px-2 py-2 text-xs" style={{ color: WC.muted }}>
+            暂无会话
+          </p>
+        ) : (
+          items.map((session) => {
+            const active = session.id === sessionId;
+            const time = formatSessionTime(session.updatedAt);
+            const confirming = confirmingDeleteId === session.id;
+            const deleting = deletingId === session.id;
+            return (
+              <div
+                key={session.id}
+                className="group mb-0.5 flex items-start gap-1 rounded-md px-2 py-2"
+                style={{
+                  background: active ? WC.primaryBg : 'transparent',
+                  color: active ? WC.indigo : WC.botText,
+                }}
+              >
+                <button
+                  type="button"
+                  aria-label={session.title}
+                  onClick={() => onSelect(session.id)}
+                  onMouseEnter={(event) => showTip(event, session.title)}
+                  onMouseLeave={hideTip}
+                  onFocus={(event) => showTip(event, session.title)}
+                  onBlur={hideTip}
+                  className="min-w-0 flex-1 border-none bg-transparent p-0 text-left"
+                  style={{ color: active ? WC.indigo : WC.botText }}
+                >
+                  <div data-session-title className="truncate text-[13px] leading-[18px]">
+                    {session.title}
+                  </div>
+                  {time ? (
+                    <div className="mt-1 text-[10px] leading-4" style={{ color: WC.dim }}>
+                      {time}
+                    </div>
+                  ) : null}
+                </button>
+                {canDelete(session.id) ? (
+                  confirming ? (
+                    <div className="flex flex-shrink-0 items-center gap-1 pt-0.5">
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={() => onConfirmDelete(session.id)}
+                        className="border-none bg-transparent p-0 text-[11px]"
+                        style={{ color: WC.fail }}
+                      >
+                        {deleting ? '删除中' : '删除'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={onCancelDelete}
+                        className="border-none bg-transparent p-0 text-[11px]"
+                        style={{ color: WC.muted }}
+                      >
+                        取消
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      title="删除会话"
+                      aria-label="删除会话"
+                      onClick={() => onRequestDelete(session.id)}
+                      className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded border-none opacity-50 group-hover:opacity-100"
+                      style={{ color: WC.muted, background: 'transparent' }}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M3 6h18" />
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        <line x1="10" x2="10" y1="11" y2="17" />
+                        <line x1="14" x2="14" y1="11" y2="17" />
+                      </svg>
+                    </button>
+                  )
+                ) : null}
+              </div>
+            );
+          })
+        )}
+      </div>
+      {tip
+        ? createPortal(
+            <div
+              role="tooltip"
+              className="pointer-events-none fixed z-[2100] max-w-[240px] rounded-md px-2.5 py-1.5 text-[12px] leading-[18px]"
+              style={{
+                top: tip.top,
+                left: tip.left,
+                transform: 'translateY(-50%)',
+                background: WC.botText,
+                color: WC.white,
+                boxShadow: WC.shadow,
+              }}
+            >
+              {tip.text}
+            </div>,
+            document.body
+          )
+        : null}
+    </aside>
+  );
+});
+HistoryRail.displayName = 'HistoryRail';
+
+function webchatAssetUrl(fileName: string): string {
+  if (typeof document === 'undefined') {
+    return `/webchat/${fileName}`;
+  }
+  const script = document.querySelector<HTMLScriptElement>(
+    'script[data-bk-global-webchat="script"], script[src*="webchat.js"]'
+  );
+  if (!script?.src) {
+    return `/webchat/${fileName}`;
+  }
+  const url = new URL(fileName, script.src);
+  url.search = new URL(script.src).search;
+  return url.toString();
+}
+
+const FabLauncher: React.FC<{ onOpen: () => void }> = ({ onOpen }) => {
+  const gifSrc = webchatAssetUrl('fab-dolphin.gif');
+  const pngSrc = webchatAssetUrl('fab-dolphin.png');
+
+  return (
+    <button
+      type="button"
+      title="打开对话"
+      aria-label="打开对话"
+      onClick={onOpen}
+      className="wc-fab-launcher"
+    >
+      <picture>
+        <source srcSet={gifSrc} type="image/gif" media="(prefers-reduced-motion: no-preference)" />
+        <img src={pngSrc} alt="" width={56} height={56} draggable={false} />
+      </picture>
+    </button>
+  );
+};
 
 export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, PlatformChatProps>((props, ref) => {
   const {
@@ -83,6 +304,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     requestHeaders,
     onClose,
     onStreamingStop,
+    onStateChange,
     showFullscreenButton = true,
     ...chatProps
   } = props;
@@ -100,6 +322,8 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const storageKey = lastSessionStorageKey(storagePrefix, userId, teamId);
   // Session/app selection stays in localStorage. Dock open/collapsed is
   // in-memory only so new windows and refreshes always start as FAB.
+  // After the first open, keep Chat mounted and only toggle visibility on
+  // close — unmounting would drop in-memory draft messages.
   const storage = typeof window === 'undefined' ? null : window.localStorage;
 
   const [apps, setApps] = useState<PlatformApplication[]>([]);
@@ -111,12 +335,16 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const [loading, setLoading] = useState(true);
   const [forbidden, setForbidden] = useState(false);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
-  const [view, setView] = useState<DockView>('chat');
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
+  const [hasOpened, setHasOpened] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [draft, setDraft] = useState('');
-  const [kickoffMessage, setKickoffMessage] = useState<string | undefined>();
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState('新会话');
+  const chatStateRef = useRef<ChatState>('idle');
   const menuRef = useRef<HTMLDivElement>(null);
+  const loadedSessionIdRef = useRef<string | null>(null);
   const onAccessDeniedRef = useRef(onAccessDenied);
   onAccessDeniedRef.current = onAccessDenied;
 
@@ -183,11 +411,9 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
           nextSessions,
           stored
         );
-        setSessionId((current) => {
-          const nextId = resolved.sessionId || current || createPlatformSessionId();
-          persistSelection(currentAppId, nextId);
-          return nextId;
-        });
+        const nextId = resolved.sessionId || createPlatformSessionId();
+        setSessionId(nextId);
+        persistSelection(currentAppId, nextId);
       } catch {
         if (cancelled) return;
         const nextSessionId = createPlatformSessionId();
@@ -209,8 +435,22 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   useEffect(() => {
     let cancelled = false;
     async function loadMessages() {
-      if (!sessionId || isDraftSession) {
+      if (!sessionId) {
+        loadedSessionIdRef.current = null;
         setMessages([]);
+        if (!currentAppId) {
+          setMessagesLoading(false);
+        }
+        return;
+      }
+      if (
+        !shouldFetchPlatformMessages({
+          sessionId,
+          loadedSessionId: loadedSessionIdRef.current,
+          sessions,
+        })
+      ) {
+        loadedSessionIdRef.current = sessionId;
         setMessagesLoading(false);
         return;
       }
@@ -218,10 +458,12 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
       try {
         const nextMessages = await fetchPlatformMessages(platform, sessionId, requestInit);
         if (!cancelled) {
+          loadedSessionIdRef.current = sessionId;
           setMessages(nextMessages);
         }
       } catch {
         if (!cancelled) {
+          loadedSessionIdRef.current = sessionId;
           setMessages([]);
         }
       } finally {
@@ -234,7 +476,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     return () => {
       cancelled = true;
     };
-  }, [isDraftSession, platform, requestInit, sessionId]);
+  }, [currentAppId, platform, requestInit, sessionId, sessions]);
 
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
@@ -255,36 +497,119 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const handleNewChat = useCallback(() => {
     if (!currentAppId) return;
     const nextSessionId = createPlatformSessionId();
+    loadedSessionIdRef.current = nextSessionId;
+    setDraftTitle('新会话');
     setSessionId(nextSessionId);
     setMessages([]);
     setMessagesLoading(false);
-    setView('chat');
     persistSelection(currentAppId, nextSessionId);
   }, [currentAppId, persistSelection]);
 
   const handleSelectApp = useCallback((app: PlatformApplication) => {
-    setCurrentApp(app);
     setAppMenuOpen(false);
+    if (app.id === currentAppId) return;
+    setCurrentApp(app);
+    setSessions([]);
+    loadedSessionIdRef.current = null;
+    setDraftTitle('新会话');
+    setSessionId(null);
     setMessages([]);
     setMessagesLoading(true);
-    setView('chat');
-  }, []);
+  }, [currentAppId]);
 
   const handleSelectSession = useCallback((id: string) => {
+    setConfirmingDeleteId(null);
+    if (id === sessionId) return;
+    loadedSessionIdRef.current = null;
+    setDraftTitle('新会话');
     setSessionId(id);
     setMessages([]);
-    setMessagesLoading(true);
-    setView('chat');
+    setMessagesLoading(
+      shouldFetchPlatformMessages({
+        sessionId: id,
+        loadedSessionId: null,
+        sessions,
+      })
+    );
     if (currentAppId) persistSelection(currentAppId, id);
-  }, [currentAppId, persistSelection]);
+  }, [currentAppId, persistSelection, sessionId, sessions]);
+
+  const handleDeleteSession = useCallback(
+    async (id: string) => {
+      const persisted = isPersistedPlatformSession(id, sessions);
+      if (persisted) {
+        if (!platform.deleteSessionUrl) {
+          return;
+        }
+        setDeletingId(id);
+        try {
+          await deletePlatformSession(platform, id, requestInit);
+        } catch {
+          setDeletingId(null);
+          return;
+        }
+        setDeletingId(null);
+      }
+      const next = removePlatformSession(sessions, id, sessionId);
+      setSessions(next.sessions);
+      setConfirmingDeleteId(null);
+      if (next.currentId !== null || !currentAppId) {
+        return;
+      }
+      const nextSessionId = createPlatformSessionId();
+      loadedSessionIdRef.current = nextSessionId;
+      setDraftTitle('新会话');
+      setSessionId(nextSessionId);
+      setMessages([]);
+      setMessagesLoading(false);
+      persistSelection(currentAppId, nextSessionId);
+    },
+    [currentAppId, persistSelection, platform, requestInit, sessionId, sessions]
+  );
 
   const handleStreamingStop = useCallback(() => {
     void interruptPlatformChat(platform, requestInit);
     onStreamingStop?.();
   }, [onStreamingStop, platform, requestInit]);
 
+  const refreshSessions = useCallback(() => {
+    if (!currentChannelId) return;
+    void fetchPlatformSessions(platform, { channelId: currentChannelId }, requestInit)
+      .then((nextSessions) => {
+        setSessions(nextSessions);
+      })
+      .catch(() => undefined);
+  }, [currentChannelId, platform, requestInit]);
+
+  const handleChatStateChange = useCallback(
+    (state: ChatState) => {
+      const from = chatStateRef.current;
+      chatStateRef.current = state;
+      if (shouldRefreshPlatformSessions(from, state)) {
+        refreshSessions();
+      }
+      onStateChange?.(state);
+    },
+    [onStateChange, refreshSessions]
+  );
+
+  const handleMessageReceived = useCallback(
+    (message: Message) => {
+      if (
+        message.sender === 'user' &&
+        sessionId &&
+        !isPersistedPlatformSession(sessionId, sessions)
+      ) {
+        setDraftTitle(sessionTitleFromUserContent(message.content));
+      }
+      chatProps.onMessageReceived?.(message);
+    },
+    [chatProps, sessionId, sessions]
+  );
+
   const handleToggleSessions = useCallback(() => {
-    setView((current) => (current === 'sessions' ? 'chat' : 'sessions'));
+    setConfirmingDeleteId(null);
+    setHistoryOpen((open) => !open);
   }, []);
 
   const handleToggleFullscreen = useCallback(() => {
@@ -294,8 +619,14 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const handleClose = useCallback(() => {
     setCollapsed(true);
     setIsFullscreen(false);
+    setAppMenuOpen(false);
     onClose?.();
   }, [onClose]);
+
+  const handleOpen = useCallback(() => {
+    setHasOpened(true);
+    setCollapsed(false);
+  }, []);
 
   useEffect(() => {
     if (collapsed || !isFullscreen) return undefined;
@@ -308,21 +639,6 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     return () => document.removeEventListener('keydown', onKey);
   }, [collapsed, isFullscreen]);
 
-  const handleComposerSend = useCallback(() => {
-    const text = draft.trim();
-    if (!text || !currentAppId) return;
-    if (!isDraftSession) {
-      const nextSessionId = createPlatformSessionId();
-      setSessionId(nextSessionId);
-      setMessages([]);
-      setMessagesLoading(false);
-      persistSelection(currentAppId, nextSessionId);
-    }
-    setView('chat');
-    setKickoffMessage(text);
-    setDraft('');
-  }, [currentAppId, draft, isDraftSession, persistSelection]);
-
   const sessionCustomData = useMemo(
     () => (sessionId ? { session_id: sessionId } : undefined),
     [sessionId]
@@ -333,62 +649,63 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   }
 
   const emptyApps = !loading && apps.length === 0;
-
-  if (collapsed) {
-    return (
-      <div ref={ref} className="fixed bottom-5 right-2 z-[1200]">
-        <button
-          type="button"
-          title="打开对话"
-          aria-label="打开对话"
-          onClick={() => setCollapsed(false)}
-          className="flex h-10 w-10 items-center justify-center rounded-full border-none"
-          style={{ background: WC.indigo, color: WC.onPrimary }}
-        >
-          <FabChatIcon />
-        </button>
-      </div>
-    );
-  }
-
   const headerTitle = emptyApps ? '会话' : currentApp?.name || '平台助手';
   const listItems: PlatformSession[] =
-    isDraftSession && sessionId ? [{ id: sessionId, title: '新会话' }, ...sessions] : sessions;
+    isDraftSession && sessionId ? [{ id: sessionId, title: draftTitle || '新会话' }, ...sessions] : sessions;
 
   return (
-    <div
-      ref={ref}
-      className={
-        isFullscreen
-          ? 'fixed inset-0 z-[2000] flex h-full w-full flex-col overflow-hidden font-sans'
-          : 'fixed bottom-0 right-0 top-0 z-[1200] flex w-[380px] flex-col overflow-hidden font-sans'
-      }
-      style={{ background: WC.white, borderLeft: isFullscreen ? undefined : `1px solid ${WC.botBorder}` }}
-    >
+    <>
+      {collapsed ? (
+        <div ref={!hasOpened ? ref : undefined} className="fixed bottom-4 right-3 z-[1200]">
+          <FabLauncher onOpen={handleOpen} />
+        </div>
+      ) : null}
+      {hasOpened ? (
+        <div
+          ref={ref}
+          className={
+            isFullscreen
+              ? 'fixed inset-0 z-[2000] flex h-full w-full flex-col overflow-hidden font-sans'
+              : 'fixed bottom-0 right-0 top-0 z-[1200] flex flex-col overflow-hidden font-sans'
+          }
+          style={{
+            width: isFullscreen ? undefined : DOCK_CHAT_WIDTH,
+            background: WC.white,
+            borderLeft: isFullscreen ? undefined : `1px solid ${WC.dockEdge}`,
+            boxShadow: isFullscreen ? undefined : WC.dockShadow,
+            display: collapsed ? 'none' : undefined,
+          }}
+          aria-hidden={collapsed}
+        >
       <div ref={menuRef} className="relative flex-shrink-0">
         <div
-          className="flex h-14 items-center gap-2 pl-4 pr-2"
-          style={{ background: WC.indigo, color: WC.onPrimary }}
+          className="flex h-12 items-center gap-1.5 pl-4 pr-2"
+          style={{
+            background: WC.headerBg,
+            color: WC.headerInk,
+            borderBottom: `1px solid ${WC.botBorder}`,
+          }}
         >
           {emptyApps ? (
-            <div className="min-w-0 flex-1 truncate text-sm font-semibold">会话</div>
+            <div className="min-w-0 flex-1 truncate text-sm font-medium">会话</div>
           ) : (
             <button
               type="button"
               title="切换智能体"
               onClick={() => setAppMenuOpen((open) => !open)}
-              className="flex min-w-0 flex-1 items-center gap-1 border-none bg-transparent p-0 text-left text-sm font-semibold"
-              style={{ color: WC.onPrimary }}
+              className="flex min-w-0 flex-1 items-center gap-1 border-none bg-transparent p-0 text-left text-sm font-medium"
+              style={{ color: WC.headerInk }}
             >
               <span className="truncate">{headerTitle}</span>
               <svg
-                width="14"
-                height="14"
+                width="12"
+                height="12"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="2"
                 className="flex-shrink-0"
+                style={{ color: WC.muted }}
               >
                 <path d={appMenuOpen ? 'M18 15l-6-6-6 6' : 'M6 9l6 6 6-6'} />
               </svg>
@@ -396,16 +713,15 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
           )}
           {!emptyApps && (
             <>
-              <QuietIcon title="新对话" onClick={handleNewChat} onAccent>
+              <QuietIcon title="新对话" onClick={handleNewChat}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
               </QuietIcon>
               <QuietIcon
-                title={view === 'sessions' ? '返回对话' : '历史会话'}
+                title={historyOpen ? '收起历史' : '历史会话'}
                 onClick={handleToggleSessions}
-                active={view === 'sessions'}
-                onAccent
+                active={historyOpen}
               >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M3 12a9 9 0 1 0 3-6.7" />
@@ -420,7 +736,6 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
               title={isFullscreen ? '退出全屏' : '全屏'}
               onClick={handleToggleFullscreen}
               active={isFullscreen}
-              onAccent
             >
               {isFullscreen ? (
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -433,7 +748,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
               )}
             </QuietIcon>
           )}
-          <QuietIcon title="关闭" onClick={handleClose} onAccent>
+          <QuietIcon title="关闭" onClick={handleClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="4" width="18" height="16" rx="2" />
               <path d="M15 4v16" />
@@ -442,7 +757,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
         </div>
         {appMenuOpen && !emptyApps ? (
           <div
-            className="absolute left-2 right-2 top-14 z-20 overflow-hidden rounded-lg"
+            className="absolute left-2 right-2 top-[54px] z-20 overflow-hidden rounded-lg"
             style={{ background: WC.white, border: `1px solid ${WC.botBorder}` }}
           >
             {apps.map((app) => {
@@ -471,7 +786,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
       {emptyApps ? (
         <div
           className="flex flex-1 flex-col items-center justify-center px-7 text-center"
-          style={{ background: WC.page, color: WC.muted }}
+          style={{ background: WC.stage, color: WC.muted }}
         >
           <p className="text-sm font-medium" style={{ color: WC.botText }}>
             当前团队还没有可对话的智能体
@@ -480,94 +795,64 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
             需要在智能体详情开通并启用「平台」渠道，且当前组织在使用组织内。
           </p>
         </div>
-      ) : view === 'sessions' ? (
-        <>
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
-            {loading ? (
-              <div className="p-3">
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          {historyOpen ? (
+            <HistoryRail
+              items={listItems}
+              sessionId={sessionId}
+              loading={loading}
+              wide={isFullscreen}
+              onSelect={handleSelectSession}
+              canDelete={(id) => !isPersistedPlatformSession(id, sessions) || Boolean(platform.deleteSessionUrl)}
+              confirmingDeleteId={confirmingDeleteId}
+              deletingId={deletingId}
+              onRequestDelete={setConfirmingDeleteId}
+              onConfirmDelete={(id) => void handleDeleteSession(id)}
+              onCancelDelete={() => setConfirmingDeleteId(null)}
+            />
+          ) : null}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col" style={{ background: WC.stage }}>
+            {currentApp && sessionId && chatUrl ? (
+              <React.Suspense
+                fallback={
+                  <div className="flex-1 p-4">
+                    <ConversationSkeleton />
+                  </div>
+                }
+              >
+                <Chat
+                  key={currentApp.id}
+                  {...chatProps}
+                  sseUrl={chatUrl}
+                  showHeader={false}
+                  enableStorage={false}
+                  apiKey={apiKey}
+                  credentials={requestInit.credentials}
+                  requestHeaders={requestInit.headers}
+                  platform={platform}
+                  historyLoading={messagesLoading}
+                  initialMessages={messages}
+                  wideLayout={isFullscreen}
+                  customData={sessionCustomData}
+                  onStateChange={handleChatStateChange}
+                  onMessageReceived={handleMessageReceived}
+                  onClose={handleClose}
+                  onStreamingStop={handleStreamingStop}
+                  placeholder="请输入消息..."
+                />
+              </React.Suspense>
+            ) : (
+              <div className="flex-1 p-4">
                 <ConversationSkeleton />
               </div>
-            ) : listItems.length === 0 ? (
-              <p className="px-2.5 py-3 text-xs" style={{ color: WC.muted }}>
-                暂无会话
-              </p>
-            ) : (
-              listItems.map((session) => {
-                const active = session.id === sessionId;
-                const time = formatSessionTime(session.updatedAt);
-                return (
-                  <button
-                    key={session.id}
-                    type="button"
-                    onClick={() => handleSelectSession(session.id)}
-                    className="mb-0.5 block w-full rounded-lg px-2.5 py-2.5 text-left"
-                    style={{
-                      background: active ? WC.primaryBg : 'transparent',
-                      color: WC.botText,
-                    }}
-                  >
-                    <div className="truncate text-[13px] font-normal leading-[18px]">{session.title}</div>
-                    <div className="mt-1 flex justify-end text-[10px] leading-4" style={{ color: WC.dim }}>
-                      {time || ''}
-                    </div>
-                  </button>
-                );
-              })
-            )}
-            {listItems.length > 0 && (
-              <div className="px-2.5 py-2.5 text-xs" style={{ color: WC.indigo }}>
-                共 {listItems.length} 条
-              </div>
             )}
           </div>
-          <div className="relative flex-shrink-0 p-2.5">
-            <PillComposer
-              value={draft}
-              onChange={setDraft}
-              onSubmit={() => handleComposerSend()}
-              placeholder="请输入消息..."
-            />
-          </div>
-        </>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col">
-          {currentApp && sessionId && chatUrl ? (
-            <React.Suspense
-              fallback={
-                <div className="flex-1 p-4">
-                  <ConversationSkeleton />
-                </div>
-              }
-            >
-              <Chat
-                key={currentApp.id}
-                {...chatProps}
-                sseUrl={chatUrl}
-                showHeader={false}
-                enableStorage={false}
-                apiKey={apiKey}
-                credentials={requestInit.credentials}
-                requestHeaders={requestInit.headers}
-                platform={platform}
-                historyLoading={messagesLoading}
-                initialMessages={messages}
-                wideLayout={isFullscreen}
-                customData={sessionCustomData}
-                kickoffMessage={kickoffMessage}
-                onKickoffConsumed={() => setKickoffMessage(undefined)}
-                onClose={handleClose}
-                onStreamingStop={handleStreamingStop}
-                placeholder="请输入消息..."
-              />
-            </React.Suspense>
-          ) : (
-            <div className="flex-1 p-4">
-              <ConversationSkeleton />
-            </div>
-          )}
         </div>
       )}
-    </div>
+        </div>
+      ) : null}
+    </>
   );
 }));
 

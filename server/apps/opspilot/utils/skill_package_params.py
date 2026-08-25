@@ -12,6 +12,9 @@ from typing import Any
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
+from apps.opspilot.models import LLMSkill
+from apps.opspilot.services.skill_package.materializer import sanitize_skill_name
+from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
 from apps.opspilot.utils.prompt_utils import MASK_VALUE
 
 PARAM_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -160,8 +163,6 @@ def resolve_package_params(skill_id: Any, overlay: Any = None) -> tuple[dict[str
 
 def _load_stored_params(skill_id: Any) -> dict[str, list[dict[str, Any]]] | None:
     try:
-        from apps.opspilot.models import LLMSkill
-        from apps.opspilot.utils.db_cleanup import run_with_db_cleanup
 
         def _load():
             obj = LLMSkill.objects.filter(id=skill_id).only("skill_package_params").first()
@@ -216,8 +217,6 @@ def map_params_to_skill_dirs(
     secrets_by_package_id: dict[str, set[str]],
 ) -> tuple[dict[str, dict[str, str]], list[str]]:
     """把 package_id 键映射成沙箱目录名（sanitize_skill_name 结果）。"""
-    from apps.opspilot.services.skill_package.materializer import sanitize_skill_name
-
     by_dir: dict[str, dict[str, str]] = {}
     secret_values: list[str] = []
     for package in packages or []:

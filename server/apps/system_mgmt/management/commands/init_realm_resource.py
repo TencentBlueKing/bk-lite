@@ -1,16 +1,13 @@
 import json
-import logging
 import os
 from copy import deepcopy
 
-from django.core.management import BaseCommand
-from django.db import transaction
-
+from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.permission_cache import clear_all_permission_cache
 from apps.system_mgmt.management.commands._install_apps import get_install_apps
 from apps.system_mgmt.models import App, Group, Menu, Role
-
-logger = logging.getLogger(__name__)
+from django.core.management import BaseCommand
+from django.db import transaction
 
 
 class Command(BaseCommand):

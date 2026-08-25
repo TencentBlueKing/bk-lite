@@ -7,6 +7,7 @@ import { MessageActions } from './MessageActions';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ImagePreview } from './ImagePreview';
 import { ToolCallDisplay, type ToolCall } from './ToolCallDisplay';
+import { ThinkingPanel } from './ThinkingPanel';
 import { WC } from '../chrome';
 
 const markdownPlugins = {
@@ -15,12 +16,18 @@ const markdownPlugins = {
 };
 
 const markdownClassName =
-  'max-w-none break-words text-sm leading-[1.55] [&_h1]:mb-2 [&_h1]:mt-3 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-3 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:font-semibold [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:bg-[var(--color-code-block-bg,var(--color-fill-1,#f6f8f9))] [&_pre]:text-[var(--color-code-block-text,var(--color-text-1,#1e252e))] [&_code]:rounded [&_code]:px-1 [&_code]:bg-[var(--color-code-block-bg,var(--color-fill-1,#f6f8f9))] [&_a]:text-[var(--color-primary,#155AEF)] [&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-[var(--color-border-1,#edeff3)] [&_blockquote]:pl-3 [&_hr]:my-3';
+  'max-w-none break-words text-sm leading-[1.7] [&_h1]:mb-2 [&_h1]:mt-3 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-3 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:font-semibold [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:bg-[var(--color-code-block-bg,var(--color-fill-1,#f6f8f9))] [&_pre]:text-[var(--color-code-block-text,var(--color-text-1,#1e252e))] [&_code]:rounded [&_code]:px-1 [&_code]:bg-[var(--color-code-block-bg,var(--color-fill-1,#f6f8f9))] [&_a]:text-[var(--color-primary,#155AEF)] [&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-[var(--color-border-1,#edeff3)] [&_blockquote]:pl-3 [&_hr]:my-3';
+
+const userBubbleStyle: React.CSSProperties = {
+  background: WC.botBubble,
+  color: WC.botText,
+  border: `1px solid ${WC.botBorder}`,
+  borderRadius: 16,
+  borderBottomRightRadius: 4,
+};
 
 interface MessageBubbleProps {
   message: Message;
-  botAvatar: React.ReactElement;
-  userAvatar: React.ReactElement;
   isLastBotMessage?: boolean;
   fillWidth?: boolean;
   onRegenerate?: (messageId: string) => void;
@@ -59,7 +66,7 @@ const CodeBlock = ({ inline, className, children, style, ...props }: CodeBlockPr
 };
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
-  ({ message, botAvatar, userAvatar, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete }) => {
+  ({ message, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete }) => {
     const isBot = message.sender === 'bot';
     const [showActions, setShowActions] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -160,54 +167,55 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       );
     };
 
-    const content = isBot ? (
-      <div>
-        {groupedChunks.length > 0 ? (
-          // Render grouped chunks in order
-          groupedChunks.map((chunk, index) => {
-            if (chunk.type === 'text') {
-              return (
-                <div key={`text-${index}`} className={markdownClassName}>
-                  <ReactMarkdown
-                    {...markdownPlugins}
-                    components={{
-                      code: CodeBlock
-                    }}
-                  >
-                    {chunk.content}
-                  </ReactMarkdown>
-                </div>
-              );
-            } else if (chunk.type === 'toolCalls') {
-              return (
-                <div key={`tool-${index}`} className="my-2">
-                  <ToolCallDisplay toolCalls={chunk.toolCalls} />
-                </div>
-              );
-            }
-            return null;
-          })
-        ) : hasContent ? (
-          // Fallback to display content if no chunks (for backward compatibility)
-          <div className={markdownClassName}>
-            <ReactMarkdown
-              {...markdownPlugins}
-              components={{
-                code: CodeBlock
-              }}
-            >
-              {message.content as string}
-            </ReactMarkdown>
-          </div>
-        ) : null}
+    const columnClass = isBot
+      ? 'min-w-0 flex-1'
+      : fillWidth
+        ? 'max-w-[92%]'
+        : 'max-w-[78%]';
+
+    const renderMarkdown = (source: string) => (
+      <div className={markdownClassName}>
+        <ReactMarkdown
+          {...markdownPlugins}
+          components={{
+            code: CodeBlock
+          }}
+        >
+          {source}
+        </ReactMarkdown>
       </div>
-    ) : (
-      // User message - check if multimodal
-      message.type === 'multimodal' ? (
-        renderMultimodalContent()
-      ) : (
-        <p className="whitespace-pre-wrap break-words">{message.content as string}</p>
-      )
+    );
+
+    const renderBotAnswer = (children: React.ReactNode, key?: string) => (
+      <div
+        key={key}
+        className="w-full text-sm leading-[1.7]"
+        style={{ color: WC.botText }}
+      >
+        {children}
+      </div>
+    );
+
+    const botColumn = (
+      <div className={`flex min-w-0 flex-col gap-2 ${columnClass}`}>
+        <ThinkingPanel
+          thinking={typeof message.metadata?.thinking === 'string' ? message.metadata.thinking : undefined}
+          isThinking={Boolean(message.metadata?.isThinking)}
+        />
+        {groupedChunks.length > 0
+          ? groupedChunks.map((chunk, index) => {
+              if (chunk.type === 'text') {
+                return renderBotAnswer(renderMarkdown(chunk.content), `text-${index}`);
+              }
+              if (chunk.type === 'toolCalls') {
+                return <ToolCallDisplay key={`tool-${index}`} toolCalls={chunk.toolCalls} />;
+              }
+              return null;
+            })
+          : hasContent
+            ? renderBotAnswer(renderMarkdown(message.content as string))
+            : null}
+      </div>
     );
 
     const handleDelete = () => {
@@ -222,32 +230,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
           onMouseLeave={() => setShowActions(false)}
           className="flex flex-col"
         >
-          <div className={`flex w-full items-start gap-2 ${isBot ? 'justify-start' : 'flex-row-reverse justify-start'}`}>
-            <div className="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full">
-              {isBot ? botAvatar : userAvatar}
-            </div>
-            <div
-              className={`px-3.5 py-2.5 text-sm leading-[1.55] ${
-                fillWidth ? (isBot ? 'min-w-0 flex-1' : 'max-w-[92%]') : 'max-w-[78%]'
-              }`}
-              style={
-                isBot
-                  ? {
-                      background: WC.botBubble,
-                      color: WC.botText,
-                      borderRadius: 18,
-                      borderBottomLeftRadius: 6,
-                    }
-                  : {
-                      background: WC.indigoHi,
-                      color: WC.onPrimary,
-                      borderRadius: 18,
-                      borderBottomRightRadius: 6,
-                    }
-              }
-            >
-              {content}
-            </div>
+          <div className={`flex w-full items-start ${isBot ? 'justify-start' : 'flex-row-reverse justify-start'}`}>
+            {isBot ? (
+              botColumn
+            ) : (
+              <div
+                className={`px-3.5 py-2 text-sm leading-[1.55] ${columnClass}`}
+                style={userBubbleStyle}
+              >
+                {message.type === 'multimodal' ? (
+                  renderMultimodalContent()
+                ) : (
+                  <p className="whitespace-pre-wrap break-words">{message.content as string}</p>
+                )}
+              </div>
+            )}
           </div>
           <MessageActions
             messageId={message.id}

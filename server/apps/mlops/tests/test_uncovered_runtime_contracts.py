@@ -55,7 +55,7 @@ def test_train_job_complete_config_creates_missing_hyperparams():
     assert job._build_complete_config()["hyperparams"] == {"max_evals": 5}
 
 
-def test_config_sync_uploads_complete_json_before_deleting_old_file(
+def test_config_sync_uploads_complete_json_without_deleting_old_file(
     monkeypatch,
 ):
     job = ObjectDetectionTrainJob(
@@ -91,7 +91,7 @@ def test_config_sync_uploads_complete_json_before_deleting_old_file(
     assert calls[0][0] == "save"
     assert calls[0][2]["hyperparams"] == {"epochs": 3, "max_evals": 12}
     assert calls[0][3] is False
-    assert calls[1] == ("delete", "configs/old.json")
+    assert len(calls) == 1
 
 
 def test_config_sync_wraps_upload_failure_and_preserves_old_file(monkeypatch):
@@ -121,7 +121,7 @@ def test_config_sync_wraps_upload_failure_and_preserves_old_file(monkeypatch):
     assert job.config_url.name == "configs/old.json"
 
 
-def test_config_sync_tolerates_old_file_cleanup_failure(monkeypatch):
+def test_config_sync_leaves_old_file_cleanup_to_save_commit_boundary(monkeypatch):
     job = ObjectDetectionTrainJob(
         id=42,
         algorithm="yolo11",
@@ -138,7 +138,7 @@ def test_config_sync_tolerates_old_file_cleanup_failure(monkeypatch):
     monkeypatch.setattr(
         field.storage,
         "delete",
-        lambda _path: (_ for _ in ()).throw(OSError("cleanup failed")),
+        lambda _path: (_ for _ in ()).throw(AssertionError("old file must not be deleted during upload")),
     )
 
     job._sync_config_to_minio()

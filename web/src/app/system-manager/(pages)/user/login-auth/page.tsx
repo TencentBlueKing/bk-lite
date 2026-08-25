@@ -356,7 +356,7 @@ const LoginAuthPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <span>
               {record.provider_key && record.provider_key !== 'bk_lite_builtin'
-                ? `${record.integration_instance_name} / ${t(`system.integrationCenter.provider.${record.provider_key}`)}`
+                ? `${record.integration_instance_name} / ${record.provider_name || t(`system.integrationCenter.provider.${record.provider_key}`, record.provider_key)}`
                 : record.integration_instance_name}
             </span>
             {dependencyStatus?.available === false ? (

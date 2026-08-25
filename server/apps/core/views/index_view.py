@@ -3,13 +3,7 @@ import os
 from urllib.parse import urlencode, urlparse
 
 import requests
-from django.conf import settings as django_settings
-from django.core.cache import cache
-from django.http import HttpResponseRedirect, JsonResponse
-from django.shortcuts import render
-from rest_framework.decorators import api_view
-
-from apps.core.logger import logger
+from apps.core.logger import logger, safe_exception_call_chain, safe_exception_info
 from apps.core.services.login_auth_request_service import (
     AUTH_REQUEST_TTL,
     build_auth_request_state,
@@ -30,9 +24,14 @@ from apps.rpc.base import RpcClient
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import UserLoginLog
 from apps.system_mgmt.models.login_module import LoginModule
-from apps.system_mgmt.services.login_auth_binding_service import build_login_auth_redirect, get_active_login_auth_bindings
 from apps.system_mgmt.models.system_settings import SystemSettings
+from apps.system_mgmt.services.login_auth_binding_service import build_login_auth_redirect, get_active_login_auth_bindings
 from apps.system_mgmt.utils.login_log_utils import log_user_login_from_request
+from django.conf import settings as django_settings
+from django.core.cache import cache
+from django.http import HttpResponseRedirect, JsonResponse
+from django.shortcuts import render
+from rest_framework.decorators import api_view
 
 PORTAL_BRANDING_KEYS = ("portal_name", "portal_logo_url", "portal_favicon_url", "watermark_enabled", "watermark_text")
 LOGIN_AUTH_BINDINGS_RATE_LIMIT = 60
@@ -207,7 +206,13 @@ def verify_wechat_code(code: str) -> dict:
         token_data = token_resp.json()
 
         if "errcode" in token_data:
-            logger.warning(f"WeChat token exchange failed: {token_data}")
+            logger.warning(
+                "event=wechat_token_exchange_failed failed_stage=token_exchange "
+                "http_status=%s errcode=%s error_type=%s",
+                token_resp.status_code,
+                token_data.get("errcode"),
+                "wechat_api_error",
+            )
             return {
                 "success": False,
                 "error": token_data.get("errmsg", "Unknown error"),
@@ -223,7 +228,13 @@ def verify_wechat_code(code: str) -> dict:
         userinfo_data = userinfo_resp.json()
 
         if "errcode" in userinfo_data:
-            logger.warning(f"WeChat userinfo fetch failed: {userinfo_data}")
+            logger.warning(
+                "event=wechat_userinfo_fetch_failed failed_stage=userinfo_fetch "
+                "http_status=%s errcode=%s error_type=%s",
+                userinfo_resp.status_code,
+                userinfo_data.get("errcode"),
+                "wechat_api_error",
+            )
             return {
                 "success": False,
                 "error": userinfo_data.get("errmsg", "Unknown error"),
@@ -242,7 +253,12 @@ def verify_wechat_code(code: str) -> dict:
         logger.error("WeChat API timeout")
         return {"success": False, "error": "WeChat API timeout"}
     except Exception as e:
-        logger.exception(f"WeChat verification error: {e}")
+        logger.error(
+            "event=wechat_verification_failed failed_stage=verification error_type=%s call_chain=%s",
+            type(e).__name__,
+            safe_exception_call_chain(e),
+            exc_info=safe_exception_info(e),
+        )
         return {"success": False, "error": str(e)}
 
 

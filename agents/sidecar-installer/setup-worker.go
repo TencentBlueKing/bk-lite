@@ -1427,20 +1427,33 @@ func stopLinuxControllerService() error {
 	})
 }
 
+// systemctl show --value 需要 systemd 230+，RHEL/CentOS 7 的 systemd 219 会直接报
+// "unrecognized option '--value'"，因此这里解析 LoadState= 前缀取值。
+func parseSystemdLoadState(output []byte) string {
+	for _, line := range strings.Split(string(output), "\n") {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "LoadState="); ok {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
 func stopLinuxControllerServiceWithCommand(runCommand func(string, ...string) ([]byte, error)) error {
-	output, err := runCommand("systemctl", "show", "--property=LoadState", "--value", "bk-sidecar.service")
-	loadState := strings.TrimSpace(string(output))
+	// 旧版 systemd 查询不存在的单元也可能以非零码退出，因此以 LoadState 取值为准，
+	// 而不是以退出码为准。
+	output, _ := runCommand("systemctl", "show", "--property=LoadState", "bk-sidecar.service")
+	loadState := parseSystemdLoadState(output)
 	if loadState == "not-found" {
 		return nil
 	}
-	if err != nil {
-		return fmt.Errorf("query bk-sidecar.service load state: %w: %s", err, strings.TrimSpace(string(output)))
-	}
 	if loadState == "" {
-		return fmt.Errorf("query bk-sidecar.service load state: empty systemctl response")
+		// 查询本身不可用时无法判断单元是否存在，仍尽量停一次，但不能因为查询失败就
+		// 中止安装；真正的文件占用会在解压阶段暴露。
+		_, _ = runCommand("systemctl", "stop", "bk-sidecar.service")
+		return nil
 	}
 
-	output, err = runCommand("systemctl", "stop", "bk-sidecar.service")
+	output, err := runCommand("systemctl", "stop", "bk-sidecar.service")
 	if err != nil {
 		return fmt.Errorf("systemctl stop bk-sidecar.service: %w: %s", err, strings.TrimSpace(string(output)))
 	}

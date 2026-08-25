@@ -1822,8 +1822,14 @@
       "availableGroupsRequired": "Please select organizations",
       "availableGroupsPlaceholder": "Please select organizations...",
       "enabled": "Enabled",
+      "multimodal": "Multimodal",
+      "multimodalHint": "When off, page-context chat drops images and keeps text captions only",
       "deleteConfirmContent": "Deleting will remove model \"{name}\".",
-      "deleteConfirmTitle": "Confirm Deletion"
+      "deleteConfirmTitle": "Confirm Deletion",
+      "sync": "Sync Models",
+      "syncSuccess": "Sync succeeded",
+      "syncFailed": "Sync failed",
+      "syncNotSupported": "This provider does not support model sync"
     },
     "form": {
       "url": "URL",

@@ -294,7 +294,7 @@ class SSRFValidator:
         # 1. 协议校验
         scheme = parsed.scheme.lower()
         if scheme not in cls.ALLOWED_SCHEMES:
-            logger.warning(f"[SSRF] 阻断非法协议: url={url}, scheme={scheme}")
+            logger.warning("[SSRF] 阻断非法协议: url=%s, scheme=%s", url, scheme)
             raise SSRFError(f"不允许的协议: {scheme}，仅支持 http/https")
 
         # 2. 主机校验
@@ -312,15 +312,15 @@ class SSRFValidator:
 
         # 3. 固定危险 / 云元数据主机名
         if hostname in cls.CLOUD_METADATA_HOSTS:
-            logger.warning(f"[SSRF] 阻断云元数据主机: url={url}")
+            logger.warning("[SSRF] 阻断云元数据主机: url=%s", url)
             raise SSRFError(f"禁止访问云元数据地址: {hostname}", code="CONNECTION_TARGET_FORBIDDEN")
         if hostname in cls.DANGEROUS_HOSTNAMES:
-            logger.warning(f"[SSRF] 阻断危险主机: url={url}")
+            logger.warning("[SSRF] 阻断危险主机: url=%s", url)
             raise SSRFError(f"禁止访问危险主机名: {hostname}", code="CONNECTION_TARGET_FORBIDDEN")
 
         # 4. 调用方额外域名限制（旧 allowlist 参数语义）
         if allowlist is not None and hostname not in {h.lower() for h in allowlist}:
-            logger.warning(f"[SSRF] 主机不在允许列表: url={url}, allowlist={allowlist}")
+            logger.warning("[SSRF] 主机不在允许列表: url=%s, allowlist=%s", url, allowlist)
             raise SSRFError(f"主机 {hostname} 不在允许列表中")
 
         allowed_networks = cls._get_allowed_networks()
@@ -395,7 +395,7 @@ class SSRFValidator:
         # 1. 协议校验
         scheme = parsed.scheme.lower()
         if scheme not in cls.ALLOWED_SCHEMES:
-            logger.warning(f"[SSRF-llm] 阻断非法协议: url={url}, scheme={scheme}")
+            logger.warning("[SSRF-llm] 阻断非法协议: url=%s, scheme=%s", url, scheme)
             raise SSRFError(f"不允许的协议: {scheme}，仅支持 http/https")
 
         # 2. 主机校验
@@ -406,7 +406,7 @@ class SSRFValidator:
 
         # 3. 云元数据主机名直接阻断
         if hostname in cls.CLOUD_METADATA_HOSTS:
-            logger.warning(f"[SSRF-llm] 阻断云元数据主机: url={url}")
+            logger.warning("[SSRF-llm] 阻断云元数据主机: url=%s", url)
             raise SSRFError(f"禁止访问云元数据地址: {hostname}")
 
         # 4. DNS 解析并校验云元数据 IP
@@ -429,7 +429,7 @@ class SSRFValidator:
             for network in cls.LLM_ENDPOINT_BLOCKED_NETWORKS:
                 try:
                     if ip in network:
-                        logger.warning(f"[SSRF-llm] 阻断云元数据 IP: url={url}, ip={ip_str}")
+                        logger.warning("[SSRF-llm] 阻断云元数据 IP: url=%s, ip=%s", url, ip_str)
                         raise SSRFError(f"禁止访问云元数据地址: {ip_str}")
                 except TypeError:
                     continue
@@ -466,7 +466,7 @@ class SSRFValidator:
         # 1. 协议校验
         scheme = parsed.scheme.lower()
         if scheme not in cls.ALLOWED_SCHEMES:
-            logger.warning(f"[SSRF-callback] 阻断非法协议: url={url}, scheme={scheme}")
+            logger.warning("[SSRF-callback] 阻断非法协议: url=%s, scheme=%s", url, scheme)
             raise SSRFError(f"不允许的协议: {scheme}，仅支持 http/https")
 
         # 2. 主机校验
@@ -477,7 +477,7 @@ class SSRFValidator:
 
         # 3. 云元数据主机名直接阻断
         if hostname in cls.CLOUD_METADATA_HOSTS:
-            logger.warning(f"[SSRF-callback] 阻断云元数据主机: url={url}")
+            logger.warning("[SSRF-callback] 阻断云元数据主机: url=%s", url)
             raise SSRFError(f"禁止访问云元数据地址: {hostname}")
 
         # 4. DNS 解析并校验阻断列表
@@ -501,10 +501,10 @@ class SSRFValidator:
                 try:
                     if ip in network:
                         if network == ipaddress.ip_network("127.0.0.0/8") or network == ipaddress.ip_network("::1/128"):
-                            logger.warning(f"[SSRF-callback] 阻断 localhost: url={url}, ip={ip_str}")
+                            logger.warning("[SSRF-callback] 阻断 localhost: url=%s, ip=%s", url, ip_str)
                             raise SSRFError(f"禁止访问 localhost: {ip_str}")
                         else:
-                            logger.warning(f"[SSRF-callback] 阻断云元数据 IP: url={url}, ip={ip_str}")
+                            logger.warning("[SSRF-callback] 阻断云元数据 IP: url=%s, ip=%s", url, ip_str)
                             raise SSRFError(f"禁止访问云元数据地址: {ip_str}")
                 except TypeError:
                     continue

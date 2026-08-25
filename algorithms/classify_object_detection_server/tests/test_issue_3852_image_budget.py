@@ -1,15 +1,17 @@
 """Issue #3852：目标检测 serving 必须在解码前后限制请求资源成本。"""
 
 import base64
-from io import BytesIO
+from io import BytesIO, StringIO
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from loguru import logger as real_logger
 from PIL import Image
 from pydantic import ValidationError
 
 from classify_object_detection_server.serving.schemas import PredictRequest, api_schema
+from classify_object_detection_server.serving import service as service_module
 from classify_object_detection_server.serving.service import MLService
 
 EMPTY_PREDICTION = {
@@ -255,14 +257,60 @@ async def test_observe_mode_preserves_legacy_public_predict(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_public_predict_returns_e1001_when_all_images_fail_to_decode():
+async def test_public_predict_returns_e1001_when_all_images_fail_to_decode(monkeypatch):
     service = _make_service()
     payload = base64.b64encode(b"x" * 75).decode("ascii")
+    logger = MagicMock()
+    monkeypatch.setattr(service_module, "logger", logger)
 
     response = await service.predict([payload])
 
     assert response.success is False
     assert response.error.code == "E1001"
+    logger.warning.assert_any_call("event=image_batch_decode_failed reason=all_images_failed")
+    assert not logger.error.called
+
+
+@pytest.mark.asyncio
+async def test_model_failure_keeps_response_error_without_leaking_formatter_output(monkeypatch):
+    payload, decoded_bytes = _encode_png()
+    monkeypatch.setenv("MLOPS_PREDICT_MAX_IMAGE_BYTES", str(len(payload)))
+    monkeypatch.setenv("MLOPS_PREDICT_MAX_IMAGE_BATCH_BYTES", str(decoded_bytes))
+    service = _make_service()
+    secret = "model-response-secret-must-not-enter-logs"
+    frame_secret = "frame-local-secret-must-not-enter-logs"
+    error = RuntimeError(secret)
+    def fail_with_sensitive_local(*_args, **_kwargs):
+        sensitive_local = frame_secret
+        assert sensitive_local
+        raise error
+
+    service.model.predict.side_effect = fail_with_sensitive_local
+    output = StringIO()
+    service_module._configure_production_logger(output)
+    monkeypatch.setattr(service_module, "logger", real_logger)
+
+    try:
+        response = await service.predict([payload])
+    finally:
+        service_module._configure_production_logger()
+
+    assert response.success is False
+    assert response.results[0].error == secret
+    safe_type, safe_error, safe_traceback = service_module._safe_exception_info(error)
+    assert safe_traceback is error.__traceback__
+    assert safe_error is not error
+    assert safe_type.__name__ == "_SafeLogException"
+    assert isinstance(safe_error, RuntimeError)
+    assert str(safe_error) == "RuntimeError"
+    assert str(error) == secret
+    rendered = output.getvalue()
+    assert "event=object_detection_failed failed_stage=model_predict error_type=RuntimeError" in rendered
+    assert "call_chain=" in rendered
+    assert "Traceback" in rendered
+    assert "service.py" in rendered
+    assert secret not in rendered
+    assert frame_secret not in rendered
 
 
 @pytest.mark.asyncio
@@ -272,9 +320,19 @@ async def test_service_allows_legacy_batch_when_pixel_budget_is_raised(monkeypat
     monkeypatch.setenv("MLOPS_PREDICT_MAX_IMAGE_BATCH_BYTES", str(decoded_bytes * 2))
     monkeypatch.setenv("MLOPS_PREDICT_MAX_IMAGE_BATCH_PIXELS", "8")
     service = _make_service()
+    logger = MagicMock()
+    monkeypatch.setattr(service_module, "logger", logger)
 
     response = await service.predict([payload, payload])
 
     assert response.success is True
     assert [result.success for result in response.results] == [True, True]
     assert len(service.model.predict.call_args.args[0]["images"]) == 2
+    logger.debug.assert_any_call(
+        "event=object_detection_request_received batch_size={} conf={} iou={}",
+        2,
+        0.25,
+        0.45,
+    )
+    assert any(call.args[0].startswith("event=object_detection_request_completed") for call in logger.info.call_args_list)
+    assert "📥" not in repr(logger.mock_calls)

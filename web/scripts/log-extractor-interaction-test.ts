@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  extractorTypeLabelKey,
   flattenExtractorPaths,
   moveExtractorItem,
   normalizeExtractorSamples,
@@ -87,22 +88,39 @@ assert.match(
 assert.ok(zhLocale.log.extractor.pathSyntaxHint, '中文应提供属性路径语法说明');
 assert.ok(enLocale.log.extractor.pathSyntaxHint, '英文应提供属性路径语法说明');
 
-const conditionListSource = drawerSource.match(
-  /<Form\.List name="conditions">([\s\S]*?)<\/Form\.List>/
-)?.[1];
-assert.ok(conditionListSource, '应能定位条件列表');
+assert.doesNotMatch(
+  drawerSource,
+  /<Form\.List name="conditions">/,
+  '本期不展示附加条件编辑'
+);
+assert.doesNotMatch(
+  drawerSource,
+  /title: t\('log\.extractor\.condition'\)/,
+  '列表不应再展示附加条件列'
+);
 assert.match(
-  conditionListSource,
-  /<Row[^>]*gutter=\{8\}[^>]*align="top"[^>]*>/,
-  '条件行应使用稳定栅格而不是可收缩的 Space 布局'
+  drawerSource,
+  /name="target_field"[\s\S]{0,80}label=\{t\('log\.extractor\.targetField'\)\}/,
+  '所有类型都应展示通用目标属性'
 );
-assert.equal(
-  (conditionListSource.match(/<Col xs=\{24\} md=\{8\}>/g) || []).length,
-  2,
-  '条件属性与比较值在桌面宽度下都应获得稳定列宽'
+assert.match(
+  drawerSource,
+  /label: t\(extractorTypeLabelKey\(value\)\)/,
+  '类型下拉应使用双语标签'
 );
-assert.match(conditionListSource, /<Col xs=\{24\} md=\{5\}>/);
-assert.match(conditionListSource, /<Col xs=\{24\} md=\{3\}>/);
+assert.equal(extractorTypeLabelKey('copy'), 'log.extractor.typeCopy');
+assert.equal(extractorTypeLabelKey('regex_replace'), 'log.extractor.typeRegexReplace');
+for (const key of [
+  'typeCopy',
+  'typeSplit',
+  'typeKv',
+  'typeRegex',
+  'typeRegexReplace',
+  'typeJson'
+]) {
+  assert.ok(zhLocale.log.extractor[key], `中文应提供 ${key}`);
+  assert.ok(enLocale.log.extractor[key], `英文应提供 ${key}`);
+}
 
 assert.doesNotMatch(
   drawerSource,

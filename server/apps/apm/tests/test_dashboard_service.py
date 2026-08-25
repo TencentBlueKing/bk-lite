@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 from django.utils import timezone
 
-from apps.apm.models import ApmAlert, ApmService, ApmServiceInstance, ApmServiceOrganization, ApmSlo
+from apps.apm.models import ApmAlert, ApmDeploymentEvent, ApmService, ApmServiceInstance, ApmServiceOrganization, ApmSlo
 from apps.apm.services.contracts import ServiceRed, ServiceRedPoint, SloEvaluation, SloMeasurement
 from apps.apm.services.dashboard import ApmDashboardService
 from apps.apm.services.reliability import DjangoApmReliabilityService
@@ -17,6 +17,7 @@ class StubMetricStore:
         self.red_by_name = red_by_name
         self.slo_rate = slo_rate
         self.fail_names: set[str] = set()
+        self.deployment_release_calls = 0
 
     def service_red(self, query):
         if query.service_name in self.fail_names:
@@ -27,6 +28,10 @@ class StubMetricStore:
         if self.slo_rate is None:
             return SloMeasurement(None, None, None, "no_data")
         return SloMeasurement(self.slo_rate, 1.0, 1.0, "available")
+
+    def deployment_releases(self, query):
+        self.deployment_release_calls += 1
+        return []
 
 
 def _service(*, organization=10, namespace="shop", name="checkout", last_seen_at=None):
@@ -74,7 +79,7 @@ def test_dashboard_empty_when_organization_has_no_services():
     assert payload["releases"]["status"] == "empty"
 
 
-def test_dashboard_aggregates_kpis_health_alerts_and_keeps_releases_empty():
+def test_dashboard_aggregates_kpis_health_alerts_and_releases():
     now = timezone.now()
     checkout = _service(name="checkout", last_seen_at=now)
     payment = _service(name="payment", last_seen_at=now)
@@ -138,6 +143,48 @@ def test_dashboard_aggregates_kpis_health_alerts_and_keeps_releases_empty():
     assert payment.name == "payment"
 
 
+def test_dashboard_releases_reads_materialized_events():
+    now = timezone.now()
+    checkout = _service(name="checkout", last_seen_at=now)
+    _service(name="payment", last_seen_at=now)
+    hidden = _service(organization=20, name="hidden", last_seen_at=now)
+    visible = ApmDeploymentEvent.objects.create(
+        service=checkout,
+        environment="production",
+        version="v5.3.0",
+        deployed_at=now - timedelta(hours=2),
+        status=ApmDeploymentEvent.Status.SUCCESS,
+        source=ApmDeploymentEvent.Source.INFERRED,
+    )
+    ApmDeploymentEvent.objects.create(
+        service=checkout,
+        environment="production",
+        version="v5.2.9",
+        deployed_at=now - timedelta(days=8),
+        status=ApmDeploymentEvent.Status.SUCCESS,
+        source=ApmDeploymentEvent.Source.INFERRED,
+    )
+    ApmDeploymentEvent.objects.create(
+        service=hidden,
+        environment="production",
+        version="v9.9.9",
+        deployed_at=now - timedelta(hours=1),
+        status=ApmDeploymentEvent.Status.SUCCESS,
+        source=ApmDeploymentEvent.Source.INFERRED,
+    )
+    store = StubMetricStore({"checkout": _red(), "payment": _red()})
+    payload = ApmDashboardService(metric_store=store, now_fn=lambda: now).build(organization_id=10, window="1h")
+
+    assert payload["releases"]["status"] == "ok"
+    items = payload["releases"]["data"]["items"]
+    assert [item["id"] for item in items] == [str(visible.id)]
+    assert items[0]["service_name"] == "checkout"
+    assert items[0]["version"] == "v5.3.0"
+    assert items[0]["status"] == "success"
+    assert items[0]["source"] == "inferred"
+    assert store.deployment_release_calls == 0
+
+
 def test_dashboard_section_failure_does_not_break_other_sections(mocker):
     now = timezone.now()
     _service(name="checkout", last_seen_at=now)
@@ -186,3 +233,59 @@ def test_dashboard_slo_overview_marks_met_against_objective(mocker):
     assert row["service_name"] == "checkout"
     assert row["met"] is False
     assert row["current_rate"] == 98.5
+
+
+def test_dashboard_slo_overview_skips_unavailable_evaluations(mocker):
+    now = timezone.now()
+    service = _service(name="checkout", last_seen_at=now)
+    ApmSlo.objects.create(
+        name="全量可用性",
+        service=service,
+        environment="production",
+        sli_type="availability",
+        objective=Decimal("99.900"),
+        evaluation_window="rolling7d",
+        is_enabled=True,
+    )
+    ApmSlo.objects.create(
+        name="结算时延",
+        service=service,
+        environment="production",
+        endpoint="POST /api/checkout",
+        sli_type="latency_p95",
+        objective=Decimal("95.000"),
+        latency_threshold_ms=500,
+        evaluation_window="rolling7d",
+        is_enabled=True,
+    )
+    reliability = mocker.Mock(spec=DjangoApmReliabilityService)
+
+    def _evaluate(slo, *, evaluated_at):
+        if slo.name == "全量可用性":
+            return SloEvaluation(
+                current_rate=None,
+                budget_remaining=None,
+                data_state="no_data",
+                started_at=now - timedelta(days=7),
+                ended_at=now,
+                reason="VictoriaTraces 查询不可用",
+            )
+        return SloEvaluation(
+            current_rate=96.0,
+            budget_remaining=20.0,
+            data_state="available",
+            started_at=now - timedelta(days=7),
+            ended_at=now,
+        )
+
+    reliability.evaluate.side_effect = _evaluate
+    store = StubMetricStore({"checkout": _red()})
+    payload = ApmDashboardService(
+        metric_store=store,
+        reliability=reliability,
+        now_fn=lambda: now,
+    ).build(organization_id=10, window="1h")
+
+    assert payload["slos"]["status"] == "ok"
+    assert len(payload["slos"]["data"]["items"]) == 1
+    assert payload["slos"]["data"]["items"][0]["service_name"] == "checkout"

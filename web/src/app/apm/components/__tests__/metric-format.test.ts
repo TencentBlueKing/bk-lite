@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   aggregateApplicationRedTrends,
   deriveHealth,
@@ -49,9 +49,19 @@ describe('APM metric-format', () => {
   });
 
   it('格式化相对时间', () => {
-    expect(formatRelativeTime(undefined)).toBe('—');
-    expect(formatRelativeTime('not-a-date')).toBe('—');
-    expect(formatRelativeTime(new Date().toISOString())).toBe('刚刚');
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-21T08:00:00Z'));
+    try {
+      expect(formatRelativeTime(undefined)).toBe('—');
+      expect(formatRelativeTime('not-a-date')).toBe('—');
+      expect(formatRelativeTime('2026-08-21T08:00:00Z')).toBe('刚刚');
+      expect(formatRelativeTime('2026-08-21T07:59:30Z')).toBe('30 秒前');
+      expect(formatRelativeTime('2026-08-21T07:55:00Z')).toBe('5 分钟前');
+      expect(formatRelativeTime('2026-08-21T06:00:00Z')).toBe('2 小时前');
+      expect(formatRelativeTime('2026-08-20T08:00:00Z')).toBe('1 天前');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('根据当前 locale 格式化空态和相对时间', () => {
@@ -60,6 +70,8 @@ describe('APM metric-format', () => {
       'apm.common.queryFailed': 'Query failed',
       'apm.common.metricNoSamplesHint': 'No telemetry samples',
       'apm.common.justNow': 'Just now',
+      'apm.common.secondsAgo': '{count} seconds ago',
+      'apm.common.minutesAgo': '{count} minutes ago',
       'apm.common.secondsValue': '{value} seconds',
       'apm.common.perSecondValue': '{value} per second',
       'apm.common.requestsPerSecondValue': '{value} requests per second',

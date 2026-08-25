@@ -489,7 +489,8 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
                     try:
                         data_json = json.loads(sse_line[6:].strip())
                         output_line, immediate_lines = _handle_agui_data_event(data_json, state, show_think, enable_thinking_split)
-                        accumulated_content.append(data_json)
+                        if not (data_json.get("type") == "CUSTOM" and data_json.get("name") == "stream_keepalive"):
+                            accumulated_content.append(data_json)
                     except (json.JSONDecodeError, ValueError) as parse_err:
                         sample = sse_line[6:].strip()[:200]
                         logger.warning(f"[AGUI Chat] 跳过无法解析的 SSE 行: {parse_err}; 内容样本: {sample!r}")

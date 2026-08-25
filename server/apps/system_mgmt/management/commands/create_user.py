@@ -1,13 +1,10 @@
-import logging
 import uuid
 
+from apps.core.logger import system_mgmt_logger as logger
+from apps.system_mgmt.models import Group, Role, User
 from django.contrib.auth.hashers import check_password, make_password
 from django.core.management import BaseCommand, CommandError
 from django.db import IntegrityError, transaction
-
-from apps.system_mgmt.models import Group, Role, User
-
-logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):

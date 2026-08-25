@@ -91,8 +91,17 @@ class TeamModelViewSet(AuthViewSet):
         return str(run_id) in {str(value) for value in runs["run_id"]}
 
     def train_job_has_run(self, train_job, run_id):
-        runs = self.get_train_job_runs(train_job)
-        return self.has_run_in_runs_frame(runs, run_id)
+        experiment_name = mlflow_service.build_experiment_name(
+            prefix=self.MLFLOW_PREFIX,
+            algorithm=train_job.algorithm,
+            train_job_id=train_job.id,
+        )
+        experiment = mlflow_service.get_experiment_by_name(experiment_name)
+        experiment_id = getattr(experiment, "experiment_id", None) if experiment else None
+        if not experiment_id:
+            return False
+
+        return mlflow_service.run_belongs_to_experiment(str(experiment_id), str(run_id))
 
     def run_not_found_response(self, run_id):
         return Response(

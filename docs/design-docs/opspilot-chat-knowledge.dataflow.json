@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "OpsPilot 对话与知识核心数据流",
+    "output": "opspilot-chat-knowledge.dataflow.html",
+    "viewBox": [1420, 790],
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {"id": "knowledge-build", "label": "知识构建", "focus": ["materials", "wiki_pipeline", "generation", "retrieval"], "note": "资料经过解析、生成、校验和原子激活，形成面向读取的活动 Generation。"},
+      {"id": "online-chat", "label": "在线对话", "focus": ["users", "gateway", "context", "orchestrator", "model_gateway", "response"], "note": "会话上下文、知识检索与模型流在在线请求中汇合。"},
+      {"id": "tool-effects", "label": "工具副作用", "focus": ["orchestrator", "policy_runtime", "targets", "response"], "note": "Agent 选择工具后经过分散的审批、预算和 Shell 防护，再作用于外部目标。"}
+    ]
+  },
+  "stages": [
+    {"label": "01 / 输入"},
+    {"label": "02 / 治理与上下文"},
+    {"label": "03 / 推理与编排"},
+    {"label": "04 / 受控执行"},
+    {"label": "05 / 输出"}
+  ],
+  "nodes": [
+    {"id": "materials", "type": "external", "label": "资料与网页", "sublabel": "File / URL / Text", "stage": 0, "row": 0, "width": 125, "tag": "知识输入"},
+    {"id": "users", "type": "external", "label": "用户与渠道消息", "sublabel": "Web / IM / OpenAI", "stage": 0, "row": 3, "width": 125, "tag": "多入口"},
+    {"id": "wiki_pipeline", "type": "backend", "label": "Wiki 构建治理", "sublabel": "解析 / 分类 / 生成 / 检查", "stage": 1, "row": 0, "width": 150, "tag": "Celery 异步"},
+    {"id": "generation", "type": "database", "label": "活动 Generation", "sublabel": "结构 / 页面 / 索引冻结快照", "stage": 1, "row": 1, "width": 150, "tag": "原子激活"},
+    {"id": "gateway", "type": "backend", "label": "会话网关", "sublabel": "鉴权 / 团队 / 会话 / SSE", "stage": 1, "row": 3, "width": 150, "tag": "请求内执行"},
+    {"id": "context", "type": "database", "label": "历史与记忆", "sublabel": "多套会话历史 / Memory", "stage": 1, "row": 4, "width": 150, "tag": "状态分散"},
+    {"id": "retrieval", "type": "backend", "label": "知识检索", "sublabel": "活动快照 / RAG / 引用", "stage": 2, "row": 0, "width": 150, "tag": "读 Generation"},
+    {"id": "orchestrator", "type": "backend", "label": "双编排运行时", "sublabel": "ChatFlow + DeepAgent Graph", "stage": 2, "row": 2, "width": 155, "tag": "流语义重复"},
+    {"id": "model_gateway", "type": "external", "label": "模型网关", "sublabel": "Provider API / Token Usage", "stage": 2, "row": 4, "width": 150, "tag": "默认 300s"},
+    {"id": "policy_runtime", "type": "security", "label": "工具策略与执行", "sublabel": "Approval / Budget / Shell Guard", "stage": 3, "row": 2, "width": 155, "tag": "分散控制"},
+    {"id": "targets", "type": "external", "label": "运维与外部目标", "sublabel": "K8s / DB / MCP / Browser / Shell", "stage": 4, "row": 1, "width": 155, "tag": "真实副作用"},
+    {"id": "response", "type": "external", "label": "流式响应与执行记录", "sublabel": "SSE / AGUI / Channel Reply", "stage": 4, "row": 4, "width": 155, "tag": "断连与取消"}
+  ],
+  "flows": [
+    {"id": "materials_pipeline", "from": "materials", "to": "wiki_pipeline", "label": "原始证据", "variant": "emphasis"},
+    {"id": "pipeline_generation", "from": "wiki_pipeline", "to": "generation", "label": "校验后激活", "variant": "emphasis"},
+    {"id": "generation_retrieval", "from": "generation", "to": "retrieval", "label": "活动快照", "variant": "emphasis"},
+    {"id": "users_gateway", "from": "users", "to": "gateway", "label": "消息 + token", "variant": "emphasis"},
+    {"id": "gateway_context", "from": "gateway", "to": "context", "label": "读写历史"},
+    {"id": "gateway_orchestrator", "from": "gateway", "to": "orchestrator", "label": "执行请求", "labelAt": [470, 465], "channelX": 410, "variant": "emphasis"},
+    {"id": "context_orchestrator", "from": "context", "to": "orchestrator", "label": "历史上下文", "labelAt": [365, 656], "channelX": 430},
+    {"id": "retrieval_orchestrator", "from": "retrieval", "to": "orchestrator", "label": "知识与引用"},
+    {"id": "orchestrator_model", "from": "orchestrator", "to": "model_gateway", "label": "多轮推理", "variant": "emphasis"},
+    {"id": "orchestrator_policy", "from": "orchestrator", "to": "policy_runtime", "label": "工具意图", "variant": "security", "route": "straight"},
+    {"id": "policy_targets", "from": "policy_runtime", "to": "targets", "label": "批准后副作用", "variant": "security"},
+    {"id": "targets_response", "from": "targets", "to": "response", "label": "工具结果", "variant": "dashed"},
+    {"id": "model_response", "from": "model_gateway", "to": "response", "label": "token 流", "variant": "emphasis", "route": "straight"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "知识发布语义可靠", "items": ["资料事实与不可变 Generation 分离，活动指针决定在线读取范围", "结构、页面成员、索引和导航均可绑定同一代际"]},
+    {"dot": "rose", "title": "在线执行耦合请求生命周期", "items": ["工作流后续节点在 SSE 生成器内串行续跑，客户端断连与执行终态紧密耦合", "同步聊天超时只能放弃等待，Python 无法强制终止已运行线程"]},
+    {"dot": "amber", "title": "副作用策略尚未统一", "items": ["工具风险、审批、预算、超时与回滚能力未由统一 Capability Contract 描述", "Shell 文件工具受限于临时目录，但 execute 明确运行在宿主环境"]}
+  ]
+}

@@ -18,8 +18,8 @@ from apps.system_mgmt.models import (
     UserSyncSource,
     UserSyncTriggerModeChoices,
 )
-from apps.system_mgmt.providers.adapters import feishu as feishu_adapter
-from apps.system_mgmt.providers.adapters.feishu import FeishuUserSyncAdapter
+from apps.system_mgmt.providers.builtin.feishu.adapters import client as feishu_adapter
+from apps.system_mgmt.providers.builtin.feishu.adapters.user_sync import FeishuUserSyncAdapter
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 from apps.system_mgmt.serializers.user_sync_source_serializer import UserSyncSourceSerializer
 from apps.system_mgmt.services import user_sync_service as user_sync_service_module
@@ -29,6 +29,7 @@ from apps.system_mgmt.services.user_sync_service import (
     detect_root_group_name_conflicts,
     execute_user_sync,
     get_user_sync_business_value,
+    get_user_sync_root_scope_value,
     preview_user_sync,
 )
 
@@ -400,6 +401,35 @@ def test_get_user_sync_business_value_handles_none_business_config():
     assert get_user_sync_business_value(source, "root_department_id", "0") == "0"
 
 
+def test_get_user_sync_root_scope_value_ad_single_dn_folds_to_that_dn():
+    source = SimpleNamespace(
+        integration_instance=SimpleNamespace(provider_key="ad"),
+        business_config={"root_dns": ["OU=PAAS,DC=corp,DC=com"]},
+    )
+    assert get_user_sync_root_scope_value(source) == "OU=PAAS,DC=corp,DC=com"
+
+
+def test_get_user_sync_root_scope_value_ad_multi_dn_uses_synthetic_local_root():
+    source = SimpleNamespace(
+        integration_instance=SimpleNamespace(provider_key="ad"),
+        business_config={
+            "root_dns": [
+                "OU=BizA,DC=corp,DC=com",
+                "OU=BizC,DC=corp,DC=com",
+            ]
+        },
+    )
+    assert get_user_sync_root_scope_value(source) == "__local_root__"
+
+
+def test_get_user_sync_root_scope_value_ad_accepts_legacy_root_dn():
+    source = SimpleNamespace(
+        integration_instance=SimpleNamespace(provider_key="ad"),
+        business_config={"root_dn": "OU=PAAS,DC=corp,DC=com"},
+    )
+    assert get_user_sync_root_scope_value(source) == "OU=PAAS,DC=corp,DC=com"
+
+
 def test_feishu_user_sync_uses_find_by_department_endpoint():
     class DummyResponse:
         def __init__(self, payload, status_code=200, headers=None):
@@ -423,8 +453,8 @@ def test_feishu_user_sync_uses_find_by_department_endpoint():
 
     source = SimpleNamespace(name="preview-source", business_config={"root_department_id": "dept-root"})
 
-    with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
+    with patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.post", side_effect=fake_post), patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=fake_get
     ):
         result = FeishuUserSyncAdapter.sync_users({"app_id": "cli_xxx", "app_secret": "secret"}, "feishu", "user_sync", source=source)
 
@@ -470,8 +500,8 @@ def test_feishu_user_sync_uses_requested_department_id_type_for_group_ids():
         business_config={"root_department_id": "open-root", "department_id_type": "open_department_id"},
     )
 
-    with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
+    with patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.post", side_effect=fake_post), patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=fake_get
     ):
         result = FeishuUserSyncAdapter.sync_users(
             {"app_id": "cli_xxx", "app_secret": "secret"},
@@ -505,8 +535,8 @@ def test_feishu_user_sync_defaults_to_fetch_child_true():
 
     source = SimpleNamespace(name="default-fetch-child-source", business_config={"root_department_id": "dept-root"})
 
-    with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
+    with patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.post", side_effect=fake_post), patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=fake_get
     ):
         result = FeishuUserSyncAdapter.sync_users(
             {"app_id": "cli_xxx", "app_secret": "secret"},
@@ -564,6 +594,8 @@ def test_feishu_list_departments_returns_items_without_selection_state():
         return DummyResponse({"code": 0, "tenant_access_token": "tenant-token"})
 
     def fake_get(url, *args, **kwargs):
+        if url.endswith("/contact/v3/departments/0/children"):
+            return DummyResponse({"code": 40004, "msg": "no permission"}, headers={"X-Tt-Logid": "denied"})
         if url.endswith("/contact/v3/scopes"):
             return DummyResponse({"code": 0, "data": {"department_ids": ["dept-visible"], "has_more": False}})
         if url.endswith("/contact/v3/departments/batch"):
@@ -586,8 +618,8 @@ def test_feishu_list_departments_returns_items_without_selection_state():
             return DummyResponse({"code": 0, "data": {"items": [], "has_more": False}})
         raise AssertionError(f"unexpected Feishu request: {url}")
 
-    with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
+    with patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.post", side_effect=fake_post), patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=fake_get
     ):
         result = FeishuUserSyncAdapter.list_departments(
             {"app_id": "cli_xxx", "app_secret": "secret"},
@@ -662,8 +694,8 @@ def test_feishu_user_sync_reuses_cached_token_when_not_expiring():
 
     source = SimpleNamespace(name="cache-source", business_config={"root_department_id": "dept-root"})
 
-    with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
+    with patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.post", side_effect=fake_post), patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=fake_get
     ):
         first_result = FeishuUserSyncAdapter.sync_users({"app_id": "cli_xxx", "app_secret": "secret"}, "feishu", "user_sync", source=source)
         second_result = FeishuUserSyncAdapter.sync_users({"app_id": "cli_xxx", "app_secret": "secret"}, "feishu", "user_sync", source=source)
@@ -704,8 +736,8 @@ def test_feishu_user_sync_refreshes_token_once_after_auth_failure():
 
     source = SimpleNamespace(name="refresh-source", business_config={"root_department_id": "dept-root"})
 
-    with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
+    with patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.post", side_effect=fake_post), patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=fake_get
     ):
         result = FeishuUserSyncAdapter.sync_users({"app_id": "cli_xxx", "app_secret": "secret"}, "feishu", "user_sync", source=source)
 
@@ -742,8 +774,8 @@ def test_feishu_user_sync_pre_refreshes_expiring_cached_token():
 
     source = SimpleNamespace(name="pre-refresh-source", business_config={"root_department_id": "dept-root"})
 
-    with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
+    with patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.post", side_effect=fake_post), patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=fake_get
     ):
         result = FeishuUserSyncAdapter.sync_users({"app_id": "cli_xxx", "app_secret": "secret"}, "feishu", "user_sync", source=source)
 

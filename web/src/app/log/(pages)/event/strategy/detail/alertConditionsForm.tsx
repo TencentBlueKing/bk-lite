@@ -150,7 +150,15 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               options={fieldList
                 .filter(
                   (item) =>
-                    !['message', 'timestamp', '_time', '_msg'].includes(item)
+                    ![
+                      'message',
+                      'timestamp',
+                      '_time',
+                      '_msg',
+                      '_stream',
+                      '_stream_id',
+                      '@timestamp'
+                    ].includes(item)
                 )
                 .map((item) => ({
                   value: item,

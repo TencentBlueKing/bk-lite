@@ -11,8 +11,10 @@ import requests
 
 from apps.apm.adapters.errors import TelemetryStoreUnavailable
 from apps.apm.services.contracts import (
+    DeploymentReleaseQuery,
     InstanceActivity,
     InstanceActivityQuery,
+    InferredDeploymentRelease,
     MetricDataState,
     ServiceDependency,
     ServiceEndpointRed,
@@ -35,9 +37,11 @@ from apps.apm.services.identity import normalize_identity
 
 MAX_QUERY_WINDOW = timedelta(days=35)
 MAX_TOPOLOGY_WINDOW = timedelta(days=7)
+MAX_DEPLOYMENT_LOOKBACK = timedelta(days=7)
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_UNIQUE_SPANS = 1_000_000
 MAX_ACTIVITY_DIMENSIONS = 10_000
+MAX_DEPLOYMENT_RELEASES = 10_000
 MAX_DEPENDENCIES = 10_000
 MAX_RED_POINTS = 120
 MAX_TOP_ENDPOINTS = 10
@@ -435,6 +439,45 @@ class VictoriaTracesTelemetryStore:
                 )
             )
         return activities
+
+    def deployment_releases(self, query: DeploymentReleaseQuery) -> list[InferredDeploymentRelease]:
+        _validate_window(query.started_at, query.ended_at, maximum=MAX_DEPLOYMENT_LOOKBACK)
+        logs_query = (
+            f"{_SERVICE_FIELD}:* | stats by ({_NAMESPACE_FIELD}, {_SERVICE_FIELD}, "
+            f"{_ENVIRONMENT_FIELD}, {_VERSION_FIELD}) "
+            "min(start_time_unix_nano) as first_seen, max(end_time_unix_nano) as last_seen "
+            f"| filter {_VERSION_FIELD}:!=\"\" "
+            f"| sort by (first_seen) desc | limit {MAX_DEPLOYMENT_RELEASES + 1}"
+        )
+        rows = self._query_rows(logs_query, query.started_at, query.ended_at)
+        if len(rows) > MAX_DEPLOYMENT_RELEASES:
+            raise TelemetryStoreUnavailable("APM 部署版本维度超过单次聚合上限")
+        releases: list[InferredDeploymentRelease] = []
+        for row in rows:
+            service_name = str(row.get("resource_attr:service.name", "")).strip()
+            version = str(row.get("resource_attr:service.version", "")).strip()
+            if not service_name or not version:
+                continue
+            first_seen = _number(row.get("first_seen"))
+            last_seen = _number(row.get("last_seen"))
+            if first_seen is None or last_seen is None:
+                continue
+            try:
+                first_seen_at = datetime.fromtimestamp(first_seen / 1_000_000_000, tz=UTC)
+                last_seen_at = datetime.fromtimestamp(last_seen / 1_000_000_000, tz=UTC)
+            except (OverflowError, OSError, ValueError):
+                continue
+            releases.append(
+                InferredDeploymentRelease(
+                    service_namespace=str(row.get("resource_attr:service.namespace", "")),
+                    service_name=service_name,
+                    environment=str(row.get("resource_attr:deployment.environment", "")),
+                    version=version,
+                    first_seen_at=first_seen_at,
+                    last_seen_at=last_seen_at,
+                )
+            )
+        return releases
 
     def service_dependencies(self, query: TopologyDependencyQuery) -> tuple[ServiceDependency, ...]:
         _validate_window(query.started_at, query.ended_at, maximum=MAX_TOPOLOGY_WINDOW)

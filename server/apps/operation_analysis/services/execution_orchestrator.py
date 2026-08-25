@@ -1,9 +1,7 @@
-import logging
 from enum import StrEnum
 
-from django.core.exceptions import ValidationError
-
 from apps.base.models import User
+from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportExecutionSnapshot,
@@ -18,6 +16,9 @@ from apps.operation_analysis.services.delivery_service import (
 )
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
+)
+from apps.operation_analysis.services.execution_timeout_checker import (
+    ExecutionTimeoutChecker,
 )
 from apps.operation_analysis.services.render_snapshot_service import (
     DashboardReportRenderSnapshotService,
@@ -37,11 +38,7 @@ from apps.operation_analysis.services.retry_types import (
     ClassifierDecisionKind,
     ResumeClass,
 )
-from apps.operation_analysis.services.execution_timeout_checker import (
-    ExecutionTimeoutChecker,
-)
-
-logger = logging.getLogger(__name__)
+from django.core.exceptions import ValidationError
 
 
 class ExecutionStepResult(StrEnum):
@@ -150,8 +147,8 @@ class PermissionStep:
             else execution.dashboard_id
         )
         from apps.operation_analysis.services.canvas_report.permissions import (
-            canvas_resource_exists,
             can_view_canvas,
+            canvas_resource_exists,
         )
 
         live_missing = resource_id is None or not canvas_resource_exists(

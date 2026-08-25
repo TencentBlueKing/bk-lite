@@ -1,5 +1,20 @@
 [
   {
+    "component": "ai-page-context",
+    "directApps": [
+      "(core)",
+      "monitor"
+    ],
+    "transitiveApps": [
+      "(core)",
+      "monitor"
+    ],
+    "stories": [],
+    "reverseAppImports": [],
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps"
+  },
+  {
     "component": "app-view-fullscreen",
     "directApps": [],
     "transitiveApps": [],
@@ -188,11 +203,9 @@
     "stories": [
       "charts-family.stories.tsx"
     ],
-    "reverseAppImports": [
-      "ops-analysis"
-    ],
-    "classification": "invalid-reverse-dependency",
-    "reason": "imports app-owned modules from ops-analysis",
+    "reverseAppImports": [],
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps",
     "activeStories": [
       "charts-family.stories.tsx"
     ]

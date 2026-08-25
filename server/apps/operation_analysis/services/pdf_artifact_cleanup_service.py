@@ -10,12 +10,10 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-from django.utils import timezone
-
+from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportPdfArtifact,
@@ -23,8 +21,7 @@ from apps.operation_analysis.models.subscription_models import (
 from apps.operation_analysis.services.report_render_service import (
     DashboardReportRenderService,
 )
-
-logger = logging.getLogger(__name__)
+from django.utils import timezone
 
 DEFAULT_ARTIFACT_CLEANUP_BATCH_SIZE = 200
 

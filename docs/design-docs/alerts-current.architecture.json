@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Alerts 模块现状架构",
+    "output": "alerts-current.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/zhouzhuangjie/bk-lite-1", "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"},
+    "viewBox": [1420, 760],
+    "views": [
+      {"id": "ingress", "label": "事件接入主链", "focus": ["sources", "interfaces", "ingress_pipeline", "fact_store", "detection"], "note": "HTTP、NATS 与桥接入口最终委托来源适配器，形成 Event 后进入检测。"},
+      {"id": "lifecycle", "label": "告警运营副作用", "focus": ["detection", "operations", "outbox", "system_job"], "note": "告警状态、分派、提醒、升级、通知与作业副作用跨多个服务协作。"},
+      {"id": "capacity", "label": "聚合容量路径", "focus": ["scheduler", "detection", "cache_duckdb", "fact_store"], "note": "全局锁串行每个策略，并将策略时间窗事件搬入内存 DuckDB。"}
+    ]
+  },
+  "components": [
+    {"id": "sources", "type": "external", "label": "事件与运营调用方", "sublabel": "监控源 / K8s / SNMP / Console", "pos": [20, 300], "size": [190, 86]},
+    {"id": "interfaces", "type": "backend", "label": "协议入口", "sublabel": "HTTP ViewSets / 17 NATS / Open API", "tag": "NATS 1,318 行", "pos": [250, 290], "size": [220, 96], "sources": [
+      {"path": "server/apps/alerts/urls.py", "line": 31, "label": "HTTP 路由"},
+      {"path": "server/apps/alerts/nats/nats.py", "line": 333, "label": "统计与接入 RPC"},
+      {"path": "server/apps/alerts/views/receiver.py", "line": 116, "label": "Webhook 接入"}
+    ]},
+    {"id": "ingress_pipeline", "type": "backend", "label": "接入治理实现", "sublabel": "标准化 / 幂等 / 丰富 / 屏蔽 / 恢复分流", "tag": "Adapter 基类 718 行", "pos": [525, 130], "size": [245, 96], "sources": [
+      {"path": "server/apps/alerts/common/source_adapter/base.py", "line": 206, "label": "事件构建"},
+      {"path": "server/apps/alerts/common/source_adapter/base.py", "line": 617, "label": "接入编排"},
+      {"path": "server/apps/alerts/enrichment/engine.py", "line": 21, "label": "丰富引擎"}
+    ]},
+    {"id": "detection", "type": "backend", "label": "检测与建警实现", "sublabel": "即时 / 周期聚合 / 缺失 / 恢复", "tag": "聚合处理器 838 行", "pos": [525, 300], "size": [245, 96], "sources": [
+      {"path": "server/apps/alerts/aggregation/processor/instant_dispatcher.py", "line": 238, "label": "即时旁路"},
+      {"path": "server/apps/alerts/aggregation/processor/aggregation_processor.py", "line": 69, "label": "周期聚合"},
+      {"path": "server/apps/alerts/aggregation/recovery/recovery_handler.py", "line": 15, "label": "恢复处理"}
+    ]},
+    {"id": "operations", "type": "backend", "label": "告警运营实现", "sublabel": "状态变更 / 分派 / 提醒 / 升级 / 事故", "pos": [525, 485], "size": [245, 96], "sources": [
+      {"path": "server/apps/alerts/service/alter_operator.py", "line": 18, "label": "状态操作"},
+      {"path": "server/apps/alerts/common/assignment.py", "line": 88, "label": "自动分派"},
+      {"path": "server/apps/alerts/service/reminder_service.py", "line": 18, "label": "提醒轮询"}
+    ]},
+    {"id": "automation", "type": "backend", "label": "处置与协同实现", "sublabel": "Action / Job callback / Incident updates", "pos": [525, 635], "size": [245, 82], "sources": [
+      {"path": "server/apps/alerts/action/engine.py", "line": 13, "label": "Action Engine"},
+      {"path": "server/apps/alerts/service/incident_operator.py", "line": 16, "label": "Incident Operator"}
+    ]},
+    {"id": "fact_store", "type": "database", "label": "Alerts 业务数据库", "sublabel": "Event / Alert / Incident / Strategy / Runtime JSON", "pos": [830, 230], "size": [240, 92], "sources": [
+      {"path": "server/apps/alerts/models/models.py", "line": 29, "label": "核心事实"},
+      {"path": "server/apps/alerts/models/alert_operator.py", "line": 18, "label": "策略与运行任务"}
+    ]},
+    {"id": "outbox", "type": "database", "label": "Outbox 与并发租约", "sublabel": "AlertOutbox / ActiveAlertFingerprint", "tag": "幂等 + 重试", "pos": [830, 430], "size": [240, 86], "sources": [
+      {"path": "server/apps/alerts/service/outbox.py", "line": 13, "label": "Outbox 调度"},
+      {"path": "server/apps/alerts/service/active_fingerprint.py", "line": 6, "label": "活跃指纹租约"}
+    ]},
+    {"id": "scheduler", "type": "messagebus", "label": "Celery Worker / Beat", "sublabel": "7 个固定周期任务 + 动态任务", "pos": [830, 65], "size": [240, 82], "sources": [
+      {"path": "server/apps/alerts/config.py", "line": 7, "label": "Beat Schedule"},
+      {"path": "server/apps/alerts/tasks/tasks.py", "line": 72, "label": "聚合单例任务"}
+    ]},
+    {"id": "cache_duckdb", "type": "database", "label": "Redis Cache + 内存 DuckDB", "sublabel": "策略缓存 / 全局锁 / Pandas 窗口聚合", "pos": [830, 600], "size": [240, 88], "sources": [
+      {"path": "server/apps/alerts/aggregation/engine/connection.py", "line": 10, "label": "内存聚合"},
+      {"path": "server/apps/alerts/tasks/tasks.py", "line": 24, "label": "全局聚合锁"}
+    ]},
+    {"id": "cmdb", "type": "external", "label": "CMDB", "sublabel": "批量资产丰富 RPC", "pos": [1140, 130], "size": [225, 76], "sources": [
+      {"path": "server/apps/alerts/enrichment/providers/cmdb.py", "line": 12, "label": "CMDB Provider"}
+    ]},
+    {"id": "system_job", "type": "external", "label": "SystemMgmt / JobMgmt", "sublabel": "用户组织与通道直连 / 作业 RPC", "tag": "11 个文件直引 SystemMgmt", "pos": [1140, 475], "size": [225, 92], "sources": [
+      {"path": "server/apps/alerts/common/notify/base.py", "line": 7, "label": "用户模型直连"},
+      {"path": "server/apps/alerts/serializers/assignment_shield.py", "line": 8, "label": "组织模型直连"},
+      {"path": "server/apps/alerts/action/handlers/job.py", "line": 13, "label": "作业适配"}
+    ]}
+  ],
+  "boundaries": [
+    {"kind": "region", "label": "Alerts Interface Adapters", "wraps": ["interfaces"], "pad": 18},
+    {"kind": "region", "label": "按技术流程演化的 Alerts Implementation", "wraps": ["ingress_pipeline", "detection", "operations", "automation", "fact_store", "outbox", "scheduler", "cache_duckdb"], "pad": 20},
+    {"kind": "region", "label": "外部能力", "wraps": ["cmdb", "system_job"], "pad": 18}
+  ],
+  "connections": [
+    {"id": "sources_interfaces", "from": "sources", "to": "interfaces", "variant": "emphasis"},
+    {"id": "interfaces_ingress", "from": "interfaces", "to": "ingress_pipeline", "variant": "emphasis"},
+    {"id": "interfaces_operations", "from": "interfaces", "to": "operations"},
+    {"id": "ingress_detection", "from": "ingress_pipeline", "to": "detection", "variant": "emphasis"},
+    {"id": "ingress_store", "from": "ingress_pipeline", "to": "fact_store", "fromSide": "right", "toSide": "left", "via": [[790, 178], [790, 276]]},
+    {"id": "detection_store", "from": "detection", "to": "fact_store", "fromSide": "right", "toSide": "left", "via": [[800, 348], [800, 276]]},
+    {"id": "detection_operations", "from": "detection", "to": "operations", "route": "straight"},
+    {"id": "operations_automation", "from": "operations", "to": "automation"},
+    {"id": "operations_outbox", "from": "operations", "to": "outbox", "variant": "emphasis", "fromSide": "right", "toSide": "left", "via": [[800, 533], [800, 473], [830, 473]]},
+    {"id": "ingress_cmdb", "from": "ingress_pipeline", "to": "cmdb", "label": "同步丰富"},
+    {"id": "outbox_system", "from": "outbox", "to": "system_job", "label": "通知 / Action", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "已有可靠性基础", "items": ["接入幂等、活跃指纹唯一租约与 Outbox 已覆盖关键建警副作用", "提醒和升级使用行锁、批次与重试时间避免重复投递"]},
+    {"dot": "rose", "title": "吞吐由全局轮次决定", "items": ["所有周期策略被一个全局锁串行，慢策略会让后续调度直接跳过", "每策略重复扫描事件窗口并构造 Pandas DataFrame 与内存 DuckDB 表"]},
+    {"dot": "amber", "title": "边界与状态迁移分散", "items": ["11 个生产文件直接依赖 SystemMgmt 模型或工具，模块契约退化为共享数据库结构", "Alert 状态迁移、停止提醒、释放租约和生命周期 Action 分布在多条入口"]}
+  ]
+}

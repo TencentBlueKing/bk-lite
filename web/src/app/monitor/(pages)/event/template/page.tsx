@@ -19,6 +19,11 @@ import { findLabelById, getIconByObjectName } from '@/app/monitor/utils/common';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { useSearchParams } from 'next/navigation';
 import TreeSelector from '@/app/monitor/components/treeSelector';
+import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
+import {
+  resolveMonitorObjectQueryId,
+  resolveMonitorObjectTreeKey
+} from '@/app/monitor/utils/monitorObjectQuery';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 import BulkApplyModal from './bulkApplyModal';
@@ -47,7 +52,7 @@ const Template: React.FC = () => {
     bulkDeletePolicyTemplates,
   } = useEventApi();
   const searchParams = useSearchParams();
-  const objId = searchParams.get('objId');
+  const { syncObjectId } = useMonitorObjectQuery();
   const templateAbortControllerRef = useRef<AbortController | null>(null);
   const templateRequestIdRef = useRef<number>(0);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
@@ -135,6 +140,7 @@ const Template: React.FC = () => {
   const handleObjectChange = async (id: string) => {
     cancelAllRequests();
     setObjectId(id);
+    syncObjectId(id);
     setSelectedTemplateKeys(clearTemplateSelection());
     setCollapsedGroups(new Set());
     setSearchKeyword('');
@@ -194,7 +200,17 @@ const Template: React.FC = () => {
         setObjects(monitorObjects);
         const _treeData = getTreeData(cloneDeep(monitorObjects));
         const defaulltId = (_treeData[0]?.children || [])[0]?.key;
-        setDefaultSelectObj(objId ? +objId : defaulltId);
+        setDefaultSelectObj(
+          resolveMonitorObjectTreeKey(
+            monitorObjects,
+            resolveMonitorObjectQueryId({
+              searchParams,
+              objects: monitorObjects,
+              fallback: defaulltId
+            }),
+            defaulltId
+          )
+        );
         setTreeData(_treeData);
       })
       .finally(() => {

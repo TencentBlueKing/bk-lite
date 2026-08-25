@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import { ObjectItem } from '@/app/monitor/types';
+import { buildMetricDimensionVariables } from './strategyDetailUtils';
 
 interface VariableItem {
   key: string;
@@ -15,11 +16,13 @@ interface VariableItem {
 interface VariablesTableProps {
   onVariableSelect?: (variable: string) => void;
   displayFields?: ObjectItem['display_fields'];
+  groupBy?: string[];
 }
 
 const VariablesTable: React.FC<VariablesTableProps> = ({
   onVariableSelect,
-  displayFields
+  displayFields,
+  groupBy
 }) => {
   const { t } = useTranslation();
 
@@ -84,14 +87,32 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
         continue;
       }
       seen.add(variableId);
+      const columnName = col.name || variableId;
       extra.push({
         key: variableId,
         variable: `\${${variableId}}`,
-        description: col.name || variableId
+        description: t(
+          'monitor.events.variableDisplayField',
+          '展示指标配置 · {name}',
+          { name: columnName }
+        )
+      });
+    }
+    for (const item of buildMetricDimensionVariables(groupBy)) {
+      if (seen.has(item.key)) continue;
+      seen.add(item.key);
+      extra.push({
+        key: item.key,
+        variable: item.variable,
+        description: t(
+          'monitor.events.variableMetricDimension',
+          undefined,
+          { name: item.dimension }
+        )
       });
     }
     return [...builtin, ...extra];
-  }, [displayFields, t]);
+  }, [displayFields, groupBy, t]);
 
   const variableColumns: ColumnsType<VariableItem> = [
     {

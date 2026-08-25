@@ -415,7 +415,7 @@ class AsyncProtocolPreflight:
     def _log_outbound_skip(request: CollectionRequest, target: str, error: BaseException) -> None:
         reason = str(error).strip() or type(error).__name__
         logger.info(
-            "🚫 event=outbound_target_skipped task_id=%s target=%s reason=%s",
+            "event=outbound_target_skipped task_id=%s target=%s reason=%s",
             request.task_id,
             target,
             reason,

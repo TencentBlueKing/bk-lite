@@ -94,6 +94,8 @@ export interface DisplayMetricBinding {
 export interface DisplayColumn {
   name: string;
   type?: 'metric' | 'field';
+  // 语义列标记，如云平台子对象 IP；由内置种子写入，用户编辑时原样保留
+  role?: 'resource_ip';
   sort_order: number;
   variable_id?: string;
   metrics: DisplayMetricBinding[];

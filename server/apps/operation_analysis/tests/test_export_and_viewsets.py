@@ -289,7 +289,7 @@ def test_extract_canvas_dependencies_includes_filter_option_datasource():
     )
     filters = [
         {
-            "id": "instance_ids__stringList",
+            "id": "instance_ids__string",
             "inputConfig": {
                 "control": "select",
                 "optionsSource": {

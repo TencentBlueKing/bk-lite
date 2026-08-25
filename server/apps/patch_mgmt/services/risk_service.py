@@ -5,11 +5,11 @@
 合规状态统一按缺失评估；治理状态由 GovernanceTask 推断。
 """
 
-import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.constants import (
     ComplianceStatus,
     GovernanceTaskStatus,
@@ -27,8 +27,6 @@ from apps.patch_mgmt.models import (
     Patch,
     PatchTarget,
 )
-
-logger = logging.getLogger("app")
 
 
 @dataclass

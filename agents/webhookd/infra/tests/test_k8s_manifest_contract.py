@@ -25,11 +25,19 @@ MANIFEST_PATHS = [
 
 CLUSTER_SCOPED_KINDS = ("ClusterRole", "ClusterRoleBinding")
 CLUSTER_SCOPED_PREFIX = "bk-lite-"
-CONTROL_PLANE_NOSCHEDULE_TOLERATION = {"operator": "Exists", "effect": "NoSchedule"}
-WORKLOAD_MANIFEST_PATHS = [
+# DaemonSet 容忍策略：模板经 __DS_TOLERATIONS__ 占位符由渲染脚本注入（默认两条精确容忍），
+# dist 静态部署包写死同样的默认值；Deployment 一律不带 tolerations，遵循集群默认调度。
+DS_TOLERATIONS_PLACEHOLDER = "__DS_TOLERATIONS__"
+DEFAULT_DS_TOLERATIONS = [
+    {"key": "node-role.kubernetes.io/control-plane", "operator": "Exists", "effect": "NoSchedule"},
+    {"key": "node-role.kubernetes.io/master", "operator": "Exists", "effect": "NoSchedule"},
+]
+TEMPLATE_MANIFEST_PATHS = [
     WEBHOOKD_DIR / "bk-lite-metric-collector.yaml",
     WEBHOOKD_DIR / "bk-lite-resource-collector.yaml",
     WEBHOOKD_DIR / "bk-lite-log-collector.yaml",
+]
+DIST_MANIFEST_PATHS = [
     DIST_DIR / "bk-lite-metric-collector.yaml",
     DIST_DIR / "bk-lite-log-collector.yaml",
 ]
@@ -39,6 +47,7 @@ LINE_PLACEHOLDERS = (
     "__LOG_VOLUME_MOUNTS__",
     "__LOG_VOLUMES__",
     "__INCLUDE_PATHS_GLOB_PATTERNS__",
+    "__DS_TOLERATIONS__",
 )
 
 
@@ -135,13 +144,44 @@ def test_dist_and_webhookd_metric_manifests_share_cluster_rbac():
         assert template[identity] == dist[identity], f"{identity} 在 webhookd 模板与 deploy/dist 部署包中不一致"
 
 
-@pytest.mark.parametrize("path", WORKLOAD_MANIFEST_PATHS, ids=lambda path: path.name)
-def test_workloads_tolerate_control_plane_noschedule(path):
-    """采集器必须能调度到 control-plane:NoSchedule，否则单节点/污点节点没有采集 Pod。"""
-    workloads = [document for document in _load_documents(path) if document["kind"] in ("Deployment", "DaemonSet")]
-    assert workloads, f"{path} 没有 Deployment/DaemonSet"
-    for document in workloads:
-        tolerations = document["spec"]["template"]["spec"].get("tolerations") or []
-        assert CONTROL_PLANE_NOSCHEDULE_TOLERATION in tolerations, (
-            f"{path.name}: {document['kind']} `{document['metadata']['name']}` " "缺少 operator=Exists effect=NoSchedule，无法调度到控制平面污点节点"
+@pytest.mark.parametrize("path", TEMPLATE_MANIFEST_PATHS + DIST_MANIFEST_PATHS, ids=lambda path: str(path.relative_to(REPO_ROOT)))
+def test_deployments_carry_no_tolerations(path):
+    """Deployment 是中心组件，只需要集群里有地方跑；容忍污点会穿透 cordon/专用池等
+    管理员隔离语义，一律遵循集群默认调度。单节点集群的 control-plane 污点由管理员
+    按 Kubernetes 管理实践自行移除。"""
+    for document in _load_documents(path):
+        if document["kind"] != "Deployment":
+            continue
+        pod_spec = document["spec"]["template"]["spec"]
+        assert "tolerations" not in pod_spec, (
+            f"{path.name}: Deployment `{document['metadata']['name']}` 不得携带 tolerations，" "中心组件必须遵循集群默认调度语义"
+        )
+
+
+@pytest.mark.parametrize("path", TEMPLATE_MANIFEST_PATHS, ids=lambda path: path.name)
+def test_template_daemonsets_use_tolerations_placeholder(path):
+    """模板 DaemonSet 的容忍策略由渲染脚本注入：每个 DaemonSet 对应一个
+    __DS_TOLERATIONS__ 占位行，模板自身不得硬编码 tolerations。"""
+    documents = _load_documents(path)
+    daemonsets = [document for document in documents if document["kind"] == "DaemonSet"]
+    for document in daemonsets:
+        assert "tolerations" not in document["spec"]["template"]["spec"], (
+            f"{path.name}: DaemonSet `{document['metadata']['name']}` 硬编码了 tolerations，" "容忍策略必须经渲染参数注入"
+        )
+    placeholder_count = sum(1 for line in path.read_text(encoding="utf-8").splitlines() if line.strip() == DS_TOLERATIONS_PLACEHOLDER)
+    assert placeholder_count == len(daemonsets), (
+        f"{path.name}: __DS_TOLERATIONS__ 占位行数量 ({placeholder_count}) 与 DaemonSet 数量 ({len(daemonsets)}) 不一致"
+    )
+
+
+@pytest.mark.parametrize("path", DIST_MANIFEST_PATHS, ids=lambda path: path.name)
+def test_dist_daemonsets_carry_exact_default_tolerations(path):
+    """手动部署包无渲染环节，DaemonSet 写死与渲染默认值一致的两条精确容忍；
+    禁止无 key 的通配容忍（会穿透 cordon 与专用节点隔离）。"""
+    daemonsets = [document for document in _load_documents(path) if document["kind"] == "DaemonSet"]
+    assert daemonsets, f"{path} 没有 DaemonSet"
+    for document in daemonsets:
+        tolerations = document["spec"]["template"]["spec"].get("tolerations")
+        assert tolerations == DEFAULT_DS_TOLERATIONS, (
+            f"{path.name}: DaemonSet `{document['metadata']['name']}` 的 tolerations 必须恰好是 " "control-plane/master 两条精确容忍"
         )

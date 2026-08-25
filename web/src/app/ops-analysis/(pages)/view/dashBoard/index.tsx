@@ -81,6 +81,12 @@ import {
   type DashboardRenderSignal,
 } from '@/app/ops-analysis/renderContract';
 import { prepareDashboardPrintLayout } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
+import { normalizeStoredFilterState, buildFilterConfigConfirmSnapshot } from '@/app/ops-analysis/utils/unifiedFilterState';
+import {
+  migrateFilterBindings,
+  migrateParamItemsFromStringList,
+  logStringParamMigrationWarnings,
+} from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 
 interface DashboardProps {
   selectedDashboard?: DirItem | null;
@@ -379,7 +385,36 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           );
           const nextLayout = deserializeDashboardGridStackLayout(
             dashboardData.view_sets,
-          );
+          ).map((item) => {
+            if (!isDashboardWidgetItem(item) || !item.valueConfig) {
+              return item;
+            }
+            const valueConfig = item.valueConfig;
+            return {
+              ...item,
+              valueConfig: {
+                ...valueConfig,
+                ...(valueConfig.filterBindings
+                  ? {
+                    filterBindings: migrateFilterBindings(
+                      valueConfig.filterBindings,
+                    ),
+                  }
+                  : {}),
+                ...(valueConfig.dataSourceParams
+                  ? (() => {
+                    const migratedParams = migrateParamItemsFromStringList(
+                      valueConfig.dataSourceParams,
+                    );
+                    logStringParamMigrationWarnings(migratedParams.warnings, {
+                      canvasId: selectedDashboard.data_id,
+                    });
+                    return { dataSourceParams: migratedParams.params };
+                  })()
+                  : {}),
+              },
+            };
+          });
           await syncDashboardCanvasResources(nextLayout);
           if (nextLayout.length) {
             setLayout(nextLayout);
@@ -401,15 +436,16 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
           // Handle both legacy (unifiedFilters) and new (direct array) format
           const rawFilters = dashboardData.filters;
-          const loadedDefinitions: UnifiedFilterDefinition[] = Array.isArray(
-            rawFilters,
-          )
-            ? rawFilters
-            : rawFilters?.definitions || rawFilters?.unifiedFilters || [];
+          const { definitions: loadedDefinitions, values: migratedValues } =
+            normalizeStoredFilterState(
+              rawFilters,
+              renderMode ? (renderFilterValues ?? {}) : {},
+              { canvasId: selectedDashboard.data_id },
+            );
 
           const initialValues = syncFilterValuesWithDefinitions(
             loadedDefinitions,
-            renderMode ? (renderFilterValues ?? {}) : {},
+            migratedValues,
           );
 
           setDefinitions(loadedDefinitions);
@@ -1214,12 +1250,15 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const handleFilterConfigConfirm = (
       newDefinitions: UnifiedFilterDefinition[],
     ) => {
-      updateDefinitions(newDefinitions);
-      const updatedValues = syncFilterValuesWithDefinitions(
+      const snapshot = buildFilterConfigConfirmSnapshot(
         newDefinitions,
         filterValues,
+        appliedFilterValues,
       );
-      setFilterValues(updatedValues);
+      updateDefinitions(snapshot.definitions);
+      setAppliedFilterDefinitions(snapshot.definitions);
+      setFilterValues(snapshot.filterValues);
+      setAppliedFilterValues(snapshot.appliedFilterValues);
     };
 
     const handleDelete = (id: string) => {

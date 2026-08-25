@@ -155,7 +155,13 @@
       "conditionValue": "比较值",
       "addCondition": "添加条件",
       "noCondition": "无附加条件",
-      "rootOrSource": "根字段或源字段"
+      "rootOrSource": "根字段或源字段",
+      "typeCopy": "复制",
+      "typeSplit": "拆分",
+      "typeKv": "键值对",
+      "typeRegex": "正则提取",
+      "typeRegexReplace": "正则替换",
+      "typeJson": "JSON"
     },
     "integration": {
       "connect": "接入",
@@ -594,6 +600,10 @@
       "selectContainer": "请选择容器",
       "selectLogGroup": "请选择日志分组",
       "selectInstance": "请选择实例",
+      "networkTraffic": {
+        "flowsLayer": "会话流量",
+        "httpLayer": "HTTP 应用"
+      },
       "packetbeat": {
         "destinationPort": "Destination Port",
         "sourceIP": "Source IP",

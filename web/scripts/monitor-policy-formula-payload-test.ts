@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 
 import {
+  buildMetricDimensionVariable,
+  buildMetricDimensionVariables,
+} from '../src/app/monitor/(pages)/event/strategy/detail/strategyDetailUtils';
+import {
   assignMetricRowRefs,
   buildMetricExpressionPreviewPayload,
   buildMetricExpressionQueryCondition,
@@ -601,5 +605,18 @@ assertBuildThrows(
   [{ ...singleRows[0], metricId: null }],
   '指标 a 必须选择有效指标'
 );
+
+assert.equal(
+  buildMetricDimensionVariable('cpu'),
+  '${metric__cpu}'
+);
+assert.deepEqual(
+  buildMetricDimensionVariables(['instance_id', 'cpu', 'cpu', '']),
+  [
+    { key: 'metric__instance_id', variable: '${metric__instance_id}', dimension: 'instance_id' },
+    { key: 'metric__cpu', variable: '${metric__cpu}', dimension: 'cpu' },
+  ]
+);
+assert.deepEqual(buildMetricDimensionVariables(null), []);
 
 console.log('monitor-policy-formula-payload-test passed');

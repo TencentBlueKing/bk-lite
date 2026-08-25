@@ -79,3 +79,34 @@ def test_reset_node_token_creates_missing_token_record_for_unknown_node_with_emp
 def test_reset_node_token_rejects_blank_node_id():
     with pytest.raises(CommandError, match="--node-id 不能为空"):
         call_command("reset_node_token", "--node-id", "   ")
+
+
+def test_node_token_init_returns_token_without_logging_it(monkeypatch):
+    token = "node-command-secret-token"
+    logged_calls = []
+    monkeypatch.setattr(
+        "apps.node_mgmt.management.commands.node_token_init.logger.info",
+        lambda *args, **kwargs: logged_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        "apps.node_mgmt.management.commands.node_token_init.generate_node_token",
+        lambda node_id, ip, user: token,
+    )
+    out = StringIO()
+
+    call_command(
+        "node_token_init",
+        "--ip",
+        "10.0.0.10",
+        "--user",
+        "operator",
+        stdout=out,
+    )
+
+    output_lines = out.getvalue().splitlines()
+    assert len(output_lines) == 1
+    assert output_lines[0].startswith("node_id: ")
+    assert output_lines[0].endswith(f", token: {token}")
+    assert logged_calls[0][0] == ("node token 初始化开始！",)
+    assert logged_calls[1][0] == ("node token 初始化完成！",)
+    assert token not in repr(logged_calls)

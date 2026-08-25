@@ -4,6 +4,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.utils.winrm import default_winrm_port, winrm_profile_error
 
 
 class CanonicalOrganizationIdField(serializers.Field):
@@ -73,14 +74,24 @@ class ControllerInstallRequestSerializer(serializers.Serializer):
         normalized_nodes = []
         for node in attrs["nodes"]:
             node_os = node.get("os") or NodeConstants.LINUX_OS
-            node.setdefault("port", 5986 if node_os == NodeConstants.WINDOWS_OS else 22)
+            if node_os == NodeConstants.WINDOWS_OS:
+                node.setdefault("port", default_winrm_port(node.get("winrm_scheme") or "https"))
+            else:
+                node.setdefault("port", 22)
             if not node.get("username"):
                 raise serializers.ValidationError({"nodes": "Remote installation requires a username"})
             if node_os == NodeConstants.WINDOWS_OS:
                 if not node.get("password"):
                     raise serializers.ValidationError({"nodes": "Windows remote installation requires a password"})
-                if node.get("winrm_scheme") != "https" or node.get("winrm_transport") != "ntlm":
-                    raise serializers.ValidationError({"nodes": "Windows remote installation currently requires HTTPS and NTLM"})
+                profile_error = winrm_profile_error(
+                    node.get("winrm_scheme") or "https",
+                    node["port"],
+                    node.get("winrm_transport") or "ntlm",
+                )
+                if profile_error:
+                    raise serializers.ValidationError({"nodes": profile_error})
+                if node.get("winrm_scheme") == "http":
+                    node["winrm_cert_validation"] = False
             node["os"] = node_os
             node["cpu_architecture"] = InstallerService.normalize_required_cpu_architecture(
                 node_os,
@@ -102,9 +113,21 @@ class ControllerRetryRequestSerializer(serializers.Serializer):
     password = serializers.CharField(required=False, allow_blank=True, write_only=True)
     private_key = serializers.CharField(required=False, allow_blank=True, write_only=True)
     passphrase = serializers.CharField(required=False, allow_blank=True, write_only=True)
-    winrm_scheme = serializers.ChoiceField(choices=("https",), required=False)
+    winrm_scheme = serializers.ChoiceField(choices=("http", "https"), required=False)
     winrm_transport = serializers.ChoiceField(choices=("ntlm",), required=False)
     winrm_cert_validation = serializers.BooleanField(required=False)
+
+    def validate(self, attrs):
+        scheme = attrs.get("winrm_scheme")
+        port = attrs.get("port")
+        transport = attrs.get("winrm_transport") or "ntlm"
+        if scheme and port is not None:
+            profile_error = winrm_profile_error(scheme, port, transport)
+            if profile_error:
+                raise serializers.ValidationError(profile_error)
+        if scheme == "http":
+            attrs["winrm_cert_validation"] = False
+        return attrs
 
 
 class ControllerUninstallNodeSerializer(serializers.Serializer):
@@ -133,14 +156,22 @@ class ControllerUninstallNodeSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         is_windows = attrs["os"] == NodeConstants.WINDOWS_OS
-        attrs.setdefault("port", 5986 if is_windows else 22)
+        if is_windows:
+            attrs.setdefault("port", default_winrm_port(attrs.get("winrm_scheme") or "https"))
+        else:
+            attrs.setdefault("port", 22)
         if is_windows:
             if not attrs.get("password"):
                 raise serializers.ValidationError("Windows controller uninstallation requires a password")
-            if attrs["winrm_scheme"] != "https" or attrs["winrm_transport"] != "ntlm":
-                raise serializers.ValidationError(
-                    "Windows controller uninstallation requires HTTPS and NTLM"
-                )
+            profile_error = winrm_profile_error(
+                attrs.get("winrm_scheme") or "https",
+                attrs["port"],
+                attrs.get("winrm_transport") or "ntlm",
+            )
+            if profile_error:
+                raise serializers.ValidationError(profile_error)
+            if attrs.get("winrm_scheme") == "http":
+                attrs["winrm_cert_validation"] = False
         elif not attrs.get("password") and not attrs.get("private_key"):
             raise serializers.ValidationError("Linux controller uninstallation requires a password or private key")
         return attrs

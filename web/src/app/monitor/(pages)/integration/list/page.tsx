@@ -17,6 +17,8 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { getIconByObjectName, getPluginBrandIcon } from '@/app/monitor/utils/common';
 import { useRouter } from 'next/navigation';
+import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
+import { resolveMonitorObjectQueryId } from '@/app/monitor/utils/monitorObjectQuery';
 import {
   ModalRef,
   TreeItem,
@@ -70,6 +72,7 @@ const Integration = () => {
   const pluginAbortControllerRef = useRef<AbortController | null>(null);
   const pluginRequestIdRef = useRef<number>(0);
   const searchParams = useSearchParams();
+  const { syncObjectId } = useMonitorObjectQuery();
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>('');
   const [exportDisabled, setExportDisabled] = useState<boolean>(true);
@@ -128,20 +131,22 @@ const Integration = () => {
   };
 
   const handleObjectChange = async (id: string) => {
+    const nextObjectType =
+      id && id !== 'all' && isTypeNodeKey(String(id)) ? String(id) : '';
+    const nextObjectId = !id || id === 'all' || nextObjectType ? '' : id;
+    // URL 回写同一节点时不要 abort 刚发出的插件列表请求，否则右侧会停在上一对象。
+    if (
+      String(objectId) === String(nextObjectId) &&
+      String(objectType) === String(nextObjectType)
+    ) {
+      syncObjectId(id || 'all');
+      return;
+    }
     cancelAllRequests();
     setPagination((prev) => ({ ...prev, current: 1 }));
-    if (id === 'all' || !id) {
-      setObjectId('');
-      setObjectType('');
-      return;
-    }
-    if (isTypeNodeKey(String(id))) {
-      setObjectId('');
-      setObjectType(String(id));
-      return;
-    }
-    setObjectType('');
-    setObjectId(id);
+    syncObjectId(id || 'all');
+    setObjectId(nextObjectId);
+    setObjectType(nextObjectType);
   };
 
   const getPluginList = async (
@@ -197,6 +202,10 @@ const Integration = () => {
         current: page,
         total: count
       }));
+    } catch (error: any) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+        return;
+      }
     } finally {
       if (currentRequestId === pluginRequestIdRef.current) {
         setPageLoading(false);
@@ -417,11 +426,13 @@ const Integration = () => {
             showAllMenu
             allowParentSelect
             data={treeData}
-            defaultSelectedKey={
-              searchParams.get('objId')
-                ? toMonitorIdString(searchParams.get('objId'))
-                : 'all'
-            }
+            defaultSelectedKey={resolveMonitorObjectQueryId({
+              searchParams,
+              objects,
+              allowAll: true,
+              allowTypeKeys: true,
+              fallback: 'all'
+            })}
             loading={treeLoading}
             draggable
             onNodeSelect={handleObjectChange}

@@ -6,13 +6,18 @@ import {
   dockCollapsedStorageKey,
   fillUrlTemplate,
   formatSessionTime,
+  isPersistedPlatformSession,
   isPlatformMode,
   lastSessionStorageKey,
   mapPlatformApplications,
   mapPlatformMessages,
   mapPlatformSessions,
   readDockCollapsed,
+  removePlatformSession,
   resolvePlatformSelection,
+  sessionTitleFromUserContent,
+  shouldFetchPlatformMessages,
+  shouldRefreshPlatformSessions,
   unwrapPlatformPayload,
   writeDockCollapsed,
 } from '../../packages/webchat-core/src/platform';
@@ -133,6 +138,62 @@ test('maps published platform skill channels and restores last selection', () =>
     resolvePlatformSelection(apps, sessions, { appId: 'missing', sessionId: 'gone' }),
     { app: apps[0], sessionId: 's-new' }
   );
+  assert.deepEqual(
+    resolvePlatformSelection([apps[0]], sessions, { appId: '1', sessionId: 's-old' }),
+    { app: apps[0], sessionId: 's-new' }
+  );
+});
+
+test('draft sessions do not refetch history; clicking the current session does not either', () => {
+  const sessions = [{ id: 's-real' }];
+  assert.equal(
+    shouldFetchPlatformMessages({
+      sessionId: 'session_1',
+      loadedSessionId: null,
+      sessions,
+    }),
+    false
+  );
+  assert.equal(
+    shouldFetchPlatformMessages({
+      sessionId: 's-real',
+      loadedSessionId: 's-real',
+      sessions,
+    }),
+    false
+  );
+  assert.equal(
+    shouldFetchPlatformMessages({
+      sessionId: 's-real',
+      loadedSessionId: 'session_1',
+      sessions,
+    }),
+    true
+  );
+  assert.equal(
+    shouldFetchPlatformMessages({
+      sessionId: 'session_1',
+      loadedSessionId: 'session_1',
+      sessions: [{ id: 'session_1' }],
+    }),
+    false
+  );
+});
+
+test('session list refreshes after a finished run, not the connect handshake', () => {
+  assert.equal(shouldRefreshPlatformSessions('connecting', 'connected'), false);
+  assert.equal(shouldRefreshPlatformSessions('idle', 'connected'), false);
+  assert.equal(shouldRefreshPlatformSessions('chatting', 'connected'), true);
+  assert.equal(shouldRefreshPlatformSessions('error', 'idle'), true);
+});
+
+test('draft session title comes from the first user message', () => {
+  assert.equal(sessionTitleFromUserContent('分析下CPU时间分布'), '分析下CPU时间分布');
+  assert.equal(
+    sessionTitleFromUserContent([{ type: 'message', message: '介绍下系统负载趋势' }]),
+    '介绍下系统负载趋势'
+  );
+  assert.equal(sessionTitleFromUserContent('   '), '新会话');
 });
 
 test('maps history messages to readable text, including object payloads', () => {
@@ -212,8 +273,28 @@ test('drops protocol-only AG-UI dumps and keeps assistant text from mixed dumps'
   assert.equal(mixed[0].content, '工作负载正常');
 });
 
+test('history replay keeps THINKING text on metadata, not in the answer bubble', () => {
+  const replayed = mapPlatformMessages([
+    {
+      id: 13,
+      conversation_role: 'bot',
+      conversation_content: JSON.stringify([
+        { type: 'RUN_STARTED' },
+        { type: 'THINKING', delta: 'Guang' },
+        { type: 'THINKING', delta: 'zhou is the capital' },
+        { type: 'TEXT_MESSAGE_CONTENT', delta: '广州是广东省省会' },
+        { type: 'RUN_FINISHED' },
+      ]),
+    },
+  ]);
+  assert.equal(replayed[0].content, '广州是广东省省会');
+  assert.equal(replayed[0].metadata?.thinking, 'Guangzhou is the capital');
+  assert.equal(replayed[0].metadata?.isThinking, false);
+});
+
 test('planned execution CUSTOM events stay out of chat bubbles', () => {
   // 实时流（Chat.applyCustomEvent）与历史回放共用同一份静默清单
+  assert.equal(isSilentCustomEvent('stream_keepalive'), true);
   assert.equal(isSilentCustomEvent('planned_execution_status'), true);
   assert.equal(isSilentCustomEvent('planned_execution_step'), true);
   assert.equal(isSilentCustomEvent('wiki_citations'), true);
@@ -238,6 +319,23 @@ test('planned execution CUSTOM events stay out of chat bubbles', () => {
     },
   ]);
   assert.equal(planned[0].content, '现在是下午两点');
+});
+
+test('removes a history session and clears current when it was selected', () => {
+  const sessions = [
+    { id: 's-new', title: '最新' },
+    { id: 's-old', title: '更早' },
+  ];
+  assert.equal(isPersistedPlatformSession('s-old', sessions), true);
+  assert.equal(isPersistedPlatformSession('session_draft', sessions), false);
+  assert.deepEqual(removePlatformSession(sessions, 's-old', 's-new'), {
+    sessions: [{ id: 's-new', title: '最新' }],
+    currentId: 's-new',
+  });
+  assert.deepEqual(removePlatformSession(sessions, 's-new', 's-new'), {
+    sessions: [{ id: 's-old', title: '更早' }],
+    currentId: null,
+  });
 });
 
 test('formats session timestamps in Chinese relative units', () => {
