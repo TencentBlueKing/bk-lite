@@ -307,7 +307,10 @@ def _sanitize_page_context(page_context) -> dict | None:
         if not isinstance(item, dict):
             continue
         data_url = str(item.get("dataUrl") or item.get("data_url") or "")
-        if not data_url or len(data_url) > PAGE_CONTEXT_MAX_IMAGE_CHARS:
+        # 只收内联 data:image，拒绝 http(s) 等远程地址，避免经模型侧回源造成 SSRF。
+        if not data_url.lower().startswith("data:image/"):
+            continue
+        if len(data_url) > PAGE_CONTEXT_MAX_IMAGE_CHARS:
             continue
         images.append({"caption": str(item.get("caption") or ""), "dataUrl": data_url})
 
