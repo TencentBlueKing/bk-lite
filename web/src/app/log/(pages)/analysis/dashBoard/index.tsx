@@ -9,7 +9,7 @@ import React, {
 } from 'react';
 import TimeSelector from '@/components/time-selector';
 import GridLayout, { WidthProvider } from 'react-grid-layout';
-import { Button, Modal, Spin, Select, message } from 'antd';
+import { Button, Modal, Spin, Select, message, Segmented } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { LayoutItem, DirItem } from '@/app/log/types/analysis';
 import { SearchOutlined, SaveOutlined } from '@ant-design/icons';
@@ -22,6 +22,9 @@ import { ListItem } from '@/app/log/types';
 import { TimeSelectorDefaultValue, TimeSelectorRef } from '@/types';
 import useIntegrationApi from '@/app/log/api/integration';
 import useApiClient from '@/utils/request';
+import { useHttpDashboard } from '@/app/log/hooks/analysis/httpDashboard';
+
+type NetworkTrafficLayer = 'flows' | 'http';
 
 const { Option } = Select;
 const ResponsiveGridLayout = WidthProvider(GridLayout);
@@ -48,6 +51,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     ref
   ) => {
     const { t } = useTranslation();
+    const httpDashboard = useHttpDashboard();
     const { getLogStreams, getInstanceList, getFieldValues } =
       useIntegrationApi();
     const { isLoading } = useApiClient();
@@ -60,6 +64,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [otherConfig, setOtherConfig] = useState<any>({});
     const [originalOtherConfig] = useState<any>({});
     const [pageLoading, setPageLoading] = useState<boolean>(false);
+    const [networkTrafficLayer, setNetworkTrafficLayer] =
+      useState<NetworkTrafficLayer>('flows');
     const timeDefaultValue: TimeSelectorDefaultValue = {
       selectValue: 15,
       rangePickerVaule: null
@@ -73,6 +79,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [containerNames, setContainerNames] = useState<React.Key[]>([]);
     const [containerLoading, setContainerLoading] = useState(false);
     const collectTypeName = selectedDashboard?.collectTypeName || '';
+    const isNetworkTrafficDashboard = collectTypeName === 'flows';
     const showInstanceFilter =
       !!collectTypeName && selectedDashboard?.filters?.instance !== false;
     const showContainerFilter = collectTypeName === 'docker';
@@ -84,7 +91,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       }
     }, [isLoading]);
 
-    // 监听 selectedDashboard 的变化，仅更新 layout，保留筛选条件
+    // 监听 selectedDashboard / 网络流量层切换，更新 layout，保留筛选条件
     useEffect(() => {
       if (!selectedDashboard) {
         setLayout([]);
@@ -93,11 +100,24 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         setInstanceOptions([]);
         return;
       }
+
+      if (isNetworkTrafficDashboard) {
+        const viewSets =
+          networkTrafficLayer === 'http'
+            ? httpDashboard.view_sets || []
+            : selectedDashboard.view_sets || [];
+        setLayout(viewSets);
+        setOriginalLayout([...viewSets]);
+        setRefreshKey((prev) => prev + 1);
+        return;
+      }
+
+      setNetworkTrafficLayer('flows');
       const viewSets = selectedDashboard.view_sets || [];
       setLayout(viewSets);
       setOriginalLayout([...viewSets]);
       setRefreshKey((prev) => prev + 1);
-    }, [selectedDashboard?.id]);
+    }, [selectedDashboard?.id, isNetworkTrafficDashboard, networkTrafficLayer]);
 
     useEffect(() => {
       if (!showInstanceFilter) {
@@ -521,18 +541,25 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 </h2>
               )}
               <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-                <div className="flex flex-none items-center">
-                  <TimeSelector
-                    appearance="toolbar"
-                    className="flex-none"
-                    ref={timeSelectorRef}
-                    key="time-selector"
-                    defaultValue={timeDefaultValue}
-                    onChange={handleTimeChange}
-                    onRefresh={handleRefresh}
-                    onFrequenceChange={onFrequenceChange}
+                {isNetworkTrafficDashboard && (
+                  <Segmented
+                    size="middle"
+                    value={networkTrafficLayer}
+                    options={[
+                      {
+                        label: t('log.analysis.networkTraffic.flowsLayer'),
+                        value: 'flows'
+                      },
+                      {
+                        label: t('log.analysis.networkTraffic.httpLayer'),
+                        value: 'http'
+                      }
+                    ]}
+                    onChange={(value) =>
+                      setNetworkTrafficLayer(value as NetworkTrafficLayer)
+                    }
                   />
-                </div>
+                )}
                 {editable && (
                   <Button
                     className="flex-none"
@@ -546,78 +573,92 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               </div>
             </div>
 
-            <div className="mt-4 flex min-w-0 flex-wrap gap-2">
-              <div className="w-[200px] max-w-full">
-                <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">
-                  {t('log.integration.logGroup')}
+            <div className="mt-4 flex min-w-0 flex-wrap items-end justify-between gap-3">
+              <div className="flex min-w-0 flex-wrap gap-2">
+                <div className="w-[200px] max-w-full">
+                  <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">
+                    {t('log.integration.logGroup')}
+                  </div>
+                  <Select
+                    className="w-full"
+                    loading={pageLoading}
+                    showSearch
+                    mode="multiple"
+                    maxTagCount="responsive"
+                    placeholder={t('log.search.selectGroup')}
+                    value={groups}
+                    onChange={(val) => onGroupChange(val)}
+                  >
+                    {groupList.map((item) => (
+                      <Option value={item.id} key={item.id}>
+                        {item.name}
+                      </Option>
+                    ))}
+                  </Select>
                 </div>
-                <Select
-                  className="w-full"
-                  loading={pageLoading}
-                  showSearch
-                  mode="multiple"
-                  maxTagCount="responsive"
-                  placeholder={t('log.search.selectGroup')}
-                  value={groups}
-                  onChange={(val) => onGroupChange(val)}
-                >
-                  {groupList.map((item) => (
-                    <Option value={item.id} key={item.id}>
-                      {item.name}
-                    </Option>
-                  ))}
-                </Select>
+
+                {showInstanceFilter && (
+                  <div className="w-[200px] max-w-full">
+                    <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">
+                      {t('log.instance')}
+                    </div>
+                    <Select
+                      className="w-full"
+                      loading={instanceLoading}
+                      showSearch
+                      mode="multiple"
+                      maxTagCount="responsive"
+                      placeholder={t('log.analysis.selectInstance')}
+                      value={instanceIds}
+                      onChange={(val) => onInstanceChange(val)}
+                      optionFilterProp="children"
+                    >
+                      {instanceOptions.map((item) => (
+                        <Option value={item.id} key={item.id}>
+                          {item.name}
+                        </Option>
+                      ))}
+                    </Select>
+                  </div>
+                )}
+
+                {showContainerFilter && (
+                  <div className="w-[200px] max-w-full">
+                    <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">
+                      {t('log.analysis.container')}
+                    </div>
+                    <Select
+                      className="w-full"
+                      loading={containerLoading}
+                      showSearch
+                      mode="multiple"
+                      maxTagCount="responsive"
+                      placeholder={t('log.analysis.selectContainer')}
+                      value={containerNames}
+                      onChange={(val) => onContainerChange(val)}
+                      optionFilterProp="children"
+                    >
+                      {containerOptions.map((item) => (
+                        <Option value={item.id} key={item.id}>
+                          {item.name}
+                        </Option>
+                      ))}
+                    </Select>
+                  </div>
+                )}
               </div>
-
-              {showInstanceFilter && (
-                <div className="w-[200px] max-w-full">
-                  <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">
-                    {t('log.instance')}
-                  </div>
-                  <Select
-                    className="w-full"
-                    loading={instanceLoading}
-                    showSearch
-                    mode="multiple"
-                    maxTagCount="responsive"
-                    placeholder={t('log.analysis.selectInstance')}
-                    value={instanceIds}
-                    onChange={(val) => onInstanceChange(val)}
-                    optionFilterProp="children"
-                  >
-                    {instanceOptions.map((item) => (
-                      <Option value={item.id} key={item.id}>
-                        {item.name}
-                      </Option>
-                    ))}
-                  </Select>
-                </div>
-              )}
-
-              {showContainerFilter && (
-                <div className="w-[200px] max-w-full">
-                  <div className="mb-1 text-xs font-medium text-[var(--color-text-3)]">
-                    {t('log.analysis.container')}
-                  </div>
-                  <Select
-                    className="w-full"
-                    loading={containerLoading}
-                    showSearch
-                    mode="multiple"
-                    maxTagCount="responsive"
-                    placeholder={t('log.analysis.selectContainer')}
-                    value={containerNames}
-                    onChange={(val) => onContainerChange(val)}
-                    optionFilterProp="children"
-                  >
-                    {containerOptions.map((item) => (
-                      <Option value={item.id} key={item.id}>
-                        {item.name}
-                      </Option>
-                    ))}
-                  </Select>
-                </div>
-              )}
+              <div className="flex flex-none items-center">
+                <TimeSelector
+                  appearance="toolbar"
+                  className="flex-none"
+                  ref={timeSelectorRef}
+                  key="time-selector"
+                  defaultValue={timeDefaultValue}
+                  onChange={handleTimeChange}
+                  onRefresh={handleRefresh}
+                  onFrequenceChange={onFrequenceChange}
+                />
+              </div>
             </div>
           </div>
 
@@ -632,6 +673,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               }
               return (
                 <ResponsiveGridLayout
+                  key={`${selectedDashboard?.id || 'none'}-${
+                    isNetworkTrafficDashboard ? networkTrafficLayer : 'default'
+                  }`}
                   className="layout w-full flex-1"
                   layout={layout as LayoutItem[]}
                   onLayoutChange={editable ? onLayoutChange : undefined}
