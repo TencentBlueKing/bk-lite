@@ -41,7 +41,13 @@ const mutexValuesEqual = (left: any, right: any) => {
 
 export const useConfigRenderer = () => {
   const { t } = useTranslation();
-  const FORM_WIDGET_WIDTH_CLASS = 'w-[300px]';
+  // 接入表单控件统一宽度（COMPONENT_GOVERNANCE §4）：单点常量 + style，勿再散落 w-[300px]。
+  // Select 的 antd 默认 width:100% 也会盖掉 Tailwind class，必须走 style。
+  const FORM_WIDGET_WIDTH = 300;
+  const formWidgetWidthStyle = (style?: React.CSSProperties) => ({
+    ...(style && typeof style === 'object' ? style : {}),
+    width: FORM_WIDGET_WIDTH,
+  });
   const fieldGuideTitle = t('monitor.integrations.fieldGuideTip');
 
   const renderFormField = (fieldConfig: any, mode?: string) => {
@@ -290,7 +296,8 @@ export const useConfigRenderer = () => {
               {...widget_props}
               disabled={Boolean(locked || widget_props.disabled)}
               placeholder={widget_props.placeholder || label}
-              className={`${FORM_WIDGET_WIDTH_CLASS} mr-[10px]`}
+              className="mr-[10px]"
+              style={formWidgetWidthStyle(widget_props.style)}
             />
           );
 
@@ -301,17 +308,19 @@ export const useConfigRenderer = () => {
               clickToEdit={mode === 'edit' && editable !== false}
               trimOuterWhitespace
               placeholder={widget_props.placeholder || label}
-              className={`${FORM_WIDGET_WIDTH_CLASS} mr-[10px]`}
+              className="mr-[10px]"
+              style={formWidgetWidthStyle(widget_props.style)}
             />
           );
 
         case 'inputNumber': {
-          const { addonAfter, ...restProps } = widget_props;
+          const { addonAfter, style: widgetStyle, ...restProps } = widget_props;
           return (
             <InputNumber
               {...restProps}
               placeholder={widget_props.placeholder || label}
-              className={`${FORM_WIDGET_WIDTH_CLASS} mr-[10px] align-middle`}
+              className="mr-[10px] align-middle"
+              style={formWidgetWidthStyle(widgetStyle)}
               min={widget_props.min || 1}
               precision={
                 widget_props.precision !== undefined
@@ -326,9 +335,10 @@ export const useConfigRenderer = () => {
         case 'select': {
           const allowCustomTags =
             name === 'iftype_exclude' || name === 'iftype_include';
+          const { style: widgetStyle, ...restSelectProps } = widget_props;
           return (
             <Select
-              {...widget_props}
+              {...restSelectProps}
               mode={allowCustomTags ? 'tags' : widget_props.mode}
               tokenSeparators={
                 allowCustomTags
@@ -344,7 +354,8 @@ export const useConfigRenderer = () => {
               }
               showSearch
               optionFilterProp="label"
-              className={`${FORM_WIDGET_WIDTH_CLASS} mr-[10px]`}
+              className="mr-[10px]"
+              style={formWidgetWidthStyle(widgetStyle)}
             >
               {options.map((option: any) => (
                 <Select.Option key={option.value} value={option.value} label={option.label}>
@@ -360,7 +371,7 @@ export const useConfigRenderer = () => {
             <Input.TextArea
               {...widget_props}
               placeholder={widget_props.placeholder || label}
-              className={FORM_WIDGET_WIDTH_CLASS}
+              style={formWidgetWidthStyle(widget_props.style)}
               autoSize={{ minRows: 3, maxRows: 6 }}
             />
           );
@@ -431,7 +442,11 @@ export const useConfigRenderer = () => {
 
         default:
           return (
-            <Input placeholder={label} className={FORM_WIDGET_WIDTH_CLASS} />
+            <Input
+              placeholder={label}
+              className="mr-[10px]"
+              style={formWidgetWidthStyle()}
+            />
           );
       }
     };

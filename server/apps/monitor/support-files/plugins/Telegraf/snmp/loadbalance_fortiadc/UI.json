@@ -191,7 +191,7 @@
       "label_en": "Auth Protocol"
     },
     {
-      "name": "auth_password",
+      "name": "ENV_AUTH_PASSWORD",
       "label": "认证密码",
       "type": "password",
       "required": false,
@@ -222,10 +222,10 @@
         ]
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.auth_password",
-        "to_api": {}
+        "origin_path": "child.env_config.AUTH_PASSWORD__{{config_id}}"
       },
-      "label_en": "Auth Password"
+      "label_en": "Auth Password",
+      "encrypted": true
     },
     {
       "name": "priv_protocol",
@@ -262,7 +262,7 @@
       "label_en": "Privacy Protocol"
     },
     {
-      "name": "priv_password",
+      "name": "ENV_PRIV_PASSWORD",
       "label": "加密密码",
       "type": "password",
       "required": false,
@@ -290,10 +290,10 @@
         ]
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.priv_password",
-        "to_api": {}
+        "origin_path": "child.env_config.PRIV_PASSWORD__{{config_id}}"
       },
-      "label_en": "Privacy Password"
+      "label_en": "Privacy Password",
+      "encrypted": true
     },
     {
       "name": "timeout",

@@ -150,7 +150,11 @@
             }
           ]
         ]
-      }
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.AUTH_PASSWORD__{{config_id}}"
+      },
+      "encrypted": true
     },
     {
       "name": "priv_protocol",
@@ -201,7 +205,11 @@
             }
           ]
         ]
-      }
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PRIV_PASSWORD__{{config_id}}"
+      },
+      "encrypted": true
     },
     {
       "name": "timeout",
