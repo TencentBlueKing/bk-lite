@@ -191,7 +191,7 @@
       "label_en": "Auth Protocol"
     },
     {
-      "name": "auth_password",
+      "name": "ENV_AUTH_PASSWORD",
       "label": "认证密码",
       "type": "password",
       "required": false,
@@ -262,7 +262,7 @@
       "label_en": "Privacy Protocol"
     },
     {
-      "name": "priv_password",
+      "name": "ENV_PRIV_PASSWORD",
       "label": "加密密码",
       "type": "password",
       "required": false,
