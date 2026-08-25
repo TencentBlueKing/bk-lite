@@ -3,14 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/auth';
 import { listMonitorObjects, resolveRecentViews } from '@/features/monitor/adapter';
-import type { ResolvedMonitorRecentView } from '@/features/monitor/model';
+import type { MonitorRecentViewsResolutionStatus, ResolvedMonitorRecentView } from '@/features/monitor/model';
 import {
   mergeRecentViewResolutionEntries,
   monitorRecentViewsResolutionStatus,
 } from '@/features/monitor/model';
 import { readRecentViews } from '@/features/monitor/recent-views-storage';
 
-export type RecentViewsStatus = 'loading' | 'ready' | 'empty' | 'partial' | 'unavailable' | 'refresh-error' | 'error';
+export type RecentViewsStatus = 'loading' | 'error' | MonitorRecentViewsResolutionStatus;
 
 export function useRecentViews() {
   const { userInfo, currentTeamId } = useAuth();

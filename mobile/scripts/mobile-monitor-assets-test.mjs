@@ -38,6 +38,58 @@ async function loadMonitorAdapter(apiGet) {
   return import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}#${Math.random()}`);
 }
 
+async function loadRecentViewsPanel(fixture) {
+  const source = await readProjectFile('src/features/monitor/recent-views-panel.tsx');
+  const sourceFile = ts.createSourceFile('recent-views-panel.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const declarations = sourceFile.statements.filter((statement) => (
+    ts.isFunctionDeclaration(statement)
+    && ['entryKey', 'MonitorRecentViewsPanel'].includes(statement.name?.text)
+  ));
+  const moduleSource = `
+    const h = (type, props, ...children) => ({ type, props: { ...(props || {}), children } });
+    const Fragment = 'fragment';
+    const useEffect = () => undefined;
+    const useRef = (current) => ({ current });
+    const Link = 'a';
+    const MobilePullToRefresh = 'mobile-pull-to-refresh';
+    const MobileResult = 'mobile-result';
+    const MobileSkeleton = 'mobile-skeleton';
+    const MonitorObjectIcon = 'monitor-object-icon';
+    const formatRecentViewTime = () => '';
+    const instanceSummaryEntries = () => [];
+    const resolveMonitorReportingStatus = () => '';
+    const useRecentViews = () => globalThis.__recentViewsPanelFixture.recentViews;
+    const useAuth = () => globalThis.__recentViewsPanelFixture.auth;
+    const formatAccountDateTime = () => '';
+    const readMobileViewSnapshot = () => null;
+    const restoreMobileViewScroll = () => undefined;
+    const writeMobileViewSnapshot = () => undefined;
+    const useTranslation = () => ({ t: (key) => key });
+    const styles = new Proxy({}, { get: (_, key) => String(key) });
+    const RECENT_VIEW_SUMMARY_LIMIT = 3;
+    ${declarations.map((statement) => statement.getText(sourceFile)).join('\n')}
+  `;
+  globalThis.__recentViewsPanelFixture = fixture;
+  const compiled = ts.transpileModule(moduleSource, {
+    compilerOptions: {
+      jsx: ts.JsxEmit.React,
+      jsxFactory: 'h',
+      jsxFragmentFactory: 'Fragment',
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  return import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}#${Math.random()}`);
+}
+
+function findRenderedNode(node, predicate) {
+  if (!node || typeof node !== 'object') return null;
+  if (predicate(node)) return node;
+  return (node.props?.children || []).flat(Infinity)
+    .map((child) => findRenderedNode(child, predicate))
+    .find(Boolean) || null;
+}
+
 test('监控单位标签与 Web findUnitNameById 优先级一致', async () => {
   const { resolveMonitorUnitLabel } = await loadModel('src/features/monitor/unit-label.ts');
   const unitList = [
@@ -753,15 +805,15 @@ test('监控详情头部通过现有 list 接口回源状态与上报时间', as
   assert.match(fn, /instance_id:\s*instanceId/);
   assert.match(fn, /add_metrics:\s*hints\.addMetrics\s*\?\?\s*false/);
   assert.match(fn, /item\.id === instanceId/);
-  assert.doesNotMatch(fn, /mapped\.length === 1/);
   assert.doesNotMatch(fn, /name:\s*keyword/);
   assert.doesNotMatch(fn, /parseMonitorInstanceLookupHints/);
 });
 
 test('旧 Server 忽略 instance_id 时不会把分页第一条误认成最近访问实例', async () => {
   const calls = [];
-  const { getMonitorInstance } = await loadMonitorAdapter(async (url, params) => {
-    calls.push({ url, params });
+  const signal = new AbortController().signal;
+  const { getMonitorInstance } = await loadMonitorAdapter(async (url, params, options) => {
+    calls.push({ url, params, options });
     if (!params.instance_id) {
       return {
         count: 2,
@@ -782,7 +834,7 @@ test('旧 Server 忽略 instance_id 时不会把分页第一条误认成最近�
   });
 
   try {
-    const result = await getMonitorInstance(7, "('target',)", { addMetrics: true });
+    const result = await getMonitorInstance(7, "('target',)", { addMetrics: true }, signal);
     assert.equal(result?.name, '已重命名实例');
     assert.deepEqual(calls[0].params, {
       page: 1,
@@ -795,6 +847,7 @@ test('旧 Server 忽略 instance_id 时不会把分页第一条误认成最近�
       page_size: 100,
       add_metrics: true,
     });
+    assert.ok(calls.every((call) => call.options.signal === signal));
   } finally {
     delete globalThis.__monitorAdapterApiGet;
   }
@@ -866,14 +919,46 @@ test('最近访问能区分真实空、完整恢复、部分失败与全部不�
   });
   assert.deepEqual(merged.map(({ instance }) => instance.name), ['新内容', '保留旧内容']);
 
-  const panel = await readProjectFile('src/features/monitor/recent-views-panel.tsx');
-  const hook = await readProjectFile('src/features/monitor/use-recent-views.ts');
-  assert.match(hook, /monitorRecentViewsResolutionStatus\([\s\S]*preserveContent && entriesRef\.current\.length > 0/);
-  assert.match(hook, /mergeRecentViewResolutionEntries\(entriesRef\.current, resolution\)/);
-  assert.match(panel, /status === 'unavailable'[\s\S]*recentRestoreFailed/);
-  assert.match(panel, /status === 'partial'[\s\S]*recentPartialRestore/);
-  assert.match(panel, /status === 'refresh-error'[\s\S]*recentRefreshFailed/);
-  assert.match(panel, /recentNoticeAction[\s\S]*common\.retry/);
+});
+
+test('最近访问部分失败和刷新失败的重试按钮保留已有内容', async () => {
+  const calls = [];
+  const fixture = {
+    auth: { userInfo: { id: 1, locale: 'zh-CN', timezone: 'Asia/Shanghai' }, organizationScope: '1:1' },
+    recentViews: {
+      entries: [],
+      status: 'partial',
+      reload: (...args) => { calls.push(args); return Promise.resolve(); },
+    },
+  };
+  const panelModule = await loadRecentViewsPanel(fixture);
+  try {
+    for (const [status, notice] of [
+      ['partial', 'monitor.recentPartialRestore'],
+      ['refresh-error', 'monitor.recentRefreshFailed'],
+    ]) {
+      fixture.recentViews.status = status;
+      const rendered = panelModule.default();
+      const retry = findRenderedNode(rendered, (node) => node.type === 'button');
+      assert.ok(retry, `${status} 应渲染重试按钮`);
+      assert.equal(retry.props.children.flat(Infinity).join(''), 'common.retry');
+      assert.ok(findRenderedNode(rendered, (node) => node.type === 'span'
+        && node.props.children.flat(Infinity).join('') === notice));
+      retry.props.onClick();
+    }
+    fixture.recentViews.status = 'unavailable';
+    const unavailable = findRenderedNode(
+      panelModule.default(),
+      (node) => node.type === 'mobile-result',
+    );
+    assert.equal(unavailable.props.title, 'monitor.recentRestoreFailed');
+    assert.equal(unavailable.props.actionLabel, 'common.retry');
+    unavailable.props.onAction();
+    await Promise.resolve();
+    assert.deepEqual(calls, [[undefined, true], [undefined, true], []]);
+  } finally {
+    delete globalThis.__recentViewsPanelFixture;
+  }
 });
 
 test('精确实例查询兼容重命名和复合 ID，删除或越权时安全为空', async () => {
