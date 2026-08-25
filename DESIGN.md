@@ -14,6 +14,15 @@
 | 产品与工程原则 | [PRODUCT.md](PRODUCT.md) · [能力规格](specs/capabilities/) |
 | 设计决策 / ADR 归档 | [docs/adr/](docs/adr/) |
 | 系统结构与模块边界 | [系统架构](specs/capabilities/engineering-architecture.md) |
+| OpsPilot 页面内容对话（其它 app 把当前页接到悬浮机器人） | 按 [对接规范](specs/changes/webchat-page-context/app-integration.md) 开发，不要改业务页展示、不要改 GlobalWebchat / 后端注入。参考实现：[监控仪表盘 pilot](web/src/app/monitor/(pages)/view/dashboard/dashboard.pilot.ts) · 产品说明 [spec.md](specs/changes/webchat-page-context/spec.md) |
+
+## OpsPilot 页面内容对话（给 Agent）
+
+开发或评审「悬浮机器人能看见当前页」时，**只读并对齐** [app-integration.md](specs/changes/webchat-page-context/app-integration.md)。不要通读 `web/DESIGN.md`，也不要改监控仪表盘等业务组件。
+
+- 规范：[specs/changes/webchat-page-context/app-integration.md](specs/changes/webchat-page-context/app-integration.md)
+- 参考实现（Pilot 旁路、图表截图与按问题收窄）：[web/src/app/monitor/(pages)/view/dashboard/dashboard.pilot.ts](web/src/app/monitor/(pages)/view/dashboard/dashboard.pilot.ts)
+- 登记路由：[web/src/components/ai-page-context/pilots.ts](web/src/components/ai-page-context/pilots.ts)
 
 ## 改设计前的三条规矩
 
