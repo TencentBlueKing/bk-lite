@@ -86,6 +86,62 @@ export function createPrometheusDefaultParams(): ParamItem[] {
 export const TABLE_CHART_TYPE = "table";
 export const PASSWORD_PLACEHOLDER = "******";
 
+export const DEFAULT_TRANSFORM_SCRIPT = `def transform(rows, params):
+    # rows: list[dict], params: {}
+    # return list[dict]; max 10000 rows / 5s
+    return rows
+`;
+
+export interface TransformConfig {
+  enabled: boolean;
+  language: "python";
+  script: string;
+}
+
+export function createDefaultTransformConfig(
+  partial?: {
+    enabled?: boolean;
+    language?: string;
+    script?: string;
+  } | null,
+): TransformConfig {
+  return {
+    enabled: Boolean(partial?.enabled),
+    language: "python",
+    script:
+      typeof partial?.script === "string" && partial.script.trim()
+        ? partial.script
+        : DEFAULT_TRANSFORM_SCRIPT,
+  };
+}
+
+export function normalizeTransformConfig(value: unknown): TransformConfig {
+  const config =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  return createDefaultTransformConfig({
+    enabled: Boolean(config.enabled),
+    script: typeof config.script === "string" ? config.script : "",
+  });
+}
+
+export const DISABLED_TRANSFORM_CONFIG: TransformConfig = {
+  enabled: false,
+  language: "python",
+  script: "",
+};
+
+export function transformConfigForSourceType(
+  sourceType: DataSourceSourceType,
+  value: unknown,
+): TransformConfig {
+  if (sourceType === SOURCE_TYPE_REST_API || sourceType === SOURCE_TYPE_EXCEL) {
+    return normalizeTransformConfig(value);
+  }
+  return { ...DISABLED_TRANSFORM_CONFIG };
+}
+
 export function normalizePrometheusTimeRange(
   value: unknown,
 ): string[] | number | undefined {
@@ -273,6 +329,7 @@ export const buildConnectorPayload = (
   values: any,
   options: {
     excelFileName?: string;
+    hasNewExcelFile?: boolean;
     previewData?: DataSourcePreviewResult | null;
     t: (key: string) => string;
   },
@@ -281,10 +338,46 @@ export const buildConnectorPayload = (
     (values.source_type as DataSourceSourceType) || SOURCE_TYPE_NATS;
   const connectionConfig = values.connection_config || {};
   const queryConfig = values.query_config || {};
+  const connectionId = values.connection;
+  const useSharedConnection =
+    !!connectionId &&
+    values.connection_mode !== "inline" &&
+    (currentSourceType === SOURCE_TYPE_MYSQL ||
+      currentSourceType === SOURCE_TYPE_POSTGRESQL ||
+      currentSourceType === SOURCE_TYPE_REST_API);
 
   if (currentSourceType === SOURCE_TYPE_REST_API) {
+    if (useSharedConnection) {
+      return {
+        source_type: currentSourceType,
+        connection: connectionId,
+        connection_overrides: {
+          path: values.connection_overrides?.path || "",
+          method: connectionConfig.method || "GET",
+          timeout: connectionConfig.timeout || 10,
+        },
+        connection_config: {
+          method: connectionConfig.method || "GET",
+          timeout: connectionConfig.timeout || 10,
+        },
+        query_config: {
+          response_path: queryConfig.response_path || "",
+          params: parseJsonObject(
+            queryConfig.paramsText,
+            `${options.t("dataSource.queryParams")}${options.t("dataSource.jsonObjectRequired")}`,
+          ),
+          body: parseJsonObject(
+            queryConfig.bodyText,
+            `${options.t("dataSource.requestBody")}${options.t("dataSource.jsonObjectRequired")}`,
+          ),
+        },
+        transform_config: normalizeTransformConfig(values.transform_config),
+      };
+    }
     return {
       source_type: currentSourceType,
+      connection: null,
+      connection_overrides: {},
       connection_config: {
         url: connectionConfig.url,
         method: connectionConfig.method || "GET",
@@ -305,6 +398,7 @@ export const buildConnectorPayload = (
           `${options.t("dataSource.requestBody")}${options.t("dataSource.jsonObjectRequired")}`,
         ),
       },
+      transform_config: normalizeTransformConfig(values.transform_config),
     };
   }
 
@@ -312,8 +406,27 @@ export const buildConnectorPayload = (
     currentSourceType === SOURCE_TYPE_MYSQL ||
     currentSourceType === SOURCE_TYPE_POSTGRESQL
   ) {
+    if (useSharedConnection) {
+      return {
+        source_type: currentSourceType,
+        connection: connectionId,
+        connection_overrides: {
+          ...(values.connection_overrides?.database
+            ? { database: values.connection_overrides.database }
+            : {}),
+        },
+        connection_config: {},
+        query_config: {
+          table: queryConfig.table || "",
+          sql: queryConfig.sql || "",
+        },
+        transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
+      };
+    }
     return {
       source_type: currentSourceType,
+      connection: null,
+      connection_overrides: {},
       connection_config: {
         host: connectionConfig.host,
         port: connectionConfig.port,
@@ -325,26 +438,42 @@ export const buildConnectorPayload = (
         table: queryConfig.table || "",
         sql: queryConfig.sql || "",
       },
+      transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
     };
   }
 
   if (currentSourceType === SOURCE_TYPE_EXCEL) {
+    const preservedQuery = {
+      ...(queryConfig.sheet_name ? { sheet_name: queryConfig.sheet_name } : {}),
+    };
+    // 仅保留表单/存量里的 imported_items，禁止用 preview 样例写回（preview 是截断样例）。
+    // 重新上传时也先保留存量，等物化成功后再由后端清掉，避免 submit 失败后数据源不可用。
+    const legacyItems = Array.isArray(queryConfig.imported_items)
+      ? queryConfig.imported_items
+      : [];
+    const legacyFields = Array.isArray(queryConfig.imported_fields)
+      ? queryConfig.imported_fields
+      : [];
+    const hasLegacy = legacyItems.length > 0;
     return {
       source_type: currentSourceType,
+      connection: null,
+      connection_overrides: {},
       connection_config: {
         filename: options.excelFileName || connectionConfig.filename || "",
       },
       query_config: {
-        imported_items:
-          options.previewData?.items || queryConfig.imported_items || [],
-        imported_fields:
-          options.previewData?.fields || queryConfig.imported_fields || [],
-        imported_count:
-          options.previewData?.count ||
-          queryConfig.imported_count ||
-          options.previewData?.items?.length ||
-          0,
+        ...preservedQuery,
+        ...(hasLegacy
+          ? {
+            imported_items: legacyItems,
+            imported_fields: legacyFields,
+            imported_count:
+                queryConfig.imported_count || legacyItems.length || 0,
+          }
+          : {}),
       },
+      transform_config: normalizeTransformConfig(values.transform_config),
     };
   }
 
@@ -384,14 +513,220 @@ export const buildConnectorPayload = (
     }
     return {
       source_type: currentSourceType,
+      connection: null,
+      connection_overrides: {},
       connection_config: prometheusConnectionConfig,
       query_config: normalizedQueryConfig,
+      transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
     };
   }
 
   return {
     source_type: currentSourceType,
+    connection: null,
+    connection_overrides: {},
     connection_config: {},
     query_config: {},
+    transform_config: transformConfigForSourceType(currentSourceType, values.transform_config),
   };
 };
+
+export function splitRestUrlForConnectionLibrary(
+  url: string,
+): { baseUrl: string; path: string } {
+  const raw = (url || "").trim();
+  if (!raw) {
+    return { baseUrl: "", path: "" };
+  }
+  try {
+    const parsed = new URL(raw);
+    const baseUrl = `${parsed.protocol}//${parsed.host}`;
+    let path = parsed.pathname || "";
+    if (parsed.search) {
+      path = `${path}${parsed.search}`;
+    }
+    if (path === "/") {
+      path = "";
+    }
+    return { baseUrl: baseUrl || raw, path };
+  } catch {
+    return { baseUrl: raw, path: "" };
+  }
+}
+
+export function shouldCreateLibraryConnectionFromForm(
+  currentRow?: {
+    id?: number;
+    connection?: number | null;
+    connection_id?: number | null;
+    source_type?: DataSourceSourceType;
+  } | null,
+  sourceType?: DataSourceSourceType,
+): boolean {
+  if (!currentRow?.id) {
+    return true;
+  }
+  if (currentRow.connection || currentRow.connection_id) {
+    return true;
+  }
+  if (sourceType && currentRow.source_type && sourceType !== currentRow.source_type) {
+    return true;
+  }
+  return false;
+}
+
+export function canExtractConnectionFromDatasourceForm(values: any): boolean {
+  const sourceType =
+    (values?.source_type as DataSourceSourceType) || SOURCE_TYPE_NATS;
+  const connectionConfig = values?.connection_config || {};
+
+  if (sourceType === SOURCE_TYPE_REST_API) {
+    return Boolean(String(connectionConfig.url || "").trim());
+  }
+
+  if (sourceType === SOURCE_TYPE_MYSQL || sourceType === SOURCE_TYPE_POSTGRESQL) {
+    return ["host", "port", "database", "username", "password"].every((key) => {
+      const value = connectionConfig[key];
+      return value !== undefined && value !== null && String(value).trim() !== "";
+    });
+  }
+
+  return false;
+}
+
+/** 从数据源表单组装连接库 config / overrides；名称与描述由调用方传入，不做默认填充。 */
+export function buildConnectionLibraryCreateFromDatasourceForm(
+  values: any,
+  options: {
+    t: (key: string, ...args: any[]) => string;
+    name: string;
+    description?: string;
+  },
+): {
+  createPayload: {
+    name: string;
+    connection_type: DataSourceSourceType;
+    description: string;
+    groups: any[];
+    is_active: boolean;
+    config: Record<string, unknown>;
+  };
+  connectionOverrides: Record<string, unknown>;
+  inlineConnectionConfig: Record<string, unknown>;
+} {
+  const sourceType =
+    (values.source_type as DataSourceSourceType) || SOURCE_TYPE_NATS;
+  const connectionConfig = values.connection_config || {};
+  const name = String(options.name || "").trim();
+  if (!name) {
+    throw new Error(
+      `${options.t("dataConnection.name")}${options.t("common.inputMsg")}`,
+    );
+  }
+  const description = String(options.description || "").trim();
+  const groups = Array.isArray(values.groups) ? values.groups : [];
+
+  if (sourceType === SOURCE_TYPE_REST_API) {
+    const url = String(connectionConfig.url || "").trim();
+    if (!url) {
+      throw new Error(
+        `${options.t("dataSource.url")}${options.t("common.inputMsg")}`,
+      );
+    }
+    const { baseUrl, path } = splitRestUrlForConnectionLibrary(url);
+    const headers = parseJsonObject(
+      connectionConfig.headersText,
+      `${options.t("dataSource.headers")}${options.t("dataSource.jsonObjectRequired")}`,
+    );
+    const method = connectionConfig.method || "GET";
+    const timeout = connectionConfig.timeout || 10;
+    return {
+      createPayload: {
+        name,
+        connection_type: sourceType,
+        description,
+        groups,
+        is_active: true,
+        config: {
+          base_url: baseUrl,
+          headers,
+          timeout,
+        },
+      },
+      connectionOverrides: {
+        path,
+        method,
+        timeout,
+      },
+      inlineConnectionConfig: {
+        url,
+        method,
+        timeout,
+        headers,
+      },
+    };
+  }
+
+  if (sourceType === SOURCE_TYPE_MYSQL || sourceType === SOURCE_TYPE_POSTGRESQL) {
+    const required = ["host", "port", "database", "username", "password"] as const;
+    const missing = required.filter((key) => {
+      const value = connectionConfig[key];
+      return value === undefined || value === null || String(value).trim() === "";
+    });
+    if (missing.length) {
+      throw new Error(options.t("common.inputMsg"));
+    }
+    return {
+      createPayload: {
+        name,
+        connection_type: sourceType,
+        description,
+        groups,
+        is_active: true,
+        config: {
+          host: connectionConfig.host,
+          port: connectionConfig.port,
+          database: connectionConfig.database,
+          username: connectionConfig.username,
+          password: connectionConfig.password,
+        },
+      },
+      connectionOverrides: {},
+      inlineConnectionConfig: {
+        host: connectionConfig.host,
+        port: connectionConfig.port,
+        database: connectionConfig.database,
+        username: connectionConfig.username,
+        password: connectionConfig.password,
+      },
+    };
+  }
+
+  throw new Error(options.t("dataConnection.operationFailed"));
+}
+
+export function isBuiltinDatasource(row?: { is_build_in?: boolean }): boolean {
+  return Boolean(row?.is_build_in);
+}
+
+export function isDatasourceDefinitionReadOnly(
+  mode: string,
+  row?: { is_build_in?: boolean },
+): boolean {
+  return mode === "view" || isBuiltinDatasource(row);
+}
+
+export function canEditBuiltinDatasourceGroups(
+  isSuperUser: boolean,
+  row?: { is_build_in?: boolean },
+): boolean {
+  return isBuiltinDatasource(row) && isSuperUser;
+}
+
+export function buildBuiltinGroupsPayload(groups: unknown): { groups: number[] } {
+  return {
+    groups: Array.isArray(groups)
+      ? groups.filter((id) => Number.isInteger(id) && id > 0)
+      : [],
+  };
+}

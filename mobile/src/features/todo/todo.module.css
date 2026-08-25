@@ -29,6 +29,7 @@
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
+  background: var(--color-bg);
   overscroll-behavior-y: contain;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
@@ -38,7 +39,7 @@
 
 .refreshContent {
   min-height: 100%;
-  background: color-mix(in srgb, var(--color-bg) 58%, var(--color-background-body));
+  background: var(--color-bg);
 }
 
 .alertList {
@@ -290,7 +291,7 @@
 
 .summaryCard {
   position: relative;
-  padding: 16px 16px 14px;
+  padding: 14px 16px 12px;
   background: var(--color-bg);
   border-bottom: 0;
 }
@@ -308,15 +309,15 @@
   gap: 6px;
   align-items: center;
   min-width: 0;
-  font-size: var(--font-size-body);
-  font-weight: 700;
+  font-size: var(--font-size-secondary);
+  font-weight: 650;
   color: var(--color-fail);
 }
 
 .levelDot {
-  flex: 0 0 8px;
-  width: 8px;
-  height: 8px;
+  flex: 0 0 6px;
+  width: 6px;
+  height: 6px;
   background: currentColor;
   border-radius: 50%;
 }
@@ -324,9 +325,9 @@
 .detailHeroTop .statusText {
   display: inline-flex;
   align-items: center;
-  min-height: 22px;
-  padding: 0 9px;
-  font-size: var(--font-size-secondary);
+  min-height: 20px;
+  padding: 0 8px;
+  font-size: var(--font-size-caption);
   font-weight: 600;
   color: var(--color-text-3);
   background: var(--color-fill-2);
@@ -338,10 +339,10 @@
 .summaryCard[data-status='processing'] .statusText { color: var(--color-success); }
 
 .detailTitle {
-  margin: 8px 0 10px;
-  font-size: var(--font-size-title);
+  margin: 6px 0 8px;
+  font-size: var(--font-size-subtitle);
   font-weight: 650;
-  line-height: 1.35;
+  line-height: 1.32;
   letter-spacing: -.01em;
   color: var(--color-text-1);
   overflow-wrap: anywhere;
@@ -641,19 +642,20 @@
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 14px max(10px, var(--safe-area-inset-bottom));
+  gap: 6px;
+  padding: 8px 14px max(8px, var(--safe-area-inset-bottom));
   background: var(--color-bg);
   border-top: 1px solid var(--color-border-1);
   box-shadow: 0 -6px 16px rgba(16, 24, 40, 0.04);
 }
 
 .actionButton {
+  position: relative;
   flex: 1;
   width: 100%;
-  min-height: 44px;
+  min-height: 40px;
   padding: 0 12px;
-  font-size: var(--font-size-subtitle);
+  font-size: var(--font-size-body);
   font-weight: 600;
   color: var(--color-text-2);
   cursor: pointer;
@@ -662,6 +664,12 @@
   border-radius: 11px;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
+}
+
+.actionButton::after {
+  position: absolute;
+  inset: -2px 0;
+  content: '';
 }
 
 .actionButtonPrimary {

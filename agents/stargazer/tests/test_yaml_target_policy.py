@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from core.collection.request_builder import build_collection_request
 from core.collection.yaml_target_policy import apply_yaml_target_policy
 from core.plugin.yaml_reader import PluginYamlReader
@@ -72,3 +71,27 @@ def test_mysql_job_yaml_policy_is_remote_channel(reader):
     enriched = apply_yaml_target_policy(request, reader=reader)
     assert enriched.params["preflight_kind"] == "remote"
     assert enriched.params["target_policy_mode"] == "remote_channel"
+
+
+@pytest.mark.parametrize(
+    ("model_id", "instance_id", "trusted_domain"),
+    (
+        ("qcloud", "cmdb_8", "tencentcloudapi.com"),
+        ("aliyun", "cmdb_7", "aliyuncs.com"),
+    ),
+)
+def test_cloud_yaml_policy_keeps_instance_id_logical(
+    reader, model_id, instance_id, trusted_domain
+):
+    request = build_collection_request(
+        task_id=f"yaml-cloud-{model_id}",
+        params={"model_id": model_id, "hosts": "", "instance_id": instance_id},
+    )
+
+    enriched = apply_yaml_target_policy(request, reader=reader)
+
+    assert enriched.targets == (instance_id,)
+    assert enriched.params["target_is_logical"] is True
+    assert enriched.params["preflight_kind"] == "cloud"
+    assert enriched.params["_yaml_target_policy_verified"] is True
+    assert enriched.params["trusted_endpoint_domains"] == (trusted_domain,)

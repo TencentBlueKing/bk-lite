@@ -13,7 +13,6 @@ from apps.apm.services.contracts import (
 )
 from apps.apm.services.trace_sanitizer import sanitize_trace_detail
 
-
 MAX_METRIC_WINDOW = timedelta(hours=24)
 MAX_TRACE_WINDOW = timedelta(days=7)
 MAX_TRACE_PAGE_SIZE = 100
@@ -41,10 +40,8 @@ class DjangoTelemetryQueryService:
 
     def search_traces(self, query: TraceSearchQuery) -> TracePage:
         self._validate_trace_window(query.started_at, query.ended_at)
-        if not query.service_name or not query.service_name.strip():
-            raise ValueError("Trace 查询必须指定 service.name")
-        if query.environment is None:
-            raise ValueError("Trace 查询必须指定 deployment.environment")
+        if query.service_name is not None and not query.service_name.strip():
+            raise ValueError("service.name 不能为空字符串")
         if query.limit < 1 or query.limit > MAX_TRACE_PAGE_SIZE:
             raise ValueError("Trace 每页数量必须在 1 到 100 之间")
         self._validate_status(query.status)
@@ -55,10 +52,8 @@ class DjangoTelemetryQueryService:
 
     def search_spans(self, query: SpanSearchQuery) -> SpanPage:
         self._validate_trace_window(query.started_at, query.ended_at)
-        if not query.service_name.strip():
-            raise ValueError("Span 查询必须指定 service.name")
-        if query.environment is None:
-            raise ValueError("Span 查询必须指定 deployment.environment")
+        if query.service_name is not None and not query.service_name.strip():
+            raise ValueError("service.name 不能为空字符串")
         if query.limit < 1 or query.limit > MAX_TRACE_PAGE_SIZE:
             raise ValueError("Span 每页数量必须在 1 到 100 之间")
         self._validate_status(query.status)
@@ -93,9 +88,5 @@ class DjangoTelemetryQueryService:
             raise ValueError("min_duration_ms 不能为负数")
         if max_duration_ms is not None and max_duration_ms < 0:
             raise ValueError("max_duration_ms 不能为负数")
-        if (
-            min_duration_ms is not None
-            and max_duration_ms is not None
-            and min_duration_ms > max_duration_ms
-        ):
+        if min_duration_ms is not None and max_duration_ms is not None and min_duration_ms > max_duration_ms:
             raise ValueError("min_duration_ms 不能大于 max_duration_ms")

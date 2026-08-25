@@ -23,6 +23,19 @@ describe('Windows controller uninstall defaults', () => {
     expect(buildControllerUninstallRequestNode(row as never).winrm_cert_validation).toBe(false);
   });
 
+  it('keeps an explicit HTTP profile in the uninstall request', () => {
+    const row = {
+      ...buildControllerUninstallRow(node as never),
+      port: 5985,
+      winrm_scheme: 'http'
+    };
+    expect(buildControllerUninstallRequestNode(row as never)).toMatchObject({
+      port: 5985,
+      winrm_scheme: 'http',
+      winrm_cert_validation: false
+    });
+  });
+
   it('applies an explicit certificate choice to the whole Windows uninstall batch', () => {
     const rows = [buildControllerUninstallRow(node as never)];
     expect(

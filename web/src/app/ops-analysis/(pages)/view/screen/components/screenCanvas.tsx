@@ -14,6 +14,7 @@ import type {
   ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
 import type { DashboardWidgetRenderResult } from "@/app/ops-analysis/renderContract";
+import type { CanvasRuntimeRefreshCause } from "@/app/ops-analysis/utils/canvasRefreshTimer";
 import {
   formatScreenClock,
   getScreenRndNodeClassName,
@@ -31,6 +32,7 @@ interface ScreenCanvasProps {
   shareMode?: boolean;
   selectedItemId?: string | null;
   refreshVersion?: number;
+  refreshCause?: CanvasRuntimeRefreshCause;
   screenId?: string | number;
   filterDefinitions?: UnifiedFilterDefinition[];
   unifiedFilterValues?: Record<string, FilterValue>;
@@ -416,6 +418,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   shareMode = false,
   selectedItemId = null,
   refreshVersion = 0,
+  refreshCause = "manual",
   screenId,
   filterDefinitions,
   unifiedFilterValues,
@@ -503,6 +506,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         selected={editable && selected}
         editMode={editable}
         refreshVersion={refreshVersion}
+        refreshCause={refreshCause}
         screenId={screenId}
         fitScale={scale}
         screenDensity={screenMetrics.screenDensity}
@@ -1078,12 +1082,39 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
           white-space: nowrap;
         }
 
-        .screen-tech-canvas .ant-empty-description {
+        .screen-tech-canvas .screen-widget-frame__body .ant-empty {
+          margin: 0;
           color: var(--screen-table-muted) !important;
         }
 
-        .screen-tech-canvas .ant-spin-dot-item {
-          background-color: var(--screen-table-spin-color);
+        .screen-tech-canvas .screen-widget-frame__body .ant-empty-image {
+          display: none !important;
+        }
+
+        .screen-tech-canvas .screen-widget-frame__body .ant-empty-description {
+          color: var(--screen-table-muted) !important;
+          font-size: calc(13px * var(--screen-widget-ui-scale)) !important;
+          line-height: 1.35 !important;
+        }
+
+        .screen-tech-canvas .screen-widget-frame__body .ant-spin {
+          color: var(--screen-table-spin-color) !important;
+        }
+
+        .screen-tech-canvas .screen-widget-frame__body .ant-spin-dot {
+          font-size: calc(16px * var(--screen-widget-ui-scale)) !important;
+        }
+
+        .screen-tech-canvas .screen-widget-frame__body .ant-spin-dot-holder,
+        .screen-tech-canvas .screen-widget-frame__body .ant-spin-dot,
+        .screen-tech-canvas .screen-widget-frame__body .ant-spin-dot-spin {
+          width: calc(16px * var(--screen-widget-ui-scale)) !important;
+          height: calc(16px * var(--screen-widget-ui-scale)) !important;
+        }
+
+        .screen-tech-canvas .screen-widget-frame__body .ant-spin-dot-item {
+          background-color: var(--screen-table-spin-color) !important;
+          opacity: 1 !important;
         }
 
         .screen-tech-canvas .ant-table-wrapper,

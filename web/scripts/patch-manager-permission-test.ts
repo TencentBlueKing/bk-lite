@@ -11,14 +11,23 @@ const expectedMenuModules: Record<string, string> = {
   '/patch-manager/library': 'patch',
   '/patch-manager/baseline': 'patch_baseline',
   '/patch-manager/target': 'patch_target',
-  '/patch-manager/settings': 'patch_source',
+  '/patch-manager/settings/sources': 'patch_source',
+  '/patch-manager/settings/scan': 'patch_scan_setting',
 };
 
 type MenuItem = { url?: string; name?: string; children?: MenuItem[] };
 const menu = JSON.parse(read('src/app/patch-manager/constants/menu.json')) as Record<string, MenuItem[]>;
 
 for (const [language, items] of Object.entries(menu)) {
-  const flattened = items.flatMap((item) => [item, ...(item.children ?? [])]);
+  const flatten = (menuItems: MenuItem[]): MenuItem[] => menuItems.flatMap((item) => [item, ...flatten(item.children ?? [])]);
+  const flattened = flatten(items);
+  const settings = flattened.find((candidate) => candidate.url === '/patch-manager/settings');
+  if (!settings || settings.name !== 'patch_settings') {
+    throw new Error(`${language} 菜单缺少设置父菜单`);
+  }
+  if (settings.children?.map((child) => child.url).join(',') !== '/patch-manager/settings/sources,/patch-manager/settings/scan') {
+    throw new Error(`${language} 设置子菜单顺序不正确`);
+  }
   for (const [url, moduleName] of Object.entries(expectedMenuModules)) {
     const item = flattened.find((candidate) => candidate.url === url);
     if (!item) throw new Error(`${language} 菜单缺少 ${url}`);
@@ -35,11 +44,14 @@ const pagePermissions: Record<string, string[]> = {
   target: ['Add', 'Edit', 'Delete'],
   'risk-pending': ['Add'],
   'risk-execution': ['Edit'],
-  settings: ['Add', 'Edit', 'Delete'],
+  'settings/_components/settings-content.tsx': ['Add', 'Edit', 'Delete'],
 };
 
 for (const [page, permissions] of Object.entries(pagePermissions)) {
-  const content = read(`src/app/patch-manager/(pages)/${page}/page.tsx`);
+  const pagePath = page.endsWith('.tsx')
+    ? `src/app/patch-manager/(pages)/${page}`
+    : `src/app/patch-manager/(pages)/${page}/page.tsx`;
+  const content = read(pagePath);
   if (!content.includes("import PermissionWrapper from '@/components/permission'")) {
     throw new Error(`${page} 页面未引入 PermissionWrapper`);
   }
@@ -67,18 +79,33 @@ for (const page of instancePermissionPages) {
 }
 
 const libraryPage = read('src/app/patch-manager/(pages)/library/page.tsx');
-if (!libraryPage.includes('permissionPath="/patch-manager/settings"')) {
+if (!libraryPage.includes('permissionPath="/patch-manager/settings/sources"')) {
   throw new Error('补丁库同步入库应检查补丁源 Edit 权限');
 }
 if (libraryPage.includes("record.permission?.includes('Operate')")) {
   throw new Error('全局共享补丁不应再检查实例数据权限');
 }
 
-for (const page of ['library', 'baseline', 'settings']) {
-  const content = read(`src/app/patch-manager/(pages)/${page}/page.tsx`);
+for (const page of ['library/page.tsx', 'baseline/page.tsx', 'settings/_components/settings-content.tsx']) {
+  const content = read(`src/app/patch-manager/(pages)/${page}`);
   if (content.includes('instPermissions=')) {
     throw new Error(`${page} 是全局共享资源，不应再检查实例数据权限`);
   }
+}
+
+const legacySettingsPage = read('src/app/patch-manager/(pages)/settings/page.tsx');
+if (!legacySettingsPage.includes('<SettingsRedirect />')) {
+  throw new Error('旧设置地址应按当前用户权限跳转到第一个可访问子菜单');
+}
+
+const sourceSettingsPage = read('src/app/patch-manager/(pages)/settings/sources/page.tsx');
+if (!sourceSettingsPage.includes('<PatchSourcesSettings />')) {
+  throw new Error('补丁源路由应渲染独立的补丁源模块');
+}
+
+const scanSettingsPage = read('src/app/patch-manager/(pages)/settings/scan/page.tsx');
+if (!scanSettingsPage.includes('<ScanSettings />')) {
+  throw new Error('扫描设置路由应渲染独立的扫描设置模块');
 }
 
 const targetPage = read('src/app/patch-manager/(pages)/target/page.tsx');

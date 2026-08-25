@@ -6,7 +6,6 @@ import {
   AutoComplete,
   Button,
   Checkbox,
-  Col,
   Drawer,
   Empty,
   Form,
@@ -15,7 +14,6 @@ import {
   Modal,
   Popconfirm,
   Popover,
-  Row,
   Select,
   Space,
   Table,
@@ -32,7 +30,6 @@ import {
 } from '@ant-design/icons';
 import useLogApi from '@/app/log/api/integration';
 import {
-  ExtractorConditionItem,
   ExtractorPublicationStatus,
   ExtractorType,
   LogExtractorDraft,
@@ -41,6 +38,7 @@ import {
 } from '@/app/log/types/extractor';
 import { useTranslation } from '@/utils/i18n';
 import {
+  extractorTypeLabelKey,
   flattenExtractorPaths,
   moveExtractorItem,
   normalizeExtractorSamples,
@@ -61,8 +59,6 @@ interface FormValue {
   source_field: string;
   target_field?: string;
   delete_source?: boolean;
-  condition_mode: 'AND' | 'OR';
-  conditions?: ExtractorConditionItem[];
   delimiter?: string;
   index?: number;
   key_value_delimiter?: string;
@@ -82,17 +78,6 @@ const EXTRACTOR_TYPES: ExtractorType[] = [
   'json'
 ];
 
-const OPERATORS: ExtractorConditionItem['op'][] = [
-  '==',
-  '!=',
-  'contains',
-  '!contains',
-  'startswith',
-  'endswith',
-  'exists',
-  '!exists'
-];
-
 const publicationColor: Record<ExtractorPublicationStatus['status'], string> = {
   pending: 'processing',
   generating: 'processing',
@@ -108,8 +93,6 @@ const toFormValue = (rule?: LogExtractorRule): FormValue => {
     source_field: rule?.source_field || 'message',
     target_field: rule?.target_field || '',
     delete_source: rule?.delete_source || false,
-    condition_mode: rule?.condition.mode || 'AND',
-    conditions: rule?.condition.conditions || [],
     delimiter: typeof config.delimiter === 'string' ? config.delimiter : '',
     index: typeof config.index === 'number' ? config.index : 0,
     key_value_delimiter:
@@ -140,20 +123,6 @@ const parseMapping = (value: string | undefined, errorMessage: string) => {
     return mapping as Record<string, string>;
   } catch {
     throw new Error(errorMessage);
-  }
-};
-
-const parseConditionValue = (
-  value: ExtractorConditionItem['value']
-): ExtractorConditionItem['value'] => {
-  if (typeof value !== 'string') return value;
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return parsed === null || ['string', 'number', 'boolean'].includes(typeof parsed)
-      ? (parsed as ExtractorConditionItem['value'])
-      : value;
-  } catch {
-    return value;
   }
 };
 
@@ -237,17 +206,6 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
     [samples]
   );
 
-  const conditionSummary = (rule: LogExtractorRule) => {
-    if (!rule.condition.conditions.length) return t('log.extractor.noCondition');
-    return `${rule.condition.mode}: ${rule.condition.conditions
-      .map((item) =>
-        ['exists', '!exists'].includes(item.op)
-          ? `${item.field} ${item.op}`
-          : `${item.field} ${item.op} ${JSON.stringify(item.value)}`
-      )
-      .join(` ${rule.condition.mode} `)}`;
-  };
-
   const targetSummary = (rule: LogExtractorRule) => {
     const mapping =
       rule.extractor_type === 'kv'
@@ -299,18 +257,12 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
       name: values.name,
       collect_instance: instance?.id || '',
       condition: {
-        mode: values.condition_mode,
-        conditions: (values.conditions || []).map((condition) =>
-          ['exists', '!exists'].includes(condition.op)
-            ? { field: condition.field, op: condition.op }
-            : { ...condition, value: parseConditionValue(condition.value) }
-        )
+        mode: 'AND',
+        conditions: []
       },
       extractor_type: values.extractor_type,
       source_field: values.source_field,
-      target_field: ['kv', 'regex'].includes(values.extractor_type)
-        ? null
-        : values.target_field || null,
+      target_field: values.target_field || null,
       delete_source: Boolean(values.delete_source),
       config
     };
@@ -546,14 +498,10 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
             {
               title: t('common.type'),
               dataIndex: 'extractor_type',
-              width: 130
+              width: 130,
+              render: (type: ExtractorType) => t(extractorTypeLabelKey(type))
             },
             { title: t('log.extractor.sourceField'), dataIndex: 'source_field' },
-            {
-              title: t('log.extractor.condition'),
-              ellipsis: true,
-              render: (_, rule) => conditionSummary(rule)
-            },
             {
               title: t('log.extractor.targetField'),
               ellipsis: true,
@@ -641,7 +589,12 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
               label={t('common.type')}
               rules={[{ required: true }]}
             >
-              <Select options={EXTRACTOR_TYPES.map((value) => ({ value, label: value }))} />
+              <Select
+                options={EXTRACTOR_TYPES.map((value) => ({
+                  value,
+                  label: t(extractorTypeLabelKey(value))
+                }))}
+              />
             </Form.Item>
             <Form.Item
               name="source_field"
@@ -651,73 +604,20 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
             >
               <AutoComplete options={fieldOptions} placeholder={t('log.extractor.pathPlaceholder')} />
             </Form.Item>
-            {!['kv', 'regex'].includes(extractorType || '') && (
-              <Form.Item
-                name="target_field"
-                label={t('log.extractor.targetField')}
-                rules={[
-                  {
-                    required: ['copy', 'split'].includes(extractorType || '')
-                  }
-                ]}
-              >
-                <AutoComplete options={fieldOptions} placeholder={t('log.extractor.pathPlaceholder')} />
-              </Form.Item>
-            )}
+            <Form.Item
+              name="target_field"
+              label={t('log.extractor.targetField')}
+              rules={[
+                {
+                  required: ['copy', 'split'].includes(extractorType || '')
+                }
+              ]}
+            >
+              <AutoComplete options={fieldOptions} placeholder={t('log.extractor.pathPlaceholder')} />
+            </Form.Item>
           </div>
           <Form.Item name="delete_source" valuePropName="checked">
             <Checkbox>{t('log.extractor.deleteSource')}</Checkbox>
-          </Form.Item>
-          <Form.Item label={t('log.extractor.condition')}>
-            <Form.Item name="condition_mode" noStyle>
-              <Select
-                className="mb-[8px] w-[120px]"
-                options={['AND', 'OR'].map((value) => ({ value, label: value }))}
-              />
-            </Form.Item>
-            <Form.List name="conditions">
-              {(fields, { add, remove: removeCondition }) => (
-                <div className="w-full">
-                  {fields.map(({ key, name }) => (
-                    <Row gutter={8} align="top" key={key}>
-                      <Col xs={24} md={8}>
-                        <Form.Item
-                          name={[name, 'field']}
-                          rules={[{ required: true }]}
-                        >
-                          <AutoComplete
-                            className="w-full"
-                            options={fieldOptions}
-                            placeholder={t('log.extractor.conditionField')}
-                          />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={5}>
-                        <Form.Item name={[name, 'op']} rules={[{ required: true }]}>
-                          <Select
-                            className="w-full"
-                            options={OPERATORS.map((value) => ({ value, label: value }))}
-                          />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={8}>
-                        <Form.Item name={[name, 'value']}>
-                          <Input placeholder={t('log.extractor.conditionValue')} />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={3}>
-                        <Button danger type="text" onClick={() => removeCondition(name)}>
-                          {t('common.delete')}
-                        </Button>
-                      </Col>
-                    </Row>
-                  ))}
-                  <Button type="dashed" onClick={() => add({ op: '==' })}>
-                    {t('log.extractor.addCondition')}
-                  </Button>
-                </div>
-              )}
-            </Form.List>
           </Form.Item>
           {extractorType === 'split' && (
             <div className="grid grid-cols-2 gap-x-[16px]">

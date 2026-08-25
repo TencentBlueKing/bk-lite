@@ -40,8 +40,8 @@ if (!/themes\.includes\(\s*['"]app_overview['"]\s*\)\s*\?\s*\[\{[\s\S]*?value:\s
   failures.push('[relationships/page.tsx] Segmented options 缺少 `themes.includes("app_overview")` 分支');
 }
 
-if (!/['"]appOverview['"][\s\S]{0,200}<ApplicationResourceOverview/.test(pageSrc)) {
-  failures.push('[relationships/page.tsx] 内容区缺少 `activeTab === "appOverview"` 渲染分支');
+if (!/['"]appOverview['"][\s\S]{0,280}<ApplicationResourceOverview[\s\S]*?fillContainer/.test(pageSrc)) {
+  failures.push('[relationships/page.tsx] 内容区缺少 `activeTab === "appOverview"` 且 fillContainer 的渲染分支');
 }
 
 // —— IpamMatrix（在 relationships/page.tsx）——

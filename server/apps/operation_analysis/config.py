@@ -22,4 +22,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "operation_analysis.cleanup_expired_dashboard_report_executions",
         "schedule": crontab(hour=3, minute=20),
     },
+    "rescan_pending_excel_materializations": {
+        "task": "operation_analysis.rescan_pending_excel_materializations",
+        "schedule": crontab(minute="*"),
+    },
 }

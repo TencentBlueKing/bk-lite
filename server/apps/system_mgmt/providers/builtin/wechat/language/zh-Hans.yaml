@@ -1,0 +1,44 @@
+name: 微信
+description: 微信接入，用于登录认证。
+
+templates:
+  base_connection:
+    title: 基础连接
+    groups:
+      credentials:
+        title: 应用凭证
+        fields:
+          app_id:
+            label: App ID
+          app_secret:
+            label: App Secret
+  login_auth_form:
+    title: 登录认证配置
+    groups:
+      mapping:
+        title: 字段映射
+        fields:
+          display_name:
+            label: 显示名称
+          icon:
+            label: 图标
+          description:
+            label: 描述
+          external_field:
+            label: 外部字段
+          platform_field:
+            label: 平台字段
+          unmatched_user_action:
+            label: 未匹配用户处理方式
+          default_group_name:
+            label: 默认用户组名称
+
+capabilities:
+  login_auth:
+    fields:
+      login_auth_authorize_url:
+        label: 授权地址
+      login_auth_access_token_url:
+        label: 访问令牌地址
+      login_auth_user_info_url:
+        label: 用户信息地址

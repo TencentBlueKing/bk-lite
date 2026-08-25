@@ -1,13 +1,10 @@
 import base64
 import io
-import logging
 
+from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.ssrf_validator import SSRFValidator
 from openai import OpenAI
 from PIL import Image
-
-from apps.core.utils.ssrf_validator import SSRFValidator
-
-logger = logging.getLogger(__name__)
 
 
 class OlmOcr:

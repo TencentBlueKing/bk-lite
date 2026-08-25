@@ -44,7 +44,7 @@ const AddDevicePanel: React.FC<AddDevicePanelProps> = ({
     getModelAssociations(INTERFACE_MODEL)
       .then((assoc: any[]) => setNetworkModels(filterNetworkDeviceModels(assoc)))
       .catch(() => setNetworkModels([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [open]);
 
   const search = async (mid: string) => {
@@ -69,9 +69,9 @@ const AddDevicePanel: React.FC<AddDevicePanelProps> = ({
 
   const handleAdd = () => {
     const picked = rows
-      .filter((r) => selected.includes(String(r._id)))
+      .filter((r) => selected.includes(String(r.inst_uuid)))
       .map((r) => ({
-        id: String(r._id),
+        id: String(r.inst_uuid),
         name: r.inst_name,
         model_id: modelId as string,
       }));
@@ -117,7 +117,7 @@ const AddDevicePanel: React.FC<AddDevicePanelProps> = ({
       <Table
         size="small"
         loading={loading}
-        rowKey={(r) => String(r._id)}
+        rowKey={(r) => String(r.inst_uuid)}
         dataSource={rows}
         pagination={false}
         scroll={{ y: 'calc(100vh - 260px)' }}
@@ -125,7 +125,7 @@ const AddDevicePanel: React.FC<AddDevicePanelProps> = ({
           selectedRowKeys: selected,
           onChange: (keys) => setSelected(keys as string[]),
           getCheckboxProps: (r: any) => ({
-            disabled: existingIds.has(String(r._id)),
+            disabled: existingIds.has(String(r.inst_uuid)),
           }),
         }}
         columns={[
@@ -133,7 +133,7 @@ const AddDevicePanel: React.FC<AddDevicePanelProps> = ({
           {
             title: t('Model.networkTopoStatusCol'),
             render: (_: unknown, r: any) =>
-              existingIds.has(String(r._id))
+              existingIds.has(String(r.inst_uuid))
                 ? t('Model.networkTopoOnCanvas')
                 : '',
           },

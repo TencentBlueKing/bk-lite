@@ -1,14 +1,11 @@
-import logging
 import os
 from functools import wraps
 from typing import Any, Callable, List, Set, Union
 
-from django.views.generic.base import View
-
+from apps.core.logger import logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
-
-logger = logging.getLogger("app")
+from django.views.generic.base import View
 
 
 def _get_loader(request) -> LanguageLoader:
@@ -82,7 +79,7 @@ class HasRole(object):
                 if role in self.roles:
                     return task_definition(*args, **kwargs)
 
-            logger.warning(f"Access denied. Required roles: {self.roles}, user roles: {user_roles}")
+            logger.warning("Access denied. Required roles: %s, user roles: %s", self.roles, user_roles)
             loader = _get_loader(request)
             return WebUtils.response_403(loader.get("error.insufficient_permissions", "Insufficient permissions"))
 
@@ -148,7 +145,12 @@ class HasPermission(object):
             if self.permission & user_permissions:
                 return task_definition(*args, **kwargs)
 
-            logger.warning(f"Access denied. App: {app_name}," f" Required permissions: {self.permission}," f"user permissions: {user_permissions}")
+            logger.warning(
+                "Access denied. App: %s, Required permissions: %s,user permissions: %s",
+                app_name,
+                self.permission,
+                user_permissions,
+            )
             loader = _get_loader(request)
             return WebUtils.response_403(loader.get("error.insufficient_permissions", "Insufficient permissions"))
 

@@ -53,7 +53,7 @@ export const cellXY = (row: number, col: number) => ({
 });
 
 // U → 正视图 y/height（U1 在底部）
-export const U_PX = 15;          // 每 U 像素
+export const U_PX = 32;          // 每 U 像素，保证 1U 设备名称可读
 export const RACK_TOP = 10;      // 机柜框上内边距
 export const uRect = (uCount: number, uStart: number, uSize: number) => ({
   y: RACK_TOP + (uCount - (uStart + uSize - 1)) * U_PX,

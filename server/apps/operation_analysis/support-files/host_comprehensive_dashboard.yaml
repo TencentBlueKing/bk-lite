@@ -1,0 +1,1258 @@
+# 可导入的非内置画布：主机综合监控仪表盘。
+# 不会被 init_builtin_canvases 加载。
+# 导入前请先执行 init_source_api_data；若环境已有同名内置数据源，冲突策略选「跳过」。
+# 健康/异常/无数据主机数不在本画布中。
+# 组件按资源概览 / 核心使用率 / Top10 / 负载与流量 / 磁盘 IO / 写入与进程分组。
+meta:
+  schema_version: 1.2.0
+  exported_at: '2026-08-20T18:00:00+08:00'
+  source:
+    organization_id: 0
+  object_counts:
+    dashboards: 1
+    topologies: 0
+    screens: 0
+    reports: 0
+    architectures: 0
+    datasources: 4
+    namespaces: 0
+dashboards:
+- key: dashboard::主机综合监控仪表盘
+  name: 主机综合监控仪表盘
+  desc: 按所选监控主机查看 CPU/内存/磁盘均值与最高值、趋势和 Top10。不含健康/异常主机数。导入后不是内置画布。
+  other:
+    timeSelector:
+      selectValue: 360
+      rangePickerVaule: null
+  view_sets:
+  - id: group-overview
+    itemType: group
+    name: 资源概览
+    description: 所选主机数与 CPU/内存/磁盘均值、最高值
+    x: 0
+    y: 0
+    w: 12
+    h: 4
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 3
+        w: 2
+        x: 0
+        y: 0
+        id: host-kpi-count
+        name: 所选主机
+        itemType: widget
+        description: 当前筛选选中的主机数
+        valueConfig:
+          chartType: single
+          dataSource: 主机资源快照::monitor/get_host_resource_snapshot
+          selectedFields:
+          - host_count
+          filterBindings:
+            instance_ids__string: true
+          dataSourceParams:
+          - &id001
+            name: instance_ids
+            type: string
+            value: []
+            alias_name: 主机
+            filterType: filter
+            inputConfig: &id006
+              control: select
+              multiple: true
+              picker: table
+              optionsSource:
+                type: dynamic
+                sourceRef:
+                  type: rest_api
+                  value: monitor/get_host_instance_list
+                valueField: instance_id
+                labelField: display_name
+          thresholdColors: &id002
+          - color: '#366ce4'
+            value: '70'
+          - color: '#366ce4'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+      - h: 3
+        w: 2
+        x: 2
+        y: 0
+        id: host-kpi-avg-cpu
+        name: 平均 CPU
+        itemType: widget
+        description: 所选主机 CPU 使用率均值
+        valueConfig:
+          chartType: single
+          dataSource: 主机资源快照::monitor/get_host_resource_snapshot
+          selectedFields:
+          - avg_cpu
+          unitId: percent
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+          dataSourceParams:
+          - *id001
+          thresholdColors: *id002
+      - h: 3
+        w: 2
+        x: 4
+        y: 0
+        id: host-kpi-avg-memory
+        name: 平均内存
+        itemType: widget
+        description: 所选主机内存使用率均值
+        valueConfig:
+          chartType: single
+          dataSource: 主机资源快照::monitor/get_host_resource_snapshot
+          selectedFields:
+          - avg_memory
+          unitId: percent
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+          dataSourceParams:
+          - *id001
+          thresholdColors:
+          - color: '#7c6cf0'
+            value: '70'
+          - color: '#7c6cf0'
+            value: '30'
+          - color: '#7c6cf0'
+            value: '0'
+      - h: 3
+        w: 2
+        x: 6
+        y: 0
+        id: host-kpi-avg-disk
+        name: 平均磁盘
+        itemType: widget
+        description: 所选主机磁盘使用率均值（按主机取最大分区后再平均）
+        valueConfig:
+          chartType: single
+          dataSource: 主机资源快照::monitor/get_host_resource_snapshot
+          selectedFields:
+          - avg_disk
+          unitId: percent
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+          dataSourceParams:
+          - *id001
+          thresholdColors:
+          - color: '#f7b731'
+            value: '70'
+          - color: '#f7b731'
+            value: '30'
+          - color: '#f7b731'
+            value: '0'
+      - h: 3
+        w: 2
+        x: 8
+        y: 0
+        id: host-kpi-max-cpu
+        name: 最高 CPU
+        itemType: widget
+        description: 所选主机中 CPU 使用率最高的一台
+        valueConfig:
+          chartType: single
+          dataSource: 主机资源快照::monitor/get_host_resource_snapshot
+          selectedFields:
+          - max_cpu
+          descriptionField: max_cpu_host
+          unitId: percent
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+          dataSourceParams:
+          - *id001
+          thresholdColors: &id003
+          - color: '#fd9c40'
+            value: '70'
+          - color: '#EAB839'
+            value: '30'
+          - color: '#366ce4'
+            value: '0'
+      - h: 3
+        w: 2
+        x: 10
+        y: 0
+        id: host-kpi-max-memory
+        name: 最高内存
+        itemType: widget
+        description: 所选主机中内存使用率最高的一台
+        valueConfig:
+          chartType: single
+          dataSource: 主机资源快照::monitor/get_host_resource_snapshot
+          selectedFields:
+          - max_memory
+          descriptionField: max_memory_host
+          unitId: percent
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+          dataSourceParams:
+          - *id001
+          thresholdColors: *id003
+  - id: group-usage
+    itemType: group
+    name: 核心使用率
+    description: CPU、内存、磁盘使用率趋势，一主机一线
+    x: 0
+    y: 4
+    w: 12
+    h: 7
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 6
+        w: 4
+        x: 0
+        y: 0
+        id: host-trend-cpu
+        name: CPU 使用率趋势
+        itemType: widget
+        description: 一主机一线
+        valueConfig:
+          chartType: line
+          dataSource: 主机指标趋势::monitor/get_host_metric_range
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: cpu
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+                - label: 5分钟负载
+                  value: load5
+                - label: 入流量
+                  value: net_in
+                - label: 出流量
+                  value: net_out
+                - label: 磁盘IO使用率
+                  value: disk_io
+                - label: 磁盘写入延迟
+                  value: disk_write_latency
+                - label: 磁盘读速率
+                  value: disk_read_rate
+                - label: 磁盘写速率
+                  value: disk_write_rate
+                - label: 阻塞进程
+                  value: processes_blocked
+                - label: 僵尸进程
+                  value: processes_zombies
+          - &id004
+            name: time
+            type: timeRange
+            value: 360
+            alias_name: 时间范围
+            filterType: filter
+          unitId: percent
+      - h: 6
+        w: 4
+        x: 4
+        y: 0
+        id: host-trend-memory
+        name: 内存使用率趋势
+        itemType: widget
+        description: 一主机一线
+        valueConfig:
+          chartType: line
+          dataSource: 主机指标趋势::monitor/get_host_metric_range
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: memory
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+                - label: 5分钟负载
+                  value: load5
+                - label: 入流量
+                  value: net_in
+                - label: 出流量
+                  value: net_out
+                - label: 磁盘IO使用率
+                  value: disk_io
+                - label: 磁盘写入延迟
+                  value: disk_write_latency
+                - label: 磁盘读速率
+                  value: disk_read_rate
+                - label: 磁盘写速率
+                  value: disk_write_rate
+                - label: 阻塞进程
+                  value: processes_blocked
+                - label: 僵尸进程
+                  value: processes_zombies
+          - *id004
+          unitId: percent
+      - h: 6
+        w: 4
+        x: 8
+        y: 0
+        id: host-trend-disk
+        name: 磁盘使用率趋势
+        itemType: widget
+        description: 按主机取最大分区
+        valueConfig:
+          chartType: line
+          dataSource: 主机指标趋势::monitor/get_host_metric_range
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: disk
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+                - label: 5分钟负载
+                  value: load5
+                - label: 入流量
+                  value: net_in
+                - label: 出流量
+                  value: net_out
+                - label: 磁盘IO使用率
+                  value: disk_io
+                - label: 磁盘写入延迟
+                  value: disk_write_latency
+                - label: 磁盘读速率
+                  value: disk_read_rate
+                - label: 磁盘写速率
+                  value: disk_write_rate
+                - label: 阻塞进程
+                  value: processes_blocked
+                - label: 僵尸进程
+                  value: processes_zombies
+          - *id004
+          unitId: percent
+  - id: group-top10
+    itemType: group
+    name: 使用率 Top10
+    description: 所选主机范围内的 CPU、内存、磁盘使用率排名
+    x: 0
+    y: 11
+    w: 12
+    h: 7
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 6
+        w: 4
+        x: 0
+        y: 0
+        id: host-top-cpu
+        name: CPU 使用率 Top10
+        itemType: widget
+        description: 仅在所选且已授权主机中排名
+        valueConfig:
+          chartType: topN
+          dataSource: 主机资源使用率Top10::monitor/get_host_resource_top
+          topNLabelField: display_name
+          topNValueField: usage_percent
+          unitId: percent
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: cpu
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: &id005
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+      - h: 6
+        w: 4
+        x: 4
+        y: 0
+        id: host-top-memory
+        name: 内存使用率 Top10
+        itemType: widget
+        description: 仅在所选且已授权主机中排名
+        valueConfig:
+          chartType: topN
+          dataSource: 主机资源使用率Top10::monitor/get_host_resource_top
+          topNLabelField: display_name
+          topNValueField: usage_percent
+          unitId: percent
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: memory
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: *id005
+      - h: 6
+        w: 4
+        x: 8
+        y: 0
+        id: host-top-disk
+        name: 磁盘使用率 Top10
+        itemType: widget
+        description: 仅在所选且已授权主机中排名
+        valueConfig:
+          chartType: topN
+          dataSource: 主机资源使用率Top10::monitor/get_host_resource_top
+          topNLabelField: display_name
+          topNValueField: usage_percent
+          unitId: percent
+          decimalPlaces: 1
+          filterBindings:
+            instance_ids__string: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: disk
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems: *id005
+  - id: group-load-net
+    itemType: group
+    name: 负载与流量
+    description: 5 分钟负载与网卡入/出流量
+    x: 0
+    y: 18
+    w: 12
+    h: 7
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 6
+        w: 4
+        x: 0
+        y: 0
+        id: host-trend-load5
+        name: 系统负载趋势
+        itemType: widget
+        description: 5 分钟负载，一主机一线
+        valueConfig:
+          chartType: line
+          dataSource: 主机指标趋势::monitor/get_host_metric_range
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: load5
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+                - label: 5分钟负载
+                  value: load5
+                - label: 入流量
+                  value: net_in
+                - label: 出流量
+                  value: net_out
+                - label: 磁盘IO使用率
+                  value: disk_io
+                - label: 磁盘写入延迟
+                  value: disk_write_latency
+                - label: 磁盘读速率
+                  value: disk_read_rate
+                - label: 磁盘写速率
+                  value: disk_write_rate
+                - label: 阻塞进程
+                  value: processes_blocked
+                - label: 僵尸进程
+                  value: processes_zombies
+          - *id004
+      - h: 6
+        w: 4
+        x: 4
+        y: 0
+        id: host-trend-net-in
+        name: 入流量趋势
+        itemType: widget
+        description: 各网卡按主机求和
+        valueConfig:
+          chartType: line
+          dataSource: 主机指标趋势::monitor/get_host_metric_range
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: net_in
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+                - label: 5分钟负载
+                  value: load5
+                - label: 入流量
+                  value: net_in
+                - label: 出流量
+                  value: net_out
+                - label: 磁盘IO使用率
+                  value: disk_io
+                - label: 磁盘写入延迟
+                  value: disk_write_latency
+                - label: 磁盘读速率
+                  value: disk_read_rate
+                - label: 磁盘写速率
+                  value: disk_write_rate
+                - label: 阻塞进程
+                  value: processes_blocked
+                - label: 僵尸进程
+                  value: processes_zombies
+          - *id004
+          unit: B/s
+      - h: 6
+        w: 4
+        x: 8
+        y: 0
+        id: host-trend-net-out
+        name: 出流量趋势
+        itemType: widget
+        description: 各网卡按主机求和
+        valueConfig:
+          chartType: line
+          dataSource: 主机指标趋势::monitor/get_host_metric_range
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: net_out
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+                - label: 5分钟负载
+                  value: load5
+                - label: 入流量
+                  value: net_in
+                - label: 出流量
+                  value: net_out
+                - label: 磁盘IO使用率
+                  value: disk_io
+                - label: 磁盘写入延迟
+                  value: disk_write_latency
+                - label: 磁盘读速率
+                  value: disk_read_rate
+                - label: 磁盘写速率
+                  value: disk_write_rate
+                - label: 阻塞进程
+                  value: processes_blocked
+                - label: 僵尸进程
+                  value: processes_zombies
+          - *id004
+          unit: B/s
+  - id: group-disk-io
+    itemType: group
+    name: 磁盘 IO
+    description: 磁盘 IO 使用率、写入延迟与读速率
+    x: 0
+    y: 25
+    w: 12
+    h: 7
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 6
+        w: 4
+        x: 0
+        y: 0
+        id: host-trend-disk-io
+        name: 磁盘IO使用率
+        itemType: widget
+        description: 按主机取最大设备
+        valueConfig:
+          chartType: line
+          dataSource: 主机指标趋势::monitor/get_host_metric_range
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: disk_io
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+                - label: 5分钟负载
+                  value: load5
+                - label: 入流量
+                  value: net_in
+                - label: 出流量
+                  value: net_out
+                - label: 磁盘IO使用率
+                  value: disk_io
+                - label: 磁盘写入延迟
+                  value: disk_write_latency
+                - label: 磁盘读速率
+                  value: disk_read_rate
+                - label: 磁盘写速率
+                  value: disk_write_rate
+                - label: 阻塞进程
+                  value: processes_blocked
+                - label: 僵尸进程
+                  value: processes_zombies
+          - *id004
+          unitId: percent
+      - h: 6
+        w: 4
+        x: 4
+        y: 0
+        id: host-trend-disk-write-latency
+        name: 磁盘写入延迟
+        itemType: widget
+        description: 按主机取最大设备
+        valueConfig:
+          chartType: line
+          dataSource: 主机指标趋势::monitor/get_host_metric_range
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: disk_write_latency
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+                - label: 5分钟负载
+                  value: load5
+                - label: 入流量
+                  value: net_in
+                - label: 出流量
+                  value: net_out
+                - label: 磁盘IO使用率
+                  value: disk_io
+                - label: 磁盘写入延迟
+                  value: disk_write_latency
+                - label: 磁盘读速率
+                  value: disk_read_rate
+                - label: 磁盘写速率
+                  value: disk_write_rate
+                - label: 阻塞进程
+                  value: processes_blocked
+                - label: 僵尸进程
+                  value: processes_zombies
+          - *id004
+          unitId: ms
+      - h: 6
+        w: 4
+        x: 8
+        y: 0
+        id: host-trend-disk-read-rate
+        name: 磁盘读速率
+        itemType: widget
+        description: 按主机求和
+        valueConfig:
+          chartType: line
+          dataSource: 主机指标趋势::monitor/get_host_metric_range
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: disk_read_rate
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+                - label: 5分钟负载
+                  value: load5
+                - label: 入流量
+                  value: net_in
+                - label: 出流量
+                  value: net_out
+                - label: 磁盘IO使用率
+                  value: disk_io
+                - label: 磁盘写入延迟
+                  value: disk_write_latency
+                - label: 磁盘读速率
+                  value: disk_read_rate
+                - label: 磁盘写速率
+                  value: disk_write_rate
+                - label: 阻塞进程
+                  value: processes_blocked
+                - label: 僵尸进程
+                  value: processes_zombies
+          - *id004
+          unit: B/s
+  - id: group-write-process
+    itemType: group
+    name: 写入与进程
+    description: 磁盘写速率、阻塞进程与僵尸进程
+    x: 0
+    y: 32
+    w: 12
+    h: 7
+    headerH: 1
+    sizeToContent: true
+    subGridOpts:
+      children:
+      - h: 6
+        w: 4
+        x: 0
+        y: 0
+        id: host-trend-disk-write-rate
+        name: 磁盘写速率
+        itemType: widget
+        description: 按主机求和
+        valueConfig:
+          chartType: line
+          dataSource: 主机指标趋势::monitor/get_host_metric_range
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: disk_write_rate
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+                - label: 5分钟负载
+                  value: load5
+                - label: 入流量
+                  value: net_in
+                - label: 出流量
+                  value: net_out
+                - label: 磁盘IO使用率
+                  value: disk_io
+                - label: 磁盘写入延迟
+                  value: disk_write_latency
+                - label: 磁盘读速率
+                  value: disk_read_rate
+                - label: 磁盘写速率
+                  value: disk_write_rate
+                - label: 阻塞进程
+                  value: processes_blocked
+                - label: 僵尸进程
+                  value: processes_zombies
+          - *id004
+          unit: B/s
+      - h: 6
+        w: 4
+        x: 4
+        y: 0
+        id: host-trend-blocked
+        name: 阻塞进程
+        itemType: widget
+        description: 一主机一线
+        valueConfig:
+          chartType: line
+          dataSource: 主机指标趋势::monitor/get_host_metric_range
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: processes_blocked
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+                - label: 5分钟负载
+                  value: load5
+                - label: 入流量
+                  value: net_in
+                - label: 出流量
+                  value: net_out
+                - label: 磁盘IO使用率
+                  value: disk_io
+                - label: 磁盘写入延迟
+                  value: disk_write_latency
+                - label: 磁盘读速率
+                  value: disk_read_rate
+                - label: 磁盘写速率
+                  value: disk_write_rate
+                - label: 阻塞进程
+                  value: processes_blocked
+                - label: 僵尸进程
+                  value: processes_zombies
+          - *id004
+      - h: 6
+        w: 4
+        x: 8
+        y: 0
+        id: host-trend-zombies
+        name: 僵尸进程
+        itemType: widget
+        description: 一主机一线
+        valueConfig:
+          chartType: line
+          dataSource: 主机指标趋势::monitor/get_host_metric_range
+          filterBindings:
+            instance_ids__string: true
+            time__timeRange: true
+          dataSourceParams:
+          - *id001
+          - name: metric_type
+            type: string
+            value: processes_zombies
+            alias_name: 指标类型
+            filterType: params
+            required: true
+            inputConfig:
+              control: select
+              componentSwitch: false
+              optionsSource:
+                type: static
+                staticItems:
+                - label: CPU使用率
+                  value: cpu
+                - label: 内存使用率
+                  value: memory
+                - label: 磁盘使用率
+                  value: disk
+                - label: 5分钟负载
+                  value: load5
+                - label: 入流量
+                  value: net_in
+                - label: 出流量
+                  value: net_out
+                - label: 磁盘IO使用率
+                  value: disk_io
+                - label: 磁盘写入延迟
+                  value: disk_write_latency
+                - label: 磁盘读速率
+                  value: disk_read_rate
+                - label: 磁盘写速率
+                  value: disk_write_rate
+                - label: 阻塞进程
+                  value: processes_blocked
+                - label: 僵尸进程
+                  value: processes_zombies
+          - *id004
+  refs:
+    datasource_keys:
+    - 监控主机列表::monitor/get_host_instance_list
+    - 主机指标趋势::monitor/get_host_metric_range
+    - 主机资源快照::monitor/get_host_resource_snapshot
+    - 主机资源使用率Top10::monitor/get_host_resource_top
+    namespace_keys: []
+  filters:
+  - id: instance_ids__string
+    key: instance_ids
+    name: 主机
+    type: string
+    defaultValue: []
+    order: 0
+    enabled: true
+    inputMode: select
+    inputConfig: *id006
+  - id: time__timeRange
+    key: time
+    name: 时间范围
+    type: timeRange
+    defaultValue:
+      selectValue: 360
+      rangePickerVaule: null
+    order: 1
+    enabled: true
+topologies: []
+architectures: []
+screens: []
+reports: []
+datasources:
+- key: 监控主机列表::monitor/get_host_instance_list
+  name: 监控主机列表（选项）
+  rest_api: monitor/get_host_instance_list
+  desc: 当前组织权限范围内的主机实例，供统一筛选下拉使用，本身不直接出图
+  is_active: true
+  params: []
+  tags:
+  - 监控
+  chart_type: []
+  field_schema:
+  - key: instance_id
+    title: 实例ID
+    value_type: string
+  - key: display_name
+    title: 主机
+    value_type: string
+  namespace_keys: []
+- key: 主机指标趋势::monitor/get_host_metric_range
+  name: 主机指标趋势
+  rest_api: monitor/get_host_metric_range
+  desc: 按所选主机查询单一指标趋势，一主机一线；未选主机不退化为全量
+  is_active: true
+  params:
+  - name: instance_ids
+    type: string
+    value: []
+    alias_name: 主机
+    filterType: filter
+    inputConfig:
+      control: select
+      multiple: true
+      optionsSource:
+        type: dynamic
+        sourceRef:
+          type: rest_api
+          value: monitor/get_host_instance_list
+        valueField: instance_id
+        labelField: display_name
+  - name: metric_type
+    type: string
+    value: cpu
+    alias_name: 指标类型
+    filterType: params
+    required: true
+    inputConfig:
+      control: select
+      componentSwitch: true
+      optionsSource:
+        type: static
+        staticItems:
+        - label: CPU使用率
+          value: cpu
+        - label: 内存使用率
+          value: memory
+        - label: 磁盘使用率
+          value: disk
+        - label: 5分钟负载
+          value: load5
+        - label: 入流量
+          value: net_in
+        - label: 出流量
+          value: net_out
+        - label: 磁盘IO使用率
+          value: disk_io
+        - label: 磁盘写入延迟
+          value: disk_write_latency
+        - label: 磁盘读速率
+          value: disk_read_rate
+        - label: 磁盘写速率
+          value: disk_write_rate
+        - label: 阻塞进程
+          value: processes_blocked
+        - label: 僵尸进程
+          value: processes_zombies
+  - name: time
+    type: timeRange
+    value: 10080
+    alias_name: 时间范围
+    filterType: filter
+  tags:
+  - 监控
+  chart_type:
+  - line
+  - bar
+  field_schema: []
+  namespace_keys: []
+- key: 主机资源快照::monitor/get_host_resource_snapshot
+  name: 主机资源快照
+  rest_api: monitor/get_host_resource_snapshot
+  desc: 按所选主机返回数量、CPU/内存/磁盘均值与最高值；未选主机不退化为全量
+  is_active: true
+  params:
+  - name: instance_ids
+    type: string
+    value: []
+    alias_name: 主机
+    filterType: filter
+    inputConfig:
+      control: select
+      multiple: true
+      optionsSource:
+        type: dynamic
+        sourceRef:
+          type: rest_api
+          value: monitor/get_host_instance_list
+        valueField: instance_id
+        labelField: display_name
+  tags:
+  - 监控
+  chart_type:
+  - single
+  - multiValue
+  - table
+  field_schema:
+  - key: host_count
+    title: 主机数
+    value_type: number
+  - key: avg_cpu
+    title: 平均CPU(%)
+    value_type: number
+  - key: avg_memory
+    title: 平均内存(%)
+    value_type: number
+  - key: avg_disk
+    title: 平均磁盘(%)
+    value_type: number
+  - key: max_cpu
+    title: 最高CPU(%)
+    value_type: number
+  - key: max_cpu_host
+    title: 最高CPU主机
+    value_type: string
+  - key: max_memory
+    title: 最高内存(%)
+    value_type: number
+  - key: max_memory_host
+    title: 最高内存主机
+    value_type: string
+  namespace_keys: []
+- key: 主机资源使用率Top10::monitor/get_host_resource_top
+  name: 主机资源使用率Top10
+  rest_api: monitor/get_host_resource_top
+  desc: 查询当前组织权限范围内主机的CPU、内存、磁盘使用率排行榜
+  is_active: true
+  params:
+  - name: metric_type
+    type: string
+    value: cpu
+    alias_name: 指标类型
+    filterType: params
+    required: true
+    inputConfig:
+      control: select
+      componentSwitch: true
+      optionsSource:
+        type: static
+        staticItems:
+        - label: CPU使用率
+          value: cpu
+        - label: 内存使用率
+          value: memory
+        - label: 磁盘使用率
+          value: disk
+  - name: instance_ids
+    type: string
+    value: []
+    alias_name: 主机
+    filterType: filter
+    inputConfig:
+      control: select
+      multiple: true
+      optionsSource:
+        type: dynamic
+        sourceRef:
+          type: rest_api
+          value: monitor/get_host_instance_list
+        valueField: instance_id
+        labelField: display_name
+  tags:
+  - 监控
+  chart_type:
+  - topN
+  - table
+  field_schema:
+  - key: rank
+    title: 排名
+    value_type: number
+  - key: display_name
+    title: 主机
+    value_type: string
+  - key: usage_percent
+    title: 使用率(%)
+    value_type: number
+  - key: instance_id
+    title: 实例ID
+    value_type: string
+  - key: host_name
+    title: 主机名
+    value_type: string
+  - key: ip
+    title: IP地址
+    value_type: string
+  - key: metric_type
+    title: 指标类型
+    value_type: string
+  - key: mount
+    title: 挂载点
+    value_type: string
+  - key: path
+    title: 路径
+    value_type: string
+  - key: fstype
+    title: 文件系统类型
+    value_type: string
+  - key: sampled_at
+    title: 采样时间
+    value_type: datetime
+  namespace_keys: []
+namespaces: []

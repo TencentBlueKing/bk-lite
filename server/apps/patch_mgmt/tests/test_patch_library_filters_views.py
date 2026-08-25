@@ -2,18 +2,20 @@
 
 import pytest
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 
-from apps.patch_mgmt.constants import OSType, PatchSourceType
+from apps.patch_mgmt.constants import ComplianceStatus, OSType, PatchSourceType
 from apps.patch_mgmt.models import (
     BaselineRequirement,
+    HostBaselineBinding,
     LinuxPatchDetail,
     Patch,
     PatchBaseline,
     PatchSource,
+    PatchTarget,
     WindowsPatchDetail,
 )
-
 
 BASE = "/api/v1/patch_mgmt/api"
 
@@ -47,9 +49,7 @@ def test_patch_list_exposes_all_source_addresses_and_filters_by_origin_type(su_c
     synced.sources.add(apt_source, mirror_source)
     Patch.objects.create(title="manual patch", os_type=OSType.LINUX, team=[1])
 
-    response = su_client.get(
-        f"{BASE}/patch/?page_size=-1&source_type={PatchSourceType.APT_REPO}"
-    )
+    response = su_client.get(f"{BASE}/patch/?page_size=-1&source_type={PatchSourceType.APT_REPO}")
 
     assert response.status_code == status.HTTP_200_OK
     assert [item["id"] for item in response.data] == [synced.id]
@@ -69,9 +69,7 @@ def test_patch_list_exposes_all_source_addresses_and_filters_by_origin_type(su_c
         },
     ]
 
-    manual_response = su_client.get(
-        f"{BASE}/patch/?page_size=-1&source_type=manual"
-    )
+    manual_response = su_client.get(f"{BASE}/patch/?page_size=-1&source_type=manual")
 
     assert manual_response.status_code == status.HTTP_200_OK
     assert [item["title"] for item in manual_response.data] == ["manual patch"]
@@ -114,10 +112,67 @@ def test_baseline_list_filters_by_patch_ids_and_returns_requirement_names(su_cli
     BaselineRequirement.objects.create(baseline=selected, patch=windows_patch)
     BaselineRequirement.objects.create(baseline=other, patch=windows_patch)
 
-    response = su_client.get(
-        f"{BASE}/baseline/?page_size=-1&patch_ids={linux_patch.id}"
-    )
+    response = su_client.get(f"{BASE}/baseline/?page_size=-1&patch_ids={linux_patch.id}")
 
     assert response.status_code == status.HTTP_200_OK
     assert [item["id"] for item in response.data] == [selected.id]
     assert response.data[0]["requirement_names"] == ["openssl", "KB5034441"]
+    assert response.data[0]["last_evaluated_at"] is None
+
+
+@pytest.mark.django_db
+def test_baseline_list_returns_latest_host_assessment_time(su_client):
+    baseline = PatchBaseline.objects.create(
+        name="assessed baseline",
+        os_type=OSType.LINUX,
+        team=[1],
+    )
+    earlier = timezone.now() - timezone.timedelta(hours=2)
+    latest = timezone.now() - timezone.timedelta(hours=1)
+    for index, evaluated_at in enumerate((earlier, latest), start=1):
+        target = PatchTarget.objects.create(
+            name=f"host-{index}",
+            ip=f"10.0.0.{index}",
+            os_type=OSType.LINUX,
+            team=[1],
+        )
+        HostBaselineBinding.objects.create(
+            baseline=baseline,
+            target=target,
+            last_evaluated_at=evaluated_at,
+        )
+
+    response = su_client.get(f"{BASE}/baseline/?page_size=-1")
+
+    assert response.status_code == status.HTTP_200_OK
+    item = next(row for row in response.data if row["id"] == baseline.id)
+    assert parse_datetime(item["last_evaluated_at"]) == latest.replace(microsecond=0)
+
+
+@pytest.mark.django_db
+def test_baseline_list_uses_warning_color_for_failed_assessment(su_client):
+    baseline = PatchBaseline.objects.create(
+        name="failed assessment baseline",
+        os_type=OSType.WINDOWS,
+        team=[1],
+    )
+    target = PatchTarget.objects.create(
+        name="failed assessment host",
+        ip="10.0.0.30",
+        os_type=OSType.WINDOWS,
+        team=[1],
+    )
+    HostBaselineBinding.objects.create(
+        baseline=baseline,
+        target=target,
+        compliance_status=ComplianceStatus.FAILED,
+        last_evaluated_at=timezone.now(),
+    )
+
+    response = su_client.get(f"{BASE}/baseline/?page_size=-1")
+
+    assert response.status_code == status.HTTP_200_OK
+    item = next(row for row in response.data if row["id"] == baseline.id)
+    failed = next(entry for entry in item["compliance_distribution"] if entry["filter"] == ComplianceStatus.FAILED)
+    assert failed["count"] == 1
+    assert failed["color"] == "warning"

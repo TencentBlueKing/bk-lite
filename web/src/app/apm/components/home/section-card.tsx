@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Button } from 'antd';
+import { useTranslation } from '@/utils/i18n';
 
 interface SectionCardProps {
   icon?: ReactNode;
@@ -24,13 +25,15 @@ export default function SectionCard({
   title,
   subtitle,
   viewAllHref,
-  viewAllLabel = '查看全部 →',
+  viewAllLabel,
   failed = false,
   onRetry,
   children,
   className = '',
   bodyMinHeight = 200,
 }: SectionCardProps) {
+  const { t } = useTranslation();
+  const resolvedViewAllLabel = viewAllLabel ?? t('apm.common.viewAll', '查看全部 →');
   return (
     <div
       className={`flex h-full min-h-0 flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 ${className}`}
@@ -50,7 +53,7 @@ export default function SectionCard({
             href={viewAllHref}
             className="shrink-0 text-sm text-[var(--color-primary)] hover:underline"
           >
-            {viewAllLabel}
+            {resolvedViewAllLabel}
           </Link>
         ) : null}
       </div>
@@ -58,7 +61,7 @@ export default function SectionCard({
         {failed ? (
           <div className="flex h-full items-center justify-center py-10 text-center">
             <Button type="link" onClick={onRetry}>
-              加载失败，点击重试
+              {t('apm.common.loadFailedRetry', '加载失败，点击重试')}
             </Button>
           </div>
         ) : (
@@ -92,7 +95,7 @@ export function StatusPill({
   tone,
 }: {
   label: string;
-  tone: 'success' | 'danger' | 'warning';
+  tone: 'success' | 'danger' | 'warning' | 'info';
 }) {
   const styles =
     tone === 'success'
@@ -105,10 +108,15 @@ export function StatusPill({
           color: 'var(--color-fail)',
           background: 'color-mix(in srgb, var(--color-fail) 12%, var(--color-bg))',
         }
-        : {
-          color: 'var(--theme-color-status-warning)',
-          background: 'color-mix(in srgb, var(--theme-color-status-warning) 12%, var(--color-bg))',
-        };
+        : tone === 'info'
+          ? {
+            color: 'var(--color-primary)',
+            background: 'color-mix(in srgb, var(--color-primary) 12%, var(--color-bg))',
+          }
+          : {
+            color: 'var(--theme-color-status-warning)',
+            background: 'color-mix(in srgb, var(--theme-color-status-warning) 12%, var(--color-bg))',
+          };
 
   return (
     <span

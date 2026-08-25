@@ -45,6 +45,7 @@ from apps.cmdb.services.auto_relation_rule import (
     validate_auto_relation_rule_set_payload,
 )
 from apps.cmdb.services.classification import ClassificationManage
+from apps.cmdb.services.model_attribute_policy import ModelAttributePolicy
 from apps.cmdb.services.model_visibility import BusinessModelVisibility
 from apps.cmdb.services.unique_rule import (
     UniqueRulePayload,
@@ -80,9 +81,7 @@ ENUM_DISPLAY_BACKFILL_CHECKPOINT_TTL = 24 * 60 * 60
 class ModelManage(object):
     @staticmethod
     def _enum_display_backfill_checkpoint(model_id: str, attr_id: str, new_options: list) -> tuple[str, str]:
-        options_digest = sha256(
-            json.dumps(new_options, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
+        options_digest = sha256(json.dumps(new_options, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         return f"cmdb:enum-display-backfill:{model_id}:{attr_id}", options_digest
 
     @staticmethod
@@ -154,47 +153,37 @@ class ModelManage(object):
 
     @staticmethod
     def _normalize_default_value(raw_value: Any) -> list[str]:
-        if raw_value in (None, ""):
-            return []
-
-        source = raw_value if isinstance(raw_value, list) else [raw_value]
-        seen: set[str] = set()
-        normalized: list[str] = []
-        for item in source:
-            value = str(item or "").strip()
-            if not value or value in seen:
-                continue
-            seen.add(value)
-            normalized.append(value)
-        return normalized
+        return ModelAttributePolicy._normalize_default_value(raw_value)
 
     @staticmethod
     def sanitize_attr_default_value(attr: dict, log_context: str = "") -> dict:
-        item = dict(attr)
-        normalized = ModelManage._normalize_default_value(item.get("default_value"))
-        if item.get("attr_type") != "enum":
-            item["default_value"] = normalized
-            return item
+        return ModelAttributePolicy._sanitize_attr_default_value(
+            attr,
+            log_context,
+            ModelManage._normalize_default_value,
+            ModelManage.resolve_runtime_enum_options,
+            logger,
+        )
 
-        runtime_options = ModelManage.resolve_runtime_enum_options(item)
-        valid_ids = {str(option.get("id")).strip() for option in runtime_options if isinstance(option, dict) and str(option.get("id", "")).strip()}
-        sanitized = [value for value in normalized if value in valid_ids]
-        select_mode = item.get("enum_select_mode", ENUM_SELECT_MODE_DEFAULT)
-        if select_mode != "multiple":
-            sanitized = sanitized[:1]
+    @staticmethod
+    def normalize_enum_public_binding(attr_info: dict, current_attr: dict | None = None) -> dict:
+        return ModelAttributePolicy._normalize_enum_public_binding(attr_info, current_attr, logger)
 
-        removed_values = [value for value in normalized if value not in sanitized]
-        if removed_values:
-            logger.info(
-                "[ModelDefaultValue] pruned stale defaults context=%s attr_id=%s removed=%s rule_type=%s",
-                log_context or "runtime",
-                item.get("attr_id"),
-                removed_values,
-                item.get("enum_rule_type", "custom"),
-            )
+    @staticmethod
+    def validate_enum_rule_immutable(current_attr: dict, incoming_attr: dict) -> None:
+        return ModelAttributePolicy.validate_enum_rule_immutable(current_attr, incoming_attr)
 
-        item["default_value"] = sanitized
-        return item
+    @staticmethod
+    def ensure_enum_select_mode(attr_info: dict) -> dict:
+        return ModelAttributePolicy.ensure_enum_select_mode(attr_info)
+
+    @staticmethod
+    def validate_enum_select_mode_immutable(current_attr: dict, incoming_attr: dict) -> None:
+        return ModelAttributePolicy.validate_enum_select_mode_immutable(current_attr, incoming_attr)
+
+    @staticmethod
+    def resolve_runtime_enum_options(attr: dict) -> list[dict]:
+        return ModelAttributePolicy._resolve_runtime_enum_options(attr, logger)
 
     @staticmethod
     def _normalize_attr_constraints(attrs: list[dict]) -> list[dict]:
@@ -308,184 +297,6 @@ class ModelManage(object):
     def _guard_protected_model_attr(attr_id: str, action: str):
         if attr_id in PROTECTED_MODEL_ATTR_IDS:
             raise BaseAppException(f"模型字段 {attr_id} 为系统字段，不允许{action}")
-
-    @staticmethod
-    def normalize_enum_public_binding(attr_info: dict, current_attr: dict | None = None) -> dict:
-        """
-        规范化 enum 公共选项库绑定信息并回填 option 快照。
-
-        处理逻辑：
-        1. 若 attr_type != enum，直接返回原 attr_info，不做处理。
-        2. enum_rule_type 默认为 custom。
-        3. 若 enum_rule_type == public_library：
-           - 校验 public_library_id 必填
-           - 从公共库拉取最新 options 并写入 option 字段（快照）
-        4. 若 enum_rule_type == custom：
-           - 清空 public_library_id
-           - 保持 option 不变
-
-        Args:
-            attr_info: 前端传入的属性配置
-            current_attr: 当前已存在的属性（更新场景下传入）
-
-        Returns:
-            dict: 规范化后的 attr_info（原地修改并返回）
-
-        Raises:
-            BaseAppException: 公共库不存在或配置不合法时抛出
-        """
-        if attr_info.get("attr_type") != "enum":
-            return attr_info
-
-        option_value = attr_info.get("option")
-        if isinstance(option_value, dict) and option_value.get("enum_rule_type"):
-            attr_info["enum_rule_type"] = option_value.get("enum_rule_type", "custom")
-            attr_info["public_library_id"] = option_value.get("public_library_id")
-            if "enum_select_mode" in option_value:
-                attr_info["enum_select_mode"] = option_value.get("enum_select_mode")
-            attr_info["option"] = option_value.get("option", [])
-
-        enum_rule_type = attr_info.get("enum_rule_type", "custom")
-        attr_info["enum_rule_type"] = enum_rule_type
-
-        if enum_rule_type == "public_library":
-            public_library_id = attr_info.get("public_library_id")
-            if not public_library_id:
-                raise BaseAppException("绑定公共选项库时 public_library_id 必填")
-
-            from apps.cmdb.services.public_enum_library import get_library_or_raise
-
-            library = get_library_or_raise(public_library_id)
-            attr_info["option"] = library.options
-            attr_info["public_library_id"] = public_library_id
-
-            logger.info(
-                f"[EnumPublicBinding] normalized attr_id={attr_info.get('attr_id')}, "
-                f"enum_rule_type={enum_rule_type}, public_library_id={public_library_id}"
-            )
-        else:
-            attr_info["enum_rule_type"] = "custom"
-            attr_info["public_library_id"] = None
-
-        return attr_info
-
-    @staticmethod
-    def validate_enum_rule_immutable(current_attr: dict, incoming_attr: dict) -> None:
-        """
-        校验字段创建后 enum_rule_type 不可切换。
-
-        规则：
-        - 仅对 attr_type == enum 的字段生效
-        - 创建时：任意 enum_rule_type（custom / public_library）均可
-        - 更新时：不允许从 custom 切换到 public_library，或反之
-
-        Args:
-            current_attr: 当前已存储的属性定义
-            incoming_attr: 本次请求传入的属性定义
-
-        Raises:
-            BaseAppException: 规则类型切换时抛出
-        """
-        if current_attr.get("attr_type") != "enum":
-            return
-        if incoming_attr.get("attr_type") != "enum":
-            return
-
-        current_rule = current_attr.get("enum_rule_type", "custom")
-        incoming_rule = incoming_attr.get("enum_rule_type", "custom")
-
-        if current_rule != incoming_rule:
-            raise BaseAppException(f"枚举字段创建后规则类型不可切换（当前: {current_rule}）")
-
-    @staticmethod
-    def ensure_enum_select_mode(attr_info: dict) -> dict:
-        """
-        确保枚举字段具有 enum_select_mode 属性。
-
-        规则：
-        - 仅对 attr_type == enum 的字段生效
-        - 若未提供 enum_select_mode，则默认设置为 single
-
-        Args:
-            attr_info: 属性配置字典
-
-        Returns:
-            dict: 规范化后的 attr_info（原地修改并返回）
-        """
-        if attr_info.get("attr_type") != "enum":
-            return attr_info
-
-        if "enum_select_mode" not in attr_info:
-            attr_info["enum_select_mode"] = ENUM_SELECT_MODE_DEFAULT
-
-        return attr_info
-
-    @staticmethod
-    def validate_enum_select_mode_immutable(current_attr: dict, incoming_attr: dict) -> None:
-        """
-        校验字段创建后 enum_select_mode 不可切换。
-
-        规则：
-        - 仅对 attr_type == enum 的字段生效
-        - 创建时：任意 enum_select_mode（single / multiple）均可
-        - 更新时：不允许从 single 切换到 multiple，或反之
-
-        Args:
-            current_attr: 当前已存储的属性定义
-            incoming_attr: 本次请求传入的属性定义
-
-        Raises:
-            BaseAppException: 选择模式切换时抛出
-        """
-        if current_attr.get("attr_type") != "enum":
-            return
-        if incoming_attr.get("attr_type") != "enum":
-            return
-
-        current_mode = current_attr.get("enum_select_mode", ENUM_SELECT_MODE_DEFAULT)
-        incoming_mode = incoming_attr.get("enum_select_mode", current_mode)
-
-        if current_mode != incoming_mode:
-            raise BaseAppException(f"枚举字段创建后选择模式不可切换（当前: {current_mode}）")
-
-    @staticmethod
-    def resolve_runtime_enum_options(attr: dict) -> list[dict]:
-        """
-        运行时解析枚举选项。
-
-        口径：
-        - 若 enum_rule_type == public_library，优先从公共库实时拉取
-        - 若公共库不存在或查询失败，回退到字段快照（attr.option）
-        - 若 enum_rule_type == custom，直接返回 attr.option
-
-        Args:
-            attr: 字段属性定义
-
-        Returns:
-            list[dict]: 枚举选项列表 [{"id": str, "name": str}, ...]
-        """
-        if attr.get("attr_type") != "enum":
-            return []
-
-        enum_rule_type = attr.get("enum_rule_type", "custom")
-        option = attr.get("option", [])
-
-        if enum_rule_type != "public_library":
-            return option if isinstance(option, list) else []
-
-        public_library_id = str(attr.get("public_library_id") or "").strip()
-        if not public_library_id:
-            return option if isinstance(option, list) else []
-
-        try:
-            from apps.cmdb.services.public_enum_library import get_library_or_raise
-
-            library = get_library_or_raise(public_library_id)
-            runtime_options = library.options
-            return runtime_options if isinstance(runtime_options, list) else []
-        except Exception as e:
-            logger.warning(f"[EnumPublicBinding] resolve_runtime_enum_options fallback to snapshot, public_library_id={public_library_id}, error={e}")
-            return option if isinstance(option, list) else []
 
     @staticmethod
     def _add_display_field_to_attrs(attrs: list, attr_info: dict, model_id: str, is_pre: bool = False):
@@ -964,11 +775,7 @@ class ModelManage(object):
                     models,
                     graph=ag,
                 )
-                models = [
-                    model
-                    for model in models
-                    if model["model_id"] in visible_models
-                ]
+                models = [model for model in models if model["model_id"] in visible_models]
 
         lan = SettingLanguage(language)
 
@@ -1229,19 +1036,20 @@ class ModelManage(object):
                                 display_field_id,
                                 property_values,
                             )
-                            checkpoint_available = ModelManage._save_enum_display_backfill_checkpoint(
-                                checkpoint_key,
-                                options_digest,
-                                property_values[-1]["id"],
-                            ) and checkpoint_available
+                            checkpoint_available = (
+                                ModelManage._save_enum_display_backfill_checkpoint(
+                                    checkpoint_key,
+                                    options_digest,
+                                    property_values[-1]["id"],
+                                )
+                                and checkpoint_available
+                            )
                         ModelManage._clear_enum_display_backfill_checkpoint(checkpoint_key)
                         break
 
                     next_instance_id = int(instances[-1]["_id"])
                     if scan_cursor is not None and next_instance_id <= scan_cursor:
-                        raise RuntimeError(
-                            f"枚举显示字段回填游标未推进: cursor={scan_cursor}, next_cursor={next_instance_id}"
-                        )
+                        raise RuntimeError(f"枚举显示字段回填游标未推进: cursor={scan_cursor}, next_cursor={next_instance_id}")
 
                     for instance in instances:
                         if attr_id not in instance or not instance[attr_id]:
@@ -1258,20 +1066,26 @@ class ModelManage(object):
                                 display_field_id,
                                 property_values,
                             )
-                            checkpoint_available = ModelManage._save_enum_display_backfill_checkpoint(
-                                checkpoint_key,
-                                options_digest,
-                                property_values[-1]["id"],
-                            ) and checkpoint_available
+                            checkpoint_available = (
+                                ModelManage._save_enum_display_backfill_checkpoint(
+                                    checkpoint_key,
+                                    options_digest,
+                                    property_values[-1]["id"],
+                                )
+                                and checkpoint_available
+                            )
                             property_values = []
 
                     scan_cursor = next_instance_id
                     if not property_values:
-                        checkpoint_available = ModelManage._save_enum_display_backfill_checkpoint(
-                            checkpoint_key,
-                            options_digest,
-                            scan_cursor,
-                        ) and checkpoint_available
+                        checkpoint_available = (
+                            ModelManage._save_enum_display_backfill_checkpoint(
+                                checkpoint_key,
+                                options_digest,
+                                scan_cursor,
+                            )
+                            and checkpoint_available
+                        )
 
                 if not checkpoint_available:
                     logger.warning(
@@ -1290,7 +1104,7 @@ class ModelManage(object):
                 f"[update_enum_instances_display] 更新实例枚举 _display 字段失败: 模型={model_id}, 字段={attr_id}, 错误={e}",
                 exc_info=True,
             )
-            # 不抛出异常，避免中断主流程
+            raise BaseAppException("枚举属性已更新，但实例展示字段刷新失败，请重试保存") from e
 
         return updated_count
 
@@ -1367,10 +1181,7 @@ class ModelManage(object):
                     updated_count += len(property_values)
 
                 if updated_count > 0:
-                    logger.info(
-                        f"[rebuild_file_instances_display] 已回填 {updated_count} 个实例的 {display_field_id} 字段, "
-                        f"模型: {model_id}, 字段: {attr_id}"
-                    )
+                    logger.info(f"[rebuild_file_instances_display] 已回填 {updated_count} 个实例的 {display_field_id} 字段, " f"模型: {model_id}, 字段: {attr_id}")
 
         except Exception as e:
             logger.error(
@@ -2279,9 +2090,7 @@ class ModelManage(object):
             if associations:
                 if selected_ids is not None:
                     associations = [
-                        a for a in associations
-                        if a.get("src_model_id", "") in selected_ids
-                        and a.get("dst_model_id", "") in selected_ids
+                        a for a in associations if a.get("src_model_id", "") in selected_ids and a.get("dst_model_id", "") in selected_ids
                     ]
                 if associations:
                     ws_asso = workbook.create_sheet(title=f"asso-{model_id}")
@@ -2309,7 +2118,11 @@ class ModelManage(object):
         return file_stream
 
     @staticmethod
-    def _apply_model_config_post_import_extras(model_config: dict[str, list[dict]]):
+    def _apply_model_config_post_import_extras(
+        model_config: dict[str, list[dict]],
+        *,
+        keep_existing_unique_rules_on_conflict: bool = False,
+    ):
         with GraphClient() as ag:
             for sheet_name, rows in model_config.items():
                 if not sheet_name.startswith("attr-"):
@@ -2330,6 +2143,15 @@ class ModelManage(object):
                         exist_items,
                     )
                     if conflicts:
+                        if keep_existing_unique_rules_on_conflict:
+                            logger.warning(
+                                "[UniqueRule] 存量实例与待应用规则冲突，保留原唯一规则并继续初始化 " "model_id=%s sheet_name=%s conflict_count=%s reason=%s",
+                                model_id,
+                                sheet_name,
+                                len(conflicts),
+                                conflicts[0].message,
+                            )
+                            continue
                         raise BaseAppException(conflicts[0].message)
                     ag.set_entity_properties(
                         MODEL,
@@ -2357,11 +2179,7 @@ class ModelManage(object):
 
         ModelManage._import_auto_relation_rule_sets_from_asso_sheets(model_config)
         # push/ingest 依赖可写 node_id / monitor_id；模型导入后对一期支持模型幂等补齐
-        from apps.cmdb.services.module_ingest import (
-            SUPPORTED_INGEST_MODELS,
-            ensure_model_monitor_id_attr,
-            ensure_model_node_id_attr,
-        )
+        from apps.cmdb.services.module_ingest import SUPPORTED_INGEST_MODELS, ensure_model_monitor_id_attr, ensure_model_node_id_attr
 
         for mid in sorted(SUPPORTED_INGEST_MODELS):
             ensure_model_node_id_attr(mid, username="admin")

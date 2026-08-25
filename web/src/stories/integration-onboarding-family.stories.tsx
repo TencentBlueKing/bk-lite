@@ -17,6 +17,7 @@ import {
 import K8sAccessAssetFields from '@/app/monitor/components/k8s-access-asset-fields';
 import SectionHeader from '@/components/section-header';
 import FormSettingRow from '@/components/form-setting-row';
+import FieldGuideTip from '@/components/field-guide-tip';
 import IntegrationStepCallout from '@/components/integration-step-callout';
 import { createK8sStoryT } from './k8s-story.fixtures';
 
@@ -44,7 +45,7 @@ const FamilyOverview = () => {
       <section className="space-y-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-1)] p-4">
         <SectionHeader title="Setting rows" />
         <div className="space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-2)] p-4">
-        <FormSettingRow
+          <FormSettingRow
             control={<Input placeholder="Cluster name" style={{ width: 280 }} />}
             description="The asset name used in the integration list and downstream views."
           />
@@ -61,6 +62,13 @@ const FamilyOverview = () => {
             )}
             description="Commands and automatic discovery bind to the selected cloud region."
           />
+          <div className="inline-flex items-center text-[var(--color-text-2)]">
+            Field label
+            <FieldGuideTip
+              title="Field tip"
+              short="Detailed guidance stays in the hover card, while the row keeps a one-line hint."
+            />
+          </div>
         </div>
       </section>
 

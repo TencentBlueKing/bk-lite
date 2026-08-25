@@ -206,7 +206,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         );
 
       case 'string':
-      default:
+      default: {
         if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'organization') {
           return (
             <GroupTreeSelect
@@ -221,6 +221,11 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           );
         }
 
+        const inputConfig = getFilterInputConfig(definition);
+        const isMultiple = Boolean(
+          inputConfig && inputConfig.control !== 'input' && inputConfig.multiple,
+        );
+
         const fallbackInput = (
           <Input
             value={(typeof value === 'string' || typeof value === 'number') ? String(value) : ''}
@@ -233,19 +238,38 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           />
         );
 
+        const controlValue = Array.isArray(value)
+          ? value
+          : (typeof value === 'string' || typeof value === 'number')
+            ? value
+            : undefined;
+
         return (
           <ParamInputControl
-            inputConfig={getFilterInputConfig(definition)}
+            inputConfig={inputConfig}
             fallback={fallbackInput}
-            value={(typeof value === 'string' || typeof value === 'number') ? value : undefined}
-            onChange={(nextValue) =>
-              handleLocalValueChange(definition.id, nextValue ?? null)
-            }
+            value={controlValue}
+            onChange={(nextValue) => {
+              if (isMultiple) {
+                if (Array.isArray(nextValue)) {
+                  handleLocalValueChange(definition.id, nextValue);
+                  return;
+                }
+                if (typeof nextValue === 'string' || typeof nextValue === 'number') {
+                  handleLocalValueChange(definition.id, [nextValue]);
+                  return;
+                }
+                handleLocalValueChange(definition.id, null);
+                return;
+              }
+              handleLocalValueChange(definition.id, nextValue ?? null);
+            }}
             placeholder={definition.name}
             allowClear
-            style={{ minWidth: 160 }}
+            style={{ minWidth: 220 }}
           />
         );
+      }
     }
   };
 

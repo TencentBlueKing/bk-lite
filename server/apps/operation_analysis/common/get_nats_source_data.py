@@ -2,12 +2,22 @@
 # @File: get_nats_source_data.py
 # @Time: 2025/7/22 18:24
 # @Author: windyzhao
+import os
+
 from django.utils import translation
 from rest_framework.exceptions import ValidationError
 
 from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.team_utils import get_current_team
 from apps.operation_analysis.nats.nats_client import DefaultNastClient
+from apps.rpc.base import AppClient
+
+# 连远端共享 NATS 时，旧 worker 可能没有叠色 handler。本地开发 IS_LOCAL_RPC=1 走本进程。
+_LOCAL_RPC_OVERLAY_MODULES = {
+    ("cmdb", "get_monitor_ids_by_inst_uuids"): "apps.cmdb.nats.nats",
+    ("monitor", "query_latest_active_alerts"): "apps.monitor.nats.monitor",
+    ("monitor", "query_latest_interface_metrics"): "apps.monitor.nats.monitor",
+}
 
 
 class GetNatsData:
@@ -118,6 +128,16 @@ class GetNatsData:
         """
         获取单个 namespace 的 NATS 数据源数据，保留下游返回体语义。
         """
+        local_module = _LOCAL_RPC_OVERLAY_MODULES.get((self.namespace, self.path))
+        if local_module and os.getenv("IS_LOCAL_RPC", "0") == "1":
+            self.params.pop("namespace_id", None)
+            logger.debug(
+                "[DataSourceQuery] IS_LOCAL_RPC 本进程取数 namespace=%s path=%s",
+                self.namespace,
+                self.path,
+            )
+            return AppClient(local_module).run(self.path, **self.params)
+
         namespace = self._get_target_namespace()
         if namespace is None:
             raise RuntimeError("未找到可用的命名空间")

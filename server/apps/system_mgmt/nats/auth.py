@@ -11,12 +11,16 @@ def build_user_authorization_context(user):
     is_superuser = "admin" in role_names or "system-manager--admin" in role_names
 
     if is_superuser:
-        queryset = list(Group.objects.prefetch_related("roles").all().order_by("id"))
+        queryset = list(
+            GroupUtils.active_queryset().prefetch_related("roles").order_by("id")
+        )
         groups = [{"id": group.id, "name": group.name, "parent_id": group.parent_id} for group in queryset]
     else:
         visible_ids = _collect_ancestor_group_ids(user.group_list)
         queryset = list(
-            Group.objects.prefetch_related("roles").filter(id__in=visible_ids).order_by("id")
+            GroupUtils.active_queryset(id__in=visible_ids)
+            .prefetch_related("roles")
+            .order_by("id")
         )
         direct_group_ids = set(user.group_list)
         groups = [

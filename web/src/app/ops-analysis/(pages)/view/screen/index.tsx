@@ -11,6 +11,11 @@ import {
 import { message, Select } from "antd";
 import { useTranslation } from "@/utils/i18n";
 import { useScreenApi } from "@/app/ops-analysis/api/screen";
+import { useDirectoryApi } from "@/app/ops-analysis/api";
+import useBtnPermissions from "@/hooks/usePermissions";
+import { useCanvasPeriodicRefresh } from "@/app/ops-analysis/hooks/useCanvasPeriodicRefresh";
+import { canPersistCanvasRefreshInterval, normalizeCanvasRefreshInterval } from "@/app/ops-analysis/utils/canvasRefreshInterval";
+import type { CanvasRuntimeRefreshCause } from "@/app/ops-analysis/utils/canvasRefreshTimer";
 import { useCanvasShareAction } from "@/app/ops-analysis/hooks/useCanvasShareAction";
 import {
   UnifiedFilterBar,
@@ -85,6 +90,8 @@ interface ScreenQuerySnapshot {
 const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode = false }, ref) => {
   const { t } = useTranslation();
   const { getScreenDetail, saveScreen } = useScreenApi();
+  const { updateItem } = useDirectoryApi();
+  const { hasPermission } = useBtnPermissions();
   const { shareLoading, openShare } = useCanvasShareAction('screen');
   const { namespaceList } = useOpsAnalysis();
   const dataSourceManager = useDataSourceManager();
@@ -104,6 +111,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const [pendingConfigItem, setPendingConfigItem] =
     useState<ComponentSelectorConfigItem | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [refreshCause, setRefreshCause] =
+    useState<CanvasRuntimeRefreshCause>("initial");
+  const [savedRefreshInterval, setSavedRefreshInterval] = useState(0);
   const [viewSets, setViewSets] = useState<ScreenViewSets>(
     buildDefaultScreenViewSets,
   );
@@ -233,6 +243,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       setConfigItemId(null);
       setPendingConfigItem(null);
       setEditQuerySnapshot(null);
+      setRefreshVersion(0);
+      setRefreshCause("initial");
+      setSavedRefreshInterval(0);
       queryState.resetQueryState({
         definitions: emptyViewSets.filters ?? [],
       });
@@ -249,6 +262,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         const normalized = normalizeScreenViewSets(data?.view_sets);
         await syncScreenCanvasResources(normalized);
         if (cancelled) return;
+
+        setSavedRefreshInterval(
+          normalizeCanvasRefreshInterval(data?.refresh_interval),
+        );
 
         setViewSets(normalized);
         setSavedViewSets(normalized);
@@ -352,8 +369,40 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   );
 
   const handleRefresh = useCallback(() => {
+    setRefreshCause("manual");
     setRefreshVersion((current) => current + 1);
   }, []);
+
+  const handlePeriodicRefresh = useCallback(
+    (cause: CanvasRuntimeRefreshCause = "periodic") => {
+      setRefreshCause(cause);
+      setRefreshVersion((current) => current + 1);
+    },
+    [],
+  );
+
+  const canPersistRefreshInterval = canPersistCanvasRefreshInterval({
+    shareMode,
+    isBuiltIn: Boolean(selectedScreen?.is_build_in),
+    hasEditPermission: hasPermission(["EditChart"]),
+  });
+
+  const { effectiveRefreshInterval, handleFrequencyChange } =
+    useCanvasPeriodicRefresh({
+      canvasId: selectedScreen?.data_id,
+      savedInterval: savedRefreshInterval,
+      canPersist: canPersistRefreshInterval,
+      patchRefreshInterval: async (interval) => {
+        if (!selectedScreen?.data_id) {
+          return;
+        }
+        await updateItem("screen", selectedScreen.data_id, {
+          refresh_interval: interval,
+        });
+      },
+      onPeriodicRefresh: handlePeriodicRefresh,
+      onSavedIntervalChange: setSavedRefreshInterval,
+    });
 
   const handleOpenNewWidgetConfig = useCallback(
     (item: ComponentSelectorConfigItem) => {
@@ -586,6 +635,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         shareMode={shareMode}
         selectedItemId={selectedItemId}
         refreshVersion={refreshVersion}
+        refreshCause={refreshCause}
         screenId={selectedScreen?.data_id}
         dataSourceResolver={dataSourceResolver}
         filterDefinitions={queryState.definitions}
@@ -618,6 +668,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       queryState.filterSearchVersion,
       queryState.namespaceSearchVersion,
       refreshVersion,
+      refreshCause,
       isFullscreen,
       selectedItemId,
       selectedScreen?.data_id,
@@ -663,6 +714,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
               }
               saving={saving}
               onRefresh={handleRefresh}
+              frequenceValue={effectiveRefreshInterval}
+              onFrequencyChange={handleFrequencyChange}
               onOpenSettings={() => setSettingsOpen(true)}
               onOpenFilterConfig={() => setFilterConfigOpen(true)}
               onOpenWidgetSelector={() => setWidgetSelectorOpen(true)}
@@ -722,7 +775,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
             dataSources,
           );
           setDraftViewSets(nextViewSets);
-          queryState.setDefinitions(definitions);
+          queryState.applyFilterConfigConfirm(definitions);
           setFilterConfigOpen(false);
         }}
         definitions={queryState.definitions}

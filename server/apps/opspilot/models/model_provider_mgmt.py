@@ -71,6 +71,8 @@ class LLMModel(models.Model, EncryptMixin):
     team = models.JSONField(default=list)
     is_build_in = models.BooleanField(default=True, verbose_name="是否内置")
     is_demo = models.BooleanField(default=False)
+    # 能力无法跨厂商自动探测；False 时对话注入前丢弃图片、只留文本 caption。
+    is_multimodal = models.BooleanField(default=True, verbose_name="支持多模态")
     vendor = models.ForeignKey(
         "ModelVendor",
         on_delete=models.PROTECT,
@@ -246,11 +248,14 @@ class LLMSkill(MaintainerInfo):
 
     introduction = models.TextField(blank=True, null=True, default="", verbose_name="介绍")
     team = models.JSONField(default=list, verbose_name="分组")
+    # 使用组织：平台/Web/嵌入式对话准入；不变式 team ⊆ usage_team（与 Bot 对齐）。
+    usage_team = models.JSONField(default=list, verbose_name="使用组织")
 
     show_think = models.BooleanField(default=True)
     tools = models.JSONField(default=list)
     skill_params = models.JSONField(default=list, verbose_name="技能参数")
     skill_packages = models.JSONField(default=list, verbose_name="技能包")
+    skill_package_params = models.JSONField(default=dict, verbose_name="技能包参数")
 
     temperature = models.FloatField(default=0.7, verbose_name="温度")
     skill_type = models.IntegerField(

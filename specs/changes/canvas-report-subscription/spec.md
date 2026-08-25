@@ -20,6 +20,7 @@ Status: in-progress（Phase 3 done；Phase 4 未做）
 
 ### Release Follow-ups（仍不处理）
 
+- Report 报告订阅已由 [`ops-analysis-report-canvas-toolbar`](../ops-analysis-report-canvas-toolbar/spec.md) 交付，不再作为本 spec 的后续范围。
 - `SCREEN_PDF_SINGLE_PAGE` 强制 page.pdf 参数化
 - Orchestrator 大规模拆分 / Render schema 重构 / 多画布 rename
 - Dashboard `can_view_dashboard` 测试缝最终拆除（与全量 monkeypatch 迁移绑定）
@@ -70,7 +71,7 @@ Release Gate（Dashboard MVP）: [`../dashboard-report-subscription/release-revi
 
 ### 非目标
 
-- Topology、Architecture、Report、NetworkTopology 的报告订阅。
+- Topology、Architecture、NetworkTopology 的报告订阅。Report 订阅见 [`ops-analysis-report-canvas-toolbar`](../ops-analysis-report-canvas-toolbar/spec.md)。
 - 一次性将模型/表/类/URL 全量 rename 为 `CanvasReport*`。
 - 为 Screen 复制平行的订阅、执行、调度或投递实现。
 - 冻结 DataSource `query_config` / `field_schema` / connection / credential，或支持历史运行配置重放。

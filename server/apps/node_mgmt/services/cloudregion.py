@@ -94,6 +94,32 @@ class RegionService:
         return RegionService._decode_env_rows(RegionService._get_cloud_region_env_rows(cloud_region_id), keys=keys)
 
     @staticmethod
+    def get_cloud_regions_envconfig(cloud_region_ids):
+        region_ids = set(cloud_region_ids)
+        env_rows_by_region = {}
+        missing_region_ids = []
+        for region_id in region_ids:
+            cached_env_rows = cache.get(build_sidecar_env_cache_key(region_id))
+            if cached_env_rows is None:
+                missing_region_ids.append(region_id)
+            else:
+                env_rows_by_region[region_id] = cached_env_rows
+
+        if missing_region_ids:
+            for region_id in missing_region_ids:
+                env_rows_by_region[region_id] = []
+            for env_row in SidecarEnv.objects.filter(cloud_region_id__in=missing_region_ids).values("cloud_region_id", "key", "value", "type"):
+                env_rows_by_region[env_row["cloud_region_id"]].append({key: env_row[key] for key in ("key", "value", "type")})
+            for region_id in missing_region_ids:
+                cache.set(
+                    build_sidecar_env_cache_key(region_id),
+                    env_rows_by_region[region_id],
+                    ControllerConstants.E_CACHE_TIMEOUT,
+                )
+
+        return {region_id: RegionService._decode_env_rows(env_rows_by_region[region_id]) for region_id in region_ids}
+
+    @staticmethod
     def get_deploy_script(data: dict):
         """获取云区域代理服务部署脚本，调用 webhookd /infra/proxy 接口"""
         try:
@@ -123,8 +149,17 @@ class RegionService:
             logger.error(f"Missing WEBHOOK_SERVER_URL for cloud region {cloud_region_id}")
             raise BaseAppException("Webhook configuration missing")
 
-        server_url = env_vars.get("NODE_SERVER_URL")
-        nats_url = env_vars.get("NATS_SERVERS")
+        # 自定义区域会把 NODE_SERVER_URL / NATS_SERVERS 改成代理地址，供区域内节点访问。
+        # Traefik 与 NATS leaf 的上游必须仍指向平台中心，否则代理会反代/连回自己。
+        hub_env_vars = RegionService._get_env_vars_dict(
+            CloudRegionConstants.DEFAULT_CLOUD_REGION_ID
+        )
+        server_url = hub_env_vars.get("NODE_SERVER_URL") or os.getenv(
+            "DEFAULT_ZONE_VAR_NODE_SERVER_URL"
+        )
+        nats_url = hub_env_vars.get("NATS_SERVERS") or os.getenv(
+            "DEFAULT_ZONE_VAR_NATS_SERVERS"
+        )
         nats_username = env_vars.get("NATS_USERNAME")
         nats_password = env_vars.get(NodeConstants.NATS_PASSWORD_KEY)
         nats_monitor_username = os.getenv("NATS_ADMIN_USERNAME") or os.getenv("DEFAULT_ZONE_VAR_NATS_ADMIN_USERNAME")

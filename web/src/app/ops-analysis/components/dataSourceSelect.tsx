@@ -37,7 +37,7 @@ const DataSourceSelect: React.FC<DataSourceSelectProps> = ({
     return sources.map((item) => ({
       label: (
         <div className="flex items-center justify-between w-full">
-          <span>{`${item.name}（${item.rest_api}）`}</span>
+          <span>{`${item.name}${item.rest_api ? `（${item.rest_api}）` : ''}`}</span>
           {item.hasAuth === false && (
             <Tag icon={<LockOutlined />} color="warning" className="ml-2">
               {t('common.noAuth')}
@@ -48,7 +48,7 @@ const DataSourceSelect: React.FC<DataSourceSelectProps> = ({
       value: item.id,
       title: item.desc,
       disabled: item.hasAuth === false,
-      searchText: `${item.name} ${item.rest_api}`,
+      searchText: [item.name, item.rest_api].filter(Boolean).join(' '),
     }));
   };
 

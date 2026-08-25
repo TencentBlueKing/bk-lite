@@ -2,13 +2,13 @@
   "zh": [
     {
       "title": "首页",
-      "icon": "shouye",
+      "icon": "daohang-yunyingfenxishi",
       "url": "/job/home",
       "name": "home"
     },
     {
       "title": "作业执行",
-      "icon": "zuoyezhihang",
+      "icon": "renwu",
       "url": "/job/execution",
       "name": "execution",
       "children": [
@@ -92,13 +92,13 @@
   "en": [
     {
       "title": "Home",
-      "icon": "shouye",
+      "icon": "daohang-yunyingfenxishi",
       "url": "/job/home",
       "name": "home"
     },
     {
       "title": "Execution",
-      "icon": "zuoyezhihang",
+      "icon": "renwu",
       "url": "/job/execution",
       "name": "execution",
       "children": [

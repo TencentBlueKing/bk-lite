@@ -7,9 +7,16 @@ import yaml
 from apps.log.services.log_event_contract import NORMALIZE_EVENT_VRL, PREPARE_VICTORIA_LOGS_VRL
 from apps.log.services.log_extractor.semantics import NormalizedRule, normalize_rule, parse_path
 
+SYSTEM_VECTOR_CONFIG_CONTRACT_VERSION = 1
+SYSTEM_VECTOR_CONFIG_VERSION_PREFIX = "# bk-lite-system-vector-contract-version: "
+
 
 class _LiteralDumper(yaml.SafeDumper):
     pass
+
+
+class _UnquotedEnv(str):
+    """Keep Vector env placeholders unquoted so interpolated true/false stay YAML booleans."""
 
 
 def _represent_string(dumper: yaml.SafeDumper, value: str):
@@ -17,7 +24,24 @@ def _represent_string(dumper: yaml.SafeDumper, value: str):
     return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
 
 
+def _represent_unquoted_env(dumper: yaml.SafeDumper, value: _UnquotedEnv):
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(value), style="")
+
+
 _LiteralDumper.add_representer(str, _represent_string)
+_LiteralDumper.add_representer(_UnquotedEnv, _represent_unquoted_env)
+
+
+def get_system_vector_config_contract_version(content: str) -> int:
+    """从完整配置快照读取平台契约版本；无标记的历史快照视为 0。"""
+    if not isinstance(content, str) or not content.startswith(SYSTEM_VECTOR_CONFIG_VERSION_PREFIX):
+        return 0
+    first_line = content.splitlines()[0]
+    try:
+        version = int(first_line.removeprefix(SYSTEM_VECTOR_CONFIG_VERSION_PREFIX))
+    except ValueError:
+        return 0
+    return version if version >= 0 else 0
 
 
 def _vrl_string(value: Any) -> str:
@@ -128,6 +152,7 @@ def _compile_assignments(rule: NormalizedRule) -> list[str]:
                     "    del(_parsed.instance_id)",
                     "    del(_parsed.source_type)",
                     "    del(_parsed.timestamp)",
+                    "    del(_parsed.collect_timestamp)",
                     "    if length(_parsed) > 0 {",
                     "      . = merge(., _parsed)",
                     "      _extract_ok = true",
@@ -161,6 +186,7 @@ def _compile_assignments(rule: NormalizedRule) -> list[str]:
                     "    del(_parsed.instance_id)",
                     "    del(_parsed.source_type)",
                     "    del(_parsed.timestamp)",
+                    "    del(_parsed.collect_timestamp)",
                     "    if length(_parsed) > 0 {",
                     "      . = merge(., _parsed)",
                     "      _extract_ok = true",
@@ -184,6 +210,7 @@ def _compile_assignments(rule: NormalizedRule) -> list[str]:
                 f"if is_string({source}) {{",
                 f"  _parsed, _err = parse_json(string!({source}))",
                 "  if _err == null && is_object(_parsed) {",
+                "    _parsed = object!(_parsed)",
             ]
         )
         if target:
@@ -195,6 +222,7 @@ def _compile_assignments(rule: NormalizedRule) -> list[str]:
                     "    del(_parsed.instance_id)",
                     "    del(_parsed.source_type)",
                     "    del(_parsed.timestamp)",
+                    "    del(_parsed.collect_timestamp)",
                     "    if length(_parsed) > 0 {",
                     "      . = merge(., _parsed)",
                     "      _extract_ok = true",
@@ -239,6 +267,7 @@ def compile_system_vector_config(records: Iterable[Any]) -> str:
                 "url": "${VECTOR_NATS_SERVERS}",
                 "subject": "vector",
                 "connection_name": "system-vector",
+                "log_namespace": True,
                 "auth": {
                     "strategy": "user_password",
                     "user_password": {
@@ -247,6 +276,11 @@ def compile_system_vector_config(records: Iterable[Any]) -> str:
                     },
                 },
                 "decoding": {"codec": "json"},
+                "tls": {
+                    "enabled": _UnquotedEnv("${VECTOR_NATS_TLS_ENABLED}"),
+                    "ca_file": "${VECTOR_NATS_TLS_CA_FILE}",
+                    "verify_certificate": True,
+                },
             }
         },
         "transforms": {
@@ -271,7 +305,8 @@ def compile_system_vector_config(records: Iterable[Any]) -> str:
             }
         },
     }
-    content = yaml.dump(config, Dumper=_LiteralDumper, allow_unicode=True, sort_keys=False, default_flow_style=False, width=120)
+    yaml_content = yaml.dump(config, Dumper=_LiteralDumper, allow_unicode=True, sort_keys=False, default_flow_style=False, width=120)
+    content = f"{SYSTEM_VECTOR_CONFIG_VERSION_PREFIX}{SYSTEM_VECTOR_CONFIG_CONTRACT_VERSION}\n{yaml_content}"
     _validate_compiled_config(content)
     return content
 
@@ -280,6 +315,8 @@ def _validate_compiled_config(content: str) -> None:
     parsed = yaml.safe_load(content)
     if not isinstance(parsed, dict) or set(parsed) != {"sources", "transforms", "sinks"}:
         raise ValueError("中心 Vector 配置拓扑无效")
+    if parsed["sources"].get("server_nats", {}).get("log_namespace") is not True:
+        raise ValueError("中心 Vector NATS source 必须隔离负载与元数据")
     if parsed["transforms"].get("log_extractors", {}).get("inputs") != ["normalize_event"]:
         raise ValueError("日志提取 transform 输入无效")
     if parsed["transforms"].get("prepare_victoria_logs", {}).get("inputs") != ["log_extractors"]:

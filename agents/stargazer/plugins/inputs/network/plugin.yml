@@ -12,7 +12,9 @@ metadata:
 executors:
   protocol:
     type: protocol
-    timeout: 60
+    execution_mode: async
+    capacity_group: snmp
+    timeout: 300
     collector:
       module: plugins.inputs.network.snmp_facts
       class: SnmpFacts

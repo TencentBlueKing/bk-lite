@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Input,
   Button,
@@ -32,6 +32,7 @@ import { FiltersConfig } from '@/app/monitor/types/event';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 import Permission from '@/components/permission';
+import Collapse from '@/components/collapse';
 import StackedBarChart from '@/app/monitor/components/charts/stackedBarChart';
 import AlertDetail from './alertDetail';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -51,6 +52,15 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 import UserAvatar from '@/components/user-avatar';
 import { formatUserDisplayName } from '@/utils/userDisplay';
+import { useHabitExpanded } from '@/hooks/useHabitExpanded';
+import useMonitorUserHabitApi, {
+  MONITOR_ALERT_CHART_HABIT_KEY
+} from '@/app/monitor/api/userHabit';
+import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
+import {
+  resolveMonitorObjectQueryId,
+  resolveMonitorObjectTreeKey
+} from '@/app/monitor/utils/monitorObjectQuery';
 const { Search } = Input;
 const { Option } = Select;
 
@@ -58,6 +68,7 @@ const Alert: React.FC = () => {
   const { isLoading } = useApiClient();
   const { getMonitorAlert, getMonitorObject, patchMonitorAlert } =
     useMonitorApi();
+  const { getUserHabit, saveUserHabit } = useMonitorUserHabitApi();
   const { t } = useTranslation();
   const STATE_MAP = useStateMap();
   const ALERT_TYPE_MAP = useAlertTypeMap();
@@ -97,11 +108,27 @@ const Alert: React.FC = () => {
   });
   const [activeTab, setActiveTab] = useState<string>('activeAlarms');
   const [chartData, setChartData] = useState<Record<string, any>[]>([]);
+  const loadChartHabit = useCallback(
+    () => getUserHabit(MONITOR_ALERT_CHART_HABIT_KEY),
+    [getUserHabit]
+  );
+  const saveChartHabit = useCallback(
+    (value: { expanded: boolean }) =>
+      saveUserHabit(MONITOR_ALERT_CHART_HABIT_KEY, value),
+    [saveUserHabit]
+  );
+  const [chartExpanded, onChartToggle] = useHabitExpanded({
+    enabled: !isLoading,
+    load: loadChartHabit,
+    save: saveChartHabit
+  });
   const [treeLoading, setTreeLoading] = useState<boolean>(false);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [objectId, setObjectId] = useState<React.Key>('');
+  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
+  const { syncObjectId, searchParams } = useMonitorObjectQuery();
 
   const columns: ColumnItem[] = [
     {
@@ -171,20 +198,24 @@ const Alert: React.FC = () => {
         </>
       )
     },
-    {
-      title: t('common.operator'),
-      dataIndex: 'operator',
-      key: 'operator',
-      render: (_, { operator }) =>
-        operator ? (
-          <UserAvatar
-            userName={formatUserDisplayName(operator, userList)}
-            size="small"
-          />
-        ) : (
-          <>--</>
-        )
-    },
+    ...(activeTab === 'historicalAlarms'
+      ? [
+        {
+          title: t('common.operator'),
+          dataIndex: 'operator',
+          key: 'operator',
+          render: (_: unknown, { operator }: TableDataItem) =>
+            operator ? (
+              <UserAvatar
+                userName={formatUserDisplayName(operator, userList)}
+                size="small"
+              />
+            ) : (
+              <>--</>
+            )
+        }
+      ]
+      : []),
     {
       title: t('common.action'),
       key: 'action',
@@ -302,6 +333,18 @@ const Alert: React.FC = () => {
       setObjects(data);
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
+      setDefaultSelectObj(
+        resolveMonitorObjectTreeKey(
+          data,
+          resolveMonitorObjectQueryId({
+            searchParams,
+            objects: data,
+            allowAll: true,
+            fallback: 'all'
+          }),
+          'all'
+        )
+      );
     } finally {
       setTreeLoading(false);
     }
@@ -573,6 +616,7 @@ const Alert: React.FC = () => {
   const handleObjectChange = async (id: string) => {
     cancelAllRequests();
     setObjectId(id);
+    syncObjectId(id);
   };
 
   return (
@@ -584,7 +628,7 @@ const Alert: React.FC = () => {
               loading={treeLoading}
               showAllMenu
               data={treeData}
-              defaultSelectedKey="all"
+              defaultSelectedKey={defaultSelectObj as string}
               onNodeSelect={handleObjectChange}
             />
           </div>
@@ -657,31 +701,28 @@ const Alert: React.FC = () => {
           </div>
           <Spin spinning={chartLoading}>
             <div className={alertStyle.chartWrapper}>
-              <div className="flex items-center justify-between mb-[2px]">
-                <div className="text-[14px] ml-[10px] relative">
-                  {t('monitor.events.distributionMap')}
+              <Collapse
+                title={t('monitor.events.distributionMap')}
+                icon={
                   <Tooltip
                     placement="top"
                     title={t(`monitor.events.${activeTab}MapTips`)}
                   >
-                    <div
-                      className="absolute cursor-pointer"
-                      style={{
-                        top: '-4px',
-                        right: '-14px'
-                      }}
-                    >
+                    <span className="cursor-pointer">
                       <Icon
                         type="a-shuoming2"
                         className="text-[14px] text-[var(--color-text-3)]"
                       />
-                    </div>
+                    </span>
                   </Tooltip>
+                }
+                isOpen={chartExpanded}
+                onToggle={onChartToggle}
+              >
+                <div className={alertStyle.chart}>
+                  <StackedBarChart data={chartData} colors={LEVEL_MAP as any} />
                 </div>
-              </div>
-              <div className={alertStyle.chart}>
-                <StackedBarChart data={chartData} colors={LEVEL_MAP as any} />
-              </div>
+              </Collapse>
             </div>
           </Spin>
           <div className={alertStyle.table}>
@@ -696,7 +737,12 @@ const Alert: React.FC = () => {
             />
             <CustomTable
               className="w-full"
-              scroll={{ y: 'calc(100vh - 640px)', x: 'max-content' }}
+              scroll={{
+                y: chartExpanded
+                  ? 'calc(100vh - 640px)'
+                  : 'calc(100vh - 530px)',
+                x: 'max-content'
+              }}
               columns={columns}
               dataSource={tableData}
               pagination={pagination}
@@ -709,7 +755,6 @@ const Alert: React.FC = () => {
       </div>
       <AlertDetail
         ref={detailRef}
-        objectId={objectId === 'all' ? '' : objectId}
         objects={objects}
         userList={userList}
         onSuccess={() => getAssetInsts('refresh')}

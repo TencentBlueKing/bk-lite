@@ -20,7 +20,23 @@ DANGEROUS_COMMAND_PREFIXES = {
     "set",
 }
 
-SUPPORTED_DEVICE_TYPES = {"huawei", "hp_comware", "cisco_ios", "juniper_junos", "f5_tmsh", "fortinet"}
+SUPPORTED_DEVICE_TYPES = {
+    "huawei",
+    "hp_comware",
+    "cisco_ios",
+    "juniper_junos",
+    "f5_tmsh",
+    "fortinet",
+}
+
+SCRAPLI_PLATFORM_BY_DEVICE_TYPE = {
+    "cisco_ios": "cisco_iosxe",
+    "f5_tmsh": "f5_tmsh",
+    "fortinet": "fortinet_fortios",
+    "hp_comware": "hp_comware",
+    "huawei": "huawei_vrp",
+    "juniper_junos": "juniper_junos",
+}
 
 DEVICE_TYPE_DISABLE_PAGING = {
     "cisco_ios": "terminal length 0",

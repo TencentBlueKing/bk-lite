@@ -79,6 +79,22 @@ def test_associate_skips_when_non_unique(node, region):
 
 
 @pytest.mark.django_db
+def test_associate_upgrades_digit_cmdb_id_to_uuid(node, region):
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    node.cmdb_id = "1704"
+    node.save(update_fields=["cmdb_id"])
+    linked = NodeAssociationService.best_effort_associate_cmdb_host(
+        cmdb_id=inst_uuid,
+        ip="10.0.0.50",
+        cloud=region.id,
+        cmdb_id_aliases=["1704"],
+    )
+    assert linked == node.id
+    node.refresh_from_db()
+    assert node.cmdb_id == inst_uuid
+
+
+@pytest.mark.django_db
 def test_associate_skips_conflict_on_existing_peer_id(node, region):
     node.cmdb_id = "999"
     node.save(update_fields=["cmdb_id"])

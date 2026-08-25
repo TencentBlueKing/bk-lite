@@ -10,7 +10,10 @@ import type {
 } from '@/app/ops-analysis/types/dashBoard';
 import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
-import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
+import {
+  isFiniteNumber,
+  type ThresholdColorConfig,
+} from '@/app/ops-analysis/utils/thresholdUtils';
 import type { NetworkStatusTopologyConfig } from '@/app/ops-analysis/types/sceneWidget';
 import {
   normalizeCardListAccentStyle,
@@ -120,9 +123,11 @@ const buildSceneWidgetConfig = (
     chartType: 'networkStatusTopology',
     sceneWidgetType: 'networkStatusTopology',
     networkStatusTopology: buildPersistedNetworkStatusTopologyConfig({
-      modelId: topologyConfig?.modelId || '',
-      instId: topologyConfig?.instId || '',
-      depth: topologyConfig?.depth || 2,
+      instUuids: topologyConfig?.instUuids || [],
+      nodeLimit: topologyConfig?.nodeLimit,
+      linkTrafficDisplays: topologyConfig?.linkTrafficDisplays,
+      inboundTrafficThresholds: topologyConfig?.inboundTrafficThresholds,
+      outboundTrafficThresholds: topologyConfig?.outboundTrafficThresholds,
       layoutMode: topologyConfig?.layoutMode,
       layoutByMode: topologyConfig?.layoutByMode,
       nodePositions: topologyConfig?.nodePositions,
@@ -226,15 +231,8 @@ const applySingleValueConfig = (
   if (descriptionField) {
     result.descriptionField = descriptionField;
   }
-  if (values.unit !== undefined) result.unit = values.unit;
-  result.unitId = values.unitId;
+  applyValueFormatFields(result, values);
   result.valueMappings = values.valueMappings || undefined;
-  if (values.conversionFactor !== undefined) {
-    result.conversionFactor = values.conversionFactor;
-  }
-  if (values.decimalPlaces !== undefined) {
-    result.decimalPlaces = values.decimalPlaces;
-  }
 };
 
 const trimOptionalField = (value?: string) => {
@@ -253,6 +251,48 @@ const CARD_LIST_FOREIGN_KEYS = [
   'topNValueField',
 ] as const;
 
+const OPTIONAL_NUMERIC_DISPLAY_FIELDS = [
+  'conversionFactor',
+  'decimalPlaces',
+] as const;
+
+const applyOptionalNumericDisplayFields = (
+  result: WidgetConfig,
+  values: WidgetConfigFormValues,
+) => {
+  for (const key of OPTIONAL_NUMERIC_DISPLAY_FIELDS) {
+    if (isFiniteNumber(values[key])) {
+      result[key] = values[key];
+    } else if (values[key] === null) {
+      // InputNumber 清空后的显式 sentinel，供 merge/spread 覆盖旧值后再剥离
+      (result as unknown as Record<string, unknown>)[key] = null;
+    }
+  }
+};
+
+const applyValueFormatFields = (
+  result: WidgetConfig,
+  values: WidgetConfigFormValues,
+) => {
+  if (values.unit !== undefined) result.unit = values.unit;
+  result.unitId = values.unitId;
+  applyOptionalNumericDisplayFields(result, values);
+};
+
+const VALUE_FORMAT_CHART_TYPES = new Set(['line', 'bar', 'pie', 'multiValue']);
+
+const stripUnsetOptionalNumericDisplayFields = <T extends object>(
+  valueConfig: T,
+): T => {
+  const next = { ...valueConfig } as T & Record<string, unknown>;
+  for (const key of OPTIONAL_NUMERIC_DISPLAY_FIELDS) {
+    if (!isFiniteNumber(next[key])) {
+      delete next[key];
+    }
+  }
+  return next;
+};
+
 export const omitForeignChartTypeFields = <T extends object>(
   valueConfig: T,
   chartType: string,
@@ -262,10 +302,18 @@ export const omitForeignChartTypeFields = <T extends object>(
     for (const key of CARD_LIST_FOREIGN_KEYS) {
       delete next[key];
     }
-    return next;
+  } else {
+    delete next.cardList;
   }
-  delete next.cardList;
-  return next;
+  if (chartType === 'multiValue') {
+    if (!Array.isArray(next.thresholdColors) || next.thresholdColors.length === 0) {
+      delete next.thresholdColors;
+    }
+    if (!Array.isArray(next.valueMappings) || next.valueMappings.length === 0) {
+      delete next.valueMappings;
+    }
+  }
+  return stripUnsetOptionalNumericDisplayFields(next);
 };
 
 /**
@@ -362,15 +410,8 @@ const applyGaugeConfig = (
 ) => {
   result.selectedFields = selectedFields;
   result.thresholdColors = thresholdColors;
-  if (values.unit !== undefined) result.unit = values.unit;
-  result.unitId = values.unitId;
+  applyValueFormatFields(result, values);
   result.valueMappings = values.valueMappings || undefined;
-  if (values.conversionFactor !== undefined) {
-    result.conversionFactor = values.conversionFactor;
-  }
-  if (values.decimalPlaces !== undefined) {
-    result.decimalPlaces = values.decimalPlaces;
-  }
   if (values.gaugeMin !== undefined) result.gaugeMin = values.gaugeMin;
   if (values.gaugeMax !== undefined) result.gaugeMax = values.gaugeMax;
   if (values.gaugeShape !== undefined) result.gaugeShape = values.gaugeShape;
@@ -438,6 +479,15 @@ export const buildWidgetSubmitConfig = ({
 
   if (chartType === 'gauge') {
     applyGaugeConfig(result, values, selectedFields, thresholdColors);
+  }
+
+  if (VALUE_FORMAT_CHART_TYPES.has(chartType)) {
+    applyValueFormatFields(result, values);
+  }
+
+  if (chartType === 'multiValue') {
+    result.thresholdColors = thresholdColors;
+    result.valueMappings = values.valueMappings || [];
   }
 
   if (chartType === 'topN') {

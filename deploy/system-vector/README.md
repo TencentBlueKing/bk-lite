@@ -14,7 +14,10 @@
 1. 执行数据库迁移。
 2. 运行 `python manage.py system_vector_token`，保存输出并更新部署 Secret。
 3. 启动 Server。
-4. 携 Token 请求配置接口，确认返回 200、`X-Config-Checksum` 与 `X-Config-Generation`。
+4. 携 Token 请求配置接口，确认返回 200、`X-Config-Checksum`、`X-Config-Generation` 与 `X-Config-Contract-Version`。
 5. 使用 `bootstrap.yaml` 启动中心系统 Vector，并配置容器失败重启策略。
 
 管理命令每次执行都会轮换 Token。若标准输出丢失，应重新执行并使用新 Token；旧 Token 会立即失效。
+
+当 Server 版本改变平台固定 Vector 契约时，Server 和 worker 就绪后执行
+`python manage.py republish_system_vector_config`，它只重新编译并原子发布完整快照，不轮换 Token。不要把该命令放入 Server 启动钩子。

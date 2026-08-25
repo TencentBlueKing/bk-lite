@@ -1,5 +1,9 @@
 """周期评估通知的任务快照与投递契约。"""
 
+from datetime import datetime
+from datetime import timezone as datetime_timezone
+from types import SimpleNamespace
+
 import pytest
 from django.utils import timezone
 
@@ -13,12 +17,9 @@ from apps.patch_mgmt.models import (
     PatchTarget,
     ScanSetting,
 )
+from apps.patch_mgmt.services.assessment_notification import _format_notification
 from apps.patch_mgmt.services.patch_execution_service import finalize_governance_task
-from apps.patch_mgmt.tasks import (
-    reconcile_assessment_notification_deliveries,
-    run_periodic_compliance_scan,
-    send_assessment_notification_delivery,
-)
+from apps.patch_mgmt.tasks import reconcile_assessment_notification_deliveries, run_periodic_compliance_scan, send_assessment_notification_delivery
 
 
 @pytest.mark.django_db
@@ -37,15 +38,14 @@ def test_periodic_scan_freezes_notification_rules_on_created_task(mocker):
     setting.is_enabled = True
     setting.notification_enabled = True
     setting.notification_rules = rules
+    setting.timezone = "Asia/Shanghai"
     setting.save()
     target = PatchTarget.objects.create(
         name="host-a",
         ip="10.0.0.1",
         team=[1],
     )
-    dispatch = mocker.patch(
-        "apps.patch_mgmt.tasks.execute_governance_task.delay"
-    )
+    dispatch = mocker.patch("apps.patch_mgmt.tasks.execute_governance_task.delay")
 
     run_periodic_compliance_scan()
 
@@ -55,6 +55,7 @@ def test_periodic_scan_freezes_notification_rules_on_created_task(mocker):
     assert task.notification_snapshot == {
         "enabled": True,
         "rules": rules,
+        "timezone": "Asia/Shanghai",
     }
     dispatch.assert_called_once_with(task.id)
 
@@ -62,6 +63,29 @@ def test_periodic_scan_freezes_notification_rules_on_created_task(mocker):
     setting.save(update_fields=["notification_rules", "updated_at"])
     task.refresh_from_db()
     assert task.notification_snapshot["rules"] == rules
+
+
+def test_periodic_assessment_notification_formats_finished_at_in_schedule_timezone():
+    """通知完成时间应使用周期任务创建时固化的用户时区。"""
+    task = SimpleNamespace(
+        finished_at=datetime(
+            2026,
+            8,
+            14,
+            2,
+            11,
+            53,
+            tzinfo=datetime_timezone.utc,
+        ),
+        notification_snapshot={"timezone": "Asia/Shanghai"},
+    )
+
+    _, content = _format_notification(
+        task,
+        {"total_count": 6, "non_compliant_count": 3, "failed_count": 2},
+    )
+
+    assert "评估完成时间：2026-08-14 10:11:53" in content
 
 
 @pytest.mark.django_db
@@ -232,7 +256,8 @@ def test_missing_host_result_is_counted_as_assessment_failure():
 
 
 @pytest.mark.django_db
-def test_notification_delivery_sends_channel_payload_and_marks_delivered(mocker):
+@pytest.mark.integration
+def test_notification_delivery_dispatches_with_alert_event_contract_and_marks_delivered(mocker):
     """投递任务应调用系统管理渠道，成功后持久化投递事实。"""
     task = GovernanceTask.objects.create(
         name="周期性合规评估",
@@ -247,7 +272,7 @@ def test_notification_delivery_sends_channel_payload_and_marks_delivered(mocker)
     delivery = AssessmentNotificationDelivery.objects.create(
         task=task,
         channel_id=9,
-        channel_name="自动化工作流",
+        channel_name="告警中心",
         channel_type="nats",
         receivers=[],
         team_id=1,
@@ -259,12 +284,24 @@ def test_notification_delivery_sends_channel_payload_and_marks_delivered(mocker)
             "failed_count": 0,
         },
     )
+    delivery_key = f"patch-periodic-assessment:{delivery.id}"
+    mocker.patch(
+        "apps.patch_mgmt.tasks.ALERT_CENTER_ACK_TOKEN",
+        "receiver-secret",
+    )
     send = mocker.patch(
-        "apps.patch_mgmt.tasks.SystemMgmt.send_msg_with_channel",
+        "apps.patch_mgmt.tasks.SystemMgmt.dispatch_notification",
         return_value={
             "result": True,
             "code": "delivered",
-            "data": {"accepted": True},
+            "data": {"event_results": [{"delivery_id": delivery_key, "status": "accepted"}]},
+        },
+    )
+    probe = mocker.patch(
+        "apps.patch_mgmt.tasks.SystemMgmt.probe_notification_channel",
+        return_value={
+            "result": True,
+            "delivery_mode": "alert_event_copy",
         },
     )
 
@@ -275,8 +312,184 @@ def test_notification_delivery_sends_channel_payload_and_marks_delivered(mocker)
     assert delivery.attempts == 1
     assert delivery.delivered_at is not None
     assert delivery.last_error == ""
+    probe.assert_called_once_with(9, capability_only=True)
     send.assert_called_once_with(
+        delivery_key=delivery_key,
         channel_id=9,
+        organization_ids=[1],
+        recipients=[],
+        title=delivery.title,
+        body=delivery.content,
+        event_payload={
+            "title": delivery.title,
+            "description": delivery.content,
+            "level": "1",
+            "item": "patch_periodic_assessment",
+            "value": 1,
+            "start_time": str(int(delivery.task.finished_at.timestamp())),
+            "action": "created",
+            "external_id": f"patch-periodic-assessment-{delivery.task_id}",
+            "service": "patch_mgmt",
+            "organizations": [1],
+            "delivery_id": delivery_key,
+            "labels": {
+                "resource_id": str(delivery.task_id),
+                "resource_type": "patch_assessment",
+                "resource_name": delivery.task.name,
+            },
+        },
+        required_delivery_mode="alert_event_copy",
+        producer="lite-patch",
+        internal_caller="lite-patch",
+        ack_mode="per_event_v1",
+        ack_token="receiver-secret",
+    )
+
+
+@pytest.mark.django_db
+def test_notification_delivery_retries_when_channel_capability_changes(mocker):
+    """能力探测后渠道类型变化时，未投递结果不得记为已送达。"""
+    task = GovernanceTask.objects.create(
+        name="周期性合规评估",
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.COMPLETED,
+        target_list=[1],
+        patch_list=[],
+        trigger_source="periodic_scan",
+        notification_snapshot={"enabled": True, "rules": []},
+        finished_at=timezone.now(),
+    )
+    delivery = AssessmentNotificationDelivery.objects.create(
+        task=task,
+        channel_id=9,
+        channel_name="告警中心",
+        channel_type="nats",
+        receivers=[],
+        team_id=1,
+        title="【补丁管理】周期评估发现需关注项",
+        content="周期评估已完成。",
+        summary={"total_count": 1, "non_compliant_count": 1, "failed_count": 0},
+    )
+    mocker.patch(
+        "apps.patch_mgmt.tasks.SystemMgmt.probe_notification_channel",
+        return_value={"result": True, "delivery_mode": "alert_event_copy"},
+    )
+    mocker.patch(
+        "apps.patch_mgmt.tasks.SystemMgmt.dispatch_notification",
+        return_value={
+            "result": True,
+            "code": "not_applicable",
+            "retryable": False,
+            "message": "channel delivery mode does not match",
+        },
+    )
+
+    send_assessment_notification_delivery(delivery.id)
+
+    delivery.refresh_from_db()
+    assert delivery.status == AssessmentNotificationDelivery.Status.RETRY
+    assert delivery.attempts == 1
+    assert delivery.delivered_at is None
+    assert "channel delivery mode does not match" in delivery.last_error
+
+
+@pytest.mark.django_db
+def test_notification_delivery_retries_when_per_event_ack_rejects(mocker):
+    """告警中心拒绝当前事件时，聚合响应为成功也不得标记已送达。"""
+    task = GovernanceTask.objects.create(
+        name="周期性合规评估",
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.COMPLETED,
+        target_list=[1],
+        patch_list=[],
+        trigger_source="periodic_scan",
+        notification_snapshot={"enabled": True, "rules": []},
+        finished_at=timezone.now(),
+    )
+    delivery = AssessmentNotificationDelivery.objects.create(
+        task=task,
+        channel_id=9,
+        channel_name="告警中心",
+        channel_type="nats",
+        receivers=[],
+        team_id=1,
+        title="【补丁管理】周期评估发现需关注项",
+        content="周期评估已完成。",
+        summary={"total_count": 1, "non_compliant_count": 1, "failed_count": 0},
+    )
+    delivery_key = f"patch-periodic-assessment:{delivery.id}"
+    mocker.patch(
+        "apps.patch_mgmt.tasks.ALERT_CENTER_ACK_TOKEN",
+        "receiver-secret",
+    )
+    mocker.patch(
+        "apps.patch_mgmt.tasks.SystemMgmt.probe_notification_channel",
+        return_value={"result": True, "delivery_mode": "alert_event_copy"},
+    )
+    mocker.patch(
+        "apps.patch_mgmt.tasks.SystemMgmt.dispatch_notification",
+        return_value={
+            "result": True,
+            "code": "delivered",
+            "data": {
+                "event_results": [
+                    {
+                        "delivery_id": delivery_key,
+                        "status": "errored",
+                        "retryable": True,
+                    }
+                ]
+            },
+        },
+    )
+
+    send_assessment_notification_delivery(delivery.id)
+
+    delivery.refresh_from_db()
+    assert delivery.status == AssessmentNotificationDelivery.Status.RETRY
+    assert delivery.attempts == 1
+    assert delivery.delivered_at is None
+
+
+@pytest.mark.django_db
+def test_notification_delivery_keeps_message_contract_for_regular_nats(mocker):
+    """非告警事件型 NATS 渠道仍使用通道自身的普通消息契约。"""
+    task = GovernanceTask.objects.create(
+        name="周期性合规评估",
+        task_type=GovernanceTaskType.ASSESS,
+        status=GovernanceTaskStatus.COMPLETED,
+        target_list=[1],
+        patch_list=[],
+        trigger_source="periodic_scan",
+        notification_snapshot={"enabled": True, "rules": []},
+        finished_at=timezone.now(),
+    )
+    delivery = AssessmentNotificationDelivery.objects.create(
+        task=task,
+        channel_id=10,
+        channel_name="自动化工作流",
+        channel_type="nats",
+        receivers=[],
+        team_id=1,
+        title="【补丁管理】周期评估发现需关注项",
+        content="周期评估已完成。",
+        summary={"total_count": 1, "non_compliant_count": 1, "failed_count": 0},
+    )
+    mocker.patch(
+        "apps.patch_mgmt.tasks.SystemMgmt.probe_notification_channel",
+        return_value={"result": True, "delivery_mode": "message"},
+    )
+    send = mocker.patch(
+        "apps.patch_mgmt.tasks.SystemMgmt.send_msg_with_channel",
+        return_value={"result": True},
+    )
+
+    send_assessment_notification_delivery(delivery.id)
+
+    delivery.refresh_from_db()
+    assert delivery.status == AssessmentNotificationDelivery.Status.DELIVERED
+    send.assert_called_once_with(
+        channel_id=10,
         title=delivery.title,
         content={
             "message": delivery.content,
@@ -380,9 +593,7 @@ def test_notification_reconciler_recovers_missing_terminal_intent(mocker):
         target_ip=target.ip,
         stage="completed",
     )
-    dispatch = mocker.patch(
-        "apps.patch_mgmt.tasks.send_assessment_notification_delivery.delay"
-    )
+    dispatch = mocker.patch("apps.patch_mgmt.tasks.send_assessment_notification_delivery.delay")
 
     reconcile_assessment_notification_deliveries()
 

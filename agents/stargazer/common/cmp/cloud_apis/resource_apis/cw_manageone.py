@@ -1,6 +1,5 @@
 # -*- coding: UTF-8 -*-
 import datetime
-import logging
 import os
 import time
 import typing
@@ -9,6 +8,7 @@ import requests
 
 from common.cmp.cloud_apis.base import PrivateCloudManage
 from common.cmp.cloud_apis.cloud_object.base import VM, BusinessRegion, DataStore, HostMachine
+from core.logger import logger
 
 # from common.cmp.cloud_apis.constant import CloudResourceType, CloudType, SnapshotStatus, VMStatusType, VolumeStatus,
 # VPCStatus
@@ -24,9 +24,6 @@ from common.cmp.cloud_apis.cloud_object.base import VM, BusinessRegion, DataStor
 # from common.cmp.models import AccountConfig
 # from common.cmp.cloud_apis.constant import CloudResourceType, CloudType
 # from common.cmp.cloud_apis.resource_apis.utils import fail
-
-logger = logging.getLogger("root")
-
 
 def character_conversion_timestamp(time_str):
     """
@@ -64,19 +61,21 @@ def handle_request(method, url, **kwargs):
     try:
         resp = requests.request(method, url, **kwargs)
     except Exception:
-        logger.exception(f"请求失败,url:{url},method:{method},kwargs:{kwargs}")
+        logger.exception("请求失败,url:%s,method:%s", url, method)
         return {"result": False, "message": f"请求失败,url:{url},method:{method},kwargs:{kwargs}", "data": {}}
     if resp.status_code > 300:
-        logger.exception(
-            f"请求失败,url:{url},method:{method},kwargs:{kwargs},status_code:{resp.status_code}"
-            f"message:{resp.content.decode('utf-8')}"
+        logger.error(
+            "请求失败,url:%s,method:%s,status_code:%s",
+            url,
+            method,
+            resp.status_code,
         )
         return {
             "result": False,
             "message": f"请求错误,status_code:{resp.status_code},message:{resp.content.decode('utf-8')}",
             "data": {},
         }
-    logger.debug(f"请求成功,url:{url},method:{method},kwargs:{kwargs}")
+    logger.debug("请求成功,url:%s,method:%s", url, method)
     return {"result": True, "data": resp.json()}
 
 
@@ -116,7 +115,10 @@ class CwManageOne(object):
         if not resp["result"]:
             return ""
         auth_token = resp["data"].get("accessSession", "")
-        logger.debug(f"获取运维面token成功,auth_token:{auth_token}")
+        logger.debug(
+            "获取运维面token成功,token_present:%s",
+            bool(auth_token),
+        )
         return auth_token
 
     def __call__(self, *args, **kwargs):
@@ -531,18 +533,14 @@ class ManageOne(PrivateCloudManage):
             i.update(floating_ip_id=ip_id_map.get(i["floating_ip"], None))
             i.update(elb_id=pool_member_vm_map.get(i["resource_id"], None))
 
-        print(
-            {
-                "result": "True",
-                "data": {
-                    "mo_cloud": mo_cloud["data"],
-                    "mo_host": mo_host["data"],
-                    "mo_ds": mo_ds["data"],
-                    "mo_server": mo_server["data"],
-                    "mo_ip": mo_ip["data"],
-                    "mo_elb": mo_elb["data"],
-                },
-            }
+        logger.debug(
+            "event=manageone_inventory_collected clouds=%s hosts=%s datastores=%s servers=%s floating_ips=%s elbs=%s",
+            len(mo_cloud["data"]),
+            len(mo_host["data"]),
+            len(mo_ds["data"]),
+            len(mo_server["data"]),
+            len(mo_ip["data"]),
+            len(mo_elb["data"]),
         )
         return {
             "result": "True",

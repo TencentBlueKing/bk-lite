@@ -31,15 +31,9 @@ request to the upstream WeOps service configured on the canvas.
 from __future__ import annotations
 
 import json
-import logging
-
-from django.core.exceptions import ValidationError as DjangoValidationError
-from rest_framework import permissions, status
-from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError as DRFValidationError
-from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.models.models import NetworkTopology
 from apps.operation_analysis.serializers.network_topology_serializers import (
@@ -51,9 +45,12 @@ from apps.operation_analysis.services.network_topology import canvas_config
 from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
 from apps.operation_analysis.services.network_topology.weops_adapter import WeOpsTopologyAdapter, WeOpsTopologyAdapterError
 from apps.operation_analysis.views.view import BuiltinVisibleMixin, _create_canvas_share_response
-
-logger = logging.getLogger("apps.operation_analysis.network_topology")
-
+from django.core.exceptions import ValidationError as DjangoValidationError
+from rest_framework import permissions, status
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
+from rest_framework.response import Response
 
 # --------------------------------------------------------------------------- #
 # Adapter factory                                                               #
@@ -96,7 +93,6 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
     permission_classes = [permissions.IsAuthenticated, NetworkTopologyFeaturePermission]
     ORGANIZATION_FIELD = "groups"
 
-
     _EDIT_ACTIONS = frozenset(
         {
             "update",
@@ -113,16 +109,12 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
             return {"view-AddChart"}
         if self.action == "test_connection":
             return {"view-AddChart", "view-EditChart"}
-        if self.action in self._EDIT_ACTIONS or (
-            self.action == "config" and request.method == "PUT"
-        ):
+        if self.action in self._EDIT_ACTIONS or (self.action == "config" and request.method == "PUT"):
             return {"view-EditChart"}
         return {"view-View"}
 
     def _is_instance_write(self, request):
-        return self.action in self._EDIT_ACTIONS or self.action == "destroy" or (
-            self.action == "config" and request.method == "PUT"
-        )
+        return self.action in self._EDIT_ACTIONS or self.action == "destroy" or (self.action == "config" and request.method == "PUT")
 
     def check_object_permissions(self, request, obj):
         """所有正式 detail/action 统一执行空间与实例规则校验。"""
@@ -329,7 +321,7 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
         """Proxy: list the interfaces of a WeOps node.
 
         ``node_ref`` comes URL-encoded from the frontend (a JSON dict of
-        ``bk_obj_id`` / ``bk_inst_id`` / ``network_collect_*`` /
+        ``bk_obj_id`` / ``bk_inst_uuid`` / ``network_collect_*`` /
         ``plugin_*`` fields). We decode it back into a dict before
         handing it to the adapter, which re-encodes it for the upstream
         path segment.

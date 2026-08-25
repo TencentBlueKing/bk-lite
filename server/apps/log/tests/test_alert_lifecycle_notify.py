@@ -6,7 +6,7 @@ from apps.log.models.policy import Alert, Event, Policy, PolicyOrganization
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.system_mgmt.models.channel import Channel
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
 
 def _make_policy(channel, **overrides):
@@ -193,6 +193,7 @@ def test_notify_created_sends_standard_envelope_without_notice_users(alert_cente
     assert envelope["pusher"] == "lite-log"
     assert envelope["events"][0]["action"] == "created"
     assert users == []
+    assert send.call_args.kwargs == {"internal_caller": "lite-log"}
 
 
 @pytest.mark.parametrize(

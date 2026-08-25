@@ -1,7 +1,15 @@
 'use client';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Checkbox, Dropdown, Empty, Input, message, Modal, Spin, Tag, Upload } from 'antd';
-import { DeleteOutlined, DownloadOutlined, DownOutlined, SearchOutlined, UploadOutlined } from '@ant-design/icons';
+import { Button, Checkbox, Dropdown, Input, message, Modal, Spin, Tag, Tooltip, Upload } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
+import {
+  CaretRightOutlined,
+  DeleteOutlined,
+  DownloadOutlined,
+  DownOutlined,
+  SearchOutlined,
+  UploadOutlined,
+} from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
@@ -11,13 +19,20 @@ import { findLabelById, getIconByObjectName } from '@/app/monitor/utils/common';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { useSearchParams } from 'next/navigation';
 import TreeSelector from '@/app/monitor/components/treeSelector';
+import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
+import {
+  resolveMonitorObjectQueryId,
+  resolveMonitorObjectTreeKey
+} from '@/app/monitor/utils/monitorObjectQuery';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 import BulkApplyModal from './bulkApplyModal';
 import {
   clearTemplateSelection,
   containsBuiltinTemplate,
+  formatTemplateListName,
   getTemplateKey,
+  getTemplateMetricName,
   groupPolicyTemplates,
   PolicyTemplateItem,
   selectTemplateGroup,
@@ -37,7 +52,7 @@ const Template: React.FC = () => {
     bulkDeletePolicyTemplates,
   } = useEventApi();
   const searchParams = useSearchParams();
-  const objId = searchParams.get('objId');
+  const { syncObjectId } = useMonitorObjectQuery();
   const templateAbortControllerRef = useRef<AbortController | null>(null);
   const templateRequestIdRef = useRef<number>(0);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
@@ -48,6 +63,7 @@ const Template: React.FC = () => {
   const [objectId, setObjectId] = useState<React.Key>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [selectedTemplateKeys, setSelectedTemplateKeys] = useState<string[]>([]);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [searchKeyword, setSearchKeyword] = useState('');
   const [bulkModalVisible, setBulkModalVisible] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -88,7 +104,7 @@ const Template: React.FC = () => {
   const selectedTemplateTags = useMemo(() => {
     return selectedTemplates.map((item) => ({
       key: getTemplateKey(item),
-      label: item.name || item.metric_name || '--'
+      label: formatTemplateListName(item, selectedTemplates)
     }));
   }, [selectedTemplates]);
 
@@ -124,8 +140,22 @@ const Template: React.FC = () => {
   const handleObjectChange = async (id: string) => {
     cancelAllRequests();
     setObjectId(id);
+    syncObjectId(id);
     setSelectedTemplateKeys(clearTemplateSelection());
+    setCollapsedGroups(new Set());
     setSearchKeyword('');
+  };
+
+  const toggleGroupCollapsed = (groupName: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupName)) {
+        next.delete(groupName);
+      } else {
+        next.add(groupName);
+      }
+      return next;
+    });
   };
 
   const getAssetInsts = async (objectId: React.Key) => {
@@ -152,6 +182,7 @@ const Template: React.FC = () => {
       }));
       setTableData(list);
       setSelectedTemplateKeys(clearTemplateSelection());
+      setCollapsedGroups(new Set());
     } finally {
       if (currentRequestId === templateRequestIdRef.current) {
         setTableLoading(false);
@@ -169,7 +200,17 @@ const Template: React.FC = () => {
         setObjects(monitorObjects);
         const _treeData = getTreeData(cloneDeep(monitorObjects));
         const defaulltId = (_treeData[0]?.children || [])[0]?.key;
-        setDefaultSelectObj(objId ? +objId : defaulltId);
+        setDefaultSelectObj(
+          resolveMonitorObjectTreeKey(
+            monitorObjects,
+            resolveMonitorObjectQueryId({
+              searchParams,
+              objects: monitorObjects,
+              fallback: defaulltId
+            }),
+            defaulltId
+          )
+        );
         setTreeData(_treeData);
       })
       .finally(() => {
@@ -279,6 +320,7 @@ const Template: React.FC = () => {
     const key = getTemplateKey(item);
     const selected = selectedTemplateKeys.includes(key);
     const icon = item.icon || OBJECT_DEFAULT_ICON;
+    const metricName = getTemplateMetricName(item);
     return (
       <button
         key={key}
@@ -301,20 +343,27 @@ const Template: React.FC = () => {
           />
         </div>
         <div className={templateStyle.cardBody}>
-          <div className={templateStyle.cardTitle} title={item.name || '--'}>
-            {item.name || '--'}
+          <div className={templateStyle.cardTitle}>
+            <Tooltip title={item.name || '--'} mouseEnterDelay={0.3}>
+              <span className={templateStyle.cardTitleInner}>
+                <span className={templateStyle.cardTitleText}>{item.name || '--'}</span>
+                <span
+                  className={`${templateStyle.cardTypeBadge} ${
+                    item.template_type === 'custom'
+                      ? templateStyle.cardCustomBadge
+                      : templateStyle.cardBuiltinBadge
+                  }`}
+                >
+                  {item.template_type === 'custom' ? '自定义' : '内置'}
+                </span>
+              </span>
+            </Tooltip>
           </div>
-          <div className={templateStyle.cardMeta}>
-            <Tag className={templateStyle.cardTag}>
-              {item.template_group || item.plugin_display_name || item.plugin_name || '--'}
-            </Tag>
-            <Tag
-              className={templateStyle.cardTypeTag}
-              color={item.template_type === 'custom' ? 'blue' : 'default'}
-            >
-              {item.template_type === 'custom' ? '自定义' : '内置'}
-            </Tag>
-          </div>
+          {metricName ? (
+            <div className={templateStyle.cardMetric} title={metricName}>
+              {metricName}
+            </div>
+          ) : null}
           <div className={templateStyle.cardDescription} title={item.description || '--'}>
             {item.description || '--'}
           </div>
@@ -345,7 +394,7 @@ const Template: React.FC = () => {
             value={searchKeyword}
             onChange={(event) => setSearchKeyword(event.target.value)}
           />
-          <div className={`${templateStyle.toolbarActions} gap-2`}>
+          <div className="flex items-center gap-2">
             <Upload
               accept=".zip,application/zip"
               showUploadList={false}
@@ -392,10 +441,26 @@ const Template: React.FC = () => {
                 const indeterminate =
                   group.selectedCount > 0 &&
                   group.selectedCount < group.templates.length;
+                const collapsed = collapsedGroups.has(group.name);
                 return (
                   <section key={group.name} className={templateStyle.templateGroup}>
                     <div className={templateStyle.groupHeader}>
-                      <div>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Tooltip title={collapsed ? '展开分组' : '收起分组'} mouseEnterDelay={0.3}>
+                          <button
+                            type="button"
+                            className={templateStyle.groupCollapseBtn}
+                            aria-expanded={!collapsed}
+                            aria-label={collapsed ? '展开分组' : '收起分组'}
+                            onClick={() => toggleGroupCollapsed(group.name)}
+                          >
+                            <CaretRightOutlined
+                              className={`${templateStyle.groupCollapseIcon} ${
+                                collapsed ? '' : templateStyle.groupCollapseIconExpanded
+                              }`}
+                            />
+                          </button>
+                        </Tooltip>
                         <span className={templateStyle.groupName}>{group.name}</span>
                         <span className={templateStyle.groupCount}>
                           {group.templates.length} 个模版
@@ -422,15 +487,17 @@ const Template: React.FC = () => {
                         </Checkbox>
                       </div>
                     </div>
-                    <div className={templateStyle.cardGrid}>
-                      {group.templates.map(renderTemplateCard)}
-                    </div>
+                    {!collapsed && (
+                      <div className={templateStyle.cardGrid}>
+                        {group.templates.map(renderTemplateCard)}
+                      </div>
+                    )}
                   </section>
                 );
               })}
             </div>
           ) : (
-            <Empty description={tableLoading ? '加载中' : '暂无策略模版'} />
+            <CompactEmptyState description={tableLoading ? '加载中' : '暂无策略模版'} />
           )}
         </Spin>
 

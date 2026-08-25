@@ -16,9 +16,8 @@ Migration 补丁：
 """
 
 import json
-import logging
 
-logger = logging.getLogger(__name__)
+from apps.core.logger import logger
 
 
 def patch():

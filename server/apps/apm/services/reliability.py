@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from apps.apm.adapters.errors import TelemetryStoreUnavailable
 from apps.apm.models import ApmSlo
 from apps.apm.services.contracts import MetricDataState, MetricStore, SloEvaluation, SloMetricQuery
 
@@ -39,18 +40,28 @@ class DjangoApmReliabilityService:
                 ended_at=evaluated_at,
                 reason="disabled",
             )
-        measurement = self.metric_store.slo_measurement(
-            SloMetricQuery(
-                service_namespace=slo.service.namespace,
-                service_name=slo.service.name,
-                environment=slo.environment,
-                endpoint=slo.endpoint,
-                sli_type=slo.sli_type,
-                latency_threshold_ms=slo.latency_threshold_ms,
+        try:
+            measurement = self.metric_store.slo_measurement(
+                SloMetricQuery(
+                    service_namespace=slo.service.namespace,
+                    service_name=slo.service.name,
+                    environment=slo.environment,
+                    endpoint=slo.endpoint,
+                    sli_type=slo.sli_type,
+                    latency_threshold_ms=slo.latency_threshold_ms,
+                    started_at=started_at,
+                    ended_at=evaluated_at,
+                )
+            )
+        except (TelemetryStoreUnavailable, ValueError) as exc:
+            return SloEvaluation(
+                current_rate=None,
+                budget_remaining=None,
+                data_state="no_data",
                 started_at=started_at,
                 ended_at=evaluated_at,
+                reason=str(exc),
             )
-        )
         if measurement.data_state == MetricDataState.NO_DATA or measurement.compliance_percent is None:
             return SloEvaluation(
                 current_rate=None,

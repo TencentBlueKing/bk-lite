@@ -17,13 +17,12 @@
 """
 
 import gzip
-import logging
 from dataclasses import dataclass, field
 from typing import List, Optional
 from xml.etree import ElementTree as ET
 
 import requests
-
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.constants import PatchSourceType
 from apps.patch_mgmt.models import PatchSource
 from apps.patch_mgmt.utils.architecture import (
@@ -31,8 +30,6 @@ from apps.patch_mgmt.utils.architecture import (
     normalize_architecture,
     repository_package_applies,
 )
-
-logger = logging.getLogger("app")
 
 FETCH_TIMEOUT = (5, 30)  # (连接, 读取) 秒
 

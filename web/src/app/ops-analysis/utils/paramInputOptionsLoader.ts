@@ -23,6 +23,7 @@ export interface ParamInputOptionsLoad {
 export interface ParamInputOptionsLoaderOptions {
   suppressErrorNotification?: boolean;
   fallbackErrorMessage?: string;
+  knownDataSources?: Array<{ id: number; rest_api?: string }>;
 }
 
 interface OptionsApi {
@@ -113,14 +114,22 @@ export const createParamInputOptionsLoader = (
           : undefined;
       const fallbackErrorMessage = loaderOptions?.fallbackErrorMessage ?? '';
       try {
-        const response = source.sourceRef
-          ? await api.getDataSourceList({ page_size: -1 })
-          : [];
-        const sourceItems = Array.isArray(response)
-          ? response
-          : extractDataSourceItems(response);
-        if (requestGeneration !== generation) return null;
-        const sourceId = resolveDynamicSourceId(source, sourceItems as Array<{ id: number; rest_api?: string }>);
+        const knownItems = loaderOptions?.knownDataSources ?? [];
+        let sourceId = resolveDynamicSourceId(
+          source,
+          knownItems,
+        );
+        if (!sourceId && source.sourceRef) {
+          const response = await api.getDataSourceList({ page_size: -1 });
+          const sourceItems = Array.isArray(response)
+            ? response
+            : extractDataSourceItems(response);
+          if (requestGeneration !== generation) return null;
+          sourceId = resolveDynamicSourceId(
+            source,
+            sourceItems as Array<{ id: number; rest_api?: string }>,
+          );
+        }
         if (!sourceId) return requestGeneration === generation ? { status: 'error', options: [] } : null;
         const { data } = await api.getSourceDataByApiId(sourceId, {}, requestOptions);
         const options = mapDynamicItems(
@@ -141,5 +150,11 @@ export const createParamInputOptionsLoader = (
     return currentLoad;
   };
 
-  return { load };
+  const reset = () => {
+    generation += 1;
+    currentKey = undefined;
+    currentLoad = undefined;
+  };
+
+  return { load, reset };
 };

@@ -13,6 +13,7 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import ExecutionStatus, JobType
 from apps.job_mgmt.models import JobExecution, Playbook, ScheduledTask, Script, Target
 from apps.job_mgmt.serializers.dashboard import DashboardStatsSerializer, DashboardTrendSerializer
+from apps.job_mgmt.utils.i18n import job_message
 
 # 统计时间范围常量
 DEFAULT_RANGE_DAYS = 7  # days 默认值（近一周）
@@ -239,7 +240,11 @@ class DashboardViewSet(AuthViewSet):
         result = [
             {
                 "job_type": item["job_type"],
-                "job_type_display": job_type_names.get(item["job_type"], item["job_type"]),
+                "job_type_display": job_message(
+                    request,
+                    f"choice.job_type.{item['job_type']}",
+                    job_type_names.get(item["job_type"], item["job_type"]),
+                ),
                 "count": item["count"],
             }
             for item in distribution

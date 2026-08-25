@@ -1,32 +1,28 @@
 import ast
 import json
-import re
 
 import openpyxl
 
 from apps.cmdb.constants.constants import (
+    ENUM,
+    ENUM_SELECT_MODE_DEFAULT,
+    ENUM_SELECT_MODE_MULTIPLE,
     INSTANCE,
+    INSTANCE_ASSOCIATION,
     NEED_CONVERSION_TYPE,
     ORGANIZATION,
     USER,
-    ENUM,
-    INSTANCE_ASSOCIATION,
     ModelConstraintKey,
-    ENUM_SELECT_MODE_MULTIPLE,
-    ENUM_SELECT_MODE_DEFAULT,
 )
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
-from apps.cmdb.models import CREATE_INST_ASST
 from apps.cmdb.model_ops.extensions import is_file_attr_type
+from apps.cmdb.models import CREATE_INST_ASST
+from apps.cmdb.services.instance_identity import prepare_new_instance_identity
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.unique_rule import build_unique_rule_context
-from apps.cmdb.validators.field_validator import (
-    normalize_tag_field_option,
-    normalize_tag_input_values,
-    validate_tag_values,
-)
 from apps.cmdb.utils.change_record import create_change_record_by_asso
+from apps.cmdb.validators.field_validator import normalize_tag_field_option, normalize_tag_input_values, validate_tag_values
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.system_mgmt.models import Group
@@ -546,8 +542,8 @@ class Import:
         Returns:
             list: 处理后的实例列表
         """
-        from apps.cmdb.validators import FieldValidator
         from apps.cmdb.display_field import DisplayFieldHandler
+        from apps.cmdb.validators import FieldValidator
 
         inst_list = self._normalize_and_merge_tag_records(inst_list)
 
@@ -570,7 +566,7 @@ class Import:
 
     def inst_list_save(self, inst_list):
         """实例列表保存"""
-        processed_inst_list = self._prepare_instances_for_save(inst_list)
+        processed_inst_list = [prepare_new_instance_identity(item) for item in self._prepare_instances_for_save(inst_list)]
 
         with GraphClient() as ag:
             result = ag.batch_create_entity(
@@ -844,7 +840,7 @@ class Import:
             from apps.cmdb.services.instance import InstanceManage
 
             InstanceManage.check_asso_mapping(data)
-        except Exception as err:
+        except Exception:
             import traceback
 
             logger.error("校验关联约束失败: {}".format(traceback.format_exc()))
@@ -872,7 +868,11 @@ class Import:
                 return {"success": False, "message": message}
 
         asso_info = InstanceManage.instance_association_by_asso_id(edge["_id"])
-        message = f"创建模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: {asso_info['src']['inst_name']}  目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: {asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
+        dst_name = asso_info["dst"].get("inst_name") or asso_info["dst"].get("ip_addr", "")
+        message = (
+            f"创建模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: {asso_info['src']['inst_name']}  "
+            f"目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: {dst_name}"
+        )
         create_change_record_by_asso(
             INSTANCE_ASSOCIATION,
             CREATE_INST_ASST,

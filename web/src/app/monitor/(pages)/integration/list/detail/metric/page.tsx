@@ -8,7 +8,6 @@ import {
   message,
   Spin,
   Segmented,
-  Empty,
   Pagination,
   Tag
 } from 'antd';
@@ -17,6 +16,7 @@ import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import metricStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
+import CompactEmptyState from '@/components/compact-empty-state';
 import CustomTable from '@/components/custom-table';
 import {
   ColumnItem,
@@ -33,16 +33,16 @@ import { useSearchParams } from 'next/navigation';
 import Permission from '@/components/permission';
 import {
   needsTagsEntry,
-  getObjectTypeByName
+  getPluginFamilyObjects
 } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 import { buildIfmibMetricView, getDefaultMetricGroupOpenState } from './ifmibMetricView';
 
-type ObjectTabOption = {
+interface ObjectTabOption {
   label: React.ReactNode;
   value: string;
   title?: string;
-};
+}
 
 const ObjectTabLabel = ({
   icon,
@@ -223,10 +223,7 @@ const Configure = () => {
       const data = await getMonitorObject();
       if (templateType !== 'pull' && needsTagsEntry(groupName, data)) {
         setShowTabs(true);
-        const objectType = getObjectTypeByName(groupName, data);
-        const _items = data
-          .filter((item: ObjectItem) => item.type === objectType)
-          .sort((a: ObjectItem, b: ObjectItem) => a.id - b.id)
+        const _items = getPluginFamilyObjects(groupName, data)
           .map((item: ObjectItem) => {
             const name = item.display_name || item.name;
             return {
@@ -670,7 +667,7 @@ const Configure = () => {
               </div>
             ))
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('common.noData')} />
           )}
         </div>
       </Spin>

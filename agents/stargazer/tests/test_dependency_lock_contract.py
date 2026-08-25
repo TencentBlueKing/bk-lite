@@ -68,7 +68,11 @@ def test_runbook_documents_stateless_runtime_limits() -> None:
     assert "REDIS_MAX_CONNECTIONS" in readme
     assert "REDIS_POOL_TIMEOUT" in readme
     assert "REDIS_PROTOCOL" in readme
-    assert "CONNECT_TIMEOUT" in readme
+    assert "PREFLIGHT_TIMEOUT" in readme
+    assert "PROBE_TIMEOUT" in readme
+    assert "COLLECTION_TIMEOUT" in readme
+    assert "PUBLISH_TIMEOUT" in readme
+    assert "PREFLIGHT_REACHABILITY" in readme
     assert "MAX_ACTIVE_TARGETS=0" in readme
 
 
@@ -81,10 +85,7 @@ def test_sanic_imports_with_the_approved_tracerite_api() -> None:
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
-            message=(
-                "websockets\\.connection was renamed to "
-                "websockets\\.protocol"
-            ),
+            message=("websockets\\.connection was renamed to " "websockets\\.protocol"),
             category=DeprecationWarning,
             module="websockets\\.connection",
         )

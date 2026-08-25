@@ -1,15 +1,11 @@
-import logging
-
+from apps.core.logger import logger
+from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.web_utils import WebUtils
 from django.conf import settings
 from django.contrib import auth
 from django.utils.deprecation import MiddlewareMixin
 from ipware import get_client_ip
 from rest_framework import status
-
-from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.web_utils import WebUtils
-
-logger = logging.getLogger(__name__)
 
 
 class APISecretMiddleware(MiddlewareMixin):

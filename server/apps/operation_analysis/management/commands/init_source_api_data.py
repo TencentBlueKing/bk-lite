@@ -34,18 +34,6 @@ class Command(BaseCommand):
             return instance.first().id
         return
 
-    @staticmethod
-    def get_default_groups():
-        """
-        获取 Default 组织 ID 列表。未初始化 Default 时不阻断数据源初始化。
-        """
-        from apps.system_mgmt.models.user import Group
-
-        default_group = Group.objects.filter(name="Default").first()
-        if default_group:
-            return [default_group.id]
-        return []
-
     def init_tags(self):
         """
         初始化数据源标签
@@ -85,7 +73,6 @@ class Command(BaseCommand):
                 logger.error(error_msg)
                 self.stdout.write(self.style.ERROR(error_msg))
                 return
-            default_groups = self.get_default_groups()
 
             # 从JSON文件加载源API数据
             source_api_data_list = load_support_json("source_api.json")
@@ -102,7 +89,7 @@ class Command(BaseCommand):
                 defaults = {k: v for k, v in api_data.items() if k not in ["name", "rest_api"]}
                 defaults["created_by"] = "system"
                 defaults["updated_by"] = "system"
-                defaults["groups"] = default_groups
+                defaults["groups"] = []
                 defaults["is_build_in"] = True
                 defaults["build_in_key"] = stable_key
 
@@ -143,8 +130,6 @@ class Command(BaseCommand):
                     obj.updated_by = "system"
                     obj.is_build_in = True
                     obj.build_in_key = stable_key
-                    if not obj.groups and default_groups:
-                        obj.groups = default_groups
                     obj.save()
 
                     # 更新标签关联
@@ -154,10 +139,6 @@ class Command(BaseCommand):
                     updated_count += 1
                     logger.info("[SourceApiInit] 更新数据源：%s", api_data["name"])
                 else:
-                    if not obj.groups and default_groups:
-                        obj.groups = default_groups
-                        obj.save(update_fields=["groups"])
-                        logger.info("[SourceApiInit] 补充数据源默认组织：%s", api_data["name"])
                     logger.info("[SourceApiInit] 跳过已存在的数据源：%s", api_data["name"])
 
             success_msg = f"源API数据初始化完成 - 创建: {created_count}, 更新: {updated_count}"

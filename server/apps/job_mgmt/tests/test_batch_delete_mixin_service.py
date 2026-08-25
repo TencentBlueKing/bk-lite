@@ -41,6 +41,7 @@ class _FakeViewSet(BatchDeleteMixin):
     def get_queryset(self):
         qs = MagicMock(name="queryset")
         qs.filter.return_value = self._instances
+        self._instances.count.return_value = self._deleted_count
         self._instances.delete.return_value = (self._deleted_count, {})
         return qs
 

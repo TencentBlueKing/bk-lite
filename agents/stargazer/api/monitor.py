@@ -1,18 +1,93 @@
+import os
+import secrets
 import time
 from typing import Any, Callable
-
-from sanic import Blueprint
-from sanic import response
-from sanic.exceptions import SanicException
-from core.logger import logger
 
 from core.collection.application import get_collection_application
 from core.collection.request_builder import build_collection_request
 from core.collection.request_identity import build_request_task_id_from_request
+from core.logger import logger
+from sanic import Blueprint, response
+from sanic.exceptions import SanicException
 
 monitor_router = Blueprint("monitor", url_prefix="/monitor")
 
 _PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
+_MONITOR_AUTH_MODES = {"legacy", "enforce"}
+
+
+def _bearer_token(request) -> str:
+    authorization = str(request.headers.get("authorization") or "").strip()
+    scheme, separator, token = authorization.partition(" ")
+    if not separator or scheme.lower() != "bearer":
+        return ""
+    return token.strip()
+
+
+def _configured_monitor_tokens() -> tuple[str, ...]:
+    return tuple(
+        token
+        for token in (
+            os.getenv("STARGAZER_MONITOR_AUTH_TOKEN", "").strip(),
+            os.getenv("STARGAZER_MONITOR_AUTH_PREVIOUS_TOKEN", "").strip(),
+        )
+        if token
+    )
+
+
+async def authenticate_monitor_request(request):
+    """为 monitor 蓝图提供可滚动、可回滚的 Bearer 认证边界。"""
+    mode = os.getenv("STARGAZER_MONITOR_AUTH_MODE", "legacy").strip().lower()
+    configured_tokens = _configured_monitor_tokens()
+    provided_token = _bearer_token(request)
+    token_matches = bool(provided_token) and any(
+        secrets.compare_digest(provided_token, token)
+        for token in configured_tokens
+    )
+
+    if mode == "legacy":
+        auth_status = (
+            "valid"
+            if token_matches
+            else "invalid"
+            if provided_token and configured_tokens
+            else "missing"
+        )
+        logger.warning(
+            "event=monitor_auth_legacy_request auth_status=%s path=%s",
+            auth_status,
+            request.path,
+        )
+        return None
+
+    if mode not in _MONITOR_AUTH_MODES or not configured_tokens:
+        logger.error(
+            "event=monitor_auth_misconfigured mode=%s token_configured=%s",
+            mode,
+            bool(configured_tokens),
+        )
+        return response.json(
+            {"error": "monitor authentication unavailable"},
+            status=503,
+        )
+
+    if not token_matches:
+        logger.warning(
+            "event=monitor_auth_rejected path=%s credential_present=%s",
+            request.path,
+            bool(provided_token),
+        )
+        return response.json(
+            {"error": "unauthorized"},
+            status=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return None
+
+
+@monitor_router.middleware("request")
+async def _authenticate_monitor_blueprint_request(request):
+    return await authenticate_monitor_request(request)
 
 
 async def _submit_monitor_request(request, task_params: dict) -> dict:
@@ -138,7 +213,7 @@ async def _run_monitor_handler(
     log_name: str | None = None,
 ):
     display = log_name or monitor_type
-    logger.info("=== %s metrics collection request received ===", display)
+    logger.info("event=metrics_collection_request_received monitor_type=%s", display)
     try:
         task_params = build_params(request)
         task_info = await _submit_monitor_request(request, task_params)
@@ -217,11 +292,12 @@ async def qcloud_metrics(request):
 @monitor_router.get("/oceanstor/metrics")
 async def oceanstor_metrics(request):
     def build_params(req):
-        # Do not use the incoming HTTP Host header here. Telegraf sets it to the
-        # Stargazer service address, while OceanStor collection needs the target
-        # device endpoint carried in base_url.
-        base_url = req.headers.get("base_url")
-        host = base_url
+        # Prefer base_url (REST templates). Host-only templates overwrite HTTP
+        # Host with the device address, so Host remains a valid fallback.
+        base_url = (req.headers.get("base_url") or "").strip()
+        device_host = (req.headers.get("device_host") or "").strip()
+        http_host = (req.headers.get("host") or "").strip()
+        host = base_url or device_host or http_host
         instance_id = req.headers.get("instance_id", "")
         logger.info("Request: Host=%s, instance_id=%s", host, instance_id)
         return {
@@ -229,7 +305,9 @@ async def oceanstor_metrics(request):
             "username": req.headers.get("username"),
             "password": req.headers.get("password"),
             "host": host,
-            "base_url": base_url,
+            "base_url": base_url or host,
+            "preflight_kind": "https",
+            "preflight_kind_explicit": True,
             "instance_id": instance_id,
             "tags": _standard_tags(
                 req,
@@ -316,12 +394,14 @@ async def windows_wmi_metrics(request):
 
 @monitor_router.get("/host/metrics")
 async def host_metrics(request):
-    logger.info("=== Host metrics collection request received ===")
-
     host = request.headers.get("host")
     os_type = request.headers.get("os_type", "linux")
     username = request.headers.get("username")
     password = request.headers.get("password")
+    auth_type = request.headers.get("auth_type", "password")
+    private_key_content = request.headers.get("private_key_content", "")
+    private_key_passphrase = request.headers.get("private_key_passphrase", "")
+    credential_encoding = request.headers.get("credential_encoding", "url")
     port = request.headers.get("port", "22" if os_type == "linux" else "5986")
     metrics_modules = request.headers.get(
         "metrics_modules", "cpu,mem,disk,diskio,net,processes,system"
@@ -332,8 +412,24 @@ async def host_metrics(request):
         "tmpfs,devtmpfs,devfs,iso9660,overlay,aufs,squashfs,vfat,exfat,fat,fat32",
     )
     ansible_node_id = request.headers.get("ansible_node_id", "")
+    winrm_scheme = request.headers.get("winrm_scheme", "https")
+    winrm_transport = request.headers.get("winrm_transport", "ntlm")
+    winrm_cert_validation = request.headers.get("winrm_cert_validation", "false")
 
-    if not host or not username or not password:
+    if not host or not username:
+        return _monitor_error_response(
+            "host",
+            "missing required headers: host, username",
+            status=400,
+        )
+    if auth_type == "private_key":
+        if not private_key_content:
+            return _monitor_error_response(
+                "host",
+                "missing required headers: private_key_content",
+                status=400,
+            )
+    elif not password:
         return _monitor_error_response(
             "host",
             "missing required headers: host, username, password",
@@ -365,6 +461,13 @@ async def host_metrics(request):
             "disk_include_fstypes": disk_include_fstypes,
             "disk_exclude_fstypes": disk_exclude_fstypes,
             "ansible_node_id": ansible_node_id,
+            "auth_type": auth_type,
+            "private_key_content": private_key_content,
+            "private_key_passphrase": private_key_passphrase,
+            "credential_encoding": credential_encoding,
+            "winrm_scheme": winrm_scheme,
+            "winrm_transport": winrm_transport,
+            "winrm_cert_validation": winrm_cert_validation,
             "tags": _standard_tags(
                 req,
                 defaults={

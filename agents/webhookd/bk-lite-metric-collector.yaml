@@ -31,7 +31,7 @@ spec:
       automountServiceAccountToken: true
       containers:
       - name: kube-state-metrics
-        image: bk-lite.tencentcloudcr.com/bklite/kube-state-metrics:2.13.0
+        image: __IMAGE_REGISTRY_PREFIX__/kube-state-metrics:2.13.0
         resources:
           requests:
             memory: 64Mi
@@ -98,8 +98,7 @@ automountServiceAccountToken: false
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kube-state-metrics
-  namespace: bk-lite-collector
+  name: bk-lite-kube-state-metrics
   labels:
     app.kubernetes.io/component: exporter
     app.kubernetes.io/name: kube-state-metrics
@@ -228,8 +227,7 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: kube-state-metrics
-  namespace: bk-lite-collector
+  name: bk-lite-kube-state-metrics
   labels:
     app.kubernetes.io/component: exporter
     app.kubernetes.io/name: kube-state-metrics
@@ -237,7 +235,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kube-state-metrics
+  name: bk-lite-kube-state-metrics
 subjects:
 - kind: ServiceAccount
   name: kube-state-metrics
@@ -285,9 +283,10 @@ spec:
         prometheus.io/path: '/metrics'
     spec:
       serviceAccountName: cadvisor
+__DS_TOLERATIONS__
       containers:
       - name: cadvisor
-        image: bk-lite.tencentcloudcr.com/bklite/cadvisor:0.56.2
+        image: __IMAGE_REGISTRY_PREFIX__/cadvisor:0.56.2
         resources:
           requests:
             memory: 400Mi
@@ -358,9 +357,10 @@ spec:
       labels:
         app: telegraf-daemonset
     spec:
+__DS_TOLERATIONS__
       containers:
         - name: telegraf
-          image: bk-lite.tencentcloudcr.com/bklite/telegraf:1.29.5
+          image: __IMAGE_REGISTRY_PREFIX__/telegraf:1.29.5
           resources:
             requests:
               memory: 128Mi
@@ -412,7 +412,7 @@ spec:
     spec:
       containers:
         - name: telegraf
-          image: bk-lite.tencentcloudcr.com/bklite/telegraf:1.29.5
+          image: __IMAGE_REGISTRY_PREFIX__/telegraf:1.29.5
           resources:
             requests:
               memory: 128Mi
@@ -467,7 +467,7 @@ spec:
       serviceAccountName: vmagent
       containers:
         - name: vmagent
-          image: bk-lite.tencentcloudcr.com/bklite/vmagent
+          image: __IMAGE_REGISTRY_PREFIX__/vmagent
           resources:
             requests:
               memory: 128Mi
@@ -500,8 +500,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: vmagent-role
-  namespace: bk-lite-collector
+  name: bk-lite-vmagent
 rules:
 - apiGroups: [""]
   resources:
@@ -517,12 +516,11 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: vmagent-role-binding
-  namespace: bk-lite-collector
+  name: bk-lite-vmagent
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: vmagent-role
+  name: bk-lite-vmagent
 subjects:
 - kind: ServiceAccount
   name: vmagent

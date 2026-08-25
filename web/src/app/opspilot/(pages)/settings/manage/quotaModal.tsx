@@ -108,7 +108,7 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
               noStyle
               rules={[{ required: true, message: `${t('common.selectMsg')}${t('settings.manageQuota.form.target')}` }]}
             >
-              <Select style={{ width: '30%' }} onChange={handleTargetTypeChange}>
+              <Select className="w-[30%]" onChange={handleTargetTypeChange}>
                 <Option value="user">User</Option>
                 <Option value="group">Group</Option>
               </Select>
@@ -123,8 +123,7 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
                   allowClear
                   mode="multiple"
                   maxTagCount="responsive"
-                  className={styles.multipleSelect}
-                  style={{ width: '70%' }}
+                  className={`${styles.multipleSelect} w-[70%]`}
                   loading={targetLoading}
                   disabled={targetLoading}
                   placeholder={`${t('common.selectMsg')}${t('settings.manageQuota.form.target')}`}
@@ -156,13 +155,13 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
             <Radio value="uniform">
               {t('settings.manageQuota.form.uniform')}
               <Tooltip title={t('settings.manageQuota.form.uniformTooltip')}>
-                <InfoCircleOutlined style={{ marginLeft: 8 }} />
+                <InfoCircleOutlined className="ml-2" />
               </Tooltip>
             </Radio>
-            <Radio value="shared" style={{ marginLeft: 16 }}>
+            <Radio value="shared" className="ml-4">
               {t('settings.manageQuota.form.shared')}
               <Tooltip title={t('settings.manageQuota.form.sharedTooltip')}>
-                <InfoCircleOutlined style={{ marginLeft: 8 }} />
+                <InfoCircleOutlined className="ml-2" />
               </Tooltip>
             </Radio>
           </Radio.Group>
@@ -174,7 +173,7 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
         >
           <InputNumber
             min={0}
-            style={{ width: '100%' }}
+            className="w-full"
             placeholder={`${t('common.inputMsg')}${t('settings.manageQuota.form.bot')}`} />
         </Form.Item>
         <Form.Item
@@ -184,7 +183,7 @@ const QuotaModal: React.FC<QuotaModalProps> = ({ visible, onConfirm, onCancel, m
         >
           <InputNumber
             min={0}
-            style={{ width: '100%' }}
+            className="w-full"
             placeholder={`${t('common.inputMsg')}${t('settings.manageQuota.form.skill')}`} />
         </Form.Item>
       </Form>

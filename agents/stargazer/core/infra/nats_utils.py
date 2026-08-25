@@ -22,19 +22,28 @@ NATS 通用工具方法
         - 连接由 nats-py 在后台维护并无限自动重连；
         - 即使事件循环被阻塞数十秒，已建立的连接也不会像 2s 握手那样被打断。
 """
+
 import asyncio
 import json
+import os
+import time
+from collections import deque
+from collections.abc import Callable
 from typing import Any, List, Optional
 
-from nats.aio.client import Client as NATS
-from core.logger import logger
-
 from core.infra.nats import NATSConfig
-
+from core.logger import logger
+from nats.aio.client import Client as NATS
 
 # 进程级共享连接与连接锁
 _shared_nc: Optional[NATS] = None
+_metrics_nc: Optional[NATS] = None
 _connect_lock: Optional[asyncio.Lock] = None
+_metrics_connect_lock: Optional[asyncio.Lock] = None
+_metrics_reconnect_total = 0
+_metrics_reconnect_started_at: float | None = None
+_metrics_reconnect_duration_seconds = 0.0
+_metrics_reconnect_durations: deque[float] = deque(maxlen=500)
 
 
 class NatsLinesPublishError(RuntimeError):
@@ -44,11 +53,13 @@ class NatsLinesPublishError(RuntimeError):
         attempted_count_before_failure: int,
         delivery_detected: bool,
         error: Exception,
+        attempted_indices: tuple[int, ...] = (),
     ):
         self.subject = subject
         self.attempted_count_before_failure = attempted_count_before_failure
         self.delivery_detected = delivery_detected
         self.error = error
+        self.attempted_indices = attempted_indices
         super().__init__(
             f"NATS publish lines failed [{subject}] after writing "
             f"{attempted_count_before_failure} lines before confirmation "
@@ -57,9 +68,13 @@ class NatsLinesPublishError(RuntimeError):
         self.__cause__ = error
 
 
-def _get_lock() -> asyncio.Lock:
+def _get_lock(channel: str = "control") -> asyncio.Lock:
     """惰性创建锁，确保绑定到当前运行的事件循环。"""
-    global _connect_lock
+    global _connect_lock, _metrics_connect_lock
+    if channel == "metrics":
+        if _metrics_connect_lock is None:
+            _metrics_connect_lock = asyncio.Lock()
+        return _metrics_connect_lock
     if _connect_lock is None:
         _connect_lock = asyncio.Lock()
     return _connect_lock
@@ -77,26 +92,54 @@ async def _on_reconnected() -> None:
     logger.info("[NATS] shared connection reconnected")
 
 
+async def _on_metrics_disconnected() -> None:
+    global _metrics_reconnect_started_at
+    if _metrics_reconnect_started_at is None:
+        _metrics_reconnect_started_at = time.monotonic()
+    await _on_disconnected()
+
+
+async def _on_metrics_reconnected() -> None:
+    global _metrics_reconnect_total, _metrics_reconnect_started_at, _metrics_reconnect_duration_seconds
+    _metrics_reconnect_total += 1
+    if _metrics_reconnect_started_at is not None:
+        _metrics_reconnect_duration_seconds = max(
+            0.0, time.monotonic() - _metrics_reconnect_started_at
+        )
+        _metrics_reconnect_durations.append(_metrics_reconnect_duration_seconds)
+        _metrics_reconnect_started_at = None
+    await _on_reconnected()
+
+
 async def _on_closed() -> None:
     logger.warning("[NATS] shared connection closed")
 
 
-async def get_shared_nats() -> NATS:
+async def get_shared_nats(channel: str = "control") -> NATS:
     """获取共享的 NATS 长连接（懒加载 + 自动重连）。
 
     若连接尚未建立或已关闭，则（重新）建立一条连接。并发调用通过锁串行化，
     确保整个进程只维护一条连接。
     """
-    global _shared_nc
+    global _shared_nc, _metrics_nc
 
-    nc = _shared_nc
-    if nc is not None and nc.is_connected:
+    if channel not in {"control", "metrics"}:
+        raise ValueError(f"unsupported NATS channel: {channel}")
+
+    nc = _metrics_nc if channel == "metrics" else _shared_nc
+    if nc is not None and (
+        nc.is_connected
+        or (not nc.is_closed and bool(getattr(nc, "is_reconnecting", False)))
+    ):
         return nc
 
-    async with _get_lock():
+    async with _get_lock(channel):
         # 拿到锁后二次确认，避免并发重复建连
-        nc = _shared_nc
-        if nc is not None and nc.is_connected:
+        nc = _metrics_nc if channel == "metrics" else _shared_nc
+        if nc is not None and (
+            nc.is_connected
+            or (not nc.is_closed and bool(getattr(nc, "is_reconnecting", False)))
+        ):
             return nc
 
         # 清理可能存在的半死连接
@@ -105,40 +148,86 @@ async def get_shared_nats() -> NATS:
                 await nc.close()
             except Exception as close_err:
                 logger.debug(f"[NATS] error closing stale connection: {close_err}")
-        _shared_nc = None
+        if channel == "metrics":
+            _metrics_nc = None
+        else:
+            _shared_nc = None
 
-        config = NATSConfig.from_env()
+        config = NATSConfig.from_env(service_name=f"stargazer-{channel}")
         options = config.to_connect_options()
         # 长连接：无限重连，避免达到重连上限后被永久关闭
         options["max_reconnect_attempts"] = -1
         options["allow_reconnect"] = True
         options.setdefault("error_cb", _on_error)
-        options.setdefault("disconnected_cb", _on_disconnected)
-        options.setdefault("reconnected_cb", _on_reconnected)
+        options.setdefault(
+            "disconnected_cb",
+            _on_metrics_disconnected if channel == "metrics" else _on_disconnected,
+        )
+        options.setdefault(
+            "reconnected_cb",
+            _on_metrics_reconnected if channel == "metrics" else _on_reconnected,
+        )
         options.setdefault("closed_cb", _on_closed)
 
         new_nc = NATS()
         await new_nc.connect(**options)
-        _shared_nc = new_nc
+        if channel == "metrics":
+            _metrics_nc = new_nc
+        else:
+            _shared_nc = new_nc
         logger.info(
-            f"[NATS] shared connection established: servers={config.servers}, "
-            f"tls={config.tls_enabled}, user={config.user}"
+            f"[NATS] shared connection established: channel={channel}, servers={config.servers}, "
+            f"tls={config.tls_enabled}, authentication_configured={bool(config.user)}"
         )
         return new_nc
 
 
 async def close_shared_nats() -> None:
     """优雅关闭共享连接（供进程退出时调用，可选）。"""
-    global _shared_nc
-    nc = _shared_nc
+    global _shared_nc, _metrics_nc
+    clients = tuple(
+        client for client in (_shared_nc, _metrics_nc) if client is not None
+    )
     _shared_nc = None
-    if nc is None:
-        return
-    try:
-        if not nc.is_closed:
-            await nc.drain()
-    except Exception as e:
-        logger.debug(f"[NATS] error draining shared connection: {e}")
+    _metrics_nc = None
+    for nc in clients:
+        try:
+            if not nc.is_closed:
+                await nc.drain()
+        except Exception as e:
+            logger.debug(f"[NATS] error draining shared connection: {e}")
+        finally:
+            try:
+                if not nc.is_closed:
+                    await nc.close()
+            except Exception as close_error:
+                logger.debug(f"[NATS] error closing shared connection: {close_error}")
+
+
+def nats_metrics_connection_stats() -> dict[str, float | int]:
+    nc = _metrics_nc
+    pending_bytes = 0
+    if nc is not None:
+        try:
+            pending_bytes = max(0, int(getattr(nc, "pending_data_size", 0) or 0))
+        except (TypeError, ValueError):
+            pending_bytes = 0
+    ordered_durations = sorted(_metrics_reconnect_durations)
+    p99_duration = (
+        ordered_durations[int((len(ordered_durations) - 1) * 0.99)]
+        if ordered_durations
+        else 0.0
+    )
+    return {
+        "nats_metrics_connected": int(bool(nc is not None and nc.is_connected)),
+        "nats_metrics_reconnecting": int(
+            bool(nc is not None and getattr(nc, "is_reconnecting", False))
+        ),
+        "nats_metrics_reconnect_total": _metrics_reconnect_total,
+        "nats_metrics_reconnect_duration_seconds": _metrics_reconnect_duration_seconds,
+        "nats_metrics_reconnect_duration_seconds_p99": p99_duration,
+        "nats_metrics_pending_bytes": pending_bytes,
+    }
 
 
 async def nats_request(subject: str, payload: bytes, timeout: float = 30.0) -> dict:
@@ -165,7 +254,7 @@ async def nats_request(subject: str, payload: bytes, timeout: float = 30.0) -> d
         >>> response = await nats_request("ssh.execute.node1", payload, timeout=30.0)
     """
     try:
-        nc = await get_shared_nats()
+        nc = await get_shared_nats("control")
         response_msg = await nc.request(subject, payload=payload, timeout=timeout)
         return json.loads(response_msg.data.decode())
     except Exception as e:
@@ -190,17 +279,18 @@ async def nats_publish(subject: str, data: Any) -> None:
     Example:
         >>> await nats_publish("logs.info", {"message": "Task completed"})
     """
-    try:
-        nc = await get_shared_nats()
-        payload = json.dumps(data).encode()
-        await nc.publish(subject, payload)
-        await nc.flush()
-    except Exception as e:
-        logger.error(f"NATS publish failed [{subject}]: {type(e).__name__}: {e}")
-        raise
+    nc = await get_shared_nats("control")
+    payload = json.dumps(data).encode()
+    await nc.publish(subject, payload)
+    await nc.flush()
 
 
-async def nats_publish_lines(subject: str, lines: List[str]) -> int:
+async def nats_publish_lines(
+    subject: str,
+    lines: List[str],
+    *,
+    before_publish: Callable[[int], bool] | None = None,
+) -> int:
     """
     批量发布多行文本到指定主题（复用共享长连接）。
 
@@ -217,18 +307,26 @@ async def nats_publish_lines(subject: str, lines: List[str]) -> int:
     if not lines:
         return 0
 
-    nc = await get_shared_nats()
-    count = 0
+    attempted_indices: list[int] = []
+    delivery_timeout = float(
+        os.getenv("PUBLISH_DELIVERY_TIMEOUT", os.getenv("PUBLISH_TIMEOUT", "30"))
+    )
     try:
-        for line in lines:
-            await nc.publish(subject, line.encode("utf-8"))
-            count += 1
-        await nc.flush()
+        async with asyncio.timeout(delivery_timeout):
+            nc = await get_shared_nats("metrics")
+            for index, line in enumerate(lines):
+                if before_publish is not None and not before_publish(index):
+                    continue
+                attempted_indices.append(index)
+                await nc.publish(subject, line.encode("utf-8"))
+            if attempted_indices:
+                await nc.flush(timeout=delivery_timeout)
     except Exception as e:
         raise NatsLinesPublishError(
             subject=subject,
-            attempted_count_before_failure=count,
-            delivery_detected=count > 0,
+            attempted_count_before_failure=len(attempted_indices),
+            delivery_detected=bool(attempted_indices),
             error=e,
+            attempted_indices=tuple(attempted_indices),
         ) from e
-    return count
+    return len(attempted_indices)

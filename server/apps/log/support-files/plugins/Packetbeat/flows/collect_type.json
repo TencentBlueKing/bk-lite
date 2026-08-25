@@ -9,6 +9,8 @@
     "collector",
     "instance_id",
     "message",
+    "timestamp",
+    "collect_timestamp",
     "flow.final",
     "flow.id",
     "flow.vlan",

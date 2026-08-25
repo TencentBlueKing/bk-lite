@@ -8,8 +8,11 @@ from apps.log.services.log_event_contract import (
     to_logical_event,
     to_logical_field,
     to_logical_json_line,
+    to_public_logical_field,
     to_storage_field,
     to_storage_query,
+    normalize_user_logsql_query,
+    quote_logsql_field,
 )
 from apps.log.services.log_extractor.compiler import compile_system_vector_config
 
@@ -28,6 +31,17 @@ def test_all_builtin_collect_types_declare_one_canonical_message_field():
         attrs = json.loads(path.read_text())["attrs"]
         assert attrs.count("message") == 1, path
         assert LEGACY_MESSAGE_FIELDS.isdisjoint(attrs), path
+
+
+@pytest.mark.unit
+def test_all_builtin_collect_types_declare_server_and_upstream_timestamp_fields():
+    collect_type_files = sorted(PLUGIN_ROOT.glob("*/*/collect_type.json"))
+
+    assert len(collect_type_files) == 18
+    for path in collect_type_files:
+        attrs = json.loads(path.read_text())["attrs"]
+        assert attrs.count("timestamp") == 1, path
+        assert attrs.count("collect_timestamp") == 1, path
 
 
 @pytest.mark.unit
@@ -73,6 +87,8 @@ def test_system_vector_normalizer_supports_mixed_collector_versions_without_reta
 
     assert ".message = del(._msg)" in source
     assert ".message = del(.trap_message)" in source
+    assert ".source_type = %vector.source_type" in source
+    assert ".subject = %nats.subject" in source
     for field in LEGACY_MESSAGE_FIELDS:
         assert f"del(.{field})" in source
     assert "encode_json(.)" not in source
@@ -83,6 +99,12 @@ def test_victoria_logs_adapter_hides_physical_message_field_without_copying_it()
     assert to_storage_field("message") == "_msg"
     assert to_storage_field("host") == "host"
     assert to_logical_field("_msg") == "message"
+    assert to_public_logical_field("_msg") == "message"
+    assert to_public_logical_field("@timestamp") is None
+    assert to_public_logical_field("_stream_id") is None
+    assert to_public_logical_field("_stream") is None
+    assert to_public_logical_field("_time") is None
+    assert to_public_logical_field("host") == "host"
     assert to_logical_event({"_msg": "hello", "host": "node-1"}) == {"message": "hello", "host": "node-1"}
 
 
@@ -114,3 +136,22 @@ def test_query_adapter_maps_only_top_level_logical_message_field_filters():
         '| extract "<value>" from _msg | fields _time, _msg, nginx.error.message'
     )
     assert to_storage_query("message error") == "message error"
+
+
+@pytest.mark.unit
+def test_quote_logsql_field_only_quotes_special_names():
+    assert quote_logsql_field("agent.name") == "agent.name"
+    assert quote_logsql_field("_msg") == "_msg"
+    assert quote_logsql_field("@metadata.beat") == '"@metadata.beat"'
+
+
+@pytest.mark.unit
+def test_normalize_user_logsql_query_completes_empty_filters_and_quotes_special_fields():
+    assert normalize_user_logsql_query("agent.name:") == "agent.name:*"
+    assert normalize_user_logsql_query("message:") == "message:*"
+    assert normalize_user_logsql_query("@metadata.beat:") == '"@metadata.beat":*'
+    assert normalize_user_logsql_query('@metadata.beat:"packetbeat"') == '"@metadata.beat":"packetbeat"'
+    assert normalize_user_logsql_query("host:web AND agent.name:") == "host:web AND agent.name:*"
+    assert normalize_user_logsql_query("message:\"Packetbeat network flow\"") == 'message:"Packetbeat network flow"'
+    assert normalize_user_logsql_query("_stream_id:") == "_stream_id:"
+    assert normalize_user_logsql_query("_stream:") == "_stream:"

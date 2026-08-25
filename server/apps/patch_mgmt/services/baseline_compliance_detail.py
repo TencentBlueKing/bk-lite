@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 
 from django.core.paginator import Paginator
-from django.db.models import Count, F, OuterRef, Q, Subquery
+from django.db.models import Count, Exists, F, OuterRef, Q, Subquery
 
 from apps.patch_mgmt.constants import (
     ComplianceStatus,
@@ -109,6 +109,7 @@ def _projected_host_failures(bindings) -> dict[int, dict]:
             "reason": state.reason or state.timeout_reason or "",
             "error_code": state.error_code or "",
             "failed_stage": state.failed_stage or host.task.task_type,
+            "evaluated_at": host.updated_at,
         }
     return failures
 
@@ -134,7 +135,78 @@ def _fallback_cell_status(host_status: str) -> str:
         ComplianceStatus.FAILED,
     }:
         return host_status
-    return ComplianceStatus.PENDING
+    return ComplianceStatus.UNKNOWN
+
+
+def _fallback_cell_context(request, binding, host_status, *, failure=None, evaluation=None):
+    """无当前补丁快照时，把主机态投影成单元格的原因与时间。"""
+    status = _fallback_cell_status(host_status)
+    if status == ComplianceStatus.PENDING:
+        reason = patch_message(
+            request, "message.assessment_not_run", "Assessment has not been run"
+        )
+        evaluated_at = None
+    elif status == ComplianceStatus.EVALUATING:
+        reason = patch_message(
+            request, "message.assessment_running", "Assessment task is running"
+        )
+        evaluated_at = (evaluation or {}).get("evaluated_at")
+    elif status == ComplianceStatus.FAILED:
+        reason = (failure or {}).get("reason") or patch_message(
+            request, "message.assessment_failed", "Assessment failed"
+        )
+        evaluated_at = (failure or {}).get("evaluated_at") or binding.updated_at
+    else:
+        reason = patch_message(
+            request,
+            "message.assessment_snapshot_incomplete",
+            "No current valid assessment snapshot; assessment data is incomplete",
+        )
+        evaluated_at = binding.last_evaluated_at or binding.updated_at
+    return {
+        "status": status,
+        "reason": reason,
+        "evaluated_at": evaluated_at,
+        "failure": failure if status == ComplianceStatus.FAILED else None,
+    }
+
+
+def _public_failure(failure):
+    if not failure:
+        return failure
+    return {
+        "reason": failure.get("reason", ""),
+        "error_code": failure.get("error_code", ""),
+        "failed_stage": failure.get("failed_stage", ""),
+    }
+
+
+def _projected_host_evaluations(bindings) -> dict[int, dict]:
+    """批量返回活动评估的开始时间。"""
+    target_ids = [binding.target_id for binding in bindings]
+    if not target_ids:
+        return {}
+    result = {}
+    hosts = (
+        GovernanceTaskHost.objects.filter(
+            target_id__in=target_ids,
+            task__task_type__in=(GovernanceTaskType.ASSESS, GovernanceTaskType.VERIFY),
+            task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
+        )
+        .select_related("task")
+        .order_by("-created_at", "-id")
+    )
+    terminal = {"failed", "completed", "cancelled", "pending_confirmation"}
+    for host in hosts:
+        if host.target_id in result or project_host_state(host).stage in terminal:
+            continue
+        result[host.target_id] = {
+            "evaluated_at": host.started_at
+            or host.stage_started_at
+            or host.task.started_at
+            or host.created_at
+        }
+    return result
 
 
 def _distribution(counts: Counter) -> list[dict]:
@@ -253,6 +325,7 @@ def _latest_host_assessment_failure(target_id: int) -> dict | None:
             "reason": state.reason or state.timeout_reason or "",
             "error_code": state.error_code or "",
             "failed_stage": state.failed_stage or host.task.task_type,
+            "evaluated_at": host.updated_at,
         }
     return None
 
@@ -280,11 +353,16 @@ def _host_details(request, baseline, binding, query, host_status: str) -> dict:
     requested_status = query["status"]
     if requested_status:
         if requested_status in {"satisfied", "missing", "not_applicable", "unknown"}:
-            queryset = queryset.filter(
-                compliance_snapshots__in=current_snapshots.filter(
-                    status=requested_status
-                )
+            matching_ids = current_snapshots.filter(status=requested_status).values(
+                "requirement_id"
             )
+            if requested_status == _fallback_cell_status(host_status):
+                current_ids = current_snapshots.values("requirement_id")
+                queryset = queryset.filter(
+                    Q(id__in=matching_ids) | ~Q(id__in=current_ids)
+                )
+            else:
+                queryset = queryset.filter(id__in=matching_ids)
         elif requested_status == _fallback_cell_status(host_status):
             queryset = queryset.exclude(compliance_snapshots__in=current_snapshots)
         else:
@@ -299,6 +377,15 @@ def _host_details(request, baseline, binding, query, host_status: str) -> dict:
         )
     }
     fallback_status = _fallback_cell_status(host_status)
+    failure = (
+        _latest_host_assessment_failure(binding.target_id)
+        if fallback_status == ComplianceStatus.FAILED
+        else None
+    )
+    evaluation = _projected_host_evaluations([binding]).get(binding.target_id)
+    fallback = _fallback_cell_context(
+        request, binding, host_status, failure=failure, evaluation=evaluation
+    )
     items = []
     for requirement in requirements:
         snapshot = snapshots.get(requirement.id)
@@ -309,8 +396,10 @@ def _host_details(request, baseline, binding, query, host_status: str) -> dict:
                 "status_scope": "requirement" if snapshot else "host",
                 "satisfied": bool(snapshot.satisfied) if snapshot else False,
                 "evidence": snapshot.evidence if snapshot else {},
-                "reason": snapshot.reason if snapshot else "",
-                "evaluated_at": _isoformat(snapshot.evaluated_at) if snapshot else None,
+                "reason": snapshot.reason if snapshot else fallback["reason"],
+                "evaluated_at": _isoformat(
+                    snapshot.evaluated_at if snapshot else fallback["evaluated_at"]
+                ),
             }
         )
         items.append(item)
@@ -407,6 +496,7 @@ def _patch_details(request, baseline, requirement, query) -> dict:
         assessment_failure_stage=Subquery(
             latest_failure.values("failed_stage")[:1]
         ),
+        assessment_failure_at=Subquery(latest_failure.values("updated_at")[:1]),
     )
     search = query["search"]
     if search:
@@ -422,11 +512,52 @@ def _patch_details(request, baseline, requirement, query) -> dict:
             evaluated_at=F("binding__last_evaluated_at"),
         )
         if requested_status in {"satisfied", "missing", "not_applicable", "unknown"}:
-            bindings = bindings.filter(
-                compliance_snapshots__in=current_snapshots.filter(
-                    status=requested_status
-                )
+            bindings = bindings.annotate(
+                has_current_snapshot=Exists(
+                    current_snapshots.filter(binding_id=OuterRef("id"))
+                ),
+                has_requested_snapshot=Exists(
+                    current_snapshots.filter(
+                        binding_id=OuterRef("id"), status=requested_status
+                    )
+                ),
             )
+            status_query = Q(has_requested_snapshot=True)
+            if requested_status == ComplianceStatus.UNKNOWN:
+                status_query |= Q(
+                    has_current_snapshot=False,
+                    compliance_status__in=(
+                        ComplianceStatus.COMPLIANT,
+                        ComplianceStatus.NON_COMPLIANT,
+                        ComplianceStatus.UNKNOWN,
+                        ComplianceStatus.UNCONFIGURED,
+                        ComplianceStatus.NOT_APPLICABLE,
+                    ),
+                )
+            bindings = bindings.filter(status_query)
+            if requested_status == ComplianceStatus.UNKNOWN:
+                active_hosts = GovernanceTaskHost.objects.filter(
+                    target_id__in=bindings.values("target_id"),
+                    task__task_type__in=(
+                        GovernanceTaskType.ASSESS,
+                        GovernanceTaskType.VERIFY,
+                    ),
+                    task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
+                )
+                bindings = bindings.exclude(
+                    target_id__in=active_hosts.exclude(
+                        stage__in=(
+                            "failed",
+                            "completed",
+                            "cancelled",
+                            "pending_confirmation",
+                        )
+                    ).values("target_id")
+                ).exclude(
+                    target_id__in=active_hosts.filter(stage="failed").values(
+                        "target_id"
+                    )
+                )
         elif requested_status in {"pending", "evaluating", "failed"}:
             bindings = bindings.exclude(compliance_snapshots__in=current_snapshots)
             assessment_hosts = GovernanceTaskHost.objects.filter(
@@ -444,11 +575,9 @@ def _patch_details(request, baseline, requirement, query) -> dict:
                 "target_id"
             )
             if requested_status == "pending":
-                bindings = bindings.exclude(
-                    compliance_status__in=(
-                        ComplianceStatus.EVALUATING,
-                        ComplianceStatus.FAILED,
-                    )
+                bindings = bindings.filter(
+                    compliance_status=ComplianceStatus.PENDING,
+                    last_evaluated_at__isnull=True,
                 ).exclude(
                     target_id__in=evaluating_target_ids
                 ).exclude(target_id__in=failed_target_ids)
@@ -470,6 +599,7 @@ def _patch_details(request, baseline, requirement, query) -> dict:
     snapshots = _current_snapshots(page_bindings)
     projected_statuses = _projected_host_statuses(page_bindings)
     projected_failures = _projected_host_failures(page_bindings)
+    projected_evaluations = _projected_host_evaluations(page_bindings)
     items = []
     for binding in page_bindings:
         host_status = _effective_host_status(binding, projected_statuses)
@@ -480,7 +610,15 @@ def _patch_details(request, baseline, requirement, query) -> dict:
                 "reason": binding.assessment_failure_reason or "",
                 "error_code": binding.assessment_failure_error_code or "",
                 "failed_stage": binding.assessment_failure_stage or "",
+                "evaluated_at": binding.assessment_failure_at,
             }
+        fallback = _fallback_cell_context(
+            request,
+            binding,
+            host_status,
+            failure=failure,
+            evaluation=projected_evaluations.get(binding.target_id),
+        )
         items.append(
             {
                 "binding_id": binding.id,
@@ -494,13 +632,11 @@ def _patch_details(request, baseline, requirement, query) -> dict:
                 "status_scope": "requirement" if snapshot else "host",
                 "satisfied": bool(snapshot.satisfied) if snapshot else False,
                 "evidence": snapshot.evidence if snapshot else {},
-                "reason": snapshot.reason
-                if snapshot
-                else (failure or {}).get("reason", ""),
-                "failure": failure,
+                "reason": snapshot.reason if snapshot else fallback["reason"],
+                "failure": _public_failure(failure),
                 "evaluated_at": _isoformat(snapshot.evaluated_at)
                 if snapshot
-                else None,
+                else _isoformat(fallback["evaluated_at"]),
             }
         )
     return {
@@ -587,8 +723,8 @@ def build_baseline_compliance_details(request, baseline, query) -> dict:
                 baseline.requirements.count(),
             )[0]
             if host_status == ComplianceStatus.FAILED:
-                selected_data["failure"] = _latest_host_assessment_failure(
-                    binding.target_id
+                selected_data["failure"] = _public_failure(
+                    _latest_host_assessment_failure(binding.target_id)
                 )
             details = _host_details(
                 request, baseline, binding, query, host_status

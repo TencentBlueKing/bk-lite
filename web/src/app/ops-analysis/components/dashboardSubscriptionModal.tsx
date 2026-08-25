@@ -22,7 +22,6 @@ import { PlusOutlined } from '@ant-design/icons';
 
 import { useDashboardSubscriptionApi } from '@/app/ops-analysis/api/dashboardSubscription';
 import type {
-  DashboardExecutionCreated,
   DashboardExecutionStatus,
   DashboardExecutionSummary,
   DashboardScheduleType,
@@ -36,7 +35,7 @@ interface DashboardSubscriptionModalProps {
   open: boolean;
   /** @deprecated Prefer resourceType + resourceId; kept for Dashboard callers */
   dashboardId?: number;
-  resourceType?: 'dashboard' | 'screen';
+  resourceType?: 'dashboard' | 'screen' | 'report';
   resourceId?: number;
   appliedFilterValues?: Record<string, unknown>;
   onClose: () => void;
@@ -165,6 +164,8 @@ export const formatSubscriptionScheduleSummary = (
   });
 };
 
+const IN_FLIGHT_POLL_INTERVAL_MS = 2000;
+
 const isInFlightExecutionStatus = (
   status: DashboardExecutionStatus | undefined,
 ): boolean => status === 'pending' || status === 'running';
@@ -197,7 +198,6 @@ const DashboardSubscriptionModal = ({
     updateSubscription,
     deleteSubscription,
     executeSubscription,
-    getExecution,
   } = useDashboardSubscriptionApi();
   const { getChannelData } = useChannelApi();
   const getChannelDataRef = useRef(getChannelData);
@@ -221,14 +221,16 @@ const DashboardSubscriptionModal = ({
   );
   const [error, setError] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
-  const [executionResult, setExecutionResult] =
-    useState<DashboardExecutionCreated | null>(null);
+  const hasInFlight = subscriptions.some(hasInFlightSubscriptionExecution);
 
   const loadSubscriptions = useCallback(
     async (options?: { silent?: boolean }) => {
-      if (!options?.silent) setLoading(true);
-      setError(null);
-      setLoadFailed(false);
+      const silent = Boolean(options?.silent);
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+        setLoadFailed(false);
+      }
       try {
         setSubscriptions(
           await listSubscriptions({
@@ -237,10 +239,12 @@ const DashboardSubscriptionModal = ({
           }),
         );
       } catch {
-        setError(t('dashboard.subscriptionLoadFailed'));
-        setLoadFailed(true);
+        if (!silent) {
+          setError(t('dashboard.subscriptionLoadFailed'));
+          setLoadFailed(true);
+        }
       } finally {
-        if (!options?.silent) setLoading(false);
+        if (!silent) setLoading(false);
       }
     },
     [listSubscriptions, resolvedResourceId, resolvedResourceType, t],
@@ -248,53 +252,25 @@ const DashboardSubscriptionModal = ({
 
   useEffect(() => {
     if (!open) return;
-    setExecutionResult(null);
     void loadSubscriptions();
   }, [loadSubscriptions, open]);
 
   useEffect(() => {
-    if (!open || !executionResult || !isInFlightExecutionStatus(executionResult.status)) {
+    if (!open || !hasInFlight) {
       return;
     }
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-
-    const poll = async () => {
-      try {
-        const execution = await getExecution(executionResult.execution_id);
-        if (cancelled) return;
-        setExecutionResult((current) => current ? {
-          ...current,
-          status: execution.status,
-        } : current);
-        await loadSubscriptions({ silent: true });
-        if (!cancelled && isInFlightExecutionStatus(execution.status)) {
-          timer = setTimeout(poll, 2000);
-        }
-      } catch {
-        if (!cancelled) {
-          setError(t('dashboard.subscriptionExecutionQueryFailed'));
-          timer = setTimeout(poll, 2000);
-        }
+    let requestInFlight = false;
+    const timer = window.setInterval(() => {
+      if (requestInFlight) {
+        return;
       }
-    };
-
-    timer = setTimeout(poll, 2000);
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, [executionResult, getExecution, loadSubscriptions, open, t]);
-
-  useEffect(() => {
-    if (!open || !subscriptions.some(hasInFlightSubscriptionExecution)) {
-      return;
-    }
-    const timer = setInterval(() => {
-      void loadSubscriptions({ silent: true });
-    }, 2000);
-    return () => clearInterval(timer);
-  }, [loadSubscriptions, open, subscriptions]);
+      requestInFlight = true;
+      void loadSubscriptions({ silent: true }).finally(() => {
+        requestInFlight = false;
+      });
+    }, IN_FLIGHT_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [hasInFlight, loadSubscriptions, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -409,9 +385,9 @@ const DashboardSubscriptionModal = ({
       };
       if (editing) {
         await updateSubscription(editing.id, payload);
-      } else if (resolvedResourceType === 'screen') {
+      } else if (resolvedResourceType !== 'dashboard') {
         await createSubscription({
-          resource_type: 'screen',
+          resource_type: resolvedResourceType,
           resource_id: resolvedResourceId!,
           applied_filter_values: appliedFilterValues,
           ...payload,
@@ -477,10 +453,8 @@ const DashboardSubscriptionModal = ({
     setExecutingId(id);
     setError(null);
     setLoadFailed(false);
-    setExecutionResult(null);
     try {
-      const result = await executeSubscription(id, crypto.randomUUID());
-      setExecutionResult(result);
+      await executeSubscription(id, crypto.randomUUID());
       await loadSubscriptions({ silent: true });
     } catch {
       setError(t('dashboard.subscriptionExecuteFailed'));

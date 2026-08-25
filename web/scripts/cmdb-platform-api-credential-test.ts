@@ -98,6 +98,7 @@ for (const modelId of [
   'smartx',
   'manageone',
   'nutanixhci',
+  'sangforhci',
   'sangforscp',
   'inspurincloudrail',
   'azure',

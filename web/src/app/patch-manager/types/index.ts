@@ -231,6 +231,7 @@ export interface ScanSetting {
   hour_interval: number;
   weekday: number;
   time: string;
+  timezone: string;
   is_enabled: boolean;
   notification_enabled: boolean;
   notification_rules: NoticeRule[];

@@ -1,28 +1,51 @@
 'use client';
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { message } from 'antd';
 
+import { installPageContextBridge } from '@/components/ai-page-context/registry';
 import { useAuth } from '@/context/auth';
 import { useClientData } from '@/context/client';
+import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 
+import {
+  hasOpsPilotClientAccess,
+  lastWebchatStorageKey,
+  shouldKeepGlobalWebchat,
+} from './visibility';
 import './global-webchat.css';
 
-const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js';
-const WEBCHAT_STYLE_URL = '/webchat/style.css';
+const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20260825-2';
+const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20260825-2';
 const WEBCHAT_ROOT_ID = 'webchat-root';
-const WEBCHAT_ENDPOINT = process.env.NEXT_PUBLIC_WEBCHAT_ENDPOINT;
 
-interface WebChatInitConfig {
-  apiKey: string;
-  customData: Record<string, unknown>;
+const PLATFORM = {
+  applicationsUrl: '/api/proxy/opspilot/skill_channel/platform/',
+  sessionsUrl: '/api/proxy/opspilot/skill_channel/conversations/?channel_id={channelId}',
+  messagesUrl: '/api/proxy/opspilot/skill_channel/conversations/messages/?session_id={sessionId}',
+  deleteSessionUrl: '/api/proxy/opspilot/skill_channel/conversations/delete/',
+  chatUrlTemplate: '/api/proxy/opspilot/skill_channel/{channelId}/chat/',
+  interruptUrl: '/api/proxy/opspilot/bot_mgmt/interrupt_chat_flow_execution/',
+  approvalUrl: '/api/proxy/opspilot/bot_mgmt/submit_approval/',
+  choiceUrl: '/api/proxy/opspilot/bot_mgmt/submit_choice/',
+  credentials: 'include' as const,
+};
+
+interface WebChatPlatformConfig {
+  apiKey?: string;
+  credentials?: RequestCredentials;
+  placeholder?: string;
   position: 'bottom-right';
-  sseUrl: string;
+  platform: typeof PLATFORM & { storageKey: string };
+  userId: string;
+  teamId: string;
+  collectContext?: (hint?: { message?: string }) => Promise<unknown>;
 }
 
 interface WebChatBrowserApi {
-  default: (config: WebChatInitConfig, elementId: string | null) => void;
+  default: (config: WebChatPlatformConfig, elementId: string | null) => void;
   destroy?: () => void;
 }
 
@@ -69,25 +92,31 @@ const destroyWebChat = () => {
   document.getElementById(WEBCHAT_ROOT_ID)?.remove();
 };
 
-const GlobalWebChat = () => {
+const GlobalWebchat = () => {
+  const pathname = usePathname();
   const { token, isAuthenticated, isCheckingAuth } = useAuth();
-  const { clientData, loading: clientsLoading } = useClientData();
+  const { clientData, appConfigList, loading, appConfigLoading } = useClientData();
+  const { userId, selectedGroup } = useUserInfoContext();
   const { t } = useTranslation();
   const loadErrorMessage = t('common.loadFailed');
-  const hasOpsPilotAccess = useMemo(
-    () => clientData.some((client) => client.name === 'opspilot'),
-    [clientData],
-  );
-  const canLoad = Boolean(
-    isAuthenticated
-      && token
-      && !isCheckingAuth
-      && !clientsLoading
-      && hasOpsPilotAccess,
-  );
+  const apps = appConfigList.length > 0 ? appConfigList : clientData;
+  const mountedRef = useRef(false);
+
+  const shouldMount = shouldKeepGlobalWebchat({
+    authenticated: isAuthenticated && !isCheckingAuth,
+    clientLoading: loading || appConfigLoading,
+    hasOpsPilotAccess: hasOpsPilotClientAccess(apps),
+    pathname,
+    alreadyMounted: mountedRef.current,
+  });
+  mountedRef.current = shouldMount;
+
+  const teamId = String(selectedGroup?.id || 'default');
+  const resolvedUserId = userId || 'anonymous';
+  const storageKey = lastWebchatStorageKey(resolvedUserId, teamId);
 
   useEffect(() => {
-    if (!canLoad || !token || !WEBCHAT_ENDPOINT) {
+    if (!shouldMount || !token) {
       destroyWebChat();
       return undefined;
     }
@@ -96,7 +125,8 @@ const GlobalWebChat = () => {
     let hasFailed = false;
     const stylesheet = ensureStylesheet();
     const script = getOrCreateScript();
-    let stylesheetReady = stylesheet.dataset.loadState === 'loaded' || Boolean(stylesheet.sheet);
+    let stylesheetReady =
+      stylesheet.dataset.loadState === 'loaded' || Boolean(stylesheet.sheet);
     let scriptReady = Boolean(window.WebChat);
 
     const initialize = () => {
@@ -114,9 +144,19 @@ const GlobalWebChat = () => {
       window.WebChat.default(
         {
           apiKey: token,
-          customData: { type: 'agui' },
+          credentials: 'include',
+          placeholder: '请输入消息...',
           position: 'bottom-right',
-          sseUrl: WEBCHAT_ENDPOINT,
+          platform: {
+            ...PLATFORM,
+            storageKey,
+          },
+          userId: resolvedUserId,
+          teamId,
+          collectContext: async (hint) => {
+            installPageContextBridge();
+            return window.__BK_AI_PAGE_CONTEXT__?.collect(hint) ?? null;
+          },
         },
         null,
       );
@@ -158,9 +198,9 @@ const GlobalWebChat = () => {
       script.removeEventListener('error', handleResourceError);
       destroyWebChat();
     };
-  }, [canLoad, loadErrorMessage, token]);
+  }, [shouldMount, token, storageKey, resolvedUserId, teamId, loadErrorMessage]);
 
   return null;
 };
 
-export default GlobalWebChat;
+export default GlobalWebchat;

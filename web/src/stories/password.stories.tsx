@@ -32,6 +32,15 @@ export const DirectEdit: Story = {
   },
 };
 
+export const TrimOuterWhitespace: Story = {
+  args: {
+    value: '',
+    clickToEdit: false,
+    trimOuterWhitespace: true,
+    placeholder: 'Paste a password with surrounding whitespace',
+  },
+};
+
 export const Disabled: Story = {
   args: {
     value: 'cannot-edit',

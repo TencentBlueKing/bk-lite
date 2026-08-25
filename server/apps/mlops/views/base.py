@@ -10,7 +10,7 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.mlops.constants import MLflowRunStatus, TrainJobStatus
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.group_scope import assert_dataset_version_scope
-from apps.mlops.utils.i18n import mlops_message
+from apps.mlops.utils.i18n import mlops_exception_message, mlops_message
 from apps.mlops.utils.webhook_client import WebhookClient, WebhookConnectionError, WebhookError, WebhookTimeoutError
 
 
@@ -91,8 +91,17 @@ class TeamModelViewSet(AuthViewSet):
         return str(run_id) in {str(value) for value in runs["run_id"]}
 
     def train_job_has_run(self, train_job, run_id):
-        runs = self.get_train_job_runs(train_job)
-        return self.has_run_in_runs_frame(runs, run_id)
+        experiment_name = mlflow_service.build_experiment_name(
+            prefix=self.MLFLOW_PREFIX,
+            algorithm=train_job.algorithm,
+            train_job_id=train_job.id,
+        )
+        experiment = mlflow_service.get_experiment_by_name(experiment_name)
+        experiment_id = getattr(experiment, "experiment_id", None) if experiment else None
+        if not experiment_id:
+            return False
+
+        return mlflow_service.run_belongs_to_experiment(str(experiment_id), str(run_id))
 
     def run_not_found_response(self, run_id):
         return Response(
@@ -120,7 +129,7 @@ class TeamModelViewSet(AuthViewSet):
                 exc_info=True,
             )
             return Response(
-                {"error": mlops_message(self.request, "error.serving_runtime_cleanup_failed", detail=str(e))},
+                {"error": mlops_message(self.request, "error.serving_runtime_cleanup_failed", detail=mlops_exception_message(self.request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except WebhookError as e:
@@ -136,7 +145,7 @@ class TeamModelViewSet(AuthViewSet):
                     exc_info=True,
                 )
                 return Response(
-                    {"error": mlops_message(self.request, "error.serving_runtime_cleanup_failed", detail=str(e))},
+                    {"error": mlops_message(self.request, "error.serving_runtime_cleanup_failed", detail=mlops_exception_message(self.request, e))},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
 
@@ -207,9 +216,9 @@ class TeamModelViewSet(AuthViewSet):
                         errors.extend(str(item) for item in value)
                     else:
                         errors.append(str(value))
-                message = "；".join(errors) if errors else "训练任务关联的数据集版本无权访问"
+                message = "；".join(errors) if errors else mlops_message(request, "error.train_job_dataset_version_access_denied")
             else:
-                message = "训练任务关联的数据集版本无权访问"
+                message = mlops_message(request, "error.train_job_dataset_version_access_denied")
             return Response({"error": message}, status=status.HTTP_400_BAD_REQUEST)
         return None
 

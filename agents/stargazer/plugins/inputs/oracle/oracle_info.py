@@ -4,7 +4,6 @@ Oracle Server Information Collector
 
 A standalone script to gather information about Oracle servers.
 """
-import asyncio
 import oracledb
 from sanic.log import logger
 from typing import Dict, Any
@@ -33,13 +32,13 @@ class OracleInfo:
         self.connection = None
         self.cursor = None
 
-    def _exec_sql(self, query: str) -> Dict[str, Any]:
+    async def _exec_sql(self, query: str) -> Dict[str, Any]:
         """Execute SQL query and return results as dict (first row only)."""
         try:
             logger.debug(f"Executing SQL query: {query}")
-            self.cursor.execute(query)
+            await self.cursor.execute(query)
             cols = [col[0] for col in self.cursor.description]
-            row = self.cursor.fetchone()
+            row = await self.cursor.fetchone()
             if row:
                 return dict(zip(cols, row))
             return {}
@@ -47,16 +46,16 @@ class OracleInfo:
             logger.error(f"Error executing SQL '{query}': {str(e)}")
             raise RuntimeError(f"SQL execution error: {str(e)}")
 
-    def _collect(self):
+    async def _collect(self):
         """Collect all required Oracle info."""
         logger.info("Starting data collection from Oracle database.")
         try:
-            self.info["version"] = self._exec_sql(self.SQL_QUERIES["version"]).get("BANNER", "")
-            self.info["max_mem"] = str(self._exec_sql(self.SQL_QUERIES["max_mem"]).get("TOTAL_MEMORY", 0))
-            self.info["max_conn"] = str(self._exec_sql(self.SQL_QUERIES["max_conn"]).get("VALUE", 0))
-            self.info["db_name"] = self._exec_sql(self.SQL_QUERIES["db_name"]).get("NAME", "")
-            self.info["database_role"] = self._exec_sql(self.SQL_QUERIES["database_role"]).get("DATABASE_ROLE", "")
-            self.info["sid"] = self._exec_sql(self.SQL_QUERIES["sid"]).get("SID", "")
+            self.info["version"] = (await self._exec_sql(self.SQL_QUERIES["version"])).get("BANNER", "")
+            self.info["max_mem"] = str((await self._exec_sql(self.SQL_QUERIES["max_mem"])).get("TOTAL_MEMORY", 0))
+            self.info["max_conn"] = str((await self._exec_sql(self.SQL_QUERIES["max_conn"])).get("VALUE", 0))
+            self.info["db_name"] = (await self._exec_sql(self.SQL_QUERIES["db_name"])).get("NAME", "")
+            self.info["database_role"] = (await self._exec_sql(self.SQL_QUERIES["database_role"])).get("DATABASE_ROLE", "")
+            self.info["sid"] = (await self._exec_sql(self.SQL_QUERIES["sid"])).get("SID", "")
             self.info["ip_addr"] = self.host
             self.info["port"] = self.port
             self.info["service_name"] = self.service_name
@@ -66,22 +65,18 @@ class OracleInfo:
             raise
 
     async def list_all_resources(self) -> dict[str, Any]:
-        return await asyncio.to_thread(self._list_all_resources_sync)
-
-    def _list_all_resources_sync(self) -> dict[str, Any]:
         """Public method to collect all info and format it for Prometheus."""
         try:
-            # 使用上下文管理器确保资源自动关闭
-            with oracledb.connect(
-                    user=self.user,
-                    password=self.password,
-                    dsn=f"{self.host}:{self.port}/{self.service_name}",
-                    tcp_connect_timeout=self.timeout
+            async with await oracledb.connect_async(
+                user=self.user,
+                password=self.password,
+                dsn=f"{self.host}:{self.port}/{self.service_name}",
+                tcp_connect_timeout=self.timeout,
             ) as connection:
-                with connection.cursor() as cursor:
+                async with connection.cursor() as cursor:
                     self.cursor = cursor
                     try:
-                        self._collect()
+                        await self._collect()
                     except Exception as e:
                         logger.error(f"Error during data collection: {str(e)}")
                         raise
@@ -95,7 +90,6 @@ class OracleInfo:
             logger.error(f"Unexpected error in OracleInfo: {str(e)}")
             result = {"result": {"cmdb_collect_error": f"Unexpected error: {str(e)}"}, "success": False}
         finally:
-            # 确保实例变量被清理
             self.cursor = None
             self.connection = None
 

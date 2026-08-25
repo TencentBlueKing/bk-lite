@@ -8,12 +8,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import F, Q
 from django.utils.timezone import now
 
-from apps.cmdb.models.operation import (
-    CmdbOperation,
-    CmdbOperationOutbox,
-    CmdbOperationOutboxStatus,
-    CmdbOperationStatus,
-)
+from apps.cmdb.models.operation import CmdbOperation, CmdbOperationOutbox, CmdbOperationOutboxStatus, CmdbOperationStatus
 
 
 class OperationConflict(RuntimeError):
@@ -110,7 +105,10 @@ class OperationService:
             updated = CmdbOperation.objects.filter(**filters).update(
                 status=CmdbOperationStatus.GRAPH_COMMITTED,
                 result_snapshot=result,
-                target={**operation.target, "instance_id": result.get("_id")},
+                target={
+                    **{k: v for k, v in operation.target.items() if k != "instance_id"},
+                    "instance_uuid": result.get("inst_uuid") or operation.target.get("instance_uuid"),
+                },
                 last_error="",
                 owner_token="",
                 lease_expires_at=None,
@@ -118,10 +116,7 @@ class OperationService:
             )
             if updated:
                 CmdbOperationOutbox.objects.bulk_create(
-                    [
-                        CmdbOperationOutbox(operation_id=operation.id, event_type=event_type, payload=payload)
-                        for event_type, payload in events
-                    ],
+                    [CmdbOperationOutbox(operation_id=operation.id, event_type=event_type, payload=payload) for event_type, payload in events],
                     ignore_conflicts=True,
                 )
         operation.refresh_from_db()
@@ -190,11 +185,7 @@ class OperationService:
             filters["status"] = CmdbOperationOutboxStatus.PENDING
         elif event.status == CmdbOperationOutboxStatus.RETRY and event.next_attempt_at <= current_time:
             filters.update(status=CmdbOperationOutboxStatus.RETRY, next_attempt_at=event.next_attempt_at)
-        elif (
-            event.status == CmdbOperationOutboxStatus.SENDING
-            and event.lease_expires_at is not None
-            and event.lease_expires_at <= current_time
-        ):
+        elif event.status == CmdbOperationOutboxStatus.SENDING and event.lease_expires_at is not None and event.lease_expires_at <= current_time:
             filters.update(
                 status=CmdbOperationOutboxStatus.SENDING,
                 owner_token=event.owner_token,
@@ -232,9 +223,9 @@ class OperationService:
             )
             if not updated:
                 return False
-            unfinished = CmdbOperationOutbox.objects.filter(operation_id=event.operation_id).exclude(
-                status=CmdbOperationOutboxStatus.SUCCESS
-            ).exists()
+            unfinished = (
+                CmdbOperationOutbox.objects.filter(operation_id=event.operation_id).exclude(status=CmdbOperationOutboxStatus.SUCCESS).exists()
+            )
             if not unfinished:
                 CmdbOperation.objects.filter(
                     id=event.operation_id,
@@ -354,8 +345,7 @@ class OperationService:
                     status=CmdbOperationStatus.GRAPH_WRITING,
                     lease_expires_at__lte=current_time,
                 )
-            )
-            .order_by("updated_at", "id")[:limit]
+            ).order_by("updated_at", "id")[:limit]
         )
         stats = {"scanned": len(operations), "recovered": 0, "unresolved": 0}
         for operation in operations:

@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Sidebar from '../../components/sidebar';
+import ViewEmptyState from '../../components/viewEmptyState';
 import Dashboard, { DashboardRef } from './dashBoard/index';
 import Topology from './topology/index';
 import Architecture, { ArchitectureRef } from './architecture/index';
@@ -16,10 +17,19 @@ import {
   CanvasType,
   isCanvasType,
 } from '@/app/ops-analysis/constants/canvasTypes';
-import { LeftOutlined, RightOutlined } from '@ant-design/icons';
-import { Button, Empty, Modal } from 'antd';
+import {
+  LeftOutlined,
+  RightOutlined,
+} from '@ant-design/icons';
+import { Button, Modal } from 'antd';
 import { useRouter } from 'next/navigation';
 import { DirItem } from '@/app/ops-analysis/types';
+import {
+  getDisplayRecentCanvases,
+  readRecentCanvases,
+  recordRecentCanvas,
+  type RecentCanvasRecord,
+} from '@/app/ops-analysis/utils/recentCanvasStorage';
 
 type SelectedCanvasItems = Record<CanvasType, DirItem | null>;
 
@@ -37,6 +47,7 @@ const ViewPage: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<SelectedCanvasItems>(
     createEmptySelectedItems
   );
+  const [recentCanvases, setRecentCanvases] = useState<RecentCanvasRecord[]>([]);
   const dashboardRef = useRef<DashboardRef>(null);
   const architectureRef = useRef<ArchitectureRef>(null);
   const topologyRef = useRef<TopologyRef>(null);
@@ -59,6 +70,10 @@ const ViewPage: React.FC = () => {
         : prev
     );
   };
+
+  useEffect(() => {
+    setRecentCanvases(readRecentCanvases(window.localStorage));
+  }, []);
 
   // 检查是否需要显示未保存更改提示
   const checkUnsavedChanges = () => {
@@ -132,11 +147,32 @@ const ViewPage: React.FC = () => {
       ...createEmptySelectedItems(),
       ...(isCanvasType(type) ? { [type]: itemInfo || null } : {}),
     });
+    if (isCanvasType(type) && itemInfo) {
+      setRecentCanvases(
+        recordRecentCanvas(window.localStorage, {
+          id: itemInfo.id,
+          dataId: itemInfo.data_id,
+          type,
+          name: itemInfo.name,
+        }),
+      );
+    }
     const params = new URLSearchParams({
       type: itemInfo?.type || '',
       id: itemInfo?.id || '',
     }).toString();
     router.push(`/ops-analysis/view?${params}`);
+  };
+
+  const handleOpenRecent = (item: RecentCanvasRecord) => {
+    const canvasItem: DirItem = {
+      id: item.id,
+      data_id: item.dataId,
+      name: item.name,
+      type: item.type,
+    };
+    sidebarRef.current?.setSelectedKeys([item.id]);
+    handleNavigation(item.type, canvasItem);
   };
 
   return (
@@ -211,9 +247,9 @@ const ViewPage: React.FC = () => {
             selectedNetworkTopology={selectedItem.networkTopology}
           />
         ) : (
-          <Empty
-            className="w-full mt-[20vh]"
-            description={t('opsAnalysisSidebar.selectItem')}
+          <ViewEmptyState
+            recents={getDisplayRecentCanvases(recentCanvases)}
+            onOpenRecent={handleOpenRecent}
           />
         )}
       </div>

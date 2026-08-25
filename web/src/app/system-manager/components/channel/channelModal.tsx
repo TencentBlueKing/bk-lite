@@ -49,6 +49,12 @@ const getDefaultConfig = (st: ChannelType): Record<string, unknown> => {
 
 const getMergedConfig = (st: ChannelType, serverConfig: Record<string, unknown>): Record<string, unknown> => {
   const defaults = getDefaultConfig(st);
+  if (st === 'nats') {
+    return {
+      ...serverConfig,
+      supports_notify_person: serverConfig.supports_notify_person === true,
+    };
+  }
   return { ...defaults, ...serverConfig };
 };
 
@@ -114,7 +120,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
       const mergedConfig = isWebhookChannel
         ? getMergedConfig(resolvedSubType, data.config || {})
         : actualType === 'nats'
-          ? natsExtension?.mergeConfig(data.config || {}) || data.config
+          ? natsExtension?.mergeConfig(data.config || {}) || getMergedConfig(actualType, data.config || {})
           : (actualType === 'email' || channelType === 'email')
             ? ensureEmailConfig(data.config || {})
             : data.config;
@@ -171,9 +177,11 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         description: '',
         config: channelType === 'email' ? ensureEmailConfig() : channelType === 'nats' ? {
           ...(natsExtension?.buildInitialConfig() || {
+            nats_mode: 'request_reply',
             namespace: '',
             method_name: '',
             timeout: 60,
+            supports_notify_person: true,
           }),
         } : getDefaultConfig(defaultSubType),
       });
@@ -275,7 +283,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
   };
 
   const getFieldType = (key: string): string => {
-    if (['smtp_usessl', 'smtp_usetls', 'smtp_auth_enabled'].includes(key)) {
+    if (['smtp_usessl', 'smtp_usetls', 'smtp_auth_enabled', 'supports_notify_person'].includes(key)) {
       return 'switch';
     }
     if (['smtp_pwd', 'webhook_url', 'sign_secret'].includes(key)) {
@@ -350,7 +358,7 @@ const ChannelModal: React.FC<ChannelModalProps> = ({
         return smtpAuthEnabled || !['smtp_user', 'smtp_pwd'].includes(key);
       })
       .map((key) => {
-        const nonRequiredKeys = ['smtp_usessl', 'smtp_usetls', 'smtp_auth_enabled', 'sign_secret', 'headers'];
+        const nonRequiredKeys = ['smtp_usessl', 'smtp_usetls', 'smtp_auth_enabled', 'sign_secret', 'headers', 'supports_notify_person'];
         const fieldDef: Record<string, unknown> = {
           name: key,
           type: getFieldType(key),

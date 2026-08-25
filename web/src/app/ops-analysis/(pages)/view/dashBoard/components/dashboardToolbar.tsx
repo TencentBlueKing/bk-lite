@@ -6,13 +6,13 @@ import {
   FullscreenOutlined,
   MailOutlined,
   PlusOutlined,
-  ReloadOutlined,
   ShareAltOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
 
 import type { DirItem } from '@/app/ops-analysis/types';
 import PermissionWrapper from '@/components/permission';
+import TimeSelector from '@/components/time-selector';
 import { useTranslation } from '@/utils/i18n';
 
 interface DashboardToolbarProps {
@@ -26,6 +26,8 @@ interface DashboardToolbarProps {
   isEditMode: boolean;
   saving: boolean;
   onRefresh: () => void;
+  frequenceValue?: number;
+  onFrequencyChange?: (intervalMs: number) => void;
   onToggleFullscreen: () => void;
   onExportPdf: () => void;
   onOpenFilterConfig: () => void;
@@ -48,6 +50,8 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
   isEditMode,
   saving,
   onRefresh,
+  frequenceValue = 0,
+  onFrequencyChange,
   onToggleFullscreen,
   onExportPdf,
   onOpenFilterConfig,
@@ -65,14 +69,12 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
 
   return (
     <div className="flex items-center gap-1.5" data-export-hidden="true">
-        <Tooltip title={t('common.refresh')}>
-          <Button
-            type="text"
-            icon={<ReloadOutlined style={{ fontSize: 16 }} />}
-            onClick={onRefresh}
-            className="rounded-full!"
-          />
-        </Tooltip>
+        <TimeSelector
+          onlyRefresh
+          frequenceValue={frequenceValue}
+          onRefresh={onRefresh}
+          onFrequenceChange={onFrequencyChange}
+        />
 
         <Tooltip title={t('common.fullscreen')}>
           <Button

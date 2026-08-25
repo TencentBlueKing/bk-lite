@@ -18,70 +18,6 @@ from apps.node_mgmt.services.installer_session import InstallerSessionService
 from apps.node_mgmt.services.sidecar import Sidecar
 
 
-def _windows_remote_token_data():
-    return {
-        "package_id": 1,
-        "cloud_region_id": 7,
-        "ip": "10.0.0.8",
-        "user": "Administrator",
-        "node_id": "node-win",
-        "node_name": "node-win",
-        "os": NodeConstants.WINDOWS_OS,
-        "install_mode": "auto",
-        "remaining_usage": 4,
-        "organizations": [],
-        "cpu_architecture": NodeConstants.X86_64_ARCH,
-    }
-
-
-def _stub_windows_remote_session_dependencies(monkeypatch, envs):
-    monkeypatch.setattr(InstallerSessionService, "_get_cloud_region_env", lambda _: envs)
-    monkeypatch.setattr(
-        "apps.node_mgmt.services.installer_session.PackageService.resolve_package_by_architecture",
-        lambda *args: SimpleNamespace(name="controller.zip"),
-    )
-    monkeypatch.setattr(
-        "apps.node_mgmt.services.installer_session.PackageService.resolve_existing_file_path",
-        lambda _: "windows/Controller/1.0.0/controller.zip",
-    )
-    monkeypatch.setattr(
-        "apps.node_mgmt.services.installer_session.generate_node_token",
-        lambda *args: "sidecar-token",
-    )
-
-
-def test_windows_remote_session_requires_dedicated_nats_credentials(monkeypatch):
-    _stub_windows_remote_session_dependencies(
-        monkeypatch,
-        {
-            NodeConstants.SERVER_URL_KEY: "https://server.example",
-            NodeConstants.NATS_SERVERS_KEY: "tls://nats.example:4222",
-            "NATS_PROTOCOL": "tls",
-            "NATS_ADMIN_USERNAME": "admin",
-            NodeConstants.NATS_ADMIN_PASSWORD_KEY: "admin-password",
-        },
-    )
-
-    with pytest.raises(BaseAppException, match="dedicated NATS_INSTALLER"):
-        InstallerSessionService.build_session_config("token", token_data=_windows_remote_token_data())
-
-
-def test_windows_remote_session_requires_tls_nats(monkeypatch):
-    _stub_windows_remote_session_dependencies(
-        monkeypatch,
-        {
-            NodeConstants.SERVER_URL_KEY: "https://server.example",
-            NodeConstants.NATS_SERVERS_KEY: "nats://nats.example:4222",
-            "NATS_PROTOCOL": "nats",
-            NodeConstants.NATS_INSTALLER_USERNAME_KEY: "installer",
-            NodeConstants.NATS_INSTALLER_PASSWORD_KEY: "installer-password",
-        },
-    )
-
-    with pytest.raises(BaseAppException, match="NATS_PROTOCOL=tls"):
-        InstallerSessionService.build_session_config("token", token_data=_windows_remote_token_data())
-
-
 @pytest.mark.django_db
 def test_issue_2879_installer_session_prefers_dedicated_credentials(monkeypatch):
     """
@@ -129,6 +65,12 @@ def test_issue_2879_installer_session_prefers_dedicated_credentials(monkeypatch)
     SidecarEnv.objects.create(
         key=NodeConstants.NATS_INSTALLER_PASSWORD_KEY,
         value="installer_pass",
+        type="text",
+        cloud_region=cloud_region,
+    )
+    SidecarEnv.objects.create(
+        key=NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_KEY,
+        value=NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_STRICT,
         type="text",
         cloud_region=cloud_region,
     )
@@ -214,6 +156,12 @@ def test_issue_2879_installer_session_falls_back_to_admin_credentials(monkeypatc
         type="text",
         cloud_region=cloud_region,
     )
+    installer_credentials_mode = SidecarEnv.objects.create(
+        key=NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_KEY,
+        value=NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_STRICT,
+        type="text",
+        cloud_region=cloud_region,
+    )
 
     package_obj = PackageVersion.objects.create(
         type="controller",
@@ -250,6 +198,11 @@ def test_issue_2879_installer_session_falls_back_to_admin_credentials(monkeypatc
         lambda obj: "linux/Controller/1.0.0/test-package.zip",
     )
 
+    with pytest.raises(BaseAppException, match="dedicated NATS_INSTALLER"):
+        InstallerSessionService.build_session_config("token")
+
+    installer_credentials_mode.value = NodeConstants.NATS_INSTALLER_CREDENTIALS_MODE_LEGACY
+    installer_credentials_mode.save(update_fields=["value"])
     config = InstallerSessionService.build_session_config("token")
 
     # Should fall back to admin credentials

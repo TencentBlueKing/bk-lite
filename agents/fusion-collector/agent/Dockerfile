@@ -6,6 +6,7 @@ ENV SIDECAR_ZONE "default"
 ENV SIDECAR_GROUP "default"
 ENV SIDECAR_NODEID ""
 ENV SIDECAR_NODENAME "telegraf-proxy"
+ENV SSH_KNOWN_HOSTS_FILE ""
 
 RUN apt-get update && \
     apt-get install -y ca-certificates ipmitool vim snmp supervisor zip iputils-ping snmptrapd openjdk-11-jdk sshpass && \
@@ -32,7 +33,10 @@ ADD ./telegraf ./bin/telegraf
 ADD ./nats-executor ./bin/nats-executor
 
 # Vector
-ADD ./vector ./bin/vector
+# sidecar 仍调用 /opt/fusion-collectors/bin/vector；包装脚本先清理残留 unix sock。
+ADD ./vector ./bin/vector-real
+ADD ./vector-wrapper ./bin/vector
+RUN chmod +x /opt/fusion-collectors/bin/vector /opt/fusion-collectors/bin/vector-real
 
 ADD ./filebeat ./bin/filebeat
 ADD ./packetbeat ./bin/packetbeat

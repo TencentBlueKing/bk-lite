@@ -26,5 +26,5 @@ class Command(BaseCommand):
         logger.info("node token 初始化开始！")
         node_id = uuid.uuid1().hex
         token = generate_node_token(node_id, options["ip"], options["user"])
-        logger.info(f"node_id: {node_id}, token: {token}")
+        self.stdout.write(f"node_id: {node_id}, token: {token}")
         logger.info("node token 初始化完成！")

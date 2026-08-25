@@ -14,6 +14,7 @@ from apps.cmdb.views.k8s_setup import K8sSetupOpenViewSet, K8sSetupViewSet
 from apps.cmdb.views.model import ModelViewSet
 from apps.cmdb.views.node_mgmt_sync import NodeMgmtSyncViewSet
 from apps.cmdb.views.public_enum_library import PublicEnumLibraryViewSet
+from apps.cmdb.views.scan import ScanTaskViewSet
 from apps.cmdb.views.subscription import SubscriptionViewSet
 from apps.cmdb.views.user_personal_config import UserPersonalConfigViewSet
 
@@ -23,6 +24,7 @@ router.register(r"api/model", ModelViewSet, basename="model")
 router.register(r"api/instance", InstanceViewSet, basename="instance")
 router.register(r"api/change_record", ChangeRecordViewSet, basename="change_record")
 router.register(r"api/collect", CollectModelViewSet, basename="collect")
+router.register(r"api/scan", ScanTaskViewSet, basename="scan")
 router.register(r"api/config_file_versions", ConfigFileVersionViewSet, basename="config_file_versions")
 router.register(r"api/oid", OidModelViewSet, basename="oid")
 router.register(r"api/field_groups", FieldGroupViewSet, basename="field_groups")
@@ -69,15 +71,15 @@ open_api_patterns = [
         open_views.OpenBatchDeleteView.as_view(),
     ),
     path(
-        "api/open/models/<str:model_id>/instances/<int:inst_id>",
+        "api/open/models/<str:model_id>/instances/<str:inst_uuid>",
         open_views.OpenInstanceDetailView.as_view(),
     ),
     path(
-        "api/open/models/<str:model_id>/instances/<int:inst_id>/associations",
+        "api/open/models/<str:model_id>/instances/<str:inst_uuid>/associations",
         open_views.OpenInstanceAssociationsView.as_view(),
     ),
     path(
-        "api/open/models/<str:model_id>/instances/<int:inst_id>/associations/<int:association_id>",
+        "api/open/models/<str:model_id>/instances/<str:inst_uuid>/associations/<str:dst_inst_uuid>/<str:model_asst_id>",
         open_views.OpenInstanceAssociationDetailView.as_view(),
     ),
 ]

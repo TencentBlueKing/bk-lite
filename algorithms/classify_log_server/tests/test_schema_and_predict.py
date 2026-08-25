@@ -8,9 +8,11 @@
 
 import sys
 import types
+from io import StringIO
 from unittest.mock import MagicMock, patch  # noqa: F401
 
 import pytest
+from loguru import logger as real_logger
 from pydantic import ValidationError
 
 
@@ -315,9 +317,54 @@ class TestMLServicePredict:
             "DB timeout after 10s",
         ]
         mock_model = self._make_mock_model(data, [0, 1], ["User login *", "DB timeout *"])
+        from classify_log_server.serving import service as service_module
+
         svc = self._make_service(mock_model)
-        response = await svc.predict(data)
+        logger = MagicMock()
+        with patch.object(service_module, "logger", logger):
+            response = await svc.predict(LogClusterRequest(data=data))
         assert response.summary.total_logs == 2
+        assert any(call.args[0].startswith("event=log_classification_completed") for call in logger.info.call_args_list)
+        assert "聚类完成" not in repr(logger.mock_calls)
+
+    @pytest.mark.asyncio
+    async def test_predict_failure_preserves_exception_contract_and_single_traceback(self):
+        from classify_log_server.serving import service as service_module
+        from classify_log_server.serving.exceptions import ModelInferenceError
+
+        secret = "cluster-response-secret-must-not-enter-logs"
+        frame_secret = "frame-local-secret-must-not-enter-logs"
+        mock_model = MagicMock()
+        error = RuntimeError(secret)
+        def fail_with_sensitive_local(*_args, **_kwargs):
+            sensitive_local = frame_secret
+            assert sensitive_local
+            raise error
+
+        mock_model.predict.side_effect = fail_with_sensitive_local
+        svc = self._make_service(mock_model)
+        output = StringIO()
+        service_module._configure_production_logger(output)
+        try:
+            with patch.object(service_module, "logger", real_logger), pytest.raises(ModelInferenceError, match=secret):
+                await svc.predict(LogClusterRequest(data=["safe input"]))
+        finally:
+            service_module._configure_production_logger()
+
+        rendered = output.getvalue()
+        safe_type, safe_error, safe_traceback = service_module._safe_exception_info(error)
+        assert safe_traceback is error.__traceback__
+        assert safe_error is not error
+        assert safe_type.__name__ == "_SafeLogException"
+        assert isinstance(safe_error, RuntimeError)
+        assert str(safe_error) == "RuntimeError"
+        assert str(error) == secret
+        assert "event=log_classification_failed failed_stage=model_predict error_type=RuntimeError" in rendered
+        assert "call_chain=" in rendered
+        assert "Traceback" in rendered
+        assert "service.py" in rendered
+        assert secret not in rendered
+        assert frame_secret not in rendered
 
     @pytest.mark.asyncio
     async def test_predict_coverage_rate_in_unit_interval(self):
@@ -329,7 +376,7 @@ class TestMLServicePredict:
         # 第二条日志 cluster_id=-1（未匹配）
         mock_model = self._make_mock_model(data, [0, -1], ["User login *", None])
         svc = self._make_service(mock_model)
-        response = await svc.predict(data)
+        response = await svc.predict(LogClusterRequest(data=data))
         assert 0.0 <= response.summary.coverage_rate <= 1.0
 
     @pytest.mark.asyncio
@@ -348,7 +395,7 @@ class TestMLServicePredict:
             data, [0, 1, -1], ["User login *", "DB timeout *", None]
         )
         svc = self._make_service(mock_model)
-        response = await svc.predict(data)
+        response = await svc.predict(LogClusterRequest(data=data))
         assert (
             response.summary.matched_logs + response.summary.unknown_logs
             == response.summary.total_logs
@@ -360,5 +407,115 @@ class TestMLServicePredict:
         data = ["User login failed from IP 1.2.3.4"]
         mock_model = self._make_mock_model(data, [0], ["User login *"])
         svc = self._make_service(mock_model)
-        response = await svc.predict(data)
+        response = await svc.predict(LogClusterRequest(data=data))
         assert response.details is None
+
+    @pytest.mark.asyncio
+    async def test_predict_aggregates_high_cardinality_without_per_cluster_rescan(self):
+        """高基数聚合不应为每个 cluster 重建整列相等比较。"""
+        import pandas as pd
+
+        cluster_count = 64
+        data = [f"log-{index}" for index in range(cluster_count)]
+        mock_model = self._make_mock_model(
+            data,
+            list(range(cluster_count)),
+            [f"template-{index}" for index in range(cluster_count)],
+        )
+        svc = self._make_service(mock_model)
+        original_eq = pd.Series.__eq__
+        cluster_comparisons = []
+
+        def count_cluster_comparisons(series, other):
+            if series.name == "cluster_id":
+                cluster_comparisons.append(other)
+            return original_eq(series, other)
+
+        with patch.object(pd.Series, "__eq__", count_cluster_comparisons):
+            response = await svc.predict(LogClusterRequest(data=data))
+
+        assert len(response.template_groups) == cluster_count
+        assert len(cluster_comparisons) <= 1
+
+    @pytest.mark.asyncio
+    async def test_predict_grouping_preserves_response_contract(self):
+        """一次分组仍保留计数、原始顺序、样本、未知项与稳定排序语义。"""
+        data = ["c2-first", "unknown", "c1-first", "c2-second", "c1-second"]
+        mock_model = self._make_mock_model(
+            data,
+            [2, -1, 1, 2, 1],
+            ["template-2", None, "template-1", "template-2", "template-1"],
+        )
+        svc = self._make_service(mock_model)
+        request = LogClusterRequest(
+            data=data,
+            config=LogClusterConfig(max_samples=1, sort_by="count"),
+        )
+
+        response = await svc.predict(request)
+
+        assert [group.model_dump() for group in response.template_groups] == [
+            {
+                "cluster_id": 2,
+                "template": "template-2",
+                "count": 2,
+                "percentage": 40.0,
+                "log_indices": [0, 3],
+                "sample_logs": ["c2-first"],
+            },
+            {
+                "cluster_id": 1,
+                "template": "template-1",
+                "count": 2,
+                "percentage": 40.0,
+                "log_indices": [2, 4],
+                "sample_logs": ["c1-first"],
+            },
+        ]
+        assert response.unknown_logs == [
+            {"index": 1, "log": "unknown", "reason": "no_matching_template"}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_predict_grouping_preserves_duplicate_dataframe_indices(self):
+        """分组后的 log_indices 与样本仍按模型 DataFrame 的原始索引工作。"""
+        import pandas as pd
+
+        data = ["first", "second", "third"]
+        mock_model = MagicMock()
+        mock_model.predict.return_value = pd.DataFrame(
+            {
+                "log": data,
+                "cluster_id": [7, 7, -1],
+                "template": ["template-7", "template-7", None],
+            },
+            index=[1, 1, 2],
+        )
+        svc = self._make_service(mock_model)
+
+        response = await svc.predict(LogClusterRequest(data=data))
+
+        assert response.template_groups[0].log_indices == [1, 1]
+        assert response.template_groups[0].sample_logs == ["second", "second"]
+        assert response.unknown_logs == [
+            {"index": 2, "log": "third", "reason": "no_matching_template"}
+        ]
+
+    @pytest.mark.asyncio
+    async def test_predict_grouping_sorts_non_contiguous_cluster_ids(self):
+        """cluster_id 排序仍按数值升序处理非连续 ID。"""
+        data = ["cluster-10", "cluster-2", "cluster-10"]
+        mock_model = self._make_mock_model(
+            data,
+            [10, 2, 10],
+            ["template-10", "template-2", "template-10"],
+        )
+        svc = self._make_service(mock_model)
+        request = LogClusterRequest(
+            data=data,
+            config=LogClusterConfig(sort_by="cluster_id"),
+        )
+
+        response = await svc.predict(request)
+
+        assert [group.cluster_id for group in response.template_groups] == [2, 10]

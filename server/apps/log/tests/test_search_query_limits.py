@@ -27,7 +27,10 @@ def test_log_hits_serializer_rejects_oversized_fields_limit():
     assert "fields_limit" in serializer.errors
 
 
-def test_log_field_values_serializer_rejects_oversized_limit():
+def test_log_field_values_serializer_accepts_metadata_field():
+    serializer = LogFieldValuesSerializer(data={"filed": "@metadata.beat"})
+
+    assert serializer.is_valid(), serializer.errors
     serializer = LogFieldValuesSerializer(
         data={
             "filed": "_stream",

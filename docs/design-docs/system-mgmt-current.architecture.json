@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "SystemMgmt 模块现状架构",
+    "output": "system-mgmt-current.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/zhouzhuangjie/bk-lite-1.git",
+      "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"
+    },
+    "viewBox": [1420, 790],
+    "views": [
+      {"id": "identity", "label": "身份与组织事实", "focus": ["clients", "interfaces", "directory", "authorization", "store", "cache"], "note": "用户、组织、角色和数据规则同时存在关系表、整数引用与 JSON 投影。"},
+      {"id": "integration", "label": "外部目录同步", "focus": ["providers", "provider_runtime", "sync_runtime", "directory", "store"], "note": "Provider Contract 和同步 Run 已有良好锁与心跳，但仍以完整目录快照进入单次运行。"},
+      {"id": "remote-contract", "label": "远程契约风险", "focus": ["consumers", "nats", "authorization", "notification", "channels"], "note": "49 个 NATS handler 同时承载目录查询、授权和通知；新 scoped 接口与 legacy 无范围接口并存。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "region", "label": "SystemMgmt 接口层", "wraps": ["interfaces", "nats"], "pad": 18},
+    {"kind": "region", "label": "同一 Django App 内的共享能力", "wraps": ["directory", "authorization", "provider_runtime", "sync_runtime", "notification"], "pad": 20},
+    {"kind": "region", "label": "持久化与外部边界", "wraps": ["store", "cache", "providers", "channels"], "pad": 18}
+  ],
+  "components": [
+    {"id": "clients", "type": "external", "label": "管理员与登录用户", "sublabel": "Web / Login / Open API", "pos": [20, 110], "size": [165, 84]},
+    {"id": "interfaces", "type": "backend", "label": "HTTP / ViewSet", "sublabel": "16 个 Router / 登录与配置入口", "tag": "UserViewSet 862 行", "pos": [220, 105], "size": [190, 94], "sources": [{"path": "server/apps/system_mgmt/urls.py", "line": 1, "label": "路由入口"}, {"path": "server/apps/system_mgmt/viewset/user_viewset.py", "line": 1, "label": "用户管理入口"}]},
+    {"id": "consumers", "type": "external", "label": "仓内业务模块", "sublabel": "OpsPilot / Alerts / CMDB / Job 等", "tag": "86 处生产直引", "pos": [20, 555], "size": [175, 92]},
+    {"id": "nats", "type": "messagebus", "label": "NATS Application Layer", "sublabel": "目录 / 权限 / 渠道 / 设置 / 审计", "tag": "49 handlers", "pos": [235, 540], "size": [205, 102], "sources": [{"path": "server/apps/system_mgmt/nats/users.py", "line": 25, "label": "目录兼容接口"}, {"path": "server/apps/system_mgmt/nats/channels.py", "line": 405, "label": "通知公开接口"}]},
+    {"id": "directory", "type": "backend", "label": "Identity & Directory", "sublabel": "User / Group / Role / Archive", "tag": "group_list + role_list JSON", "pos": [470, 105], "size": [210, 96], "sources": [{"path": "server/apps/system_mgmt/models/user.py", "line": 7, "label": "用户与组织模型"}, {"path": "server/apps/system_mgmt/services/group_archive_service.py", "line": 1, "label": "组织归档事务"}]},
+    {"id": "authorization", "type": "security", "label": "Authorization Projection", "sublabel": "继承 / GroupDataRule / JSON contains", "tag": "多份授权事实", "pos": [470, 315], "size": [210, 100], "sources": [{"path": "server/apps/system_mgmt/models/group_data_rule.py", "line": 4, "label": "数据规则"}, {"path": "server/apps/system_mgmt/utils/group_utils.py", "line": 22, "label": "组织范围遍历"}]},
+    {"id": "provider_runtime", "type": "backend", "label": "Provider Runtime", "sublabel": "Manifest / Capability / Adapter", "tag": "已形成稳定 seam", "pos": [740, 105], "size": [205, 94], "sources": [{"path": "server/apps/system_mgmt/providers/runtime.py", "line": 1, "label": "运行时入口"}, {"path": "server/apps/system_mgmt/services/capability_contract_service.py", "line": 1, "label": "能力契约"}]},
+    {"id": "sync_runtime", "type": "backend", "label": "Sync Runtime", "sublabel": "User / Group / IM mapping / Run", "tag": "完整目录快照", "pos": [740, 315], "size": [205, 98], "sources": [{"path": "server/apps/system_mgmt/services/user_sync_service.py", "line": 438, "label": "用户同步运行"}, {"path": "server/apps/system_mgmt/services/im_notification_service.py", "line": 1, "label": "IM 映射同步"}]},
+    {"id": "notification", "type": "backend", "label": "Notification Gateway", "sublabel": "能力校验 / recipient / direct send", "tag": "delivery_key 未去重", "pos": [740, 540], "size": [205, 102], "sources": [{"path": "server/apps/system_mgmt/nats/channels.py", "line": 405, "label": "dispatch_notification"}, {"path": "server/apps/system_mgmt/nats/channels.py", "line": 554, "label": "渠道发送"}]},
+    {"id": "store", "type": "database", "label": "SystemMgmt Database", "sublabel": "Identity / Policy / Integration / Sync Run", "pos": [1000, 315], "size": [205, 92]},
+    {"id": "cache", "type": "database", "label": "Permission Cache", "sublabel": "数据库单调代际 + Redis TTL", "tag": "可靠 fencing", "pos": [1000, 105], "size": [205, 90], "sources": [{"path": "server/apps/core/utils/permission_cache.py", "line": 47, "label": "权限代际"}]},
+    {"id": "providers", "type": "external", "label": "企业身份目录", "sublabel": "Feishu / WeCom / AD / LDAP", "pos": [1215, 105], "size": [160, 88]},
+    {"id": "channels", "type": "external", "label": "通知与内部目标", "sublabel": "Email / Bot / Webhook / NATS", "pos": [1200, 540], "size": [175, 92]}
+  ],
+  "connections": [
+    {"id": "clients_http", "from": "clients", "to": "interfaces", "variant": "emphasis"},
+    {"id": "http_directory", "from": "interfaces", "to": "directory", "variant": "emphasis"},
+    {"id": "consumers_nats", "from": "consumers", "to": "nats", "variant": "emphasis"},
+    {"id": "nats_directory", "from": "nats", "to": "directory"},
+    {"id": "nats_auth", "from": "nats", "to": "authorization", "variant": "security"},
+    {"id": "nats_notification", "from": "nats", "to": "notification"},
+    {"id": "directory_auth", "from": "directory", "to": "authorization", "variant": "security"},
+    {"id": "providers_runtime", "from": "providers", "to": "provider_runtime", "variant": "dashed", "fromSide": "top", "toSide": "top", "via": [[1295, 75], [842.5, 75]]},
+    {"id": "provider_sync", "from": "provider_runtime", "to": "sync_runtime", "variant": "emphasis"},
+    {"id": "sync_directory", "from": "sync_runtime", "to": "directory", "variant": "emphasis"},
+    {"id": "sync_store", "from": "sync_runtime", "to": "store"},
+    {"id": "notification_channels", "from": "notification", "to": "channels", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "值得保留的可靠性基础", "items": ["Provider Manifest/Capability Contract 已隔离供应商差异", "同步 Run 使用唯一 running guard、行锁、心跳和短事务；权限缓存以数据库单调代际 fencing"]},
+    {"dot": "rose", "title": "共享能力泄漏为共享模型", "items": ["86 处生产代码跨模块直引 SystemMgmt，调用方依赖 GroupUtils、User、Channel 等内部表示", "用户组织/角色 JSON、Group.roles 和数据规则重复表达授权事实"]},
+    {"dot": "amber", "title": "远程与投递契约缺口", "items": ["legacy 无 scope NATS 目录接口与 scoped 接口并存，actor_context 仍来自消息体", "delivery_key 只校验未持久化；内部事件认证兼容开关默认允许无签名"]}
+  ]
+}

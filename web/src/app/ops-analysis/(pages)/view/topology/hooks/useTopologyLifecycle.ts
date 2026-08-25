@@ -32,7 +32,9 @@ interface UseTopologyLifecycleParams {
   finishInitialization: () => void;
   handleLoadTopology: (dataId: number | string) => Promise<{
     filters?: UnifiedFilterDefinition[];
+    refreshInterval?: number;
   }>;
+  onLoadedRefreshInterval?: (interval: number) => void;
   loadCanvasNamespaces: (namespaceIds?: (string | number)[]) => unknown;
   refreshAllSingleValueNodes: (
     values?: Record<string, FilterValue>,
@@ -80,6 +82,7 @@ export const useTopologyLifecycle = ({
   startInitialization,
   syncTopologyCanvasResources,
   toggleEditMode,
+  onLoadedRefreshInterval,
 }: UseTopologyLifecycleParams) => {
   const [originalGraphState, setOriginalGraphState] =
     useState<Model.FromJSONData | null>(null);
@@ -148,7 +151,8 @@ export const useTopologyLifecycle = ({
     if (selectedTopology?.data_id && state.graphInstance) {
       handleLoadTopologyRef
         .current(selectedTopology.data_id)
-        .then(async ({ filters: loadedFilters }) => {
+        .then(async ({ filters: loadedFilters, refreshInterval }) => {
+          onLoadedRefreshInterval?.(refreshInterval ?? 0);
           const canvasDataSources = await syncTopologyCanvasResources();
           const autoBuiltFilters = buildFiltersFromNodes(
             state.graphInstance,

@@ -2,18 +2,20 @@
   "name": "@webchat/core",
   "version": "1.0.0",
   "description": "WebChat core library with session management, state machine, and SSE support",
-  "main": "src/index.ts",
+  "type": "module",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./src/index.ts",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
   "files": ["src", "dist"],
   "scripts": {
-    "build": "tsc",
+    "build": "npm run clean && tsc --emitDeclarationOnly && esbuild src/index.ts --bundle --platform=browser --format=esm --target=es2020 --sourcemap --outfile=dist/index.js && esbuild src/index.ts --bundle --platform=browser --format=cjs --target=es2020 --sourcemap --outfile=dist/index.cjs",
     "dev": "tsc --watch",
     "clean": "rm -rf dist",
     "prepublish": "npm run build"
@@ -28,7 +30,11 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "typescript": "^5.0.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.21.5",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.18.0"
   }
 }

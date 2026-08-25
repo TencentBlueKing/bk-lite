@@ -266,6 +266,7 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         elif obj.channel_type == "nats":
             try:
                 ChannelSerializer.validate_nats_config(config)
+                ChannelSerializer.validate_nats_subject_key_unique(config, exclude_channel_id=obj.pk)
             except serializers.ValidationError as exc:
                 return Response({"result": False, "message": exc.detail}, status=400)
         obj.config = config

@@ -14,7 +14,7 @@ import { ExclamationCircleFilled, MinusCircleOutlined, PlusOutlined } from '@ant
 import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
-import FieldGuideTip from '@/app/monitor/(pages)/integration/list/detail/configure/fieldGuideTip';
+import FieldGuideTip from '@/components/field-guide-tip';
 import { applyTableChangeHandler } from './tableChangeHandler';
 import { isDependencySatisfied } from './formFieldDependency';
 import {
@@ -41,8 +41,14 @@ const mutexValuesEqual = (left: any, right: any) => {
 
 export const useConfigRenderer = () => {
   const { t } = useTranslation();
+  // 接入表单控件统一宽度（COMPONENT_GOVERNANCE §4）：单点常量 + style，勿再散落 w-[300px]。
+  // Select 的 antd 默认 width:100% 也会盖掉 Tailwind class，必须走 style。
   const FORM_WIDGET_WIDTH = 300;
-  const FORM_WIDGET_WIDTH_CLASS = 'w-[300px]';
+  const formWidgetWidthStyle = (style?: React.CSSProperties) => ({
+    ...(style && typeof style === 'object' ? style : {}),
+    width: FORM_WIDGET_WIDTH,
+  });
+  const fieldGuideTitle = t('monitor.integrations.fieldGuideTip');
 
   const renderFormField = (fieldConfig: any, mode?: string) => {
     const {
@@ -93,7 +99,7 @@ export const useConfigRenderer = () => {
                 <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-2">
                   <div className="inline-flex min-w-0 items-center text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
                     <span className="truncate">{label}</span>
-                    {tipText ? <FieldGuideTip short={tipText} /> : null}
+                    {tipText ? <FieldGuideTip short={tipText} title={fieldGuideTitle} /> : null}
                   </div>
                   <div className="shrink-0 text-[12px] leading-[18px] text-[var(--color-text-3)]">
                     {t('common.name')} / {t('common.value')}
@@ -276,7 +282,7 @@ export const useConfigRenderer = () => {
       hasGuideTip ? (
         <span className="inline-flex items-center">
           {label}
-          <FieldGuideTip short={guideTip} />
+          <FieldGuideTip short={guideTip} title={fieldGuideTitle} />
         </span>
       ) : (
         label
@@ -290,7 +296,8 @@ export const useConfigRenderer = () => {
               {...widget_props}
               disabled={Boolean(locked || widget_props.disabled)}
               placeholder={widget_props.placeholder || label}
-              className={`${FORM_WIDGET_WIDTH_CLASS} mr-[10px]`}
+              className="mr-[10px]"
+              style={formWidgetWidthStyle(widget_props.style)}
             />
           );
 
@@ -299,22 +306,21 @@ export const useConfigRenderer = () => {
             <Password
               {...widget_props}
               clickToEdit={mode === 'edit' && editable !== false}
+              trimOuterWhitespace
               placeholder={widget_props.placeholder || label}
-              className={`${FORM_WIDGET_WIDTH_CLASS} mr-[10px]`}
+              className="mr-[10px]"
+              style={formWidgetWidthStyle(widget_props.style)}
             />
           );
 
         case 'inputNumber': {
-          const { addonAfter, ...restProps } = widget_props;
+          const { addonAfter, style: widgetStyle, ...restProps } = widget_props;
           return (
             <InputNumber
               {...restProps}
               placeholder={widget_props.placeholder || label}
-              className="mr-[10px]"
-              style={{
-                width: `${FORM_WIDGET_WIDTH}px`,
-                verticalAlign: 'middle'
-              }}
+              className="mr-[10px] align-middle"
+              style={formWidgetWidthStyle(widgetStyle)}
               min={widget_props.min || 1}
               precision={
                 widget_props.precision !== undefined
@@ -329,9 +335,10 @@ export const useConfigRenderer = () => {
         case 'select': {
           const allowCustomTags =
             name === 'iftype_exclude' || name === 'iftype_include';
+          const { style: widgetStyle, ...restSelectProps } = widget_props;
           return (
             <Select
-              {...widget_props}
+              {...restSelectProps}
               mode={allowCustomTags ? 'tags' : widget_props.mode}
               tokenSeparators={
                 allowCustomTags
@@ -348,7 +355,7 @@ export const useConfigRenderer = () => {
               showSearch
               optionFilterProp="label"
               className="mr-[10px]"
-              style={{ width: `${FORM_WIDGET_WIDTH}px` }}
+              style={formWidgetWidthStyle(widgetStyle)}
             >
               {options.map((option: any) => (
                 <Select.Option key={option.value} value={option.value} label={option.label}>
@@ -364,7 +371,7 @@ export const useConfigRenderer = () => {
             <Input.TextArea
               {...widget_props}
               placeholder={widget_props.placeholder || label}
-              className={FORM_WIDGET_WIDTH_CLASS}
+              style={formWidgetWidthStyle(widget_props.style)}
               autoSize={{ minRows: 3, maxRows: 6 }}
             />
           );
@@ -392,14 +399,8 @@ export const useConfigRenderer = () => {
 
         case 'checkbox_group':
           return (
-            <Checkbox.Group {...widget_props} style={{ width: '100%' }}>
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '12px'
-                }}
-              >
+            <Checkbox.Group {...widget_props} className="w-full">
+              <div className="flex flex-col gap-3">
                 {options.map((option: any) => (
                   <Checkbox key={option.value} value={option.value}>
                     <span>
@@ -424,11 +425,11 @@ export const useConfigRenderer = () => {
               <InputNumber
                 {...widget_props}
                 placeholder={widget_props.placeholder || label}
-                style={{ width: 'calc(100% - 80px)' }}
+                className="w-[calc(100%-80px)]"
               />
               <Select
                 defaultValue={widget_props.unit_options?.[0]?.value}
-                style={{ width: 80 }}
+                className="w-20"
               >
                 {(widget_props.unit_options || []).map((option: any) => (
                   <Select.Option key={option.value} value={option.value}>
@@ -441,7 +442,11 @@ export const useConfigRenderer = () => {
 
         default:
           return (
-            <Input placeholder={label} className={FORM_WIDGET_WIDTH_CLASS} />
+            <Input
+              placeholder={label}
+              className="mr-[10px]"
+              style={formWidgetWidthStyle()}
+            />
           );
       }
     };
@@ -484,18 +489,12 @@ export const useConfigRenderer = () => {
               <Form.Item required={required} label={renderLabel()}>
                 {renderNamedControl()}
                 {showMutexConflict ? (
-                  <span
-                    className="text-[12px] leading-[18px] text-[var(--color-fail)]"
-                    style={{ verticalAlign: 'middle' }}
-                  >
+                  <span className="align-middle text-[12px] leading-[18px] text-[var(--color-fail)]">
                     {mutexPeerOccupiedTip}
                   </span>
                 ) : null}
                 {showInlineDescription && !showMutexConflict && (
-                  <span
-                    className="text-[12px] text-[var(--color-text-3)]"
-                    style={{ verticalAlign: 'middle' }}
-                  >
+                  <span className="align-middle text-[12px] text-[var(--color-text-3)]">
                     {description}
                   </span>
                 )}
@@ -518,10 +517,7 @@ export const useConfigRenderer = () => {
           {renderWidget()}
         </Form.Item>
         {showInlineDescription && (
-          <span
-            className="text-[12px] text-[var(--color-text-3)]"
-            style={{ verticalAlign: 'middle' }}
-          >
+          <span className="align-middle text-[12px] text-[var(--color-text-3)]">
             {description}
           </span>
         )}
@@ -594,7 +590,7 @@ export const useConfigRenderer = () => {
       title: guideTip ? (
         <span className="inline-flex items-center">
           <span>{label}</span>
-          <FieldGuideTip short={guideTip} />
+          <FieldGuideTip short={guideTip} title={fieldGuideTitle} />
         </span>
       ) : (
         label
@@ -661,20 +657,18 @@ export const useConfigRenderer = () => {
         column.render = (text: any, record: any, index: number) => {
           const errorMsg = record[`${name}_error`];
           return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="flex items-center gap-2">
               <Input
                 value={text}
                 onChange={(e) => handleChange(e.target.value, record, index)}
                 placeholder={componentProps.placeholder || label}
                 status={errorMsg ? 'error' : ''}
-                style={{ flex: 1 }}
+                className="flex-1"
                 {...componentProps}
               />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
-                  <ExclamationCircleFilled
-                    style={{ color: 'var(--color-fail)', fontSize: '14px' }}
-                  />
+                  <ExclamationCircleFilled className="text-[14px] text-[var(--color-fail)]" />
                 </Tooltip>
               )}
             </div>
@@ -686,20 +680,18 @@ export const useConfigRenderer = () => {
         column.render = (text: any, record: any, index: number) => {
           const errorMsg = record[`${name}_error`];
           return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="flex items-center gap-2">
               <InputNumber
                 value={text}
                 onChange={(value) => handleChange(value, record, index)}
                 placeholder={componentProps.placeholder || label}
-                style={{ flex: 1 }}
+                className="flex-1"
                 status={errorMsg ? 'error' : ''}
                 {...componentProps}
               />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
-                  <ExclamationCircleFilled
-                    style={{ color: 'var(--color-fail)', fontSize: '14px' }}
-                  />
+                  <ExclamationCircleFilled className="text-[14px] text-[var(--color-fail)]" />
                 </Tooltip>
               )}
             </div>
@@ -720,12 +712,12 @@ export const useConfigRenderer = () => {
           );
 
           return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="flex items-center gap-2">
               <Select
                 value={text}
                 onChange={(value) => handleChange(value, record, index)}
                 placeholder={componentProps.placeholder || label}
-                style={{ flex: 1 }}
+                className="flex-1"
                 status={errorMsg ? 'error' : ''}
                 showSearch
                 optionFilterProp="label"
@@ -759,9 +751,7 @@ export const useConfigRenderer = () => {
               </Select>
               {errorMsg && (
                 <Tooltip title={errorMsg}>
-                  <ExclamationCircleFilled
-                    style={{ color: 'var(--color-fail)', fontSize: '14px' }}
-                  />
+                  <ExclamationCircleFilled className="text-[14px] text-[var(--color-fail)]" />
                 </Tooltip>
               )}
             </div>
@@ -778,19 +768,18 @@ export const useConfigRenderer = () => {
           };
 
           return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <GroupTreeSelector
-                value={text}
-                onChange={handleGroupChange}
-                status={errorMsg ? 'error' : ''}
-                style={{ flex: 1 }}
-                {...componentProps}
-              />
+            <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <GroupTreeSelector
+                  value={text}
+                  onChange={handleGroupChange}
+                  status={errorMsg ? 'error' : ''}
+                  {...componentProps}
+                />
+              </div>
               {errorMsg && (
                 <Tooltip title={errorMsg}>
-                  <ExclamationCircleFilled
-                    style={{ color: 'var(--color-fail)', fontSize: '14px' }}
-                  />
+                  <ExclamationCircleFilled className="text-[14px] text-[var(--color-fail)]" />
                 </Tooltip>
               )}
             </div>
@@ -802,21 +791,21 @@ export const useConfigRenderer = () => {
         column.render = (text: any, record: any, index: number) => {
           const errorMsg = record[`${name}_error`];
           return (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div className="flex items-center gap-2">
               <Password
                 value={text}
                 clickToEdit={false}
+                trimOuterWhitespace
+                trimmedHintMode="tooltip"
                 onChange={(value) => handleChange(value, record, index)}
                 placeholder={componentProps.placeholder || label}
                 status={errorMsg ? 'error' : ''}
-                style={{ flex: 1 }}
+                className="flex-1"
                 {...componentProps}
               />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
-                  <ExclamationCircleFilled
-                    style={{ color: 'var(--color-fail)', fontSize: '14px' }}
-                  />
+                  <ExclamationCircleFilled className="text-[14px] text-[var(--color-fail)]" />
                 </Tooltip>
               )}
             </div>
@@ -826,7 +815,7 @@ export const useConfigRenderer = () => {
 
       case 'switch':
         column.render = (text: any, record: any, index: number) => (
-          <div style={{ display: 'flex', alignItems: 'center', minHeight: 32 }}>
+          <div className="flex min-h-8 items-center">
             <Switch
               checked={Boolean(text)}
               onChange={(checked) => handleChange(checked, record, index)}

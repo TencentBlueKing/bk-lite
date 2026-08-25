@@ -5,13 +5,14 @@ import pytest
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.alerts.constants import AlertStatus
-from apps.alerts.models.models import Alert
 from apps.alerts.views.alert import AlertModelViewSet
-from apps.cmdb.constants.constants import NETWORK_TOPO_DEFAULT_HOP, NETWORK_TOPO_MAX_HOP, VIEW
+from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES, NETWORK_STATUS_TOPOLOGY_MAX_NODES
 from apps.operation_analysis.serializers.scene_widget_serializers import NetworkStatusTopologyRequestSerializer
-from apps.operation_analysis.services.network_status_topology import NetworkStatusTopologyService, map_alert_level_to_node_status
+from apps.operation_analysis.services.network_status_topology import NetworkStatusTopologyService
 from apps.operation_analysis.views.scene_widget_view import SceneWidgetViewSet
+
+SWITCH_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+ROUTER_UUID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 
 
 def _render(response):
@@ -31,202 +32,93 @@ def _post_request(user, data):
     return request
 
 
-def test_map_alert_level_to_node_status():
-    assert map_alert_level_to_node_status(None) == {
-        "status": "normal",
-        "severity": None,
-        "pulse": False,
-        "color": "green",
-    }
-    assert map_alert_level_to_node_status("2") == {
-        "status": "warning",
-        "severity": "warning",
-        "pulse": False,
-        "color": "yellow",
-    }
-    assert map_alert_level_to_node_status("1") == {
-        "status": "error",
-        "severity": "error",
-        "pulse": False,
-        "color": "red",
-    }
-    assert map_alert_level_to_node_status("0") == {
-        "status": "critical",
-        "severity": "critical",
-        "pulse": True,
-        "color": "red",
-    }
-
-
-def test_request_serializer_defaults_depth_and_rejects_invalid_params():
-    serializer = NetworkStatusTopologyRequestSerializer(data={"model_id": "switch", "inst_id": "100"})
+def test_request_serializer_defaults_node_limit_and_rejects_invalid_params():
+    serializer = NetworkStatusTopologyRequestSerializer(data={"inst_uuids": [SWITCH_UUID]})
 
     assert serializer.is_valid(), serializer.errors
     assert serializer.validated_data == {
-        "model_id": "switch",
-        "inst_id": 100,
-        "depth": NETWORK_TOPO_DEFAULT_HOP,
+        "inst_uuids": [SWITCH_UUID],
+        "node_limit": NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES,
     }
 
     for payload in (
-        {"model_id": "switch", "inst_id": "100", "depth": 0},
-        {"model_id": "switch", "inst_id": "100", "depth": NETWORK_TOPO_MAX_HOP + 1},
-        {"model_id": "", "inst_id": "100", "depth": 2},
-        {"model_id": "switch", "inst_id": "not-an-int", "depth": 2},
+        {"inst_uuids": []},
+        {"inst_uuids": [SWITCH_UUID, SWITCH_UUID]},
+        {"inst_uuids": [SWITCH_UUID], "node_limit": 0},
+        {"inst_uuids": [SWITCH_UUID], "node_limit": NETWORK_STATUS_TOPOLOGY_MAX_NODES + 1},
+        {"inst_uuids": ["not-a-uuid"]},
+        {
+            "inst_uuids": [SWITCH_UUID, ROUTER_UUID],
+            "node_limit": 1,
+        },
+        {"model_id": "switch", "inst_uuid": SWITCH_UUID, "depth": 2},
     ):
         invalid = NetworkStatusTopologyRequestSerializer(data=payload)
-        assert not invalid.is_valid()
+        assert not invalid.is_valid(), payload
 
 
-def test_build_merges_topology_structure_with_alert_status(monkeypatch, authenticated_user):
+def test_build_returns_closed_set_without_center_or_alert_fields(monkeypatch, authenticated_user):
     topology = {
-        "center": {"id": "100", "model_id": "switch", "name": "core-switch", "hop": 0},
         "nodes": [
-            {"id": "100", "model_id": "switch", "name": "core-switch", "hop": 0, "expanded": True},
-            {"id": "200", "model_id": "host", "name": "biz-host", "hop": 1, "expanded": False},
+            {"id": SWITCH_UUID, "model_id": "switch", "name": "core-switch", "hop": 0},
+            {"id": ROUTER_UUID, "model_id": "router", "name": "edge-router", "hop": 0},
         ],
-        "links": [
-            {
-                "relationship_id": "rel-1",
-                "source_device": "100",
-                "source_inst_name": "Gi0/1",
-                "target_device": "200",
-                "target_inst_name": "eth0",
-                "asst_id": "connect",
-            }
-        ],
+        "links": [{"relationship_id": "rel-1", "source_device": SWITCH_UUID, "target_device": ROUTER_UUID}],
         "truncated": False,
     }
-
     monkeypatch.setattr(
         NetworkStatusTopologyService,
         "_get_cmdb_topology",
-        staticmethod(lambda request, model_id, inst_id, depth: topology),
-    )
-    monkeypatch.setattr(
-        NetworkStatusTopologyService,
-        "_get_active_alert_summary",
-        staticmethod(lambda request, node_keys: {("host", "200"): {"count": 2, "max_level": "0"}}),
+        classmethod(lambda cls, request, inst_uuids: topology),
     )
 
     result = NetworkStatusTopologyService.build(
         request=SimpleNamespace(user=authenticated_user),
-        model_id="switch",
-        inst_id=100,
-        depth=2,
+        inst_uuids=[SWITCH_UUID, ROUTER_UUID],
+        node_limit=100,
     )
 
-    assert result["center_id"] == "100"
-    assert result["center_model_id"] == "switch"
-    assert result["truncated"] is False
-    assert result["nodes"][0]["alert_count"] == 0
-    assert result["nodes"][0]["status"] == "normal"
-    assert result["nodes"][1]["alert_count"] == 2
-    assert result["nodes"][1]["status"] == "critical"
-    assert result["nodes"][1]["pulse"] is True
+    assert "center_id" not in result
     assert result["links"] == topology["links"]
+    assert result["truncated"] is False
+    assert result["node_limit"] == 100
+    assert [node["id"] for node in result["nodes"]] == [SWITCH_UUID, ROUTER_UUID]
+    for node in result["nodes"]:
+        assert "status" not in node
+        assert "alert_count" not in node
+        assert "pulse" not in node
+        assert "severity" not in node
+        assert "color" not in node
 
 
-@pytest.mark.django_db
-def test_active_alert_summary_uses_alert_permission_and_exact_resource_pairs(monkeypatch, authenticated_user):
-    visible_critical = Alert.objects.create(
-        alert_id="visible-critical",
-        title="critical",
-        content="critical",
-        fingerprint="fp-critical",
-        level="0",
-        status=AlertStatus.UNASSIGNED,
-        resource_type="host",
-        resource_id="200",
-    )
-    visible_warning = Alert.objects.create(
-        alert_id="visible-warning",
-        title="warning",
-        content="warning",
-        fingerprint="fp-warning",
-        level="2",
-        status=AlertStatus.PENDING,
-        resource_type="host",
-        resource_id="200",
-    )
-    Alert.objects.create(
-        alert_id="closed",
-        title="closed",
-        content="closed",
-        fingerprint="fp-closed",
-        level="0",
-        status=AlertStatus.CLOSED,
-        resource_type="host",
-        resource_id="200",
-    )
-    Alert.objects.create(
-        alert_id="cross-pair",
-        title="cross pair",
-        content="cross pair",
-        fingerprint="fp-cross-pair",
-        level="0",
-        status=AlertStatus.UNASSIGNED,
-        resource_type="host",
-        resource_id="100",
-    )
-
-    calls = []
-
-    def fake_get_queryset_by_permission(self, request, queryset, permission_key=None):
-        calls.append((request, queryset.model, permission_key))
-        return queryset.filter(id__in=[visible_critical.id, visible_warning.id])
-
-    monkeypatch.setattr(AlertModelViewSet, "get_queryset_by_permission", fake_get_queryset_by_permission)
-
-    result = NetworkStatusTopologyService._get_active_alert_summary(
-        SimpleNamespace(user=authenticated_user),
-        {("host", "200"), ("switch", "100")},
-    )
-
-    assert calls == [(calls[0][0], Alert, None)]
-    assert result == {("host", "200"): {"count": 2, "max_level": "0"}}
-
-
-def test_get_cmdb_topology_reuses_cmdb_permission_flow(monkeypatch, authenticated_user):
-    captured = {}
-
-    def fake_require_instance_permission(self, request, instance, operator):
-        captured["permission"] = (request, instance, operator)
-        return None
-
-    def fake_format_user_groups_permissions(request, model_id):
-        captured["permission_map_input"] = (request, model_id)
-        return {"allowed": True}
-
-    def fake_network_topology(inst_id, model_id, depth, permission_map, user):
-        captured["network_topology"] = (inst_id, model_id, depth, permission_map, user)
-        return {"center": {"id": str(inst_id), "model_id": model_id}, "nodes": [], "links": [], "truncated": False}
-
-    request = SimpleNamespace(user=authenticated_user)
-    instance = {"id": 100, "model_id": "switch", "inst_name": "core-switch"}
+def test_build_does_not_query_alerts(monkeypatch, authenticated_user):
+    topology = {
+        "nodes": [
+            {"id": SWITCH_UUID, "model_id": "switch", "name": "core-switch", "hop": 0},
+        ],
+        "links": [],
+        "truncated": False,
+    }
     monkeypatch.setattr(
-        "apps.operation_analysis.services.network_status_topology.InstanceManage.query_entity_by_id",
-        lambda inst_id: instance,
-    )
-    monkeypatch.setattr(
-        "apps.operation_analysis.services.network_status_topology.InstanceViewSet.require_instance_permission",
-        fake_require_instance_permission,
-    )
-    monkeypatch.setattr(
-        "apps.operation_analysis.services.network_status_topology.CmdbRulesFormatUtil.format_user_groups_permissions",
-        fake_format_user_groups_permissions,
-    )
-    monkeypatch.setattr(
-        "apps.operation_analysis.services.network_status_topology.InstanceManage.network_topology",
-        fake_network_topology,
+        NetworkStatusTopologyService,
+        "_get_cmdb_topology",
+        classmethod(lambda cls, request, inst_uuids: topology),
     )
 
-    result = NetworkStatusTopologyService._get_cmdb_topology(request, "ignored-model", 100, 2)
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("scene topology must not query alert-center")
 
-    assert result["center"]["model_id"] == "switch"
-    assert captured["permission"] == (request, instance, VIEW)
-    assert captured["permission_map_input"] == (request, "switch")
-    assert captured["network_topology"] == (100, "switch", 2, {"allowed": True}, authenticated_user)
+    monkeypatch.setattr(AlertModelViewSet, "get_queryset_by_permission", fail_if_called)
+    monkeypatch.setattr(AlertModelViewSet, "get_queryset", fail_if_called)
+
+    result = NetworkStatusTopologyService.build(
+        request=SimpleNamespace(user=authenticated_user),
+        inst_uuids=[SWITCH_UUID],
+        node_limit=100,
+    )
+
+    assert result["nodes"] == topology["nodes"]
+    assert result["links"] == topology["links"]
 
 
 @pytest.mark.django_db
@@ -234,30 +126,29 @@ def test_view_validates_request_and_calls_service(monkeypatch, authenticated_use
     authenticated_user.is_superuser = True
     captured = {}
 
-    def fake_build(request, model_id, inst_id, depth):
-        captured["args"] = (request, model_id, inst_id, depth)
+    def fake_build(request, inst_uuids, node_limit=None):
+        captured["args"] = (request, inst_uuids, node_limit)
         return {
-            "center_id": str(inst_id),
-            "center_model_id": model_id,
             "nodes": [],
             "links": [],
             "truncated": False,
+            "node_limit": node_limit,
         }
 
     monkeypatch.setattr(NetworkStatusTopologyService, "build", staticmethod(fake_build))
 
-    request = _post_request(authenticated_user, {"model_id": "switch", "inst_id": "100"})
+    request = _post_request(authenticated_user, {"inst_uuids": [SWITCH_UUID, ROUTER_UUID]})
     response = SceneWidgetViewSet.as_view({"post": "network_status_topology"})(request)
     payload = _render(response)
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["result"] is True
-    assert payload["data"]["center_id"] == "100"
-    assert captured["args"][1:] == ("switch", 100, NETWORK_TOPO_DEFAULT_HOP)
+    assert payload["data"]["nodes"] == []
+    assert captured["args"][1:] == ([SWITCH_UUID, ROUTER_UUID], NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES)
 
 
 @pytest.mark.django_db
-def test_view_rejects_invalid_request_without_calling_service(monkeypatch, authenticated_user):
+def test_view_rejects_legacy_center_payload_without_calling_service(monkeypatch, authenticated_user):
     authenticated_user.is_superuser = True
     called = False
 
@@ -267,11 +158,14 @@ def test_view_rejects_invalid_request_without_calling_service(monkeypatch, authe
 
     monkeypatch.setattr(NetworkStatusTopologyService, "build", staticmethod(fake_build))
 
-    request = _post_request(authenticated_user, {"model_id": "switch", "inst_id": "100", "depth": 0})
+    request = _post_request(
+        authenticated_user,
+        {"model_id": "switch", "inst_uuid": SWITCH_UUID, "depth": 2},
+    )
     response = SceneWidgetViewSet.as_view({"post": "network_status_topology"})(request)
     payload = _render(response)
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert payload["result"] is False
-    assert "depth" in payload["message"]
     assert called is False
+    assert "inst_uuids" in payload["message"]

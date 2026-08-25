@@ -2,16 +2,18 @@
 
 import { useSearchParams } from 'next/navigation';
 import { getAssetColumns } from '@/app/cmdb/utils/common';
-import { Spin, Collapse, Button, Modal, message, Empty } from 'antd';
+import { Spin, Collapse, Button, Modal, message } from 'antd';
 import { CaretRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { AssoListProps } from '@/app/cmdb/types/assetData';
 import { useRelationships } from '@/app/cmdb/context/relationships';
 import CustomTable from '@/components/custom-table';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useModelApi, useInstanceApi } from '@/app/cmdb/api';
 import assoListStyle from './index.module.scss';
 import SelectInstance from './selectInstance';
 import PermissionWrapper from '@/components/permission';
+import { RACK_ROOM_ASSET_PERMISSION_PATH } from './rackRoomEdit';
 import React, {
   useEffect,
   useState,
@@ -45,7 +47,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     const modelApi = useModelApi();
     const instanceApi = useInstanceApi();
     const modelId: string = searchParams.get('model_id') || '';
-    const instId: string = searchParams.get('inst_id') || '';
+    const instUuid: string = searchParams.get('inst_uuid') || '';
     const instanceRef = useRef<RelationInstanceRef>(null);
     const prevModelLenRef = useRef(0);
     const {
@@ -87,10 +89,19 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       const newInstIds = assoInstancesList.reduce(
         (pre: RelationListInstItem[], cur: CrentialsAssoInstItem) => {
           if (!cur.inst_list) return pre;
-          const allInstIds = cur.inst_list.map((item) => ({
-            id: item._id,
-            inst_asst_id: item.inst_asst_id,
-          }));
+          const allInstIds = cur.inst_list.map((item) => {
+            const peerUuid = String(item.inst_uuid || '');
+            const srcInstUuid =
+              cur.src_model_id === modelId ? instUuid : peerUuid;
+            const dstInstUuid =
+              cur.dst_model_id === modelId ? instUuid : peerUuid;
+            return {
+              id: peerUuid,
+              src_inst_uuid: srcInstUuid,
+              dst_inst_uuid: dstInstUuid,
+              model_asst_id: cur.model_asst_id,
+            };
+          });
           return [...pre, ...allInstIds];
         },
         []
@@ -168,7 +179,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
           title: t('Model.association'),
           model_id: modelId,
           list: instIds,
-          instId,
+          instUuid,
         });
       },
     }));
@@ -184,7 +195,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
             : item.src_model_name || item.src_model_id,
         model_id: linkModelId,
         classification_id: '',
-        inst_id: row._id,
+        inst_uuid: row.inst_uuid,
         inst_name: row.inst_name,
       };
       const queryString = new URLSearchParams(params).toString();
@@ -210,13 +221,12 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
           render: (_: unknown, record: any) => (
             <PermissionWrapper
               requiredPermissions={['Delete Associate']}
-              instPermissions={record.permission}
+              permissionPath={RACK_ROOM_ASSET_PERMISSION_PATH}
+              instPermissions={record.permission || []}
             >
               <Button
                 type="link"
-                onClick={() =>
-                  cancelRelate(record.inst_asst_id, item.model_asst_id)
-                }
+                onClick={() => cancelRelate(record, item)}
               >
                 {t('Model.disassociation')}
               </Button>
@@ -251,7 +261,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
             dataSource={item.inst_list}
             columns={columns as any}
             scroll={{ x: 'calc(100vw - 306px)', y: 300 }}
-            rowKey="_id"
+            rowKey="inst_uuid"
           />
         ),
       };
@@ -259,7 +269,12 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
       return updatedItem;
     };
 
-    const cancelRelate = async (id: unknown, targetAssoId: string) => {
+    const cancelRelate = async (record: any, item: any) => {
+      const peerUuid = String(record.inst_uuid || '');
+      const srcInstUuid =
+        item.src_model_id === modelId ? instUuid : peerUuid;
+      const dstInstUuid =
+        item.dst_model_id === modelId ? instUuid : peerUuid;
       confirm({
         title: t('disassociationTitle'),
         content: t('common.disassociationContent'),
@@ -267,11 +282,15 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
         onOk() {
           return new Promise(async (resolve) => {
             try {
-              await instanceApi.deleteInstanceAssociation(id as string);
+              await instanceApi.deleteInstanceAssociation(
+                srcInstUuid,
+                dstInstUuid,
+                item.model_asst_id
+              );
               message.success(t('successfullyDisassociated'));
-              const data = await fetchAssoInstances(modelId, instId);
+              const data = await fetchAssoInstances(modelId, instUuid);
               processedData(data);
-              await updateInstAttrList(data, targetAssoId);
+              await updateInstAttrList(data, item.model_asst_id);
             } finally {
               resolve(true);
             }
@@ -309,7 +328,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     };
 
     const confirmRelate = async () => {
-      const data = await fetchAssoInstances(modelId, instId);
+      const data = await fetchAssoInstances(modelId, instUuid);
       getInitData(data);
     };
 
@@ -330,7 +349,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
               onChange={handleCollapseChange}
             />
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('common.noData')} />
           )}
         </div>
         <SelectInstance

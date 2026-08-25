@@ -16,6 +16,26 @@ from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropi
 from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleChatClient, normalize_anthropic_compatible_api_base
 
 
+def _build_openai_thinking_extra_body(model: str, show_think: bool) -> dict:
+    """Build OpenAI-compatible ``extra_body`` toggles for thinking/reasoning mode.
+
+    DeepSeek V4（含 ``deepseek-v4-flash``）默认开启 thinking。官方 API 用
+    ``thinking.type``，DashScope 等兼容网关用 ``enable_thinking``；两边都写，
+    避免 ``show_think=false`` 时仍默认思考并把旁白打进正文。
+    """
+    model_lower = (model or "").lower()
+    if "qwen" in model_lower:
+        return {"enable_thinking": show_think}
+    if "deepseek" in model_lower:
+        return {
+            "thinking": {"type": "enabled" if show_think else "disabled"},
+            "enable_thinking": show_think,
+        }
+    if "gemma" in model_lower:
+        return {"chat_template_kwargs": {"enable_thinking": show_think}}
+    return {}
+
+
 def _normalize_message_content(content) -> str:
     """Normalize provider message content into plain text.
 
@@ -136,15 +156,7 @@ class LLMClientFactory:
             llm.extra_body = {}
 
         show_think = bool((request.extra_config or {}).get("show_think", True))
-        model_lower = request.model.lower()
-        if "qwen" in model_lower:
-            llm.extra_body["enable_thinking"] = show_think
-        elif "deepseek" in model_lower:
-            thinking_type = "enabled" if show_think else "disabled"
-            llm.extra_body["thinking"] = {"type": thinking_type}
-        elif "gemma" in model_lower:
-            # Gemma-4 通过 vLLM chat_template_kwargs 控制 thinking 模式
-            llm.extra_body["chat_template_kwargs"] = {"enable_thinking": show_think}
+        llm.extra_body.update(_build_openai_thinking_extra_body(request.model, show_think))
 
         return llm
 
@@ -317,14 +329,10 @@ class LLMClientFactory:
         if response_format:
             call_kwargs["response_format"] = response_format
 
-        # 添加 Qwen/DeepSeek/Gemma 模型的特殊配置（隔离调用禁用 thinking）
-        model_lower = request.model.lower()
-        if "qwen" in model_lower:
-            call_kwargs["extra_body"] = {"enable_thinking": False}
-        elif "deepseek" in model_lower:
-            call_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
-        elif "gemma" in model_lower:
-            call_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+        # 隔离调用一律关闭 thinking，避免规划/结构化输出被 reasoning 污染
+        thinking_body = _build_openai_thinking_extra_body(request.model, show_think=False)
+        if thinking_body:
+            call_kwargs["extra_body"] = thinking_body
 
         # 直接调用原生 OpenAI API；部分网关不支持 response_format，自动降级重试
         try:
@@ -461,13 +469,9 @@ class LLMClientFactory:
         if response_format:
             call_kwargs["response_format"] = response_format
 
-        model_lower = request.model.lower()
-        if "qwen" in model_lower:
-            call_kwargs["extra_body"] = {"enable_thinking": False}
-        elif "deepseek" in model_lower:
-            call_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
-        elif "gemma" in model_lower:
-            call_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
+        thinking_body = _build_openai_thinking_extra_body(request.model, show_think=False)
+        if thinking_body:
+            call_kwargs["extra_body"] = thinking_body
 
         try:
             stream = client.chat.completions.create(**call_kwargs)

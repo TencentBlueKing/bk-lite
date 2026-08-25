@@ -19,6 +19,7 @@ _IGNORED_HEADER_EXACT = frozenset(
         "upgrade",
         "content-length",
         "content-type",
+        "authorization",
         "accept",
         "accept-encoding",
         "user-agent",

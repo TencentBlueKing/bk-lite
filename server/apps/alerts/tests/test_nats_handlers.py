@@ -11,6 +11,15 @@ from django.utils import timezone
 from apps.alerts.constants.constants import AlertStatus, LevelType
 from apps.alerts.models.models import Alert, Event, Incident, Level
 from apps.alerts.nats import nats as N
+from apps.core.utils.internal_event_auth import sign_internal_event
+
+
+def _receive_internal(**payload):
+    return N.receive_alert_events(
+        **payload,
+        internal_auth=sign_internal_event("alerts.receive_alert_events", payload, caller=payload["pusher"]),
+    )
+
 
 # --------------------------------------------------------------------------
 # 纯辅助函数
@@ -1282,8 +1291,125 @@ def test_receive_alert_events_success():
     assert Event.objects.filter(title="事件A").exists()
 
 
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_receive_alert_events_rejects_forged_internal_pusher_without_auth(monkeypatch):
+    from apps.alerts.models.alert_source import AlertSource
+
+    for lid in (0, 1, 2, 3):
+        Level.objects.create(level_id=lid, level_name=f"L{lid}", level_display_name=f"等级{lid}", level_type=LevelType.EVENT)
+    AlertSource.objects.create(
+        name="nats伪造来源",
+        source_id="nats-forged",
+        source_type="nats",
+        secret="x",
+        team_secrets={},
+        is_active=True,
+        is_effective=True,
+        config={"event_fields_mapping": {"title": "title", "level": "level", "item": "item", "start_time": "start_time"}},
+    )
+    monkeypatch.setenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", "false")
+
+    result = N.receive_alert_events(
+        source_id="nats-forged",
+        pusher="lite-monitor",
+        events=[
+            {
+                "title": "forged",
+                "level": "0",
+                "item": "cpu",
+                "start_time": "1700000000",
+                "organizations": [99],
+            }
+        ],
+    )
+
+    assert result["result"] is False
+    assert result["code"] == "internal_auth_required"
+    assert Event.objects.filter(title="forged").exists() is False
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_receive_alert_events_rejects_invalid_signature_during_rolling_upgrade(monkeypatch):
+    from apps.alerts.models.alert_source import AlertSource
+
+    for lid in (0, 1, 2, 3):
+        Level.objects.create(level_id=lid, level_name=f"L{lid}", level_display_name=f"等级{lid}", level_type=LevelType.EVENT)
+    AlertSource.objects.create(
+        name="nats 篡改来源",
+        source_id="nats-tampered",
+        source_type="nats",
+        secret="x",
+        team_secrets={},
+        is_active=True,
+        is_effective=True,
+        config={"event_fields_mapping": {"title": "title", "level": "level", "item": "item", "start_time": "start_time"}},
+    )
+    monkeypatch.delenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", raising=False)
+    payload = {
+        "source_id": "nats-tampered",
+        "pusher": "lite-monitor",
+        "events": [
+            {
+                "title": "tampered",
+                "level": "0",
+                "item": "cpu",
+                "start_time": "1700000000",
+                "organizations": [3],
+            }
+        ],
+    }
+    internal_auth = sign_internal_event("alerts.receive_alert_events", payload, caller="lite-monitor")
+    internal_auth["signature"] = "0" * 64
+
+    result = N.receive_alert_events(**payload, internal_auth=internal_auth)
+
+    assert result["result"] is False
+    assert result["code"] == "internal_auth_required"
+    assert Event.objects.filter(title="tampered").exists() is False
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_receive_alert_events_legacy_sender_remains_available_for_rolling_upgrade(monkeypatch):
+    from apps.alerts.models.alert_source import AlertSource
+
+    for lid in (0, 1, 2, 3):
+        Level.objects.create(level_id=lid, level_name=f"L{lid}", level_display_name=f"等级{lid}", level_type=LevelType.EVENT)
+    AlertSource.objects.create(
+        name="nats legacy 来源",
+        source_id="nats-legacy-rolling",
+        source_type="nats",
+        secret="x",
+        team_secrets={},
+        is_active=True,
+        is_effective=True,
+        config={"event_fields_mapping": {"title": "title", "level": "level", "item": "item", "start_time": "start_time"}},
+    )
+    monkeypatch.delenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", raising=False)
+
+    result = N.receive_alert_events(
+        source_id="nats-legacy-rolling",
+        pusher="lite-monitor",
+        events=[
+            {
+                "title": "legacy",
+                "level": "0",
+                "item": "cpu",
+                "start_time": "1700000000",
+                "organizations": [3],
+            }
+        ],
+    )
+
+    assert result["result"] is True
+    assert Event.objects.filter(title="legacy").exists() is True
+
+
 @pytest.mark.parametrize("pusher", ["lite-monitor", "lite-log", "lite-apm"])
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_receive_alert_events_allows_whitelisted_internal_organizations_without_source_registration(pusher):
     """内部白名单来源直推不依赖 NATS 告警源预先登记组织。"""
     from apps.alerts.constants.constants import LevelType
@@ -1317,7 +1443,7 @@ def test_receive_alert_events_allows_whitelisted_internal_organizations_without_
         }
     ]
 
-    result = N.receive_alert_events(
+    result = _receive_internal(
         source_id="nats",
         events=events,
         pusher=pusher,
@@ -1360,6 +1486,55 @@ def test_receive_alert_events_reports_partial_ingestion(monkeypatch):
     assert result["data"]["ingestion"]["skipped"] == 1
 
 
+@pytest.mark.parametrize("pusher", ["lite-monitor", "lite-log", "lite-apm"])
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_receive_alert_events_real_adapter_preserves_partial_contract_and_safe_log(pusher, caplog):
+    from apps.alerts.models.alert_source import AlertSource
+
+    for level_id in (0, 1, 2, 3):
+        Level.objects.create(
+            level_id=level_id,
+            level_name=f"L{level_id}",
+            level_display_name=f"等级{level_id}",
+            level_type=LevelType.EVENT,
+        )
+    AlertSource.objects.create(
+        name="NATS 兼容源",
+        source_id="nats-real-partial",
+        source_type="nats",
+        secret="source-secret",
+        team_secrets={},
+        is_active=True,
+        is_effective=True,
+        config={"event_fields_mapping": {"title": "title", "level": "level"}},
+    )
+    marker = f"SECRET-NATS-{pusher}-4671"
+    events = [
+        {"title": f"{pusher} 正常事件", "level": "0", "organizations": [3]},
+        {"description": marker, "secret": marker, "organizations": [3]},
+    ]
+
+    result = _receive_internal(
+        source_id="nats-real-partial",
+        events=events,
+        pusher=pusher,
+    )
+
+    assert result["result"] is False
+    assert result["data"]["processed_events"] == 1
+    assert result["data"]["ingestion"] == {
+        "received": 2,
+        "accepted": 1,
+        "skipped": 1,
+        "errored": 0,
+        "duplicates": 0,
+        "rejected": 1,
+    }
+    assert Event.objects.get(title=f"{pusher} 正常事件").team == [3]
+    assert marker not in caplog.text
+
+
 @pytest.mark.django_db
 @pytest.mark.integration
 def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(monkeypatch):
@@ -1398,6 +1573,7 @@ def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(mo
         staticmethod(lambda source: FakeAdapter),
     )
     monkeypatch.setattr(N, "PER_EVENT_ACK_TOKEN", "receiver-secret")
+    monkeypatch.setenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", "false")
     events = [
         {
             "delivery_id": "d1",
@@ -1428,6 +1604,7 @@ def test_receive_alert_events_per_event_ack_is_opt_in_and_identity_preserving(mo
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_receive_alert_events_legacy_pusher_cannot_set_lifecycle_identity(monkeypatch):
     """旧批量协议保留普通字段兼容，但不能仅凭 pusher 提升生命周期身份。"""
     from apps.alerts.models.alert_source import AlertSource
@@ -1452,7 +1629,7 @@ def test_receive_alert_events_legacy_pusher_cannot_set_lifecycle_identity(monkey
 
     monkeypatch.setattr(N.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda source: FakeAdapter))
 
-    result = N.receive_alert_events(
+    result = _receive_internal(
         source_id="nats-legacy",
         events=[
             {
@@ -1489,6 +1666,7 @@ def test_receive_alert_events_per_event_ack_rejects_untrusted_and_bounds_batches
         is_active=True,
         is_effective=True,
     )
+
     class FakeAdapter:
         def __init__(self, events, trusted_internal, **kwargs):
             pass
@@ -1520,15 +1698,25 @@ def test_receive_alert_events_per_event_ack_rejects_untrusted_and_bounds_batches
         ack_mode=N.PER_EVENT_ACK_MODE,
         ack_token="receiver-secret",
     )
+    monkeypatch.setenv("ALERTS_ALLOW_LEGACY_INTERNAL_EVENT_AUTH", "false")
+    unsigned_organization = N.receive_alert_events(
+        source_id="nats-ack-bound",
+        events=[{"delivery_id": "d", "organizations": [3]}],
+        pusher="lite-monitor",
+        ack_mode=N.PER_EVENT_ACK_MODE,
+        ack_token="receiver-secret",
+    )
 
     assert untrusted["result"] is False
     assert "restricted" in untrusted["message"]
     assert wrong_token["result"] is False
     assert oversized["result"] is False
     assert oversized["data"]["max_events"] == N.PER_EVENT_ACK_MAX_EVENTS
+    assert unsigned_organization["code"] == "internal_auth_required"
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_receive_alert_events_marks_lite_log_as_trusted_internal(mocker):
     from apps.alerts.models.alert_source import AlertSource
 
@@ -1547,7 +1735,7 @@ def test_receive_alert_events_marks_lite_log_as_trusted_internal(mocker):
     adapter_class = mocker.Mock(return_value=adapter)
     mocker.patch.object(N.AlertSourceAdapterFactory, "get_adapter", return_value=adapter_class)
 
-    result = N.receive_alert_events(
+    result = _receive_internal(
         source_id="nats",
         pusher="lite-log",
         events=[{"title": "日志错误", "organizations": [3]}],
@@ -1564,6 +1752,7 @@ def test_receive_alert_events_marks_lite_log_as_trusted_internal(mocker):
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
 def test_receive_alert_events_does_not_log_event_payload_or_secret(mocker):
     from apps.alerts.models.alert_source import AlertSource
 
@@ -1582,7 +1771,7 @@ def test_receive_alert_events_does_not_log_event_payload_or_secret(mocker):
     mocker.patch.object(N.AlertSourceAdapterFactory, "get_adapter", return_value=adapter_class)
     info = mocker.patch.object(N.logger, "info")
 
-    N.receive_alert_events(
+    _receive_internal(
         source_id="nats",
         pusher="lite-log",
         events=[{"title": "sensitive-log-content", "organizations": [3], "secret": "event-secret"}],

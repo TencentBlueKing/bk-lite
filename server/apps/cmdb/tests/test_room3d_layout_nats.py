@@ -7,15 +7,24 @@ import pytest
 from apps.cmdb.nats import nats as N
 
 USER_INFO = {"user": "alice", "team": 1, "domain": "local"}
+ROOM_UUID = "11111111-1111-4111-8111-111111111111"
+DEVICE_UUID = "33333333-3333-4333-8333-333333333333"
+
+
+def _rack_uuid(inst_id):
+    return f"22222222-2222-4222-8222-{inst_id:012d}"
+
+
+RACK_UUID = _rack_uuid(5)
 
 
 def _room(inst_id=7, model_id="server_room"):
-    return {"_id": inst_id, "model_id": model_id, "inst_name": "一号机房"}
+    return {"_id": inst_id, "inst_uuid": ROOM_UUID, "model_id": model_id, "inst_name": "一号机房"}
 
 
 def _rack(inst_id=5, location="A03"):
     return {
-        "inst_id": str(inst_id),
+        "inst_uuid": _rack_uuid(inst_id),
         "inst_name": f"RACK-{inst_id}",
         "location": location,
         "datacenter_type": "2",
@@ -49,10 +58,10 @@ def test_get_room3d_layout_ok_contract(monkeypatch):
         captured["summary_permission_map"] = permission_map
         captured["summary_user"] = user
         return {
-            5: {
+            RACK_UUID: {
                 "devices": [
                     {
-                        "device_id": "10",
+                        "device_id": DEVICE_UUID,
                         "device_name": "SW-01",
                         "model_id": "switch",
                         "rack_u_start": 1,
@@ -70,21 +79,21 @@ def test_get_room3d_layout_ok_contract(monkeypatch):
         get_room3d_rack_device_summaries=fake_get_room3d_rack_device_summaries,
         get_rack_layout=lambda *a, **k: pytest.fail("Room3D 不应逐机柜调用 get_rack_layout"),
     )
-    monkeypatch.setattr(N.InstanceManage, "query_entity_by_id", lambda pk: _room(pk))
+    monkeypatch.setattr(N.InstanceManage, "query_entity_by_uuid", lambda inst_uuid: _room())
     monkeypatch.setattr(N, "rack_room", fake_rack_room, raising=False)
 
-    result = N.get_room3d_layout(server_room_id="7", user_info=USER_INFO)
+    result = N.get_room3d_layout(server_room_id=ROOM_UUID, user_info=USER_INFO)
 
     assert result["result"] is True
     assert result["message"] == ""
     assert result["data"] == {
-        "room": {"id": "7", "name": "一号机房"},
+        "room": {"id": ROOM_UUID, "name": "一号机房"},
         "racks": [
             {
-                "rack_id": "5",
+                "rack_id": RACK_UUID,
                 "rack_name": "RACK-5",
-                "row": 1,
-                "col": 3,
+                "row": 3,
+                "col": 1,
                 "location": "A03",
                 "rack_type": "2",
                 "u_count": 42,
@@ -94,7 +103,7 @@ def test_get_room3d_layout_ok_contract(monkeypatch):
                 "unplaced_device_count": 1,
                 "devices": [
                     {
-                        "device_id": "10",
+                        "device_id": DEVICE_UUID,
                         "device_name": "SW-01",
                         "model_id": "switch",
                         "rack_u_start": 1,
@@ -109,9 +118,34 @@ def test_get_room3d_layout_ok_contract(monkeypatch):
     assert captured["permission_map"] is permission_map
     assert captured["user"].username == "alice"
     assert captured["user"].domain == "local"
-    assert captured["summary_rack_ids"] == [5]
+    assert captured["summary_rack_ids"] == [RACK_UUID]
     assert captured["summary_permission_map"] is permission_map
     assert captured["summary_user"].username == "alice"
+
+
+def test_room3d_fallback_summary_skips_devices_without_uuid(monkeypatch):
+    monkeypatch.setattr(
+        N.rack_room,
+        "get_rack_layout",
+        lambda *args, **kwargs: {
+            "placed": [
+                {"_id": 7, "inst_name": "legacy-device", "rack_u_start": 1, "u_size": 1},
+                {
+                    "inst_uuid": DEVICE_UUID,
+                    "inst_name": "uuid-device",
+                    "rack_u_start": 2,
+                    "u_size": 1,
+                },
+            ],
+            "unplaced": [{"_id": 8, "inst_name": "legacy-unplaced"}],
+        },
+    )
+
+    summary = N._get_room3d_rack_device_summary(5)
+
+    assert summary["device_count"] == 1
+    assert summary["unplaced_device_count"] == 0
+    assert [item["device_id"] for item in summary["devices"]] == [DEVICE_UUID]
 
 
 @pytest.mark.unit
@@ -138,8 +172,8 @@ def test_get_room3d_layout_falls_back_to_rack_id_when_name_missing(monkeypatch):
     result = N.get_room3d_layout(server_room_id=7, user_info=USER_INFO)
 
     assert result["result"] is True
-    assert result["data"]["racks"][0]["rack_id"] == "5"
-    assert result["data"]["racks"][0]["rack_name"] == "5"
+    assert result["data"]["racks"][0]["rack_id"] == RACK_UUID
+    assert result["data"]["racks"][0]["rack_name"] == RACK_UUID
 
 
 @pytest.mark.unit
@@ -258,7 +292,7 @@ def test_get_room3d_layout_empty_room(monkeypatch):
     assert result == {
         "result": True,
         "data": {
-            "room": {"id": "7", "name": "一号机房"},
+            "room": {"id": ROOM_UUID, "name": "一号机房"},
             "racks": [],
         },
         "message": "",
@@ -291,6 +325,11 @@ def test_get_room3d_layout_returns_conflicting_racks_for_frontend_resolution(mon
     captured_rack_ids = []
     monkeypatch.setattr(N.InstanceManage, "query_entity_by_id", lambda pk: _room(pk))
     monkeypatch.setattr(
+        N.InstanceManage,
+        "query_entity_by_uuids",
+        lambda values: [{"_id": index, "inst_uuid": value} for index, value in zip((5, 6, 7), values)],
+    )
+    monkeypatch.setattr(
         N,
         "rack_room",
         SimpleNamespace(
@@ -309,14 +348,14 @@ def test_get_room3d_layout_returns_conflicting_racks_for_frontend_resolution(mon
     result = N.get_room3d_layout(server_room_id=7, user_info=USER_INFO)
 
     assert result["result"] is True
-    assert [rack["rack_id"] for rack in result["data"]["racks"]] == ["5", "6", "7"]
+    assert [rack["rack_id"] for rack in result["data"]["racks"]] == [_rack_uuid(5), _rack_uuid(6), _rack_uuid(7)]
     assert [(rack["row"], rack["col"], rack["location"]) for rack in result["data"]["racks"]] == [
-        (1, 3, "A03"),
-        (1, 3, "A03"),
-        (2, 1, "B01"),
+        (3, 1, "A03"),
+        (3, 1, "A03"),
+        (1, 2, "B01"),
     ]
     assert "diagnostics" not in result["data"]
-    assert captured_rack_ids == ["5", "6", "7"]
+    assert captured_rack_ids == [5, 6, 7]
 
 
 @pytest.mark.unit
@@ -324,6 +363,11 @@ def test_get_room3d_layout_reports_invalid_location_without_blocking_valid_racks
     _install_permission(monkeypatch)
     captured_rack_ids = []
     monkeypatch.setattr(N.InstanceManage, "query_entity_by_id", lambda pk: _room(pk))
+    monkeypatch.setattr(
+        N.InstanceManage,
+        "query_entity_by_uuids",
+        lambda values: [{"_id": 6, "inst_uuid": values[0]}],
+    )
     monkeypatch.setattr(
         N,
         "rack_room",
@@ -342,8 +386,8 @@ def test_get_room3d_layout_reports_invalid_location_without_blocking_valid_racks
     result = N.get_room3d_layout(server_room_id=7, user_info=USER_INFO)
 
     assert result["result"] is True
-    assert [rack["rack_id"] for rack in result["data"]["racks"]] == ["6"]
-    assert captured_rack_ids == ["6"]
+    assert [rack["rack_id"] for rack in result["data"]["racks"]] == [_rack_uuid(6)]
+    assert captured_rack_ids == [6]
     assert "diagnostics" not in result["data"]
     assert "1 个机柜位置格式错误未展示" in result["data"]["notice"]
     assert "RACK-5" in result["data"]["notice"]
@@ -381,7 +425,7 @@ def test_get_room3d_layout_formats_invalid_location_notice_in_english(monkeypatc
 
 
 @pytest.mark.unit
-def test_get_room3d_layout_parses_letter_row_and_number_col(monkeypatch):
+def test_get_room3d_layout_parses_letter_col_and_number_row(monkeypatch):
     _install_permission(monkeypatch)
 
     def fake_get_room_layout(*args, **kwargs):
@@ -401,8 +445,9 @@ def test_get_room3d_layout_parses_letter_row_and_number_col(monkeypatch):
     result = N.get_room3d_layout(server_room_id=7, user_info=USER_INFO)
 
     assert result["result"] is True
-    assert result["data"]["racks"][0]["row"] == 2
-    assert result["data"]["racks"][0]["col"] == 21
+    # B21：字母 B=列 2，数字 21=行 21
+    assert result["data"]["racks"][0]["row"] == 21
+    assert result["data"]["racks"][0]["col"] == 2
     assert result["data"]["racks"][0]["location"] == "B21"
 
 
@@ -424,8 +469,9 @@ def test_get_room3d_layout_accepts_unpadded_location_number(monkeypatch):
     result = N.get_room3d_layout(server_room_id=7, user_info=USER_INFO)
 
     assert result["result"] is True
-    assert result["data"]["racks"][0]["row"] == 1
-    assert result["data"]["racks"][0]["col"] == 3
+    # A3 → 列 A、行 3，格式化为 A03
+    assert result["data"]["racks"][0]["row"] == 3
+    assert result["data"]["racks"][0]["col"] == 1
     assert result["data"]["racks"][0]["location"] == "A03"
 
 

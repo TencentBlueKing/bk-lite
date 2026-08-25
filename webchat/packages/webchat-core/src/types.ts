@@ -31,6 +31,28 @@ export interface ChatSession {
   customData?: Record<string, unknown>;
 }
 
+export interface PageContextSection {
+  id?: string;
+  label?: string;
+  content: string;
+  priority?: number;
+}
+
+export interface PageContextImage {
+  caption?: string;
+  dataUrl: string;
+}
+
+export interface PageContext {
+  url?: string;
+  app?: string;
+  title?: string;
+  sections?: PageContextSection[];
+  images?: PageContextImage[];
+}
+
+export type CollectPageContext = (hint?: { message?: string }) => Promise<PageContext | null | undefined>;
+
 export interface WebChatConfig {
   sseUrl?: string;
   /**
@@ -65,11 +87,51 @@ export interface WebChatConfig {
   enableSSE?: boolean;
   enableStorage?: boolean;
   storageKey?: string;
+  /** Coalesce streaming text per animation frame; set false for immediate rollback. */
+  streamingTextBatching?: boolean;
+  /** Maximum images accepted for one unsent message. Defaults to 4. */
+  maxImageCount?: number;
+  /** Maximum original image bytes accepted for one unsent message. Defaults to 16 MiB. */
+  maxTotalImageBytes?: number;
+  /** Maximum simultaneous FileReader operations. Defaults to 2. */
+  imageReadConcurrency?: number;
+  /** Maximum decoded pixels accepted for one image. Defaults to 16 Mi pixels. */
+  maxImagePixels?: number;
+  /** Maximum decoded pixels accepted for one unsent message. Defaults to 32 Mi pixels. */
+  maxTotalImagePixels?: number;
+  /** Preview formats whose dimensions cannot be inspected; defaults to false. */
+  allowUnknownImagePreview?: boolean;
   /**
    * Opaque integration metadata. WebChat preserves this namespace but does not
    * include it in chat requests; request metadata belongs in `customData`.
    */
   extensions?: Record<string, unknown>;
+  /**
+   * Host callback: collect current page snapshot immediately before send.
+   * When provided, WebChat calls this on every send; return null when no page context applies.
+   */
+  collectContext?: CollectPageContext;
+  /**
+   * Host-injected platform assistant contract. When present with required URLs,
+   * WebChat runs in platform mode and ignores top-level `sseUrl`.
+   */
+  platform?: PlatformContract;
+}
+
+/** URL templates may include `{channelId}` and `{sessionId}`. */
+export interface PlatformContract {
+  applicationsUrl: string;
+  sessionsUrl: string;
+  messagesUrl: string;
+  /** POST JSON `{ session_id }` to delete one persisted conversation. */
+  deleteSessionUrl?: string;
+  chatUrlTemplate: string;
+  interruptUrl?: string;
+  approvalUrl?: string;
+  choiceUrl?: string;
+  credentials?: RequestCredentials;
+  headers?: Record<string, string>;
+  storageKey?: string;
 }
 
 export interface SSEMessage {

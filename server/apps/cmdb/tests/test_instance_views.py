@@ -14,9 +14,12 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.views.instance import InstanceViewSet
-from apps.core.exceptions.base_app_exception import BaseAppException
 
 VIEWS = "apps.cmdb.views.instance"
+
+
+def U(value: int) -> str:
+    return f"123e4567-e89b-42d3-a456-{value:012d}"
 
 
 @pytest.fixture
@@ -240,23 +243,53 @@ def test_search_ok(superuser, monkeypatch):
 
 @pytest.mark.django_db
 def test_retrieve_not_found(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", lambda pk: {})
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: {})
     request = _req("get", superuser)
-    response = _call({"get": "retrieve"}, request, pk="5")
+    response = _call({"get": "retrieve"}, request, pk=U(5))
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_retrieve_rejects_digit_only_pk(superuser, monkeypatch):
+    called = []
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+        lambda pk: called.append(pk) or {},
+    )
+    request = _req("get", superuser)
+    response = _call({"get": "retrieve"}, request, pk="12345")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    body = _body(response)
+    assert "inst_uuid" in str(body.get("data") or body.get("message") or "")
+    assert called == []
+
+
+@pytest.mark.django_db
+def test_destroy_rejects_digit_only_pk(superuser, monkeypatch):
+    called = []
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+        lambda pk: called.append(pk) or {},
+    )
+    request = _req("delete", superuser)
+    response = _call({"delete": "destroy"}, request, pk="9")
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert called == []
 
 
 @pytest.mark.django_db
 def test_retrieve_creator(superuser, monkeypatch):
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_id",
-        lambda pk: {"_id": 5, "model_id": "host", "inst_name": "h", "organization": [1]},
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+        lambda pk: {"_id": 5, "inst_uuid": U(5), "model_id": "host", "inst_name": "h", "organization": [1]},
     )
     request = _req("get", superuser)
-    response = _call({"get": "retrieve"}, request, pk="5")
+    response = _call({"get": "retrieve"}, request, pk=U(5))
     body = _body(response)
     assert response.status_code == status.HTTP_200_OK
     assert set(body["data"]["permission"]) == {"View", "Operate"}
+    assert "_id" not in body["data"]
+    assert "inst_id" not in body["data"]
 
 
 @pytest.mark.django_db
@@ -264,7 +297,7 @@ def test_retrieve_denied_when_name_permission_only_exists_in_other_org(superuser
     permission_module = importlib.reload(importlib.import_module("apps.cmdb.utils.permission_util"))
 
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_id",
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
         lambda pk: {"_id": 5, "model_id": "vmware_vc", "inst_name": "prod-vc", "organization": [9], "_creator": "alice"},
     )
     monkeypatch.setattr(f"{VIEWS}.InstanceViewSet.check_creator_and_organizations", lambda self, r, i: False)
@@ -275,12 +308,10 @@ def test_retrieve_denied_when_name_permission_only_exists_in_other_org(superuser
     )
     monkeypatch.setattr(
         f"{VIEWS}.CmdbRulesFormatUtil.format_user_groups_permissions",
-        lambda request, model_id="", permission_type=None: {
-            6: {"permission_instances_map": {"prod-vc": ["View"]}, "inst_names": ["prod-vc"]}
-        },
+        lambda request, model_id="", permission_type=None: {6: {"permission_instances_map": {"prod-vc": ["View"]}, "inst_names": ["prod-vc"]}},
     )
     request = _req("get", superuser, team="9")
-    response = _call({"get": "retrieve"}, request, pk="5")
+    response = _call({"get": "retrieve"}, request, pk=U(5))
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
@@ -295,7 +326,7 @@ def test_create_ok(superuser, monkeypatch):
 
     def _create(model_id, info, username, **kwargs):
         calls.append(kwargs)
-        return {"_id": 9, "model_id": model_id, "inst_name": info["inst_name"]}
+        return {"_id": 9, "inst_uuid": U(9), "model_id": model_id, "inst_name": info["inst_name"]}
 
     monkeypatch.setattr(
         f"{VIEWS}.InstanceManage.instance_create",
@@ -306,7 +337,8 @@ def test_create_ok(superuser, monkeypatch):
     response = _call({"post": "create"}, request)
     body = _body(response)
     assert response.status_code == status.HTTP_200_OK
-    assert body["data"]["_id"] == 9
+    assert body["data"]["inst_uuid"] == U(9)
+    assert "_id" not in body["data"]
     assert calls[0]["record_change"] is False
     assert calls[0]["schedule_post_actions"] is False
     assert calls[0]["operation_id"]
@@ -318,7 +350,7 @@ def test_create_same_idempotency_key_returns_original_result_without_graph_repla
 
     def _create(model_id, info, username, **kwargs):
         calls.append(info)
-        return {"_id": 9, "model_id": model_id, "inst_name": info["inst_name"]}
+        return {"_id": 9, "inst_uuid": U(9), "model_id": model_id, "inst_name": info["inst_name"]}
 
     monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_create", _create)
 
@@ -328,7 +360,7 @@ def test_create_same_idempotency_key_returns_original_result_without_graph_repla
         request.META["HTTP_IDEMPOTENCY_KEY"] = "create-host-1"
         responses.append(_call({"post": "create"}, request))
 
-    assert [_body(response)["data"]["_id"] for response in responses] == [9, 9]
+    assert [_body(response)["data"]["inst_uuid"] for response in responses] == [U(9), U(9)]
     assert len(calls) == 1
 
 
@@ -339,33 +371,33 @@ def test_create_same_idempotency_key_returns_original_result_without_graph_repla
 
 @pytest.mark.django_db
 def test_destroy_not_found(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", lambda pk: {})
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: {})
     request = _req("delete", superuser)
-    response = _call({"delete": "destroy"}, request, pk=5)
+    response = _call({"delete": "destroy"}, request, pk=U(5))
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db
 def test_destroy_ok(superuser, monkeypatch):
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_id",
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
         lambda pk: {"_id": 5, "model_id": "host", "inst_name": "h", "organization": [1]},
     )
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_batch_delete", lambda *a, **k: None)
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_batch_delete_by_uuids", lambda *a, **k: None)
     request = _req("delete", superuser)
-    response = _call({"delete": "destroy"}, request, pk=5)
+    response = _call({"delete": "destroy"}, request, pk=U(5))
     assert response.status_code == status.HTTP_200_OK
 
 
 # --------------------------------------------------------------------------
-# instance_batch_delete
+# instance_batch_delete_by_uuids
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
 def test_batch_delete_not_found(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_ids", lambda data: [])
-    request = _req("post", superuser, data=[1, 2])
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuids", lambda data: [])
+    request = _req("post", superuser, data={"inst_uuids": [U(1), U(2)]})
     response = _call({"post": "instance_batch_delete"}, request)
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -373,11 +405,11 @@ def test_batch_delete_not_found(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_batch_delete_ok(superuser, monkeypatch):
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_ids",
-        lambda data: [{"_id": 1, "model_id": "host", "inst_name": "h", "organization": [1]}],
+        f"{VIEWS}.InstanceManage.query_entity_by_uuids",
+        lambda data: [{"_id": 1, "inst_uuid": U(1), "model_id": "host", "inst_name": "h", "organization": [1]}],
     )
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_batch_delete", lambda *a, **k: None)
-    request = _req("post", superuser, data=[1])
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_batch_delete_by_uuids", lambda *a, **k: None)
+    request = _req("post", superuser, data={"inst_uuids": [U(1)]})
     response = _call({"post": "instance_batch_delete"}, request)
     assert response.status_code == status.HTTP_200_OK
 
@@ -389,9 +421,9 @@ def test_batch_delete_ok(superuser, monkeypatch):
 
 @pytest.mark.django_db
 def test_partial_update_not_found(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", lambda pk: {})
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: {})
     request = _req("patch", superuser, data={"inst_name": "h2"})
-    response = _call({"patch": "partial_update"}, request, pk=5)
+    response = _call({"patch": "partial_update"}, request, pk=U(5))
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -399,16 +431,16 @@ def test_partial_update_not_found(superuser, monkeypatch):
 def test_partial_update_ok(superuser, monkeypatch):
     calls = []
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_id",
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
         lambda pk: {"_id": 5, "model_id": "host", "inst_name": "h", "organization": [1]},
     )
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.instance_update",
+        f"{VIEWS}.InstanceManage.instance_update_by_uuid",
         lambda *a, **k: calls.append(k) or {"_id": 5, "model_id": "host", "inst_name": "h2"},
     )
     request = _req("patch", superuser, data={"inst_name": "h2"})
     request.META["HTTP_IDEMPOTENCY_KEY"] = "update-host-5"
-    response = _call({"patch": "partial_update"}, request, pk=5)
+    response = _call({"patch": "partial_update"}, request, pk=U(5))
     body = _body(response)
     assert response.status_code == status.HTTP_200_OK
     assert body["data"]["inst_name"] == "h2"
@@ -420,19 +452,19 @@ def test_partial_update_ok(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_partial_update_same_idempotency_key_does_not_replay_graph_write(superuser, monkeypatch):
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_id",
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
         lambda pk: {"_id": 5, "model_id": "host", "inst_name": "h", "organization": [1]},
     )
     calls = []
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.instance_update",
+        f"{VIEWS}.InstanceManage.instance_update_by_uuid",
         lambda *a, **k: calls.append(k) or {"_id": 5, "model_id": "host", "inst_name": "h2"},
     )
 
     for _ in range(2):
         request = _req("patch", superuser, data={"inst_name": "h2"})
         request.META["HTTP_IDEMPOTENCY_KEY"] = "update-host-5"
-        response = _call({"patch": "partial_update"}, request, pk=5)
+        response = _call({"patch": "partial_update"}, request, pk=U(5))
         assert _body(response)["data"]["inst_name"] == "h2"
 
     assert len(calls) == 1
@@ -445,22 +477,22 @@ def test_partial_update_same_idempotency_key_does_not_replay_graph_write(superus
 
 @pytest.mark.django_db
 def test_batch_update_bad_inst_ids(superuser):
-    request = _req("post", superuser, data={"inst_ids": [], "update_data": {"a": 1}})
+    request = _req("post", superuser, data={"inst_uuids": [], "update_data": {"a": 1}})
     response = _call({"post": "instance_batch_update"}, request)
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 @pytest.mark.django_db
 def test_batch_update_bad_update_data(superuser):
-    request = _req("post", superuser, data={"inst_ids": [1], "update_data": {}})
+    request = _req("post", superuser, data={"inst_uuids": [U(1)], "update_data": {}})
     response = _call({"post": "instance_batch_update"}, request)
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 @pytest.mark.django_db
 def test_batch_update_empty_instances(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_ids", lambda ids: [])
-    request = _req("post", superuser, data={"inst_ids": [1], "update_data": {"a": 1}})
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuids", lambda ids: [])
+    request = _req("post", superuser, data={"inst_uuids": [U(1)], "update_data": {"a": 1}})
     response = _call({"post": "instance_batch_update"}, request)
     assert response.status_code == status.HTTP_200_OK
 
@@ -468,24 +500,24 @@ def test_batch_update_empty_instances(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_batch_update_ok(superuser, monkeypatch):
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_ids",
-        lambda ids: [{"_id": 1, "model_id": "host", "inst_name": "h", "organization": [1]}],
+        f"{VIEWS}.InstanceManage.query_entity_by_uuids",
+        lambda ids: [{"_id": 1, "inst_uuid": U(1), "model_id": "host", "inst_name": "h", "organization": [1]}],
     )
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.batch_instance_update", lambda *a, **k: None)
-    request = _req("post", superuser, data={"inst_ids": [1], "update_data": {"a": 1}})
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.batch_instance_update_by_uuids", lambda *a, **k: None)
+    request = _req("post", superuser, data={"inst_uuids": [U(1)], "update_data": {"a": 1}})
     response = _call({"post": "instance_batch_update"}, request)
     assert response.status_code == status.HTTP_200_OK
 
 
 # --------------------------------------------------------------------------
-# instance_association_create / delete
+# instance_association_create_by_uuid / delete
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
 def test_association_create_src_missing(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", lambda pk: {} if pk == 1 else {"_id": pk})
-    request = _req("post", superuser, data={"src_inst_id": 1, "dst_inst_id": 2})
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: {} if pk == U(1) else {"_id": 2, "inst_uuid": pk})
+    request = _req("post", superuser, data={"src_inst_uuid": U(1), "dst_inst_uuid": U(2)})
     response = _call({"post": "instance_association_create"}, request)
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -493,77 +525,81 @@ def test_association_create_src_missing(superuser, monkeypatch):
 @pytest.mark.django_db
 def test_association_create_ok(superuser, monkeypatch):
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.query_entity_by_id",
-        lambda pk: {"_id": pk, "inst_name": f"i{pk}", "organization": [1]},
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+        lambda pk: {"_id": 1 if pk == U(1) else 2, "inst_uuid": pk, "model_id": "host", "inst_name": f"i{pk}", "organization": [1]},
     )
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.instance_association_create",
-        lambda data, username: {"_id": 100},
+        f"{VIEWS}.InstanceManage.instance_association_create_by_uuid",
+        lambda **kwargs: {
+            "src_inst_uuid": kwargs["src_inst_uuid"],
+            "dst_inst_uuid": kwargs["dst_inst_uuid"],
+            "model_asst_id": kwargs["model_asst_id"],
+        },
     )
-    request = _req("post", superuser, data={"src_inst_id": 1, "dst_inst_id": 2, "asst_id": "a"})
+    request = _req("post", superuser, data={"src_inst_uuid": U(1), "dst_inst_uuid": U(2), "model_asst_id": "host_a_host"})
     response = _call({"post": "instance_association_create"}, request)
     body = _body(response)
     assert response.status_code == status.HTTP_200_OK
-    assert body["data"]["_id"] == 100
+    assert body["data"]["src_inst_uuid"] == U(1)
 
 
 @pytest.mark.django_db
 def test_association_delete_not_found(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_association_by_asso_id", lambda aid: None)
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda value: None)
     request = _req("delete", superuser)
-    response = _call({"delete": "instance_association_delete"}, request, id="3")
+    response = _call({"delete": "instance_association_delete"}, request, src_inst_uuid=U(1), dst_inst_uuid=U(2), model_asst_id="a")
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db
 def test_association_delete_ok(superuser, monkeypatch):
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.instance_association_by_asso_id",
-        lambda aid: {
-            "src": {"_id": 1, "inst_name": "s", "organization": [1]},
-            "dst": {"_id": 2, "inst_name": "d", "organization": [1]},
-        },
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+        lambda value: {"_id": 1, "inst_uuid": value, "model_id": "host", "inst_name": "s", "organization": [1]},
     )
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_association_delete", lambda aid, username: None)
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.instance_association_delete_by_key", lambda **kwargs: kwargs)
     request = _req("delete", superuser)
-    response = _call({"delete": "instance_association_delete"}, request, id="3")
+    response = _call({"delete": "instance_association_delete"}, request, src_inst_uuid=U(1), dst_inst_uuid=U(2), model_asst_id="a")
     assert response.status_code == status.HTTP_200_OK
 
 
 # --------------------------------------------------------------------------
-# instance_association_instance_list / instance_association
+# instance_association_instance_list_by_uuid / instance_association
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
 def test_association_instance_list_not_found(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", lambda pk: {})
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: {})
     request = _req("get", superuser)
-    response = _call({"get": "instance_association_instance_list"}, request, model_id="host", inst_id="5")
+    response = _call({"get": "instance_association_instance_list"}, request, model_id="host", inst_uuid=U(5))
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 @pytest.mark.django_db
 def test_association_instance_list_ok(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", lambda pk: {"_id": 5, "organization": [1]})
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: {"_id": 5, "organization": [1]})
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.instance_association_instance_list",
-        lambda model_id, inst_id, **kwargs: [{"_id": 9}],
+        f"{VIEWS}.InstanceManage.instance_association_instance_list_by_uuid",
+        lambda model_id, inst_uuid, **kwargs: [{"inst_list": [{"_id": 9, "inst_uuid": U(9)}]}],
     )
     request = _req("get", superuser)
-    response = _call({"get": "instance_association_instance_list"}, request, model_id="host", inst_id="5")
+    response = _call({"get": "instance_association_instance_list"}, request, model_id="host", inst_uuid=U(5))
+    body = _body(response)
     assert response.status_code == status.HTTP_200_OK
+    assert body["data"][0]["inst_list"][0]["inst_uuid"] == U(9)
+    assert "_id" not in body["data"][0]["inst_list"][0]
 
 
 @pytest.mark.django_db
 def test_instance_association_ok(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", lambda pk: {"_id": 5, "organization": [1]})
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda pk: {"_id": 5, "organization": [1]})
     monkeypatch.setattr(
-        f"{VIEWS}.InstanceManage.instance_association",
-        lambda model_id, inst_id, **kwargs: [{"_id": 9}],
+        f"{VIEWS}.InstanceManage.instance_association_instance_list_by_uuid",
+        lambda model_id, inst_uuid, **kwargs: [{"inst_list": [{"_id": 9, "inst_uuid": U(9)}]}],
     )
     request = _req("get", superuser)
-    response = _call({"get": "instance_association"}, request, model_id="host", inst_id="5")
+    response = _call({"get": "instance_association"}, request, model_id="host", inst_uuid=U(5))
     assert response.status_code == status.HTTP_200_OK
 
 
@@ -639,9 +675,7 @@ def test_upload_file_delegates_to_extension(superuser, monkeypatch):
     )
     factory = APIRequestFactory()
     upload = SimpleUploadedFile("a.pdf", b"data", content_type="application/pdf")
-    request = factory.post(
-        "/x/", data={"model_id": "host", "attr_id": "contract", "file": upload}, format="multipart"
-    )
+    request = factory.post("/x/", data={"model_id": "host", "attr_id": "contract", "file": upload}, format="multipart")
     request.COOKIES["current_team"] = "1"
     force_authenticate(request, user=superuser)
     response = _call({"post": "upload_file"}, request)
@@ -656,9 +690,7 @@ def test_delete_file_delegates_to_extension(superuser, monkeypatch):
     captured = {}
     monkeypatch.setattr(
         f"{VIEWS}.get_instance_enterprise_extension",
-        lambda: types.SimpleNamespace(
-            handle_delete_temp=lambda *, request, file_id: captured.update(file_id=file_id)
-        ),
+        lambda: types.SimpleNamespace(handle_delete_temp=lambda *, request, file_id: captured.update(file_id=file_id)),
     )
     response = _call({"delete": "delete_file"}, _req("delete", superuser), file_id="fid-9")
     body = _body(response)

@@ -28,7 +28,11 @@ import { attachGapIntervals, buildGapDetectionParams } from '@/app/monitor/utils
 
 import dayjs, { Dayjs } from 'dayjs';
 import LazyMetricItem from './lazyMetricItem';
-import { useMetricSelectOptions } from '@/app/monitor/components/metricSelectOptions';
+import {
+  filterMetricGroupsByIds,
+  useMetricSelectOptions,
+} from '@/app/monitor/components/metricSelectOptions';
+import { buildSearchTimeQueryParams } from '@/app/monitor/utils/searchTimeQuery';
 import {
   buildHostProcessLabelPairs,
   isHostMonitorObject,
@@ -127,7 +131,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const metricSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-  const [metricId, setMetricId] = useState<number | null>();
+  const [metricIds, setMetricIds] = useState<number[]>([]);
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
     timeRange: [],
     originValue: 15
@@ -279,7 +283,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       }, activeFrequence);
     }
     return () => clearTimer();
-  }, [activeFrequence, activeTimeValues, metricId, activeTab]);
+  }, [activeFrequence, activeTimeValues, metricIds.join(','), activeTab]);
 
   useEffect(() => {
     handleSearch('refresh');
@@ -398,7 +402,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       clearTimeout(metricSearchTimerRef.current);
     }
     setActiveTab(val);
-    setMetricId(null);
+    setMetricIds([]);
     setMetricPage(1);
     setMetricKeyword('');
     setProcessFilterNames([]);
@@ -489,34 +493,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
 
   // 清空所有指标数据，但保留分组结构，并根据当前筛选状态决定显示内容
   const clearAllMetricData = () => {
-    let clearedData;
-
-    if (metricId) {
-      // 如果有选中的指标，只显示该指标所在的分组
-      clearedData = originMetricData
-        .map((group) => ({
-          ...group,
-          isLoading: false,
-          child: (group?.child || [])
-            .filter((item) => item.id === metricId)
-            .map((item) => ({
-              ...item,
-              viewData: [],
-              seriesBudget: undefined
-            }))
-        }))
-        .filter((item) => item.child?.find((tex) => tex.id === metricId));
-    } else {
-      // 如果没有选中指标，显示所有分组和指标
-      clearedData = originMetricData.map((group) => ({
-        ...group,
-        child: (group.child || []).map((item) => ({
-          ...item,
-          viewData: [],
-          seriesBudget: undefined
-        }))
-      }));
-    }
+    const clearedData = filterMetricGroupsByIds(originMetricData, metricIds);
 
     setMetricData(clearedData);
     // 刷新时保留已展开分组；若为空则展开全部，继续靠卡片滚入视图加载。
@@ -810,8 +787,9 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     []
   );
 
-  const handleMetricIdChange = (val: number) => {
-    setMetricId(val);
+  const handleMetricIdChange = (val: number[]) => {
+    const nextIds = val || [];
+    setMetricIds(nextIds);
 
     cancelAllRequests();
     setLoadedMetricIds(new Set());
@@ -820,40 +798,19 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     setResetCounter((prev) => prev + 1);
     setNeedsRefreshOnExpand(true);
 
-    if (val) {
-      const filteredData = originMetricData
-        .map((group) => ({
-          ...group,
-          isLoading: false,
-          child: (group?.child || [])
-            .filter((item) => item.id === val)
-            .map((item) => ({
-              ...item,
-              viewData: []
-            }))
-        }))
-        .filter((item) => item.child?.find((tex) => tex.id === val));
-
-      setMetricData(filteredData);
-      if (filteredData.length > 0) {
-        setExpandedIds(new Set(filteredData.map((group) => group.id)));
-      }
-    } else {
-      // 切换回全部时，清空所有指标的viewData，但保留分组结构
-      const clearedData = originMetricData.map((group) => ({
-        ...group,
-        child: (group.child || []).map((item) => ({
-          ...item,
-          viewData: [] // 清空所有指标数据，让它们重新请求
-        }))
-      }));
-
-      setMetricData(clearedData);
-      setOriginMetricData(clearedData); // 同步更新originMetricData
-      setExpandedIds(
-        new Set(clearedData.map((group: IndexViewItem) => group.id))
-      );
+    const filteredData = filterMetricGroupsByIds(originMetricData, nextIds);
+    setMetricData(filteredData);
+    if (!nextIds.length) {
+      // 切换回全部时，同步清空 origin，让后续刷新重新请求
+      setOriginMetricData(filteredData);
     }
+    setExpandedIds(
+      new Set(
+        filteredData
+          .map((group: IndexViewItem) => group.id)
+          .filter((id): id is number => typeof id === 'number')
+      )
+    );
   };
 
   const handleMetricKeywordChange = (value: string) => {
@@ -863,7 +820,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     }
     metricSearchTimerRef.current = setTimeout(() => {
       setMetricPage(1);
-      setMetricId(null);
+      setMetricIds([]);
       cancelAllRequests();
       getInitData(activeTab, undefined, 1, value);
     }, 300);
@@ -871,7 +828,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
 
   const handleMetricPageChange = (page: number) => {
     setMetricPage(page);
-    setMetricId(null);
+    setMetricIds([]);
     cancelAllRequests();
     setResetCounter((prev) => prev + 1);
     getInitData(activeTab, undefined, page, metricKeyword);
@@ -958,7 +915,8 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       ),
       plugin_id: processTab ? processPluginId || activeTab : activeTab,
       instance_id: instanceId as string,
-      metric_id: row.id ? String(row.id) : row.name
+      metric_id: row.id ? String(row.id) : row.name,
+      ...buildSearchTimeQueryParams(timeValues)
     };
     const queryString = new URLSearchParams(_row).toString();
     const url = `/monitor/search?${queryString}`;
@@ -989,9 +947,11 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       <div className="flex justify-between mb-[16px] gap-3">
         <div className="flex flex-wrap gap-2 min-w-0">
           <Select
-            className="w-[250px]"
+            className="min-w-[250px] max-w-[360px]"
+            mode="multiple"
+            maxTagCount="responsive"
             placeholder={t('common.searchPlaceHolder')}
-            value={metricId}
+            value={metricIds}
             allowClear
             {...metricSelect.selectSearchProps}
             options={metricSelect.options}

@@ -6,7 +6,6 @@ from django.urls import path
 
 from apps.cmdb.open_api import views as open_views
 
-
 pytestmark = pytest.mark.django_db
 
 urlpatterns = [
@@ -15,7 +14,7 @@ urlpatterns = [
         open_views.OpenInstanceCollectionView.as_view(),
     ),
     path(
-        "api/v1/cmdb/api/open/models/<str:model_id>/instances/<int:inst_id>",
+        "api/v1/cmdb/api/open/models/<str:model_id>/instances/<str:inst_uuid>",
         open_views.OpenInstanceDetailView.as_view(),
     ),
 ]
@@ -30,9 +29,7 @@ def open_api_test_urlconf(settings, monkeypatch):
         lambda model_id: {"model_id": model_id, "group": [7], "is_visible": True},
     )
     settings.MIDDLEWARE = tuple(
-        middleware
-        for middleware in settings.MIDDLEWARE
-        if middleware != "django.contrib.messages.middleware.MessageMiddleware"
+        middleware for middleware in settings.MIDDLEWARE if middleware != "django.contrib.messages.middleware.MessageMiddleware"
     )
 
 
@@ -72,12 +69,20 @@ def test_list_uses_bound_team_permission_map_and_serializes_instances(
     context = _context(mock_context)
     _model_and_attrs(mock_model, mock_attrs)
     mock_list.return_value = (
-        [{"_id": 11, "model_id": "host", "inst_name": "h1", "_labels": "instance"}],
+        [
+            {
+                "_id": 11,
+                "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+                "model_id": "host",
+                "inst_name": "h1",
+                "_labels": "instance",
+            }
+        ],
         1,
     )
 
     response = api_client.get(
-        "/api/v1/cmdb/api/open/models/host/instances?page=2&page_size=10&order=-inst_id",
+        "/api/v1/cmdb/api/open/models/host/instances?page=2&page_size=10&order=-inst_uuid",
         HTTP_API_AUTHORIZATION="secret",
     )
 
@@ -86,32 +91,55 @@ def test_list_uses_bound_team_permission_map_and_serializes_instances(
         "count": 1,
         "page": 2,
         "page_size": 10,
-        "items": [{"inst_id": 11, "model_id": "host", "inst_name": "h1"}],
+        "items": [
+            {
+                "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+                "model_id": "host",
+                "inst_name": "h1",
+            }
+        ],
     }
     mock_list.assert_called_once_with(
         model_id="host",
         params=[],
         page=2,
         page_size=10,
-        order="-_id",
+        order="-inst_uuid",
         permission_map=context.permission_map.return_value,
         creator="api-user",
     )
 
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
-@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_id")
+@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_uuid")
 def test_cross_team_instance_is_hidden_as_404(mock_query, mock_context, api_client, api_secret_allowed):
     _context(mock_context)
-    mock_query.return_value = {"_id": 12, "model_id": "host", "inst_name": "other", "organization": [8]}
+    mock_query.return_value = {
+        "_id": 12,
+        "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+        "model_id": "host",
+        "inst_name": "other",
+        "organization": [8],
+    }
 
     response = api_client.get(
-        "/api/v1/cmdb/api/open/models/host/instances/12",
+        "/api/v1/cmdb/api/open/models/host/instances/63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
         HTTP_API_AUTHORIZATION="secret",
     )
 
     assert response.status_code == 404
     assert response.json()["code"] == "cmdb.instance.not_found"
+
+
+@patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
+def test_get_rejects_digit_locator_as_400(mock_context, api_client, api_secret_allowed):
+    _context(mock_context)
+    response = api_client.get(
+        "/api/v1/cmdb/api/open/models/host/instances/12345",
+        HTTP_API_AUTHORIZATION="secret",
+    )
+    assert response.status_code == 400
+    assert response.json()["code"] == "cmdb.validation.failed"
 
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
@@ -141,12 +169,16 @@ def test_create_rejects_client_organization_before_domain_write(
 @patch("apps.cmdb.open_api.services.InstanceManage.instance_create")
 @patch("apps.cmdb.open_api.services.ModelManage.search_model_attr")
 @patch("apps.cmdb.open_api.services.ModelManage.search_model_info")
-def test_create_forces_bound_team(
-    mock_model, mock_attrs, mock_create, mock_permission, mock_context, api_client, api_secret_allowed
-):
+def test_create_forces_bound_team(mock_model, mock_attrs, mock_create, mock_permission, mock_context, api_client, api_secret_allowed):
     _context(mock_context)
     _model_and_attrs(mock_model, mock_attrs)
-    mock_create.return_value = {"_id": 11, "model_id": "host", "inst_name": "h1", "organization": [7]}
+    mock_create.return_value = {
+        "_id": 11,
+        "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+        "model_id": "host",
+        "inst_name": "h1",
+        "organization": [7],
+    }
 
     response = api_client.post(
         "/api/v1/cmdb/api/open/models/host/instances",
@@ -156,7 +188,9 @@ def test_create_forces_bound_team(
     )
 
     assert response.status_code == 201
-    assert response.json()["data"]["inst_id"] == 11
+    assert response.json()["data"]["inst_uuid"] == "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    assert "inst_id" not in response.json()["data"]
+    assert "_id" not in response.json()["data"]
     mock_create.assert_called_once_with(
         "host",
         {"inst_name": "h1", "organization": [7]},
@@ -167,8 +201,8 @@ def test_create_forces_bound_team(
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
 @patch("apps.cmdb.open_api.services.CmdbRulesFormatUtil.has_object_permission", return_value=True)
-@patch("apps.cmdb.open_api.services.InstanceManage.instance_update")
-@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_id")
+@patch("apps.cmdb.open_api.services.InstanceManage.instance_update_by_uuid")
+@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_uuid")
 @patch("apps.cmdb.open_api.services.ModelManage.search_model_attr")
 @patch("apps.cmdb.open_api.services.ModelManage.search_model_info")
 def test_update_rejects_organization_before_domain_write(
@@ -176,10 +210,17 @@ def test_update_rejects_organization_before_domain_write(
 ):
     _context(mock_context)
     _model_and_attrs(mock_model, mock_attrs)
-    mock_query.return_value = {"_id": 12, "model_id": "host", "inst_name": "h1", "organization": [7]}
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    mock_query.return_value = {
+        "_id": 12,
+        "inst_uuid": inst_uuid,
+        "model_id": "host",
+        "inst_name": "h1",
+        "organization": [7],
+    }
 
     response = api_client.patch(
-        "/api/v1/cmdb/api/open/models/host/instances/12",
+        f"/api/v1/cmdb/api/open/models/host/instances/{inst_uuid}",
         {"organization": [8]},
         format="json",
         HTTP_API_AUTHORIZATION="secret",
@@ -191,8 +232,8 @@ def test_update_rejects_organization_before_domain_write(
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
 @patch("apps.cmdb.open_api.services.CmdbRulesFormatUtil.has_object_permission", return_value=True)
-@patch("apps.cmdb.open_api.services.InstanceManage.instance_update")
-@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_id")
+@patch("apps.cmdb.open_api.services.InstanceManage.instance_update_by_uuid")
+@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_uuid")
 @patch("apps.cmdb.open_api.services.ModelManage.search_model_attr")
 @patch("apps.cmdb.open_api.services.ModelManage.search_model_info")
 def test_update_writes_only_after_visible_operate_permission(
@@ -207,22 +248,35 @@ def test_update_writes_only_after_visible_operate_permission(
 ):
     context = _context(mock_context)
     _model_and_attrs(mock_model, mock_attrs)
-    mock_query.return_value = {"_id": 12, "model_id": "host", "inst_name": "h1", "organization": [7]}
-    mock_update.return_value = {"_id": 12, "model_id": "host", "inst_name": "h1", "ip": "10.0.0.1"}
+    mock_query.return_value = {
+        "_id": 12,
+        "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+        "model_id": "host",
+        "inst_name": "h1",
+        "organization": [7],
+    }
+    mock_update.return_value = {
+        "_id": 12,
+        "inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+        "model_id": "host",
+        "inst_name": "h1",
+        "ip": "10.0.0.1",
+    }
 
     response = api_client.patch(
-        "/api/v1/cmdb/api/open/models/host/instances/12",
+        "/api/v1/cmdb/api/open/models/host/instances/63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
         {"ip": "10.0.0.1"},
         format="json",
         HTTP_API_AUTHORIZATION="secret",
     )
 
     assert response.status_code == 200
-    assert response.json()["data"]["inst_id"] == 12
+    assert response.json()["data"]["inst_uuid"] == "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    assert "_id" not in response.json()["data"]
     mock_update.assert_called_once_with(
         context.user_groups,
         context.user.roles,
-        12,
+        "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
         {"ip": "10.0.0.1"},
         "api-user",
         allowed_org_ids=[7],
@@ -231,19 +285,24 @@ def test_update_writes_only_after_visible_operate_permission(
 
 @patch("apps.cmdb.open_api.views.CMDBOpenAPIContext.from_request")
 @patch("apps.cmdb.open_api.services.CmdbRulesFormatUtil.has_object_permission", return_value=True)
-@patch("apps.cmdb.open_api.services.InstanceManage.instance_batch_delete")
-@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_id")
-def test_delete_uses_single_instance_operate_permission(
-    mock_query, mock_delete, mock_permission, mock_context, api_client, api_secret_allowed
-):
+@patch("apps.cmdb.open_api.services.InstanceManage.instance_batch_delete_by_uuids")
+@patch("apps.cmdb.open_api.services.InstanceManage.query_entity_by_uuid")
+def test_delete_uses_single_instance_operate_permission(mock_query, mock_delete, mock_permission, mock_context, api_client, api_secret_allowed):
     context = _context(mock_context)
-    mock_query.return_value = {"_id": 12, "model_id": "host", "inst_name": "h1", "organization": [7]}
+    inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+    mock_query.return_value = {
+        "_id": 12,
+        "inst_uuid": inst_uuid,
+        "model_id": "host",
+        "inst_name": "h1",
+        "organization": [7],
+    }
 
     response = api_client.delete(
-        "/api/v1/cmdb/api/open/models/host/instances/12",
+        f"/api/v1/cmdb/api/open/models/host/instances/{inst_uuid}",
         HTTP_API_AUTHORIZATION="secret",
     )
 
     assert response.status_code == 200
-    assert response.json()["data"] == {"deleted": [12]}
-    mock_delete.assert_called_once_with(context.user_groups, context.user.roles, [12], "api-user")
+    assert response.json()["data"] == {"deleted": [inst_uuid]}
+    mock_delete.assert_called_once_with(context.user_groups, context.user.roles, [inst_uuid], "api-user")

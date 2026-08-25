@@ -5,6 +5,8 @@ import pytest
 from apps.system_mgmt import nats_api
 from apps.system_mgmt.nats_api import get_assignable_groups, get_authorized_groups_scoped, get_group_users_scoped
 
+pytestmark = pytest.mark.django_db
+
 
 def test_get_authorized_groups_scoped_ignores_forged_actor_context_group_list(monkeypatch):
     user = types.SimpleNamespace(
@@ -137,7 +139,30 @@ def test_get_authorized_groups_scoped_uses_persisted_superuser_flag(monkeypatch)
         def filter(**kwargs):
             return _UserQuerySet()
 
+    class _GroupManager:
+        @staticmethod
+        def filter(**kwargs):
+            if kwargs.get("is_delete") is True:
+                class _ArchivedQuerySet:
+                    @staticmethod
+                    def exists():
+                        return False
+
+                return _ArchivedQuerySet()
+            raise AssertionError(f"unexpected Group.objects.filter kwargs: {kwargs}")
+
+    class _ActiveQS:
+        @staticmethod
+        def exists():
+            return True
+
     monkeypatch.setattr(nats_api.User, "objects", _UserManager())
+    monkeypatch.setattr(nats_api.Group, "objects", _GroupManager())
+    monkeypatch.setattr("apps.system_mgmt.nats.users.Group.objects", _GroupManager())
+    monkeypatch.setattr(
+        "apps.system_mgmt.nats.users.GroupUtils.active_queryset",
+        lambda **filters: _ActiveQS(),
+    )
 
     result = get_authorized_groups_scoped(
         {
@@ -259,7 +284,7 @@ def test_get_assignable_groups_returns_all_existing_groups_for_superuser(monkeyp
         def filter(**kwargs):
             return _UserQuerySet()
 
-    class _GroupManager:
+    class _ActiveQS:
         @staticmethod
         def values_list(*fields, **kwargs):
             assert fields == ("id",)
@@ -267,7 +292,10 @@ def test_get_assignable_groups_returns_all_existing_groups_for_superuser(monkeyp
             return [8, 2]
 
     monkeypatch.setattr(nats_api.User, "objects", _UserManager())
-    monkeypatch.setattr(nats_api.Group, "objects", _GroupManager())
+    monkeypatch.setattr(
+        "apps.system_mgmt.nats.users.GroupUtils.active_queryset",
+        lambda **filters: _ActiveQS(),
+    )
 
     result = get_assignable_groups({"username": "admin", "domain": "domain.com", "is_superuser": True})
 

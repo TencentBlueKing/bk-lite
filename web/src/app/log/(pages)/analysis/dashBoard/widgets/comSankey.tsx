@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import ReactEcharts from 'echarts-for-react';
-import { Spin, Empty } from 'antd';
+import { Spin } from 'antd';
+import ChartEmptyState from '@/components/chart-empty-state';
 import { formatNumericValue } from '@/app/log/utils/common';
 import useChartColors from './docker/useChartColors';
 
@@ -312,11 +313,7 @@ const Sankey: React.FC<SankeyProps> = ({
   }
 
   if (!isDataReady || !chartData || chartData.nodes.length === 0) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-      </div>
-    );
+    return <ChartEmptyState compact />;
   }
 
   return (

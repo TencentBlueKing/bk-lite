@@ -16,6 +16,7 @@ from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.serializers.installer import (
     ControllerInstallRequestSerializer,
     ControllerManualInstallRequestSerializer,
+    ControllerRetryRequestSerializer,
     ControllerUninstallNodeSerializer,
     InstallNodeSerializer,
 )
@@ -347,6 +348,101 @@ def test_retry_controller_updates_explicit_winrm_configuration(monkeypatch):
     assert task_node.winrm_scheme == "https"
     assert task_node.winrm_transport == "ntlm"
     assert task_node.winrm_cert_validation is False
+
+
+@pytest.mark.django_db
+def test_retry_controller_updates_explicit_http_winrm_configuration(monkeypatch):
+    region = CloudRegion.objects.create(name="retry-winrm-http-region")
+    package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.WINDOWS_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="retry-winrm-http",
+        name="controller-windows",
+    )
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="install",
+        status="finished",
+        package_version_id=package.id,
+    )
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.85",
+        node_name="windows-node",
+        os=NodeConstants.WINDOWS_OS,
+        organizations=[1],
+        port=5986,
+        username="Administrator",
+        password="encrypted-password",
+        status="error",
+        winrm_scheme="https",
+        winrm_transport="ntlm",
+        winrm_cert_validation=True,
+        result={InstallerConstants.EXECUTION_ATTEMPT_KEY: 1},
+    )
+    monkeypatch.setattr(installer_tasks, "_dispatch_or_finalize_controller_task", lambda task_id: None)
+
+    installer_tasks.retry_controller(
+        task.id,
+        [task_node.id],
+        port=5985,
+        winrm_scheme="http",
+        winrm_transport="ntlm",
+        winrm_cert_validation=True,
+    )
+
+    task_node.refresh_from_db()
+    assert task_node.port == 5985
+    assert task_node.winrm_scheme == "http"
+    assert task_node.winrm_transport == "ntlm"
+    assert task_node.winrm_cert_validation is False
+
+
+@pytest.mark.django_db
+def test_retry_controller_rejects_http_scheme_with_https_port(monkeypatch):
+    region = CloudRegion.objects.create(name="retry-winrm-mismatch-region")
+    package = PackageVersion.objects.create(
+        type="controller",
+        os=NodeConstants.WINDOWS_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Controller",
+        version="retry-winrm-mismatch",
+        name="controller-windows",
+    )
+    task = ControllerTask.objects.create(
+        cloud_region=region,
+        type="install",
+        status="finished",
+        package_version_id=package.id,
+    )
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.85",
+        node_name="windows-node",
+        os=NodeConstants.WINDOWS_OS,
+        organizations=[1],
+        port=5986,
+        username="Administrator",
+        password="encrypted-password",
+        status="error",
+        winrm_scheme="https",
+        winrm_transport="ntlm",
+        result={InstallerConstants.EXECUTION_ATTEMPT_KEY: 1},
+    )
+    monkeypatch.setattr(installer_tasks, "_dispatch_or_finalize_controller_task", lambda task_id: None)
+
+    with pytest.raises(BaseAppException, match="cannot use port"):
+        installer_tasks.retry_controller(
+            task.id,
+            [task_node.id],
+            winrm_scheme="http",
+        )
+
+    task_node.refresh_from_db()
+    assert task_node.winrm_scheme == "https"
+    assert task_node.port == 5986
 
 
 def test_windows_remote_bootstrap_stages_and_runs_native_worker():
@@ -782,11 +878,35 @@ def test_windows_remote_bootstrap_progress_callback_cannot_mask_primary_failure(
 
 
 @pytest.mark.unit
-def test_windows_remote_bootstrap_rejects_unsafe_persisted_winrm_profile():
+def test_windows_remote_bootstrap_accepts_explicit_http_profile():
+    target = WindowsBootstrapTarget(
+        "10.0.0.8",
+        5985,
+        "Administrator",
+        "credential",
+        scheme="http",
+        transport="ntlm",
+        validate_certificate=False,
+    )
+
+    WindowsRemoteBootstrapService._validate_target(target)
+
+    assert WindowsRemoteBootstrapService._host_credentials(target)[0]["winrm_scheme"] == "http"
+    assert WindowsRemoteBootstrapService._host_credentials(target)[0]["port"] == 5985
+
+
+@pytest.mark.parametrize(
+    ("port", "scheme"),
+    [
+        (5985, "https"),
+        (5986, "http"),
+    ],
+)
+def test_windows_remote_bootstrap_rejects_scheme_port_mismatch(port, scheme):
     executor = FakeExecutor("executor-node")
     service = WindowsRemoteBootstrapService(executor_factory=lambda _: executor, resolver=FakeResolver)
 
-    with pytest.raises(BaseAppException, match="HTTPS, NTLM"):
+    with pytest.raises(BaseAppException, match="cannot use port"):
         service.run(
             cloud_region_id=7,
             task_node_id=31,
@@ -795,10 +915,10 @@ def test_windows_remote_bootstrap_rejects_unsafe_persisted_winrm_profile():
             session_url="https://server.example/session",
             target=WindowsBootstrapTarget(
                 "10.0.0.8",
-                5985,
+                port,
                 "Administrator",
                 "credential",
-                scheme="http",
+                scheme=scheme,
             ),
             timeout=60,
         )
@@ -1549,8 +1669,14 @@ def test_ansible_executor_resolver_selects_healthy_region_executor():
         {
             "os": "windows",
             "password": "credential",
-            "winrm_scheme": "http",
+            "winrm_scheme": "https",
             "winrm_transport": "basic",
+        },
+        {
+            "os": "windows",
+            "password": "credential",
+            "winrm_scheme": "http",
+            "port": 5986,
         },
     ],
 )
@@ -1583,10 +1709,11 @@ def test_windows_remote_request_rejects_unsafe_credentials(payload):
 @pytest.mark.parametrize(
     "winrm_overrides",
     [
-        {"winrm_scheme": "http"},
         {"winrm_transport": "kerberos"},
         {"winrm_transport": "credssp"},
         {"winrm_transport": "basic"},
+        {"winrm_scheme": "https", "port": 5985},
+        {"winrm_scheme": "http", "port": 5986},
     ],
 )
 def test_windows_remote_install_accepts_only_the_stable_winrm_profile(winrm_overrides):
@@ -1659,6 +1786,116 @@ def test_windows_remote_bootstrap_passes_certificate_validation_opt_out_to_execu
     WindowsRemoteBootstrapService._validate_target(target)
 
     assert WindowsRemoteBootstrapService._host_credentials(target)[0]["winrm_cert_validation"] is False
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+def test_windows_remote_install_accepts_explicit_http_profile():
+    serializer = ControllerInstallRequestSerializer(
+        data={
+            "cloud_region_id": 7,
+            "work_node": "executor-node",
+            "package_id": 1,
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+            "nodes": [
+                {
+                    "ip": "10.0.0.8",
+                    "os": "windows",
+                    "organizations": [1],
+                    "port": 5985,
+                    "username": "Administrator",
+                    "password": "credential",
+                    "winrm_scheme": "http",
+                    "winrm_transport": "ntlm",
+                    "winrm_cert_validation": True,
+                }
+            ],
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["nodes"][0]["winrm_scheme"] == "http"
+    assert serializer.validated_data["nodes"][0]["port"] == 5985
+    assert serializer.validated_data["nodes"][0]["winrm_cert_validation"] is False
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+def test_windows_remote_install_defaults_http_port():
+    serializer = ControllerInstallRequestSerializer(
+        data={
+            "cloud_region_id": 7,
+            "work_node": "executor-node",
+            "package_id": 1,
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+            "nodes": [
+                {
+                    "ip": "10.0.0.8",
+                    "os": "windows",
+                    "organizations": [1],
+                    "username": "Administrator",
+                    "password": "credential",
+                    "winrm_scheme": "http",
+                }
+            ],
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["nodes"][0]["port"] == 5985
+
+
+@pytest.mark.unit
+def test_windows_remote_uninstall_accepts_explicit_http_profile():
+    serializer = ControllerUninstallNodeSerializer(
+        data={
+            "node_id": "windows-node",
+            "ip": "10.0.0.8",
+            "os": "windows",
+            "username": "Administrator",
+            "password": "credential",
+            "winrm_scheme": "http",
+            "winrm_cert_validation": True,
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["port"] == 5985
+    assert serializer.validated_data["winrm_scheme"] == "http"
+    assert serializer.validated_data["winrm_cert_validation"] is False
+
+
+@pytest.mark.unit
+def test_windows_remote_retry_rejects_scheme_port_mismatch():
+    serializer = ControllerRetryRequestSerializer(
+        data={
+            "task_id": 39,
+            "task_node_ids": [101],
+            "port": 5985,
+            "winrm_scheme": "https",
+            "winrm_transport": "ntlm",
+        }
+    )
+
+    assert serializer.is_valid() is False
+
+
+@pytest.mark.unit
+def test_windows_remote_retry_accepts_explicit_http_profile():
+    serializer = ControllerRetryRequestSerializer(
+        data={
+            "task_id": 39,
+            "task_node_ids": [101],
+            "port": 5985,
+            "winrm_scheme": "http",
+            "winrm_transport": "ntlm",
+            "winrm_cert_validation": True,
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["winrm_scheme"] == "http"
+    assert serializer.validated_data["winrm_cert_validation"] is False
 
 
 @pytest.mark.unit

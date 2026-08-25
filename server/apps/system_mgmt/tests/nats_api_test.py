@@ -171,6 +171,7 @@ def test_get_all_users():
     assert "test_user2" in usernames
 
 
+@pytest.mark.django_db
 def test_get_authorized_groups_scoped_rejects_forged_current_team(monkeypatch):
     user = types.SimpleNamespace(
         username="scope-user",
@@ -205,6 +206,7 @@ def test_get_authorized_groups_scoped_rejects_forged_current_team(monkeypatch):
     assert result == {"result": True, "data": [], "is_superuser": False}
 
 
+@pytest.mark.django_db
 def test_get_authorized_groups_scoped_keeps_include_children(monkeypatch):
     user = types.SimpleNamespace(
         username="scope-children-user",
@@ -1584,10 +1586,10 @@ def test_search_opspilot_nats_channels_filters_by_source_and_bot():
     names = {c["name"] for c in all_res["data"]}
     assert "manual" not in names
     assert len(all_res["data"]) == 3
-    # 返回路由字段
     sample = all_res["data"][0]
-    assert set(sample.keys()) >= {"id", "name", "description", "team", "bot_id", "node_id"}
-
+    assert set(sample.keys()) >= {"id", "name", "description", "team", "bot_id", "node_id", "supports_notify_person"}
+    assert sample["supports_notify_person"] is False
+    assert "config" not in sample
     # 按 bot_id 过滤
     bot7 = search_opspilot_nats_channels(bot_id=7)
     assert {c["node_id"] for c in bot7["data"]} == {"n1", "n2"}
@@ -1596,6 +1598,32 @@ def test_search_opspilot_nats_channels_filters_by_source_and_bot():
     # 按 teams 过滤（team 3 → 只 bot8）
     team3 = search_opspilot_nats_channels(teams=[3])
     assert {c["node_id"] for c in team3["data"]} == {"m1"}
+
+@pytest.mark.django_db
+def test_search_opspilot_nats_channels_projects_strict_notify_person():
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import search_opspilot_nats_channels
+
+    Channel.objects.create(
+        name="managed-enabled",
+        channel_type=ChannelChoices.NATS,
+        config={"source": "opspilot", "supports_notify_person": True, "bot_id": 10, "node_id": "enabled"},
+        team=[4],
+        description="d",
+    )
+    Channel.objects.create(
+        name="managed-disabled",
+        channel_type=ChannelChoices.NATS,
+        config={"source": "opspilot", "supports_notify_person": 1, "bot_id": 10, "node_id": "disabled"},
+        team=[4],
+        description="d",
+    )
+
+    result = search_opspilot_nats_channels()
+    by_name = {item["name"]: item for item in result["data"]}
+    assert by_name["managed-enabled"]["supports_notify_person"] is True
+    assert by_name["managed-disabled"]["supports_notify_person"] is False
+    assert "config" not in by_name["managed-enabled"]
 
 
 @pytest.mark.django_db(transaction=True)

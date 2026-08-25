@@ -7,8 +7,8 @@ import {
   Select,
   Switch,
   Divider,
-  Empty,
 } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import type { FormConfig, GroupConfig, FieldConfig } from '@/app/mlops/types/algorithmConfig';
 
@@ -139,7 +139,7 @@ const FormPreview = ({ formConfig }: FormPreviewProps) => {
 
   if (!hasContent) {
     return (
-      <Empty
+      <CompactEmptyState
         description={t('algorithmConfig.editJsonConfigHint')}
         className="py-12"
       />

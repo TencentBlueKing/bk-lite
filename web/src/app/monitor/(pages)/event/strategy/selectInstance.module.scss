@@ -1,14 +1,16 @@
 .selectInstance {
     display: flex;
+    min-width: 0;
 
     .instanceList {
-        width: 550px;
-        min-width: 550px;
+        flex: 1;
+        min-width: 0;
         padding-right: 10px;
     }
 
     .previewList {
-        flex: 1;
+        width: 220px;
+        flex: none;
         padding: 0 0 10px 10px;
         border-left: 1px solid var(--ant-color-border);
 

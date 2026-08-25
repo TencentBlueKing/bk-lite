@@ -6,13 +6,11 @@ import { useCanvasShareApi } from '@/app/ops-analysis/api/dashboardShare';
 import type { CanvasShareResourceType } from '@/app/ops-analysis/types/dashboardShare';
 import { useTranslation } from '@/utils/i18n';
 
-export type CanvasShareCreatableType = Exclude<CanvasShareResourceType, 'report'>;
-
 /**
  * 统一创建分享入口：createShare → 拼装链接 → 复制 → 提示。
- * Dashboard / Screen / Topology / Architecture 共用，避免各页面各自维护。
+ * Dashboard / Screen / Topology / Architecture / Report 共用，避免各页面各自维护。
  */
-export function useCanvasShareAction(resourceType: CanvasShareCreatableType) {
+export function useCanvasShareAction(resourceType: CanvasShareResourceType) {
   const { t } = useTranslation();
   const { createShare } = useCanvasShareApi();
   const [shareLoading, setShareLoading] = useState(false);

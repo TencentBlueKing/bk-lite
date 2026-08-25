@@ -28,10 +28,18 @@ export const LocaleProvider = ({ children }: { children: ReactNode }) => {
   );
 
   useEffect(() => {
+    let cancelled = false;
     const savedLocale = getStoredLocale();
     setLocale(savedLocale);
     setIsLoading(true);
-    fetchLocaleMessages(savedLocale).finally(() => setIsLoading(false));
+    fetchLocaleMessages(savedLocale).finally(() => {
+      if (!cancelled) {
+        setIsLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -45,7 +53,7 @@ export const LocaleProvider = ({ children }: { children: ReactNode }) => {
   const fetchLocaleMessages = async (locale: string) => {
     const requestId = requestGuard.begin();
     try {
-      const response = await fetch(`/api/locales?locale=${locale}`);
+      const response = await fetch(`/api/locales?locale=${locale}`, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error(`Failed to fetch locale ${locale} from api`);
       }

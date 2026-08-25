@@ -147,10 +147,24 @@ def test_apply_log_group_scope_no_groups_denies(mocker):
 def test_apply_log_group_scope_builds_scoped_query(mocker):
     groups = [SimpleNamespace(id="g1", name="g1", rule=None)]
     mocker.patch.object(nats_log, "_resolve_log_group_scope", return_value=groups)
-    build = mocker.patch.object(nats_log.LogGroupQueryBuilder, "build_query_with_groups", return_value=("SCOPED", []))
+    build = mocker.patch(
+        "apps.log.services.search.LogGroupQueryBuilder.build_query_with_groups",
+        return_value=("SCOPED", []),
+    )
     out = nats_log._apply_log_group_scope("q", {"user": "u"})
     assert out == "SCOPED"
     build.assert_called_once_with("q", ["g1"], resolved_groups=groups)
+
+
+def test_apply_log_group_scope_maps_logical_message(mocker):
+    groups = [SimpleNamespace(id="g1", name="g1", rule=None)]
+    mocker.patch.object(nats_log, "_resolve_log_group_scope", return_value=groups)
+    mocker.patch(
+        "apps.log.services.search.LogGroupQueryBuilder.build_query_with_groups",
+        side_effect=lambda query, ids, resolved_groups=None: (query, []),
+    )
+    out = nats_log._apply_log_group_scope('message:"error"', {"user": "u"})
+    assert out == '_msg:"error"'
 
 
 # ----------------------- _resolve_log_group_scope -----------------------
@@ -367,6 +381,16 @@ def test_log_search_returns_data(mocker):
     vm.query.assert_called_once_with("SCOPED", *time_range, 5)
 
 
+def test_log_search_exposes_logical_message(mocker):
+    mocker.patch.object(nats_log, "_apply_log_group_scope", return_value="SCOPED")
+    vm = mocker.patch.object(nats_log, "VictoriaMetricsAPI").return_value
+    vm.query.return_value = [{"_msg": "hello", "host": "node-1"}]
+
+    out = nats_log.log_search("q", RFC3339_TIME_RANGE, limit=5, user_info={"user": "u"})
+
+    assert out == {"result": True, "data": [{"message": "hello", "host": "node-1"}], "message": ""}
+
+
 def test_log_search_invalid_limit_returns_error(mocker):
     mocker.patch.object(nats_log, "_apply_log_group_scope", return_value="SCOPED")
     out = nats_log.log_search("q", RFC3339_TIME_RANGE, limit="not-int")
@@ -448,6 +472,16 @@ def test_log_hits_flattens_timestamps_and_values(mocker):
     out = nats_log.log_hits("q", RFC3339_TIME_RANGE, "host", fields_limit=5)
     assert out["result"] is True
     assert out["data"] == [{"name": "t1", "value": 1}, {"name": "t2", "value": 2}]
+
+
+def test_log_hits_maps_logical_message_field(mocker):
+    mocker.patch.object(nats_log, "_apply_log_group_scope", return_value="SCOPED")
+    vm = mocker.patch.object(nats_log, "VictoriaMetricsAPI").return_value
+    vm.hits.return_value = {"hits": [{"timestamps": ["t1"], "values": [1]}]}
+
+    nats_log.log_hits("q", RFC3339_TIME_RANGE, "message", fields_limit=5)
+
+    vm.hits.assert_called_once_with("SCOPED", *RFC3339_TIME_RANGE, "_msg", 5, "5m")
 
 
 def test_log_hits_invalid_fields_limit(mocker):

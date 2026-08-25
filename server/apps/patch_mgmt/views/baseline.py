@@ -1,6 +1,7 @@
 """基线管理视图"""
 
 from django.db import transaction
+from django.db.models import OuterRef, Subquery
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
@@ -29,11 +30,7 @@ from apps.patch_mgmt.serializers.baseline import (
     PatchBaselineDetailSerializer,
     PatchBaselineListSerializer,
 )
-from apps.patch_mgmt.services.target_access import (
-    GlobalSharedResourceMixin,
-    require_target_ids,
-    target_access_scope,
-)
+from apps.patch_mgmt.services.target_access import GlobalSharedResourceMixin, require_target_ids, target_access_scope
 from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
 
 
@@ -50,6 +47,20 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
     search_fields = ["name"]
     ORGANIZATION_FIELD = "team"
     permission_key = "patch_baseline"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        visible_target_ids = target_access_scope(self.request).queryset("View").values("id")
+        latest_assessment = (
+            HostBaselineBinding.objects.filter(
+                baseline_id=OuterRef("pk"),
+                target_id__in=visible_target_ids,
+                last_evaluated_at__isnull=False,
+            )
+            .order_by("-last_evaluated_at")
+            .values("last_evaluated_at")[:1]
+        )
+        return queryset.annotate(last_evaluated_at=Subquery(latest_assessment))
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -86,9 +97,7 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
     def requirements(self, request, pk=None):
         """查询补丁要求清单。"""
         baseline = self.get_object()
-        reqs = baseline.requirements.select_related(
-            "patch__windows_detail", "patch__linux_detail"
-        ).prefetch_related("patch__sources")
+        reqs = baseline.requirements.select_related("patch__windows_detail", "patch__linux_detail").prefetch_related("patch__sources")
         serializer = BaselineRequirementSerializer(reqs, many=True)
         return Response(serializer.data)
 
@@ -98,10 +107,7 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
         """添加补丁要求。"""
         baseline = self.get_object()
         patch_ids = request.data.get("patch_ids", [])
-        missing_patch_ids = sorted(
-            {int(value) for value in patch_ids}
-            - set(Patch.objects.filter(pk__in=patch_ids).values_list("pk", flat=True))
-        )
+        missing_patch_ids = sorted({int(value) for value in patch_ids} - set(Patch.objects.filter(pk__in=patch_ids).values_list("pk", flat=True)))
         if missing_patch_ids:
             raise DRFValidationError(
                 patch_message(
@@ -132,9 +138,7 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
         """移除补丁要求。"""
         baseline = self.get_object()
         req_ids = request.data.get("requirement_ids", [])
-        deleted_count, _ = BaselineRequirement.objects.filter(
-            id__in=req_ids, baseline=baseline
-        ).delete()
+        deleted_count, _ = BaselineRequirement.objects.filter(id__in=req_ids, baseline=baseline).delete()
         if deleted_count:
             self._invalidate_active_assessments(baseline)
             self._reset_bindings_to_pending(baseline)
@@ -145,19 +149,11 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
     def bind_hosts(self, request, pk=None):
         """绑定主机到基线"""
         baseline = self.get_object()
-        target_ids = sorted(
-            {
-                int(target_id)
-                for target_id in request.data.get("target_ids", [])
-                if target_id
-            }
-        )
+        target_ids = sorted({int(target_id) for target_id in request.data.get("target_ids", []) if target_id})
         if not target_ids:
             raise DRFValidationError(patch_message(request, "error.target_ids_required", "Select at least one target"))
         require_target_ids(request, target_ids, "Operate")
-        if PatchTarget.objects.filter(id__in=target_ids).exclude(
-            os_type=baseline.os_type
-        ).exists():
+        if PatchTarget.objects.filter(id__in=target_ids).exclude(os_type=baseline.os_type).exists():
             raise DRFValidationError(
                 {
                     "detail": patch_message(
@@ -167,40 +163,24 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
                     )
                 }
             )
-        operable_target_ids = target_access_scope(request).queryset(
-            "Operate"
-        ).values("id")
-        current_operable_target_ids = set(
-            baseline.host_bindings.filter(
-                target_id__in=operable_target_ids
-            ).values_list("target_id", flat=True)
-        )
+        operable_target_ids = target_access_scope(request).queryset("Operate").values("id")
+        current_operable_target_ids = set(baseline.host_bindings.filter(target_id__in=operable_target_ids).values_list("target_id", flat=True))
         if current_operable_target_ids == set(target_ids):
             return Response({"bound": len(target_ids), "changed": False})
 
-        previous_baselines = list(
-            PatchBaseline.objects.filter(
-                host_bindings__target_id__in=target_ids
-            ).exclude(pk=baseline.pk).distinct()
-        )
+        previous_baselines = list(PatchBaseline.objects.filter(host_bindings__target_id__in=target_ids).exclude(pk=baseline.pk).distinct())
         self._invalidate_active_assessments(baseline)
         for previous_baseline in previous_baselines:
             self._invalidate_active_assessments(previous_baseline)
             self._reset_bindings_to_pending(previous_baseline)
         with transaction.atomic():
-            baseline.host_bindings.filter(
-                target_id__in=operable_target_ids
-            ).exclude(target_id__in=target_ids).delete()
+            baseline.host_bindings.filter(target_id__in=operable_target_ids).exclude(target_id__in=target_ids).delete()
             for tid in target_ids:
                 binding, created = HostBaselineBinding.objects.update_or_create(
                     target_id=tid,
                     defaults={
                         "baseline": baseline,
-                        "created_by": (
-                            request.user.username
-                            if hasattr(request.user, "username")
-                            else ""
-                        ),
+                        "created_by": (request.user.username if hasattr(request.user, "username") else ""),
                         "compliance_status": ComplianceStatus.PENDING,
                         "missing_count": 0,
                         "last_evaluated_at": None,
@@ -236,9 +216,7 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
         """已绑定主机列表"""
         baseline = self.get_object()
         visible_targets = target_access_scope(request).queryset("View").values("id")
-        bindings = baseline.host_bindings.filter(
-            target_id__in=visible_targets
-        ).select_related("target", "baseline")
+        bindings = baseline.host_bindings.filter(target_id__in=visible_targets).select_related("target", "baseline")
         serializer = HostBaselineBindingSerializer(
             bindings,
             many=True,
@@ -250,13 +228,9 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
     @HasPermission("patch_baseline-View")
     def compliance_matrix_objects(self, request, pk=None):
         """返回当前视角的合规矩阵对象全集。"""
-        from apps.patch_mgmt.services.baseline_compliance_detail import (
-            build_baseline_compliance_objects,
-        )
+        from apps.patch_mgmt.services.baseline_compliance_detail import build_baseline_compliance_objects
 
-        query_serializer = BaselineComplianceObjectsQuerySerializer(
-            data=request.query_params
-        )
+        query_serializer = BaselineComplianceObjectsQuerySerializer(data=request.query_params)
         query_serializer.is_valid(raise_exception=True)
         return Response(
             build_baseline_compliance_objects(
@@ -270,13 +244,9 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
     @HasPermission("patch_baseline-View")
     def compliance_matrix_details(self, request, pk=None):
         """返回当前视角下一个选中对象的分页合规明细。"""
-        from apps.patch_mgmt.services.baseline_compliance_detail import (
-            build_baseline_compliance_details,
-        )
+        from apps.patch_mgmt.services.baseline_compliance_detail import build_baseline_compliance_details
 
-        query_serializer = BaselineComplianceDetailsQuerySerializer(
-            data=request.query_params
-        )
+        query_serializer = BaselineComplianceDetailsQuerySerializer(data=request.query_params)
         query_serializer.is_valid(raise_exception=True)
         return Response(
             build_baseline_compliance_details(
@@ -290,30 +260,31 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
     @HasPermission("patch_governance-Add")
     def assess(self, request, pk=None):
         """对基线当前绑定的全部主机创建一次并行评估任务。"""
-        from apps.patch_mgmt.services.governance_service import (
-            HostBusyError,
-            create_assess_task,
-        )
+        from apps.patch_mgmt.services.governance_service import HostBusyError, create_assess_task
 
         baseline = self.get_object()
         requirements = list(baseline.requirements.order_by("id"))
         if not requirements:
             return Response(
-                {"code": "no_requirements", "detail": patch_message(request, "error.baseline_no_requirements", "The baseline has no patch requirements and cannot be assessed")},
+                {
+                    "code": "no_requirements",
+                    "detail": patch_message(
+                        request, "error.baseline_no_requirements", "The baseline has no patch requirements and cannot be assessed"
+                    ),
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
         bindings = list(
-            baseline.host_bindings.filter(
-                target_id__in=target_access_scope(request)
-                .queryset("Operate")
-                .values("id")
-            )
+            baseline.host_bindings.filter(target_id__in=target_access_scope(request).queryset("Operate").values("id"))
             .select_related("target")
             .order_by("id")
         )
         if not bindings:
             return Response(
-                {"code": "no_hosts", "detail": patch_message(request, "error.baseline_no_targets", "The baseline has no bound targets and cannot be assessed")},
+                {
+                    "code": "no_hosts",
+                    "detail": patch_message(request, "error.baseline_no_targets", "The baseline has no bound targets and cannot be assessed"),
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -336,41 +307,48 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
             return Response(
                 {
                     "code": "host_busy",
-                    "detail": patch_message(request, "error.assessment_hosts_busy", "Some targets are running patch tasks; the assessment was not created"),
+                    "detail": patch_message(
+                        request, "error.assessment_hosts_busy", "Some targets are running patch tasks; the assessment was not created"
+                    ),
                     "target_ids": busy_target_ids,
                 },
                 status=status.HTTP_409_CONFLICT,
             )
 
-        snapshot = [{
-            "baseline_id": baseline.id,
-            "baseline_name": baseline.name,
-            "baseline_updated_at": baseline.updated_at.isoformat(),
-            "requirements_signature": "|".join(
-                f"{requirement.id}:{requirement.patch_id}:{requirement.updated_at.isoformat()}"
-                for requirement in requirements
-            ),
-            "bindings_signature": "|".join(
-                f"{binding.id}:{binding.target_id}" for binding in bindings
-            ),
-            "requirement_ids": [requirement.id for requirement in requirements],
-            "patch_ids": [requirement.patch_id for requirement in requirements],
-            "targets": [
-                {
-                    "binding_id": binding.id,
-                    "target_id": binding.target_id,
-                    "target_name": binding.target.name,
-                }
-                for binding in bindings
-            ],
-        }]
+        snapshot = [
+            {
+                "baseline_id": baseline.id,
+                "baseline_name": baseline.name,
+                "baseline_updated_at": baseline.updated_at.isoformat(),
+                "requirements_signature": "|".join(
+                    f"{requirement.id}:{requirement.patch_id}:{requirement.updated_at.isoformat()}" for requirement in requirements
+                ),
+                "bindings_signature": "|".join(f"{binding.id}:{binding.target_id}" for binding in bindings),
+                "requirement_ids": [requirement.id for requirement in requirements],
+                "patch_ids": [requirement.patch_id for requirement in requirements],
+                "targets": [
+                    {
+                        "binding_id": binding.id,
+                        "target_id": binding.target_id,
+                        "target_name": binding.target.name,
+                    }
+                    for binding in bindings
+                ],
+            }
+        ]
         try:
             task = create_assess_task(
                 request,
                 target_ids,
                 {
                     "execution_mode": "now",
-                    "name": patch_message(request, "message.baseline_assessment_name", "Assessment · {name} · {count} targets", name=baseline.name, count=len(target_ids)),
+                    "name": patch_message(
+                        request,
+                        "message.baseline_assessment_name",
+                        "Assessment · {name} · {count} targets",
+                        name=baseline.name,
+                        count=len(target_ids),
+                    ),
                     "risk_snapshot": snapshot,
                 },
             )
@@ -406,12 +384,14 @@ class PatchBaselineViewSet(GlobalSharedResourceMixin, AuthViewSet):
             status__in=GovernanceTaskStatus.ACTIVE_STATES,
         ).count()
         if active_count > 0:
-            raise DRFValidationError(patch_message(
-                request,
-                "error.baseline_locked",
-                "The baseline has {count} active governance tasks; try again after they finish",
-                count=active_count,
-            ))
+            raise DRFValidationError(
+                patch_message(
+                    request,
+                    "error.baseline_locked",
+                    "The baseline has {count} active governance tasks; try again after they finish",
+                    count=active_count,
+                )
+            )
 
     @staticmethod
     def _reset_bindings_to_pending(baseline: PatchBaseline) -> int:

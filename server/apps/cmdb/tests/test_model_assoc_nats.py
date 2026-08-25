@@ -10,6 +10,9 @@ import pytest
 
 from apps.cmdb.nats import nats as N
 
+SRC_UUID = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+DST_UUID = "7de0c6de-f841-44b1-846d-2d75a7c59c50"
+
 
 # --------------------------------------------------------------------------
 # list_instances
@@ -22,12 +25,14 @@ def test_list_instances_ok_formatted(mock_im, mock_fmt):
     mock_im.instance_list.return_value = ([{"_id": 1, "inst_name": "h1"}], 1)
     mock_fmt.return_value = [{"inst_name": "h1", "org": "总部"}]
 
-    result = N.list_instances({"model_id": "host", "page": 2, "page_size": 10, "order": "-inst_name"})
+    result = N.list_instances(
+        {"protocol_version": "2", "organization_ids": [1], "model_id": "host", "page": 2, "page_size": 10, "order": "-inst_name"}
+    )
 
     assert result == {"count": 1, "items": [{"inst_name": "h1", "org": "总部"}]}
     mock_im.instance_list.assert_called_once_with(
         model_id="host",
-        params=[],
+        params=[{"field": "organization", "type": "list[]", "value": [1]}],
         page=2,
         page_size=10,
         order="-inst_name",
@@ -43,7 +48,7 @@ def test_list_instances_defaults(mock_im, mock_fmt):
     mock_im.instance_list.return_value = ([], 0)
     mock_fmt.return_value = []
 
-    N.list_instances({"model_id": "host"})
+    N.list_instances({"protocol_version": "2", "organization_ids": [1], "model_id": "host"})
 
     _, kwargs = mock_im.instance_list.call_args
     assert kwargs["page"] == 1
@@ -54,18 +59,18 @@ def test_list_instances_defaults(mock_im, mock_fmt):
 @patch("apps.cmdb.nats.nats._format_asset_instances_response")
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_list_instances_no_format(mock_im, mock_fmt):
-    mock_im.instance_list.return_value = ([{"_id": 1}], 1)
+    mock_im.instance_list.return_value = ([{"_id": 1, "inst_uuid": SRC_UUID}], 1)
 
-    result = N.list_instances({"model_id": "host", "format": False})
+    result = N.list_instances({"protocol_version": "2", "organization_ids": [1], "model_id": "host", "format": False})
 
-    assert result == {"count": 1, "items": [{"_id": 1}]}
+    assert result == {"count": 1, "items": [{"inst_uuid": SRC_UUID}]}
     mock_fmt.assert_not_called()
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_list_instances_missing_model_id_raises(mock_im):
     with pytest.raises(ValueError, match="model_id is required"):
-        N.list_instances({})
+        N.list_instances({"protocol_version": "2", "organization_ids": [1]})
     mock_im.instance_list.assert_not_called()
 
 
@@ -157,23 +162,24 @@ def test_search_model_associations_missing_model_id_raises(mock_mm):
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_search_instance_associations_ok(mock_im):
-    mock_im.instance_association_instance_list.return_value = [{"model_asst_id": "a1", "inst_list": []}]
+    mock_im.query_entity_by_uuid.return_value = {"inst_uuid": SRC_UUID, "organization": [1]}
+    mock_im.instance_association_instance_list_by_uuid.return_value = [{"model_asst_id": "a1", "inst_list": []}]
 
-    result = N.search_instance_associations({"model_id": "host", "inst_id": "12"})
+    result = N.search_instance_associations({"protocol_version": "2", "organization_ids": [1], "model_id": "host", "inst_uuid": SRC_UUID})
 
     assert result == [{"model_asst_id": "a1", "inst_list": []}]
-    mock_im.instance_association_instance_list.assert_called_once_with(
+    mock_im.instance_association_instance_list_by_uuid.assert_called_once_with(
         "host",
-        12,
+        SRC_UUID,
         business_only=True,
     )
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_search_instance_associations_missing_args_raises(mock_im):
-    with pytest.raises(ValueError, match="model_id and inst_id are required"):
-        N.search_instance_associations({"model_id": "host"})
-    mock_im.instance_association_instance_list.assert_not_called()
+    with pytest.raises(ValueError, match="model_id and inst_uuid are required"):
+        N.search_instance_associations({"protocol_version": "2", "organization_ids": [1], "model_id": "host"})
+    mock_im.instance_association_instance_list_by_uuid.assert_not_called()
 
 
 # --------------------------------------------------------------------------
@@ -183,45 +189,53 @@ def test_search_instance_associations_missing_args_raises(mock_im):
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_create_instance_association_ok(mock_im):
-    mock_im.instance_association_create.return_value = {"_id": 100}
+    expected = {"src_inst_uuid": SRC_UUID, "dst_inst_uuid": DST_UUID, "model_asst_id": "host_run_app"}
+    mock_im.instance_association_create_by_uuid.return_value = expected
+    mock_im.query_entity_by_uuids.return_value = [
+        {"inst_uuid": SRC_UUID, "organization": [1]},
+        {"inst_uuid": DST_UUID, "organization": [1]},
+    ]
 
     result = N.create_instance_association(
         {
-            "src_inst_id": "1",
-            "dst_inst_id": "2",
+            "protocol_version": "2",
+            "allowed_org_ids": [1],
+            "src_inst_uuid": SRC_UUID,
+            "dst_inst_uuid": DST_UUID,
             "model_asst_id": "host_run_app",
-            "asst_id": "run",
             "operator": "admin",
         }
     )
 
-    assert result == {"_id": 100}
-    mock_im.instance_association_create.assert_called_once_with(
-        {
-            "src_inst_id": 1,
-            "dst_inst_id": 2,
-            "model_asst_id": "host_run_app",
-            "asst_id": "run",
-        },
-        "admin",
+    assert result == expected
+    mock_im.instance_association_create_by_uuid.assert_called_once_with(
+        src_inst_uuid=SRC_UUID,
+        dst_inst_uuid=DST_UUID,
+        model_asst_id="host_run_app",
+        operator="admin",
     )
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_create_instance_association_default_operator(mock_im):
-    mock_im.instance_association_create.return_value = {"_id": 1}
+    mock_im.instance_association_create_by_uuid.return_value = {}
+    mock_im.query_entity_by_uuids.return_value = [
+        {"inst_uuid": SRC_UUID, "organization": [1]},
+        {"inst_uuid": DST_UUID, "organization": [1]},
+    ]
 
-    N.create_instance_association({"src_inst_id": 1, "dst_inst_id": 2, "model_asst_id": "a"})
+    N.create_instance_association(
+        {"protocol_version": "2", "allowed_org_ids": [1], "src_inst_uuid": SRC_UUID, "dst_inst_uuid": DST_UUID, "model_asst_id": "a"}
+    )
 
-    args, _ = mock_im.instance_association_create.call_args
-    assert args[1] == ""
+    assert mock_im.instance_association_create_by_uuid.call_args.kwargs["operator"] == ""
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_create_instance_association_missing_args_raises(mock_im):
-    with pytest.raises(ValueError, match="src_inst_id, dst_inst_id and model_asst_id are required"):
-        N.create_instance_association({"src_inst_id": 1, "dst_inst_id": 2})
-    mock_im.instance_association_create.assert_not_called()
+    with pytest.raises(ValueError, match="src_inst_uuid, dst_inst_uuid and model_asst_id are required"):
+        N.create_instance_association({"protocol_version": "2", "allowed_org_ids": [1], "src_inst_uuid": SRC_UUID, "dst_inst_uuid": DST_UUID})
+    mock_im.instance_association_create_by_uuid.assert_not_called()
 
 
 # --------------------------------------------------------------------------
@@ -231,20 +245,49 @@ def test_create_instance_association_missing_args_raises(mock_im):
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_delete_instance_association_ok(mock_im):
-    result = N.delete_instance_association({"asso_id": "10", "operator": "admin"})
+    key = {"src_inst_uuid": SRC_UUID, "dst_inst_uuid": DST_UUID, "model_asst_id": "host_run_app"}
+    mock_im.instance_association_delete_by_key.return_value = key
+    mock_im.query_entity_by_uuids.return_value = [
+        {"inst_uuid": SRC_UUID, "organization": [1]},
+        {"inst_uuid": DST_UUID, "organization": [1]},
+    ]
+    result = N.delete_instance_association({"protocol_version": "2", "allowed_org_ids": [1], **key, "operator": "admin"})
 
-    assert result == {"result": True, "deleted": 10}
-    mock_im.instance_association_delete.assert_called_once_with(10, "admin")
+    assert result == {"result": True, "deleted": key}
+    mock_im.instance_association_delete_by_key.assert_called_once_with(**key, operator="admin")
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
-def test_delete_instance_association_compat_keys(mock_im):
-    N.delete_instance_association({"inst_asst_id": 7})
-    mock_im.instance_association_delete.assert_called_once_with(7, "")
+def test_delete_instance_association_rejects_graph_edge_id(mock_im):
+    with pytest.raises(ValueError, match="legacy numeric locators"):
+        N.delete_instance_association({"protocol_version": "2", "allowed_org_ids": [1], "asso_id": 7})
+    mock_im.instance_association_delete_by_key.assert_not_called()
+
+
+@patch("apps.cmdb.nats.nats.InstanceManage")
+def test_search_instance_associations_rejects_legacy_inst_id(mock_im):
+    with pytest.raises(ValueError, match="legacy numeric locators"):
+        N.search_instance_associations({"protocol_version": "2", "organization_ids": [1], "model_id": "host", "inst_id": 12})
+    mock_im.instance_association_instance_list_by_uuid.assert_not_called()
+
+
+@patch("apps.cmdb.nats.nats.InstanceManage")
+def test_create_instance_association_rejects_legacy_inst_ids(mock_im):
+    with pytest.raises(ValueError, match="legacy numeric locators"):
+        N.create_instance_association(
+            {
+                "protocol_version": "2",
+                "allowed_org_ids": [1],
+                "src_inst_id": 1,
+                "dst_inst_id": 2,
+                "model_asst_id": "a",
+            }
+        )
+    mock_im.instance_association_create_by_uuid.assert_not_called()
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_delete_instance_association_missing_id_raises(mock_im):
-    with pytest.raises(ValueError, match="asso_id is required"):
-        N.delete_instance_association({"operator": "admin"})
-    mock_im.instance_association_delete.assert_not_called()
+    with pytest.raises(ValueError, match="src_inst_uuid"):
+        N.delete_instance_association({"protocol_version": "2", "allowed_org_ids": [1], "operator": "admin"})
+    mock_im.instance_association_delete_by_key.assert_not_called()

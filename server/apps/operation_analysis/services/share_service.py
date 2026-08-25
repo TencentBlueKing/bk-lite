@@ -10,6 +10,10 @@ from django.utils import timezone
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.operation_analysis.models.share_models import DashboardShareLink, DashboardShareSession
 from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
+from apps.operation_analysis.services.network_status_topology_overlay import (
+    NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS,
+    overlay_datasource_ids_for_view_sets,
+)
 from apps.operation_analysis.services.share_token import InvalidShareToken, build_share_token, parse_share_token
 from apps.system_mgmt.models.user import User
 
@@ -25,13 +29,13 @@ SHARE_DATASOURCE_RESOURCE_TYPES = frozenset(
         DashboardShareLink.ResourceType.DASHBOARD,
         DashboardShareLink.ResourceType.SCREEN,
         DashboardShareLink.ResourceType.TOPOLOGY,
+        DashboardShareLink.ResourceType.REPORT,
     }
 )
 
 SHARE_DETAIL_ONLY_RESOURCE_TYPES = frozenset(
     {
         DashboardShareLink.ResourceType.ARCHITECTURE,
-        DashboardShareLink.ResourceType.REPORT,
         DashboardShareLink.ResourceType.NETWORK_TOPOLOGY,
     }
 )
@@ -248,11 +252,7 @@ def resolve_link(link):
         link.mark_invalid(DashboardShareLink.Status.DASHBOARD_INVALID, actor="system")
         raise ShareLinkInvalid("dashboard_invalid")
 
-    if (
-        resource.pk != link.dashboard_instance_id
-        or resource.domain != link.tenant_domain
-        or link.space_id not in (resource.groups or [])
-    ):
+    if resource.pk != link.dashboard_instance_id or resource.domain != link.tenant_domain or link.space_id not in (resource.groups or []):
         link.mark_invalid(DashboardShareLink.Status.DASHBOARD_INVALID, actor="system")
         raise ShareLinkInvalid("dashboard_invalid")
 
@@ -353,11 +353,7 @@ def resolve_session(*, session_id, visitor):
         session = DashboardShareSession.objects.select_related("share_link").get(session_id=session_id)
     except (DashboardShareSession.DoesNotExist, ValueError) as exc:
         raise ShareLinkInvalid from exc
-    if (
-        session.expires_at <= timezone.now()
-        or session.visitor_username != visitor.username
-        or session.visitor_domain != visitor.domain
-    ):
+    if session.expires_at <= timezone.now() or session.visitor_username != visitor.username or session.visitor_domain != visitor.domain:
         raise ShareLinkInvalid
     principal = resolve_link(session.share_link)
     enforce_share_visitor_link_rate_limit(link_id=principal.link.id, visitor=visitor)
@@ -456,6 +452,16 @@ def _freeze_param_value(value):
     return value
 
 
+def _resource_filter_definitions(resource) -> list:
+    filters = getattr(resource, "filters", None)
+    if filters:
+        return _normalize_filter_definitions(filters)
+    view_sets = getattr(resource, "view_sets", None)
+    if isinstance(view_sets, dict):
+        return _normalize_filter_definitions(view_sets.get("filters"))
+    return []
+
+
 def allowed_share_query_keys(*, dashboard, data_source_id: int) -> set[str]:
     """分享查询只允许画布声明的交互能力。
 
@@ -466,11 +472,7 @@ def allowed_share_query_keys(*, dashboard, data_source_id: int) -> set[str]:
     不再并入数据源 schema 的非 fixed 参数，避免访客扩大未声明查询面。
     """
     allowed = {"page", "page_size", "namespace_id"}
-    filter_defs = {
-        item.get("id"): item
-        for item in _normalize_filter_definitions(getattr(dashboard, "filters", None))
-        if item.get("id")
-    }
+    filter_defs = {item.get("id"): item for item in _resource_filter_definitions(dashboard) if item.get("id")}
     matched_widget = False
     allow_query_list = False
     schema_params = _datasource_param_specs(data_source_id)
@@ -515,17 +517,16 @@ def allowed_share_query_keys(*, dashboard, data_source_id: int) -> set[str]:
     if matched_widget and allow_query_list:
         allowed.add("query_list")
 
+    if data_source_id in overlay_datasource_ids_for_view_sets(getattr(dashboard, "view_sets", None)):
+        allowed |= NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS
+
     return allowed
 
 
 def allowed_share_namespace_ids(*, data_source_id: int) -> set[int]:
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 
-    datasource = (
-        DataSourceAPIModel.objects.filter(id=data_source_id)
-        .prefetch_related("namespaces")
-        .first()
-    )
+    datasource = DataSourceAPIModel.objects.filter(id=data_source_id).prefetch_related("namespaces").first()
     if datasource is None:
         return set()
     return {int(namespace_id) for namespace_id in datasource.namespaces.values_list("id", flat=True)}

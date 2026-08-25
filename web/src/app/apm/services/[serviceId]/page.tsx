@@ -19,32 +19,41 @@ import {
   Segmented,
   Select,
   Space,
-  Table,
   Tabs,
   Tag,
   Typography,
   message,
+  theme,
   type TableColumnsType,
 } from 'antd';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
-import dayjs from 'dayjs';
+import CompactEmptyState from '@/components/compact-empty-state';
 import useApmApi from '@/app/apm/api';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, {
   catalogErrorKind,
   type CatalogStateKind,
 } from '@/app/apm/components/catalog-state';
+import { DEPLOYMENT_LOOKBACK_MS, DEPLOYMENT_STATUS_META } from '@/app/apm/components/deployment-status';
 import HealthDot from '@/app/apm/components/health-dot';
+import { StatusPill } from '@/app/apm/components/home/section-card';
 import {
   deriveHealth,
+  formatClockTime,
+  formatDateTime,
   formatErrorRate,
   formatLatency,
+  formatNumber,
+  formatPercentage,
   formatRelativeTime,
+  formatRequestRate,
   formatThroughput,
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
 import type {
+  ApmDeploymentEvent,
   ApmService,
   ApmServiceEndpointRed,
   ApmServiceRed,
@@ -56,6 +65,7 @@ import type {
 import SummaryMetricCard from '@/components/summary-metric-card';
 import Permission from '@/components/permission';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
+import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
 type TimeRange = '15m' | '1h' | '4h' | '1d' | '7d';
@@ -93,8 +103,8 @@ function ServiceMetricCard({
       label={label}
       labelClassName="!text-xs"
       layout="vertical"
-      maxFontSize={24}
-      minFontSize={20}
+      maxFontSize={16}
+      minFontSize={16}
       unit={suffix}
       value={value}
       valueColor={danger ? 'var(--color-fail)' : undefined}
@@ -103,6 +113,8 @@ function ServiceMetricCard({
 }
 
 export default function ApmServiceDetailPage() {
+  const { t } = useTranslation();
+  const { token } = theme.useToken();
   const params = useParams<{ serviceId: string }>();
   const searchParams = useSearchParams();
   const {
@@ -111,6 +123,7 @@ export default function ApmServiceDetailPage() {
     getTraces,
     getTopology,
     getSlos,
+    getDeployments,
     setServiceArchived,
     isLoading: authLoading,
   } = useApmApi();
@@ -128,6 +141,8 @@ export default function ApmServiceDetailPage() {
   const [upstream, setUpstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [downstream, setDownstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [serviceSlos, setServiceSlos] = useState<ApmSlo[]>([]);
+  const [deployments, setDeployments] = useState<ApmDeploymentEvent[]>([]);
+  const [deploymentsState, setDeploymentsState] = useState<PageState>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -234,6 +249,32 @@ export default function ApmServiceDetailPage() {
     };
   }, [authLoading, environment, getSlos, getTopology, getTraces, refreshKey, service, timeRange]);
 
+  useEffect(() => {
+    if (authLoading || !params.serviceId || activeTab !== 'deployments') return;
+    let active = true;
+    setDeploymentsState('loading');
+    const endedAt = new Date();
+    const startedAt = new Date(endedAt.getTime() - DEPLOYMENT_LOOKBACK_MS);
+    getDeployments({
+      service_id: params.serviceId,
+      page: 1,
+      page_size: 100,
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString(),
+    })
+      .then((result) => {
+        if (!active) return;
+        setDeployments(result.items);
+        setDeploymentsState(result.items.length ? 'ready' : 'empty');
+      })
+      .catch((error) => {
+        if (active) setDeploymentsState(catalogErrorKind(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeTab, authLoading, getDeployments, params.serviceId, refreshKey]);
+
   const exploreHref = service && red
     ? `/apm/explore/traces?${new URLSearchParams({
       service_namespace: service.namespace,
@@ -271,16 +312,18 @@ export default function ApmServiceDetailPage() {
   const archiveService = () => {
     if (!service) return;
     Modal.confirm({
-      title: service.archived_at ? '确认解档该服务？' : '确认归档该服务？',
+      title: service.archived_at
+        ? t('apm.serviceDetail.unarchiveConfirm', '确认解档该服务？')
+        : t('apm.serviceDetail.archiveConfirm', '确认归档该服务？'),
       content: service.archived_at
-        ? '解档后服务将重新出现在默认目录。'
-        : '归档后告警自动暂停，数据保留期内可恢复。',
-      okText: service.archived_at ? '解档' : '归档',
+        ? t('apm.services.unarchiveHint', '解档后服务将重新出现在默认目录。')
+        : t('apm.serviceDetail.archiveHint', '归档后告警自动暂停，数据保留期内可恢复。'),
+      okText: service.archived_at ? t('apm.services.unarchive', '解档') : t('apm.services.archive', '归档'),
       okButtonProps: service.archived_at ? undefined : { danger: true },
-      cancelText: '取消',
+      cancelText: t('common.cancel', '取消'),
       onOk: async () => {
         await setServiceArchived(service.id, !service.archived_at);
-        message.success(service.archived_at ? '服务已解档' : '服务已归档');
+        message.success(service.archived_at ? t('apm.services.unarchived', '服务已解档') : t('apm.services.archived', '服务已归档'));
         const refreshed = await getService(service.id, true);
         setService(refreshed);
       },
@@ -292,65 +335,132 @@ export default function ApmServiceDetailPage() {
       key: 'archive',
       icon: <InboxOutlined aria-hidden="true" />,
       danger: !service?.archived_at,
-      label: service?.archived_at ? '解档' : '归档',
+      label: service?.archived_at ? t('apm.services.unarchive', '解档') : t('apm.services.archive', '归档'),
       onClick: archiveService,
     },
   ];
 
   const traceColumns: TableColumnsType<ApmTraceSummary> = [
     {
-      title: '入口服务 / Trace ID',
-      key: 'identity',
-      render: (_, item) => (
-        <Space direction="vertical" size={2}>
-          <Space size={6}>
-            <HealthDot level={item.status === 'error' ? 1 : 5} />
-            <span className="text-sm font-medium">{item.service_name}</span>
-          </Space>
-          <Link
-            href={`/apm/explore/traces/${item.trace_id}`}
-            className="font-mono text-xs text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
-          >
-            {item.trace_id}
-          </Link>
-        </Space>
+      title: t('apm.explore.traceId', 'Trace ID'),
+      dataIndex: 'trace_id',
+      width: APM_TABLE_COLUMN_WIDTHS.traceId,
+      render: (value: string) => (
+        <Link
+          href={`/apm/explore/traces/${value}`}
+          className="block truncate font-mono text-xs text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
+        >
+          {value}
+        </Link>
       ),
     },
     {
-      title: '资源',
+      title: t('apm.explore.entryService', '入口服务'),
+      key: 'service',
+      width: APM_TABLE_COLUMN_WIDTHS.entryService,
+      ellipsis: true,
+      render: (_, item) => (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <HealthDot level={item.status === 'error' ? 1 : 5} />
+          <span className="truncate text-sm font-medium">{item.service_name}</span>
+        </span>
+      ),
+    },
+    {
+      title: t('apm.explore.resource', '资源'),
       dataIndex: 'root_span_name',
-      render: (value) => <span className="font-mono text-xs">{value}</span>,
+      width: APM_TABLE_COLUMN_WIDTHS.resource,
+      ellipsis: true,
+      responsive: ['md'],
+      render: (value) => <span className="truncate font-mono text-xs">{value}</span>,
     },
     {
-      title: '总耗时',
+      title: t('apm.explore.totalDuration', '总耗时'),
       dataIndex: 'duration_ms',
-      width: 100,
-      className: 'tabular-nums',
-      render: (value: number) => formatLatency(value),
-    },
-    {
-      title: '跨度数',
-      dataIndex: 'span_count',
-      width: 90,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       align: 'right',
       className: 'tabular-nums',
+      responsive: ['sm'],
+      render: (value: number) => formatLatency(value, false, t),
     },
     {
-      title: '状态',
+      title: t('apm.explore.spanCount', '跨度数'),
+      dataIndex: 'span_count',
+      width: APM_TABLE_COLUMN_WIDTHS.status,
+      align: 'right',
+      className: 'tabular-nums',
+      responsive: ['lg'],
+    },
+    {
+      title: t('apm.common.status', '状态'),
       dataIndex: 'status',
-      width: 90,
+      width: APM_TABLE_COLUMN_WIDTHS.status,
+      align: 'center',
       render: (status: ApmTraceSummary['status']) => (
         status === 'error'
-          ? <Tag bordered={false} color="error">错误</Tag>
-          : <Tag bordered={false} color="success">正常</Tag>
+          ? <Tag bordered={false} color="error">{t('apm.severity.error', '错误')}</Tag>
+          : <Tag bordered={false} color="success">{t('apm.status.ok', '正常')}</Tag>
       ),
     },
     {
-      title: '时间',
+      title: t('apm.common.time', '时间'),
       dataIndex: 'started_at',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
+      responsive: ['xl'],
       render: (value: string) => (
-        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
+        <span className="text-xs tabular-nums text-[var(--color-text-3)]" title={formatDateTime(value)}>
+          {formatRelativeTime(value, t)}
+        </span>
+      ),
+    },
+  ];
+
+  const deploymentColumns: TableColumnsType<ApmDeploymentEvent> = [
+    {
+      title: t('apm.deployments.version', '版本'),
+      dataIndex: 'version',
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
+      render: (value: string) => (
+        <span className="rounded bg-[var(--color-bg)] px-1.5 py-px font-mono text-[11px] text-[var(--color-text-3)]">
+          {value}
+        </span>
+      ),
+    },
+    {
+      title: t('apm.common.environment', '环境'),
+      dataIndex: 'environment',
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
+      render: (value: string) => value || t('apm.common.unset', '未设置'),
+    },
+    {
+      title: t('apm.deployments.deployedAt', '发布时间'),
+      dataIndex: 'deployed_at',
+      width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
+      render: (value: string) => (
+        <span className="tabular-nums" title={formatDateTime(value)}>
+          {formatRelativeTime(value, t)}
+        </span>
+      ),
+    },
+    {
+      title: t('apm.common.status', '状态'),
+      dataIndex: 'status',
+      width: APM_TABLE_COLUMN_WIDTHS.status,
+      render: (value: ApmDeploymentEvent['status']) => {
+        const meta = DEPLOYMENT_STATUS_META[value] ?? DEPLOYMENT_STATUS_META.success;
+        return <StatusPill label={t(meta.labelKey, meta.fallback)} tone={meta.tone} />;
+      },
+    },
+    {
+      title: t('apm.deployments.source', '来源'),
+      dataIndex: 'source',
+      width: APM_TABLE_COLUMN_WIDTHS.status,
+      render: (value: ApmDeploymentEvent['source']) => (
+        <Tag bordered={false}>
+          {value === 'reported'
+            ? t('apm.deployments.sourceReported', '上报')
+            : t('apm.deployments.sourceInferred', '推断')}
+        </Tag>
       ),
     },
   ];
@@ -359,18 +469,18 @@ export default function ApmServiceDetailPage() {
     <Tag bordered={false} key={item.node.id} className="!mb-1 !max-w-full !whitespace-normal">
       {item.node.service_name}
       {' · '}
-      {item.edge.sampled_calls}/窗
-      {' · '}
-                      Pavg {Math.round(item.edge.average_duration_ms)}ms
-      {' · '}
-      错误 {item.edge.error_calls}
+      {t('apm.serviceDetail.dependencyMeta', '{calls}/窗 · Pavg {duration} · 错误 {errors}', {
+        calls: formatNumber(item.edge.sampled_calls),
+        duration: formatLatency(item.edge.average_duration_ms, false, t),
+        errors: formatNumber(item.edge.error_calls),
+      })}
     </Tag>
   );
 
   return (
     <ApmRouteShell
-      title="服务详情"
-      description="查看单服务 RED 指标、调用链与错误样本，并可下钻到探索视图。"
+      title={t('apm.serviceDetail.title', '服务详情')}
+      description={t('apm.serviceDetail.description', '查看单服务 RED 指标、调用链与错误样本，并可下钻到探索视图。')}
       dependency="telemetry"
     >
       {catalogState !== 'ready' ? (
@@ -386,13 +496,13 @@ export default function ApmServiceDetailPage() {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex min-w-0 items-center gap-3">
                 <Link href="/apm/services">
-                  <Button aria-label="返回服务目录" icon={<ArrowLeftOutlined aria-hidden="true" />}>
-                    返回服务
+                  <Button aria-label={t('apm.serviceDetail.backAria', '返回服务目录')} icon={<ArrowLeftOutlined aria-hidden="true" />}>
+                    {t('apm.serviceDetail.back', '返回服务')}
                   </Button>
                 </Link>
                 <div className="min-w-0">
                   <Space size={10} align="center" wrap>
-                    <HealthDot level={health} />
+                    <HealthDot level={health} showLabel={false} />
                     <Typography.Title level={2} className="!mb-0 !text-base !font-semibold">
                       {service.name}
                     </Typography.Title>
@@ -400,45 +510,45 @@ export default function ApmServiceDetailPage() {
                       bordered={false}
                       color={health <= 2 ? 'error' : health === 3 ? 'warning' : 'success'}
                     >
-                      {health <= 2 ? '异常' : health === 3 ? '静默' : '健康'}
+                      {health <= 2 ? t('apm.health.abnormal', '异常') : health === 3 ? t('apm.health.silent', '静默') : t('apm.health.healthy', '健康')}
                     </Tag>
-                    <Tag bordered={false}>{environment || '未设置'}</Tag>
+                    <Tag bordered={false}>{environment || t('apm.common.unset', '未设置')}</Tag>
                   </Space>
                   <Typography.Text type="secondary" className="mt-1 block truncate text-xs">
-                    所属应用{' '}
+                    {t('apm.serviceDetail.ownerApplication', '所属应用')}{' '}
                     <Link
                       href={`/apm/services?namespace=${encodeURIComponent(service.namespace)}`}
                       className="text-[var(--color-primary)]"
                     >
-                      {service.application_name || service.namespace || '未归类应用'}
+                      {service.application_name || service.namespace || t('apm.common.unsetNamespace', '未设置 namespace')}
                     </Link>
                   </Typography.Text>
                 </div>
               </div>
               <Space wrap>
                 <Select
-                  aria-label="选择环境"
+                  aria-label={t('apm.serviceDetail.selectEnvironment', '选择环境')}
                   className="min-w-40"
                   value={environment}
                   onChange={setEnvironment}
                   options={service.environment_views.map((item) => ({
                     value: item.environment,
-                    label: item.environment || '未设置',
+                    label: item.environment || t('apm.common.unset', '未设置'),
                   }))}
                 />
                 <Segmented<TimeRange>
-                  aria-label="选择时间窗"
+                  aria-label={t('apm.serviceDetail.selectWindow', '选择时间窗')}
                   value={timeRange}
                   onChange={setTimeRange}
                   options={(Object.keys(RANGE_MS) as TimeRange[]).map((value) => ({ value, label: value }))}
                 />
                 <Link href={exploreHref}>
-                  <Button icon={<SearchOutlined aria-hidden="true" />}>在探索中打开</Button>
+                  <Button icon={<SearchOutlined aria-hidden="true" />}>{t('apm.explore.openInExplore', '在探索中打开')}</Button>
                 </Link>
                 <Permission requiredPermissions={['Operate']} permissionPath="/apm/services">
                   <MoreActionsDropdown
                     items={moreMenuItems}
-                    ariaLabel="更多操作"
+                    ariaLabel={t('apm.serviceDetail.moreActions', '更多操作')}
                     buttonType="default"
                     buttonSize="middle"
                   />
@@ -451,27 +561,27 @@ export default function ApmServiceDetailPage() {
             <Row gutter={[12, 12]}>
               <Col xs={12} lg={6}>
                 <ServiceMetricCard
-                  label="吞吐"
-                  value={formatThroughput(red.request_rate)}
-                  suffix={red.request_rate === null ? undefined : '/s'}
+                  label={t('apm.explore.throughputShort', '吞吐')}
+                  value={formatThroughput(red.request_rate, false, t)}
+                  suffix={red.request_rate === null ? undefined : t('apm.common.requestsPerSecondUnit', 'req/s')}
                 />
               </Col>
               <Col xs={12} lg={6}>
                 <ServiceMetricCard
-                  label="错误率"
-                  value={formatErrorRate(red.error_rate)}
+                  label={t('apm.common.errorRate', '错误率')}
+                  value={formatErrorRate(red.error_rate, false, t)}
                   danger={isErrorRateDanger(red.error_rate)}
                 />
               </Col>
               <Col xs={12} lg={6}>
                 <ServiceMetricCard
-                  label="P99"
-                  value={formatLatency(red.p99_ms)}
+                  label={t('apm.common.p99', 'P99')}
+                  value={formatLatency(red.p99_ms, false, t)}
                   danger={red.p99_ms !== null && red.p99_ms >= 500}
                 />
               </Col>
               <Col xs={12} lg={6}>
-                <ServiceMetricCard label="P95" value={formatLatency(red.p95_ms)} />
+                <ServiceMetricCard label={t('apm.common.p95', 'P95')} value={formatLatency(red.p95_ms, false, t)} />
               </Col>
             </Row>
           ) : null}
@@ -482,47 +592,59 @@ export default function ApmServiceDetailPage() {
             items={[
               {
                 key: 'overview',
-                label: '概览',
+                label: t('apm.serviceDetail.overview', '概览'),
                 children: metricState === 'ready' && red ? (
                   <div className="flex flex-col gap-4">
                     <Row gutter={[16, 16]}>
-                      <Col xs={24} xl={12}>
+                      <Col xs={24} xl={8}>
                         <ApmSurface className="h-[340px]">
-                          <Typography.Text strong className="mb-3 block">吞吐与错误率</Typography.Text>
+                          <Typography.Text strong className="mb-3 block">{t('apm.common.throughput', '吞吐量')}</Typography.Text>
                           <div className="h-[280px]">
                             <TimeSeriesComposedChart<RedChartPoint>
                               data={chartData}
                               xDataKey="timestamp"
-                              getXLabel={(item) => dayjs(item.timestamp).format('HH:mm')}
+                              getXLabel={(item) => formatClockTime(item.timestamp, false)}
                               xAxisBoundaryGap={false}
-                              yAxes={[
-                                { formatter: (value) => `${value.toFixed(value >= 10 ? 0 : 1)}` },
-                                { formatter: (value) => `${value.toFixed(1)}%`, splitLine: false },
-                              ]}
+                              yAxes={[{ formatter: (value) => formatRequestRate(value, false, t) }]}
                               series={[
-                                { name: '请求速率 req/s', type: 'line', dataKey: 'request_rate', color: 'var(--color-primary)', showArea: true },
-                                { name: '错误率 %', type: 'line', dataKey: 'error_rate_percent', color: 'var(--color-fail)', yAxisIndex: 1 },
+                                { name: t('apm.serviceDetail.requestRate', '请求速率 req/s'), type: 'line', dataKey: 'request_rate', color: token.colorPrimary, showArea: true },
                               ]}
-                              surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无 RED 趋势点' } }}
+                              surfaceProps={{ emptyStateProps: { description: t('apm.serviceDetail.noRedTrend', '当前时间窗暂无 RED 趋势点') } }}
                             />
                           </div>
                         </ApmSurface>
                       </Col>
-                      <Col xs={24} xl={12}>
+                      <Col xs={24} xl={8}>
                         <ApmSurface className="h-[340px]">
-                          <Typography.Text strong className="mb-3 block">延迟趋势</Typography.Text>
+                          <Typography.Text strong className="mb-3 block">{t('apm.common.errorRate', '错误率')}</Typography.Text>
                           <div className="h-[280px]">
                             <TimeSeriesComposedChart<RedChartPoint>
                               data={chartData}
                               xDataKey="timestamp"
-                              getXLabel={(item) => dayjs(item.timestamp).format('HH:mm')}
+                              getXLabel={(item) => formatClockTime(item.timestamp, false)}
                               xAxisBoundaryGap={false}
-                              yAxes={[{ formatter: (value) => `${value.toFixed(0)} ms` }]}
+                              yAxes={[{ formatter: (value) => formatPercentage(value, 1) }]}
+                              series={[{ name: t('apm.common.errorRatePercent', '错误率 %'), type: 'line', dataKey: 'error_rate_percent', color: token.colorError, showArea: true, showSymbol: true }]}
+                              surfaceProps={{ emptyStateProps: { description: t('apm.serviceDetail.noRedTrend', '当前时间窗暂无 RED 趋势点') } }}
+                            />
+                          </div>
+                        </ApmSurface>
+                      </Col>
+                      <Col xs={24} xl={8}>
+                        <ApmSurface className="h-[340px]">
+                          <Typography.Text strong className="mb-3 block">{t('apm.serviceDetail.latencyTrend', '延迟趋势')}</Typography.Text>
+                          <div className="h-[280px]">
+                            <TimeSeriesComposedChart<RedChartPoint>
+                              data={chartData}
+                              xDataKey="timestamp"
+                              getXLabel={(item) => formatClockTime(item.timestamp, false)}
+                              xAxisBoundaryGap={false}
+                              yAxes={[{ formatter: (value) => formatLatency(value, false, t) }]}
                               series={[
-                                { name: 'P95', type: 'line', dataKey: 'p95_ms', color: 'var(--theme-color-chart-primary)', showArea: true },
-                                { name: 'P99', type: 'line', dataKey: 'p99_ms', color: 'var(--theme-color-chart-warning)' },
+                                { name: t('apm.common.p95', 'P95'), type: 'line', dataKey: 'p95_ms', color: token.colorPrimary, showArea: true },
+                                { name: t('apm.common.p99', 'P99'), type: 'line', dataKey: 'p99_ms', color: token.colorWarning, lineType: 'dotted', showSymbol: true },
                               ]}
-                              surfaceProps={{ emptyStateProps: { description: '当前时间窗暂无延迟趋势点' } }}
+                              surfaceProps={{ emptyStateProps: { description: t('apm.serviceDetail.noLatencyTrend', '当前时间窗暂无延迟趋势点') } }}
                             />
                           </div>
                         </ApmSurface>
@@ -531,12 +653,12 @@ export default function ApmServiceDetailPage() {
                     <Row gutter={[12, 12]}>
                       <Col xs={24} lg={12}>
                         <ApmSurface>
-                          <Typography.Text strong>Top 端点</Typography.Text>
+                          <Typography.Text strong>{t('apm.serviceDetail.topEndpoints', 'Top 端点')}</Typography.Text>
                           <List
                             className="mt-2"
                             size="small"
                             dataSource={topEndpoints}
-                            locale={{ emptyText: '当前时间窗暂无端点指标' }}
+                            locale={{ emptyText: t('apm.serviceDetail.noEndpoints', '当前时间窗暂无端点指标') }}
                             renderItem={(item: ApmServiceEndpointRed & { ratio: number }) => (
                               <List.Item className="!px-0">
                                 <div className="w-full">
@@ -548,7 +670,10 @@ export default function ApmServiceDetailPage() {
                                       {item.endpoint}
                                     </Link>
                                     <span className="shrink-0 text-xs tabular-nums text-[var(--color-text-3)]">
-                                      {formatThroughput(item.request_rate)}/s · P99 {formatLatency(item.p99_ms)}
+                                      {t('apm.serviceDetail.endpointMeta', '{throughput} · P99 {latency}', {
+                                        throughput: formatRequestRate(item.request_rate, false, t),
+                                        latency: formatLatency(item.p99_ms, false, t),
+                                      })}
                                     </span>
                                   </div>
                                   <Progress
@@ -566,26 +691,26 @@ export default function ApmServiceDetailPage() {
                       </Col>
                       <Col xs={24} lg={12}>
                         <ApmSurface>
-                          <Typography.Text strong>依赖关系</Typography.Text>
+                          <Typography.Text strong>{t('apm.serviceDetail.dependencies', '依赖关系')}</Typography.Text>
                           <Row gutter={[12, 12]} className="mt-2">
                             <Col span={12}>
                               <Typography.Text type="secondary" className="!text-xs">
-                                上游 · 调用方 {upstream.length}
+                                {t('apm.serviceDetail.upstreamCallers', '上游 · 调用方 {count}', { count: upstream.length })}
                               </Typography.Text>
                               <div className="mt-1.5">
                                 {upstream.length
                                   ? upstream.map(dependencyTag)
-                                  : <Typography.Text type="secondary" className="!text-xs">近窗内无上游调用</Typography.Text>}
+                                  : <Typography.Text type="secondary" className="!text-xs">{t('apm.serviceDetail.noUpstream', '近窗内无上游调用')}</Typography.Text>}
                               </div>
                             </Col>
                             <Col span={12}>
                               <Typography.Text type="secondary" className="!text-xs">
-                                下游 · 被调方 {downstream.length}
+                                {t('apm.serviceDetail.downstreamCallees', '下游 · 被调方 {count}', { count: downstream.length })}
                               </Typography.Text>
                               <div className="mt-1.5">
                                 {downstream.length
                                   ? downstream.map(dependencyTag)
-                                  : <Typography.Text type="secondary" className="!text-xs">近窗内无向下调用</Typography.Text>}
+                                  : <Typography.Text type="secondary" className="!text-xs">{t('apm.serviceDetail.noDownstream', '近窗内无向下调用')}</Typography.Text>}
                               </div>
                             </Col>
                           </Row>
@@ -597,7 +722,7 @@ export default function ApmServiceDetailPage() {
                   <ApmSurface padding="none">
                     <CatalogState
                       kind={metricState === 'ready' ? 'error' : metricState}
-                      description={metricState === 'empty' ? '当前服务尚无可查询的环境视图。' : undefined}
+                      description={metricState === 'empty' ? t('apm.serviceDetail.noEnvironments', '当前服务尚无可查询的环境视图。') : undefined}
                       onRetry={metricState === 'forbidden' || metricState === 'empty' ? undefined : () => setRefreshKey((value) => value + 1)}
                     />
                   </ApmSurface>
@@ -605,18 +730,17 @@ export default function ApmServiceDetailPage() {
               },
               {
                 key: 'traces',
-                label: '调用链',
+                label: t('apm.serviceDetail.traces', '调用链'),
                 children: (
-                  <ApmSurface padding="none" className="overflow-hidden">
-                    <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
-                      <Typography.Text strong>近窗调用链样本</Typography.Text>
+                  <ApmSurface>
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                      <Typography.Text strong>{t('apm.serviceDetail.recentTraces', '近窗调用链样本')}</Typography.Text>
                       <Link href={exploreHref}>
-                        <Button type="link" size="small">在探索中打开</Button>
+                        <Button type="link" size="small">{t('apm.explore.openInExplore', '在探索中打开')}</Button>
                       </Link>
                     </div>
                     {tracesState === 'ready' ? (
-                      <Table
-                        size="middle"
+                      <ApmDataTable
                         rowKey="trace_id"
                         columns={traceColumns}
                         dataSource={traces}
@@ -625,7 +749,7 @@ export default function ApmServiceDetailPage() {
                     ) : (
                       <CatalogState
                         kind={tracesState}
-                        description={tracesState === 'empty' ? '当前时间窗暂无调用链样本。' : undefined}
+                        description={tracesState === 'empty' ? t('apm.serviceDetail.noTraces', '当前时间窗暂无调用链样本。') : undefined}
                         onRetry={tracesState === 'forbidden' || tracesState === 'empty' ? undefined : () => setRefreshKey((value) => value + 1)}
                       />
                     )}
@@ -634,7 +758,9 @@ export default function ApmServiceDetailPage() {
               },
               {
                 key: 'errors',
-                label: `错误${errorTraces.length ? ` (${errorTraces.length})` : ''}`,
+                label: errorTraces.length
+                  ? t('apm.serviceDetail.errorsWithCount', '错误 ({count})', { count: errorTraces.length })
+                  : t('apm.serviceDetail.errors', '错误'),
                 children: errorTraces.length ? (
                   <div className="flex flex-col gap-3">
                     {errorTraces.map((item) => (
@@ -643,9 +769,9 @@ export default function ApmServiceDetailPage() {
                           <div className="min-w-0">
                             <Space size={8} wrap>
                               <Typography.Text strong className="!text-sm">{item.root_span_name}</Typography.Text>
-                              <Tag bordered={false} color="error">错误</Tag>
+                              <Tag bordered={false} color="error">{t('apm.severity.error', '错误')}</Tag>
                               <Typography.Text type="secondary" className="!text-xs">
-                                {item.service_name} · {item.environment || '未设置'}
+                                {item.service_name} · {item.environment || t('apm.common.unset', '未设置')}
                               </Typography.Text>
                             </Space>
                             <div className="mt-2">
@@ -653,22 +779,22 @@ export default function ApmServiceDetailPage() {
                                 href={`/apm/explore/traces/${item.trace_id}`}
                                 className="text-xs text-[var(--color-primary)]"
                               >
-                                查看样本 Trace →
+                                {t('apm.explore.viewSampleTrace', '查看样本 Trace →')}
                               </Link>
                             </div>
                           </div>
                           <Space size={24}>
                             <div className="text-center">
-                              <Typography.Text type="secondary" className="!text-xs">跨度数</Typography.Text>
-                              <div className="text-lg font-semibold tabular-nums text-[var(--color-fail)]">{item.span_count}</div>
+                              <Typography.Text type="secondary" className="!text-xs">{t('apm.explore.spanCount', '跨度数')}</Typography.Text>
+                              <div className="text-sm font-semibold tabular-nums text-[var(--color-fail)]">{item.span_count}</div>
                             </div>
                             <div className="text-center">
-                              <Typography.Text type="secondary" className="!text-xs">耗时</Typography.Text>
-                              <div className="text-lg font-semibold tabular-nums">{formatLatency(item.duration_ms)}</div>
+                              <Typography.Text type="secondary" className="!text-xs">{t('apm.common.latency', '耗时')}</Typography.Text>
+                              <div className="text-sm font-semibold tabular-nums">{formatLatency(item.duration_ms, false, t)}</div>
                             </div>
                             <div className="text-center">
-                              <Typography.Text type="secondary" className="!text-xs">最近出现</Typography.Text>
-                              <div className="text-sm tabular-nums">{formatRelativeTime(item.started_at)}</div>
+                              <Typography.Text type="secondary" className="!text-xs">{t('apm.explore.lastSeen', '最近出现')}</Typography.Text>
+                              <div className="text-sm tabular-nums">{formatRelativeTime(item.started_at, t)}</div>
                             </div>
                           </Space>
                         </div>
@@ -677,81 +803,104 @@ export default function ApmServiceDetailPage() {
                   </div>
                 ) : (
                   <ApmSurface className="py-16 text-center">
-                    <Empty description="当前时间窗暂无错误 Trace" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                    <CompactEmptyState description={t('apm.serviceDetail.noErrorTraces', '当前时间窗暂无错误 Trace')} />
                   </ApmSurface>
                 ),
               },
               {
                 key: 'runtime',
-                label: '运行时',
+                label: t('apm.serviceDetail.runtime', '运行时'),
                 children: (
                   <ApmSurface className="py-16 text-center">
                     <Typography.Text type="secondary">
-                      该服务尚未接入运行时指标采集（JVM / Go Runtime 等）
+                      {t('apm.serviceDetail.runtimeEmpty', '该服务尚未接入运行时指标采集（JVM / Go Runtime 等）')}
                     </Typography.Text>
                   </ApmSurface>
                 ),
               },
               {
                 key: 'deployments',
-                label: '部署',
+                label: t('apm.serviceDetail.deploy', '部署'),
                 children: (
-                  <ApmSurface className="py-16 text-center">
-                    <Typography.Text type="secondary">
-                      部署事件将在发布埋点接入后展示；当前可先通过版本与 Trace 属性排查变更。
+                  <ApmSurface>
+                    <Typography.Text type="secondary" className="mb-3 block">
+                      {t('apm.serviceDetail.deployHint', '由遥测推断的发布记录')}
                     </Typography.Text>
+                    {deploymentsState === 'ready' ? (
+                      <ApmDataTable
+                        columns={deploymentColumns}
+                        dataSource={deployments}
+                        pagination={false}
+                        rowKey="id"
+                      />
+                    ) : deploymentsState === 'empty' ? (
+                      <CompactEmptyState description={t('apm.serviceDetail.deployEmpty', '近 90 天未观测到版本变化')} />
+                    ) : (
+                      <CatalogState
+                        compact
+                        kind={deploymentsState}
+                        onRetry={deploymentsState === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)}
+                      />
+                    )}
                   </ApmSurface>
                 ),
               },
               {
                 key: 'slo',
-                label: 'SLO',
+                label: t('apm.slo.title', 'SLO'),
                 children: serviceSlos.length ? (
-                  <ApmSurface padding="none" className="overflow-hidden">
-                    <Table
-                      size="middle"
+                  <ApmSurface>
+                    <ApmDataTable
                       rowKey="id"
                       pagination={false}
                       dataSource={serviceSlos}
                       columns={[
-                        { title: '名称', dataIndex: 'name' },
+                        { title: t('apm.slo.name', '名称'), dataIndex: 'name' },
                         {
-                          title: '目标',
+                          title: t('apm.serviceDetail.target', '目标'),
                           dataIndex: 'objective',
-                          width: 100,
-                          render: (value) => <span className="tabular-nums">{(Number(value) * 100).toFixed(2)}%</span>,
+                          width: APM_TABLE_COLUMN_WIDTHS.metric,
+                          align: 'right',
+                          responsive: ['sm'],
+                          render: (value) => <span className="tabular-nums">{formatPercentage(value)}</span>,
                         },
                         {
-                          title: '当前',
+                          title: t('apm.serviceDetail.current', '当前'),
                           dataIndex: 'current_rate',
-                          width: 100,
+                          width: APM_TABLE_COLUMN_WIDTHS.metric,
+                          align: 'right',
+                          responsive: ['md'],
                           render: (value) => value == null
                             ? '—'
-                            : <span className="tabular-nums">{(Number(value) * 100).toFixed(2)}%</span>,
+                            : <span className="tabular-nums">{formatPercentage(value)}</span>,
                         },
                         {
-                          title: '错误预算',
+                          title: t('apm.serviceDetail.errorBudget', '错误预算'),
                           dataIndex: 'budget_remaining',
-                          width: 140,
+                          width: APM_TABLE_COLUMN_WIDTHS.progress,
+                          responsive: ['lg'],
                           render: (value) => value == null
                             ? '—'
-                            : <Progress percent={Math.max(0, Math.min(100, Number(value) * 100))} size="small" />,
+                            : <Progress percent={Math.max(0, Math.min(100, Number(value)))} size="small" />,
                         },
                         {
-                          title: '操作',
-                          width: 100,
-                          render: () => <Link href="/apm/services/slo"><Button type="link" size="small">管理</Button></Link>,
+                          title: t('apm.common.operation', '操作'),
+                          width: APM_TABLE_COLUMN_WIDTHS.status,
+                          align: 'right',
+                          fixed: 'right',
+                          render: () => <Link href="/apm/services/slo"><Button className="!px-0" type="link" size="small">{t('apm.serviceDetail.manage', '管理')}</Button></Link>,
                         },
                       ]}
+                      headerAlignment="column"
                     />
                   </ApmSurface>
                 ) : (
                   <ApmSurface className="py-16 text-center">
                     <Empty
                       image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description="该服务尚未配置 SLO"
+                      description={t('apm.serviceDetail.noSlo', '该服务尚未配置 SLO')}
                     >
-                      <Link href="/apm/services/slo"><Button type="primary">去配置 SLO</Button></Link>
+                      <Link href="/apm/services/slo"><Button type="primary">{t('apm.serviceDetail.configureSlo', '去配置 SLO')}</Button></Link>
                     </Empty>
                   </ApmSurface>
                 ),

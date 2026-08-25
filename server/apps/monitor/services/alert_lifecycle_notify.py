@@ -1,10 +1,15 @@
 import os
 from collections import defaultdict
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+from django.utils import timezone as dj_timezone
 
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
-from apps.system_mgmt.models import Channel
+from apps.system_mgmt.models import Channel, User
+
+DEFAULT_NOTICE_TIMEZONE = "Asia/Shanghai"
 
 
 ACTION_TO_ALERT_CENTER = {
@@ -32,6 +37,39 @@ ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
 ALERT_CENTER_CREATED_RETRY_ENABLED = os.getenv(
     "MONITOR_ALERT_CENTER_CREATED_RETRY_ENABLED", "false"
 ).lower() in {"1", "true", "yes"}
+
+
+def _policy_secondary_context(policy) -> str:
+    """同名策略展示用短上下文：与序列化展示口径对齐（公式展开指标名）。"""
+    if not policy:
+        return ""
+    query = getattr(policy, "query_condition", None) or {}
+    if not isinstance(query, dict):
+        query = {}
+    # 与 PolicyService.display_metric_name 对齐，避免详情/通知公式文案不一致
+    from apps.monitor.services.policy import PolicyService
+
+    display = PolicyService.display_metric_name({"query_condition": query})
+    if display:
+        return display
+    monitor_object = getattr(policy, "monitor_object", None)
+    if monitor_object is not None:
+        return str(
+            getattr(monitor_object, "display_name", None)
+            or getattr(monitor_object, "name", "")
+            or ""
+        ).strip()
+    return ""
+
+
+def _format_policy_display_label(policy) -> str:
+    if not policy:
+        return ""
+    name = str(getattr(policy, "name", "") or "").strip()
+    secondary = _policy_secondary_context(policy)
+    if name and secondary:
+        return f"{name}（{secondary}）"
+    return name or secondary
 
 
 class AlertLifecycleNotifier:
@@ -355,10 +393,13 @@ class AlertLifecycleNotifier:
 
     def _send_normal_notice(self, channel_id, channel_name, notice_users, alerts, action, operator, reason):
         results = []
+        target_timezone = self._resolve_notice_timezone(notice_users)
         for alert in alerts:
             now = datetime.now(timezone.utc).isoformat()
             title = self._build_title(alert, action)
-            content = self._build_content(alert, action, operator, reason)
+            content = self._build_content(
+                alert, action, operator, reason, target_timezone=target_timezone
+            )
             try:
                 send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, title, content, notice_users)
                 success, error_msg = self._parse_channel_result(send_result)
@@ -433,7 +474,9 @@ class AlertLifecycleNotifier:
         error_msg = ""
         event_results = {}
         try:
-            send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, "", content, [])
+            send_result = SystemMgmtUtils.send_msg_with_channel(
+                channel_id, "", content, [], internal_caller="lite-monitor"
+            )
             success, error_msg = self._parse_channel_result(send_result)
             if use_per_event_ack and isinstance(send_result, dict):
                 details = send_result.get("data") or {}
@@ -544,7 +587,7 @@ class AlertLifecycleNotifier:
             ),
             "tags": getattr(alert, "dimensions", {}),
             "labels": {
-                "policy_name": getattr(policy, "name", "") if policy else "",
+                "policy_name": _format_policy_display_label(policy),
                 "metric_instance_id": getattr(alert, "metric_instance_id", ""),
                 "operator": operator,
                 "reason": reason,
@@ -560,10 +603,46 @@ class AlertLifecycleNotifier:
             "recovered": "告警恢复",
         }
         label = action_labels.get(action, "告警通知")
-        policy_name = getattr(self.policy, "name", "") if self.policy else ""
-        return f"{label}：{policy_name}" if policy_name else label
+        policy = self.policies_by_id.get(alert.policy_id, self.policy)
+        policy_label = _format_policy_display_label(policy)
+        return f"{label}：{policy_label}" if policy_label else label
 
-    def _build_content(self, alert, action, operator, reason):
+    def _resolve_notice_timezone(self, notice_users):
+        """取第一个通知人的账号时区；查不到或列表为空时回退 Asia/Shanghai。"""
+        if not notice_users:
+            return DEFAULT_NOTICE_TIMEZONE
+        try:
+            user = User.objects.filter(username__in=list(notice_users)).first()
+        except Exception:
+            logger.warning("Failed to resolve notice timezone for users=%s", notice_users, exc_info=True)
+            return DEFAULT_NOTICE_TIMEZONE
+        tz_name = getattr(user, "timezone", None) if user else None
+        return tz_name or DEFAULT_NOTICE_TIMEZONE
+
+    @staticmethod
+    def _coerce_notice_timezone(target_timezone):
+        if isinstance(target_timezone, str) and target_timezone:
+            try:
+                return ZoneInfo(target_timezone)
+            except Exception:
+                logger.warning(
+                    "Invalid notice timezone %s, fallback to %s",
+                    target_timezone,
+                    DEFAULT_NOTICE_TIMEZONE,
+                )
+        elif target_timezone is not None and not isinstance(target_timezone, str):
+            return target_timezone
+        return ZoneInfo(DEFAULT_NOTICE_TIMEZONE)
+
+    def _format_notice_time(self, dt, target_timezone=None):
+        if not dt:
+            return ""
+        tz = self._coerce_notice_timezone(target_timezone)
+        if dj_timezone.is_naive(dt):
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dj_timezone.localtime(dt, tz).strftime("%Y-%m-%d %H:%M:%S")
+
+    def _build_content(self, alert, action, operator, reason, target_timezone=None):
         parts = [f"告警内容：{alert.content}"]
 
         instance_name = getattr(alert, "monitor_instance_name", "") or alert.monitor_instance_id
@@ -583,6 +662,8 @@ class AlertLifecycleNotifier:
             parts.append("状态：已自动恢复")
 
         if alert.start_event_time:
-            parts.append(f"开始时间：{alert.start_event_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            parts.append(
+                f"开始时间：{self._format_notice_time(alert.start_event_time, target_timezone)}"
+            )
 
         return "\n".join(parts)

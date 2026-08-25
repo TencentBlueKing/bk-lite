@@ -6,7 +6,7 @@ interface ToolCallData {
   id: string;
   name: string;
   args: string;
-  status: 'calling' | 'completed';
+  status: 'calling' | 'completed' | 'error';
   result?: string;
 }
 
@@ -66,6 +66,10 @@ const formatJson = (str: string): string => {
   }
 };
 
+const ToolSpinner = () => (
+  <span className="inline-block h-2.5 w-2.5 animate-spin rounded-full border-[1.5px] border-[var(--color-primary)] border-t-transparent" />
+);
+
 const ToolItem: React.FC<{ tool: ToolCallData }> = ({ tool }) => {
   const [expanded, setExpanded] = useState(false);
   const summary = useMemo(() => extractSummary(tool.args, tool.name), [tool.args, tool.name]);
@@ -77,76 +81,55 @@ const ToolItem: React.FC<{ tool: ToolCallData }> = ({ tool }) => {
   const hasDetail = !!(tool.args && tool.args !== '{}') || !!tool.result;
   const argsFormatted = formatJson(tool.args);
   const isCalling = tool.status === 'calling';
+  const isError = tool.status === 'error';
 
   return (
-    <div style={{ paddingLeft: 20 }}>
+    <div className="pl-5">
       <div
         onClick={() => hasDetail && setExpanded(!expanded)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
-          padding: '4px 0',
-          cursor: hasDetail ? 'pointer' : 'default',
-          borderRadius: 4,
-        }}
-        className="tool-item-header"
+        className={[
+          'tool-item-header flex items-center gap-1.5 rounded py-1',
+          hasDetail ? 'cursor-pointer' : 'cursor-default',
+        ].join(' ')}
       >
-        <span style={{ flexShrink: 0, width: 16, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+        <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
           {isCalling ? (
-            <span style={{
-              display: 'inline-block', width: 10, height: 10,
-              border: '1.5px solid #1677ff', borderTopColor: 'transparent',
-              borderRadius: '50%', animation: 'tool-spin 0.8s linear infinite'
-            }} />
+            <ToolSpinner />
+          ) : isError ? (
+            <span className="text-xs text-[var(--color-error)]">✕</span>
           ) : (
-            <span style={{ color: '#52c41a', fontSize: 12 }}>✓</span>
+            <span className="text-xs text-[var(--color-success)]">✓</span>
           )}
         </span>
         {hasDetail && (
-          <span style={{
-            fontSize: 8, width: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            color: 'var(--color-text-4)', transition: 'transform 0.2s',
-            transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)'
-          }}>▶</span>
+          <span className={[
+            'inline-flex h-3 w-3 items-center justify-center text-[8px] text-[var(--color-text-4)] transition-transform duration-200',
+            expanded ? 'rotate-90' : 'rotate-0',
+          ].join(' ')}>▶</span>
         )}
-        {!hasDetail && <span style={{ width: 12 }} />}
-        <span style={{ flex: 1, minWidth: 0, fontSize: 12, lineHeight: 1.5 }}>
-          <span style={{ color: 'var(--color-text-1)', fontWeight: 500 }}>{tool.name}</span>
+        {!hasDetail && <span className="w-3" />}
+        <span className="min-w-0 flex-1 text-xs leading-normal">
+          <span className="font-medium text-[var(--color-text-1)]">{tool.name}</span>
           {summary && (
-            <span style={{ marginLeft: 8, color: 'var(--color-text-3)' }}>· {summary}</span>
+            <span className="ml-2 text-[var(--color-text-3)]">· {summary}</span>
           )}
           {choiceResult && (
-            <span style={{
-              marginLeft: 8, padding: '1px 8px',
-              background: 'var(--color-primary-light-1, #e6f4ff)',
-              color: 'var(--color-primary-6, #1677ff)',
-              borderRadius: 10, fontSize: 11, fontWeight: 500
-            }}>→ {choiceResult}</span>
+            <span className="ml-2 rounded-[10px] bg-[var(--color-primary-light-1)] px-2 py-px text-[11px] font-medium text-[var(--color-primary)]">→ {choiceResult}</span>
           )}
         </span>
       </div>
       {expanded && hasDetail && (
-        <div style={{ paddingLeft: 34, fontSize: 12 }}>
+        <div className="pl-[34px] text-xs">
           {argsFormatted && (
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontWeight: 500, color: 'var(--color-text-2)', marginBottom: 4 }}>参数:</div>
-              <pre style={{
-                margin: 0, padding: 8, background: 'var(--color-fill-2)',
-                borderRadius: 4, fontSize: 11, overflowX: 'auto',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word'
-              }}>{argsFormatted}</pre>
+            <div className="mb-2">
+              <div className="mb-1 font-medium text-[var(--color-text-2)]">参数:</div>
+              <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded bg-[var(--color-fill-2)] p-2 text-[11px]">{argsFormatted}</pre>
             </div>
           )}
           {tool.result && (
             <div>
-              <div style={{ fontWeight: 500, color: 'var(--color-text-2)', marginBottom: 4 }}>结果:</div>
-              <pre style={{
-                margin: 0, padding: 8, background: 'var(--color-fill-2)',
-                borderRadius: 4, fontSize: 11, overflowX: 'auto',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                maxHeight: 300, overflowY: 'auto'
-              }}>{tool.result}</pre>
+              <div className="mb-1 font-medium text-[var(--color-text-2)]">结果:</div>
+              <pre className="m-0 max-h-[300px] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded bg-[var(--color-fill-2)] p-2 text-[11px]">{tool.result}</pre>
             </div>
           )}
         </div>
@@ -157,51 +140,45 @@ const ToolItem: React.FC<{ tool: ToolCallData }> = ({ tool }) => {
 
 const ToolCallGroup: React.FC<ToolCallGroupProps> = ({ toolCalls, isStreaming }) => {
   const [expanded, setExpanded] = useState(false);
-  const completedCount = toolCalls.filter(t => t.status === 'completed').length;
+  const finishedCount = toolCalls.filter(t => t.status === 'completed' || t.status === 'error').length;
+  const hasError = toolCalls.some(t => t.status === 'error');
   const totalCount = toolCalls.length;
-  const hasRunning = completedCount < totalCount;
+  const hasRunning = finishedCount < totalCount;
   const shouldAutoExpand = isStreaming || hasRunning;
 
   const isExpanded = shouldAutoExpand || expanded;
 
   return (
-    <div style={{ margin: '4px 0' }}>
+    <div className="my-1">
       <div
         onClick={() => !shouldAutoExpand && setExpanded(!expanded)}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 6,
-          padding: '4px 8px', cursor: 'pointer', userSelect: 'none',
-          fontSize: 12, color: 'var(--color-text-3)', borderRadius: 4, margin: '2px 0'
-        }}
-        className="tool-group-header"
+        className="tool-group-header my-0.5 inline-flex cursor-pointer select-none items-center gap-1.5 rounded px-2 py-1 text-xs text-[var(--color-text-3)]"
       >
-        <span style={{
-          fontSize: 8, width: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'transform 0.2s', transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'
-        }}>▶</span>
-        <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+        <span className={[
+          'inline-flex h-3 w-3 items-center justify-center text-[8px] transition-transform duration-200',
+          isExpanded ? 'rotate-90' : 'rotate-0',
+        ].join(' ')}>▶</span>
+        <span className="inline-flex items-center">
           {hasRunning ? (
-            <span style={{
-              display: 'inline-block', width: 10, height: 10,
-              border: '1.5px solid #1677ff', borderTopColor: 'transparent',
-              borderRadius: '50%', animation: 'tool-spin 0.8s linear infinite'
-            }} />
+            <ToolSpinner />
+          ) : hasError ? (
+            <span className="text-xs text-[var(--color-error)]">✕</span>
           ) : (
-            <span style={{ color: '#52c41a', fontSize: 12 }}>✓</span>
+            <span className="text-xs text-[var(--color-success)]">✓</span>
           )}
         </span>
         <span>已调用 {totalCount} 个工具</span>
         {!shouldAutoExpand && (
-          <span style={{ color: 'var(--color-text-4)' }}>
+          <span className="text-[var(--color-text-4)]">
             {expanded ? '点击收起' : '点击展开查看详情'}
           </span>
         )}
         {shouldAutoExpand && (
-          <span style={{ color: 'var(--color-text-4)' }}>执行中...</span>
+          <span className="text-[var(--color-text-4)]">执行中...</span>
         )}
       </div>
       {isExpanded && (
-        <div style={{ marginTop: 4 }}>
+        <div className="mt-1">
           {toolCalls.map(tool => (
             <ToolItem key={tool.id} tool={tool} />
           ))}

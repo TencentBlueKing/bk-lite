@@ -39,6 +39,31 @@ const TooltipSwitch: React.FC<{
   return switchEl;
 };
 
+const CompareSwitch: React.FC<{
+  checked?: boolean;
+  onChange?: (checked: boolean) => void;
+  readonly?: boolean;
+  compareAvailable: boolean;
+  unavailableTip: string;
+}> = ({ checked, onChange, readonly, compareAvailable, unavailableTip }) => {
+  const form = Form.useFormInstance();
+  return (
+    <TooltipSwitch
+      checked={checked}
+      disabled={readonly || !compareAvailable}
+      tooltipTitle={
+        !readonly && !compareAvailable ? unavailableTip : undefined
+      }
+      onChange={(nextChecked) => {
+        onChange?.(nextChecked);
+        if (nextChecked && !form.getFieldValue('compareMode')) {
+          form.setFieldValue('compareMode', 'percent');
+        }
+      }}
+    />
+  );
+};
+
 interface SingleValueSettingsSectionProps {
   t: (key: string) => string;
   sectionTitle?: string;
@@ -94,8 +119,8 @@ export const SingleValueSettingsSection: React.FC<
     (node) => node.children?.length,
   );
   const fieldSelectorClassName = canSelectField
-    ? '[&_.ant-select-selector]:cursor-pointer'
-    : '';
+    ? 'w-full [&_.ant-select-selector]:cursor-pointer'
+    : 'w-full';
   const fieldPopupClassName = hasNestedFieldOptions
     ? ''
     : '[&_.ant-select-tree-switcher]:hidden [&_.ant-select-tree-switcher]:!w-0 [&_.ant-select-tree-indent]:hidden';
@@ -187,7 +212,6 @@ export const SingleValueSettingsSection: React.FC<
             }
             className={fieldSelectorClassName}
             popupClassName={fieldPopupClassName}
-            style={{ width: '100%' }}
             dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
           />
         </Form.Item>
@@ -222,7 +246,6 @@ export const SingleValueSettingsSection: React.FC<
               disabled={fieldSelectorDisabled}
               className={fieldSelectorClassName}
               popupClassName={fieldPopupClassName}
-              style={{ width: '100%' }}
               dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
             />
           </Form.Item>
@@ -234,20 +257,17 @@ export const SingleValueSettingsSection: React.FC<
           <span>
             {t('dashboard.compareLabel')}
             <Tooltip title={t('dashboard.comparePreviousPeriodTip')}>
-              <QuestionCircleOutlined className="ml-1 text-gray-400 cursor-help" />
+              <QuestionCircleOutlined className="ml-1 cursor-help text-[var(--color-text-3)]" />
             </Tooltip>
           </span>
         }
         name="compare"
         valuePropName="checked"
       >
-        <TooltipSwitch
-          disabled={readonly || !compareAvailable}
-          tooltipTitle={
-            !readonly && !compareAvailable
-              ? t('dashboard.compareUnavailableTip')
-              : undefined
-          }
+        <CompareSwitch
+          readonly={readonly}
+          compareAvailable={compareAvailable}
+          unavailableTip={t('dashboard.compareUnavailableTip')}
         />
       </Form.Item>
 
@@ -256,10 +276,14 @@ export const SingleValueSettingsSection: React.FC<
         shouldUpdate={(prev, current) => prev.compare !== current.compare}
       >
         {({ getFieldValue }) => getFieldValue('compare') ? (
-          <Form.Item label={t('dashboard.compareMode')} name="compareMode">
+          <Form.Item
+            label={t('dashboard.compareMode')}
+            name="compareMode"
+            initialValue="percent"
+          >
             <Select
               disabled={readonly}
-              style={{ width: '200px' }}
+              className="w-[200px]"
               options={[
                 { value: 'percent', label: t('dashboard.compareModePercent') },
                 { value: 'value', label: t('dashboard.compareModeValue') },
@@ -274,7 +298,7 @@ export const SingleValueSettingsSection: React.FC<
           allowClear
           placeholder={t('common.selectMsg')}
           disabled={readonly}
-          style={{ width: '200px' }}
+          className="w-[200px]"
           options={[
             { value: '', label: t('topology.nodeConfig.customSuffix') },
             ...getUnitCategories().map((cat) => ({
@@ -299,7 +323,7 @@ export const SingleValueSettingsSection: React.FC<
               <Input
                 placeholder={t('common.inputMsg')}
                 disabled={readonly}
-                style={{ width: '200px' }}
+                className="w-[200px]"
               />
             </Form.Item>
           ) : null
@@ -316,7 +340,7 @@ export const SingleValueSettingsSection: React.FC<
           step={0.01}
           placeholder={t('common.inputMsg')}
           disabled={readonly}
-          style={{ width: '120px' }}
+          className="w-[120px]"
         />
       </Form.Item>
 
@@ -330,7 +354,7 @@ export const SingleValueSettingsSection: React.FC<
           step={1}
           placeholder={t('common.inputMsg')}
           disabled={readonly}
-          style={{ width: '120px' }}
+          className="w-[120px]"
         />
       </Form.Item>
 

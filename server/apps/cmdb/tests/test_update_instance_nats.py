@@ -1,9 +1,3 @@
-"""CMDB NATS update_instance 处理器单元测试。
-
-对照 apps/cmdb/nats/nats.py 的 update_instance：实例定位（inst_id / model_id+inst_name）、
-参数校验、对 InstanceManage.instance_update 的委托与透传。
-"""
-
 from unittest.mock import patch
 
 import django
@@ -11,23 +5,34 @@ import pytest
 
 django.setup()
 
-from apps.cmdb.nats import nats as N
+from apps.cmdb.nats import nats as N  # noqa: E402
+
+INST_UUID = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
-def test_update_instance_by_inst_id(mock_im):
-    mock_im.instance_update.return_value = {"_id": 123, "inst_name": "host-01"}
+def test_update_instance_by_uuid_hides_graph_id(mock_im):
+    mock_im.instance_update_by_uuid.return_value = {
+        "_id": 123,
+        "inst_uuid": INST_UUID,
+        "inst_name": "host-01",
+    }
 
     result = N.update_instance(
-        {"inst_id": 123, "update_attr": {"ip": "1.2.3.4"}, "operator": "admin", "allowed_org_ids": [3]}
+        {
+            "protocol_version": "2",
+            "inst_uuid": INST_UUID,
+            "update_attr": {"ip": "1.2.3.4"},
+            "operator": "admin",
+            "allowed_org_ids": [3],
+        }
     )
 
-    assert result == {"_id": 123, "inst_name": "host-01"}
-    mock_im.search_inst.assert_not_called()
-    mock_im.instance_update.assert_called_once_with(
+    assert result == {"inst_uuid": INST_UUID, "inst_name": "host-01"}
+    mock_im.instance_update_by_uuid.assert_called_once_with(
         user_groups=[{"id": 3}],
         roles=[],
-        inst_id=123,
+        inst_uuid=INST_UUID,
         update_attr={"ip": "1.2.3.4"},
         operator="admin",
         allowed_org_ids=[3],
@@ -37,83 +42,84 @@ def test_update_instance_by_inst_id(mock_im):
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_update_instance_missing_auth_context_rejects(mock_im):
-    """缺少 user_info / allowed_org_ids / service_scope 时拒绝写入。"""
-    mock_im.instance_update.return_value = {"_id": 1}
-
     with pytest.raises(ValueError, match="authorization scope"):
-        N.update_instance({"inst_id": 1, "update_attr": {"organization": [3, 5]}})
-
-    mock_im.instance_update.assert_not_called()
+        N.update_instance(
+            {
+                "protocol_version": "2",
+                "inst_uuid": INST_UUID,
+                "update_attr": {"organization": [3]},
+            }
+        )
+    mock_im.instance_update_by_uuid.assert_not_called()
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
-def test_update_instance_explicit_allowed_org_ids(mock_im):
-    """显式传 allowed_org_ids 时按其限制。"""
-    mock_im.instance_update.return_value = {"_id": 1}
-
+def test_update_instance_explicit_scope_is_forwarded(mock_im):
+    mock_im.instance_update_by_uuid.return_value = {"inst_uuid": INST_UUID}
     N.update_instance(
-        {"inst_id": 1, "update_attr": {"organization": [3]}, "allowed_org_ids": [3, 9]}
+        {
+            "protocol_version": "2",
+            "inst_uuid": INST_UUID,
+            "update_attr": {"organization": [3]},
+            "allowed_org_ids": [3, 9],
+        }
     )
-
-    _, kwargs = mock_im.instance_update.call_args
+    kwargs = mock_im.instance_update_by_uuid.call_args.kwargs
     assert kwargs["allowed_org_ids"] == [3, 9]
     assert kwargs["user_groups"] == [{"id": 3}, {"id": 9}]
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_update_instance_organization_outside_scope_rejects(mock_im):
-    mock_im.instance_update.return_value = {"_id": 1}
-
     with pytest.raises(ValueError, match="organization .*授权范围"):
-        N.update_instance({"inst_id": 1, "update_attr": {"organization": [9]}, "allowed_org_ids": [3]})
+        N.update_instance(
+            {
+                "protocol_version": "2",
+                "inst_uuid": INST_UUID,
+                "update_attr": {"organization": [9]},
+                "allowed_org_ids": [3],
+            }
+        )
+    mock_im.instance_update_by_uuid.assert_not_called()
 
-    mock_im.instance_update.assert_not_called()
+
+@pytest.mark.parametrize("payload", [{"inst_id": 1}, {"_id": 1}, {"inst_ids": [1]}])
+@patch("apps.cmdb.nats.nats.InstanceManage")
+def test_update_instance_rejects_legacy_locators(mock_im, payload):
+    with pytest.raises(ValueError, match="legacy numeric locators"):
+        N.update_instance(
+            {
+                "protocol_version": "2",
+                **payload,
+                "update_attr": {"k": "v"},
+                "allowed_org_ids": [1],
+            }
+        )
+    mock_im.instance_update_by_uuid.assert_not_called()
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
-def test_update_instance_by_underscore_id(mock_im):
-    mock_im.instance_update.return_value = {"_id": 9}
-
-    N.update_instance({"_id": 9, "update_attr": {"k": "v"}, "allowed_org_ids": [1]})
-
-    _, kwargs = mock_im.instance_update.call_args
-    assert kwargs["inst_id"] == 9
-    assert kwargs["operator"] == ""
-
-
-@patch("apps.cmdb.nats.nats.InstanceManage")
-def test_update_instance_by_model_and_name(mock_im):
-    mock_im.search_inst.return_value = ([{"_id": 55, "inst_name": "host-01"}], 1)
-    mock_im.instance_update.return_value = {"_id": 55}
-
-    N.update_instance(
-        {"model_id": "host", "inst_name": "host-01", "update_attr": {"ip": "10.0.0.1"}, "allowed_org_ids": [1]}
-    )
-
-    mock_im.search_inst.assert_called_once_with(model_id="host", inst_name="host-01")
-    _, kwargs = mock_im.instance_update.call_args
-    assert kwargs["inst_id"] == 55
+def test_update_instance_missing_uuid_raises(mock_im):
+    with pytest.raises(ValueError, match="inst_uuid is required"):
+        N.update_instance(
+            {
+                "protocol_version": "2",
+                "update_attr": {"k": "v"},
+                "allowed_org_ids": [1],
+            }
+        )
+    mock_im.instance_update_by_uuid.assert_not_called()
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
 def test_update_instance_empty_update_attr_raises(mock_im):
     with pytest.raises(ValueError, match="update_attr is required"):
-        N.update_instance({"inst_id": 1, "update_attr": {}})
-    mock_im.instance_update.assert_not_called()
+        N.update_instance({"protocol_version": "2", "inst_uuid": INST_UUID, "update_attr": {}})
+    mock_im.instance_update_by_uuid.assert_not_called()
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
-def test_update_instance_missing_locator_raises(mock_im):
-    with pytest.raises(ValueError, match="inst_id or"):
-        N.update_instance({"update_attr": {"k": "v"}, "allowed_org_ids": [1]})
-    mock_im.instance_update.assert_not_called()
-
-
-@patch("apps.cmdb.nats.nats.InstanceManage")
-def test_update_instance_not_found_raises(mock_im):
-    mock_im.search_inst.return_value = ([], 0)
-    with pytest.raises(ValueError, match="实例不存在"):
-        N.update_instance(
-            {"model_id": "host", "inst_name": "ghost", "update_attr": {"k": "v"}, "allowed_org_ids": [1]}
-        )
-    mock_im.instance_update.assert_not_called()
+def test_update_instance_requires_protocol_version(mock_im):
+    with pytest.raises(ValueError, match="unsupported CMDB identity protocol version"):
+        N.update_instance({"inst_uuid": INST_UUID, "update_attr": {"k": "v"}, "allowed_org_ids": [1]})
+    mock_im.instance_update_by_uuid.assert_not_called()

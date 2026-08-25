@@ -8,6 +8,7 @@ from django.db.models import F
 from apps.monitor.models import MonitorAlert
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.tasks.utils.policy_calculate import vm_to_dataframe, calculate_alerts
+from apps.monitor.utils.alert_name_variables import overlay_dimension_field_values
 from apps.monitor.utils.dimension import (
     build_dimensions,
     extract_monitor_instance_id,
@@ -29,6 +30,9 @@ class AlertDetector:
         active_alerts,
         metric_query_service,
         parent_instances_map=None,
+        resource_ip_map=None,
+        display_variable_map=None,
+        display_field_label_map=None,
     ):
         self.policy = policy
         self.instances_map = instances_map
@@ -36,6 +40,9 @@ class AlertDetector:
         self.active_alerts = active_alerts
         self.metric_query_service = metric_query_service
         self.parent_instances_map = parent_instances_map or {}
+        self.resource_ip_map = resource_ip_map or {}
+        self.display_variable_map = display_variable_map or {}
+        self.display_field_label_map = display_field_label_map or {}
         self._scoped_instance_matcher = ScopedInstanceMatcher(
             getattr(getattr(self.policy, "monitor_object", None), "instance_id_keys", None)
             or [],
@@ -169,20 +176,28 @@ class AlertDetector:
 
     def _build_metric_resource_context(self, metric_instance_id: str) -> dict:
         monitor_instance_id = self._extract_monitor_instance_id(metric_instance_id)
+        dimensions = self._parse_dimensions(metric_instance_id)
         return {
             "monitor_instance_id": monitor_instance_id,
-            **self._build_resource_context(monitor_instance_id),
+            **self._build_resource_context(monitor_instance_id, dimensions),
         }
 
-    def _build_resource_context(self, monitor_instance_id: str) -> dict:
+    def _build_resource_context(self, monitor_instance_id: str, dimensions: dict | None = None) -> dict:
         resource_name = self.instances_map.get(
             monitor_instance_id, monitor_instance_id
+        )
+        display_values = overlay_dimension_field_values(
+            self.display_variable_map.get(monitor_instance_id, {}),
+            dimensions or {},
+            self.display_field_label_map,
         )
         context = {
             "resource_id": monitor_instance_id,
             "resource_name": resource_name,
+            "resource_ip": self.resource_ip_map.get(monitor_instance_id, ""),
             "parent_resource_id": "",
             "parent_resource_name": "",
+            **display_values,
         }
 
         monitor_object = getattr(self.policy, "monitor_object", None)
@@ -220,9 +235,11 @@ class AlertDetector:
             monitor_instance_id = self._resolve_baseline_monitor_instance_id(
                 metric_instance_id
             )
-            resource_context = self._build_resource_context(monitor_instance_id)
-            resource_name = resource_context["resource_name"]
             dimensions = self._parse_dimensions(metric_instance_id)
+            resource_context = self._build_resource_context(
+                monitor_instance_id, dimensions
+            )
+            resource_name = resource_context["resource_name"]
             dimension_str = self._format_dimension_str(dimensions)
             display_name = f"{resource_name} - {dimension_str}" if dimension_str else resource_name
             group_by_keys = self._get_group_by_keys()

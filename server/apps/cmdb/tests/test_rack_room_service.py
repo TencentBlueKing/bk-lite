@@ -10,6 +10,10 @@ from apps.cmdb.services import rack_room
 VIEWS = "apps.cmdb.views.instance"
 
 
+def _uuid(value: int) -> str:
+    return f"00000000-0000-4000-8000-{value:012d}"
+
+
 def _assoc(src_model, dst_model, asst, ids):
     return {
         "src_model_id": src_model,
@@ -27,12 +31,12 @@ class TestGetRackLayout:
     @patch.object(rack_room.InstanceManage, "instance_association_instance_list")
     @patch.object(rack_room.InstanceManage, "query_entity_by_id")
     def test_assemble_devices(self, q_entity, q_assoc, q_map, _perm):
-        q_entity.return_value = {"_id": 5, "inst_name": "A03", "model_id": "rack", "u_count": 42}
+        q_entity.return_value = {"_id": 5, "inst_uuid": _uuid(5), "inst_name": "A03", "model_id": "rack", "u_count": 42}
         q_assoc.return_value = [_assoc("rack", "switch", "contains", [10])]
-        q_map.return_value = {10: {"_id": 10, "inst_name": "sw", "model_id": "switch", "rack_u_start": 41, "u_size": 2}}
+        q_map.return_value = {10: {"_id": 10, "inst_uuid": _uuid(10), "inst_name": "sw", "model_id": "switch", "rack_u_start": 41, "u_size": 2}}
         out = rack_room.get_rack_layout(5, permission_map={"x": 1}, user=None)
-        assert out["rack"] == {"inst_id": "5", "inst_name": "A03", "u_count": 42}
-        assert [d["inst_id"] for d in out["placed"]] == ["10"]
+        assert out["rack"] == {"inst_uuid": _uuid(5), "inst_name": "A03", "u_count": 42}
+        assert [d["inst_uuid"] for d in out["placed"]] == [_uuid(10)]
 
 
 @pytest.mark.unit
@@ -52,6 +56,7 @@ class TestGetRoomLayout:
             full = {
                 5: {
                     "_id": 5,
+                    "inst_uuid": _uuid(5),
                     "inst_name": "A03",
                     "model_id": "rack",
                     "row": 1,
@@ -88,6 +93,7 @@ class TestGetRoomLayout:
         q_map.return_value = {
             5: {
                 "_id": 5,
+                "inst_uuid": _uuid(5),
                 "inst_name": "ROOM3D-SHOT-RACK-C03",
                 "model_id": "rack",
                 "row": 3,
@@ -100,10 +106,11 @@ class TestGetRoomLayout:
         out = rack_room.get_room_layout(7, permission_map={"x": 1}, user=None)
 
         assert len(out["racks"]) == 1
-        assert out["racks"][0]["row"] == 1
-        assert out["racks"][0]["col"] == 9
+        # A09：字母 A=列 1，数字 09=行 9（与俯视图「列字母 × 行数字」一致）
+        assert out["racks"][0]["row"] == 9
+        assert out["racks"][0]["col"] == 1
         assert out["racks"][0]["location"] == "A09"
-        assert out["grid"] == {"max_row": 1, "max_col": 9}
+        assert out["grid"] == {"max_row": 9, "max_col": 1}
 
     @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=True)
     @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")
@@ -120,7 +127,17 @@ class TestGetRoomLayout:
 
         def map_side_effect(ids):
             full = {
-                5: {"_id": 5, "inst_name": "R", "model_id": "rack", "row": 1, "col": 1, "location": "A01", "u_count": 10, "datacenter_type": "1"},
+                5: {
+                    "_id": 5,
+                    "inst_uuid": _uuid(5),
+                    "inst_name": "R",
+                    "model_id": "rack",
+                    "row": 1,
+                    "col": 1,
+                    "location": "A01",
+                    "u_count": 10,
+                    "datacenter_type": "1",
+                },
                 10: {"_id": 10, "inst_name": "sw1", "model_id": "switch", "rack_u_start": 1, "u_size": 2},
                 11: {"_id": 11, "inst_name": "sw2", "model_id": "switch", "rack_u_start": None, "u_size": 2},
             }
@@ -161,6 +178,7 @@ class TestGetRoomLayout:
         q_map.return_value = {
             5: {
                 "_id": 5,
+                "inst_uuid": _uuid(5),
                 "inst_name": "A03",
                 "model_id": "rack",
                 "row": 1,
@@ -194,55 +212,69 @@ class TestRackDevicePermission:
 @pytest.mark.unit
 class TestRoom3DRackDeviceSummaries:
     @patch.object(rack_room.InstanceManage, "_has_topology_view_permission")
-    @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")
-    def test_batches_associations_instances_and_permissions(self, q_map, q_perm):
+    @patch.object(rack_room.InstanceManage, "query_entity_by_uuids")
+    @patch.object(rack_room.InstanceManage, "query_entity_by_ids")
+    def test_batches_associations_instances_and_permissions(self, q_racks, q_devices, q_perm):
+        rack_5_uuid = "550e8400-e29b-41d4-a716-446655440005"
+        rack_6_uuid = "550e8400-e29b-41d4-a716-446655440006"
+        device_10_uuid = "550e8400-e29b-41d4-a716-446655440010"
+        device_11_uuid = "550e8400-e29b-41d4-a716-446655440011"
+        device_12_uuid = "550e8400-e29b-41d4-a716-446655440012"
         graph_client = MagicMock()
         graph_client.query_edge.return_value = [
-            {"src_inst_id": 5, "dst_inst_id": 10},
-            {"src_inst_id": 5, "dst_inst_id": 11},
-            {"src_inst_id": 6, "dst_inst_id": 12},
+            {"src_inst_uuid": rack_5_uuid, "dst_inst_uuid": device_10_uuid},
+            {"src_inst_uuid": rack_5_uuid, "dst_inst_uuid": device_11_uuid},
+            {"src_inst_uuid": rack_6_uuid, "dst_inst_uuid": device_12_uuid},
         ]
         graph_context = MagicMock()
         graph_context.__enter__.return_value = graph_client
         graph_context.__exit__.return_value = False
-        q_map.return_value = {
-            10: {
+        q_racks.return_value = [
+            {"_id": 5, "inst_uuid": rack_5_uuid, "model_id": "rack"},
+            {"_id": 6, "inst_uuid": rack_6_uuid, "model_id": "rack"},
+        ]
+        device_rows = [
+            {
                 "_id": 10,
+                "inst_uuid": device_10_uuid,
                 "inst_name": "sw",
                 "model_id": "switch",
                 "rack_u_start": 1,
                 "u_size": 2,
                 "status": ["running"],
             },
-            11: {
+            {
                 "_id": 11,
+                "inst_uuid": device_11_uuid,
                 "inst_name": "host",
                 "model_id": "host",
                 "rack_u_start": None,
                 "u_size": 1,
             },
-            12: {
+            {
                 "_id": 12,
+                "inst_uuid": device_12_uuid,
                 "inst_name": "db",
                 "model_id": "host",
                 "rack_u_start": 3,
                 "u_size": 2,
             },
-        }
+        ]
+        q_devices.side_effect = [q_racks.return_value, device_rows]
         q_perm.side_effect = lambda inst, *a, **k: inst["_id"] != 12
 
         with patch("apps.cmdb.services.rack_room.GraphClient", return_value=graph_context):
             out = rack_room.get_room3d_rack_device_summaries(
-                [5, "6", 5, "", None],
+                [rack_5_uuid, rack_6_uuid],
                 permission_map={"x": 1},
                 user=None,
             )
 
         assert out == {
-            5: {
+            rack_5_uuid: {
                 "devices": [
                     {
-                        "device_id": "10",
+                        "device_id": device_10_uuid,
                         "device_name": "sw",
                         "model_id": "switch",
                         "rack_u_start": 1,
@@ -253,50 +285,95 @@ class TestRoom3DRackDeviceSummaries:
                 "device_count": 2,
                 "unplaced_device_count": 1,
             },
-            6: {"devices": [], "device_count": 0, "unplaced_device_count": 0},
+            rack_6_uuid: {"devices": [], "device_count": 0, "unplaced_device_count": 0},
         }
-        q_map.assert_called_once_with({10, 11, 12})
+        q_racks.assert_called_once_with([5, 6])
+        assert q_devices.call_args_list[0].args == ([rack_5_uuid, rack_6_uuid],)
+        assert q_devices.call_args_list[1].args == ([device_10_uuid, device_11_uuid, device_12_uuid],)
         graph_client.query_edge.assert_called_once_with(
             "instance_association",
             [
-                {"field": "src_inst_id", "type": "int[]", "value": [5, 6]},
+                {"field": "src_inst_uuid", "type": "str[]", "value": [rack_5_uuid, rack_6_uuid]},
                 {"field": "src_model_id", "type": "str=", "value": "rack"},
             ],
         )
 
     @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=True)
-    @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")
-    def test_uses_outgoing_rack_relations_only(self, q_map, _perm):
+    @patch.object(rack_room.InstanceManage, "query_entity_by_uuids")
+    @patch.object(rack_room.InstanceManage, "query_entity_by_ids")
+    def test_uses_outgoing_rack_relations_only(self, q_racks, q_devices, _perm):
+        rack_uuid = "550e8400-e29b-41d4-a716-446655440005"
+        other_rack_uuid = "550e8400-e29b-41d4-a716-446655440999"
+        device_uuid = "550e8400-e29b-41d4-a716-446655440010"
+        other_device_uuid = "550e8400-e29b-41d4-a716-446655440011"
         graph_client = MagicMock()
         graph_client.query_edge.return_value = [
-            {"src_inst_id": 5, "dst_inst_id": 10},
-            {"src_inst_id": 999, "dst_inst_id": 11},
+            {"src_inst_uuid": rack_uuid, "dst_inst_uuid": device_uuid},
+            {"src_inst_uuid": other_rack_uuid, "dst_inst_uuid": other_device_uuid},
         ]
         graph_context = MagicMock()
         graph_context.__enter__.return_value = graph_client
         graph_context.__exit__.return_value = False
-        q_map.return_value = {
-            10: {
+        q_racks.return_value = [{"_id": 5, "inst_uuid": rack_uuid, "model_id": "rack"}]
+        device_rows = [
+            {
                 "_id": 10,
+                "inst_uuid": device_uuid,
                 "inst_name": "sw",
                 "model_id": "switch",
                 "rack_u_start": 1,
                 "u_size": 1,
-            }
-        }
+            },
+            {
+                "_id": 11,
+                "inst_uuid": other_device_uuid,
+                "inst_name": "other",
+                "model_id": "switch",
+                "rack_u_start": 2,
+                "u_size": 1,
+            },
+        ]
 
+        q_devices.side_effect = [q_racks.return_value, device_rows]
         with patch("apps.cmdb.services.rack_room.GraphClient", return_value=graph_context):
-            out = rack_room.get_room3d_rack_device_summaries([5], permission_map={"x": 1})
+            out = rack_room.get_room3d_rack_device_summaries([rack_uuid], permission_map={"x": 1})
 
-        assert out[5]["device_count"] == 1
-        q_map.assert_called_once_with({10})
+        assert out[rack_uuid]["device_count"] == 1
+        q_racks.assert_called_once_with([5])
+        assert q_devices.call_args_list[0].args == ([rack_uuid],)
+        assert q_devices.call_args_list[1].args == ([device_uuid, other_device_uuid],)
         graph_client.query_edge.assert_called_once_with(
             "instance_association",
             [
-                {"field": "src_inst_id", "type": "int[]", "value": [5]},
+                {"field": "src_inst_uuid", "type": "str[]", "value": [rack_uuid]},
                 {"field": "src_model_id", "type": "str=", "value": "rack"},
             ],
         )
+
+    @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=True)
+    @patch.object(rack_room.InstanceManage, "query_entity_by_uuids")
+    @patch.object(rack_room.InstanceManage, "query_entity_by_ids")
+    def test_summary_skips_device_without_uuid(self, q_racks, q_devices, _perm):
+        rack_uuid = "550e8400-e29b-41d4-a716-446655440005"
+        graph_client = MagicMock()
+        graph_client.query_edge.return_value = [{"src_inst_uuid": rack_uuid, "dst_inst_uuid": "550e8400-e29b-41d4-a716-446655440010"}]
+        graph_context = MagicMock()
+        graph_context.__enter__.return_value = graph_client
+        graph_context.__exit__.return_value = False
+        q_racks.return_value = [{"_id": 5, "inst_uuid": rack_uuid, "model_id": "rack"}]
+        q_devices.side_effect = [
+            q_racks.return_value,
+            [{"_id": 10, "model_id": "switch", "rack_u_start": 1, "u_size": 1}],
+        ]
+
+        with patch("apps.cmdb.services.rack_room.GraphClient", return_value=graph_context):
+            out = rack_room.get_room3d_rack_device_summaries([rack_uuid], permission_map={"x": 1})
+
+        assert out[rack_uuid] == {
+            "devices": [],
+            "device_count": 0,
+            "unplaced_device_count": 0,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -347,33 +424,39 @@ class TestLayoutViews:
     def test_rack_layout_route(self, superuser, monkeypatch):
         from apps.cmdb.views.instance import InstanceViewSet
 
+        sample_uuid = "550e8400-e29b-41d4-a716-446655440005"
         monkeypatch.setattr(
-            f"{VIEWS}.InstanceManage.query_entity_by_id",
-            lambda pk: {"_id": 5, "model_id": "rack", "inst_name": "A03"},
+            f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+            lambda uid: {"_id": 5, "model_id": "rack", "inst_name": "A03", "inst_uuid": uid},
         )
         monkeypatch.setattr(f"{VIEWS}.get_rack_layout", lambda *a, **k: {"ok": 1})
-        response = InstanceViewSet.as_view({"get": "rack_layout"})(_get_req(superuser), model_id="rack", inst_id="5")
+        response = InstanceViewSet.as_view({"get": "rack_layout"})(_get_req(superuser), model_id="rack", inst_uuid=sample_uuid)
         assert response.status_code == status.HTTP_200_OK
         assert _body(response)["data"] == {"ok": 1}
 
     def test_room_layout_route(self, superuser, monkeypatch):
         from apps.cmdb.views.instance import InstanceViewSet
 
+        sample_uuid = "550e8400-e29b-41d4-a716-446655440007"
         monkeypatch.setattr(
-            f"{VIEWS}.InstanceManage.query_entity_by_id",
-            lambda pk: {"_id": 7, "model_id": "server_room", "inst_name": "R1"},
+            f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+            lambda uid: {"_id": 7, "model_id": "server_room", "inst_name": "R1", "inst_uuid": uid},
         )
         monkeypatch.setattr(f"{VIEWS}.get_room_layout", lambda *a, **k: {"racks": []})
-        response = InstanceViewSet.as_view({"get": "room_layout"})(_get_req(superuser), model_id="server_room", inst_id="7")
+        response = InstanceViewSet.as_view({"get": "room_layout"})(_get_req(superuser), model_id="server_room", inst_uuid=sample_uuid)
         assert response.status_code == status.HTTP_200_OK
         assert _body(response)["data"] == {"racks": []}
 
     def test_rack_layout_404_when_missing(self, superuser, monkeypatch):
         from apps.cmdb.views.instance import InstanceViewSet
 
-        monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_id", lambda pk: None)
+        monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuid", lambda uid: None)
         monkeypatch.setattr(f"{VIEWS}.get_rack_layout", lambda *a, **k: {"ok": 1})
-        response = InstanceViewSet.as_view({"get": "rack_layout"})(_get_req(superuser), model_id="rack", inst_id="999")
+        response = InstanceViewSet.as_view({"get": "rack_layout"})(
+            _get_req(superuser),
+            model_id="rack",
+            inst_uuid="550e8400-e29b-41d4-a716-446655440099",
+        )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -457,10 +540,24 @@ class TestGetRoomListNatsHandler:
         from apps.cmdb.nats import nats
 
         mock_list_rooms.return_value = [
-            {"_id": 1, "inst_name": "机房A", "model_id": "server_room"},
+            {
+                "_id": 1,
+                "inst_uuid": "11111111-1111-4111-8111-111111111111",
+                "inst_name": "机房A",
+                "model_id": "server_room",
+            },
         ]
         result = nats.get_room_list(user_info={"team": 1, "user": "alice"})
-        assert result == {"items": [{"_id": 1, "inst_name": "机房A", "model_id": "server_room"}]}
+        assert result == {
+            "items": [
+                {
+                    "_id": 1,
+                    "inst_uuid": "11111111-1111-4111-8111-111111111111",
+                    "inst_name": "机房A",
+                    "model_id": "server_room",
+                }
+            ]
+        }
 
     @patch("apps.cmdb.nats.nats.rack_room.list_server_rooms")
     @patch("apps.cmdb.nats.nats._build_nats_permission_map", return_value={"10": {}})

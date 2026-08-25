@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Popover, Typography } from 'antd';
+import { useTranslation } from '@/utils/i18n';
 
 export interface ServiceTagItem {
   name: string;
@@ -19,7 +20,7 @@ const chipClassName = (silent: boolean) => (
 );
 
 const overflowChipClassName = (
-  'inline-flex shrink-0 cursor-pointer items-center rounded border border-[color-mix(in_srgb,var(--color-primary)_28%,var(--color-border))] '
+  'inline-flex min-h-10 shrink-0 cursor-pointer items-center rounded border border-[color-mix(in_srgb,var(--color-primary)_28%,var(--color-border))] '
   + 'bg-[var(--color-primary-bg-active)] px-2 py-0.5 text-xs font-medium tabular-nums text-[var(--color-primary)] '
   + 'transition-colors duration-150 hover:border-[var(--color-primary)] focus-visible:outline-2 '
   + 'focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]'
@@ -53,14 +54,16 @@ export function computeVisibleServiceTagCount(
 }
 
 function ServiceChip({ name, silent }: ServiceTagItem) {
+  const { t } = useTranslation();
   return (
-    <span className={chipClassName(silent)} title={silent ? `${name}（静默）` : name}>
+    <span className={chipClassName(silent)} title={silent ? t('apm.tags.silentName', '{name}（静默）', { name }) : name}>
       {name}
     </span>
   );
 }
 
 function OverflowList({ services }: { services: ServiceTagItem[] }) {
+  const { t } = useTranslation();
   return (
     <div className="flex max-h-56 w-56 flex-col gap-1 overflow-auto py-0.5" role="list">
       {services.map((service) => (
@@ -75,7 +78,7 @@ function OverflowList({ services }: { services: ServiceTagItem[] }) {
             {service.name}
           </Typography.Text>
           {service.silent ? (
-            <span className="shrink-0 text-[10px] text-[var(--color-text-4)]">静默</span>
+            <span className="shrink-0 text-[10px] text-[var(--color-text-4)]">{t('apm.tags.silent', '静默')}</span>
           ) : null}
         </div>
       ))}
@@ -85,11 +88,13 @@ function OverflowList({ services }: { services: ServiceTagItem[] }) {
 
 export default function ServiceTagOverflow({
   services,
-  emptyLabel = '尚无服务上报',
+  emptyLabel,
 }: {
   services: ServiceTagItem[];
   emptyLabel?: string;
 }) {
+  const { t } = useTranslation();
+  const resolvedEmpty = emptyLabel ?? t('apm.tags.empty', '尚无服务上报');
   const containerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const badgeMeasureRef = useRef<HTMLSpanElement>(null);
@@ -122,7 +127,7 @@ export default function ServiceTagOverflow({
   }, [serviceKey]);
 
   if (!services.length) {
-    return <Typography.Text type="secondary" className="!text-xs">{emptyLabel}</Typography.Text>;
+    return <Typography.Text type="secondary" className="!text-xs">{resolvedEmpty}</Typography.Text>;
   }
 
   const safeVisible = Math.min(visibleCount, services.length);
@@ -147,31 +152,24 @@ export default function ServiceTagOverflow({
         content={(
           <div onClick={stopCardNavigation} onMouseDown={stopCardNavigation}>
             <div className="mb-1.5 flex items-center justify-between gap-2">
-              <Typography.Text strong className="!text-xs">服务列表</Typography.Text>
+              <Typography.Text strong className="!text-xs">{t('apm.tags.list', '服务列表')}</Typography.Text>
               <Typography.Text type="secondary" className="!text-xs tabular-nums">
-                共 {services.length} 个
+                {t('apm.common.serviceCount', '共 {count} 个', { count: services.length })}
               </Typography.Text>
             </div>
             <OverflowList services={services} />
           </div>
         )}
       >
-        <span
-          role="button"
-          tabIndex={0}
-          aria-label={`还有 ${overflowCount} 个服务未展示，查看全部 ${services.length} 个服务`}
+        <button
+          type="button"
+          aria-label={t('apm.tags.overflowAria', '还有 {overflow} 个服务未展示，查看全部 {total} 个服务', { overflow: overflowCount, total: services.length })}
           className={overflowChipClassName}
           onClick={stopCardNavigation}
           onMouseDown={stopCardNavigation}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              stopCardNavigation(event);
-              setOpen((prev) => !prev);
-            }
-          }}
         >
           +{overflowCount}
-        </span>
+        </button>
       </Popover>
     );
   }

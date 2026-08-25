@@ -1,11 +1,18 @@
 ---
 name: codebase-design
-description: Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary.
+description: Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, architecture, data flow, dependency direction, seam placement, maintainability, extensibility, testability, or AI navigability, or when another skill needs the deep-module vocabulary.
 ---
 
 # Codebase Design
 
 Design **deep modules**: a lot of behaviour behind a small interface, placed at a clean seam, testable through that interface. Use this language and these principles wherever code is being designed or restructured. The aim is leverage for callers, locality for maintainers, and testability for everyone.
+
+## Repository architecture evidence
+
+For BK-Lite `server/` module design, read
+[`docs/design-docs/agent-architecture-evidence.md`](../../../docs/design-docs/agent-architecture-evidence.md)
+when its trigger criteria match. It explains how to select only the affected current architecture and
+core flow, verify them against code, and treat target diagrams as proposals rather than requirements.
 
 ## Glossary
 

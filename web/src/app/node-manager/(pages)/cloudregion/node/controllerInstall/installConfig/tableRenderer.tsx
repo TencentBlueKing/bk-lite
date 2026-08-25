@@ -9,6 +9,7 @@ import { useTranslation } from '@/utils/i18n';
 import GroupSelect from '@/components/group-tree-select';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { applyIpAsDefaultNodeName } from './utils';
+import { isWinrmSchemePortMismatch } from '@/app/node-manager/utils/winrm';
 
 /**
  * 表格渲染器 - 用于渲染控制器安装表格的列
@@ -87,6 +88,13 @@ export const useTableRenderer = () => {
             }
           }
         }
+      }
+      if (
+        !errorMsg &&
+        name === 'port' &&
+        isWinrmSchemePortMismatch(newData[index].winrm_scheme, Number(valueToValidate))
+      ) {
+        errorMsg = t('node-manager.cloudregion.node.winrmSchemePortMismatch');
       }
 
       // 更新错误状态

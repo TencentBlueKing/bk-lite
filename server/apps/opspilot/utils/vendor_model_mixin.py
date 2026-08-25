@@ -1,6 +1,6 @@
 """Mixin for vendor-based model query in ViewSets."""
 
-from django.db.models import ProtectedError
+from django.db.models import ProtectedError, Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -8,7 +8,9 @@ from rest_framework.exceptions import PermissionDenied
 from apps.core.decorators.api_permission import HasPermission
 
 
-def protected_delete_response(loader, error, message_key="error.model_in_use", default="Cannot delete because it is still in use by {count} object(s)."):
+def protected_delete_response(
+    loader, error, message_key="error.model_in_use", default="Cannot delete because it is still in use by {count} object(s)."
+):
     """Build a clean DRF error envelope for a django.db.models.ProtectedError.
 
     Returns HTTP 400 with body {"result": False, "message": <human-readable>} matching
@@ -55,6 +57,7 @@ class VendorModelMixin:
         """按供应商查询模型（配置场景，不过滤模型的 team）
 
         安全控制：验证用户对该供应商有权限（vendor.team 包含用户的 current_team）
+        支持 search 参数按模型名称 / model id 模糊筛选。
         """
         vendor_id = request.query_params.get("vendor")
         if not vendor_id:
@@ -78,4 +81,7 @@ class VendorModelMixin:
             vendor_id=vendor_id,
             vendor__team__contains=current_team,
         )
+        keyword = (request.query_params.get("search") or "").strip()
+        if keyword:
+            queryset = queryset.filter(Q(name__icontains=keyword) | Q(model__icontains=keyword))
         return self._list(queryset.order_by(self.ORDERING_FIELD))

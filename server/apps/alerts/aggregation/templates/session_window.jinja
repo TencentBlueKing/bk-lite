@@ -3,6 +3,7 @@
 SELECT
   {{ macros.fingerprint_expr(dimensions, strategy_id) }} as fingerprint,
   {{ macros.effective_dimension(dimensions) }} as effective_group_dimension,
+  BOOL_OR({{ macros.dimension_fallback_flag(dimensions) }}) as used_dimension_fallback,
   {{ macros.aggregate_fields() }},
   '{{ session_end_time }}' as session_end_time
 FROM events_table

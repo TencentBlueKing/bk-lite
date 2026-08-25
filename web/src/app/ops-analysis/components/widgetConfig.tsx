@@ -20,6 +20,8 @@ import {
   Select,
   Segmented,
   Tooltip,
+  Checkbox,
+  InputNumber,
   message,
 } from 'antd';
 import { QuestionCircleOutlined, SwapOutlined } from '@ant-design/icons';
@@ -54,6 +56,9 @@ import type {
   ResponseFieldDefinition,
 } from '@/app/ops-analysis/types/dataSource';
 import { initThresholdColors } from '@/app/ops-analysis/utils/thresholdUtils';
+import { ValueFormatConfigSection } from '@/app/ops-analysis/components/ops-analysis-config-sections';
+import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
+import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 import ComponentSelector from './widgetSelector';
 
 import { useTableConfig } from './widgetConfig/hooks/useTableConfig';
@@ -62,6 +67,7 @@ import { TopNSettingsSection } from './widgetConfig/sections/topNSettingsSection
 import { GaugeSettingsSection } from './widgetConfig/sections/gaugeSettingsSection';
 import { RadarSettingsSection } from './widgetConfig/sections/radarSettingsSection';
 import { CardListSettingsSection } from './widgetConfig/sections/cardListSettingsSection';
+import { ThresholdColorListField } from './widgetConfig/sections/thresholdColorListField';
 import { resolveCardListSettingsRemountKey } from './widgetConfig/utils/cardListSettingsRemountKey';
 import {
   buildDisplayColumnsFromSchema,
@@ -77,12 +83,23 @@ import {
   type WidgetConfigFormValues,
 } from './widgetConfig/utils/submitConfig';
 import { useNetworkStatusTopologyConfig } from './widgetConfig/hooks/useNetworkStatusTopologyConfig';
+import { NetworkStatusTopologyDeviceList } from './widgetConfig/sections/networkStatusTopologyDeviceList';
 import {
   canConfigureScreenWidgetFrame,
   getDefaultScreenWidgetAppearance,
   resolveScreenWidgetAppearance,
 } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
 import { ensurePrometheusQueryRequired } from '@/app/ops-analysis/utils/dataSourceParamContract';
+import {
+  coerceValueForMultiple,
+  isMultipleSelectInputConfig,
+  migrateParamItemsFromStringList,
+  normalizeDatasourceItemParams,
+} from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
+import {
+  NETWORK_STATUS_TOPOLOGY_MAX_NODE_LIMIT,
+  networkStatusTopologySelectionExceedsLimit,
+} from '@/app/ops-analysis/utils/networkStatusTopologyLayout';
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
@@ -91,6 +108,7 @@ interface ViewConfigPropsWithManager extends ViewConfigProps {
 }
 
 const NETWORK_STATUS_TOPOLOGY = 'networkStatusTopology';
+const VALUE_FORMAT_CHART_TYPES = new Set(['line', 'bar', 'pie', 'multiValue']);
 
 interface SelectorLike {
   id?: unknown;
@@ -185,46 +203,55 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     return Array.from(existingMap.values());
   };
 
+  const canonicalSelectedDataSource = useMemo(
+    () => (
+      selectedDataSource
+        ? normalizeDatasourceItemParams(selectedDataSource)
+        : undefined
+    ),
+    [selectedDataSource],
+  );
+
   const previewFilterDefinitions = useMemo(
-    () => computePreviewDefinitions(filterDefinitions, selectedDataSource),
-    [filterDefinitions, selectedDataSource],
+    () => computePreviewDefinitions(filterDefinitions, canonicalSelectedDataSource),
+    [canonicalSelectedDataSource, filterDefinitions],
   );
 
   const queryConfigParams = useMemo(
     () =>
-      (Array.isArray(selectedDataSource?.params)
-        ? selectedDataSource.params
+      (Array.isArray(canonicalSelectedDataSource?.params)
+        ? canonicalSelectedDataSource.params
         : []
       ).filter((param: ParamItem) =>
         ['params', 'fixed'].includes(param.filterType || 'fixed'),
       ),
-    [selectedDataSource?.params],
+    [canonicalSelectedDataSource?.params],
   );
 
   const bindableFilterParams = useMemo(
     () =>
-      Array.isArray(selectedDataSource?.params)
-        ? getBindableFilterParams(selectedDataSource.params)
+      Array.isArray(canonicalSelectedDataSource?.params)
+        ? getBindableFilterParams(canonicalSelectedDataSource.params)
         : [],
-    [selectedDataSource?.params],
+    [canonicalSelectedDataSource?.params],
   );
 
   const hasQueryParams = queryConfigParams.length > 0;
   const shouldShowUnifiedFilterSection =
-    previewFilterDefinitions.length > 0 && Boolean(selectedDataSource?.params);
+    previewFilterDefinitions.length > 0 && Boolean(canonicalSelectedDataSource?.params);
   const hasUnifiedFilterBindings = bindableFilterParams.length > 0;
   const effectiveNamespaceId = useMemo(() => {
     if (builtinNamespaceId !== undefined) {
       return builtinNamespaceId;
     }
 
-    return selectedDataSource?.namespaces?.[0];
-  }, [builtinNamespaceId, selectedDataSource?.namespaces]);
+    return canonicalSelectedDataSource?.namespaces?.[0];
+  }, [builtinNamespaceId, canonicalSelectedDataSource?.namespaces]);
 
   const tableConfig = useTableConfig({
     form,
     chartType,
-    selectedDataSource,
+    selectedDataSource: canonicalSelectedDataSource,
     availableFields,
     getSourceDataByApiId,
     processFormParamsForSubmit,
@@ -244,10 +271,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     enabled: isNetworkStatusTopology,
     form,
   });
+  const networkTopoNodeLimit = Form.useWatch(
+    ['networkStatusTopology', 'nodeLimit'],
+    form,
+  );
 
   const singleValueConfig = useSingleValueConfig({
     form,
-    selectedDataSource,
+    selectedDataSource: canonicalSelectedDataSource,
     getSourceDataByApiId,
     builtinNamespaceId: effectiveNamespaceId,
     open,
@@ -288,9 +319,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               : undefined,
           dataSource: undefined,
           networkStatusTopology: {
-            modelId: '',
-            instId: '',
-            depth: 2,
+            instUuids: [],
+            nodeLimit: 100,
+            linkTrafficDisplays: ['inbound', 'outbound'],
           },
           params: {},
           dataSourceParams: [],
@@ -334,7 +365,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       singleValueConfig.resetSingleValueConfig();
 
       // 加载完整数据源（brief 模式不含 params）
-      const fullItem = (await ensureDataSource(item.id)) || item;
+      const fullItem = normalizeDatasourceItemParams(
+        ((await ensureDataSource(item.id)) || item) as DatasourceItem,
+      );
       if (!isCurrentConfigRequest(requestId)) {
         return;
       }
@@ -345,6 +378,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       const defaultChartType = newChartTypes[0]?.value || '';
 
       setChartType(defaultChartType);
+      if (defaultChartType === 'multiValue') {
+        singleValueConfig.setThresholdColors(initThresholdColors([]));
+      }
 
       // 重置 form 中的依赖字段
       const params: Record<string, any> = {};
@@ -366,6 +402,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         topNLabelField: undefined,
         topNValueField: undefined,
         unit: undefined,
+        unitId: undefined,
+        valueMappings: undefined,
         conversionFactor: undefined,
         decimalPlaces: undefined,
         gaugeMin: 0,
@@ -530,6 +568,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         layout: 'list',
       });
     }
+    if (newChartType === 'multiValue') {
+      singleValueConfig.setThresholdColors(initThresholdColors([]));
+    } else if (newChartType === 'single' || newChartType === 'gauge') {
+      singleValueConfig.setThresholdColors((prev) =>
+        prev.length > 0 ? prev : initThresholdColors(undefined),
+      );
+    }
     if (surface === 'screen') {
       form.setFieldValue(
         'appearance',
@@ -584,9 +629,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
     if (isSceneWidget) {
       const networkStatusTopology = valueConfig?.networkStatusTopology || {
-        modelId: '',
-        instId: '',
-        depth: 2,
+        instUuids: [],
+        nodeLimit: 100,
       };
       setSelectedDataSource(undefined);
       setFilterBindings({});
@@ -597,7 +641,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         chartType: 'networkStatusTopology',
         sceneWidgetType: 'networkStatusTopology',
         dataSource: undefined,
-        networkStatusTopology,
+        networkStatusTopology: {
+          ...networkStatusTopology,
+          linkTrafficDisplays: Array.isArray(networkStatusTopology.linkTrafficDisplays)
+            ? networkStatusTopology.linkTrafficDisplays
+            : ['inbound', 'outbound'],
+        },
       });
       // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
       markFormPristine(form);
@@ -615,7 +664,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       tableConfig.setFilterFields([]);
     }
 
-    const targetDataSource = await ensureDataSource(formValues.dataSource);
+    const loadedDataSource = await ensureDataSource(formValues.dataSource);
+    const targetDataSource = loadedDataSource
+      ? normalizeDatasourceItemParams(loadedDataSource)
+      : undefined;
     if (!isCurrentConfigRequest(requestId)) {
       return;
     }
@@ -623,7 +675,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (targetDataSource) {
       setSelectedDataSource(targetDataSource);
       // 从 widget 已有的 dataSourceParams 恢复组件级 inputConfig 覆盖。
-      const widgetOverrides = (valueConfig?.dataSourceParams || [])
+      const widgetOverrides = migrateParamItemsFromStringList(
+        valueConfig?.dataSourceParams || [],
+      ).params
         .filter((p) => p.inputConfig !== undefined)
         .map((p) => ({ ...p, options: undefined }));
       setWidgetParamOverrides(widgetOverrides);
@@ -808,10 +862,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         config: { chartType: 'single', dataSourceParams: targetDataSource?.params },
         dataSource: targetDataSource,
       });
-      formValues.compareMode = valueConfig.compareMode || 'percent';
     }
+    formValues.compareMode = valueConfig?.compareMode || 'percent';
 
-    singleValueConfig.setThresholdColors(initThresholdColors(valueConfig?.thresholdColors));
+    singleValueConfig.setThresholdColors(
+      formValues.chartType === 'multiValue'
+        ? initThresholdColors(valueConfig?.thresholdColors ?? [])
+        : initThresholdColors(valueConfig?.thresholdColors),
+    );
 
     // Nested cardList fields are registered individually; reset first so omitted
     // optional slots from the previous edit target cannot survive setFieldsValue merge.
@@ -874,6 +932,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       }
       return [...prev, { ...baseParam, inputConfig: newConfig }];
     });
+    const currentParams = form.getFieldValue('params') || {};
+    const coerced = coerceValueForMultiple(
+      currentParams[editingParamName],
+      isMultipleSelectInputConfig(newConfig),
+    );
+    if (coerced !== currentParams[editingParamName]) {
+      form.setFieldValue(['params', editingParamName], coerced);
+    }
     if (resolvedOptions?.length) {
       reconcileParamWithOptions(editingParamName, resolvedOptions);
     } else {
@@ -886,17 +952,17 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const effectiveDataSource = useMemo(() => {
     if (!selectedDataSource) return undefined;
     const sourceParams =
-      selectedDataSource.source_type === 'prometheus'
-        ? ensurePrometheusQueryRequired(selectedDataSource.params)
-        : selectedDataSource.params;
+      canonicalSelectedDataSource.source_type === 'prometheus'
+        ? ensurePrometheusQueryRequired(canonicalSelectedDataSource.params)
+        : canonicalSelectedDataSource.params;
 
     if (widgetParamOverrides.length === 0) {
       return sourceParams === selectedDataSource.params
-        ? selectedDataSource
-        : { ...selectedDataSource, params: sourceParams };
+        ? canonicalSelectedDataSource
+        : { ...canonicalSelectedDataSource, params: sourceParams };
     }
     return {
-      ...selectedDataSource,
+      ...canonicalSelectedDataSource,
       params: sourceParams.map((p) => {
         const override = widgetParamOverrides.find((o) => o.name === p.name);
         return override?.inputConfig !== undefined
@@ -904,7 +970,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           : p;
       }),
     };
-  }, [selectedDataSource, widgetParamOverrides]);
+  }, [canonicalSelectedDataSource, widgetParamOverrides]);
 
   const componentSwitchOwner = useMemo(() => {
     const owner = findComponentSwitchParams(effectiveDataSource?.params)[0];
@@ -1000,9 +1066,16 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         const existingTopology = widgetItem?.valueConfig?.networkStatusTopology;
         const formTopology = values.networkStatusTopology;
         values.networkStatusTopology = {
-          modelId: formTopology?.modelId || existingTopology?.modelId || '',
-          instId: formTopology?.instId || existingTopology?.instId || '',
-          depth: formTopology?.depth || existingTopology?.depth || 2,
+          instUuids: formTopology?.instUuids || existingTopology?.instUuids || [],
+          nodeLimit: formTopology?.nodeLimit ?? existingTopology?.nodeLimit ?? 100,
+          linkTrafficDisplays:
+            formTopology?.linkTrafficDisplays ?? existingTopology?.linkTrafficDisplays,
+          inboundTrafficThresholds:
+            formTopology?.inboundTrafficThresholds ??
+            existingTopology?.inboundTrafficThresholds,
+          outboundTrafficThresholds:
+            formTopology?.outboundTrafficThresholds ??
+            existingTopology?.outboundTrafficThresholds,
           layoutMode: formTopology?.layoutMode ?? existingTopology?.layoutMode,
           layoutByMode:
             formTopology?.layoutByMode ?? existingTopology?.layoutByMode,
@@ -1066,7 +1139,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     <Drawer
       title={t('dashboard.viewConfig')}
       placement="right"
-      width={700}
+      width={isNetworkStatusTopology ? 760 : 700}
       open={open}
       maskClosable={false}
       onClose={handleClose}
@@ -1084,6 +1157,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       <Form
         form={form}
         layout="vertical"
+        initialValues={{ compare: false, compareMode: 'percent' }}
         onValuesChange={handleFormValuesChange}
       >
         <div className="mb-6">
@@ -1103,59 +1177,91 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           {isNetworkStatusTopology ? (
             <>
               <Form.Item
-                label={t('dashboard.networkTopoModel')}
-                name={['networkStatusTopology', 'modelId']}
-                rules={[{ required: true, message: t('dashboard.selectModel') }]}
-                tooltip={t('dashboard.networkTopoModelHelp')}
+                label={t('dashboard.networkTopoDevices')}
+                name={['networkStatusTopology', 'instUuids']}
+                dependencies={[['networkStatusTopology', 'nodeLimit']]}
+                rules={[
+                  { required: true, message: t('dashboard.networkTopoSelectDevicesRequired') },
+                  {
+                    validator: async (_, value) => {
+                      if (
+                        networkStatusTopologySelectionExceedsLimit(
+                          value,
+                          form.getFieldValue(['networkStatusTopology', 'nodeLimit']),
+                        )
+                      ) {
+                        throw new Error(t('dashboard.networkTopoSelectionExceedsLimit'));
+                      }
+                    },
+                  },
+                ]}
+                tooltip={t('dashboard.networkTopoDevicesHelp')}
               >
-                <Select
-                  showSearch
-                  loading={networkTopologyConfig.modelsLoading}
-                  placeholder={t('dashboard.selectModel')}
-                  options={networkTopologyConfig.modelOptions}
-                  optionFilterProp="label"
-                  notFoundContent={
-                    networkTopologyConfig.modelsLoading
-                      ? undefined
-                      : t('dashboard.networkTopoNoSupportedModel')
-                  }
-                  onChange={networkTopologyConfig.handleModelChange}
-                />
-              </Form.Item>
-              <Form.Item
-                label={t('dashboard.networkTopoInstance')}
-                name={['networkStatusTopology', 'instId']}
-                rules={[{ required: true, message: t('dashboard.selectInstance') }]}
-                tooltip={t('dashboard.networkTopoInstanceHelp')}
-              >
-                <Select
-                  showSearch
-                  loading={networkTopologyConfig.instancesLoading}
-                  placeholder={t('dashboard.selectInstance')}
-                  options={networkTopologyConfig.instanceOptions}
-                  filterOption={false}
-                  disabled={!networkTopologyConfig.sceneModelId}
-                  notFoundContent={
-                    networkTopologyConfig.instancesLoading
-                      ? t('common.loading')
-                      : t('dashboard.noData')
-                  }
+                <NetworkStatusTopologyDeviceList
+                  nodeLimit={networkTopoNodeLimit}
+                  listedOptions={networkTopologyConfig.instanceOptions}
+                  instanceTotal={networkTopologyConfig.instanceTotal}
+                  instancePage={networkTopologyConfig.instancePage}
+                  instancePageSize={networkTopologyConfig.instancePageSize}
+                  instanceKeyword={networkTopologyConfig.instanceKeyword}
+                  instancesLoading={networkTopologyConfig.instancesLoading}
+                  modelsLoading={networkTopologyConfig.modelsLoading}
+                  modelFilter={networkTopologyConfig.modelFilter}
+                  modelOptions={networkTopologyConfig.modelOptions}
+                  onModelFilterChange={networkTopologyConfig.handleModelFilterChange}
                   onSearch={networkTopologyConfig.handleInstanceSearch}
-                  onPopupScroll={networkTopologyConfig.handleInstancePopupScroll}
+                  onPageChange={networkTopologyConfig.handleInstancePageChange}
                 />
               </Form.Item>
               <Form.Item
-                label={t('dashboard.expandDepth')}
-                name={['networkStatusTopology', 'depth']}
-                initialValue={2}
+                label={t('dashboard.networkTopoNodeLimit')}
+                name={['networkStatusTopology', 'nodeLimit']}
+                initialValue={100}
+                tooltip={t('dashboard.networkTopoNodeLimitHelp')}
               >
-                <Select
+                <InputNumber
+                  min={1}
+                  max={NETWORK_STATUS_TOPOLOGY_MAX_NODE_LIMIT}
+                  precision={0}
+                  className="w-full"
+                />
+              </Form.Item>
+              <Form.Item
+                label={t('dashboard.networkTopoLinkTraffic')}
+                name={['networkStatusTopology', 'linkTrafficDisplays']}
+                initialValue={['inbound', 'outbound']}
+              >
+                <Checkbox.Group
                   options={[
-                    { label: '1', value: 1 },
-                    { label: '2', value: 2 },
-                    { label: '3', value: 3 },
-                    { label: '4', value: 4 },
+                    {
+                      label: t('dashboard.networkTopoLinkTrafficInbound'),
+                      value: 'inbound',
+                    },
+                    {
+                      label: t('dashboard.networkTopoLinkTrafficOutbound'),
+                      value: 'outbound',
+                    },
                   ]}
+                />
+              </Form.Item>
+              <Form.Item
+                name={['networkStatusTopology', 'inboundTrafficThresholds']}
+                noStyle
+              >
+                <ThresholdColorListField
+                  t={t}
+                  label={t('dashboard.networkTopoLinkTrafficInboundThresholds')}
+                  extra={t('dashboard.networkTopoTrafficThresholdHint')}
+                />
+              </Form.Item>
+              <Form.Item
+                name={['networkStatusTopology', 'outboundTrafficThresholds']}
+                noStyle
+              >
+                <ThresholdColorListField
+                  t={t}
+                  label={t('dashboard.networkTopoLinkTrafficOutboundThresholds')}
+                  extra={t('dashboard.networkTopoTrafficThresholdHint')}
                 />
               </Form.Item>
             </>
@@ -1167,7 +1273,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 rules={[{ required: true, message: t('common.selectTip') }]}
                 getValueProps={() => ({
                   value: selectedDataSource
-                    ? `${selectedDataSource.name}（${selectedDataSource.rest_api}）`
+                    ? `${selectedDataSource.name}${
+                        selectedDataSource.rest_api
+                          ? `（${selectedDataSource.rest_api}）`
+                          : ''
+                      }`
                     : '',
                 })}
               >
@@ -1388,6 +1498,32 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onAddThreshold={singleValueConfig.addThreshold}
             onRemoveThreshold={singleValueConfig.removeThreshold}
           />
+        )}
+
+        {VALUE_FORMAT_CHART_TYPES.has(chartType) && (
+          <div className="mb-6">
+            <div className="font-medium mb-4">{t('dashboard.displaySettings')}</div>
+            <ValueFormatConfigSection t={t} />
+            {chartType === 'multiValue' && (
+              <>
+                <ThresholdColorConfigSection
+                  t={t}
+                  thresholdColors={singleValueConfig.thresholdColors}
+                  onThresholdChange={singleValueConfig.handleThresholdChange}
+                  onThresholdBlur={singleValueConfig.handleThresholdBlur}
+                  onAddThreshold={singleValueConfig.addThreshold}
+                  onRemoveThreshold={singleValueConfig.removeThreshold}
+                  allowEmpty
+                />
+                <Form.Item
+                  label={t('topology.nodeConfig.valueMappings')}
+                  name="valueMappings"
+                >
+                  <ValueMappingsConfigSection t={t} />
+                </Form.Item>
+              </>
+            )}
+          </div>
         )}
 
         {chartType === 'eventTimeline' && (

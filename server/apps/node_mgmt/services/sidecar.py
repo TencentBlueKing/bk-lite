@@ -8,10 +8,11 @@ from django.core.cache import cache
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Q
 from django.http import HttpResponse
-from apps.core.utils.safe_template import build_sandboxed_env
 
+from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.utils.safe_template import build_sandboxed_env
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.database import DatabaseConstants
@@ -21,7 +22,8 @@ from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTas
 from apps.node_mgmt.models.installer import ControllerTaskNode
 from apps.node_mgmt.models.sidecar import Collector, CollectorConfiguration, Node, NodeCollectorConfiguration, NodeOrganization
 from apps.node_mgmt.services.cloudregion import RegionService
-from apps.node_mgmt.services.sidecar_cache import build_configuration_etag_cache_key
+from apps.node_mgmt.services.node_host_metadata import NodeHostMetadataRenderContext
+from apps.node_mgmt.services.sidecar_cache import build_configuration_etag_cache_key, invalidate_node_configuration_etags
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
 from apps.node_mgmt.tasks.installer import _matches_install_connectivity_target, converge_controller_install_connectivity_for_node
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
@@ -35,6 +37,37 @@ class Sidecar:
     CONVERGE_DEBOUNCE_SECONDS = 5
     CPU_ARCHITECTURE_TAG = "cpu_architecture"
     INSTALL_TASK_NODE_TAG = "install_task_node"
+    SERVER_OWNED_NODE_FIELDS = frozenset(
+        {
+            "id",
+            "name",
+            "cloud_region",
+            "cloud_region_id",
+            "cmdb_id",
+            "monitor_id",
+            "push_status",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+        }
+    )
+    CLIENT_REPORTED_NODE_FIELD_TYPES = {
+        "ip": str,
+        "operating_system": str,
+        "cpu_architecture": str,
+        "architecture": str,
+        "collector_configuration_directory": str,
+        "metrics": dict,
+        "status": dict,
+        "tags": list,
+        "log_file_list": list,
+        "install_method": str,
+        "node_type": str,
+    }
+    CLIENT_REPORTED_NODE_FIELDS = frozenset(CLIENT_REPORTED_NODE_FIELD_TYPES)
     BASE_CONFIG_HEADER = "# ---- BK-Lite collector base configuration (shared by all monitoring templates) ----\n"
     INSTANCE_CONFIG_HEADER = "# ---- BK-Lite instance collection configurations (per monitoring template) ----\n"
 
@@ -298,7 +331,7 @@ class Sidecar:
             )
 
     @staticmethod
-    def _fallback_cpu_architecture(node_id: str, request_data: dict) -> str:
+    def _fallback_cpu_architecture(node_id: str, request_data: dict, existing_cpu_architecture: str = "") -> str:
         cpu_architecture = normalize_cpu_architecture(request_data.get("cpu_architecture"))
         if cpu_architecture:
             return cpu_architecture
@@ -315,6 +348,10 @@ class Sidecar:
                 normalized_tag_arch = normalize_cpu_architecture(cpu_architectures[0])
                 if normalized_tag_arch:
                     return normalized_tag_arch
+
+        existing = normalize_cpu_architecture(existing_cpu_architecture)
+        if existing:
+            return existing
 
         operating_system = str(request_data.get("operating_system", "")).lower()
         node_ip = request_data.get("ip", "")
@@ -363,24 +400,58 @@ class Sidecar:
         return task_node.ip
 
     @staticmethod
-    def _cached_heartbeat_updates(node_id: str, node_details: dict) -> tuple[dict, str]:
+    def _cached_heartbeat_updates(node_id: str, node_details: dict) -> tuple[dict, str, bool]:
         """Build the bounded metadata update allowed on an ETag cache hit."""
         request_data = dict(node_details)
-        missing_fields = [field for field in ("ip", "operating_system") if not request_data.get(field)]
-        if missing_fields:
-            existing_node = Node.objects.filter(id=node_id).values(*missing_fields).first() or {}
-            for field in missing_fields:
+        existing_node = Node.objects.filter(id=node_id).values("ip", "operating_system", "cpu_architecture").first() or {}
+        for field in ("ip", "operating_system"):
+            if not request_data.get(field):
                 request_data[field] = existing_node.get(field, "")
+
+        resolved_ip = Sidecar._resolve_reported_ip(node_id, request_data.get("ip", ""))
+        ip_changed = bool(existing_node) and resolved_ip != existing_node.get("ip", "")
 
         updates = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "status": node_details.get("status", {}),
         }
-        cpu_architecture = Sidecar._fallback_cpu_architecture(node_id, request_data)
-        if cpu_architecture:
+        if ip_changed:
+            updates["ip"] = resolved_ip
+        existing_arch = normalize_cpu_architecture(existing_node.get("cpu_architecture", ""))
+        cpu_architecture = Sidecar._fallback_cpu_architecture(
+            node_id,
+            request_data,
+            existing_node.get("cpu_architecture", ""),
+        )
+        if cpu_architecture and cpu_architecture != existing_arch:
             updates["cpu_architecture"] = cpu_architecture
 
-        return updates, request_data.get("ip", "")
+        return updates, resolved_ip, ip_changed
+
+    @staticmethod
+    def _filter_reported_node_details(node_id: str, node_details: dict) -> dict:
+        """Keep heartbeat input within fields owned by the Sidecar client."""
+        if not isinstance(node_details, dict):
+            raise ValidationAppException("node_details must be an object")
+        invalid_fields = [
+            field
+            for field, value in node_details.items()
+            if field in Sidecar.CLIENT_REPORTED_NODE_FIELD_TYPES
+            and not isinstance(value, Sidecar.CLIENT_REPORTED_NODE_FIELD_TYPES[field])
+        ]
+        if invalid_fields or any(not isinstance(tag, str) for tag in node_details.get("tags", [])):
+            raise ValidationAppException("node_details contains invalid field values")
+        dropped_fields = set(node_details) - Sidecar.CLIENT_REPORTED_NODE_FIELDS
+        if dropped_fields:
+            server_fields = sorted(dropped_fields & Sidecar.SERVER_OWNED_NODE_FIELDS)
+            unknown_field_count = len(dropped_fields - Sidecar.SERVER_OWNED_NODE_FIELDS)
+            logger.warning(
+                "Ignored non-client fields in Sidecar heartbeat node_id=%s server_fields=%s unknown_field_count=%d",
+                node_id,
+                ",".join(server_fields),
+                unknown_field_count,
+            )
+        return {key: value for key, value in node_details.items() if key in Sidecar.CLIENT_REPORTED_NODE_FIELDS}
 
     @staticmethod
     def _default_collector_priority(collector_cpu_architecture: str, node_cpu_architecture: str) -> int:
@@ -433,6 +504,8 @@ class Sidecar:
     def update_node_client(request, node_id):
         """更新sidecar客户端信息"""
 
+        node_details = Sidecar._filter_reported_node_details(node_id, request.data.get("node_details", {}))
+
         # 获取客户端发送的ETag
         if_none_match = request.headers.get("If-None-Match")
         if if_none_match:
@@ -443,32 +516,42 @@ class Sidecar:
 
         # 如果缓存的ETag存在且与客户端的相同，则返回304 Not Modified
         if cached_etag and cached_etag == if_none_match:
-            node_details = request.data.get("node_details", {})
-            updates, node_ip = Sidecar._cached_heartbeat_updates(node_id, node_details)
-            Node.objects.filter(id=node_id).update(**updates)
+            updates, node_ip, ip_changed = Sidecar._cached_heartbeat_updates(node_id, node_details)
+            updated_count = Node.objects.filter(id=node_id).update(**updates)
+            if updated_count and ip_changed:
+                invalidate_node_configuration_etags([node_id])
             Sidecar.trigger_converge_tasks_if_needed(node_id, node_ip, updates["status"])
 
             response = HttpResponse(status=304)
             response["ETag"] = cached_etag
             return response
 
+        if not node_details.get("operating_system"):
+            raise ValidationAppException("node_details.operating_system is required")
+
         # 从请求体中获取数据
         request_data = dict(
             id=node_id,
             name=request.data.get("node_name", ""),
-            **request.data.get("node_details", {}),
+            **node_details,
         )
 
         # 操作系统转小写
         request_data.update(operating_system=request_data["operating_system"].lower())
         request_data.update(ip=Sidecar._resolve_reported_ip(node_id, request_data.get("ip", "")))
-        request_data.update(cpu_architecture=Sidecar._fallback_cpu_architecture(node_id, request_data))
-        request_data.pop("architecture", None)
-
-        logger.debug(f"node data: {request_data}")
 
         # 更新或创建 Sidecar 信息
         node = Node.objects.filter(id=node_id).first()
+        request_data.update(
+            cpu_architecture=Sidecar._fallback_cpu_architecture(
+                node_id,
+                request_data,
+                getattr(node, "cpu_architecture", "") if node else "",
+            )
+        )
+        request_data.pop("architecture", None)
+
+        logger.debug(f"node data: {request_data}")
 
         # 处理标签数据
         allowed_prefixes = [
@@ -487,8 +570,11 @@ class Sidecar:
 
         # 补充云区域关联
         clouds = tags_data.get(ControllerConstants.CLOUD_TAG, [])
-        if clouds:
-            request_data.update(cloud_region_id=int(clouds[0]))
+        if clouds and not node:
+            try:
+                request_data.update(cloud_region_id=int(clouds[0]))
+            except (TypeError, ValueError) as exc:
+                raise ValidationAppException("node_details.tags contains an invalid zone") from exc
 
         # 补充安装方法
         install_methods = tags_data.get(ControllerConstants.INSTALL_METHOD_TAG, [])
@@ -531,7 +617,9 @@ class Sidecar:
             node_info = {key: val for key, val in request_data.items() if key != "name"}
             if not node_info.get("cpu_architecture"):
                 node_info.pop("cpu_architecture", None)
-            Node.objects.filter(id=node_id).update(**node_info)
+            updated_count = Node.objects.filter(id=node_id).update(**node_info)
+            if updated_count and request_data.get("ip", "") != node.ip:
+                invalidate_node_configuration_etags([node_id])
 
             # Existing node organization ownership is managed by the server/UI.
             # Sidecar may heartbeat with stale group tags before sidecar.yaml is
@@ -667,19 +755,26 @@ class Sidecar:
 
         # 从缓存中获取配置的 ETag
         cache_key = build_configuration_etag_cache_key(node_id, configuration_id)
-        cached_etag = cache.get(cache_key)
+        cached_entry = cache.get(cache_key)
 
-        # 对比客户端的 ETag 和缓存的 ETag
-        if cached_etag and cached_etag == if_none_match:
-            if not Sidecar.configuration_bound_to_node(node_id, configuration_id):
+        # 缓存命中仍校验当前绑定与 Node 主机身份，避免并发旧请求复活旧配置。
+        if isinstance(cached_entry, dict) and if_none_match:
+            node_identity = (
+                NodeCollectorConfiguration.objects.filter(node_id=node_id, collector_config_id=configuration_id)
+                .values_list("node__name", "node__ip")
+                .first()
+            )
+            if node_identity is None:
                 node, error_response = Sidecar.get_node_or_404(request, node_id)
                 if error_response:
                     return error_response
                 return EncryptedJsonResponse(status=404, data={"error": "Configuration not found"}, request=request)
 
-            response = HttpResponse(status=304)
-            response["ETag"] = cached_etag
-            return response
+            current_host_context = NodeHostMetadataRenderContext.build(*node_identity)
+            if current_host_context.matches_cache_entry(cached_entry, if_none_match):
+                response = HttpResponse(status=304)
+                response["ETag"] = cached_entry["etag"]
+                return response
 
         assignment, error_response = Sidecar.get_bound_assignment_or_404(
             request,
@@ -693,6 +788,7 @@ class Sidecar:
 
         node = assignment.node
         configuration = assignment.collector_config
+        host_context = NodeHostMetadataRenderContext.build(node.name, node.ip)
 
         collector = configuration.collector
         section_headers = {}
@@ -751,13 +847,17 @@ class Sidecar:
         variables.update(child_render_variables)
 
         # 渲染配置模板
-        configuration_data["template"] = Sidecar.render_template(configuration_data["template"], variables)
+        configuration_data["template"] = Sidecar.render_template(
+            configuration_data["template"],
+            variables,
+            trusted_reserved_variables=host_context.variables,
+        )
 
         # 生成新的 ETag - 基于实际响应内容
         new_etag = Sidecar.generate_response_etag(configuration_data, request)
 
         # 更新缓存中的 ETag
-        cache.set(cache_key, new_etag, ControllerConstants.E_CACHE_TIMEOUT)
+        cache.set(cache_key, host_context.build_cache_entry(new_etag), ControllerConstants.E_CACHE_TIMEOUT)
 
         # 返回配置信息和新的 ETag
         return EncryptedJsonResponse(configuration_data, headers={"ETag": new_etag}, request=request)
@@ -857,7 +957,7 @@ class Sidecar:
         return variables
 
     @staticmethod
-    def render_template(template_str, variables):
+    def render_template(template_str, variables, *, trusted_reserved_variables=None):
         """
         渲染字符串模板，将 ${变量} 替换为给定的值。
 
@@ -867,6 +967,10 @@ class Sidecar:
         """
         # 排除password相关的变量渲染，走env_config渲染
         _variables = {k: v for k, v in variables.items() if "password" not in k.lower()}
+        _variables = NodeHostMetadataRenderContext.prepare_template_variables(
+            _variables,
+            trusted_reserved_variables,
+        )
         template_str = template_str.replace("node.", "node__")
         template = Template(template_str)
         return template.safe_substitute(_variables)

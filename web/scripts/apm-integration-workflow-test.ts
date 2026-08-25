@@ -49,20 +49,20 @@ assert.doesNotMatch(catalog, /snippet\.grpc_endpoint|OTLP\/gRPC 端点/, '普通
 assert.match(catalog, /OTLP\/HTTP（http\/protobuf）/, '普通接入页面必须明确固定使用 OTLP\/HTTP');
 assert.match(catalog, /generationError/, '生成失败必须保留明确的页面内错误态');
 assert.match(catalog, /复制失败/, '复制操作必须反馈失败');
-assert.match(instances, /title="接入实例"/, '接入实例页应使用产品术语“接入实例”');
+assert.match(instances, /t\('apm\.instances\.title', '接入实例'\)/, '接入实例页应使用产品术语“接入实例”');
 for (const range of ["'15m'", "'1h'", "'4h'", "'1d'", "'7d'"]) {
   assert.ok(instances.includes(range), `接入列表应支持原型中的时间范围 ${range}`);
 }
 assert.match(instances, /全部应用/, '接入实例应支持按应用筛选');
 assert.match(instances, /全部环境/, '接入列表应支持按环境筛选');
+assert.doesNotMatch(instances, /setInstanceArchived|归档实例|恢复实例/, '接入实例页面不得再提供手工归档或恢复操作');
+assert.doesNotMatch(apmApi, /setInstanceArchived/, '前端 API 不得继续暴露已移除的实例归档操作');
 assert.match(applications, /createApplication\(/, '应用管理必须支持创建应用');
 assert.match(applications, /updateApplication\(/, '应用管理必须支持编辑应用');
 assert.match(applications, /name="application_id"/, '应用管理必须维护稳定的应用 ID');
-assert.match(applications, /item\.is_builtin/, '应用管理必须识别内置应用');
-assert.match(applications, /内置/, '内置应用必须有文字标识，不能只依赖颜色');
-assert.match(applications, /系统维护/, '内置应用必须呈现明确的只读状态');
+assert.doesNotMatch(applications, /未归类应用|系统维护/, '应用管理不得再展示已移除的内置未归类应用');
 assert.doesNotMatch(applications, /允许发现新服务|name="is_enabled"|<Switch/, '应用管理不应暴露多余的启用开关');
-assert.match(catalog, /!item\.is_builtin/, '内置未归类应用不能用于生成普通接入配置');
+assert.match(applications, /添加接入/, '添加接入操作必须收口到应用管理');
 assert.doesNotMatch(catalog, /item\.is_enabled|创建并启用/, '接入页不应依赖已移除的应用启用状态');
 assert.doesNotMatch(integrationStories, /OTEL_SERVICE_NAMESPACE=default/, 'eBPF 示例不应伪造默认 namespace');
 

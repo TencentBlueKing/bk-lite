@@ -1,7 +1,7 @@
 'use client';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Segmented } from 'antd';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import { TreeItem, ObjectItem } from '@/app/monitor/types';
@@ -12,14 +12,18 @@ import ViewList from './viewList';
 import ViewHive from './viewHive';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
-import { getMonitorViewObjectUrl } from '@/app/monitor/dashboards/shared/utils';
 import { getProfessionalObjectDisplayName } from '@/app/monitor/dashboards/registry';
 import { findByMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
+import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
+import {
+  VIEW_OBJECT_QUERY_PARAM,
+  resolveMonitorObjectQueryId
+} from '@/app/monitor/utils/monitorObjectQuery';
 
 const Integration = () => {
   const { isLoading } = useApiClient();
-  const router = useRouter();
   const searchParams = useSearchParams();
+  const { syncObjectId } = useMonitorObjectQuery(VIEW_OBJECT_QUERY_PARAM);
   const { getMonitorObject } = useMonitorApi();
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [objects, setObjects] = useState<ObjectItem[]>([]);
@@ -42,9 +46,7 @@ const Integration = () => {
   const handleObjectChange = async (id: string) => {
     setObjectId(id);
     setDisplayType('list');
-    if (searchParams.get('object_id') !== String(id)) {
-      router.replace(getMonitorViewObjectUrl(id));
-    }
+    syncObjectId(id);
   };
 
   const onDisplayTypeChange = async (value: string) => {
@@ -68,11 +70,11 @@ const Integration = () => {
 
   useEffect(() => {
     if (!objects.length) return;
-    const requestedObjectId = searchParams.get('object_id');
-    const selectedObject =
-      objects.find((item) => toMonitorIdString(item.id) === requestedObjectId) ||
-      objects[0];
-    const selectedId = toMonitorIdString(selectedObject?.id);
+    const selectedId = resolveMonitorObjectQueryId({
+      searchParams,
+      objects,
+      fallback: objects[0]?.id
+    });
     setObjectId(selectedId);
     setDefaultSelectObj(selectedId);
   }, [objects, searchParams]);

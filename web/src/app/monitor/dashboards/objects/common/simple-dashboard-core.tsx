@@ -337,8 +337,10 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   // so we must ref-stabilize them to prevent useCallback deps from constantly changing.
   const getInstanceQueryRef = useRef(viewApi.getInstanceQuery);
   const getInstanceListRef = useRef(monitorApi.getInstanceList);
+  const getInstanceQueryParamsRef = useRef(viewApi.getInstanceQueryParams);
   useEffect(() => { getInstanceQueryRef.current = viewApi.getInstanceQuery; });
   useEffect(() => { getInstanceListRef.current = monitorApi.getInstanceList; });
+  useEffect(() => { getInstanceQueryParamsRef.current = viewApi.getInstanceQueryParams; });
 
   const getInstanceQuery = useCallback(
     (...args: Parameters<typeof viewApi.getInstanceQuery>) => getInstanceQueryRef.current(...args),
@@ -346,6 +348,11 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   );
   const getInstanceList = useCallback(
     (...args: Parameters<typeof monitorApi.getInstanceList>) => getInstanceListRef.current(...args),
+    []
+  );
+  const getInstanceQueryParams = useCallback(
+    (...args: Parameters<typeof viewApi.getInstanceQueryParams>) =>
+      getInstanceQueryParamsRef.current(...args),
     []
   );
   const searchParams = useSearchParams();
@@ -364,6 +371,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const [queryTimeRange, setQueryTimeRange] = useState<{ startMs: number; endMs: number } | null>(null);
   const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
+  const [clusterNameById, setClusterNameById] = useState<Record<string, string>>({});
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
   // 每次 loadMetrics(含静默自动刷新)递增,供 bespoke 取数面板(如 ES/PG 的 TopN)
   // 与核心盘同步刷新——核心盘重载即 bespoke 面板重载,而非各自维护定时器。
@@ -438,6 +446,37 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     };
   }, [getInstanceList, monitorObjectId]);
 
+  useEffect(() => {
+    if (!config.clusterFilter || !monitorObjectName) {
+      setClusterNameById({});
+      return;
+    }
+    let active = true;
+    const loadClusterNames = async () => {
+      try {
+        const enumData = await getInstanceQueryParams(monitorObjectName, {
+          monitor_object_id: monitorObjectId || undefined
+        });
+        if (!active) return;
+        const clusters = Array.isArray(enumData?.cluster) ? enumData.cluster : [];
+        const next: Record<string, string> = {};
+        clusters.forEach((item: { id?: unknown; name?: unknown }) => {
+          const id = String(item?.id ?? '').trim();
+          if (!id) return;
+          const name = String(item?.name ?? '').trim();
+          next[id] = name || id;
+        });
+        setClusterNameById(next);
+      } catch {
+        if (active) setClusterNameById({});
+      }
+    };
+    loadClusterNames();
+    return () => {
+      active = false;
+    };
+  }, [config.clusterFilter, getInstanceQueryParams, monitorObjectId, monitorObjectName]);
+
   const idValuesKey = useMemo(() => JSON.stringify(idValues), [idValues]);
   const currentInstanceCandidates = useMemo(
     () => instanceOptions.filter((item) => isInstanceOptionForIdentity(item, instanceId, idValues)),
@@ -457,8 +496,11 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const clusterFilterEnabled = Boolean(config.clusterFilter);
   const activeCluster = clusterFilterEnabled ? (idValues[0] ? String(idValues[0]) : undefined) : undefined;
   const clusterFilterOptions = useMemo(
-    () => (clusterFilterEnabled ? buildClusterFilterOptions(instanceOptions) : []),
-    [clusterFilterEnabled, instanceOptions]
+    () =>
+      clusterFilterEnabled
+        ? buildClusterFilterOptions(instanceOptions, clusterNameById)
+        : [],
+    [clusterFilterEnabled, clusterNameById, instanceOptions]
   );
   const instanceSelectOptions = useMemo(() => {
     const options = filterInstanceOptionsByCluster(instanceOptions, activeCluster);

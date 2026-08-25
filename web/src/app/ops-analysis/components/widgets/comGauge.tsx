@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Spin } from 'antd';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
@@ -19,6 +19,7 @@ import {
   scaleScreenMetric,
 } from './shared/screenMetrics';
 import { useGaugeResponsiveLayout } from './shared/useGaugeResponsiveLayout';
+import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import {
   getOpsChartThemeByMode,
   isScreenChartThemeMode,
@@ -113,26 +114,27 @@ const ComGauge: React.FC<ComGaugeProps> = ({
         config?.unitId,
       );
 
-  useEffect(() => {
-    if (!loading) {
-      onReady?.(hasData);
-    }
-  }, [hasData, loading, onReady]);
-
   const isCircle = config?.gaugeShape === 'circle';
   const axisLineWidth = usesScreenTheme
     ? scaleScreenMetric(14, screenRenderContext)
     : 14;
-  const { containerRef, chartRef, layout, geometry } = useGaugeResponsiveLayout({
-    gaugeShape: config?.gaugeShape,
-    desiredRadiusPercent: usesScreenTheme
-      ? isCircle ? 76 : 108
-      : isCircle ? 90 : 108,
-    desiredCenterPercent: [
-      50,
-      usesScreenTheme ? (isCircle ? 52 : 68) : (isCircle ? 52 : 74),
-    ],
-    axisLineWidth,
+  const { containerRef, chartRef, layout, geometry, hasValidContainerSize } =
+    useGaugeResponsiveLayout({
+      gaugeShape: config?.gaugeShape,
+      desiredRadiusPercent: usesScreenTheme
+        ? isCircle ? 76 : 108
+        : isCircle ? 90 : 108,
+      desiredCenterPercent: [
+        50,
+        usesScreenTheme ? (isCircle ? 52 : 68) : (isCircle ? 52 : 74),
+      ],
+      axisLineWidth,
+    });
+  const { onEvents } = useEchartsFinishedReady({
+    loading,
+    isDataReady: hasData,
+    canReportReady: hasValidContainerSize,
+    onReady,
   });
 
   const option = useMemo(() => {
@@ -277,6 +279,7 @@ const ComGauge: React.FC<ComGaugeProps> = ({
       <ReactEcharts
         ref={chartRef}
         option={option}
+        onEvents={onEvents}
         style={{ height: '100%', width: '100%' }}
       />
     </div>

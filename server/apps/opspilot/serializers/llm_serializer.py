@@ -5,6 +5,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import AuthSerializer, TeamSerializer
 from apps.opspilot.models import LLMModel, LLMSkill, SkillPackage, SkillRequestLog, SkillTools, UserPin
 from apps.opspilot.serializers.model_vendor_serializer import CustomProviderSerializer
+from apps.opspilot.utils.skill_package_params import mask_package_params
 
 
 class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
@@ -27,6 +28,7 @@ class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
             "team",
             "is_build_in",
             "is_demo",
+            "is_multimodal",
             "vendor",
             "model",
             "label",
@@ -44,6 +46,8 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
     llm_model_name = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
     skill_params = serializers.SerializerMethodField()
+    usage_team_name = serializers.SerializerMethodField()
+    skill_package_params = serializers.SerializerMethodField()
 
     def __init__(self, instance=None, data=empty, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)
@@ -77,10 +81,12 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "conversation_window_size",
             "introduction",
             "team",
+            "usage_team",
             "show_think",
             "tools",
             "skill_params",
             "skill_packages",
+            "skill_package_params",
             "temperature",
             "skill_type",
             "is_template",
@@ -93,6 +99,7 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             # 只读派生字段（保持现有读取输出不变）
             "permissions",
             "team_name",
+            "usage_team_name",
             "llm_model_name",
             "is_pinned",
         ]
@@ -115,6 +122,9 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
         """获取当前用户对此 LLMSkill 的置顶状态"""
         return instance.id in self.pinned_skill_ids
 
+    def get_usage_team_name(self, instance: LLMSkill):
+        return [self.group_map.get(i) for i in (instance.usage_team or []) if i in self.group_map]
+
     @staticmethod
     def get_skill_params(instance: LLMSkill):
         """返回技能参数列表，password 类型的 value 掩码为 '******'"""
@@ -127,9 +137,15 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             result.append(item)
         return result
 
+    @staticmethod
+    def get_skill_package_params(instance: LLMSkill):
+        """返回技能包参数，password 类型的 value 掩码为 '******'。"""
+        return mask_package_params(getattr(instance, "skill_package_params", None))
+
 
 class SkillPackageSerializer(AuthSerializer):
     permission_key = "tools"
+    variables = serializers.SerializerMethodField()
 
     class Meta:
         model = SkillPackage
@@ -156,6 +172,7 @@ class SkillPackageSerializer(AuthSerializer):
             "team",
             "is_enabled",
             "permissions",
+            "variables",
         ]
         read_only_fields = [
             "id",
@@ -168,6 +185,14 @@ class SkillPackageSerializer(AuthSerializer):
             "storage_path",
             "manifest",
         ]
+
+    @staticmethod
+    def get_variables(instance: SkillPackage):
+        from apps.opspilot.services.skill_package.runtime import _manifest_with_storage_overlay
+
+        manifest = _manifest_with_storage_overlay(instance)
+        variables = manifest.get("variables") if isinstance(manifest, dict) else None
+        return variables if isinstance(variables, list) else []
 
 
 class SkillRequestLogSerializer(serializers.ModelSerializer):

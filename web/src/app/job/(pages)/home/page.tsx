@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { DatePicker, Empty, Segmented, Skeleton, Tag } from 'antd';
+import { DatePicker, Segmented, Skeleton, Tag } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import dayjs, { Dayjs } from 'dayjs';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
@@ -197,7 +198,7 @@ const MiniHist = ({ values, color }: { values: number[]; color: string }) => {
 const MiniProportion = ({ segments }: { segments: Array<{ value: number; color: string }> }) => {
   const total = segments.reduce((sum, segment) => sum + segment.value, 0) || 1;
   return (
-    <div className="flex w-full h-2 rounded-[5px] overflow-hidden" style={{ background: TRACK_COLOR }}>
+    <div className="flex h-2 w-full overflow-hidden rounded-[5px] bg-[#eef1f6]">
       {segments.map((segment, index) => (
         <span key={index} style={{ width: `${(segment.value / total) * 100}%`, background: segment.color }} />
       ))}
@@ -206,7 +207,7 @@ const MiniProportion = ({ segments }: { segments: Array<{ value: number; color: 
 };
 
 const MiniProgress = ({ percent, color }: { percent: number; color: string }) => (
-  <div className="w-full h-2 rounded-[5px] overflow-hidden" style={{ background: TRACK_COLOR }}>
+  <div className="h-2 w-full overflow-hidden rounded-[5px] bg-[#eef1f6]">
     <span className="block h-full rounded-[5px]" style={{ width: `${percent}%`, background: color }} />
   </div>
 );
@@ -392,7 +393,7 @@ const TrendMiniChart = ({ data, t }: { data: DashboardTrend[]; t: (key: string) 
   if (!data.length) {
     return (
       <div ref={containerRef} className="absolute inset-0 flex items-center justify-center">
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('common.noData')} />
+        <CompactEmptyState description={t('common.noData')} />
       </div>
     );
   }
@@ -743,7 +744,7 @@ const JobHomePage = () => {
       key: 'job_type_display',
       width: 120,
       render: (text: string) => (
-        <Tag style={{ color: 'var(--color-text-3)', backgroundColor: 'var(--color-bg)', borderColor: 'var(--color-border-1)', margin: 0 }}>{text}</Tag>
+        <Tag className="!m-0 !border-[var(--color-border-1)] !bg-[var(--color-bg)] !text-[var(--color-text-3)]">{text}</Tag>
       ),
     },
     {
@@ -771,7 +772,7 @@ const JobHomePage = () => {
         const color = STATUS_COLOR_MAP[record.status] || '#8c8c8c';
         return (
           <Tag style={{ color, backgroundColor: `${color}10`, borderColor: color, margin: 0 }}>
-            {record.status_display || getStatusText(record.status)}
+            {getStatusText(record.status)}
           </Tag>
         );
       },
@@ -812,11 +813,11 @@ const JobHomePage = () => {
         {/* 执行次数 */}
         <div className={`${cardClass} p-4 flex flex-col`}>
           <div className="flex items-center gap-2 mb-3.5">
-            <span className="w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0" style={{ background: 'rgba(45,135,255,.10)', color: PRIMARY_COLOR }}>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[rgba(45,135,255,.10)] text-[#2d87ff]">
               <ChipIcon>{ICON_EXEC}</ChipIcon>
             </span>
             <span className="text-[13px] text-(--color-text-2) font-medium">{t('job.executionCount')}</span>
-            <span className="ml-auto text-[11px] text-(--color-text-3) px-2 py-0.5 rounded-md" style={{ background: TRACK_COLOR }}>{periodLabel}</span>
+            <span className="ml-auto rounded-md bg-[var(--color-fill-1)] px-2 py-0.5 text-[11px] text-(--color-text-3)">{periodLabel}</span>
           </div>
           <div className="flex items-baseline gap-2.5">
             <span className="text-[30px] font-bold leading-none tracking-tight text-(--color-text-1)">{executionTotal}</span>
@@ -828,14 +829,14 @@ const JobHomePage = () => {
         {/* 成功率 */}
         <div className={`${cardClass} p-4 flex flex-col`}>
           <div className="flex items-center gap-2 mb-3.5">
-            <span className="w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0" style={{ background: 'rgba(25,184,122,.12)', color: SUCCESS_COLOR }}>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[rgba(25,184,122,.12)] text-[#19b87a]">
               <ChipIcon>{ICON_CHECK}</ChipIcon>
             </span>
             <span className="text-[13px] text-(--color-text-2) font-medium">{t('job.successRate')}</span>
-            <span className="ml-auto text-[11px] text-(--color-text-3) px-2 py-0.5 rounded-md" style={{ background: TRACK_COLOR }}>{periodLabel}</span>
+            <span className="ml-auto rounded-md bg-[var(--color-fill-1)] px-2 py-0.5 text-[11px] text-(--color-text-3)">{periodLabel}</span>
           </div>
           <div className="flex items-baseline gap-2.5">
-            <span className="text-[30px] font-bold leading-none tracking-tight" style={{ color: SUCCESS_COLOR }}>{formatPercent(successRate)}</span>
+            <span className="text-[30px] font-bold leading-none tracking-tight text-[#19b87a]">{formatPercent(successRate)}</span>
             <span className="text-xs font-semibold" style={{ color: deltaUp ? '#0e8a59' : '#d83f37' }}>
               {deltaUp ? '▲' : '▼'} {Math.abs(successRateIncrease).toFixed(1)}%
             </span>
@@ -847,13 +848,13 @@ const JobHomePage = () => {
         {/* 运行中 */}
         <div className={`${cardClass} p-4 flex flex-col`}>
           <div className="flex items-center gap-2 mb-3.5">
-            <span className="w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0" style={{ background: 'rgba(255,156,60,.14)', color: WARNING_COLOR }}>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[rgba(255,156,60,.14)] text-[#ff9c3c]">
               <ChipIcon>{ICON_CLOCK}</ChipIcon>
             </span>
             <span className="text-[13px] text-(--color-text-2) font-medium">{t('job.kpiRunning')}</span>
           </div>
           <div className="flex items-baseline gap-2.5">
-            <span className="text-[30px] font-bold leading-none tracking-tight" style={{ color: WARNING_COLOR }}>{runningCount}</span>
+            <span className="text-[30px] font-bold leading-none tracking-tight text-[#ff9c3c]">{runningCount}</span>
           </div>
           <div className="mt-2 text-xs text-(--color-text-3)">{t('job.kpiPending')} {pendingCount} · {t('job.kpiQueued')} 0</div>
           <div className="mt-auto pt-4"><MiniProportion segments={[{ value: runningCount, color: WARNING_COLOR }, { value: pendingCount, color: '#ffd6a8' }]} /></div>
@@ -862,7 +863,7 @@ const JobHomePage = () => {
         {/* 定时任务 */}
         <div className={`${cardClass} p-4 flex flex-col`}>
           <div className="flex items-center gap-2 mb-3.5">
-            <span className="w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0" style={{ background: 'rgba(124,108,255,.12)', color: PURPLE_COLOR }}>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[rgba(124,108,255,.12)] text-[#7c6cff]">
               <ChipIcon>{ICON_CALENDAR}</ChipIcon>
             </span>
             <span className="text-[13px] text-(--color-text-2) font-medium">{t('job.scheduledTask')}</span>
@@ -880,7 +881,7 @@ const JobHomePage = () => {
         {/* 平均执行时长 */}
         <div className={`${cardClass} p-4 flex flex-col`}>
           <div className="flex items-center gap-2 mb-3.5">
-            <span className="w-8 h-8 rounded-[9px] flex items-center justify-center shrink-0" style={{ background: 'rgba(20,184,166,.12)', color: TEAL_COLOR }}>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-[rgba(20,184,166,.12)] text-[#14b8a6]">
               <ChipIcon>{ICON_TIMER}</ChipIcon>
             </span>
             <span className="text-[13px] text-(--color-text-2) font-medium">{t('job.avgDuration')}</span>
@@ -901,9 +902,9 @@ const JobHomePage = () => {
             <div className="flex items-center gap-4">
               <h3 className="text-[15px] font-semibold text-(--color-text-1)">{t('job.executionTrend')}</h3>
               <div className="flex items-center gap-3.5 text-xs text-(--color-text-2)">
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: SUCCESS_COLOR }} />{t('job.success')}</span>
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: FAILURE_COLOR }} />{t('job.failed')}</span>
-                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: FALLBACK_COLOR }} />{t('job.statusCanceled')}</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#19b87a]" />{t('job.success')}</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#ff5a52]" />{t('job.failed')}</span>
+                <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-[#9aa7b8]" />{t('job.statusCanceled')}</span>
               </div>
             </div>
             <div className="flex items-center gap-2.5 flex-wrap">
@@ -973,7 +974,7 @@ const JobHomePage = () => {
                         <span className="truncate">{t(labelKey)}</span>
                       </span>
                       <span className="w-8 text-right text-[13px] font-semibold text-(--color-text-1) tabular-nums shrink-0">{count}</span>
-                      <span className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: TRACK_COLOR }}>
+                      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#eef1f6]">
                         <span className="block h-full rounded-full" style={{ maxWidth: '100%', width: `${barPct}%`, background: color }} />
                       </span>
                       <span className="w-9 text-right text-[11px] text-(--color-text-3) tabular-nums shrink-0">{pct}%</span>

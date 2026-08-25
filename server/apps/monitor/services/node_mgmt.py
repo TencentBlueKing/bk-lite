@@ -2,7 +2,7 @@ from django.db import IntegrityError, models, transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.logger import monitor_logger as logger
-from apps.core.utils.current_team_scope import CurrentTeamDataScope, scope_permission_queryset
+from apps.core.utils.current_team_scope import scope_permission_queryset
 from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.monitor.constants.database import DatabaseConstants
@@ -52,8 +52,10 @@ class InstanceConfigService:
 
     @staticmethod
     def _get_data_scope(actor_context):
-        scope = actor_context.get("data_scope")
-        if not isinstance(scope, CurrentTeamDataScope) or not scope.data_team_ids:
+        from apps.core.utils.current_team_scope import hydrate_actor_context_data_scope
+
+        scope = hydrate_actor_context_data_scope(actor_context)
+        if scope is None or not scope.data_team_ids:
             raise UnauthorizedException("当前组织无可用权限范围")
         return scope
 
@@ -300,8 +302,11 @@ class InstanceConfigService:
             if config_obj.file_type == "toml":
                 raw_content = config[content_key]
                 config["content"] = ConfigFormat.toml_to_dict(raw_content)
+                from apps.monitor.utils.disk_fstype_filters import expose_disk_fstype_filters_for_edit
                 from apps.monitor.utils.snmp_ifmib_capability import is_interface_filter_capable_plugin
 
+                # 磁盘 fstype 过滤在 starlark.constants；表单只绑 content.config，需投影回显。
+                config["content"] = expose_disk_fstype_filters_for_edit(config["content"])
                 if (config_obj.collect_type or "").startswith("snmp") and is_interface_filter_capable_plugin(
                     getattr(config_obj, "monitor_plugin", None)
                 ):
@@ -1046,6 +1051,10 @@ class InstanceConfigService:
                     extract_group_metrics_timeout_from_env(env_config),
                     child_interval,
                 )
+            from apps.monitor.utils.disk_fstype_filters import sync_disk_fstype_filters_on_writeback
+
+            # 表单把 disk_*_fstypes 写在 content.config；Telegraf inputs.* 不认，必须挪回 starlark。
+            child_info["content"] = sync_disk_fstype_filters_on_writeback(child_info.get("content"))
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
             if ifmib_capable and content is not None:
                 from apps.monitor.utils.snmp_interface_template import (

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, DatePicker, Input, Select, Tooltip, message } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
 import type { ColumnsType } from 'antd/es/table';
 import type {
   DashboardActionConfig,
@@ -18,7 +17,6 @@ import {
   buildDashboardActionUrl,
   resolveDashboardActionParams,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
-import { formatOpsRequestTime } from '@/app/ops-analysis/components/ops-analysis-widgets/date-time';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
@@ -30,6 +28,10 @@ import {
   type TableLikePaginationState,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/table-like-data';
 import { supportsServerPagination } from '@/app/ops-analysis/utils/tablePagination';
+import {
+  applyTableRowFilters,
+  buildTableQueryList,
+} from '@/app/ops-analysis/utils/tableQueryList';
 import { useTableBodyScrollY } from '@/app/ops-analysis/components/widgets/shared/useTableBodyScrollY';
 
 const { RangePicker } = DatePicker;
@@ -85,6 +87,10 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
       isPaginated: parsed.isPaginated,
     };
   }, [rawData, queryPagination.current, queryPagination.pageSize, supportsPaginationParams]);
+  const displayedTableData = useMemo(
+    () => applyTableRowFilters(tableData, filters),
+    [filters, tableData],
+  );
   const tableScrollY = useTableBodyScrollY({
     containerRef: tableContainerRef,
     hasPagination: isPaginated,
@@ -192,7 +198,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
     columnConfigs.forEach((col) => {
       if (col.cellType === 'gauge' && col.cellMax == null) {
         let maxValue = 0;
-        for (const row of tableData) {
+        for (const row of displayedTableData) {
           const numericValue = Number((row as any)?.[col.key]);
           if (!Number.isNaN(numericValue) && numericValue > maxValue) maxValue = numericValue;
         }
@@ -228,17 +234,8 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
             return (
               <Tooltip placement="topLeft" title={displayText}>
                 <div
-                  style={{
-                    background: cellColor,
-                    color: '#fff',
-                    fontWeight: 600,
-                    borderRadius: 4,
-                    padding: '1px 8px',
-                    textAlign: 'center',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
+                  className="overflow-hidden text-ellipsis whitespace-nowrap rounded px-2 py-px text-center font-semibold text-white"
+                  style={{ background: cellColor }}
                 >
                   {displayText}
                 </div>
@@ -253,8 +250,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
             return (
               <div className="flex items-center gap-2">
                 <div
-                  className="relative flex-1 overflow-hidden rounded"
-                  style={{ height: 10, background: 'var(--color-fill-2, #f0f0f0)' }}
+                  className="relative h-2.5 flex-1 overflow-hidden rounded bg-[var(--color-fill-2)]"
                 >
                   <div
                     className="absolute left-0 top-0 h-full rounded"
@@ -269,12 +265,10 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
           return (
             <Tooltip placement="topLeft" title={displayText}>
               <div
+                className={`overflow-hidden text-ellipsis whitespace-nowrap${mapping?.color ? ' font-semibold' : ''}`}
                 style={{
                   maxWidth: col.width || DEFAULT_CELL_MAX_WIDTH,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  ...(mapping?.color ? { color: mapping.color, fontWeight: 600 } : {}),
+                  ...(mapping?.color ? { color: mapping.color } : {}),
                 }}
               >
                 {displayText}
@@ -290,7 +284,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
 
       return column;
     });
-  }, [columnConfigs, config?.actions, handleActionClick, renderActionButtons, tableData]);
+  }, [columnConfigs, config?.actions, displayedTableData, handleActionClick, renderActionButtons]);
 
   useEffect(() => {
     if (!onQueryChange) return;
@@ -300,36 +294,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
       queryParams.page = queryPagination.current;
       queryParams.page_size = queryPagination.pageSize;
     }
-    const queryList: Array<Record<string, any>> = [];
-
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value === null || value === undefined || value === '') {
-        return;
-      }
-
-      if (Array.isArray(value) && value.length === 2 && dayjs.isDayjs(value[0]) && dayjs.isDayjs(value[1])) {
-        queryList.push({
-          field: key,
-          type: 'time',
-          start: formatOpsRequestTime(value[0]),
-          end: formatOpsRequestTime(value[1]),
-        });
-        return;
-      }
-
-      if (typeof value === 'string') {
-        const text = value.trim();
-        if (!text) {
-          return;
-        }
-        queryList.push({
-          field: key,
-          type: 'str*',
-          value: text,
-        });
-      }
-    });
-
+    const queryList = buildTableQueryList(filters);
     if (queryList.length > 0) {
       queryParams.query_list = queryList;
     }
@@ -444,7 +409,22 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
               ) : (
                 <Input
                   placeholder={t('dashboard.searchPlaceholder')}
-                  suffix={<SearchOutlined style={{ color: 'var(--color-text-3)' }} />}
+                  suffix={
+                    <SearchOutlined
+                      className="cursor-pointer text-[var(--color-text-3)]"
+                      onClick={() => {
+                        if (!activeKeywordFieldKey) {
+                          return;
+                        }
+                        handleKeywordFilterCommit(
+                          activeKeywordFieldKey,
+                          keywordDrafts[activeKeywordFieldKey]
+                            ?? filters[activeKeywordFieldKey]
+                            ?? '',
+                        );
+                      }}
+                    />
+                  }
                   value={
                     activeKeywordFieldKey
                       ? (keywordDrafts[activeKeywordFieldKey] ?? filters[activeKeywordFieldKey] ?? '')
@@ -518,7 +498,7 @@ const OpsAnalysisTable: React.FC<OpsAnalysisTableProps> = ({
       <div ref={tableContainerRef} className="min-h-0 flex-1 overflow-hidden">
         <CustomTable
           columns={antColumns}
-          dataSource={tableData}
+          dataSource={displayedTableData}
           loading={loading}
           rowKey={(record, index) => record.id || record.key || index?.toString() || '0'}
           size="small"

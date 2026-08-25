@@ -179,17 +179,17 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
 
       setExporting(true);
       try {
-        let instIds: any[] = [];
+        let instUuids: any[] = [];
 
         switch (exportType) {
           case 'selected':
-            instIds = selectedKeys;
+            instUuids = selectedKeys;
             break;
           case 'currentPage':
-            instIds = tableData.map((item) => item._id);
+            instUuids = tableData.map((item) => item.inst_uuid);
             break;
           case 'all':
-            instIds = [];
+            instUuids = [];
             break;
         }
 
@@ -199,7 +199,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
           .map((col) => col.key as string);
 
         const exportData = {
-          inst_ids: instIds,
+          inst_uuids: instUuids,
           attr_list: orderedAttrs,
           association_list: selectedRelations,
         };

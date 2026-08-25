@@ -9,6 +9,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.operation_analysis.constants.import_export import ObjectType
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.models.models import Dashboard, Directory, Topology
 from apps.operation_analysis.services.import_export.authorization_service import ImportExportAuthorizationService
 from apps.operation_analysis.views.import_export_view import ImportExportViewSet
@@ -65,6 +66,33 @@ def _build_dashboard_yaml(name: str) -> str:
             "architectures": [],
             "datasources": [],
             "namespaces": [],
+        },
+        allow_unicode=True,
+        sort_keys=False,
+    )
+
+
+def _build_raw_datasource_yaml(name: str, rest_api: str = "monitor/mm_query") -> str:
+    return yaml.safe_dump(
+        {
+            "meta": {
+                "schema_version": "1.1.0",
+                "object_counts": {"datasources": 1},
+            },
+            "datasources": [
+                {
+                    "key": f"datasource::{name}::{rest_api}",
+                    "name": name,
+                    "rest_api": rest_api,
+                    "source_type": "nats",
+                    "desc": "",
+                    "params": [],
+                    "tags": [],
+                    "chart_type": [],
+                    "field_schema": [],
+                    "namespace_keys": [],
+                }
+            ],
         },
         allow_unicode=True,
         sort_keys=False,
@@ -153,6 +181,41 @@ def test_precheck_drops_overwrite_when_user_lacks_overwrite_permission(authentic
     updated = ImportExportAuthorizationService.apply_precheck_permissions(request, _build_doc(item), result, current_team=1)
 
     assert updated["conflicts"][0]["suggested_actions"] == ["skip", "rename"]
+
+
+@pytest.mark.django_db
+def test_backend_precheck_does_not_readd_rename_for_existing_raw_monitor_query(authenticated_user, monkeypatch):
+    authenticated_user.permission = {
+        "ops-analysis": {"data_source-View", "data_source-Add", "data_source-Edit"}
+    }
+    existing = DataSourceAPIModel.objects.create(
+        name="legacy-raw-query",
+        rest_api="monitor/mm_query",
+        source_type="nats",
+        groups=[1],
+        created_by="system",
+        updated_by="system",
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        lambda user, current_team, app_name, permission_key, include_children=False: {
+            "instance": [existing.id],
+            "team": [1],
+        },
+    )
+    request = _build_request(
+        "/operation_analysis/api/import_export/import/precheck",
+        authenticated_user,
+        data={"yaml_content": _build_raw_datasource_yaml("legacy-raw-query")},
+    )
+
+    response = ImportExportViewSet.as_view({"post": "import_precheck"})(request)
+    response.render()
+    payload = _unwrap_payload(json.loads(response.rendered_content))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["valid"] is True
+    assert payload["conflicts"][0]["suggested_actions"] == ["overwrite", "skip"]
 
 
 @pytest.mark.django_db

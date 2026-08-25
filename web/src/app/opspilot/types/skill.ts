@@ -5,6 +5,7 @@ export interface Skill {
   created_by: string;
   team: string[];
   team_name: string;
+  usage_team?: number[] | string[];
   is_pinned?: boolean;
   permissions?: string[];
   skill_type?: number;
@@ -66,6 +67,25 @@ export interface SkillParam {
   type: 'text' | 'password';
 }
 
+export interface SkillPackageParam {
+  key: string;
+  value: string;
+  type: 'text' | 'password' | 'textarea';
+  multiline?: boolean;
+}
+
+export interface SkillPackageVariableDecl {
+  name: string;
+  required?: boolean;
+  secret?: boolean;
+  description?: string;
+  /** 声明类型：text 单行明文、password 加密、textarea 多行明文。 */
+  type?: 'text' | 'password' | 'textarea';
+  /** 兼容旧声明；优先认 type。 */
+  input?: 'text' | 'textarea';
+  multiline?: boolean;
+}
+
 export interface SkillDetail extends Skill {
   llm_model?: number;
   tool_ids?: number[];
@@ -73,6 +93,7 @@ export interface SkillDetail extends Skill {
   temperature?: number;
   skill_prompt?: string;
   skill_params?: SkillParam[];
+  skill_package_params?: Record<string, SkillPackageParam[]>;
   guide?: string;
   show_think?: boolean;
   enable_suggest?: boolean;
@@ -200,6 +221,7 @@ export interface CreateSkillPayload {
   name: string;
   introduction: string;
   team: string[];
+  usage_team?: number[] | string[];
   skill_type: number;
 }
 
@@ -222,6 +244,7 @@ export interface SkillPackage {
   permissions?: string[];
   created_at?: string;
   updated_at?: string;
+  variables?: SkillPackageVariableDecl[];
 }
 
 export interface SkillPackageListResponse {

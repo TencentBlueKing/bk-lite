@@ -7,20 +7,17 @@ catch_up 计划点由 create_scheduled 锁内计算。
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-from django.utils import timezone
-
+from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportSubscription,
 )
 from apps.operation_analysis.services.execution_service import (
     DashboardReportExecutionService,
 )
-
-logger = logging.getLogger(__name__)
+from django.utils import timezone
 
 DEFAULT_SCAN_BATCH_SIZE = 50
 

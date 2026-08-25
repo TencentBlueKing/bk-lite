@@ -262,6 +262,8 @@ def _import_plugins_from_files(path_list):
             logger.error(traceback.format_exc())
             error_count += success_count
             success_count = 0
+            # 整批 atomic 写失败不得伪装成初始化成功，否则 batch_init 绿但插件仍旧。
+            raise
 
     return success_count, error_count, supplementary_map
 

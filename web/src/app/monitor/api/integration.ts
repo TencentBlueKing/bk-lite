@@ -205,6 +205,7 @@ const useIntegrationApi = () => {
           instance_id?: string;
           cloud_region_id?: React.Key;
           interval?: number;
+          image_registry_prefix?: string;
         } = {}
       ) => {
         return await post(

@@ -61,12 +61,43 @@ export const sanitizeUnifiedFilterDefinition = <
   }
 
   const options = Array.isArray(definition.options) ? definition.options : [];
-  const optionValues = options.map((item) => item.value);
-  const defaultValue =
-    typeof definition.defaultValue === 'string' &&
-    optionValues.includes(definition.defaultValue)
+  const optionValues: Array<string | number> = options.map((item) => item.value);
+  const multiple = Boolean(
+    definition.inputConfig
+    && definition.inputConfig.control !== 'input'
+    && definition.inputConfig.multiple,
+  );
+  const defaultValue = (() => {
+    if (multiple) {
+      const asList = Array.isArray(definition.defaultValue)
+        ? definition.defaultValue.filter(
+          (item): item is string | number =>
+            typeof item === 'string' || typeof item === 'number',
+        )
+        : typeof definition.defaultValue === 'string' ||
+            typeof definition.defaultValue === 'number'
+          ? [definition.defaultValue]
+          : null;
+      if (!Array.isArray(asList)) {
+        return asList;
+      }
+      if (!options.length) {
+        return asList;
+      }
+      const allowed = asList.filter((item) => optionValues.includes(item));
+      return allowed.length === asList.length ? asList : allowed.length ? allowed : null;
+    }
+    if (Array.isArray(definition.defaultValue)) {
+      const first = definition.defaultValue[0];
+      return typeof first === 'string' || typeof first === 'number'
+        ? (optionValues.length && !optionValues.includes(first) ? null : first)
+        : null;
+    }
+    return typeof definition.defaultValue === 'string' &&
+      optionValues.includes(definition.defaultValue)
       ? definition.defaultValue
       : null;
+  })();
 
   return {
     ...definition,
@@ -132,6 +163,7 @@ export const scanUnifiedFilterParams = (
       componentCount: number;
       sampleAlias: string;
       sampleDefaultValue: FilterValue;
+      sampleInputConfig?: UnifiedFilterDefinition['inputConfig'];
     }
   >();
 
@@ -159,6 +191,7 @@ export const scanUnifiedFilterParams = (
           componentCount: 1,
           sampleAlias: param.alias_name || param.name,
           sampleDefaultValue: (param.value as FilterValue) ?? null,
+          sampleInputConfig: param.inputConfig,
         });
       }
     });

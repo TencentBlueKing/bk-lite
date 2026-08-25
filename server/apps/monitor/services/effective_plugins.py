@@ -8,6 +8,7 @@ from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.models import CollectConfig, MonitorObject, MonitorPlugin
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 
 
 class MonitorEffectivePluginService:
@@ -121,7 +122,7 @@ class MonitorEffectivePluginService:
         parsed = parse_instance_id(instance_id)
         primary_key = instance_id_keys[0] if instance_id_keys else "instance_id"
         target_primary = str(parsed[0]) if parsed else None
-        vm_api = VictoriaMetricsAPI()
+        plugin_queries = []
         for plugin in plugins:
             query = (plugin.status_query or "").strip()
             if not query:
@@ -132,11 +133,24 @@ class MonitorEffectivePluginService:
                 query = MonitorEffectivePluginService._inject_label_matcher(
                     query, primary_key, target_primary
                 )
-            try:
-                response = vm_api.query(query, step="20m")
-            except Exception:
-                logger.exception("Failed to query monitor plugin status. plugin_id=%s instance_id=%s", plugin.id, instance_id)
+            plugin_queries.append((plugin, query))
+
+        vm_api = VictoriaMetricsAPI()
+        responses, errors = run_unique_vm_queries(
+            (query for _, query in plugin_queries),
+            lambda query: vm_api.query(query, step="20m"),
+        )
+        for plugin, query in plugin_queries:
+            if query in errors:
+                error = errors[query]
+                logger.warning(
+                    "Failed to query monitor plugin status. plugin_id=%s instance_id=%s",
+                    plugin.id,
+                    instance_id,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
                 continue
+            response = responses[query]
 
             for metric in response.get("data", {}).get("result", []):
                 labels = metric.get("metric", {})

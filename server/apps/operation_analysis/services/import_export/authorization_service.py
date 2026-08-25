@@ -134,7 +134,8 @@ class ImportExportAuthorizationService:
                     continue
 
                 if not view_allowed or not cls.can_access_existing_object(request, object_type, existing, current_team):
-                    suggested_actions = [ConflictAction.RENAME.value] if create_allowed else []
+                    permission_actions = [ConflictAction.RENAME.value] if create_allowed else []
+                    suggested_actions = cls._intersect_precheck_actions(conflict, permission_actions)
                     conflict["reason"] = ConflictReason.NO_PERMISSION_CONFLICT
                     conflict["suggested_actions"] = suggested_actions
                     if not suggested_actions:
@@ -148,21 +149,27 @@ class ImportExportAuthorizationService:
                         )
                     continue
 
-                suggested_actions = []
+                permission_actions = []
                 if overwrite_allowed:
-                    suggested_actions.append(ConflictAction.OVERWRITE.value)
-                suggested_actions.append(ConflictAction.SKIP.value)
+                    permission_actions.append(ConflictAction.OVERWRITE.value)
+                permission_actions.append(ConflictAction.SKIP.value)
                 if create_allowed:
-                    suggested_actions.append(ConflictAction.RENAME.value)
+                    permission_actions.append(ConflictAction.RENAME.value)
 
                 conflict["reason"] = ConflictReason.NAME_CONFLICT
-                conflict["suggested_actions"] = suggested_actions
+                conflict["suggested_actions"] = cls._intersect_precheck_actions(conflict, permission_actions)
 
         if permission_errors:
             result["valid"] = False
             result.setdefault("errors", []).extend(permission_errors)
 
         return result
+
+    @staticmethod
+    def _intersect_precheck_actions(conflict: dict[str, Any], permission_actions: list[str]) -> list[str]:
+        """权限过滤只能收窄预检动作，不能重新放宽安全或兼容约束。"""
+        precheck_actions = set(conflict.get("suggested_actions", []))
+        return [action for action in permission_actions if action in precheck_actions]
 
     @classmethod
     def validate_conflict_decisions(cls, conflicts: list[dict], conflict_decisions: dict[str, str]) -> list[dict]:
@@ -337,13 +344,14 @@ class ImportExportAuthorizationService:
         if getattr(request.user, "is_superuser", False):
             return True
 
-        if (
-            object_type in cls.ORG_SCOPED_OBJECT_TYPES
-            and current_team
-            and hasattr(existing, "groups")
-            and current_team not in (getattr(existing, "groups", None) or [])
-        ):
-            return False
+        if object_type in cls.ORG_SCOPED_OBJECT_TYPES and current_team and hasattr(existing, "groups"):
+            if object_type == ObjectType.DATASOURCE:
+                from apps.operation_analysis.common.datasource_visibility import can_access_datasource_in_org
+
+                if not can_access_datasource_in_org(existing, int(current_team)):
+                    return False
+            elif current_team not in (getattr(existing, "groups", None) or []):
+                return False
 
         export_config = cls.EXPORT_PERMISSION_MAP[object_type]
         permission_key = export_config.get("permission_key")
@@ -415,6 +423,10 @@ class ImportExportAuthorizationService:
                 org_query = Q()
                 for group_id in group_ids or [current_team]:
                     org_query |= Q(groups__contains=int(group_id))
+                if object_type == ObjectType.DATASOURCE:
+                    from apps.operation_analysis.common.datasource_visibility import expand_datasource_org_query
+
+                    org_query = expand_datasource_org_query(org_query, include_all_builtins=False)
                 queryset = queryset.filter(org_query)
             return list(queryset.values_list("id", flat=True))
 

@@ -32,7 +32,6 @@ import {
   useAlertTypeMap
 } from '@/app/monitor/hooks';
 import useMonitorApi from '@/app/monitor/api';
-import { fetchAllMonitorMetrics } from '@/app/monitor/api/fetchMetricCatalogPages';
 import useEventApi from '@/app/monitor/api/event';
 import Information from './information';
 import EventHeatMap, { getHeatMapCellColor } from '@/components/heat-map';
@@ -41,7 +40,9 @@ import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 import type { ListRef } from 'rc-virtual-list';
 import {
-  buildAlertSnapshotChartValues,
+  buildAlertDetailMetricQuery,
+  buildAlertSnapshotChartModel,
+  decorateAlertSnapshotChartData,
   resolveAlertDetailChartUnit,
   resolveAlertDetailMetric
 } from './alertDetailUtils';
@@ -51,7 +52,7 @@ const TIMELINE_ITEM_HEIGHT = 48;
 type AlertEventItem = TableDataItem & HeatMapDataItem;
 
 const AlertDetail = forwardRef<ModalRef, ModalConfig>(
-  ({ objects, userList, onSuccess, objectId }, ref) => {
+  ({ objects, userList, onSuccess }, ref) => {
     const { t } = useTranslation();
     const { getMonitorMetrics } = useMonitorApi();
     const { getMonitorEventDetail, getEventRaw, getSnapshot } = useEventApi();
@@ -64,6 +65,9 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
     const [formData, setFormData] = useState<TableDataItem>({});
     const [title, setTitle] = useState<string>('');
     const [chartData, setChartData] = useState<ChartData[]>([]);
+    const [chartXAxisDomain, setChartXAxisDomain] = useState<
+      [number, number] | null
+    >(null);
     const [chartUnit, setChartUnit] = useState<string>('');
     const [trapData, setTrapData] = useState<TableDataItem>({});
     const [activeTab, setActiveTab] = useState<string>('information');
@@ -113,7 +117,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       showModal: ({ title, form }) => {
         setGroupVisible(true);
         setTitle(title);
-        getMetrics(form, objectId as React.Key);
+        getMetrics(form);
       }
     }));
 
@@ -122,17 +126,17 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       [activeTab]
     );
 
-    const getMetrics = async (row: TableDataItem, id: React.Key) => {
+    const getMetrics = async (row: TableDataItem) => {
       setPageLoading(true);
       try {
-        const { items: data } = await fetchAllMonitorMetrics(getMonitorMetrics, {
-          monitor_object_id: id
-        });
-        const metricInfo =
-          data.find(
-            (item: MetricItem) =>
-              item.id === row.policy?.query_condition?.metric_id
-          ) || {};
+        const query = buildAlertDetailMetricQuery(row);
+        let metricInfo: MetricItem | Record<string, never> = {};
+        if (query) {
+          const { items: data } = await getMonitorMetrics(query);
+          metricInfo =
+            data.find((item: MetricItem) => Number(item.id) === query.id) ||
+            {};
+        }
         const metricWithUnit = resolveAlertDetailMetric(row, metricInfo);
         const form: TableDataItem = {
           ...row,
@@ -159,8 +163,11 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
           page_size: -1,
           page: 10
         });
-        const data = buildAlertSnapshotChartValues(
-          responseData?.snapshots || []
+        const snapshots = responseData?.snapshots || [];
+        const isNoDataAlert = form.alert_type === 'no_data';
+        const snapshotChart = buildAlertSnapshotChartModel(
+          snapshots,
+          isNoDataAlert ? { alertType: 'no_data' } : undefined
         );
         setChartUnit(
           resolveAlertDetailChartUnit(form, responseData?.chart_unit)
@@ -175,11 +182,24 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
             title: form.metric?.display_name || '--'
           }
         ];
-        const _chartData = renderChart(
-          [{ values: data, metric: form.metric }],
+        const rendered = renderChart(
+          [{ values: snapshotChart.dataValues, metric: form.metric }],
           config
         );
-        setChartData(_chartData);
+        if (isNoDataAlert) {
+          setChartData(
+            decorateAlertSnapshotChartData(
+              rendered,
+              snapshotChart.gapIntervals,
+              snapshotChart.xAxisDomain,
+              snapshotChart.noDataTimes
+            )
+          );
+          setChartXAxisDomain(snapshotChart.xAxisDomain);
+        } else {
+          setChartData(rendered);
+          setChartXAxisDomain(null);
+        }
       } finally {
         setLoading(false);
       }
@@ -285,6 +305,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
       setGroupVisible(false);
       setActiveTab('information');
       setChartData([]);
+      setChartXAxisDomain(null);
       setChartUnit('');
       setTrapData({});
       setEventData([]);
@@ -412,6 +433,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
                       onClose={closeModal}
                       trapData={trapData}
                       chartData={chartData}
+                      chartXAxisDomain={chartXAxisDomain}
                       chartUnit={chartUnit}
                     />
                   </Spin>

@@ -2,11 +2,6 @@ import React from 'react';
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-vi.hoisted(() => {
-  process.env.NEXT_PUBLIC_WEBCHAT_ENDPOINT =
-    '/api/proxy/opspilot/bot_mgmt/execute_chat_flow/80/embedded_chat-1786007476479/';
-});
-
 import GlobalWebChat from '..';
 
 interface AuthState {
@@ -20,6 +15,11 @@ interface ClientState {
   loading: boolean;
 }
 
+interface UserInfoState {
+  userId: string;
+  selectedGroup: { id: number } | null;
+}
+
 let authState: AuthState = {
   token: null,
   isAuthenticated: false,
@@ -29,6 +29,15 @@ let clientState: ClientState = {
   clientData: [],
   loading: false,
 };
+let userInfoState: UserInfoState = {
+  userId: 'alice',
+  selectedGroup: { id: 7 },
+};
+let pathname = '/cmdb';
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => pathname,
+}));
 
 vi.mock('@/context/auth', () => ({
   useAuth: () => authState,
@@ -40,6 +49,10 @@ vi.mock('@/context/client', () => ({
     appConfigList: [],
     appConfigLoading: false,
   }),
+}));
+
+vi.mock('@/context/userInfo', () => ({
+  useUserInfoContext: () => userInfoState,
 }));
 
 vi.mock('@/utils/i18n', () => ({
@@ -70,6 +83,11 @@ afterEach(() => {
     clientData: [],
     loading: false,
   };
+  userInfoState = {
+    userId: 'alice',
+    selectedGroup: { id: 7 },
+  };
+  pathname = '/cmdb';
   vi.clearAllMocks();
 });
 
@@ -89,7 +107,7 @@ describe('GlobalWebChat', () => {
     expect(document.querySelector('script[data-bk-global-webchat]')).toBeNull();
   });
 
-  it('loads once and initializes the configured Chatflow for an authorized user', () => {
+  it('loads public assets once and initializes platform mode', () => {
     authState = {
       token: 'user-token',
       isAuthenticated: true,
@@ -111,10 +129,10 @@ describe('GlobalWebChat', () => {
       'script[data-bk-global-webchat]',
     );
 
-    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js');
+    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js?v=20260825-2');
     expect(
       document.querySelector<HTMLLinkElement>('link[data-bk-global-webchat]')?.getAttribute('href'),
-    ).toBe('/webchat/style.css');
+    ).toBe('/webchat/style.css?v=20260825-2');
 
     window.WebChat = {
       default: initialize,
@@ -127,7 +145,14 @@ describe('GlobalWebChat', () => {
     expect(initialize).toHaveBeenCalledWith(
       expect.objectContaining({
         apiKey: 'user-token',
-        sseUrl: '/api/proxy/opspilot/bot_mgmt/execute_chat_flow/80/embedded_chat-1786007476479/',
+        userId: 'alice',
+        teamId: '7',
+        platform: expect.objectContaining({
+          applicationsUrl: '/api/proxy/opspilot/skill_channel/platform/',
+          deleteSessionUrl: '/api/proxy/opspilot/skill_channel/conversations/delete/',
+          storageKey: 'webchat:platform:alice:7',
+        }),
+        collectContext: expect.any(Function),
       }),
       null,
     );

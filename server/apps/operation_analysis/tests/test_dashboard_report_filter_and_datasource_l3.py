@@ -1,34 +1,25 @@
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from unittest.mock import MagicMock
 
 import pytest
 from django.db import OperationalError
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.models.models import Dashboard, Directory
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-    DashboardReportSubscription,
-)
-from apps.operation_analysis.services.execution_orchestrator import (
-    PermissionStep,
-)
-from apps.operation_analysis.services.execution_service import (
-    DashboardReportExecutionService,
-)
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportSubscription
+from apps.operation_analysis.services.execution_orchestrator import PermissionStep
+from apps.operation_analysis.services.execution_service import DashboardReportExecutionService
 from apps.operation_analysis.services.filter_snapshot import (
     VALUE_KIND_DYNAMIC_DATE_RANGE,
     VALUE_KIND_DYNAMIC_TIME_RANGE,
     VALUE_KIND_STATIC,
     normalize_applied_filter_values,
 )
-from apps.operation_analysis.services.filter_snapshot_resolver import (
-    resolve_date_range,
-    resolve_filter_snapshot,
-)
+from apps.operation_analysis.services.filter_snapshot_resolver import resolve_date_range, resolve_filter_snapshot
 from apps.system_mgmt.models import Channel
-
 
 pytestmark = pytest.mark.django_db
 
@@ -103,8 +94,7 @@ def subscription_url():
 
 def grant_dashboard_view(monkeypatch, allowed=True):
     monkeypatch.setattr(
-        "apps.operation_analysis.services.subscription_service."
-        "DashboardSubscriptionService.can_view_dashboard",
+        "apps.operation_analysis.services.subscription_service." "DashboardSubscriptionService.can_view_dashboard",
         lambda request, dashboard: allowed,
     )
 
@@ -112,8 +102,7 @@ def grant_dashboard_view(monkeypatch, allowed=True):
 def grant_datasource_view(monkeypatch, allowed=True):
     outcome = "allowed" if allowed else "denied"
     monkeypatch.setattr(
-        "apps.operation_analysis.services.subscription_service."
-        "DashboardSubscriptionService.evaluate_datasource_for_create_scan",
+        "apps.operation_analysis.services.subscription_service." "DashboardSubscriptionService.evaluate_datasource_for_create_scan",
         lambda request, datasource: outcome,
     )
 
@@ -154,15 +143,61 @@ def test_normalize_static_and_dynamic_kinds():
     assert snap["entries"]["custom_period"]["value_kind"] == VALUE_KIND_STATIC
 
 
+def test_normalize_string_multiple_filter_values():
+    snap = normalize_applied_filter_values(
+        {"hosts": ["host-a", "host-b"]},
+        dashboard_filters=[
+            {
+                "id": "hosts",
+                "key": "instance_ids",
+                "type": "string",
+                "inputConfig": {
+                    "control": "select",
+                    "multiple": True,
+                    "optionsSource": {"type": "static", "staticItems": []},
+                },
+            }
+        ],
+    )
+    assert snap["entries"]["hosts"] == {
+        "value_kind": VALUE_KIND_STATIC,
+        "value": ["host-a", "host-b"],
+    }
+
+
+def test_normalize_legacy_string_list_filter_values_read_compat():
+    snap = normalize_applied_filter_values(
+        {"hosts": ["host-a"]},
+        dashboard_filters=[
+            {
+                "id": "hosts",
+                "key": "instance_ids",
+                "type": "stringList",
+            }
+        ],
+    )
+    assert snap["entries"]["hosts"]["value"] == ["host-a"]
+
+
+def test_normalize_string_without_multiple_rejects_list():
+    with pytest.raises(ValidationError):
+        normalize_applied_filter_values(
+            {"env": ["a", "b"]},
+            dashboard_filters=[
+                {
+                    "id": "env",
+                    "key": "env",
+                    "type": "string",
+                }
+            ],
+        )
+
+
 def test_resolve_last_7_days_differs_by_scheduled_time():
     t1 = datetime(2026, 7, 10, 1, 0, tzinfo=dt_timezone.utc)
     t2 = datetime(2026, 7, 20, 1, 0, tzinfo=dt_timezone.utc)
-    a = resolve_date_range(
-        "last_7_days", reference_at=t1, timezone_name="Asia/Shanghai"
-    )
-    b = resolve_date_range(
-        "last_7_days", reference_at=t2, timezone_name="Asia/Shanghai"
-    )
+    a = resolve_date_range("last_7_days", reference_at=t1, timezone_name="Asia/Shanghai")
+    b = resolve_date_range("last_7_days", reference_at=t2, timezone_name="Asia/Shanghai")
     assert a != b
     assert a == ("2026-07-04", "2026-07-10")
     assert b == ("2026-07-14", "2026-07-20")
@@ -380,10 +415,7 @@ def test_update_filters_does_not_change_next_run_at(
     )
     assert updated.status_code == 200
     assert updated.data["next_run_at"] == original_next
-    assert (
-        updated.data["config"]["filter_snapshot"]["entries"]["env"]["value"]
-        == "b"
-    )
+    assert updated.data["config"]["filter_snapshot"]["entries"]["env"]["value"] == "b"
 
 
 # --- A5 create-time DS scan ---
@@ -605,8 +637,7 @@ def test_permission_step_still_enforced_at_execution(
         status=DashboardReportExecution.Status.RUNNING,
     )
     monkeypatch.setattr(
-        "apps.operation_analysis.views.view."
-        "DashboardModelViewSet.get_has_permission",
+        "apps.operation_analysis.views.view." "DashboardModelViewSet.get_has_permission",
         lambda *args, **kwargs: False,
     )
     result = PermissionStep.execute(execution)

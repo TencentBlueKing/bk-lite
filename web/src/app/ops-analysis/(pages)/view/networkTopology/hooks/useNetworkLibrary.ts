@@ -133,7 +133,7 @@ export const useNetworkLibrary = ({
         node.bk_inst_name,
         node.ip_addr,
         node.bk_obj_id,
-        String(node.bk_inst_id ?? ''),
+        String(node.bk_inst_uuid ?? ''),
       ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(normalizedKeyword));

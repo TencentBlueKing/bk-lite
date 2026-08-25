@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import type { RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Button, Empty, Spin } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -28,6 +29,7 @@ import {
   buildDashboardGridStackLayout,
   buildDashboardGridStackStructureKey,
   deserializeDashboardGridStackLayout,
+  flattenDashboardGridStackLayout,
   type DashboardGridStackStoredWidget,
 } from '@/app/ops-analysis/utils/dashboardGridStack';
 import {
@@ -35,10 +37,23 @@ import {
   getOrCreateDashboardWidgetHost,
   prepareDashboardWidgetHosts,
 } from '@/app/ops-analysis/utils/dashboardWidgetHosts';
+import {
+  isDashboardWidgetItem,
+  sortDashboardLayoutItems,
+} from '@/app/ops-analysis/utils/dashboardGroups';
+import {
+  activateAllRuntimeWidgets,
+  resolveRuntimeActivation,
+  shouldCommitRuntimeStates,
+  type RuntimeActivationState,
+} from '@/app/ops-analysis/utils/dashboardRuntimeActivation';
 
 import GroupHeader from './groupHeader';
-import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
+import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/widgetHeaderRuntimeSlot';
+import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
+import { DashboardRuntimeSchedulerProvider } from '@/app/ops-analysis/context/dashboardRuntimeScheduler';
+import type { RuntimeRequestPriority } from '@/app/ops-analysis/utils/dashboardRuntimeScheduler';
 
 import 'gridstack/dist/gridstack.min.css';
 import type { DashboardWidgetRenderResult } from '@/app/ops-analysis/renderContract';
@@ -78,6 +93,7 @@ interface DashboardCanvasProps {
   filterSearchVersion: number;
   namespaceSearchVersion: number;
   dashboardReloadVersion: number;
+  refreshCause?: CanvasRuntimeRefreshCause;
   widgetReloadVersions: Record<string, number>;
   dataSourceResolver: (
     dataSource?: string | number,
@@ -101,6 +117,7 @@ interface DashboardCanvasProps {
     >,
   ) => void;
   renderMode?: boolean;
+  scrollRootRef: RefObject<HTMLDivElement | null>;
   onWidgetRenderStatus?: (result: DashboardWidgetRenderResult) => void;
 }
 
@@ -115,6 +132,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   filterSearchVersion,
   namespaceSearchVersion,
   dashboardReloadVersion,
+  refreshCause = 'manual',
   widgetReloadVersions,
   dataSourceResolver,
   appliedFilterValues,
@@ -131,6 +149,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   onDeleteWidget,
   onTopologyLayoutChange,
   renderMode = false,
+  scrollRootRef,
   onWidgetRenderStatus,
 }) => {
   const { t } = useTranslation();
@@ -167,7 +186,62 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   const handleWidgetMutationStopRef = useRef<
     (element: HTMLElement | null) => void
       >(() => undefined);
-  const [, setPortalVersion] = useState(0);
+  const [portalVersion, setPortalVersion] = useState(0);
+  const [runtimeStates, setRuntimeStates] = useState<Record<string, RuntimeActivationState>>({});
+
+  useEffect(() => {
+    if (renderMode) {
+      const widgetIds = gridStackLayout.topLevelNodes
+        .filter((node) => node.kind === 'widget')
+        .map((node) => node.id)
+        .concat(gridStackLayout.groupNodes.flatMap((node) => node.children.map((child) => child.id)));
+      setRuntimeStates(activateAllRuntimeWidgets(widgetIds));
+      return undefined;
+    }
+
+    const root = scrollRootRef.current;
+    if (!root) return undefined;
+    let frame: number | null = null;
+    const update = () => {
+      frame = null;
+      const rootRect = root.getBoundingClientRect();
+      const margin = root.clientHeight;
+      const widgetOrder = new Map(
+        sortDashboardLayoutItems(flattenDashboardGridStackLayout(gridStackLayout))
+          .filter(isDashboardWidgetItem)
+          .map((item, index) => [item.i, index]),
+      );
+      const next: Record<string, { active: boolean; priority: RuntimeRequestPriority }> = {};
+      widgetHostRegistryRef.current.hosts.forEach((host, id) => {
+        const shell = host.closest<HTMLElement>('[data-node-kind="widget"]');
+        if (!shell) return;
+        const rect = shell.getBoundingClientRect();
+        next[id] = resolveRuntimeActivation({
+          root: rootRect,
+          widget: rect,
+          activationMargin: margin,
+          order: widgetOrder.get(id) ?? Number.MAX_SAFE_INTEGER,
+        });
+      });
+      setRuntimeStates((previous) =>
+        shouldCommitRuntimeStates(previous, next) ? next : previous,
+      );
+    };
+    const scheduleUpdate = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(update);
+    };
+    scheduleUpdate();
+    root.addEventListener('scroll', scheduleUpdate, { passive: true });
+    const resizeObserver = new ResizeObserver(scheduleUpdate);
+    resizeObserver.observe(root);
+    if (gridRootRef.current) resizeObserver.observe(gridRootRef.current);
+    return () => {
+      root.removeEventListener('scroll', scheduleUpdate);
+      resizeObserver.disconnect();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [layout, portalVersion, renderMode, scrollRootRef, gridStackLayout]);
 
   useEffect(() => {
     layoutRef.current = layout;
@@ -564,11 +638,14 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
                   filterSearchVersion={filterSearchVersion}
                   namespaceSearchVersion={namespaceSearchVersion}
                   reloadVersion={`${dashboardReloadVersion}:${widgetReloadVersions[item.i] || 0}`}
+                  refreshCause={refreshCause}
                   dataSource={dataSourceResolver(item.valueConfig?.dataSource)}
                   unifiedFilterValues={appliedFilterValues}
                   filterDefinitions={appliedFilterDefinitions}
                   builtinNamespaceId={appliedNamespaceId}
                   onRenderStatus={onWidgetRenderStatus}
+                  runtimeActive={runtimeStates[item.i]?.active ?? renderMode}
+                  runtimePriority={runtimeStates[item.i]?.priority}
                   layoutEditable={isEditMode}
                   onTopologyLayoutChange={
                     isEditMode && onTopologyLayoutChange
@@ -589,6 +666,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       chartTheme.panelBg,
       chartTheme.panelBorderColor,
       dashboardReloadVersion,
+      refreshCause,
       dataSourceResolver,
       filterSearchVersion,
       isEditMode,
@@ -599,6 +677,8 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       t,
       widgetReloadVersions,
       onWidgetRenderStatus,
+      renderMode,
+      runtimeStates,
     ],
   );
 
@@ -964,12 +1044,13 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   });
 
   return (
-    <div
-      className="relative w-full"
-      style={{
-        padding: `${DASHBOARD_GRID_CONTAINER_PADDING[1]}px ${DASHBOARD_GRID_CONTAINER_PADDING[0]}px`,
-      }}
-    >
+    <DashboardRuntimeSchedulerProvider>
+      <div
+        className="relative w-full"
+        style={{
+          padding: `${DASHBOARD_GRID_CONTAINER_PADDING[1]}px ${DASHBOARD_GRID_CONTAINER_PADDING[0]}px`,
+        }}
+      >
       <style jsx global>{`
         .grid-stack > .grid-stack-item > .grid-stack-item-content,
         .grid-stack > .grid-stack-placeholder > .placeholder-content {
@@ -1030,7 +1111,8 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       <div ref={gridRootRef} className="grid-stack relative z-10 w-full" />
       {groupHeaderPortals as unknown as React.ReactNode}
       {widgetPortals as unknown as React.ReactNode}
-    </div>
+      </div>
+    </DashboardRuntimeSchedulerProvider>
   );
 };
 

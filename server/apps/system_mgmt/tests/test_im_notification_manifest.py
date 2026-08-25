@@ -1,4 +1,4 @@
-from apps.system_mgmt.providers.manifests.feishu import PROVIDER_MANIFEST
+from apps.system_mgmt.providers.builtin.feishu import PROVIDER_MANIFEST
 
 
 def test_feishu_im_notification_manifest_declares_field_semantics():

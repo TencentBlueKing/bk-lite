@@ -1,4 +1,6 @@
 export const AUTH_POPUP_SUCCESS_MESSAGE = 'bk-lite-auth-popup-success';
+export const LOGIN_AUTH_RESULT_RETURN_MESSAGE = 'bk-lite-login-auth-result-return';
+export const SIGNIN_WINDOW_NAME = 'bk-lite-signin';
 
 function isThirdLoginFlagEnabled(thirdLogin?: string | boolean | null): boolean {
   if (typeof thirdLogin === 'boolean') {

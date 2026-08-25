@@ -19,7 +19,6 @@ import {
   restoreMobileViewScroll,
   writeMobileViewSnapshot,
 } from '@/navigation/mobile-view-cache';
-import { getCurrentTeamCookie } from '@/utils/teamCookie';
 import { useTranslation } from '@/utils/i18n';
 import styles from '@/features/monitor/monitor.module.css';
 
@@ -33,10 +32,10 @@ function entryKey(objectId: number, instanceId: string) {
 
 export default function MonitorRecentViewsPanel() {
   const { t } = useTranslation();
-  const { userInfo } = useAuth();
+  const { userInfo, organizationScope } = useAuth();
   const { entries, status, reload } = useRecentViews();
   const canSnapshot = status === 'ready' || status === 'partial' || status === 'refresh-error';
-  const cacheScope = `${userInfo?.id || 0}:${getCurrentTeamCookie() || 'none'}`;
+  const cacheScope = organizationScope;
   const initialSnapshot = useRef(readMobileViewSnapshot<MonitorRecentViewsViewState>(cacheScope, 'monitor-recent'));
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const preferences = { locale: userInfo?.locale || 'en', timezone: userInfo?.timezone || 'Asia/Shanghai' };

@@ -9,7 +9,7 @@ const getSingleValueValueRefY = (node: Node) => {
 
 const showFetchErrorIcon = (node: Node) => {
   const valueRefY = getSingleValueValueRefY(node);
-  const fontSize = node.getAttrByPath('label/fontSize');
+  const fontSize = node.getAttrByPath<number | undefined>('label/fontSize');
   node.setAttrByPath('label/display', 'none');
   node.setAttrByPath('errorIcon/refY', valueRefY);
   if (fontSize !== undefined) {

@@ -7,12 +7,17 @@
 import os
 import shlex
 import subprocess
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from django.db import DataError
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import Node, NodeOrganization, PackageVersion
 from apps.node_mgmt.models.cloud_region import CloudRegion, SidecarEnv
@@ -141,6 +146,7 @@ def test_install_controller_creates_task_and_nodes():
     # 密码被加密（不等于明文）
     assert node.password != "secret"
     assert node.password
+    assert AESCryptor().decode(node.password) == "secret"
 
 
 @pytest.mark.django_db
@@ -176,6 +182,139 @@ def test_uninstall_controller_creates_task_and_nodes():
     assert node.node_name == "controller-to-remove"
     assert node.organizations == [1]
     assert node.private_key != "key"
+    assert AESCryptor().decode(node.private_key) == "key"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("operation", ["install", "uninstall"])
+@pytest.mark.parametrize("plaintext", ["p" * 47, "p" * 48, "p" * 100, "密码" * 48])
+def test_controller_task_password_storage_round_trips_supported_passwords(operation, plaintext):
+    region = CloudRegion.objects.create(name=f"cr-{operation}-{len(plaintext)}")
+    node = {
+        "ip": "10.0.0.48",
+        "node_id": "node-long-password",
+        "node_name": "long-password",
+        "os": "linux",
+        "cpu_architecture": "x86_64",
+        "organizations": [1],
+        "port": 22,
+        "username": "root",
+        "password": plaintext,
+        "private_key": "",
+        "passphrase": "",
+    }
+
+    if operation == "install":
+        task_id = InstallerService.install_controller(
+            region.id,
+            "work-long-password",
+            5,
+            [node],
+            "x86_64",
+        )
+    else:
+        task_id = InstallerService.uninstall_controller(
+            region.id,
+            "work-long-password",
+            [node],
+        )
+
+    task_node = ControllerTaskNode.objects.get(task_id=task_id)
+    assert AESCryptor().decode(task_node.password) == plaintext
+
+
+@pytest.mark.django_db(transaction=True)
+def test_password_migration_preserves_legacy_and_oversized_data_across_state_rollback():
+    executor = MigrationExecutor(connection)
+    executor.migrate([("node_mgmt", "0042_controllertasknode_connectivity_observation")])
+    legacy_apps = executor.loader.project_state(
+        [("node_mgmt", "0042_controllertasknode_connectivity_observation")]
+    ).apps
+    legacy_region = legacy_apps.get_model("node_mgmt", "CloudRegion").objects.create(name="cr-migration")
+    legacy_task = legacy_apps.get_model("node_mgmt", "ControllerTask").objects.create(
+        cloud_region=legacy_region,
+        type="install",
+        status="waiting",
+    )
+    legacy_node_model = legacy_apps.get_model("node_mgmt", "ControllerTaskNode")
+    legacy_node_model.objects.create(
+        task=legacy_task,
+        ip="10.0.0.52",
+        os="linux",
+        organizations=[1],
+        port=22,
+        username="root",
+        password="legacy-short",
+    )
+
+    executor = MigrationExecutor(connection)
+    executor.migrate([("node_mgmt", "0043_alter_controllertasknode_password")])
+    widened_apps = executor.loader.project_state([("node_mgmt", "0043_alter_controllertasknode_password")]).apps
+    widened_node_model = widened_apps.get_model("node_mgmt", "ControllerTaskNode")
+    task_node = widened_node_model.objects.get(ip="10.0.0.52")
+    assert task_node.password == "legacy-short"
+    task_node.password = "x" * 101
+    task_node.save(update_fields=["password"])
+
+    executor = MigrationExecutor(connection)
+    executor.migrate([("node_mgmt", "0042_controllertasknode_connectivity_observation")])
+    rolled_back_apps = executor.loader.project_state(
+        [("node_mgmt", "0042_controllertasknode_connectivity_observation")]
+    ).apps
+    rolled_back_node = rolled_back_apps.get_model("node_mgmt", "ControllerTaskNode").objects.get(ip="10.0.0.52")
+    assert rolled_back_node.password == "x" * 101
+
+    executor = MigrationExecutor(connection)
+    executor.migrate([("node_mgmt", "0043_alter_controllertasknode_password")])
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("operation", ["install", "uninstall"])
+def test_controller_task_creation_rolls_back_parent_when_node_insert_fails(operation):
+    region = CloudRegion.objects.create(name=f"cr-{operation}-rollback")
+    node = {
+        "ip": "10.0.0.49",
+        "node_id": "node-rollback",
+        "node_name": "rollback",
+        "os": "linux",
+        "cpu_architecture": "x86_64",
+        "organizations": [1],
+        "port": 22,
+        "username": "root",
+        "password": "secret",
+        "private_key": "",
+        "passphrase": "",
+    }
+
+    nodes = [node, {**node, "ip": "10.0.0.50", "node_id": "node-rollback-second"}]
+
+    def insert_first_then_fail(objects, *args, **kwargs):
+        objects[0].save()
+        raise DataError("second node insert failed")
+
+    with patch.object(
+        ControllerTaskNode.objects,
+        "bulk_create",
+        side_effect=insert_first_then_fail,
+    ):
+        with pytest.raises(DataError):
+            if operation == "install":
+                InstallerService.install_controller(
+                    region.id,
+                    "work-rollback",
+                    5,
+                    nodes,
+                    "x86_64",
+                )
+            else:
+                InstallerService.uninstall_controller(
+                    region.id,
+                    "work-rollback",
+                    nodes,
+                )
+
+    assert ControllerTask.objects.filter(cloud_region=region).exists() is False
+    assert ControllerTaskNode.objects.filter(ip="10.0.0.49").exists() is False
 
 
 # --------------------------------------------------------------------------- #
@@ -452,6 +591,10 @@ def test_get_install_command_linux_returns_bootstrap():
             return_value="tok-xyz",
         ),
         patch(
+            "apps.node_mgmt.services.installer.InstallTokenService.inspect_token_data",
+            return_value={"remaining_usage": 5},
+        ),
+        patch(
             "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
             return_value=session_cfg,
         ),
@@ -479,6 +622,21 @@ _SESSION_CFG = {
     "install_dir": "/opt/fusion",
     "server_url": "https://srv.local/api/v1/node_mgmt/open_api/node",
 }
+
+
+@contextmanager
+def _mock_bootstrap_session(session_config=_SESSION_CFG):
+    with (
+        patch(
+            "apps.node_mgmt.services.installer.InstallTokenService.inspect_token_data",
+            return_value={"remaining_usage": 5},
+        ),
+        patch(
+            "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
+            return_value=session_config,
+        ),
+    ):
+        yield
 
 
 def _write_executable(path, content):
@@ -543,10 +701,7 @@ printf '%s\n' '#!/bin/sh' 'printf "%s" "${SELECTED_SHELL:-bash}" > "$RUNNER_LOG"
 
 @pytest.mark.django_db
 def test_get_linux_bootstrap_command_manual_mode():
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
     assert "sh -lc" not in cmd
     assert "bash -lc" not in cmd
@@ -562,10 +717,7 @@ def test_get_linux_bootstrap_command_manual_mode():
 
 @pytest.mark.django_db
 def test_get_linux_bootstrap_command_auto_mode():
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
     assert "sh -lc" not in cmd
     assert "bash -lc" not in cmd
@@ -587,10 +739,7 @@ def test_get_linux_bootstrap_command_shell_quotes_bootstrap_url():
         "install_dir": "/opt/fusion",
         "server_url": "https://srv.local/path with space/it's/api/v1/node_mgmt/open_api/node",
     }
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=session_cfg,
-    ):
+    with _mock_bootstrap_session(session_cfg):
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     expected_url = "https://srv.local/path with space/it's/api/v1/node_mgmt/open_api/installer/linux_bootstrap?token=tok"
@@ -601,10 +750,7 @@ def test_get_linux_bootstrap_command_shell_quotes_bootstrap_url():
 @pytest.mark.parametrize("shell_name", ["sh", "bash"])
 def test_get_linux_bootstrap_command_runs_with_only_one_supported_shell(tmp_path, shell_name):
     env, bootstrap_temp, runner_log, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, shell_name)
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
@@ -620,10 +766,7 @@ def test_get_linux_bootstrap_command_runs_with_only_one_supported_shell(tmp_path
 def test_get_linux_bootstrap_command_prefers_sh_when_sh_and_bash_are_available(tmp_path):
     env, _, runner_log, _ = _prepare_bootstrap_shell_test(tmp_path, "sh")
     (tmp_path / "bin" / "bash").symlink_to("/bin/bash")
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
@@ -635,10 +778,7 @@ def test_get_linux_bootstrap_command_prefers_sh_when_sh_and_bash_are_available(t
 @pytest.mark.django_db
 def test_get_linux_bootstrap_command_auto_mode_uses_non_interactive_sudo_for_non_root(tmp_path):
     env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh", uid=1000)
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
@@ -653,10 +793,7 @@ def test_get_linux_bootstrap_command_auto_mode_uses_non_interactive_sudo_for_non
 @pytest.mark.django_db
 def test_get_linux_bootstrap_command_manual_mode_uses_interactive_sudo_for_non_root(tmp_path):
     env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh", uid=1000)
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
@@ -673,10 +810,7 @@ def test_get_linux_bootstrap_command_manual_mode_keeps_login_shell_alive(tmp_pat
     env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh")
     shell_alive_log = tmp_path / "shell-alive.log"
     env["SHELL_ALIVE_LOG"] = str(shell_alive_log)
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
 
     result = subprocess.run(
@@ -731,10 +865,7 @@ printf '%s\n' '#!/bin/sh' 'printf ran > "$BOOTSTRAP_LOG"' 'exit 7' > "$output"
             "INSTALL_STATUS_LOG": str(install_status_log),
         }
     )
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="manual")
 
     result = subprocess.run(
@@ -762,10 +893,7 @@ def test_get_linux_bootstrap_command_auto_mode_still_ends_execution_shell(tmp_pa
     env, _, _, bootstrap_log = _prepare_bootstrap_shell_test(tmp_path, "sh")
     shell_alive_log = tmp_path / "shell-alive.log"
     env["SHELL_ALIVE_LOG"] = str(shell_alive_log)
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(
@@ -788,10 +916,7 @@ def test_get_linux_bootstrap_command_preserves_download_failure_and_cleans_temp_
         "sh",
         curl_exit_code=22,
     )
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
@@ -816,10 +941,7 @@ done
 printf '%s\n' '#!/bin/sh' 'printf ran > "$BOOTSTRAP_LOG"' 'exit 7' > "$output"
 """,
     )
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)
@@ -835,10 +957,7 @@ def test_get_linux_bootstrap_command_reports_missing_supported_shell(tmp_path):
     empty_path.mkdir()
     env = os.environ.copy()
     env["PATH"] = str(empty_path)
-    with patch(
-        "apps.node_mgmt.services.installer.InstallerSessionService.build_session_config",
-        return_value=_SESSION_CFG,
-    ):
+    with _mock_bootstrap_session():
         cmd = InstallerService.get_linux_bootstrap_command("tok", install_mode="auto")
 
     result = subprocess.run(["/bin/sh", "-c", cmd], env=env, text=True, capture_output=True, check=False)

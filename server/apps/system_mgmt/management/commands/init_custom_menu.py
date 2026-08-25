@@ -1,11 +1,7 @@
-import logging
-
+from apps.core.logger import system_mgmt_logger as logger
+from apps.system_mgmt.models import App, CustomMenuGroup
 from django.core.management import BaseCommand
 from django.db import transaction
-
-from apps.system_mgmt.models import App, CustomMenuGroup
-
-logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):

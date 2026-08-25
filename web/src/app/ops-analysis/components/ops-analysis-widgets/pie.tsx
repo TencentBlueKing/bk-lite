@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import {
   ChartDataTransformer,
@@ -7,43 +7,56 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/components/ops-analysis-widgets/runtime';
 import ChartLegend from '@/components/chart-legend';
+import { isSameChartLegendSelection } from '@/components/chart-legend/selection';
 import ChartWithSidebarLegend from '@/components/chart-with-sidebar-legend';
 import { renderEChartsTooltipCard } from '@/components/echarts-tooltip-card';
+import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
+import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
+import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
 
 export interface OpsAnalysisPieProps {
   rawData: any;
   loading?: boolean;
   onReady?: (ready: boolean) => void;
+  config?: ValueConfig;
 }
 
 const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
   rawData,
   loading = false,
   onReady,
+  config,
 }) => {
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
-  const chartTheme = getOpsChartTheme(themeName);
-  const chartColors = randomColorForLegend(themeName);
+  const chartTheme = useMemo(() => getOpsChartTheme(themeName), [themeName]);
+  const chartColors = useMemo(
+    () => randomColorForLegend(themeName),
+    [themeName],
+  );
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
 
   const handleLegendChange = useCallback((selected: Record<string, boolean>) => {
-    setLegendSelected(selected);
+    setLegendSelected((prev) =>
+      isSameChartLegendSelection(prev, selected) ? prev : selected,
+    );
   }, []);
 
-  const chartData = ChartDataTransformer.transformToPieData(rawData);
+  const chartData = useMemo(
+    () => ChartDataTransformer.transformToPieData(rawData),
+    [rawData],
+  );
   const isDataReady = chartData.some(
     (item) => Number.isFinite(item.value) && item.value > 0,
   );
   const showLegend = isDataReady;
+  const { onEvents } = useEchartsFinishedReady({
+    loading,
+    isDataReady,
+    onReady,
+  });
 
-  useEffect(() => {
-    if (!loading) {
-      onReady?.(isDataReady);
-    }
-  }, [isDataReady, loading, onReady]);
-
-  const option: any = {
+  const option = useMemo(() => ({
     color: chartColors,
     animation: true,
     calculable: true,
@@ -70,7 +83,7 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
               color: params.color,
               markerShape: 'circle',
               label: params.name || '--',
-              value: `${params.value} (${percent.toFixed(1)}%)`,
+              value: `${formatVisibleChartValue(params.value, config)} (${percent.toFixed(1)}%)`,
             },
           ],
         });
@@ -96,7 +109,7 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
               (sum: number, item: any) => sum + item.value,
               0,
             );
-            return `{title|总数}\n{value|${total}}`;
+            return `{title|总数}\n{value|${formatVisibleChartValue(total, config)}}`;
           },
           rich: {
             title: {
@@ -130,7 +143,7 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
         data: chartData || [],
       },
     ],
-  };
+  }), [chartColors, chartData, chartTheme, config, legendSelected]);
 
   return (
     <ChartWithSidebarLegend
@@ -139,6 +152,7 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
           ref={chartRef}
           option={option}
           notMerge={true}
+          onEvents={onEvents}
           style={{ height: '100%', width: '100%' }}
         />
       }

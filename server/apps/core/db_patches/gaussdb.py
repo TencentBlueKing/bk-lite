@@ -15,9 +15,7 @@ Migration 补丁：
 - 主要用于跳过不兼容的索引创建（GinIndex/BTreeIndex on JSONField）
 """
 
-import logging
-
-logger = logging.getLogger(__name__)
+from apps.core.logger import logger
 
 
 def patch():

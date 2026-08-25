@@ -4,6 +4,7 @@ from apps.cmdb.collect.extensions import get_collect_enterprise_extension
 from apps.cmdb.collection.change_records import write_collect_instance_change_records
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.services.instance_identity import prepare_new_instance_identity
 from apps.cmdb.services.model import ModelManage
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -46,9 +47,7 @@ class Management:
         self.task_id = task_id
         self.data_cleanup_strategy = data_cleanup_strategy or DataCleanupStrategy.NO_CLEANUP
         self.old_map, self.new_map = self.format_data()
-        self.add_list, self.update_list, self.heartbeat_list, self.delete_list = self.contrast(
-            self.old_map, self.new_map
-        )
+        self.add_list, self.update_list, self.heartbeat_list, self.delete_list = self.contrast(self.old_map, self.new_map)
 
     def get_check_attr_map(self):
         attrs = ModelManage.search_model_attr(self.model_id)
@@ -104,9 +103,7 @@ class Management:
             None,
         )
         if callable(authoritative_snapshot):
-            deletion_input_complete = bool(
-                authoritative_snapshot(self.model_id)
-            )
+            deletion_input_complete = bool(authoritative_snapshot(self.model_id))
         else:
             deletion_input_complete = bool(new_map)
 
@@ -183,6 +180,7 @@ class Management:
                         auto_collect=True,
                         collect_time=self.collect_time,
                     )
+                    instance_info = prepare_new_instance_identity(instance_info)
                     entity = ag.create_entity(INSTANCE, instance_info, self.check_attr_map, exist_items)
                     # 创建关联
                     assos_result = self.setting_assos(entity, assos)
@@ -235,24 +233,22 @@ class Management:
         if not inst_list:
             return result
 
+        heartbeat_infos = [
+            {
+                "_id": instance_info["_id"],
+                "model_id": self.model_id,
+                "organization": self.organization,
+                "collect_task": self.task_id,
+                "auto_collect": True,
+                "collect_time": self.collect_time,
+            }
+            for instance_info in inst_list
+        ]
         with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(
-                INSTANCE,
-                [{"field": "model_id", "type": "str=", "value": self.model_id}],
-            )
-            for instance_info in inst_list:
-                heartbeat_info = {
-                    "_id": instance_info["_id"],
-                    "model_id": self.model_id,
-                    "organization": self.organization,
-                    "collect_task": self.task_id,
-                    "auto_collect": True,
-                    "collect_time": self.collect_time,
-                }
+            exist_items = self._query_existing_unique_candidates(ag, heartbeat_infos)
+            for heartbeat_info in heartbeat_infos:
                 try:
-                    current_items = [
-                        item for item in exist_items if item["_id"] != heartbeat_info["_id"]
-                    ]
+                    current_items = [item for item in exist_items if item["_id"] != heartbeat_info["_id"]]
                     entity = ag.set_entity_properties(
                         INSTANCE,
                         [heartbeat_info["_id"]],
@@ -260,9 +256,7 @@ class Management:
                         self.check_attr_map,
                         current_items,
                     )
-                    result["success"].append(
-                        {"inst_info": entity[0], "assos_result": {}, "heartbeat": True}
-                    )
+                    result["success"].append({"inst_info": entity[0], "assos_result": {}, "heartbeat": True})
                 except Exception as e:
                     result["failed"].append(
                         {
@@ -366,13 +360,8 @@ class Management:
     def _after_instances_applied(self, result):
         # 心跳更新已落图，但不属于业务变更。
         business_result = {
-            operator: {
-                status: [item for item in items if not item.get("heartbeat")]
-                for status, items in result.get(operator, {}).items()
-            }
+            operator: {status: [item for item in items if not item.get("heartbeat")] for status, items in result.get(operator, {}).items()}
             for operator in ("add", "update", "delete")
         }
         write_collect_instance_change_records(self, business_result)
-        get_collect_enterprise_extension().on_collect_instances_applied(
-            management=self, result=business_result
-        )
+        get_collect_enterprise_extension().on_collect_instances_applied(management=self, result=business_result)

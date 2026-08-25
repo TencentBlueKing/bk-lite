@@ -70,7 +70,7 @@ export interface TestConnectionResult {
 }
 
 export const useMemoryApi = () => {
-  const { get, post, put, del } = useApiClient();
+  const { get, post, put, del, patch } = useApiClient();
 
   const fetchMemorySpaces = async (): Promise<MemorySpace[]> => {
     return await get('/opspilot/memory_mgmt/memory_space/');
@@ -108,7 +108,7 @@ export const useMemoryApi = () => {
   };
 
   const updateMemory = async (id: number, data: Partial<Memory>): Promise<Memory> => {
-    return await put(`/opspilot/memory_mgmt/memory/${id}/`, data);
+    return await patch(`/opspilot/memory_mgmt/memory/${id}/`, data);
   };
 
   const deleteMemory = async (id: number) => {

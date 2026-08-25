@@ -8,11 +8,11 @@ import {
   FullscreenOutlined,
   MailOutlined,
   PlusOutlined,
-  ReloadOutlined,
   SettingOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
 import PermissionWrapper from '@/components/permission';
+import TimeSelector from '@/components/time-selector';
 import { useTranslation } from '@/utils/i18n';
 import type { DirItem } from '@/app/ops-analysis/types';
 
@@ -28,6 +28,8 @@ interface ScreenToolbarProps {
   onOpenWidgetSelector: () => void;
   onPreview: () => void;
   onRefresh: () => void;
+  frequenceValue?: number;
+  onFrequencyChange?: (intervalMs: number) => void;
   onEdit: () => void;
   onCancel: () => void;
   onSave: () => void;
@@ -46,6 +48,8 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
   onOpenWidgetSelector,
   onPreview,
   onRefresh,
+  frequenceValue = 0,
+  onFrequencyChange,
   onEdit,
   onCancel,
   onSave,
@@ -57,15 +61,12 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
 
   return (
     <Space>
-      <Tooltip title={t('common.refresh')}>
-        <Button
-          type="text"
-          icon={<ReloadOutlined />}
-          aria-label={t('common.refresh')}
-          className={iconButtonClassName}
-          onClick={onRefresh}
-        />
-      </Tooltip>
+      <TimeSelector
+        onlyRefresh
+        frequenceValue={frequenceValue}
+        onRefresh={onRefresh}
+        onFrequenceChange={onFrequencyChange}
+      />
       <Tooltip title={t('opsAnalysis.screen.fullscreenPreview')}>
         <Button
           type="text"

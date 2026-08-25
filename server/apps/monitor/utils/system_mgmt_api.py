@@ -73,8 +73,9 @@ class SystemMgmtUtils:
         return result["data"]
 
     @staticmethod
-    def send_msg_with_channel(channel_id, title, content, receivers):
-        result = SystemMgmt().send_msg_with_channel(channel_id, title, content, receivers)
+    def send_msg_with_channel(channel_id, title, content, receivers, *, internal_caller=""):
+        kwargs = {"internal_caller": internal_caller} if internal_caller else {}
+        result = SystemMgmt().send_msg_with_channel(channel_id, title, content, receivers, **kwargs)
         return result
 
     @staticmethod

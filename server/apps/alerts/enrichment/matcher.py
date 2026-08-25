@@ -1,8 +1,7 @@
-import logging
 import re as _re
 from typing import Dict, List
 
-logger = logging.getLogger(__name__)
+from apps.core.logger import alert_logger as logger
 
 
 def _cmp(actual, operator: str, expected) -> bool:

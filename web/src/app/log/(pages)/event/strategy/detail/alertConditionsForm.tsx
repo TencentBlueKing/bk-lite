@@ -9,6 +9,7 @@ import { ListItem } from '@/app/log/types';
 import { SCHEDULE_UNIT_MAP } from '@/app/log/constants';
 import { useScheduleList, useLevelList } from '@/app/log/hooks/event';
 import { getAlertConditionVisibility } from './policyFormUtils';
+import LogQueryInput from '@/app/log/components/log-query-input';
 
 const { Option } = Select;
 
@@ -19,6 +20,8 @@ interface AlertConditionsFormProps {
   conditions: FilterItem[];
   term: string | null;
   fieldList: string[];
+  fieldListLoading?: boolean;
+  logGroups: React.Key[];
   streamList: ListItem[];
   onUnitChange: (val: string) => void;
   onPeriodUnitChange: (val: string) => void;
@@ -33,6 +36,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   conditions,
   term,
   fieldList,
+  fieldListLoading = false,
+  logGroups,
   streamList,
   onUnitChange,
   onPeriodUnitChange,
@@ -105,10 +110,14 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           noStyle
           rules={[{ required: true, message: t('common.required') }]}
         >
-          <Input
+          <LogQueryInput
             placeholder={t('common.inputMsg')}
             className="w-full"
             allowClear
+            availableFields={fieldList}
+            fieldsLoading={fieldListLoading}
+            logGroups={logGroups}
+            timeRange={{ mode: 'relative', minutes: 15 }}
           />
         </Form.Item>
         <div className="text-[var(--color-text-3)] mt-[10px]">
@@ -134,13 +143,22 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           >
             <Select
               style={{ width: '100%' }}
+              loading={fieldListLoading}
               showSearch
               mode="multiple"
               maxTagCount="responsive"
               options={fieldList
                 .filter(
                   (item) =>
-                    !['message', 'timestamp', '_time', '_msg'].includes(item)
+                    ![
+                      'message',
+                      'timestamp',
+                      '_time',
+                      '_msg',
+                      '_stream',
+                      '_stream_id',
+                      '@timestamp'
+                    ].includes(item)
                 )
                 .map((item) => ({
                   value: item,
@@ -162,6 +180,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           <Form.Item name="group_by" noStyle>
             <Select
               style={{ width: '100%' }}
+              loading={fieldListLoading}
               allowClear
               showSearch
               mode="multiple"

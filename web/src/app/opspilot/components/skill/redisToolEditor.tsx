@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
-import { Button, Empty, Input, Switch, message } from 'antd';
+import { Button, Input, Switch, message } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { DeleteOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import ToolConnectionStatusTag from '@/app/opspilot/components/opspilot-tool-editor/tool-connection-status-tag';
@@ -223,7 +224,7 @@ const RedisToolEditor = forwardRef<RedisToolEditorHandle, RedisToolEditorProps>(
         </div>
         <div className="flex-1 overflow-y-auto space-y-2" ref={listRef}>
           {instances.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('tool.redis.noInstances')} />
+            <CompactEmptyState description={t('tool.redis.noInstances')} />
           ) : (
             instances.map((instance) => {
               const isActive = instance.id === selectedId;
@@ -367,7 +368,7 @@ const RedisToolEditor = forwardRef<RedisToolEditorHandle, RedisToolEditorProps>(
           </div>
         ) : (
           <div className="flex h-full items-center justify-center">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('tool.redis.selectInstance')} />
+            <CompactEmptyState description={t('tool.redis.selectInstance')} />
           </div>
         )}
       </div>

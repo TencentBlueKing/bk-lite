@@ -1,6 +1,6 @@
 ---
 name: diagnosing-bugs
-description: Diagnosis loop for hard, unclear, or recurring bugs and performance regressions. Use when the user explicitly asks to diagnose/debug or a local fast-path fix lacks a proven cause.
+description: Diagnosis loop for hard, unclear, recurring, cross-module, async/concurrency, data-flow, consistency, and performance bugs. Use when the user asks to diagnose, debug, troubleshoot, or fix a defect whose local fast path lacks a proven cause.
 ---
 
 # Diagnosing Bugs
@@ -8,6 +8,13 @@ description: Diagnosis loop for hard, unclear, or recurring bugs and performance
 A discipline for hard bugs. Skip phases only when explicitly justified.
 
 When exploring the codebase, read `CONTEXT.md` (if it exists) to get a clear mental model of the relevant modules, and check ADRs in the area you're touching.
+
+### Architecture evidence routing
+
+For BK-Lite `server/` defects, read
+[`docs/design-docs/agent-architecture-evidence.md`](../../../docs/design-docs/agent-architecture-evidence.md)
+when its repair/diagnosis trigger criteria match. Use the selected current diagram and core flow to
+choose a feedback-loop seam; do not read a target diagram before the current path is understood.
 
 ## Phase 1 — Build a feedback loop
 
