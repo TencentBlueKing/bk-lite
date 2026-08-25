@@ -19,7 +19,10 @@ import {
   ColorPicker,
   Descriptions,
   Tag,
-  theme
+  theme,
+  Popover,
+  Spin,
+  Empty
 } from 'antd';
 import { AggregationColor } from 'antd/es/color-picker/color';
 import { PlusOutlined, MinusOutlined } from '@ant-design/icons';
@@ -46,6 +49,7 @@ interface ModalProps {
 }
 
 type Presets = Required<ColorPickerProps>['presets'][number];
+type DimensionMode = 'input' | 'select';
 
 const genPresets = (presets = presetPalettes) => {
   return Object.entries(presets).map<Presets>(([label, colors]) => ({
@@ -56,11 +60,29 @@ const genPresets = (presets = presetPalettes) => {
 };
 
 const INIT_UNIT_ITEM = { name: null, id: null, color: '#000000' };
+const INIT_DIMENSION: DimensionItem = { name: '', description: '' };
+
+const normalizeDimensions = (items?: DimensionItem[]): DimensionItem[] => {
+  if (!items?.length) {
+    return [{ ...INIT_DIMENSION }];
+  }
+  return items.map((item) => ({
+    name: item.name || '',
+    description:
+      typeof item.description === 'string'
+        ? item.description
+        : item.name || ''
+  }));
+};
+
+const buildMetricSnippet = (metricName: string) =>
+  `${metricName}{__$labels__}`;
 
 const MetricModal = forwardRef<ModalRef, ModalProps>(
   ({ onSuccess, groupList, monitorObject, pluginId }, ref) => {
     const { post, put } = useApiClient();
-    const { getMetricsGroup } = useMonitorApi();
+    const { getMetricsGroup, getVmMetricNames, testMetricQuery } =
+      useMonitorApi();
     const { t } = useTranslation();
     const { token } = theme.useToken();
     const presets = genPresets({
@@ -83,18 +105,35 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     const [groupForm, setGroupForm] = useState<MetricInfo>({});
     const [groupOptions, setGroupOptions] = useState<ListItem[]>(groupList);
     const [groupLoading, setGroupLoading] = useState(false);
-    const groupSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const groupSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+      null
+    );
     const selectedGroupIdRef = useRef<React.Key | null>(null);
     const allowInheritedGroupsRef = useRef(false);
     const groupRequestGenerationRef = useRef(0);
     const [title, setTitle] = useState<string>('');
     const [type, setType] = useState<string>('');
     const [dimensions, setDimensions] = useState<DimensionItem[]>([
-      { name: '' }
+      { ...INIT_DIMENSION }
     ]);
-
+    const [dimensionMode, setDimensionMode] = useState<DimensionMode>('input');
+    const [dimensionLabelKeys, setDimensionLabelKeys] = useState<string[]>([]);
     const [enumList, setEnumList] = useState<EnumItem[]>([]);
+    const [metricPickerOpen, setMetricPickerOpen] = useState(false);
+    const [metricNames, setMetricNames] = useState<string[]>([]);
+    const [metricNamesLoading, setMetricNamesLoading] = useState(false);
+    const [metricSearch, setMetricSearch] = useState('');
+    const [testLoading, setTestLoading] = useState(false);
+    const metricSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+      null
+    );
+    const metricRequestGenerationRef = useRef(0);
     const isView = type === 'view';
+
+    const resetDimensionGuideState = () => {
+      setDimensionMode('input');
+      setDimensionLabelKeys([]);
+    };
 
     const loadGroupOptions = async (keyword = '') => {
       const generation = groupRequestGenerationRef.current + 1;
@@ -140,11 +179,50 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
       }, 300);
     };
 
-    useEffect(() => () => {
-      if (groupSearchTimerRef.current) {
-        clearTimeout(groupSearchTimerRef.current);
+    const loadVmMetricNames = async (keyword = '') => {
+      const generation = metricRequestGenerationRef.current + 1;
+      metricRequestGenerationRef.current = generation;
+      setMetricNamesLoading(true);
+      try {
+        const names = await getVmMetricNames({
+          monitor_object_id: monitorObject,
+          monitor_plugin_id: pluginId,
+          ...(keyword.trim() ? { keyword: keyword.trim() } : {})
+        });
+        if (metricRequestGenerationRef.current !== generation) return;
+        setMetricNames(Array.isArray(names) ? names : []);
+      } catch {
+        if (metricRequestGenerationRef.current === generation) {
+          setMetricNames([]);
+        }
+      } finally {
+        if (metricRequestGenerationRef.current === generation) {
+          setMetricNamesLoading(false);
+        }
       }
-    }, []);
+    };
+
+    const handleMetricSearch = (value: string) => {
+      setMetricSearch(value);
+      if (metricSearchTimerRef.current) {
+        clearTimeout(metricSearchTimerRef.current);
+      }
+      metricSearchTimerRef.current = setTimeout(() => {
+        void loadVmMetricNames(value);
+      }, 300);
+    };
+
+    useEffect(
+      () => () => {
+        if (groupSearchTimerRef.current) {
+          clearTimeout(groupSearchTimerRef.current);
+        }
+        if (metricSearchTimerRef.current) {
+          clearTimeout(metricSearchTimerRef.current);
+        }
+      },
+      []
+    );
 
     useEffect(() => {
       setGroupOptions(groupList);
@@ -152,24 +230,26 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
 
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form, title }) => {
-        // 开启弹窗的交互
         const formData = cloneDeep(form);
         allowInheritedGroupsRef.current = type === 'view';
-        selectedGroupIdRef.current = (formData.metric_group as React.Key) || null;
+        selectedGroupIdRef.current =
+          (formData.metric_group as React.Key) || null;
         setGroupVisible(true);
         void loadGroupOptions();
         setType(type);
         setTitle(title);
+        resetDimensionGuideState();
+        setMetricPickerOpen(false);
+        setMetricSearch('');
+        setMetricNames([]);
         try {
           if (type === 'add') {
             formData.type = 'metric';
-            setDimensions([{ name: '' }]);
+            setDimensions([{ ...INIT_DIMENSION }]);
             setEnumList([INIT_UNIT_ITEM]);
           } else {
             setDimensions(
-              (formData.dimensions as DimensionItem[])?.length
-                ? (formData.dimensions as DimensionItem[])
-                : [{ name: '' }]
+              normalizeDimensions(formData.dimensions as DimensionItem[])
             );
             if (formData.data_type === 'Number') {
               formData.unit = findCascaderPath(
@@ -224,9 +304,15 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
 
     const handleSubmit = () => {
       formRef.current?.validateFields().then((values) => {
+        const cleanedDimensions = dimensions
+          .filter((item) => item.name?.trim())
+          .map((item) => ({
+            name: item.name.trim(),
+            description: (item.description || item.name).trim()
+          }));
         operateGroup({
           ...values,
-          dimensions: dimensions.some((item) => !item.name) ? [] : dimensions,
+          dimensions: cleanedDimensions,
           monitor_object: monitorObject,
           monitor_plugin: pluginId,
           type: 'metric',
@@ -240,7 +326,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
 
     const addDimension = () => {
       const _dimensions = cloneDeep(dimensions);
-      _dimensions.push({ name: '' });
+      _dimensions.push({ ...INIT_DIMENSION });
       setDimensions(_dimensions);
     };
 
@@ -252,9 +338,10 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
 
     const handleCancel = () => {
       setGroupVisible(false);
+      setMetricPickerOpen(false);
+      resetDimensionGuideState();
     };
 
-    // 自定义验证枚举列表
     const validateEnumList = async () => {
       if (
         enumList.length &&
@@ -267,12 +354,90 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
       return Promise.resolve();
     };
 
-    const onDimensionValChange = (
+    const onFormulaChange = () => {
+      if (dimensionMode === 'select') {
+        resetDimensionGuideState();
+      }
+    };
+
+    const appendMetricToFormula = (metricName: string) => {
+      const current = String(formRef.current?.getFieldValue('query') || '');
+      const snippet = buildMetricSnippet(metricName);
+      const next =
+        current && !/\s$/.test(current)
+          ? `${current} ${snippet}`
+          : `${current}${snippet}`;
+      formRef.current?.setFieldsValue({ query: next });
+      resetDimensionGuideState();
+      setMetricPickerOpen(false);
+    };
+
+    const handleSelectMetricOpenChange = (open: boolean) => {
+      setMetricPickerOpen(open);
+      if (open) {
+        setMetricSearch('');
+        void loadVmMetricNames();
+      }
+    };
+
+    const handleTestMetric = async () => {
+      const query = String(formRef.current?.getFieldValue('query') || '');
+      if (!query.trim()) {
+        message.warning(t('common.required'));
+        return;
+      }
+      setTestLoading(true);
+      try {
+        const result = await testMetricQuery({
+          query,
+          monitor_object_id: monitorObject,
+          monitor_plugin_id: pluginId
+        });
+        if (result?.ok) {
+          setDimensionLabelKeys(
+            Array.isArray(result.label_keys) ? result.label_keys : []
+          );
+          setDimensionMode('select');
+          message.success(
+            result.message || t('monitor.integrations.testMetricSuccess')
+          );
+        } else {
+          resetDimensionGuideState();
+          message.warning(
+            result?.message || t('monitor.integrations.testMetricFailed')
+          );
+        }
+      } catch {
+        resetDimensionGuideState();
+        message.warning(t('monitor.integrations.testMetricFailed'));
+      } finally {
+        setTestLoading(false);
+      }
+    };
+
+    const onDimensionIdChange = (value: string, index: number) => {
+      const _dimensions = cloneDeep(dimensions);
+      const prevName = _dimensions[index].name || '';
+      const prevDescription = _dimensions[index].description || '';
+      _dimensions[index].name = value;
+      if (!prevDescription || prevDescription === prevName) {
+        _dimensions[index].description = value;
+      }
+      setDimensions(_dimensions);
+    };
+
+    const onDimensionDisplayNameChange = (
       e: React.ChangeEvent<HTMLInputElement>,
       index: number
     ) => {
       const _dimensions = cloneDeep(dimensions);
-      _dimensions[index].name = e.target.value;
+      _dimensions[index].description = e.target.value;
+      setDimensions(_dimensions);
+    };
+
+    const deleteDimensiontem = (index: number) => {
+      const _dimensions = cloneDeep(dimensions);
+      _dimensions.splice(index, 1);
       setDimensions(_dimensions);
     };
 
@@ -297,22 +462,88 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
       setEnumList(_enumList);
     };
 
-    const deleteDimensiontem = (index: number) => {
-      const _dimensions = cloneDeep(dimensions);
-      _dimensions.splice(index, 1);
-      setDimensions(_dimensions);
-    };
-
     const deleteEnumItem = (index: number) => {
       const _enumList = cloneDeep(enumList);
       _enumList.splice(index, 1);
       setEnumList(_enumList);
     };
 
+    const formatDimensionViewText = () => {
+      const items = dimensions.filter((item) => item.name);
+      if (!items.length) return '--';
+      return items
+        .map((item) =>
+          item.description && item.description !== item.name
+            ? `${item.name} (${item.description})`
+            : item.name
+        )
+        .join(', ');
+    };
+
+    const metricPickerContent = (
+      <div className="w-[280px]">
+        <Input
+          allowClear
+          value={metricSearch}
+          placeholder={t('monitor.integrations.searchMetricNamePlaceholder')}
+          onChange={(e) => handleMetricSearch(e.target.value)}
+          className="mb-2"
+        />
+        <Spin spinning={metricNamesLoading}>
+          <div className="max-h-[240px] overflow-auto">
+            {metricNames.length ? (
+              metricNames.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className="block w-full truncate border-0 bg-transparent px-2 py-1 text-left text-[var(--color-text-1)] hover:bg-[var(--color-bg-hover)]"
+                  onClick={() => appendMetricToFormula(name)}
+                >
+                  {name}
+                </button>
+              ))
+            ) : (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={t('monitor.integrations.noVmMetricNames')}
+              />
+            )}
+          </div>
+        </Spin>
+      </div>
+    );
+
+    const renderDimensionIdControl = (item: DimensionItem, index: number) => {
+      if (dimensionMode === 'select' && dimensionLabelKeys.length) {
+        return (
+          <Select
+            showSearch
+            allowClear
+            className="w-[42%]"
+            value={item.name || undefined}
+            placeholder={t('monitor.integrations.dimensionId')}
+            options={dimensionLabelKeys.map((key) => ({
+              label: key,
+              value: key
+            }))}
+            onChange={(value) => onDimensionIdChange(value || '', index)}
+          />
+        );
+      }
+      return (
+        <Input
+          className="w-[42%]"
+          value={item.name}
+          placeholder={t('monitor.integrations.dimensionId')}
+          onChange={(e) => onDimensionIdChange(e.target.value, index)}
+        />
+      );
+    };
+
     return (
       <div>
         <OperateModal
-          width={700}
+          width={720}
           title={title}
           visible={groupVisible}
           onCancel={handleCancel}
@@ -360,12 +591,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
                 </div>
               </Descriptions.Item>
               <Descriptions.Item label={t('monitor.integrations.dimension')}>
-                {dimensions.some((item) => item.name)
-                  ? dimensions
-                    .filter((item) => item.name)
-                    .map((item) => item.name)
-                    .join(', ')
-                  : '--'}
+                {formatDimensionViewText()}
               </Descriptions.Item>
               <Descriptions.Item label={t('monitor.integrations.dataType')}>
                 {groupForm.data_type || '--'}
@@ -394,193 +620,252 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
               labelCol={{ span: 4 }}
               wrapperCol={{ span: 18 }}
             >
-            <Form.Item<MetricInfo>
-              label={t('common.id')}
-              name="name"
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Input disabled={type === 'edit'} />
-            </Form.Item>
-            <Form.Item<MetricInfo>
-              label={t('common.name')}
-              name="display_name"
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Input />
-            </Form.Item>
-            <Form.Item<MetricInfo>
-              label={t('monitor.integrations.metricGroup')}
-              name="metric_group"
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Select
-                showSearch
-                filterOption={false}
-                loading={groupLoading}
-                onSearch={handleGroupSearch}
-                onDropdownVisibleChange={(open) => !open && handleGroupSearch('')}
+              <Form.Item<MetricInfo>
+                label={t('common.id')}
+                name="name"
+                rules={[{ required: true, message: t('common.required') }]}
               >
-                {groupOptions.map((item) => (
-                  <Option key={item.id} value={item.id}>
-                    {item.display_name}
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
-            <Form.Item<MetricInfo>
-              label={t('monitor.integrations.formula')}
-              name="query"
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Input.TextArea rows={4} />
-            </Form.Item>
-            <Form.Item<MetricInfo>
-              label={t('monitor.integrations.dimension')}
-              name="dimensions"
-            >
-              <ul>
-                {dimensions.map((item, index) => (
-                  <li
-                    className={`flex ${
-                      index + 1 !== dimensions?.length && 'mb-[10px]'
-                    }`}
-                    key={index}
-                  >
-                    <Input
-                      className="w-[79%]"
-                      value={item.name}
-                      onChange={(e) => {
-                        onDimensionValChange(e, index);
-                      }}
-                    />
+                <Input disabled={type === 'edit'} />
+              </Form.Item>
+              <Form.Item<MetricInfo>
+                label={t('common.name')}
+                name="display_name"
+                rules={[{ required: true, message: t('common.required') }]}
+              >
+                <Input />
+              </Form.Item>
+              <Form.Item<MetricInfo>
+                label={t('monitor.integrations.metricGroup')}
+                name="metric_group"
+                rules={[{ required: true, message: t('common.required') }]}
+              >
+                <Select
+                  showSearch
+                  filterOption={false}
+                  loading={groupLoading}
+                  onSearch={handleGroupSearch}
+                  onDropdownVisibleChange={(open) =>
+                    !open && handleGroupSearch('')
+                  }
+                >
+                  {groupOptions.map((item) => (
+                    <Option key={item.id} value={item.id}>
+                      {item.display_name}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+              <Form.Item<MetricInfo>
+                label={t('monitor.integrations.formula')}
+                name="query"
+                rules={[{ required: true, message: t('common.required') }]}
+                extra={
+                  <div className="mt-1 flex gap-4">
+                    <Popover
+                      trigger="click"
+                      open={metricPickerOpen}
+                      onOpenChange={handleSelectMetricOpenChange}
+                      content={metricPickerContent}
+                      placement="bottomLeft"
+                    >
+                      <Button type="link" className="h-auto px-0">
+                        {t('monitor.integrations.selectMetric')}
+                      </Button>
+                    </Popover>
                     <Button
-                      icon={<PlusOutlined />}
-                      className="ml-[10px]"
-                      onClick={addDimension}
-                    ></Button>
-                    {!!index && (
+                      type="link"
+                      className="h-auto px-0"
+                      loading={testLoading}
+                      onClick={handleTestMetric}
+                    >
+                      {t('monitor.integrations.testMetric')}
+                    </Button>
+                  </div>
+                }
+              >
+                <Input.TextArea rows={4} onChange={onFormulaChange} />
+              </Form.Item>
+              <Form.Item<MetricInfo>
+                label={t('monitor.integrations.dimension')}
+                name="dimensions"
+              >
+                <ul>
+                  {dimensions.map((item, index) => (
+                    <li
+                      className={`flex items-center ${
+                        index + 1 !== dimensions?.length && 'mb-[10px]'
+                      }`}
+                      key={index}
+                    >
+                      {renderDimensionIdControl(item, index)}
+                      <Input
+                        className="ml-[10px] w-[37%]"
+                        value={item.description}
+                        placeholder={t(
+                          'monitor.integrations.dimensionDisplayName'
+                        )}
+                        onChange={(e) =>
+                          onDimensionDisplayNameChange(e, index)
+                        }
+                      />
+                      {dimensionMode === 'select' &&
+                        dimensionLabelKeys.length > 0 && (
+                          <Popover
+                            trigger="click"
+                            content={
+                              <div className="max-h-[200px] w-[200px] overflow-auto">
+                                {dimensionLabelKeys.map((key) => (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    className="block w-full truncate border-0 bg-transparent px-2 py-1 text-left hover:bg-[var(--color-bg-hover)]"
+                                    onClick={() =>
+                                      onDimensionIdChange(key, index)
+                                    }
+                                  >
+                                    {key}
+                                  </button>
+                                ))}
+                              </div>
+                            }
+                          >
+                            <Button type="link" className="ml-[4px] px-0">
+                              {t('monitor.integrations.selectField')}
+                            </Button>
+                          </Popover>
+                      )}
                       <Button
-                        icon={<MinusOutlined />}
+                        icon={<PlusOutlined />}
                         className="ml-[10px]"
-                        onClick={() => deleteDimensiontem(index)}
+                        onClick={addDimension}
                       ></Button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </Form.Item>
-            <Form.Item<MetricInfo>
-              label={t('monitor.integrations.dataType')}
-              name="data_type"
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Select>
-                <Option value="Number">
-                  {t('monitor.integrations.number')}
-                </Option>
-                <Option value="Enum">{t('monitor.integrations.enum')}</Option>
-              </Select>
-            </Form.Item>
-            <Form.Item
-              noStyle
-              shouldUpdate={(prevValues, currentValues) =>
-                prevValues.data_type !== currentValues.data_type
-              }
-            >
-              {({ getFieldValue }) => {
-                const dataType = getFieldValue('data_type');
-                if (!dataType) return null;
-                return dataType === 'Number' ? (
-                  <Form.Item<MetricInfo>
-                    label={t('common.unit')}
-                    name="unit"
-                    rules={[{ required: true, message: t('common.required') }]}
-                  >
-                    <Cascader showSearch options={unitList} />
-                  </Form.Item>
-                ) : (
-                  <Form.Item<MetricInfo>
-                    label={t('common.unit')}
-                    name="unit"
-                    rules={[{ required: true, validator: validateEnumList }]}
-                  >
-                    <ul>
-                      <li className="mb-[6px] text-[var(--color-text-3)] font-[600]">
-                        <div className="w-[80%] flex justify-between">
-                          <span className="w-[160px]">
-                            {t('monitor.integrations.originalValue')}
-                          </span>
-                          <span className="w-[160px] ml-2">
-                            {t('monitor.integrations.mappedValue')}
-                          </span>
-                          <span className="w-[160px] ml-2">
-                            {t('monitor.integrations.color')}
-                          </span>
-                        </div>
-                      </li>
-                      {enumList.map((item, index) => (
-                        <li
-                          className={`flex ${
-                            index + 1 !== enumList?.length && 'mb-[10px]'
-                          }`}
-                          key={index}
-                        >
+                      {!!index && (
+                        <Button
+                          icon={<MinusOutlined />}
+                          className="ml-[10px]"
+                          onClick={() => deleteDimensiontem(index)}
+                        ></Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </Form.Item>
+              <Form.Item<MetricInfo>
+                label={t('monitor.integrations.dataType')}
+                name="data_type"
+                rules={[{ required: true, message: t('common.required') }]}
+              >
+                <Select>
+                  <Option value="Number">
+                    {t('monitor.integrations.number')}
+                  </Option>
+                  <Option value="Enum">
+                    {t('monitor.integrations.enum')}
+                  </Option>
+                </Select>
+              </Form.Item>
+              <Form.Item
+                noStyle
+                shouldUpdate={(prevValues, currentValues) =>
+                  prevValues.data_type !== currentValues.data_type
+                }
+              >
+                {({ getFieldValue }) => {
+                  const dataType = getFieldValue('data_type');
+                  if (!dataType) return null;
+                  return dataType === 'Number' ? (
+                    <Form.Item<MetricInfo>
+                      label={t('common.unit')}
+                      name="unit"
+                      rules={[
+                        { required: true, message: t('common.required') }
+                      ]}
+                    >
+                      <Cascader showSearch options={unitList} />
+                    </Form.Item>
+                  ) : (
+                    <Form.Item<MetricInfo>
+                      label={t('common.unit')}
+                      name="unit"
+                      rules={[{ required: true, validator: validateEnumList }]}
+                    >
+                      <ul>
+                        <li className="mb-[6px] text-[var(--color-text-3)] font-[600]">
                           <div className="w-[80%] flex justify-between">
-                            <InputNumber
-                              placeholder={t(
-                                'monitor.integrations.originalValue'
-                              )}
-                              className="w-[160px]"
-                              min={0}
-                              value={item.id}
-                              onChange={(e) => handleEnumIdChange(e, index)}
-                            />
-                            <Input
-                              placeholder={t(
-                                'monitor.integrations.mappedValue'
-                              )}
-                              className="w-[160px] ml-2"
-                              value={item.name as string}
-                              onChange={(e) => {
-                                handleEnumNameChange(e, index);
-                              }}
-                            />
-                            <ColorPicker
-                              className="w-[160px] ml-2"
-                              value={item.color as string}
-                              showText
-                              presets={presets}
-                              placement="bottom"
-                              onChange={(value) => {
-                                handleEnumColorChange(value, index);
-                              }}
-                            />
+                            <span className="w-[160px]">
+                              {t('monitor.integrations.originalValue')}
+                            </span>
+                            <span className="w-[160px] ml-2">
+                              {t('monitor.integrations.mappedValue')}
+                            </span>
+                            <span className="w-[160px] ml-2">
+                              {t('monitor.integrations.color')}
+                            </span>
                           </div>
-                          <Button
-                            icon={<PlusOutlined />}
-                            className="ml-[10px]"
-                            onClick={addEnumItem}
-                          ></Button>
-                          {!!index && (
-                            <Button
-                              icon={<MinusOutlined />}
-                              className="ml-[10px]"
-                              onClick={() => deleteEnumItem(index)}
-                            ></Button>
-                          )}
                         </li>
-                      ))}
-                    </ul>
-                  </Form.Item>
-                );
-              }}
-            </Form.Item>
-            <Form.Item<MetricInfo>
-              label={t('common.description')}
-              name="description"
-            >
-              <Input.TextArea rows={4} />
-            </Form.Item>
+                        {enumList.map((item, index) => (
+                          <li
+                            className={`flex ${
+                              index + 1 !== enumList?.length && 'mb-[10px]'
+                            }`}
+                            key={index}
+                          >
+                            <div className="w-[80%] flex justify-between">
+                              <InputNumber
+                                placeholder={t(
+                                  'monitor.integrations.originalValue'
+                                )}
+                                className="w-[160px]"
+                                min={0}
+                                value={item.id}
+                                onChange={(e) => handleEnumIdChange(e, index)}
+                              />
+                              <Input
+                                placeholder={t(
+                                  'monitor.integrations.mappedValue'
+                                )}
+                                className="w-[160px] ml-2"
+                                value={item.name as string}
+                                onChange={(e) => {
+                                  handleEnumNameChange(e, index);
+                                }}
+                              />
+                              <ColorPicker
+                                className="w-[160px] ml-2"
+                                value={item.color as string}
+                                showText
+                                presets={presets}
+                                placement="bottom"
+                                onChange={(value) => {
+                                  handleEnumColorChange(value, index);
+                                }}
+                              />
+                            </div>
+                            <Button
+                              icon={<PlusOutlined />}
+                              className="ml-[10px]"
+                              onClick={addEnumItem}
+                            ></Button>
+                            {!!index && (
+                              <Button
+                                icon={<MinusOutlined />}
+                                className="ml-[10px]"
+                                onClick={() => deleteEnumItem(index)}
+                              ></Button>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </Form.Item>
+                  );
+                }}
+              </Form.Item>
+              <Form.Item<MetricInfo>
+                label={t('common.description')}
+                name="description"
+              >
+                <Input.TextArea rows={4} />
+              </Form.Item>
             </Form>
           )}
         </OperateModal>

@@ -74,3 +74,10 @@ class VictoriaMetricsAPI:
         if match:
             params["match[]"] = match
         return self._do_get("/api/v1/labels", params)
+
+    def label_values(self, label, match=None):
+        """Return values for a label name, optionally scoped by match[]."""
+        params = {}
+        if match:
+            params["match[]"] = match
+        return self._do_get(f"/api/v1/label/{label}/values", params)
