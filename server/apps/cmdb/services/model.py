@@ -64,7 +64,6 @@ from apps.cmdb.services.unique_rule import (
 )
 from apps.cmdb.utils.change_record import create_change_record
 from apps.cmdb.validators import IdentifierValidator
-from apps.cmdb.validators.field_validator import normalize_tag_field_option as normalize_tag_field_option_config
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.core.services.user_group import UserGroup
@@ -202,35 +201,15 @@ class ModelManage(object):
 
     @staticmethod
     def _is_tag_attr(attr: dict) -> bool:
-        return attr.get("attr_type") == "tag" or attr.get("attr_id") == TAG_ATTR_ID
+        return ModelAttributePolicy._is_tag_attr(attr)
 
     @staticmethod
     def validate_tag_attr_definition(attrs: list[dict], incoming_attr: dict) -> None:
-        attr_type = incoming_attr.get("attr_type")
-        incoming_attr_id = incoming_attr.get("attr_id")
-
-        if attr_type == "tag" and incoming_attr_id != TAG_ATTR_ID:
-            raise BaseAppException("tag 字段 attr_id 必须固定为 tag")
-
-        if incoming_attr_id == TAG_ATTR_ID and attr_type != "tag":
-            raise BaseAppException("attr_id 为 tag 的字段类型必须为 tag")
-
-        if attr_type != "tag":
-            return
-
-        tag_count = sum(1 for attr in attrs if ModelManage._is_tag_attr(attr))
-        if tag_count >= 1:
-            raise BaseAppException("单模型最多允许一个 tag 字段")
+        return ModelAttributePolicy.validate_tag_attr_definition(attrs, incoming_attr)
 
     @staticmethod
     def normalize_tag_field_option(option: dict | list[Any] | None) -> dict:
-        if isinstance(option, list):
-            option = {"mode": TAG_MODE_FREE, "options": option}
-        config = normalize_tag_field_option_config(option)
-        return {
-            "mode": config.mode,
-            "options": [{"key": item.key, "value": item.value} for item in config.options],
-        }
+        return ModelAttributePolicy.normalize_tag_field_option(option)
 
     @staticmethod
     def merge_tag_options_from_values(model_id: str, values: list[str]) -> None:
@@ -1096,7 +1075,8 @@ class ModelManage(object):
 
                 if updated_count > 0:
                     logger.info(
-                        f"[update_enum_instances_display] 枚举选项变更，已更新 {updated_count} 个实例的 {display_field_id} 字段, " f"模型: {model_id}, 字段: {attr_id}"
+                        f"[update_enum_instances_display] 枚举选项变更，已更新 {updated_count} 个实例的 {display_field_id} 字段, "
+                        f"模型: {model_id}, 字段: {attr_id}"
                     )
 
         except Exception as e:
@@ -1181,7 +1161,10 @@ class ModelManage(object):
                     updated_count += len(property_values)
 
                 if updated_count > 0:
-                    logger.info(f"[rebuild_file_instances_display] 已回填 {updated_count} 个实例的 {display_field_id} 字段, " f"模型: {model_id}, 字段: {attr_id}")
+                    logger.info(
+                        f"[rebuild_file_instances_display] 已回填 {updated_count} 个实例的 {display_field_id} 字段, "
+                        f"模型: {model_id}, 字段: {attr_id}"
+                    )
 
         except Exception as e:
             logger.error(
@@ -2145,7 +2128,8 @@ class ModelManage(object):
                     if conflicts:
                         if keep_existing_unique_rules_on_conflict:
                             logger.warning(
-                                "[UniqueRule] 存量实例与待应用规则冲突，保留原唯一规则并继续初始化 " "model_id=%s sheet_name=%s conflict_count=%s reason=%s",
+                                "[UniqueRule] 存量实例与待应用规则冲突，保留原唯一规则并继续初始化 "
+                                "model_id=%s sheet_name=%s conflict_count=%s reason=%s",
                                 model_id,
                                 sheet_name,
                                 len(conflicts),
