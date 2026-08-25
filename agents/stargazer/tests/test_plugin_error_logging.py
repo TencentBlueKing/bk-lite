@@ -1,4 +1,4 @@
-from core.plugin.error_logging import PluginExceptionSampler, log_plugin_exception, should_log_plugin_exception
+from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
 
 
 class RecordingLogger:
@@ -72,13 +72,26 @@ def test_plugin_exception_log_without_traceback_is_still_searchable():
     assert "must-not-be-logged" not in logger.entries[0]
 
 
-def test_plugin_exception_sampler_limits_the_whole_run():
-    params = {"_plugin_exception_sampler": PluginExceptionSampler(limit=3)}
+def test_plugin_exception_log_includes_safe_error_message():
+    logger = RecordingLogger()
 
-    assert [should_log_plugin_exception(params) for _ in range(5)] == [
-        True,
-        True,
-        True,
-        False,
-        False,
-    ]
+    try:
+        raise RuntimeError("SNMP authorization failure for 10.3.252.254")
+    except RuntimeError as error:
+        log_plugin_exception(
+            logger,
+            error=error,
+            task_id="task-9",
+            plugin_ref="network.config",
+            model_id="network",
+            plugin_name="snmp_facts",
+            target="10.3.252.254",
+        )
+
+    assert "error_message=SNMP authorization failure for 10.3.252.254" in logger.entries[0]
+
+
+def test_plugin_exception_logging_follows_target_context_flag():
+    assert should_log_plugin_exception({"_log_plugin_call_chain": True}) is True
+    assert should_log_plugin_exception({"_log_plugin_call_chain": False}) is False
+    assert should_log_plugin_exception({}) is False

@@ -557,17 +557,17 @@ HTTP 分片；本变更不提前实现。
 `target_id`/目标哈希、`plugin_ref`、`credential_id` 和稳定错误码，严禁输出凭据
 明文或认证请求头。
 
-生产 INFO 日志以 Run 为粒度：开始、聚合结果、终态各一条，目标失败按错误码计数并最多保留
-3 个脱敏样本。插件加载步骤、预期内协议超时、预检跳过和发布成功降为 DEBUG，不逐目标输出
-traceback 或重复成功/失败文案。主日志写 stdout，由日志平台按结构化字段建立视图；网络设备
-`network.config` / `snmp_facts` 额外写入一个有大小上限和保留数的独立滚动文件，其他插件不得混入；
-NATS、Redis、租约、发布不确定等基础设施异常继续保留 WARNING/ERROR。
-插件执行、协议预检及插件内部吞掉的异常通过 `plugin_exception` 保留每 Run 最多 3 条调用链样本；
-样本必须带任务、插件、模型和目标上下文，调用链仅包含文件、行号、函数名，禁止记录异常正文、
-源码行、请求头或凭据字段。
+生产 INFO 日志保留 Run 开始、聚合结果和终态；每个失败目标必须输出可检索的
+`target_collection_failed`。插件加载步骤、预检跳过和发布成功降为 DEBUG。日志统一写 stdout，
+由日志平台按结构化字段建立视图，不再创建 SNMP 专用日志文件；NATS、Redis、租约、发布不确定等
+基础设施异常继续保留 WARNING/ERROR。
+插件执行、协议预检及插件内部捕获的每个异常通过 `plugin_exception` 记录，必须带任务、插件、模型和
+目标上下文、异常类型、脱敏且有长度上限的异常正文，以及有界的文件、行号、函数名与 traceback
+源码行；禁止记录运行时局部变量、请求头或凭据字段。
 Run 开始、进度、汇总和终态日志必须携带 `instance_id`。生产 INFO 以约 10% 完成度输出有界
-`collection_progress`，并为每个目标输出且只输出一条 `target_collection_started`。协议探测无响应使用
-`target_collection_failed stage=access_probe reason=timeout` 提供最多 3 个样本，并在 Run 汇总保留
+`collection_progress`；SNMP 正式采集仅由插件输出 `snmp_facts_collection_started`，执行器不得重复输出
+通用目标开始日志。协议探测无响应使用
+`target_collection_failed stage=access_probe reason=timeout` 为每个失败目标提供终态日志，并在 Run 汇总保留
 `protocol_no_response` 计数，不得降级为含混的 `credentials_exhausted`。发布失败逐 Run 最多输出
 3 条 `result_publish_failed`，完整计数与样本在 Run 汇总聚合；成功发布不输出逐目标终态日志。
 `collection_capacity` 保留稳定英文 `event`，正文使用中文分区、单位、状态和阈值提示；底层不可用的

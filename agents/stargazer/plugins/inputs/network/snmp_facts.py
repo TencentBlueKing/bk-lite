@@ -5,7 +5,7 @@
 
 import socket
 
-from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
+from core.plugin.error_logging import log_plugin_exception
 from plugins.inputs.network_topo.snmp_topo import SnmpTopo
 from pysnmp.hlapi.asyncio import (
     CommunityData,
@@ -410,6 +410,16 @@ class SnmpFacts:
         将采集到的 SNMP 数据转换为标准格式。
         当 has_network_topo=True 时，同时采集网络拓扑数据。
         """
+        logger.info(
+            "event=snmp_facts_collection_started task_id=%s plugin_ref=%s "
+            "model_id=%s plugin_name=%s target=%s | SNMP采集开始 IP=%s",
+            self.kwargs.get("collection_task_id") or "-",
+            self.kwargs.get("collection_plugin_ref") or "network.config",
+            self.kwargs.get("model_id") or "network",
+            self.kwargs.get("plugin_name") or "snmp_facts",
+            self.host,
+            self.host,
+        )
         try:
             snmp_data = await self.collect()
             system_data = snmp_data.get("system", {})
@@ -447,8 +457,6 @@ class SnmpFacts:
         return inst_data
 
     def _log_exception(self, error: BaseException, *, level: str = "error") -> None:
-        if not should_log_plugin_exception(self.kwargs):
-            return
         log_plugin_exception(
             logger,
             error=error,

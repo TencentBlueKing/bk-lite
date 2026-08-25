@@ -26,7 +26,6 @@ from core.infra.event_loop_monitor import EventLoopLagMonitor
 from core.infra.nats_utils import close_shared_nats, nats_metrics_connection_stats
 from core.infra.process_resources import ProcessResourceSampler
 from core.infra.redis_client import get_redis_client
-from core.infra.snmp_file_logging import configure_snmp_file_logging
 from core.logger import logger
 
 
@@ -429,8 +428,6 @@ def initialize_collection_application(app) -> None:
     @app.listener("before_server_start")
     async def start_collection_application(app, _loop):
         global _application
-        # 在 worker 内安装文件 handler，避免预 fork 打开同一个滚动文件句柄。
-        configure_snmp_file_logging()
         redis_client = getattr(app.ctx, "redis", None)
         if redis_client is None:
             redis_client = await get_redis_client()

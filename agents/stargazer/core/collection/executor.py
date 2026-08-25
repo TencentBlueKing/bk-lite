@@ -33,11 +33,10 @@ from core.collection.result_publisher import FuturePublishReceipt, ImmediateResu
 from core.collection.runtime import CollectionRequest, RunLease
 from core.collection.scheduler import CollectionScheduler
 from core.infra.redis_client import is_credential_state_redis_error
-from core.infra.snmp_file_logging import snmp_log_scope
 from core.logger import logger
-from core.plugin.error_logging import PluginExceptionSampler, log_plugin_exception, should_log_plugin_exception
+from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
 
-_TARGET_FAILURE_DETAIL_LOG_LIMIT = 3
+_FAILURE_SUMMARY_SAMPLE_LIMIT = 3
 
 # 兼容旧 import：执行器专属符号仍由此导出；领域类型请优先 from core.collection.contracts
 __all__ = [
@@ -195,7 +194,6 @@ class TargetCollectionExecutor:
         run_started_at = time.monotonic()
         targets = request.targets
         instance_id = _instance_id(request)
-        exception_sampler = PluginExceptionSampler(_TARGET_FAILURE_DETAIL_LOG_LIMIT)
         results: dict[int, TargetCollectionResult] = {}
         publish_statuses: dict[int, str] = {}
         publish_error_codes: dict[int, str] = {}
@@ -207,30 +205,16 @@ class TargetCollectionExecutor:
 
         async def execute_index(index: int) -> _PendingPublish:
             nonlocal progress_completed
+            target = targets[index]
+            target_started_at = time.monotonic()
             # 目标槽位只覆盖目标执行与进入发布路径；发布异常在目标内隔离。
             try:
                 async with self._target_semaphore:
                     await self._activity_tracker.enter()
-                    target = targets[index]
                     target_started_at = time.monotonic()
                     active_targets.add(target)
-                    logger.info(
-                        "event=target_collection_started instance_id=%s "
-                        "plugin_ref=%s plugin_name=%s model_id=%s target=%s",
-                        instance_id,
-                        request.plugin_ref,
-                        request.params.get("plugin_name") or "-",
-                        request.params.get("model_id") or "-",
-                        target,
-                    )
                     try:
-                        result = await self._execute_target(
-                            request,
-                            target,
-                            lease,
-                            log_failure_detail=index < _TARGET_FAILURE_DETAIL_LOG_LIMIT,
-                            exception_sampler=exception_sampler,
-                        )
+                        result = await self._execute_target(request, target, lease)
                         if result.status == "success" and _is_snmp_plugin(
                             plugin_ref=request.plugin_ref,
                             plugin_name=request.params.get("plugin_name"),
@@ -267,10 +251,16 @@ class TargetCollectionExecutor:
                     type(error).__name__,
                 )
                 result = TargetCollectionResult(
-                    target=targets[index],
+                    target=target,
                     status="failed",
                     attempts=0,
                     error_code="target_execution_error",
+                )
+            if result.status in {"failed", "unreachable"}:
+                self._log_target_collection_failure(
+                    request,
+                    result,
+                    duration_ms=(time.monotonic() - target_started_at) * 1000,
                 )
             self._metrics.increment(
                 f"execution_mode_{self._plan.execution_mode}_{result.status}_total"
@@ -389,7 +379,7 @@ class TargetCollectionExecutor:
                     continue
                 publish_status = "failed"
                 break
-            if publish_status != "succeeded" and publish_failure_log_count < _TARGET_FAILURE_DETAIL_LOG_LIMIT:
+            if publish_status != "succeeded" and publish_failure_log_count < _FAILURE_SUMMARY_SAMPLE_LIMIT:
                 publish_failure_log_count += 1
                 phase = (
                     "enqueue"
@@ -514,7 +504,7 @@ class TargetCollectionExecutor:
                 result.error_code or result.status,
                 result.detail or "-",
             )
-            for result in failures[:_TARGET_FAILURE_DETAIL_LOG_LIMIT]
+            for result in failures[:_FAILURE_SUMMARY_SAMPLE_LIMIT]
         ) or "-"
         publish_failures = tuple(
             (index, status, publish_error_codes.get(index) or status)
@@ -528,7 +518,7 @@ class TargetCollectionExecutor:
         )
         publish_failure_samples = ",".join(
             f"{targets[index]}|{error_code}"
-            for index, _status, error_code in publish_failures[:_TARGET_FAILURE_DETAIL_LOG_LIMIT]
+            for index, _status, error_code in publish_failures[:_FAILURE_SUMMARY_SAMPLE_LIMIT]
         ) or "-"
         log_summary = (
             logger.warning
@@ -621,27 +611,11 @@ class TargetCollectionExecutor:
         request: CollectionRequest,
         target: str,
         lease: RunLease,
-        *,
-        log_failure_detail: bool = True,
-        exception_sampler: PluginExceptionSampler | None = None,
     ) -> TargetCollectionResult:
-        target_started_at = time.monotonic()
         preflight = await self._run_preflight(request, target)
         if preflight.status == PreflightStatus.UNREACHABLE:
             self._metrics.increment("target_unreachable_total")
             error_code = preflight.error_code or "target_unreachable"
-            if log_failure_detail:
-                logger.warning(
-                    "🚫 event=target_unreachable task_id=%s plugin_ref=%s "
-                    "model_id=%s target=%s "
-                    "reason=%s detail=%s",
-                    request.task_id,
-                    request.plugin_ref,
-                    request.params.get("model_id") or "-",
-                    target,
-                    error_code,
-                    preflight.detail or "-",
-                )
             return TargetCollectionResult(
                 target=target,
                 status="unreachable",
@@ -661,10 +635,7 @@ class TargetCollectionExecutor:
             return await self._no_credential_result(request, target)
 
         context_params = dict(request.params)
-        if exception_sampler is not None:
-            context_params["_plugin_exception_sampler"] = exception_sampler
-        else:
-            context_params["_log_plugin_call_chain"] = bool(log_failure_detail)
+        context_params["_log_plugin_call_chain"] = True
         if preflight.connect_host:
             context_params["_validated_connect_host"] = preflight.connect_host
         context = TargetCollectionContext(
@@ -675,42 +646,69 @@ class TargetCollectionExecutor:
             owner_id=lease.owner_id,
             attempt_id=lease.attempt_id,
         )
-        result = await self._run_credential_attempts(
+        return await self._run_credential_attempts(
             request,
             target,
             credentials,
             context,
         )
-        if log_failure_detail and result.status == "failed":
-            error_code = result.error_code or "collection_failed"
-            is_probe_timeout = error_code in {
-                "protocol_no_response",
-                "no_response_attempt_limit",
-                "access_probe_timeout",
-            }
-            is_plugin_timeout = error_code == "plugin_timeout"
-            logger.warning(
-                "event=target_collection_failed instance_id=%s "
-                "plugin_ref=%s plugin_name=%s model_id=%s target=%s "
-                "stage=%s reason=%s error_code=%s attempts=%s "
-                "timeout_seconds=%s duration_ms=%.2f",
-                _instance_id(request),
-                request.plugin_ref,
-                request.params.get("plugin_name") or "-",
-                request.params.get("model_id") or "-",
-                target,
-                "access_probe" if is_probe_timeout else "plugin",
-                "timeout" if is_probe_timeout or is_plugin_timeout else error_code,
-                error_code,
-                result.attempts,
-                (
-                    self._plan.probe_timeout_seconds
-                    if is_probe_timeout
-                    else self._plan.collection_timeout_seconds
-                ),
-                (time.monotonic() - target_started_at) * 1000,
-            )
-        return result
+
+    def _log_target_collection_failure(
+        self,
+        request: CollectionRequest,
+        result: TargetCollectionResult,
+        *,
+        duration_ms: float,
+    ) -> None:
+        error_code = result.error_code or result.status
+        if error_code.startswith("preflight_") or (
+            result.status == "unreachable" and result.attempts == 0
+        ):
+            stage = "preflight"
+            timeout_seconds = self._plan.preflight_timeout_seconds
+        elif error_code.startswith("access_probe_") or error_code in {
+            "protocol_no_response",
+            "no_response_attempt_limit",
+            "target_unreachable",
+        }:
+            stage = "access_probe"
+            timeout_seconds = self._plan.probe_timeout_seconds
+        elif error_code in {
+            "authentication_failed",
+            "credential_state_unavailable",
+            "credentials_exhausted",
+            "no_matching_credential",
+            "no_valid_credential",
+        }:
+            stage = "credential"
+            timeout_seconds = "-"
+        else:
+            stage = "plugin"
+            timeout_seconds = self._plan.collection_timeout_seconds
+        reason = (
+            "timeout"
+            if "timeout" in error_code
+            or error_code in {"protocol_no_response", "no_response_attempt_limit"}
+            else error_code
+        )
+        logger.warning(
+            "event=target_collection_failed instance_id=%s "
+            "plugin_ref=%s plugin_name=%s model_id=%s target=%s "
+            "stage=%s reason=%s error_code=%s attempts=%s "
+            "credential_id=%s timeout_seconds=%s duration_ms=%.2f",
+            _instance_id(request),
+            request.plugin_ref,
+            request.params.get("plugin_name") or "-",
+            request.params.get("model_id") or "-",
+            result.target,
+            stage,
+            reason,
+            error_code,
+            result.attempts,
+            result.credential_id or "-",
+            timeout_seconds,
+            duration_ms,
+        )
 
     async def _load_eligible_credentials(self, request: CollectionRequest, target: str):
         try:
@@ -918,14 +916,13 @@ class TargetCollectionExecutor:
 
         access_probe_started = time.monotonic()
         try:
-            with snmp_log_scope(_is_snmp_context(context)):
-                async with asyncio.timeout(self._plan.probe_timeout_seconds):
-                    return await self._access_probe.probe(
-                        target,
-                        credential,
-                        context,
-                        timeout_seconds=self._plan.probe_timeout_seconds,
-                    )
+            async with asyncio.timeout(self._plan.probe_timeout_seconds):
+                return await self._access_probe.probe(
+                    target,
+                    credential,
+                    context,
+                    timeout_seconds=self._plan.probe_timeout_seconds,
+                )
         except TimeoutError:
             self._metrics.increment("access_probe_timeout_total")
             self._metrics.increment("probe_timeout_total")
@@ -1159,13 +1156,12 @@ class TargetCollectionExecutor:
         if mode == "sync":
             self._metrics.add_gauge("sync_calls_in_flight", 1)
         try:
-            with snmp_log_scope(_is_snmp_context(context)):
-                async with asyncio.timeout(self._plan.collection_timeout_seconds):
-                    return await self._plugin.collect(
-                        target,
-                        credential,
-                        context,
-                    )
+            async with asyncio.timeout(self._plan.collection_timeout_seconds):
+                return await self._plugin.collect(
+                    target,
+                    credential,
+                    context,
+                )
         except TimeoutError:
             self._metrics.increment("plugin_timeout_total")
             self._metrics.increment("collection_timeout_total")
@@ -1309,13 +1305,6 @@ def _target_status_zh(status: str) -> str:
         "unreachable": "不可达",
         "deferred": "延后处理",
     }.get(str(status), str(status))
-
-
-def _is_snmp_context(context: TargetCollectionContext) -> bool:
-    return _is_snmp_plugin(
-        plugin_ref=context.plugin_ref,
-        plugin_name=context.params.get("plugin_name"),
-    )
 
 
 def _is_snmp_plugin(*, plugin_ref: object, plugin_name: object) -> bool:
