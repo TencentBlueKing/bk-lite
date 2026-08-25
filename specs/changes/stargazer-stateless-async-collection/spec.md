@@ -611,6 +611,11 @@ Run 开始、进度、汇总和终态日志必须携带 `instance_id`。生产 I
 - 云：对 API Endpoint 做 TCP/TLS（非 ICMP）；不通则不进凭据；
 - ICMP 不得作为硬过滤；
 - 出站策略拒绝 → 稳定错误码，不进凭据。
+- **IP 预检锁定修订（2026-08-24）**：默认不做采集前拨测（`PREFLIGHT_REACHABILITY`
+  默认 off）。任务显式开启 `params.ip_precheck`（或环境变量开启）时，按协议做无凭据
+  连接性探测作为准入：TCP/TLS 直连类拨协议端口；SSH/job 拨目标 SSH 端口（目标 IP 与
+  执行节点管理 IP 一致时跳过）；SNMP/UDP 等未确认类型本期放行；云账号等逻辑目标忽略
+  开关。预检组件自身故障时放行目标并记告警，不得阻断采集。
 
 ### 3. CredentialPolicy（S1）
 

@@ -3,22 +3,24 @@
 # @Time: 2025/2/27 14:04
 # @Author: windyzhao
 
-from django.db import models
-from django.db.models import JSONField
 import copy
 
-from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
-from apps.core.models.time_info import TimeInfo
-from apps.core.models.maintainer_info import MaintainerInfo
+from django.core.validators import MaxValueValidator, MinValueValidator
+from django.db import models
+from django.db.models import JSONField
+
 from apps.cmdb.constants.constants import (
-    CollectPluginTypes,
+    SECRET_KEY,
     CollectDriverTypes,
-    CollectRunStatusType,
     CollectInputMethod,
+    CollectPluginTypes,
+    CollectRunStatusType,
     DataCleanupStrategy,
 )
+from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
+from apps.core.models.maintainer_info import MaintainerInfo
+from apps.core.models.time_info import TimeInfo
 from apps.core.utils.crypto.password_crypto import PasswordCrypto
-from apps.cmdb.constants.constants import SECRET_KEY
 
 # 加密密码的标记前缀
 ENCRYPTED_PREFIX = "enc:"
@@ -30,9 +32,24 @@ ALLOWED_TOPOLOGY_FALLBACK_STRATEGIES = (
 DEFAULT_TOPOLOGY_PROTOCOLS = list(ALLOWED_TOPOLOGY_PROTOCOLS)
 DEFAULT_TOPOLOGY_FALLBACK_STRATEGY = "prefer_neighbors_then_fdb_then_arp"
 DEFAULT_TOPOLOGY_MIN_CONFIDENCE = 0.0
+DEFAULT_TOPOLOGY_INTERVAL_MULTIPLIER = 5
+DEFAULT_TOPOLOGY_TIMEOUT_SECONDS = 600
+ALLOWED_TOPOLOGY_INTERVAL_MODES = ("recommended", "custom")
+COLLECTION_ROLE_DEVICE = "device"
+COLLECTION_ROLE_TOPOLOGY = "topology"
 
 
-def normalize_topology_contract(raw_params):
+def recommended_topology_interval_minutes(device_cycle_minutes) -> int:
+    try:
+        minutes = int(device_cycle_minutes)
+    except (TypeError, ValueError):
+        minutes = 0
+    if minutes < 1:
+        minutes = 30
+    return minutes * DEFAULT_TOPOLOGY_INTERVAL_MULTIPLIER
+
+
+def normalize_topology_contract(raw_params, *, device_cycle_minutes=None):
     params = raw_params if isinstance(raw_params, dict) else {}
 
     topology_protocols = []
@@ -60,11 +77,50 @@ def normalize_topology_contract(raw_params):
     if min_confidence < 0 or min_confidence > 1:
         min_confidence = DEFAULT_TOPOLOGY_MIN_CONFIDENCE
 
+    has_network_topo = bool(params.get("has_network_topo"))
+    interval_mode = params.get("topology_interval_mode")
+    if interval_mode not in ALLOWED_TOPOLOGY_INTERVAL_MODES:
+        interval_mode = "recommended"
+
+    raw_interval = params.get("topology_interval_minutes")
+    recommended = recommended_topology_interval_minutes(
+        device_cycle_minutes if device_cycle_minutes is not None else params.get("_device_cycle_minutes")
+    )
+    try:
+        topology_interval_minutes = int(raw_interval) if raw_interval not in (None, "") else recommended
+    except (TypeError, ValueError):
+        topology_interval_minutes = recommended
+    if topology_interval_minutes < 1:
+        topology_interval_minutes = recommended
+
+    def _as_int(value, default=1):
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return default
+        return parsed if parsed >= 1 else default
+
+    device_version = _as_int(params.get("device_channel_config_version"), 1)
+    topology_version = _as_int(params.get("topology_channel_config_version"), 1)
+
+    raw_topo_timeout = params.get("topology_timeout")
+    try:
+        topology_timeout = int(raw_topo_timeout) if raw_topo_timeout not in (None, "") else DEFAULT_TOPOLOGY_TIMEOUT_SECONDS
+    except (TypeError, ValueError):
+        topology_timeout = DEFAULT_TOPOLOGY_TIMEOUT_SECONDS
+    if topology_timeout < 1 or topology_timeout > 86400:
+        topology_timeout = DEFAULT_TOPOLOGY_TIMEOUT_SECONDS
+
     return {
-        "has_network_topo": bool(params.get("has_network_topo")),
+        "has_network_topo": has_network_topo,
         "topology_protocols": topology_protocols,
         "topology_fallback_strategy": topology_fallback_strategy,
         "min_confidence": min_confidence,
+        "topology_interval_minutes": topology_interval_minutes,
+        "topology_interval_mode": interval_mode,
+        "topology_timeout": topology_timeout,
+        "device_channel_config_version": device_version,
+        "topology_channel_config_version": topology_version,
     }
 
 
@@ -75,8 +131,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
 
     name = models.CharField(max_length=128, help_text="任务名称")
     task_type = models.CharField(max_length=32, choices=CollectPluginTypes.CHOICE, help_text="任务类型")
-    driver_type = models.CharField(max_length=32, choices=CollectDriverTypes.CHOICE,
-                                   default=CollectDriverTypes.PROTOCOL, help_text="驱动类型")
+    driver_type = models.CharField(max_length=32, choices=CollectDriverTypes.CHOICE, default=CollectDriverTypes.PROTOCOL, help_text="驱动类型")
     model_id = models.CharField(max_length=64, help_text="模型ID")
 
     is_interval = models.BooleanField(default=False, help_text="是否开启周期巡检")
@@ -90,10 +145,13 @@ class CollectModels(MaintainerInfo, TimeInfo):
     access_point = JSONField(default=dict, help_text="接入点")
     credential = JSONField(default=list, help_text="凭据")
 
-    timeout = models.PositiveSmallIntegerField(default=0, help_text="超时时间(单个ip)")
+    timeout = models.PositiveIntegerField(
+        default=60,
+        validators=[MinValueValidator(1), MaxValueValidator(86400)],
+        help_text="单目标采集总预算(秒)",
+    )
 
-    exec_status = models.PositiveSmallIntegerField(default=CollectRunStatusType.NOT_START,
-                                                   choices=CollectRunStatusType.CHOICE, help_text="执行状态")
+    exec_status = models.PositiveSmallIntegerField(default=CollectRunStatusType.NOT_START, choices=CollectRunStatusType.CHOICE, help_text="执行状态")
     exec_time = models.DateTimeField(blank=True, null=True, help_text="执行时间")
 
     task_id = models.CharField(max_length=64, blank=True, null=True, help_text="任务执行id")
@@ -109,8 +167,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
 
     plugin_id = models.IntegerField(default=0, help_text="采集插件ID")
 
-    input_method = models.PositiveSmallIntegerField(default=CollectInputMethod.AUTO, choices=CollectInputMethod.CHOICE,
-                                                    help_text="录入方式")
+    input_method = models.PositiveSmallIntegerField(default=CollectInputMethod.AUTO, choices=CollectInputMethod.CHOICE, help_text="录入方式")
 
     data_cleanup_strategy = models.CharField(
         max_length=32, choices=DataCleanupStrategy.CHOICE, default=DataCleanupStrategy.DEFAULT, help_text="数据清理策略"
@@ -230,7 +287,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
         # 去除加密前缀
         encrypted_text = password
         if isinstance(password, str) and password.startswith(ENCRYPTED_PREFIX):
-            encrypted_text = password[len(ENCRYPTED_PREFIX):]
+            encrypted_text = password[len(ENCRYPTED_PREFIX) :]
 
         try:
             crypto = PasswordCrypto(SECRET_KEY)

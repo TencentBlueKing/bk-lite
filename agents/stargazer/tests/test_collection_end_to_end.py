@@ -313,6 +313,7 @@ def build_application(redis_client, plugin, published, scheduled, *, fail_once=F
         settings=CollectionApplicationSettings(
             max_active_runs=2,
             max_active_targets=2,
+            network_topology_max_active_targets=1,
             target_task_window=2,
             connect_timeout_seconds=1,
             plugin_timeout_seconds=1,

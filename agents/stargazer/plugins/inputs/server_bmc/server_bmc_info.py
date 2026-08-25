@@ -11,6 +11,7 @@ BMC (Baseboard Management Controller) 通过 Redfish REST API 暴露硬件信息
 采集字段:型号、序列号、CPU 数量、内存总量、电源状态、BMC 版本。
 """
 import logging
+
 import requests
 
 try:
@@ -31,7 +32,7 @@ class ServerBmcInfo:
         self.user = kwargs.get("user", "admin")
         self.password = kwargs.get("password", "")
         self.ssl = str(kwargs.get("ssl", "true")).lower() in ("1", "true", "yes")
-        self.timeout = int(kwargs.get("timeout", 10))
+        self.timeout = 10  # 请求超时硬编码；表单 timeout 由框架作单对象预算
         scheme = "https" if self.ssl else "http"
         self.base_url = f"{scheme}://{self.host}:{self.port}"
         self.auth = (self.user, self.password) if self.user else None
@@ -95,9 +96,7 @@ class ServerBmcInfo:
                                     model_data["cpu_model"] = proc_summary.get("Model", "")
                                 mem_summary = sys_data.get("MemorySummary", {})
                                 if mem_summary:
-                                    model_data["memory_total_gib"] = str(
-                                        mem_summary.get("TotalSystemMemoryGiB", "")
-                                    )
+                                    model_data["memory_total_gib"] = str(mem_summary.get("TotalSystemMemoryGiB", ""))
             except Exception:
                 pass
 
@@ -120,6 +119,7 @@ class ServerBmcInfo:
             inst_data = {"result": {"server_bmc": [model_data]}, "success": True}
         except Exception as err:
             import traceback
+
             logger.error(f"server_bmc_info main error! {traceback.format_exc()}")
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 

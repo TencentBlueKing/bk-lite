@@ -158,6 +158,61 @@ def test_job_plugin_uses_ssh_preflight_before_collection():
     assert request.params["preflight_kind"] == "remote"
 
 
+def test_network_builder_defaults_to_snmp_preflight():
+    request = build_collection_request(
+        task_id="network-preflight",
+        params={
+            "model_id": "network",
+            "executor_type": "protocol",
+            "host": "10.10.69.245",
+        },
+    )
+    assert request.params["preflight_kind"] == "snmp"
+    assert int(request.params["port"]) == 161
+
+
+def test_network_config_file_builder_defaults_to_remote():
+    request = build_collection_request(
+        task_id="ncf-preflight",
+        params={
+            "model_id": "network_config_file",
+            "executor_type": "protocol",
+            "host": "10.10.69.10",
+        },
+    )
+    assert request.params["preflight_kind"] == "remote"
+    assert int(request.params["port"]) == 22
+
+
+def test_pc_windows_builder_dials_winrm_port():
+    request = build_collection_request(
+        task_id="pc-win-preflight",
+        params={
+            "model_id": "pc",
+            "executor_type": "job",
+            "host": "10.10.24.50",
+            "os_type": "windows",
+            "winrm_scheme": "https",
+        },
+    )
+    assert request.params["preflight_kind"] == "tcp"
+    assert int(request.params["port"]) == 5986
+
+
+def test_pc_macos_builder_dials_ssh():
+    request = build_collection_request(
+        task_id="pc-mac-preflight",
+        params={
+            "model_id": "pc",
+            "executor_type": "job",
+            "host": "10.10.24.51",
+            "os_type": "macos",
+        },
+    )
+    assert request.params["preflight_kind"] == "remote"
+    assert int(request.params["port"]) == 22
+
+
 def test_request_digest_changes_when_credential_target_binding_changes():
     first = build_collection_request(
         task_id="credential-binding-digest",

@@ -16,7 +16,6 @@ executors:
     type: job
     execution_mode: remote
     capacity_group: remote_job
-    timeout: 60
     scripts:
       linux: plugins/inputs/keepalived/keepalived_default_discover.sh
     collector:

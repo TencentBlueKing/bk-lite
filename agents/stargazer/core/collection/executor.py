@@ -191,7 +191,10 @@ class TargetCollectionExecutor:
         self, request: CollectionRequest, lease: RunLease
     ) -> RunSummary:
         # fmt: on
+        from core.collection.round_complete import new_round_ts
+
         run_started_at = time.monotonic()
+        round_ts = new_round_ts()
         targets = request.targets
         instance_id = _instance_id(request)
         results: dict[int, TargetCollectionResult] = {}
@@ -410,6 +413,7 @@ class TargetCollectionExecutor:
                 f"{request.task_id}:{lease.fence}",
                 range(len(targets)),
                 execute_index,
+                workload=self._plan.capacity_group,
             )
             pending_publishes = scheduled
             for pending in scheduled:
@@ -554,6 +558,35 @@ class TargetCollectionExecutor:
             publish_failure_codes,
             publish_failure_samples,
         )
+        publish_clean = (
+            summary.publish_failed == 0
+            and summary.publish_unknown == 0
+            and summary.publish_event_failed == 0
+            and summary.publish_permanent_failed == 0
+        )
+        if publish_clean:
+            from core.collection.round_complete import build_round_complete_labels, publish_round_complete_marker
+
+            await publish_round_complete_marker(
+                request,
+                round_ts,
+                extra_labels=build_round_complete_labels(
+                    request.params,
+                    run_attempt_id=lease.attempt_id,
+                ),
+            )
+        else:
+            logger.info(
+                "event=round_complete_marker_skipped %s reason=publish_incomplete "
+                "round_ts=%s publish_failed=%s publish_unknown=%s "
+                "publish_event_failed=%s publish_permanent_failed=%s",
+                _request_log_identity(request, instance_id),
+                round_ts,
+                summary.publish_failed,
+                summary.publish_unknown,
+                summary.publish_event_failed,
+                summary.publish_permanent_failed,
+            )
         return summary
 
     async def _enqueue_publish(

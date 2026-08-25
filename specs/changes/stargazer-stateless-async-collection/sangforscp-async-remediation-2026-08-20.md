@@ -21,9 +21,10 @@ SangforSCP 配置采集器原先暴露同步 `list_all_resources()`，内部使�
   TargetPolicy 解析和校验一次，正式 HTTP 连接固定使用该 IP，并保留原始 Host，避免校验后
   DNS 再解析。当前 legacy context 同时关闭证书校验，这是已有兼容模式而非安全默认；部署侧
   应限制可信管理网访问，后续以受控 CA/证书指纹配置替换，不能在未验证设备兼容性前直接切换。
-- Sangfor executor 的正式采集总超时为 300 秒。插件内部所有登录、重试、分页共用同一个
-  绝对预算，不能每一页重新获得 300 秒；内部最多预留 100ms 给框架转换并发布稳定的
-  `collection_timeout`，目标从进入插件到退出仍不超过框架的 300 秒边界。
+- Sangfor executor 的正式采集总超时来自 CMDB 任务预算。插件内部所有登录、重试、分页共用
+  同一个绝对预算，不能每一页重新获得预算；内部最多预留 100ms 给框架转换并发布稳定的
+  `collection_timeout`。插件使用受信任的 `max_total_timeout=3000` 秒作为安全上限，实际内部预算为
+  `min(task_timeout, max_total_timeout) - exit_grace`。
 - YAML `collector.options` 是受信任配置，由 `PluginExecutor` 以保留字段
   `_collector_options` 注入并覆盖请求中的同名字段，外部任务不能抬高资源上界。
 
@@ -31,7 +32,7 @@ SangforSCP 配置采集器原先暴露同步 `list_all_resources()`，内部使�
 
 | 边界 | 默认值 | 达到后的行为 |
 | --- | ---: | --- |
-| 完整采集总预算 | 300 秒 | 整个目标失败，错误码 `collection_timeout` |
+| 完整采集总预算 | 任务预算，可信上限 3000 秒 | 整个目标失败，错误码 `collection_timeout` |
 | connect/read/write/pool | 10/60/15/10 秒 | 有限重试后整个目标失败 |
 | GET 最大尝试 | 3 | 仅 transport、429、502/503/504 重试 |
 | 登录 POST 最大尝试 | 2 | 仅 transport 失败可重试；业务认证失败不重试 |

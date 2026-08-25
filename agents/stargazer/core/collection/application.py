@@ -9,7 +9,12 @@ import threading
 from dataclasses import dataclass
 
 from core.collection.capacity_observer import CapacityUsageReporter, with_capacity_utilization
-from core.collection.constants import DEFAULT_COLLECTION_REDIS_PREFIX, DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
+from core.collection.constants import (
+    DEFAULT_COLLECTION_REDIS_PREFIX,
+    DEFAULT_MAX_ACTIVE_TARGETS,
+    DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS,
+    DEFAULT_TARGET_TASK_WINDOW,
+)
 from core.collection.contracts import TargetExecutorSettings
 from core.collection.credential_policy import CredentialPolicy
 from core.collection.execution_plan import ExecutionPlanResolver, TimeoutDefaults
@@ -54,6 +59,7 @@ class CollectionApplicationSettings:
     max_active_runs: int = 16
     # 0 = 不限制；默认见 DEFAULT_*，运行时由 from_env() 读环境变量
     max_active_targets: int = DEFAULT_MAX_ACTIVE_TARGETS
+    network_topology_max_active_targets: int = DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS
     target_task_window: int = DEFAULT_TARGET_TASK_WINDOW
     connect_timeout_seconds: float = 15.0
     probe_timeout_seconds: float = 15.0
@@ -75,6 +81,14 @@ class CollectionApplicationSettings:
             raise ValueError("max_active_runs must be greater than zero")
         if self.max_active_targets < 0:
             raise ValueError("max_active_targets must be >= 0 (0 means unlimited)")
+        if (
+            isinstance(self.network_topology_max_active_targets, bool)
+            or not isinstance(self.network_topology_max_active_targets, int)
+            or not 1 <= self.network_topology_max_active_targets <= 100
+        ):
+            raise ValueError("NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS must be an integer between 1 and 100")
+        if self.max_active_targets > 0 and self.network_topology_max_active_targets >= self.max_active_targets:
+            raise ValueError("NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS must be less than MAX_ACTIVE_TARGETS")
         if self.target_task_window < 0:
             raise ValueError("target_task_window must be >= 0 (0 means unlimited)")
         if self.publish_timeout_seconds <= 0:
@@ -88,9 +102,19 @@ class CollectionApplicationSettings:
 
     @classmethod
     def from_env(cls) -> CollectionApplicationSettings:
+        max_active_targets = concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
+        topology_raw = os.getenv("NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS")
+        if topology_raw is None or not str(topology_raw).strip():
+            network_topology_max_active_targets = DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS
+        else:
+            try:
+                network_topology_max_active_targets = int(str(topology_raw).strip())
+            except ValueError as exc:
+                raise ValueError("NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS must be an integer between 1 and 100") from exc
         return cls(
             max_active_runs=int(os.getenv("MAX_ACTIVE_RUNS", "16")),
-            max_active_targets=concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS),
+            max_active_targets=max_active_targets,
+            network_topology_max_active_targets=network_topology_max_active_targets,
             target_task_window=concurrency_limit_from_env("TARGET_TASK_WINDOW", DEFAULT_TARGET_TASK_WINDOW),
             connect_timeout_seconds=float(os.getenv("PREFLIGHT_TIMEOUT", os.getenv("CONNECT_TIMEOUT", "15"))),
             probe_timeout_seconds=float(os.getenv("PROBE_TIMEOUT", os.getenv("CONNECT_TIMEOUT", "15"))),
@@ -171,6 +195,7 @@ class CollectionApplication:
         )
         self._scheduler = CollectionScheduler(
             max_in_flight=min(scheduler_limits) if scheduler_limits else 1_000_000,
+            topology_max_in_flight=self.settings.network_topology_max_active_targets,
             metrics=self._metrics,
         )
         self._submission_counts: dict[str, int] = {}
@@ -243,8 +268,10 @@ class CollectionApplication:
                 "target_slots_used": self._scheduler.active,
                 "target_slots_capacity": self._scheduler.capacity,
                 "configured_max_active_targets": self.settings.max_active_targets,
+                "configured_network_topology_max_active_targets": self.settings.network_topology_max_active_targets,
                 "configured_target_task_window": self.settings.target_task_window,
                 "target_slots_peak": self._scheduler.peak,
+                "network_topology_active_targets": self._scheduler.topology_active,
                 "active_targets": self._target_activity.active,
                 "pending_targets": self._scheduler.pending,
                 "completed_targets": self._scheduler.completed,
@@ -366,6 +393,7 @@ class CollectionApplication:
             "publish_queue_capacity": self._publisher.capacity,
             "max_active_runs": self.settings.max_active_runs,
             "max_active_targets": self.settings.max_active_targets,
+            "network_topology_max_active_targets": self.settings.network_topology_max_active_targets,
             "target_task_window": self.settings.target_task_window,
             **capacity,
             "event_loop_lag_seconds": self._loop_lag.latest_seconds,

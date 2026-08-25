@@ -15,7 +15,6 @@ executors:
     type: job
     execution_mode: remote
     capacity_group: remote_job
-    timeout: 60
     scripts:
       linux: plugins/inputs/haproxy/haproxy_default_discover.sh
     collector:

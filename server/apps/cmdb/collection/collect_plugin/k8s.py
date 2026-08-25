@@ -5,23 +5,38 @@
 import json
 
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
-from apps.cmdb.collection.query_vm import Collection
-
 from apps.cmdb.collection.constants import (
+    ANNOTATIONS_METRICS,
     COLLECTION_METRICS,
+    K8S_CRONJOB_ANNOTATIONS,
+    K8S_DAEMONSET_ANNOTATIONS,
+    K8S_DEPLOYMENT_ANNOTATIONS,
+    K8S_DEPLOYMENT_REPLICAS,
+    K8S_JOB_ANNOTATIONS,
+    K8S_NODE_INFO,
+    K8S_NODE_ROLE,
+    K8S_NODE_STATUS_CAPACITY,
+    K8S_POD_CONTAINER_RESOURCE_LIMITS,
+    K8S_POD_CONTAINER_RESOURCE_REQUESTS,
+    K8S_POD_INFO,
+    K8S_REPLICASET_ANNOTATIONS,
+    K8S_REPLICASET_REPLICAS,
+    K8S_STATEFULSET_ANNOTATIONS,
+    K8S_STATEFULSET_REPLICAS,
+    K8S_WORKLOAD_REPLICASET,
+    K8S_WORKLOAD_REPLICASET_OWNER,
     NAMESPACE_CLUSTER_RELATION,
     NODE_CLUSTER_RELATION,
     POD_NAMESPACE_RELATION,
+    POD_NODE_RELATION,
     POD_WORKLOAD_RELATION,
+    REPLICAS_KEY,
+    REPLICAS_METRICS,
     WORKLOAD_NAME_DICT,
     WORKLOAD_NAMESPACE_RELATION,
-    WORKLOAD_TYPE_DICT, K8S_WORKLOAD_REPLICASET, K8S_WORKLOAD_REPLICASET_OWNER, K8S_POD_INFO,
-    K8S_POD_CONTAINER_RESOURCE_LIMITS,
-    K8S_POD_CONTAINER_RESOURCE_REQUESTS, K8S_NODE_ROLE, K8S_NODE_INFO, K8S_NODE_STATUS_CAPACITY, REPLICAS_KEY,
-    REPLICAS_METRICS, K8S_STATEFULSET_REPLICAS, K8S_REPLICASET_REPLICAS, K8S_DEPLOYMENT_REPLICAS, ANNOTATIONS_METRICS,
-    K8S_DEPLOYMENT_ANNOTATIONS, K8S_REPLICASET_ANNOTATIONS, K8S_STATEFULSET_ANNOTATIONS, K8S_DAEMONSET_ANNOTATIONS,
-    K8S_JOB_ANNOTATIONS, K8S_CRONJOB_ANNOTATIONS, POD_NODE_RELATION
+    WORKLOAD_TYPE_DICT,
 )
+from apps.cmdb.collection.query_vm import Collection
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -32,6 +47,7 @@ class CollectK8sMetrics:
         self.cluster_name = cluster_name
         # collector_cluster_id 是采集器上报使用的 VM 查询身份；如未单独提供则退化为 cluster_name（旧任务兼容）
         self.collector_cluster_id = kwargs.get("collector_cluster_id") or cluster_name
+        self.round_ts = kwargs.get("round_ts")
         self.metrics = self.get_metrics()
         self.collection_metrics_dict = {i: [] for i in COLLECTION_METRICS.keys()}
         self.timestamp_gt = False
@@ -45,7 +61,7 @@ class CollectK8sMetrics:
             "k8s_node": self.collection_metrics_dict["node"],
             "k8s_pod": self.collection_metrics_dict["pod"],
             "k8s_workload": self.collection_metrics_dict["workload"],
-            "k8s_namespace": self.collection_metrics_dict["namespace"]
+            "k8s_namespace": self.collection_metrics_dict["namespace"],
         }
         return data
 
@@ -70,9 +86,8 @@ class CollectK8sMetrics:
 
     def query_data(self):
         """查询数据"""
-        sql = " or ".join(
-            "{}{{instance_id=\"{}\"}}".format(j, self.collector_cluster_id) for m in COLLECTION_METRICS.values() for j in m)
-        data = Collection().query(sql)
+        sql = " or ".join('{}{{instance_id="{}"}}'.format(j, self.collector_cluster_id) for m in COLLECTION_METRICS.values() for j in m)
+        data = Collection().query(sql, min_timestamp=getattr(self, "round_ts", None))
         self.raw_data = data.get("data", []).get("result", [])
         return data.get("data", [])
 
@@ -120,7 +135,6 @@ class CollectK8sMetrics:
                     name=index_data["namespace"],
                     assos=[
                         {
-
                             "self_cluster": self.cluster_name,
                             "model_id": "k8s_cluster",
                             "inst_name": self.cluster_name,
@@ -136,9 +150,8 @@ class CollectK8sMetrics:
     def search_replicas(self):
         """查询副本数量"""
         replicas_metrics = []
-        sql = " or ".join(
-            "{}{{instance_id=\"{}\"}}".format(m, self.collector_cluster_id) for m in REPLICAS_METRICS)
-        data = Collection().query(sql)
+        sql = " or ".join('{}{{instance_id="{}"}}'.format(m, self.collector_cluster_id) for m in REPLICAS_METRICS)
+        data = Collection().query(sql, min_timestamp=getattr(self, "round_ts", None))
         replicas_data = data.get("data", [])
         for index_data in replicas_data["result"]:
             metric_name = index_data["metric"]["__name__"]
@@ -185,12 +198,12 @@ class CollectK8sMetrics:
             return labels
 
         try:
-            if annotation['spec']['template']['metadata'].get('labels', False):
+            if annotation["spec"]["template"]["metadata"].get("labels", False):
                 labels_list = []
-                for k, v in annotation['spec']['template']['metadata']['labels'].items():
+                for k, v in annotation["spec"]["template"]["metadata"]["labels"].items():
                     labels_list.append(f"{k}={v}")
 
-                labels = ','.join(labels_list)
+                labels = ",".join(labels_list)
         except (KeyError, TypeError):
             pass
         return labels
@@ -211,10 +224,7 @@ class CollectK8sMetrics:
             elif index_data["index_key"] == K8S_WORKLOAD_REPLICASET_OWNER:
                 # 使用(namespace, replicaset)作为键存储所有者信息
                 key = (index_data["namespace"], index_data["replicaset"])
-                replicaset_owner_dict[key] = {
-                    "owner_kind": index_data["owner_kind"].lower(),
-                    "owner_name": index_data["owner_name"]
-                }
+                replicaset_owner_dict[key] = {"owner_kind": index_data["owner_kind"].lower(), "owner_name": index_data["owner_name"]}
             elif index_data["index_key"] in ANNOTATIONS_METRICS:
                 # 单独存储注解指标
                 index_data.update(_annotation=self.format_annotation_metrics(index_data))
@@ -257,21 +267,25 @@ class CollectK8sMetrics:
             inst_name = f"{workload_info[inst_name_key]}({self.cluster_name}/{workload_info['namespace']})"
             workload_type = WORKLOAD_TYPE_DICT[workload_info["index_key"]]
             name = workload_info[inst_name_key]
-            result.append({
-                "inst_name": inst_name,
-                "name": name,
-                "workload_type": workload_type,
-                "self_ns": namespace,
-                "labels": annotations_map.get(inst_name_key, {}).get(workload_info[inst_name_key], ""),
-                "self_cluster": self.cluster_name,
-                "replicas": int(replicas),
-                "assos": [{
-                    "model_id": "k8s_namespace",
-                    "inst_name": f"{workload_info['namespace']}({self.cluster_name})",
-                    "asst_id": "belong",
-                    "model_asst_id": WORKLOAD_NAMESPACE_RELATION
-                }]
-            })
+            result.append(
+                {
+                    "inst_name": inst_name,
+                    "name": name,
+                    "workload_type": workload_type,
+                    "self_ns": namespace,
+                    "labels": annotations_map.get(inst_name_key, {}).get(workload_info[inst_name_key], ""),
+                    "self_cluster": self.cluster_name,
+                    "replicas": int(replicas),
+                    "assos": [
+                        {
+                            "model_id": "k8s_namespace",
+                            "inst_name": f"{workload_info['namespace']}({self.cluster_name})",
+                            "asst_id": "belong",
+                            "model_asst_id": WORKLOAD_NAMESPACE_RELATION,
+                        }
+                    ],
+                }
+            )
 
         # 处理ReplicaSet
         for rs_info in replicaset_metrics:
@@ -288,49 +302,56 @@ class CollectK8sMetrics:
                 workload_type = owner["owner_kind"]
                 name = owner["owner_name"]
 
-                result.append({
-                    "inst_name": inst_name,
-                    "name": name,
-                    "labels": annotations_map.get(inst_name_key, {}).get(rs_info[inst_name_key], ""),
-                    "workload_type": workload_type,
-                    "k8s_namespace": namespace,
-                    "replicaset_name": rs_info["replicaset"],
-                    "self_ns": namespace,
-                    "self_cluster": self.cluster_name,
-                    "replicas": int(replicas),
-                    "assos": [{
-                        "model_id": "k8s_namespace",
-                        "inst_name": f"{rs_info['namespace']}({self.cluster_name})",
-                        "asst_id": "belong",
-                        "model_asst_id": WORKLOAD_NAMESPACE_RELATION
-                    }]
-                })
+                result.append(
+                    {
+                        "inst_name": inst_name,
+                        "name": name,
+                        "labels": annotations_map.get(inst_name_key, {}).get(rs_info[inst_name_key], ""),
+                        "workload_type": workload_type,
+                        "k8s_namespace": namespace,
+                        "replicaset_name": rs_info["replicaset"],
+                        "self_ns": namespace,
+                        "self_cluster": self.cluster_name,
+                        "replicas": int(replicas),
+                        "assos": [
+                            {
+                                "model_id": "k8s_namespace",
+                                "inst_name": f"{rs_info['namespace']}({self.cluster_name})",
+                                "asst_id": "belong",
+                                "model_asst_id": WORKLOAD_NAMESPACE_RELATION,
+                            }
+                        ],
+                    }
+                )
             else:
                 # 没有有效所有者的ReplicaSet，作为独立workload处理
-                logger.warning(
-                    f"ReplicaSet {rs_info['replicaset']} 在命名空间 {rs_info['namespace']} 中没有有效的所有者信息，将作为独立workload处理")
+                logger.warning(f"ReplicaSet {rs_info['replicaset']} 在命名空间 {rs_info['namespace']} 中没有有效的所有者信息，将作为独立workload处理")
 
                 inst_name = f"{rs_info[inst_name_key]}({self.cluster_name}/{rs_info['namespace']})"
                 workload_type = "replicaset"  # 明确标记为replicaset类型
                 name = rs_info["replicaset"]
 
-                result.append({
-                    "inst_name": inst_name,
-                    "name": name,
-                    "labels": annotations_map.get(inst_name_key, {}).get(rs_info[inst_name_key], ""),
-                    "workload_type": workload_type,
-                    "k8s_namespace": namespace,
-                    "replicaset_name": rs_info["replicaset"],
-                    "self_ns": namespace,
-                    "self_cluster": self.cluster_name,
-                    "replicas": int(replicas),
-                    "assos": [{
-                        "model_id": "k8s_namespace",
-                        "inst_name": f"{rs_info['namespace']}({self.cluster_name})",
-                        "asst_id": "belong",
-                        "model_asst_id": WORKLOAD_NAMESPACE_RELATION
-                    }]
-                })
+                result.append(
+                    {
+                        "inst_name": inst_name,
+                        "name": name,
+                        "labels": annotations_map.get(inst_name_key, {}).get(rs_info[inst_name_key], ""),
+                        "workload_type": workload_type,
+                        "k8s_namespace": namespace,
+                        "replicaset_name": rs_info["replicaset"],
+                        "self_ns": namespace,
+                        "self_cluster": self.cluster_name,
+                        "replicas": int(replicas),
+                        "assos": [
+                            {
+                                "model_id": "k8s_namespace",
+                                "inst_name": f"{rs_info['namespace']}({self.cluster_name})",
+                                "asst_id": "belong",
+                                "model_asst_id": WORKLOAD_NAMESPACE_RELATION,
+                            }
+                        ],
+                    }
+                )
 
         self.collection_metrics_dict["workload"] = result
         self.result["k8s_workload"] = result
@@ -387,7 +408,7 @@ class CollectK8sMetrics:
                 limit_value = resource_limits.get((pod["pod"], resource_type))
                 if limit_value:
                     if resource_type == "memory":
-                        limit_value = int(float(limit_value) / 1024 ** 3)
+                        limit_value = int(float(limit_value) / 1024**3)
                     else:
                         limit_value = float(limit_value)
                     pod_data[f"limit_{resource_type}"] = limit_value
@@ -396,7 +417,7 @@ class CollectK8sMetrics:
                 request_value = resource_requests.get((pod["pod"], resource_type))
                 if request_value:
                     if resource_type == "memory":
-                        request_value = int(float(request_value) / 1024 ** 3)
+                        request_value = int(float(request_value) / 1024**3)
                     else:
                         request_value = float(request_value)
                     pod_data[f"request_{resource_type}"] = request_value
@@ -406,12 +427,14 @@ class CollectK8sMetrics:
 
             # 添加Node关联
             if pod_data["node"]:
-                associations.append({
-                    "model_id": "k8s_node",
-                    "inst_name": f"{pod_data['node']}({self.cluster_name})",
-                    "asst_id": "run",
-                    "model_asst_id": POD_NODE_RELATION
-                })
+                associations.append(
+                    {
+                        "model_id": "k8s_node",
+                        "inst_name": f"{pod_data['node']}({self.cluster_name})",
+                        "asst_id": "run",
+                        "model_asst_id": POD_NODE_RELATION,
+                    }
+                )
 
             # 处理工作负载关联
             if pod_data["created_by_kind"] == "replicaset":
@@ -419,39 +442,42 @@ class CollectK8sMetrics:
                 workload = workload_index.get(pod_data["created_by_name"])
                 if workload:
                     pod_data["k8s_workload"] = workload["owner_name"]
-                    associations.append({
-                        "model_id": "k8s_workload",
-                        "inst_name": f"{workload['owner_name']}({self.cluster_name}/{pod_data['namespace']})",
-                        "asst_id": "group",
-                        "model_asst_id": POD_WORKLOAD_RELATION
-                    })
+                    associations.append(
+                        {
+                            "model_id": "k8s_workload",
+                            "inst_name": f"{workload['owner_name']}({self.cluster_name}/{pod_data['namespace']})",
+                            "asst_id": "group",
+                            "model_asst_id": POD_WORKLOAD_RELATION,
+                        }
+                    )
                 else:
                     # 如果找不到对应的Deployment，关联到命名空间
                     pod_data["k8s_namespace"] = namespace
-                    associations.append({
-                        "model_id": "k8s_namespace",
-                        "inst_name": f"{pod_data['namespace']}({self.cluster_name})",
-                        "asst_id": "group",
-                        "model_asst_id": POD_NAMESPACE_RELATION
-                    })
+                    associations.append(
+                        {
+                            "model_id": "k8s_namespace",
+                            "inst_name": f"{pod_data['namespace']}({self.cluster_name})",
+                            "asst_id": "group",
+                            "model_asst_id": POD_NAMESPACE_RELATION,
+                        }
+                    )
             elif pod_data["created_by_kind"] in WORKLOAD_TYPE_DICT.values():
                 # 直接关联到其他类型的工作负载
                 pod_data["k8s_workload"] = pod_data["created_by_name"]
-                associations.append({
-                    "model_id": "k8s_workload",
-                    "inst_name": f"{pod_data['created_by_name']}({self.cluster_name}/{pod_data['namespace']})",
-                    "asst_id": "group",
-                    "model_asst_id": POD_WORKLOAD_RELATION
-                })
+                associations.append(
+                    {
+                        "model_id": "k8s_workload",
+                        "inst_name": f"{pod_data['created_by_name']}({self.cluster_name}/{pod_data['namespace']})",
+                        "asst_id": "group",
+                        "model_asst_id": POD_WORKLOAD_RELATION,
+                    }
+                )
             else:
                 # 其他情况关联到命名空间
                 pod_data["k8s_namespace"] = namespace
-                associations.append({
-                    "model_id": "k8s_namespace",
-                    "inst_name": namespace,
-                    "asst_id": "group",
-                    "model_asst_id": POD_NAMESPACE_RELATION
-                })
+                associations.append(
+                    {"model_id": "k8s_namespace", "inst_name": namespace, "asst_id": "group", "model_asst_id": POD_NAMESPACE_RELATION}
+                )
 
             pod_data["assos"] = associations
             result.append(pod_data)
@@ -499,10 +525,10 @@ class CollectK8sMetrics:
                 info.update(cpu=int(cpu))
             memory = inst_resource_dict.get((inst_index_info["node"], "memory"))
             if memory:
-                info.update(memory=int(float(memory) / 1024 ** 3))
+                info.update(memory=int(float(memory) / 1024**3))
             disk = inst_resource_dict.get((inst_index_info["node"], "ephemeral_storage"))
             if disk:
-                info.update(storage=int(float(disk) / 1024 ** 3))
+                info.update(storage=int(float(disk) / 1024**3))
             role = ",".join(inst_role_dict.get(inst_index_info["node"], []))
             if role:
                 info.update(role=role)

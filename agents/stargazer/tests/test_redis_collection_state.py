@@ -9,29 +9,16 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from core.collection.application import CollectionApplication, CollectionApplicationSettings
+from core.collection.contracts import CollectOutcome, CollectOutcomeStatus, PreflightResult, PreflightStatus
+from core.collection.credential_policy import CredentialPolicy
+from core.collection.redis_state import RedisCredentialStateStore, RedisRunStateStore
+from core.collection.runtime import CollectionRequest, LeaseAcquireStatus, RunStatus
+from core.infra.credential_state_cache import CredentialStateCache
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import ResponseError
-
-from core.collection.runtime import LeaseAcquireStatus, RunLease, RunStatus
-from core.collection.runtime import CollectionRequest
-from core.collection.application import (
-    CollectionApplication,
-    CollectionApplicationSettings,
-)
-from core.collection.credential_policy import CredentialPolicy
-from core.collection.redis_state import (
-    RedisCredentialStateStore,
-    RedisRunStateStore,
-)
-from core.collection.contracts import (
-    CollectOutcome,
-    CollectOutcomeStatus,
-    PreflightResult,
-    PreflightStatus,
-)
-from core.infra.credential_state_cache import CredentialStateCache
 
 
 def _stop_redis(process):
@@ -131,9 +118,7 @@ async def test_two_pods_atomically_share_one_run_lease(redis_client):
 
 
 @pytest.mark.asyncio
-async def test_result_event_redis_write_is_retryable_and_cursor_keeps_same_millisecond(
-    redis_client, monkeypatch
-):
+async def test_result_event_redis_write_is_retryable_and_cursor_keeps_same_millisecond(redis_client, monkeypatch):
     async def get_client():
         return redis_client
 
@@ -154,9 +139,7 @@ async def test_result_event_redis_write_is_retryable_and_cursor_keeps_same_milli
             }
         )
 
-    assert not await redis_client.exists(
-        CredentialStateCache._event_dedupe_key(failed_event_id)
-    )
+    assert not await redis_client.exists(CredentialStateCache._event_dedupe_key(failed_event_id))
     await redis_client.delete(stream_key)
     for event_id in ("event-001", "event-002", "event-003"):
         await CredentialStateCache.append_result_event(
@@ -174,12 +157,8 @@ async def test_result_event_redis_write_is_retryable_and_cursor_keeps_same_milli
 
     first_page = await CredentialStateCache.list_result_events(limit=2)
     first_cursor = CredentialStateCache.event_cursor(first_page[-1])
-    second_page = await CredentialStateCache.list_result_events(
-        since=first_cursor, limit=2
-    )
-    legacy_cursor_page = await CredentialStateCache.list_result_events(
-        since="2026-08-14T00:00:00.123+00:00", limit=10
-    )
+    second_page = await CredentialStateCache.list_result_events(since=first_cursor, limit=2)
+    legacy_cursor_page = await CredentialStateCache.list_result_events(since="2026-08-14T00:00:00.123+00:00", limit=10)
 
     assert [event["event_id"] for event in first_page] == [
         "event-001",
@@ -190,10 +169,7 @@ async def test_result_event_redis_write_is_retryable_and_cursor_keeps_same_milli
         failed_event_id,
     ]
     assert len(legacy_cursor_page) == 4
-    assert all(
-        CredentialStateCache._STREAM_CURSOR_FIELD in event
-        for event in first_page + second_page
-    )
+    assert all(CredentialStateCache._STREAM_CURSOR_FIELD in event for event in first_page + second_page)
     await CredentialStateCache.set_push_cursor(first_cursor)
     assert await CredentialStateCache.get_push_cursor() == first_cursor
     legacy_cursor = await redis_client.get(CredentialStateCache._push_cursor_key())
@@ -208,19 +184,12 @@ async def test_result_event_redis_write_is_retryable_and_cursor_keeps_same_milli
         start=0,
         num=2,
     )
-    assert [
-        CredentialStateCache._decode_event_member(item)["event_id"]
-        for item in legacy_raw_page
-    ] == ["event-003", failed_event_id]
-    assert await redis_client.exists(
-        CredentialStateCache._event_dedupe_key(failed_event_id)
-    )
+    assert [CredentialStateCache._decode_event_member(item)["event_id"] for item in legacy_raw_page] == ["event-003", failed_event_id]
+    assert await redis_client.exists(CredentialStateCache._event_dedupe_key(failed_event_id))
 
 
 @pytest.mark.asyncio
-async def test_concurrent_result_events_commit_before_cursor_can_advance(
-    redis_client, monkeypatch
-):
+async def test_concurrent_result_events_commit_before_cursor_can_advance(redis_client, monkeypatch):
     class CrossPodRedis:
         def __init__(self, client):
             self.client = client
@@ -251,9 +220,7 @@ async def test_concurrent_result_events_commit_before_cursor_can_advance(
     await asyncio.gather(
         *(
             # 各调用模拟独立 Pod，不共享进程内锁，只由 Redis CAS 协调。
-            CredentialStateCache._append_result_event(
-                {"event_id": event_id, "finished_at": observed_at}
-            )
+            CredentialStateCache._append_result_event({"event_id": event_id, "finished_at": observed_at})
             for event_id in event_ids
         )
     )
@@ -262,11 +229,7 @@ async def test_concurrent_result_events_commit_before_cursor_can_advance(
     legacy_cursor = ""
     observed_ids = []
     while True:
-        minimum = (
-            f"({CredentialStateCache._event_score(legacy_cursor)}"
-            if legacy_cursor
-            else "-inf"
-        )
+        minimum = f"({CredentialStateCache._event_score(legacy_cursor)}" if legacy_cursor else "-inf"
         raw_page = await redis_client.zrangebyscore(
             CredentialStateCache._event_stream_key(),
             min=minimum,
@@ -276,9 +239,7 @@ async def test_concurrent_result_events_commit_before_cursor_can_advance(
         )
         if not raw_page:
             break
-        page = [
-            CredentialStateCache._decode_event_member(item) for item in raw_page
-        ]
+        page = [CredentialStateCache._decode_event_member(item) for item in raw_page]
         observed_ids.extend(event["event_id"] for event in page)
         legacy_cursor = page[-1]["finished_at"]
 
@@ -288,9 +249,7 @@ async def test_concurrent_result_events_commit_before_cursor_can_advance(
 
 
 @pytest.mark.asyncio
-async def test_rollback_cursor_keeps_old_writer_events_reachable(
-    redis_client, monkeypatch
-):
+async def test_rollback_cursor_keeps_old_writer_events_reachable(redis_client, monkeypatch):
     async def get_client():
         return redis_client
 
@@ -308,14 +267,10 @@ async def test_rollback_cursor_keeps_old_writer_events_reachable(
             }
         )
     new_events = await CredentialStateCache.list_result_events(limit=64)
-    await CredentialStateCache.set_push_cursor(
-        CredentialStateCache.event_cursor(new_events[-1])
-    )
+    await CredentialStateCache.set_push_cursor(CredentialStateCache.event_cursor(new_events[-1]))
 
     legacy_cursor = await redis_client.get(CredentialStateCache._push_cursor_key())
-    old_writer_finished_at = datetime.now(timezone.utc).isoformat(
-        timespec="milliseconds"
-    )
+    old_writer_finished_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     old_writer_event = json.dumps(
         {
             "event_id": "old-writer-after-rollback",
@@ -326,25 +281,16 @@ async def test_rollback_cursor_keeps_old_writer_events_reachable(
     )
     await redis_client.zadd(
         CredentialStateCache._event_stream_key(),
-        {
-            old_writer_event: CredentialStateCache._event_score(
-                old_writer_finished_at
-            )
-        },
+        {old_writer_event: CredentialStateCache._event_score(old_writer_finished_at)},
     )
 
-    assert CredentialStateCache._event_score(legacy_cursor) < (
-        CredentialStateCache._event_score(old_writer_finished_at)
-    )
+    assert CredentialStateCache._event_score(legacy_cursor) < (CredentialStateCache._event_score(old_writer_finished_at))
     rollback_page = await redis_client.zrangebyscore(
         CredentialStateCache._event_stream_key(),
         min=f"({CredentialStateCache._event_score(legacy_cursor)}",
         max="+inf",
     )
-    assert "old-writer-after-rollback" in {
-        CredentialStateCache._decode_event_member(item)["event_id"]
-        for item in rollback_page
-    }
+    assert "old-writer-after-rollback" in {CredentialStateCache._decode_event_member(item)["event_id"] for item in rollback_page}
 
 
 @pytest.mark.asyncio
@@ -378,12 +324,8 @@ async def test_heartbeat_extends_only_the_current_fenced_lease(redis_client):
 async def test_credential_affinity_and_cooldown_are_shared_without_storing_secrets(
     redis_client,
 ):
-    first_policy = CredentialPolicy(
-        store=RedisCredentialStateStore(redis_client, key_prefix="test:credential")
-    )
-    second_policy = CredentialPolicy(
-        store=RedisCredentialStateStore(redis_client, key_prefix="test:credential")
-    )
+    first_policy = CredentialPolicy(store=RedisCredentialStateStore(redis_client, key_prefix="test:credential"))
+    second_policy = CredentialPolicy(store=RedisCredentialStateStore(redis_client, key_prefix="test:credential"))
     request = CollectionRequest(
         task_id="collect-credential",
         plugin_ref="mysql.config",
@@ -414,9 +356,7 @@ async def test_credential_affinity_and_cooldown_are_shared_without_storing_secre
         "10.10.24.1",
         request.credentials[1],
     )
-    eligible = await second_policy.eligible_credentials(
-        request, "10.10.24.1"
-    )
+    eligible = await second_policy.eligible_credentials(request, "10.10.24.1")
 
     assert [item["credential_id"] for item in eligible] == [
         "credential-2",
@@ -461,9 +401,7 @@ async def test_finish_releases_lease_for_next_cycle(redis_client):
         ttl_seconds=60,
     )
     assert first.lease is not None
-    assert await run_store.finish(
-        first.lease, status=RunStatus.COMPLETED, summary={"total": 1}
-    )
+    assert await run_store.finish(first.lease, status=RunStatus.COMPLETED, summary={"total": 1})
     second = await run_store.acquire(
         task_id="cycle-1",
         request_digest="digest",
@@ -550,6 +488,7 @@ async def test_application_runs_multi_target_request_and_allows_next_cycle(
         settings=CollectionApplicationSettings(
             max_active_runs=2,
             max_active_targets=2,
+            network_topology_max_active_targets=1,
             target_task_window=2,
             connect_timeout_seconds=1,
             plugin_timeout_seconds=1,
@@ -619,9 +558,7 @@ async def test_load_target_state_uses_single_mget(redis_client, monkeypatch):
     monkeypatch.setattr(redis_client, "get", counting_get)
 
     scope = policy._scope(request, "10.10.24.1")
-    success_id, failures = await store.load_target_state(
-        scope, ("credential-1", "credential-2")
-    )
+    success_id, failures = await store.load_target_state(scope, ("credential-1", "credential-2"))
 
     assert success_id == "credential-2"
     assert failures["credential-1"] is not None

@@ -119,6 +119,7 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
             return credential;
           }),
           params: {
+            ...baseData.params,
             config_file_path: values.configFilePath?.trim(),
           },
         };
@@ -137,6 +138,7 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],
     accessPointId: values.access_point?.[0]?.id,
+    ip_precheck: Boolean(values.params?.ip_precheck),
     configFilePath: values.params?.config_file_path || '',
   });
 

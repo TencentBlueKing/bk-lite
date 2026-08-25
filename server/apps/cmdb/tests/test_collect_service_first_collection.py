@@ -73,9 +73,7 @@ def test_first_collection_dispatch_failure_does_not_block_delayed_sync(
     mocker,
     caplog,
 ):
-    sensitive_error = RuntimeError(
-        "password=top-secret broker=redis://user:pass@broker.internal/0"
-    )
+    sensitive_error = RuntimeError("password=top-secret broker=redis://user:pass@broker.internal/0")
     send_task = mocker.patch(
         "apps.cmdb.services.collect_service.current_app.send_task",
         side_effect=[sensitive_error, None],
@@ -97,11 +95,7 @@ def test_first_collection_dispatch_failure_does_not_block_delayed_sync(
         "args": [7],
         "countdown": CollectModelService.DELAY_SYNC_COUNTDOWN_SECONDS,
     }
-    first_collection_logs = "\n".join(
-        record.getMessage()
-        for record in caplog.records
-        if "[FirstCollection]" in record.getMessage()
-    )
+    first_collection_logs = "\n".join(record.getMessage() for record in caplog.records if "[FirstCollection]" in record.getMessage())
     assert "error_type=RuntimeError" in first_collection_logs
     assert "top-secret" not in first_collection_logs
     assert "redis://" not in first_collection_logs
@@ -117,11 +111,14 @@ def test_update_source_change_has_field_reason(mocker):
     old = task(params={"port": 22})
     new = task(params={"port": 2222})
 
-    assert CollectModelService.schedule_first_collection_if_needed(
-        new,
-        old_instance=old,
-        reason="update",
-    ) is True
+    assert (
+        CollectModelService.schedule_first_collection_if_needed(
+            new,
+            old_instance=old,
+            reason="update",
+        )
+        is True
+    )
 
     callbacks[0]()
     assert send_task.call_args.kwargs["args"][2] == "update:params"
@@ -130,20 +127,17 @@ def test_update_source_change_has_field_reason(mocker):
 def test_governance_only_disabled_short_k8s_and_config_file_skip(mocker):
     on_commit = mocker.patch("apps.cmdb.services.collect_service.transaction.on_commit")
 
-    assert CollectModelService.schedule_first_collection_if_needed(
-        task(name="new"),
-        old_instance=task(),
-        reason="update",
-    ) is False
-    assert CollectModelService.schedule_first_collection_if_needed(
-        task(cycle_value="5")
-    ) is False
-    assert CollectModelService.schedule_first_collection_if_needed(
-        task(task_type=CollectPluginTypes.K8S)
-    ) is False
-    assert CollectModelService.schedule_first_collection_if_needed(
-        task(task_type=CollectPluginTypes.CONFIG_FILE)
-    ) is False
+    assert (
+        CollectModelService.schedule_first_collection_if_needed(
+            task(name="new"),
+            old_instance=task(),
+            reason="update",
+        )
+        is False
+    )
+    assert CollectModelService.schedule_first_collection_if_needed(task(cycle_value="5")) is False
+    assert CollectModelService.schedule_first_collection_if_needed(task(task_type=CollectPluginTypes.K8S)) is False
+    assert CollectModelService.schedule_first_collection_if_needed(task(task_type=CollectPluginTypes.CONFIG_FILE)) is False
     mocker.patch("apps.cmdb.constants.constants.CMDB_FIRST_COLLECTION_ENABLED", False)
     assert CollectModelService.schedule_first_collection_if_needed(task()) is False
     on_commit.assert_not_called()
@@ -163,9 +157,8 @@ def test_create_schedules_first_and_delayed_sync(mocker, django_capture_on_commi
     )
     mocker.patch.object(CollectModelService, "enrich_host_cloud_snapshot_payload")
     mocker.patch.object(CollectModelService, "push_butch_node_params")
-    mocker.patch(
-        "apps.cmdb.services.collect_service.CeleryUtils.create_or_update_periodic_task"
-    )
+    mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.create_or_update_periodic_task")
+    mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.delete_periodic_task")
     first = mocker.patch.object(
         CollectModelService,
         "schedule_first_collection_if_needed",
@@ -181,7 +174,8 @@ def test_create_schedules_first_and_delayed_sync(mocker, django_capture_on_commi
         assert CollectModelService.create(request, view) == 7
 
     first.assert_called_once_with(instance=instance, reason="create")
-    delayed.assert_called_once_with(instance=instance, is_interval=True)
+    # VM 对账任务不再注册延迟补跑；由全局守门在标记到达后触发
+    delayed.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -216,9 +210,8 @@ def test_update_first_or_schedule_change_schedules_delayed_sync_once(
     mocker.patch.object(CollectModelService, "delete_butch_node_params")
     mocker.patch.object(CollectModelService, "push_butch_node_params")
     mocker.patch.object(CollectModelService, "delete_team")
-    mocker.patch(
-        "apps.cmdb.services.collect_service.CeleryUtils.create_or_update_periodic_task"
-    )
+    mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.create_or_update_periodic_task")
+    mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.delete_periodic_task")
     mocker.patch(
         "apps.cmdb.services.collect_service.CollectCredentialPoolService.diff_pool",
         return_value=([], [], []),
@@ -257,4 +250,4 @@ def test_update_first_or_schedule_change_schedules_delayed_sync_once(
         old_instance=first.call_args.kwargs["old_instance"],
         reason="update",
     )
-    delayed.assert_called_once_with(instance=current, is_interval=True)
+    delayed.assert_not_called()

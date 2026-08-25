@@ -14,7 +14,6 @@ executors:
     type: job
     execution_mode: remote
     capacity_group: remote_job
-    timeout: 60
     scripts:
       linux: plugins/inputs/consul/consul_default_discover.sh
     collector:
