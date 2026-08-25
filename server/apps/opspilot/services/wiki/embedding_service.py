@@ -7,16 +7,13 @@ RRF 融合关键词序与语义序。只需对小候选集调用嵌入服务,无
 嵌入调用走 EmbedProvider(OpenAI 兼容);cosine / rrf_fuse 为纯函数,便于测试。
 """
 
-import logging
 import math
 import re
 
+from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.models import KnowledgePage, PageChunk, PageVersion
 from django.db import transaction
 from openai import OpenAI
-
-from apps.opspilot.models import KnowledgePage, PageChunk, PageVersion
-
-logger = logging.getLogger("opspilot")
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 

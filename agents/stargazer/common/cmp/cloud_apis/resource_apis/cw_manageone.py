@@ -1,6 +1,5 @@
 # -*- coding: UTF-8 -*-
 import datetime
-import logging
 import os
 import time
 import typing
@@ -9,6 +8,7 @@ import requests
 
 from common.cmp.cloud_apis.base import PrivateCloudManage
 from common.cmp.cloud_apis.cloud_object.base import VM, BusinessRegion, DataStore, HostMachine
+from core.logger import logger
 
 # from common.cmp.cloud_apis.constant import CloudResourceType, CloudType, SnapshotStatus, VMStatusType, VolumeStatus,
 # VPCStatus
@@ -24,9 +24,6 @@ from common.cmp.cloud_apis.cloud_object.base import VM, BusinessRegion, DataStor
 # from common.cmp.models import AccountConfig
 # from common.cmp.cloud_apis.constant import CloudResourceType, CloudType
 # from common.cmp.cloud_apis.resource_apis.utils import fail
-
-logger = logging.getLogger("root")
-
 
 def character_conversion_timestamp(time_str):
     """
@@ -536,18 +533,14 @@ class ManageOne(PrivateCloudManage):
             i.update(floating_ip_id=ip_id_map.get(i["floating_ip"], None))
             i.update(elb_id=pool_member_vm_map.get(i["resource_id"], None))
 
-        print(
-            {
-                "result": "True",
-                "data": {
-                    "mo_cloud": mo_cloud["data"],
-                    "mo_host": mo_host["data"],
-                    "mo_ds": mo_ds["data"],
-                    "mo_server": mo_server["data"],
-                    "mo_ip": mo_ip["data"],
-                    "mo_elb": mo_elb["data"],
-                },
-            }
+        logger.debug(
+            "event=manageone_inventory_collected clouds=%s hosts=%s datastores=%s servers=%s floating_ips=%s elbs=%s",
+            len(mo_cloud["data"]),
+            len(mo_host["data"]),
+            len(mo_ds["data"]),
+            len(mo_server["data"]),
+            len(mo_ip["data"]),
+            len(mo_elb["data"]),
         )
         return {
             "result": "True",

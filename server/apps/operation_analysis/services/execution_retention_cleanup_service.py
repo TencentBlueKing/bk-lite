@@ -13,23 +13,20 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from django.db.models.functions import Coalesce
-from django.utils import timezone
-
+from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
 )
 from apps.operation_analysis.services.report_render_service import (
     DashboardReportRenderService,
 )
-
-logger = logging.getLogger(__name__)
+from django.db.models.functions import Coalesce
+from django.utils import timezone
 
 DEFAULT_EXECUTION_RETENTION_DAYS = 180
 DEFAULT_EXECUTION_CLEANUP_BATCH_SIZE = 200

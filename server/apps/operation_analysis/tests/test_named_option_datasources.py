@@ -150,9 +150,9 @@ def test_collect_named_option_ids_from_canvas_filters():
 
     filters = [
         {
-            "id": "instance_ids__stringList",
+            "id": "instance_ids__string",
             "key": "instance_ids",
-            "type": "stringList",
+            "type": "string",
             "inputConfig": {
                 "control": "select",
                 "multiple": True,
@@ -199,7 +199,7 @@ def test_expand_widget_manifest_appends_filter_option_identity():
     ]
     filters = [
         {
-            "id": "instance_ids__stringList",
+            "id": "instance_ids__string",
             "inputConfig": {
                 "control": "select",
                 "optionsSource": {

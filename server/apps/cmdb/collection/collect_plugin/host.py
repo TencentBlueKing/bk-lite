@@ -4,12 +4,14 @@
 # @Author: windyzhao
 import json
 import re
+
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.plugins import get_collection_plugin
 from apps.cmdb.collection.plugins.base import bind_collection_mapping
 from apps.cmdb.constants.constants import CollectPluginTypes
 from apps.core.logger import cmdb_logger as logger
+
 
 class HostCollectMetrics(CollectBase):
     def __init__(self, inst_name, inst_id, task_id, *args, **kwargs):
@@ -334,4 +336,8 @@ class HostCollectMetrics(CollectBase):
                 if data:
                     result.append(data)
             self.result[model_id] = result
-        print(json.dumps(self.result, indent=4))
+        logger.debug(
+            "event=host_metrics_formatted model_count=%s item_count=%s",
+            len(self.result),
+            sum(len(items) for items in self.result.values()),
+        )

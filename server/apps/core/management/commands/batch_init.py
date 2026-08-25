@@ -3,18 +3,16 @@
 避免多次启动 Python 进程，大幅提升启动速度
 """
 
-import logging
 import os
 from pathlib import Path
 
+from apps.core.logger import logger
+from apps.core.utils.loader import preload_language_cache
 from django.apps import apps as django_apps
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from apps.core.utils.loader import preload_language_cache
-
-logger = logging.getLogger("app")
 _ADMIN_PASSWORD_FILE_MAX_CHARS = 4096
 
 

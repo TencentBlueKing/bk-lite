@@ -1,9 +1,7 @@
 import copy
-import logging
 
+from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
-
-logger = logging.getLogger(__name__)
 
 MASK_VALUE = "******"
 

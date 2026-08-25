@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from apps.system_mgmt.providers.adapters import wecom
-from apps.system_mgmt.providers.adapters.wecom import WeComLoginAuthAdapter
+from apps.system_mgmt.providers.builtin.wecom.adapters.login_auth import WeComLoginAuthAdapter
 
 
 CONFIG = {
@@ -44,7 +43,7 @@ def test_authenticate_uses_configured_access_token_url_and_user_info_url():
         response({"errcode": 0, "UserId": "alice"}),
     ]
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=get_responses,
     ) as get:
         result = WeComLoginAuthAdapter.authenticate(CONFIG, "wecom", "login_auth", auth_code="code")
@@ -64,7 +63,7 @@ def test_authenticate_accepts_official_lowercase_userid_response():
         response({"errcode": 0, "userid": "alice"}),
     ]
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=get_responses,
     ):
         result = WeComLoginAuthAdapter.authenticate(CONFIG, "wecom", "login_auth", auth_code="code")
@@ -79,9 +78,9 @@ def test_login_identity_missing_logs_sanitized_response_metadata():
         response({"errcode": 0, "errmsg": "ok", "OpenId": "sensitive-open-id"}),
     ]
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=get_responses,
-    ), patch("apps.system_mgmt.providers.adapters.wecom.logger") as logger:
+    ), patch("apps.system_mgmt.providers.builtin.wecom.adapters.login_auth.logger") as logger:
         result = WeComLoginAuthAdapter.authenticate(CONFIG, "wecom", "login_auth", auth_code="secret-code")
 
     assert result.success is False
@@ -107,7 +106,7 @@ def test_login_auth_uses_endpoint_overrides_without_base_url_concatenation():
         response({"errcode": 0, "UserId": "alice"}),
     ]
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=get_responses,
     ) as get:
         url_result = WeComLoginAuthAdapter.build_login_url(
@@ -151,7 +150,7 @@ def test_login_auth_handles_non_object_json_response():
     array_response.json.return_value = [{"UserId": "alice"}]
 
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=[
             response({"errcode": 0, "access_token": "token"}),
             array_response,
@@ -174,7 +173,7 @@ def test_login_auth_falls_back_to_official_urls_when_addresses_missing():
         response({"errcode": 0, "UserId": "alice"}),
     ]
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=get_responses,
     ) as get:
         url_result = WeComLoginAuthAdapter.build_login_url(
@@ -207,7 +206,7 @@ def test_login_auth_uses_proxy_url_for_token_and_user_info_requests():
         response({"errcode": 0, "UserId": "alice"}),
     ]
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=get_responses,
     ) as get:
         WeComLoginAuthAdapter.authenticate(config, "wecom", "login_auth", auth_code="code")

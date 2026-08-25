@@ -1,0 +1,94 @@
+name: 飞书
+description: 飞书接入，支持登录认证、用户同步、通知渠道和群协作。
+
+templates:
+  base_connection:
+    title: 基础连接
+    groups:
+      credentials:
+        title: 应用凭证
+        fields:
+          app_id:
+            label: App ID
+          app_secret:
+            label: App Secret
+      endpoints:
+        title: 公共接口
+        fields:
+          tenant_access_token_url:
+            label: 租户访问令牌地址
+  login_auth_form:
+    title: 登录认证配置
+    groups:
+      mapping:
+        title: 字段映射
+        fields:
+          display_name:
+            label: 显示名称
+          icon:
+            label: 图标
+          description:
+            label: 描述
+          external_field:
+            label: 外部字段
+          platform_field:
+            label: 平台字段
+          unmatched_user_action:
+            label: 未匹配用户处理方式
+          default_group_name:
+            label: 默认用户组名称
+  user_sync_form:
+    title: 用户同步配置
+    groups:
+      pull:
+        title: 拉取配置
+        fields:
+          root_department_id:
+            label: 根部门 ID
+          department_id_type:
+            label: 部门 ID 类型
+            options:
+              department_id: department_id
+              open_department_id: open_department_id
+          user_id_type:
+            label: 用户 ID 类型
+            options:
+              user_id: user_id
+              open_id: open_id
+              union_id: union_id
+  im_notification_form:
+    title: IM 通知配置
+    groups:
+      send:
+        title: 发送配置
+        fields:
+          mapping_strategy:
+            label: 映射策略
+          message_type:
+            label: 消息类型
+
+capabilities:
+  login_auth:
+    fields:
+      login_auth_authorize_url:
+        label: 授权地址
+      login_auth_access_token_url:
+        label: 访问令牌地址
+      login_auth_user_info_url:
+        label: 用户信息地址
+  user_sync:
+    fields:
+      user_sync_scopes_url:
+        label: 授权范围接口地址
+      user_sync_departments_batch_url:
+        label: 部门批量查询接口地址
+      user_sync_departments_url:
+        label: 部门接口地址
+      user_sync_users_url:
+        label: 用户接口地址
+  im_notification:
+    fields:
+      im_notification_users_url:
+        label: 用户接口地址
+      im_notification_send_message_url:
+        label: 发送消息接口地址

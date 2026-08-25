@@ -13,12 +13,10 @@
 - bill 维度走「先按 bill 维度筛 resource_bill → 图关联(instance_association_map)查 transaction_log」路径
 - transaction_log 实例上无 _bill_id,归属关系由本层从关联结果反哺
 """
-import logging
 from datetime import date
 
 from apps.cmdb.services.instance import InstanceManage
-
-logger = logging.getLogger("cmdb")
+from apps.core.logger import cmdb_logger as logger
 
 RESOURCE_BILL_MODEL = "resource_bill"
 TRANSACTION_LOG_MODEL = "transaction_log"
@@ -32,8 +30,8 @@ def _perm(user_info: dict, model_id: str):
     生成 InstanceManage.instance_list 需要的 permission_map。
     返回 None 表示无权限/身份缺失,调用方必须短路返回空,禁止越权返回全量。
     """
-    from apps.cmdb.nats.nats import _build_nats_permission_map
     from apps.cmdb.constants.constants import PERMISSION_INSTANCES
+    from apps.cmdb.nats.nats import _build_nats_permission_map
 
     return _build_nats_permission_map(
         user_info or {}, model_id=model_id, permission_type=PERMISSION_INSTANCES

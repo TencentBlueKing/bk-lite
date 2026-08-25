@@ -3,14 +3,12 @@ import secrets
 import time
 from typing import Any, Callable
 
-from sanic import Blueprint
-from sanic import response
-from sanic.exceptions import SanicException
-from core.logger import logger
-
 from core.collection.application import get_collection_application
 from core.collection.request_builder import build_collection_request
 from core.collection.request_identity import build_request_task_id_from_request
+from core.logger import logger
+from sanic import Blueprint, response
+from sanic.exceptions import SanicException
 
 monitor_router = Blueprint("monitor", url_prefix="/monitor")
 
@@ -215,7 +213,7 @@ async def _run_monitor_handler(
     log_name: str | None = None,
 ):
     display = log_name or monitor_type
-    logger.info("=== %s metrics collection request received ===", display)
+    logger.info("event=metrics_collection_request_received monitor_type=%s", display)
     try:
         task_params = build_params(request)
         task_info = await _submit_monitor_request(request, task_params)
@@ -396,8 +394,6 @@ async def windows_wmi_metrics(request):
 
 @monitor_router.get("/host/metrics")
 async def host_metrics(request):
-    logger.info("=== Host metrics collection request received ===")
-
     host = request.headers.get("host")
     os_type = request.headers.get("os_type", "linux")
     username = request.headers.get("username")

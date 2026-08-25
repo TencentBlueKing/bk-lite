@@ -2,12 +2,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from apps.system_mgmt.providers.adapters.wecom import (
-    WeComBaseConnectionAdapter,
-    WeComIMNotificationAdapter,
-    WeComLoginAuthAdapter,
-    WeComUserSyncAdapter,
-)
+from apps.system_mgmt.providers.builtin.wecom.adapters.base_connection import WeComBaseConnectionAdapter
+from apps.system_mgmt.providers.builtin.wecom.adapters.im_notification import WeComIMNotificationAdapter
+from apps.system_mgmt.providers.builtin.wecom.adapters.login_auth import WeComLoginAuthAdapter
+from apps.system_mgmt.providers.builtin.wecom.adapters.user_sync import WeComUserSyncAdapter
 
 CONFIG = {
     "corp_id": "ww",
@@ -30,7 +28,7 @@ def response(payload):
 
 def test_base_connection_only_requests_access_token():
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         return_value=response({"errcode": 0, "access_token": "token"}),
     ) as get:
         result = WeComBaseConnectionAdapter.test_connection(CONFIG, "wecom", "base")
@@ -53,7 +51,7 @@ def test_user_sync_returns_normalized_departments_and_users():
         response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
         response({"errcode": 0, "userlist": [{"userid": "alice", "name": "Alice", "department": [1]}]}),
     ]
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=side_effects):
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=side_effects):
         result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
     assert result.success is True
     assert result.payload["user_list"][0]["userid"] == "alice"
@@ -71,7 +69,7 @@ def test_user_sync_deduplicates_users_and_keeps_all_departments():
             {"userid": "alice", "name": "Alice", "department": [2]},
         ]}),
     ]
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=responses):
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=responses):
         result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
 
     assert result.success is True
@@ -89,7 +87,7 @@ def test_user_sync_passes_saved_real_department_id_unchanged():
     source = MagicMock()
     source.business_config = {"root_department_id": "42"}
     source.name = "wecom"
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
         response({"errcode": 0, "department": []}),
         response({"errcode": 0, "userlist": []}),
@@ -109,7 +107,7 @@ def test_user_sync_rejects_virtual_or_enterprise_root_department_id_before_reque
     source.business_config = {"root_department_id": root_department_id}
     source.name = "wecom"
 
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get") as get:
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get") as get:
         result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
 
     assert result.success is False
@@ -119,7 +117,7 @@ def test_user_sync_rejects_virtual_or_enterprise_root_department_id_before_reque
 
 
 def test_list_departments_returns_real_department_forest_without_virtual_root():
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
         response({"errcode": 0, "department": [
             {"id": 1, "parentid": 0, "name": "Root"},
@@ -141,7 +139,7 @@ def test_list_departments_returns_real_department_forest_without_virtual_root():
 
 
 def test_list_departments_does_not_calculate_current_selection_state():
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
         response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
     ]):
@@ -158,11 +156,11 @@ def test_list_departments_does_not_calculate_current_selection_state():
 
 def test_im_send_posts_text_message_to_each_userid():
     get_patch = patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         return_value=response({"errcode": 0, "access_token": "token"}),
     )
     post_patch = patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.post",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.post",
         return_value=response({"errcode": 0}),
     )
     with get_patch, post_patch as post:
@@ -180,11 +178,11 @@ def test_im_send_posts_text_message_to_each_userid():
 
 def test_im_send_reports_partial_failures_without_falling_back_to_other_identifiers():
     get_patch = patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         return_value=response({"errcode": 0, "access_token": "token"}),
     )
     post_patch = patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.post",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.post",
         side_effect=[response({"errcode": 0}), response({"errcode": 81013, "errmsg": "invalid userid"})],
     )
     with get_patch, post_patch:
@@ -215,7 +213,7 @@ def test_user_sync_collects_all_pages_of_members_via_cursor():
         response({"errcode": 0, "userlist": [{"userid": "alice", "name": "Alice"}], "next_cursor": "next"}),
         response({"errcode": 0, "userlist": [{"userid": "bob", "name": "Bob"}], "next_cursor": ""}),
     ]
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=responses) as get:
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=responses) as get:
         result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
 
     assert result.success is True
@@ -227,8 +225,9 @@ def test_user_sync_collects_all_pages_of_members_via_cursor():
 
 
 def test_im_notification_collects_all_pages_of_users_via_cursor():
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
         response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "next"}),
         response({"errcode": 0, "userlist": [{"userid": "bob"}], "next_cursor": ""}),
     ]):
@@ -238,11 +237,46 @@ def test_im_notification_collects_all_pages_of_users_via_cursor():
     assert sorted(user["userid"] for user in result.payload["external_users"]) == ["alice", "bob"]
 
 
+def test_im_notification_fetches_each_visible_department_forest_root():
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
+        response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "department": [
+            {"id": 2, "parentid": 1, "name": "研发"},
+            {"id": 3, "parentid": 1, "name": "财务"},
+        ]}),
+        response({"errcode": 0, "userlist": [{"userid": "dev"}]}),
+        response({"errcode": 0, "userlist": [{"userid": "fin"}]}),
+    ]) as get:
+        result = WeComIMNotificationAdapter.list_external_users(CONFIG, "wecom", "im_notification")
+
+    assert result.success is True
+    assert sorted(user["userid"] for user in result.payload["external_users"]) == ["dev", "fin"]
+    user_params = [
+        call.kwargs["params"]
+        for call in get.call_args_list
+        if str(call.args[0]).endswith("/cgi-bin/user/list")
+    ]
+    assert [params["department_id"] for params in user_params] == ["2", "3"]
+    assert all(params["fetch_child"] == 1 for params in user_params)
+
+
+def test_im_notification_empty_department_list_means_no_visible_departments():
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
+        response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "department": []}),
+    ]) as get:
+        result = WeComIMNotificationAdapter.list_external_users(CONFIG, "wecom", "im_notification")
+
+    assert result.success is True
+    assert result.payload["external_users"] == []
+    assert all(not str(call.args[0]).endswith("/cgi-bin/user/list") for call in get.call_args_list)
+
+
 def test_user_sync_default_fetch_child_is_one():
     source = MagicMock()
     source.business_config = {"root_department_id": "1"}
     source.name = "wecom"
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
         response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
         response({"errcode": 0, "userlist": []}),
@@ -255,7 +289,7 @@ def test_user_sync_respects_include_child_departments_false():
     source = MagicMock()
     source.business_config = {"root_department_id": "1", "include_child_departments": False}
     source.name = "wecom"
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
         response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
         response({"errcode": 0, "userlist": []}),
@@ -268,7 +302,7 @@ def test_user_sync_drops_child_departments_when_recursion_disabled():
     source = MagicMock()
     source.business_config = {"root_department_id": "1", "include_child_departments": False}
     source.name = "wecom"
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
         response({"errcode": 0, "department": [
             {"id": 1, "parentid": 0, "name": "Root"},
@@ -286,7 +320,7 @@ def test_user_sync_keeps_child_departments_when_recursion_enabled():
     source = MagicMock()
     source.business_config = {"root_department_id": "1", "include_child_departments": True}
     source.name = "wecom"
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
         response({"errcode": 0, "department": [
             {"id": 1, "parentid": 0, "name": "Root"},
@@ -311,7 +345,7 @@ def test_user_sync_caps_pagination_when_next_cursor_repeats():
         response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
         response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
     ]
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=responses) as get:
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=responses) as get:
         result = WeComUserSyncAdapter.sync_users(CONFIG, "wecom", "user_sync", source=source)
 
     assert result.success is False
@@ -322,8 +356,10 @@ def test_user_sync_caps_pagination_when_next_cursor_repeats():
 
 
 def test_im_notification_caps_pagination_when_next_cursor_repeats():
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
+        response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
         response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
         response({"errcode": 0, "userlist": [{"userid": "alice"}], "next_cursor": "loop"}),
     ]) as get:
@@ -331,7 +367,7 @@ def test_im_notification_caps_pagination_when_next_cursor_repeats():
 
     assert result.success is False
     assert result.errors[0].code == "provider.invalid_response"
-    assert len(get.call_args_list) <= 4
+    assert len(get.call_args_list) <= 6
 
 
 def test_user_sync_handles_non_object_json_response():
@@ -342,7 +378,7 @@ def test_user_sync_handles_non_object_json_response():
     array_response.status_code = 200
     array_response.json.return_value = ["not", "a", "dict"]
 
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
         array_response,
     ]):
@@ -367,7 +403,7 @@ def test_user_sync_uses_private_endpoint_overrides():
         response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
         response({"errcode": 0, "userlist": [{"userid": "alice"}]}),
     ]
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=responses) as get:
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=responses) as get:
         WeComUserSyncAdapter.sync_users(config, "wecom", "user_sync", source=source)
 
     called_urls = [call.args[0] for call in get.call_args_list]
@@ -384,8 +420,9 @@ def test_im_notification_users_endpoint_override_is_honored():
         "im_notification_users_url": "https://internal.example/cgi-bin/user/list",
         "im_notification_send_message_url": "https://internal.example/cgi-bin/message/send",
     }
-    with patch("apps.system_mgmt.providers.adapters.wecom.requests.get", side_effect=[
+    with patch("apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get", side_effect=[
         response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
         response({"errcode": 0, "userlist": [{"userid": "alice"}]}),
     ]) as get:
         result = WeComIMNotificationAdapter.list_external_users(
@@ -406,11 +443,11 @@ def test_im_notification_uses_private_endpoint_overrides():
         "im_notification_send_message_url": "https://internal.example/cgi-bin/message/send",
     }
     get_patch = patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=[response({"errcode": 0, "access_token": "token"})],
     )
     post_patch = patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.post",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.post",
         return_value=response({"errcode": 0}),
     )
     with get_patch, post_patch as post:
@@ -472,10 +509,10 @@ def test_proxy_url_passes_requests_proxies_to_all_server_side_requests():
         response({"errcode": 0, "userlist": [{"userid": "alice"}]}),
     ]
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=get_responses,
     ) as get, patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.post",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.post",
         return_value=response({"errcode": 0}),
     ) as post:
         WeComUserSyncAdapter.sync_users(
@@ -499,14 +536,15 @@ def test_proxy_url_passes_requests_proxies_to_im_notification_endpoints():
     }
     get_responses = [
         response({"errcode": 0, "access_token": "token"}),  # list_external_users token
+        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
         response({"errcode": 0, "userlist": [{"userid": "bob"}], "next_cursor": ""}),
         response({"errcode": 0, "access_token": "token"}),  # send_message token
     ]
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=get_responses,
     ) as get, patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.post",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.post",
         return_value=response({"errcode": 0}),
     ) as post:
         WeComIMNotificationAdapter.list_external_users(config, "wecom", "im_notification")
@@ -528,10 +566,10 @@ def test_proxy_url_passes_requests_proxies_to_im_notification_endpoints():
 
 def test_proxy_url_is_omitted_when_unset():
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         return_value=response({"errcode": 0, "access_token": "token"}),
     ) as get, patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.post",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.post",
         return_value=response({"errcode": 0}),
     ) as post:
         WeComIMNotificationAdapter.send_message(
@@ -549,10 +587,10 @@ def test_proxy_url_is_omitted_when_unset():
 
 def test_build_login_url_does_not_emit_http_request():
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=AssertionError("build_login_url must not perform HTTP requests"),
     ) as get, patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.post",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.post",
         side_effect=AssertionError("build_login_url must not perform HTTP requests"),
     ) as post:
         WeComLoginAuthAdapter.build_login_url(
@@ -579,7 +617,7 @@ def test_user_sync_does_not_concatenate_base_url_with_path():
         response({"errcode": 0, "userlist": []}),
     ]
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=responses,
     ) as get:
         WeComUserSyncAdapter.sync_users(
@@ -614,7 +652,7 @@ def test_user_sync_falls_back_to_official_urls_when_addresses_missing():
         response({"errcode": 0, "userlist": []}),
     ]
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=responses,
     ) as get:
         result = WeComUserSyncAdapter.sync_users(
@@ -640,15 +678,16 @@ def test_im_notification_falls_back_to_official_urls_when_addresses_missing():
     }
     get_responses = [
         response({"errcode": 0, "access_token": "token"}),
+        response({"errcode": 0, "department": [{"id": 1, "parentid": 0, "name": "Root"}]}),
         response({"errcode": 0, "userlist": []}),
         response({"errcode": 0, "access_token": "token"}),
     ]
     post_response = response({"errcode": 0})
     with patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.get",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.get",
         side_effect=get_responses,
     ) as get, patch(
-        "apps.system_mgmt.providers.adapters.wecom.requests.post",
+        "apps.system_mgmt.providers.builtin.wecom.adapters.client.requests.post",
         return_value=post_response,
     ) as post:
         list_result = WeComIMNotificationAdapter.list_external_users(
@@ -667,6 +706,7 @@ def test_im_notification_falls_back_to_official_urls_when_addresses_missing():
     assert send_result.success is True
     assert [call.args[0] for call in get.call_args_list] == [
         "https://qyapi.weixin.qq.com/cgi-bin/gettoken",
+        "https://qyapi.weixin.qq.com/cgi-bin/department/list",
         "https://qyapi.weixin.qq.com/cgi-bin/user/list",
         "https://qyapi.weixin.qq.com/cgi-bin/gettoken",
     ]

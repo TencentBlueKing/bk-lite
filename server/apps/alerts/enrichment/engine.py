@@ -1,16 +1,13 @@
 import hashlib
 import json
-import logging
 from typing import Dict, List, Optional
 
-from django.core.cache import cache
-
-from apps.alerts.enrichment.keys import resolve_binding, build_binding_key
+from apps.alerts.enrichment.keys import build_binding_key, resolve_binding
 from apps.alerts.enrichment.matcher import event_matches
 from apps.alerts.enrichment.projection import project
 from apps.alerts.enrichment.providers.base import get_provider
-
-logger = logging.getLogger(__name__)
+from apps.core.logger import alert_logger as logger
+from django.core.cache import cache
 
 MAX_KEYS_PER_BATCH = 500
 CACHE_TTL_SECONDS = 60

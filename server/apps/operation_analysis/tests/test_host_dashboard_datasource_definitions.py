@@ -19,7 +19,7 @@ def test_host_metric_range_binds_instance_ids_and_metric_switch():
     source = _sources_by_api()["monitor/get_host_metric_range"]
     assert source["chart_type"] == ["line", "bar"]
     instance_ids = next(item for item in source["params"] if item["name"] == "instance_ids")
-    assert instance_ids["type"] == "stringList"
+    assert instance_ids["type"] == "string"
     assert instance_ids["filterType"] == "filter"
     metric = next(item for item in source["params"] if item["name"] == "metric_type")
     assert metric["inputConfig"]["componentSwitch"] is True
@@ -58,5 +58,5 @@ def test_host_resource_snapshot_has_no_health_fields():
     assert "healthy" not in field_keys
     assert "unhealthy" not in field_keys
     instance_ids = next(item for item in source["params"] if item["name"] == "instance_ids")
-    assert instance_ids["type"] == "stringList"
+    assert instance_ids["type"] == "string"
     assert instance_ids["filterType"] == "filter"

@@ -15,17 +15,14 @@
 无 URL 的源（如未填 URL 的 WSUS）无法探测，返回 None（调用方保持 UNKNOWN）。
 """
 
-import logging
 from dataclasses import dataclass
 from typing import Optional
 
 import requests
-
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.constants import PatchSourceType
 from apps.patch_mgmt.models import PatchSource
 from apps.patch_mgmt.utils.architecture import X86_64, repository_architecture
-
-logger = logging.getLogger("app")
 
 # (连接超时, 读取超时) —— 硬封顶，避免探测无限阻塞请求/worker。
 PROBE_CONNECT_TIMEOUT = 5

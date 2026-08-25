@@ -1,15 +1,12 @@
-import logging
 from typing import Optional
 
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import logger
+from apps.core.utils.web_utils import WebUtils
 from django.http import HttpRequest, HttpResponse
 from django.utils.deprecation import MiddlewareMixin
 from ipware import get_client_ip
 from rest_framework.exceptions import APIException
-
-from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.utils.web_utils import WebUtils
-
-logger = logging.getLogger("app")
 
 
 class AppExceptionMiddleware(MiddlewareMixin):

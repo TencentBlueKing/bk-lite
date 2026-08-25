@@ -99,6 +99,8 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
         allowClear={allowClear}
         mode={inputConfig.multiple ? 'multiple' : undefined}
         maxCount={isMultiple ? inputConfig.maxCount : undefined}
+        maxTagCount={isMultiple ? 'responsive' : undefined}
+        maxTagTextLength={isMultiple ? 16 : undefined}
         style={{ width: '100%', ...style }}
         options={options}
         onChange={(nextValue) => onChange?.(nextValue ?? null)}

@@ -184,9 +184,14 @@ class UserSyncSourceSerializer(UsernameSerializer):
         input_mode = get_user_sync_root_department_input_mode(integration_instance.provider_key)
         if input_mode == "manual_input":
             business_config.pop("department_id_type", None)
-        if integration_instance.provider_key == "feishu":
-            # Feishu fetch_child is now an implementation default, not user configuration.
-            business_config.pop("fetch_child", None)
+        try:
+            adapter_cls = RuntimeApplicationService().get_adapter_class(
+                integration_instance.provider_key, "user_sync"
+            )
+        except ValueError:
+            adapter_cls = None
+        if adapter_cls is not None:
+            business_config = adapter_cls.normalize_business_config(business_config)
         try:
             validate_user_sync_contract(
                 manifest,
@@ -204,30 +209,38 @@ class UserSyncSourceSerializer(UsernameSerializer):
                 raise serializers.ValidationError({"root_group_name": "Root group name cannot be changed"})
 
         root_scope_field = get_user_sync_root_scope_field(integration_instance.provider_key)
-        root_scope_value = str(business_config.get(root_scope_field) or "")
-        if not root_scope_value:
-            raise serializers.ValidationError({"business_config": "Root department is required"})
-
-        if input_mode == "manual_input":
-            business_config.pop("department_id_type", None)
-            business_config[root_scope_field] = root_scope_value
+        root_scope_value = business_config.get(root_scope_field)
+        if isinstance(root_scope_value, (list, tuple)):
+            if not [item for item in root_scope_value if str(item or "").strip()]:
+                raise serializers.ValidationError({"business_config": "Root department is required"})
+            business_config[root_scope_field] = list(root_scope_value)
+            if input_mode == "manual_input":
+                business_config.pop("department_id_type", None)
         else:
-            runtime_service = RuntimeApplicationService()
-            department_result = runtime_service.execute(
-                provider_key=integration_instance.provider_key,
-                capability_key="user_sync",
-                operation="list_departments",
-                config=integration_instance.get_runtime_config(),
-                source=SimpleNamespace(name=getattr(self.instance, "name", ""), business_config=business_config),
-                business_config=business_config,
-            )
-            if not department_result.success:
-                raise serializers.ValidationError({"business_config": department_result.summary})
+            root_scope_value = str(root_scope_value or "")
+            if not root_scope_value:
+                raise serializers.ValidationError({"business_config": "Root department is required"})
 
-            valid_department_ids = user_sync_service.flatten_department_ids(department_result.payload.get("items") or [])
-            if root_scope_value not in valid_department_ids:
-                raise serializers.ValidationError({"business_config": "当前同步范围已不可用，请重新选择部门"})
-            business_config[root_scope_field] = root_scope_value
+            if input_mode == "manual_input":
+                business_config.pop("department_id_type", None)
+                business_config[root_scope_field] = root_scope_value
+            else:
+                runtime_service = RuntimeApplicationService()
+                department_result = runtime_service.execute(
+                    provider_key=integration_instance.provider_key,
+                    capability_key="user_sync",
+                    operation="list_departments",
+                    config=integration_instance.get_runtime_config(),
+                    source=SimpleNamespace(name=getattr(self.instance, "name", ""), business_config=business_config),
+                    business_config=business_config,
+                )
+                if not department_result.success:
+                    raise serializers.ValidationError({"business_config": department_result.summary})
+
+                valid_department_ids = user_sync_service.flatten_department_ids(department_result.payload.get("items") or [])
+                if root_scope_value not in valid_department_ids:
+                    raise serializers.ValidationError({"business_config": "当前同步范围已不可用，请重新选择部门"})
+                business_config[root_scope_field] = root_scope_value
 
         attrs["business_config"] = business_config
         return attrs

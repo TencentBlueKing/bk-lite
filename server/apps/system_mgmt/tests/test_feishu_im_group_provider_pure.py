@@ -6,9 +6,9 @@ from unittest import mock
 import pytest
 import requests
 
-from apps.system_mgmt.providers.adapters import feishu
-from apps.system_mgmt.providers.adapters.feishu import FeishuIMGroupAdapter
-from apps.system_mgmt.providers.manifests.feishu import PROVIDER_MANIFEST
+from apps.system_mgmt.providers.builtin.feishu.adapters import im_group as feishu
+from apps.system_mgmt.providers.builtin.feishu.adapters.im_group import FeishuIMGroupAdapter
+from apps.system_mgmt.providers.builtin.feishu import PROVIDER_MANIFEST
 
 pytestmark = pytest.mark.unit
 
@@ -52,10 +52,10 @@ def test_feishu_manifest_declares_im_group_capability():
 
 def test_connection_rejects_token_only_when_application_lacks_group_scopes():
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         return_value=FakeResponse(
             {
                 "code": 0,
@@ -119,10 +119,10 @@ def test_connection_rejects_disabled_bot_after_accepting_object_scopes():
         )
     ]
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         side_effect=[
             FakeResponse({"code": 0, "data": {"app": {"scopes": granted_scopes}}}, request_id="req-app"),
             FakeResponse(
@@ -163,10 +163,10 @@ def test_connection_does_not_accept_explicitly_ungranted_scope_objects():
         {"scope_name": "im:chat:operate_as_owner", "grant_status": 1},
     ]
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         return_value=FakeResponse({"code": 0, "data": {"app": {"scopes": scopes}}}),
     ):
         result = FeishuIMGroupAdapter.test_connection(
@@ -182,10 +182,10 @@ def test_connection_does_not_accept_explicitly_ungranted_scope_objects():
 
 def test_connection_is_ready_only_after_scope_and_bot_verification():
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         side_effect=[
             FakeResponse(
                 {
@@ -223,10 +223,10 @@ def test_connection_is_ready_only_after_scope_and_bot_verification():
 
 def test_connection_exposes_feishu_field_validation_failure():
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         return_value=FakeResponse(
             {
                 "code": 99992402,
@@ -256,10 +256,10 @@ def test_connection_exposes_feishu_field_validation_failure():
 
 def test_connection_does_not_require_application_info_permission():
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         side_effect=[
             FakeResponse(
                 {
@@ -298,10 +298,10 @@ def test_connection_does_not_require_application_info_permission():
 
 def test_connection_treats_application_server_error_as_retryable():
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         return_value=FakeResponse({"code": 50001, "msg": "server error"}, status_code=500),
     ):
         result = FeishuIMGroupAdapter.test_connection(
@@ -324,10 +324,10 @@ def test_connection_treats_bot_rate_limit_as_retryable():
         "im:chat:operate_as_owner",
     ]
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         side_effect=[
             FakeResponse({"code": 0, "data": {"app": {"scopes": scopes}}}),
             FakeResponse({"code": 42901, "msg": "rate limited"}, status_code=429),
@@ -386,10 +386,10 @@ def test_connection_rejects_invalid_json_and_non_object_responses(
         else [valid_application, invalid_response]
     )
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         side_effect=responses,
     ):
         result = FeishuIMGroupAdapter.test_connection(
@@ -447,10 +447,10 @@ def test_connection_classifies_non_retryable_http_errors(
         else [valid_application, error_response]
     )
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         side_effect=responses,
     ):
         result = FeishuIMGroupAdapter.test_connection(
@@ -499,10 +499,10 @@ def test_connection_rejects_invalid_nested_response_shapes(
         else [valid_application, invalid_response]
     )
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         side_effect=responses,
     ):
         result = FeishuIMGroupAdapter.test_connection(
@@ -517,8 +517,8 @@ def test_connection_rejects_invalid_nested_response_shapes(
 
 
 def test_create_group_sends_fixed_member_id_type_and_uuid():
-    with mock.patch("apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post", return_value=FakeResponse({"code": 0, "data": {"chat_id": "oc_1"}}),
+    with mock.patch("apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.post", return_value=FakeResponse({"code": 0, "data": {"chat_id": "oc_1"}}),
     ) as post:
         result = FeishuIMGroupAdapter.create_group(
             config={"app_id": "app", "app_secret": "secret"},
@@ -552,8 +552,8 @@ def test_create_group_sends_fixed_member_id_type_and_uuid():
 
 
 def test_create_group_returns_invalid_ids_using_same_normalized_payload_as_add_members():
-    with mock.patch("apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post",
+    with mock.patch("apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.post",
         return_value=FakeResponse({"code": 0, "data": {"chat_id": "oc_1", "invalid_id_list": ["ou_bad"]}}),
     ):
         result = FeishuIMGroupAdapter.create_group(
@@ -573,8 +573,8 @@ def test_create_group_returns_invalid_ids_using_same_normalized_payload_as_add_m
 
 
 def test_add_members_returns_invalid_ids_without_losing_successes():
-    with mock.patch("apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post", return_value=FakeResponse({"code": 0, "data": {"invalid_id_list": ["ou_bad"]}}),
+    with mock.patch("apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.post", return_value=FakeResponse({"code": 0, "data": {"invalid_id_list": ["ou_bad"]}}),
     ):
         result = FeishuIMGroupAdapter.add_members(
             config={}, provider_key="feishu", capability_key="im_group", chat_id="oc_1", member_ids=["ou_ok", "ou_bad"], member_id_type="open_id",
@@ -586,8 +586,8 @@ def test_add_members_returns_invalid_ids_without_losing_successes():
 
 
 def test_get_group_uses_configured_url_and_returns_chat_id():
-    with mock.patch("apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get", return_value=FakeResponse({"code": 0, "data": {"chat_id": "oc_1"}}),
+    with mock.patch("apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get", return_value=FakeResponse({"code": 0, "data": {"chat_id": "oc_1"}}),
     ) as get:
         result = FeishuIMGroupAdapter.get_group(
             config={"im_group_chat_url": "https://provider.example/chats/{chat_id}"},
@@ -602,8 +602,8 @@ def test_get_group_uses_configured_url_and_returns_chat_id():
 
 
 def test_send_group_message_uses_chat_id_receiver_type():
-    with mock.patch("apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post", return_value=FakeResponse({"code": 0, "data": {"message_id": "om_1"}}),
+    with mock.patch("apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.post", return_value=FakeResponse({"code": 0, "data": {"message_id": "om_1"}}),
     ) as post:
         result = FeishuIMGroupAdapter.send_group_message(
             config={}, provider_key="feishu", capability_key="im_group", chat_id="oc_1", content="处理已开始", idempotency_key="bklite-summary-0123456789",
@@ -630,8 +630,8 @@ def test_send_group_message_uses_chat_id_receiver_type():
     ],
 )
 def test_group_request_normalizes_provider_errors(response, expected_code, retryable):
-    with mock.patch("apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post", return_value=response
+    with mock.patch("apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.post", return_value=response
     ):
         result = FeishuIMGroupAdapter.add_members(
             config={}, provider_key="feishu", capability_key="im_group", chat_id="oc_1", member_ids=["ou_user"], member_id_type="open_id",
@@ -644,8 +644,8 @@ def test_group_request_normalizes_provider_errors(response, expected_code, retry
 
 
 def test_group_request_timeout_is_retryable():
-    with mock.patch("apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=requests.Timeout,
+    with mock.patch("apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token", return_value=("tenant-token", None),), mock.patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.post", side_effect=requests.Timeout,
     ):
         result = FeishuIMGroupAdapter.add_members(
             config={}, provider_key="feishu", capability_key="im_group", chat_id="oc_1", member_ids=["ou_user"], member_id_type="open_id",
@@ -659,10 +659,10 @@ def test_group_request_timeout_is_retryable():
 def test_group_member_validation_rejects_unsupported_id_type_and_batches_over_fifty(monkeypatch):
     events = []
     monkeypatch.setattr(
-        "apps.system_mgmt.providers.adapters.feishu.logger.warning",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.logger.warning",
         lambda message, *args, **kwargs: events.append(kwargs["extra"]),
     )
-    with mock.patch("apps.system_mgmt.providers.adapters.feishu.requests.post") as post:
+    with mock.patch("apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.post") as post:
         invalid_type = FeishuIMGroupAdapter.add_members(
             config={}, provider_key="feishu", capability_key="im_group", chat_id="oc_1", member_ids=["ou_user"], member_id_type="union_id",
         )
@@ -695,9 +695,9 @@ def test_group_member_validation_rejects_unsupported_id_type_and_batches_over_fi
 def test_group_request_logs_no_authorization_header(caplog):
     endpoint = "https://provider.example/chats/oc_sensitive?member_id_type=open_id"
     with caplog.at_level(logging.INFO), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token", return_value=("tenant-secret-token", None),
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token", return_value=("tenant-secret-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post", return_value=FakeResponse({"code": 0, "data": {"chat_id": "oc_1"}}),
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.post", return_value=FakeResponse({"code": 0, "data": {"chat_id": "oc_1"}}),
     ):
         FeishuIMGroupAdapter.create_group(
             config={"im_group_create_chat_url": endpoint},
@@ -724,9 +724,9 @@ def test_group_request_logs_no_authorization_header(caplog):
 def test_group_request_exception_logs_only_whitelisted_fields(caplog):
     exception_text = "request failed at https://provider.example/chats/oc_secret?token=secret"
     with caplog.at_level(logging.WARNING), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token", return_value=("tenant-secret-token", None),
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token", return_value=("tenant-secret-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=requests.RequestException(exception_text),
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.post", side_effect=requests.RequestException(exception_text),
     ):
         result = FeishuIMGroupAdapter.add_members(
             config={}, provider_key="feishu", capability_key="im_group", chat_id="oc_1", member_ids=["ou_user"], member_id_type="open_id",
@@ -745,18 +745,18 @@ def test_group_request_exception_logs_only_whitelisted_fields(caplog):
 def test_group_request_emits_safe_structured_observability_fields(monkeypatch):
     events = []
     monkeypatch.setattr(
-        "apps.system_mgmt.providers.adapters.feishu.time.monotonic",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.time.monotonic",
         mock.Mock(side_effect=[10.0, 10.125]),
     )
     monkeypatch.setattr(
-        "apps.system_mgmt.providers.adapters.feishu.logger.info",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.logger.info",
         lambda message, *args, **kwargs: events.append((message, kwargs.get("extra"))),
     )
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-secret", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.post",
         return_value=FakeResponse(
             {"code": 0, "data": {"chat_id": "oc_secret"}},
             request_id="req-safe",
@@ -801,10 +801,10 @@ def test_group_request_emits_safe_structured_observability_fields(monkeypatch):
 def test_group_request_sanitizes_untrusted_response_request_id_in_message_and_extra(caplog):
     forged_request_id = "ok\r\nforged="
     with caplog.at_level(logging.INFO), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.post",
         side_effect=[
             FakeResponse(
                 {"code": 0, "data": {"invalid_id_list": []}},
@@ -853,14 +853,14 @@ def test_group_request_sanitizes_untrusted_response_request_id_in_message_and_ex
 
 def test_group_request_logging_failure_does_not_change_provider_result(monkeypatch):
     monkeypatch.setattr(
-        "apps.system_mgmt.providers.adapters.feishu.logger.warning",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.logger.warning",
         mock.Mock(side_effect=RuntimeError("logger unavailable")),
     )
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.post",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.post",
         side_effect=requests.Timeout,
     ):
         result = FeishuIMGroupAdapter.add_members(
@@ -880,14 +880,14 @@ def test_group_request_logging_failure_does_not_change_provider_result(monkeypat
 def test_readiness_permission_failure_emits_structured_result(monkeypatch):
     events = []
     monkeypatch.setattr(
-        "apps.system_mgmt.providers.adapters.feishu.logger.warning",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.logger.warning",
         lambda message, *args, **kwargs: events.append(kwargs.get("extra")),
     )
     with mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), mock.patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.im_group.requests.get",
         return_value=FakeResponse(
             {
                 "code": 0,

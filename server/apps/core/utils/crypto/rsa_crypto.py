@@ -1,9 +1,8 @@
 import base64
-import logging
+
+from apps.core.logger import logger
 from Crypto.Cipher import PKCS1_OAEP
 from Crypto.PublicKey import RSA
-
-logger = logging.getLogger(__name__)
 
 
 class RSACryptor:
