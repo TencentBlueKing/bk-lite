@@ -2,6 +2,49 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
 
+LDAP_SUCCESS = 0
+
+
+class LDAPSearchError(Exception):
+    """LDAP search completed with a non-success result code.
+
+    The exception message is sanitized: it does not include the directory's
+    diagnostic text, bind DN, or credentials.
+    """
+
+    def __init__(self, search_base: str, result_code: int, description: str = "", matched_dn: str = ""):
+        self.search_base = search_base
+        self.result_code = result_code
+        self.description = description
+        self.matched_dn = matched_dn
+        super().__init__(f"LDAP search failed result={result_code}")
+
+
+def _ensure_ldap_search_success(connection, search_base: str) -> None:
+    result = getattr(connection, "result", None) or {}
+    raw_code = result.get("result")
+    try:
+        result_code = int(raw_code) if raw_code is not None else LDAP_SUCCESS
+    except (TypeError, ValueError):
+        result_code = LDAP_SUCCESS
+    if result_code == LDAP_SUCCESS:
+        return
+    raise LDAPSearchError(
+        search_base=str(search_base or ""),
+        result_code=result_code,
+        description=str(result.get("description") or ""),
+        matched_dn=str(result.get("dn") or ""),
+    )
+
+
+def _execute_ldap_search(connection, current_search_base: str, **search_kwargs: Any) -> None:
+    try:
+        connection.search(**search_kwargs)
+    except Exception:
+        _ensure_ldap_search_success(connection, current_search_base)
+        raise
+    _ensure_ldap_search_success(connection, current_search_base)
+
 
 @dataclass(slots=True)
 class LDAPConnectionConfig:
@@ -69,6 +112,7 @@ def create_service_connection(connection_config: LDAPConnectionConfig):
         password=connection_config.bind_password,
         authentication=simple_auth,
         auto_bind=True,
+        auto_referrals=False,
         receive_timeout=connection_config.timeout,
     )
 
@@ -125,7 +169,9 @@ def search_entries(
         results: list[dict[str, Any]] = []
         page_cookie = None
         while True:
-            connection.search(
+            _execute_ldap_search(
+                connection,
+                search_base,
                 search_base=search_base,
                 search_filter=search_filter,
                 search_scope=search_scope or subtree_scope,
@@ -141,7 +187,9 @@ def search_entries(
                 break
         return results
 
-    connection.search(
+    _execute_ldap_search(
+        connection,
+        search_base,
         search_base=search_base,
         search_filter=search_filter,
         search_scope=search_scope or subtree_scope,

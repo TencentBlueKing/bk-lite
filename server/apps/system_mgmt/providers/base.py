@@ -35,6 +35,23 @@ class BaseUserSyncAdapter(BaseCapabilityAdapter):
     def list_departments(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
         return CapabilityExecutionResult.not_implemented(capability_key, "list_departments")
 
+    @classmethod
+    def normalize_business_config(cls, business_config: dict | None) -> dict:
+        """把即将入库的 user_sync business_config 收成该 provider 的规范形态。"""
+        return dict(business_config or {})
+
+    @classmethod
+    def resolve_root_scope_value(cls, business_config: dict | None, *, field: str, default=None):
+        """从 business_config 读取写入本地根组织的外部标识。"""
+        config = cls.normalize_business_config(business_config)
+        if field in config:
+            value = config.get(field, default)
+        else:
+            value = config.get("root_department_id", default)
+        if value in (None, ""):
+            return default
+        return value
+
 
 class BaseIMNotificationAdapter(BaseCapabilityAdapter):
     capability_key = "im_notification"

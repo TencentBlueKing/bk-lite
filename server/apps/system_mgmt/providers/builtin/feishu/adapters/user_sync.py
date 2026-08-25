@@ -27,6 +27,13 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
     capability_key = "user_sync"
 
     @classmethod
+    def normalize_business_config(cls, business_config: dict | None) -> dict:
+        normalized = super().normalize_business_config(business_config)
+        # 拉子部门是适配器实现默认，不再作为用户配置；去掉旧字段以免契约校验失败。
+        normalized.pop("fetch_child", None)
+        return normalized
+
+    @classmethod
     def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
         return _request_tenant_access_token(config, capability_key)
 

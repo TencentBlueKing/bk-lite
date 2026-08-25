@@ -415,27 +415,22 @@ def get_user_sync_root_scope_field(provider_key: str) -> str:
 
 
 def get_user_sync_root_scope_value(source, default=None):
-    """Read the provider-specific root scope value from business_config.
-
-    AD 使用 root_dns 列表：单个 DN 返回该 DN（折进本地根），多个返回合成本地根标识。
-    """
-    from apps.system_mgmt.services.ad_pull_dns import (
-        AD_LEGACY_ROOT_DN_FIELD,
-        AD_ROOT_DNS_FIELD,
-        normalize_ad_pull_dns,
-        resolve_ad_local_root_scope_id,
-    )
-
+    """Read the provider-specific root scope value from business_config."""
     integration_instance = getattr(source, "integration_instance", None)
     provider_key = getattr(integration_instance, "provider_key", "")
     root_scope_field = get_user_sync_root_scope_field(provider_key) if provider_key else "root_department_id"
     business_config = getattr(source, "business_config", None) or {}
 
-    if root_scope_field in (AD_ROOT_DNS_FIELD, AD_LEGACY_ROOT_DN_FIELD) or provider_key == "ad":
-        pull_dns = normalize_ad_pull_dns(business_config)
-        if not pull_dns:
-            return default
-        return resolve_ad_local_root_scope_id(pull_dns)
+    adapter_cls = None
+    if provider_key:
+        try:
+            adapter_cls = RuntimeApplicationService().get_adapter_class(provider_key, "user_sync")
+        except ValueError:
+            adapter_cls = None
+    if adapter_cls is not None:
+        return adapter_cls.resolve_root_scope_value(
+            business_config, field=root_scope_field, default=default
+        )
 
     if root_scope_field in business_config:
         return business_config.get(root_scope_field, default)

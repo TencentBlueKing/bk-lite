@@ -7,6 +7,13 @@ import pytest
 from apps.system_mgmt.providers.builtin.feishu.adapters.user_sync import FeishuUserSyncAdapter
 
 
+def test_normalize_business_config_drops_deprecated_fetch_child():
+    normalized = FeishuUserSyncAdapter.normalize_business_config(
+        {"root_department_id": "0", "fetch_child": False}
+    )
+    assert normalized == {"root_department_id": "0"}
+
+
 class _FeishuResponse:
     status_code = 200
     headers = {"X-Tt-Logid": "req-1"}

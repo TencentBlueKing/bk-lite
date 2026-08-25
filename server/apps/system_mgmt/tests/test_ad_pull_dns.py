@@ -1,4 +1,4 @@
-from apps.system_mgmt.services.ad_pull_dns import (
+from apps.system_mgmt.providers.builtin.ad.pull_dns import (
     AD_LOCAL_ROOT_SCOPE_ID,
     normalize_ad_pull_dns,
     resolve_ad_local_root_scope_id,

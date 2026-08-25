@@ -122,6 +122,15 @@ providers/{builtin|custom}/<key>/
 - `client.py` 用来放本包共用的 token / HTTP 分页 / 代理，或 LDAP bind/search。这是包内实现细节，不是 Runtime 的调用面。Loader **不会**检查能力模块是否真的走 client。能力文件不要求零 `requests`：OAuth 用户 token、发信 POST、群测连等专用调用可以留在能力模块；企微拉群可用 wechatpy，视为该包请求实现。
 - 不要空 `assets/`。图标继续按 `provider_key` 由前端解析；新 key 在前端没有映射时会没有图标。本期不为包做图标资源约定。
 
+### 可选的包内政策模块
+
+上表是发现期必有/按能力声明才有的骨架。此外可以在包根（`adapters/` 外）放 **本包领域政策**：只服务这一家、描述配置或范围怎么理解的纯函数，既不是厂商协议，也不是 Runtime operation。现成例子：AD 的 `pull_dns.py`（拉取 DN 列表规范化、单/多根本地作用域）。
+
+- 按领域命名（`pull_dns.py`），禁止 `utils.py` / `helpers.py`。
+- 不进 `providers/common/`：那是至少两个包才用的跨包工具。
+- 不要放进 `services/` 或 serializer；宿主继续只走 Runtime / 适配器钩子（如 `normalize_business_config`）。
+- Loader **不体检**这类文件。没有第二段独立政策时，摊在对应能力模块里即可，不要为对称先拆。
+
 ### 语言文件
 
 系统只认 `en` 与 `zh-Hans`（`zh` / `zh-CN` / `zh-Hans` → `zh-Hans`，其它 → `en`）。两份 yaml 的 `description` 必填；`name` 可缺。缺语言目录或缺文件 → **跳过该包**。缺 **单条** 表单文案不得拒绝该包加载。

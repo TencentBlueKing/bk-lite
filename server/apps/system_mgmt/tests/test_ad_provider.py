@@ -7,7 +7,7 @@ from ldap3.core.exceptions import LDAPBindError
 
 from apps.system_mgmt.providers.builtin.ad.adapters.login_auth import ADLoginAuthAdapter
 from apps.system_mgmt.providers.builtin.ad.adapters.user_sync import ADUserSyncAdapter
-from apps.system_mgmt.providers.common.ldap import build_connection_config, resolve_ldap_server_target
+from apps.system_mgmt.providers.common.ldap import LDAPSearchError, build_connection_config, resolve_ldap_server_target
 
 
 pytestmark = pytest.mark.unit
@@ -23,6 +23,34 @@ def _base_config():
         "base_dn": "DC=corp,DC=example,DC=com",
         "login_auth_identity_field": "sAMAccountName",
     }
+
+
+def test_normalize_business_config_canonicalizes_root_dns_and_drops_legacy_field():
+    normalized = ADUserSyncAdapter.normalize_business_config(
+        {
+            "root_dn": "OU=BizA,DC=corp,DC=example,DC=com\nOU=Dev,OU=BizA,DC=corp,DC=example,DC=com",
+            "user_filter": "(&(objectCategory=Person)(sAMAccountName=*))",
+        }
+    )
+    assert normalized["root_dns"] == ["OU=BizA,DC=corp,DC=example,DC=com"]
+    assert "root_dn" not in normalized
+    assert normalized["user_filter"] == "(&(objectCategory=Person)(sAMAccountName=*))"
+
+
+def test_resolve_root_scope_value_single_dn_vs_multi_dn():
+    single = ADUserSyncAdapter.resolve_root_scope_value(
+        {"root_dns": ["OU=PAAS,DC=corp,DC=com"]}, field="root_dns"
+    )
+    multi = ADUserSyncAdapter.resolve_root_scope_value(
+        {"root_dns": ["OU=BizA,DC=corp,DC=com", "OU=BizC,DC=corp,DC=com"]},
+        field="root_dns",
+    )
+    legacy = ADUserSyncAdapter.resolve_root_scope_value(
+        {"root_dn": "OU=PAAS,DC=corp,DC=com"}, field="root_dns"
+    )
+    assert single == "OU=PAAS,DC=corp,DC=com"
+    assert multi == "__local_root__"
+    assert legacy == "OU=PAAS,DC=corp,DC=com"
 
 
 @patch("apps.system_mgmt.providers.builtin.ad.adapters.client.bind_user_dn")
@@ -435,6 +463,108 @@ def test_ad_user_sync_fails_entirely_when_one_pull_dn_search_fails(mock_search_e
     assert result.success is False
     assert result.errors[0].code == "provider.request_failed"
 
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_maps_missing_pull_dn_to_invalid_config(mock_search_entries):
+    missing = "OU=yhd,OU=yhd,DC=bktest,DC=com"
+    mock_search_entries.side_effect = LDAPSearchError(missing, 32, description="noSuchObject")
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=SimpleNamespace(business_config={"root_dns": [missing]}),
+    )
+
+    assert result.success is False
+    error = result.errors[0]
+    assert error.code == "provider.invalid_config"
+    assert error.field == "root_dns"
+    assert error.external_code == "32"
+    assert error.detail == missing
+    assert missing in error.message
+    assert "NameErr" not in error.message
+    assert "DSID" not in (error.detail or "")
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_maps_invalid_dn_syntax_like_missing_object(mock_search_entries):
+    bad_dn = "OU=yhd,DC=bktest,DC=com,DC=1"
+    mock_search_entries.side_effect = LDAPSearchError(bad_dn, 34, description="invalidDNSyntax")
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=SimpleNamespace(business_config={"root_dns": [bad_dn]}),
+    )
+
+    error = result.errors[0]
+    assert result.success is False
+    assert error.code == "provider.invalid_config"
+    assert error.field == "root_dns"
+    assert error.external_code == "34"
+    assert bad_dn in error.message
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_maps_referral_pull_dn_to_invalid_config(mock_search_entries):
+    referral_dn = "OU=yhd,DC=bktest,DC=com,DC=1"
+    mock_search_entries.side_effect = LDAPSearchError(referral_dn, 10, description="referral")
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=SimpleNamespace(business_config={"root_dns": [referral_dn]}),
+    )
+
+    assert result.success is False
+    error = result.errors[0]
+    assert error.code == "provider.invalid_config"
+    assert error.field == "root_dns"
+    assert error.external_code == "10"
+    assert error.detail == referral_dn
+    assert referral_dn in error.message
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_fails_entirely_when_second_pull_dn_is_missing(mock_search_entries):
+    good = "OU=A,DC=corp,DC=example,DC=com"
+    missing = "OU=C,DC=corp,DC=example,DC=com"
+    mock_search_entries.side_effect = [
+        [{"distinguishedName": f"CN=alice,{good}", "sAMAccountName": "alice"}],
+        [{"distinguishedName": good}],
+        LDAPSearchError(missing, 32, description="noSuchObject"),
+    ]
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=SimpleNamespace(business_config={"root_dns": [good, missing]}),
+    )
+
+    assert result.success is False
+    assert result.payload == {}
+    assert result.errors[0].detail == missing
+    assert result.errors[0].code == "provider.invalid_config"
+
+
+@patch("apps.system_mgmt.providers.builtin.ad.adapters.client.search_entries")
+def test_ad_user_sync_bind_failure_uses_connection_mapping(mock_search_entries):
+    mock_search_entries.side_effect = LDAPBindError("invalidCredentials - 49")
+
+    result = ADUserSyncAdapter.sync_users(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+        source=SimpleNamespace(business_config={"root_dn": "DC=corp,DC=example,DC=com"}),
+    )
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.auth_failed"
+    assert result.errors[0].external_code == "49"
 
 @patch("apps.system_mgmt.providers.builtin.ad.adapters.client.probe_root_dse")
 def test_ad_connection_tests_use_root_dse_probe(mock_probe_root_dse):

@@ -1,14 +1,18 @@
+from ldap3.core.exceptions import LDAPBindError
+
+from apps.system_mgmt.providers.common.ldap import LDAPSearchError
+
 from apps.system_mgmt.providers.log import logger
 from apps.system_mgmt.providers.base import BaseUserSyncAdapter
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
-from apps.system_mgmt.services.ad_pull_dns import (
+from . import client
+from ..pull_dns import (
+    AD_LEGACY_ROOT_DN_FIELD,
     AD_ROOT_DNS_FIELD,
     is_ad_multi_pull,
     normalize_ad_pull_dns,
     resolve_ad_local_root_scope_id,
 )
-
-from . import client
 
 
 def _get_sync_user_attributes(source) -> list[str]:
@@ -23,6 +27,20 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
     DEFAULT_USER_OBJECT_CLASS = "user"
     DEFAULT_USER_FILTER = "(&(objectCategory=Person)(sAMAccountName=*))"
     DEFAULT_ORGANIZATION_OBJECT_CLASS = "organizationalUnit"
+
+    @classmethod
+    def normalize_business_config(cls, business_config: dict | None) -> dict:
+        normalized = super().normalize_business_config(business_config)
+        normalized[AD_ROOT_DNS_FIELD] = normalize_ad_pull_dns(normalized)
+        normalized.pop(AD_LEGACY_ROOT_DN_FIELD, None)
+        return normalized
+
+    @classmethod
+    def resolve_root_scope_value(cls, business_config: dict | None, *, field: str = AD_ROOT_DNS_FIELD, default=None):
+        pull_dns = normalize_ad_pull_dns(business_config)
+        if not pull_dns:
+            return default
+        return resolve_ad_local_root_scope_id(pull_dns)
 
     @classmethod
     def test_connection(cls, config: dict, provider_key: str, capability_key: str, **kwargs):
@@ -116,6 +134,10 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
                         paged_size=100,
                     )
                 )
+        except LDAPSearchError as error:
+            return client._build_ad_search_failure(error)
+        except LDAPBindError as error:
+            return client._build_ad_connection_failure(error)
         except Exception as error:
             logger.debug(f"AD user sync failed: error_type={type(error).__name__}")
             return CapabilityExecutionResult.failed_result(
