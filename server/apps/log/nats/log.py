@@ -12,6 +12,8 @@ from apps.log.constants.permission import PermissionConstants
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
 from apps.log.models.log_group import LogGroup
 from apps.log.models.policy import Alert, Policy
+from apps.log.services.log_event_contract import to_logical_event, to_storage_field
+from apps.log.services.search import SearchService
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.rpc.system_mgmt import SystemMgmt
@@ -127,7 +129,7 @@ def _apply_log_group_scope(query, user_info):
         return LogGroupQueryBuilder.DENY_ALL_QUERY
 
     log_group_ids = [group.id for group in accessible_groups]
-    final_query, _ = LogGroupQueryBuilder.build_query_with_groups(query, log_group_ids, resolved_groups=accessible_groups)
+    final_query, _ = SearchService._build_storage_query(query, log_group_ids, resolved_groups=accessible_groups)
     return final_query
 
 
@@ -149,6 +151,8 @@ def log_search(query, time_range, limit=10, *args, **kwargs):
         return {"result": True, "data": [], "message": ""}
     vm_api = VictoriaMetricsAPI()
     data = vm_api.query(query, start_time, end_time, limit)
+    if isinstance(data, list):
+        data = [to_logical_event(item) for item in data]
     return {"result": True, "data": data, "message": ""}
 
 
@@ -169,7 +173,7 @@ def log_hits(query, time_range, field, fields_limit=5, step="5m", *args, **kwarg
     if query == LogGroupQueryBuilder.DENY_ALL_QUERY:
         return {"result": True, "data": [], "message": ""}
     vm_api = VictoriaMetricsAPI()
-    resp = vm_api.hits(query, start_time, end_time, field, fields_limit, step)
+    resp = vm_api.hits(query, start_time, end_time, to_storage_field(field), fields_limit, step)
     data = []
     for hit_dict in resp["hits"]:
         timestamps = hit_dict.get("timestamps", [])
