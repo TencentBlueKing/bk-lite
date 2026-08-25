@@ -43,6 +43,8 @@ class ChannelSerializer(UsernameSerializer):
     def validate_nats_config(cls, config):
         if not isinstance(config, dict):
             raise serializers.ValidationError({"config": "NATS config must be an object"})
+        if "supports_notify_person" in config and not isinstance(config["supports_notify_person"], bool):
+            raise serializers.ValidationError({"config": {"supports_notify_person": "must be a boolean"}})
         if nats_notifications is not None and nats_notifications.handles_config(config):
             return nats_notifications.validate_config(config)
         if config.get("nats_mode") not in (None, "request_reply"):

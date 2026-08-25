@@ -916,6 +916,7 @@
         "smtp_pwd": "Smtp Password",
         "smtp_usessl": "Use SSL",
         "smtp_auth_enabled": "Enable SMTP Authentication",
+        "supports_notify_person": "Supports notification person",
         "smtp_server": "Smtp Server",
         "description": "Description",
         "webhook_url": "Webhook URL",

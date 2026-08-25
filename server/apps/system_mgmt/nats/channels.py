@@ -36,6 +36,10 @@ def get_channel_detail(channel_id):
     return {"result": True, "data": return_data}
 
 
+def _supports_notify_person(config):
+    return isinstance(config, dict) and config.get("supports_notify_person") is True
+
+
 @nats_client.register
 def search_channel_list(channel_type="", teams=None, include_children=False, channel_method=""):
     """
@@ -67,10 +71,18 @@ def search_channel_list(channel_type="", teams=None, include_children=False, cha
             team_filter |= Q(team__contains=team_id)
         channels = channels.filter(team_filter)
 
-    return {
-        "result": True,
-        "data": [i for i in channels.values("id", "name", "channel_type", "description")],
-    }
+    data = []
+    for channel in channels:
+        item = {
+            "id": channel.id,
+            "name": channel.name,
+            "channel_type": channel.channel_type,
+            "description": channel.description,
+        }
+        if channel.channel_type == ChannelChoices.NATS:
+            item["supports_notify_person"] = _supports_notify_person(channel.config)
+        data.append(item)
+    return {"result": True, "data": data}
 
 
 @nats_client.register
@@ -774,16 +786,16 @@ def search_opspilot_nats_channels(teams=None, bot_id=None, include_children=Fals
             continue
         if bot_id is not None and str(config.get("bot_id")) != str(bot_id):
             continue
-        data.append(
-            {
-                "id": channel.id,
-                "name": channel.name,
-                "description": channel.description,
-                "team": channel.team,
-                "bot_id": config.get("bot_id"),
-                "node_id": config.get("node_id"),
-            }
-        )
+        item = {
+            "id": channel.id,
+            "name": channel.name,
+            "description": channel.description,
+            "team": channel.team,
+            "bot_id": config.get("bot_id"),
+            "node_id": config.get("node_id"),
+            "supports_notify_person": _supports_notify_person(config),
+        }
+        data.append(item)
     return {"result": True, "data": data}
 
 
