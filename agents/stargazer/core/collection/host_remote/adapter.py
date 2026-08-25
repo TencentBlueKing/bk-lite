@@ -48,32 +48,57 @@ async def submit_host_remote_collection(
         fence=context.fence,
         attempt_id=context.attempt_id,
     )
-    callback_task_id = "remote-" + result_id[:24]
     callback_params["collection_result_id"] = result_id
     callback_subject = callback_state.get_host_remote_callback_subject()
-    callback_payload = {
-        "task_id": callback_task_id,
-        "collection_task_id": context.task_id,
-        "collection_fence": context.fence,
-        "collection_target": target,
-        "collection_plugin_ref": context.plugin_ref,
-        "collection_owner": context.owner_id,
-        "collection_attempt": context.fence,
-        "collection_caller": callback_caller,
-    }
-    await callback_state.store_host_remote_callback_context(
-        callback_task_id,
-        callback_params,
-        {
-            "owner_id": context.owner_id,
+    v2_enabled = callback_state.is_host_remote_callback_v2_enabled()
+    callback_task_id = ("remote-v2-" if v2_enabled else "remote-") + result_id[:24]
+    if v2_enabled:
+        _, trusted_identity = callback_state.issue_host_remote_callback_identity(
+            fence=context.fence,
+            target=target,
+            collection_task_id=context.task_id,
+            plugin_ref=context.plugin_ref,
+            owner_id=context.owner_id,
+            attempt=context.attempt_id,
+            caller=callback_caller,
+        )
+    else:
+        trusted_identity = {
             "fence": context.fence,
-            "plugin_ref": context.plugin_ref,
             "target": target,
             "collection_task_id": context.task_id,
-            "attempt": context.fence,
+            "plugin_ref": context.plugin_ref,
+            "owner_id": context.owner_id,
+            "attempt": context.attempt_id,
             "caller": callback_caller,
-        },
+        }
+    stored_context = await callback_state.store_host_remote_callback_context(
+        callback_task_id,
+        callback_params,
+        trusted_identity,
     )
+    persisted_identity = (stored_context or {}).get("ctx") or trusted_identity
+    binding_fields = [
+        "fence",
+        "target",
+        "collection_task_id",
+        "plugin_ref",
+        "owner_id",
+        "attempt",
+        "caller",
+    ]
+    if v2_enabled:
+        binding_fields.insert(0, "protocol_version")
+    if any(
+        persisted_identity.get(key) != trusted_identity.get(key)
+        for key in binding_fields
+    ):
+        raise RuntimeError("Host Remote stored identity conflict")
+    callback_payload = {}
+    if v2_enabled:
+        callback_payload["context"] = (
+            callback_state.restore_host_remote_callback_identity(persisted_identity)
+        )
     accepted = await HostCollector(params).submit_collection(
         callback_task_id,
         callback_subject,
@@ -81,7 +106,14 @@ async def submit_host_remote_collection(
     )
     accepted_result = accepted.get("result") or {}
     if accepted.get("success") is False or accepted_result.get("accepted") is False:
-        await callback_state.clear_host_remote_callback_context(callback_task_id)
+        callback_state.log_host_remote_event(
+            "submit_rejected_context_retained",
+            callback_task_id,
+            level="warning",
+            execution="waiting_callback",
+            failed_stage="executor_submit",
+            error_type="executor_rejected",
+        )
         return CollectOutcome(
             status=CollectOutcomeStatus.FAILED,
             error_code="remote_submission_failed",
