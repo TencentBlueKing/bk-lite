@@ -13,7 +13,8 @@ def test_plugin_exception_log_has_context_and_sanitized_call_chain():
     logger = RecordingLogger()
 
     def inner():
-        raise RuntimeError("password=must-not-be-logged")
+        sensitive_message = "password=must-not-be-logged"
+        raise RuntimeError(sensitive_message)
 
     def outer():
         inner()
@@ -42,9 +43,12 @@ def test_plugin_exception_log_has_context_and_sanitized_call_chain():
     assert "error_type=RuntimeError" in entry
     assert ":outer>" in entry
     assert ":inner" in entry
+    assert "source_context=" in entry
+    assert "outer()" in entry
+    assert "raise RuntimeError(sensitive_message)" in entry
     assert "password" not in entry
     assert "must-not-be-logged" not in entry
-    assert "\n" not in entry
+    assert "\n" in entry
 
 
 def test_plugin_exception_log_without_traceback_is_still_searchable():
@@ -64,6 +68,7 @@ def test_plugin_exception_log_without_traceback_is_still_searchable():
     assert "plugin_name=-" in logger.entries[0]
     assert "target=logical" in logger.entries[0]
     assert "call_chain=-" in logger.entries[0]
+    assert "source_context=\n-" in logger.entries[0]
     assert "must-not-be-logged" not in logger.entries[0]
 
 
