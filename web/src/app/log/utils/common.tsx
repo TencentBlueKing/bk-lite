@@ -141,10 +141,14 @@ export const escapeArrayToJson = (arr: React.Key[]) => {
   return JSON.stringify(arr).replace(/"/g, '\\"');
 };
 
-// 树形组件根据id查其title
-export const findLabelById = (data: TreeItem[], key: string): string | null => {
+// 树形组件根据 id 查 label。key 可能是 number（建树）或 string（Ant Tree / 回调），须归一化比较。
+export const findLabelById = (
+  data: TreeItem[],
+  key: string | number
+): string | null => {
+  const target = String(key);
   for (const node of data) {
-    if (node.key === key) {
+    if (String(node.key) === target) {
       return node.label as string;
     }
     if (node.children) {
@@ -162,9 +166,10 @@ export const findTreeParentKey = (
   targetKey: React.Key
 ): React.Key | null => {
   let parentKey: React.Key | null = null;
+  const target = String(targetKey);
   const loop = (nodes: TreeItem[], parent: React.Key | null) => {
     for (const node of nodes) {
-      if (node.key === targetKey) {
+      if (String(node.key) === target) {
         parentKey = parent;
         return;
       }
