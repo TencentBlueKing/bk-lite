@@ -7,16 +7,9 @@ import pytest
 from django.utils import timezone
 
 from apps.operation_analysis.models.models import Dashboard, Directory
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-    DashboardReportPdfArtifact,
-    DashboardReportSubscription,
-)
-from apps.operation_analysis.services.pdf_artifact_cleanup_service import (
-    PdfArtifactCleanupService,
-)
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportPdfArtifact, DashboardReportSubscription
+from apps.operation_analysis.services.pdf_artifact_cleanup_service import PdfArtifactCleanupService
 from apps.system_mgmt.models import Channel
-
 
 pytestmark = pytest.mark.django_db
 
@@ -82,9 +75,7 @@ def _make_artifact(
     )
 
 
-def test_expired_succeeded_artifact_is_deleted(
-    subscription, tmp_path, monkeypatch
-):
+def test_expired_succeeded_artifact_is_deleted(subscription, tmp_path, monkeypatch):
     monkeypatch.setenv("DASHBOARD_REPORT_ARTIFACT_ROOT", str(tmp_path))
     now = timezone.now()
     execution = _make_execution(
@@ -128,9 +119,7 @@ def test_unexpired_artifact_is_kept(subscription, tmp_path, monkeypatch):
     assert (tmp_path / artifact.storage_reference).is_file()
 
 
-def test_running_expired_artifact_is_not_deleted(
-    subscription, tmp_path, monkeypatch
-):
+def test_running_expired_artifact_is_not_deleted(subscription, tmp_path, monkeypatch):
     monkeypatch.setenv("DASHBOARD_REPORT_ARTIFACT_ROOT", str(tmp_path))
     now = timezone.now()
     execution = _make_execution(
@@ -149,9 +138,7 @@ def test_running_expired_artifact_is_not_deleted(
     assert (tmp_path / artifact.storage_reference).is_file()
 
 
-def test_pending_expired_artifact_is_not_deleted(
-    subscription, tmp_path, monkeypatch
-):
+def test_pending_expired_artifact_is_not_deleted(subscription, tmp_path, monkeypatch):
     monkeypatch.setenv("DASHBOARD_REPORT_ARTIFACT_ROOT", str(tmp_path))
     now = timezone.now()
     execution = _make_execution(
@@ -169,9 +156,7 @@ def test_pending_expired_artifact_is_not_deleted(
     assert DashboardReportPdfArtifact.objects.filter(pk=artifact.pk).exists()
 
 
-def test_cleanup_is_idempotent_when_repeated(
-    subscription, tmp_path, monkeypatch
-):
+def test_cleanup_is_idempotent_when_repeated(subscription, tmp_path, monkeypatch):
     monkeypatch.setenv("DASHBOARD_REPORT_ARTIFACT_ROOT", str(tmp_path))
     now = timezone.now()
     execution = _make_execution(
@@ -193,9 +178,7 @@ def test_cleanup_is_idempotent_when_repeated(
     assert DashboardReportPdfArtifact.objects.count() == 0
 
 
-def test_missing_file_cleanup_is_idempotent(
-    subscription, tmp_path, monkeypatch
-):
+def test_missing_file_cleanup_is_idempotent(subscription, tmp_path, monkeypatch):
     monkeypatch.setenv("DASHBOARD_REPORT_ARTIFACT_ROOT", str(tmp_path))
     now = timezone.now()
     execution = _make_execution(
@@ -220,13 +203,47 @@ def test_missing_file_cleanup_is_idempotent(
     assert again.scanned == 0
 
 
+def test_unlink_failure_keeps_artifact_for_next_cleanup_retry(subscription, tmp_path, monkeypatch):
+    monkeypatch.setenv("DASHBOARD_REPORT_ARTIFACT_ROOT", str(tmp_path))
+    now = timezone.now()
+    execution = _make_execution(
+        subscription,
+        status=DashboardReportExecution.Status.SUCCEEDED,
+        finished_at=now - timedelta(hours=1),
+    )
+    artifact = _make_artifact(
+        execution,
+        expires_at=now - timedelta(minutes=1),
+        root=tmp_path,
+    )
+    path = tmp_path / artifact.storage_reference
+    real_unlink = Path.unlink
+    failed_once = False
+
+    def flaky_unlink(target, *args, **kwargs):
+        nonlocal failed_once
+        if target == path and not failed_once:
+            failed_once = True
+            raise PermissionError("artifact mount is temporarily read-only")
+        return real_unlink(target, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", flaky_unlink)
+
+    first = PdfArtifactCleanupService.cleanup(now=now)
+    assert first.deleted == 0
+    assert first.errors == 1
+    assert DashboardReportPdfArtifact.objects.filter(pk=artifact.pk).exists()
+    assert path.is_file()
+
+    second = PdfArtifactCleanupService.cleanup(now=now)
+    assert second.deleted == 1
+    assert second.errors == 0
+    assert not DashboardReportPdfArtifact.objects.filter(pk=artifact.pk).exists()
+    assert not path.exists()
+
+
 def test_beat_registers_pdf_artifact_cleanup_task():
     from apps.operation_analysis.config import CELERY_BEAT_SCHEDULE
 
-    entry = CELERY_BEAT_SCHEDULE[
-        "cleanup_expired_dashboard_report_pdf_artifacts"
-    ]
-    assert (
-        entry["task"]
-        == "operation_analysis.cleanup_expired_dashboard_report_pdf_artifacts"
-    )
+    entry = CELERY_BEAT_SCHEDULE["cleanup_expired_dashboard_report_pdf_artifacts"]
+    assert entry["task"] == "operation_analysis.cleanup_expired_dashboard_report_pdf_artifacts"
