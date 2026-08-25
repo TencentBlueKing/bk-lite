@@ -1,10 +1,10 @@
 # -- coding: utf-8 --
 import asyncio
 import json
-import time
 import logging
+import time
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Any, Dict, List
 from urllib.parse import unquote
 
 from .base_collector import BaseCollector
@@ -29,6 +29,7 @@ def _url_decode_secret(value: Any, credential_encoding: Any = "url") -> str:
     if str(credential_encoding or "url").strip().lower() in {"plain", "raw", "none"}:
         return str(value)
     return unquote(str(value))
+
 
 SCRIPTS_DIR = Path(__file__).parent / "scripts"
 MONITOR_SCRIPTS_DIR = Path(__file__).parent / "monitor_scripts"
@@ -56,11 +57,7 @@ def build_script(os_type: str, modules: List[str], monitor_type: str | None = No
     body = "\n".join(parts)
 
     if os_type == "linux":
-        body = (
-            f"bash <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n"
-            f"{body}\n"
-            f"{LINUX_SCRIPT_WRAPPER_EOF}\n"
-        )
+        body = f"bash <<'{LINUX_SCRIPT_WRAPPER_EOF}'\n" f"{body}\n" f"{LINUX_SCRIPT_WRAPPER_EOF}\n"
 
     return body
 
@@ -117,10 +114,7 @@ def _escape_prometheus_label_value(value: Any) -> str:
 
 
 def _format_prometheus_labels(**labels: Any) -> str:
-    return ",".join(
-        f'{key}="{_escape_prometheus_label_value(value)}"'
-        for key, value in labels.items()
-    )
+    return ",".join(f'{key}="{_escape_prometheus_label_value(value)}"' for key, value in labels.items())
 
 
 def _as_bool(value: Any, default: bool = False) -> bool:
@@ -218,7 +212,9 @@ def parse_metrics_to_prometheus(
                 _append_gauge(lines, "disk_total", disk_labels, total, timestamp, "Disk total bytes")
                 _append_gauge(lines, "disk_free", disk_labels, free, timestamp, "Disk free bytes")
                 _append_gauge(lines, "disk_used_percent", disk_labels, used_percent, timestamp, "Disk used percent")
-                _append_gauge(lines, "disk_inodes_used_percent", disk_labels, disk.get("inodes_used_percent", 0), timestamp, "Disk inode used percent")
+                _append_gauge(
+                    lines, "disk_inodes_used_percent", disk_labels, disk.get("inodes_used_percent", 0), timestamp, "Disk inode used percent"
+                )
 
     if "net" in data:
         nets = data["net"]
@@ -275,7 +271,6 @@ def parse_metrics_to_prometheus(
 
 
 class HostCollector(BaseCollector):
-
     def _resolve_modules(self) -> List[str]:
         raw_modules = self.params.get("metrics_modules", "cpu,mem,disk,net")
         if isinstance(raw_modules, (list, tuple)):
@@ -294,7 +289,7 @@ class HostCollector(BaseCollector):
         raw_port = self.params.get("port")
         port = int(raw_port) if raw_port not in (None, "") else (22 if os_type == "linux" else 5986)
         ansible_node_id = self.params["ansible_node_id"]
-        execute_timeout = int(self.params.get("execute_timeout", 60))
+        execute_timeout = 60  # 脚本执行上限硬编码；表单 timeout 由框架作单对象预算
 
         modules = self._resolve_modules()
         credential_encoding = self.params.get("credential_encoding") or self.params.get("credentials_encoding") or "url"
@@ -352,9 +347,7 @@ class HostCollector(BaseCollector):
             )
         )
 
-    async def submit_collection(
-        self, task_id: str, callback_subject: str, callback_payload: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def submit_collection(self, task_id: str, callback_subject: str, callback_payload: Dict[str, Any]) -> Dict[str, Any]:
         callback = dict(callback_payload or {})
         callback.update(
             {
@@ -367,9 +360,7 @@ class HostCollector(BaseCollector):
             task_id=task_id,
         )
 
-    async def _execute_collection(
-        self, callback: Dict[str, Any] | None = None, task_id: str | None = None
-    ) -> Dict[str, Any]:
+    async def _execute_collection(self, callback: Dict[str, Any] | None = None, task_id: str | None = None) -> Dict[str, Any]:
         from core.infra.ansible_rpc import ansible_adhoc
 
         config = await asyncio.to_thread(self._resolve_execution_config)
@@ -407,16 +398,10 @@ class HostCollector(BaseCollector):
                 try:
                     metrics_data = json.loads(extracted_payload)
                 except json.JSONDecodeError:
-                    logger.error(
-                        f"[Host Collector] JSON parse failed for {host}: {e}. "
-                        f"stdout preview: {stdout[:500]}"
-                    )
+                    logger.error(f"[Host Collector] JSON parse failed for {host}: {e}. " f"stdout preview: {stdout[:500]}")
                     raise RuntimeError(f"Failed to parse metrics JSON from {host}: {e}") from e
             else:
-                logger.error(
-                    f"[Host Collector] JSON parse failed for {host}: {e}. "
-                    f"stdout preview: {stdout[:500]}"
-                )
+                logger.error(f"[Host Collector] JSON parse failed for {host}: {e}. " f"stdout preview: {stdout[:500]}")
                 raise RuntimeError(f"Failed to parse metrics JSON from {host}: {e}") from e
 
         instance_id = self.params.get("tags", {}).get("instance_id", host)

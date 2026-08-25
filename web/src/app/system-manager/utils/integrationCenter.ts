@@ -234,7 +234,8 @@ export function formatIntegrationInstanceDisplayName(
   },
   t: (key: string, fallback?: string) => string,
 ): string {
-  const providerDisplayName = t(`system.integrationCenter.provider.${instance.provider_key}`);
+  const providerDisplayName =
+    instance.provider?.name || instance.provider_name || t(`system.integrationCenter.provider.${instance.provider_key}`, instance.provider_key);
   return `${instance.name} / ${providerDisplayName}`;
 }
 
@@ -282,15 +283,12 @@ export function getIntegrationProviderDescription(
 export function buildIntegrationInstanceCardItem(
   instance: IntegrationInstance,
   provider?: ProviderManifest,
-  t?: (key: string, fallback?: string) => string,
 ): IntegrationInstanceCardItem {
   return {
     id: instance.id,
     name: instance.name,
     icon: resolveIntegrationProviderIcon(instance.provider_key),
-    description: t
-      ? getIntegrationProviderDisplayName(instance.provider_key, t)
-      : instance.provider?.name || instance.provider_key,
+    description: instance.provider?.name || instance.provider_key,
     tagList: [],
     raw: instance,
     provider,
@@ -417,10 +415,10 @@ export function getIntegrationDiagnosticMessage(
 }
 
 export function getIntegrationDetailTopSectionContent(
-  instance: Pick<IntegrationInstance, 'provider_key' | 'description'>,
+  instance: Pick<IntegrationInstance, 'provider_key' | 'description' | 'provider'>,
   t: (key: string, fallback?: string) => string,
 ) {
-  const providerName = getIntegrationProviderDisplayName(instance.provider_key, t);
+  const providerName = instance.provider?.name || getIntegrationProviderDisplayName(instance.provider_key, t);
   const providerLabel = `${t('system.integrationCenter.providerTypeLabel')}: ${providerName}`;
   return instance.description ? `${providerLabel} · ${instance.description}` : providerLabel;
 }

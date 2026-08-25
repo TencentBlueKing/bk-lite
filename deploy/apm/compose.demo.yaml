@@ -1,0 +1,115 @@
+name: bk-lite-apm-demo
+
+x-demo-service: &demo-service
+  build:
+    context: ./demo
+  restart: unless-stopped
+  environment: &demo-environment
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://apm-regional-collector:4318/v1/traces
+    OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+    OTEL_BSP_SCHEDULE_DELAY: "500"
+    OTEL_BSP_EXPORT_TIMEOUT: "5000"
+    APM_DEMO_NAMESPACE: apm-demo-shop
+    APM_DEMO_ENVIRONMENT: local
+    APM_DEMO_VERSION: 1.0.0
+  networks:
+    - apm-data
+    - demo
+  read_only: true
+  tmpfs:
+    - /tmp:size=16m,mode=1777
+  cap_drop: [ALL]
+  security_opt:
+    - no-new-privileges:true
+  healthcheck:
+    test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2).read()"]
+    interval: 5s
+    timeout: 3s
+    retries: 12
+    start_period: 5s
+  mem_limit: 192m
+  cpus: 0.50
+
+services:
+  apm-demo-storefront:
+    <<: *demo-service
+    environment:
+      <<: *demo-environment
+      APM_DEMO_SERVICE: storefront
+      APM_DEMO_VERSION: 1.2.0
+      APM_DEMO_CATALOG_URL: http://apm-demo-catalog:8080
+      APM_DEMO_ORDERS_URL: http://apm-demo-orders:8080
+    depends_on:
+      apm-demo-catalog:
+        condition: service_healthy
+      apm-demo-orders:
+        condition: service_healthy
+    ports:
+      - "${APM_DEMO_STOREFRONT_BIND:-127.0.0.1}:${APM_DEMO_STOREFRONT_PORT:-18081}:8080"
+
+  apm-demo-catalog:
+    <<: *demo-service
+    environment:
+      <<: *demo-environment
+      APM_DEMO_SERVICE: catalog
+      APM_DEMO_VERSION: 1.1.0
+      APM_DEMO_INVENTORY_URL: http://apm-demo-inventory:8080
+    depends_on:
+      apm-demo-inventory:
+        condition: service_healthy
+
+  apm-demo-orders:
+    <<: *demo-service
+    environment:
+      <<: *demo-environment
+      APM_DEMO_SERVICE: orders
+      APM_DEMO_VERSION: 2.1.0
+      APM_DEMO_INVENTORY_URL: http://apm-demo-inventory:8080
+      APM_DEMO_PAYMENT_URL: http://apm-demo-payment:8080
+    depends_on:
+      apm-demo-inventory:
+        condition: service_healthy
+      apm-demo-payment:
+        condition: service_healthy
+
+  apm-demo-inventory:
+    <<: *demo-service
+    environment:
+      <<: *demo-environment
+      APM_DEMO_SERVICE: inventory
+      APM_DEMO_VERSION: 1.3.0
+
+  apm-demo-payment:
+    <<: *demo-service
+    environment:
+      <<: *demo-environment
+      APM_DEMO_SERVICE: payment
+      APM_DEMO_VERSION: 1.0.1
+
+  apm-demo-loadgen:
+    build:
+      context: ./demo
+    command: [python, /app/loadgen.py]
+    restart: unless-stopped
+    environment:
+      APM_DEMO_TARGET: http://apm-demo-storefront:8080
+      APM_DEMO_INTERVAL_SECONDS: "0.35"
+    depends_on:
+      apm-demo-storefront:
+        condition: service_healthy
+    networks:
+      - demo
+    read_only: true
+    tmpfs:
+      - /tmp:size=8m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 96m
+    cpus: 0.25
+
+networks:
+  apm-data:
+    external: true
+    name: bk-lite-apm_default
+  demo:

@@ -11,11 +11,7 @@ from unittest.mock import MagicMock
 import pydantic.root_model  # noqa
 import pytest
 
-from apps.mlops.models.anomaly_detection import (
-    AnomalyDetectionDataset,
-    AnomalyDetectionDatasetRelease,
-    AnomalyDetectionTrainData,
-)
+from apps.mlops.models.anomaly_detection import AnomalyDetectionDataset, AnomalyDetectionDatasetRelease, AnomalyDetectionTrainData
 from apps.mlops.tasks import base as base_mod
 from apps.mlops.tasks.base import (
     DatasetPublishConfig,
@@ -33,9 +29,7 @@ pytestmark = pytest.mark.unit
     ("configured_size", "expected_size"),
     [("0", 1), ("-1", 1), (str(1024**3), 65536)],
 )
-def test_stream_chunk_size_stays_bounded(
-    monkeypatch, configured_size, expected_size
-):
+def test_stream_chunk_size_stays_bounded(monkeypatch, configured_size, expected_size):
     monkeypatch.setenv("MLOPS_STREAM_CHUNK_SIZE", configured_size)
 
     assert base_mod._get_stream_chunk_size() == expected_size
@@ -173,8 +167,14 @@ def test_build_base_metadata_merges_extra_fields():
 def _make_release(status="pending"):
     dataset = AnomalyDetectionDataset.objects.create(name="ds", description="", team=[1])
     return AnomalyDetectionDatasetRelease.objects.create(
-        name="r", description="", dataset=dataset, version="v1",
-        dataset_file="x.zip", status=status, metadata={}, file_size=1,
+        name="r",
+        description="",
+        dataset=dataset,
+        version="v1",
+        dataset_file="x.zip",
+        status=status,
+        metadata={},
+        file_size=1,
     )
 
 
@@ -222,8 +222,14 @@ def _config():
 def test_publish_base_skips_when_already_published(monkeypatch):
     dataset = AnomalyDetectionDataset.objects.create(name="ds", description="", team=[1])
     rel = AnomalyDetectionDatasetRelease.objects.create(
-        name="r", description="", dataset=dataset, version="v1",
-        dataset_file="x.zip", status="published", metadata={}, file_size=1,
+        name="r",
+        description="",
+        dataset=dataset,
+        version="v1",
+        dataset_file="x.zip",
+        status="published",
+        metadata={},
+        file_size=1,
     )
     result = publish_dataset_release_base(_config(), rel.id, 1, 2, 3)
     assert result["result"] is False
@@ -234,8 +240,14 @@ def test_publish_base_skips_when_already_published(monkeypatch):
 def test_publish_base_skips_when_failed(monkeypatch):
     dataset = AnomalyDetectionDataset.objects.create(name="ds", description="", team=[1])
     rel = AnomalyDetectionDatasetRelease.objects.create(
-        name="r", description="", dataset=dataset, version="v1",
-        dataset_file="x.zip", status="failed", metadata={}, file_size=1,
+        name="r",
+        description="",
+        dataset=dataset,
+        version="v1",
+        dataset_file="x.zip",
+        status="failed",
+        metadata={},
+        file_size=1,
     )
     result = publish_dataset_release_base(_config(), rel.id, 1, 2, 3)
     assert result["result"] is False
@@ -246,8 +258,14 @@ def test_publish_base_skips_when_failed(monkeypatch):
 def test_publish_base_full_success(monkeypatch):
     dataset = AnomalyDetectionDataset.objects.create(name="ds", description="", team=[1])
     rel = AnomalyDetectionDatasetRelease.objects.create(
-        name="r", description="", dataset=dataset, version="v1",
-        dataset_file="", status="pending", metadata={}, file_size=0,
+        name="r",
+        description="",
+        dataset=dataset,
+        version="v1",
+        dataset_file="",
+        status="pending",
+        metadata={},
+        file_size=0,
     )
     train = AnomalyDetectionTrainData.objects.create(name="train.csv", dataset=dataset, is_train_data=True)
     val = AnomalyDetectionTrainData.objects.create(name="val.csv", dataset=dataset, is_val_data=True)
@@ -255,10 +273,19 @@ def test_publish_base_full_success(monkeypatch):
 
     # Provide a fake MinIO storage at the module boundary.
     fake_storage = MagicMock()
-    fake_storage.save.return_value = "anomaly_datasets/1/saved.zip"
+    fake_storage.get_available_name.return_value = "anomaly_datasets/1/saved.zip"
+    fake_storage._save.return_value = "anomaly_datasets/1/saved.zip"
     fake_storage.url.return_value = "http://minio.local/saved.zip"
     monkeypatch.setattr(base_mod, "MinioBackend", lambda **kw: fake_storage)
     monkeypatch.setattr(base_mod, "iso_date_prefix", lambda obj, name: f"2020/{name}")
+    recorded_paths = []
+    real_record_path = base_mod.record_dataset_release_object_path
+
+    def capture_recorded_path(*args, **kwargs):
+        recorded_paths.append(args[3])
+        return real_record_path(*args, **kwargs)
+
+    monkeypatch.setattr(base_mod, "record_dataset_release_object_path", capture_recorded_path)
 
     # publish_base fetches each TrainData via objects.get(); wrap that to attach
     # an openable fake FileField returning CSV bytes (3 rows + header).
@@ -282,9 +309,8 @@ def test_publish_base_full_success(monkeypatch):
     assert rel.status == "published"
     assert rel.metadata["train_samples"] == 2  # 3 lines - header
     assert rel.metadata["total_samples"] == 6
-    assert (
-        rel.metadata["sample_count_algorithm"]
-        == "logical_records_v1_legacy_fallback"
-    )
+    assert rel.metadata["sample_count_algorithm"] == "logical_records_v1_legacy_fallback"
     assert rel.dataset_file.name == "anomaly_datasets/1/saved.zip"
-    fake_storage.save.assert_called_once()
+    assert recorded_paths == ["anomaly_datasets/1/saved.zip"]
+    fake_storage._save.assert_called_once()
+    fake_storage.save.assert_not_called()

@@ -1,22 +1,24 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import { Form, Input, message } from 'antd';
+import { Form, Input, Switch, message } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
-import type { Model } from '@/app/opspilot/types/provider';
+import type { Model, ProviderResourceType } from '@/app/opspilot/types/provider';
 
 interface ModelItemModalValues {
   name: string;
   model: string;
   team: number[];
+  is_multimodal?: boolean;
 }
 
 interface ModelItemModalProps {
   visible: boolean;
   mode: 'add' | 'edit';
+  resourceType: ProviderResourceType;
   model?: Model | null;
   confirmLoading?: boolean;
   onOk: (values: ModelItemModalValues) => Promise<void>;
@@ -26,6 +28,7 @@ interface ModelItemModalProps {
 const ModelItemModal: React.FC<ModelItemModalProps> = ({
   visible,
   mode,
+  resourceType,
   model,
   confirmLoading = false,
   onOk,
@@ -34,6 +37,7 @@ const ModelItemModal: React.FC<ModelItemModalProps> = ({
   const [form] = Form.useForm<ModelItemModalValues>();
   const { t } = useTranslation();
   const { selectedGroup } = useUserInfoContext();
+  const showMultimodal = resourceType === 'llm_model';
 
   useEffect(() => {
     if (!visible) {
@@ -45,6 +49,7 @@ const ModelItemModal: React.FC<ModelItemModalProps> = ({
         name: model.name || '',
         model: model.model || model.llm_config?.model || model.embed_config?.model || model.rerank_config?.model || model.ocr_config?.model || '',
         team: model.team || [],
+        is_multimodal: model.is_multimodal ?? true,
       });
       return;
     }
@@ -54,6 +59,7 @@ const ModelItemModal: React.FC<ModelItemModalProps> = ({
       name: '',
       model: '',
       team: selectedGroup ? [Number(selectedGroup.id)] : [],
+      is_multimodal: true,
     });
   }, [form, mode, model, selectedGroup, visible]);
 
@@ -101,7 +107,7 @@ const ModelItemModal: React.FC<ModelItemModalProps> = ({
           name="team"
           label={t('provider.model.availableGroups')}
           rules={[{ required: true, message: t('provider.model.availableGroupsRequired') }]}
-          className="mb-0"
+          className={showMultimodal ? 'mb-4' : 'mb-0'}
         >
           <GroupTreeSelect
             value={form.getFieldValue('team') || []}
@@ -110,6 +116,18 @@ const ModelItemModal: React.FC<ModelItemModalProps> = ({
             multiple
           />
         </Form.Item>
+
+        {showMultimodal ? (
+          <Form.Item
+            name="is_multimodal"
+            label={t('provider.model.multimodal')}
+            valuePropName="checked"
+            className="mb-0"
+            extra={t('provider.model.multimodalHint')}
+          >
+            <Switch />
+          </Form.Item>
+        ) : null}
       </Form>
     </OperateModal>
   );

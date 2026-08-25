@@ -1,7 +1,9 @@
-from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST as AD_PROVIDER_MANIFEST
-from apps.system_mgmt.providers.manifests.feishu import PROVIDER_MANIFEST as FEISHU_PROVIDER_MANIFEST
-from apps.system_mgmt.providers.manifests.wechat import PROVIDER_MANIFEST as WECHAT_PROVIDER_MANIFEST
-from apps.system_mgmt.providers.manifests.wecom import PROVIDER_MANIFEST as WECOM_PROVIDER_MANIFEST
+from apps.system_mgmt.providers.builtin.ad import PROVIDER_MANIFEST as AD_PROVIDER_MANIFEST
+from apps.system_mgmt.providers.builtin.feishu import PROVIDER_MANIFEST as FEISHU_PROVIDER_MANIFEST
+from apps.system_mgmt.providers.builtin.wechat import PROVIDER_MANIFEST as WECHAT_PROVIDER_MANIFEST
+from apps.system_mgmt.providers.builtin.wecom import PROVIDER_MANIFEST as WECOM_PROVIDER_MANIFEST
+
+
 def test_ad_external_field_manifests_expose_both_phone_variants():
     """AD 表单暴露两个可映射的手机号字段。"""
     login_template = AD_PROVIDER_MANIFEST.business_templates["login_auth_form"]
@@ -44,7 +46,7 @@ def test_wecom_manifest_declares_shared_credentials_and_three_capabilities():
         "corp_id", "corp_secret", "agent_id", "access_token_url", "proxy_url",
     ]
     assert {capability.key for capability in WECOM_PROVIDER_MANIFEST.capabilities} == {
-        "login_auth", "user_sync", "im_notification"
+        "login_auth", "user_sync", "im_notification", "im_group"
     }
     assert template.available_external_fields == ["userid"]
     assert template.default_external_match_field == "userid"
@@ -93,11 +95,11 @@ def test_wecom_base_connection_fields_reset_affected_capabilities():
         for field in group.fields
     }
 
-    assert fields["corp_id"].reset_capabilities == ["login_auth", "user_sync", "im_notification"]
-    assert fields["corp_secret"].reset_capabilities == ["login_auth", "user_sync", "im_notification"]
-    assert fields["agent_id"].reset_capabilities == ["login_auth", "user_sync", "im_notification"]
-    assert fields["access_token_url"].reset_capabilities == ["login_auth", "user_sync", "im_notification"]
-    assert fields["proxy_url"].reset_capabilities == ["login_auth", "user_sync", "im_notification"]
+    assert fields["corp_id"].reset_capabilities == ["login_auth", "user_sync", "im_notification", "im_group"]
+    assert fields["corp_secret"].reset_capabilities == ["login_auth", "user_sync", "im_notification", "im_group"]
+    assert fields["agent_id"].reset_capabilities == ["login_auth", "user_sync", "im_notification", "im_group"]
+    assert fields["access_token_url"].reset_capabilities == ["login_auth", "user_sync", "im_notification", "im_group"]
+    assert fields["proxy_url"].reset_capabilities == ["login_auth", "user_sync", "im_notification", "im_group"]
 
 
 def test_wecom_capability_fields_reset_only_their_capability():
@@ -126,7 +128,7 @@ def test_wecom_user_sync_manifest_exposes_recursive_toggle():
     include_child = fields["include_child_departments"]
     assert include_child.field_type == "boolean"
     assert include_child.default is True
-    assert "递归" in include_child.label
+    assert include_child.label == "Include child departments"
 
 
 def test_wecom_connection_templates_prefill_official_endpoints():
@@ -182,8 +184,8 @@ def test_wecom_base_connection_groups_credentials_and_endpoints_separately():
 
     credentials_group = next(group for group in groups if group.key == "credentials")
     endpoints_group = next(group for group in groups if group.key == "endpoints")
-    assert "应用凭证" in credentials_group.title
-    assert "公共接口" in endpoints_group.title
+    assert credentials_group.title == "App credentials"
+    assert endpoints_group.title == "Public endpoints"
 
     credentials_keys = {field.key for field in credentials_group.fields}
     endpoints_keys = {field.key for field in endpoints_group.fields}
@@ -199,7 +201,7 @@ def test_wecom_credential_fields_carry_placeholders_or_help_text():
     )
     fields = {field.key: field for field in credentials_group.fields}
     assert fields["corp_id"].placeholder == "ww1234567890abcdef"
-    assert fields["corp_id"].help_text == "企业微信管理后台 → 我的企业 → 企业信息 → 企业 ID"
-    assert fields["corp_secret"].placeholder == "如无需变更可留空"
+    assert fields["corp_id"].help_text == "WeCom Admin → My Company → Company Information → Corp ID"
+    assert fields["corp_secret"].placeholder == "Leave blank if unchanged"
     assert fields["agent_id"].placeholder == "1000002"
-    assert fields["agent_id"].help_text == "企业微信管理后台 → 应用管理 → 自建应用 → AgentId"
+    assert fields["agent_id"].help_text == "WeCom Admin → App Management → Self-built App → AgentId"

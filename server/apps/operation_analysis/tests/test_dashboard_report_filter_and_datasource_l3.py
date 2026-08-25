@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 from django.db import OperationalError
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.models.models import Dashboard, Directory
@@ -142,9 +143,31 @@ def test_normalize_static_and_dynamic_kinds():
     assert snap["entries"]["custom_period"]["value_kind"] == VALUE_KIND_STATIC
 
 
-def test_normalize_string_list_filter_values():
+def test_normalize_string_multiple_filter_values():
     snap = normalize_applied_filter_values(
         {"hosts": ["host-a", "host-b"]},
+        dashboard_filters=[
+            {
+                "id": "hosts",
+                "key": "instance_ids",
+                "type": "string",
+                "inputConfig": {
+                    "control": "select",
+                    "multiple": True,
+                    "optionsSource": {"type": "static", "staticItems": []},
+                },
+            }
+        ],
+    )
+    assert snap["entries"]["hosts"] == {
+        "value_kind": VALUE_KIND_STATIC,
+        "value": ["host-a", "host-b"],
+    }
+
+
+def test_normalize_legacy_string_list_filter_values_read_compat():
+    snap = normalize_applied_filter_values(
+        {"hosts": ["host-a"]},
         dashboard_filters=[
             {
                 "id": "hosts",
@@ -153,10 +176,21 @@ def test_normalize_string_list_filter_values():
             }
         ],
     )
-    assert snap["entries"]["hosts"] == {
-        "value_kind": VALUE_KIND_STATIC,
-        "value": ["host-a", "host-b"],
-    }
+    assert snap["entries"]["hosts"]["value"] == ["host-a"]
+
+
+def test_normalize_string_without_multiple_rejects_list():
+    with pytest.raises(ValidationError):
+        normalize_applied_filter_values(
+            {"env": ["a", "b"]},
+            dashboard_filters=[
+                {
+                    "id": "env",
+                    "key": "env",
+                    "type": "string",
+                }
+            ],
+        )
 
 
 def test_resolve_last_7_days_differs_by_scheduled_time():

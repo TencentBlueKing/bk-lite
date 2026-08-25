@@ -1302,6 +1302,7 @@ const StrategyOperation = () => {
             <div className="flex flex-col flex-1 min-w-[400px]">
               <VariablesTable
                 displayFields={currentMonitorObject?.display_fields}
+                groupBy={sanitizeGroupBy(metricRows[0]?.groupBy || groupBy)}
                 onVariableSelect={(variable: string) => {
                   basicInfoFormRef.current?.insertVariable(variable);
                 }}
@@ -1343,14 +1344,14 @@ const StrategyOperation = () => {
           </Button>
             {isCreateFlow && templateSavedOnce ? (
             <Button onClick={goBack}>{t('common.back')}</Button>
-          ) : (
+            ) : (
             <>
               <Button loading={templateSaving} onClick={() => void saveTemplate()}>
                 {t('monitor.events.saveTemplate', '保存模版')}
               </Button>
               <Button onClick={goBack}>{t('common.cancel')}</Button>
             </>
-          )}
+            )}
         </div>
       </div>
       <SelectAssets

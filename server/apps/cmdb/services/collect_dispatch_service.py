@@ -86,7 +86,7 @@ class CollectDispatchService:
                     target = target_map[attempt.object_key]
                     snapshot = CollectTargetService.build_target_snapshot(target)
                     if attempt.success:
-                        logger.info(
+                        logger.debug(
                             "[CollectDispatch] 凭据尝试成功 task_id=%s object_key=%s credential_id=%s",
                             task.id,
                             attempt.object_key,
@@ -128,7 +128,17 @@ class CollectDispatchService:
 
             pending_object_keys = list(dict.fromkeys(next_pending))
 
-        return cls.merge_attempt_results(task, attempts)
+        success_count = sum(attempt.success for attempt in attempts)
+        merged_result = cls.merge_attempt_results(task, attempts)
+        logger.info(
+            "[CollectDispatch] 任务派发完成 task_id=%s target_count=%s attempt_count=%s success_count=%s failure_count=%s",
+            task.id,
+            len(targets),
+            len(attempts),
+            success_count,
+            len(attempts) - success_count,
+        )
+        return merged_result
 
     @classmethod
     def plan_dispatch(cls, task, targets, pool, states) -> dict[str, list[CanonicalCollectTarget]]:

@@ -10,7 +10,7 @@ import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import { Form, Spin, message } from 'antd';
 import {
-  CLOUD_FORM_INITIAL_VALUES,
+  getCloudFormInitialValues,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
 import { formatTaskValues, normalizeCredentialPool, trimFormString } from '../hooks/formatTaskValues';
@@ -56,6 +56,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
   const baseRef = useRef<BaseTaskRef>(null as any);
   const { model_id: modelId } = modelItem;
   const cloudCredentialConfig = getCloudCredentialConfig(modelId);
+  const cloudFormInitialValues = getCloudFormInitialValues(modelItem.default_timeout);
   const [regions, setRegions] = useState<RegionItem[]>([]);
   const [loadingRegions, setLoadingRegions] = useState(false);
   const collectApi = useCollectApi();
@@ -71,7 +72,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
   } = useTaskForm({
     modelId,
     editId,
-    initialValues: CLOUD_FORM_INITIAL_VALUES,
+    initialValues: cloudFormInitialValues,
     onSuccess,
     onClose,
     formatValues: (values) => {
@@ -273,7 +274,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
         }
       } else {
         form.setFieldsValue({
-          ...CLOUD_FORM_INITIAL_VALUES,
+          ...cloudFormInitialValues,
           credentialPool: [{ accessKey: '', accessSecret: '', regionId: '' }],
         });
       }
@@ -306,7 +307,7 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
         {...collectionFormLayout}
         form={form}
         onFinish={onFinish}
-        initialValues={CLOUD_FORM_INITIAL_VALUES}
+        initialValues={cloudFormInitialValues}
       >
         <BaseTaskForm
           ref={baseRef}
@@ -316,8 +317,9 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
           submitLoading={submitLoading}
           instPlaceholder={`${t('Collection.cloudTask.cloudAccount')}`}
           timeoutProps={{
-            min: 0,
-            defaultValue: 600,
+            min: 1,
+            max: 86400,
+            defaultValue: cloudFormInitialValues.timeout,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

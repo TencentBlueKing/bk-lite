@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "OperationAnalysis 订阅报告执行数据流",
+    "output": "operation-analysis-report.dataflow.html",
+    "quality_profile": "showcase",
+    "viewBox": [1460, 720],
+    "views": [
+      {"id": "schedule", "label": "计划与快照", "focus": ["scanner", "execution", "snapshot"], "note": "到期扫描创建唯一 scheduled Execution，并冻结创建者、组织、筛选值和计划信息。"},
+      {"id": "render", "label": "渲染与实时取数", "focus": ["snapshot", "browser", "query", "sources"], "note": "Render Snapshot 冻结画布和 widget manifest；浏览器仍按当前 DataSource/Connection 执行外部查询。"},
+      {"id": "deliver", "label": "产物与投递", "focus": ["browser", "artifact", "smtp"], "note": "PDF 产物可复用；SMTP 结果区分 delivered、unknown 和 failed，但执行 claim 无 token。"}
+    ]
+  },
+  "stages": [{"label": "01 / 到期发现"}, {"label": "02 / 执行身份"}, {"label": "03 / 不可变快照"}, {"label": "04 / 浏览器渲染"}, {"label": "05 / 外部副作用"}],
+  "nodes": [
+    {"id": "scanner", "type": "messagebus", "label": "Due Scanner", "sublabel": "active + next_run_at ≤ now", "stage": 0, "row": 2, "width": 150, "tag": "batch 50"},
+    {"id": "execution", "type": "database", "label": "Execution Claim", "sublabel": "pending → running / attempt", "stage": 1, "row": 2, "width": 160, "tag": "无 fencing token"},
+    {"id": "snapshot", "type": "security", "label": "Snapshot Bundle", "sublabel": "filter + canvas + widget manifest", "stage": 2, "row": 2, "width": 170, "tag": "不含 query plan"},
+    {"id": "browser", "type": "backend", "label": "Chromium Session", "sublabel": "one-time token + report-ready", "stage": 3, "row": 2, "width": 165, "tag": "同步重试"},
+    {"id": "query", "type": "backend", "label": "Live DataSource Query", "sublabel": "current config / per widget", "stage": 3, "row": 4, "width": 165, "tag": "结果可漂移"},
+    {"id": "sources", "type": "external", "label": "NATS / DB / API / WeOps", "sublabel": "live facts", "stage": 4, "row": 4, "width": 170, "tag": "无共享预算"},
+    {"id": "artifact", "type": "database", "label": "PDF Artifact", "sublabel": "sha256 + expiry + shared path", "stage": 4, "row": 2, "width": 170, "tag": "可复用"},
+    {"id": "smtp", "type": "external", "label": "SMTP Outcome", "sublabel": "delivered / unknown / failed", "stage": 4, "row": 0, "width": 170, "tag": "终态仲裁"}
+  ],
+  "flows": [
+    {"id": "scanner_execution", "from": "scanner", "to": "execution", "label": "due slot", "variant": "emphasis", "route": "straight"},
+    {"id": "execution_snapshot", "from": "execution", "to": "snapshot", "label": "create run", "variant": "security", "route": "straight", "labelAt": [420, 428]},
+    {"id": "snapshot_browser", "from": "snapshot", "to": "browser", "label": "frozen input", "variant": "emphasis", "route": "straight", "labelAt": [639, 428]},
+    {"id": "browser_artifact", "from": "browser", "to": "artifact", "label": "PDF bytes", "variant": "emphasis", "route": "straight", "labelAt": [851, 428]},
+    {"id": "browser_query", "from": "browser", "to": "query", "label": "widget calls", "variant": "security"},
+    {"id": "query_sources", "from": "query", "to": "sources", "label": "live rows", "variant": "default", "route": "straight", "labelAt": [851, 656]},
+    {"id": "artifact_smtp", "from": "artifact", "to": "smtp", "label": "SMTP submit", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "快照和终态事实较完整", "items": ["scheduled/request id 唯一、输入快照与渲染快照不可变；Render Token 一次消费且限定 execution、snapshot、attempt 和接口清单", "PDF 有内容摘要与到期清理；SMTP delivered/unknown 与 Execution status 分开保存并可收敛"]},
+    {"dot": "rose", "title": "同一 Execution 的查询语义不稳定", "items": ["Snapshot 冻结 datasource id，不冻结 DataSource/Connection/query_config/transform generation；编辑或删除数据源会改变重试结果", "执行超时可把 running 收敛为终态，但旧 worker 无 token fencing，仍可能继续渲染或进入外部投递"]},
+    {"dot": "amber", "title": "同步重试和每任务浏览器占用容量", "items": ["Orchestrator 最多 3 次 retry 在同一 Celery task 内紧循环，无退避、持久 retry_at 或独立 step work item", "浏览器内每个 widget 查询当前数据源；缺少按团队/Execution/Connector 的 query count、bytes、duration 和并发预算"]}
+  ]
+}

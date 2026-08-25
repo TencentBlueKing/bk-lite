@@ -111,3 +111,21 @@ export const getDefaultProtocolType = (vendorType: VendorType): ProtocolType => 
 export const supportsProtocolSelection = (vendorType: VendorType): boolean => {
   return vendorType === 'deepseek' || vendorType === 'other';
 };
+
+/** 支持从供应商 /models 同步的类型（与后端 SYNC_SUPPORTED_VENDOR_TYPES 对齐；anthropic 除外） */
+export const SYNC_SUPPORTED_VENDOR_TYPES: VendorType[] = [
+  'openai',
+  'azure',
+  'aliyun',
+  'zhipu',
+  'baidu',
+  'deepseek',
+  'other',
+];
+
+export const isVendorSyncSupported = (vendorType?: VendorType | string | null): boolean => {
+  if (!vendorType || vendorType === 'anthropic') {
+    return false;
+  }
+  return SYNC_SUPPORTED_VENDOR_TYPES.includes(vendorType as VendorType);
+};

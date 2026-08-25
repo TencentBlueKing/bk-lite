@@ -4,7 +4,14 @@ from unittest.mock import patch
 
 import pytest
 
-from apps.system_mgmt.providers.adapters.feishu import FeishuUserSyncAdapter
+from apps.system_mgmt.providers.builtin.feishu.adapters.user_sync import FeishuUserSyncAdapter
+
+
+def test_normalize_business_config_drops_deprecated_fetch_child():
+    normalized = FeishuUserSyncAdapter.normalize_business_config(
+        {"root_department_id": "0", "fetch_child": False}
+    )
+    assert normalized == {"root_department_id": "0"}
 
 
 class _FeishuResponse:
@@ -20,6 +27,74 @@ class _FeishuResponse:
         return {"code": 0, "data": self.data or {"items": self.items, "has_more": False}}
 
 
+class _FeishuDeniedResponse:
+    status_code = 200
+    headers = {"X-Tt-Logid": "denied"}
+
+    @staticmethod
+    def json():
+        return {"code": 40004, "msg": "no permission"}
+
+
+def test_list_departments_builds_company_root_tree_when_root_children_succeed():
+    requested_urls = []
+
+    def get_contact_data(url, **kwargs):
+        requested_urls.append(url)
+        if url.endswith("/departments/0/children"):
+            assert kwargs["params"]["department_id_type"] == "department_id"
+            assert kwargs["params"]["fetch_child"] == "true"
+            return _FeishuResponse(
+                [
+                    {"department_id": "dept-a", "name": "研发部", "parent_department_id": "0"},
+                    {"department_id": "dept-a1", "name": "后端组", "parent_department_id": "dept-a"},
+                ],
+                request_id="root-children",
+            )
+        raise AssertionError(url)
+
+    with patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
+        result = FeishuUserSyncAdapter.list_departments(
+            {},
+            "feishu",
+            "user_sync",
+            business_config={"department_id_type": "open_department_id"},
+        )
+
+    assert result.success is True
+    assert result.payload["items"] == [
+        {
+            "id": "0",
+            "name": "根组织",
+            "parent_id": None,
+            "children": [
+                {
+                    "id": "dept-a",
+                    "name": "研发部",
+                    "parent_id": "0",
+                    "children": [
+                        {
+                            "id": "dept-a1",
+                            "name": "后端组",
+                            "parent_id": "dept-a",
+                            "children": [],
+                            "selectable": True,
+                        }
+                    ],
+                    "selectable": True,
+                }
+            ],
+            "selectable": True,
+        }
+    ]
+    assert result.payload["external_request_id"] == "root-children"
+    assert all(not url.endswith("/scopes") for url in requested_urls)
+    assert all(not url.endswith("/departments/batch") for url in requested_urls)
+
+
 def test_list_departments_builds_visible_forest_from_paginated_scopes():
     requested_urls = []
     requested_params = []
@@ -27,6 +102,8 @@ def test_list_departments_builds_visible_forest_from_paginated_scopes():
     def get_contact_data(url, **kwargs):
         requested_urls.append(url)
         requested_params.append(kwargs.get("params") or {})
+        if url.endswith("/departments/0/children"):
+            return _FeishuDeniedResponse()
         if url.endswith("/scopes"):
             if kwargs["params"].get("page_token") == "scope-page-2":
                 return _FeishuResponse(
@@ -59,9 +136,9 @@ def test_list_departments_builds_visible_forest_from_paginated_scopes():
         raise AssertionError(url)
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.list_departments(
             {},
             "feishu",
@@ -92,7 +169,8 @@ def test_list_departments_builds_visible_forest_from_paginated_scopes():
         ]
     assert result.payload["external_request_id"] == "children-last"
     assert result.payload["server_timing"].startswith("feishu-token;dur=")
-    assert all("/departments/0/children" not in url for url in requested_urls)
+    assert "feishu-company-root;dur=" in result.payload["server_timing"]
+    assert any(url.endswith("/departments/0/children") for url in requested_urls)
     assert sum(url.endswith("/departments/batch") for url in requested_urls) == 1
     assert all("/departments/dept-a" not in url or url.endswith("/children") for url in requested_urls)
     assert all(params["department_id_type"] == "department_id" for params in requested_params)
@@ -103,17 +181,24 @@ def test_list_departments_builds_visible_forest_from_paginated_scopes():
         for url, params in zip(requested_urls, requested_params)
         if url.endswith("/children")
     ]
-    assert [url.rsplit("/", 2)[-2] for url, _params in children_requests] == ["dept-a", "dept-a1", "dept-b"]
+    assert [url.rsplit("/", 2)[-2] for url, _params in children_requests] == ["0", "dept-a", "dept-a1", "dept-b"]
     assert all(params["fetch_child"] == "true" for _url, params in children_requests)
 
 
 def test_list_departments_returns_empty_list_for_empty_scopes():
+    def get_contact_data(url, **kwargs):
+        if url.endswith("/departments/0/children"):
+            return _FeishuDeniedResponse()
+        if url.endswith("/scopes"):
+            return _FeishuResponse(data={"department_ids": [], "has_more": False}, request_id="scope-empty")
+        raise AssertionError(url)
+
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
-        return_value=_FeishuResponse(data={"department_ids": [], "has_more": False}, request_id="scope-empty"),
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get",
+        side_effect=get_contact_data,
     ) as get:
         result = FeishuUserSyncAdapter.list_departments({}, "feishu", "user_sync")
 
@@ -125,41 +210,36 @@ def test_list_departments_returns_empty_list_for_empty_scopes():
 
 
 def test_list_departments_exposes_stage_timings_for_department_options():
+    def get_contact_data(url, **kwargs):
+        if url.endswith("/departments/0/children"):
+            return _FeishuDeniedResponse()
+        if url.endswith("/scopes"):
+            return _FeishuResponse(data={"department_ids": [], "has_more": False})
+        raise AssertionError(url)
+
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
     ), patch(
-        "apps.system_mgmt.providers.adapters.feishu.requests.get",
-        return_value=_FeishuResponse(data={"department_ids": [], "has_more": False}),
-    ), patch(
-        "apps.system_mgmt.providers.adapters.feishu.time.perf_counter",
-        side_effect=[
-            100.0,
-            100.1,
-            100.2,
-            100.3,
-            100.4,
-            100.5,
-            100.8,
-            100.8,
-            100.8,
-            100.8,
-            100.8,
-            100.9,
-        ],
+        "apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get",
+        side_effect=get_contact_data,
     ):
         result = FeishuUserSyncAdapter.list_departments({}, "feishu", "user_sync")
 
-    assert result.payload["server_timing"] == (
-        "feishu-token;dur=100, feishu-scopes;dur=500, feishu-root-details;dur=0, "
-        "feishu-children;dur=0, feishu-total;dur=900"
-    )
+    assert "feishu-token;dur=" in result.payload["server_timing"]
+    assert "feishu-company-root;dur=" in result.payload["server_timing"]
+    assert "feishu-scopes;dur=" in result.payload["server_timing"]
+    assert "feishu-root-details;dur=" in result.payload["server_timing"]
+    assert "feishu-children;dur=" in result.payload["server_timing"]
+    assert "feishu-total;dur=" in result.payload["server_timing"]
 
 
 def test_list_departments_fetches_authorized_root_children_concurrently():
     children_barrier = Barrier(3)
 
     def get_contact_data(url, **kwargs):
+        if url.endswith("/departments/0/children"):
+            return _FeishuDeniedResponse()
         if url.endswith("/scopes"):
             return _FeishuResponse(
                 data={"department_ids": ["dept-a", "dept-b", "dept-c"], "has_more": False}
@@ -181,9 +261,9 @@ def test_list_departments_fetches_authorized_root_children_concurrently():
         raise AssertionError(url)
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.list_departments({}, "feishu", "user_sync")
 
     assert result.success is True
@@ -195,6 +275,8 @@ def test_list_departments_ignores_synthetic_scope_roots():
 
     def get_contact_data(url, **kwargs):
         requested_urls.append(url)
+        if url.endswith("/departments/0/children"):
+            return _FeishuDeniedResponse()
         if url.endswith("/scopes"):
             return _FeishuResponse(data={"department_ids": ["", "0", "__all__", "**all**", "dept-a"], "has_more": False})
         if url.endswith("/departments/batch"):
@@ -204,20 +286,22 @@ def test_list_departments_ignores_synthetic_scope_roots():
         raise AssertionError(url)
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.list_departments({}, "feishu", "user_sync")
 
     assert result.success is True
     assert [item["id"] for item in result.payload["items"]] == ["dept-a"]
-    assert all("/departments/0" not in url for url in requested_urls)
+    assert any(url.endswith("/departments/0/children") for url in requested_urls)
     assert all("/departments/__all__" not in url for url in requested_urls)
     assert all("/departments/**all**" not in url for url in requested_urls)
 
 
 def test_list_departments_breaks_parent_cycles_without_losing_nodes():
     def get_contact_data(url, **kwargs):
+        if url.endswith("/departments/0/children"):
+            return _FeishuDeniedResponse()
         if url.endswith("/scopes"):
             return _FeishuResponse(data={"department_ids": ["self", "cycle-a", "cycle-b"], "has_more": False})
         details = {
@@ -233,9 +317,9 @@ def test_list_departments_breaks_parent_cycles_without_losing_nodes():
         raise AssertionError(url)
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.list_departments({}, "feishu", "user_sync")
 
     assert result.success is True
@@ -255,6 +339,8 @@ def test_list_departments_breaks_parent_cycles_without_losing_nodes():
 
 def test_list_departments_breaks_only_cycle_entry_edge_for_chain_entering_cycle():
     def get_contact_data(url, **kwargs):
+        if url.endswith("/departments/0/children"):
+            return _FeishuDeniedResponse()
         if url.endswith("/scopes"):
             return _FeishuResponse(data={"department_ids": ["chain-x", "cycle-a", "cycle-b"], "has_more": False})
         details = {
@@ -270,9 +356,9 @@ def test_list_departments_breaks_only_cycle_entry_edge_for_chain_entering_cycle(
         raise AssertionError(url)
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.list_departments({}, "feishu", "user_sync")
 
     assert result.success is True
@@ -290,13 +376,13 @@ def test_list_departments_breaks_only_cycle_entry_edge_for_chain_entering_cycle(
     ]
 
 
-@pytest.mark.parametrize("root_department_id", ["", "0", "__all__", "**all**"])
+@pytest.mark.parametrize("root_department_id", ["", "__all__", "**all**"])
 def test_sync_users_rejects_invalid_inherited_root_before_contact_request(root_department_id):
     source = SimpleNamespace(name="飞书测试", business_config={"root_department_id": root_department_id})
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
-    ) as fetch_token, patch("apps.system_mgmt.providers.adapters.feishu.requests.get") as get:
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
+    ) as fetch_token, patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get") as get:
         result = FeishuUserSyncAdapter.sync_users({}, "feishu", "user_sync", source=source)
 
     assert result.success is False
@@ -304,6 +390,44 @@ def test_sync_users_rejects_invalid_inherited_root_before_contact_request(root_d
     assert result.errors[0].field == "root_department_id"
     fetch_token.assert_not_called()
     get.assert_not_called()
+
+
+def test_sync_users_includes_company_root_direct_members():
+    source = SimpleNamespace(
+        name="飞书测试",
+        business_config={"root_department_id": "0", "department_id_type": "open_department_id"},
+    )
+    requested = []
+
+    def get_contact_data(url, **kwargs):
+        requested.append({"url": url, "params": dict(kwargs.get("params") or {})})
+        if url.endswith("/departments/0/children"):
+            return _FeishuResponse(
+                [{"department_id": "dept-a", "parent_department_id": "0", "name": "研发部"}]
+            )
+        department_id = kwargs["params"]["department_id"]
+        users = {
+            "0": [{"user_id": "root-user", "name": "根组织用户", "department_ids": ["0"]}],
+            "dept-a": [{"user_id": "dept-user", "name": "部门用户", "department_ids": ["dept-a"]}],
+        }
+        return _FeishuResponse(users[department_id])
+
+    with patch(
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
+        return_value=("tenant-token", None),
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
+        result = FeishuUserSyncAdapter.sync_users({}, "feishu", "user_sync", source=source)
+
+    assert result.success is True
+    assert [item["user_id"] for item in result.payload["user_list"]] == ["root-user", "dept-user"]
+    assert result.payload["group_list"] == [
+        {"id": "dept-a", "parent_id": "0", "name": "研发部"},
+    ]
+    children_call = next(item for item in requested if item["url"].endswith("/departments/0/children"))
+    assert children_call["params"]["department_id_type"] == "department_id"
+    user_calls = [item for item in requested if "find_by_department" in item["url"]]
+    assert [item["params"]["department_id"] for item in user_calls] == ["0", "dept-a"]
+    assert all(item["params"]["department_id_type"] == "department_id" for item in user_calls)
 
 
 def test_sync_users_includes_users_in_recursively_discovered_departments():
@@ -334,9 +458,9 @@ def test_sync_users_includes_users_in_recursively_discovered_departments():
         return _FeishuResponse(users[department_id])
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.sync_users({}, "feishu", "user_sync", source=source)
 
     assert result.success is True
@@ -365,9 +489,9 @@ def test_sync_users_deduplicates_users_returned_by_multiple_departments():
         )
 
     with patch(
-        "apps.system_mgmt.providers.adapters.feishu._fetch_tenant_access_token",
+        "apps.system_mgmt.providers.builtin.feishu.adapters.user_sync._fetch_tenant_access_token",
         return_value=("tenant-token", None),
-    ), patch("apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=get_contact_data):
+    ), patch("apps.system_mgmt.providers.builtin.feishu.adapters.client.requests.get", side_effect=get_contact_data):
         result = FeishuUserSyncAdapter.sync_users({}, "feishu", "user_sync", source=source)
 
     assert result.success is True

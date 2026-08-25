@@ -532,9 +532,11 @@ class ChatService:
         extra_config = {"show_think": show_think}
 
         user_message, image_data = history_service.process_user_message_and_images(kwargs["user_message"])
+        if image_data:
+            extra_config["current_image_data"] = image_data
 
-        # 处理聊天历史
-        chat_history = history_service.process_chat_history(kwargs["chat_history"], kwargs.get("conversation_window_size", 10), image_data)
+        # 处理聊天历史（当前轮图片不进 history，避免空文本+附图被当成上一轮）
+        chat_history = history_service.process_chat_history(kwargs["chat_history"], kwargs.get("conversation_window_size", 10), [])
 
         # 处理 skill_params: 解密并替换 prompt 中的 {{key}} 占位符
         resolved_prompt = resolve_skill_params(kwargs["skill_prompt"], kwargs.get("skill_params", []))

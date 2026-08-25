@@ -4,15 +4,12 @@
 提供登录日志记录功能
 """
 
-import logging
 import re
 
 import httpx
-from ipware import get_client_ip
-
+from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import UserLoginLog
-
-logger = logging.getLogger(__name__)
+from ipware import get_client_ip
 
 
 def parse_user_agent(user_agent):

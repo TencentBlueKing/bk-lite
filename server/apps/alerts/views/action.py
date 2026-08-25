@@ -6,14 +6,6 @@ ActionRuleViewSet: ActionRule 的 CRUD REST 视图集。
 """
 
 import hashlib
-import logging
-
-from django.db import transaction
-from rest_framework import status, viewsets
-from rest_framework.decorators import action
-from rest_framework.permissions import AllowAny
-from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from apps.alerts.action.handlers.registry import get_handler
 from apps.alerts.constants.constants import LogAction, LogTargetType
@@ -28,11 +20,16 @@ from apps.alerts.utils.permission_scope import (
     get_current_team_from_request,
 )
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import alert_logger as logger
 from apps.job_mgmt.utils.callback_signer import verify_callback_signature
 from apps.rpc.job_mgmt import JobMgmt
 from config.drf.viewsets import ModelViewSet
-
-logger = logging.getLogger(__name__)
+from django.db import transaction
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 
 def verify_job_signature(request) -> bool:

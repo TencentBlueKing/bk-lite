@@ -36,10 +36,13 @@ import CatalogState, {
   catalogErrorKind,
   type CatalogStateKind,
 } from '@/app/apm/components/catalog-state';
+import { DEPLOYMENT_LOOKBACK_MS, DEPLOYMENT_STATUS_META } from '@/app/apm/components/deployment-status';
 import HealthDot from '@/app/apm/components/health-dot';
+import { StatusPill } from '@/app/apm/components/home/section-card';
 import {
   deriveHealth,
   formatClockTime,
+  formatDateTime,
   formatErrorRate,
   formatLatency,
   formatNumber,
@@ -50,6 +53,7 @@ import {
   isErrorRateDanger,
 } from '@/app/apm/components/metric-format';
 import type {
+  ApmDeploymentEvent,
   ApmService,
   ApmServiceEndpointRed,
   ApmServiceRed,
@@ -119,6 +123,7 @@ export default function ApmServiceDetailPage() {
     getTraces,
     getTopology,
     getSlos,
+    getDeployments,
     setServiceArchived,
     isLoading: authLoading,
   } = useApmApi();
@@ -136,6 +141,8 @@ export default function ApmServiceDetailPage() {
   const [upstream, setUpstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [downstream, setDownstream] = useState<{ node: ApmTopologyNode; edge: ApmTopologyEdge }[]>([]);
   const [serviceSlos, setServiceSlos] = useState<ApmSlo[]>([]);
+  const [deployments, setDeployments] = useState<ApmDeploymentEvent[]>([]);
+  const [deploymentsState, setDeploymentsState] = useState<PageState>('loading');
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
@@ -242,6 +249,32 @@ export default function ApmServiceDetailPage() {
     };
   }, [authLoading, environment, getSlos, getTopology, getTraces, refreshKey, service, timeRange]);
 
+  useEffect(() => {
+    if (authLoading || !params.serviceId || activeTab !== 'deployments') return;
+    let active = true;
+    setDeploymentsState('loading');
+    const endedAt = new Date();
+    const startedAt = new Date(endedAt.getTime() - DEPLOYMENT_LOOKBACK_MS);
+    getDeployments({
+      service_id: params.serviceId,
+      page: 1,
+      page_size: 100,
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString(),
+    })
+      .then((result) => {
+        if (!active) return;
+        setDeployments(result.items);
+        setDeploymentsState(result.items.length ? 'ready' : 'empty');
+      })
+      .catch((error) => {
+        if (active) setDeploymentsState(catalogErrorKind(error));
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeTab, authLoading, getDeployments, params.serviceId, refreshKey]);
+
   const exploreHref = service && red
     ? `/apm/explore/traces?${new URLSearchParams({
       service_namespace: service.namespace,
@@ -309,16 +342,6 @@ export default function ApmServiceDetailPage() {
 
   const traceColumns: TableColumnsType<ApmTraceSummary> = [
     {
-      title: t('apm.explore.entryService', '入口服务'),
-      key: 'service',
-      render: (_, item) => (
-        <span className="flex min-w-0 items-center gap-1.5">
-          <HealthDot level={item.status === 'error' ? 1 : 5} />
-          <span className="truncate text-sm font-medium">{item.service_name}</span>
-        </span>
-      ),
-    },
-    {
       title: t('apm.explore.traceId', 'Trace ID'),
       dataIndex: 'trace_id',
       width: APM_TABLE_COLUMN_WIDTHS.traceId,
@@ -332,10 +355,24 @@ export default function ApmServiceDetailPage() {
       ),
     },
     {
+      title: t('apm.explore.entryService', '入口服务'),
+      key: 'service',
+      width: APM_TABLE_COLUMN_WIDTHS.entryService,
+      ellipsis: true,
+      render: (_, item) => (
+        <span className="flex min-w-0 items-center gap-1.5">
+          <HealthDot level={item.status === 'error' ? 1 : 5} />
+          <span className="truncate text-sm font-medium">{item.service_name}</span>
+        </span>
+      ),
+    },
+    {
       title: t('apm.explore.resource', '资源'),
       dataIndex: 'root_span_name',
+      width: APM_TABLE_COLUMN_WIDTHS.resource,
+      ellipsis: true,
       responsive: ['md'],
-      render: (value) => <span className="font-mono text-xs">{value}</span>,
+      render: (value) => <span className="truncate font-mono text-xs">{value}</span>,
     },
     {
       title: t('apm.explore.totalDuration', '总耗时'),
@@ -371,7 +408,59 @@ export default function ApmServiceDetailPage() {
       width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
       responsive: ['xl'],
       render: (value: string) => (
-        <span className="text-xs tabular-nums text-[var(--color-text-3)]">{formatRelativeTime(value, t)}</span>
+        <span className="text-xs tabular-nums text-[var(--color-text-3)]" title={formatDateTime(value)}>
+          {formatRelativeTime(value, t)}
+        </span>
+      ),
+    },
+  ];
+
+  const deploymentColumns: TableColumnsType<ApmDeploymentEvent> = [
+    {
+      title: t('apm.deployments.version', '版本'),
+      dataIndex: 'version',
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
+      render: (value: string) => (
+        <span className="rounded bg-[var(--color-bg)] px-1.5 py-px font-mono text-[11px] text-[var(--color-text-3)]">
+          {value}
+        </span>
+      ),
+    },
+    {
+      title: t('apm.common.environment', '环境'),
+      dataIndex: 'environment',
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
+      render: (value: string) => value || t('apm.common.unset', '未设置'),
+    },
+    {
+      title: t('apm.deployments.deployedAt', '发布时间'),
+      dataIndex: 'deployed_at',
+      width: APM_TABLE_COLUMN_WIDTHS.relativeTime,
+      render: (value: string) => (
+        <span className="tabular-nums" title={formatDateTime(value)}>
+          {formatRelativeTime(value, t)}
+        </span>
+      ),
+    },
+    {
+      title: t('apm.common.status', '状态'),
+      dataIndex: 'status',
+      width: APM_TABLE_COLUMN_WIDTHS.status,
+      render: (value: ApmDeploymentEvent['status']) => {
+        const meta = DEPLOYMENT_STATUS_META[value] ?? DEPLOYMENT_STATUS_META.success;
+        return <StatusPill label={t(meta.labelKey, meta.fallback)} tone={meta.tone} />;
+      },
+    },
+    {
+      title: t('apm.deployments.source', '来源'),
+      dataIndex: 'source',
+      width: APM_TABLE_COLUMN_WIDTHS.status,
+      render: (value: ApmDeploymentEvent['source']) => (
+        <Tag bordered={false}>
+          {value === 'reported'
+            ? t('apm.deployments.sourceReported', '上报')
+            : t('apm.deployments.sourceInferred', '推断')}
+        </Tag>
       ),
     },
   ];
@@ -733,10 +822,26 @@ export default function ApmServiceDetailPage() {
                 key: 'deployments',
                 label: t('apm.serviceDetail.deploy', '部署'),
                 children: (
-                  <ApmSurface className="py-16 text-center">
-                    <Typography.Text type="secondary">
-                      {t('apm.serviceDetail.deployEmpty', '部署事件将在发布埋点接入后展示；当前可先通过版本与 Trace 属性排查变更。')}
+                  <ApmSurface>
+                    <Typography.Text type="secondary" className="mb-3 block">
+                      {t('apm.serviceDetail.deployHint', '由遥测推断的发布记录')}
                     </Typography.Text>
+                    {deploymentsState === 'ready' ? (
+                      <ApmDataTable
+                        columns={deploymentColumns}
+                        dataSource={deployments}
+                        pagination={false}
+                        rowKey="id"
+                      />
+                    ) : deploymentsState === 'empty' ? (
+                      <CompactEmptyState description={t('apm.serviceDetail.deployEmpty', '近 90 天未观测到版本变化')} />
+                    ) : (
+                      <CatalogState
+                        compact
+                        kind={deploymentsState}
+                        onRetry={deploymentsState === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)}
+                      />
+                    )}
                   </ApmSurface>
                 ),
               },

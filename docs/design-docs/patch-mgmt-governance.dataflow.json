@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "PatchMgmt 治理与恢复数据流",
+    "output": "patch-mgmt-governance.dataflow.html",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 760],
+    "views": [
+      {"id": "assessment", "label": "评估与当前事实", "focus": ["command", "snapshot", "dispatch", "assess", "currentFact"], "note": "任务冻结要求签名；评估成功后覆盖写当前合规投影。"},
+      {"id": "remediation", "label": "安装与逐主机执行", "focus": ["command", "revalidate", "dispatch", "claim", "effect", "hostResult"], "note": "创建时验证缺失项，运行时再次校验；每主机 claim 与 token 阻止陈旧结果。"},
+      {"id": "recovery", "label": "超时与链路收敛", "focus": ["effect", "reconcile", "hostResult", "terminal", "intents"], "note": "未知副作用进入只读核验；通知可补偿，但自动重启和验证没有持久化 intent。"}
+    ]
+  },
+  "stages": [
+    {"label": "01 / 可信输入"},
+    {"label": "02 / 计划与冻结"},
+    {"label": "03 / 逐主机执行"},
+    {"label": "04 / 事实与收敛"},
+    {"label": "05 / 后续动作"}
+  ],
+  "nodes": [
+    {"id": "command", "type": "security", "label": "评估 / 治理命令", "sublabel": "手工、周期、主机与补丁范围", "stage": 0, "row": 2, "width": 150, "tag": "周期扫描跨团队"},
+    {"id": "snapshot", "type": "database", "label": "评估任务快照", "sublabel": "基线与要求签名", "stage": 1, "row": 1, "width": 145},
+    {"id": "revalidate", "type": "security", "label": "治理前重校验", "sublabel": "绑定、缺失项、风险快照", "stage": 1, "row": 3, "width": 145},
+    {"id": "dispatch", "type": "messagebus", "label": "父任务扇出", "sublabel": "全部目标进入 Celery", "stage": 2, "row": 2, "width": 145, "tag": "无预算与分片"},
+    {"id": "claim", "type": "security", "label": "主机 claim + token", "sublabel": "waiting → running", "stage": 2, "row": 4, "width": 145},
+    {"id": "assess", "type": "backend", "label": "采集与评估", "sublabel": "包事实 / KB / dry-run", "stage": 3, "row": 1, "width": 145},
+    {"id": "effect", "type": "external", "label": "安装 / 重启副作用", "sublabel": "SSH / WinRM / Ansible", "stage": 3, "row": 3, "width": 145},
+    {"id": "reconcile", "type": "security", "label": "超时只读核验", "sublabel": "reconciling → 裁决", "stage": 3, "row": 4, "width": 145},
+    {"id": "currentFact", "type": "database", "label": "当前合规投影", "sublabel": "旧快照删除后重建", "stage": 4, "row": 0, "width": 150, "tag": "无历史版本"},
+    {"id": "hostResult", "type": "database", "label": "逐主机结果", "sublabel": "状态、token、心跳、日志", "stage": 4, "row": 2, "width": 150},
+    {"id": "terminal", "type": "database", "label": "父任务终态", "sublabel": "行锁聚合所有主机", "stage": 4, "row": 3, "width": 150},
+    {"id": "intents", "type": "messagebus", "label": "链路与通知意图", "sublabel": "自动重启 / 验证 / 通知", "stage": 4, "row": 4, "width": 150, "tag": "仅通知可补偿"}
+  ],
+  "flows": [
+    {"id": "commandSnapshot", "from": "command", "to": "snapshot", "label": "冻结当前要求", "variant": "emphasis", "labelAt": [200, 260]},
+    {"id": "commandValidate", "from": "command", "to": "revalidate", "label": "校验可操作目标", "classification": "policy", "variant": "security", "labelAt": [200, 465]},
+    {"id": "snapshotDispatch", "from": "snapshot", "to": "dispatch", "label": "目标列表", "variant": "emphasis", "labelAt": [420, 260]},
+    {"id": "validateDispatch", "from": "revalidate", "to": "dispatch", "label": "可治理集合", "variant": "security", "labelAt": [420, 465]},
+    {"id": "dispatchClaim", "from": "dispatch", "to": "claim", "label": "每目标一个消息", "variant": "emphasis", "labelAt": [560, 570]},
+    {"id": "dispatchAssess", "from": "dispatch", "to": "assess", "label": "评估执行", "variant": "default", "labelAt": [635, 260]},
+    {"id": "claimEffect", "from": "claim", "to": "effect", "label": "副作用执行", "variant": "security", "labelAt": [635, 465]},
+    {"id": "assessFact", "from": "assess", "to": "currentFact", "label": "覆盖当前快照", "variant": "emphasis", "labelAt": [850, 200]},
+    {"id": "effectResult", "from": "effect", "to": "hostResult", "label": "明确结果", "variant": "emphasis", "labelAt": [850, 365]},
+    {"id": "effectReconcile", "from": "effect", "to": "reconcile", "label": "结果未知", "classification": "recovery", "variant": "dashed", "labelAt": [750, 540]},
+    {"id": "reconcileResult", "from": "reconcile", "to": "hostResult", "label": "只读裁决", "variant": "security", "labelAt": [850, 540]},
+    {"id": "resultTerminal", "from": "hostResult", "to": "terminal", "label": "全部主机终态", "variant": "security", "labelAt": [1125, 440]},
+    {"id": "terminalIntents", "from": "terminal", "to": "intents", "label": "事务后触发", "classification": "mixed", "variant": "dashed", "labelAt": [1125, 570]}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "已形成的安全协议", "items": ["创建治理时锁定目标与基线绑定，验证补丁仍属于当前基线且当前状态确为缺失", "逐主机 execution_token 对写回做 fencing；超时不盲目重试安装/重启，而是进入只读核验"]},
+    {"dot": "rose", "title": "终态后的可靠性断点", "items": ["父任务终态已提交但进程在 follow-up 前退出时，自动重启或验证永久缺失", "子任务记录创建后 broker 投递失败，只留下 PENDING 记录，系统不会恢复原始治理意图"]},
+    {"dot": "amber", "title": "全量扇出与当前投影", "items": ["周期评估把所有 PatchTarget 放进一条任务并一次性扇出；规模与团队边界都隐含在 JSON 列表", "HostComplianceSnapshot 每次删除重建，无法复现某历史基线版本下的合规判定"]}
+  ]
+}

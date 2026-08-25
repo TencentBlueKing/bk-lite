@@ -11,7 +11,8 @@
 import asyncio
 import inspect
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Callable, Any, Optional, Coroutine
+from typing import Any, Callable, Coroutine, List, Optional
+
 from sanic.log import logger
 
 
@@ -115,9 +116,8 @@ class AsyncExecutor:
                 raise TypeError(f"Task must be a callable or coroutine function, got {type(task)}")
 
         # 并发执行所有协程
-        logger.info(f"🚀 Executing {len(coroutines)} tasks concurrently...")
         results = await asyncio.gather(*coroutines, return_exceptions=return_exceptions)
-        logger.info(f"✅ All {len(coroutines)} tasks completed")
+        logger.debug("event=async_tasks_completed task_count=%s", len(coroutines))
 
         return results
 

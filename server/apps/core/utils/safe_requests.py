@@ -201,7 +201,11 @@ def safe_request(
 
         while response.is_redirect and redirect_count < max_redirects:
             if not allow_redirects:
-                logger.warning(f"[SafeRequests] 禁止重定向: url={url}, location={response.headers.get('Location')}")
+                logger.warning(
+                    "[SafeRequests] 禁止重定向: url=%s, location=%s",
+                    url,
+                    response.headers.get("Location"),
+                )
                 response.close()
                 raise SSRFError("不允许重定向")
 
@@ -310,7 +314,11 @@ def safe_request_llm_endpoint(
 
         while response.is_redirect and redirect_count < max_redirects:
             if not allow_redirects:
-                logger.warning(f"[SafeRequests-LLM] 禁止重定向: url={url}, location={response.headers.get('Location')}")
+                logger.warning(
+                    "[SafeRequests-LLM] 禁止重定向: url=%s, location=%s",
+                    url,
+                    response.headers.get("Location"),
+                )
                 response.close()
                 raise SSRFError("不允许重定向")
 

@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Alerts 目标模块架构",
+    "output": "alerts-target.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 790],
+    "views": [
+      {"id": "stable-interface", "label": "统一应用接口", "focus": ["inbound", "application", "intake", "detection", "lifecycle"], "note": "HTTP、NATS、Open API 与 Celery 只负责协议适配和身份上下文。"},
+      {"id": "state-machine", "label": "显式生命周期", "focus": ["lifecycle", "duty", "incident", "action", "operation_store"], "note": "所有 Alert 状态迁移从同一个状态机产生副作用意图。"},
+      {"id": "scale", "label": "分片检测与端口", "focus": ["detection", "fact_store", "operation_store", "directory_port", "automation_port"], "note": "以策略租约和游标 checkpoint 替代全局单例轮次，外部模块通过 Port 隔离。"}
+    ]
+  },
+  "components": [
+    {"id": "inbound", "type": "backend", "label": "Interface Adapters", "sublabel": "HTTP / NATS / Open API / Celery", "pos": [25, 295], "size": [205, 88]},
+    {"id": "application", "type": "backend", "label": "Alerts Application Interface", "sublabel": "IngestEvent / TransitionAlert / QueryAlerts", "pos": [275, 285], "size": [245, 98]},
+    {"id": "intake", "type": "backend", "label": "Event Intake Module", "sublabel": "来源契约 / 标准化 / 幂等 / 丰富 / 屏蔽", "pos": [590, 45], "size": [245, 86]},
+    {"id": "detection", "type": "backend", "label": "Detection Module", "sublabel": "即时与窗口计划 / 策略租约 / checkpoint", "pos": [590, 175], "size": [245, 88]},
+    {"id": "lifecycle", "type": "backend", "label": "Alert Lifecycle Module", "sublabel": "显式状态机 / transition / invariant / event", "pos": [590, 310], "size": [245, 90]},
+    {"id": "duty", "type": "backend", "label": "Duty & Escalation Module", "sublabel": "分派 / roster / reminder / escalation", "pos": [590, 445], "size": [245, 84]},
+    {"id": "incident", "type": "backend", "label": "Incident Collaboration Module", "sublabel": "关联告警 / 时间线 / 协作者", "pos": [590, 570], "size": [245, 80]},
+    {"id": "action", "type": "backend", "label": "Action Automation Module", "sublabel": "规则 / 目标 / Execution / callback", "pos": [590, 675], "size": [245, 76]},
+    {"id": "fact_store", "type": "database", "label": "Event & Alert Fact Store", "sublabel": "配置与运行态分表 / 聚合 checkpoint", "pos": [900, 176], "size": [235, 86]},
+    {"id": "operation_store", "type": "database", "label": "Operation & Outbox Store", "sublabel": "transition event / lease / retry / dead letter", "pos": [900, 335], "size": [235, 88]},
+    {"id": "directory_port", "type": "external", "label": "Directory & Enrichment Ports", "sublabel": "用户组织 / 通道 / CMDB Adapter", "pos": [1190, 70], "size": [205, 82]},
+    {"id": "automation_port", "type": "external", "label": "Notification & Job Ports", "sublabel": "消息通道 / 作业下发 / callback", "pos": [1190, 650], "size": [205, 82]}
+  ],
+  "boundaries": [
+    {"kind": "region", "label": "稳定的 Alerts Interface", "wraps": ["inbound", "application"], "pad": 18},
+    {"kind": "region", "label": "按业务能力组织的深 Module", "wraps": ["intake", "detection", "lifecycle", "duty", "incident", "action"], "pad": 18},
+    {"kind": "region", "label": "可靠状态与外部 Ports", "wraps": ["fact_store", "operation_store", "directory_port", "automation_port"], "pad": 18}
+  ],
+  "connections": [
+    {"id": "inbound_application", "from": "inbound", "to": "application", "variant": "emphasis"},
+    {"id": "app_intake", "from": "application", "to": "intake", "variant": "emphasis"},
+    {"id": "app_detection", "from": "application", "to": "detection"},
+    {"id": "app_lifecycle", "from": "application", "to": "lifecycle", "variant": "emphasis"},
+    {"id": "app_duty", "from": "application", "to": "duty"},
+    {"id": "app_incident", "from": "application", "to": "incident"},
+    {"id": "app_action", "from": "application", "to": "action"},
+    {"id": "intake_fact", "from": "intake", "to": "fact_store", "fromSide": "right", "toSide": "left", "via": [[855, 88], [855, 219]]},
+    {"id": "detection_fact", "from": "detection", "to": "fact_store", "fromSide": "right", "toSide": "left", "route": "straight"},
+    {"id": "lifecycle_operations", "from": "lifecycle", "to": "operation_store", "variant": "emphasis", "fromSide": "right", "toSide": "left", "via": [[865, 355], [865, 379]]},
+    {"id": "duty_operations", "from": "duty", "to": "operation_store", "fromSide": "right", "toSide": "left", "via": [[860, 487], [860, 379]]},
+    {"id": "action_operations", "from": "action", "to": "operation_store", "fromSide": "right", "toSide": "left", "via": [[880, 713], [880, 379]]},
+    {"id": "intake_directory", "from": "intake", "to": "directory_port", "label": "批量丰富", "variant": "dashed"},
+    {"id": "operation_automation", "from": "operation_store", "to": "automation_port", "label": "幂等投递", "variant": "dashed", "fromSide": "bottom", "toSide": "left", "via": [[1017.5, 610], [1170, 610], [1170, 691]], "labelAt": [1080, 610], "labelDy": -16}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "深 Module 边界", "items": ["接入模块隐藏来源差异，生命周期模块隐藏全部状态迁移不变量", "Duty、Incident、Action 按独立变化轴演进，不再挤入同一服务大文件"]},
+    {"dot": "emerald", "title": "可扩展检测", "items": ["策略配置与运行 checkpoint 分离，避免每轮改写配置 JSON", "策略级 lease、游标和预算允许分片并行，并能量化积压与重放"]},
+    {"dot": "amber", "title": "渐进迁移", "items": ["先让 HTTP/NATS/Celery 委托 Application Interface，再集中 Alert transition", "随后抽 SystemMgmt/CMDB/Job Ports，最后替换全局聚合轮次，不要求先拆微服务"]}
+  ]
+}

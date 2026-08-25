@@ -8,7 +8,8 @@ from apps.core.utils.safe_requests import safe_get_llm_endpoint
 from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import ANTHROPIC_INVALID_API_KEY_ERROR, AnthropicCompatibleAdapter
 from apps.opspilot.models import EmbedProvider, LLMModel, OCRProvider, RerankProvider
 
-OPENAI_COMPATIBLE_VENDOR_TYPES = {"openai", "azure", "deepseek", "other"}
+# OpenAI 兼容 /models 的供应商类型（含国内兼容网关）
+SYNC_SUPPORTED_VENDOR_TYPES = {"openai", "azure", "aliyun", "zhipu", "baidu", "deepseek", "other"}
 
 
 class ModelVendorSyncService:
@@ -22,11 +23,7 @@ class ModelVendorSyncService:
         # anthropic 类型不支持模型同步（Anthropic API 不提供 /models 端点）
         if vendor.vendor_type == "anthropic":
             return False
-        # other 类型根据 protocol_type 判断
-        if vendor.vendor_type == "other":
-            return True  # 无论 openai 还是 anthropic 协议都支持
-        # 其他 OpenAI 兼容类型
-        return vendor.vendor_type in OPENAI_COMPATIBLE_VENDOR_TYPES
+        return vendor.vendor_type in SYNC_SUPPORTED_VENDOR_TYPES
 
     @staticmethod
     def _get_protocol_type(vendor):
@@ -131,34 +128,23 @@ class ModelVendorSyncService:
         result = {}
         atomic_context = cast(ContextManager[None], transaction.atomic())
         with atomic_context:
-            result["llm_models"] = cls._upsert_models(LLMModel, vendor, grouped.get("llm", []), is_build_in=True)
-            result["embed_models"] = cls._upsert_models(EmbedProvider, vendor, grouped.get("embed", []), is_build_in=False)
-            result["rerank_models"] = cls._upsert_models(RerankProvider, vendor, grouped.get("rerank", []), is_build_in=False)
-            result["ocr_models"] = cls._upsert_models(OCRProvider, vendor, grouped.get("ocr", []), is_build_in=True)
+            result["llm_models"] = cls._upsert_models(LLMModel, vendor, grouped.get("llm", []))
+            result["embed_models"] = cls._upsert_models(EmbedProvider, vendor, grouped.get("embed", []))
+            result["rerank_models"] = cls._upsert_models(RerankProvider, vendor, grouped.get("rerank", []))
+            result["ocr_models"] = cls._upsert_models(OCRProvider, vendor, grouped.get("ocr", []))
         return result
 
     @staticmethod
-    def _upsert_models(model_class, vendor, model_ids, is_build_in):
+    def _upsert_models(model_class, vendor, model_ids):
+        """按 model id upsert：新建用远端 id；已存在只允许改 name，其余字段不动且不删除。"""
         existing_map = {obj.model: obj for obj in model_class.objects.filter(vendor=vendor, model__in=model_ids)}
         create_list = []
         update_list = []
         for model_id in model_ids:
             existing = existing_map.get(model_id)
             if existing:
-                changed = False
                 if existing.name != model_id:
                     existing.name = model_id
-                    changed = True
-                if existing.team != vendor.team:
-                    existing.team = vendor.team
-                    changed = True
-                if not existing.enabled:
-                    existing.enabled = True
-                    changed = True
-                if getattr(existing, "is_build_in", None) != is_build_in:
-                    existing.is_build_in = is_build_in
-                    changed = True
-                if changed:
                     update_list.append(existing)
                 continue
             create_list.append(
@@ -168,13 +154,12 @@ class ModelVendorSyncService:
                     model=model_id,
                     enabled=True,
                     team=vendor.team,
-                    is_build_in=is_build_in,
                 )
             )
         if create_list:
             model_class.objects.bulk_create(create_list, batch_size=100)
         if update_list:
-            model_class.objects.bulk_update(update_list, ["name", "team", "enabled", "is_build_in"], batch_size=100)
+            model_class.objects.bulk_update(update_list, ["name"], batch_size=100)
         return {
             "created": len(create_list),
             "updated": len(update_list),

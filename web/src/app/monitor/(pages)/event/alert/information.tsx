@@ -17,6 +17,7 @@ import { OBJECT_DEFAULT_ICON, LEVEL_MAP } from '@/app/monitor/constants';
 import Permission from '@/components/permission';
 import { formatUserDisplayName } from '@/utils/userDisplay';
 import { getPolicySecondaryContext } from '@/app/monitor/utils/policyDisplayName';
+import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUtils';
 import { buildAlertDimensionDisplayItems } from './alertDimensionUtils';
 
 interface InformationProps extends TableDataItem {
@@ -64,6 +65,20 @@ const Information: React.FC<InformationProps> = ({
     };
     const queryString = new URLSearchParams(params).toString();
     const url = `/monitor/view/detail?${queryString}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const openPolicyEdit = (row: TableDataItem) => {
+    const monitorItem = objects.find(
+      (item: ObjectItem) => item.id === row.policy?.monitor_object
+    );
+    if (!row.policy?.id || !row.policy?.monitor_object) return;
+    const url = buildMonitorStrategyDetailUrl('edit', {
+      monitorObjId: row.policy.monitor_object,
+      monitorName: monitorItem?.name || monitorItem?.display_name || '',
+      id: row.policy.id,
+      name: row.policy.name || ''
+    });
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
@@ -188,12 +203,29 @@ const Information: React.FC<InformationProps> = ({
               monitor_object_display_name: monitorObj?.display_name || monitorObj?.name
             });
             return (
-              <div>
-                <div>{formData.policy?.name || '--'}</div>
-                {secondary ? (
-                  <div className="mt-0.5 text-[12px] leading-4 text-[var(--color-text-3)]">
-                    {secondary}
-                  </div>
+              <div className="flex justify-between items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <div>{formData.policy?.name || '--'}</div>
+                  {secondary ? (
+                    <div className="mt-0.5 text-[12px] leading-4 text-[var(--color-text-3)]">
+                      {secondary}
+                    </div>
+                  ) : null}
+                </div>
+                {formData.policy?.id ? (
+                  <Permission
+                    requiredPermissions={['Edit']}
+                    permissionPath="/monitor/event/strategy"
+                    instPermissions={formData.policy_permission ?? []}
+                  >
+                    <Button
+                      type="link"
+                      className="shrink-0 ml-2 p-0 h-auto"
+                      onClick={() => openPolicyEdit(formData)}
+                    >
+                      {t('common.edit')}
+                    </Button>
+                  </Permission>
                 ) : null}
               </div>
             );

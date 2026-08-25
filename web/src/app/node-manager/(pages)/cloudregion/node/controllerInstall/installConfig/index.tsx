@@ -42,6 +42,13 @@ import {
 } from './utils';
 import { buildOrganizationOptions } from './excelImportUtils';
 import WinrmCertificateValidationField from '@/app/node-manager/components/winrm-certificate-validation-field';
+import WinrmSchemeField from '@/app/node-manager/components/winrm-scheme-field';
+import {
+  applyWinrmScheme,
+  defaultWinrmPort,
+  isWinrmSchemePortMismatch,
+  type WinrmScheme
+} from '@/app/node-manager/utils/winrm';
 
 interface InstallConfigProps {
   onNext: (data: any) => void;
@@ -94,6 +101,7 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const [installMethod, setInstallMethod] = useState<string>('remoteInstall');
   const [winrmCertValidation, setWinrmCertValidation] =
     useState<boolean>(DEFAULT_WINRM_CERTIFICATE_VALIDATION);
+  const [winrmScheme, setWinrmScheme] = useState<WinrmScheme>('https');
   const [os, setOs] = useState<string>('');
   const [cpuArchitecture, setCpuArchitecture] = useState<string>('');
   const [controllerPlatforms, setControllerPlatforms] = useState<
@@ -112,26 +120,29 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   const createInfoItem = useCallback(
     (
       targetOS: string,
-      validateWinrmCertificate = DEFAULT_WINRM_CERTIFICATE_VALIDATION
+      validateWinrmCertificate = DEFAULT_WINRM_CERTIFICATE_VALIDATION,
+      scheme: WinrmScheme = 'https'
     ) => ({
       key: uuidv4(),
       ip: null,
       organizations: [commonContext.selectedGroup?.id],
-      port: targetOS === 'windows' ? 5986 : 22,
+      port: targetOS === 'windows' ? defaultWinrmPort(scheme) : 22,
       username: targetOS === 'windows' ? 'Administrator' : 'root',
       auth_type: 'password',
       password: null,
-      winrm_scheme: 'https',
+      winrm_scheme: targetOS === 'windows' ? scheme : 'https',
       winrm_transport: 'ntlm',
       winrm_cert_validation:
-        targetOS === 'windows' ? validateWinrmCertificate : true,
+        targetOS === 'windows' && scheme === 'https'
+          ? validateWinrmCertificate
+          : targetOS !== 'windows',
       node_name: null
     }),
     [commonContext.selectedGroup?.id]
   );
   const INFO_ITEM = useMemo(
-    () => createInfoItem(os, winrmCertValidation),
-    [createInfoItem, os, winrmCertValidation]
+    () => createInfoItem(os, winrmCertValidation, winrmScheme),
+    [createInfoItem, os, winrmCertValidation, winrmScheme]
   );
 
   useEffect(() => {
@@ -310,12 +321,14 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
     if (nextOs !== os) {
       setOs(nextOs);
+      setWinrmScheme('https');
       setWinrmCertValidation(DEFAULT_WINRM_CERTIFICATE_VALIDATION);
       setTableData([
         {
           ...createInfoItem(
             nextOs,
-            DEFAULT_WINRM_CERTIFICATE_VALIDATION
+            DEFAULT_WINRM_CERTIFICATE_VALIDATION,
+            'https'
           ),
           key: uuidv4()
         }
@@ -422,11 +435,12 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
   };
 
   const handleImportSuccess = (importedData: any[]) => {
-    const newRows = importedData.map((row) => ({
-      ...createInfoItem(os, winrmCertValidation),
-      ...row,
-      key: uuidv4()
-    }));
+      const newRows = importedData.map((row) => ({
+        ...createInfoItem(os, winrmCertValidation, winrmScheme),
+        ...row,
+        winrm_scheme: winrmScheme,
+        key: uuidv4()
+      }));
     setTableData([...tableData, ...newRows]);
   };
 
@@ -501,6 +515,14 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             }
           }
         }
+        if (
+          !errorMsg &&
+          name === 'port' &&
+          os === 'windows' &&
+          isWinrmSchemePortMismatch(row.winrm_scheme || winrmScheme, Number(value))
+        ) {
+          errorMsg = t('node-manager.cloudregion.node.winrmSchemePortMismatch');
+        }
         if (errorMsg) {
           hasError = true;
           newData[index] = {
@@ -527,14 +549,23 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   const changeCollectType = (id: string) => {
     setInstallMethod(id);
+    setWinrmScheme('https');
     setWinrmCertValidation(DEFAULT_WINRM_CERTIFICATE_VALIDATION);
     setTableData([
       {
-        ...createInfoItem(os, DEFAULT_WINRM_CERTIFICATE_VALIDATION),
+        ...createInfoItem(os, DEFAULT_WINRM_CERTIFICATE_VALIDATION, 'https'),
         key: uuidv4()
       }
     ]);
     setSelectedRowKeys([]);
+  };
+
+  const changeWinrmScheme = (scheme: WinrmScheme) => {
+    setWinrmScheme(scheme);
+    if (scheme === 'http') {
+      setWinrmCertValidation(false);
+    }
+    setTableData((rows) => applyWinrmScheme(rows, scheme));
   };
 
   const changeWinrmCertValidation = (enabled: boolean) => {
@@ -655,12 +686,14 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
             value={os}
             onChange={(value) => {
               setOs(value);
+              setWinrmScheme('https');
               setWinrmCertValidation(DEFAULT_WINRM_CERTIFICATE_VALIDATION);
               setTableData([
                 {
                   ...createInfoItem(
                     value,
-                    DEFAULT_WINRM_CERTIFICATE_VALIDATION
+                    DEFAULT_WINRM_CERTIFICATE_VALIDATION,
+                    'https'
                   ),
                   key: uuidv4()
                 }
@@ -710,10 +743,18 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
           </div>
         </Form.Item>
         {isRemote && os === 'windows' && (
-          <WinrmCertificateValidationField
-            checked={winrmCertValidation}
-            onChange={changeWinrmCertValidation}
-          />
+          <>
+            <WinrmSchemeField
+              value={winrmScheme}
+              onChange={changeWinrmScheme}
+            />
+            {winrmScheme === 'https' && (
+              <WinrmCertificateValidationField
+                checked={winrmCertValidation}
+                onChange={changeWinrmCertValidation}
+              />
+            )}
+          </>
         )}
         <Form.Item<ControllerInstallFields>
           required

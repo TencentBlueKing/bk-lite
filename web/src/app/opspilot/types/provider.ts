@@ -18,6 +18,7 @@ export interface Model {
     model?: string;
     enabled: boolean;
     is_build_in?: boolean;
+    is_multimodal?: boolean;
     team?: number[];
     team_name?: string[];
     vendor?: number;

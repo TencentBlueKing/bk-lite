@@ -201,7 +201,7 @@ async def test_all_preflight_failures_do_not_start_job_node_info_lookup():
 
 
 @pytest.mark.asyncio
-async def test_preflight_failure_detail_logs_are_bounded_per_run(monkeypatch):
+async def test_preflight_failure_detail_logs_include_every_failed_target(monkeypatch):
     logged = []
 
     def capture(message, *args):
@@ -225,12 +225,13 @@ async def test_preflight_failure_detail_logs_are_bounded_per_run(monkeypatch):
 
     summary = await executor.execute(request, lease)
 
-    target_details = [item for item in logged if "event=target_unreachable" in item]
+    target_details = [item for item in logged if "event=target_collection_failed" in item]
     run_summaries = [item for item in logged if "event=collection_run_summary" in item]
     assert summary.unreachable == 25
-    assert len(target_details) == 3
+    assert len(target_details) == 25
     assert all("plugin_ref=network.config" in item for item in target_details)
     assert all("model_id=network" in item for item in target_details)
+    assert all("stage=preflight" in item for item in target_details)
     assert len(run_summaries) == 1
     assert "任务汇总" in run_summaries[0]
     assert "不可达=25" in run_summaries[0]
@@ -294,7 +295,7 @@ async def test_plugin_failure_has_central_searchable_log_without_secret(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_plugin_exception_call_chains_are_bounded_per_run(monkeypatch):
+async def test_plugin_exception_call_chains_include_every_failed_target(monkeypatch):
     error_logs = []
 
     def capture_error(message, *args):
@@ -302,7 +303,7 @@ async def test_plugin_exception_call_chains_are_bounded_per_run(monkeypatch):
 
     class BrokenPlugin:
         async def collect(self, target, credential, context):
-            raise RuntimeError("community=must-not-be-logged")
+            raise RuntimeError(f"SNMP authorization failure for {target}")
 
     monkeypatch.setattr("core.collection.executor.logger.error", capture_error)
     executor = TargetCollectionExecutor(
@@ -324,14 +325,14 @@ async def test_plugin_exception_call_chains_are_bounded_per_run(monkeypatch):
 
     call_chains = [item for item in error_logs if "event=plugin_exception" in item]
     assert summary.failed == 10
-    assert len(call_chains) == 3
+    assert len(call_chains) == 10
     assert all("plugin_name=snmp_facts" in item for item in call_chains)
-    assert all("community" not in item for item in call_chains)
-    assert all("secret" not in item for item in call_chains)
+    assert all("error_message=SNMP authorization failure" in item for item in call_chains)
+    assert {item.split("target=", 1)[1].split(" ", 1)[0] for item in call_chains} == {f"10.10.69.{index}" for index in range(10)}
 
 
 @pytest.mark.asyncio
-async def test_late_plugin_exception_still_gets_run_sample(monkeypatch):
+async def test_late_plugin_exception_keeps_target_context(monkeypatch):
     error_logs = []
 
     def capture_error(message, *args):
@@ -340,7 +341,7 @@ async def test_late_plugin_exception_still_gets_run_sample(monkeypatch):
     class LateBrokenPlugin:
         async def collect(self, target, credential, context):
             if target.endswith(".9"):
-                raise RuntimeError("late-secret")
+                raise RuntimeError("late SNMP decoder failure")
             return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value={"ok": True})
 
     monkeypatch.setattr("core.collection.executor.logger.error", capture_error)
@@ -365,11 +366,11 @@ async def test_late_plugin_exception_still_gets_run_sample(monkeypatch):
     assert summary.failed == 1
     assert len(call_chains) == 1
     assert "target=10.10.69.9" in call_chains[0]
-    assert "late-secret" not in call_chains[0]
+    assert "error_message=late SNMP decoder failure" in call_chains[0]
 
 
 @pytest.mark.asyncio
-async def test_plugin_failure_detail_logs_are_bounded_per_run(monkeypatch):
+async def test_plugin_failure_detail_logs_include_every_failed_target(monkeypatch):
     logged = []
 
     def capture(message, *args):
@@ -400,8 +401,11 @@ async def test_plugin_failure_detail_logs_are_bounded_per_run(monkeypatch):
 
     summary = await executor.execute(request, lease)
 
+    target_failures = [item for item in logged if "event=target_collection_failed" in item]
     failures = [item for item in logged if "event=collection_run_summary" in item]
     assert summary.failed == 25
+    assert len(target_failures) == 25
+    assert {item.split("target=", 1)[1].split(" ", 1)[0] for item in target_failures} == {f"10.10.69.{index}" for index in range(25)}
     assert len(failures) == 1
     assert "采集失败=25" in failures[0]
     assert "失败类型=plugin_timeout:25" in failures[0]
@@ -939,13 +943,18 @@ async def test_single_snmp_no_response_is_visible_as_timeout_without_plugin_trac
 
 
 @pytest.mark.asyncio
-async def test_collection_progress_is_bounded_and_shows_plugin_and_targets(monkeypatch):
+async def test_collection_info_is_bounded_and_target_details_are_debug(monkeypatch):
     info_logs = []
+    debug_logs = []
 
     def capture_info(message, *args):
         info_logs.append(message % args if args else message)
 
+    def capture_debug(message, *args):
+        debug_logs.append(message % args if args else message)
+
     monkeypatch.setattr("core.collection.executor.logger.info", capture_info)
+    monkeypatch.setattr("core.collection.executor.logger.debug", capture_debug)
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
         plugin=RecordingPlugin(),
@@ -968,9 +977,11 @@ async def test_collection_progress_is_bounded_and_shows_plugin_and_targets(monke
     await executor.execute(request, lease)
 
     progress = [item for item in info_logs if "event=collection_progress" in item]
-    starts = [item for item in info_logs if "event=target_collection_started" in item]
-    successes = [item for item in info_logs if "event=target_collection_succeeded" in item]
+    summaries = [item for item in info_logs if "event=collection_run_summary" in item]
     assert 2 <= len(progress) <= 12
+    assert len(summaries) == 1
+    assert not any("event=target_collection_started" in item for item in info_logs)
+    assert not any("event=target_collection_succeeded" in item for item in info_logs)
     assert "plugin_ref=network.config" in progress[0]
     assert "plugin_name=snmp_facts" in progress[0]
     assert "instance_id=cmdb-network-1" in progress[0]
@@ -979,6 +990,8 @@ async def test_collection_progress_is_bounded_and_shows_plugin_and_targets(monke
     assert "当前目标样本=" in progress[0]
     assert "已完成=25/25" in progress[-1]
     assert "最近结果=成功" in progress[-1]
+    starts = [item for item in debug_logs if "event=target_collection_started" in item]
+    successes = [item for item in debug_logs if "event=target_collection_succeeded" in item]
     assert len(starts) == 25
     assert all("plugin_name=snmp_facts" in item for item in starts)
     assert all("target=" in item for item in starts)
@@ -1358,7 +1371,12 @@ async def test_access_probe_metrics_are_exposed_by_collection_metrics():
 
 
 @pytest.mark.asyncio
-async def test_target_without_matching_credential_has_stable_error():
+async def test_target_without_matching_credential_has_stable_error(monkeypatch):
+    warning_logs = []
+    monkeypatch.setattr(
+        "core.collection.executor.logger.warning",
+        lambda message, *args: warning_logs.append(message % args if args else message),
+    )
     publisher = RecordingPublisher()
     executor = TargetCollectionExecutor(
         preflight=ReachablePreflight(),
@@ -1390,6 +1408,11 @@ async def test_target_without_matching_credential_has_stable_error():
     assert summary.failed == 1
     assert publisher.results[0][1].attempts == 0
     assert publisher.results[0][1].error_code == "no_matching_credential"
+    target_failures = [item for item in warning_logs if "event=target_collection_failed" in item]
+    assert len(target_failures) == 1
+    assert "target=10.10.69.245" in target_failures[0]
+    assert "stage=credential" in target_failures[0]
+    assert "error_code=no_matching_credential" in target_failures[0]
 
 
 @pytest.mark.asyncio

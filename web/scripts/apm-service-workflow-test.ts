@@ -14,7 +14,7 @@ assert.match(servicesPage, /ServicePerspective = 'application' \| 'service'/, '�
 assert.match(servicesPage, /getServiceRed/, '应用视角指标必须来自真实 RED 查询');
 assert.match(servicesPage, /getApplications/, '应用视角必须以应用目录为事实来源，不能只从已有服务反推应用');
 assert.match(servicesPage, /applicationSummaries/, '服务必须按 namespace 聚合为应用卡片');
-assert.match(servicesPage, /已归档/, '服务工具栏必须保留已归档入口');
+assert.match(servicesPage, /perspective === 'service'[\s\S]*已归档/, '已归档入口只挂在服务视角，不出现在应用卡片页');
 assert.match(servicesPage, /已归档服务/, '已归档入口必须打开归档抽屉而不是仅切换列表筛选');
 assert.match(servicesPage, /Drawer/, '已归档服务必须使用 Drawer 承载');
 assert.match(servicesPage, /吞吐量\(\/s\)/, '服务表必须展示吞吐 RED 列');
@@ -39,6 +39,8 @@ assert.match(serviceDetail, /key: 'traces'/, '服务详情必须内嵌调用链 
 assert.match(serviceDetail, /key: 'errors'/, '服务详情必须内嵌错误 Tab');
 assert.match(serviceDetail, /getTraces/, '服务详情调用链 Tab 必须读取真实 Trace');
 assert.match(serviceDetail, /getTopology/, '服务详情依赖关系必须读取真实拓扑');
+assert.match(serviceDetail, /getDeployments/, '服务详情部署 Tab 必须读取物化部署事件');
+assert.doesNotMatch(serviceDetail, /部署事件将在发布埋点接入后展示/, '部署 Tab 不得继续使用埋点占位文案');
 assert.match(serviceDetail, /跳到首个错误|依赖关系/, '服务详情概览必须提供依赖或错误下钻能力');
 assert.doesNotMatch(serviceDetail, /color:\s*'var\(--/, 'Canvas 图表不得直接使用 CSS 变量颜色');
 
@@ -46,8 +48,10 @@ assert.match(topologyPage, /服务拓扑/, '服务拓扑页面标题缺失');
 assert.match(topologyPage, /options=\{\['15m', '1h', '4h', '1d', '7d'\]\}/, '拓扑必须提供时间窗切换');
 assert.match(topologyPage, /只看异常/, '拓扑必须支持异常筛选');
 assert.match(topologyPage, /getTopology/, '拓扑必须来自服务端的真实 Trace 聚合');
-assert.match(topologyPage, /type ViewMode = 'graph' \| 'list'/, '拓扑必须提供图形与依赖列表双视图');
-assert.match(topologyPage, /screens\.md === false[\s\S]*setViewMode\('list'\)/, '窄屏必须默认使用依赖列表，避免图形撑宽页面');
+assert.match(topologyPage, /type ViewMode = 'graph' \| 'list'/, '拓扑必须提供图形与列表双视图');
+assert.match(topologyPage, /t\('apm.topology.list', '列表'\)/, '拓扑视图切换文案必须是列表而不是依赖列表');
+assert.match(topologyPage, /block[\s\S]*className="w-32 shrink-0"|className="w-32 shrink-0"[\s\S]*block/, '图形与列表切换必须等宽均分');
+assert.match(topologyPage, /screens\.md === false[\s\S]*setViewMode\('list'\)/, '窄屏必须默认使用列表，避免图形撑宽页面');
 assert.match(topologyPage, /viewBox=\{`0 0 \$\{TOPOLOGY_CANVAS_SIZE\.width\} \$\{TOPOLOGY_CANVAS_SIZE\.height\}`\}/, '图形视图必须使用响应式 viewBox');
 assert.doesNotMatch(topologyPage, /min-w-\[960px\]|scroll=\{\{ x:/, '拓扑不得通过固定宽度撑开整页');
 assert.match(topologyPage, /columns=\{dependencyColumns\}/, '图形必须提供可访问的依赖表格替代视图');
@@ -68,6 +72,10 @@ assert.match(sloPage, /setSloEnabled/, 'SLO 启停必须写入服务端');
 assert.match(sloPage, /deleteSlo/, 'SLO 删除必须写入服务端');
 assert.doesNotMatch(sloPage, /name="is_enabled"/, 'SLO 启用状态不得出现在新建或编辑表单');
 assert.doesNotMatch(sloPage, /本地预览|设计预览/, '服务端已支持的 SLO 不得再标成静态预览');
+
+const deploymentsPage = readPage('services/deployments');
+assert.match(deploymentsPage, /\bredirect\(/, '独立部署列表暂不展示，旧路由必须重定向');
+assert.doesNotMatch(deploymentsPage, /ApmDataTable|getDeployments/, '独立部署列表页不得继续渲染事件表');
 
 for (const page of [servicesPage, serviceDetail, topologyPage, sloPage]) {
   assert.doesNotMatch(page, /src\/stories|@\/stories/, '生产页面不得依赖 Storybook 实现');

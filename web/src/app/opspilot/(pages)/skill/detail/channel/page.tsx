@@ -3,7 +3,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
-  Empty,
   Form,
   Input,
   Modal,
@@ -145,7 +144,7 @@ const SkillChannelPage: React.FC = () => {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ channel_type: 'platform', enabled: false });
+    form.setFieldsValue({ channel_type: 'platform', enabled: true });
     setModalOpen(true);
   };
 
@@ -362,19 +361,6 @@ const SkillChannelPage: React.FC = () => {
           <div className="flex min-h-72 w-full items-center justify-center">
             <Spin size="large" />
           </div>
-        ) : channels.length === 0 ? (
-          <div className="flex min-h-72 w-full items-center justify-center">
-            <Empty
-              description={t('skill.channel.empty', '尚未发布任何渠道')}
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-            >
-              <PermissionWrapper requiredPermissions={['Edit']}>
-                <Button type="primary" onClick={openCreate}>
-                  {t('skill.channel.add', '添加渠道')}
-                </Button>
-              </PermissionWrapper>
-            </Empty>
-          </div>
         ) : (
           <Table
             rowKey="id"
@@ -383,9 +369,6 @@ const SkillChannelPage: React.FC = () => {
             columns={columns}
             dataSource={filteredChannels}
             scroll={{ y: 'calc(100vh - 420px)' }}
-            locale={{
-              emptyText: t('skill.channel.filterEmpty', '没有匹配的渠道'),
-            }}
           />
         )}
       </div>

@@ -102,7 +102,14 @@ class OpenImportExportViewSet(OpenAPIViewSet):
         if model is not None:
             qs = model.objects.filter(id__in=object_ids)
             if current_team is not None:
-                qs = qs.filter(groups__contains=current_team)
+                from django.db.models import Q
+
+                from apps.operation_analysis.common.datasource_visibility import expand_datasource_org_query
+
+                org_query = Q(groups__contains=current_team)
+                if object_type == ObjectType.DATASOURCE.value:
+                    org_query = expand_datasource_org_query(org_query, include_all_builtins=False)
+                qs = qs.filter(org_query)
             return list(qs.values_list("id", flat=True))
 
         if object_type == ObjectType.NAMESPACE.value:

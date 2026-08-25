@@ -87,6 +87,37 @@ const failedAlertsDashboard: ApmDashboard = {
   alerts: { status: 'failed', error: 'alerts down' },
 };
 
+const releasesDashboard: ApmDashboard = {
+  ...loadedDashboard,
+  releases: {
+    status: 'ok',
+    data: {
+      items: [
+        {
+          id: 'release-1',
+          service_id: 'svc-1',
+          service_name: 'demo-storefront',
+          environment: 'local',
+          version: '1.2.0',
+          deployed_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+          deployed_by: 'alice',
+          status: 'success',
+        },
+        {
+          id: 'release-2',
+          service_id: 'svc-2',
+          service_name: 'demo-payment',
+          environment: 'local',
+          version: '1.0.1',
+          deployed_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          deployed_by: 'bob',
+          status: 'failed',
+        },
+      ],
+    },
+  },
+};
+
 beforeEach(() => {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: false,
@@ -140,10 +171,25 @@ describe('ApmHomePage', () => {
     await waitFor(() => expect(api.getDashboard).toHaveBeenCalledTimes(2));
   });
 
-  it('always shows releases empty copy', async () => {
+  it('shows releases empty copy when no events', async () => {
     api.getDashboard.mockResolvedValue(loadedDashboard);
     renderWithApmIntl(<ApmHomePage />);
 
     expect(await screen.findByText('近 7 天无发布')).not.toBeNull();
+  });
+
+  it('renders release rows when data is available', async () => {
+    api.getDashboard.mockResolvedValue(releasesDashboard);
+    renderWithApmIntl(<ApmHomePage />);
+
+    expect(await screen.findByText('demo-storefront')).not.toBeNull();
+    expect(screen.getByText('1.2.0')).not.toBeNull();
+    expect(screen.getByText('demo-payment')).not.toBeNull();
+    expect(screen.getByText('失败')).not.toBeNull();
+    expect(
+      screen.getAllByRole('link', { name: '查看全部 →' }).some((link) => (
+        link.getAttribute('href') === '/apm/services/deployments'
+      )),
+    ).toBe(false);
   });
 });

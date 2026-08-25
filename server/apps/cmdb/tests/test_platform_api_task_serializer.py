@@ -32,7 +32,15 @@ def _stub_auth_serializer_dependencies(monkeypatch):
     )
     monkeypatch.setattr(
         "apps.cmdb.serializers.collect_serializer.InstanceManage.query_entity_by_uuids",
-        lambda uuids: [{"inst_uuid": inst_uuid, "inst_name": "platform-target", "ip_addr": "10.0.0.8"} for inst_uuid in uuids],
+        lambda uuids: [
+            {
+                "inst_uuid": inst_uuid,
+                "model_id": "sangforhci",
+                "inst_name": "platform-target",
+                "ip_addr": "10.0.0.8",
+            }
+            for inst_uuid in uuids
+        ],
     )
     monkeypatch.setattr(
         "apps.cmdb.serializers.collect_serializer.CmdbRulesFormatUtil.format_user_groups_permissions",
@@ -44,7 +52,7 @@ def _stub_auth_serializer_dependencies(monkeypatch):
     )
 
 
-def _serializer(model_id, credential):
+def _serializer(model_id, credential, *, timeout=60):
     request = SimpleNamespace(user=SimpleNamespace(group_list=[]), COOKIES={})
     return CollectModelSerializer(
         data={
@@ -64,7 +72,7 @@ def _serializer(model_id, credential):
             "cycle_value_type": "cycle",
             "cycle_value": "5",
             "scan_cycle": "5",
-            "timeout": 60,
+            "timeout": timeout,
             "team": [1],
             "params": {},
             "credential": [credential],
@@ -172,3 +180,74 @@ def test_platform_api_rejects_invalid_or_cloud_aksk_contract(credential):
 
     assert serializer.is_valid() is False
     assert "credential" in serializer.errors
+
+
+@pytest.mark.parametrize(
+    "task_model_id,selected_model_id",
+    [
+        ("sangforscp", "sangforhci"),
+        ("sangforhci", "sangforscp"),
+    ],
+)
+def test_sangfor_task_rejects_cross_product_platform_instance(
+    monkeypatch,
+    task_model_id,
+    selected_model_id,
+):
+    monkeypatch.setattr(
+        "apps.cmdb.serializers.collect_serializer.InstanceManage.query_entity_by_uuids",
+        lambda uuids: [
+            {
+                "inst_uuid": inst_uuid,
+                "model_id": selected_model_id,
+                "inst_name": "wrong-product-target",
+                "endpoint": "https://192.0.2.10",
+            }
+            for inst_uuid in uuids
+        ],
+    )
+    serializer = _serializer(
+        task_model_id,
+        {
+            "username": "collector",
+            "password": "secret",
+            "port": 443,
+            "verify_tls": True,
+        },
+    )
+
+    assert serializer.is_valid() is False
+    assert serializer.errors["instances"][0] == "采集任务与平台实例模型不匹配"
+
+
+@pytest.mark.parametrize("timeout", [0, 86401])
+def test_collection_timeout_rejects_values_outside_runtime_contract(timeout):
+    serializer = _serializer(
+        "sangforhci",
+        {
+            "username": "collector",
+            "password": "secret",
+            "port": 443,
+            "verify_tls": True,
+        },
+        timeout=timeout,
+    )
+
+    assert serializer.is_valid() is False
+    assert "timeout" in serializer.errors
+
+
+def test_sangfor_collection_accepts_3000_second_task_budget():
+    serializer = _serializer(
+        "sangforhci",
+        {
+            "username": "collector",
+            "password": "secret",
+            "port": 443,
+            "verify_tls": True,
+        },
+        timeout=3000,
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["timeout"] == 3000

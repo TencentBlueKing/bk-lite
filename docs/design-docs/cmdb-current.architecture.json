@@ -1,0 +1,219 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "CMDB 模块现状架构",
+    "output": "cmdb-current.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/zhouzhuangjie/bk-lite-1",
+      "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"
+    },
+    "viewBox": [1420, 720],
+    "views": [
+      {
+        "id": "asset-facts",
+        "label": "资产事实主链",
+        "focus": ["callers", "protocol_adapters", "asset_registry", "graph_adapter", "graph_store"],
+        "note": "模型和实例最终写入图存储，Django 表不是资产实例的主事实源。"
+      },
+      {
+        "id": "collection-path",
+        "label": "采集与扫描链",
+        "focus": ["protocol_adapters", "ingestion", "operational_state", "external_execution", "graph_adapter"],
+        "note": "采集、扫描和节点同步横跨外部执行、任务状态与图写入。"
+      },
+      {
+        "id": "consistency",
+        "label": "一致性与投影",
+        "focus": ["asset_registry", "sync_delivery", "operational_state", "downstream"],
+        "note": "操作账本、Outbox、补偿任务与 best-effort 钩子并存，入口之间语义尚未统一。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "callers",
+      "type": "external",
+      "label": "调用方",
+      "sublabel": "控制台 / OpenAPI / 内部模块",
+      "pos": [20, 290],
+      "size": [160, 72]
+    },
+    {
+      "id": "protocol_adapters",
+      "type": "backend",
+      "label": "协议入口",
+      "sublabel": "Views / nats.py / Celery / Commands",
+      "tag": "18 HTTP + 38 NATS",
+      "pos": [225, 280],
+      "size": [210, 92],
+      "sources": [
+        {"path": "server/apps/cmdb/urls.py", "line": 22, "label": "HTTP 与 OpenAPI"},
+        {"path": "server/apps/cmdb/nats/nats.py", "line": 337, "label": "NATS Interface"},
+        {"path": "server/apps/cmdb/tasks/celery_tasks.py", "line": 345, "label": "Celery Interface"}
+      ]
+    },
+    {
+      "id": "catalog",
+      "type": "backend",
+      "label": "模型目录",
+      "sublabel": "分类 / 模型 / 属性 / 字段组 / 唯一规则",
+      "pos": [535, 50],
+      "size": [245, 78],
+      "sources": [
+        {"path": "server/apps/cmdb/services/model.py", "line": 1, "label": "ModelManage"},
+        {"path": "server/apps/cmdb/services/field_group.py", "line": 1, "label": "字段组织"}
+      ]
+    },
+    {
+      "id": "asset_registry",
+      "type": "backend",
+      "label": "资产与关系实现",
+      "sublabel": "InstanceManage / Identity / Permission / Relation",
+      "tag": "2,948 行主实现",
+      "pos": [535, 210],
+      "size": [245, 86],
+      "sources": [
+        {"path": "server/apps/cmdb/services/instance.py", "line": 837, "label": "实例写入"},
+        {"path": "server/apps/cmdb/services/instance_identity.py", "line": 11, "label": "业务身份"}
+      ]
+    },
+    {
+      "id": "ingestion",
+      "type": "backend",
+      "label": "采集与扫描实现",
+      "sublabel": "Collect / Scan / Plugins / Ingest",
+      "tag": "85 个插件文件",
+      "pos": [535, 370],
+      "size": [245, 86],
+      "sources": [
+        {"path": "server/apps/cmdb/services/collect_service.py", "line": 33, "label": "采集用例"},
+        {"path": "server/apps/cmdb/services/scan_trigger_service.py", "line": 108, "label": "扫描用例"},
+        {"path": "server/apps/cmdb/services/module_ingest.py", "line": 268, "label": "跨模块写入"}
+      ]
+    },
+    {
+      "id": "sync_delivery",
+      "type": "backend",
+      "label": "同步、投影与交付",
+      "sublabel": "NodeMgmt Sync / Auto Relation / Subscription",
+      "tag": "3,561 行同步实现",
+      "pos": [535, 530],
+      "size": [245, 86],
+      "sources": [
+        {"path": "server/apps/cmdb/services/node_mgmt_sync_service.py", "line": 2191, "label": "节点同步"},
+        {"path": "server/apps/cmdb/services/auto_relation_reconcile.py", "line": 1, "label": "关系投影"},
+        {"path": "server/apps/cmdb/services/subscription_trigger.py", "line": 1, "label": "变更订阅"}
+      ]
+    },
+    {
+      "id": "graph_adapter",
+      "type": "database",
+      "label": "GraphClient",
+      "sublabel": "__getattr__ 转发底层全部方法",
+      "tag": "145 个调用点",
+      "pos": [845, 150],
+      "size": [225, 82],
+      "sources": [
+        {"path": "server/apps/cmdb/graph/drivers/graph_client.py", "line": 10, "label": "运行时驱动选择"}
+      ]
+    },
+    {
+      "id": "operational_state",
+      "type": "database",
+      "label": "Django 运行状态",
+      "sublabel": "任务 / 扫描 / 快照 / 操作账本 / Outbox",
+      "pos": [845, 420],
+      "size": [225, 88],
+      "sources": [
+        {"path": "server/apps/cmdb/models/operation.py", "line": 25, "label": "操作与 Outbox"},
+        {"path": "server/apps/cmdb/models/node_mgmt_sync.py", "line": 34, "label": "同步状态"},
+        {"path": "server/apps/cmdb/models/scan_model.py", "line": 126, "label": "扫描执行"}
+      ]
+    },
+    {
+      "id": "graph_store",
+      "type": "database",
+      "label": "资产图事实源",
+      "sublabel": "FalkorDB 或 Neo4j",
+      "tag": "运行时二选一",
+      "pos": [1145, 105],
+      "size": [220, 82],
+      "sources": [
+        {"path": "server/apps/cmdb/graph/falkordb.py", "line": 106, "label": "FalkorDB Adapter"},
+        {"path": "server/apps/cmdb/graph/neo4j.py", "line": 19, "label": "Neo4j Adapter"}
+      ]
+    },
+    {
+      "id": "external_execution",
+      "type": "external",
+      "label": "采集与节点运行时",
+      "sublabel": "NodeMgmt / Stargazer / Job",
+      "pos": [1145, 315],
+      "size": [220, 82],
+      "sources": [
+        {"path": "server/apps/cmdb/services/stargazer_collect_trigger.py", "line": 1, "label": "首次采集触发"},
+        {"path": "server/apps/cmdb/services/collect_dispatch_service.py", "line": 32, "label": "采集调度"}
+      ]
+    },
+    {
+      "id": "downstream",
+      "type": "external",
+      "label": "下游投影与通知",
+      "sublabel": "Monitor / NodeMgmt / SystemMgmt",
+      "pos": [1145, 535],
+      "size": [220, 82],
+      "sources": [
+        {"path": "server/apps/cmdb/services/module_push.py", "line": 39, "label": "跨模块推送"},
+        {"path": "server/apps/cmdb/services/change_record_mirror.py", "line": 28, "label": "变更镜像"}
+      ]
+    }
+  ],
+  "boundaries": [
+    {"kind": "region", "label": "CMDB Interface Adapters", "wraps": ["protocol_adapters"], "pad": 18},
+    {"kind": "region", "label": "按技术层聚集的 CMDB Implementation", "wraps": ["catalog", "asset_registry", "ingestion", "sync_delivery", "graph_adapter", "operational_state"], "pad": 20},
+    {"kind": "region", "label": "外部事实与运行环境", "wraps": ["graph_store", "external_execution", "downstream"], "pad": 18}
+  ],
+  "connections": [
+    {"id": "callers_to_adapters", "from": "callers", "to": "protocol_adapters", "variant": "emphasis"},
+    {"id": "adapters_to_asset", "from": "protocol_adapters", "to": "asset_registry", "label": "CRUD / Query", "variant": "emphasis", "labelAt": [435, 230]},
+    {"id": "adapters_to_catalog", "from": "protocol_adapters", "to": "catalog", "label": "模型设计"},
+    {"id": "adapters_to_ingestion", "from": "protocol_adapters", "to": "ingestion", "label": "采集 / 扫描", "labelAt": [435, 430]},
+    {"id": "adapters_to_sync", "from": "protocol_adapters", "to": "sync_delivery", "label": "调度 / 回调"},
+    {"id": "catalog_to_graph", "from": "catalog", "to": "graph_adapter"},
+    {"id": "asset_to_graph", "from": "asset_registry", "to": "graph_adapter"},
+    {"id": "ingestion_to_graph", "from": "ingestion", "to": "graph_adapter", "label": "规范化资产"},
+    {"id": "graph_to_store", "from": "graph_adapter", "to": "graph_store", "label": "Cypher", "variant": "emphasis"},
+    {"id": "ingestion_to_state", "from": "ingestion", "to": "operational_state", "label": "任务 / Run"},
+    {"id": "sync_to_state", "from": "sync_delivery", "to": "operational_state", "label": "租约 / 快照 / Outbox", "labelAt": [813, 522]},
+    {"id": "ingestion_to_runtime", "from": "ingestion", "to": "external_execution", "label": "RPC / NATS", "variant": "dashed"},
+    {"id": "sync_to_downstream", "from": "sync_delivery", "to": "downstream", "label": "投影 / 通知", "variant": "dashed"}
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "跨存储一致性",
+      "items": [
+        "图存储拥有模型、实例和关系事实，Django DB 保存操作与任务状态",
+        "HTTP 创建/更新已有 Operation + Outbox，NATS、批量和采集入口尚未统一"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Graph Interface 过宽",
+      "items": [
+        "GraphClient 通过 __getattr__ 暴露底层全部方法，145 个调用点依赖存储细节",
+        "FalkorDB 与 Neo4j 方法面和连接生命周期未由显式 Interface 约束"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "能力被技术目录压平",
+      "items": [
+        "六类业务能力集中在 services / views / tasks / nats 等技术目录",
+        "新增一种资产来源通常同时修改协议、任务、图写入和跨模块钩子"
+      ]
+    }
+  ]
+}

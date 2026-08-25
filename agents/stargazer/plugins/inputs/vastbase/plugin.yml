@@ -15,7 +15,6 @@ executors:
     type: protocol
     execution_mode: async
     capacity_group: default
-    timeout: 30
     collector:
       module: plugins.inputs.vastbase.vastbase_info
       class: VastbaseInfo

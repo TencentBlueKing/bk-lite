@@ -1,4 +1,19 @@
-import type { AiContextImage, AiContextProvider, AiContextSection, AiPageContext, AiPageContextPilot } from './types';
+import {
+  captionFromOption,
+  captureEchartsFromDom,
+  captureEchartsFromDoms,
+} from '@/components/chart-snapshot';
+
+import type {
+  AiContextImage,
+  AiContextProvider,
+  AiContextSection,
+  AiPageContext,
+  AiPageContextPilot,
+  PageContextCollectHint,
+  PageContextMessage,
+  PageContextToolkit,
+} from './types';
 import {
   PAGE_CONTEXT_MAX_IMAGES,
   PAGE_CONTEXT_PROVIDER_TIMEOUT_MS,
@@ -7,7 +22,7 @@ import {
 import { matchPilots, PAGE_CONTEXT_PILOTS } from './pilots';
 
 export interface PageContextBridge {
-  collect: () => Promise<AiPageContext | null>;
+  collect: (hint?: PageContextCollectHint) => Promise<AiPageContext | null>;
   hasAvailable: () => boolean;
 }
 
@@ -21,6 +36,17 @@ interface ProviderEntry {
   id: number;
   provider: AiContextProvider;
 }
+
+interface CacheEntry {
+  currentTime: string;
+  content: Partial<AiPageContext>;
+}
+
+const DEFAULT_TOOLKIT: PageContextToolkit = {
+  captureEchartsFromDoms,
+  captureEchartsFromDom,
+  captionFromOption,
+};
 
 const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -83,16 +109,26 @@ export const mergePageContexts = (parts: Array<Partial<AiPageContext> | null | u
   return { ...merged, sections: kept, images };
 };
 
+const normalizeMessage = (raw: PageContextMessage | null | undefined): PageContextMessage | null => {
+  const title = String(raw?.title || '').trim();
+  if (!title) return null;
+  const currentTime = raw?.currentTime == null ? undefined : String(raw.currentTime);
+  return { title, currentTime };
+};
+
 export const createPageContextRegistry = (options?: {
   getPathname?: () => string;
   pilots?: AiPageContextPilot[];
   timeoutMs?: number;
+  toolkit?: PageContextToolkit;
 }) => {
   let nextId = 1;
   const providers = new Map<number, ProviderEntry>();
+  const cache = new Map<string, CacheEntry>();
   const getPathname = options?.getPathname ?? (() => (typeof window === 'undefined' ? '' : window.location.pathname));
   const pilots = options?.pilots ?? PAGE_CONTEXT_PILOTS;
   const timeoutMs = options?.timeoutMs ?? PAGE_CONTEXT_PROVIDER_TIMEOUT_MS;
+  const toolkit = options?.toolkit ?? DEFAULT_TOOLKIT;
 
   const register = (provider: AiContextProvider) => {
     const id = nextId;
@@ -105,15 +141,42 @@ export const createPageContextRegistry = (options?: {
 
   const hasAvailable = () => providers.size > 0 || matchPilots(getPathname(), pilots).length > 0;
 
-  const collect = async (): Promise<AiPageContext | null> => {
+  const collectPilot = async (
+    pilot: AiPageContextPilot,
+    hint?: PageContextCollectHint,
+  ): Promise<Partial<AiPageContext> | null> => {
+    const mod = await pilot.load();
+    const message = normalizeMessage(await mod.getMessage());
+    if (!message) {
+      return mod.getContext(toolkit, hint);
+    }
+    const cached = cache.get(message.title);
+    if (
+      message.currentTime
+      && cached
+      && cached.currentTime === message.currentTime
+    ) {
+      return { ...cached.content, title: cached.content.title || message.title };
+    }
+    const content = await mod.getContext(toolkit, hint);
+    const next = { ...content, title: content.title || message.title };
+    if (message.currentTime) {
+      cache.set(message.title, { currentTime: message.currentTime, content: next });
+    } else {
+      cache.delete(message.title);
+    }
+    return next;
+  };
+
+  const collect = async (hint?: PageContextCollectHint): Promise<AiPageContext | null> => {
     const pathname = getPathname();
     const matched = matchPilots(pathname, pilots);
     const tasks: Array<Promise<Partial<AiPageContext> | null>> = [];
 
     for (const entry of providers.values()) {
       tasks.push(
-        withTimeout(Promise.resolve().then(() => entry.provider()), timeoutMs).catch((error) => {
-          console.warn('[ai-page-context] provider failed', error);
+        withTimeout(Promise.resolve().then(() => entry.provider(hint)), timeoutMs).catch((error) => {
+          console.debug('[ai-page-context] provider failed', error);
           return null;
         }),
       );
@@ -121,13 +184,8 @@ export const createPageContextRegistry = (options?: {
 
     for (const pilot of matched) {
       tasks.push(
-        withTimeout(
-          Promise.resolve()
-            .then(() => pilot.load())
-            .then((mod) => mod.collect()),
-          timeoutMs,
-        ).catch((error) => {
-          console.warn('[ai-page-context] pilot failed', error);
+        withTimeout(collectPilot(pilot, hint), timeoutMs).catch((error) => {
+          console.debug('[ai-page-context] pilot failed', error);
           return null;
         }),
       );
@@ -142,7 +200,7 @@ export const createPageContextRegistry = (options?: {
     return merged;
   };
 
-  return { register, collect, hasAvailable };
+  return { register, collect, hasAvailable, _cache: cache };
 };
 
 const singleton = createPageContextRegistry();

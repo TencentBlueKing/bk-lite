@@ -1,14 +1,7 @@
 """补丁管理目标视图"""
 
-import logging
-
-from django.db import transaction
-from rest_framework import status
-from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
-from rest_framework.response import Response
-
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.patch_mgmt.constants import GovernanceTaskStatus
 from apps.patch_mgmt.filters.patch_target import PatchTargetFilter
@@ -19,8 +12,11 @@ from apps.patch_mgmt.services.target_connectivity import probe_target_data, targ
 from apps.patch_mgmt.services.target_deletion import purge_target_governance_history
 from apps.patch_mgmt.utils.i18n import patch_message
 from apps.patch_mgmt.utils.operation_log import log_target_created, log_target_purged, log_target_updated
-
-logger = logging.getLogger("app")
+from django.db import transaction
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.response import Response
 
 
 class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
@@ -233,10 +229,9 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
     @HasPermission("patch_target-Edit")
     def check_connectivity(self, request, pk=None):
         """执行真实 SSH/WinRM 认证探测并写回结果。"""
-        from django.utils import timezone
-
         from apps.patch_mgmt.constants import ConnectivityStatus
         from apps.patch_mgmt.services.target_connectivity import probe_target
+        from django.utils import timezone
 
         target = self.get_object()
         require_target_ids(request, [target.id], "Operate")

@@ -35,14 +35,17 @@ def test_wrapper_delegates_to_base(monkeypatch, task_module, model_module, basen
     tm = _task_mod(task_module)
     captured = {}
 
-    def fake_base(config, release_id, t, v, te):
+    def fake_base(config, release_id, t, v, te, *, attempt):
         captured["args"] = (config, release_id, t, v, te)
+        attempt.owner_token = attempt.candidate_token
+        captured["owner_token"] = attempt.owner_token
         return {"result": True, "release_id": release_id}
 
     monkeypatch.setattr(tm, "publish_dataset_release_base", fake_base)
     result = tm.publish_dataset_release_async.run(101, 1, 2, 3)
     assert result == {"result": True, "release_id": 101}
     assert captured["args"][1:] == (101, 1, 2, 3)
+    assert captured["owner_token"]
     # config carries the algorithm-specific publish config
     cfg = captured["args"][0]
     assert cfg.release_model is not None
@@ -54,6 +57,9 @@ def test_wrapper_soft_timeout_marks_failed_and_reraises(monkeypatch, task_module
     tm = _task_mod(task_module)
 
     def boom(*a, **k):
+        attempt = k["attempt"]
+        attempt.owner_token = attempt.candidate_token
+        attempt.claimed = True
         raise SoftTimeLimitExceeded()
 
     monkeypatch.setattr(tm, "publish_dataset_release_base", boom)
@@ -64,6 +70,7 @@ def test_wrapper_soft_timeout_marks_failed_and_reraises(monkeypatch, task_module
     mark_mock.assert_called_once()
     # release_id passed positionally
     assert mark_mock.call_args[0][1] == 55
+    assert mark_mock.call_args.kwargs["owner_token"]
 
 
 @pytest.mark.parametrize("task_module,model_module,basename", WRAPPERS, ids=WRAPPER_IDS)
@@ -71,6 +78,9 @@ def test_wrapper_generic_failure_marks_failed_and_reraises(monkeypatch, task_mod
     tm = _task_mod(task_module)
 
     def boom(*a, **k):
+        attempt = k["attempt"]
+        attempt.owner_token = attempt.candidate_token
+        attempt.claimed = True
         raise RuntimeError("unexpected")
 
     monkeypatch.setattr(tm, "publish_dataset_release_base", boom)
@@ -80,6 +90,53 @@ def test_wrapper_generic_failure_marks_failed_and_reraises(monkeypatch, task_mod
         tm.publish_dataset_release_async.run(77, 1, 2, 3)
     mark_mock.assert_called_once()
     assert mark_mock.call_args[0][1] == 77
+    assert mark_mock.call_args.kwargs["owner_token"]
+
+
+@pytest.mark.parametrize("task_module,model_module,basename", WRAPPERS, ids=WRAPPER_IDS)
+def test_enforce_wrapper_does_not_fail_release_before_claim(monkeypatch, task_module, model_module, basename):
+    monkeypatch.setenv("MLOPS_DATASET_RELEASE_EXECUTION_MODE", "enforce")
+    tm = _task_mod(task_module)
+
+    def config_error():
+        raise RuntimeError("configuration unavailable")
+
+    monkeypatch.setattr(tm, "_get_config", config_error)
+    mark_mock = Mock()
+    monkeypatch.setattr(tm, "mark_release_as_failed", mark_mock)
+
+    with pytest.raises(RuntimeError, match="configuration unavailable"):
+        tm.publish_dataset_release_async.run(78, 1, 2, 3)
+
+    mark_mock.assert_not_called()
+
+
+@pytest.mark.parametrize("task_module,model_module,basename", WRAPPERS, ids=WRAPPER_IDS)
+def test_wrapper_retries_busy_release_without_marking_failed(monkeypatch, task_module, model_module, basename):
+    tm = _task_mod(task_module)
+    assert hasattr(tm, "DatasetReleaseBusy")
+    assert tm.publish_dataset_release_async.max_retries is None
+
+    def busy(*args, **kwargs):
+        raise tm.DatasetReleaseBusy(retry_after=17)
+
+    monkeypatch.setattr(tm, "publish_dataset_release_base", busy)
+    mark_mock = Mock()
+    retry_error = RuntimeError("celery retry requested")
+    retry_mock = Mock(return_value=retry_error)
+    monkeypatch.setattr(tm, "mark_release_as_failed", mark_mock)
+    monkeypatch.setattr(tm.publish_dataset_release_async, "retry", retry_mock)
+
+    with pytest.raises(RuntimeError, match="celery retry requested"):
+        tm.publish_dataset_release_async.run(88, 1, 2, 3)
+
+    retry_mock.assert_called_once()
+    retry_kwargs = retry_mock.call_args.kwargs
+    assert isinstance(retry_kwargs["exc"], tm.DatasetReleaseBusy)
+    assert retry_kwargs["exc"].retry_after == 17
+    assert retry_kwargs["countdown"] == 17
+    assert retry_kwargs["max_retries"] is None
+    mark_mock.assert_not_called()
 
 
 @pytest.mark.parametrize("task_module,model_module,basename", WRAPPERS, ids=WRAPPER_IDS)

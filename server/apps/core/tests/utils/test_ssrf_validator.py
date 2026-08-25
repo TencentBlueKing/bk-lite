@@ -14,7 +14,10 @@ from unittest.mock import patch
 
 import pytest
 
+from apps.core.utils import ssrf_validator as ssrf_validator_module
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
+
+pytestmark = pytest.mark.unit
 
 # ===========================================================================
 # validate() 严格模式测试
@@ -98,10 +101,17 @@ class TestSSRFValidatorStrictMode:
     # 协议阻断测试
     # -------------------------------------------------------------------------
 
-    def test_blocks_file_protocol(self):
+    def test_blocks_file_protocol(self, mocker):
         """阻断 file:// 协议"""
+        warning = mocker.patch.object(ssrf_validator_module.logger, "warning")
+
         with pytest.raises(SSRFError, match="不允许的协议"):
             SSRFValidator.validate("file:///etc/passwd")
+        warning.assert_called_once_with(
+            "[SSRF] 阻断非法协议: url=%s, scheme=%s",
+            "file:///etc/passwd",
+            "file",
+        )
 
     def test_blocks_ftp_protocol(self):
         """阻断 ftp:// 协议"""

@@ -14,7 +14,7 @@ export interface PillComposerProps {
   onPaste?: React.ClipboardEventHandler<HTMLInputElement>;
 }
 
-const COMPOSER_HEIGHT = 40;
+const COMPOSER_HEIGHT = 44;
 const SIDE_CONTROL = 28;
 const SIDE_GAP = 6;
 
@@ -41,8 +41,8 @@ export const PillComposer = React.memo(function PillComposer({
         height: COMPOSER_HEIGHT,
         width: '100%',
         borderRadius: 9999,
-        border: `1px solid ${WC.botBorder}`,
-        background: WC.page,
+        border: `1px solid ${WC.dockEdge}`,
+        background: WC.white,
         boxSizing: 'border-box',
       }}
     >
@@ -148,9 +148,11 @@ export const PillComposer = React.memo(function PillComposer({
             fill="none"
             stroke="currentColor"
             strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
             style={{ display: 'block' }}
           >
-            <path d="M5 12h14M13 6l6 6-6 6" />
+            <path d="M12 19V5M5 12l7-7 7 7" />
           </svg>
         )}
       </button>

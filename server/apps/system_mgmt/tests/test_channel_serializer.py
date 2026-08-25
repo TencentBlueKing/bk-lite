@@ -50,3 +50,16 @@ def test_event_publish_channel_allows_its_own_subject_key_when_editing():
     )
 
     assert serializer.is_valid() is True
+
+@pytest.mark.django_db
+def test_nats_channel_rejects_non_boolean_notify_person_flag():
+    serializer = ChannelSerializer(data={
+        "name": "invalid-notify-person",
+        "channel_type": ChannelChoices.NATS,
+        "description": "Invalid config",
+        "team": [],
+        "config": {"supports_notify_person": "true"},
+    })
+
+    assert serializer.is_valid() is False
+    assert "supports_notify_person" in str(serializer.errors)

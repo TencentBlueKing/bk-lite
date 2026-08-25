@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "平台基础能力模块目标架构",
+    "output": "platform-core-target.architecture.html",
+    "quality_profile": "showcase",
+    "viewBox": [1700, 780],
+    "views": [
+      {"id": "actor-context", "label": "不可变调用者上下文", "focus": ["adapters", "identity", "actor", "authorization", "registry"], "note": "所有 HTTP、OpenAPI、NATS 入口先生成同一 AuthorizedActorContext，再选择能力。"},
+      {"id": "capability-bus", "label": "统一能力调用", "focus": ["registry", "usecases", "invocation", "local", "nats", "workers"], "note": "本地与远程 adapter 共享 schema、deadline、错误、审计、idempotency 和容量契约。"},
+      {"id": "shared-ports", "label": "显式基础设施端口", "focus": ["usecases", "artifact", "egress"], "note": "对象存储和外部 HTTP 不再隐藏在 Model Field 或普通属性访问中。"}
+    ]
+  },
+  "components": [
+    {"id": "adapters", "type": "frontend", "label": "HTTP / OpenAPI / NATS Adapters", "sublabel": "parse only + request id", "pos": [30, 330], "size": [205, 76]},
+    {"id": "identity", "type": "security", "label": "IdentityVerifier", "sublabel": "JWT / API token / render token", "pos": [275, 330], "size": [185, 76]},
+    {"id": "actor", "type": "database", "label": "AuthorizedActorContext", "sublabel": "subject + team scope + permission revision", "pos": [500, 330], "size": [210, 76]},
+    {"id": "authorization", "type": "security", "label": "AuthorizationPolicy", "sublabel": "action + data scope + delegation", "pos": [750, 330], "size": [190, 76]},
+    {"id": "registry", "type": "security", "label": "CapabilityRegistry", "sublabel": "schema + mode + cost + policy", "pos": [980, 330], "size": [190, 76]},
+    {"id": "usecases", "type": "backend", "label": "Application Use Cases", "sublabel": "typed commands / queries", "pos": [1210, 330], "size": [190, 76]},
+    {"id": "invocation", "type": "messagebus", "label": "InvocationPolicy", "sublabel": "deadline + idempotency + budget", "pos": [980, 555], "size": [190, 76]},
+    {"id": "local", "type": "backend", "label": "LocalInvoker", "sublabel": "same envelope + context", "pos": [1210, 555], "size": [190, 76]},
+    {"id": "nats", "type": "messagebus", "label": "NATS Connection Manager", "sublabel": "persistent async multiplexing", "pos": [1440, 555], "size": [200, 76]},
+    {"id": "workers", "type": "messagebus", "label": "Capability Worker Pools", "sublabel": "per class queue + fairness", "pos": [1440, 330], "size": [200, 76]},
+    {"id": "artifact", "type": "cloud", "label": "ArtifactReferencePort", "sublabel": "digest + intent + bounded stream", "pos": [1210, 95], "size": [190, 76]},
+    {"id": "egress", "type": "external", "label": "EgressGateway", "sublabel": "DNS pin + peer check + byte budget", "pos": [1440, 95], "size": [200, 76]}
+  ],
+  "boundaries": [
+    {"kind": "security-group", "label": "身份与授权上下文", "wraps": ["adapters", "identity", "actor", "authorization", "registry"], "pad": 18},
+    {"kind": "region", "label": "统一能力协议与显式基础设施", "wraps": ["usecases", "invocation", "local", "nats", "workers", "artifact", "egress"], "pad": 18}
+  ],
+  "connections": [
+    {"id": "adapters_identity", "from": "adapters", "to": "identity", "label": "credential", "variant": "security", "labelDy": 62},
+    {"id": "identity_actor", "from": "identity", "to": "actor", "label": "verified subject", "variant": "security", "labelDy": 62},
+    {"id": "actor_authorization", "from": "actor", "to": "authorization", "label": "immutable scope", "variant": "emphasis", "labelDy": 62},
+    {"id": "authorization_registry", "from": "authorization", "to": "registry", "label": "allowed capability", "variant": "security", "labelDy": 62},
+    {"id": "registry_usecases", "from": "registry", "to": "usecases", "label": "typed request", "variant": "emphasis", "labelDy": 62},
+    {"id": "registry_invocation", "from": "registry", "to": "invocation", "label": "execution policy", "variant": "security", "fromSide": "bottom", "toSide": "top", "labelAt": [1075, 420]},
+    {"id": "invocation_local", "from": "invocation", "to": "local", "label": "same-process", "variant": "emphasis", "labelAt": [1190, 665]},
+    {"id": "invocation_nats", "from": "invocation", "to": "nats", "label": "remote envelope", "variant": "dashed", "fromSide": "bottom", "toSide": "bottom", "via": [[1075, 690], [1540, 690]], "labelAt": [1320, 705]},
+    {"id": "nats_workers", "from": "nats", "to": "workers", "label": "bounded class queue", "variant": "emphasis", "fromSide": "top", "toSide": "bottom"},
+    {"id": "workers_usecases", "from": "workers", "to": "usecases", "label": "context + token", "variant": "security", "fromSide": "left", "toSide": "right", "labelAt": [1420, 420]},
+    {"id": "local_usecases", "from": "local", "to": "usecases", "label": "context + envelope", "variant": "default", "fromSide": "top", "toSide": "bottom"},
+    {"id": "usecases_artifact", "from": "usecases", "to": "artifact", "label": "artifact intent", "variant": "default", "fromSide": "top", "toSide": "bottom"},
+    {"id": "artifact_egress", "from": "artifact", "to": "egress", "label": "bounded object I/O", "variant": "emphasis", "labelDy": 62},
+    {"id": "usecases_egress", "from": "usecases", "to": "egress", "label": "approved endpoint", "variant": "security", "fromSide": "right", "toSide": "bottom"}
+  ],
+  "cards": [
+    {"dot": "cyan", "title": "短期：关闭安全与取消语义缺口", "items": ["登录 redirect_origin 改为绑定/部署 allowlist；移除 NATS jsonpickle 异常与过期明文 secret fallback", "OpenAPI 区分 query/command；超时命令使用 operation id + idempotency/fencing，不再声称 cancel 已运行线程"]},
+    {"dot": "violet", "title": "中期：统一上下文与能力协议", "items": ["AuthorizedActorContext 一次构造身份、团队范围、权限 revision、delegation 与 request id，所有入口必需", "CapabilityRegistry 声明 schema、执行模式、deadline、成本与错误；Local/NATS adapter 共享同一 envelope"]},
+    {"dot": "emerald", "title": "长期：显式 I/O 与公平运行时", "items": ["S3JSONField 迁为 ArtifactReferencePort，读写显式、流式、带 digest/intent/GC；不再在属性访问中联网", "持久 NATS 连接与按 capability class 的公平队列；EgressGateway 绑定 DNS/peer IP 并统一字节预算"]}
+  ]
+}

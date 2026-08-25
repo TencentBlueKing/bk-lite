@@ -58,7 +58,9 @@
 - ✅ **禁原生 SQL**:走 Django ORM(`DB_ENGINE` 多方言,raw SQL 跨库易碎);确需复杂查询用 ORM 表达式。
 - ✅ **图库(CMDB)用参数化查询**,禁拼接 Cypher / 禁 Neo4j 语法(本项目用 FalkorDB)。
 
-## 8. 日志引入
+## 8. 日志契约
+
+### 8.1 logger 来源
 
 - ✅ **`server/apps/<app>/` 内统一从 `apps.core.logger` 引入本 app 的 logger，并别名为 `logger`**:
   ```python
@@ -67,6 +69,26 @@
   现有导出见 `server/apps/core/logger.py`（如 `cmdb_logger`、`opspilot_logger`、`alert_logger`、`monitor_logger`、`node_logger`、`job_logger`、`mlops_logger`、`log_logger`、`system_mgmt_logger`、`console_mgmt_logger`、`operation_analysis_logger`、`nats_logger`、`celery_logger`）。`core` / 跨 app 共享工具可用默认 `from apps.core.logger import logger`。
   - ❌ `from loguru import logger`、直接 `logging.getLogger(...)`、或引入其他 app 的 `*_logger`。
   - ❌ 新增 app logger 时绕过 `apps/core/logger.py` 就地创建。
+
+### 8.2 模板、等级与失败所有权
+
+- ✅ **稳定模板 + 惰性参数**：stdlib logging 使用 `logger.info("event=task_completed task_id=%s", task_id)`；独立算法服务沿用 loguru 的 `{}` 参数风格。禁止用 f-string、字符串拼接、`%` 或 `.format()` 预先把动态值固化进模板。
+- ✅ **等级表达运行语义**：INFO 只记录可独立检索的 accepted、lifecycle、terminal 或有界批次汇总；逐项成功、循环进度、函数开始/结束和内部 read/decode/retry 阶段使用 DEBUG 或删除；可恢复降级、跳过和业务失败使用 WARNING；真正需要运维处理的失败才使用 ERROR。
+- ✅ **一个失败只有一个 traceback 所有者**：由最接近业务语义且拥有 task/run/execution/callback ID 的边界在 `except` 中持有真实 traceback；通常使用 `logger.exception`。异常正文可能含 payload、响应或凭据时，必须改用原始 `error.__traceback__` + 脱敏替代异常正文的 `exc_info` / Loguru `opt(exception=...)`，同时记录稳定 `error_type`；Loguru 生产 handler 必须显式 `diagnose=False`，禁止从 traceback 帧展开 locals。仅记录字符串 call-chain 不能替代 traceback。下层继续上抛时不得重复 ERROR，也不得手工调用 `traceback.format_exc()`。上层可记录不带重复堆栈的有界终态汇总。
+- ✅ **失败字段可关联**：失败日志至少包含稳定 event、可用的业务关联 ID、`failed_stage` 和 `error_type`；异步链路分别表达执行结果、持久化结果与投递/ACK 结果，不用单一 `success` 掩盖部分失败。
+
+### 8.3 安全、容量与业务兼容
+
+- ✅ **敏感正文直接省略**：密码、token、cookie、Authorization、credential、私钥、完整 payload/result/响应正文、模板正文和未脱敏 SQL 不进入日志；不得把凭据截短后宣称安全。确需关联时使用非凭据 ID 或项目已有的专用 sanitizer。
+- ✅ **动态字段有界且单行**：用户或外部系统可控的 ID、路径、URL、subject 等只记录排障必需部分，按领域上限截断日志副本并转义 CR/LF；不得为日志修改传给业务、协议或持久化层的原值。
+- ✅ **常驻运行路径不使用 `print`**：Server、Agent 和在线 serving 统一走 logger；明确面向人的 CLI、管理命令、代码生成/诊断脚本和测试工具可以使用 stdout/stderr。
+- ✅ **日志改动不夹带业务契约变化**：默认保持返回值、用户可见文案、异常类型/身份、重试、状态、数据库写入、NATS subject/payload/ACK 和外部 SDK 调用不变；确需改变时必须拆分说明并补兼容与回滚测试。
+
+### 8.4 日志测试契约
+
+- ✅ **测试日志行为而非文案镜像**：稳定模板改动需断言模板与独立参数，并用 `LogRecord.getMessage()` 或等价 formatter 验证最终渲染；异常链需断言语义边界恰好一条 traceback ERROR、保留真实 traceback 对象且关联字段完整；异常正文安全时可用原异常，可能敏感时必须使用受控代理异常且不修改原异常。
+- ✅ **安全断言覆盖完整输出**：使用唯一哨兵值验证 message、参数和带 traceback 的完整格式化结果均不包含凭据、payload、响应正文或其他禁记内容；脱敏异常代理还必须证明 `exc_info` / Loguru exception tuple 保留原始 traceback 对象和调用帧、替代正文受控且不修改原异常。Loguru 测试必须直接使用生产 handler，并断言 `diagnose=False`，不得另加测试专用安全 sink 绕过生产配置。只断言 mock 调用或“截断后看不到完整值”不算通过。
+- ✅ **回归同时锁定业务契约**：日志测试必须同步证明原返回值、用户可见错误、异常类型与对象身份、状态/持久化及协议字段保持不变；不得只验证 mock logger 被调用。
 
 ## 9. 架构卫生
 
@@ -101,7 +123,7 @@
 - [ ] 多步写有 `atomic`,通知在 `on_commit`,RMW 原子
 - [ ] 输入经校验,异常不吞,失败码语义正确(400/403 非 500)
 - [ ] serializer 无 `__all__`,敏感字段 write_only
-- [ ] 日志从 `apps.core.logger` 引入本 app 的 `*_logger as logger`,未用 loguru / 就地 getLogger
+- [ ] 日志符合 §8：来源正确、模板稳定、等级真实、失败单一持有 traceback，关联字段完整且动态值安全有界
 - [ ] 无原生 SQL,图查询参数化
 - [ ] 安全边界变更已盘点存量契约,有迁移与回滚方案
 - [ ] 异步状态有 fencing/幂等,持久化与外部副作用可补偿重试

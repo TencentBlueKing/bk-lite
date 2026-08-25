@@ -3,18 +3,16 @@
 避免多次启动 Python 进程，大幅提升启动速度
 """
 
-import logging
 import os
 from pathlib import Path
 
+from apps.core.logger import logger
+from apps.core.utils.loader import preload_language_cache
 from django.apps import apps as django_apps
 from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from apps.core.utils.loader import preload_language_cache
-
-logger = logging.getLogger("app")
 _ADMIN_PASSWORD_FILE_MAX_CHARS = 4096
 
 
@@ -153,7 +151,8 @@ class Command(BaseCommand):
 
         password_file = os.getenv("BK_INIT_ADMIN_PASSWORD_FILE", "").strip()
         if not password_file:
-            raise CommandError("初始化管理员必须配置 BK_INIT_ADMIN_PASSWORD 或 BK_INIT_ADMIN_PASSWORD_FILE")
+            logger.warning("未配置管理员引导凭据，按产品默认使用内置初始密码；请登录后尽快修改")
+            return "password"
         try:
             with Path(password_file).open(encoding="utf-8") as file:
                 password = file.read(_ADMIN_PASSWORD_FILE_MAX_CHARS + 1)

@@ -1,10 +1,11 @@
 import asyncio
+import io
+import logging
 from contextlib import suppress
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-
 from nats_client.management.commands import nats_listener
 
 from .nats_listener_test_utils import cancel_tasks_created_after
@@ -63,7 +64,89 @@ async def _start_listener(monkeypatch, settings, *, handler, nats, name, js, con
     return command
 
 
-async def test_core_listener_bounds_slow_handlers_and_backpressures_callback(monkeypatch, settings):
+async def test_jetstream_fetch_logs_subject_without_payload(monkeypatch, mocker):
+    command = nats_listener.Command()
+    secret = "payload-secret-must-not-enter-logs"
+    subject = "bklite.js.collect\r\n" + "x" * 300
+    message = SimpleNamespace(data=secret.encode(), subject=subject)
+
+    class OneMessageSubscription:
+        async def fetch(self, timeout):
+            command._stopping = True
+            return [message]
+
+    enqueue = AsyncMock()
+    monkeypatch.setattr(command, "_enqueue_jetstream", enqueue)
+    debug = mocker.patch.object(nats_listener.logger, "debug")
+
+    await command._fetch(OneMessageSubscription(), progress_interval=10)
+
+    enqueue.assert_awaited_once_with(message, secret, subject, 10)
+    logged_subject = debug.call_args.args[1]
+    debug.assert_called_once_with(
+        "event=nats_jetstream_message_received subject=%s payload_bytes=%s",
+        logged_subject,
+        len(message.data),
+    )
+    rendered = debug.call_args.args[0] % debug.call_args.args[1:]
+    assert secret not in rendered
+    assert "\r" not in logged_subject
+    assert "\n" not in logged_subject
+    assert len(logged_subject) == nats_listener.LOG_SUBJECT_MAX_LENGTH
+
+
+@pytest.mark.parametrize("registered_js", [False, True])
+async def test_listener_does_not_report_ready_without_an_active_subscription(
+    monkeypatch,
+    settings,
+    mocker,
+    registered_js,
+):
+    class FakeNats:
+        async def subscribe(self, *args, **kwargs):
+            return None
+
+    monkeypatch.setattr(nats_listener, "get_nc_client", _fake_get_nc_client)
+    monkeypatch.setattr(
+        nats_listener.default_registry,
+        "registry",
+        {
+            "bklite.inactive": {
+                "func": AsyncMock(),
+                "namespace": "bklite",
+                "name": "inactive",
+                "js": registered_js,
+            }
+        },
+    )
+    settings.NATS_JETSTREAM_ENABLED = False
+    settings.NATS_JETSTREAM_CRATE_STREAM = False
+    settings.NATS_CORE_PENDING_MSGS_LIMIT = 7
+    settings.NATS_CORE_PENDING_BYTES_LIMIT = 4096
+    command = nats_listener.Command()
+    command.nats = FakeNats()
+    mocker.patch.object(command, "_start_workers")
+    info = mocker.patch.object(nats_listener.logger, "info")
+    warning = mocker.patch.object(nats_listener.logger, "warning")
+    debug = mocker.patch.object(nats_listener.logger, "debug")
+
+    await command.nats_coroutine()
+
+    assert not any(
+        call.args[0].startswith("event=nats_listener_ready")
+        for call in info.call_args_list
+    )
+    warning.assert_called_once_with(
+        "event=nats_listener_no_active_subscriptions configured_subscriptions=%s",
+        1,
+    )
+    assert not any(
+        call.args[0].startswith("event=nats_listener_subscription_ready")
+        for call in debug.call_args_list
+    )
+
+
+async def test_core_listener_bounds_slow_handlers_and_backpressures_callback(monkeypatch, settings, mocker, capsys):
     existing_tasks = set(asyncio.all_tasks())
     callbacks = {}
     subscription_options = {}
@@ -71,11 +154,13 @@ async def test_core_listener_bounds_slow_handlers_and_backpressures_callback(mon
     active = 0
     max_active = 0
     completed = 0
+    debug = mocker.patch.object(nats_listener.logger, "debug")
 
     class FakeNats:
         async def subscribe(self, subject, queue, cb, **kwargs):
             callbacks[subject] = cb
             subscription_options.update(kwargs)
+            return SimpleNamespace(drain=AsyncMock())
 
     async def slow_handler(_func_name, _data, reply=None):
         nonlocal active, max_active, completed
@@ -131,6 +216,14 @@ async def test_core_listener_bounds_slow_handlers_and_backpressures_callback(mon
 
         assert completed == 6
         assert max_active == 2
+        assert capsys.readouterr().out == ""
+        assert debug.call_args_list.count(
+            mocker.call(
+                "event=nats_core_message_received subject=%s payload_bytes=%s",
+                "bklite.slow_handler",
+                len(_message("bklite.slow_handler").data),
+            )
+        ) == 6
     finally:
         release.set()
         with suppress(asyncio.CancelledError):
@@ -466,7 +559,9 @@ async def test_core_worker_preserves_success_and_failure_reply_envelopes(monkeyp
         async def publish(self, reply, payload):
             published.append((reply, payload))
 
-    dispatch = AsyncMock(side_effect=[{"value": 1}, ValueError("invalid payload")])
+    secret = "payload-error-secret-must-not-enter-logs"
+    error = ValueError(secret)
+    dispatch = AsyncMock(side_effect=[{"value": 1}, error])
     monkeypatch.setattr(nats_listener, "nats_handler", dispatch)
     settings.NATS_HANDLER_CONCURRENCY = 1
     settings.NATS_HANDLER_QUEUE_SIZE = 2
@@ -474,9 +569,16 @@ async def test_core_worker_preserves_success_and_failure_reply_envelopes(monkeyp
     command = nats_listener.Command()
     command.nats = FakeNats()
     command._start_workers()
-    await command._enqueue("bklite.success", '{"args": [], "kwargs": {}}', reply="_INBOX.success")
-    await command._enqueue("bklite.failure", '{"args": [], "kwargs": {}}', reply="_INBOX.failure")
-    await asyncio.wait_for(command._message_queue.join(), timeout=1)
+    output = io.StringIO()
+    handler = logging.StreamHandler(output)
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    nats_listener.logger.addHandler(handler)
+    try:
+        await command._enqueue("bklite.success", '{"args": [], "kwargs": {}}', reply="_INBOX.success")
+        await command._enqueue("bklite.failure", '{"args": [], "kwargs": {}}', reply="_INBOX.failure")
+        await asyncio.wait_for(command._message_queue.join(), timeout=1)
+    finally:
+        nats_listener.logger.removeHandler(handler)
 
     try:
         success = nats_listener.json.loads(published[0][1])
@@ -486,7 +588,23 @@ async def test_core_worker_preserves_success_and_failure_reply_envelopes(monkeyp
         assert published[1][0] == "_INBOX.failure"
         assert failure["success"] is False
         assert failure["error"] == "ValueError"
-        assert failure["message"] == "invalid payload"
+        assert failure["message"] == secret
+        safe_type, safe_error, safe_traceback = nats_listener.safe_exception_info(error)
+        assert safe_traceback is error.__traceback__
+        assert safe_error is not error
+        assert safe_type.__name__ == "SafeLogException"
+        assert isinstance(safe_error, RuntimeError)
+        assert str(safe_error) == "ValueError"
+        assert str(error) == secret
+        rendered = output.getvalue()
+        assert (
+            "event=nats_handler_failed failed_stage=handler_dispatch transport=core "
+            "subject=bklite.failure error_type=ValueError"
+        ) in rendered
+        assert "call_chain=" in rendered
+        assert "Traceback" in rendered
+        assert "handler" in rendered
+        assert secret not in rendered
     finally:
         await command.shutdown()
         await cancel_tasks_created_after(existing_tasks)

@@ -61,9 +61,9 @@ class NetworkConfigFileInfo:
             "port": int(self.params.get("port") or 22),
             "auth_strict_key": True,
             "transport": "asyncssh",
-            "timeout_socket": float(self.params.get("conn_timeout") or 30),
-            "timeout_transport": float(self.params.get("conn_timeout") or 30),
-            "timeout_ops": float(self.params.get("timeout") or 60),
+            "timeout_socket": 30.0,  # 建连超时硬编码
+            "timeout_transport": 30.0,
+            "timeout_ops": 60.0,  # 单命令超时硬编码；表单 timeout 由框架作单对象预算
         }
 
     @staticmethod

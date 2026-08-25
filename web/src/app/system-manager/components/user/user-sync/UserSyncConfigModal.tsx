@@ -61,7 +61,15 @@ const UserSyncConfigModal: React.FC<UserSyncConfigModalProps> = ({
     () => getEffectiveRootDepartmentFieldKey(source, resolvedTemplate),
     [resolvedTemplate, source],
   );
-  const initialRootScopeValue = source?.business_config?.[rootScopeFieldKey];
+  const initialRootScopeValue = (() => {
+    const raw = source?.business_config?.[rootScopeFieldKey]
+      ?? source?.business_config?.root_dns
+      ?? source?.business_config?.root_dn;
+    if (Array.isArray(raw)) {
+      return raw.map((item) => String(item)).join('\n');
+    }
+    return typeof raw === 'string' ? raw : '';
+  })();
 
   useEffect(() => {
     if (!open || !source) return;

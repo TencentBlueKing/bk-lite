@@ -21,7 +21,7 @@ import {
 } from '@webchat/core';
 import { AGUIHandler, AGUIEvent, type CustomProtocolEvent } from './agui';
 import type { ChatProps } from './chatProps';
-import { createAGUIEventHandler } from './aguiEventHandler';
+import { createAGUIEventHandler, shouldShowTypingPlaceholder } from './aguiEventHandler';
 import { parseLegacyMessage } from './legacyMessage';
 import { useMessageHandlers } from './hooks/useMessageHandlers';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -61,34 +61,6 @@ const MAX_IMAGE_SIZE =
     ? parseInt(process.env.NEXT_PUBLIC_MAX_IMAGE_SIZE, 10)
     : 0) || 4 * 1024 * 1024;
 
-const avatarImgClass = 'h-8 w-8 min-h-8 min-w-8 flex-shrink-0 rounded-full object-cover';
-
-const DefaultAvatar: React.FC<{ kind: 'bot' | 'user' }> = ({ kind }) => (
-  <span
-    className={`${avatarImgClass} inline-flex items-center justify-center`}
-    style={{
-      background: kind === 'bot' ? WC.indigo : WC.success,
-      color: WC.onPrimary,
-    }}
-    aria-hidden
-  >
-    {kind === 'bot' ? (
-      <svg width="18" height="18" viewBox="0 0 24 24">
-        <rect x="4" y="8" width="16" height="12" rx="3.5" fill="currentColor" />
-        <circle cx="12" cy="4.5" r="1.5" fill="currentColor" />
-        <rect x="11.25" y="5.6" width="1.5" height="2.6" rx="0.6" fill="currentColor" />
-        <circle cx="9.2" cy="13.2" r="1.4" fill={WC.indigo} />
-        <circle cx="14.8" cy="13.2" r="1.4" fill={WC.indigo} />
-      </svg>
-    ) : (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-        <circle cx="12" cy="8" r="4" />
-        <path d="M4.2 20.2C5.1 16.8 8.2 14.5 12 14.5s6.9 2.3 7.8 5.7c.1.4-.2.8-.6.8H4.8c-.4 0-.7-.4-.6-.8z" />
-      </svg>
-    )}
-  </span>
-);
-
 const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const {
     sseUrl,
@@ -103,8 +75,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     onMessageReceived,
     onError,
     onClose,
-    botAvatarUrl,
-    userAvatarUrl,
     agui,
     showFullscreenButton = true,
     showClearButton = false,
@@ -130,7 +100,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     imageReadConcurrency,
     allowUnknownImagePreview,
     collectContext,
-    hasPageContext,
   } = normalizeWebChatConfig(props) as ChatProps;
   const imageBudget = React.useMemo(
     () => resolveImageBudget({
@@ -161,8 +130,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const [imageSelectionError, setImageSelectionError] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useState<PendingImage[]>([]);
   const [hitlEvent, setHitlEvent] = useState<CustomProtocolEvent | null>(null);
-  const [attachPageContext, setAttachPageContext] = useState(true);
-  const [pageContextAvailable, setPageContextAvailable] = useState(false);
 
   // Refs
   const sessionManagerRef = useRef<SessionManager | null>(null);
@@ -195,44 +162,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   useEffect(() => {
     onMessageReceivedRef.current = onMessageReceived;
   }, [onMessageReceived]);
-
-  useEffect(() => {
-    if (!collectContext && !hasPageContext) {
-      setPageContextAvailable(false);
-      return undefined;
-    }
-    const probe = () => {
-      try {
-        setPageContextAvailable(hasPageContext ? Boolean(hasPageContext()) : Boolean(collectContext));
-      } catch {
-        setPageContextAvailable(false);
-      }
-    };
-    probe();
-    const timer = window.setInterval(probe, 1000);
-    return () => window.clearInterval(timer);
-  }, [collectContext, hasPageContext]);
-
-  // Cache avatar elements to prevent re-fetching on every render
-  const botAvatar = React.useMemo(
-    () =>
-      botAvatarUrl ? (
-        <img src={botAvatarUrl} alt="bot" className={avatarImgClass} />
-      ) : (
-        <DefaultAvatar kind="bot" />
-      ),
-    [botAvatarUrl]
-  );
-
-  const userAvatar = React.useMemo(
-    () =>
-      userAvatarUrl ? (
-        <img src={userAvatarUrl} alt="user" className={avatarImgClass} />
-      ) : (
-        <DefaultAvatar kind="user" />
-      ),
-    [userAvatarUrl]
-  );
 
   // Initialize core components
   useEffect(() => {
@@ -324,6 +253,9 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     }
     if (appliedSessionRef.current === null) {
       appliedSessionRef.current = sessionId;
+      if (initialMessages && initialMessages.length > 0) {
+        setMessages(initialMessages);
+      }
       return;
     }
     if (appliedSessionRef.current === sessionId) {
@@ -594,9 +526,9 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         // Get current session data
         const currentSession = sessionManagerRef.current?.getSession();
         let pageContext: unknown = null;
-        if (attachPageContext && collectContext) {
+        if (collectContext) {
           try {
-            pageContext = await collectContext();
+            pageContext = await collectContext({ message: value.trim() });
           } catch (error) {
             console.warn('page context collect failed', error);
           }
@@ -662,6 +594,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
             handleAGUIEvent.flushPendingText();
             setIsLoading(false);
             setIsThinking(false);
+            stateMachineRef.current?.transition('connected');
           },
         });
       } else {
@@ -700,7 +633,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     apiKey,
     credentials,
     requestHeaders,
-    attachPageContext,
     collectContext,
   ]);
 
@@ -768,38 +700,43 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   return (
     <div 
       className={`flex min-h-0 flex-1 flex-col overflow-hidden ${
-        showHeader ? 'rounded-lg shadow-lg' : ''
+        showHeader ? 'rounded-lg' : ''
       } ${
         panelFullscreen && !onFullscreenChange
           ? 'fixed inset-0 z-50 h-full'
           : 'h-full'
       }`}
-      style={{ background: WC.white }}
+      style={{ background: WC.stage }}
       ref={ref}
     >
       {showHeader && (
-      <div
-        className="flex flex-shrink-0 items-center justify-between px-5 py-4"
-        style={{ background: WC.indigo, color: WC.onPrimary }}
-      >
+      <div className="flex-shrink-0">
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{
+            background: WC.headerBg,
+            color: WC.headerInk,
+            borderBottom: `1px solid ${WC.botBorder}`,
+          }}
+        >
         <div>
-          <div className="text-sm font-semibold tracking-wide">{title}</div>
-          <div className="mt-0.5 text-xs opacity-80">{subtitle || '随时为你提供帮助'}</div>
+          <div className="text-[13px] font-medium tracking-wide">{title}</div>
+          <div className="mt-0.5 text-xs" style={{ color: WC.muted }}>{subtitle || '随时为你提供帮助'}</div>
         </div>
         <div className="flex items-center gap-1">
           {showFullscreenButton && (
             <button
               onClick={toggleFullscreen}
-              className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-[var(--color-bg-6,rgba(255,255,255,0.16))]"
-              style={{ color: WC.onPrimary }}
+              className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-[var(--color-fill-2,#f4f5f8)]"
+              style={{ color: WC.muted }}
               title={panelFullscreen ? '退出全屏' : '全屏'}
             >
               {panelFullscreen ? (
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
                 </svg>
               ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
                 </svg>
               )}
@@ -807,22 +744,23 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           )}
           <button
             onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-[var(--color-bg-6,rgba(255,255,255,0.16))]"
-            style={{ color: WC.onPrimary }}
+            className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-[var(--color-fill-2,#f4f5f8)]"
+            style={{ color: WC.muted }}
             title="关闭对话"
           >
             ✕
           </button>
+        </div>
         </div>
       </div>
       )}
 
       {/* Messages Area */}
       <div
-        className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${wideLayout || panelFullscreen ? 'px-5 py-4' : 'p-4'}`}
-        style={{ background: WC.white }}
+        className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${wideLayout || panelFullscreen ? 'px-6 py-5' : 'px-4 py-4'}`}
+        style={{ background: WC.stage }}
       >
-        <div className="flex min-h-0 w-full flex-1 flex-col space-y-3">
+        <div className="flex min-h-0 w-full flex-1 flex-col space-y-5">
         {historyLoading ? (
           <ConversationSkeleton />
         ) : messages.length === 0 ? (
@@ -856,8 +794,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
               <MessageBubble
                 key={msg.id}
                 message={msg}
-                botAvatar={botAvatar}
-                userAvatar={userAvatar}
                 isLastBotMessage={isPartOfLastQA}
                 fillWidth={wideLayout || panelFullscreen}
                 onRegenerate={handleRegenerate}
@@ -871,20 +807,19 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         })()}
         
         {/* Show loading/thinking state */}
-        {(isLoading || isThinking) && (
-          <div className="flex w-full items-start gap-2">
-            <div className="h-8 w-8 flex-shrink-0 overflow-hidden rounded-full">{botAvatar}</div>
-            <div
-              className={`px-3.5 py-2.5 text-sm ${wideLayout || panelFullscreen ? 'min-w-0 flex-1' : 'max-w-[78%]'}`}
-              style={{
-                background: WC.botBubble,
-                color: WC.muted,
-                borderRadius: 18,
-                borderBottomLeftRadius: 6,
-              }}
+        {shouldShowTypingPlaceholder(isLoading, isThinking, messages) && (
+          <div className="flex w-full items-center gap-1.5" role="status" aria-live="polite">
+            <span
+              className={`text-xs font-medium ${isThinking ? 'webchat-thinking-shimmer' : ''}`}
+              style={isThinking ? undefined : { color: WC.muted }}
             >
-              {isThinking ? '思考中…' : '正在输入…'}
-            </div>
+              {isThinking ? '思考中' : '正在回复'}
+            </span>
+            <span className="webchat-thinking-dots" aria-hidden>
+              <span />
+              <span />
+              <span />
+            </span>
           </div>
         )}
 
@@ -904,8 +839,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
       {/* Input Area */}
       <div
-        className={`relative flex-shrink-0 ${wideLayout || panelFullscreen ? 'px-5 py-3' : 'p-2.5'}`}
-        style={{ background: WC.white }}
+        className={`relative flex-shrink-0 ${wideLayout || panelFullscreen ? 'px-5 py-3.5' : 'px-3 py-3'}`}
+        style={{ background: WC.composerWash }}
       >
         {showClearButton && (
           <button
@@ -926,23 +861,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
             {imageSelectionError}
           </p>
         )}
-        {pageContextAvailable && collectContext ? (
-          <div className="px-4 pt-2">
-            <button
-              type="button"
-              title="图表理解需要模型支持多模态；关闭后本次对话不采集当前页面"
-              onClick={() => setAttachPageContext((value) => !value)}
-              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
-              style={{
-                borderColor: attachPageContext ? WC.indigo : WC.botBorder,
-                color: attachPageContext ? WC.indigo : WC.muted,
-                background: attachPageContext ? WC.primaryBg : 'transparent',
-              }}
-            >
-              {attachPageContext ? '已附加当前页面' : '未附加当前页面'}
-            </button>
-          </div>
-        ) : null}
         {uploadedImages.length > 0 && (
           <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2">
             {uploadedImages.map((img, index) => (

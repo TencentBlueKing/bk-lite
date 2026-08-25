@@ -8,9 +8,19 @@ import React, {
   useEffect,
   useCallback
 } from 'react';
-import { Input, Button, Select, message, Spin, Tag, Popover, Empty } from 'antd';
+import {
+  Input,
+  Button,
+  Select,
+  message,
+  Spin,
+  Tag,
+  Popover,
+  Tooltip
+} from 'antd';
 import { PlusOutlined, CloseOutlined, HolderOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { ModalRef, ModalConfig } from '@/app/monitor/types';
 import {
   MonitorObjectItem,
@@ -496,7 +506,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
                   type="button"
                   className={`block min-h-8 w-full rounded px-3 text-left text-sm leading-8 hover:bg-[var(--color-fill-1)] ${
                     selectedField === field
-                      ? 'bg-[#e6f4ff] text-[#1677ff]'
+                      ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
                       : 'text-[var(--color-text-1)]'
                   }`}
                   onClick={() => selectField(field)}
@@ -506,7 +516,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
               ))}
             </div>
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('common.noData')} />
           )}
         </Spin>
       </div>
@@ -600,28 +610,40 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
         <Spin spinning={loading}>
           <div className="flex gap-4 min-h-[420px]">
             {showTree && (
-              <div className="w-[180px] border-r border-[var(--color-border-2)] pr-3">
+              <div className="w-[220px] border-r border-[var(--color-border-2)] pr-3">
                 <div className="text-xs text-[var(--color-text-3)] mb-2">
                   {t('monitor.object.configObject')}
                 </div>
-                {nodes.map((node) => (
-                  <div
-                    key={node.id}
-                    className={`flex items-center justify-between px-2 py-1.5 rounded cursor-pointer mb-1 ${
-                      activeId === node.id
-                        ? 'bg-[#e6f4ff] text-[#1890ff]'
-                        : 'hover:bg-[var(--color-fill-1)]'
-                    }`}
-                    onClick={() => setActiveId(node.id)}
-                  >
-                    <span className="truncate">{node.display_name}</span>
-                    <Tag color={node.isBase ? 'blue' : 'default'}>
-                      {node.isBase
-                        ? t('monitor.object.baseObject')
-                        : t('monitor.object.childObject')}
-                    </Tag>
-                  </div>
-                ))}
+                {nodes.map((node) => {
+                  const label = node.display_name || node.name;
+                  const tip =
+                    node.name && node.name !== label
+                      ? `${label} (${node.name})`
+                      : label;
+                  return (
+                    <div
+                      key={node.id}
+                      className={`flex items-center gap-1 px-2 py-1.5 rounded cursor-pointer mb-1 ${
+                        activeId === node.id
+                          ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
+                          : 'hover:bg-[var(--color-fill-1)]'
+                      }`}
+                      onClick={() => setActiveId(node.id)}
+                    >
+                      <Tooltip title={tip}>
+                        <span className="min-w-0 flex-1 truncate">{label}</span>
+                      </Tooltip>
+                      <Tag
+                        className="shrink-0 m-0"
+                        color={node.isBase ? 'blue' : 'default'}
+                      >
+                        {node.isBase
+                          ? t('monitor.object.baseObject')
+                          : t('monitor.object.childObject')}
+                      </Tag>
+                    </div>
+                  );
+                })}
               </div>
             )}
             <div className="flex-1">

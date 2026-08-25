@@ -64,7 +64,7 @@
       "default_metric": "any({resource_type='vmware_esxi'}) by (instance_id, resource_id)",
       "instance_id_keys": ["instance_id", "resource_id"],
       "supplementary_indicators": ["cpu_usage_average_gauge", "mem_usage_average_gauge", "disk_read_average_gauge"],
-      "display_fields": [{"name": "CPU usage", "sort_order": 0, "metrics": [{"plugin": "VMWare", "metric": "cpu_usage_average_gauge"}]}, {"name": "Memory utilization rate", "sort_order": 1, "metrics": [{"plugin": "VMWare", "metric": "mem_usage_average_gauge"}]}, {"name": "Disk read rate", "sort_order": 2, "metrics": [{"plugin": "VMWare", "metric": "disk_read_average_gauge"}]}],
+      "display_fields": [{"name": "IP 地址", "type": "field", "role": "resource_ip", "variable_id": "vm_ip", "sort_order": 0, "metrics": [{"plugin": "VMWare", "metric": "cpu_usage_average_gauge", "field": "ip"}]}, {"name": "CPU usage", "sort_order": 1, "metrics": [{"plugin": "VMWare", "metric": "cpu_usage_average_gauge"}]}, {"name": "Memory utilization rate", "sort_order": 2, "metrics": [{"plugin": "VMWare", "metric": "mem_usage_average_gauge"}]}, {"name": "Disk read rate", "sort_order": 3, "metrics": [{"plugin": "VMWare", "metric": "disk_read_average_gauge"}]}],
       "metrics": [
         {
           "metric_group": "CPU",
@@ -222,7 +222,7 @@
       "default_metric": "any({resource_type='vmware_vm'}) by (instance_id, resource_id)",
       "instance_id_keys": ["instance_id", "resource_id"],
       "supplementary_indicators": ["cpu_usage_average_gauge", "mem_usage_average_gauge", "disk_io_usage_gauge"],
-      "display_fields": [{"name": "CPU utilization rate", "sort_order": 0, "metrics": [{"plugin": "VMWare", "metric": "cpu_usage_average_gauge"}]}, {"name": "Memory utilization rate", "sort_order": 1, "metrics": [{"plugin": "VMWare", "metric": "mem_usage_average_gauge"}]}, {"name": "Disk I/O Usage", "sort_order": 2, "metrics": [{"plugin": "VMWare", "metric": "disk_io_usage_gauge"}]}],
+      "display_fields": [{"name": "IP 地址", "type": "field", "role": "resource_ip", "variable_id": "vm_ip", "sort_order": 0, "metrics": [{"plugin": "VMWare", "metric": "cpu_usage_average_gauge", "field": "ip"}]}, {"name": "CPU utilization rate", "sort_order": 1, "metrics": [{"plugin": "VMWare", "metric": "cpu_usage_average_gauge"}]}, {"name": "Memory utilization rate", "sort_order": 2, "metrics": [{"plugin": "VMWare", "metric": "mem_usage_average_gauge"}]}, {"name": "Disk I/O Usage", "sort_order": 3, "metrics": [{"plugin": "VMWare", "metric": "disk_io_usage_gauge"}]}],
       "metrics": [
         {
           "metric_group": "CPU",

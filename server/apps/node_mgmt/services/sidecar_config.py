@@ -1,15 +1,12 @@
 import base64
-import logging
 import shlex
 
 import yaml
-
+from apps.core.logger import node_logger as logger
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.sidecar import Node
 from apps.rpc.executor import Executor
-
-logger = logging.getLogger("node_mgmt")
 
 
 class SidecarConfigService:

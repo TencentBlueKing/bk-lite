@@ -41,9 +41,7 @@ JSONB、数组、GIN 索引、``ON CONFLICT``、正则 ``~`` 等），运行期�
 必须在真实 Kingbase MySQL 环境回归验证，按需在本模块继续补充。
 """
 
-import logging
-
-logger = logging.getLogger(__name__)
+from apps.core.logger import logger
 
 # 标记补丁是否已应用，避免重复
 _patches_applied = False

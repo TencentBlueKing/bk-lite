@@ -1,0 +1,266 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Monitor 模块核心数据流",
+    "output": "monitor-core.dataflow.html",
+    "animation": "none",
+    "quality_profile": "showcase",
+    "viewBox": [1420, 680],
+    "views": [
+      {
+        "id": "onboarding-flow",
+        "label": "接入控制流",
+        "focus": ["plugin_request", "onboarding", "preflight_apply", "collector"],
+        "note": "插件和用户参数形成期望状态，经预检与远程下发启动采集。"
+      },
+      {
+        "id": "metric-flow",
+        "label": "指标数据流",
+        "focus": ["collector", "metric_bus", "fusion", "victoria_metrics", "observation"],
+        "note": "指标写入链路绕过 Django Monitor，Monitor 从 VictoriaMetrics 查询事实。"
+      },
+      {
+        "id": "alert-flow",
+        "label": "策略告警流",
+        "focus": ["observation", "policy", "detector", "alert_state", "delivery"],
+        "note": "扫描读取观测数据，事务落库告警事实后，再异步投递通知。"
+      }
+    ]
+  },
+  "stages": [
+    { "label": "定义与接入" },
+    { "label": "采集与传输" },
+    { "label": "指标事实与查询" },
+    { "label": "策略执行" },
+    { "label": "告警事实与交付" }
+  ],
+  "nodes": [
+    {
+      "id": "plugin_request",
+      "type": "frontend",
+      "label": "插件定义与接入请求",
+      "sublabel": "JSON/J2 + 节点/组织/参数",
+      "stage": 0,
+      "row": 0,
+      "tag": "输入"
+    },
+    {
+      "id": "onboarding",
+      "type": "backend",
+      "label": "Onboarding",
+      "sublabel": "身份归一 / 校验 / 期望状态",
+      "stage": 0,
+      "row": 1,
+      "tag": "Monitor"
+    },
+    {
+      "id": "preflight_apply",
+      "type": "security",
+      "label": "预检与远程下发",
+      "sublabel": "Executor + NodeMgmt RPC",
+      "stage": 0,
+      "row": 2,
+      "tag": "需幂等与对账"
+    },
+    {
+      "id": "collector",
+      "type": "backend",
+      "label": "采集器",
+      "sublabel": "Telegraf / Exporter / Stargazer",
+      "stage": 1,
+      "row": 1,
+      "width": 128,
+      "tag": "运行态"
+    },
+    {
+      "id": "metric_bus",
+      "type": "messagebus",
+      "label": "NATS JetStream",
+      "sublabel": "subject: metrics.*",
+      "stage": 1,
+      "row": 2,
+      "tag": "Influx Line"
+    },
+    {
+      "id": "fusion",
+      "type": "backend",
+      "label": "Fusion Collector",
+      "sublabel": "queue: metrics_consumers",
+      "stage": 1,
+      "row": 3,
+      "tag": "共享消费组"
+    },
+    {
+      "id": "victoria_metrics",
+      "type": "database",
+      "label": "VictoriaMetrics",
+      "sublabel": "指标与实时状态事实",
+      "stage": 2,
+      "row": 2,
+      "tag": "时序存储"
+    },
+    {
+      "id": "observation",
+      "type": "backend",
+      "label": "Observation",
+      "sublabel": "实例发现 / 状态 / 指标查询",
+      "stage": 2,
+      "row": 3,
+      "tag": "管理投影"
+    },
+    {
+      "id": "policy",
+      "type": "backend",
+      "label": "策略调度与扫描",
+      "sublabel": "PeriodicTask + Celery",
+      "stage": 3,
+      "row": 2,
+      "tag": "查询预算"
+    },
+    {
+      "id": "detector",
+      "type": "backend",
+      "label": "AlertDetector",
+      "sublabel": "阈值 / 无数据 / 聚合",
+      "stage": 3,
+      "row": 3,
+      "tag": "检测"
+    },
+    {
+      "id": "alert_state",
+      "type": "database",
+      "label": "事件与告警事实",
+      "sublabel": "Event / Alert / Raw / Snapshot",
+      "stage": 4,
+      "row": 2,
+      "width": 128,
+      "tag": "事务落库"
+    },
+    {
+      "id": "delivery",
+      "type": "external",
+      "label": "通知与告警中心",
+      "sublabel": "on_commit / 补偿 / 对账",
+      "stage": 4,
+      "row": 3,
+      "tag": "外部投影"
+    }
+  ],
+  "flows": [
+    {
+      "id": "request_to_onboarding",
+      "from": "plugin_request",
+      "to": "onboarding",
+      "label": "定义 + 接入参数",
+      "classification": "受权请求",
+      "variant": "emphasis"
+    },
+    {
+      "id": "onboarding_to_apply",
+      "from": "onboarding",
+      "to": "preflight_apply",
+      "label": "校验后执行",
+      "classification": "ApplyOperation",
+      "variant": "security"
+    },
+    {
+      "id": "apply_to_collector",
+      "from": "preflight_apply",
+      "to": "collector",
+      "label": "配置生效",
+      "classification": "远程副作用",
+      "variant": "security"
+    },
+    {
+      "id": "collector_to_bus",
+      "from": "collector",
+      "to": "metric_bus",
+      "label": "发布指标",
+      "classification": "Influx Line Protocol",
+      "variant": "emphasis"
+    },
+    {
+      "id": "bus_to_fusion",
+      "from": "metric_bus",
+      "to": "fusion",
+      "label": "共享消费",
+      "classification": "metrics_consumers",
+      "variant": "emphasis"
+    },
+    {
+      "id": "fusion_to_vm",
+      "from": "fusion",
+      "to": "victoria_metrics",
+      "label": "写入指标",
+      "classification": "InfluxDB protocol",
+      "variant": "emphasis"
+    },
+    {
+      "id": "vm_to_observation",
+      "from": "victoria_metrics",
+      "to": "observation",
+      "label": "查询与实例发现",
+      "classification": "PromQL / status_query",
+      "variant": "emphasis"
+    },
+    {
+      "id": "observation_to_policy",
+      "from": "observation",
+      "to": "policy",
+      "label": "指标窗口与实例范围",
+      "classification": "有界查询",
+      "variant": "default"
+    },
+    {
+      "id": "policy_to_detector",
+      "from": "policy",
+      "to": "detector",
+      "label": "规则与基线",
+      "classification": "扫描上下文",
+      "variant": "default"
+    },
+    {
+      "id": "detector_to_alert",
+      "from": "detector",
+      "to": "alert_state",
+      "label": "检测事件",
+      "classification": "事务写入",
+      "variant": "emphasis"
+    },
+    {
+      "id": "alert_to_delivery",
+      "from": "alert_state",
+      "to": "delivery",
+      "label": "提交后投递",
+      "classification": "幂等 + 可补偿",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "amber",
+      "title": "接入一致性",
+      "items": [
+        "本地事务不能回滚 NodeMgmt RPC",
+        "用持久化 ApplyOperation 管理幂等、重试、补偿和对账"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "指标事实",
+      "items": [
+        "VictoriaMetrics 是指标与实时状态事实源",
+        "Monitor 实例表是用于权限和策略的管理投影"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "并发容量",
+      "items": [
+        "策略数 × 扫描频率放大 VM 查询与 Celery 并发",
+        "近期采用抖动、队列隔离和查询预算，规模化后引入 ScanPlanner"
+      ]
+    }
+  ]
+}

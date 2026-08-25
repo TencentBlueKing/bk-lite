@@ -35,13 +35,14 @@ def test_registered_plugin_runtime_entrypoints_are_coroutine_functions():
     assert violations == []
 
 
-def test_every_registered_executor_declares_a_positive_timeout():
+def test_every_registered_executor_omits_collection_timeout():
+    """单对象预算由表单/COLLECTION_TIMEOUT 接管；plugin.yml 不再声明 executor timeout。"""
     violations = []
     plugin_root = Path(__file__).parents[1] / "plugins" / "inputs"
     for config_path in sorted(plugin_root.glob("*/plugin.yml")):
         config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         for name, executor in (config.get("executors") or {}).items():
-            if float((executor or {}).get("timeout") or 0) <= 0:
+            if isinstance(executor, dict) and "timeout" in executor:
                 violations.append(f"{config_path.parent.name}:{name}")
     assert violations == []
 

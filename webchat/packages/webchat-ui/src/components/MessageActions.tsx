@@ -25,7 +25,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   return (
     <div
       className={`flex h-6 items-center gap-0.5 px-2 text-xs ${
-        isBot ? 'ml-10' : 'mr-10 justify-end'
+        isBot ? '' : 'justify-end'
       } ${showActions ? 'opacity-100' : 'opacity-0'}`}
     >
       {isLastBotMessage && (

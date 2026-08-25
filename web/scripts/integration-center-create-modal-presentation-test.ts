@@ -45,6 +45,8 @@ assert.doesNotMatch(modal, /search=\{false\}/);
 assert.doesNotMatch(modal, /Input\.Search/);
 assert.doesNotMatch(modal, /showSearch/);
 assert.match(modal, /filterIntegrationProvidersByQuery\(cards, '', capabilityFilters, t\)/);
+assert.doesNotMatch(modal, /applySearchFilter/);
+assert.doesNotMatch(modal, /onSearch=\{setProviderSearch\}/);
 assert.match(page, /ProviderCapabilityTags/);
 assert.match(page, /align="end"/);
 assert.doesNotMatch(page, /flex-wrap justify-end/);

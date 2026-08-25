@@ -38,6 +38,13 @@ def test_no_rules_compile_to_complete_noop_topology():
     assert config["sources"]["server_nats"]["url"] == "${VECTOR_NATS_SERVERS}"
     assert config["sources"]["server_nats"]["decoding"] == {"codec": "json"}
     assert config["sources"]["server_nats"]["log_namespace"] is True
+    assert config["sources"]["server_nats"]["tls"] == {
+        "enabled": "${VECTOR_NATS_TLS_ENABLED}",
+        "ca_file": "${VECTOR_NATS_TLS_CA_FILE}",
+        "verify_certificate": True,
+    }
+    assert "enabled: ${VECTOR_NATS_TLS_ENABLED}" in content
+    assert "enabled: '${VECTOR_NATS_TLS_ENABLED}'" not in content
     assert config["sinks"]["victoria_logs"]["framing"] == {"method": "newline_delimited"}
     assert "_msg_field=_msg" in config["sinks"]["victoria_logs"]["uri"]
     assert "_time_field=timestamp" in config["sinks"]["victoria_logs"]["uri"]

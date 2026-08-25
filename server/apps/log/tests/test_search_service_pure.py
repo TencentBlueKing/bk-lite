@@ -72,6 +72,15 @@ def test_build_storage_query_maps_logical_message_added_by_log_group(mocker):
     assert group_info == [{"id": "g1"}]
 
 
+def test_build_storage_query_normalizes_empty_and_metadata_filters():
+    query, group_info = SearchService._build_storage_query("message:", None)
+    assert query == "_msg:*"
+    assert group_info == []
+
+    quoted, _ = SearchService._build_storage_query("@metadata.beat:", None)
+    assert quoted == '"@metadata.beat":*'
+
+
 def test_build_storage_query_denies_unknown_rule_mode_without_mocking_builder():
     group = SimpleNamespace(
         id="g1",
@@ -164,6 +173,32 @@ def test_field_values_maps_logical_message_to_storage_field(mocker):
     vm.field_values.assert_called_once_with("s", "e", "_msg", 100, query="FINAL_Q")
 
 
+def test_field_values_skips_exists_filter_for_stream_id(mocker):
+    builder = mocker.patch(
+        "apps.log.services.search.LogGroupQueryBuilder.build_query_with_groups",
+        return_value=("FINAL_Q", []),
+    )
+    vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
+    vm.field_values.return_value = {"values": []}
+
+    SearchService.field_values("s", "e", "_stream_id", query="*")
+
+    assert builder.call_args.args[0] == "*"
+    vm.field_values.assert_called_once_with("s", "e", "_stream_id", 100, query="FINAL_Q")
+
+
+def test_field_values_quotes_metadata_exists_filter(mocker):
+    builder = mocker.patch(
+        "apps.log.services.search.LogGroupQueryBuilder.build_query_with_groups",
+        return_value=("FINAL_Q", []),
+    )
+    mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value.field_values.return_value = {"values": []}
+
+    SearchService.field_values("s", "e", "@metadata.beat", query="*")
+
+    assert builder.call_args.args[0] == '"@metadata.beat":*'
+
+
 def test_field_names_forwards_to_field_values(mocker):
     fv = mocker.patch("apps.log.services.search.SearchService.field_values", return_value={"v": 1})
     out = SearchService.field_names("s", "e", "host", limit=5, query="q", log_groups=["g"])
@@ -207,6 +242,16 @@ def test_all_field_names_hides_victoria_logs_message_field(mocker):
     vm.all_field_names.return_value = {"values": [{"value": "_msg"}, {"value": "message"}]}
 
     assert SearchService.all_field_names("q", "s", "e") == ["message"]
+
+
+def test_all_field_names_hides_beat_timestamp_field(mocker):
+    mocker.patch("apps.log.services.search.LogGroupQueryBuilder.build_query_with_groups", return_value=("FQ", []))
+    vm = mocker.patch("apps.log.services.search.VictoriaMetricsAPI").return_value
+    vm.all_field_names.return_value = {
+        "values": [{"value": "@timestamp"}, {"value": "_stream_id"}, {"value": "timestamp"}, {"value": "host"}]
+    }
+
+    assert SearchService.all_field_names("q", "s", "e") == ["host", "timestamp"]
 
 
 # ----------------------- search_logs -----------------------

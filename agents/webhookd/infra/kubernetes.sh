@@ -2,6 +2,8 @@
 
 # webhookd infra render script
 # 接收 JSON: {"cluster_name": "xxx", "type": "metric|log|resource", "nats_url": "nats://x.x.x.x:4222", "nats_username": "user", "nats_password": "pass", "nats_ca": "...", "image_registry_prefix": "bk-lite.tencentcloudcr.com/bklite", "runtime_profile": "standard|docker|custom", "host_log_path": "/var/log/pods", "docker_container_log_path": "/var/lib/docker/containers", "namespace_patterns": [], "pod_patterns": []}
+# 可选 "tolerations": [{"key": "...", "effect": "NoSchedule|NoExecute", "value": "可选"}]，仅注入 DaemonSet；
+#   缺省时注入 control-plane/master 两条精确容忍，显式 [] 表示不容忍任何污点；不允许无 key 的通配容忍
 # 渲染出 K8s 配置 YAML
 set -euo pipefail
 
@@ -84,6 +86,8 @@ DOCKER_CONTAINER_LOG_PATH=$(echo "$JSON_DATA" | jq -r '.docker_container_log_pat
 NAMESPACE_PATTERNS=$(echo "$JSON_DATA" | jq -c '.namespace_patterns // []')
 POD_PATTERNS=$(echo "$JSON_DATA" | jq -c '.pod_patterns // []')
 IMAGE_REGISTRY_PREFIX=$(echo "$JSON_DATA" | jq -r '.image_registry_prefix // "bk-lite.tencentcloudcr.com/bklite"')
+# 空串=未提供(渲染默认容忍)；显式 [] 会保留为 []（渲染为不容忍任何污点）
+TOLERATIONS_JSON=$(echo "$JSON_DATA" | jq -c 'if has("tolerations") then .tolerations else empty end')
 
 # 验证必填字段
 validate_cluster_name() {
@@ -241,6 +245,106 @@ print(json.dumps({"include_yaml": include_yaml, "config_hash": config_hash}))
 '
 }
 
+# 校验容忍清单并生成 DaemonSet 的 tolerations YAML 块。
+# 受限 schema：每项仅允许 key(必填, K8s qualified name)/effect(必填, NoSchedule|NoExecute)/value(可选)；
+# 结构上无法表达无 key 的通配容忍。Deployment 一律不注入，遵循集群默认调度。
+build_ds_tolerations_block() {
+    TOLERATIONS_INPUT="$1" python -c '
+import json
+import os
+import re
+import sys
+
+MAX_ITEMS = 16
+ALLOWED_EFFECTS = {"NoSchedule", "NoExecute"}
+ALLOWED_FIELDS = {"key", "effect", "value"}
+NAME_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9._-]{0,61}[A-Za-z0-9])?$")
+DNS_LABEL_RE = re.compile(r"^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$")
+DEFAULT_TOLERATIONS = [
+    {"key": "node-role.kubernetes.io/control-plane", "effect": "NoSchedule"},
+    {"key": "node-role.kubernetes.io/master", "effect": "NoSchedule"},
+]
+
+
+def fail(message):
+    print(message, file=sys.stderr)
+    sys.exit(1)
+
+
+def validate_key(key):
+    if not isinstance(key, str) or not key:
+        fail("Invalid tolerations: key is required and must be a non-empty string")
+    if "__" in key:
+        fail("Invalid tolerations: __ is reserved for template placeholders")
+    if key.count("/") > 1:
+        fail("Invalid tolerations: key has more than one /")
+    if "/" in key:
+        prefix, name = key.split("/")
+        if len(prefix) > 253 or not all(DNS_LABEL_RE.fullmatch(part) for part in prefix.split(".")):
+            fail(f"Invalid tolerations: key prefix {prefix!r} is not a DNS subdomain")
+    else:
+        name = key
+    if not NAME_RE.fullmatch(name):
+        fail(f"Invalid tolerations: key name {name!r} violates Kubernetes qualified-name rules")
+
+
+raw = os.environ["TOLERATIONS_INPUT"]
+# 显式 null 与缺省等价（上游可选字段序列化为 null 是常态）；显式 [] 才是"不容忍任何污点"
+if raw in ("", "null"):
+    items = DEFAULT_TOLERATIONS
+else:
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        fail("Invalid tolerations: must be a JSON array")
+    if not isinstance(parsed, list):
+        fail("Invalid tolerations: must be a JSON array")
+    if len(parsed) > MAX_ITEMS:
+        fail(f"Invalid tolerations: at most {MAX_ITEMS} items")
+    items = []
+    for entry in parsed:
+        if not isinstance(entry, dict):
+            fail("Invalid tolerations: items must be objects")
+        unknown = sorted(set(entry) - ALLOWED_FIELDS)
+        if unknown:
+            fail(f"Invalid tolerations: unknown fields {unknown} (wildcard tolerations are not allowed)")
+        validate_key(entry.get("key"))
+        effect = entry.get("effect")
+        if effect not in ALLOWED_EFFECTS:
+            fail("Invalid tolerations: effect must be NoSchedule or NoExecute")
+        value = entry.get("value")
+        if value is not None:
+            if not isinstance(value, str):
+                fail("Invalid tolerations: value must be a string")
+            if value and not NAME_RE.fullmatch(value):
+                fail(f"Invalid tolerations: value {value!r} violates Kubernetes label-value rules")
+            if value is not None and "__" in value:
+                fail("Invalid tolerations: __ is reserved for template placeholders")
+        items.append({"key": entry["key"], "effect": effect, "value": value})
+
+if not items:
+    sys.exit(0)
+
+lines = ["      tolerations:"]
+for item in items:
+    key = item["key"]
+    effect = item["effect"]
+    value = item.get("value")
+    # key 必须引号化输出：裸拼时 "null" 会被 YAML 解析为空 key（= 通配容忍），
+    # "on"/"123" 等会被隐式转型；json.dumps 保证永远是显式字符串标量
+    quoted_key = json.dumps(key)
+    lines.append(f"        - key: {quoted_key}")
+    if value is None:
+        lines.append("          operator: Exists")
+    else:
+        lines.append("          operator: Equal")
+        quoted = json.dumps(value)
+        lines.append(f"          value: {quoted}")
+    lines.append(f"          effect: {effect}")
+print(chr(10).join(lines))
+'
+}
+
 require_field() {
     local field="$1" value="$2"
     if [ -z "$value" ]; then
@@ -270,6 +374,11 @@ if [ "$TYPE" == "log" ] && [ "$RUNTIME_PROFILE" == "custom" ]; then
     if [ -n "$DOCKER_CONTAINER_LOG_PATH" ]; then
         validate_absolute_path "$DOCKER_CONTAINER_LOG_PATH" || { json_error "$CLUSTER_NAME" "Invalid docker_container_log_path: must be an absolute path"; exit 1; }
     fi
+fi
+
+if ! DS_TOLERATIONS_YAML=$(build_ds_tolerations_block "$TOLERATIONS_JSON" 2>&1); then
+    json_error "$CLUSTER_NAME" "$DS_TOLERATIONS_YAML"
+    exit 1
 fi
 
 INCLUDE_PATHS_YAML=""
@@ -394,6 +503,7 @@ render_k8s_config() {
     local include_paths_yaml="${10}"
     local config_hash="${11}"
     local image_registry_prefix="${12}"
+    local ds_tolerations_yaml="${13}"
     
     # 根据类型选择模板
     local template
@@ -417,6 +527,10 @@ render_k8s_config() {
         template=$(replace_placeholder "$template" "__INCLUDE_PATHS_GLOB_PATTERNS__" "$include_paths_yaml")
         template=$(replace_placeholder "$template" "__LOG_COLLECT_CONFIG_HASH__" "$config_hash")
     fi
+
+    # DaemonSet 容忍策略注入必须放在所有占位符替换的最后：
+    # 注入内容含用户输入，先注入会被后续替换二次展开（resource 模板无占位符，此处为 no-op）
+    template=$(replace_placeholder "$template" "__DS_TOLERATIONS__" "$ds_tolerations_yaml")
     
     # Base64 编码
     local cluster_name_b64=$(echo -n "$cluster_name" | base64 | tr -d '\n')
@@ -439,7 +553,7 @@ render_k8s_config() {
 }
 
 # 执行渲染
-K8S_CONFIG=$(render_k8s_config "$CLUSTER_NAME" "$NATS_URL" "$NATS_USERNAME" "$NATS_PASSWORD" "$NATS_CA" "$TYPE" "$RUNTIME_PROFILE" "$HOST_LOG_PATH" "$DOCKER_CONTAINER_LOG_PATH" "$INCLUDE_PATHS_YAML" "$CONFIG_HASH" "$IMAGE_REGISTRY_PREFIX")
+K8S_CONFIG=$(render_k8s_config "$CLUSTER_NAME" "$NATS_URL" "$NATS_USERNAME" "$NATS_PASSWORD" "$NATS_CA" "$TYPE" "$RUNTIME_PROFILE" "$HOST_LOG_PATH" "$DOCKER_CONTAINER_LOG_PATH" "$INCLUDE_PATHS_YAML" "$CONFIG_HASH" "$IMAGE_REGISTRY_PREFIX" "$DS_TOLERATIONS_YAML")
 
 # 返回成功响应，YAML 内容放在 yaml 字段中
 json_success "$CLUSTER_NAME" "K8s configuration rendered successfully" "yaml" "$K8S_CONFIG"
