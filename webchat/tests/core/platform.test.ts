@@ -6,14 +6,18 @@ import {
   dockCollapsedStorageKey,
   fillUrlTemplate,
   formatSessionTime,
+  isPersistedPlatformSession,
   isPlatformMode,
   lastSessionStorageKey,
   mapPlatformApplications,
   mapPlatformMessages,
   mapPlatformSessions,
   readDockCollapsed,
+  removePlatformSession,
   resolvePlatformSelection,
+  sessionTitleFromUserContent,
   shouldFetchPlatformMessages,
+  shouldRefreshPlatformSessions,
   unwrapPlatformPayload,
   writeDockCollapsed,
 } from '../../packages/webchat-core/src/platform';
@@ -176,6 +180,22 @@ test('draft sessions do not refetch history; clicking the current session does n
   );
 });
 
+test('session list refreshes after a finished run, not the connect handshake', () => {
+  assert.equal(shouldRefreshPlatformSessions('connecting', 'connected'), false);
+  assert.equal(shouldRefreshPlatformSessions('idle', 'connected'), false);
+  assert.equal(shouldRefreshPlatformSessions('chatting', 'connected'), true);
+  assert.equal(shouldRefreshPlatformSessions('error', 'idle'), true);
+});
+
+test('draft session title comes from the first user message', () => {
+  assert.equal(sessionTitleFromUserContent('分析下CPU时间分布'), '分析下CPU时间分布');
+  assert.equal(
+    sessionTitleFromUserContent([{ type: 'message', message: '介绍下系统负载趋势' }]),
+    '介绍下系统负载趋势'
+  );
+  assert.equal(sessionTitleFromUserContent('   '), '新会话');
+});
+
 test('maps history messages to readable text, including object payloads', () => {
   const messages = mapPlatformMessages([
     {
@@ -274,6 +294,7 @@ test('history replay keeps THINKING text on metadata, not in the answer bubble',
 
 test('planned execution CUSTOM events stay out of chat bubbles', () => {
   // 实时流（Chat.applyCustomEvent）与历史回放共用同一份静默清单
+  assert.equal(isSilentCustomEvent('stream_keepalive'), true);
   assert.equal(isSilentCustomEvent('planned_execution_status'), true);
   assert.equal(isSilentCustomEvent('planned_execution_step'), true);
   assert.equal(isSilentCustomEvent('wiki_citations'), true);
@@ -298,6 +319,23 @@ test('planned execution CUSTOM events stay out of chat bubbles', () => {
     },
   ]);
   assert.equal(planned[0].content, '现在是下午两点');
+});
+
+test('removes a history session and clears current when it was selected', () => {
+  const sessions = [
+    { id: 's-new', title: '最新' },
+    { id: 's-old', title: '更早' },
+  ];
+  assert.equal(isPersistedPlatformSession('s-old', sessions), true);
+  assert.equal(isPersistedPlatformSession('session_draft', sessions), false);
+  assert.deepEqual(removePlatformSession(sessions, 's-old', 's-new'), {
+    sessions: [{ id: 's-new', title: '最新' }],
+    currentId: 's-new',
+  });
+  assert.deepEqual(removePlatformSession(sessions, 's-new', 's-new'), {
+    sessions: [{ id: 's-old', title: '更早' }],
+    currentId: null,
+  });
 });
 
 test('formats session timestamps in Chinese relative units', () => {

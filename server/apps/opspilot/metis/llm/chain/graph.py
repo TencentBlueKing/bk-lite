@@ -65,6 +65,9 @@ _AGUI_PLAIN_TEXT_LIVE_AFTER_CHUNKS = 2
 _AGUI_PLAIN_TEXT_LIVE_AFTER_CHARS = 96
 # 单次推送过长时拆成多条 TEXT_MESSAGE_CONTENT，避免「一整段一个 delta」。
 _AGUI_LIVE_DELTA_CHARS = 64
+# 低于 Next/undici body 空闲超时（约 300s），避免 RUN_STARTED 后长时间无 chunk 被掐流。
+SSE_KEEPALIVE_INTERVAL_SECONDS = 15.0
+STREAM_KEEPALIVE_EVENT_NAME = "stream_keepalive"
 
 
 def _split_text_deltas(text: str, max_chars: int = _AGUI_LIVE_DELTA_CHARS) -> list[str]:
@@ -75,6 +78,33 @@ def _split_text_deltas(text: str, max_chars: int = _AGUI_LIVE_DELTA_CHARS) -> li
     if max_chars <= 0 or len(value) <= max_chars:
         return [value]
     return [value[i : i + max_chars] for i in range(0, len(value), max_chars)]
+
+
+def encode_stream_keepalive(encoder: EventEncoder, phase: str) -> str:
+    """SSE 保活：刷新代理读超时，并让前端知道流仍在跑。不进聊天气泡。"""
+    return encoder.encode(
+        CustomEvent(
+            type=EventType.CUSTOM,
+            name=STREAM_KEEPALIVE_EVENT_NAME,
+            value={"phase": phase},
+            timestamp=int(time.time() * 1000),
+        )
+    )
+
+
+def iter_stream_keepalive_frames(encoder: EventEncoder, phase: str):
+    """注释帧刷新中间代理；CUSTOM 帧给前端/DevTools。"""
+    yield ": keepalive\n\n"
+    yield encode_stream_keepalive(encoder, phase)
+
+
+async def iter_sse_keepalive_until(task: asyncio.Task, encoder: EventEncoder, phase: str):
+    """任务未完成时按间隔 yield SSE 保活。"""
+    while not task.done():
+        done, _pending = await asyncio.wait({task}, timeout=SSE_KEEPALIVE_INTERVAL_SECONDS)
+        if not done:
+            for frame in iter_stream_keepalive_frames(encoder, phase):
+                yield frame
 
 
 def _record_emitted_text_signatures(encoded_events: list[str], signatures: set[str]) -> str:
@@ -219,12 +249,15 @@ async def _merge_async_streams(
 
     langgraph_done = False
     langgraph_error: Optional[BaseException] = None
+    idle_seconds = 0.0
+    queue_wait_seconds = 0.1
 
     try:
         while True:
             try:
                 # 从合并队列获取事件
-                event_type, data = await asyncio.wait_for(output_queue.get(), timeout=0.1)
+                event_type, data = await asyncio.wait_for(output_queue.get(), timeout=queue_wait_seconds)
+                idle_seconds = 0.0
 
                 if event_type == "langgraph_error":
                     langgraph_error = data if isinstance(data, BaseException) else RuntimeError(str(data))
@@ -244,6 +277,10 @@ async def _merge_async_streams(
                 # 如果 LangGraph 已完成且输出队列为空，则退出
                 if langgraph_done and output_queue.empty():
                     break
+                idle_seconds += queue_wait_seconds
+                if idle_seconds >= SSE_KEEPALIVE_INTERVAL_SECONDS:
+                    idle_seconds = 0.0
+                    yield ("keepalive", "waiting_model")
                 continue
 
         if langgraph_error is not None:
@@ -1353,9 +1390,13 @@ class BasicGraph(ABC):
                     timestamp=int(time.time() * 1000),
                 )
             )
+            for frame in iter_stream_keepalive_frames(encoder, "started"):
+                yield frame
 
-            # 编译图并获取配置
-            graph = await self.compile_graph(request)
+            compile_task = asyncio.ensure_future(self.compile_graph(request))
+            async for keepalive in iter_sse_keepalive_until(compile_task, encoder, "compile_graph"):
+                yield keepalive
+            graph = compile_task.result()
             if graph is None:
                 raise RuntimeError("Failed to compile graph: graph is None")
 
@@ -1379,6 +1420,10 @@ class BasicGraph(ABC):
             )
 
             async for stream_type, stream_data in _merge_async_streams(langgraph_stream, browser_event_queue, stop_event):
+                if stream_type == "keepalive":
+                    for frame in iter_stream_keepalive_frames(encoder, str(stream_data or "waiting_model")):
+                        yield frame
+                    continue
                 if execution_id and await is_interrupt_requested_async(execution_id):
                     yield encoder.encode(
                         RunErrorEvent(

@@ -4,6 +4,10 @@ export type {
   AiContextSection,
   AiPageContext,
   AiPageContextPilot,
+  AiPageContextPilotModule,
+  PageContextCollectHint,
+  PageContextMessage,
+  PageContextToolkit,
 } from './types';
 export {
   PAGE_CONTEXT_MAX_IMAGES,
@@ -19,5 +23,9 @@ export {
   registerAiPageContext,
 } from './registry';
 export { matchPilots, registerPageContextPilot } from './pilots';
-export { captionFromOption, captureEchartsFromDom } from './chart-capture';
+export {
+  captionFromOption,
+  captureEchartsFromDom,
+  captureEchartsFromDoms,
+} from '@/components/chart-snapshot';
 export { useAiPageContext } from './useAiPageContext';

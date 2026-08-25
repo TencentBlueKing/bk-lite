@@ -1,3 +1,7 @@
+import type { ChartSnapshot } from '@/components/chart-snapshot/types';
+
+export type { ChartSnapshot };
+
 export interface AiContextSection {
   id: string;
   label: string;
@@ -5,10 +9,8 @@ export interface AiContextSection {
   priority?: number;
 }
 
-export interface AiContextImage {
-  caption?: string;
-  dataUrl: string;
-}
+/** @deprecated Prefer ChartSnapshot; kept for page_context wire format. */
+export type AiContextImage = ChartSnapshot;
 
 export interface AiPageContext {
   url?: string;
@@ -18,11 +20,39 @@ export interface AiPageContext {
   images?: AiContextImage[];
 }
 
-export type AiContextProvider = () => AiPageContext | Partial<AiPageContext> | Promise<AiPageContext | Partial<AiPageContext>>;
+export interface PageContextCollectHint {
+  message?: string;
+}
+
+export interface PageContextMessage {
+  title: string;
+  currentTime?: string;
+}
+
+export interface PageContextToolkit {
+  captureEchartsFromDoms: (
+    doms: HTMLElement[],
+    limit?: number,
+  ) => Promise<ChartSnapshot[]>;
+  captureEchartsFromDom: (limit?: number) => Promise<ChartSnapshot[]>;
+  captionFromOption: (option: Record<string, unknown> | null | undefined) => string;
+}
+
+export type AiContextProvider = (
+  hint?: PageContextCollectHint,
+) => AiPageContext | Partial<AiPageContext> | Promise<AiPageContext | Partial<AiPageContext>>;
+
+export interface AiPageContextPilotModule {
+  getMessage: () => PageContextMessage | Promise<PageContextMessage>;
+  getContext: (
+    toolkit: PageContextToolkit,
+    hint?: PageContextCollectHint,
+  ) => Promise<Partial<AiPageContext>>;
+}
 
 export interface AiPageContextPilot {
   test: (pathname: string) => boolean;
-  load: () => Promise<{ collect: () => Promise<Partial<AiPageContext>> }>;
+  load: () => Promise<AiPageContextPilotModule>;
 }
 
 export const PAGE_CONTEXT_TEXT_BUDGET = 8000;

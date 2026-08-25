@@ -71,6 +71,8 @@ class LLMModel(models.Model, EncryptMixin):
     team = models.JSONField(default=list)
     is_build_in = models.BooleanField(default=True, verbose_name="是否内置")
     is_demo = models.BooleanField(default=False)
+    # 能力无法跨厂商自动探测；False 时对话注入前丢弃图片、只留文本 caption。
+    is_multimodal = models.BooleanField(default=True, verbose_name="支持多模态")
     vendor = models.ForeignKey(
         "ModelVendor",
         on_delete=models.PROTECT,

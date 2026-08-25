@@ -73,14 +73,8 @@ class HistoryService:
                         "message": txt,
                     }
                 )
-        if image_data:
-            processed_history.append(
-                {
-                    "event": "user",
-                    "message": "",
-                    "image_data": image_data,
-                }
-            )
+        # 当前轮图片不再拆成空文本历史消息（会触发无关兜底、模型先讲图后答题）。
+        # image_data 由 chat_service 放到 extra_config.current_image_data，随当前 user_message 一起发给模型。
         return processed_history
 
 
