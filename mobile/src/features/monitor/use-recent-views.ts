@@ -3,16 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/auth';
 import { listMonitorObjects, resolveRecentViews } from '@/features/monitor/adapter';
-import type { ResolvedMonitorRecentView } from '@/features/monitor/model';
+import type { MonitorRecentViewsResolutionStatus, ResolvedMonitorRecentView } from '@/features/monitor/model';
+import {
+  mergeRecentViewResolutionEntries,
+  monitorRecentViewsResolutionStatus,
+} from '@/features/monitor/model';
 import { readRecentViews } from '@/features/monitor/recent-views-storage';
 
-export type RecentViewsStatus = 'loading' | 'ready' | 'error';
+export type RecentViewsStatus = 'loading' | 'error' | MonitorRecentViewsResolutionStatus;
 
 export function useRecentViews() {
   const { userInfo, currentTeamId } = useAuth();
   const userId = userInfo?.id || 0;
   const teamId = currentTeamId || 'none';
   const [entries, setEntries] = useState<ResolvedMonitorRecentView[]>([]);
+  const entriesRef = useRef<ResolvedMonitorRecentView[]>([]);
   const [status, setStatus] = useState<RecentViewsStatus>('loading');
   const requestId = useRef(0);
 
@@ -22,13 +27,21 @@ export function useRecentViews() {
     try {
       const config = readRecentViews(userId, teamId);
       const objects = await listMonitorObjects(signal);
-      const resolved = await resolveRecentViews(config, objects, signal);
+      const resolution = await resolveRecentViews(config, objects, signal);
       if (current !== requestId.current || signal?.aborted) return;
-      setEntries(resolved);
-      setStatus('ready');
+      const nextStatus = monitorRecentViewsResolutionStatus(
+        resolution,
+        preserveContent && entriesRef.current.length > 0,
+      );
+      const nextEntries = preserveContent && resolution.failedCount > 0
+        ? mergeRecentViewResolutionEntries(entriesRef.current, resolution)
+        : resolution.entries;
+      entriesRef.current = nextEntries;
+      setEntries(nextEntries);
+      setStatus(nextStatus);
     } catch (error) {
       if (current !== requestId.current || signal?.aborted) return;
-      if (!preserveContent) setStatus('error');
+      setStatus(preserveContent && entriesRef.current.length > 0 ? 'refresh-error' : 'error');
       throw error;
     }
   }, [teamId, userId]);
