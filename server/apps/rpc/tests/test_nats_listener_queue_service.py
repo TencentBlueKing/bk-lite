@@ -74,7 +74,7 @@ def test_invalid_numeric_config_falls_back_without_blocking_startup(monkeypatch,
     assert nats_config._read_number("NATS_HANDLER_CONCURRENCY", 64, int, 1) == expected
 
 
-async def test_core_queue_overload_returns_failure_reply(monkeypatch, settings):
+async def test_core_queue_overload_returns_failure_reply(monkeypatch, settings, mocker):
     callbacks = {}
     published = []
     release = asyncio.Event()
@@ -114,6 +114,7 @@ async def test_core_queue_overload_returns_failure_reply(monkeypatch, settings):
     command = nats_listener.Command()
     command.nats = FakeNats()
     command.handler = handler
+    warning = mocker.patch.object(nats_listener.logger, "warning")
     await command.nats_coroutine()
     callback = callbacks["bklite.overload"]
 
@@ -125,6 +126,12 @@ async def test_core_queue_overload_returns_failure_reply(monkeypatch, settings):
         assert published[0][0] == "reply-3"
         assert published[0][1]["success"] is False
         assert published[0][1]["error"] == "_ListenerOverloadedError"
+        expected_warning = mocker.call(
+            "event=nats_handler_rejected failed_stage=enqueue subject=%s error_type=%s reason=queue_full",
+            "bklite.overload",
+            "_ListenerOverloadedError",
+        )
+        assert warning.call_args_list.count(expected_warning) == 1
     finally:
         release.set()
         await command.shutdown()

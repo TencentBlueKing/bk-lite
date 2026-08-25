@@ -280,6 +280,46 @@ class PrecheckService:
         return warnings
 
     @staticmethod
+    def check_string_list_migration(doc: YAMLDocument) -> list[dict]:
+        """旧 stringList / 双 ID / componentSwitch 互斥冲突的导入 warning。
+
+        warning 文案与 `string_param_multiple_migrate` 实际落库结果对齐。
+        """
+        from apps.operation_analysis.services.string_param_multiple_migrate import collect_migration_warnings_for_document
+
+        warnings: list[dict] = []
+
+        for datasource in doc.datasources:
+            warnings.extend(
+                collect_migration_warnings_for_document(
+                    object_key=datasource.key,
+                    object_name=f"数据源 '{datasource.name}'",
+                    params=getattr(datasource, "params", None),
+                )
+            )
+
+        canvas_collections = (
+            getattr(doc, "dashboards", None) or [],
+            getattr(doc, "screens", None) or [],
+            getattr(doc, "reports", None) or [],
+            getattr(doc, "topologies", None) or [],
+        )
+        for collection in canvas_collections:
+            for canvas in collection:
+                filters = getattr(canvas, "filters", None)
+                view_sets = getattr(canvas, "view_sets", None)
+                warnings.extend(
+                    collect_migration_warnings_for_document(
+                        object_key=canvas.key,
+                        object_name=canvas.name,
+                        filters=filters,
+                        view_sets=view_sets,
+                    )
+                )
+
+        return warnings
+
+    @staticmethod
     def check_excel_needs_upload(doc: YAMLDocument) -> list[dict]:
         """新格式 Excel（无 imported_items）导入后需重新上传原文件。"""
         warnings = []
@@ -563,6 +603,7 @@ class PrecheckService:
         # Step 8: 敏感字段警告
         all_warnings.extend(cls.check_sensitive_placeholders(doc))
         all_warnings.extend(cls.check_excel_needs_upload(doc))
+        all_warnings.extend(cls.check_string_list_migration(doc))
 
         # Step 9: 冲突识别
         conflicts = cls.identify_conflicts(doc, current_team)

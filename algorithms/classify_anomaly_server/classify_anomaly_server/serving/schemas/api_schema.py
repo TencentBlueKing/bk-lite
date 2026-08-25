@@ -50,19 +50,24 @@ class PredictRequest(BaseModel):
 
         # 自动排序（如果未排序）
         if not series.index.is_monotonic_increasing:
-            logger.warning(f"⚠️  时间戳未按升序排列，自动排序")
+            logger.warning("event=timeseries_input_sorted reason=non_monotonic")
             series = series.sort_index()
 
         # 去重（如果有重复时间戳，保留最后一个值）
         if series.index.has_duplicates:
             duplicate_count = series.index.duplicated().sum()
-            logger.warning(f"⚠️  发现 {duplicate_count} 个重复时间戳，保留最后出现的值")
+            logger.warning(
+                "event=timeseries_input_deduplicated duplicate_points={}",
+                duplicate_count,
+            )
             series = series[~series.index.duplicated(keep="last")]
 
         # 记录处理结果
         if len(series) != original_count:
-            logger.info(
-                f"📊 数据处理: 输入 {original_count} 个点 -> 输出 {len(series)} 个点"
+            logger.debug(
+                "event=timeseries_input_normalized input_points={} output_points={}",
+                original_count,
+                len(series),
             )
 
         return series

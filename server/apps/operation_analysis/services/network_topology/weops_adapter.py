@@ -25,15 +25,13 @@ so the test suite can run without a live WeOps service.
 from __future__ import annotations
 
 import json
-import logging
 import uuid
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
 from urllib.parse import quote, urljoin
 
-logger = logging.getLogger(__name__)
-
+from apps.core.logger import operation_analysis_logger as logger
 
 # --------------------------------------------------------------------------- #
 # Errors                                                                       #

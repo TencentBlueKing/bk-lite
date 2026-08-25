@@ -1,11 +1,7 @@
-import logging
-
-from django.core.management import BaseCommand
-
+from apps.core.logger import console_mgmt_logger as logger
 from apps.rpc.opspilot import OpsPilot
 from apps.rpc.system_mgmt import SystemMgmt
-
-logger = logging.getLogger(__name__)
+from django.core.management import BaseCommand
 
 
 class Command(BaseCommand):

@@ -18,6 +18,6 @@ export {
   mergePageContexts,
   registerAiPageContext,
 } from './registry';
-export { matchPilots } from './pilots';
+export { matchPilots, registerPageContextPilot } from './pilots';
 export { captionFromOption, captureEchartsFromDom } from './chart-capture';
 export { useAiPageContext } from './useAiPageContext';

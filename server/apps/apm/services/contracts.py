@@ -56,6 +56,9 @@ class CatalogReconcileResult:
     archived_services: int
     unknown_applications: int = 0
     invalid_activities: int = 0
+    deployment_events_created: int = 0
+    deployment_events_updated: int = 0
+    deployment_events_pruned: int = 0
 
 
 @dataclass(frozen=True)
@@ -365,6 +368,22 @@ class InstanceActivity:
 
 
 @dataclass(frozen=True)
+class DeploymentReleaseQuery:
+    started_at: datetime
+    ended_at: datetime
+
+
+@dataclass(frozen=True)
+class InferredDeploymentRelease:
+    service_namespace: str
+    service_name: str
+    environment: str
+    version: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+@dataclass(frozen=True)
 class PublishResult:
     accepted: int
     duplicates: int = 0
@@ -442,6 +461,9 @@ class MetricStore(Protocol):
         ...
 
     def instance_activity(self, query: InstanceActivityQuery) -> list[InstanceActivity]:
+        ...
+
+    def deployment_releases(self, query: DeploymentReleaseQuery) -> list[InferredDeploymentRelease]:
         ...
 
 

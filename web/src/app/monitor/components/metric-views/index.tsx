@@ -32,6 +32,7 @@ import {
   filterMetricGroupsByIds,
   useMetricSelectOptions,
 } from '@/app/monitor/components/metricSelectOptions';
+import { buildSearchTimeQueryParams } from '@/app/monitor/utils/searchTimeQuery';
 import {
   buildHostProcessLabelPairs,
   isHostMonitorObject,
@@ -914,7 +915,8 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       ),
       plugin_id: processTab ? processPluginId || activeTab : activeTab,
       instance_id: instanceId as string,
-      metric_id: row.id ? String(row.id) : row.name
+      metric_id: row.id ? String(row.id) : row.name,
+      ...buildSearchTimeQueryParams(timeValues)
     };
     const queryString = new URLSearchParams(_row).toString();
     const url = `/monitor/search?${queryString}`;

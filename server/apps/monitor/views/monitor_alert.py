@@ -116,6 +116,48 @@ class AlertPermissionMixin:
         accessible_policy_ids = self._get_all_accessible_policy_ids(request)
         return alert_obj.policy_id in accessible_policy_ids
 
+    def _build_policy_permission_map(self, request, policies):
+        """为告警列表补充每条策略的实例权限，供前端编辑按钮门控。"""
+        if not policies:
+            return {}
+
+        if request.user.is_superuser:
+            return {
+                policy.id: PermissionConstants.DEFAULT_PERMISSION for policy in policies
+            }
+
+        scope = self._get_data_scope(request)
+        permissions_result = get_permissions_rules(
+            request.user,
+            scope.current_team,
+            "monitor",
+            PermissionConstants.POLICY_MODULE,
+            include_children=scope.include_children,
+        )
+        if not isinstance(permissions_result, dict):
+            return {}
+
+        policy_permissions = permissions_result.get("data", {})
+        cur_team = permissions_result.get("team", [])
+        if not isinstance(policy_permissions, dict) or not isinstance(cur_team, list):
+            return {}
+
+        permission_map = {}
+        for policy_obj in policies:
+            monitor_object_id = str(policy_obj.monitor_object_id)
+            teams = {
+                org.organization for org in policy_obj.policyorganization_set.all()
+            }
+            permissions = get_instance_permissions(
+                monitor_object_id,
+                policy_obj.id,
+                teams,
+                policy_permissions,
+                cur_team,
+            )
+            permission_map[policy_obj.id] = permissions
+        return permission_map
+
 
 class MonitorAlertViewSet(
     AlertPermissionMixin,
@@ -187,18 +229,16 @@ class MonitorAlertViewSet(
 
         # 将策略和实例数据映射到字典中
         policy_dict = {policy.id: policy for policy in policies}
-
-        # # 如果有权限规则，则添加到数据中
-        # inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
+        policy_permission_map = self._build_policy_permission_map(request, policies)
 
         # 补充策略和实例到每个 alert 中
 
         for alert in results:
-            # # 补充权限信息
-            # if alert["policy_id"] in inst_permission_map:
-            #     alert["permission"] = inst_permission_map[alert["policy_id"]]
-            # else:
-            #     alert["permission"] = DEFAULT_PERMISSION
+            policy_id = alert["policy_id"]
+            if policy_id in policy_permission_map:
+                alert["policy_permission"] = policy_permission_map[policy_id]
+            elif policy_id:
+                alert["policy_permission"] = PermissionConstants.DEFAULT_PERMISSION
 
             # 补充instance_id_values
 

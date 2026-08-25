@@ -19,7 +19,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import paramiko
-
+from core.infra import ssh_client as ssh_client_module
 from core.infra.ssh_client import SSHClient
 
 
@@ -88,3 +88,33 @@ class TestSSHClientHostKeyPolicy:
         # SSHClient must NOT produce this
         our_client = SSHClient()
         assert not isinstance(self._get_policy(our_client), paramiko.AutoAddPolicy)
+
+    def test_connect_uses_bounded_logger_fields_without_credentials(self, capsys):
+        client = SSHClient()
+        host = "node\r\n" + "x" * 300
+        username = "operator-private"
+        with (
+            patch.object(client._client, "connect") as connect,
+            patch.object(ssh_client_module.logger, "debug") as debug,
+        ):
+            client.connect(host, username, password="ssh-password-secret")
+
+            connect.assert_called_once_with(
+                hostname=host,
+                port=22,
+                username=username,
+                password="ssh-password-secret",
+                key_filename=None,
+                timeout=30,
+                banner_timeout=30,
+                allow_agent=False,
+                look_for_keys=False,
+            )
+            assert capsys.readouterr().out == ""
+            logged = str(debug.call_args_list)
+            assert "ssh-password-secret" not in logged
+            assert username not in logged
+            assert "\r" not in debug.call_args_list[0].args[1]
+            assert "\n" not in debug.call_args_list[0].args[1]
+            assert len(debug.call_args_list[0].args[1]) == 255
+            assert debug.call_count == 2

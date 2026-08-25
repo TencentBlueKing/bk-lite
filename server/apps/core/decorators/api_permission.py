@@ -1,14 +1,11 @@
-import logging
 import os
 from functools import wraps
 from typing import Any, Callable, List, Set, Union
 
-from django.views.generic.base import View
-
+from apps.core.logger import logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
-
-logger = logging.getLogger("app")
+from django.views.generic.base import View
 
 
 def _get_loader(request) -> LanguageLoader:

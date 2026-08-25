@@ -113,6 +113,7 @@ def is_sensitive_field_name(field: object) -> bool:
     normalized = "".join(char for char in str(field).lower() if char.isalnum())
     return any(keyword in normalized for keyword in SENSITIVE_FIELD_KEYWORDS)
 
+
 # 敏感字段脱敏后的占位符值
 SENSITIVE_PLACEHOLDER = "******"
 
@@ -204,3 +205,4 @@ class ImportExportWarningCode:
 
     SECRET_PLACEHOLDER = "OA_SECRET_PLACEHOLDER"
     EXCEL_NEEDS_UPLOAD = "OA_EXCEL_NEEDS_UPLOAD"
+    STRING_LIST_MIGRATION = "OA_STRING_LIST_MIGRATION"

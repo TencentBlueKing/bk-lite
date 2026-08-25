@@ -1,13 +1,11 @@
-import logging
-from django.conf import settings
-from apps.rpc.job_mgmt import JobMgmt
+from apps.alerts.action.exceptions import ConfigError
 from apps.alerts.action.handlers.base import ActionHandler
 from apps.alerts.action.payload import build_match_payload, resolve_field
 from apps.alerts.action.resolver import resolve_params
 from apps.alerts.action.target_resolver import resolve_effective_team, resolve_node_target
-from apps.alerts.action.exceptions import ConfigError
-
-logger = logging.getLogger(__name__)
+from apps.core.logger import alert_logger as logger
+from apps.rpc.job_mgmt import JobMgmt
+from django.conf import settings
 
 
 class JobActionHandler(ActionHandler):

@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-import logging
 import os
 from dataclasses import dataclass
 from datetime import timedelta
 
-from django.db.models import Q
-from django.utils import timezone
-
+from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
 )
@@ -17,8 +14,8 @@ from apps.operation_analysis.services.execution_service import (
 from apps.operation_analysis.services.resource_state import (
     observe_resource_state,
 )
-
-logger = logging.getLogger(__name__)
+from django.db.models import Q
+from django.utils import timezone
 
 # 三次 Chromium 渲染每次最多 120 秒；额外一分钟留给 Snapshot、PDF 与投递。
 # 显式环境配置仍可按部署规模覆盖该默认值。

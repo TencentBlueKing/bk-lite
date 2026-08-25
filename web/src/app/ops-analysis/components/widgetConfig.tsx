@@ -91,6 +91,12 @@ import {
 } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
 import { ensurePrometheusQueryRequired } from '@/app/ops-analysis/utils/dataSourceParamContract';
 import {
+  coerceValueForMultiple,
+  isMultipleSelectInputConfig,
+  migrateParamItemsFromStringList,
+  normalizeDatasourceItemParams,
+} from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
+import {
   NETWORK_STATUS_TOPOLOGY_MAX_NODE_LIMIT,
   networkStatusTopologySelectionExceedsLimit,
 } from '@/app/ops-analysis/utils/networkStatusTopologyLayout';
@@ -197,46 +203,55 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     return Array.from(existingMap.values());
   };
 
+  const canonicalSelectedDataSource = useMemo(
+    () => (
+      selectedDataSource
+        ? normalizeDatasourceItemParams(selectedDataSource)
+        : undefined
+    ),
+    [selectedDataSource],
+  );
+
   const previewFilterDefinitions = useMemo(
-    () => computePreviewDefinitions(filterDefinitions, selectedDataSource),
-    [filterDefinitions, selectedDataSource],
+    () => computePreviewDefinitions(filterDefinitions, canonicalSelectedDataSource),
+    [canonicalSelectedDataSource, filterDefinitions],
   );
 
   const queryConfigParams = useMemo(
     () =>
-      (Array.isArray(selectedDataSource?.params)
-        ? selectedDataSource.params
+      (Array.isArray(canonicalSelectedDataSource?.params)
+        ? canonicalSelectedDataSource.params
         : []
       ).filter((param: ParamItem) =>
         ['params', 'fixed'].includes(param.filterType || 'fixed'),
       ),
-    [selectedDataSource?.params],
+    [canonicalSelectedDataSource?.params],
   );
 
   const bindableFilterParams = useMemo(
     () =>
-      Array.isArray(selectedDataSource?.params)
-        ? getBindableFilterParams(selectedDataSource.params)
+      Array.isArray(canonicalSelectedDataSource?.params)
+        ? getBindableFilterParams(canonicalSelectedDataSource.params)
         : [],
-    [selectedDataSource?.params],
+    [canonicalSelectedDataSource?.params],
   );
 
   const hasQueryParams = queryConfigParams.length > 0;
   const shouldShowUnifiedFilterSection =
-    previewFilterDefinitions.length > 0 && Boolean(selectedDataSource?.params);
+    previewFilterDefinitions.length > 0 && Boolean(canonicalSelectedDataSource?.params);
   const hasUnifiedFilterBindings = bindableFilterParams.length > 0;
   const effectiveNamespaceId = useMemo(() => {
     if (builtinNamespaceId !== undefined) {
       return builtinNamespaceId;
     }
 
-    return selectedDataSource?.namespaces?.[0];
-  }, [builtinNamespaceId, selectedDataSource?.namespaces]);
+    return canonicalSelectedDataSource?.namespaces?.[0];
+  }, [builtinNamespaceId, canonicalSelectedDataSource?.namespaces]);
 
   const tableConfig = useTableConfig({
     form,
     chartType,
-    selectedDataSource,
+    selectedDataSource: canonicalSelectedDataSource,
     availableFields,
     getSourceDataByApiId,
     processFormParamsForSubmit,
@@ -263,7 +278,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   const singleValueConfig = useSingleValueConfig({
     form,
-    selectedDataSource,
+    selectedDataSource: canonicalSelectedDataSource,
     getSourceDataByApiId,
     builtinNamespaceId: effectiveNamespaceId,
     open,
@@ -350,7 +365,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       singleValueConfig.resetSingleValueConfig();
 
       // 加载完整数据源（brief 模式不含 params）
-      const fullItem = (await ensureDataSource(item.id)) || item;
+      const fullItem = normalizeDatasourceItemParams(
+        ((await ensureDataSource(item.id)) || item) as DatasourceItem,
+      );
       if (!isCurrentConfigRequest(requestId)) {
         return;
       }
@@ -647,7 +664,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       tableConfig.setFilterFields([]);
     }
 
-    const targetDataSource = await ensureDataSource(formValues.dataSource);
+    const loadedDataSource = await ensureDataSource(formValues.dataSource);
+    const targetDataSource = loadedDataSource
+      ? normalizeDatasourceItemParams(loadedDataSource)
+      : undefined;
     if (!isCurrentConfigRequest(requestId)) {
       return;
     }
@@ -655,7 +675,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (targetDataSource) {
       setSelectedDataSource(targetDataSource);
       // 从 widget 已有的 dataSourceParams 恢复组件级 inputConfig 覆盖。
-      const widgetOverrides = (valueConfig?.dataSourceParams || [])
+      const widgetOverrides = migrateParamItemsFromStringList(
+        valueConfig?.dataSourceParams || [],
+      ).params
         .filter((p) => p.inputConfig !== undefined)
         .map((p) => ({ ...p, options: undefined }));
       setWidgetParamOverrides(widgetOverrides);
@@ -910,6 +932,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       }
       return [...prev, { ...baseParam, inputConfig: newConfig }];
     });
+    const currentParams = form.getFieldValue('params') || {};
+    const coerced = coerceValueForMultiple(
+      currentParams[editingParamName],
+      isMultipleSelectInputConfig(newConfig),
+    );
+    if (coerced !== currentParams[editingParamName]) {
+      form.setFieldValue(['params', editingParamName], coerced);
+    }
     if (resolvedOptions?.length) {
       reconcileParamWithOptions(editingParamName, resolvedOptions);
     } else {
@@ -922,17 +952,17 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const effectiveDataSource = useMemo(() => {
     if (!selectedDataSource) return undefined;
     const sourceParams =
-      selectedDataSource.source_type === 'prometheus'
-        ? ensurePrometheusQueryRequired(selectedDataSource.params)
-        : selectedDataSource.params;
+      canonicalSelectedDataSource.source_type === 'prometheus'
+        ? ensurePrometheusQueryRequired(canonicalSelectedDataSource.params)
+        : canonicalSelectedDataSource.params;
 
     if (widgetParamOverrides.length === 0) {
       return sourceParams === selectedDataSource.params
-        ? selectedDataSource
-        : { ...selectedDataSource, params: sourceParams };
+        ? canonicalSelectedDataSource
+        : { ...canonicalSelectedDataSource, params: sourceParams };
     }
     return {
-      ...selectedDataSource,
+      ...canonicalSelectedDataSource,
       params: sourceParams.map((p) => {
         const override = widgetParamOverrides.find((o) => o.name === p.name);
         return override?.inputConfig !== undefined
@@ -940,7 +970,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           : p;
       }),
     };
-  }, [selectedDataSource, widgetParamOverrides]);
+  }, [canonicalSelectedDataSource, widgetParamOverrides]);
 
   const componentSwitchOwner = useMemo(() => {
     const owner = findComponentSwitchParams(effectiveDataSource?.params)[0];

@@ -411,11 +411,25 @@ func TestPrepareLinuxPackageDoesNotExtractWhenServiceStopFails(t *testing.T) {
 	}
 }
 
+// systemd 219（RHEL/CentOS 7）没有 systemctl show --value，遇到该选项会直接退出。
+func legacySystemctl(loadState string) func(string, ...string) ([]byte, error) {
+	return func(name string, args ...string) ([]byte, error) {
+		joined := strings.Join(args, " ")
+		if strings.Contains(joined, "--value") {
+			return []byte("systemctl: unrecognized option '--value'\n"), errors.New("exit status 1")
+		}
+		if strings.Contains(joined, "show") {
+			return []byte("LoadState=" + loadState + "\n"), nil
+		}
+		return nil, nil
+	}
+}
+
 func TestStopLinuxControllerServiceSkipsMissingUnit(t *testing.T) {
 	calls := []string{}
 	err := stopLinuxControllerServiceWithCommand(func(name string, args ...string) ([]byte, error) {
 		calls = append(calls, name+" "+strings.Join(args, " "))
-		return []byte("not-found\n"), errors.New("exit status 1")
+		return []byte("LoadState=not-found\n"), errors.New("exit status 1")
 	})
 
 	if err != nil {
@@ -432,7 +446,7 @@ func TestStopLinuxControllerServiceStopsLoadedUnit(t *testing.T) {
 		call := name + " " + strings.Join(args, " ")
 		calls = append(calls, call)
 		if strings.Contains(call, " show ") {
-			return []byte("loaded\n"), nil
+			return []byte("LoadState=loaded\n"), nil
 		}
 		return nil, nil
 	})
@@ -448,13 +462,60 @@ func TestStopLinuxControllerServiceStopsLoadedUnit(t *testing.T) {
 func TestStopLinuxControllerServicePreservesStopFailure(t *testing.T) {
 	err := stopLinuxControllerServiceWithCommand(func(name string, args ...string) ([]byte, error) {
 		if strings.Contains(strings.Join(args, " "), "show") {
-			return []byte("loaded\n"), nil
+			return []byte("LoadState=loaded\n"), nil
 		}
 		return []byte("Access denied"), errors.New("exit status 1")
 	})
 
 	if err == nil || !strings.Contains(err.Error(), "Access denied") || !strings.Contains(err.Error(), "exit status 1") {
 		t.Fatalf("expected original systemctl failure context, got %v", err)
+	}
+}
+
+func TestStopLinuxControllerServiceSupportsSystemd219FreshInstall(t *testing.T) {
+	calls := []string{}
+	systemctl := legacySystemctl("not-found")
+	err := stopLinuxControllerServiceWithCommand(func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return systemctl(name, args...)
+	})
+
+	if err != nil {
+		t.Fatalf("systemd 219 fresh install must not fail: %v", err)
+	}
+	if len(calls) != 1 || calls[0] != "systemctl show --property=LoadState bk-sidecar.service" {
+		t.Fatalf("systemctl show must stay compatible with systemd 219, got %v", calls)
+	}
+}
+
+func TestStopLinuxControllerServiceSupportsSystemd219LoadedUnit(t *testing.T) {
+	calls := []string{}
+	systemctl := legacySystemctl("loaded")
+	err := stopLinuxControllerServiceWithCommand(func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return systemctl(name, args...)
+	})
+
+	if err != nil {
+		t.Fatalf("systemd 219 upgrade must stop the existing unit: %v", err)
+	}
+	if len(calls) != 2 || calls[1] != "systemctl stop bk-sidecar.service" {
+		t.Fatalf("expected systemctl stop after checking the unit, got %v", calls)
+	}
+}
+
+func TestStopLinuxControllerServiceContinuesWhenLoadStateIsUnavailable(t *testing.T) {
+	calls := []string{}
+	err := stopLinuxControllerServiceWithCommand(func(name string, args ...string) ([]byte, error) {
+		calls = append(calls, name+" "+strings.Join(args, " "))
+		return []byte("Failed to get properties: Connection refused"), errors.New("exit status 1")
+	})
+
+	if err != nil {
+		t.Fatalf("an unusable load state query must not abort the install: %v", err)
+	}
+	if len(calls) != 2 || calls[1] != "systemctl stop bk-sidecar.service" {
+		t.Fatalf("expected a best-effort stop attempt, got %v", calls)
 	}
 }
 

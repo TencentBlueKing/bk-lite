@@ -16,11 +16,11 @@ import {
   Spin,
   Tag,
   Popover,
-  Empty,
   Tooltip
 } from 'antd';
 import { PlusOutlined, CloseOutlined, HolderOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { ModalRef, ModalConfig } from '@/app/monitor/types';
 import {
   MonitorObjectItem,
@@ -506,7 +506,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
                   type="button"
                   className={`block min-h-8 w-full rounded px-3 text-left text-sm leading-8 hover:bg-[var(--color-fill-1)] ${
                     selectedField === field
-                      ? 'bg-[#e6f4ff] text-[#1677ff]'
+                      ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
                       : 'text-[var(--color-text-1)]'
                   }`}
                   onClick={() => selectField(field)}
@@ -516,7 +516,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
               ))}
             </div>
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('common.noData')} />
           )}
         </Spin>
       </div>
@@ -625,7 +625,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
                       key={node.id}
                       className={`flex items-center gap-1 px-2 py-1.5 rounded cursor-pointer mb-1 ${
                         activeId === node.id
-                          ? 'bg-[#e6f4ff] text-[#1890ff]'
+                          ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
                           : 'hover:bg-[var(--color-fill-1)]'
                       }`}
                       onClick={() => setActiveId(node.id)}

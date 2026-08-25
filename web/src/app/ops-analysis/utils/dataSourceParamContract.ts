@@ -2,13 +2,11 @@ import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
 
 export type BindableDataSourceParamType =
   | 'string'
-  | 'stringList'
   | 'timeRange'
   | 'dateRange';
 
 const BINDABLE_DATA_SOURCE_PARAM_TYPES = new Set<string>([
   'string',
-  'stringList',
   'timeRange',
   'dateRange',
 ]);

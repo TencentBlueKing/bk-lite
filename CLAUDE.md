@@ -62,6 +62,9 @@
 - 凭据只由环境注入，不提交或记录 `.env`、keystore、token。
 - 数据库访问使用 Django ORM，禁止 raw SQL、`.raw()`、`RawSQL`、`cursor.execute`。
 - `server/apps/<app>/` 引入日志统一用 `from apps.core.logger import {app_name}_logger as logger`（见 `server/apps/core/logger.py`），禁止 `loguru` 或就地 `logging.getLogger`。
+- 生产日志遵守 `specs/capabilities/backend-engineering.md` §8：使用稳定模板和惰性参数；INFO 只记录生命周期、终态或有界汇总，逐项/阶段信息放 DEBUG；一个失败只由一个边界持有 traceback ERROR，并带关联 ID、`failed_stage`、`error_type`。
+- 生产日志和 stdout 不得包含凭据、payload、响应正文或其他无界对象；不可记录的值直接省略，不以截断凭据作为脱敏。常驻 Server/Agent 禁用 `print`，仅明确面向人的 CLI、诊断脚本和测试可使用 stdout。
+- 修改日志须补行为回归测试：验证模板与独立参数、完整格式化输出、单一 traceback 所有权和敏感哨兵不泄露，并同时锁定原返回值、异常身份、状态与协议契约。
 - 非关键、可重建的外部资源失败不得阻断服务启动。
 - 新增对外 API 一律经 OpenAPI 网关暴露（内部函数用 `@openapi_expose`，外部服务写 KV 注册表），不得新增散落的 `open_api` 端点或对外端口；暴露端点必须附双租户测试并登记。见 `specs/capabilities/openapi-gateway.md`。
 - 向目标主机下发或执行操作必须有资源边界、幂等/回滚和相应测试。

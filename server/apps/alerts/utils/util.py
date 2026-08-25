@@ -2,20 +2,17 @@
 # @File: util.py
 # @Time: 2025/5/14 13:44
 # @Author: windyzhao
+import base64
 import hashlib
 import json
 import os
-import base64
-from typing import Dict, Any, List, Optional, Tuple
-
-from cryptography.fernet import InvalidToken
 from functools import wraps
-
-from django.utils.crypto import get_random_string
+from typing import Any, Dict, List, Optional, Tuple
 
 from apps.cmdb.utils.credential import Credential
 from apps.core.logger import alert_logger as logger
-
+from cryptography.fernet import InvalidToken
+from django.utils.crypto import get_random_string
 
 DEFAULT_AGGREGATION_WINDOW_SIZE_MINUTES = 10
 MAX_AGGREGATION_WINDOW_SIZE_MINUTES = 1440
@@ -193,7 +190,11 @@ def str_to_md5(input_str: str, encoding: str = 'utf-8') -> str:
         md5_hex = md5_obj.hexdigest()
         return md5_hex
     except UnicodeEncodeError as e:
-        print(f"编码错误：{e}")
+        logger.warning(
+            "event=string_hash_encoding_failed encoding=%s error_type=%s",
+            encoding,
+            type(e).__name__,
+        )
         return ""
 
 def window_size_to_int(window_size: str) -> int:

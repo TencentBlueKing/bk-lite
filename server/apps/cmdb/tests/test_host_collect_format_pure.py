@@ -5,12 +5,14 @@
 断言指标分流（host_proc 聚合 / 失败状态过滤 / 过期时间戳熔断）、字段映射
 转换（int 转换 / MAC 规范化 / CPU 架构 / OS 类型 / 进程 JSON）后的真实输出。
 """
-import pydantic.root_model  # noqa: F401  预热
 import time
 
+import pydantic.root_model  # noqa: F401  预热
 import pytest
-
+from apps.cmdb.collection.collect_plugin import host as host_module
 from apps.cmdb.collection.collect_plugin.host import HostCollectMetrics
+
+pytestmark = pytest.mark.unit
 
 
 class _FakeTask:
@@ -99,7 +101,8 @@ def test_format_data_breaks_on_stale_timestamp(runner):
 # ---------------------------------------------------------------------------
 
 
-def test_format_metrics_full_field_mapping(runner):
+def test_format_metrics_full_field_mapping(runner, mocker, capsys):
+    debug = mocker.patch.object(host_module.logger, "debug")
     runner.host_proc_map = {}
     index = {
         "index_key": "host_info_gauge",
@@ -133,6 +136,12 @@ def test_format_metrics_full_field_mapping(runner):
     assert item["proc"] == "[]"  # 无聚合进程，get_host_proc 返回空列表 JSON
     assert item["cloud"] == "vpc-1"  # 来自快照 instance 的 cloud
     assert item["inst_name"] == "10.0.0.9[生产云]"  # ip[云标签]
+    assert capsys.readouterr().out == ""
+    debug.assert_called_once_with(
+        "event=host_metrics_formatted model_count=%s item_count=%s",
+        1,
+        1,
+    )
 
 
 def test_format_metrics_tuple_missing_field_defaults(runner):

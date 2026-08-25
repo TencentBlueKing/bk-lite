@@ -153,6 +153,7 @@
       "variableValue": "告警值（无数据告警为空）",
       "variableInstanceId": "实例ID",
       "variableDimensionValue": "维度值",
+      "variableMetricDimension": "指标维度 {name}",
       "noDataAlertNameDefault": "${monitor_object}${resource_name}产生${metric_name}无数据告警",
       "channelTypeEmail": "电子邮件",
       "channelTypeWechatBot": "群聊小助手",

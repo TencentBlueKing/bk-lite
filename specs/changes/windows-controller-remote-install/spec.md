@@ -25,7 +25,8 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 ## Compatibility And Security Decisions
 
 - 第一版只支持 Windows x86_64，与现有 Windows Controller 包能力一致。
-- 固定使用 HTTPS 与 NTLM，默认端口为 5986；允许已配置 WinRM HTTPS Listener 的自定义端口，但拒绝通常承载 HTTP Listener 的 5985。面向可信内网的 Windows 安装与卸载默认关闭 WinRM 和安装服务 HTTPS 证书校验，页面持续展示风险提示；用户仍可显式开启校验。HTTP、Basic、Kerberos 和 CredSSP 仍不开放。
+- 默认使用 HTTPS 与 NTLM，默认端口为 5986；允许已配置 WinRM HTTPS Listener 的自定义端口，但拒绝 HTTPS+5985。安装与卸载均可显式选择 WinRM HTTP（默认端口 5985），并拒绝 HTTP+5986。HTTP 必须由用户选择，不得把现网 HTTPS 批次无声改成明文。Basic、Kerberos 和 CredSSP 仍不开放。
+- 面向可信内网的 Windows 安装与卸载默认关闭 WinRM 和安装服务 HTTPS 证书校验，页面持续展示风险提示；用户仍可显式开启校验。证书校验开关只对 HTTPS 生效；选择 HTTP 时强制关闭校验并展示更重的明文传输风险提示。
 - WinRM 模块连接显式使用 60 秒 WSMan operation timeout（Ansible 同步设置 70 秒 HTTP read timeout），覆盖高负载主机的模块输入延迟；WSMan fault 170 / `ERROR_BUSY` 单独标记为可重试的 WinRM 资源争用，不得误报为 NATS 或持续网络中断。
 - 自签名 WinRM 与安装服务证书优先通过受控 CA 信任配置解决；显式关闭校验时，页面必须持续提示目标主机和安装服务身份无法确认，以及管理员凭据和安装数据可能被截获或篡改的风险。
 - Windows 远程安装会话和会话返回的 Server URL 必须为 HTTPS；bootstrap 拒绝 HTTP 和 HTTPS 降级重定向。
@@ -46,7 +47,7 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 - `server/apps/node_mgmt`：API 参数、任务编排、Executor 选择、安装会话和状态收敛。
 - `agents/ansible-executor`：WinRM 与 Windows 文件分发运行时，并固定 collection 版本。
 - `agents/sidecar-installer`：生成无 GUI 的 Windows bootstrap，完成实际下载和安装。
-- `web/src/app/node-manager`：开放 Windows 远程安装入口并收集主机与凭据；HTTPS 与 NTLM 固定，WinRM 和安装服务 HTTPS 证书校验以默认关闭、可显式开启的批次级开关呈现。
+- `web/src/app/node-manager`：开放 Windows 远程安装入口并收集主机与凭据；默认 HTTPS 与 NTLM，允许批次级显式选择 HTTP；WinRM 和安装服务 HTTPS 证书校验以默认关闭、可显式开启的批次级开关呈现，且仅在 HTTPS 下可用。
 
 不新增独立 WinRM 服务；Server 只调用现有 Ansible Executor RPC，从而复用凭据转 inventory、异步任务查询、NATS 文件分发和 Windows 模块能力。
 
@@ -62,15 +63,15 @@ Windows 远程安装采用“Ansible Executor 负责 WinRM 编排，原生 Go bo
 3. 重新构建并发布 Ansible Executor，使其包含固定版本的 `ansible.windows`、`pywinrm` 与载荷加密依赖。
 4. 执行 NodeMgmt 数据库迁移。
 5. 确认每个需要 Windows 远程安装的云区域至少有一个健康 Ansible Executor。
-6. 在目标 Windows 主机预配置 WinRM listener、防火墙和认证方式；启用证书校验时还需分别配置 Executor 对 WinRM 证书、目标主机对安装服务 HTTPS 证书的信任。
+6. 在目标 Windows 主机预配置 WinRM listener、防火墙和认证方式；HTTPS 默认要求 5986，显式选择 HTTP 时要求 5985。启用证书校验时还需分别配置 Executor 对 WinRM 证书、目标主机对安装服务 HTTPS 证书的信任。
 7. 为安装器 NATS 用户配置 `installer.progress.>` 发布权限，并允许 Server 账号订阅。
 8. 为 Windows 远程安装配置 `NATS_PROTOCOL=tls`、可信服务端证书和专用安装器账号；明文 NATS 或管理员账号回退会快速失败。
 
 ## Acceptance Criteria
 
-- Windows 在控制器安装页可选择远程安装，默认账号为 Administrator、默认端口为 5986，HTTPS 与 NTLM 固定；WinRM 和安装服务 HTTPS 证书校验默认关闭且可由用户显式开启。Windows 远程卸载使用相同默认值。
-- 关闭证书校验时显示持续风险提示，并把 `winrm_cert_validation=false` 保存到每个任务节点；初次执行和重试均同时关闭 WinRM 与 bootstrap HTTPS 证书校验，但仍拒绝非 HTTPS URL。
-- 重试弹窗必须从任务节点带入端口、HTTPS/NTLM 与证书校验状态，显式展示并随重试请求提交；只要求重新输入已清理的登录凭据，不得静默恢复默认配置。
+- Windows 在控制器安装页可选择远程安装，默认账号为 Administrator、默认端口为 5986，默认 HTTPS 与 NTLM；用户可显式选择 HTTP/5985。WinRM 和安装服务 HTTPS 证书校验默认关闭且可由用户在 HTTPS 下显式开启。Windows 远程卸载使用相同默认值和同一套 HTTP opt-in。
+- 关闭证书校验时显示持续风险提示，并把 `winrm_cert_validation=false` 保存到每个任务节点；初次执行和重试均同时关闭 WinRM 与 bootstrap HTTPS 证书校验，但仍拒绝非 HTTPS 的安装会话 URL。选择 HTTP 时显示明文 WinRM 风险提示，证书校验开关不可用。
+- 重试弹窗必须从任务节点带入端口、协议、NTLM 与证书校验状态，显式展示并允许在重试前改选 HTTP 或 HTTPS；只要求重新输入已清理的登录凭据，不得静默恢复默认配置。方案与端口不匹配（HTTPS+5985、HTTP+5986）必须在提交前拒绝。
 - 安装列表、详情和失败摘要使用同一规范步骤；事务安装在 staging 解压阶段失败时统一显示为“解压安装包失败”，完成数只统计成功步骤，后续未执行步骤单独列出。
 - 任务终态优先于安装器明细完整性：节点已回连且任务成功时不得继续显示进行中；明细不完整仅作为“部分明细未上报”提示。运行期间后续步骤为待执行，不标记为缺失；提前回连必须被持久化，并在 bootstrap 收尾期间显示节点已上线。
 - 卸载删除节点记录后，原任务节点快照仍须在任务所属团队及发起人授权边界内持续可读，直至前端取得最终状态；不得因实时节点列表先消失而清空卸载列表、冻结日志抽屉或无限轮询。仍存在但当前无权访问的节点不得被误判为历史快照。

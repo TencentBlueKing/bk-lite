@@ -1,14 +1,11 @@
-import logging
 import math
 import re
 
-from rest_framework import serializers
-
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.utils.unit_converter import UnitConverter
-
-logger = logging.getLogger(__name__)
+from rest_framework import serializers
 
 # 阈值条件合法等级 —— 取自 MonitorPolicy.LEVEL_CHOICES 的用户可选档（排除系统在无数据时自动生成的 no_data）
 _VALID_THRESHOLD_LEVELS = {"info", "warning", "error", "critical"}

@@ -2,13 +2,11 @@
 请求耗时记录中间件
 记录每个请求的处理时间，并可选记录慢请求
 """
-import logging
 import time
 
+from apps.core.logger import logger
 from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
-
-logger = logging.getLogger("app")
 
 
 class RequestTimingMiddleware(MiddlewareMixin):

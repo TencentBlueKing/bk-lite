@@ -39,6 +39,8 @@ assert.match(serviceDetail, /key: 'traces'/, '服务详情必须内嵌调用链 
 assert.match(serviceDetail, /key: 'errors'/, '服务详情必须内嵌错误 Tab');
 assert.match(serviceDetail, /getTraces/, '服务详情调用链 Tab 必须读取真实 Trace');
 assert.match(serviceDetail, /getTopology/, '服务详情依赖关系必须读取真实拓扑');
+assert.match(serviceDetail, /getDeployments/, '服务详情部署 Tab 必须读取物化部署事件');
+assert.doesNotMatch(serviceDetail, /部署事件将在发布埋点接入后展示/, '部署 Tab 不得继续使用埋点占位文案');
 assert.match(serviceDetail, /跳到首个错误|依赖关系/, '服务详情概览必须提供依赖或错误下钻能力');
 assert.doesNotMatch(serviceDetail, /color:\s*'var\(--/, 'Canvas 图表不得直接使用 CSS 变量颜色');
 
@@ -68,6 +70,10 @@ assert.match(sloPage, /setSloEnabled/, 'SLO 启停必须写入服务端');
 assert.match(sloPage, /deleteSlo/, 'SLO 删除必须写入服务端');
 assert.doesNotMatch(sloPage, /name="is_enabled"/, 'SLO 启用状态不得出现在新建或编辑表单');
 assert.doesNotMatch(sloPage, /本地预览|设计预览/, '服务端已支持的 SLO 不得再标成静态预览');
+
+const deploymentsPage = readPage('services/deployments');
+assert.match(deploymentsPage, /\bredirect\(/, '独立部署列表暂不展示，旧路由必须重定向');
+assert.doesNotMatch(deploymentsPage, /ApmDataTable|getDeployments/, '独立部署列表页不得继续渲染事件表');
 
 for (const page of [servicesPage, serviceDetail, topologyPage, sloPage]) {
   assert.doesNotMatch(page, /src\/stories|@\/stories/, '生产页面不得依赖 Storybook 实现');
