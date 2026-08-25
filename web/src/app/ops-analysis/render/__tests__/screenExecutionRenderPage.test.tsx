@@ -51,6 +51,10 @@ const baseRenderInput = {
       viewport: { width: 800, height: 600 },
       items: [{ id: 'w1', chartType: 'line', x: 0, y: 0, w: 100, h: 100 }],
     },
+    widget_manifest: [
+      { widget_id: 'w1', widget_type: 'line', datasource_id: 9 },
+      { widget_id: 'w1', widget_type: 'line', datasource_id: 42 },
+    ],
   },
 };
 
@@ -85,6 +89,9 @@ describe('ScreenExecutionRenderPageContent ready contract', () => {
       expect(loadCanvasDataSources).toHaveBeenCalled();
       expect(widgetStatusHandlers.length).toBeGreaterThan(0);
     });
+    expect(loadCanvasDataSources.mock.calls[0]?.[0]).toEqual(
+      expect.arrayContaining([9, 42]),
+    );
     expect(signals).toEqual([]);
 
     window.removeEventListener(DASHBOARD_RENDER_EVENT, onSignal);
@@ -112,6 +119,9 @@ describe('ScreenExecutionRenderPageContent ready contract', () => {
     await waitFor(() => {
       expect(signals.some((item) => item.type === 'report-ready')).toBe(true);
     });
+    expect(
+      document.querySelector('[data-dashboard-render-root="true"]'),
+    ).not.toBeNull();
 
     window.removeEventListener(DASHBOARD_RENDER_EVENT, onSignal);
   });

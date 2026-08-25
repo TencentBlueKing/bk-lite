@@ -14,7 +14,9 @@ metadata:
 executors:
   protocol:
     type: protocol
-    timeout: 60
+    execution_mode: async
+    capacity_group: default
+    timeout: 300
     collector:
       module: plugins.inputs.network_config_file.network_config_file_info
       class: NetworkConfigFileInfo

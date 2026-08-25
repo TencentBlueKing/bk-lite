@@ -12,12 +12,15 @@
     "container_id",
     "container_name",
     "host",
+    "host_name",
+    "host_ip",
     "image",
     "label",
     "message",
     "source_type",
     "stream",
-    "timestamp"
+    "timestamp",
+    "collect_timestamp"
   ],
   "display_category": "container"
 }

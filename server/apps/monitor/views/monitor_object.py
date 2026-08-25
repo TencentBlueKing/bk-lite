@@ -3,7 +3,9 @@ from django.db.models import Count, Q
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
+from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.core.logger import monitor_logger as logger
+from apps.core.user_habit import column_preference_habit_key
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import (
     get_permissions_rules,
@@ -17,15 +19,14 @@ from apps.monitor.models import (
     MonitorInstance,
     MonitorInstanceOrganization,
     MonitorPolicy,
-    MonitorViewColumnPreference,
     PolicyOrganization,
 )
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
+from apps.monitor.models.user_habit import UserHabit
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.serializers.view_column_preference import MonitorViewColumnPreferenceSerializer
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.monitor_object_cleanup import MonitorObjectCleanupPolicyService
-from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.monitor.utils.display_fields import build_display_column_key, validate_display_fields
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from config.drf.pagination import CustomPageNumberPagination
@@ -170,6 +171,8 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
         未自定义的默认列取绑定指标在当前账号语言下的译名；用户通过弹窗自定义过展示列后，
         display_fields[].name 是明确的列头配置，必须原样返回，不能再被指标译名覆盖。
+        带 role 的语义列（如云平台子对象 IP）只借指标定位 label，列头由前端按 role 渲染，
+        同样不能被指标译名覆盖。
         不就地修改入参，返回新副本。
         """
         if not display_fields:
@@ -179,7 +182,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             metrics = col.get("metrics") or []
             metric_name = metrics[0].get("metric") if metrics else None
             new_name = col.get("name")
-            if metric_name and not customized:
+            if metric_name and not customized and not col.get("role"):
                 key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{object_name}.{metric_name}.name"
                 new_name = lan.get(key) or new_name
             translated.append(
@@ -276,13 +279,12 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
     @action(methods=["post"], detail=True, url_path="visibility")
     def visibility(self, request, pk=None):
-        """切换对象可见性"""
+        """切换对象可见性，同时级联到子对象。"""
         obj = self.get_object()
         is_visible = request.data.get("is_visible")
         if is_visible is None:
             return WebUtils.response_error("is_visible is required")
-        obj.is_visible = is_visible
-        obj.save(update_fields=["is_visible"])
+        MonitorObjectService.set_object_visibility(obj, bool(is_visible))
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=True, url_path="display_fields")
@@ -309,20 +311,10 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
     def view_column_preference(self, request, pk=None):
         """读取或保存当前用户在当前监控对象下的列表列配置。"""
         monitor_object = self.get_object()
+        habit_key = column_preference_habit_key(monitor_object.id)
         if request.method == "GET":
-            preference = MonitorViewColumnPreference.objects.filter(
-                user=request.user,
-                monitor_object=monitor_object,
-            ).first()
-            data = (
-                {
-                    "field_keys": preference.field_keys,
-                    "fixed_field_keys": preference.fixed_field_keys or [],
-                }
-                if preference
-                else None
-            )
-            return WebUtils.response_success(data)
+            habit = UserHabit.objects.filter(user=request.user, habit_key=habit_key).first()
+            return WebUtils.response_success(self._column_preference_from_habit(habit))
 
         serializer = MonitorViewColumnPreferenceSerializer(data=request.data)
         if not serializer.is_valid():
@@ -332,17 +324,25 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             )
         field_keys = serializer.validated_data["field_keys"]
         fixed_field_keys = serializer.validated_data.get("fixed_field_keys") or []
-        MonitorViewColumnPreference.objects.update_or_create(
+        payload = {"field_keys": field_keys, "fixed_field_keys": fixed_field_keys}
+        UserHabit.objects.update_or_create(
             user=request.user,
-            monitor_object=monitor_object,
-            defaults={
-                "field_keys": field_keys,
-                "fixed_field_keys": fixed_field_keys,
-            },
+            habit_key=habit_key,
+            defaults={"habit_value": payload},
         )
-        return WebUtils.response_success(
-            {"field_keys": field_keys, "fixed_field_keys": fixed_field_keys}
-        )
+        return WebUtils.response_success(payload)
+
+    @staticmethod
+    def _column_preference_from_habit(habit):
+        if habit is None or type(habit.habit_value) is not dict:
+            return None
+        field_keys = habit.habit_value.get("field_keys")
+        if type(field_keys) is not list:
+            return None
+        fixed_field_keys = habit.habit_value.get("fixed_field_keys") or []
+        if type(fixed_field_keys) is not list:
+            fixed_field_keys = []
+        return {"field_keys": field_keys, "fixed_field_keys": fixed_field_keys}
 
     def create(self, request, *args, **kwargs):
         """创建监控对象，支持同时创建子对象"""

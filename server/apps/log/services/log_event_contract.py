@@ -5,14 +5,39 @@
 """
 
 import json
+import re
 from typing import Any
 
 LOGICAL_MESSAGE_FIELD = "message"
 STORAGE_MESSAGE_FIELD = "_msg"
 LEGACY_MESSAGE_FIELDS = ("_msg", "log_message", "raw_message", "trap_message")
+# VictoriaLogs 内部字段不能当成普通 field:value 过滤器；检索侧用 timestamp / message。
+HIDDEN_LOGICAL_FIELDS = frozenset({"@timestamp", "_stream", "_stream_id", "_time"})
+# _stream / _stream_id / _time 的值不能是 *，空的 field: 也不能补成 exists 过滤。
+SPECIAL_LOGSQL_FIELDS = frozenset({"_stream", "_stream_id", "_time"})
+SIMPLE_LOGSQL_FIELD = re.compile(r"^[A-Za-z_][A-Za-z0-9_.]*$")
+UNQUOTED_LOGSQL_FIELD = re.compile(r"[A-Za-z_@][A-Za-z0-9_.@/-]*")
+LOGSQL_VALUE_BOUNDARY = re.compile(r"^(?:AND|OR)(?:\s|$|\|)", re.IGNORECASE)
 
 
-NORMALIZE_EVENT_VRL = r'''
+NORMALIZE_TIMESTAMP_VRL = r'''
+# timestamp 只表示中心系统 Vector 从 Server NATS 消费到事件的时间。
+# 上游时间保持原值移动到 collect_timestamp；已经归一化过的事件保留最早的采集时间。
+# NATS source 开启 namespace 后元数据不再混入负载；只显式恢复已有的可检索来源字段。
+if exists(%vector.source_type) { .source_type = %vector.source_type }
+if exists(%nats.subject) { .subject = %nats.subject }
+if exists(.timestamp) {
+  if !exists(.collect_timestamp) {
+    .collect_timestamp = del(.timestamp)
+  } else {
+    del(.timestamp)
+  }
+}
+.timestamp = now()
+'''.strip()
+
+
+NORMALIZE_MESSAGE_VRL = r'''
 # 混合版本兼容：SNMP 的 trap_message 是去掉 syslog 头后的正文，优先于旧 raw message。
 _collect_type = if exists(.collect_type) && is_string(.collect_type) { string!(.collect_type) } else { "" }
 if _collect_type == "snmp_trap" && exists(.trap_message) && !is_null(.trap_message) {
@@ -57,6 +82,11 @@ del(.trap_message)
 '''.strip()
 
 
+# 系统 Vector 的平台归一化模块由互不覆盖字段的内部片段组成；对配置编译器仍只暴露
+# 一个稳定接口和一个 normalize_event transform。
+NORMALIZE_EVENT_VRL = "\n\n".join((NORMALIZE_TIMESTAMP_VRL, NORMALIZE_MESSAGE_VRL))
+
+
 PREPARE_VICTORIA_LOGS_VRL = r'''
 # VictoriaLogs 物理主消息只在存储适配器内存在；del 保证不是复制。
 ._msg = del(.message)
@@ -71,6 +101,111 @@ def to_storage_field(field: str) -> str:
 def to_logical_field(field: str) -> str:
     """隐藏 VictoriaLogs 物理字段名。"""
     return LOGICAL_MESSAGE_FIELD if field == STORAGE_MESSAGE_FIELD else field
+
+
+def to_public_logical_field(field: str) -> str | None:
+    """转换成可展示/可检索的逻辑字段；内部字段返回 None。"""
+    logical = to_logical_field(field)
+    if logical in HIDDEN_LOGICAL_FIELDS:
+        return None
+    return logical
+
+
+def quote_logsql_field(field: str) -> str:
+    """把字段名编码成 LogsQL 过滤器左侧。"""
+    if SIMPLE_LOGSQL_FIELD.fullmatch(field):
+        return field
+    return json.dumps(field, ensure_ascii=False)
+
+
+def _empty_logsql_field_value(query: str, index: int) -> bool:
+    while index < len(query) and query[index].isspace():
+        index += 1
+    if index >= len(query):
+        return True
+    current = query[index]
+    if current in "|)":
+        return True
+    return LOGSQL_VALUE_BOUNDARY.match(query[index:]) is not None
+
+
+def normalize_user_logsql_query(query: str) -> str:
+    """补全空的 field: 过滤器，并给 @metadata.beat 这类字段名加引号。"""
+    if not isinstance(query, str) or not query:
+        return query
+
+    result: list[str] = []
+    index = 0
+    quote = None
+    escaped = False
+    while index < len(query):
+        current = query[index]
+        if quote is not None:
+            result.append(current)
+            if escaped:
+                escaped = False
+            elif current == "\\":
+                escaped = True
+            elif current == quote:
+                quote = None
+            index += 1
+            continue
+
+        if current in {'"', "'", "`"}:
+            quote_start = index
+            quote = current
+            result.append(current)
+            index += 1
+            while index < len(query):
+                char = query[index]
+                result.append(char)
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    quote = None
+                    index += 1
+                    break
+                index += 1
+            else:
+                continue
+            next_index = index
+            while next_index < len(query) and query[next_index].isspace():
+                result.append(query[next_index])
+                next_index += 1
+            if next_index < len(query) and query[next_index] == ":":
+                quoted_field = query[quote_start + 1 : index - 1]
+                result.append(":")
+                index = next_index + 1
+                if quoted_field not in SPECIAL_LOGSQL_FIELDS and _empty_logsql_field_value(
+                    query, index
+                ):
+                    result.append("*")
+            else:
+                index = next_index
+            continue
+
+        match = UNQUOTED_LOGSQL_FIELD.match(query, index)
+        if match:
+            field = match.group(0)
+            token_end = match.end()
+            next_index = token_end
+            while next_index < len(query) and query[next_index].isspace():
+                next_index += 1
+            if next_index < len(query) and query[next_index] == ":":
+                result.append(quote_logsql_field(field))
+                if token_end < next_index:
+                    result.append(query[token_end:next_index])
+                result.append(":")
+                index = next_index + 1
+                if field not in SPECIAL_LOGSQL_FIELDS and _empty_logsql_field_value(query, index):
+                    result.append("*")
+                continue
+
+        result.append(current)
+        index += 1
+    return "".join(result)
 
 
 def to_logical_event(event: Any) -> Any:

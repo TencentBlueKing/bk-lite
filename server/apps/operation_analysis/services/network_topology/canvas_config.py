@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import copy
 from typing import Any
+from uuid import UUID
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 
@@ -39,6 +40,14 @@ INTERFACE_METRIC_FIELDS = {
     "ifOutErrors_5min",
     "ifHighSpeed",
 }
+
+
+def _is_uuid(value: Any) -> bool:
+    try:
+        UUID(str(value))
+        return True
+    except (TypeError, ValueError, AttributeError):
+        return False
 
 
 def dump(topology) -> dict[str, Any]:
@@ -120,13 +129,19 @@ def _validate_single_node(
     seen_node_ids.add(node_id)
 
     bk_obj_id = raw_node.get("bk_obj_id")
-    bk_inst_id = raw_node.get("bk_inst_id")
-    if not bk_obj_id or bk_inst_id in (None, ""):
-        errors.append(f"节点 {node_id} 缺少 bk_obj_id 或 bk_inst_id")
+    bk_inst_uuid = raw_node.get("bk_inst_uuid")
+    if not bk_obj_id or bk_inst_uuid in (None, ""):
+        errors.append(f"节点 {node_id} 缺少 bk_obj_id 或 bk_inst_uuid")
         return None, errors
-    asset_key = (bk_obj_id, bk_inst_id)
+    try:
+        bk_inst_uuid = str(UUID(str(bk_inst_uuid)))
+    except (TypeError, ValueError, AttributeError):
+        errors.append(f"节点 {node_id} 的 bk_inst_uuid 不是有效 UUID")
+        return None, errors
+    raw_node = {**raw_node, "bk_inst_uuid": bk_inst_uuid}
+    asset_key = (bk_obj_id, bk_inst_uuid)
     if asset_key in seen_asset_keys:
-        errors.append(f"节点 {node_id} 与画布中已有节点 ({bk_obj_id}, {bk_inst_id}) 重复")
+        errors.append(f"节点 {node_id} 与画布中已有节点 ({bk_obj_id}, {bk_inst_uuid}) 重复")
         return None, errors
     seen_asset_keys.add(asset_key)
 
@@ -200,10 +215,14 @@ def _validate_single_link(
             continue
         source_iface = pair.get("source_interface")
         target_iface = pair.get("target_interface")
-        if not isinstance(source_iface, dict) or not source_iface.get("bk_inst_id"):
-            errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少源接口 bk_inst_id")
-        if not isinstance(target_iface, dict) or not target_iface.get("bk_inst_id"):
-            errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少目标接口 bk_inst_id")
+        if not isinstance(source_iface, dict) or not source_iface.get("bk_inst_uuid"):
+            errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少源接口 bk_inst_uuid")
+        elif not _is_uuid(source_iface.get("bk_inst_uuid")):
+            errors.append(f"连线 {link_id} 端口对 #{pair_index} 的源接口 bk_inst_uuid 非法")
+        if not isinstance(target_iface, dict) or not target_iface.get("bk_inst_uuid"):
+            errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少目标接口 bk_inst_uuid")
+        elif not _is_uuid(target_iface.get("bk_inst_uuid")):
+            errors.append(f"连线 {link_id} 端口对 #{pair_index} 的目标接口 bk_inst_uuid 非法")
     return errors
 
 

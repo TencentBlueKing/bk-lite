@@ -4,13 +4,12 @@ The NATS adapter and persistence lookups are intentionally kept out of this
 module so ranking behavior can be tested without a Django database.
 """
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-import math
 from typing import Any
 
 from apps.monitor.utils.dimension import parse_instance_id
-
 
 SUPPORTED_METRIC_TYPES = ("cpu", "memory", "disk")
 DEFAULT_INTERVAL_SECONDS = 300
@@ -111,19 +110,21 @@ def normalize_metric_candidates(
     disk_by_instance: dict[str, HostCandidate] = {}
     for item in valid:
         current = disk_by_instance.get(item.instance_id)
-        if current is None or item.value > current.value or (
-            item.value == current.value and _candidate_key(item) < _candidate_key(current)
-        ):
+        if current is None or item.value > current.value or (item.value == current.value and _candidate_key(item) < _candidate_key(current)):
             disk_by_instance[item.instance_id] = item
     return list(disk_by_instance.values())
 
 
-def _display_name(meta: dict[str, Any], instance_id: str) -> str:
+def host_display_name(meta: dict[str, Any], instance_id: str) -> str:
     host_name = str(meta.get("host_name") or "").strip()
     ip = str(meta.get("ip") or "").strip()
     if host_name and ip:
         return f"{host_name} ({ip})"
     return host_name or ip or instance_id
+
+
+def _display_name(meta: dict[str, Any], instance_id: str) -> str:
+    return host_display_name(meta, instance_id)
 
 
 def build_ranked_rows(
@@ -239,10 +240,7 @@ class HostResourceTopService:
         }
         if not host_meta:
             return []
-        max_lookback = max(
-            2 * _interval_seconds(meta)
-            for meta in host_meta.values()
-        )
+        max_lookback = max(2 * _interval_seconds(meta) for meta in host_meta.values())
         candidates = self._query(normalized_type, max_lookback)
         normalized = normalize_metric_candidates(candidates, host_meta, now=self.now)
         return build_ranked_rows(normalized, host_meta)

@@ -4,7 +4,10 @@ import bentoml
 from loguru import logger
 import mlflow
 import os
+import sys
 import time
+import traceback
+from pathlib import Path
 
 import mlflow.sklearn
 
@@ -17,10 +20,35 @@ from .metrics import (
     prediction_duration,
 )
 from .models import load_model
+from .prediction_budget import (
+    RecursiveFeatureEngineeringBudgetExceeded,
+    enforce_recursive_feature_engineering_budget,
+    get_max_recursive_feature_engineering_work,
+)
 from .schemas.api_schema import MAX_INPUT_DATA_POINTS, MAX_PREDICTION_STEPS, PredictRequest, PredictResponse
 
 
 MAX_TIMESERIES_PREDICT_TIMEOUT_SECONDS = 290
+
+def _configure_production_logger(sink=sys.stderr) -> None:
+    logger.configure(handlers=[{"sink": sink, "diagnose": False, "backtrace": True}])
+
+
+_configure_production_logger()
+
+
+def _safe_exception_call_chain(error: BaseException, max_frames: int = 12) -> str:
+    frames = traceback.extract_tb(error.__traceback__)
+    return ">".join(f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}" for frame in frames[-max_frames:]) or "-"
+
+
+class _SafeLogException(RuntimeError):
+    pass
+
+
+def _safe_exception_info(error: BaseException):
+    safe_error = _SafeLogException(type(error).__name__)
+    return _SafeLogException, safe_error, error.__traceback__
 
 
 def get_timeseries_predict_timeout_seconds() -> int:
@@ -35,6 +63,9 @@ def get_timeseries_predict_timeout_seconds() -> int:
 
 
 TIMESERIES_PREDICT_TIMEOUT_SECONDS = get_timeseries_predict_timeout_seconds()
+MAX_RECURSIVE_FEATURE_ENGINEERING_WORK = (
+    get_max_recursive_feature_engineering_work()
+)
 
 
 @bentoml.service(
@@ -52,18 +83,17 @@ class MLService:
         用于预热缓存、下载资源等全局操作.
         不接收 self 参数,类似静态方法.
         """
-        logger.info("=== Deployment setup started ===")
         # 可以在这里做全局初始化,例如:
         # - 预热模型缓存
         # - 下载共享资源
         # - 初始化全局连接池
-        logger.info("=== Deployment setup completed ===")
+        logger.info("event=timeseries_deployment_setup_completed")
 
     def __init__(self) -> None:
         """初始化服务,加载配置和模型."""
-        logger.info("Service instance initializing...")
+        logger.debug("event=timeseries_service_initializing")
         self.config = get_model_config()
-        logger.info(f"Config loaded: {self.config}")
+        logger.debug("event=timeseries_config_loaded model_source={}", self.config.source)
 
         # 配置验证与模型加载使用同一个显式降级策略：生产默认快速失败，
         # 仅开发/测试明确设置 ALLOW_DUMMY_FALLBACK=true 时降级。
@@ -75,12 +105,19 @@ class MLService:
 
             model_load_counter.labels(source=self.config.source, status="success").inc()
             logger.info(
-                f"⏱️  Model loaded successfully in {load_time:.3f}s: {self.config.mlflow_model_uri or 'local/dummy'}"
+                "event=timeseries_model_load_succeeded model_source={} model_type={} duration_ms={:.3f}",
+                self.config.source,
+                type(self.model).__name__,
+                load_time * 1000,
             )
 
         except Exception as e:
             model_load_counter.labels(source=self.config.source, status="failure").inc()
-            logger.error(f"❌ Failed to load model: {e}", exc_info=True)
+            logger.opt(exception=_safe_exception_info(e)).error(
+                "event=timeseries_model_load_failed failed_stage=model_load error_type={} call_chain={}",
+                type(e).__name__,
+                _safe_exception_call_chain(e),
+            )
 
             # 根据环境变量决定是否允许降级到 DummyModel
             allow_fallback = (
@@ -90,18 +127,12 @@ class MLService:
             if allow_fallback:
                 from .models.dummy_model import DummyModel
 
-                logger.warning(
-                    "⚠️  ALLOW_DUMMY_FALLBACK=true, using DummyModel as fallback"
-                )
+                logger.warning("event=timeseries_model_fallback_enabled fallback=dummy")
                 self.model = DummyModel()
                 model_load_counter.labels(
                     source="dummy_fallback", status="success"
                 ).inc()
             else:
-                logger.error(
-                    "Model loading failed and fallback is disabled. "
-                    "Set ALLOW_DUMMY_FALLBACK=true to enable DummyModel fallback."
-                )
                 raise RuntimeError(
                     f"Failed to load model from source '{self.config.source}'. "
                     "Service cannot start without a valid model. "
@@ -112,7 +143,7 @@ class MLService:
         """验证模型配置（启动时快速检查）."""
         from pathlib import Path
 
-        logger.info("Validating model configuration...")
+        logger.debug("event=timeseries_model_config_validation_started")
 
         if self.config.source == "local":
             # 本地模式：检查路径和关键文件
@@ -142,7 +173,7 @@ class MLService:
                     "Ensure the path points to a valid MLflow model directory containing MLmodel file."
                 )
 
-            logger.info(f"✅ Local model config validated: {model_path}")
+            logger.info("event=timeseries_model_config_validated model_source=local")
 
         elif self.config.source == "mlflow":
             # MLflow Registry 模式：检查 URI
@@ -152,16 +183,15 @@ class MLService:
                     "Example: models:/model_name/version or models:/model_name/Production"
                 )
 
-            logger.info(
-                f"✅ MLflow model config validated: {self.config.mlflow_model_uri}"
-            )
+            logger.info("event=timeseries_model_config_validated model_source=mlflow")
 
         elif self.config.source == "dummy":
-            logger.info("✅ Using dummy model (no validation needed)")
+            logger.info("event=timeseries_model_config_validated model_source=dummy")
 
         else:
             logger.warning(
-                f"⚠️  Unknown model source: {self.config.source}, will attempt to load"
+                "event=timeseries_model_source_unknown model_source={}",
+                self.config.source,
             )
 
     @bentoml.on_shutdown
@@ -171,12 +201,11 @@ class MLService:
 
         用于释放资源、关闭连接等.
         """
-        logger.info("=== Service shutdown: cleaning up resources ===")
         # 清理逻辑,例如:
         # - 关闭数据库连接
         # - 保存缓存状态
         # - 释放 GPU 显存
-        logger.info("=== Cleanup completed ===")
+        logger.info("event=timeseries_cleanup_completed")
 
     @bentoml.api
     async def predict(self, data: list, config: dict) -> PredictResponse:
@@ -208,7 +237,10 @@ class MLService:
             pred_config = PredictionConfig(**config)
             request = PredictRequest(data=data_points, config=pred_config)
         except Exception as e:
-            logger.error(f"Request validation failed: {e}")
+            logger.warning(
+                "event=timeseries_request_rejected reason=invalid_request error_type={}",
+                type(e).__name__,
+            )
             # 返回验证失败响应
             return PredictResponse(
                 success=False,
@@ -228,8 +260,10 @@ class MLService:
                 ),
             )
 
-        logger.info(
-            f"📥 Received prediction request: steps={request.config.steps}, data_points={len(request.data)}"
+        logger.debug(
+            "event=timeseries_request_received steps={} data_points={}",
+            request.config.steps,
+            len(request.data),
         )
 
         try:
@@ -242,36 +276,38 @@ class MLService:
                     f"输入数据点数 {len(request.data)} 超过上限 {MAX_INPUT_DATA_POINTS}"
                 )
 
-            logger.info(
-                f"📊 Input data range: {history.index[0]} to {history.index[-1]}"
-            )
+            logger.debug("event=timeseries_input_ready data_points={}", len(history))
 
             # 推断频率（严格验证）
             inferred_freq = pd.infer_freq(history.index)
             if inferred_freq is None:
                 raise ValueError("无法推断输入数据的时间频率，请检查时间戳是否规则")
 
-            logger.info(f"🕒 Detected frequency: {inferred_freq}")
+            logger.debug("event=timeseries_input_frequency_detected frequency={}", inferred_freq)
 
             # 执行预测（添加模型来源信息）
-            model_info = (
-                f"source={self.config.source}, type={type(self.model).__name__}"
+            logger.debug(
+                "event=timeseries_prediction_started model_source={} model_type={} steps={}",
+                self.config.source,
+                type(self.model).__name__,
+                steps,
             )
-            if self.config.source == "local":
-                model_info += f", path={self.config.model_path}"
-            elif self.config.source == "mlflow":
-                model_info += f", uri={self.config.mlflow_model_uri}"
 
-            logger.info(f"🤖 Model info: {model_info}")
-            logger.info(f"🔮 Starting recursive prediction: steps={steps}")
+            enforce_recursive_feature_engineering_budget(
+                self.model,
+                history_points=len(history),
+                steps=steps,
+                limit=MAX_RECURSIVE_FEATURE_ENGINEERING_WORK,
+            )
 
             predict_start = time.time()
             prediction_values = self.model.predict({"history": history, "steps": steps})
             predict_time = time.time() - predict_start
 
-            logger.info(f"✅ Prediction completed successfully")
-            logger.info(
-                f"⏱️  Prediction time: {predict_time:.3f}s, returned {len(prediction_values)} values"
+            logger.debug(
+                "event=timeseries_model_predict_completed predictions={} duration_ms={:.3f}",
+                len(prediction_values),
+                predict_time * 1000,
             )
 
             # 生成预测时间戳
@@ -305,13 +341,23 @@ class MLService:
             )
 
             total_time = time.time() - request_start
-            logger.info(f"⏱️  Total request time: {total_time:.3f}s")
+            logger.info(
+                "event=timeseries_prediction_completed model_source={} input_points={} prediction_points={} "
+                "duration_ms={:.3f}",
+                self.config.source,
+                len(request.data),
+                len(predicted_points),
+                total_time * 1000,
+            )
 
             return response
 
         except ValueError as e:
             # 验证错误（频率推断失败等）
-            logger.error(f"Validation error: {e}")
+            logger.warning(
+                "event=timeseries_prediction_failed failed_stage=result_validation error_type={}",
+                type(e).__name__,
+            )
             return PredictResponse(
                 success=False,
                 history=None,
@@ -324,18 +370,37 @@ class MLService:
                     execution_time_ms=(time.time() - request_start) * 1000,
                 ),
                 error=ErrorDetail(
-                    code="E1001",
+                    code=(
+                        "E1002"
+                        if isinstance(
+                            e, RecursiveFeatureEngineeringBudgetExceeded
+                        )
+                        else "E1001"
+                    ),
                     message=str(e),
-                    details={"error_type": "ValidationError"},
+                    details=(
+                        {
+                            "error_type": type(e).__name__,
+                            "history_points": e.history_points,
+                            "steps": e.steps,
+                            "estimated_work": e.estimated_work,
+                            "limit": e.limit,
+                        }
+                        if isinstance(
+                            e, RecursiveFeatureEngineeringBudgetExceeded
+                        )
+                        else {"error_type": "ValidationError"}
+                    ),
                 ),
             )
 
         except Exception as e:
             # 其他错误（模型预测失败等）
-            logger.error(f"Prediction failed: {e}")
-            import traceback
-
-            logger.error(traceback.format_exc())
+            logger.opt(exception=_safe_exception_info(e)).error(
+                "event=timeseries_prediction_failed failed_stage=model_predict error_type={} call_chain={}",
+                type(e).__name__,
+                _safe_exception_call_chain(e),
+            )
             return PredictResponse(
                 success=False,
                 history=None,

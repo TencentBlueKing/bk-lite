@@ -7,8 +7,8 @@ import {
   AppstoreOutlined,
   BarsOutlined,
   BellOutlined,
-  EditOutlined,
   InboxOutlined,
+  LoadingOutlined,
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
@@ -17,6 +17,7 @@ import {
   Button,
   Drawer,
   Empty,
+  Grid,
   Input,
   List,
   Modal,
@@ -24,15 +25,11 @@ import {
   Segmented,
   Select,
   Space,
-  Table,
   Tag,
-  Tooltip,
   Typography,
   type TableColumnsType,
 } from 'antd';
 import FilterToolbar from '@/components/filter-toolbar';
-import MoreActionsDropdown from '@/components/more-actions-dropdown';
-import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import dayjs from 'dayjs';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -40,18 +37,23 @@ import CatalogState, {
   catalogErrorKind,
   type CatalogStateKind,
 } from '@/app/apm/components/catalog-state';
-import HealthDot from '@/app/apm/components/health-dot';
 import {
-  deriveHealth,
   formatErrorRate,
+  formatDateTime,
   formatLatency,
+  formatPercentage,
   formatRelativeTime,
   formatThroughput,
   isErrorRateDanger,
+  aggregateApplicationRedTrends,
 } from '@/app/apm/components/metric-format';
 import MetricValue from '@/app/apm/components/metric-value';
 import MiniTrend from '@/app/apm/components/mini-trend';
 import OrganizationAssignmentModal from '@/app/apm/components/organization-assignment-modal';
+import ApplicationCard from '@/app/apm/components/application-card';
+import type { ActiveAlertStatus } from '@/app/apm/components/application-card';
+import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
+import ServiceLanguage from '@/app/apm/components/service-language';
 import type {
   ApmApplication,
   ApmEnvironmentView,
@@ -62,7 +64,9 @@ import type {
   CatalogStatus,
 } from '@/app/apm/types';
 import Permission from '@/components/permission';
+import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import { useUserInfoContext } from '@/context/userInfo';
+import { useTranslation } from '@/utils/i18n';
 
 interface ServiceEnvironmentRow extends ApmEnvironmentView {
   key: string;
@@ -70,6 +74,7 @@ interface ServiceEnvironmentRow extends ApmEnvironmentView {
   applicationName: string;
   namespace: string;
   serviceName: string;
+  language: string;
   serviceOrganizationIds: number[];
   serviceArchivedAt: string | null;
   archiveReason: string;
@@ -78,17 +83,19 @@ interface ServiceEnvironmentRow extends ApmEnvironmentView {
 type PageState = CatalogStateKind | 'ready';
 type ServicePerspective = 'application' | 'service';
 type TimeWindow = '15m' | '1h' | '4h' | '1d' | '7d';
-type HealthFilter = CatalogStatus | 'critical' | 'warning';
+type AlertStatusFilter = ActiveAlertStatus;
 
 interface ApplicationSummary {
   key: string;
+  id: string;
   label: string;
-  isBuiltin: boolean;
-  status: CatalogStatus;
+  status: ActiveAlertStatus;
   services: { name: string; silent: boolean }[];
   environmentCount: number;
   requestRate: number | null;
   errorRate: number | null;
+  requestRateTrend: number[];
+  errorRateTrend: number[];
   metricUnavailable: boolean;
   alertCount: number;
   lastSeenAt: string | null;
@@ -108,8 +115,8 @@ const TIME_WINDOWS: TimeWindow[] = ['15m', '1h', '4h', '1d', '7d'];
 const isTimeWindow = (value: string | null): value is TimeWindow => (
   value !== null && (TIME_WINDOWS as string[]).includes(value)
 );
-const isHealthFilter = (value: string | null): value is HealthFilter => (
-  value === 'critical' || value === 'warning' || value === 'active' || value === 'silent'
+const isAlertStatusFilter = (value: string | null): value is AlertStatusFilter => (
+  value === 'critical' || value === 'error' || value === 'warning' || value === 'info' || value === 'normal'
 );
 
 const severityRank: Record<string, number> = {
@@ -119,7 +126,24 @@ const severityRank: Record<string, number> = {
   info: 4,
 };
 
+const alertStatusFromLevel = (level?: number): ActiveAlertStatus => {
+  if (level === 1) return 'critical';
+  if (level === 2) return 'error';
+  if (level === 3) return 'warning';
+  if (level === 4) return 'info';
+  return 'normal';
+};
+const alertStatusMeta: Record<ActiveAlertStatus, { id: string; fallback: string; color?: string }> = {
+  critical: { id: 'apm.severity.critical', fallback: '严重', color: 'red' },
+  error: { id: 'apm.severity.error', fallback: '错误', color: 'volcano' },
+  warning: { id: 'apm.severity.warning', fallback: '警告', color: 'orange' },
+  info: { id: 'apm.severity.info', fallback: '提示', color: 'blue' },
+  normal: { id: 'apm.severity.normal', fallback: '正常', color: 'green' },
+};
+
 export default function ApmServicesPage() {
+  const { t } = useTranslation();
+  const screens = Grid.useBreakpoint();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -152,9 +176,9 @@ export default function ApmServicesPage() {
   const [namespace, setNamespace] = useState<string | undefined>(
     searchParams.get('namespace') ?? undefined
   );
-  const [healthFilter, setHealthFilter] = useState<HealthFilter | undefined>(() => {
-    const value = searchParams.get('health');
-    return isHealthFilter(value) ? value : undefined;
+  const [statusFilter, setStatusFilter] = useState<AlertStatusFilter | undefined>(() => {
+    const value = searchParams.get('status');
+    return isAlertStatusFilter(value) ? value : undefined;
   });
   const [timeWindow, setTimeWindow] = useState<TimeWindow>(() => {
     const value = searchParams.get('window');
@@ -184,7 +208,7 @@ export default function ApmServicesPage() {
     if (perspective !== 'application') params.set('perspective', perspective);
     if (namespace !== undefined) params.set('namespace', namespace);
     if (environment) params.set('environment', environment);
-    if (healthFilter) params.set('health', healthFilter);
+    if (statusFilter) params.set('status', statusFilter);
     if (timeWindow !== '1h') params.set('window', timeWindow);
     const trimmed = keyword.trim();
     if (trimmed) params.set('q', trimmed);
@@ -194,7 +218,7 @@ export default function ApmServicesPage() {
     router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
   }, [
     environment,
-    healthFilter,
+    statusFilter,
     keyword,
     namespace,
     pathname,
@@ -217,14 +241,15 @@ export default function ApmServicesPage() {
     ])
       .then(([applicationItems, items, health, sloItems, events]) => {
         if (!active) return;
+        const visibleApplications = applicationItems.filter((application) => !application.is_builtin);
         const activeServices = items.filter((service) => !service.archived_at);
-        setApplications(applicationItems);
+        setApplications(visibleApplications);
         setServices(activeServices);
         setArchivedServices(items.filter((service) => Boolean(service.archived_at)));
         setSlos(sloItems);
-        setFiringEvents(events.filter((event) => event.status === 'firing'));
+        setFiringEvents(events.filter((event) => event.status === 'active'));
         setCatalogDegraded(health.catalog_reconcile.status === 'degraded');
-        setState(applicationItems.length || activeServices.length ? 'ready' : 'empty');
+        setState(visibleApplications.length || activeServices.length ? 'ready' : 'empty');
       })
       .catch((error) => {
         if (active) setState(catalogErrorKind(error));
@@ -239,7 +264,7 @@ export default function ApmServicesPage() {
     setOrganizationSubmitting(true);
     try {
       await setServiceOrganizations(organizationService.id, organizationIds);
-      message.success('服务组织已更新');
+      message.success(t('apm.services.orgUpdated', '服务组织已更新'));
       setOrganizationService(null);
       setRefreshKey((value) => value + 1);
     } finally {
@@ -249,19 +274,19 @@ export default function ApmServicesPage() {
 
   const setArchived = async (serviceId: string, archived: boolean) => {
     await setServiceArchived(serviceId, archived);
-    message.success(archived ? '服务已归档' : '服务已解档');
+    message.success(archived ? t('apm.services.archived', '服务已归档') : t('apm.services.unarchived', '服务已解档'));
     setRefreshKey((value) => value + 1);
   };
 
   const confirmArchive = (serviceId: string, archived: boolean) => {
     Modal.confirm({
-      title: archived ? '确认归档服务？' : '确认解档服务？',
+      title: archived ? t('apm.services.archiveConfirm', '确认归档服务？') : t('apm.services.unarchiveConfirm', '确认解档服务？'),
       content: archived
-        ? '归档不会删除 Trace 或指标数据。'
-        : '解档后服务将重新出现在默认目录。',
-      okText: archived ? '归档' : '解档',
+        ? t('apm.services.archiveHint', '归档不会删除 Trace 或指标数据。')
+        : t('apm.services.unarchiveHint', '解档后服务将重新出现在默认目录。'),
+      okText: archived ? t('apm.services.archive', '归档') : t('apm.services.unarchive', '解档'),
       okButtonProps: archived ? { danger: true } : undefined,
-      cancelText: '取消',
+      cancelText: t('common.cancel', '取消'),
       onOk: () => setArchived(serviceId, archived),
     });
   };
@@ -280,6 +305,7 @@ export default function ApmServicesPage() {
           applicationName: service.application_name,
           namespace: service.namespace,
           serviceName: service.name,
+          language: service.language,
           serviceOrganizationIds: service.organization_ids,
           serviceArchivedAt: service.archived_at,
           archiveReason: service.archive_reason,
@@ -359,8 +385,8 @@ export default function ApmServicesPage() {
   const environmentOptions = useMemo(
     () => Array.from(new Set(rows.map((item) => item.environment)))
       .sort()
-      .map((value) => ({ value, label: value || '未设置' })),
-    [rows]
+      .map((value) => ({ value, label: value || t('apm.common.unset', '未设置') })),
+    [rows, t]
   );
 
   const namespaceOptions = useMemo(
@@ -373,28 +399,16 @@ export default function ApmServicesPage() {
   const filteredRows = useMemo(() => {
     const normalizedKeyword = keyword.trim().toLowerCase();
     return rows.filter((item) => {
-      const metric = redMetrics[metricKey(item.serviceId, item.environment)];
-      const errorRate = metric?.error_rate ?? null;
-      const health = deriveHealth(item.status, errorRate);
+      const alertStatus = alertStatusFromLevel(alertCounts.get(alertKey(item.serviceName, item.environment))?.level);
       const matchesKeyword = !normalizedKeyword
         || `${item.namespace} ${item.serviceName} ${item.applicationName}`.toLowerCase().includes(normalizedKeyword);
-      const matchesHealth = healthFilter === undefined
-        || (healthFilter === 'critical' && health === 1)
-        || (healthFilter === 'warning' && health === 2)
-        || (healthFilter === 'active' && item.status === 'active')
-        || (healthFilter === 'silent' && item.status === 'silent')
-        || (healthFilter === 'archived' && item.status === 'archived');
+      const matchesStatus = statusFilter === undefined || statusFilter === alertStatus;
       return matchesKeyword
         && (environment === undefined || item.environment === environment)
         && (namespace === undefined || item.namespace === namespace)
-        && matchesHealth;
+        && matchesStatus;
     });
-  }, [environment, healthFilter, keyword, namespace, redMetrics, rows]);
-
-  const filteredServiceCount = useMemo(
-    () => new Set(filteredRows.map((item) => item.serviceId)).size,
-    [filteredRows]
-  );
+  }, [alertCounts, environment, keyword, namespace, rows, statusFilter]);
 
   const applicationSummaries = useMemo<ApplicationSummary[]>(() => {
     const summaries = new Map<string, {
@@ -404,17 +418,16 @@ export default function ApmServicesPage() {
       metrics: ApmServiceRed[];
       metricUnavailable: boolean;
       alertCount: number;
+      alertLevel: number;
       lastSeenAt: string | null;
     }>();
     const normalizedKeyword = keyword.trim().toLowerCase();
-    const canShowWithoutServices = environment === undefined && healthFilter === undefined;
-    const canShowSilentWithoutServices = environment === undefined && healthFilter === 'silent';
+    const canShowWithoutServices = environment === undefined && (statusFilter === undefined || statusFilter === 'normal');
     applications.forEach((application) => {
       const matchesApplication = !normalizedKeyword
         || `${application.application_id} ${application.name}`.toLowerCase().includes(normalizedKeyword);
       const matchesNamespace = namespace === undefined || namespace === application.application_id;
-      const visibleWithoutServices = canShowWithoutServices
-        || (canShowSilentWithoutServices && application.service_count === 0);
+      const visibleWithoutServices = canShowWithoutServices;
       if (!matchesApplication || !matchesNamespace || !visibleWithoutServices) return;
       summaries.set(application.application_id, {
         serviceNames: new Map(),
@@ -423,6 +436,7 @@ export default function ApmServicesPage() {
         metrics: [],
         metricUnavailable: false,
         alertCount: 0,
+        alertLevel: 5,
         lastSeenAt: null,
       });
     });
@@ -434,10 +448,11 @@ export default function ApmServicesPage() {
         metrics: [],
         metricUnavailable: false,
         alertCount: 0,
+        alertLevel: 5,
         lastSeenAt: null,
       };
       current.serviceNames.set(row.serviceName, row.status === 'silent' || Boolean(current.serviceNames.get(row.serviceName)));
-      current.environments.add(row.environment || '未设置');
+      current.environments.add(row.environment || t('apm.common.unset', '未设置'));
       current.statuses.push(row.status);
       current.lastSeenAt = current.lastSeenAt && dayjs(current.lastSeenAt).isAfter(row.last_seen_at)
         ? current.lastSeenAt
@@ -445,7 +460,9 @@ export default function ApmServicesPage() {
       const metric = redMetrics[metricKey(row.serviceId, row.environment)];
       if (metric) current.metrics.push(metric);
       if (metricFailureKeys.includes(metricKey(row.serviceId, row.environment))) current.metricUnavailable = true;
-      current.alertCount += alertCounts.get(alertKey(row.serviceName, row.environment))?.count ?? 0;
+      const activeAlert = alertCounts.get(alertKey(row.serviceName, row.environment));
+      current.alertCount += activeAlert?.count ?? 0;
+      current.alertLevel = Math.min(current.alertLevel, activeAlert?.level ?? 5);
       summaries.set(row.namespace, current);
     });
 
@@ -458,29 +475,27 @@ export default function ApmServicesPage() {
       const errorRate = requestRate && weightedErrors.length
         ? weightedErrors.reduce((total, metric) => total + (metric.request_rate ?? 0) * (metric.error_rate ?? 0), 0) / requestRate
         : null;
-      const statusValue: CatalogStatus = summary.statuses.length === 0
-        ? 'silent'
-        : summary.statuses.every((value) => value === 'archived')
-          ? 'archived'
-          : summary.statuses.some((value) => value === 'active') ? 'active' : 'silent';
+      const { requestRateTrend, errorRateTrend } = aggregateApplicationRedTrends(summary.metrics);
       const application = applications.find((item) => item.application_id === key);
       return {
         key,
-        label: application?.name ?? (key || '未归类应用'),
-        isBuiltin: application?.is_builtin ?? false,
-        status: statusValue,
+        id: application?.id ?? key,
+        label: application?.name ?? key,
+        status: alertStatusFromLevel(summary.alertLevel),
         services: Array.from(summary.serviceNames.entries())
           .map(([name, silent]) => ({ name, silent }))
           .sort((left, right) => left.name.localeCompare(right.name)),
         environmentCount: summary.environments.size,
         requestRate,
         errorRate,
+        requestRateTrend,
+        errorRateTrend,
         metricUnavailable: summary.metricUnavailable,
         alertCount: summary.alertCount,
         lastSeenAt: summary.lastSeenAt,
       };
-    }).sort((left, right) => Number(left.isBuiltin) - Number(right.isBuiltin) || left.label.localeCompare(right.label));
-  }, [alertCounts, applications, environment, filteredRows, healthFilter, keyword, metricFailureKeys, namespace, redMetrics]);
+    }).sort((left, right) => left.label.localeCompare(right.label));
+  }, [alertCounts, applications, environment, filteredRows, keyword, metricFailureKeys, namespace, redMetrics, statusFilter, t]);
 
   const archivedRows = useMemo(() => {
     const normalized = archivedKeyword.trim().toLowerCase();
@@ -492,67 +507,69 @@ export default function ApmServicesPage() {
 
   const selectedApplication = applications.find((item) => item.application_id === namespace);
 
-  const actionMenuItems = (item: ServiceEnvironmentRow): MoreActionsDropdownItem[] => [
-    {
-      key: 'org',
-      icon: <EditOutlined aria-hidden="true" />,
-      label: '调整组织',
-      onClick: () => setOrganizationService(services.find((service) => service.id === item.serviceId) ?? null),
-    },
-    {
-      key: 'archive',
-      icon: <InboxOutlined aria-hidden="true" />,
-      danger: true,
-      label: '归档',
-      onClick: () => confirmArchive(item.serviceId, true),
-    },
-  ];
-
   const columns: TableColumnsType<ServiceEnvironmentRow> = [
     {
       title: (
         <Space size={6}>
-          <span>服务</span>
+          <span>{t('apm.common.service', '服务')}</span>
           {selectedApplication ? (
-            <Tag bordered={false} color="blue" className="!m-0 !text-[11px]">
-              {selectedApplication.is_builtin ? '未归类应用' : selectedApplication.name}
+            <Tag bordered={false} color="blue" className="!m-0 !text-xs">
+              {selectedApplication.name}
             </Tag>
           ) : null}
         </Space>
       ),
       key: 'service',
-      fixed: 'left',
       render: (_, item) => {
-        const metric = redMetrics[metricKey(item.serviceId, item.environment)];
         const silent = item.status === 'silent';
         const href = item.environment
           ? `/apm/services/${item.serviceId}?environment=${encodeURIComponent(item.environment)}&window=${timeWindow}`
           : undefined;
-        const health = deriveHealth(item.status, metric?.error_rate ?? null);
         return (
           <Space size={8} align="center" className={silent ? 'opacity-60' : undefined}>
-            <HealthDot status={item.status} errorRate={metric?.error_rate ?? null} showLabel />
+            <ServiceLanguage language={item.language} />
             {href ? (
               <Link
                 href={href}
-                className={`font-medium text-[var(--color-primary)] hover:underline ${
-                  health <= 2 ? 'font-semibold' : ''
-                }`}
+                className="font-medium text-[var(--color-primary)] hover:underline"
               >
                 {item.serviceName}
               </Link>
             ) : (
               <Typography.Text strong className="!text-sm">{item.serviceName}</Typography.Text>
             )}
-            {silent ? <Tag bordered={false} className="!m-0 !text-[11px] text-[var(--color-text-3)]">静默</Tag> : null}
+            {silent ? <Tag bordered={false} className="!m-0 !text-xs text-[var(--color-text-3)]">{t('apm.status.silent', '静默')}</Tag> : null}
           </Space>
         );
       },
     },
     {
-      title: '活跃告警',
+      title: t('apm.common.status', '状态'),
+      key: 'status',
+      width: APM_TABLE_COLUMN_WIDTHS.status,
+      align: 'center',
+      render: (_, item) => {
+        const status = alertStatusFromLevel(alertCounts.get(alertKey(item.serviceName, item.environment))?.level);
+        const presentation = alertStatusMeta[status];
+        const label = t(presentation.id, presentation.fallback);
+        return (
+          <Tag
+            bordered={false}
+            color={presentation.color}
+            aria-label={t('apm.application.highestAlert', '最高活跃告警：{label}', { label })}
+            className="!m-0"
+          >
+            {label}
+          </Tag>
+        );
+      },
+    },
+    {
+      title: t('apm.services.activeAlerts', '活跃告警'),
       key: 'alerts',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.compact,
+      align: 'center',
+      responsive: ['md'],
       render: (_, item) => {
         const alert = alertCounts.get(alertKey(item.serviceName, item.environment));
         const count = alert?.count ?? 0;
@@ -563,8 +580,8 @@ export default function ApmServicesPage() {
         return (
           <Link
             href={eventsHref}
-            aria-label={`${item.serviceName} 有 ${count} 个活跃告警，查看告警`}
-            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] no-underline transition-colors duration-150 ${
+            aria-label={t('apm.services.alertsAria', '{name} 有 {count} 个活跃告警，查看告警', { name: item.serviceName, count })}
+            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs no-underline transition-colors duration-150 ${
               dangerous
                 ? 'border-[var(--color-fail)] bg-[color-mix(in_srgb,var(--color-fail)_10%,var(--color-bg))] font-semibold text-[var(--color-fail)]'
                 : 'border-[var(--color-border)] bg-[var(--color-fill-1)] text-[var(--color-text-3)] hover:border-[var(--color-primary)]'
@@ -573,53 +590,15 @@ export default function ApmServicesPage() {
           >
             <BellOutlined className="text-[10px]" aria-hidden="true" />
             <span className="tabular-nums">{count}</span>
-            <span className="sr-only">个活跃告警</span>
+            <span className="sr-only">{t('apm.services.activeAlertsUnit', '个活跃告警')}</span>
           </Link>
         );
       },
     },
     {
-      title: '吞吐量(/s)',
+      title: t('apm.common.throughputPerSec', '吞吐量(/s)'),
       key: 'throughput',
-      width: 120,
-      align: 'right',
-      className: 'tabular-nums',
-      render: (_, item) => {
-        const metric = redMetrics[metricKey(item.serviceId, item.environment)];
-        const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
-        return (
-          <MetricValue
-            text={formatThroughput(metric?.request_rate ?? null, unavailable)}
-            unavailable={unavailable}
-            muted={item.status === 'silent'}
-            onRetry={unavailable ? retryMetrics : undefined}
-          />
-        );
-      },
-    },
-    {
-      title: '错误率',
-      key: 'errorRate',
-      width: 110,
-      align: 'right',
-      className: 'tabular-nums',
-      render: (_, item) => {
-        const metric = redMetrics[metricKey(item.serviceId, item.environment)];
-        const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
-        return (
-          <MetricValue
-            text={formatErrorRate(metric?.error_rate ?? null, unavailable)}
-            unavailable={unavailable}
-            danger={isErrorRateDanger(metric?.error_rate ?? null)}
-            onRetry={unavailable ? retryMetrics : undefined}
-          />
-        );
-      },
-    },
-    {
-      title: 'P99',
-      key: 'p99',
-      width: 100,
+      width: APM_TABLE_COLUMN_WIDTHS.metricWide,
       align: 'right',
       className: 'tabular-nums',
       responsive: ['md'],
@@ -628,7 +607,47 @@ export default function ApmServicesPage() {
         const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
         return (
           <MetricValue
-            text={formatLatency(metric?.p99_ms ?? null, unavailable)}
+            text={formatThroughput(metric?.request_rate ?? null, unavailable, t)}
+            unavailable={unavailable}
+            muted={item.status === 'silent'}
+            onRetry={unavailable ? retryMetrics : undefined}
+          />
+        );
+      },
+    },
+    {
+      title: t('apm.common.errorRate', '错误率'),
+      key: 'errorRate',
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
+      align: 'right',
+      className: 'tabular-nums',
+      responsive: ['md'],
+      render: (_, item) => {
+        const metric = redMetrics[metricKey(item.serviceId, item.environment)];
+        const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
+        return (
+          <MetricValue
+            text={formatErrorRate(metric?.error_rate ?? null, unavailable, t)}
+            unavailable={unavailable}
+            danger={isErrorRateDanger(metric?.error_rate ?? null)}
+            onRetry={unavailable ? retryMetrics : undefined}
+          />
+        );
+      },
+    },
+    {
+      title: t('apm.common.p99', 'P99'),
+      key: 'p99',
+      width: APM_TABLE_COLUMN_WIDTHS.compact,
+      align: 'right',
+      className: 'tabular-nums',
+      responsive: ['lg'],
+      render: (_, item) => {
+        const metric = redMetrics[metricKey(item.serviceId, item.environment)];
+        const unavailable = metricFailureKeys.includes(metricKey(item.serviceId, item.environment));
+        return (
+          <MetricValue
+            text={formatLatency(metric?.p99_ms ?? null, unavailable, t)}
             unavailable={unavailable}
             onRetry={unavailable ? retryMetrics : undefined}
           />
@@ -636,10 +655,10 @@ export default function ApmServicesPage() {
       },
     },
     {
-      title: '趋势',
+      title: t('apm.services.trend', '趋势'),
       key: 'trend',
-      width: 90,
-      responsive: ['lg'],
+      width: APM_TABLE_COLUMN_WIDTHS.trend,
+      responsive: ['xl'],
       render: (_, item) => {
         const metric = redMetrics[metricKey(item.serviceId, item.environment)];
         return (
@@ -652,16 +671,16 @@ export default function ApmServicesPage() {
       },
     },
     {
-      title: '环境',
+      title: t('apm.common.environment', '环境'),
       dataIndex: 'environment',
-      width: 110,
-      responsive: ['sm'],
-      render: (value) => <Tag bordered={false}>{value || '未设置'}</Tag>,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
+      responsive: ['lg'],
+      render: (value) => <Tag bordered={false}>{value || t('apm.common.unset', '未设置')}</Tag>,
     },
     {
-      title: 'SLO',
+      title: t('apm.slo.title', 'SLO'),
       key: 'slo',
-      width: 110,
+      width: APM_TABLE_COLUMN_WIDTHS.metric,
       responsive: ['xl'],
       render: (_, item) => {
         const slo = sloByServiceEnv.get(metricKey(item.serviceId, item.environment));
@@ -672,34 +691,38 @@ export default function ApmServicesPage() {
         return (
           <Tag
             bordered={false}
-            className={`!m-0 !text-[11px] ${
+            className={`!m-0 !text-xs ${
               met
                 ? '!bg-[color-mix(in_srgb,var(--color-success)_12%,var(--color-bg))] !text-[var(--color-success)]'
                 : '!bg-[color-mix(in_srgb,var(--color-fail)_12%,var(--color-bg))] !text-[var(--color-fail)]'
             }`}
           >
-            {met ? '达标' : '未达标'}
-            {slo.current_rate !== null ? ` ${(Number(slo.current_rate) * 100).toFixed(1)}%` : ''}
+            {met ? t('apm.services.met', '达标') : t('apm.services.unmet', '未达标')}
+            {slo.current_rate !== null ? ` ${formatPercentage(slo.current_rate, 1)}` : ''}
           </Tag>
         );
       },
     },
     {
-      title: '最近活跃',
+      title: t('apm.common.lastSeen', '最近活跃'),
       dataIndex: 'last_seen_at',
-      width: 110,
-      responsive: ['md'],
+      width: APM_TABLE_COLUMN_WIDTHS.timestamp,
+      responsive: ['xl'],
       render: (value) => (
-        <Tooltip title={dayjs(value).format('YYYY-MM-DD HH:mm:ss')}>
-          <span className="text-xs text-[var(--color-text-3)]">{formatRelativeTime(value)}</span>
-        </Tooltip>
+        <time
+          className="whitespace-nowrap tabular-nums text-[var(--color-text-1)]"
+          dateTime={value}
+          title={formatDateTime(value)}
+        >
+          {formatDateTime(value, false)}
+        </time>
       ),
     },
     {
-      title: '组织',
+      title: t('apm.common.organization', '组织'),
       dataIndex: 'serviceOrganizationIds',
-      width: 120,
-      responsive: ['xl'],
+      width: APM_TABLE_COLUMN_WIDTHS.organization,
+      responsive: ['xxl'],
       render: (value: number[]) => value.length
         ? value.map((id) => (
           <Tag bordered={false} key={id}>{groupNames.get(id) ?? `#${id}`}</Tag>
@@ -707,27 +730,163 @@ export default function ApmServicesPage() {
         : <Typography.Text type="secondary">—</Typography.Text>,
     },
     {
-      title: '',
+      title: t('apm.common.operation', '操作'),
       key: 'action',
-      width: 56,
+      width: screens.sm ? APM_TABLE_COLUMN_WIDTHS.actionPair : APM_TABLE_COLUMN_WIDTHS.singleAction,
       align: 'right',
       fixed: 'right',
-      render: (_, item) => (
-        <Permission requiredPermissions={['Operate']} permissionPath="/apm/services">
-          <MoreActionsDropdown
-            items={actionMenuItems(item)}
-            ariaLabel="更多操作"
-            stopPropagation
-          />
-        </Permission>
-      ),
+      render: (_, item) => {
+        const openOrganization = () => {
+          setOrganizationService(services.find((service) => service.id === item.serviceId) ?? null);
+        };
+
+        return (
+          <Permission requiredPermissions={['Operate']} permissionPath="/apm/services">
+            {screens.sm ? (
+              <Space className="whitespace-nowrap" size={8}>
+                <Button
+                  className="!px-0"
+                  size="small"
+                  type="link"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openOrganization();
+                  }}
+                >
+                  {t('apm.services.adjustOrgAction', '调整组织')}
+                </Button>
+                <Button
+                  className="!px-0"
+                  danger
+                  size="small"
+                  type="link"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    confirmArchive(item.serviceId, true);
+                  }}
+                >
+                  {t('apm.services.archive', '归档')}
+                </Button>
+              </Space>
+            ) : (
+              <MoreActionsDropdown
+                ariaLabel={t('apm.serviceDetail.moreActions', '更多操作')}
+                buttonType="link"
+                items={[
+                  {
+                    key: 'organization',
+                    label: t('apm.services.adjustOrgAction', '调整组织'),
+                    onClick: openOrganization,
+                  },
+                  {
+                    key: 'archive',
+                    danger: true,
+                    label: t('apm.services.archive', '归档'),
+                    onClick: () => confirmArchive(item.serviceId, true),
+                  },
+                ]}
+                stopPropagation
+              />
+            )}
+          </Permission>
+        );
+      },
     },
   ];
 
+  const catalogFilters = (
+    <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
+      <div className="flex items-center gap-2 border-r border-[var(--color-border)] pr-3">
+        <Segmented<ServicePerspective>
+          aria-label={t('apm.services.viewMode', '服务目录视角')}
+          options={[
+            { value: 'application', label: <span><AppstoreOutlined aria-hidden="true" className="mr-1" />{t('apm.common.application', '应用')}</span> },
+            { value: 'service', label: <span><BarsOutlined aria-hidden="true" className="mr-1" />{t('apm.common.service', '服务')}</span> },
+          ]}
+          value={perspective}
+          onChange={setPerspective}
+        />
+      </div>
+      <Input
+        allowClear
+        aria-label={t('apm.services.search', '按应用或服务名称搜索')}
+        className="min-w-52 flex-1 md:max-w-xs"
+        prefix={<SearchOutlined className="text-[var(--color-text-4)]" aria-hidden="true" />}
+        placeholder={t('apm.services.search', '按应用或服务名称搜索')}
+        value={keyword}
+        onChange={(event) => setKeyword(event.target.value)}
+      />
+      <Select
+        allowClear
+        aria-label={t('apm.services.filterEnvironment', '按环境筛选')}
+        className="w-36"
+        placeholder={t('apm.common.allEnvironments', '全部环境')}
+        value={environment}
+        options={environmentOptions}
+        onChange={setEnvironment}
+      />
+      <Select
+        allowClear
+        aria-label={t('apm.services.filterApplication', '按应用筛选')}
+        className="w-40"
+        placeholder={t('apm.common.allApplications', '全部应用')}
+        value={namespace}
+        options={namespaceOptions}
+        onChange={setNamespace}
+      />
+      <Select<AlertStatusFilter>
+        allowClear
+        aria-label={t('apm.services.filterAlert', '按最高活跃告警筛选')}
+        className="w-36"
+        placeholder={t('apm.common.allStatuses', '全部状态')}
+        value={statusFilter}
+        options={[
+          { value: 'critical', label: t('apm.severity.critical', '严重') },
+          { value: 'error', label: t('apm.severity.error', '错误') },
+          { value: 'warning', label: t('apm.severity.warning', '警告') },
+          { value: 'info', label: t('apm.severity.info', '提示') },
+          { value: 'normal', label: t('apm.severity.normal', '正常') },
+        ]}
+        onChange={setStatusFilter}
+      />
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        <Typography.Text type="secondary" className="!text-xs">{t('apm.common.timeWindow', '时间窗')}</Typography.Text>
+        <Segmented<TimeWindow>
+          aria-label={t('apm.services.metricWindow', '服务指标时间窗口')}
+          options={['15m', '1h', '4h', '1d', '7d']}
+          size="small"
+          value={timeWindow}
+          onChange={setTimeWindow}
+        />
+        {metricsLoading ? (
+          <span
+            role="status"
+            aria-live="polite"
+            className="inline-flex items-center gap-1.5 text-xs text-[var(--color-text-3)]"
+          >
+            <LoadingOutlined spin className="text-[12px] text-[var(--color-primary)]" aria-hidden="true" />
+            {t('apm.services.updatingMetrics', '更新 {window} 指标', { window: timeWindow })}
+          </span>
+        ) : null}
+        {perspective === 'service' ? (
+          <Button
+            icon={<InboxOutlined aria-hidden="true" />}
+            onClick={() => setArchivedOpen(true)}
+          >
+            {t('apm.status.archived', '已归档')}
+            {archivedServices.length ? (
+              <span className="ml-1 tabular-nums text-[var(--color-text-3)]">{archivedServices.length}</span>
+            ) : null}
+          </Button>
+        ) : null}
+      </div>
+    </FilterToolbar>
+  );
+
   return (
     <ApmRouteShell
-      title="服务"
-      description="按应用与服务浏览健康状态和 RED 指标，点击服务进入详情。"
+      title={t('apm.services.title', '服务')}
+      description={t('apm.services.description', '按应用与服务浏览最高活跃告警状态和 RED 指标，点击名称进入对应详情。')}
       dependency="telemetry"
     >
       {catalogDegraded ? (
@@ -735,7 +894,7 @@ export default function ApmServicesPage() {
           className="mb-4"
           type="warning"
           showIcon
-          message="目录对账暂时降级，当前列表可能不是最新状态。"
+          message={t('apm.services.reconcileDegraded', '目录对账暂时降级，当前列表可能不是最新状态。')}
         />
       ) : null}
       {metricFailureKeys.length ? (
@@ -747,270 +906,109 @@ export default function ApmServicesPage() {
               size="small"
               onClick={() => retryMetrics()}
             >
-              重试 RED 指标
+              {t('apm.common.retryRed', '重试 RED 指标')}
             </Button>
           )}
           className="mb-4"
-          description="服务目录元数据仍然可用；失败项显示为「查询失败」，不会再伪装成无遥测数据。"
+          description={t('apm.services.metricsDegraded', '服务目录仍可浏览，请稍后重试指标查询。')}
           message={metricFailureKeys.length === rows.filter((row) => row.environment && !row.serviceArchivedAt).length
-            ? 'RED 指标查询失败'
-            : `部分 RED 指标查询失败（${metricFailureKeys.length} 项）`}
+            ? t('apm.services.redFailed', 'RED 指标查询失败')
+            : t('apm.services.redPartialFailed', '部分 RED 指标查询失败（{count} 项）', { count: metricFailureKeys.length })}
           showIcon
           role="alert"
           type="warning"
         />
       ) : null}
       <div className="flex flex-col gap-3">
-        <ApmSurface padding="compact">
-          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
-            <div className="flex items-center gap-2 border-r border-[var(--color-border)] pr-3">
-              <Typography.Text type="secondary" className="!text-xs">视角</Typography.Text>
-              <Segmented<ServicePerspective>
-                aria-label="服务目录视角"
-                options={[
-                  { value: 'application', label: <span><AppstoreOutlined aria-hidden="true" className="mr-1" />应用</span> },
-                  { value: 'service', label: <span><BarsOutlined aria-hidden="true" className="mr-1" />服务</span> },
-                ]}
-                value={perspective}
-                onChange={setPerspective}
-              />
-            </div>
-            <Input
-              allowClear
-              aria-label="按应用或服务名称搜索"
-              className="min-w-52 flex-1 md:max-w-xs"
-              prefix={<SearchOutlined className="text-[var(--color-text-4)]" aria-hidden="true" />}
-              placeholder="按应用或服务名称搜索"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-            />
-            <Select
-              allowClear
-              aria-label="按环境筛选"
-              className="w-36"
-              placeholder="全部环境"
-              value={environment}
-              options={environmentOptions}
-              onChange={setEnvironment}
-            />
-            <Select
-              allowClear
-              aria-label="按应用筛选"
-              className="w-40"
-              placeholder="全部应用"
-              value={namespace}
-              options={namespaceOptions}
-              onChange={setNamespace}
-            />
-            <Select<HealthFilter>
-              allowClear
-              aria-label="按健康度筛选"
-              className="w-36"
-              placeholder="全部健康度"
-              value={healthFilter}
-              options={[
-                { value: 'critical', label: '严重' },
-                { value: 'warning', label: '警告' },
-                { value: 'active', label: '活跃' },
-                { value: 'silent', label: '静默' },
-              ]}
-              onChange={setHealthFilter}
-            />
-            <div className="ml-auto flex flex-wrap items-center gap-2">
-              <Typography.Text type="secondary" className="!text-xs">时间窗</Typography.Text>
-              <Segmented<TimeWindow>
-                aria-label="服务指标时间窗口"
-                options={['15m', '1h', '4h', '1d', '7d']}
-                size="small"
-                value={timeWindow}
-                onChange={setTimeWindow}
-              />
-              <Button
-                icon={<InboxOutlined aria-hidden="true" />}
-                onClick={() => setArchivedOpen(true)}
-              >
-                已归档
-                {archivedServices.length ? (
-                  <span className="ml-1 tabular-nums text-[var(--color-text-3)]">{archivedServices.length}</span>
-                ) : null}
-              </Button>
-            </div>
-          </FilterToolbar>
-        </ApmSurface>
+        {perspective === 'application' ? (
+          <ApmSurface padding="compact">{catalogFilters}</ApmSurface>
+        ) : null}
         {perspective === 'application' ? (
           state === 'ready' ? (
             applicationSummaries.length ? (
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {applicationSummaries.map((application) => {
-                  const health = deriveHealth(application.status, application.errorRate);
-                  const errDanger = isErrorRateDanger(application.errorRate);
                   const alertServiceHint = application.services[0]?.name;
+                  const servicesHref = `/apm/services?perspective=service&namespace=${encodeURIComponent(application.key)}`;
                   const eventsHref = alertServiceHint
                     ? `/apm/events/alerts?service=${encodeURIComponent(alertServiceHint)}`
                     : '/apm/events/alerts';
                   return (
-                    <button
-                      aria-label={`查看应用 ${application.label} 下的服务`}
-                      className="group min-w-0 cursor-pointer rounded-md text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+                    <ApplicationCard
                       key={application.key || 'uncategorized'}
-                      type="button"
-                      onClick={() => {
-                        setNamespace(application.key);
-                        setPerspective('service');
-                      }}
-                    >
-                      <div
-                        className={`flex h-full flex-col border border-[var(--color-border)] bg-[var(--color-bg)] p-4 transition-colors duration-150 group-hover:border-[var(--color-primary)] ${
-                          application.isBuiltin ? 'border-t-[3px] border-t-dashed border-t-[var(--theme-color-status-warning)]' : ''
-                        }`}
-                      >
-                        <div className="mb-3.5 flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <HealthDot level={health} showLabel />
-                              <Typography.Text strong ellipsis={{ tooltip: application.label }} className="!text-[15px]">
-                                {application.label}
-                              </Typography.Text>
-                              {application.isBuiltin ? (
-                                <Tooltip title="这些服务未设置 service.namespace，平台归入内置未归类应用。">
-                                  <Tag color="warning" className="!m-0 !text-[11px]">未归类</Tag>
-                                </Tooltip>
-                              ) : null}
-                            </div>
-                            <Typography.Text type="secondary" className="mt-1 ml-4 block !text-xs tabular-nums">
-                              {application.services.length} 个服务
-                            </Typography.Text>
-                          </div>
-                          <Link
-                            href={eventsHref}
-                            aria-label={`应用内 ${application.alertCount} 个活跃告警，查看告警`}
-                            title={`应用内 ${application.alertCount} 个活跃告警`}
-                            className={`inline-flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-xs no-underline transition-colors duration-150 ${
-                              application.alertCount > 0
-                                ? 'border border-[var(--color-fail)] bg-[color-mix(in_srgb,var(--color-fail)_8%,var(--color-bg))] font-semibold text-[var(--color-fail)]'
-                                : 'border border-[var(--color-border)] bg-[var(--color-fill-1)] text-[var(--color-text-3)] hover:border-[var(--color-primary)]'
-                            }`}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <BellOutlined className="text-[11px]" aria-hidden="true" />
-                            <span className="tabular-nums">{application.alertCount}</span>
-                          </Link>
-                        </div>
-                        <div className="mb-3.5 grid grid-cols-2 gap-4">
-                          <div>
-                            <Typography.Text type="secondary" className="block !text-[11px]">吞吐量</Typography.Text>
-                            <div className="mt-0.5 flex items-baseline gap-0.5">
-                              <MetricValue
-                                size="lg"
-                                text={formatThroughput(application.requestRate, application.metricUnavailable)}
-                                unavailable={application.metricUnavailable}
-                                onRetry={application.metricUnavailable ? retryMetrics : undefined}
-                              />
-                              {application.requestRate !== null ? (
-                                <span className="text-xs text-[var(--color-text-3)]">/s</span>
-                              ) : null}
-                            </div>
-                          </div>
-                          <div>
-                            <Typography.Text type="secondary" className="block !text-[11px]">错误率</Typography.Text>
-                            <div className="mt-0.5">
-                              <MetricValue
-                                size="lg"
-                                text={formatErrorRate(application.errorRate, application.metricUnavailable)}
-                                unavailable={application.metricUnavailable}
-                                danger={errDanger}
-                                onRetry={application.metricUnavailable ? retryMetrics : undefined}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-auto border-t border-dashed border-[var(--color-border)] pt-3">
-                          <Tooltip
-                            title={application.services.map((service) => (
-                              service.silent ? `${service.name}(静默)` : service.name
-                            )).join('、') || '尚无服务'}
-                          >
-                            <div className="flex flex-nowrap gap-1.5 overflow-hidden">
-                              {application.services.slice(0, 4).map((service) => (
-                                <span
-                                  key={service.name}
-                                  className={`inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-xs whitespace-nowrap ${
-                                    service.silent
-                                      ? 'border-[var(--color-border)] bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
-                                      : 'border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-1)]'
-                                  }`}
-                                >
-                                  {service.name}
-                                </span>
-                              ))}
-                              {application.services.length > 4 ? (
-                                <span className="inline-flex shrink-0 items-center rounded bg-[var(--color-primary-bg-active)] px-2 py-0.5 text-xs font-medium text-[var(--color-primary)]">
-                                  +{application.services.length - 4}
-                                </span>
-                              ) : null}
-                              {!application.services.length ? (
-                                <Typography.Text type="secondary" className="!text-xs">尚无服务上报</Typography.Text>
-                              ) : null}
-                            </div>
-                          </Tooltip>
-                        </div>
-                      </div>
-                    </button>
+                      label={application.label}
+                      status={application.status}
+                      services={application.services}
+                      requestRate={application.requestRate}
+                      errorRate={application.errorRate}
+                      requestRateTrend={application.requestRateTrend}
+                      errorRateTrend={application.errorRateTrend}
+                      metricUnavailable={application.metricUnavailable}
+                      alertCount={application.alertCount}
+                      timeWindow={timeWindow}
+                      servicesHref={servicesHref}
+                      eventsHref={eventsHref}
+                      href={`/apm/integration/applications/${application.id}`}
+                      onRetryMetrics={retryMetrics}
+                    />
                   );
                 })}
               </div>
             ) : (
-              <ApmSurface><Empty description="没有匹配的应用，请调整筛选条件。" /></ApmSurface>
+              <ApmSurface>
+                <Empty description={t('apm.services.noMatchingApps', '没有匹配的应用，请调整筛选条件。')}>
+                  <Button onClick={() => {
+                    setKeyword('');
+                    setEnvironment(undefined);
+                    setNamespace(undefined);
+                    setStatusFilter(undefined);
+                  }}>
+                    {t('apm.services.clearFilters', '清除筛选')}
+                  </Button>
+                </Empty>
+              </ApmSurface>
             )
           ) : (
-            <ApmSurface padding="none"><CatalogState kind={state} /></ApmSurface>
+            <ApmSurface padding="none">
+              <CatalogState
+                kind={state}
+                onRetry={state === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)}
+              />
+            </ApmSurface>
           )
         ) : (
-          <ApmSurface padding="none" className="overflow-hidden">
-            <div className="flex items-center justify-between border-b border-[var(--color-border)] px-4 py-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <Typography.Text strong>
-                  {namespace === undefined
-                    ? '全部服务'
-                    : selectedApplication?.name ?? (namespace || '未归类应用')}
-                </Typography.Text>
-                {namespace !== undefined ? (
-                  <Button size="small" type="link" onClick={() => setNamespace(undefined)}>清除应用筛选</Button>
-                ) : null}
-              </div>
-              <Typography.Text type="secondary" className="!text-xs tabular-nums">
-                {filteredRows.length} 个环境视图 · {filteredServiceCount} 个逻辑服务
-                {metricsLoading ? ' · 更新指标中…' : ''}
-              </Typography.Text>
+          <ApmSurface>
+            <div className="flex flex-col gap-4">
+              {catalogFilters}
+              {state === 'ready' ? (
+                <ApmDataTable
+                  columns={columns}
+                  dataSource={filteredRows}
+                  headerAlignment="column"
+                  rowKey="key"
+                  pagination={{
+                    defaultPageSize: 20,
+                    pageSizeOptions: [10, 20, 50, 100],
+                    showSizeChanger: true,
+                    showTotal: (total) => t('apm.common.paginationTotal', '共 {total} 条', { total }),
+                  }}
+                />
+              ) : (
+                <CatalogState
+                  kind={state}
+                  onRetry={state === 'forbidden' ? undefined : () => setRefreshKey((value) => value + 1)}
+                />
+              )}
             </div>
-            {state === 'ready' ? (
-              <Table
-                size="middle"
-                columns={columns}
-                dataSource={filteredRows}
-                scroll={{ x: 1100 }}
-                pagination={{
-                  defaultPageSize: 20,
-                  pageSizeOptions: [10, 20, 50, 100],
-                  showSizeChanger: true,
-                  showTotal: (total) => `共 ${total} 条`,
-                }}
-              />
-            ) : (
-              <CatalogState kind={state} />
-            )}
           </ApmSurface>
         )}
-        {metricsLoading && perspective === 'application' ? (
-          <Typography.Text type="secondary" className="self-end !text-xs">正在更新 {timeWindow} RED 指标…</Typography.Text>
-        ) : null}
       </div>
       <Drawer
         title={(
           <div>
-            <div className="text-[15px] font-semibold">已归档服务</div>
+            <div className="text-base font-semibold">{t('apm.services.archivedTitle', '已归档服务')}</div>
             <Typography.Text type="secondary" className="!text-xs">
-              {archivedRows.length} 个归档服务 · 归档不会删除 Trace 或指标数据
+              {t('apm.services.archivedSubtitle', '{count} 个归档服务 · 归档不会删除 Trace 或指标数据', { count: archivedRows.length })}
             </Typography.Text>
           </div>
         )}
@@ -1025,7 +1023,7 @@ export default function ApmServicesPage() {
             allowClear
             size="small"
             className="w-44"
-            placeholder="搜索归档服务"
+            placeholder={t('apm.services.searchArchived', '搜索归档服务')}
             prefix={<SearchOutlined className="text-[var(--color-text-4)]" aria-hidden="true" />}
             value={archivedKeyword}
             onChange={(event) => setArchivedKeyword(event.target.value)}
@@ -1036,12 +1034,12 @@ export default function ApmServicesPage() {
           showIcon
           type="info"
           className="mb-3"
-          message="归档不等于删除。归档后告警自动暂停，可随时解档恢复。"
+          message={t('apm.services.archiveNote', '归档不等于删除。归档后告警自动暂停，可随时解档恢复。')}
         />
         <List
           size="small"
           dataSource={archivedRows}
-          locale={{ emptyText: '暂无已归档服务' }}
+          locale={{ emptyText: t('apm.services.noArchived', '暂无已归档服务') }}
           renderItem={(service) => (
             <List.Item
               actions={[
@@ -1051,14 +1049,14 @@ export default function ApmServicesPage() {
                   size="small"
                   onClick={() => confirmArchive(service.id, false)}
                 >
-                  解档
+                  {t('apm.services.unarchive', '解档')}
                 </Button>,
                 service.environment_views[0]?.environment ? (
                   <Link
                     key="view"
                     href={`/apm/services/${service.id}?environment=${encodeURIComponent(service.environment_views[0].environment)}`}
                   >
-                    <Button type="link" size="small">查看历史</Button>
+                    <Button type="link" size="small">{t('apm.services.viewHistory', '查看历史')}</Button>
                   </Link>
                 ) : null,
               ].filter(Boolean)}
@@ -1067,16 +1065,16 @@ export default function ApmServicesPage() {
                 title={(
                   <Space size={8}>
                     <span>{service.name}</span>
-                    <Tag bordered={false} className="!m-0 !text-[11px]">
-                      {service.archive_reason === 'manual' ? '手动归档' : '自动归档'}
+                    <Tag bordered={false} className="!m-0 !text-xs">
+                      {service.archive_reason === 'manual' ? t('apm.services.manualArchive', '手动归档') : service.archive_reason || t('apm.services.historyArchive', '历史归档')}
                     </Tag>
                   </Space>
                 )}
                 description={(
                   <Space size={8} wrap className="!text-xs text-[var(--color-text-3)]">
-                    <span>应用 = {service.application_name || '未归类应用'}</span>
+                    <span>{t('apm.services.appEquals', '应用 = {name}', { name: service.application_name || t('apm.services.unbound', '未绑定') })}</span>
                     <span>·</span>
-                    <span>最后活跃 {formatRelativeTime(service.last_seen_at)}</span>
+                    <span>{t('apm.services.lastActive', '最后活跃 {time}', { time: formatRelativeTime(service.last_seen_at, t) })}</span>
                   </Space>
                 )}
               />
@@ -1086,10 +1084,12 @@ export default function ApmServicesPage() {
       </Drawer>
       <OrganizationAssignmentModal
         open={Boolean(organizationService)}
-        title={`调整服务组织${organizationService ? `：${organizationService.namespace}/${organizationService.name}` : ''}`}
+        title={organizationService
+          ? t('apm.services.adjustOrgNamed', '调整服务组织：{identity}', { identity: `${organizationService.namespace}/${organizationService.name}` })
+          : t('apm.services.adjustOrg', '调整服务组织')}
         organizationIds={organizationService?.organization_ids ?? []}
         submitting={organizationSubmitting}
-        description="服务组织独立于应用与实例，仅影响此逻辑服务的可见和可操作范围。"
+        description={t('apm.services.orgHint', '服务组织独立于应用与实例，仅影响此逻辑服务的可见和可操作范围。')}
         onCancel={() => setOrganizationService(null)}
         onSubmit={submitOrganizations}
       />

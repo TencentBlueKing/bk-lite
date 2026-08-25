@@ -32,6 +32,7 @@
   ],
   "feedback": [
     { "component": "notifications", "reason": "通用通知入口与消息反馈展示", "contractStory": "notifications.stories.tsx" },
+    { "component": "field-guide-tip", "reason": "通用表单字段填写说明悬浮提示", "contractStory": "integration-onboarding-family.stories.tsx" },
     { "component": "page-status", "reason": "通用页面加载、空态与错误态反馈", "contractStory": "feedback-family.stories.tsx" },
     { "component": "troubleshooting-card", "reason": "通用故障说明与处理建议反馈卡片", "contractStory": "content-family.stories.tsx" }
   ],

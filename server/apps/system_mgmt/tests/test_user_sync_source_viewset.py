@@ -111,16 +111,25 @@ def test_destroy_deletes_root_subtree_and_users(api_client, authenticated_user, 
         group_list=[child_group.id],
         sync_source=None,
     )
-    response = api_client.delete(f"/api/v1/system_mgmt/user_sync_source/{user_sync_source.id}/")
+    source_id = user_sync_source.id
+    response = api_client.delete(f"/api/v1/system_mgmt/user_sync_source/{source_id}/")
 
     assert response.status_code == 200
     assert response.json()["result"] is True
-    assert UserSyncSource.objects.filter(id=user_sync_source.id).exists() is False
-    assert Group.objects.filter(id__in=[root_group.id, child_group.id]).count() == 0
-    assert User.objects.filter(id__in=[synced_user.id, grouped_user.id]).count() == 0
+    assert UserSyncSource.objects.filter(id=source_id).exists() is False
+    root_group.refresh_from_db()
+    child_group.refresh_from_db()
+    assert root_group.is_delete is True
+    assert child_group.is_delete is True
+    assert root_group.sync_source_id is None
+    assert child_group.sync_source_id is None
+    assert root_group.external_id == f"user-sync:{source_id}:0"
+    assert not User.objects.filter(id=synced_user.id).exists()
+    grouped_user.refresh_from_db()
+    assert grouped_user.group_list == [child_group.id]
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_delete_user_sync_source_does_not_scan_all_users(user_sync_source):
     root_group = Group.objects.create(
         name="Root A",
@@ -159,7 +168,14 @@ def test_delete_user_sync_source_does_not_scan_all_users(user_sync_source):
         result = delete_user_sync_source(user_sync_source)
 
     assert result["result"] is True
-    assert User.objects.filter(id__in=[synced_user.id, grouped_user.id]).count() == 0
+    assert not User.objects.filter(id=synced_user.id).exists()
+    assert User.objects.filter(id=grouped_user.id).exists()
+    grouped_user.refresh_from_db()
+    assert grouped_user.group_list == [child_group.id]
+    root_group.refresh_from_db()
+    child_group.refresh_from_db()
+    assert root_group.is_delete is True
+    assert child_group.is_delete is True
     assert get_user_permission_version(synced_user.username, synced_user.domain) > synced_version
     assert get_user_permission_version(grouped_user.username, grouped_user.domain) > grouped_version
 
@@ -659,7 +675,7 @@ def test_sync_source_accepts_root_dn_without_base_dn_rail(api_client, authentica
 
     assert response.status_code == 201, response.json()
     created = UserSyncSource.objects.get(name="ad-source-no-rail")
-    assert created.business_config == {"root_dn": "OU=A,DC=x,DC=y"}
+    assert created.business_config == {"root_dns": ["OU=A,DC=x,DC=y"]}
 
 
 @pytest.mark.django_db
@@ -910,3 +926,51 @@ def test_run_detail_returns_403_for_invisible_source(api_client, ready_integrati
     response = api_client.get(RUN_DETAIL_URL.format(run_id=run.id))
     # 403(权限不足)或 404(被 get_queryset_by_permission 过滤)都是合规行为
     assert response.status_code in (403, 404)
+
+
+# ---------------------------------------------------------------------------
+# Task 5: 删源顺序 — RUNNING 时拒绝且不删周期任务
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_destroy_while_running_rejects_without_removing_periodic_task(
+    api_client, authenticated_user, ready_integration_instance
+):
+    """同步运行中删除源须拒绝，且不得先停周期任务。"""
+    from django_celery_beat.models import PeriodicTask
+
+    from apps.system_mgmt.models import UserSyncRunStatusChoices
+
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-Delete"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+    api_client.cookies["current_team"] = "1"
+
+    source = UserSyncSource.objects.create(
+        name="running-delete-guard",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Running Delete Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={"username": "user_id"},
+        schedule_config={"mode": "daily", "time": "04:00", "timezone": "Asia/Shanghai"},
+    )
+    source.create_sync_periodic_task()
+    task_name = source.periodic_task_name()
+    assert PeriodicTask.objects.filter(name=task_name).exists()
+
+    UserSyncRun.objects.create(source=source, status=UserSyncRunStatusChoices.RUNNING)
+
+    with patch(
+        "apps.system_mgmt.models.user_sync_source.UserSyncSource.delete_sync_periodic_task"
+    ) as mock_delete_task:
+        response = api_client.delete(f"/api/v1/system_mgmt/user_sync_source/{source.id}/")
+
+    assert response.status_code in (400, 409)
+    body = response.json()
+    assert body["result"] is False
+    assert "running" in body["message"].lower()
+    mock_delete_task.assert_not_called()
+    assert PeriodicTask.objects.filter(name=task_name).exists()
+    assert UserSyncSource.objects.filter(id=source.id).exists()

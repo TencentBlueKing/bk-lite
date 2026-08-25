@@ -89,9 +89,7 @@ def test_create_or_get_share_is_idempotent(settings, dashboard, sharer, monkeypa
 
 
 @pytest.mark.django_db
-def test_exchange_reuses_unexpired_session_and_resets_eight_hours(
-    settings, dashboard, sharer, visitor, monkeypatch
-):
+def test_exchange_reuses_unexpired_session_and_resets_eight_hours(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     settings.DASHBOARD_SHARE_SESSION_AGE = 28800
     monkeypatch.setattr(
@@ -335,9 +333,7 @@ def test_routine_permission_cache_clear_does_not_invalidate_link(settings, dashb
 
 
 @pytest.mark.django_db
-def test_actual_permission_loss_permanently_invalidates_link_and_session(
-    settings, dashboard, sharer, visitor, monkeypatch
-):
+def test_actual_permission_loss_permanently_invalidates_link_and_session(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
         "apps.operation_analysis.services.share_service.can_view_canvas",
@@ -364,9 +360,7 @@ def test_actual_permission_loss_permanently_invalidates_link_and_session(
 
 
 @pytest.mark.django_db
-def test_new_share_after_permanent_invalidation_uses_new_token(
-    settings, dashboard, sharer, monkeypatch
-):
+def test_new_share_after_permanent_invalidation_uses_new_token(settings, dashboard, sharer, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
         "apps.operation_analysis.services.share_service.can_view_canvas",
@@ -394,9 +388,7 @@ def test_new_share_after_permanent_invalidation_uses_new_token(
 
 
 @pytest.mark.django_db
-def test_disabled_visitor_cannot_exchange_or_resolve_session(
-    settings, dashboard, sharer, visitor, monkeypatch
-):
+def test_disabled_visitor_cannot_exchange_or_resolve_session(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
         "apps.operation_analysis.services.share_service.can_view_canvas",
@@ -423,9 +415,7 @@ def test_disabled_visitor_cannot_exchange_or_resolve_session(
 
 
 @pytest.mark.django_db
-def test_space_mismatch_marks_dashboard_invalid_not_permission_lost(
-    settings, dashboard, sharer, monkeypatch
-):
+def test_space_mismatch_marks_dashboard_invalid_not_permission_lost(settings, dashboard, sharer, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
         "apps.operation_analysis.services.share_service.can_view_canvas",
@@ -479,10 +469,7 @@ def test_share_query_rejects_undeclared_params(settings, dashboard, sharer, visi
         }
     ]
     dashboard.save(update_fields=["view_sets"])
-    from apps.operation_analysis.services.share_service import (
-        ShareQueryParamsDenied,
-        filter_share_query_params,
-    )
+    from apps.operation_analysis.services.share_service import ShareQueryParamsDenied, filter_share_query_params
 
     with pytest.raises(ShareQueryParamsDenied):
         filter_share_query_params(
@@ -609,10 +596,7 @@ def test_share_query_case2_visitor_cannot_change_widget_fixed_params(settings, d
 def test_share_query_case3_widget_empty_rejects_schema_only_params(settings, dashboard):
     """case3: widget 未声明交互参数时，禁止提交 schema 非 fixed 键；fixed 仍强制注入。"""
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
-    from apps.operation_analysis.services.share_service import (
-        ShareQueryParamsDenied,
-        filter_share_query_params,
-    )
+    from apps.operation_analysis.services.share_service import ShareQueryParamsDenied, filter_share_query_params
 
     datasource = DataSourceAPIModel.objects.create(
         name=f"share-schema-fallback-{uuid.uuid4()}",
@@ -654,10 +638,7 @@ def test_share_query_case3_widget_empty_rejects_schema_only_params(settings, das
 def test_share_query_case4_unknown_params_rejected(settings, dashboard):
     """case4: 未知参数 → 拒绝。"""
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
-    from apps.operation_analysis.services.share_service import (
-        ShareQueryParamsDenied,
-        filter_share_query_params,
-    )
+    from apps.operation_analysis.services.share_service import ShareQueryParamsDenied, filter_share_query_params
 
     datasource = DataSourceAPIModel.objects.create(
         name=f"share-unknown-{uuid.uuid4()}",
@@ -689,10 +670,7 @@ def test_share_query_case4_unknown_params_rejected(settings, dashboard):
 def test_share_query_rejects_schema_only_params_when_widget_partial(settings, dashboard):
     """组件只声明部分 params 时，schema 中未在画布声明的非 fixed 键不可提交。"""
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
-    from apps.operation_analysis.services.share_service import (
-        ShareQueryParamsDenied,
-        filter_share_query_params,
-    )
+    from apps.operation_analysis.services.share_service import ShareQueryParamsDenied, filter_share_query_params
 
     datasource = DataSourceAPIModel.objects.create(
         name=f"share-partial-{uuid.uuid4()}",
@@ -740,10 +718,7 @@ def test_share_query_rejects_schema_only_params_when_widget_partial(settings, da
 
 @pytest.mark.django_db
 def test_share_query_allows_query_list_only_for_table_widgets(settings, dashboard):
-    from apps.operation_analysis.services.share_service import (
-        ShareQueryParamsDenied,
-        filter_share_query_params,
-    )
+    from apps.operation_analysis.services.share_service import ShareQueryParamsDenied, filter_share_query_params
 
     dashboard.view_sets = [
         {
@@ -786,13 +761,33 @@ def test_share_query_allows_query_list_only_for_table_widgets(settings, dashboar
 
 
 @pytest.mark.django_db
+def test_share_query_denies_query_list_for_card_list_widgets(settings, dashboard):
+    from apps.operation_analysis.services.share_service import ShareQueryParamsDenied, filter_share_query_params
+
+    dashboard.view_sets = [
+        {
+            "valueConfig": {
+                "dataSource": 7,
+                "chartType": "cardList",
+                "cardList": {"titleField": "title"},
+            }
+        }
+    ]
+    dashboard.save(update_fields=["view_sets"])
+
+    with pytest.raises(ShareQueryParamsDenied):
+        filter_share_query_params(
+            dashboard=dashboard,
+            data_source_id=7,
+            request_data={"query_list": []},
+        )
+
+
+@pytest.mark.django_db
 def test_share_query_widget_empty_only_allows_fixed_and_runtime_keys(settings, dashboard):
     """widget 无 dataSourceParams 时，不可提交 schema 非 fixed；未知键仍拒绝。"""
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
-    from apps.operation_analysis.services.share_service import (
-        ShareQueryParamsDenied,
-        filter_share_query_params,
-    )
+    from apps.operation_analysis.services.share_service import ShareQueryParamsDenied, filter_share_query_params
 
     datasource = DataSourceAPIModel.objects.create(
         name=f"share-fallback-{uuid.uuid4()}",
@@ -833,10 +828,7 @@ def test_share_query_widget_empty_only_allows_fixed_and_runtime_keys(settings, d
 @pytest.mark.django_db
 def test_share_query_rejects_undeclared_namespace_id(settings, dashboard):
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-    from apps.operation_analysis.services.share_service import (
-        ShareQueryParamsDenied,
-        filter_share_query_params,
-    )
+    from apps.operation_analysis.services.share_service import ShareQueryParamsDenied, filter_share_query_params
 
     allowed_ns = NameSpace.objects.create(
         name=f"share-ns-ok-{uuid.uuid4()}",
@@ -878,9 +870,7 @@ def test_share_query_rejects_undeclared_namespace_id(settings, dashboard):
 
 
 @pytest.mark.django_db
-def test_prepare_state_roundtrip_exchanges_without_raw_token(
-    settings, dashboard, sharer, visitor, monkeypatch
-):
+def test_prepare_state_roundtrip_exchanges_without_raw_token(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
         "apps.operation_analysis.services.share_service.can_view_canvas",
@@ -915,9 +905,7 @@ def test_prepare_state_roundtrip_exchanges_without_raw_token(
 
 
 @pytest.mark.django_db
-def test_exchange_state_requires_matching_prepare_nonce(
-    settings, dashboard, sharer, visitor, monkeypatch
-):
+def test_exchange_state_requires_matching_prepare_nonce(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
         "apps.operation_analysis.services.share_service.can_view_canvas",
@@ -953,9 +941,7 @@ def test_exchange_state_requires_matching_prepare_nonce(
 
 
 @pytest.mark.django_db
-def test_rate_limit_failure_does_not_consume_prepare_state(
-    settings, dashboard, sharer, visitor, monkeypatch
-):
+def test_rate_limit_failure_does_not_consume_prepare_state(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
         "apps.operation_analysis.services.share_service.can_view_canvas",
@@ -978,10 +964,7 @@ def test_rate_limit_failure_does_not_consume_prepare_state(
         "apps.operation_analysis.services.share_service.enforce_share_visitor_link_rate_limit",
         lambda **_: (_ for _ in ()).throw(ShareRateLimited()),
     )
-    from apps.operation_analysis.services.share_service import (
-        ShareRateLimited,
-        prepare_share_exchange,
-    )
+    from apps.operation_analysis.services.share_service import ShareRateLimited, prepare_share_exchange
 
     result = create_or_get_share(
         dashboard=dashboard,
@@ -1002,9 +985,7 @@ def test_rate_limit_failure_does_not_consume_prepare_state(
 
 
 @pytest.mark.django_db
-def test_visitor_link_rate_limit_is_isolated_per_visitor(
-    settings, dashboard, sharer, visitor, monkeypatch
-):
+def test_visitor_link_rate_limit_is_isolated_per_visitor(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-signing-key-at-least-32-bytes"
     monkeypatch.setattr(
         "apps.operation_analysis.services.share_service.can_view_canvas",
@@ -1034,10 +1015,7 @@ def test_visitor_link_rate_limit_is_isolated_per_visitor(
         "apps.operation_analysis.services.share_service.SHARE_VISITOR_LINK_RATE_LIMIT",
         1,
     )
-    from apps.operation_analysis.services.share_service import (
-        ShareRateLimited,
-        enforce_share_visitor_link_rate_limit,
-    )
+    from apps.operation_analysis.services.share_service import ShareRateLimited, enforce_share_visitor_link_rate_limit
 
     result = create_or_get_share(
         dashboard=dashboard,
@@ -1057,3 +1035,74 @@ def test_visitor_link_rate_limit_is_isolated_per_visitor(
         enforce_share_visitor_link_rate_limit(link_id=result.link.id, visitor=visitor)
     # 另一访问者不受影响
     enforce_share_visitor_link_rate_limit(link_id=result.link.id, visitor=visitor_c)
+
+
+@pytest.mark.django_db
+def test_allowed_share_query_keys_include_overlay_when_canvas_has_topology(dashboard):
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.operation_analysis.services.network_status_topology_overlay import (
+        NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS,
+        NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS,
+    )
+    from apps.operation_analysis.services.share_service import allowed_share_query_keys
+
+    cmdb_api, monitor_api, interface_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS
+    cmdb = DataSourceAPIModel.objects.create(
+        name="share-overlay-cmdb",
+        rest_api=cmdb_api,
+        is_build_in=True,
+        created_by="alice",
+        updated_by="alice",
+    )
+    DataSourceAPIModel.objects.create(
+        name="share-overlay-monitor",
+        rest_api=monitor_api,
+        is_build_in=True,
+        created_by="alice",
+        updated_by="alice",
+    )
+    interface_ds = DataSourceAPIModel.objects.create(
+        name="share-overlay-interface",
+        rest_api=interface_api,
+        is_build_in=True,
+        created_by="alice",
+        updated_by="alice",
+    )
+    dashboard.view_sets = [{"valueConfig": {"chartType": "networkStatusTopology"}}]
+    dashboard.save(update_fields=["view_sets"])
+
+    allowed = allowed_share_query_keys(dashboard=dashboard, data_source_id=cmdb.id)
+    assert NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS <= allowed
+    interface_allowed = allowed_share_query_keys(dashboard=dashboard, data_source_id=interface_ds.id)
+    assert NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS <= interface_allowed
+
+
+@pytest.mark.django_db
+def test_allowed_share_query_keys_exclude_overlay_when_canvas_has_no_topology(dashboard):
+    from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+    from apps.operation_analysis.services.network_status_topology_overlay import (
+        NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS,
+        NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS,
+    )
+    from apps.operation_analysis.services.share_service import allowed_share_query_keys
+
+    cmdb_api, monitor_api = NETWORK_STATUS_TOPOLOGY_OVERLAY_REST_APIS[:2]
+    cmdb = DataSourceAPIModel.objects.create(
+        name="share-overlay-cmdb-no-topo",
+        rest_api=cmdb_api,
+        is_build_in=True,
+        created_by="alice",
+        updated_by="alice",
+    )
+    DataSourceAPIModel.objects.create(
+        name="share-overlay-monitor-no-topo",
+        rest_api=monitor_api,
+        is_build_in=True,
+        created_by="alice",
+        updated_by="alice",
+    )
+    dashboard.view_sets = [{"valueConfig": {"chartType": "line", "dataSource": 99}}]
+    dashboard.save(update_fields=["view_sets"])
+
+    allowed = allowed_share_query_keys(dashboard=dashboard, data_source_id=cmdb.id)
+    assert allowed.isdisjoint(NETWORK_STATUS_TOPOLOGY_OVERLAY_QUERY_KEYS)

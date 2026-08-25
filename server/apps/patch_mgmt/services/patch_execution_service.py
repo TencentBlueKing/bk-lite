@@ -19,12 +19,6 @@ import uuid
 from datetime import timedelta
 from typing import Any, Optional
 
-from asgiref.sync import async_to_sync
-from celery.exceptions import SoftTimeLimitExceeded
-from django.conf import settings
-from django.db import transaction
-from django.utils import timezone
-
 from apps.core.logger import patch_mgmt_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.node_mgmt.utils.s3 import delete_s3_file, upload_file_to_s3
@@ -55,7 +49,12 @@ from apps.patch_mgmt.services.target_execution_route import (
 from apps.patch_mgmt.services.target_node_context import is_container_target
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.executor import Executor
+from asgiref.sync import async_to_sync
+from celery.exceptions import SoftTimeLimitExceeded
 from config.components.nats import NATS_NAMESPACE
+from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
 
 DEFAULT_TIMEOUT = 3600
 WINDOWS_PATCH_STAGE_DIR = 'C:/Windows/Temp/bk-lite-patches'
@@ -1029,10 +1028,9 @@ def _record_host_result(
     host.refresh_from_db()
     if not updated:
         logger.warning(
-            "忽略过期执行结果 task=%s target=%s token=%s current_stage=%s",
+            "event=patch_execution_stale_result_ignored task_id=%s target_id=%s current_stage=%s",
             host.task_id,
             host.target_id,
-            host.execution_token,
             host.stage,
         )
     return bool(updated)

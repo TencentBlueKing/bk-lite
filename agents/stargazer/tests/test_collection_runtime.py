@@ -1,24 +1,119 @@
 import asyncio
 
 import pytest
-
-from core.collection.runtime import (
-    CollectionRequest,
-    CollectionRuntime,
-    CollectionRuntimeSettings,
-    InMemoryRunStateStore,
-    SubmissionStatus,
-)
+from core.collection.contracts import RunSummary
+from core.collection.enums import RunStatus
+from core.collection.runtime import CollectionRequest, CollectionRuntime, CollectionRuntimeSettings, InMemoryRunStateStore, SubmissionStatus
 
 
 class RecordingRunStateStore(InMemoryRunStateStore):
     def __init__(self):
         super().__init__()
         self.heartbeats = 0
+        self.finishes = []
 
     async def heartbeat(self, lease, *, ttl_seconds):
         self.heartbeats += 1
         return await super().heartbeat(lease, ttl_seconds=ttl_seconds)
+
+    async def finish(self, lease, status, summary=None):
+        self.finishes.append((status, summary))
+        return await super().finish(lease, status, summary)
+
+
+@pytest.mark.asyncio
+async def test_run_with_target_errors_finishes_as_completed_with_errors():
+    tasks = []
+    store = RecordingRunStateStore()
+
+    async def execute(_request, _lease):
+        return RunSummary(
+            total=2,
+            collection_succeeded=2,
+            collection_failed=0,
+            unreachable=0,
+            deferred=0,
+            skipped=0,
+            publish_succeeded=1,
+            publish_failed=1,
+        )
+
+    runtime = CollectionRuntime(
+        state_store=store,
+        execute=execute,
+        schedule=lambda coroutine, *, name: tasks.append(asyncio.create_task(coroutine, name=name)) or tasks[-1],
+        owner_id="pod-a",
+    )
+    await runtime.submit(
+        CollectionRequest(
+            task_id="completed-with-errors",
+            plugin_ref="network.config",
+            targets=("10.10.24.1", "10.10.24.2"),
+        )
+    )
+
+    await tasks[0]
+
+    assert store.finishes[0][0] == RunStatus.COMPLETED_WITH_ERRORS
+
+
+@pytest.mark.asyncio
+async def test_run_lifecycle_logs_merge_searchable_context(monkeypatch):
+    tasks = []
+    logged = []
+
+    def capture(message, *args):
+        logged.append(message % args if args else message)
+
+    async def execute(_request, _lease):
+        return RunSummary(
+            total=2,
+            collection_succeeded=1,
+            collection_failed=1,
+            unreachable=0,
+            deferred=0,
+            skipped=0,
+        )
+
+    monkeypatch.setattr("core.collection.runtime.logger.info", capture)
+    runtime = CollectionRuntime(
+        state_store=InMemoryRunStateStore(),
+        execute=execute,
+        schedule=lambda coroutine, *, name: tasks.append(asyncio.create_task(coroutine, name=name)) or tasks[-1],
+        owner_id="pod-a",
+    )
+    await runtime.submit(
+        CollectionRequest(
+            task_id="searchable-run",
+            plugin_ref="network.config",
+            targets=("10.0.0.1", "10.0.0.2"),
+            credentials=({"credential_id": "credential-1"},),
+            params={
+                "model_id": "network",
+                "plugin_name": "snmp_facts",
+                "instance_id": "cmdb_network_7",
+            },
+        )
+    )
+
+    await tasks[0]
+
+    assert len(logged) == 2
+    assert "event=collection_run_started" in logged[0]
+    assert "task_id=" not in logged[0]
+    assert "plugin_ref=network.config" in logged[0]
+    assert "plugin_name=snmp_facts" in logged[0]
+    assert "instance_id=cmdb_network_7" in logged[0]
+    assert "任务开始" in logged[0]
+    assert "目标数=2 凭据数=1" in logged[0]
+    assert "event=collection_run_terminal" in logged[1]
+    assert "task_id=" not in logged[1]
+    assert "instance_id=cmdb_network_7" in logged[1]
+    assert "status=completed_with_errors" in logged[1]
+    assert "任务结束" in logged[1]
+    assert "最终状态=部分失败" in logged[1]
+    assert "执行批次=1" in logged[1]
+    assert "duration_ms=" in logged[1]
 
 
 @pytest.mark.asyncio
@@ -76,9 +171,7 @@ async def test_active_collection_run_renews_its_fenced_lease():
     runtime = CollectionRuntime(
         state_store=store,
         execute=execute,
-        schedule=lambda coroutine, *, name: asyncio.create_task(
-            coroutine, name=name
-        ),
+        schedule=lambda coroutine, *, name: asyncio.create_task(coroutine, name=name),
         settings=CollectionRuntimeSettings(
             max_active_runs=1,
             lease_ttl_seconds=0.1,
@@ -116,9 +209,7 @@ async def test_shutdown_stops_admission_and_cancels_after_grace_period():
     runtime = CollectionRuntime(
         state_store=InMemoryRunStateStore(),
         execute=execute,
-        schedule=lambda coroutine, *, name: asyncio.create_task(
-            coroutine, name=name
-        ),
+        schedule=lambda coroutine, *, name: asyncio.create_task(coroutine, name=name),
         owner_id="pod-a",
     )
     request = CollectionRequest(
@@ -188,14 +279,10 @@ async def test_run_deadline_cancels_slow_collection_and_releases_capacity():
     runtime = CollectionRuntime(
         state_store=InMemoryRunStateStore(),
         execute=execute,
-        schedule=lambda coroutine, *, name: tasks.append(
-            asyncio.create_task(coroutine, name=name)
-        ) or tasks[-1],
+        schedule=lambda coroutine, *, name: tasks.append(asyncio.create_task(coroutine, name=name)) or tasks[-1],
         settings=CollectionRuntimeSettings(run_deadline_seconds=0.01),
         owner_id="pod-a",
     )
-    await runtime.submit(CollectionRequest(
-        task_id="deadline", plugin_ref="mysql.config", targets=("127.0.0.1",)
-    ))
+    await runtime.submit(CollectionRequest(task_id="deadline", plugin_ref="mysql.config", targets=("127.0.0.1",)))
     await tasks[0]
     assert runtime.active_runs == 0

@@ -3,29 +3,21 @@
 import pytest
 
 from apps.patch_mgmt.models import PatchTarget
-from apps.patch_mgmt.nats_api import (
-    get_patch_mgmt_module_data,
-    get_patch_mgmt_module_list,
-)
+from apps.patch_mgmt.nats_api import get_patch_mgmt_module_data, get_patch_mgmt_module_list
 from apps.rpc.patch_mgmt import PatchMgmt
-
 
 pytestmark = pytest.mark.django_db
 
 
 def test_module_list_only_exposes_target_management():
-    assert get_patch_mgmt_module_list() == [
-        {"name": "patch_target", "display_name": "目标管理"}
-    ]
+    assert get_patch_mgmt_module_list() == [{"name": "patch_target", "display_name": "目标管理"}]
 
 
 def test_module_data_returns_target_instances_and_supports_pagination():
     first = PatchTarget.objects.create(name="host-a", ip="10.0.0.1", team=[1])
     second = PatchTarget.objects.create(name="host-b", ip="10.0.0.2", team=[1])
 
-    result = get_patch_mgmt_module_data(
-        "patch_target", "", 2, 1, 1, team=[1]
-    )
+    result = get_patch_mgmt_module_data("patch_target", "", 2, 1, 1, team=[1])
 
     assert result == {
         "count": 2,
@@ -39,6 +31,7 @@ def test_module_data_returns_target_instances_and_supports_pagination():
     [
         "patch",
         "patch_source",
+        "patch_scan_setting",
         "patch_baseline",
         "patch_governance",
         "patch_risk",
@@ -58,9 +51,7 @@ def test_unknown_module_returns_business_error():
 
 
 def test_module_data_rejects_group_outside_authorized_teams():
-    result = get_patch_mgmt_module_data(
-        "patch_target", "", 1, 10, 2, team=[1]
-    )
+    result = get_patch_mgmt_module_data("patch_target", "", 1, 10, 2, team=[1])
 
     assert result["result"] is False
 

@@ -141,6 +141,87 @@ def test_directory_partial_update_builtin_is_forbidden(authenticated_user):
 
 
 @pytest.mark.django_db
+@pytest.mark.integration
+def test_directory_partial_update_builtin_allows_visibility_only(authenticated_user):
+    user = _superuser(authenticated_user)
+    builtin = Directory.objects.create(name="内置目录可见性", groups=[1], is_build_in=True, build_in_key="visibility-directory")
+    request = _request("patch", f"/directory/{builtin.id}/", user, data={"groups": [1, 2]})
+
+    response = view_module.DirectoryModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(builtin.id))
+    _render(response)
+
+    builtin.refresh_from_db()
+    assert response.status_code == status.HTTP_200_OK
+    assert builtin.name == "内置目录可见性"
+    assert builtin.groups == [1, 2]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+@pytest.mark.parametrize("invalid_groups", [[1, 2.0], [1, True], [1, "2"], [1, {"id": 2}]])
+def test_directory_partial_update_builtin_rejects_non_integer_group_ids(authenticated_user, invalid_groups):
+    user = _superuser(authenticated_user)
+    builtin = Directory.objects.create(
+        name="内置目录非法组织类型",
+        groups=[1],
+        is_build_in=True,
+        build_in_key="visibility-directory-invalid-groups",
+    )
+    request = _request("patch", f"/directory/{builtin.id}/", user, data={"groups": invalid_groups})
+
+    response = view_module.DirectoryModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(builtin.id))
+    _render(response)
+
+    builtin.refresh_from_db()
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert builtin.groups == [1]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_directory_partial_update_builtin_visibility_requires_edit_permission(authenticated_user):
+    builtin = Directory.objects.create(
+        name="内置目录权限边界",
+        groups=[1],
+        is_build_in=True,
+        build_in_key="visibility-directory-permission",
+    )
+    request = _request("patch", f"/directory/{builtin.id}/", authenticated_user, data={"groups": [1, 2]})
+
+    response = view_module.DirectoryModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(builtin.id))
+
+    builtin.refresh_from_db()
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert builtin.groups == [1]
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_directory_partial_update_builtin_rejects_visibility_mixed_with_content(authenticated_user):
+    user = _superuser(authenticated_user)
+    builtin = Directory.objects.create(
+        name="内置目录混合字段",
+        groups=[1],
+        is_build_in=True,
+        build_in_key="visibility-directory-mixed-fields",
+    )
+    request = _request(
+        "patch",
+        f"/directory/{builtin.id}/",
+        user,
+        data={"groups": [1, 2], "name": "不允许改名"},
+    )
+
+    response = view_module.DirectoryModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(builtin.id))
+    _render(response)
+
+    builtin.refresh_from_db()
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert builtin.name == "内置目录混合字段"
+    assert builtin.groups == [1]
+
+
+@pytest.mark.django_db
 def test_directory_partial_update_normal_superuser(authenticated_user):
     user = _superuser(authenticated_user)
     obj = Directory.objects.create(name="原名", groups=[1], created_by="testuser")
@@ -150,6 +231,7 @@ def test_directory_partial_update_normal_superuser(authenticated_user):
 
     assert response.status_code == status.HTTP_200_OK
     assert payload["data"]["desc"] == "新描述"
+    assert payload["data"]["permissions"] == ["View", "Operate"]
 
 
 # --------------------------------------------------------------------------
@@ -230,6 +312,29 @@ def test_dashboard_update_builtin_forbidden(authenticated_user):
     assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_dashboard_partial_update_builtin_allows_visibility_only(authenticated_user):
+    user = _superuser(authenticated_user)
+    directory = Directory.objects.create(name="内置盘目录", groups=[1, 2], created_by="system")
+    builtin = Dashboard.objects.create(
+        name="内置盘可见性",
+        groups=[1],
+        directory=directory,
+        is_build_in=True,
+        build_in_key="visibility-dashboard",
+    )
+    request = _request("patch", f"/dashboard/{builtin.id}/", user, data={"groups": [1, 2]})
+
+    response = view_module.DashboardModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(builtin.id))
+    _render(response)
+
+    builtin.refresh_from_db()
+    assert response.status_code == status.HTTP_200_OK
+    assert builtin.name == "内置盘可见性"
+    assert builtin.groups == [1, 2]
+
+
 # --------------------------------------------------------------------------
 # DirectoryChainVisibilityMixin（组织超出目录可见范围）
 # --------------------------------------------------------------------------
@@ -271,6 +376,26 @@ def test_tree_endpoint_builds_nested_structure(authenticated_user):
     assert root_node["type"] == "directory"
     child_node = next(c for c in root_node["children"] if c["data_id"] == child.id)
     assert any(g["type"] == "dashboard" for g in child_node["children"])
+
+
+@pytest.mark.django_db
+def test_tree_shows_peer_org_dashboard_without_instance_permission(authenticated_user):
+    """同组织非创建者时，目录树仍应展示画布（不依赖实例数据权限）。"""
+    authenticated_user.is_superuser = False
+    authenticated_user.group_list = [{"id": 1, "name": "Default"}]
+    authenticated_user.username = "peer-user"
+    authenticated_user.permission = {"ops-analysis": {"view-View"}}
+
+    root = Directory.objects.create(name="组织目录", groups=[1], created_by="owner")
+    Dashboard.objects.create(name="他人仪表盘", groups=[1], directory=root, created_by="owner")
+
+    request = _request("get", "/directory/tree/", authenticated_user)
+    response = view_module.DirectoryModelViewSet.as_view({"get": "tree"})(request)
+    payload = _render(response)
+
+    assert response.status_code == status.HTTP_200_OK
+    root_node = next(n for n in payload["data"] if n["data_id"] == root.id)
+    assert any(child["type"] == "dashboard" and child["name"] == "他人仪表盘" for child in root_node["children"])
 
 
 @pytest.mark.django_db
@@ -435,8 +560,97 @@ def test_screen_and_report_create_with_directory_succeed(authenticated_user):
     assert screen_payload["data"]["name"] == "值班大屏"
     assert report_response.status_code == status.HTTP_201_CREATED
     assert report_payload["data"]["name"] == "周报"
+    assert report_payload["data"]["view_sets"] == {
+        "schema_version": 1,
+        "filters": [],
+        "sections": [],
+    }
     assert Screen.objects.filter(name="值班大屏", directory=directory).exists()
     assert Report.objects.filter(name="周报", directory=directory).exists()
+
+
+@pytest.mark.django_db
+def test_report_view_sets_update_requires_current_version(authenticated_user):
+    from apps.operation_analysis.models.models import Report
+
+    user = _superuser(authenticated_user)
+    directory = Directory.objects.create(name="并发报表目录", groups=[1], created_by="testuser")
+    report = Report.objects.create(
+        name="并发周报",
+        groups=[1],
+        directory=directory,
+        created_by="testuser",
+        view_sets={"schema_version": 1, "filters": [], "sections": []},
+    )
+    stale_version = report.updated_at.isoformat()
+    report.name = "其他用户已修改"
+    report.save(update_fields=["name", "updated_at"])
+
+    request = _request(
+        "patch",
+        f"/report/{report.id}/",
+        user,
+        data={
+            "expected_updated_at": stale_version,
+            "view_sets": {"schema_version": 1, "filters": [], "sections": []},
+        },
+    )
+    response = view_module.ReportModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(report.id))
+    _render(response)
+
+    report.refresh_from_db()
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert report.view_sets["filters"] == []
+
+
+@pytest.mark.django_db
+def test_report_view_sets_update_accepts_matching_version(authenticated_user):
+    from apps.operation_analysis.models.models import Report
+
+    user = _superuser(authenticated_user)
+    directory = Directory.objects.create(name="保存报表目录", groups=[1], created_by="testuser")
+    report = Report.objects.create(
+        name="可保存周报",
+        groups=[1],
+        directory=directory,
+        created_by="testuser",
+        view_sets={"schema_version": 1, "filters": [], "sections": []},
+    )
+    Report.objects.filter(pk=report.pk).update(updated_at=report.updated_at.replace(microsecond=654321))
+    detail_request = _request("get", f"/report/{report.id}/", user)
+    detail_response = view_module.ReportModelViewSet.as_view({"get": "retrieve"})(detail_request, pk=str(report.id))
+    detail_payload = _render(detail_response)
+    assert ".654321" in detail_payload["data"]["updated_at"]
+
+    request = _request(
+        "patch",
+        f"/report/{report.id}/",
+        user,
+        data={
+            "expected_updated_at": detail_payload["data"]["updated_at"],
+            "view_sets": {
+                "schema_version": 1,
+                "filters": [
+                    {
+                        "id": "billing_period__dateRange",
+                        "key": "billing_period",
+                        "name": "账期",
+                        "type": "dateRange",
+                        "order": 0,
+                        "enabled": True,
+                    }
+                ],
+                "sections": [],
+            },
+        },
+    )
+    response = view_module.ReportModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(report.id))
+    payload = _render(response)
+
+    report.refresh_from_db()
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["data"]["view_sets"]["filters"][0]["key"] == "billing_period"
+    assert report.view_sets["filters"][0]["key"] == "billing_period"
 
 
 @pytest.mark.django_db

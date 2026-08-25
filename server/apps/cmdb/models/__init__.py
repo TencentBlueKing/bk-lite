@@ -1,13 +1,15 @@
 from apps.cmdb.models.change_record import *  # noqa
-from apps.cmdb.models.show_field import *  # noqa
 from apps.cmdb.models.collect_model import *  # noqa
+from apps.cmdb.models.collect_task_credential_hit import *  # noqa
 from apps.cmdb.models.config_file_version import *  # noqa
 from apps.cmdb.models.field_group import *  # noqa
-from apps.cmdb.models.user_personal_config import *  # noqa
-from apps.cmdb.models.public_enum_library import *  # noqa
-from apps.cmdb.models.subscription_rule import *  # noqa
-from apps.cmdb.models.subscription_delivery import *  # noqa
-from apps.cmdb.models.node_mgmt_sync import *  # noqa
-from apps.cmdb.models.collect_task_credential_hit import *  # noqa
 from apps.cmdb.models.ipam_models import IPAMReconcileRun, IPAMReconcileSource  # noqa
+from apps.cmdb.models.node_mgmt_sync import *  # noqa
 from apps.cmdb.models.operation import *  # noqa
+from apps.cmdb.models.public_enum_library import *  # noqa
+from apps.cmdb.models.scan_model import *  # noqa
+from apps.cmdb.models.show_field import *  # noqa
+from apps.cmdb.models.subscription_delivery import *  # noqa
+from apps.cmdb.models.subscription_rule import *  # noqa
+from apps.cmdb.models.user_personal_config import *  # noqa
+from apps.cmdb.models.uuid_migration_state import *  # noqa

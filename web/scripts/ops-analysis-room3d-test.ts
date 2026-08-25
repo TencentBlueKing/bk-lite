@@ -7,6 +7,7 @@ import {
   getRoom3DColumnLabel,
   getRoom3DPositionLabel,
   getRoom3DSceneRacks,
+  getRoom3DStandardLocation,
   validateRoom3DData,
 } from "../src/app/ops-analysis/components/widgets/room3D/room3DData";
 import {
@@ -23,7 +24,7 @@ import {
   normalizeScreenWidgetAppearance,
   addConfiguredScreenWidget,
   createScreenWidgetItem,
-} from "../src/app/ops-analysis/(pages)/view/screen/utils/layout";
+} from "../src/app/ops-analysis/(pages)/view/screen/utils/layoutUtils";
 import {
   ROOM3D_COL_GAP,
   ROOM3D_DEVICE_PULL_OUT_DISTANCE,
@@ -121,6 +122,27 @@ assert.equal(validResult.data?.racks[0].rack_type_name, "网络");
 assert.equal(validResult.data?.racks[0].devices?.length, 2);
 assert.equal(validResult.data?.notice, "部分设备缺少有效 U 位，未在机柜内展示");
 assert.equal(getRoom3DPositionLabel(validResult.data!.racks[0]), "A03");
+
+const staleBackendCoordinates = validateRoom3DData({
+  room: { id: "7", name: "一号机房" },
+  racks: [
+    { rack_id: "stale-a", rack_name: "A01", location: "A01", row: 1, col: 1 },
+    { rack_id: "stale-b", rack_name: "B01", location: "B01", row: 1, col: 2 },
+  ],
+});
+assert.equal(staleBackendCoordinates.ok, true);
+assert.deepEqual(
+  staleBackendCoordinates.data?.racks.map((rack) => ({
+    id: rack.rack_id,
+    row: rack.row,
+    col: rack.col,
+    location: rack.location,
+  })),
+  [
+    { id: "stale-a", row: 1, col: 1, location: "A01" },
+    { id: "stale-b", row: 2, col: 1, location: "B01" },
+  ],
+);
 
 const realDevices = getRoom3DRackDevices(validResult.data!.racks[0]);
 assert.deepEqual(
@@ -309,6 +331,10 @@ assert.equal(duplicatedSceneRacks[1].rack_id, "7");
 assert.equal(getRoom3DColumnLabel(1), "A");
 assert.equal(getRoom3DColumnLabel(26), "Z");
 assert.equal(getRoom3DColumnLabel(27), "AA");
+assert.equal(getRoom3DStandardLocation(1, 1), "A01");
+assert.equal(getRoom3DStandardLocation(1, 2), "A02");
+assert.equal(getRoom3DStandardLocation(1, 9), "A09");
+assert.equal(getRoom3DStandardLocation(21, 2), "U02");
 assert.equal(ROOM3D_COL_GAP > 1, true);
 assert.equal(ROOM3D_COL_GAP < 1.4, true);
 assert.equal(ROOM3D_ROW_GAP > ROOM3D_COL_GAP * 2.5, true);
@@ -325,7 +351,7 @@ const compactColumnAspect =
 const columnDominantAspect =
   columnDominantFloor.floorDepth / columnDominantFloor.floorWidth;
 assert.equal(
-  compactColumnFloor.floorDepth > compactColumnFloor.floorWidth,
+  compactColumnFloor.floorWidth > compactColumnFloor.floorDepth,
   true,
 );
 assert.equal(
@@ -333,16 +359,19 @@ assert.equal(
   true,
 );
 assert.equal(compactColumnAspect < columnDominantAspect, true);
-assert.equal(compactColumnFloor.floorDepth < 18, true);
-const frontRackPosition = getRoom3DRackScenePosition(
+assert.equal(compactColumnFloor.floorDepth >= 7.5, true);
+assert.equal(compactColumnFloor.floorDepth < 10, true);
+assert.equal(compactColumnFloor.floorWidth < 8.5, true);
+const firstRackPosition = getRoom3DRackScenePosition(
   { row: 1, col: 1 },
   { maxRow: 4, maxCol: 6 },
 );
-const rearRackPosition = getRoom3DRackScenePosition(
+const lastRackPosition = getRoom3DRackScenePosition(
   { row: 4, col: 1 },
   { maxRow: 4, maxCol: 6 },
 );
-assert.equal(frontRackPosition.z > rearRackPosition.z, true);
+assert.equal(firstRackPosition.x, lastRackPosition.x);
+assert.equal(firstRackPosition.z > lastRackPosition.z, true);
 
 assert.equal(shouldAutoFocusRack(8.1), true);
 assert.equal(shouldAutoFocusRack(5.2), false);
@@ -383,7 +412,9 @@ createRackVisual(
   0,
   0,
 );
+// row=1,col=2 → A02（一整排是 A，过道方向递增）
 assert.equal(canvasContext.fillTextCalls.includes("A02"), true);
+assert.equal(canvasContext.fillTextCalls.includes("B01"), false);
 assert.equal(canvasContext.fillTextCalls.includes("2"), false);
 
 assert.deepEqual(filterChartTypesForSurface(["line", "room3D"], "screen"), [
@@ -574,13 +605,6 @@ const componentSwitchSource = readFileSync(
   ),
   "utf8",
 );
-const screenThemeSource = readFileSync(
-  new URL(
-    "../src/app/ops-analysis/(pages)/view/screen/utils/screenTheme.ts",
-    import.meta.url,
-  ),
-  "utf8",
-);
 assert.match(room3DComponentSource, /roomSwitchOverlay/);
 assert.match(room3DComponentSource, /chromeVisible|room3DChromeVisible/);
 assert.match(room3DComponentSource, /showRoomSummary = !componentSwitchControl/);
@@ -594,5 +618,4 @@ assert.doesNotMatch(
 );
 assert.match(screenWidgetFrameSource, /screen-widget-frame__drag-surface/);
 assert.doesNotMatch(componentSwitchSource, /component-param-switch-control/);
-assert.match(screenThemeSource, /--screen-component-switch-bg/g);
-assert.match(screenThemeSource, /--screen-component-switch-selected-bg/g);
+assert.match(componentSwitchSource, /ScreenWidgetThemeProvider/);

@@ -5,20 +5,55 @@ import {
   parseSourceDataResponse,
   type SourceDataResult,
 } from '@/app/ops-analysis/utils/sourceDataResponse';
+import {
+  normalizeDatasourceItemParams,
+  normalizeDatasourceItemsParams,
+} from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
+
+export interface SourceDataRequestOptions {
+  suppressErrorNotification?: boolean;
+}
+
+export const withRuntimeSourceDataErrorSuppression = (
+  getSourceDataByApiId: (
+    id: number,
+    params?: unknown,
+    options?: SourceDataRequestOptions,
+  ) => Promise<SourceDataResult>,
+) => (id: number, params?: unknown) =>
+  getSourceDataByApiId(id, params, { suppressErrorNotification: true });
 
 export const useDataSourceApi = () => {
-  const { get, post, put, del } = useApiClient();
+  const { get, post, put, del, patch } = useApiClient();
   const sharedAccess = useSharedDataSourceQuery();
 
+  const normalizeDataSourceResponse = useCallback((response: any) => {
+    if (Array.isArray(response)) {
+      return normalizeDatasourceItemsParams(response);
+    }
+    if (Array.isArray(response?.items)) {
+      return {
+        ...response,
+        items: normalizeDatasourceItemsParams(response.items),
+      };
+    }
+    if (response && typeof response === 'object' && Array.isArray(response.params)) {
+      return normalizeDatasourceItemParams(response);
+    }
+    return response;
+  }, []);
+
   const getDataSourceList = useCallback(async (params?: any) => {
-    return get('/operation_analysis/api/data_source/', { params });
-  }, [get]);
+    const response = await get('/operation_analysis/api/data_source/', { params });
+    return normalizeDataSourceResponse(response);
+  }, [get, normalizeDataSourceResponse]);
 
   const getDataSourceBriefList = useCallback(async (params?: any) => {
-    return get('/operation_analysis/api/data_source/', {
+    const response = await get('/operation_analysis/api/data_source/', {
       params: { ...params, mode: 'brief' },
     });
-  }, [get]);
+    return normalizeDataSourceResponse(response);
+  }, [get, normalizeDataSourceResponse]);
 
   const getDataSourceDetails = useCallback(async (ids: Array<number | string>) => {
     const normalizedIds = Array.from(
@@ -35,16 +70,19 @@ export const useDataSourceApi = () => {
     if (sharedAccess) {
       const response = await sharedAccess.getDataSourceDetails(normalizedIds);
       const items = Array.isArray(response) ? response : [];
-      return items.filter((item: { id: number }) => normalizedIds.includes(item.id));
+      return normalizeDatasourceItemsParams(
+        items.filter((item: { id: number }) => normalizedIds.includes(item.id)),
+      );
     }
 
-    return get('/operation_analysis/api/data_source/', {
+    const response = await get('/operation_analysis/api/data_source/', {
       params: {
         mode: 'detail',
         ids: normalizedIds.join(','),
       },
     });
-  }, [get, sharedAccess]);
+    return normalizeDataSourceResponse(response);
+  }, [get, normalizeDataSourceResponse, sharedAccess]);
 
   const createDataSource = useCallback(async (data: any) => {
     return post('/operation_analysis/api/data_source/', data);
@@ -54,18 +92,34 @@ export const useDataSourceApi = () => {
     return put(`/operation_analysis/api/data_source/${id}/`, data);
   }, [put]);
 
-  const deleteDataSource = useCallback(async (id: number) => {
-    return del(`/operation_analysis/api/data_source/${id}/`);
+  const patchDataSource = useCallback(async (id: number, data: any) => {
+    return patch(`/operation_analysis/api/data_source/${id}/`, data);
+  }, [patch]);
+
+  const deleteDataSource = useCallback(async (id: number, config?: any) => {
+    return del(`/operation_analysis/api/data_source/${id}/`, config);
   }, [del]);
 
   const getDataSourceDetail = useCallback(async (id: number) => {
-    return get(`/operation_analysis/api/data_source/${id}/`);
-  }, [get]);
+    const response = await get(`/operation_analysis/api/data_source/${id}/`);
+    return normalizeDataSourceResponse(response);
+  }, [get, normalizeDataSourceResponse]);
 
-  const getSourceDataByApiId = useCallback(async (id: number, params?: any): Promise<SourceDataResult> => {
+  const getSourceDataByApiId = useCallback(async (
+    id: number,
+    params?: unknown,
+    options?: SourceDataRequestOptions,
+  ): Promise<SourceDataResult> => {
+    const requestConfig = options?.suppressErrorNotification
+      ? { suppressErrorNotification: true as const }
+      : undefined;
     const raw = sharedAccess
-      ? await sharedAccess.queryDataSource(id, params)
-      : await post(`/operation_analysis/api/data_source/get_source_data/${id}/`, params);
+      ? await sharedAccess.queryDataSource(id, params, options)
+      : await post(
+        `/operation_analysis/api/data_source/get_source_data/${id}/`,
+        params,
+        requestConfig,
+      );
     return parseSourceDataResponse(raw);
   }, [post, sharedAccess]);
 
@@ -75,6 +129,10 @@ export const useDataSourceApi = () => {
 
   const testDataSourceConnection = useCallback(async (id: number, data?: any) => {
     return post(`/operation_analysis/api/data_source/${id}/test_connection/`, data || {});
+  }, [post]);
+
+  const extractDataSourceConnection = useCallback(async (id: number, data?: any) => {
+    return post(`/operation_analysis/api/data_source/${id}/extract_connection/`, data || {});
   }, [post]);
 
   const previewDataSourceConfig = useCallback(async (data: any) => {
@@ -91,18 +149,34 @@ export const useDataSourceApi = () => {
     return post(`/operation_analysis/api/data_source/${id}/preview/`, data);
   }, [post]);
 
+  const submitExcelMaterialization = useCallback(async (id: number, data: FormData) => {
+    return post(
+      `/operation_analysis/api/data_source/${id}/submit_excel/`,
+      data,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+  }, [post]);
+
+  const retryExcelMaterialization = useCallback(async (id: number, data?: any) => {
+    return post(`/operation_analysis/api/data_source/${id}/retry_excel_materialization/`, data || {});
+  }, [post]);
+
   return {
     getDataSourceList,
     getDataSourceBriefList,
     getDataSourceDetails,
     createDataSource,
     updateDataSource,
+    patchDataSource,
     deleteDataSource,
     getDataSourceDetail,
     getSourceDataByApiId,
     previewDataSourceConfig,
     previewDataSource,
+    submitExcelMaterialization,
+    retryExcelMaterialization,
     testDataSourceConnectionConfig,
     testDataSourceConnection,
+    extractDataSourceConnection,
   };
 };

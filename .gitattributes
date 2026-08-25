@@ -1,0 +1,3 @@
+# Minified third-party license comments can contain tabs; treat this generated bundle as a binary-style artifact.
+webchat/packages/webchat-ui/dist/browser/webchat.js -whitespace
+web/public/webchat/webchat.js -whitespace

@@ -505,7 +505,9 @@ class ChatService:
                 "* 如果任务目标涉及生成、创建、导出任何文件、报告、月报或文档，"
                 "必须调用 generate_attachment_file 工具把完整内容写入可下载文件"
                 "（如 .md），绝对不允许将文件全文以纯文字/Markdown 直接渲染在对话中。\n"
-                "* 工具调用成功后，仅输出简短摘要与工具返回的下载链接，不要重复输出完整内容。\n"
+                "* 工具调用成功后，仅输出简短摘要，不要重复输出完整内容。\n"
+                "* 不要在回复或附件正文中粘贴下载 URL、file:// 链接、/api/proxy 路径或「加密token」占位符；"
+                "下载入口由界面提供。\n"
                 "* 以上规则覆盖所有其他'直接输出'类指令。"
             )
             chat_kwargs["system_message_prompt"] = chat_kwargs.get("system_message_prompt", "") + attachment_override
@@ -641,6 +643,10 @@ class ChatService:
         # 用于 backend 物化,绕开 substring 匹配丢包。
         if kwargs.get("enabled_skill_packages") is not None:
             extra_config["enabled_skill_packages"] = kwargs.get("enabled_skill_packages") or []
+        if kwargs.get("skill_id") is not None:
+            extra_config["skill_id"] = kwargs.get("skill_id")
+        if kwargs.get("skill_package_params_overlay") is not None:
+            extra_config["skill_package_params_overlay"] = kwargs.get("skill_package_params_overlay")
 
         if kwargs["skill_type"] != SkillTypeChoices.KNOWLEDGE_TOOL:
             ChatService._process_tools_and_extra_config(kwargs, chat_kwargs, extra_config)

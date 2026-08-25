@@ -50,6 +50,17 @@ export const getMetricsMapKey = (
     ? `${String(objectId)}_${String(pluginId)}`
     : String(objectId);
 
+export const normalizeMonitorEntityId = (
+  value: unknown
+): React.Key | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  return /^\d+$/.test(normalized) ? Number(normalized) : normalized;
+};
+
 export const resolveInitialPlugin = (plugins: PluginItem[]): React.Key | null =>
   plugins.length === 1 ? plugins[0].id : null;
 

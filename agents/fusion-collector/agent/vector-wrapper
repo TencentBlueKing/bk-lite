@@ -1,0 +1,4 @@
+#!/bin/sh
+# Vector 0.34 unix_datagram 绑定前不会删除残留 sock，失败会直接 panic。
+rm -f /tmp/snmp_trap.sock
+exec /opt/fusion-collectors/bin/vector-real "$@"

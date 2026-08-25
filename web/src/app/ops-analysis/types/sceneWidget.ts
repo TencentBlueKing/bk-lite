@@ -16,9 +16,26 @@ export interface NetworkStatusTopologyModeLayout {
 }
 
 export interface NetworkStatusTopologyConfig {
-  modelId: string;
-  instId: string;
-  depth: number;
+  /** 闭集：画布节点等于这份设备 UUID 列表 */
+  instUuids?: string[];
+  /** 节点上限，默认 100，硬顶 200 */
+  nodeLimit?: number;
+  /**
+   * @deprecated 存量中心模型。读到且没有 instUuids 视为未配置。
+   */
+  modelId?: string;
+  /**
+   * @deprecated 存量中心实例。
+   */
+  instUuid?: string;
+  /**
+   * @deprecated 存量展开深度。
+   */
+  depth?: number;
+  /** 连线流量文字：入/出；空数组表示都不显示 */
+  linkTrafficDisplays?: Array<'inbound' | 'outbound'>;
+  inboundTrafficThresholds?: import('@/app/ops-analysis/utils/thresholdUtils').ThresholdColorConfig[];
+  outboundTrafficThresholds?: import('@/app/ops-analysis/utils/thresholdUtils').ThresholdColorConfig[];
   /** 可选；缺省视为 hierarchical */
   layoutMode?: NetworkStatusTopologyLayoutMode;
   /** 按布局模式分桶的手工几何；写盘只使用此字段 */
@@ -36,18 +53,21 @@ export interface NetworkStatusTopologyConfig {
   linkVertices?: Record<string, NetworkStatusTopologyPoint[]>;
 }
 
-export type NetworkNodeStatus = 'normal' | 'warning' | 'error' | 'critical';
+export type NetworkNodeStatus = 'normal' | 'warning' | 'error' | 'critical' | 'unknown';
 
 export interface NetworkStatusTopologyNode {
   id: string;
   model_id: string;
   name: string;
   hop: number;
-  status: NetworkNodeStatus;
+  /** 叠色后写入；场景结构接口不再返回 */
+  status?: NetworkNodeStatus;
   severity?: 'warning' | 'error' | 'critical' | null;
-  color?: 'green' | 'yellow' | 'red';
-  pulse: boolean;
-  alert_count: number;
+  color?: 'green' | 'yellow' | 'red' | 'gray';
+  pulse?: boolean;
+  alert_count?: number;
+  /** 叠色内部字段，供告警弹框使用，不展示 */
+  monitor_id?: string;
   icon?: string;
   resource_type?: string;
   resource_id?: string;

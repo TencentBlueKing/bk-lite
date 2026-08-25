@@ -9,21 +9,16 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope
 from apps.node_mgmt.models.sidecar import Node, NodeOrganization
-from apps.node_mgmt.services.module_push_contract import (
-    EVENT_LIFECYCLE,
-    EVENT_UPSERT,
-    IngestEnvelope,
-    PushTargetStatus,
-)
+from apps.node_mgmt.services.module_push_contract import EVENT_LIFECYCLE, EVENT_UPSERT, IngestEnvelope, PushTargetStatus
 from apps.rpc.cmdb import CMDB
 from apps.rpc.monitor import Monitor
 
 
 class MonitorLinkage:
-    """监控联动客户端：转发至 Monitor.ingest_from_source（NATS）。"""
+    """监控联动客户端：本进程执行 Monitor ingest，避免 NATS handler 再嵌套调 NodeMgmt。"""
 
     def ingest_from_source(self, **kwargs):
-        return Monitor().ingest_from_source(**kwargs)
+        return Monitor(is_local_client=True).ingest_from_source(**kwargs)
 
 
 def build_module_push_actor_scope(request) -> dict[str, Any]:
@@ -92,6 +87,29 @@ class ModulePushService:
             )
         except Exception:
             logger.exception("[ModulePush] best-effort push failed node_id=%s targets=%s", node_id, targets)
+            return None
+
+    @classmethod
+    def best_effort_unlink_cmdb(
+        cls,
+        node: Node,
+        *,
+        actor_scope: dict[str, Any],
+        max_attempts: int | None = None,
+    ) -> dict[str, Any] | None:
+        """删除节点时清 CMDB node_id。不要求 Node.cmdb_id 已回填，对端按 node_id 查找。失败不阻断删除。"""
+        try:
+            return cls.retire_linked(
+                node,
+                targets=["cmdb"],
+                actor_scope=actor_scope,
+                max_attempts=max_attempts,
+            )
+        except Exception:
+            logger.exception(
+                "[ModulePush] best-effort unlink cmdb failed node_id=%s",
+                getattr(node, "id", None),
+            )
             return None
 
     @classmethod
@@ -250,9 +268,7 @@ class ModulePushService:
 
     @classmethod
     def _build_envelope(cls, node: Node) -> dict[str, Any]:
-        org_ids = list(
-            NodeOrganization.objects.filter(node=node).values_list("organization", flat=True)
-        )
+        org_ids = list(NodeOrganization.objects.filter(node=node).values_list("organization", flat=True))
         cloud_region = node.cloud_region
         raw: dict[str, Any] = {
             "ip": node.ip,

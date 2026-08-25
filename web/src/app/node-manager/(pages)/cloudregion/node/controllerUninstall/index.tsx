@@ -40,6 +40,12 @@ import {
   buildControllerUninstallRow
 } from '@/app/node-manager/utils/nodeOperation';
 import WinrmCertificateValidationField from '@/app/node-manager/components/winrm-certificate-validation-field';
+import WinrmSchemeField from '@/app/node-manager/components/winrm-scheme-field';
+import {
+  applyWinrmScheme,
+  isWinrmSchemePortMismatch,
+  type WinrmScheme
+} from '@/app/node-manager/utils/winrm';
 
 const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess, config }, ref) => {
@@ -55,8 +61,14 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [tableData, setTableData] = useState<TableDataItem[]>([]);
     const isWindowsUninstall = tableData[0]?.os === 'windows';
+    const uninstallWinrmScheme: WinrmScheme =
+      isWindowsUninstall && tableData[0]?.winrm_scheme === 'http'
+        ? 'http'
+        : 'https';
     const winrmCertValidation =
-      isWindowsUninstall && tableData[0]?.winrm_cert_validation === true;
+      isWindowsUninstall &&
+      uninstallWinrmScheme === 'https' &&
+      tableData[0]?.winrm_cert_validation === true;
 
     const tableColumns = useMemo(
       () => [
@@ -366,6 +378,12 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
           return false;
         }
         const authType = item.auth_type || 'password';
+        if (
+          item.os === 'windows' &&
+          isWinrmSchemePortMismatch(item.winrm_scheme || 'https', item.port)
+        ) {
+          return false;
+        }
         if (authType === 'password') {
           return !!item.password?.length;
         } else {
@@ -446,14 +464,24 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
       >
         <Form ref={collectorformRef} layout="vertical" colon={false}>
           {isWindowsUninstall && (
-            <WinrmCertificateValidationField
-              checked={winrmCertValidation}
-              onChange={(checked) =>
-                setTableData((rows) =>
-                  applyControllerUninstallCertificateValidation(rows, checked)
-                )
-              }
-            />
+            <>
+              <WinrmSchemeField
+                value={uninstallWinrmScheme}
+                onChange={(scheme) =>
+                  setTableData((rows) => applyWinrmScheme(rows, scheme))
+                }
+              />
+              {uninstallWinrmScheme === 'https' && (
+                <WinrmCertificateValidationField
+                  checked={winrmCertValidation}
+                  onChange={(checked) =>
+                    setTableData((rows) =>
+                      applyControllerUninstallCertificateValidation(rows, checked)
+                    )
+                  }
+                />
+              )}
+            </>
           )}
           <Form.Item<ControllerInstallFields>
             name="nodes"

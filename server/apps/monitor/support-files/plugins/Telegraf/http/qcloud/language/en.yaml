@@ -5,8 +5,8 @@ Tencent Cloud:
     users to gain deep insights into resource status, precisely pinpoint anomalies,
     and efficiently accomplish operational management and cost optimization.
 monitor_object:
-  TCP: TCP
-  CVM: Cloud Virtual Machine
+  TCP: Tencent Cloud
+  CVM: Cloud Server CVM
 monitor_object_type:
   Tencent Cloud: Tencent Cloud
 monitor_object_metric_group:

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import type { ChartLegendSelection } from './selection';
+import { shouldEmitLegendReset, type ChartLegendSelection } from './selection';
 
 export type { ChartLegendSelection } from './selection';
 
@@ -45,6 +45,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
 }) => {
   const [selectedLegend, setSelectedLegend] = useState<string[]>([]);
   const onSelectionChangeRef = useRef(onSelectionChange);
+  const previousLegendKeyRef = useRef<string | null>(null);
   onSelectionChangeRef.current = onSelectionChange;
 
   const legendData = useMemo(
@@ -54,8 +55,12 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   const legendKey = legendData.map((item) => item.name).join('\x00');
 
   useEffect(() => {
-    setSelectedLegend([]);
-    onSelectionChangeRef.current?.({});
+    setSelectedLegend((prev) => (prev.length === 0 ? prev : []));
+    const previousKey = previousLegendKeyRef.current;
+    previousLegendKeyRef.current = legendKey;
+    if (shouldEmitLegendReset(previousKey, legendKey)) {
+      onSelectionChangeRef.current?.({});
+    }
   }, [legendKey]);
 
   const total = useMemo(() => {
@@ -122,7 +127,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                   <td className="w-full max-w-0 px-2 py-1">
                     <button
                       type="button"
-                      className="flex w-full min-w-0 items-center gap-2 rounded px-0 text-left transition-colors duration-200 hover:bg-[var(--color-fill-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-6)]"
+                      className="flex w-full min-w-0 items-center gap-2 rounded px-0 text-left transition-colors duration-200 hover:bg-(--color-fill-2) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-6)]"
                       onClick={() => handleClick(item.name)}
                       aria-pressed={isActive(item.name)}
                       aria-label={item.name}
@@ -155,7 +160,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
           <button
             key={`${item.name}-${index}`}
             type="button"
-            className="flex select-none items-center gap-1.5 rounded px-1 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-6)]"
+            className="flex min-w-0 select-none items-center gap-1.5 rounded px-1 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-6)]"
             onClick={() => handleClick(item.name)}
             aria-pressed={isActive(item.name)}
             aria-label={item.name}
@@ -165,7 +170,10 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
               className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-sm"
               style={{ backgroundColor: getItemColor(index, isActive(item.name)) }}
             />
-            <span className="text-xs text-[var(--color-text-2)]">{item.name}</span>
+            <EllipsisWithTooltip
+              className="max-w-40 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[var(--color-text-2)]"
+              text={item.name}
+            />
           </button>
         ))}
       </div>
@@ -173,19 +181,20 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   }
 
   return (
-    <div className={`min-w-36 max-w-80 shrink-0 h-full flex items-center ${className}`}>
-      <div className="max-h-full overflow-y-auto py-1">
+    <div className={`w-[120px] shrink-0 min-w-0 h-full flex items-center ${className}`}>
+      <div className="max-h-full w-full min-w-0 overflow-y-auto py-1">
         {legendData.map((item, index) => {
           const active = isActive(item.name);
           const percent = showPercent && total > 0
             ? ((Number(item.value || 0) / total) * 100).toFixed(1)
             : null;
+          const label = percent != null ? `${item.name} (${percent}%)` : item.name;
 
           return (
             <button
               key={`${item.name}-${index}`}
               type="button"
-              className="flex w-full select-none items-center gap-2 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--color-fill-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-6)]"
+              className="flex w-full min-w-0 select-none items-center gap-2 rounded px-2 py-1 text-left transition-colors hover:bg-[var(--color-fill-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary-6)]"
               onClick={() => handleClick(item.name)}
               aria-pressed={active}
               aria-label={item.name}
@@ -195,10 +204,10 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                 className="inline-block h-2.5 w-2.5 flex-shrink-0 rounded-sm"
                 style={{ backgroundColor: getItemColor(index, active) }}
               />
-              <span className="inline-block max-w-64 truncate text-xs text-[var(--color-text-2)]">
-                {item.name}
-                {percent != null ? ` (${percent}%)` : ''}
-              </span>
+              <EllipsisWithTooltip
+                className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-xs leading-relaxed text-[var(--color-text-2)]"
+                text={label}
+              />
             </button>
           );
         })}

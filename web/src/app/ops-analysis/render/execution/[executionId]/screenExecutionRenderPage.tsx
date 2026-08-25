@@ -14,7 +14,8 @@ import {
 } from '@/app/ops-analysis/renderContract';
 import type { DashboardExecutionRenderInput } from '@/app/ops-analysis/types/dashboardSubscription';
 import type { FilterValue } from '@/app/ops-analysis/types/dashBoard';
-import { collectScreenDataSourceIds } from '@/app/ops-analysis/utils/canvasResources';
+import { collectScreenDataSourceIds, collectWidgetManifestDataSourceIds } from '@/app/ops-analysis/utils/canvasResources';
+import { prepareScreenPrintLayout } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
 
 interface ScreenExecutionRenderPageContentProps {
   executionId: number;
@@ -108,7 +109,25 @@ export const ScreenExecutionRenderPageContent = ({
     );
     if (!signal) return;
     emittedRef.current = true;
-    emitDashboardRenderSignal(signal);
+    void (async () => {
+      if (signal.type === 'report-ready') {
+        try {
+          await prepareScreenPrintLayout();
+        } catch (error) {
+          emitDashboardRenderSignal({
+            type: 'report-failed',
+            dashboardId: String(executionId),
+            widgets: signal.widgets,
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Screen print preparation failed',
+          });
+          return;
+        }
+      }
+      emitDashboardRenderSignal(signal);
+    })();
   }, [dataSourcesReady, executionId, widgetIds]);
 
   const handleWidgetRenderStatus = useCallback(
@@ -121,12 +140,18 @@ export const ScreenExecutionRenderPageContent = ({
   );
 
   useEffect(() => {
-    if (!viewSets) return;
+    if (!viewSets || !renderInput) return;
     let cancelled = false;
     setDataSourcesReady(false);
     renderResultsRef.current = new Map();
     emittedRef.current = false;
-    void loadCanvasDataSources(collectScreenDataSourceIds(viewSets))
+    const dataSourceIds = Array.from(new Set([
+      ...collectScreenDataSourceIds(viewSets),
+      ...collectWidgetManifestDataSourceIds(
+        renderInput.render_snapshot.widget_manifest,
+      ),
+    ]));
+    void loadCanvasDataSources(dataSourceIds)
       .then(() => {
         if (cancelled) return;
         setDataSourcesReady(true);
@@ -145,7 +170,7 @@ export const ScreenExecutionRenderPageContent = ({
     return () => {
       cancelled = true;
     };
-  }, [executionId, loadCanvasDataSources, viewSets]);
+  }, [executionId, loadCanvasDataSources, renderInput, viewSets]);
 
   useEffect(() => {
     if (!dataSourcesReady) return;
@@ -175,6 +200,7 @@ export const ScreenExecutionRenderPageContent = ({
   return (
     <div
       className="overflow-hidden bg-slate-950"
+      data-dashboard-render-root="true"
       style={{ width, height }}
     >
       <ScreenCanvas

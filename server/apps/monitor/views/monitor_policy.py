@@ -103,6 +103,8 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
     def get_serializer_context(self):
         context = super().get_serializer_context()
         context["data_team_ids"] = self._get_data_scope().data_team_ids
+        # 仅列表投影裁剪组织；retrieve/update 需完整 organizations 供编辑回填
+        context["filter_organizations"] = getattr(self, "action", None) == "list"
         return context
 
     def _scope_queryset(self, queryset, permission, scope):
@@ -291,18 +293,26 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             self._close_alerts_in_tx(
                 policy, alerts_to_close, request.user.username, "policy_deleted"
             )
+            if alerts_to_close:
+                notifier = AlertLifecycleNotifier(policy)
+                notifier.enqueue_alert_center_deliveries(
+                    alerts_to_close,
+                    "closed",
+                    operator=request.user.username,
+                    reason="policy_deleted",
+                )
+                transaction.on_commit(
+                    lambda alerts=tuple(alerts_to_close): notifier.notify_alerts(
+                        alerts,
+                        action="closed",
+                        operator=request.user.username,
+                        reason="policy_deleted",
+                        notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED,
+                    )
+                )
             PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").delete()
             PolicyOrganization.objects.filter(policy_id=policy_id).delete()
             policy.delete()
-        # 事务 commit 后再推 NATS(若 commit 失败此行不会执行)
-        if alerts_to_close:
-            AlertLifecycleNotifier(policy).notify_alerts(
-                alerts_to_close,
-                action="closed",
-                operator=request.user.username,
-                reason="policy_deleted",
-                notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED,
-            )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _close_alerts_in_tx(self, policy, alerts_to_close, operator, reason):
@@ -449,12 +459,21 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
         )
         if policy and notify_scope:
-            AlertLifecycleNotifier(policy).notify_alerts(
+            notifier = AlertLifecycleNotifier(policy)
+            notifier.enqueue_alert_center_deliveries(
                 alerts_to_close,
-                action="closed",
+                "closed",
                 operator=operator,
                 reason=reason,
-                notify_scope=notify_scope,
+            )
+            transaction.on_commit(
+                lambda alerts=tuple(alerts_to_close): notifier.notify_alerts(
+                    alerts,
+                    action="closed",
+                    operator=operator,
+                    reason=reason,
+                    notify_scope=notify_scope,
+                )
             )
 
     def close_active_no_data_alerts(self, policy, operator, reason):

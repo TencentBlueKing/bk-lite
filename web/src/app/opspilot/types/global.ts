@@ -91,15 +91,16 @@ export interface PlannedExecutionStepView {
   step_index: number;
   total_steps: number;
   objective: string;
-  status: 'running' | 'done';
+  status: 'running' | 'done' | 'failed';
   toolCallIds: string[];
+  error?: string;
 }
 
 export interface PlannedStepToolCallView {
   id: string;
   name: string;
   args: string;
-  status: 'calling' | 'completed';
+  status: 'calling' | 'completed' | 'error';
   result?: string;
 }
 
@@ -135,6 +136,14 @@ export interface CustomChatMessage {
   repairCommands?: RepairCommands[];
   agentStepProgress?: AgentStepProgressData[];
   plannedExecutionSteps?: PlannedExecutionStepView[];
+  /** 规划阶段状态：planning/replanning 时展示「正在规划」反馈 */
+  plannedExecutionStatus?: {
+    phase: 'planning' | 'replanning' | 'planned' | 'idle' | string;
+    step_count?: number;
+    goal?: string;
+    replan_count?: number;
+    reason?: string;
+  } | null;
   /** 与 plannedExecutionSteps 配套的工具快照；无步骤分组时也可用于历史回放 */
   toolCalls?: PlannedStepToolCallView[];
   /** 流式进行中为 true；结束后收起计划步骤 */

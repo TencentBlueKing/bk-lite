@@ -20,15 +20,13 @@
 """
 
 import json
-import logging
 import threading
 import time
 
+from apps.core.logger import logger
 from django.db import IntegrityError
 from django.db.models import Q, QuerySet
 from django.db.models.fields.json import JSONField
-
-logger = logging.getLogger(__name__)
 
 # 标记早期补丁是否已应用，避免重复
 _early_patches_applied = False
@@ -167,27 +165,47 @@ def _patch_cursor_execute_with_lock():
         # 这解决了达梦驱动使用 GBK 编码时的 UnicodeEncodeError 问题
         sanitized_params = _sanitize_unicode_for_gbk(params) if params else params
 
-        logger.debug(f"[DAMENG_LOCK] Thread={current_thread.name}({current_thread.ident}) WAITING for lock, sql={sql_preview}")
+        logger.debug(
+            "[DAMENG_LOCK] Thread=%s(%s) WAITING for lock, sql=%s",
+            current_thread.name,
+            current_thread.ident,
+            sql_preview,
+        )
 
         try:
             lock_acquired = _dameng_global_lock.acquire(blocking=True, timeout=60.0)
 
             if not lock_acquired:
-                logger.error(f"[DAMENG_LOCK] Thread={current_thread.name}({current_thread.ident}) TIMEOUT after 60s, sql={sql_preview}")
+                logger.error(
+                    "[DAMENG_LOCK] Thread=%s(%s) TIMEOUT after 60s, sql=%s",
+                    current_thread.name,
+                    current_thread.ident,
+                    sql_preview,
+                )
                 raise TimeoutError("Failed to acquire database lock within 60 seconds")
 
             wait_time = time.time() - start_time
             logger.debug(
-                f"[DAMENG_LOCK] Thread={current_thread.name}({current_thread.ident}) ACQUIRED lock after {wait_time:.3f}s, sql={sql_preview}"
+                "[DAMENG_LOCK] Thread=%s(%s) ACQUIRED lock after %.3fs, sql=%s",
+                current_thread.name,
+                current_thread.ident,
+                wait_time,
+                sql_preview,
             )
             if wait_time > _LOCK_WAIT_WARNING_THRESHOLD:
-                logger.warning(f"[DAMENG_LOCK] Lock wait time {wait_time:.2f}s exceeded threshold")
+                logger.warning("[DAMENG_LOCK] Lock wait time %.2fs exceeded threshold", wait_time)
 
             try:
                 exec_start = time.time()
                 result = base_execute(self, sql, sanitized_params)
                 exec_time = time.time() - exec_start
-                logger.debug(f"[DAMENG_LOCK] Thread={current_thread.name}({current_thread.ident}) EXECUTED in {exec_time:.3f}s, sql={sql_preview}")
+                logger.debug(
+                    "[DAMENG_LOCK] Thread=%s(%s) EXECUTED in %.3fs, sql=%s",
+                    current_thread.name,
+                    current_thread.ident,
+                    exec_time,
+                    sql_preview,
+                )
                 return result
 
             except dmPython.DatabaseError as e:
@@ -214,7 +232,12 @@ def _patch_cursor_execute_with_lock():
         finally:
             if lock_acquired:
                 _dameng_global_lock.release()
-                logger.debug(f"[DAMENG_LOCK] Thread={current_thread.name}({current_thread.ident}) RELEASED lock, sql={sql_preview}")
+                logger.debug(
+                    "[DAMENG_LOCK] Thread=%s(%s) RELEASED lock, sql=%s",
+                    current_thread.name,
+                    current_thread.ident,
+                    sql_preview,
+                )
 
     CursorWrapper.execute = locked_execute
     logger.info("[DAMENG_LOCK] cursor.execute patched with global lock for ASGI concurrency safety")

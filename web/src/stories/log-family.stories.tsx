@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
+import { useState } from 'react';
 import IntroRenderer from '@/app/log/(pages)/integration/list/detail/output/introRenderer';
 import GuideStepPanel from '@/components/guide-step-panel';
 import LogDonutChart from '@/app/log/components/log-donut-chart';
@@ -6,6 +7,7 @@ import LogKpiCard, {
   type LogKpiCardCalculateMetric,
 } from '@/app/log/components/log-kpi-card';
 import SectionHeader from '@/components/section-header';
+import LogQueryInput from '@/app/log/components/log-query-input';
 
 const timeseriesRows = [
   { _time: '2026-06-25T08:00:00.000Z', total_count: 180, err_count: 8, latency_ms: 126 },
@@ -95,8 +97,35 @@ const ratioMetric: LogKpiCardCalculateMetric = (rawData, prevData, config) => {
 };
 
 const FamilyOverview = () => {
+  const [query, setQuery] = useState('');
+
   return (
     <div className="space-y-6">
+      <section className="space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-1)] p-4">
+        <SectionHeader
+          title="Log query suggestions"
+          description="Search and alert-policy forms share this query input. Focus the empty input to inspect field suggestions; selecting a field appends a colon and loads values for the active log scope."
+        />
+
+        <LogQueryInput
+          value={query}
+          onChange={setQuery}
+          availableFields={[
+            'flow.final',
+            'flow.id',
+            'host.os.family',
+            'host.os.kernel',
+            'http.request.headers.content-length',
+            'label.com.docker.compose.config-hash',
+            'level',
+          ]}
+          logGroups={['storybook-log-group']}
+          timeRange={{ mode: 'relative', minutes: 15 }}
+          placeholder="Enter search criteria"
+          allowClear
+        />
+      </section>
+
       <section className="space-y-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-1)] p-4">
         <SectionHeader
           title="Dashboard summary widgets"

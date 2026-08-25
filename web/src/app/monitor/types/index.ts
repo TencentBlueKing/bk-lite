@@ -146,6 +146,7 @@ export interface GapInterval {
   start: number;
   end: number;
   duration?: number;
+  align?: 'exact';
   series?: Array<{
     metric?: Record<string, string>;
     missing_points?: number;
@@ -204,6 +205,8 @@ export interface InstanceParam {
   add_metrics?: boolean;
   monitor_plugin_id?: React.Key;
   name?: string;
+  /** 精确匹配存储键；用于回填已选实例展示名 */
+  instance_id?: string;
   vm_params?: any;
 }
 
@@ -219,9 +222,17 @@ export interface ObjectItem {
   template_id?: string;
   template_type?: string;
   is_custom?: boolean;
+  is_visible?: boolean;
+  parent?: number | null;
+  level?: 'base' | 'derivative';
   type: string;
   plugin_name?: string;
   plugin_id?: number;
+  parent_monitor_object?: number | string | null;
+  parent_monitor_object_name?: string;
+  parent_monitor_object_display_name?: string;
+  parent_monitor_object_icon?: string;
+  parent_object_display_name?: string;
   display_description?: string;
   description: string;
   display_name?: string;
@@ -234,7 +245,9 @@ export interface ObjectItem {
     column_key?: string;
     name: string;
     type?: 'metric' | 'field';
+    role?: 'resource_ip';
     sort_order: number;
+    variable_id?: string;
     metrics: { plugin: string; metric: string; field?: string }[];
   }[];
   instance_summary_columns?: {

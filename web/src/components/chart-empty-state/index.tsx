@@ -3,7 +3,7 @@ import { Empty } from 'antd';
 
 export interface ChartEmptyStateProps {
   title?: string;
-  description?: string;
+  description?: React.ReactNode;
   variant?: 'plain' | 'decorated';
   compact?: boolean;
   className?: string;

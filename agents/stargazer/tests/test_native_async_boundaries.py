@@ -4,9 +4,8 @@ import json
 import time
 from pathlib import Path
 
-import pytest
-
 import plugins.script_executor as script_executor_module
+import pytest
 from core.collection.contracts import AccessProbeStatus
 from core.plugin.executor import PluginExecutor
 from core.plugin.yaml_reader import ExecutorConfig
@@ -50,9 +49,7 @@ def _delay_file_reads(monkeypatch, target_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_ssh_script_loading_does_not_stall_event_loop(
-    tmp_path, monkeypatch
-):
+async def test_ssh_script_loading_does_not_stall_event_loop(tmp_path, monkeypatch):
     script_path = tmp_path / "collect.sh"
     script_path.write_text("echo ok", encoding="utf-8")
     _delay_file_reads(monkeypatch, script_path)
@@ -188,9 +185,7 @@ async def test_job_executor_prepares_ssh_adapter_before_probe(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_config_file_script_loading_does_not_stall_event_loop(
-    tmp_path, monkeypatch
-):
+async def test_config_file_script_loading_does_not_stall_event_loop(tmp_path, monkeypatch):
     script_path = tmp_path / "config-file.sh"
     script_path.write_text("cat '{{config_file_path}}'", encoding="utf-8")
     _delay_file_reads(monkeypatch, script_path)
@@ -202,6 +197,8 @@ async def test_config_file_script_loading_does_not_stall_event_loop(
             "script_path": str(script_path),
             "model_id": "config_file",
             "config_file_path": "/etc/app.conf",
+            "protocol_version": "2",
+            "target_instance_uuid": "123e4567-e89b-42d3-a456-426614174000",
         }
     )
 
@@ -244,9 +241,7 @@ async def test_host_collection_preparation_and_formatting_do_not_stall_event_loo
     async def fake_adhoc(**_kwargs):
         return {
             "success": True,
-            "result": json.dumps(
-                {"cpu": {"usage_percent": 12.5, "core_count": 4}}
-            ),
+            "result": json.dumps({"cpu": {"usage_percent": 12.5, "core_count": 4}}),
         }
 
     monkeypatch.setattr(builtins, "open", delayed_host_script_open)
@@ -254,37 +249,35 @@ async def test_host_collection_preparation_and_formatting_do_not_stall_event_loo
 
     result = await _heartbeat_during(collector.collect(), minimum_ticks=10)
 
-    assert (
-        'host_cpu_usage_percent{instance_id="10.0.0.1",os_type="linux"} '
-        "12.5 1700000000000"
-    ) in result
+    assert ('host_cpu_usage_percent{instance_id="10.0.0.1",os_type="linux"} ' "12.5 1700000000000") in result
 
 
 @pytest.mark.asyncio
 async def test_mysql_credential_probe_does_not_stall_event_loop(monkeypatch):
     class Cursor:
-        def execute(self, query):
+        async def execute(self, query):
             if query != "SHOW GLOBAL VARIABLES LIKE 'version'":
                 raise AssertionError("probe used a non-minimal capability query")
+            await asyncio.sleep(0.05)
 
-        def fetchall(self):
+        async def fetchall(self):
             return [{"Variable_name": "version", "Value": "8.0.36"}]
 
-        def close(self):
+        async def close(self):
             return None
 
     class Connection:
-        def cursor(self):
+        async def cursor(self, *_args, **_kwargs):
             return Cursor()
 
         def close(self):
             return None
 
-    def connect(**_kwargs):
-        time.sleep(0.05)
+    async def connect(**_kwargs):
+        await asyncio.sleep(0.05)
         return Connection()
 
-    monkeypatch.setattr("plugins.inputs.mysql.mysql_info.pymysql.connect", connect)
+    monkeypatch.setattr("plugins.inputs.mysql.mysql_info.aiomysql.connect", connect)
     plugin = MysqlInfo(
         {
             "host": "10.0.0.8",
@@ -303,16 +296,12 @@ async def test_mysql_credential_probe_does_not_stall_event_loop(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_mysql_probe_returns_stable_auth_failure_without_secret(monkeypatch):
-    import pymysql
+    from pymysql.err import OperationalError
 
-    def rejected(**_kwargs):
-        raise pymysql.err.OperationalError(
-            1045, "Access denied for password secret-do-not-return"
-        )
+    async def rejected(**_kwargs):
+        raise OperationalError(1045, "Access denied for password secret-do-not-return")
 
-    monkeypatch.setattr(
-        "plugins.inputs.mysql.mysql_info.pymysql.connect", rejected
-    )
+    monkeypatch.setattr("plugins.inputs.mysql.mysql_info.aiomysql.connect", rejected)
     plugin = MysqlInfo(
         {
             "host": "10.0.0.8",
@@ -332,29 +321,31 @@ async def test_mysql_probe_returns_stable_auth_failure_without_secret(monkeypatc
 @pytest.mark.asyncio
 async def test_postgresql_credential_probe_does_not_stall_event_loop(monkeypatch):
     class Cursor:
-        def execute(self, query):
+        async def execute(self, query):
             if query != "SHOW server_version":
                 raise AssertionError("probe used a non-minimal capability query")
+            await asyncio.sleep(0.05)
 
-        def fetchall(self):
+        async def fetchall(self):
             return [{"server_version": "16.2"}]
 
-        def close(self):
+        async def close(self):
             return None
 
     class Connection:
         def cursor(self, **_kwargs):
             return Cursor()
 
-        def close(self):
+        async def close(self):
             return None
 
-    def connect(**_kwargs):
-        time.sleep(0.05)
+    async def connect(**_kwargs):
+        await asyncio.sleep(0.05)
         return Connection()
 
     monkeypatch.setattr(
-        "plugins.inputs.postgresql.postgresql_info.psycopg2.connect", connect
+        "plugins.inputs.postgresql.postgresql_info.psycopg.AsyncConnection.connect",
+        connect,
     )
     plugin = PostgresqlInfo(
         {

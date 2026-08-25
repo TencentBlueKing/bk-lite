@@ -121,6 +121,32 @@ def test_protected_fields_cannot_be_overwritten_or_deleted():
 
 
 @pytest.mark.unit
+def test_collect_timestamp_cannot_be_overwritten_or_deleted():
+    with pytest.raises(RuleValidationError, match="保护字段"):
+        normalize_rule(
+            {
+                "extractor_type": "copy",
+                "source_field": "message",
+                "target_field": "collect_timestamp",
+                "condition": {},
+                "config": {},
+                "delete_source": False,
+            }
+        )
+
+    with pytest.raises(RuleValidationError, match="保护字段"):
+        normalize_rule(
+            {
+                "extractor_type": "regex_replace",
+                "source_field": "collect_timestamp",
+                "condition": {},
+                "config": {"pattern": ".+", "replacement": "masked"},
+                "delete_source": False,
+            }
+        )
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize("target", ["_msg", "log_message", "raw_message", "trap_message"])
 def test_legacy_message_aliases_cannot_be_reintroduced(target):
     with pytest.raises(RuleValidationError, match="保护字段"):

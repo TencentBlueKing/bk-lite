@@ -5,8 +5,8 @@
 
 import pytest
 
-from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
 from apps.cmdb.collect.extensions import CollectEnterpriseExtension
+from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
 from apps.cmdb.services.collect_object_tree import (
     _get_enterprise_collect_obj_tree,
     _normalize_enterprise_children,
@@ -72,6 +72,8 @@ def test_get_collect_obj_tree_no_enterprise(monkeypatch):
     tree = get_collect_obj_tree()
     assert isinstance(tree, list)
     assert len(tree) > 0
+    model_ids = {child.get("model_id") for group in tree for child in group.get("children", [])}
+    assert "sangforhci" not in model_ids
 
 
 def test_get_collect_obj_tree_host_group_uses_logical_host_name(monkeypatch):
@@ -126,33 +128,19 @@ def test_get_collect_obj_tree_includes_ipam_discovery(monkeypatch):
 def test_simple_collect_objects_expose_real_credential_protocol(monkeypatch):
     _patch_collect_extension(monkeypatch, [])
     tree = get_collect_obj_tree()
-    objects = {
-        child["model_id"]: child
-        for group in tree
-        for child in group.get("children", [])
-        if child.get("model_id")
-    }
+    objects = {child["model_id"]: child for group in tree for child in group.get("children", []) if child.get("model_id")}
 
-    assert {
-        key: objects["mysql"][key]
-        for key in ("credential_protocol", "credential_kind", "credential_default_port")
-    } == {
+    assert {key: objects["mysql"][key] for key in ("credential_protocol", "credential_kind", "credential_default_port")} == {
         "credential_protocol": "mysql",
         "credential_kind": "database_account",
         "credential_default_port": 3306,
     }
-    assert {
-        key: objects["postgresql"][key]
-        for key in ("credential_protocol", "credential_kind", "credential_default_port")
-    } == {
+    assert {key: objects["postgresql"][key] for key in ("credential_protocol", "credential_kind", "credential_default_port")} == {
         "credential_protocol": "postgresql",
         "credential_kind": "database_account",
         "credential_default_port": 5432,
     }
-    assert {
-        key: objects["mssql"][key]
-        for key in ("credential_protocol", "credential_kind", "credential_default_port")
-    } == {
+    assert {key: objects["mssql"][key] for key in ("credential_protocol", "credential_kind", "credential_default_port")} == {
         "credential_protocol": "sql_server",
         "credential_kind": "database_account",
         "credential_default_port": 1433,
@@ -175,10 +163,7 @@ def test_simple_collect_objects_expose_real_credential_protocol(monkeypatch):
         objects["hwcloud"]["credential_protocol"],
         objects["hwcloud"]["credential_kind"],
     ) == ("huaweicloud_sdk", "ak_sk_project")
-    assert {
-        key: objects["fusioninsight"][key]
-        for key in ("credential_protocol", "credential_kind", "credential_default_port")
-    } == {
+    assert {key: objects["fusioninsight"][key] for key in ("credential_protocol", "credential_kind", "credential_default_port")} == {
         "credential_protocol": "fusioninsight_https",
         "credential_kind": "http_basic_account",
         "credential_default_port": 443,
@@ -188,10 +173,7 @@ def test_simple_collect_objects_expose_real_credential_protocol(monkeypatch):
         "password",
         "accessSecret",
     ]
-    assert {
-        key: objects["storage"][key]
-        for key in ("credential_protocol", "credential_kind", "credential_default_port")
-    } == {
+    assert {key: objects["storage"][key] for key in ("credential_protocol", "credential_kind", "credential_default_port")} == {
         "credential_protocol": "oceanstor_https",
         "credential_kind": "platform_api_account",
         "credential_default_port": 8088,
@@ -205,12 +187,7 @@ def test_simple_collect_objects_expose_real_credential_protocol(monkeypatch):
 
 def test_all_builtin_job_collect_objects_declare_ssh_credential_semantics(monkeypatch):
     _patch_collect_extension(monkeypatch, [])
-    job_objects = [
-        child
-        for group in get_collect_obj_tree()
-        for child in group.get("children", [])
-        if child.get("type") == CollectDriverTypes.JOB
-    ]
+    job_objects = [child for group in get_collect_obj_tree() for child in group.get("children", []) if child.get("type") == CollectDriverTypes.JOB]
 
     assert job_objects
     assert {

@@ -153,15 +153,17 @@ def test_validate_current_team_permission_no_access_raises():
 
 
 def test_validate_current_team_permission_superuser_ok():
+    team = Group.objects.create(name="mixin-super-team", parent_id=0)
     m = GroupFilterMixin()
-    req = _request(current_team="5", is_superuser=True)
-    assert m._validate_current_team_permission(req) == 5
+    req = _request(current_team=str(team.id), is_superuser=True)
+    assert m._validate_current_team_permission(req) == team.id
 
 
 def test_validate_current_team_permission_member_ok():
+    team = Group.objects.create(name="mixin-member-team", parent_id=0)
     m = GroupFilterMixin()
-    req = _request(current_team="3", is_superuser=False, group_list=[{"id": 3}])
-    assert m._validate_current_team_permission(req) == 3
+    req = _request(current_team=str(team.id), is_superuser=False, group_list=[{"id": team.id}])
+    assert m._validate_current_team_permission(req) == team.id
 
 
 def test_get_child_group_ids_recurses():

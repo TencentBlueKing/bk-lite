@@ -22,8 +22,14 @@ interface NodeParams {
   organizations?: Array<React.Key>;
 }
 
+interface BatchUpdateNodeOrganizationsParams {
+  node_ids: string[];
+  organizations: number[];
+}
+
 export type {
   SearchValue,
   SearchTag,
   NodeParams,
+  BatchUpdateNodeOrganizationsParams,
 };

@@ -40,12 +40,26 @@ const resolveInstanceIdValues = (item: any): string[] => {
   return parsePythonTupleString(String(item?.instance_id || '')) || [];
 };
 
+/** 自动发现实例名：`instance_id_keys` 各维用 `__` 拼接（见 SyncInstance）。 */
+export const isAutoDiscoveryJoinedName = (
+  name: unknown,
+  idValues: readonly string[]
+) => {
+  if (idValues.length < 2 || name == null) return false;
+  const trimmed = String(name).trim();
+  return Boolean(trimmed) && trimmed === idValues.map(String).join('__');
+};
+
 export const buildInstanceDisplayName = (item: any) => {
   const idValues = resolveInstanceIdValues(item);
   const identityLeaf = idValues.length > 1 ? normalizeDisplayText(idValues[idValues.length - 1]) : '';
+  // K8S 等衍生对象自动发现名为 "集群uuid__pod/node"，下拉里会被截成一串 id；优先展示末段。
+  const rawName = item.instance_name ?? item.name;
+  const usableRawName = isAutoDiscoveryJoinedName(rawName, idValues)
+    ? ''
+    : normalizeDisplayText(rawName);
   const primaryName =
-    normalizeDisplayText(item.instance_name) ||
-    normalizeDisplayText(item.name) ||
+    usableRawName ||
     normalizeDisplayText(item.process_name) ||
     identityLeaf;
   const hostPort = normalizeDisplayText(item.host && item.port ? `${item.host}:${item.port}` : '');
@@ -97,12 +111,27 @@ export interface DashboardInstanceOption {
   interval?: number;
 }
 
-export const buildClusterFilterOptions = (options: readonly DashboardInstanceOption[]) => {
+export const buildClusterFilterOptions = (
+  options: readonly DashboardInstanceOption[],
+  clusterNameById?: ReadonlyMap<string, string> | Record<string, string>
+) => {
+  const resolveLabel = (clusterId: string) => {
+    if (!clusterNameById) return clusterId;
+    if (clusterNameById instanceof Map) {
+      return clusterNameById.get(clusterId) || clusterId;
+    }
+    return clusterNameById[clusterId] || clusterId;
+  };
   const seen = new Map<string, { label: string; value: string; searchTokens: string[] }>();
   options.forEach((item) => {
     const cluster = item.instanceIdValues[0];
     if (cluster && !seen.has(cluster)) {
-      seen.set(cluster, { label: cluster, value: cluster, searchTokens: [cluster] });
+      const label = resolveLabel(cluster);
+      seen.set(cluster, {
+        label,
+        value: cluster,
+        searchTokens: Array.from(new Set([label, cluster].filter(Boolean)))
+      });
     }
   });
   return Array.from(seen.values());

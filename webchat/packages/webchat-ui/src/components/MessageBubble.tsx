@@ -1,28 +1,35 @@
 import React, { useState, type ComponentPropsWithoutRef } from 'react';
-import { Bubble } from '@ant-design/x';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Message, type MessageContent } from '@webchat/core';
 import { MessageActions } from './MessageActions';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ImagePreview } from './ImagePreview';
 import { ToolCallDisplay, type ToolCall } from './ToolCallDisplay';
-
-const syntaxHighlightTheme = vscDarkPlus as Record<string, React.CSSProperties>;
+import { ThinkingPanel } from './ThinkingPanel';
+import { WC } from '../chrome';
 
 const markdownPlugins = {
   remarkPlugins: [remarkGfm],
   rehypePlugins: [rehypeSanitize],
 };
 
+const markdownClassName =
+  'max-w-none break-words text-sm leading-[1.7] [&_h1]:mb-2 [&_h1]:mt-3 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:mb-2 [&_h2]:mt-3 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:mb-1 [&_h3]:mt-2 [&_h3]:font-semibold [&_p]:my-1.5 [&_ul]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1.5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:bg-[var(--color-code-block-bg,var(--color-fill-1,#f6f8f9))] [&_pre]:text-[var(--color-code-block-text,var(--color-text-1,#1e252e))] [&_code]:rounded [&_code]:px-1 [&_code]:bg-[var(--color-code-block-bg,var(--color-fill-1,#f6f8f9))] [&_a]:text-[var(--color-primary,#155AEF)] [&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-[var(--color-border-1,#edeff3)] [&_blockquote]:pl-3 [&_hr]:my-3';
+
+const userBubbleStyle: React.CSSProperties = {
+  background: WC.botBubble,
+  color: WC.botText,
+  border: `1px solid ${WC.botBorder}`,
+  borderRadius: 16,
+  borderBottomRightRadius: 4,
+};
+
 interface MessageBubbleProps {
   message: Message;
-  botAvatar: React.ReactElement;
-  userAvatar: React.ReactElement;
   isLastBotMessage?: boolean;
+  fillWidth?: boolean;
   onRegenerate?: (messageId: string) => void;
   onCopy?: (content: string) => void;
   onDelete?: (messageId: string) => void;
@@ -41,23 +48,16 @@ type CodeBlockProps = ComponentPropsWithoutRef<'code'> & {
 const CodeBlock = ({ inline, className, children, style, ...props }: CodeBlockProps) => {
   const match = /language-(\w+)/.exec(className || '');
   const language = match ? match[1] : '';
-  
+
   return !inline && language ? (
-    <SyntaxHighlighter
-      style={syntaxHighlightTheme}
-      language={language}
-      PreTag="div"
-      customStyle={{
-        ...style,
-        margin: '0.5rem 0',
-        borderRadius: '0.375rem',
-        fontSize: '0.875rem',
-        lineHeight: '1.5'
-      }}
-      {...props}
+    <pre
+      className="my-2 overflow-x-auto rounded-md p-3 text-sm leading-6"
+      style={style}
     >
-      {String(children).replace(/\n$/, '')}
-    </SyntaxHighlighter>
+      <code className={className} {...props}>
+        {String(children).replace(/\n$/, '')}
+      </code>
+    </pre>
   ) : (
     <code className={className} style={style} {...props}>
       {children}
@@ -65,8 +65,8 @@ const CodeBlock = ({ inline, className, children, style, ...props }: CodeBlockPr
   );
 };
 
-export const MessageBubble: React.FC<MessageBubbleProps> = (
-  ({ message, botAvatar, userAvatar, isLastBotMessage, onRegenerate, onCopy, onDelete }) => {
+export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
+  ({ message, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete }) => {
     const isBot = message.sender === 'bot';
     const [showActions, setShowActions] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -107,20 +107,36 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
         <div className="space-y-2">
           {message.content.map((item: MessageContent, index: number) => {
             const imageUrl = item.image_url;
+            const unpreviewedImageIndexes = Array.isArray(message.metadata?.unpreviewedImageIndexes)
+              ? message.metadata.unpreviewedImageIndexes
+              : [];
             if (item.type === 'image_url' && imageUrl) {
+              if (unpreviewedImageIndexes.includes(index)) {
+                return (
+                  <div
+                    key={`img-${index}`}
+                    role="status"
+                    aria-label="图片已发送（格式未在浏览器解码预览）"
+                  >
+                    <p className="rounded-md px-2 py-1 text-xs text-[var(--color-text-3,#86909c)]">
+                      图片已发送（格式未在浏览器解码预览）
+                    </p>
+                  </div>
+                );
+              }
               return (
                 <div key={`img-${index}`} className="max-w-xs">
                   <img 
                     src={imageUrl}
                     alt={`Image ${index + 1}`}
-                    className="rounded border border-gray-200 w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                    className="h-auto w-full cursor-pointer rounded-md border border-[var(--color-border-1,#e8eaf0)] hover:opacity-90"
                     onClick={() => setPreviewImage({ src: imageUrl, alt: `Image ${index + 1}` })}
                   />
                 </div>
               );
             } else if (item.type === 'message' && item.message) {
               return (
-                <div key={`msg-${index}`} className="prose prose-sm max-w-none">
+                <div key={`msg-${index}`} className={markdownClassName}>
                   <ReactMarkdown
                     {...markdownPlugins}
                     components={{
@@ -133,7 +149,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
               );
             } else if (item.type === 'text' && item.text) {
               return (
-                <div key={`text-${index}`} className="prose prose-sm max-w-none">
+                <div key={`text-${index}`} className={markdownClassName}>
                   <ReactMarkdown
                     {...markdownPlugins}
                     components={{
@@ -151,50 +167,55 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
       );
     };
 
-    const content = isBot ? (
-      <div>
-        {groupedChunks.length > 0 ? (
-          // Render grouped chunks in order
-          groupedChunks.map((chunk, index) => {
-            if (chunk.type === 'text') {
-              return (
-                <div key={`text-${index}`} className="prose prose-sm max-w-none prose-hr:my-3 prose-h1:mt-3 prose-h1:mb-2 prose-h2:mt-3 prose-h2:mb-2 prose-h3:mt-2 prose-h3:mb-1 prose-h4:mt-2 prose-h4:mb-1 prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5">
-                  <ReactMarkdown
-                    {...markdownPlugins}
-                    components={{
-                      code: CodeBlock
-                    }}
-                  >
-                    {chunk.content}
-                  </ReactMarkdown>
-                </div>
-              );
-            } else if (chunk.type === 'toolCalls') {
-              return (
-                <div key={`tool-${index}`} className="my-2">
-                  <ToolCallDisplay toolCalls={chunk.toolCalls} />
-                </div>
-              );
-            }
-            return null;
-          })
-        ) : hasContent ? (
-          // Fallback to display content if no chunks (for backward compatibility)
-          <div className="prose prose-sm max-w-none prose-hr:my-3 prose-h1:mt-3 prose-h1:mb-2 prose-h2:mt-3 prose-h2:mb-2 prose-h3:mt-2 prose-h3:mb-1 prose-h4:mt-2 prose-h4:mb-1 prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5">
-            <ReactMarkdown
-              {...markdownPlugins}
-              components={{
-                code: CodeBlock
-              }}
-            >
-              {message.content as string}
-            </ReactMarkdown>
-          </div>
-        ) : null}
+    const columnClass = isBot
+      ? 'min-w-0 flex-1'
+      : fillWidth
+        ? 'max-w-[92%]'
+        : 'max-w-[78%]';
+
+    const renderMarkdown = (source: string) => (
+      <div className={markdownClassName}>
+        <ReactMarkdown
+          {...markdownPlugins}
+          components={{
+            code: CodeBlock
+          }}
+        >
+          {source}
+        </ReactMarkdown>
       </div>
-    ) : (
-      // User message - check if multimodal
-      message.type === 'multimodal' ? renderMultimodalContent() : (message.content as string)
+    );
+
+    const renderBotAnswer = (children: React.ReactNode, key?: string) => (
+      <div
+        key={key}
+        className="w-full text-sm leading-[1.7]"
+        style={{ color: WC.botText }}
+      >
+        {children}
+      </div>
+    );
+
+    const botColumn = (
+      <div className={`flex min-w-0 flex-col gap-2 ${columnClass}`}>
+        <ThinkingPanel
+          thinking={typeof message.metadata?.thinking === 'string' ? message.metadata.thinking : undefined}
+          isThinking={Boolean(message.metadata?.isThinking)}
+        />
+        {groupedChunks.length > 0
+          ? groupedChunks.map((chunk, index) => {
+              if (chunk.type === 'text') {
+                return renderBotAnswer(renderMarkdown(chunk.content), `text-${index}`);
+              }
+              if (chunk.type === 'toolCalls') {
+                return <ToolCallDisplay key={`tool-${index}`} toolCalls={chunk.toolCalls} />;
+              }
+              return null;
+            })
+          : hasContent
+            ? renderBotAnswer(renderMarkdown(message.content as string))
+            : null}
+      </div>
     );
 
     const handleDelete = () => {
@@ -209,20 +230,22 @@ export const MessageBubble: React.FC<MessageBubbleProps> = (
           onMouseLeave={() => setShowActions(false)}
           className="flex flex-col"
         >
-          <Bubble
-            key={message.id}
-            content={content}
-            avatar={isBot ? botAvatar : userAvatar}
-            placement={isBot ? 'start' : 'end'}
-            styles={{
-              content: {
-                maxWidth: 'none',
-                width: 'auto',
-                maxHeight: 'none',
-                overflow: 'visible'
-              }
-            }}
-          />
+          <div className={`flex w-full items-start ${isBot ? 'justify-start' : 'flex-row-reverse justify-start'}`}>
+            {isBot ? (
+              botColumn
+            ) : (
+              <div
+                className={`px-3.5 py-2 text-sm leading-[1.55] ${columnClass}`}
+                style={userBubbleStyle}
+              >
+                {message.type === 'multimodal' ? (
+                  renderMultimodalContent()
+                ) : (
+                  <p className="whitespace-pre-wrap break-words">{message.content as string}</p>
+                )}
+              </div>
+            )}
+          </div>
           <MessageActions
             messageId={message.id}
             messageContent={message.content}

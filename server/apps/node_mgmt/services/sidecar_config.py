@@ -1,15 +1,12 @@
 import base64
-import logging
 import shlex
 
 import yaml
-
+from apps.core.logger import node_logger as logger
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.sidecar import Node
 from apps.rpc.executor import Executor
-
-logger = logging.getLogger("node_mgmt")
 
 
 class SidecarConfigService:
@@ -28,9 +25,59 @@ class SidecarConfigService:
         )
 
     @classmethod
+    def _run_local(
+        cls, node: Node, command: str, timeout: int, shell: str | None = None
+    ) -> dict:
+        """执行节点本地命令，并把 NATS 成功字符串 / 失败异常归一成字典。"""
+        try:
+            raw = Executor(node.id).execute_local(command, timeout=timeout, shell=shell)
+        except Exception as exc:
+            message = str(exc)
+            return {
+                "success": False,
+                "stdout": "",
+                "stderr": message,
+                "error": message,
+            }
+
+        if isinstance(raw, dict):
+            stdout = str(raw.get("stdout") or raw.get("result") or "")
+            stderr = str(raw.get("stderr") or "")
+            error = str(raw.get("error") or "")
+            if "success" in raw:
+                success = bool(raw["success"])
+            elif "exit_code" in raw:
+                success = raw["exit_code"] == 0
+            else:
+                success = not error
+            return {
+                "success": success,
+                "stdout": stdout,
+                "stderr": stderr or error,
+                "error": error,
+            }
+
+        return {
+            "success": True,
+            "stdout": str(raw or ""),
+            "stderr": "",
+            "error": "",
+        }
+
+    @classmethod
+    def _classify_execute_error(cls, result: dict) -> str:
+        stderr = f"{result.get('stderr', '')} {result.get('error', '')}"
+        lowered = stderr.lower()
+        if "No such file" in stderr or "not exist" in lowered:
+            return "not_found"
+        if "Permission denied" in stderr or "access" in lowered:
+            return "permission"
+        return "other"
+
+    @classmethod
     def _read_config(cls, node: Node) -> dict:
         """
-        读取节点当前 sidecar.yaml 配置内容
+        读取节点当前 sidecar.yml 配置内容
 
         Returns:
             解析后的配置字典
@@ -39,27 +86,27 @@ class SidecarConfigService:
             ValueError: 读取失败或解析失败
         """
         config_path = cls._get_config_path(node)
-        executor = Executor(node.id)
 
         if node.operating_system == NodeConstants.WINDOWS_OS:
             command = f"Get-Content -Path '{config_path}' -Raw"
             shell = "powershell"
         else:
-            command = f"cat {config_path}"
+            command = f"cat {shlex.quote(config_path)}"
             shell = None
 
-        result = executor.execute_local(command, timeout=30, shell=shell)
+        result = cls._run_local(node, command, timeout=30, shell=shell)
 
-        if not result.get("success", False):
-            error_msg = result.get("error", "Unknown error")
-            stderr = result.get("stderr", "")
-            if "No such file" in stderr or "not exist" in stderr.lower():
+        if not result["success"]:
+            kind = cls._classify_execute_error(result)
+            if kind == "not_found":
                 raise ValueError(f"Configuration file not found: {config_path}")
-            if "Permission denied" in stderr or "access" in stderr.lower():
+            if kind == "permission":
                 raise ValueError(f"Permission denied reading config: {config_path}")
-            raise ValueError(f"Failed to read config: {error_msg} - {stderr}")
+            raise ValueError(
+                f"Failed to read config: {result['error']} - {result['stderr']}"
+            )
 
-        content = result.get("stdout", "")
+        content = result["stdout"]
         if not content.strip():
             raise ValueError(f"Configuration file is empty: {config_path}")
 
@@ -71,13 +118,12 @@ class SidecarConfigService:
     @classmethod
     def _write_config(cls, node: Node, config: dict) -> None:
         """
-        写入配置到节点 sidecar.yaml
+        写入配置到节点 sidecar.yml
 
         Raises:
             ValueError: 写入失败
         """
         config_path = cls._get_config_path(node)
-        executor = Executor(node.id)
 
         config_content = yaml.safe_dump(
             config, default_flow_style=False, allow_unicode=True
@@ -97,14 +143,15 @@ class SidecarConfigService:
             )
             shell = "bash"
 
-        result = executor.execute_local(command, timeout=30, shell=shell)
+        result = cls._run_local(node, command, timeout=30, shell=shell)
 
-        if not result.get("success", False):
-            error_msg = result.get("error", "Unknown error")
-            stderr = result.get("stderr", "")
-            if "Permission denied" in stderr or "access" in stderr.lower():
+        if not result["success"]:
+            kind = cls._classify_execute_error(result)
+            if kind == "permission":
                 raise ValueError(f"Permission denied writing config: {config_path}")
-            raise ValueError(f"Failed to write config: {error_msg} - {stderr}")
+            raise ValueError(
+                f"Failed to write config: {result['error']} - {result['stderr']}"
+            )
 
     @classmethod
     def _restart_service(cls, node: Node) -> None:
@@ -115,15 +162,12 @@ class SidecarConfigService:
             ValueError: 重启失败
         """
         restart_cmd, shell = cls._get_restart_command(node)
-        executor = Executor(node.id)
+        result = cls._run_local(node, restart_cmd, timeout=60, shell=shell)
 
-        result = executor.execute_local(restart_cmd, timeout=60, shell=shell)
-
-        if not result.get("success", False):
-            error_msg = result.get("error", "Unknown error")
-            stderr = result.get("stderr", "")
+        if not result["success"]:
             raise ValueError(
-                f"Config updated but service restart failed: {error_msg} - {stderr}"
+                f"Config updated but service restart failed: "
+                f"{result['error']} - {result['stderr']}"
             )
 
     @classmethod
@@ -188,7 +232,7 @@ class SidecarConfigService:
         cls, node: Node, name: str | None = None, organizations: list[str] | None = None
     ) -> None:
         """
-        同步节点名称和/或组织到远程节点的 sidecar.yaml
+        同步节点名称和/或组织到远程节点的 sidecar.yml
 
         当用户在 UI 编辑节点名称或组织时调用此方法，将变更同步到节点配置文件。
         组织通过 tags 字段同步，格式为 "group:<organization_id>"。

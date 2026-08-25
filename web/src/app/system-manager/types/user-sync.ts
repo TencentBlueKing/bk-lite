@@ -202,6 +202,7 @@ export interface UserSyncRunProgressPayload {
     total: number;
     /** 由前端按当前语言映射；新记录不再持久化异常原文。 */
     error_code?: string;
+    error_params?: Record<string, string>;
     /** 兼容历史同步记录。 */
     error_message?: string;
     failed_at: string;

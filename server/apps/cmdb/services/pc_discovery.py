@@ -10,9 +10,10 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, DataCleanupStrategy, OPERATOR_INSTANCE
+from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, DELETE_INST
+from apps.cmdb.services.instance_identity import prepare_new_instance_identity
 from apps.cmdb.utils.change_record import batch_create_change_record
 from apps.core.logger import cmdb_logger as logger
 
@@ -21,19 +22,45 @@ PC_SOFTWARE_METRIC_NAME = "pc_software_info"
 
 # 采集允许写入的 PC 字段（与 model_config.xlsx attr-pc 自动发现信息组一致）。
 # 人工资产字段（asset_code/user/location 等）和组织字段绝不出现在更新 payload。
-PC_COLLECTED_FIELDS = frozenset({
-    "inst_name", "host_name", "ip_addr", "os_type", "os_name", "os_version",
-    "os_build", "architecture", "hardware_uuid", "serial_number",
-    "brand", "device_model", "cpu", "men", "disk",
-    "logged_in_user", "last_collect_time",
-})
+PC_COLLECTED_FIELDS = frozenset(
+    {
+        "inst_name",
+        "host_name",
+        "ip_addr",
+        "os_type",
+        "os_name",
+        "os_version",
+        "os_build",
+        "architecture",
+        "hardware_uuid",
+        "serial_number",
+        "brand",
+        "device_model",
+        "cpu",
+        "men",
+        "disk",
+        "logged_in_user",
+        "last_collect_time",
+    }
+)
 
 # 采集允许写入的软件字段（与 attr-pc_software 一致）。
 # 归属只走 install_on 关联：pc_inst_name/snapshot_id 是 VM 传输标签，不落为资产字段。
-SOFTWARE_COLLECTED_FIELDS = frozenset({
-    "inst_name", "name", "version", "publisher", "software_key", "product_id",
-    "install_location", "install_date", "architecture", "source", "last_collect_time",
-})
+SOFTWARE_COLLECTED_FIELDS = frozenset(
+    {
+        "inst_name",
+        "name",
+        "version",
+        "publisher",
+        "software_key",
+        "product_id",
+        "install_location",
+        "install_date",
+        "architecture",
+        "source",
+        "last_collect_time",
+    }
+)
 
 _OS_INST_PREFIX = {"windows": "WIN-", "macos": "MAC-"}
 
@@ -199,6 +226,7 @@ class PCSnapshotReconciler:
                     auto_collect=True,
                     **runtime,
                 )
+                create_payload = prepare_new_instance_identity(create_payload)
                 result["pc_entity"] = ag.create_entity(INSTANCE, create_payload, {}, [])
                 result["pc_status"] = "added"
             sw_counts = self._upsert_software(ag, snapshot, result["pc_entity"])
@@ -255,7 +283,9 @@ class PCSnapshotReconciler:
             except Exception as exc:  # noqa: BLE001 - 单条删除失败保留实体，下轮重试
                 logger.warning(
                     "[PC] software delete failed: task=%s sw=%s err=%s",
-                    getattr(self.task, "id", None), entity.get("inst_name"), type(exc).__name__,
+                    getattr(self.task, "id", None),
+                    entity.get("inst_name"),
+                    type(exc).__name__,
                 )
                 counts["delete_failed"] += 1
                 counts["failed_names"].append(entity.get("inst_name", ""))
@@ -271,8 +301,7 @@ class PCSnapshotReconciler:
                 "before_data": entity,
                 "model_object": OPERATOR_INSTANCE,
                 "message": (
-                    f"自动采集删除实例. 模型:{entity.get('model_id', 'pc_software')} "
-                    f"实例:{entity.get('inst_name')} 任务:{self.task.id} 快照:{snapshot_id}"
+                    f"自动采集删除实例. 模型:{entity.get('model_id', 'pc_software')} " f"实例:{entity.get('inst_name')} 任务:{self.task.id} 快照:{snapshot_id}"
                 ),
             }
             for entity in deleted_entities
@@ -313,6 +342,7 @@ class PCSnapshotReconciler:
                         auto_collect=True,
                         collect_time=collect_time,
                     )
+                    create_payload = prepare_new_instance_identity(create_payload)
                     sw_entity = ag.create_entity(INSTANCE, create_payload, {}, [])
                     created_this_round = True
                     outcome_key = "software_added"
@@ -326,8 +356,13 @@ class PCSnapshotReconciler:
                 }
                 try:
                     ag.create_edge(
-                        INSTANCE_ASSOCIATION, sw_entity["_id"], INSTANCE,
-                        pc_entity["_id"], INSTANCE, asso_info, "model_asst_id",
+                        INSTANCE_ASSOCIATION,
+                        sw_entity["_id"],
+                        INSTANCE,
+                        pc_entity["_id"],
+                        INSTANCE,
+                        asso_info,
+                        "model_asst_id",
                     )
                 except Exception as exc:  # noqa: BLE001 - 边已存在即目标状态，幂等视为成功
                     if str(exc) != "edge already exists":
@@ -347,7 +382,9 @@ class PCSnapshotReconciler:
                         )
                 logger.warning(
                     "[PC] software upsert failed: task=%s sw=%s err=%s",
-                    getattr(self.task, "id", None), payload.get("inst_name"), type(exc).__name__,
+                    getattr(self.task, "id", None),
+                    payload.get("inst_name"),
+                    type(exc).__name__,
                 )
                 counts["software_failed"] += 1
                 counts["outcomes"].append((payload.get("inst_name", ""), "failed"))
@@ -363,8 +400,13 @@ def apply_pc_snapshots(task, snapshots):
     """
     format_data = {"add": [], "update": [], "delete": [], "association": []}
     pc_summary = {
-        "pc_total": 0, "pc_complete": 0, "pc_partial": 0, "pc_failed": 0,
-        "software_added": 0, "software_updated": 0, "software_deleted": 0,
+        "pc_total": 0,
+        "pc_complete": 0,
+        "pc_partial": 0,
+        "pc_failed": 0,
+        "software_added": 0,
+        "software_updated": 0,
+        "software_deleted": 0,
     }
     rows = []
     for snapshot in snapshots or []:
@@ -403,10 +445,14 @@ def apply_pc_snapshots(task, snapshots):
             result_row["_error_detail"] = result["error_detail"][:_MAX_ERROR_DETAIL]
         rows.append(result_row)
 
-        for sw_name, sw_status in (result.get("outcomes") or []):
+        for sw_name, sw_status in result.get("outcomes") or []:
             format_data["association"].append(
-                {"inst_name": sw_name, "model_id": "pc_software", "_status": sw_status,
-                 "_error": "CMDB_WRITE_PARTIAL" if sw_status == "failed" else ""}
+                {
+                    "inst_name": sw_name,
+                    "model_id": "pc_software",
+                    "_status": sw_status,
+                    "_error": "CMDB_WRITE_PARTIAL" if sw_status == "failed" else "",
+                }
             )
         for name in result.get("deleted_names") or []:
             format_data["delete"].append({"inst_name": name, "model_id": "pc_software", "_status": "success", "_error": ""})
@@ -426,9 +472,7 @@ def apply_pc_snapshots(task, snapshots):
 
     format_data["all"] = pc_summary["pc_total"]
     format_data["pc_summary"] = pc_summary
-    logger.info(
-        "[PC] apply_pc_snapshots: task=%s pc_summary=%s", getattr(task, "id", None), pc_summary
-    )
+    logger.info("[PC] apply_pc_snapshots: task=%s pc_summary=%s", getattr(task, "id", None), pc_summary)
     return {"format_data": format_data, "snapshots": len(snapshots or []), "results": rows}
 
 
@@ -479,14 +523,14 @@ def cleanup_expired_pc_software(task, threshold_dt, threshold_iso):
                 except Exception as exc:  # noqa: BLE001 - 单条失败保留，下轮重试
                     logger.warning(
                         "[PC] expired software delete failed: task=%s sw=%s err=%s",
-                        task.id, entity.get("inst_name"), type(exc).__name__,
+                        task.id,
+                        entity.get("inst_name"),
+                        type(exc).__name__,
                     )
                     failed += 1
     if deleted:
         PCSnapshotReconciler(task)._write_delete_audit(deleted, f"expire:{threshold_iso}")
-    logger.info(
-        "[PC] 过期软件清理完成 task=%s deleted=%s failed=%s", task.id, len(deleted), failed
-    )
+    logger.info("[PC] 过期软件清理完成 task=%s deleted=%s failed=%s", task.id, len(deleted), failed)
     result = {
         "task_id": task.id,
         "model_id": "pc_software",

@@ -5,6 +5,12 @@ import type {
   InputControlConfig,
 } from './dataSource';
 import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
+import type {
+  CardListConfig,
+  CardListLeadingConfig,
+} from '@/app/ops-analysis/utils/cardList';
+
+export type { CardListConfig, CardListLeadingConfig };
 import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 import type { Dayjs } from 'dayjs';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
@@ -136,6 +142,7 @@ export interface ValueConfig {
       label?: string;
     }>;
   };
+  cardList?: CardListConfig;
   actions?: DashboardActionConfig[];
   appearance?: ScreenWidgetAppearance;
 }
@@ -209,7 +216,8 @@ export type ViewConfigItem = LayoutItem | TopologyNodeData;
 
 export interface ViewConfigProps {
   open: boolean;
-  item: ViewConfigItem;
+  /** Dashboard keeps ViewConfig mounted and may pass undefined while closed. */
+  item?: ViewConfigItem | null;
   onConfirm?: (values: WidgetConfig) => void;
   onClose?: () => void;
   builtinNamespaceId?: number;
@@ -263,7 +271,13 @@ export interface TimeRangeValue {
 }
 
 /** 筛选值类型 */
-export type FilterValue = string | number | TimeRangeValue | DateRangeValue | null;
+export type FilterValue =
+  | string
+  | number
+  | Array<string | number>
+  | TimeRangeValue
+  | DateRangeValue
+  | null;
 
 /** 筛选选项（用于下拉选择） */
 export interface FilterOption {
@@ -276,7 +290,7 @@ export interface UnifiedFilterDefinition {
   id: string;
   key: string; // 参数 key（如 "time_range", "env", "namespace"）
   name: string; // 显示名称（用户可编辑）
-  type: 'timeRange' | 'dateRange' | 'string'; // 参数类型，用于绑定匹配
+  type: 'timeRange' | 'dateRange' | 'string'; // 参数类型，用于绑定匹配；列表传参由 inputConfig.multiple 表达
   defaultValue?: FilterValue; // 默认值
   order: number; // 显示顺序
   enabled: boolean; // 是否启用

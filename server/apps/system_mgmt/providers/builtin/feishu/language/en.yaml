@@ -1,0 +1,94 @@
+name: Feishu
+description: Feishu integration for login authentication, user sync, notifications, and group collaboration.
+
+templates:
+  base_connection:
+    title: Base Connection
+    groups:
+      credentials:
+        title: App credentials
+        fields:
+          app_id:
+            label: App ID
+          app_secret:
+            label: App Secret
+      endpoints:
+        title: Public endpoints
+        fields:
+          tenant_access_token_url:
+            label: Tenant access token URL
+  login_auth_form:
+    title: Login authentication
+    groups:
+      mapping:
+        title: Field mapping
+        fields:
+          display_name:
+            label: Display name
+          icon:
+            label: Icon
+          description:
+            label: Description
+          external_field:
+            label: External field
+          platform_field:
+            label: Platform field
+          unmatched_user_action:
+            label: Unmatched user action
+          default_group_name:
+            label: Default user group name
+  user_sync_form:
+    title: User sync
+    groups:
+      pull:
+        title: Pull settings
+        fields:
+          root_department_id:
+            label: Root department ID
+          department_id_type:
+            label: Department ID type
+            options:
+              department_id: department_id
+              open_department_id: open_department_id
+          user_id_type:
+            label: User ID type
+            options:
+              user_id: user_id
+              open_id: open_id
+              union_id: union_id
+  im_notification_form:
+    title: IM notification
+    groups:
+      send:
+        title: Send settings
+        fields:
+          mapping_strategy:
+            label: Mapping strategy
+          message_type:
+            label: Message type
+
+capabilities:
+  login_auth:
+    fields:
+      login_auth_authorize_url:
+        label: Authorization URL
+      login_auth_access_token_url:
+        label: Access token URL
+      login_auth_user_info_url:
+        label: User info URL
+  user_sync:
+    fields:
+      user_sync_scopes_url:
+        label: Authorized scopes URL
+      user_sync_departments_batch_url:
+        label: Department batch query URL
+      user_sync_departments_url:
+        label: Department URL
+      user_sync_users_url:
+        label: User URL
+  im_notification:
+    fields:
+      im_notification_users_url:
+        label: User URL
+      im_notification_send_message_url:
+        label: Send message URL

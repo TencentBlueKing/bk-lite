@@ -309,6 +309,8 @@
     "fileUpload": "文件上传",
     "fileUploadDrag": "点击或拖拽文件到此处上传",
     "fileUploadHint": "支持上传文件或压缩包，单个文件不超过 500MB",
+    "reuploadRequired": "需重新上传",
+    "reuploadFileHint": "重新执行时需重新选择并上传原文件",
     "fileDistTargetPath": "目标路径",
     "fileDistTargetPathPlaceholder": "/etc/nginx/",
     "fileDistTargetPathHint": "文件将被分发到目标主机的此路径",

@@ -1,12 +1,8 @@
-import logging
-
-from django.core.management import BaseCommand
-from django.db import transaction
-
+from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.permission_cache import clear_users_permission_cache
 from apps.system_mgmt.models import Group, User
-
-logger = logging.getLogger(__name__)
+from django.core.management import BaseCommand
+from django.db import transaction
 
 
 class Command(BaseCommand):

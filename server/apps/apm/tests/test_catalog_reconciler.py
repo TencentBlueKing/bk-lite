@@ -4,7 +4,7 @@ import pytest
 from django.utils import timezone
 
 from apps.apm.adapters import InMemoryMetricStore, TelemetryStoreUnavailable
-from apps.apm.models import ApmServiceInstance
+from apps.apm.models import ApmDeploymentEvent, ApmServiceInstance
 from apps.apm.services import DjangoTelemetryCatalogService, TelemetryCatalogReconciler
 from apps.apm.services.contracts import CatalogDiscovery, InstanceActivity
 from apps.apm.tests.helpers import create_application
@@ -40,6 +40,7 @@ def test_reconciler_keeps_instances_distinct_and_reports_missing_identity():
     assert result.discovered_instances == 2
     assert result.missing_instance_identities == 1
     assert set(ApmServiceInstance.objects.values_list("instance_id", flat=True)) == {"pod-a", "pod-b"}
+    assert list(ApmDeploymentEvent.objects.values_list("version", "status")) == [("1.2.3", "success")]
 
 
 def test_missing_instance_identity_still_counts_the_discovered_service():
@@ -115,51 +116,65 @@ def test_reconciler_skips_metrics_for_unknown_applications():
     assert list(ApmServiceInstance.objects.values_list("instance_id", flat=True)) == ["live-pod"]
 
 
-def test_reconciler_does_not_archive_when_victoria_traces_query_fails(mocker):
+def test_reconciler_does_not_mutate_instance_lifecycle_when_victoria_traces_query_fails(mocker):
     store = mocker.Mock()
     store.instance_activity.side_effect = TelemetryStoreUnavailable("VictoriaTraces unavailable")
     catalog = mocker.Mock()
+    deployments = mocker.Mock()
 
     with pytest.raises(TelemetryStoreUnavailable):
-        TelemetryCatalogReconciler(store, catalog).reconcile(observed_at=timezone.now())
+        TelemetryCatalogReconciler(store, catalog, deployments).reconcile(observed_at=timezone.now())
 
     catalog.discover.assert_not_called()
-    catalog.archive_stale.assert_not_called()
+    deployments.record.assert_not_called()
 
 
-def test_stale_instances_archive_and_new_activity_unarchives_history():
+def test_deployment_record_failure_does_not_roll_back_catalog_discovery(mocker):
+    observed_at = timezone.now()
+    create_application("shop", (10,))
+    deployments = mocker.Mock()
+    deployments.record.side_effect = RuntimeError("deploy table down")
+
+    with pytest.raises(RuntimeError, match="deploy table down"):
+        TelemetryCatalogReconciler(
+            InMemoryMetricStore(activities=[_activity("shop", "pod-a", observed_at)]),
+            deployments=deployments,
+        ).reconcile(observed_at=observed_at)
+
+    assert ApmServiceInstance.objects.filter(instance_id="pod-a").exists()
+
+
+def test_stale_instances_remain_silent_metadata_and_new_activity_reactivates_them():
     observed_at = timezone.now()
     create_application("shop", (10,))
     metric_store = InMemoryMetricStore(activities=[_activity("shop", "pod-old", observed_at - timedelta(days=8))])
     reconciler = TelemetryCatalogReconciler(metric_store)
     reconciler.reconcile(observed_at=observed_at - timedelta(days=8))
 
-    archived = reconciler.reconcile(observed_at=observed_at)
+    reconciler.reconcile(observed_at=observed_at)
     instance = ApmServiceInstance.objects.get(instance_id="pod-old")
-    assert archived.archived_instances == archived.archived_services == 1
-    assert instance.archived_at == observed_at
+    assert instance.last_seen_at == observed_at - timedelta(days=8)
 
     metric_store.add_activity(_activity("shop", "pod-old", observed_at + timedelta(minutes=1)))
     reconciler.reconcile(observed_at=observed_at + timedelta(minutes=1))
     instance.refresh_from_db()
     instance.service.refresh_from_db()
-    assert instance.archived_at is None
     assert instance.service.archived_at is None
     assert ApmServiceInstance.objects.count() == 1
 
 
-def test_manual_archives_survive_new_activity():
+def test_manual_service_archive_survives_new_activity():
     observed_at = timezone.now()
     create_application("shop", (10,))
     catalog = DjangoTelemetryCatalogService()
     discovered = catalog.discover(CatalogDiscovery("shop", "checkout", "pod-manual", "production", seen_at=observed_at))
     catalog.archive_service(discovered.service.id, reason="manual", actor="tester")
-    catalog.archive_instance(discovered.instance.id, reason="manual", actor="tester")
 
     catalog.discover(CatalogDiscovery("shop", "checkout", "pod-manual", "production", seen_at=observed_at + timedelta(minutes=1)))
     discovered.service.refresh_from_db()
     discovered.instance.refresh_from_db()
-    assert discovered.service.archive_reason == discovered.instance.archive_reason == "manual"
+    assert discovered.service.archive_reason == "manual"
+    assert discovered.instance.last_seen_at == observed_at + timedelta(minutes=1)
 
 
 def test_environment_views_and_instance_status_filters_are_bounded(apm_api_client):

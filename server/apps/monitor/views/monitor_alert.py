@@ -21,6 +21,7 @@ from apps.monitor.services.chart_unit import convert_snapshots_copy, resolve_cha
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.pagination import parse_page_params
+from apps.monitor.utils.user_display import enrich_alerts_notice_users_display
 from config.drf.pagination import CustomPageNumberPagination
 
 
@@ -115,6 +116,48 @@ class AlertPermissionMixin:
         accessible_policy_ids = self._get_all_accessible_policy_ids(request)
         return alert_obj.policy_id in accessible_policy_ids
 
+    def _build_policy_permission_map(self, request, policies):
+        """为告警列表补充每条策略的实例权限，供前端编辑按钮门控。"""
+        if not policies:
+            return {}
+
+        if request.user.is_superuser:
+            return {
+                policy.id: PermissionConstants.DEFAULT_PERMISSION for policy in policies
+            }
+
+        scope = self._get_data_scope(request)
+        permissions_result = get_permissions_rules(
+            request.user,
+            scope.current_team,
+            "monitor",
+            PermissionConstants.POLICY_MODULE,
+            include_children=scope.include_children,
+        )
+        if not isinstance(permissions_result, dict):
+            return {}
+
+        policy_permissions = permissions_result.get("data", {})
+        cur_team = permissions_result.get("team", [])
+        if not isinstance(policy_permissions, dict) or not isinstance(cur_team, list):
+            return {}
+
+        permission_map = {}
+        for policy_obj in policies:
+            monitor_object_id = str(policy_obj.monitor_object_id)
+            teams = {
+                org.organization for org in policy_obj.policyorganization_set.all()
+            }
+            permissions = get_instance_permissions(
+                monitor_object_id,
+                policy_obj.id,
+                teams,
+                policy_permissions,
+                cur_team,
+            )
+            permission_map[policy_obj.id] = permissions
+        return permission_map
+
 
 class MonitorAlertViewSet(
     AlertPermissionMixin,
@@ -186,18 +229,16 @@ class MonitorAlertViewSet(
 
         # 将策略和实例数据映射到字典中
         policy_dict = {policy.id: policy for policy in policies}
-
-        # # 如果有权限规则，则添加到数据中
-        # inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
+        policy_permission_map = self._build_policy_permission_map(request, policies)
 
         # 补充策略和实例到每个 alert 中
 
         for alert in results:
-            # # 补充权限信息
-            # if alert["policy_id"] in inst_permission_map:
-            #     alert["permission"] = inst_permission_map[alert["policy_id"]]
-            # else:
-            #     alert["permission"] = DEFAULT_PERMISSION
+            policy_id = alert["policy_id"]
+            if policy_id in policy_permission_map:
+                alert["policy_permission"] = policy_permission_map[policy_id]
+            elif policy_id:
+                alert["policy_permission"] = PermissionConstants.DEFAULT_PERMISSION
 
             # 补充instance_id_values
 
@@ -206,45 +247,61 @@ class MonitorAlertViewSet(
             alert["policy"] = (
                 MonitorPolicySerializer(
                     policy_dict.get(alert["policy_id"]),
-                    context={"data_team_ids": self._get_data_scope(request).data_team_ids},
+                    context={
+                        "data_team_ids": self._get_data_scope(request).data_team_ids,
+                        "filter_organizations": True,
+                    },
                 ).data
                 if alert["policy_id"]
                 else None
             )
+
+        # 通知人字段存的是用户 ID；列表详情共用本页数据，这里补展示名避免前端依赖组织范围 userList
+        enrich_alerts_notice_users_display(results)
 
         # 返回成功响应
         return WebUtils.response_success(dict(count=queryset.count(), results=results))
 
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop("partial", False)
-        instance = self.get_object()
-        old_status = instance.status
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
+        authorized_instance = self.get_object()
 
-        updated_data = serializer.validated_data
-        if updated_data.get("status") == "closed":
-            now = datetime.now(timezone.utc)
-            updated_data["end_event_time"] = now
-            updated_data["operator"] = request.user.username
-            updated_data["operation_logs"] = (instance.operation_logs or []) + [
-                {
-                    "action": "closed",
-                    "reason": "manual",
-                    "operator": request.user.username,
-                    "time": now.isoformat(),
-                }
-            ]
-            # 只有 new → closed 的转换才需要补偿推送，避免重复关闭触发多余的告警中心推送
-            if old_status == "new":
-                updated_data["alert_center_notified"] = False
+        with transaction.atomic():
+            # 权限范围先由 get_object 校验；状态转换必须锁内重读，避免扫描任务与
+            # 两个手工关闭请求都基于同一个旧 new 状态重复落 lifecycle intent。
+            instance = MonitorAlert.objects.select_for_update().get(
+                pk=authorized_instance.pk
+            )
+            # 锁等待期间组织关系、角色或策略归属都可能变化；始终以锁内时刻
+            # 重新走权限过滤，禁止复用过期授权依据。
+            instance = self.get_queryset().get(pk=instance.pk)
+            old_status = instance.status
+            serializer = self.get_serializer(
+                instance, data=request.data, partial=partial
+            )
+            serializer.is_valid(raise_exception=True)
+            updated_data = serializer.validated_data
+            if updated_data.get("status") == "closed":
+                now = datetime.now(timezone.utc)
+                updated_data["end_event_time"] = now
+                updated_data["operator"] = request.user.username
+                updated_data["operation_logs"] = (instance.operation_logs or []) + [
+                    {
+                        "action": "closed",
+                        "reason": "manual",
+                        "operator": request.user.username,
+                        "time": now.isoformat(),
+                    }
+                ]
+                # 只有 new → closed 的转换才需要补偿推送，避免重复关闭触发多余的告警中心推送
+                if old_status == "new":
+                    updated_data["alert_center_notified"] = False
 
-            # 基线清理/刷新 与 告警 status 写库 必须在同一事务中。
-            # 否则 perform_update 失败时 baseline 已删/已刷,下次扫描会再次 new 一条
-            # 一模一样的 no_data 告警，相当于「用户手动关了又自动重开」(issue #4041)。
-            # 注意:refresh() 内部含 VM scan,事务不宜过长——失败 → 整段回滚即满足需求。
-            if instance.alert_type == "no_data" and instance.metric_instance_id:
-                with transaction.atomic():
+                # 基线清理/刷新 与 告警 status 写库 必须在同一事务中。
+                # 否则 perform_update 失败时 baseline 已删/已刷,下次扫描会再次 new 一条
+                # 一模一样的 no_data 告警，相当于「用户手动关了又自动重开」(issue #4041)。
+                # 注意:refresh() 内部含 VM scan,事务不宜过长——失败 → 整段回滚即满足需求。
+                if instance.alert_type == "no_data" and instance.metric_instance_id:
                     update_baseline = request.data.get("update_baseline", False)
                     if update_baseline:
                         policy = MonitorPolicy.objects.filter(id=instance.policy_id).first()
@@ -256,21 +313,30 @@ class MonitorAlertViewSet(
                             metric_instance_id=instance.metric_instance_id,
                         ).delete()
                     self.perform_update(serializer)
+                else:
+                    self.perform_update(serializer)
             else:
                 self.perform_update(serializer)
-        else:
-            self.perform_update(serializer)
-        instance.refresh_from_db()
+            instance.refresh_from_db()
 
-        if old_status == "new" and instance.status == "closed":
-            policy = MonitorPolicy.objects.filter(id=instance.policy_id).first()
-            if policy:
-                AlertLifecycleNotifier(policy).notify_alerts(
-                    [instance],
-                    action="closed",
-                    operator=request.user.username,
-                    reason="manual",
-                )
+            if old_status == "new" and instance.status == "closed":
+                policy = MonitorPolicy.objects.filter(id=instance.policy_id).first()
+                if policy:
+                    notifier = AlertLifecycleNotifier(policy)
+                    notifier.enqueue_alert_center_deliveries(
+                        [instance],
+                        "closed",
+                        operator=request.user.username,
+                        reason="manual",
+                    )
+                    transaction.on_commit(
+                        lambda: notifier.notify_alerts(
+                            [instance],
+                            action="closed",
+                            operator=request.user.username,
+                            reason="manual",
+                        )
+                    )
 
         if getattr(instance, "_prefetched_objects_cache", None):
             instance._prefetched_objects_cache = {}

@@ -7,6 +7,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // Bundle core from source so browser builds stay independent of core dist/.
+      '@webchat/core': path.resolve(__dirname, '../webchat-core/src/index.ts'),
     },
   },
   define: {

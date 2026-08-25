@@ -3,6 +3,7 @@ from rest_framework import serializers
 from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstanceStatusChoices
 from apps.system_mgmt.providers import RuntimeApplicationService
+from apps.system_mgmt.providers.pack_i18n import resolve_bound_instance_provider_name
 from apps.system_mgmt.services import im_notification_service
 from apps.system_mgmt.services.capability_contract_service import CapabilityContractError, validate_im_notification_contract
 from apps.system_mgmt.services.capability_contract_service import get_integration_capability_availability
@@ -32,6 +33,7 @@ class IMNotificationUserMappingSerializer(serializers.ModelSerializer):
 class IMNotificationChannelSerializer(UsernameSerializer):
     integration_instance_name = serializers.SerializerMethodField()
     provider_key = serializers.SerializerMethodField()
+    provider_name = serializers.SerializerMethodField()
     dependency_status = serializers.SerializerMethodField()
     display_status = serializers.SerializerMethodField()
     display_sync_status = serializers.SerializerMethodField()
@@ -54,6 +56,9 @@ class IMNotificationChannelSerializer(UsernameSerializer):
     
     def get_provider_key(self, obj):
         return obj.integration_instance.provider_key if obj.integration_instance_id else ""
+
+    def get_provider_name(self, obj):
+        return resolve_bound_instance_provider_name(obj, self.context.get("request"))
 
     def get_dependency_status(self, obj):
         if not obj.integration_instance_id:

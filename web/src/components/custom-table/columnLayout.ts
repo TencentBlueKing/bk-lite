@@ -30,7 +30,10 @@ export const resolveColumnLayout = ({
 }: ResolveColumnLayoutOptions) => {
   const widths = columns.map((column, index) => {
     const columnKey = getColumnKey(column, index);
-    return columnWidths[columnKey] || column.width || DEFAULT_COL_WIDTH;
+    if (columnWidths[columnKey]) return columnWidths[columnKey];
+    if (column.width !== undefined) return column.width;
+    // autoScrollX 需要可累加的像素宽；关闭时保留未设 width 的列，交给表格吃剩余宽度
+    return autoScrollX ? DEFAULT_COL_WIDTH : undefined;
   });
 
   return {

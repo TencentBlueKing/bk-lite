@@ -866,6 +866,70 @@ def test_resolve_k8s_target_from_alert_marks_missing_data_when_unresolved():
     assert "resource_type_or_name" in payload["missing_data"]
 
 
+def test_resolve_k8s_target_from_alert_reads_flattened_pod_name():
+    from unittest.mock import patch
+
+    from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
+
+    pods_json = json.dumps([{"name": "pod1005", "namespace": "prod", "phase": "Running"}])
+    with patch("apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_pods") as list_pods, patch(
+        "apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_events"
+    ) as list_events:
+        list_pods.invoke.return_value = pods_json
+        list_events.invoke.return_value = json.dumps([])
+        result = resolve_k8s_target_from_alert.invoke(
+            {
+                "normalized_alert": {
+                    "pod_name": "pod1005",
+                    "metric": "cpu_utilization",
+                    "threshold": "90%",
+                    "severity": "warning",
+                }
+            }
+        )
+
+    payload = json.loads(result)
+    assert payload["resolved"] is True
+    assert payload["pod_name"] == "pod1005"
+    assert payload["namespace"] == "prod"
+
+
+def test_resolve_k8s_target_from_alert_surfaces_kubeconfig_error():
+    from unittest.mock import patch
+
+    from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
+
+    with patch(
+        "apps.opspilot.metis.llm.tools.kubernetes.utils.prepare_context",
+        side_effect=Exception("无法加载 Kubernetes 配置: Invalid base64-encoded string. 请检查 kubeconfig 配置内容或集群连接。"),
+    ):
+        result = resolve_k8s_target_from_alert.invoke(
+            {"normalized_alert": {"pod_name": "pod1005"}},
+            config={"configurable": {"kubeconfig_data": "not-valid-kubeconfig"}},
+        )
+
+    payload = json.loads(result)
+    assert payload["resolved"] is False
+    assert "无法加载 Kubernetes 配置" in payload["error"]
+
+
+def test_resolve_k8s_target_from_alert_surfaces_lookup_error_payload():
+    from unittest.mock import patch
+
+    from apps.opspilot.metis.llm.tools.kubernetes.data_collection import resolve_k8s_target_from_alert
+
+    with patch("apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_pods") as list_pods, patch(
+        "apps.opspilot.metis.llm.tools.kubernetes.resources.list_kubernetes_events"
+    ) as list_events:
+        list_pods.invoke.return_value = json.dumps({"error": "获取Pod列表失败: (401)\nReason: Unauthorized"})
+        list_events.invoke.return_value = json.dumps([])
+        result = resolve_k8s_target_from_alert.invoke({"normalized_alert": {"labels": {"pod": "pod1005"}}})
+
+    payload = json.loads(result)
+    assert payload["resolved"] is False
+    assert "401" in payload["error"] or "Unauthorized" in payload["error"]
+
+
 def test_resolve_k8s_target_from_alert_looks_up_namespace_via_pods():
     from unittest.mock import patch
 

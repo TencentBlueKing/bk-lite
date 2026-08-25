@@ -2,30 +2,34 @@
 目标检测相关的 Celery 任务
 """
 
-from celery import shared_task
-from celery.exceptions import SoftTimeLimitExceeded
-from django.utils import timezone
-from django.db import transaction
-from django_minio_backend import MinioBackend, iso_date_prefix
-
-import tempfile
-import zipfile
 import json
 import shutil
-import yaml
+import tempfile
+import zipfile
 from pathlib import Path
-from collections import defaultdict
+
+import yaml
+from celery import shared_task
+from celery.exceptions import SoftTimeLimitExceeded
+from django_minio_backend import MinioBackend, iso_date_prefix
 
 from apps.core.logger import mlops_logger as logger
-from apps.mlops.tasks.base import mark_release_as_failed
-
+from apps.mlops.tasks.base import (
+    DatasetReleaseAttempt,
+    DatasetReleaseBusy,
+    build_publish_object_name,
+    claim_dataset_release,
+    finalize_uploaded_dataset_release,
+    get_storage_display_url,
+    mark_release_as_failed,
+    prepare_claim_storage,
+    save_dataset_release_object,
+)
 
 ZIP_COPY_CHUNK_SIZE = 64 * 1024
 
 
-def prepare_class_mappings(
-    train_meta: dict, val_meta: dict, test_meta: dict | None = None
-):
+def prepare_class_mappings(train_meta: dict, val_meta: dict, test_meta: dict | None = None):
     """
     准备全局classes和各split的映射表
 
@@ -100,10 +104,7 @@ def prepare_class_mappings(
                         "val_name": class_name,
                     }
                 )
-                logger.warning(
-                    f"类别名称冲突: class_id={class_id}, "
-                    f"train='{global_classes_dict[class_id]}', val='{class_name}'"
-                )
+                logger.warning(f"类别名称冲突: class_id={class_id}, " f"train='{global_classes_dict[class_id]}', val='{class_name}'")
         else:
             # val 中有新的 class_id，添加到全局字典
             global_classes_dict[class_id] = class_name
@@ -121,10 +122,7 @@ def prepare_class_mappings(
                             "test_name": class_name,
                         }
                     )
-                    logger.warning(
-                        f"类别名称冲突: class_id={class_id}, "
-                        f"已有='{global_classes_dict[class_id]}', test='{class_name}'"
-                    )
+                    logger.warning(f"类别名称冲突: class_id={class_id}, " f"已有='{global_classes_dict[class_id]}', test='{class_name}'")
             else:
                 # test 中有新的 class_id
                 global_classes_dict[class_id] = class_name
@@ -138,13 +136,9 @@ def prepare_class_mappings(
             class_id = conflict["class_id"]
             expected_name = conflict.get("train_name") or conflict.get("existing_name")
             actual_name = conflict.get("val_name") or conflict.get("test_name")
-            conflict_messages.append(
-                f"class_id={class_id}: expected='{expected_name}', actual='{actual_name}'"
-            )
+            conflict_messages.append(f"class_id={class_id}: expected='{expected_name}', actual='{actual_name}'")
 
-        raise ValueError(
-            "类别名称冲突，无法发布数据集版本: " + "; ".join(conflict_messages)
-        )
+        raise ValueError("类别名称冲突，无法发布数据集版本: " + "; ".join(conflict_messages))
 
     # 3. 按 class_id 排序，构建全局类别列表
     # 处理可能的 class_id 不连续情况（如 COCO 删除了某些类别）
@@ -158,9 +152,7 @@ def prepare_class_mappings(
             # class_id 不连续，填充占位符
             placeholder = f"unused_class_{i}"
             global_classes.append(placeholder)
-            logger.warning(
-                f"class_id={i} 在所有数据集中都不存在，填充为 '{placeholder}'"
-            )
+            logger.warning(f"class_id={i} 在所有数据集中都不存在，填充为 '{placeholder}'")
 
     # 4. 构建恒等映射 {0: 0, 1: 1, ..., N: N}
     # 由于不再进行稀疏→密集转换，所有 class_id 保持不变
@@ -179,19 +171,21 @@ def prepare_class_mappings(
     # 6. 日志输出
     logger.info(f"类别合并完成: 全局类别总数={num_classes}")
     logger.info(f"全局classes: {global_classes}")
-    logger.info(f"映射策略: 恒等映射（保持原始 class_id）")
+    logger.info("映射策略: 恒等映射（保持原始 class_id）")
     logger.info(f"映射示例: {dict(list(identity_mapping.items())[:5])}")
 
     return global_classes, train_mapping, val_mapping, test_mapping, warnings
 
 
 @shared_task(
+    bind=True,
+    max_retries=None,
     soft_time_limit=7200,  # 120 分钟（图片处理较慢）
     time_limit=7260,
     acks_late=True,
     reject_on_worker_lost=True,
 )
-def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_file_id):
+def publish_dataset_release_async(self, release_id, train_file_id, val_file_id, test_file_id):
     """
     异步发布目标检测数据集版本（YOLO 格式）
 
@@ -205,46 +199,37 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
         dict: 执行结果
     """
     release = None
+    attempt = DatasetReleaseAttempt()
 
     try:
-        from django.db import transaction
-        from apps.mlops.models.object_detection import (
+        from apps.mlops.models.object_detection import ObjectDetectionDatasetRelease, ObjectDetectionTrainData
+
+        claim = claim_dataset_release(
             ObjectDetectionDatasetRelease,
-            ObjectDetectionTrainData,
+            release_id,
+            attempt=attempt,
         )
-
-        # 使用行锁防止并发执行
-        with transaction.atomic():
-            release = ObjectDetectionDatasetRelease.objects.select_for_update().get(
-                id=release_id
+        storage = prepare_claim_storage(claim)
+        if not claim.acquired:
+            return {"result": False, "reason": claim.reason}
+        release = claim.release
+        execution_token = claim.owner_token
+        cleanup_owner_token = execution_token or attempt.candidate_token
+        if storage is None:
+            storage = MinioBackend(
+                bucket_name="munchkin-public",
+                replace_existing=execution_token is not None,
             )
-
-            # 防止重复执行:检查当前状态
-            if release.status in ["published", "failed"]:
-                logger.info(
-                    f"任务已结束 - Release ID: {release_id}, 状态: {release.status}, 跳过执行"
-                )
-                return {"result": False, "reason": f"Task already {release.status}"}
-
-            # 更新状态为processing
-            release.status = "processing"
-            release.save(update_fields=["status"])
 
         dataset = release.dataset
         version = release.version
 
         # 获取训练数据对象
-        train_obj = ObjectDetectionTrainData.objects.get(
-            id=train_file_id, dataset=dataset
-        )
+        train_obj = ObjectDetectionTrainData.objects.get(id=train_file_id, dataset=dataset)
         val_obj = ObjectDetectionTrainData.objects.get(id=val_file_id, dataset=dataset)
-        test_obj = ObjectDetectionTrainData.objects.get(
-            id=test_file_id, dataset=dataset
-        )
+        test_obj = ObjectDetectionTrainData.objects.get(id=test_file_id, dataset=dataset)
 
-        logger.info(
-            f"开始发布目标检测数据集 - Dataset: {dataset.id}, Version: {version}, Release ID: {release_id}"
-        )
+        logger.info(f"开始发布目标检测数据集 - Dataset: {dataset.id}, Version: {version}, Release ID: {release_id}")
 
         # 创建临时目录
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -274,9 +259,7 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
                     val_obj.metadata,
                     test_obj.metadata if test_obj else None,
                 )
-                logger.info(
-                    f"全局classes准备完成: {len(global_classes)} 个类别 - {global_classes}"
-                )
+                logger.info(f"全局classes准备完成: {len(global_classes)} 个类别 - {global_classes}")
             except ValueError as e:
                 error_msg = f"准备class映射表失败: {e}"
                 logger.error(error_msg)
@@ -305,12 +288,8 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
                     temp_extract = temp_path / f"{split_name}_extract"
                     temp_extract.mkdir()
                     temp_zip = temp_path / f"{split_name}_temp.zip"
-                    with data_obj.train_data.open("rb") as source, open(
-                        temp_zip, "wb"
-                    ) as target:
-                        shutil.copyfileobj(
-                            source, target, length=ZIP_COPY_CHUNK_SIZE
-                        )
+                    with data_obj.train_data.open("rb") as source, open(temp_zip, "wb") as target:
+                        shutil.copyfileobj(source, target, length=ZIP_COPY_CHUNK_SIZE)
 
                     with zipfile.ZipFile(temp_zip, "r") as zipf:
                         zipf.extractall(temp_extract)
@@ -343,9 +322,7 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
                     statistics["total_images"] += split_stats["total"]
                     statistics["classes"].update(split_stats["classes"])
 
-                    logger.info(
-                        f"{split_name} 处理完成: {split_stats['total']} 张图片, {len(split_stats['classes'])} 个类别"
-                    )
+                    logger.info(f"{split_name} 处理完成: {split_stats['total']} 张图片, {len(split_stats['classes'])} 个类别")
 
             # 使用全局classes（已经在prepare_class_mappings中处理好顺序）
             statistics["classes"] = global_classes
@@ -356,15 +333,11 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
                 "train": "images/train",
                 "val": "images/val",
                 "test": "images/test",
-                "names": {
-                    idx: class_name for idx, class_name in enumerate(global_classes)
-                },
+                "names": {idx: class_name for idx, class_name in enumerate(global_classes)},
             }
 
             with open(yolo_root / "data.yaml", "w", encoding="utf-8") as f:
-                yaml.dump(
-                    data_yaml_content, f, allow_unicode=True, default_flow_style=False
-                )
+                yaml.dump(data_yaml_content, f, allow_unicode=True, default_flow_style=False)
 
             # 生成完整的 metadata
             dataset_metadata = {
@@ -406,32 +379,45 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
             logger.info(f"数据集打包完成: {zip_filename}, 大小: {zip_size_mb:.2f} MB")
 
             # 上传 ZIP 文件到 MinIO
-            storage = MinioBackend(bucket_name="munchkin-public")
-
             with open(zip_path, "rb") as f:
-                date_prefixed_path = iso_date_prefix(dataset, zip_filename)
-                zip_object_path = (
-                    f"object_detection_datasets/{dataset.id}/{date_prefixed_path}"
+                object_name = build_publish_object_name(zip_filename, execution_token)
+                date_prefixed_path = iso_date_prefix(dataset, object_name)
+                zip_object_path = f"object_detection_datasets/{dataset.id}/{date_prefixed_path}"
+
+                saved_path = save_dataset_release_object(
+                    storage,
+                    f,
+                    zip_object_path,
+                    ObjectDetectionDatasetRelease,
+                    release_id,
+                    execution_token,
+                    cleanup_owner_token,
                 )
+                if saved_path is None:
+                    logger.warning(
+                        "目标检测发布上传前 owner 已失效 - Release ID: %s",
+                        release_id,
+                    )
+                    return {"result": False, "reason": "Stale execution"}
 
-                saved_path = storage.save(zip_object_path, f)
-                zip_url = storage.url(saved_path)
+            finalized = finalize_uploaded_dataset_release(
+                storage,
+                saved_path,
+                ObjectDetectionDatasetRelease,
+                release_id,
+                execution_token,
+                file_size=zip_size,
+                metadata=dataset_metadata,
+                cleanup_owner_token=cleanup_owner_token,
+            )
+            if not finalized:
+                logger.warning("陈旧目标检测发布结果已丢弃 - Release ID: %s", release_id)
+                return {"result": False, "reason": "Stale execution"}
 
+            zip_url = get_storage_display_url(storage, saved_path)
             logger.info(f"数据集上传成功: {zip_url}")
 
-            # 更新发布记录
-            with transaction.atomic():
-                release.status = "published"
-                release.file_size = zip_size
-                release.metadata = dataset_metadata
-                release.dataset_file.name = saved_path
-                release.save(
-                    update_fields=["status", "file_size", "metadata", "dataset_file"]
-                )
-
-            logger.info(
-                f"目标检测数据集发布成功 - Release ID: {release_id}, Version: {version}"
-            )
+            logger.info(f"目标检测数据集发布成功 - Release ID: {release_id}, Version: {version}")
 
             return {
                 "result": True,
@@ -441,18 +427,35 @@ def publish_dataset_release_async(release_id, train_file_id, val_file_id, test_f
                 "metadata": dataset_metadata,
             }
 
+    except DatasetReleaseBusy as exc:
+        raise self.retry(exc=exc, countdown=exc.retry_after, max_retries=None)
+
     except SoftTimeLimitExceeded:
         logger.error(f"任务超时 - Release ID: {release_id}")
-        from apps.mlops.models.object_detection import ObjectDetectionDatasetRelease
+        if attempt.can_mark_failure():
+            from apps.mlops.models.object_detection import ObjectDetectionDatasetRelease
 
-        mark_release_as_failed(ObjectDetectionDatasetRelease, release_id, "任务超时")
+            mark_release_as_failed(
+                ObjectDetectionDatasetRelease,
+                release_id,
+                "任务超时",
+                owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
+            )
         return {"result": False, "reason": "Task timeout"}
 
     except Exception as e:
         logger.error(f"数据集发布失败: {str(e)}", exc_info=True)
-        from apps.mlops.models.object_detection import ObjectDetectionDatasetRelease
+        if attempt.can_mark_failure():
+            from apps.mlops.models.object_detection import ObjectDetectionDatasetRelease
 
-        mark_release_as_failed(ObjectDetectionDatasetRelease, release_id, str(e))
+            mark_release_as_failed(
+                ObjectDetectionDatasetRelease,
+                release_id,
+                str(e),
+                owner_token=attempt.owner_token,
+                cleanup_owner_token=attempt.candidate_token,
+            )
         return {"result": False, "error": str(e)}
 
 
@@ -517,9 +520,7 @@ def _reorganize_yolo_data(
         raise ValueError(error_msg)
 
     if not isinstance(labels_map, dict):
-        error_msg = (
-            f"metadata.labels 必须是字典类型，实际类型: {type(labels_map).__name__}"
-        )
+        error_msg = f"metadata.labels 必须是字典类型，实际类型: {type(labels_map).__name__}"
         logger.error(error_msg)
         raise ValueError(error_msg)
 
@@ -529,9 +530,7 @@ def _reorganize_yolo_data(
         raise ValueError(error_msg)
 
     if not isinstance(classes, list):
-        error_msg = (
-            f"metadata.classes 必须是列表类型，实际类型: {type(classes).__name__}"
-        )
+        error_msg = f"metadata.classes 必须是列表类型，实际类型: {type(classes).__name__}"
         logger.error(error_msg)
         raise ValueError(error_msg)
 
@@ -575,9 +574,7 @@ def _reorganize_yolo_data(
                 annotations = labels_map[img_name]
 
                 if not isinstance(annotations, list):
-                    logger.warning(
-                        f"图片 '{img_name}' 的标注不是列表类型（{type(annotations).__name__}），跳过"
-                    )
+                    logger.warning(f"图片 '{img_name}' 的标注不是列表类型（{type(annotations).__name__}），跳过")
                     label_file = labels_dir / f"{img_file.stem}.txt"
                     label_file.touch()
                     continue
@@ -589,9 +586,7 @@ def _reorganize_yolo_data(
                     for idx, ann in enumerate(annotations):
                         try:
                             if not isinstance(ann, dict):
-                                logger.warning(
-                                    f"图片 '{img_name}' 的第 {idx + 1} 个标注不是字典类型，跳过"
-                                )
+                                logger.warning(f"图片 '{img_name}' 的第 {idx + 1} 个标注不是字典类型，跳过")
                                 continue
 
                             # 提取标注字段
@@ -603,38 +598,26 @@ def _reorganize_yolo_data(
 
                             # 验证必需字段
                             if class_id is None:
-                                logger.warning(
-                                    f"图片 '{img_name}' 的第 {idx + 1} 个标注缺少 class_id，跳过"
-                                )
+                                logger.warning(f"图片 '{img_name}' 的第 {idx + 1} 个标注缺少 class_id，跳过")
                                 continue
 
-                            if any(
-                                v is None for v in [x_center, y_center, width, height]
-                            ):
-                                logger.warning(
-                                    f"图片 '{img_name}' 的第 {idx + 1} 个标注缺少坐标字段，跳过"
-                                )
+                            if any(v is None for v in [x_center, y_center, width, height]):
+                                logger.warning(f"图片 '{img_name}' 的第 {idx + 1} 个标注缺少坐标字段，跳过")
                                 continue
 
                             # 验证 class_id 范围
                             if not isinstance(class_id, int) or class_id < 0:
-                                logger.warning(
-                                    f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_id ({class_id}) 无效，跳过"
-                                )
+                                logger.warning(f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_id ({class_id}) 无效，跳过")
                                 continue
 
                             if class_id >= len(global_classes):
-                                logger.warning(
-                                    f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_id ({class_id}) 超出全局类别范围 [0, {len(global_classes) - 1}]，跳过"
-                                )
+                                logger.warning(f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_id ({class_id}) 超出全局类别范围 [0, {len(global_classes) - 1}]，跳过")
                                 continue
 
                             # 应用class_id映射：本地→全局
                             local_class_id = class_id
                             if local_class_id not in class_id_mapping:
-                                logger.warning(
-                                    f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_id ({local_class_id}) 不在映射表中，跳过"
-                                )
+                                logger.warning(f"图片 '{img_name}' 的第 {idx + 1} 个标注: class_id ({local_class_id}) 不在映射表中，跳过")
                                 continue
 
                             global_class_id = class_id_mapping[local_class_id]
@@ -646,21 +629,13 @@ def _reorganize_yolo_data(
                                 "width": width,
                                 "height": height,
                             }
-                            invalid_coords = [
-                                k
-                                for k, v in coords.items()
-                                if not isinstance(v, (int, float)) or v < 0 or v > 1
-                            ]
+                            invalid_coords = [k for k, v in coords.items() if not isinstance(v, (int, float)) or v < 0 or v > 1]
                             if invalid_coords:
-                                logger.warning(
-                                    f"图片 '{img_name}' 的第 {idx + 1} 个标注: 坐标值 {invalid_coords} 超出范围 [0, 1]，跳过"
-                                )
+                                logger.warning(f"图片 '{img_name}' 的第 {idx + 1} 个标注: 坐标值 {invalid_coords} 超出范围 [0, 1]，跳过")
                                 continue
 
                             # YOLO 格式：global_class_id x_center y_center width height
-                            f.write(
-                                f"{global_class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n"
-                            )
+                            f.write(f"{global_class_id} {x_center:.6f} {y_center:.6f} {width:.6f} {height:.6f}\n")
                             valid_annotations += 1
                             annotation_count += 1
 
@@ -675,9 +650,7 @@ def _reorganize_yolo_data(
                             )
                             continue
 
-                logger.debug(
-                    f"生成标注: {label_file.name} ({valid_annotations}/{len(annotations)} 个有效目标)"
-                )
+                logger.debug(f"生成标注: {label_file.name} ({valid_annotations}/{len(annotations)} 个有效目标)")
             else:
                 # 无标注时生成空文件（符合 YOLO 规范）
                 label_file = labels_dir / f"{img_file.stem}.txt"
@@ -691,10 +664,7 @@ def _reorganize_yolo_data(
             skipped_count += 1
             continue
 
-    logger.info(
-        f"数据重组完成: 成功处理 {processed_count} 张图片, 跳过 {skipped_count} 张, "
-        f"生成 {annotation_count} 个标注框, 发现 {len(classes_found)} 个类别"
-    )
+    logger.info(f"数据重组完成: 成功处理 {processed_count} 张图片, 跳过 {skipped_count} 张, " f"生成 {annotation_count} 个标注框, 发现 {len(classes_found)} 个类别")
 
     if total == 0:
         error_msg = "没有成功处理任何图片"

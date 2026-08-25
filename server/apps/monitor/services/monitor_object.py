@@ -4,6 +4,8 @@ import time
 import uuid
 
 from django.db import transaction
+from django.db.models import Q
+from django.db.models.fields.json import KeyTextTransform
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
@@ -18,6 +20,7 @@ from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.display_fields_metrics import display_field_key, extract_field_bindings, extract_metric_bindings
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 
 # 实例 status 映射短 TTL 缓存，缓解列表/轮询重复打 VM。
 _INSTANCE_STATUS_CACHE_TTL_SECONDS = 15.0
@@ -191,7 +194,14 @@ class MonitorObjectService:
         if instance_id:
             qs = qs.filter(id=instance_id)
         if name:
-            qs = qs.filter(name__icontains=name)
+            # 与列表「IP信息」/ ${resource_ip} 同源：summary_facts['asset.ip'] 优先字段。
+            qs = qs.annotate(
+                _asset_ip_fact=KeyTextTransform("asset.ip", "summary_facts")
+            ).filter(
+                Q(name__icontains=name)
+                | Q(ip__icontains=name)
+                | Q(_asset_ip_fact__icontains=name)
+            )
 
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
         if not monitor_obj:
@@ -343,6 +353,42 @@ class MonitorObjectService:
             return False
 
     @staticmethod
+    def _build_field_query(metric_obj, labels_str):
+        """按实例标签过滤条件拼出字段展示列的取数查询。"""
+        query_template = (getattr(metric_obj, "query", "") or "").strip()
+        if "__$labels__" in query_template:
+            return query_template.replace("__$labels__", labels_str)
+        metric_name = (getattr(metric_obj, "name", "") or "").strip()
+        if metric_name:
+            return f"{metric_name}{{{labels_str}}}" if labels_str else metric_name
+        return query_template
+
+    @staticmethod
+    def query_field_label_values(metric_obj, field):
+        """查询该指标全部 series 的 label 取值,返回 {instance_id: field_value}(同实例取最新样本)。
+
+        与 ``_query_metric_field_values`` 的区别是不限定目标实例,供字段展示列的筛选取值与
+        候选项收集复用。
+        """
+        metrics = VictoriaMetricsAPI().query(MonitorObjectService._build_field_query(metric_obj, ""))
+        value_map = {}
+        time_map = {}
+        for metric in metrics.get("data", {}).get("result", []):
+            labels = metric.get("metric", {})
+            field_value = labels.get(field)
+            if field_value in (None, ""):
+                continue
+            parts = [labels.get(key) for key in metric_obj.instance_id_keys]
+            if any(part in (None, "") for part in parts):
+                continue
+            instance_id = str(tuple(str(part) for part in parts))
+            timestamp = metric.get("value", [0])[0]
+            if instance_id not in value_map or timestamp >= time_map.get(instance_id, 0):
+                value_map[instance_id] = field_value
+                time_map[instance_id] = timestamp
+        return value_map
+
+    @staticmethod
     def _query_metric_field_values(metric_obj, target_instances, field):
         """对 target_instances 查询指标,返回 VM label 字段值 {instance_id: field_value}。"""
         target_ids = [parse_instance_id(inst["instance_id"]) for inst in target_instances]
@@ -355,15 +401,7 @@ class MonitorObjectService:
             query_parts.append(f'{key}=~"{values}"')
 
         labels_str = f"{', '.join(query_parts)}"
-        query_template = (getattr(metric_obj, "query", "") or "").strip()
-        if "__$labels__" in query_template:
-            query = query_template.replace("__$labels__", labels_str)
-        else:
-            metric_name = (getattr(metric_obj, "name", "") or "").strip()
-            if metric_name:
-                query = f"{metric_name}{{{labels_str}}}" if labels_str else metric_name
-            else:
-                query = query_template
+        query = MonitorObjectService._build_field_query(metric_obj, labels_str)
         metrics = VictoriaMetricsAPI().query(query)
         target_instance_ids = {inst["instance_id"] for inst in target_instances}
         value_map = {}
@@ -401,15 +439,28 @@ class MonitorObjectService:
         plugin_status_qs = (
             MonitorPlugin.objects.filter(monitor_object=monitor_object_id).exclude(status_query="").values_list("name", "status_query").distinct()
         )
+        plugin_queries = []
         for plugin_name, status_query in plugin_status_qs:
             query = (status_query or "").strip()
             if not query:
                 continue
-            try:
-                resp = VictoriaMetricsAPI().query(query)
-            except Exception:
-                logger.warning("回填展示列时查询插件上报状态失败: plugin=%s", plugin_name, exc_info=True)
+            plugin_queries.append((plugin_name, query))
+
+        vm_api = VictoriaMetricsAPI()
+        responses, errors = run_unique_vm_queries(
+            (query for _, query in plugin_queries),
+            vm_api.query,
+        )
+        for plugin_name, query in plugin_queries:
+            if query in errors:
+                error = errors[query]
+                logger.warning(
+                    "回填展示列时查询插件上报状态失败: plugin=%s",
+                    plugin_name,
+                    exc_info=(type(error), error, error.__traceback__),
+                )
                 continue
+            resp = responses[query]
             reported_primary_ids = {metric["metric"].get("instance_id") for metric in resp.get("data", {}).get("result", [])}
             reported_primary_ids.discard(None)
             if not reported_primary_ids:
@@ -620,6 +671,30 @@ class MonitorObjectService:
                     ["order"],
                     batch_size=DatabaseConstants.MONITOR_OBJECT_BATCH_SIZE,
                 )
+
+    @staticmethod
+    def descendant_object_ids(root_id):
+        """按 parent 关系收集全部后代对象 ID，避免环导致死循环。"""
+        descendant_ids = []
+        frontier = [root_id]
+        seen = {root_id}
+        while frontier:
+            children = list(
+                MonitorObject.objects.filter(parent_id__in=frontier)
+                .exclude(id__in=seen)
+                .values_list("id", flat=True)
+            )
+            descendant_ids.extend(children)
+            seen.update(children)
+            frontier = children
+        return descendant_ids
+
+    @staticmethod
+    def set_object_visibility(obj: MonitorObject, is_visible: bool) -> None:
+        """切换对象可见性，并同步全部子对象，避免父对象隐藏后子对象仍出现在视图中。"""
+        target_ids = [obj.id, *MonitorObjectService.descendant_object_ids(obj.id)]
+        with transaction.atomic():
+            MonitorObject.objects.filter(id__in=target_ids).update(is_visible=is_visible)
 
     @staticmethod
     def update_instance(instance_id, name=None, organizations=None, **extra_fields):

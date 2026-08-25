@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Tooltip, Card, Empty, Segmented } from 'antd';
+import { Tooltip, Card, Segmented } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import {
   AppstoreOutlined,
   BarsOutlined,
@@ -13,6 +14,7 @@ import { useTranslation } from '@/utils/i18n';
 import LineChart from '@/app/monitor/components/charts/lineChart';
 import { TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
 import { Dayjs } from 'dayjs';
+import { useSearchParams } from 'next/navigation';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import {
   SearchPayload,
@@ -30,22 +32,27 @@ import {
   getMetricsMapKey,
   resolveMetricSelection
 } from './searchQueryLogic';
+import { parseSearchTimeQueryParams } from '@/app/monitor/utils/searchTimeQuery';
 
 const SearchView: React.FC = () => {
   const { get } = useApiClient();
   const { t } = useTranslation();
   const { findUnitNameById } = useUnitTransform();
+  const searchParams = useSearchParams();
+  const parsedSearchTime = parseSearchTimeQueryParams(searchParams);
   const queryPanelRef = useRef<QueryPanelRef>(null);
   const [layoutMode, setLayoutMode] = useState<'single' | 'double'>('single');
-  const [timeValues, setTimeValues] = useState<TimeValuesProps>({
-    timeRange: [],
-    originValue: 15
-  });
+  const [timeValues, setTimeValues] = useState<TimeValuesProps>(
+    parsedSearchTime.timeValues
+  );
   const [timeDefaultValue, setTimeDefaultValue] =
-    useState<TimeSelectorDefaultValue>({
-      selectValue: 15,
-      rangePickerVaule: null
-    });
+    useState<TimeSelectorDefaultValue>(() => ({
+      selectValue: parsedSearchTime.selectValue,
+      rangePickerVaule:
+        parsedSearchTime.rangeStart != null && parsedSearchTime.rangeEnd != null
+          ? [dayjs(parsedSearchTime.rangeStart), dayjs(parsedSearchTime.rangeEnd)]
+          : null
+    }));
   const [chartItems, setChartItems] = useState<ChartItem[]>([]);
   const [frequence, setFrequence] = useState<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -332,7 +339,7 @@ const SearchView: React.FC = () => {
             </div>
           ) : (
             <div className="flex items-center justify-center h-full">
-              <Empty description={t('monitor.search.noData')} />
+              <CompactEmptyState description={t('monitor.search.noData')} />
             </div>
           )}
         </div>

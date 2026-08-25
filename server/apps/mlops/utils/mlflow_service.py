@@ -7,20 +7,21 @@ MLflow 工具函数集合
 import os
 import tempfile
 import zipfile
-from typing import BinaryIO, List, Optional, Tuple
 from pathlib import Path
+from typing import BinaryIO, List, Optional
 
 import mlflow
-import pandas as pd
 import numpy as np
+import pandas as pd
 from asgiref.sync import sync_to_async
 from django.http import StreamingHttpResponse
 from django.utils.http import content_disposition_header
+from mlflow.entities import LifecycleStage
+from mlflow.exceptions import MlflowException
 from mlflow.tracking import MlflowClient
 
-from config.components.mlflow import MLFLOW_TRACKER_URL
 from apps.core.logger import mlops_logger as logger
-
+from config.components.mlflow import MLFLOW_TRACKER_URL
 
 # ============ 命名构造工具 ============
 
@@ -164,6 +165,23 @@ def get_run_info(run_id: str) -> object:
     except Exception as e:
         logger.error(f"获取运行信息失败 [run_id: {run_id}]: {e}", exc_info=True)
         raise
+
+
+def run_belongs_to_experiment(experiment_id: str, run_id: str) -> bool:
+    """使用精确 run 查询校验其是否属于指定实验且仍处于 active 生命周期。"""
+    try:
+        run = get_mlflow_client().get_run(run_id)
+    except MlflowException as e:
+        if e.error_code in {"RESOURCE_DOES_NOT_EXIST", "INVALID_PARAMETER_VALUE"}:
+            return False
+        logger.error(
+            f"校验运行归属失败 [实验ID: {experiment_id}, run_id: {run_id}]: {e}",
+            exc_info=True,
+        )
+        raise
+
+    info = getattr(run, "info", None)
+    return str(getattr(info, "experiment_id", "")) == str(experiment_id) and getattr(info, "lifecycle_stage", None) == LifecycleStage.ACTIVE
 
 
 def get_run_metrics(run_id: str, filter_system: bool = True) -> List[str]:
@@ -356,7 +374,7 @@ def resolve_model_uri(model_name: str, version: str = "latest") -> str:
             if not versions:
                 error_msg = f"模型不存在或无可用版本 [model: {model_name}]"
                 logger.error(error_msg)
-                raise ValueError(error_msg)
+                raise ValueError("error.model_not_available")
 
             latest_version = versions[0].version
             model_uri = f"models:/{model_name}/{latest_version}"

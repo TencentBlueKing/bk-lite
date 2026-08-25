@@ -3,9 +3,8 @@ import useApiClient from '@/utils/request';
 import type { NetworkStatusTopologyResponse } from '@/app/ops-analysis/types/sceneWidget';
 
 interface NetworkStatusTopologyRequest {
-  model_id: string;
-  inst_id: string;
-  depth?: number;
+  inst_uuids: string[];
+  node_limit?: number;
 }
 
 export const useNetworkStatusTopologyApi = () => {
@@ -16,6 +15,7 @@ export const useNetworkStatusTopologyApi = () => {
       post<NetworkStatusTopologyResponse>(
         '/operation_analysis/api/scene_widgets/network_status_topology/',
         params,
+        { suppressErrorNotification: true },
       ),
     [post],
   );

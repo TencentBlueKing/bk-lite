@@ -10,7 +10,6 @@ import {
 import LevelIcon from '@/app/alarm/components/levelIcon';
 import { LevelFormItem } from '@/app/alarm/types/settings';
 import { LevelItem } from '@/app/alarm/types/index';
-import { NEUTRAL } from '@/app/alarm/constants/colors';
 import {
   Modal,
   Form,
@@ -125,12 +124,12 @@ export default function LevelFormModal({
       <Form
         form={form}
         layout="vertical"
-        style={{ marginTop: 4 }}
+        className="mt-1"
       >
         <Form.Item
           name="level_id"
           label={t('settings.globalConfig.levelId')}
-          style={{ marginBottom: 24 }}
+          className="mb-6"
           rules={[
             {
               required: true,
@@ -155,14 +154,14 @@ export default function LevelFormModal({
           <InputNumber
             min={0}
             precision={0}
-            style={{ width: '100%' }}
+            className="w-full"
             disabled={!!editingLevel}
           />
         </Form.Item>
         <Form.Item
           name="level_display_name"
           label={t('settings.globalConfig.levelName')}
-          style={{ marginBottom: 24 }}
+          className="mb-6"
           rules={[
             {
               required: true,
@@ -187,7 +186,7 @@ export default function LevelFormModal({
         <Form.Item
           required
           label={t('settings.globalConfig.levelColor')}
-          style={{ marginBottom: 24 }}
+          className="mb-6"
         >
           <Form.Item shouldUpdate noStyle>
             {() => {
@@ -235,8 +234,7 @@ export default function LevelFormModal({
         <Form.Item
           label={t('settings.globalConfig.levelIcon')}
           required
-          style={{ marginBottom: 0 }}
-          className="align-top"
+          className="mb-0 align-top"
         >
           <Form.Item
             name="icon"
@@ -254,8 +252,7 @@ export default function LevelFormModal({
             <div className="mb-6 flex items-start">
               <Segmented
                 size="middle"
-                className="h-9 items-center"
-                style={{ alignSelf: 'flex-start' }}
+                className="h-9 items-center self-start"
                 value={iconMode}
                 onChange={(value) =>
                   handleIconModeChange(value as 'preset' | 'upload')
@@ -326,11 +323,7 @@ export default function LevelFormModal({
                     return isCustomIconValue(icon) ? (
                       <div className="mt-4">
                         <div
-                          className="inline-flex h-12 min-w-12 items-center justify-center rounded-xl border border-[#BFD3FF] bg-[#F7FAFF] px-4"
-                          style={{
-                            borderColor:
-                              'color-mix(in srgb, var(--color-primary) 22%, white)',
-                          }}
+                          className="inline-flex h-12 min-w-12 items-center justify-center rounded-xl border bg-[#F7FAFF] px-4 border-[color-mix(in_srgb,var(--color-primary)_22%,white)]"
                         >
                           <span
                             className="flex h-7 w-7 items-center justify-center rounded-md"
@@ -338,8 +331,7 @@ export default function LevelFormModal({
                           >
                             <LevelIcon
                               icon={icon}
-                              className="h-4 w-4"
-                              style={{ color: NEUTRAL.ON_DARK_FG }}
+                              className="h-4 w-4 text-white"
                             />
                           </span>
                         </div>

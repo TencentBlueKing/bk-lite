@@ -31,7 +31,7 @@ export interface SubscriptionRuleFormRef {
 }
 
 const EMPTY_CONDITION_FILTER = { query_list: [] };
-const EMPTY_INSTANCES_FILTER = { instance_ids: [] };
+const EMPTY_INSTANCES_FILTER = { instance_uuids: [] };
 
 const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRuleFormProps>(({
   initialValues,
@@ -75,7 +75,7 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
           setModelFields([]);
         });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [modelId, runtime]);
 
   useEffect(() => {
@@ -105,7 +105,7 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
       .catch(() => {
         setRelatedModels([]);
       });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [modelId, runtime.modelList, runtime.getModelAssociations]);
 
   const RELATION_CHANGE_EXCLUDED_FIELD_IDS = useMemo(() => new Set([
@@ -219,7 +219,7 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
       });
       return next;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [
     relationChangeModels,
     runtime,
@@ -254,7 +254,7 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
       organization: quickDefaults?.organization || Number(selectedGroup?.id || 0),
       model_id: quickDefaults?.model_id || modelId,
       filter_type: quickDefaults?.filter_type || 'instances',
-      instance_filter: quickDefaults?.instance_filter || { instance_ids: [] },
+      instance_filter: quickDefaults?.instance_filter || { instance_uuids: [] },
       trigger_types: [],
       trigger_config: {},
       recipients: quickDefaults?.recipients || {
@@ -436,7 +436,7 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
               {
                 validator: async (_, value) => {
                   if (currentFilterType === 'instances') {
-                    if (Array.isArray(value?.instance_ids) && value.instance_ids.length > 0) {
+                    if (Array.isArray(value?.instance_uuids) && value.instance_uuids.length > 0) {
                       return;
                     }
                     throw new Error(t('subscription.selectInstances'));

@@ -20,6 +20,7 @@ import {
 import type { useGraphHistory } from './useGraphHistory';
 import type { useTopologyState } from './useTopologyState';
 import type { TopologyNodeData } from '@/app/ops-analysis/types/topology';
+import type { SingleValueFetchErrorTooltipState } from '../components/singleValueFetchErrorTooltip';
 
 type NodePositionSnapshot = ReturnType<Node['getPosition']>;
 type EdgeVerticesSnapshot = ReturnType<Edge['getVertices']>;
@@ -39,6 +40,9 @@ interface UseGraphInitializerParams {
   selectedCells: string[];
   onNodeRemoved?: () => void;
   isZoomLockedRef: MutableRefObject<boolean>;
+  setSingleValueFetchErrorTooltip?: (
+    tooltip: SingleValueFetchErrorTooltipState | null,
+  ) => void;
 }
 
 export const useGraphInitializer = ({
@@ -49,6 +53,7 @@ export const useGraphInitializer = ({
   selectedCells,
   onNodeRemoved,
   isZoomLockedRef,
+  setSingleValueFetchErrorTooltip,
 }: UseGraphInitializerParams) => {
   const {
     graphInstance,
@@ -409,10 +414,23 @@ export const useGraphInitializer = ({
       setSelectedCells([]);
     });
 
-    graph.on('node:mouseenter', ({ node }) => {
+    graph.on('node:mouseenter', ({ node, e }) => {
       hideAllPorts(graph);
       hideAllEdgeTools(graph);
       showPorts(graph, node);
+      const nodeData = node.getData();
+      if (
+        nodeData?.type === 'single-value'
+        && nodeData.fetchError
+        && nodeData.errorMessage
+        && setSingleValueFetchErrorTooltip
+      ) {
+        setSingleValueFetchErrorTooltip({
+          message: nodeData.errorMessage,
+          x: e.clientX,
+          y: e.clientY,
+        });
+      }
       const isSelected = selectedCells.includes(node.id);
       if (!isSelected) {
         highlightNode(node);
@@ -429,6 +447,10 @@ export const useGraphInitializer = ({
     graph.on('node:mouseleave', ({ node }) => {
       hideAllPorts(graph);
       hideAllEdgeTools(graph);
+      const nodeData = node.getData();
+      if (nodeData?.type === 'single-value' && nodeData.fetchError) {
+        setSingleValueFetchErrorTooltip?.(null);
+      }
       const isSelected = selectedCells.includes(node.id);
       if (!isSelected) {
         resetNodeStyle(node);

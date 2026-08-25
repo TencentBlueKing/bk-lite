@@ -1,10 +1,11 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ApmHomePage from '../page';
 import type { ApmDashboard } from '@/app/apm/types';
+import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 
 const api = {
   getDashboard: vi.fn(),
@@ -86,6 +87,37 @@ const failedAlertsDashboard: ApmDashboard = {
   alerts: { status: 'failed', error: 'alerts down' },
 };
 
+const releasesDashboard: ApmDashboard = {
+  ...loadedDashboard,
+  releases: {
+    status: 'ok',
+    data: {
+      items: [
+        {
+          id: 'release-1',
+          service_id: 'svc-1',
+          service_name: 'demo-storefront',
+          environment: 'local',
+          version: '1.2.0',
+          deployed_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+          deployed_by: 'alice',
+          status: 'success',
+        },
+        {
+          id: 'release-2',
+          service_id: 'svc-2',
+          service_name: 'demo-payment',
+          environment: 'local',
+          version: '1.0.1',
+          deployed_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+          deployed_by: 'bob',
+          status: 'failed',
+        },
+      ],
+    },
+  },
+};
+
 beforeEach(() => {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     matches: false,
@@ -107,7 +139,7 @@ afterEach(() => {
 describe('ApmHomePage', () => {
   it('shows empty state CTA to integration', async () => {
     api.getDashboard.mockResolvedValue(emptyDashboard);
-    render(<ApmHomePage />);
+    renderWithApmIntl(<ApmHomePage />);
 
     expect(await screen.findByText('还没有接入任何应用')).not.toBeNull();
     const cta = screen.getByText('前往集成菜单').closest('a');
@@ -117,7 +149,7 @@ describe('ApmHomePage', () => {
 
   it('renders KPI labels when data loaded', async () => {
     api.getDashboard.mockResolvedValue(loadedDashboard);
-    render(<ApmHomePage />);
+    renderWithApmIntl(<ApmHomePage />);
 
     await waitFor(() => expect(screen.getByText('应用数量')).not.toBeNull());
     expect(screen.getByText('服务数量')).not.toBeNull();
@@ -129,7 +161,7 @@ describe('ApmHomePage', () => {
 
   it('shows retry when a section failed', async () => {
     api.getDashboard.mockResolvedValue(failedAlertsDashboard);
-    render(<ApmHomePage />);
+    renderWithApmIntl(<ApmHomePage />);
 
     await waitFor(() => expect(screen.getByText('实时告警')).not.toBeNull());
     expect(screen.getByText('加载失败，点击重试')).not.toBeNull();
@@ -139,10 +171,25 @@ describe('ApmHomePage', () => {
     await waitFor(() => expect(api.getDashboard).toHaveBeenCalledTimes(2));
   });
 
-  it('always shows releases empty copy', async () => {
+  it('shows releases empty copy when no events', async () => {
     api.getDashboard.mockResolvedValue(loadedDashboard);
-    render(<ApmHomePage />);
+    renderWithApmIntl(<ApmHomePage />);
 
     expect(await screen.findByText('近 7 天无发布')).not.toBeNull();
+  });
+
+  it('renders release rows when data is available', async () => {
+    api.getDashboard.mockResolvedValue(releasesDashboard);
+    renderWithApmIntl(<ApmHomePage />);
+
+    expect(await screen.findByText('demo-storefront')).not.toBeNull();
+    expect(screen.getByText('1.2.0')).not.toBeNull();
+    expect(screen.getByText('demo-payment')).not.toBeNull();
+    expect(screen.getByText('失败')).not.toBeNull();
+    expect(
+      screen.getAllByRole('link', { name: '查看全部 →' }).some((link) => (
+        link.getAttribute('href') === '/apm/services/deployments'
+      )),
+    ).toBe(false);
   });
 });

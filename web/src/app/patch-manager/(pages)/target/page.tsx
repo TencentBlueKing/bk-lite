@@ -663,14 +663,14 @@ export default function TargetPage() {
 
   const columns = [
     { title: t('patchManager.targetPage.host'), dataIndex: 'name', width: 110 },
-    { title: 'IP', dataIndex: 'ip', width: 120, render: (v: string) => <span style={{ color: 'var(--color-text-3, #8c8c8c)' }}>{v}</span> },
+    { title: 'IP', dataIndex: 'ip', width: 120, render: (v: string) => <span className="text-[var(--color-text-3)]">{v}</span> },
     { title: t('patchManager.osType'), dataIndex: 'os', width: 120 },
     {
       title: t('patchManager.targetPage.organization'),
       dataIndex: 'teamNames',
       width: 160,
       render: (names: string[]) => {
-        const text = (names || []).join(',') || '—';
+        const text = (names || []).join(',') || '--';
         return <EllipsisWithTooltip text={text} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />;
       },
     },
@@ -680,7 +680,13 @@ export default function TargetPage() {
       width: 100,
       render: (v: HostRow['source_type']) => t(`patchManager.targetPage.sourceType.${v === 'node_mgmt' ? 'node' : 'manual'}`),
     },
-    { title: t('patchManager.targetPage.currentBaseline'), dataIndex: 'baseline', render: (v: string | null) => (v ? v : <span style={{ color: '#d48806' }}>{t('patchManager.baseline.unbound')}</span>) },
+    {
+      title: t('patchManager.targetPage.currentBaseline'),
+      dataIndex: 'baseline',
+      render: (v: string | null) => (v
+        ? <EllipsisWithTooltip text={v} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />
+        : <span className="whitespace-nowrap text-[var(--color-warning)]">{t('patchManager.baseline.unbound')}</span>),
+    },
     {
       title: t('patchManager.targetPage.complianceStatus'),
       dataIndex: 'compliance',
@@ -694,7 +700,7 @@ export default function TargetPage() {
             <span
               role="link"
               tabIndex={0}
-              style={{ cursor: 'pointer' }}
+              className="cursor-pointer"
               onClick={() => router.push(`/patch-manager/risk-pending?host_id=${r.key}&host_name=${encodeURIComponent(r.name)}`)}
               onKeyDown={(event) => event.key === 'Enter' && router.push(`/patch-manager/risk-pending?host_id=${r.key}&host_name=${encodeURIComponent(r.name)}`)}
             >{tag}</span>
@@ -702,9 +708,9 @@ export default function TargetPage() {
         ) : tag;
       },
     },
-    { title: t('patchManager.targetPage.lastAssessment'), dataIndex: 'lastEval', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.targetPage.lastAssessment'), dataIndex: 'lastEval', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '--' },
     { title: t('patchManager.connectivity'), dataIndex: 'connectivity', width: 90, render: (v: HostRow['connectivity']) => <ConnTag status={v} /> },
-    { title: t('patchManager.targetPage.lastCheck'), dataIndex: 'lastDetected', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '—' },
+    { title: t('patchManager.targetPage.lastCheck'), dataIndex: 'lastDetected', width: 170, render: (v: string | null) => convertToLocalizedTime(v) || '--' },
     {
       title: t('patchManager.operation'),
       dataIndex: 'op',
@@ -725,17 +731,17 @@ export default function TargetPage() {
         return (
           <Space size={10}>
             {isManual ? (
-              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => {
+              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a className="text-[var(--color-primary)]" onClick={() => {
                 const target = data.find((t) => String(t.id) === r.key);
                 if (!target) return;
                 openManualTarget(target);
               }}><EditOutlined /> {t('patchManager.edit')}</a></PermissionWrapper>
             ) : (
               <Tooltip title={t('patchManager.targetPage.editInNodeManagement')}>
-                <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}><EditOutlined /> {t('patchManager.edit')}</span>
+                <span className="cursor-not-allowed text-[var(--color-text-4)]"><EditOutlined /> {t('patchManager.edit')}</span>
               </Tooltip>
             )}
-            <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
+            <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a className="text-[var(--color-primary)]" onClick={async () => {
               setActionLoading(true);
               try {
                 const result = await api.checkPatchTargetConnectivity(Number(r.key));
@@ -752,19 +758,19 @@ export default function TargetPage() {
             }}>{t('patchManager.testConnection')}</a></PermissionWrapper>
             {blockChangeReason ? (
               <Tooltip title={blockChangeReason}>
-                <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.targetPage.bindBaseline')}</span>
+                <span className="cursor-not-allowed text-[var(--color-text-4)]">{t('patchManager.targetPage.bindBaseline')}</span>
               </Tooltip>
             ) : (
-              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={() => { setSelectedKeys([r.key]); setBindBaseline(r.baseline_id ?? undefined); setBindOpen(true); }}>
+              <PermissionWrapper requiredPermissions={['Edit']} instPermissions={r.permission}><a className="text-[var(--color-primary)]" onClick={() => { setSelectedKeys([r.key]); setBindBaseline(r.baseline_id ?? undefined); setBindOpen(true); }}>
                 {t('patchManager.targetPage.bindBaseline')}
               </a></PermissionWrapper>
             )}
             {evalDisabledReason ? (
               <Tooltip title={evalDisabledReason}>
-                <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.dashboard.assessNow')}</span>
+                <span className="cursor-not-allowed text-[var(--color-text-4)]">{t('patchManager.dashboard.assessNow')}</span>
               </Tooltip>
             ) : (
-              <PermissionWrapper requiredPermissions={['Add']} permissionPath="/patch-manager/risk-execution" instPermissions={r.permission}><a style={{ color: 'var(--color-primary, #1677ff)' }} onClick={async () => {
+              <PermissionWrapper requiredPermissions={['Add']} permissionPath="/patch-manager/risk-execution" instPermissions={r.permission}><a className="text-[var(--color-primary)]" onClick={async () => {
                 setActionLoading(true);
                 try {
                   await api.createGovernanceTask({
@@ -783,11 +789,11 @@ export default function TargetPage() {
             )}
             {blockChangeReason ? (
               <Tooltip title={blockChangeReason}>
-                <span style={{ color: 'var(--color-text-4, #bfbfbf)', cursor: 'not-allowed' }}>{t('patchManager.delete')}</span>
+                <span className="cursor-not-allowed text-[var(--color-text-4)]">{t('patchManager.delete')}</span>
               </Tooltip>
             ) : (
               <PermissionWrapper requiredPermissions={['Delete']} instPermissions={r.permission}><PatchDeletePopconfirm title={t('patchManager.targetPage.deleteConfirm')} onConfirm={() => handleDelete(r.key)} okText={t('patchManager.delete')} cancelText={t('patchManager.cancel')}>
-                <a style={{ color: '#ff4d4f' }}>{t('patchManager.delete')}</a>
+                <a className="text-[var(--color-fail)]">{t('patchManager.delete')}</a>
               </PatchDeletePopconfirm></PermissionWrapper>
             )}
           </Space>
@@ -797,20 +803,21 @@ export default function TargetPage() {
   ];
 
   return (
-    <div style={{ background: 'var(--color-bg-1, #fff)', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 10, padding: '16px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <div className="flex min-h-0 flex-1 flex-col rounded-[10px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
       <FilterToolbar align="between">
         <Space>
           <Input.Search
             placeholder="IP"
-            style={{ width: 200 }}
+            className="w-[200px]"
             value={ipQuery}
             onChange={(e) => setIpQuery(e.target.value)}
             onSearch={(v) => loadData(1, pagination.pageSize, { ip: v || null })}
             allowClear
+            enterButton
           />
           <Select
             placeholder={t('patchManager.targetPage.baseline')}
-            style={{ width: 200 }}
+            className="w-[200px]"
             value={baselineFilter}
             onChange={(value) => {
               setBaselineFilter(value);
@@ -825,7 +832,7 @@ export default function TargetPage() {
           />
           <Select
             placeholder={t('patchManager.targetPage.complianceStatus')}
-            style={{ width: 160 }}
+            className="w-40"
             value={complianceFilter}
             onChange={(v) => {
               setComplianceFilter(v);
@@ -833,6 +840,8 @@ export default function TargetPage() {
               loadData(1, pagination.pageSize, { compliance_status: v || null });
             }}
             allowClear
+            showSearch
+            optionFilterProp="label"
             options={[
               ...(['compliant', 'non_compliant', 'pending', 'evaluating', 'failed', 'unknown', 'not_applicable', 'unconfigured'] as const).map((value) => ({ label: t(`patchManager.complianceStatus.${value}`), value })),
             ]}
@@ -859,7 +868,7 @@ export default function TargetPage() {
         </Space>
       </FilterToolbar>
 
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div className="min-h-0 flex-1">
         <CustomTable<HostRow>
           columns={columns}
           dataSource={rows}
@@ -867,6 +876,7 @@ export default function TargetPage() {
           loading={listLoading || actionLoading}
           rowSelection={{
             type: 'checkbox',
+            fixed: true,
             selectedRowKeys: selectedKeys,
             onChange: setSelectedKeys,
             getCheckboxProps: (record) => ({ disabled: !record.permission?.includes('Operate') }),
@@ -885,9 +895,9 @@ export default function TargetPage() {
       </div>
 
       <Modal title={t('patchManager.targetPage.bulkBind')} open={bindOpen} onCancel={() => setBindOpen(false)} onOk={handleBind} okText={t('patchManager.confirm')} cancelText={t('patchManager.cancel')} confirmLoading={actionLoading} okButtonProps={{ disabled: !bindBaseline || bulkBindDisabled }}>
-        <p style={{ color: 'var(--color-text-2, #595959)' }}>{t('patchManager.targetPage.bindSelection', undefined, { count: selectedKeys.length })}</p>
+        <p className="text-[var(--color-text-2)]">{t('patchManager.targetPage.bindSelection', undefined, { count: selectedKeys.length })}</p>
         <Select
-          style={{ width: '100%' }}
+          className="w-full"
           placeholder={t('patchManager.targetPage.selectBaseline')}
           virtual
           showSearch
@@ -898,7 +908,7 @@ export default function TargetPage() {
           onChange={setBindBaseline}
         />
         <Alert
-          style={{ marginTop: 12 }}
+          className="mt-3"
           type="warning"
           showIcon
           message={t('patchManager.targetPage.bindHelp')}
@@ -913,21 +923,21 @@ export default function TargetPage() {
         okText={t('patchManager.targetPage.bindAndAssess')}
         cancelText={t('patchManager.targetPage.back')}
       >
-        <p style={{ color: 'var(--color-text-2, #595959)' }}>
+        <p className="text-[var(--color-text-2)]">
           {t('patchManager.targetPage.assessmentModePrompt', undefined, { count: selectedKeys.length, name: baselines.find((b) => b.id === bindBaseline)?.name || t('patchManager.targetPage.selectedBaseline') })}
         </p>
-        <Radio.Group value={scanMethod} onChange={(e) => setScanMethod(e.target.value)} style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 6 }}>
+        <Radio.Group value={scanMethod} onChange={(e) => setScanMethod(e.target.value)} className="mt-1.5 flex flex-col gap-2.5">
           <Radio value="now">
             <strong>{t('patchManager.targetPage.scanNow')}</strong>
-            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)' }}>{t('patchManager.targetPage.scanNowHelp')}</div>
+            <div className="text-xs text-[var(--color-text-3)]">{t('patchManager.targetPage.scanNowHelp')}</div>
           </Radio>
           <Radio value="cycle">
             <strong>{t('patchManager.targetPage.cycleScan')}</strong>
-            <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)' }}>{t('patchManager.targetPage.cycleScanHelp')}</div>
+            <div className="text-xs text-[var(--color-text-3)]">{t('patchManager.targetPage.cycleScanHelp')}</div>
           </Radio>
         </Radio.Group>
         <Alert
-          style={{ marginTop: 12 }}
+          className="mt-3"
           type="warning"
           showIcon
           message={t('patchManager.targetPage.assessmentResetHelp')}
@@ -945,7 +955,7 @@ export default function TargetPage() {
         }}
         width={520}
         footer={
-          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+          <Space className="w-full justify-end">
             <Button onClick={() => {
               setManualOpen(false);
               setEditingTarget(null);
@@ -962,7 +972,7 @@ export default function TargetPage() {
           </Space>
         }
       >
-        <Form layout="vertical" form={form} style={{ marginTop: 4 }}>
+        <Form layout="vertical" form={form} className="mt-1">
           <Form.Item label={t('patchManager.targetPage.hostName')} name="name" rules={[{ required: true, message: t('patchManager.targetPage.hostNameRequired') }]}><Input placeholder={t('patchManager.targetPage.hostNamePlaceholder')} /></Form.Item>
           <Form.Item label={t('patchManager.targetPage.ipAddress')} name="ip" rules={[{ required: true, message: t('patchManager.targetPage.ipRequired') }]}><Input placeholder={t('patchManager.targetPage.ipPlaceholder')} /></Form.Item>
           <Form.Item label={t('patchManager.osType')} required>
@@ -984,9 +994,9 @@ export default function TargetPage() {
           </Form.Item>
           {os === 'linux' && (
             <>
-              <Space style={{ display: 'flex' }} align="start">
-                <Form.Item label={t('patchManager.targetPage.sshPort')} name="ssh_port" initialValue={22}><InputNumber style={{ width: 120 }} /></Form.Item>
-                <Form.Item label={t('patchManager.targetPage.sshUser')} name="ssh_user" rules={[{ required: true, message: t('patchManager.targetPage.sshUserRequired') }]} style={{ flex: 1 }}><Input placeholder={t('patchManager.targetPage.sshUserPlaceholder')} style={{ width: 240 }} /></Form.Item>
+              <Space className="flex" align="start">
+                <Form.Item label={t('patchManager.targetPage.sshPort')} name="ssh_port" initialValue={22}><InputNumber className="w-[120px]" /></Form.Item>
+                <Form.Item label={t('patchManager.targetPage.sshUser')} name="ssh_user" rules={[{ required: true, message: t('patchManager.targetPage.sshUserRequired') }]} className="flex-1"><Input placeholder={t('patchManager.targetPage.sshUserPlaceholder')} className="w-60" /></Form.Item>
               </Space>
               <Form.Item label={t('patchManager.targetPage.sshCredential')}>
                 <Radio.Group value={cred} onChange={(e) => {
@@ -1017,7 +1027,7 @@ export default function TargetPage() {
               ) : (
                 <>
                   {keepExistingKey ? (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, padding: '8px 12px', border: '1px solid var(--color-border-1, #e8e8e8)', borderRadius: 6 }}>
+                    <div className="mb-4 flex items-center justify-between rounded-md border border-[var(--color-border-1)] px-3 py-2">
                       <span>{t('patchManager.targetPage.uploadedKey', undefined, { name: editingTarget?.ssh_key_file_name || t('patchManager.targetPage.privateKeyFile') })}</span>
                       <Button
                         type="text"
@@ -1050,10 +1060,10 @@ export default function TargetPage() {
 
           {os === 'win' && (
             <>
-              <Space style={{ display: 'flex' }} align="start">
-                <Form.Item label={t('patchManager.winrmPort')} name="winrm_port" rules={[{ required: true, message: t('patchManager.targetPage.winrmPortRequired') }]}><InputNumber style={{ width: 120 }} placeholder="5986" /></Form.Item>
+              <Space className="flex" align="start">
+                <Form.Item label={t('patchManager.winrmPort')} name="winrm_port" rules={[{ required: true, message: t('patchManager.targetPage.winrmPortRequired') }]}><InputNumber className="w-[120px]" placeholder="5986" /></Form.Item>
                 <Form.Item label={t('patchManager.winrmScheme')} name="winrm_scheme" rules={[{ required: true, message: t('patchManager.targetPage.winrmSchemeRequired') }]}>
-                  <Select style={{ width: 120 }} placeholder={t('patchManager.targetPage.select')} options={[{ label: 'https', value: 'https' }, { label: 'http', value: 'http' }]} />
+                  <Select className="w-[120px]" placeholder={t('patchManager.targetPage.select')} options={[{ label: 'https', value: 'https' }, { label: 'http', value: 'http' }]} />
                 </Form.Item>
               </Space>
               <Form.Item label={t('patchManager.winrmUser')} name="winrm_user" rules={[{ required: true, message: t('patchManager.targetPage.winrmUserRequired') }]}><Input placeholder={t('patchManager.targetPage.winrmUserPlaceholder')} /></Form.Item>
@@ -1089,7 +1099,7 @@ export default function TargetPage() {
           nodeRequestCoordinatorRef.current.invalidate();
           importedNodeRequestCoordinatorRef.current.invalidate();
         }}
-        width={720}
+        width={900}
         footer={
           <Space>
             <Button onClick={() => {
@@ -1103,7 +1113,8 @@ export default function TargetPage() {
           </Space>
         }
       >
-        <div style={{ fontSize: 12, color: 'var(--color-text-3, #8c8c8c)', marginBottom: 12 }}>
+        <div className="mb-3 flex items-center gap-1.5 text-xs text-[var(--color-text-3)]">
+          <LinkOutlined className="shrink-0 text-[var(--color-primary)]" />
           {t('patchManager.targetPage.nodeImportHelp')}
         </div>
         <Input.Search
@@ -1111,11 +1122,13 @@ export default function TargetPage() {
           value={nodeSearch}
           onSearch={(v) => { setNodePagination((p) => ({ ...p, current: 1 })); loadNodeList(1, nodePagination.pageSize, v); }}
           onChange={(e) => setNodeSearch(e.target.value)}
-          style={{ marginBottom: 12 }}
+          className="mb-3 w-[360px] max-w-full"
           allowClear
+          enterButton
         />
         <DualSelector
           rowKey="id"
+          selectionColumnFixed
           dataSource={nodes}
           loading={nodeLoading}
           pagination={{

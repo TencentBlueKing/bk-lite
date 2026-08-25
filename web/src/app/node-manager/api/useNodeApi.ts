@@ -4,7 +4,10 @@ import type {
   NodeItem,
   UpdateConfigReq
 } from '../types/cloudregion';
-import { NodeParams } from '../types/node';
+import {
+  BatchUpdateNodeOrganizationsParams,
+  NodeParams
+} from '../types/node';
 import { SearchFilters } from '@/components/search-combination/types';
 
 /**
@@ -37,7 +40,7 @@ const useNodeApi = () => {
     return await post(url, bodyParams);
   };
 
-  // 删除节点；retire_linked=true 时一并退役已关联 CMDB/监控对象
+  // 删除节点必清 CMDB 悬挂 node_id（实例保留）。retire_linked=true 时额外退役监控。
   const delNode = async (
     id: React.Key,
     options?: { retire_linked?: boolean }
@@ -147,6 +150,16 @@ const useNodeApi = () => {
     return await patch(`/node_mgmt/api/node/${String(id)}/update/`, remain);
   };
 
+  // 为所选节点统一替换所属组织
+  const batchUpdateNodeOrganizations = async (
+    data: BatchUpdateNodeOrganizationsParams
+  ) => {
+    return await post(
+      '/node_mgmt/api/node/batch_update_organizations/',
+      data
+    );
+  };
+
   // 批量操作节点的采集器（启动、停止、重启）
   const batchOperationCollector = async (data: {
     node_ids?: string[];
@@ -170,7 +183,8 @@ const useNodeApi = () => {
     getCollectorOperationNodes,
     batchBindCollector,
     batchOperationCollector,
-    updateNode
+    updateNode,
+    batchUpdateNodeOrganizations
   };
 };
 

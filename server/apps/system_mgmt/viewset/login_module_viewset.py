@@ -13,6 +13,11 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class LoginModuleViewSet(LanguageViewSet):
+    """未注册路由的遗留认证源 ViewSet。
+
+    菜单与 REST 路由均已关闭，保留仅用于存量兼容和直接测试。新认证源
+    配置应走集成中心 Provider，不得重新暴露本 ViewSet。
+    """
     queryset = LoginModule.objects.all()
     serializer_class = LoginModuleSerializer
 

@@ -1,36 +1,22 @@
 """补丁管理目标视图"""
 
-import logging
-
+from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import patch_mgmt_logger as logger
+from apps.core.utils.viewset_utils import AuthViewSet
+from apps.patch_mgmt.constants import GovernanceTaskStatus
+from apps.patch_mgmt.filters.patch_target import PatchTargetFilter
+from apps.patch_mgmt.models import GovernanceTaskHost, HostBaselineBinding, PatchTarget
+from apps.patch_mgmt.serializers.patch_target import PatchTargetConnectivitySerializer, PatchTargetSerializer
+from apps.patch_mgmt.services.target_access import TargetRootedResourceMixin, require_target_ids
+from apps.patch_mgmt.services.target_connectivity import probe_target_data, target_connection_data
+from apps.patch_mgmt.services.target_deletion import purge_target_governance_history
+from apps.patch_mgmt.utils.i18n import patch_message
+from apps.patch_mgmt.utils.operation_log import log_target_created, log_target_purged, log_target_updated
 from django.db import transaction
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
-
-from apps.core.decorators.api_permission import HasPermission
-from apps.core.utils.viewset_utils import AuthViewSet
-from apps.patch_mgmt.constants import GovernanceTaskStatus
-from apps.patch_mgmt.filters.patch_target import PatchTargetFilter
-from apps.patch_mgmt.models import GovernanceTaskHost, HostBaselineBinding, PatchTarget
-from apps.patch_mgmt.serializers.patch_target import (
-    PatchTargetConnectivitySerializer,
-    PatchTargetSerializer,
-)
-from apps.patch_mgmt.services.target_connectivity import probe_target_data, target_connection_data
-from apps.patch_mgmt.services.target_deletion import purge_target_governance_history
-from apps.patch_mgmt.services.target_access import (
-    TargetRootedResourceMixin,
-    require_target_ids,
-)
-from apps.patch_mgmt.utils.i18n import patch_message
-from apps.patch_mgmt.utils.operation_log import (
-    log_target_created,
-    log_target_purged,
-    log_target_updated,
-)
-
-logger = logging.getLogger("app")
 
 
 class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
@@ -81,9 +67,7 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         changed_connection = any(
-            field in request.data
-            and request.data.get(field) not in (None, "")
-            and str(request.data.get(field)) != str(getattr(instance, field))
+            field in request.data and request.data.get(field) not in (None, "") and str(request.data.get(field)) != str(getattr(instance, field))
             for field in self.CONNECTION_FIELDS
         )
         response = super().update(request, *args, **kwargs)
@@ -94,9 +78,7 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
             target = self.get_object()
             target.connectivity_status = ConnectivityStatus.UNKNOWN
             target.last_checked_at = None
-            target.save(
-                update_fields=["connectivity_status", "last_checked_at", "updated_at"]
-            )
+            target.save(update_fields=["connectivity_status", "last_checked_at", "updated_at"])
             self._trigger_connectivity_probe(target.id)
             response.data["connectivity_status"] = ConnectivityStatus.UNKNOWN
             response.data["last_detected_at"] = None
@@ -107,6 +89,9 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
     def destroy(self, request, *args, **kwargs):
         target_id = self.get_object().id
         target = PatchTarget.objects.select_for_update().get(pk=target_id)
+        from apps.patch_mgmt.services.governance_convergence import reconcile_stale_history
+
+        reconcile_stale_history(limit=1000, target_ids=[target.id])
         if GovernanceTaskHost.objects.filter(
             target_id=target.id,
             task__status__in=GovernanceTaskStatus.ACTIVE_STATES,
@@ -207,6 +192,7 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
         """异步触发目标连通性探测。"""
         try:
             from apps.patch_mgmt.tasks import probe_target_connectivity
+
             probe_target_connectivity.delay(target_id)
         except Exception:  # noqa: BLE001
             pass
@@ -224,16 +210,16 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
         result = probe_target_data(serializer.validated_data)
         from apps.patch_mgmt.constants import ConnectivityStatus
 
-        return Response({
-            "connectivity_status": (
-                ConnectivityStatus.CONNECTED if result.reachable else ConnectivityStatus.FAILED
-            ),
-            "port": result.port,
-            "detail": result.detail,
-            "transport": result.transport,
-            "stage": result.stage,
-            "reason_code": result.reason_code,
-        })
+        return Response(
+            {
+                "connectivity_status": (ConnectivityStatus.CONNECTED if result.reachable else ConnectivityStatus.FAILED),
+                "port": result.port,
+                "detail": result.detail,
+                "transport": result.transport,
+                "stage": result.stage,
+                "reason_code": result.reason_code,
+            }
+        )
 
     @action(
         detail=True,
@@ -243,10 +229,9 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
     @HasPermission("patch_target-Edit")
     def check_connectivity(self, request, pk=None):
         """执行真实 SSH/WinRM 认证探测并写回结果。"""
-        from django.utils import timezone
-
         from apps.patch_mgmt.constants import ConnectivityStatus
         from apps.patch_mgmt.services.target_connectivity import probe_target
+        from django.utils import timezone
 
         target = self.get_object()
         require_target_ids(request, [target.id], "Operate")
@@ -258,9 +243,7 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
             result = probe_target_data(connection_data)
         else:
             result = probe_target(target)
-        target.connectivity_status = (
-            ConnectivityStatus.CONNECTED if result.reachable else ConnectivityStatus.FAILED
-        )
+        target.connectivity_status = ConnectivityStatus.CONNECTED if result.reachable else ConnectivityStatus.FAILED
         target.last_checked_at = timezone.now()
         target.save(update_fields=["connectivity_status", "last_checked_at", "updated_at"])
 
@@ -269,12 +252,14 @@ class PatchTargetViewSet(TargetRootedResourceMixin, AuthViewSet):
             binding.last_detected_at = timezone.now()
             binding.save(update_fields=["last_detected_at", "updated_at"])
 
-        return Response({
-            "target_id": target.id,
-            "connectivity_status": target.connectivity_status,
-            "port": result.port,
-            "detail": result.detail,
-            "transport": result.transport,
-            "stage": result.stage,
-            "reason_code": result.reason_code,
-        })
+        return Response(
+            {
+                "target_id": target.id,
+                "connectivity_status": target.connectivity_status,
+                "port": result.port,
+                "detail": result.detail,
+                "transport": result.transport,
+                "stage": result.stage,
+                "reason_code": result.reason_code,
+            }
+        )

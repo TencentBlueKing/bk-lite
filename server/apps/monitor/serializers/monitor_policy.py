@@ -1,14 +1,11 @@
-import logging
 import math
 import re
 
-from rest_framework import serializers
-
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.utils.unit_converter import UnitConverter
-
-logger = logging.getLogger(__name__)
+from rest_framework import serializers
 
 # 阈值条件合法等级 —— 取自 MonitorPolicy.LEVEL_CHOICES 的用户可选档（排除系统在无数据时自动生成的 no_data）
 _VALID_THRESHOLD_LEVELS = {"info", "warning", "error", "critical"}
@@ -35,7 +32,9 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         data_team_ids = self.context.get("data_team_ids")
-        if data_team_ids is not None:
+        # 列表/告警嵌套投影可按当前数据范围裁剪可见组织；详情与编辑必须返回完整归属，
+        # 否则跨组织编辑会把兄弟组织从表单中抹掉，保存时造成配置丢失。
+        if self.context.get("filter_organizations") and data_team_ids is not None:
             representation["organizations"] = [
                 organization for organization in representation.get("organizations", []) if organization in data_team_ids
             ]

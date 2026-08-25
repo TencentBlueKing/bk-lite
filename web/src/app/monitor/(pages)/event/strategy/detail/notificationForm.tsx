@@ -157,8 +157,14 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                       name="notice_users"
                       rules={[
                         {
-                          required: true,
-                          message: t('common.required')
+                          validator: async (_, value) => {
+                            if (!Array.isArray(value) || value.length === 0) {
+                              return Promise.reject(
+                                new Error(t('common.required'))
+                              );
+                            }
+                            return Promise.resolve();
+                          }
                         }
                       ]}
                     >

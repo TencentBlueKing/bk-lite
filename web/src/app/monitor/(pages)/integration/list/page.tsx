@@ -6,10 +6,10 @@ import {
   Button,
   Tag,
   message,
-  Empty,
   Modal,
   Pagination as AntPagination
 } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
@@ -17,9 +17,10 @@ import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { getIconByObjectName, getPluginBrandIcon } from '@/app/monitor/utils/common';
 import { useRouter } from 'next/navigation';
+import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
+import { resolveMonitorObjectQueryId } from '@/app/monitor/utils/monitorObjectQuery';
 import {
   ModalRef,
-  TableDataItem,
   TreeItem,
   TreeSortData,
   ObjectItem,
@@ -45,6 +46,10 @@ import {
 } from '@/app/monitor/utils/monitorObjectCache';
 import { unwrapMonitorPluginList } from '@/app/monitor/utils/monitorPluginList';
 import { invalidateMonitorPluginCache } from '@/app/monitor/utils/monitorPluginCache';
+import {
+  buildIntegrationConfigureUrl,
+  resolveIntegrationEntryContext
+} from '@/app/monitor/utils/integrationEntryContext';
 
 const { confirm } = Modal;
 
@@ -67,6 +72,7 @@ const Integration = () => {
   const pluginAbortControllerRef = useRef<AbortController | null>(null);
   const pluginRequestIdRef = useRef<number>(0);
   const searchParams = useSearchParams();
+  const { syncObjectId } = useMonitorObjectQuery();
   const [pageLoading, setPageLoading] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>('');
   const [exportDisabled, setExportDisabled] = useState<boolean>(true);
@@ -125,20 +131,22 @@ const Integration = () => {
   };
 
   const handleObjectChange = async (id: string) => {
+    const nextObjectType =
+      id && id !== 'all' && isTypeNodeKey(String(id)) ? String(id) : '';
+    const nextObjectId = !id || id === 'all' || nextObjectType ? '' : id;
+    // URL 回写同一节点时不要 abort 刚发出的插件列表请求，否则右侧会停在上一对象。
+    if (
+      String(objectId) === String(nextObjectId) &&
+      String(objectType) === String(nextObjectType)
+    ) {
+      syncObjectId(id || 'all');
+      return;
+    }
     cancelAllRequests();
     setPagination((prev) => ({ ...prev, current: 1 }));
-    if (id === 'all' || !id) {
-      setObjectId('');
-      setObjectType('');
-      return;
-    }
-    if (isTypeNodeKey(String(id))) {
-      setObjectId('');
-      setObjectType(String(id));
-      return;
-    }
-    setObjectType('');
-    setObjectId(id);
+    syncObjectId(id || 'all');
+    setObjectId(nextObjectId);
+    setObjectType(nextObjectType);
   };
 
   const getPluginList = async (
@@ -194,6 +202,10 @@ const Integration = () => {
         current: page,
         total: count
       }));
+    } catch (error: any) {
+      if (error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+        return;
+      }
     } finally {
       if (currentRequestId === pluginRequestIdRef.current) {
         setPageLoading(false);
@@ -373,26 +385,18 @@ const Integration = () => {
   };
 
   const linkToDetial = (app: ObjectItem) => {
-    const parentObject: any = objects.find(
-      (item) => sameMonitorId(item.id, app.parent_monitor_object)
-    );
-    const objectInfo = parentObject || {};
-    if (objectInfo.id) {
-      objectInfo.icon = objectInfo.icon || OBJECT_DEFAULT_ICON;
+    const result = resolveIntegrationEntryContext(app, objects);
+    if (!result.ok) {
+      message.error(t('monitor.integrations.missingEntryContext'));
+      return;
     }
-    const row: TableDataItem = {
-      id: objectInfo.id || '',
-      icon: getPluginBrandIcon(app?.name) || objectInfo.icon || OBJECT_DEFAULT_ICON,
-      name: objectInfo.name || '',
-      plugin_name: app?.name,
-      plugin_id: app?.id,
-      template_type: app?.template_type,
-      plugin_display_name: app?.display_name,
-      plugin_description: app?.display_description || '--'
-    };
-    const params = new URLSearchParams(row);
-    const targetUrl = `/monitor/integration/list/detail/configure?${params.toString()}`;
-    router.push(targetUrl);
+    const icon = getPluginBrandIcon(app.name) || result.context.objectIcon;
+    router.push(
+      buildIntegrationConfigureUrl(
+        { ...result.context, objectIcon: icon },
+        OBJECT_DEFAULT_ICON
+      )
+    );
   };
 
   const onAppClick = (app: ObjectItem) => {
@@ -422,11 +426,13 @@ const Integration = () => {
             showAllMenu
             allowParentSelect
             data={treeData}
-            defaultSelectedKey={
-              searchParams.get('objId')
-                ? toMonitorIdString(searchParams.get('objId'))
-                : 'all'
-            }
+            defaultSelectedKey={resolveMonitorObjectQueryId({
+              searchParams,
+              objects,
+              allowAll: true,
+              allowTypeKeys: true,
+              fallback: 'all'
+            })}
             loading={treeLoading}
             draggable
             onNodeSelect={handleObjectChange}
@@ -471,7 +477,7 @@ const Integration = () => {
         </div>
         <Spin spinning={pageLoading}>
           {!pluginList.length && !pageLoading ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('common.noData')} />
           ) : !pluginList.length ? (
             <div className="h-[calc(100vh-280px)]" />
           ) : (
@@ -521,6 +527,7 @@ const Integration = () => {
                             </h2>
                             <Tag className="mt-[4px]">
                               {parentObject?.display_name ||
+                                app.parent_monitor_object_display_name ||
                                 app.collect_type ||
                                 '--'}
                             </Tag>

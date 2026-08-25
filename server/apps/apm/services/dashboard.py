@@ -9,18 +9,12 @@ from django.db.models import Prefetch, QuerySet
 from django.utils import timezone
 
 from apps.apm.adapters.errors import TelemetryStoreUnavailable
-from apps.apm.models import (
-    ApmAlert,
-    ApmService,
-    ApmServiceInstance,
-    ApmSlo,
-)
+from apps.apm.models import ApmAlert, ApmDeploymentEvent, ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services.contracts import ServiceMetricQuery, ServiceRed
 from apps.apm.services.reliability import DjangoApmReliabilityService
 from apps.apm.services.status import catalog_status
 from apps.core.logger import apm_logger as logger
 from apps.core.utils.viewset_utils import build_json_membership_query
-
 
 WINDOW_DELTAS: dict[str, timedelta] = {
     "15m": timedelta(minutes=15),
@@ -41,6 +35,8 @@ MAX_METRIC_TARGETS = 40
 MAX_TOP_ROWS = 5
 MAX_SLO_ROWS = 5
 MAX_ALERT_ROWS = 5
+MAX_RELEASE_ROWS = 5
+RELEASE_LOOKBACK = timedelta(days=7)
 SECTION_WORKERS = 8
 
 
@@ -172,7 +168,7 @@ class ApmDashboardService:
             "alerts": self._safe_section(lambda: self._build_alerts(organization_id)),
             "top_error_rate": self._safe_section(lambda: self._build_top_error_rate(targets, red_by_key)),
             "top_p95": self._safe_section(lambda: self._build_top_p95(targets, red_by_key)),
-            "releases": _section_empty({"items": []}),
+            "releases": self._safe_section(lambda: self._build_releases(organization_id)),
         }
 
     @staticmethod
@@ -196,7 +192,7 @@ class ApmDashboardService:
             .prefetch_related(
                 Prefetch(
                     "instances",
-                    queryset=ApmServiceInstance.objects.filter(archived_at__isnull=True).order_by("-last_seen_at"),
+                    queryset=ApmServiceInstance.objects.order_by("-last_seen_at"),
                 )
             )
             .distinct()
@@ -285,7 +281,7 @@ class ApmDashboardService:
         in_window = [service for service in services if service.last_seen_at >= started_at]
         app_count = len({service.namespace for service in in_window})
         service_count = len({service.name for service in in_window})
-        alert_count = self._firing_alert_queryset(organization_id).count()
+        alert_count = self._active_alert_queryset(organization_id).count()
 
         request_rate = 0.0
         error_rate_sum = 0.0
@@ -322,9 +318,7 @@ class ApmDashboardService:
                 error_series.append(
                     _resample(
                         [
-                            None
-                            if point.request_rate is None or point.error_rate is None
-                            else point.request_rate * point.error_rate
+                            None if point.request_rate is None or point.error_rate is None else point.request_rate * point.error_rate
                             for point in red.timeseries
                         ],
                         points,
@@ -463,8 +457,43 @@ class ApmDashboardService:
             return _section_empty({"items": []})
         return {"items": rows}
 
+    def _build_releases(self, organization_id: int) -> dict[str, Any]:
+        ended_at = self.now_fn()
+        started_at = ended_at - RELEASE_LOOKBACK
+        visible_ids = ApmService.objects.filter(
+            organization_links__organization=organization_id,
+            archived_at__isnull=True,
+        ).values_list("id", flat=True)
+        events = list(
+            ApmDeploymentEvent.objects.filter(
+                service_id__in=visible_ids,
+                deployed_at__gte=started_at,
+                deployed_at__lte=ended_at,
+            )
+            .select_related("service")
+            .order_by("-deployed_at", "-id")[:MAX_RELEASE_ROWS]
+        )
+        if not events:
+            return _section_empty({"items": []})
+        return {
+            "items": [
+                {
+                    "id": str(event.id),
+                    "service_id": str(event.service_id),
+                    "service_name": event.service.name,
+                    "environment": event.environment,
+                    "version": event.version,
+                    "deployed_at": event.deployed_at,
+                    "deployed_by": event.deployed_by,
+                    "status": event.status,
+                    "source": event.source,
+                }
+                for event in events
+            ]
+        }
+
     def _build_alerts(self, organization_id: int) -> dict[str, Any]:
-        alerts = list(self._firing_alert_queryset(organization_id).order_by("-last_event_at", "-id")[:MAX_ALERT_ROWS])
+        alerts = list(self._active_alert_queryset(organization_id).order_by("-last_event_at", "-id")[:MAX_ALERT_ROWS])
         if not alerts:
             return _section_empty({"items": []})
         return {
@@ -525,6 +554,6 @@ class ApmDashboardService:
         return {"items": rows}
 
     @staticmethod
-    def _firing_alert_queryset(organization_id: int) -> QuerySet[ApmAlert]:
-        queryset = ApmAlert.objects.filter(status=ApmAlert.Status.FIRING)
+    def _active_alert_queryset(organization_id: int) -> QuerySet[ApmAlert]:
+        queryset = ApmAlert.objects.filter(status=ApmAlert.Status.ACTIVE)
         return queryset.filter(build_json_membership_query(queryset, "organizations", [organization_id]))

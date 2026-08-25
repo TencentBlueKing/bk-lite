@@ -1,11 +1,5 @@
 'use client';
-import React, {
-  useState,
-  useRef,
-  forwardRef,
-  useImperativeHandle,
-  useEffect
-} from 'react';
+import React, { useState, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Input, Form, Select, Button, message } from 'antd';
 import CustomTable from '@/components/custom-table';
 import OperateModal from '@/components/operate-modal';
@@ -27,7 +21,59 @@ import CodeEditor from '@/app/node-manager/components/codeEditor';
 import { useConfigModalColumns } from '@/app/node-manager/hooks/configuration';
 import { cloneDeep } from 'lodash';
 import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
+import { buildConfigModalFormData } from '@/app/node-manager/utils/collectorConfig';
 const { Option } = Select;
+
+const ConfigEditorWithParams = ({
+  value,
+  onChange,
+  varDataSource,
+  columns,
+  tableLoading
+}: {
+  value?: string;
+  onChange?: (value: string) => void;
+  varDataSource: VarSourceItem[];
+  columns: any;
+  tableLoading: boolean;
+}) => {
+  const { t } = useTranslation();
+  return (
+    <div className="flex">
+      <CodeEditor
+        value={value || ''}
+        headerOptions={{ copy: true, fullscreen: true }}
+        onChange={(newValue: string | undefined) => {
+          if (newValue !== undefined) {
+            onChange?.(newValue);
+          }
+        }}
+        className="mr-4"
+        width="400px"
+        height="250px"
+        mode="python"
+        theme="monokai"
+        name="editor"
+      />
+      <div className="flex flex-col w-full overflow-hidden">
+        <h1 className="font-bold flex-shrink-0 text-sm">
+          {t('node-manager.cloudregion.Configuration.parameterdes')}
+        </h1>
+        <p className="flex-shrink-0 text-xs mt-[4px] mb-[10px]">
+          {t('node-manager.cloudregion.Configuration.varconfig')}
+        </p>
+        <CustomTable
+          size="small"
+          className="w-full"
+          scroll={{ y: '160px' }}
+          dataSource={varDataSource}
+          loading={tableLoading}
+          columns={columns}
+        />
+      </div>
+    </div>
+  );
+};
 
 const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
   ({ onSuccess, config: { collectors = [] } }, ref) => {
@@ -47,28 +93,16 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
 
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form }) => {
-        const _form = cloneDeep(form) as TableDataItem;
-        const formdata = {
-          ..._form,
-          configInfo: _form.content || _form.configInfo || ''
-        };
-        setConfigVisible(true);
+        const formdata = buildConfigModalFormData(
+          cloneDeep(form) as TableDataItem
+        );
         setType(type);
-        setEditConfigId(_form?.key);
+        setEditConfigId(String(formdata.key || ''));
         setConfigForm(formdata);
+        setConfigVisible(true);
         initializeVarForm();
       }
     }));
-
-    //初始化表单的数据
-    useEffect(() => {
-      if (!configVisible) return;
-      // 初始化变量列表
-      configFormRef.current?.resetFields();
-      if (['edit', 'edit_child'].includes(type)) {
-        configFormRef.current?.setFieldsValue(configForm);
-      }
-    }, [configForm, configVisible]);
 
     const initializeVarForm = async () => {
       try {
@@ -151,62 +185,14 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
       });
     };
 
-    const ConfigEditorWithParams = ({
-      value,
-      varDataSource,
-      columns,
-      onChange
-    }: {
-      value: string;
-      varDataSource: VarSourceItem[];
-      columns: any;
-      onChange: any;
-    }) => {
-      const handleEditorChange = (newValue: string | undefined) => {
-        if (newValue !== undefined) {
-          onChange(newValue);
-        }
-      };
-      return (
-        <div className="flex">
-          {/* 左侧输入区域 */}
-          <CodeEditor
-            value={value}
-            headerOptions={{ copy: true, fullscreen: true }}
-            onChange={handleEditorChange}
-            className="mr-4"
-            width="400px"
-            height="250px"
-            mode="python"
-            theme="monokai"
-            name="editor"
-          />
-
-          {/* 右侧参数说明和表格 */}
-          <div className="flex flex-col w-full overflow-hidden">
-            {/* 标题和描述 */}
-            <h1 className="font-bold flex-shrink-0 text-sm">
-              {t('node-manager.cloudregion.Configuration.parameterdes')}
-            </h1>
-            <p className="flex-shrink-0 text-xs mt-[4px] mb-[10px]">
-              {t('node-manager.cloudregion.Configuration.varconfig')}
-            </p>
-            <CustomTable
-              size="small"
-              className="w-full"
-              scroll={{ y: '160px' }}
-              dataSource={varDataSource}
-              loading={tableLoading}
-              columns={columns}
-            />
-          </div>
-        </div>
-      );
-    };
-
     const showConfigForm = () => {
       return (
-        <Form ref={configFormRef} layout="vertical" colon={false}>
+        <Form
+          ref={configFormRef}
+          layout="vertical"
+          colon={false}
+          initialValues={configForm}
+        >
           {type === 'edit_child' ? (
             <>
               <Form.Item
@@ -325,14 +311,11 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
               }
             ]}
           >
-            {
-              <ConfigEditorWithParams
-                varDataSource={varDataSource}
-                columns={columns}
-                value={configForm.configInfo || ''}
-                onChange={undefined}
-              ></ConfigEditorWithParams>
-            }
+            <ConfigEditorWithParams
+              varDataSource={varDataSource}
+              columns={columns}
+              tableLoading={tableLoading}
+            />
           </Form.Item>
         </Form>
       );
@@ -345,6 +328,7 @@ const ConfigModal = forwardRef<ModalRef, ModalSuccess>(
         onCancel={handleCancel}
         width={800}
         zIndex={2000}
+        destroyOnHidden
         footer={
           <div>
             <Button

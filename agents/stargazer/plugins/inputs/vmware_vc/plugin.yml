@@ -14,7 +14,9 @@ metadata:
 executors:
   protocol:
     type: protocol
-    timeout: 120
+    execution_mode: sync
+    capacity_group: sync_sdk
+    timeout: 300
     collector:
       module: plugins.inputs.vmware_vc.vmware_info
       class: VmwareManage

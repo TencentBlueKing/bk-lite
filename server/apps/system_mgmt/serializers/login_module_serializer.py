@@ -9,6 +9,11 @@ from apps.system_mgmt.tasks import sync_user_and_group_by_login_module
 
 
 class LoginModuleSerializer(serializers.ModelSerializer):
+    """已关闭管理入口的遗留序列化器。
+
+    不再为 LoginModule 增加字段或行为；认证和同步配置应迁移至集成中心
+    Provider 的 ``login_auth`` / ``user_sync`` capability。
+    """
     # 自定义 name 字段，用于展示时可能的翻译
     display_name = serializers.SerializerMethodField()
 

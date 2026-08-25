@@ -308,14 +308,79 @@ def test_delete_model_attr_rejects_organization(fake_graph, patch_side_effects, 
 
 @pytest.mark.django_db
 def test_update_enum_instances_display(fake_graph):
+    instances = [
+        {"_id": 1, "status": "1"},
+        {"_id": 2},
+        {"_id": 3, "status": None},
+        {"_id": 4, "status": ""},
+        {"_id": 5, "status": []},
+    ]
     fg = fake_graph(
         MODULE,
-        query_entity=([{"_id": 1, "status": "1"}, {"_id": 2}], 2),
+        query_entity=_paged_query_entity(instances),
     )
     count = ModelManage.update_enum_instances_display("host", "status", [{"id": "1", "name": "运行"}])
     # 只有实例 1 含 status → 更新 1 个
     assert count == 1
-    assert any(c[0] == "batch_update_node_properties" for c in fg.calls)
+    update_call = next(c for c in fg.calls if c[0] == "batch_update_node_property_values")
+    assert update_call[1] == (
+        "instance",
+        "status_display",
+        [{"id": 1, "value": "运行"}],
+    )
+
+
+@pytest.mark.unit
+def test_update_enum_instances_display_backend_failure_is_reported_after_retry(fake_graph):
+    def _raise(*args, **kwargs):
+        raise RuntimeError("graph unavailable")
+
+    fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity([{"_id": 1, "status": "1"}, {"_id": 2, "status": "2"}]),
+        batch_update_node_property_values=_raise,
+    )
+
+    with pytest.raises(
+        BaseAppException,
+        match="枚举属性已更新，但实例展示字段刷新失败，请重试保存",
+    ):
+        ModelManage.update_enum_instances_display(
+            "host",
+            "status",
+            [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}],
+        )
+
+
+@pytest.mark.unit
+def test_update_enum_instances_display_batches_1000_values_once(fake_graph):
+    instances = [{"_id": index, "status": "1" if index % 2 else ["2", "1"]} for index in range(1, 1001)]
+    fg = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(instances),
+    )
+
+    count = ModelManage.update_enum_instances_display(
+        "host",
+        "status",
+        [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}],
+    )
+
+    assert count == 1000
+    update_calls = [call for call in fg.calls if call[0] in {"batch_update_node_properties", "batch_update_node_property_values"}]
+    assert len(update_calls) == 1
+    assert update_calls[0][0] == "batch_update_node_property_values"
+    assert update_calls[0][1] == (
+        "instance",
+        "status_display",
+        [
+            {
+                "id": index,
+                "value": "运行" if index % 2 else "停止, 运行",
+            }
+            for index in range(1, 1001)
+        ],
+    )
 
 
 def _paged_query_entity(instances, delete_after_first=False):
@@ -341,6 +406,260 @@ def _paged_query_entity(instances, delete_after_first=False):
         return result, None
 
     return _query
+
+
+@pytest.mark.unit
+def test_update_enum_instances_display_pages_without_unbounded_graph_writes(
+    fake_graph,
+):
+    instances = [{"_id": 1}]
+    instances.extend({"_id": index, "status": "1"} for index in range(2, 1003))
+    fg = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(instances),
+    )
+
+    count = ModelManage.update_enum_instances_display(
+        "host",
+        "status",
+        [{"id": "1", "name": "运行"}],
+    )
+
+    assert count == 1001
+    update_calls = [call for call in fg.calls if call[0] == "batch_update_node_property_values"]
+    assert [len(call[1][2]) for call in update_calls] == [1000, 1]
+    query_calls = [call for call in fg.calls if call[0] == "query_entity"]
+    assert len(query_calls) == 3
+    assert query_calls[0][2] == {
+        "page": {"skip": 0, "limit": 1000},
+        "include_count": False,
+    }
+    assert query_calls[1][1][1][-1] == {
+        "field": "id",
+        "type": "id>",
+        "value": 1000,
+    }
+    assert query_calls[2][1][1][-1] == {
+        "field": "id",
+        "type": "id>",
+        "value": 1002,
+    }
+
+
+@pytest.mark.unit
+def test_update_enum_instances_display_keyset_does_not_skip_after_delete(
+    fake_graph,
+):
+    instances = [{"_id": index, "status": "1"} for index in range(1, 1002)]
+
+    def _write_existing(_label, _field, values):
+        existing_ids = {instance["_id"] for instance in instances}
+        return [value for value in values if value["id"] in existing_ids]
+
+    fg = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(instances, delete_after_first=True),
+        batch_update_node_property_values=_write_existing,
+    )
+
+    count = ModelManage.update_enum_instances_display(
+        "host",
+        "status",
+        [{"id": "1", "name": "运行"}],
+    )
+
+    assert count == 1000
+    update_calls = [call for call in fg.calls if call[0] == "batch_update_node_property_values"]
+    assert [len(call[1][2]) for call in update_calls] == [1000, 1]
+    assert update_calls[-1][1][2] == [{"id": 1001, "value": "运行"}]
+
+
+@pytest.fixture
+def enum_backfill_checkpoints(monkeypatch):
+    checkpoints = {}
+    monkeypatch.setattr(f"{MODULE}.cache.get", checkpoints.get)
+    monkeypatch.setattr(
+        f"{MODULE}.cache.set",
+        lambda key, value, timeout=None: checkpoints.__setitem__(key, value),
+    )
+    monkeypatch.setattr(f"{MODULE}.cache.delete", lambda key: checkpoints.pop(key, None))
+    return checkpoints
+
+
+@pytest.mark.unit
+def test_update_enum_instances_display_resumes_after_later_batch_failure(
+    fake_graph,
+    enum_backfill_checkpoints,
+):
+    instances = [{"_id": index, "status": "1"} for index in range(1, 1002)]
+    write_calls = 0
+
+    def _fail_second_batch(_label, _field, values):
+        nonlocal write_calls
+        write_calls += 1
+        if values[0]["id"] > 1000:
+            raise RuntimeError("second batch unavailable")
+        return values
+
+    first_graph = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity(instances),
+        batch_update_node_property_values=_fail_second_batch,
+    )
+
+    options = [{"id": "1", "name": "运行"}]
+    with pytest.raises(
+        BaseAppException,
+        match="枚举属性已更新，但实例展示字段刷新失败，请重试保存",
+    ):
+        ModelManage.update_enum_instances_display("host", "status", options)
+    assert write_calls == 3
+    assert [checkpoint["cursor"] for checkpoint in enum_backfill_checkpoints.values()] == [1000]
+
+    resumed_graph = fake_graph(MODULE, query_entity=_paged_query_entity(instances))
+    assert ModelManage.update_enum_instances_display("host", "status", options) == 1
+    resumed_queries = [call for call in resumed_graph.calls if call[0] == "query_entity"]
+    assert resumed_queries[0][1][1][-1] == {"field": "id", "type": "id>", "value": 1000}
+    assert enum_backfill_checkpoints == {}
+    assert len([call for call in first_graph.calls if call[0] == "batch_update_node_property_values"]) == 3
+
+
+@pytest.mark.unit
+def test_update_enum_instances_display_continues_after_short_page(fake_graph):
+    instances = [{"_id": index, "status": "1"} for index in range(1, 5)]
+    query_count = 0
+
+    def _short_first_page(_label, params, page=None, **_kwargs):
+        nonlocal query_count
+        query_count += 1
+        last_id = next((item["value"] for item in params if item["type"] == "id>"), 0)
+        candidates = [instance for instance in instances if instance["_id"] > last_id]
+        limit = 2 if query_count == 1 else page["limit"]
+        return candidates[:limit], None
+
+    fg = fake_graph(MODULE, query_entity=_short_first_page)
+
+    assert ModelManage.update_enum_instances_display(
+        "host",
+        "status",
+        [{"id": "1", "name": "运行"}],
+    ) == 4
+    update_calls = [call for call in fg.calls if call[0] == "batch_update_node_property_values"]
+    assert [len(call[1][2]) for call in update_calls] == [4]
+
+
+@pytest.mark.unit
+def test_update_enum_instances_display_observes_later_page_insert_and_change(fake_graph):
+    instances = [{"_id": index, "status": "1"} for index in range(1, 1002)]
+    query_count = 0
+
+    def _query_with_changes(_label, params, page=None, **_kwargs):
+        nonlocal query_count
+        query_count += 1
+        last_id = next((item["value"] for item in params if item["type"] == "id>"), 0)
+        candidates = [instance for instance in instances if instance["_id"] > last_id]
+        result = candidates[: page["limit"]]
+        if query_count == 1:
+            instances[-1]["status"] = "2"
+            instances.append({"_id": 1002, "status": "2"})
+        return result, None
+
+    fg = fake_graph(MODULE, query_entity=_query_with_changes)
+
+    assert ModelManage.update_enum_instances_display(
+        "host",
+        "status",
+        [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}],
+    ) == 1002
+    update_calls = [call for call in fg.calls if call[0] == "batch_update_node_property_values"]
+    assert update_calls[-1][1][2] == [
+        {"id": 1001, "value": "停止"},
+        {"id": 1002, "value": "停止"},
+    ]
+
+
+@pytest.mark.unit
+def test_update_enum_instances_display_repeated_run_is_idempotent(fake_graph):
+    instances = [{"_id": 1, "status": "1"}, {"_id": 2, "status": ["2", "1"]}]
+    fg = fake_graph(MODULE, query_entity=_paged_query_entity(instances))
+    options = [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}]
+
+    assert ModelManage.update_enum_instances_display("host", "status", options) == 2
+    assert ModelManage.update_enum_instances_display("host", "status", options) == 2
+
+    update_calls = [call for call in fg.calls if call[0] == "batch_update_node_property_values"]
+    assert update_calls[0][1][2] == update_calls[1][1][2]
+
+
+@pytest.mark.unit
+def test_update_enum_instances_display_ignores_checkpoint_for_old_options(
+    fake_graph,
+    enum_backfill_checkpoints,
+):
+    old_options = [{"id": "1", "name": "旧名称"}]
+    checkpoint_key, old_digest = ModelManage._enum_display_backfill_checkpoint("host", "status", old_options)
+    enum_backfill_checkpoints[checkpoint_key] = {"options_digest": old_digest, "cursor": 1}
+    fg = fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity([{"_id": 1, "status": "1"}, {"_id": 2, "status": "1"}]),
+    )
+
+    assert ModelManage.update_enum_instances_display(
+        "host",
+        "status",
+        [{"id": "1", "name": "新名称"}],
+    ) == 2
+    first_query = next(call for call in fg.calls if call[0] == "query_entity")
+    assert first_query[1][1] == [{"field": "model_id", "type": "str=", "value": "host"}]
+    assert enum_backfill_checkpoints == {}
+
+
+@pytest.mark.unit
+def test_update_enum_instances_display_cache_failure_is_reported(fake_graph, monkeypatch):
+    def _raise_cache_error(*_args, **_kwargs):
+        raise RuntimeError("cache unavailable")
+
+    monkeypatch.setattr(f"{MODULE}.cache.get", _raise_cache_error)
+    monkeypatch.setattr(f"{MODULE}.cache.set", _raise_cache_error)
+    monkeypatch.setattr(f"{MODULE}.cache.delete", _raise_cache_error)
+    fake_graph(
+        MODULE,
+        query_entity=_paged_query_entity([{"_id": 1, "status": "1"}]),
+    )
+
+    with pytest.raises(
+        BaseAppException,
+        match="枚举属性已更新，但实例展示字段刷新失败，请重试保存",
+    ):
+        ModelManage.update_enum_instances_display(
+            "host",
+            "status",
+            [{"id": "1", "name": "运行"}],
+        )
+
+
+@pytest.mark.unit
+def test_update_enum_instances_display_old_checkpoint_cannot_skip_after_set_failure(
+    fake_graph,
+    enum_backfill_checkpoints,
+    monkeypatch,
+):
+    old_options = [{"id": "1", "name": "旧名称"}]
+    checkpoint_key, old_digest = ModelManage._enum_display_backfill_checkpoint("host", "status", old_options)
+    enum_backfill_checkpoints[checkpoint_key] = {"options_digest": old_digest, "cursor": 1}
+    monkeypatch.setattr(f"{MODULE}.cache.set", lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("cache full")))
+    instances = [{"_id": 1, "status": "1"}, {"_id": 2, "status": "1"}]
+    fg = fake_graph(MODULE, query_entity=_paged_query_entity(instances))
+
+    assert ModelManage.update_enum_instances_display(
+        "host",
+        "status",
+        [{"id": "1", "name": "新名称"}],
+    ) == 2
+    assert ModelManage.update_enum_instances_display("host", "status", old_options) == 2
+    query_calls = [call for call in fg.calls if call[0] == "query_entity"]
+    assert query_calls[0][1][1] == [{"field": "model_id", "type": "str=", "value": "host"}]
+    assert query_calls[2][1][1] == [{"field": "model_id", "type": "str=", "value": "host"}]
 
 
 def test_rebuild_file_instances_display_backfills_stem(fake_graph):

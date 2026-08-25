@@ -1,6 +1,5 @@
 from celery.schedules import crontab
 
-
 CELERY_BEAT_SCHEDULE = {
     "apm_reconcile_telemetry_catalog": {
         "task": "apps.apm.tasks.reconcile_telemetry_catalog",
@@ -17,5 +16,13 @@ CELERY_BEAT_SCHEDULE = {
     "apm_deliver_alert_outbox": {
         "task": "apps.apm.tasks.deliver_apm_alert_outbox",
         "schedule": crontab(minute="*"),
+    },
+    "apm_persist_event_snapshot_payloads": {
+        "task": "apps.apm.tasks.persist_apm_event_snapshot_payloads",
+        "schedule": crontab(minute="*"),
+    },
+    "apm_expire_event_snapshot_payloads": {
+        "task": "apps.apm.tasks.expire_apm_event_snapshot_payloads",
+        "schedule": crontab(hour="3", minute="17"),
     },
 }

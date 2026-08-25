@@ -14,6 +14,7 @@ INSTALLER_ACTION_MESSAGES = {
     "bootstrap_running": "Start installation",
     "clock_check": "Check node and Server clocks",
     "download": "Download installer files",
+    "stop_service": "Stop existing controller service",
     "write_config": "Write configuration",
     "install": "Install controller",
     "install_complete": "Finalize installation",
@@ -393,7 +394,7 @@ def _installer_event_position(event: dict[str, Any], action: str) -> tuple[int |
 
     sequence = (
         InstallerConstants.INSTALLER_STEP_SEQUENCE
-        if action == "clock_check"
+        if action in {"clock_check", "stop_service"}
         else InstallerConstants.LEGACY_INSTALLER_STEP_SEQUENCE
     )
     return installer_step_index(action, sequence), len(sequence)

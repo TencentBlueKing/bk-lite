@@ -46,7 +46,7 @@ export function useSubscriptionList() {
         setLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     []
   );
 
@@ -118,15 +118,15 @@ export function useQuickSubscribeDefaults(
   context: {
     model_id: string;
     model_name: string;
-    selectedInstanceIds?: number[];
+    selectedInstanceUuids?: string[];
     queryList?: any[];
-    currentInstanceId?: number;
+    currentInstanceUuid?: string;
     currentInstanceName?: string;
     currentUser: number;
     currentOrganization: number;
   }
 ): QuickSubscribeDefaults {
-  const selectedInstanceIdsKey = JSON.stringify(context.selectedInstanceIds || []);
+  const selectedInstanceUuidsKey = JSON.stringify(context.selectedInstanceUuids || []);
   const queryListKey = JSON.stringify(context.queryList || []);
 
   return useMemo(() => {
@@ -139,7 +139,7 @@ export function useQuickSubscribeDefaults(
           model_id: context.model_id,
           model_name: context.model_name,
           filter_type: 'instances' as FilterType,
-          instance_filter: { instance_ids: context.selectedInstanceIds || [] },
+          instance_filter: { instance_uuids: context.selectedInstanceUuids || [] },
           name: `${context.model_name}${timestamp}`,
           organization: context.currentOrganization,
           recipients: { users: [context.currentUser] },
@@ -162,7 +162,9 @@ export function useQuickSubscribeDefaults(
           model_name: context.model_name,
           filter_type: 'instances' as FilterType,
           instance_filter: {
-            instance_ids: context.currentInstanceId ? [context.currentInstanceId] : [],
+            instance_uuids: context.currentInstanceUuid
+              ? [context.currentInstanceUuid]
+              : [],
           },
           name: `${context.currentInstanceName || context.model_name}${timestamp}`,
           organization: context.currentOrganization,
@@ -174,7 +176,7 @@ export function useQuickSubscribeDefaults(
           model_id: context.model_id,
           model_name: context.model_name,
           filter_type: 'instances' as FilterType,
-          instance_filter: { instance_ids: [] },
+          instance_filter: { instance_uuids: [] },
           name: '',
           organization: context.currentOrganization,
           recipients: { users: [context.currentUser] },
@@ -184,11 +186,11 @@ export function useQuickSubscribeDefaults(
     source,
     context.model_id,
     context.model_name,
-    context.currentInstanceId,
+    context.currentInstanceUuid,
     context.currentInstanceName,
     context.currentUser,
     context.currentOrganization,
-    selectedInstanceIdsKey,
+    selectedInstanceUuidsKey,
     queryListKey,
   ]);
 }

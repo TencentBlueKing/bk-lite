@@ -12,14 +12,8 @@
 MODEL/SERIALNUMBER/DISKTYPE/SECTORS/SPEEDRPM/MANUFACTURER/WWN/CAPACITY/ALLOCCAPACITY/
 ALLOCTYPE/PARENTNAME/USAGETYPE/RUNNINGSTATUS），由 CMDB 侧 runner 归一化。
 """
-import asyncio
-import requests
+import httpx
 from sanic.log import logger
-
-try:
-    requests.packages.urllib3.disable_warnings()
-except Exception:  # noqa
-    pass
 
 
 class OceanStorManager:
@@ -43,21 +37,22 @@ class OceanStorManager:
         self.base_url = f"{self.scheme}://{self.host}:{self.port}"
         self.token = None
         self.device_id = None
+        self._client: httpx.AsyncClient | None = None
 
-    # ------------------------------------------------------------------
-    # 会话
-    # ------------------------------------------------------------------
     def _headers(self):
         h = {"Content-Type": "application/json"}
         if self.token:
             h["iBaseToken"] = self.token
         return h
 
-    def login(self):
+    async def login(self):
         url = f"{self.base_url}/deviceManager/rest/xxxxx/sessions"
         payload = {"username": self.username, "password": self.password, "scope": "0"}
-        resp = requests.post(url, json=payload, headers={"Content-Type": "application/json"},
-                             verify=self.verify_tls, timeout=self.timeout)
+        resp = await self._client.post(
+            url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+        )
         data = (resp.json() or {}).get("data", {})
         if not data:
             raise RuntimeError("OceanStor 登录失败：未返回 data")
@@ -66,28 +61,24 @@ class OceanStorManager:
         if not self.token or not self.device_id:
             raise RuntimeError("OceanStor 登录失败：缺少 iBaseToken/deviceid")
 
-    def logout(self):
-        if not self.device_id:
+    async def logout(self):
+        if not self.device_id or self._client is None:
             return
         try:
             url = f"{self.base_url}/deviceManager/rest/{self.device_id}/sessions"
-            requests.delete(
-                url,
-                headers=self._headers(),
-                verify=self.verify_tls,
-                timeout=self.timeout,
-            )
+            await self._client.delete(url, headers=self._headers())
         except Exception as e:  # noqa
             logger.warning(f"OceanStor logout error: {e}")
 
-    def _fetch_all(self, path):
+    async def _fetch_all(self, path):
         """分页拉取某配置端点的全部对象。"""
         url = f"{self.base_url}/deviceManager/rest/{self.device_id}/{path}"
         items, start = [], 0
         while True:
             params = {"range": f"[{start}-{start + self.PAGE_SIZE - 1}]"}
-            resp = requests.get(url, headers=self._headers(), params=params,
-                                verify=self.verify_tls, timeout=self.timeout)
+            resp = await self._client.get(
+                url, headers=self._headers(), params=params
+            )
             body = resp.json() or {}
             if (body.get("error") or {}).get("code", 0) != 0:
                 logger.warning(f"OceanStor fetch {path} error: {body.get('error')}")
@@ -99,20 +90,17 @@ class OceanStorManager:
             start += self.PAGE_SIZE
         return items
 
-    # ------------------------------------------------------------------
-    # 采集入口
-    # ------------------------------------------------------------------
     async def list_all_resources(self):
-        return await asyncio.to_thread(self._list_all_resources_sync)
-
-    def _list_all_resources_sync(self):
+        self._client = httpx.AsyncClient(
+            timeout=self.timeout,
+            verify=self.verify_tls,
+        )
         try:
-            self.login()
-            pools = self._fetch_all("storagepool")
-            disks = self._fetch_all("disk")
-            luns = self._fetch_all("lun")
+            await self.login()
+            pools = await self._fetch_all("storagepool")
+            disks = await self._fetch_all("disk")
+            luns = await self._fetch_all("lun")
 
-            # 主对象：设备级字段 + 聚合数量（容量由各池汇总，单位 GB）
             def _gb(sectors, sector_size):
                 try:
                     return int(int(float(sectors)) * int(float(sector_size)) / (1024 ** 3))
@@ -128,7 +116,7 @@ class OceanStorManager:
 
             storage = {
                 "device_sn": self.device_id,
-                "model": "",          # 可由 /system 端点补充
+                "model": "",
                 "brand": "huawei",
                 "storage_type": "SAN",
                 "firmware_version": "",
@@ -144,16 +132,17 @@ class OceanStorManager:
 
             result = {
                 "storage": [storage],
-                "storage_pool": pools,      # 原始 OceanStor 字段，CMDB runner 归一化
+                "storage_pool": pools,
                 "storage_disk": disks,
                 "storage_volume": luns,
             }
-            inst_data = {"result": result, "success": True}
+            return {"result": result, "success": True}
         except Exception as err:  # noqa
             import traceback
             logger.error(f"oceanstor_info main error! {traceback.format_exc()}")
-            inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
+            return {"result": {"cmdb_collect_error": str(err)}, "success": False}
         finally:
-            self.logout()
-
-        return inst_data
+            await self.logout()
+            if self._client is not None:
+                await self._client.aclose()
+                self._client = None

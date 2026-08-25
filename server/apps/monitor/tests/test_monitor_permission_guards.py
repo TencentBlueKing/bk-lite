@@ -100,7 +100,7 @@ def _patch_scope_contract(mocker, *, teams=None, assignable=None):
 
 
 class TestMonitorPolicyObjectPermission:
-    def test_serializer_hides_sibling_organizations(self):
+    def test_serializer_hides_sibling_organizations_when_filtering_enabled(self):
         from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 
         obj = _monitor_object("PolicyProjectionObj")
@@ -108,9 +108,18 @@ class TestMonitorPolicyObjectPermission:
         policy.organizations = [1, 2]
         policy.save(update_fields=["organizations"])
 
-        data = MonitorPolicySerializer(policy, context={"data_team_ids": frozenset({1})}).data
+        filtered = MonitorPolicySerializer(
+            policy,
+            context={"data_team_ids": frozenset({1}), "filter_organizations": True},
+        ).data
+        assert filtered["organizations"] == [1]
 
-        assert data["organizations"] == [1]
+        # 详情/编辑默认不裁剪，避免跨组织编辑丢兄弟组织
+        detail = MonitorPolicySerializer(
+            policy,
+            context={"data_team_ids": frozenset({1})},
+        ).data
+        assert detail["organizations"] == [1, 2]
 
     def test_superuser_queryset_stays_in_current_team(self, mocker):
         obj = _monitor_object("PolicySuperuserScopeObj")

@@ -124,8 +124,7 @@ class AlertSourceModelViewSet(ModelViewSet):
 
     @staticmethod
     def _build_k8s_image_tar_file():
-        temp_file = tempfile.NamedTemporaryFile(prefix="k8s-event-exporter-", suffix=".tar", delete=False)
-        temp_file.close()
+        temp_file = tempfile.NamedTemporaryFile(prefix="k8s-event-exporter-", suffix=".tar")
         try:
             subprocess.run(
                 ["docker", "save", "-o", temp_file.name, K8S_IMAGE_REFERENCE],
@@ -133,9 +132,14 @@ class AlertSourceModelViewSet(ModelViewSet):
                 capture_output=True,
                 text=True,
             )
+            temp_file.seek(0)
         except subprocess.CalledProcessError as error:
+            temp_file.close()
             raise RuntimeError(error.stderr or error.stdout or "Failed to export image") from error
-        return open(temp_file.name, "rb")
+        except BaseException:
+            temp_file.close()
+            raise
+        return temp_file
 
     @classmethod
     def _resolve_k8s_team_secret(cls, request, source: AlertSource) -> str:

@@ -2,6 +2,31 @@
   font-weight: 300;
 }
 
+.userInfo :global(.ant-tree),
+.userInfo :global(.ant-tree-list),
+.userInfo :global(.ant-tree-list-holder),
+.userInfo :global(.ant-tree-list-holder-inner),
+.userInfo :global(.ant-tree-treenode) {
+  background: transparent !important;
+}
+
+.userInfo :global(.ant-tree) {
+  color: var(--color-text-2) !important;
+}
+
+.userInfo :global(.ant-tree-switcher) {
+  background: var(--color-bg) !important;
+  color: var(--color-text-3);
+}
+
+.userInfo :global(.ant-tree-show-line .ant-tree-indent-unit::before) {
+  border-color: var(--color-border) !important;
+}
+
+.userInfo :global(.ant-tree-node-content-wrapper:hover) {
+  background: var(--color-bg-hover) !important;
+}
+
 .userInfo :global(.ant-tree-node-selected) {
   color: var(--color-primary) !important;
 }
@@ -10,12 +35,13 @@
   color: var(--color-primary) !important;
 }
 
-.userInfo :global(.ant-table-thead > tr > th) {
-  border-left: none !important;
+.userInfo :global(.ant-tree-node-content-wrapper.ant-tree-node-selected) {
+  background: var(--color-fill-2) !important;
+  color: var(--color-primary) !important;
 }
 
-.userInfo :global(.ant-tree) {
-  color: var(--color-text-2) !important;
+.userInfo :global(.ant-table-thead > tr > th) {
+  border-left: none !important;
 }
 
 .userInfo :global(.sub-layout_sideMenuLayout__LStLh .sub-layout_sectionContext__6mM_M) {

@@ -1,8 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Input, Button, Tooltip } from 'antd';
-import { CopyOutlined, EditOutlined } from '@ant-design/icons';
+import {
+  CopyOutlined,
+  EditOutlined,
+  InfoCircleOutlined,
+} from '@ant-design/icons';
 import { useCopy } from '@/hooks/useCopy';
 import { useTranslation } from '@/utils/i18n';
+import { normalizePasswordWhitespace } from './normalizePasswordWhitespace';
 
 interface PasswordProps {
   style?: Record<string, string | number>;
@@ -12,9 +17,14 @@ interface PasswordProps {
   allowCopy?: boolean; // 是否显示复制图标
   clickToEdit?: boolean; // 是否需要点击编辑图标才能编辑,默认true
   disabled?: boolean;
+  status?: '' | 'warning' | 'error';
+  trimOuterWhitespace?: boolean;
+  trimmedHintMode?: 'text' | 'tooltip';
   onChange?: (value: string) => void;
   onCopy?: (value: string) => void;
   onReset?: () => void;
+  onBlur?: (event: React.FocusEvent<HTMLInputElement>) => void;
+  onPaste?: (event: React.ClipboardEvent<HTMLInputElement>) => void;
 }
 
 const Password: React.FC<PasswordProps> = ({
@@ -25,14 +35,21 @@ const Password: React.FC<PasswordProps> = ({
   allowCopy = false,
   clickToEdit = true,
   disabled = false,
+  status,
+  trimOuterWhitespace = false,
+  trimmedHintMode = 'text',
   onChange,
   onCopy,
   onReset,
+  onBlur,
+  onPaste,
 }) => {
   const { t } = useTranslation();
   const { copy } = useCopy();
   const [password, setPassword] = useState<string>('');
   const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [showTrimmedHint, setShowTrimmedHint] = useState<boolean>(false);
+  const pastePendingRef = useRef(false);
 
   useEffect(() => {
     setPassword(value);
@@ -41,14 +58,45 @@ const Password: React.FC<PasswordProps> = ({
   const handleEdit = () => {
     setPassword('');
     setIsEditing(true);
+    setShowTrimmedHint(false);
     onChange?.('');
     onReset?.();
   };
 
+  const updatePassword = (nextValue: string, normalizeWhitespace: boolean) => {
+    const result = normalizeWhitespace
+      ? normalizePasswordWhitespace(nextValue)
+      : { value: nextValue, changed: false };
+    setPassword(result.value);
+    setShowTrimmedHint(result.changed);
+    onChange?.(result.value);
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
-    setPassword(newValue);
-    onChange?.(newValue);
+    const pasted = pastePendingRef.current;
+    pastePendingRef.current = false;
+    updatePassword(newValue, trimOuterWhitespace && pasted);
+  };
+
+  const handlePaste = (event: React.ClipboardEvent<HTMLInputElement>) => {
+    pastePendingRef.current = true;
+    queueMicrotask(() => {
+      pastePendingRef.current = false;
+    });
+    onPaste?.(event);
+  };
+
+  const handleBlur = (event: React.FocusEvent<HTMLInputElement>) => {
+    if (trimOuterWhitespace) {
+      const result = normalizePasswordWhitespace(password);
+      if (result.changed) {
+        setPassword(result.value);
+        setShowTrimmedHint(true);
+        onChange?.(result.value);
+      }
+    }
+    onBlur?.(event);
   };
 
   const copyPassword = () => {
@@ -63,17 +111,38 @@ const Password: React.FC<PasswordProps> = ({
 
   if (isEditable) {
     return (
-      <Input.Password
-        className={className}
-        style={style}
-        value={password}
-        disabled={disabled}
-        allowClear={!disabled}
-        visibilityToggle={!disabled}
-        placeholder={placeholder || t('common.inputPassword')}
-        autoComplete="new-password"
-        onChange={handleChange}
-      />
+      <>
+        <Input.Password
+          className={className}
+          style={style}
+          value={password}
+          disabled={disabled}
+          status={status}
+          allowClear={!disabled}
+          visibilityToggle={!disabled}
+          placeholder={placeholder || t('common.inputPassword')}
+          autoComplete="new-password"
+          onChange={handleChange}
+          onPaste={handlePaste}
+          onBlur={handleBlur}
+        />
+        {showTrimmedHint && trimmedHintMode === 'text' && (
+          <span
+            aria-live="polite"
+            className="text-[12px] leading-[18px] text-[var(--theme-color-status-warning)]"
+          >
+            {t('common.passwordWhitespaceTrimmed')}
+          </span>
+        )}
+        {showTrimmedHint && trimmedHintMode === 'tooltip' && (
+          <Tooltip title={t('common.passwordWhitespaceTrimmed')}>
+            <InfoCircleOutlined
+              aria-label={t('common.passwordWhitespaceTrimmed')}
+              className="shrink-0 text-[var(--theme-color-status-warning)]"
+            />
+          </Tooltip>
+        )}
+      </>
     );
   }
 
@@ -84,6 +153,7 @@ const Password: React.FC<PasswordProps> = ({
       type="password"
       value={password}
       disabled
+      status={status}
       placeholder={placeholder || t('common.inputPassword')}
       autoComplete="new-password"
       suffix={
@@ -118,3 +188,7 @@ const Password: React.FC<PasswordProps> = ({
 };
 
 export default Password;
+export {
+  normalizePasswordFields,
+  normalizePasswordWhitespace,
+} from './normalizePasswordWhitespace';

@@ -67,7 +67,7 @@ const NullableBooleanSelect: React.FC<{
     disabled={disabled}
     allowClear={!disabled}
     placeholder="--"
-    style={{ width: '100%' }}
+    className="w-full"
     options={[
       { label: yesLabel, value: 1 },
       { label: noLabel, value: 0 },
@@ -127,7 +127,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
         return (
           <Select
             placeholder={t('common.selectTip')}
-            style={{ width: '100%' }}
+            className="w-full"
             disabled={isDisabled}
             allowClear={!isDisabled}
             options={options}
@@ -145,7 +145,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
             <DatePicker
               showTime
               placeholder={t('common.selectTip')}
-              style={{ width: '100%' }}
+              className="w-full"
               format="YYYY-MM-DD HH:mm:ss"
               disabled={isDisabled}
             />
@@ -162,7 +162,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           return (
             <InputNumber
               placeholder={t('common.inputTip')}
-              style={{ width: '100%' }}
+              className="w-full"
               disabled={isDisabled}
             />
           );
@@ -173,7 +173,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
               <Input.TextArea
                 rows={4}
                 placeholder={t('common.inputTip')}
-                style={{ width: '100%' }}
+                className="w-full"
                 disabled={isDisabled}
               />
             );
@@ -181,7 +181,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           return (
             <Input
               placeholder={t('common.inputTip')}
-              style={{ width: '100%' }}
+              className="w-full"
               disabled={isDisabled}
             />
           );
@@ -254,14 +254,7 @@ const DataSourceParamsConfig: React.FC<DataSourceParamsConfigProps> = ({
           <Form.Item
             key={`${selectedDataSource?.id || 'default'}-${param.name}`}
             label={
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  justifyContent: 'flex-start',
-                }}
-              >
+              <div className="flex items-center justify-start gap-1">
                 <div style={getLabelStyle()} title={labelText}>
                   {labelText}
                 </div>

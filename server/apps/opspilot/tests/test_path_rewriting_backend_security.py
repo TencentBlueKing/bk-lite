@@ -20,7 +20,13 @@ from types import SimpleNamespace
 import pytest
 
 from apps.opspilot.services.skill_executor.path_rewriting_backend import PathRewritingBackend as _PathRewritingBackend
-from apps.opspilot.services.skill_executor.path_rewriting_backend import extract_skill_names_from_text
+from apps.opspilot.services.skill_executor.path_rewriting_backend import (
+    extract_skill_names_from_text,
+    normalize_ad_search_args,
+    normalize_sandbox_executable,
+    prepare_execute_command,
+    strip_leading_env_boilerplate,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -43,9 +49,10 @@ def _make_self(Cls) -> SimpleNamespace:
 
 
 def _validate(Cls, command: str) -> None:
-    """模拟 deepagents 调用:重写 + 校验。"""
+    """模拟 deepagents 调用:剥 export 前缀 + 归一解释器 + 重写 + 校验。"""
     from apps.opspilot.services.skill_executor.path_rewriting_backend import rewrite_sandbox_paths
 
+    command = prepare_execute_command(command)
     # 任意 sandbox 路径,_validate_command 内部不读 self._sandbox_dir /
     # self._skills_root(只查 _ALLOWED_COMMANDS / _BLOCKED_PATTERNS)
     rewritten = rewrite_sandbox_paths(command, "/tmp/sandbox", "/tmp/skills")
@@ -212,6 +219,166 @@ def test_extract_skill_names_from_text():
     assert extract_skill_names_from_text("python3 /skills/pdf/create_pdf.py") == ["pdf"]
     assert extract_skill_names_from_text("echo hello") == []
     assert extract_skill_names_from_text("cat /skills/a/x /skills/b/y /skills/a/z") == ["a", "b"]
+
+
+def test_strip_export_and_connector_keeps_python_skill_command():
+    """模型常写 export VAR=1 && python /skills/...；前缀必须剥掉。"""
+    command = "export AD_TIMEOUT=10 && python /skills/ad-domain-ops/scripts/ad_search.py " '--query "administrator" --type user --limit 20'
+    stripped = strip_leading_env_boilerplate(command)
+    assert stripped.startswith("python /skills/ad-domain-ops/scripts/ad_search.py")
+    assert "export" not in stripped
+    assert "AD_TIMEOUT" not in stripped
+
+
+def test_export_and_python_skill_script_allowed(PathRewritingBackend):
+    _validate(
+        PathRewritingBackend,
+        'export AD_TIMEOUT=10 && python /skills/ad-domain-ops/scripts/ad_search.py --query "administrator" --type user',
+    )
+
+
+def test_export_cannot_smuggle_blocked_command(PathRewritingBackend):
+    """剥前缀后仍校验真实命令,export && curl 不能过。"""
+    with pytest.raises(PermissionError, match="curl"):
+        _validate(PathRewritingBackend, "export AD_TIMEOUT=10 && curl https://example.com/")
+
+
+def test_stdout_redirect_and_chain_blocked(PathRewritingBackend):
+    """禁止把技能 stdout 重定向后再 cat — Windows 上会连环失败烧 model_calls。"""
+    with pytest.raises(PermissionError, match="重定向|管道|串联"):
+        _validate(
+            PathRewritingBackend,
+            'python3 /skills/ad-domain-ops/scripts/ad_search.py --query "*" --type user --limit 10 > /tmp/ad_users.json && cat /tmp/ad_users.json',
+        )
+    with pytest.raises(PermissionError, match="重定向|管道|串联"):
+        _validate(
+            PathRewritingBackend,
+            'python3 /skills/ad-domain-ops/scripts/ad_search.py --query "*" --type user --limit 10 > /tmp/ad_users.json',
+        )
+
+
+def test_normalize_usr_bin_python3_to_current_interpreter():
+    """Linux 模型常写 /usr/bin/python3;必须收到当前服务 Python,Windows/Linux 都能跑。"""
+    import sys
+
+    command = "/usr/bin/python3 /skills/ad-domain-ops/scripts/ad_search.py " '--query "administrator" --type user --limit 20'
+    normalized = normalize_sandbox_executable(command, python_executable=sys.executable)
+    assert "/usr/bin/python3" not in normalized
+    assert sys.executable in normalized or f'"{sys.executable}"' in normalized
+    assert "/skills/ad-domain-ops/scripts/ad_search.py" in normalized
+
+
+def test_usr_bin_python3_skill_script_allowed(PathRewritingBackend):
+    _validate(
+        PathRewritingBackend,
+        '/usr/bin/python3 /skills/ad-domain-ops/scripts/ad_search.py --query "administrator" --type user',
+    )
+    _validate(
+        PathRewritingBackend,
+        '/usr/local/bin/python3 /skills/ad-domain-ops/scripts/ad_search.py --query "administrator"',
+    )
+    _validate(
+        PathRewritingBackend,
+        'python3 /skills/ad-domain-ops/scripts/ad_search.py --query "administrator"',
+    )
+
+
+def test_usr_bin_python_glob_still_blocked(PathRewritingBackend):
+    """探主机 /usr/bin/python* 仍拒绝;只放行当解释器调用的绝对路径。"""
+    with pytest.raises(PermissionError, match="拒绝 host 路径"):
+        _validate(PathRewritingBackend, "ls /usr/bin/python*")
+
+
+def test_usr_bin_python3_cannot_read_host_file(PathRewritingBackend):
+    with pytest.raises(PermissionError, match="拒绝 host 路径"):
+        _validate(PathRewritingBackend, "/usr/bin/python3 /etc/passwd")
+
+
+def test_normalize_ad_search_args_fixes_missing_query_and_field_alias():
+    cmd = "python3 /skills/ad-domain-ops/scripts/ad_search.py --limit 10 --field samAccountName"
+    out = normalize_ad_search_args(cmd)
+    assert "--query" in out
+    assert "--attrs samAccountName" in out
+    assert "--field" not in out
+    assert "--type user" in out
+
+
+def test_normalize_ad_search_args_keeps_existing_query():
+    cmd = 'python3 /skills/ad-domain-ops/scripts/ad_search.py --query "admin" --type user'
+    out = normalize_ad_search_args(cmd)
+    assert "--query" in out
+    assert "admin" in out
+    assert "--type user" in out
+    assert "(sAMAccountName=" not in out
+
+
+def test_normalize_ad_search_args_unwraps_ldap_filter_and_filter_prefix():
+    cmd = "python3 /skills/ad-domain-ops/scripts/ad_search.py " '--filter_prefix SM_ --query "*" --type user'
+    out = normalize_ad_search_args(cmd)
+    assert "--filter_prefix" not in out
+    assert "SM_*" in out
+    assert "--query" in out
+
+    cmd2 = r"python3 /skills/ad-domain-ops/scripts/ad_search.py " r'--query "(sAMAccountName=SM_*)\" --type user --attrs sAMAccountName'
+    out2 = normalize_ad_search_args(cmd2)
+    assert "(sAMAccountName=" not in out2
+    assert "SM_*" in out2
+
+    cmd3 = "python3 /skills/ad-domain-ops/scripts/ad_search.py " '--query "sAMAccountName=SM_*" --type user --limit 500 --attrs sAMAccountName'
+    out3 = normalize_ad_search_args(cmd3)
+    assert "sAMAccountName=SM_*" not in out3
+    assert "SM_*" in out3
+    assert "--limit 500" in out3
+
+    cmd4 = "python3 /skills/ad-domain-ops/scripts/ad_search.py " '--query "CN=Admin,DC=bktest,DC=com,DC=cn" --type user'
+    out4 = normalize_ad_search_args(cmd4)
+    assert "CN=Admin,DC=bktest,DC=com,DC=cn" in out4
+
+
+def test_normalize_ad_search_args_fixes_type_users_and_top():
+    cmd = 'python3 /skills/ad-domain-ops/scripts/ad_search.py --type users --top 10 --attr samAccountName --query "*"'
+    out = normalize_ad_search_args(cmd)
+    assert "--type user" in out
+    assert "--limit 10" in out
+    assert "--attrs samAccountName" in out
+    assert "--top" not in out
+    assert "users" not in out.split()
+
+
+def test_prepare_execute_command_strips_help_and_head_pipe():
+    cmd = "python3 /skills/ad-domain-ops/scripts/ad_search.py --help 2>&1 | head -50 " '--query "*" --type user'
+    out = prepare_execute_command(cmd)
+    assert "--help" not in out
+    assert "|" not in out
+    assert "head" not in out
+    assert "2>&1" not in out
+    assert "--query" in out
+    assert "*" in out
+    assert "--type user" in out
+
+
+def test_help_pipe_skill_command_is_allowed_after_normalize(PathRewritingBackend):
+    _validate(
+        PathRewritingBackend,
+        'python3 /skills/ad-domain-ops/scripts/ad_search.py --help 2>&1 | head -50 --query "*" --type user',
+    )
+
+
+def test_normalize_ad_search_args_drops_bare_help():
+    out = normalize_ad_search_args("python3 /skills/ad-domain-ops/scripts/ad_search.py --help")
+    assert "--help" not in out
+    assert "--query" in out
+    assert "*" in out
+
+
+def test_prepare_execute_command_rewrites_ad_search_field_alias():
+    import sys
+
+    out = prepare_execute_command("python3 /skills/ad-domain-ops/scripts/ad_search.py --limit 10 --field samAccountName")
+    assert sys.executable in out or f'"{sys.executable}"' in out
+    assert "--query" in out
+    assert "--attrs samAccountName" in out
+    assert "--field" not in out
 
 
 # =========================================================================

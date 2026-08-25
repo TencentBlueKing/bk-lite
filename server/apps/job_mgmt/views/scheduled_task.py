@@ -25,10 +25,7 @@ from apps.job_mgmt.serializers.scheduled_task import (
 )
 from apps.job_mgmt.services.celery_dispatch import dispatch_celery_task
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
-from apps.job_mgmt.services.scheduled_task_authz import (
-    ScheduledTaskTeamBoundaryError,
-    validate_scheduled_task_resource_boundary,
-)
+from apps.job_mgmt.services.scheduled_task_authz import ScheduledTaskTeamBoundaryError, validate_scheduled_task_resource_boundary
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
@@ -103,7 +100,7 @@ class ScheduledTaskViewSet(AuthViewSet):
             instance = serializer.save()
         log_operation(request, "create", "job", f"新增定时任务: {instance.name}")
         return Response(
-            ScheduledTaskDetailSerializer(instance).data,
+            ScheduledTaskDetailSerializer(instance, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -118,9 +115,7 @@ class ScheduledTaskViewSet(AuthViewSet):
             instance = ScheduledTask.objects.select_for_update().get(pk=instance.pk)
             self._validate_locked_task_permission(request, instance)
             serializer.instance = instance
-            disable_only = serializer.validated_data.get("is_enabled") is False and set(serializer.validated_data) == {
-                "is_enabled"
-            }
+            disable_only = serializer.validated_data.get("is_enabled") is False and set(serializer.validated_data) == {"is_enabled"}
             if disable_only:
                 # 存量任务可能含当前用户已不再拥有的旧团队；纯禁用必须始终可止损。
                 if not request.user.is_superuser and not is_team_authorized(
@@ -148,7 +143,7 @@ class ScheduledTaskViewSet(AuthViewSet):
                 )
                 instance = serializer.save()
         log_operation(request, "update", "job", f"编辑定时任务: {instance.name}")
-        return Response(ScheduledTaskDetailSerializer(instance).data)
+        return Response(ScheduledTaskDetailSerializer(instance, context={"request": request}).data)
 
     @action(detail=True, methods=["post"])
     @HasPermission("cron_task-Edit")
@@ -186,10 +181,7 @@ class ScheduledTaskViewSet(AuthViewSet):
 
         return Response(
             {
-                "message": (
-                    f"任务已{'启用' if instance.is_enabled else '禁用'}"
-                    + ("，调度状态将在下次触发时重试同步" if schedule_sync_pending else "")
-                ),
+                "message": (f"任务已{'启用' if instance.is_enabled else '禁用'}" + ("，调度状态将在下次触发时重试同步" if schedule_sync_pending else "")),
                 "is_enabled": instance.is_enabled,
             }
         )

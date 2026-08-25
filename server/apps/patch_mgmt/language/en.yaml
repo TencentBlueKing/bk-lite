@@ -96,6 +96,10 @@ message:
   yesterday: "Yesterday"
   windows_requirement: "Install {kb} or a valid superseding KB"
   linux_requirement: "Package version ≥ {version}"
+  assessment_not_run: "Assessment has not been run"
+  assessment_running: "Assessment task is running"
+  assessment_failed: "Assessment failed"
+  assessment_snapshot_incomplete: "No current valid assessment snapshot; assessment data is incomplete"
 status:
   task_type:
     assess: "Assessment"

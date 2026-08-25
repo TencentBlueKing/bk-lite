@@ -31,6 +31,7 @@ import {
   type ChangeOperationTone,
 } from '@/app/cmdb/utils/assetSearchDisplay';
 import type { RecentChangeFilter } from '@/app/cmdb/utils/assetSearchLandingData';
+import CompactEmptyState from '@/components/compact-empty-state';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
@@ -57,7 +58,7 @@ export interface RecentChangeItem {
 
 export interface FollowedAssetViewItem {
   key: string;
-  inst_id: string | number;
+  inst_uuid: string;
   model_id: string;
   model_name: string;
   inst_name: string;
@@ -521,7 +522,7 @@ const AssetSearchLanding: React.FC<AssetSearchLandingProps> = ({
             ))}
           </div>
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          <CompactEmptyState description={t('common.noData')} />
         )}
       </Card>
     </div>

@@ -1,0 +1,5 @@
+{
+  "name": "bk-lite-dev",
+  "install": "set -euo pipefail\nexport PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:$PATH\"\nif ! command -v uv >/dev/null 2>&1; then curl -LsSf https://astral.sh/uv/install.sh | sh; export PATH=\"$HOME/.local/bin:$PATH\"; fi\nuv python install 3.12\nsudo apt-get update -y\nsudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential unixodbc-dev default-jre-headless pkg-config\nif [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\"; nvm install 24; nvm use 24; fi\ncorepack enable\ncorepack prepare pnpm@11.20.0 --activate\n( cd server && uv sync --all-groups --all-extras --python 3.12 )\nif [ ! -f server/.env ]; then printf '%s\\n' 'DEBUG=True' 'SECRET_KEY=cursor-cloud-dev' 'DB_ENGINE=sqlite' 'DB_NAME=:memory:' 'ENABLE_CELERY=true' 'MINIO_ENDPOINT=127.0.0.1:9000' 'MINIO_ACCESS_KEY=dev' 'MINIO_SECRET_KEY=dev' 'MINIO_USE_HTTPS=false' > server/.env; fi\n( cd web && pnpm install --frozen-lockfile )\n( cd agents/stargazer && uv sync --all-groups --all-extras --python 3.12 )\n( cd webchat && npm ci )",
+  "start": "sudo service docker start || true"
+}

@@ -2,11 +2,13 @@
 
 from string import Template
 
+from django.db import transaction
 from django.db.models import F
 
 from apps.monitor.models import MonitorAlert
 from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.tasks.utils.policy_calculate import vm_to_dataframe, calculate_alerts
+from apps.monitor.utils.alert_name_variables import overlay_dimension_field_values
 from apps.monitor.utils.dimension import (
     build_dimensions,
     extract_monitor_instance_id,
@@ -28,6 +30,9 @@ class AlertDetector:
         active_alerts,
         metric_query_service,
         parent_instances_map=None,
+        resource_ip_map=None,
+        display_variable_map=None,
+        display_field_label_map=None,
     ):
         self.policy = policy
         self.instances_map = instances_map
@@ -35,6 +40,9 @@ class AlertDetector:
         self.active_alerts = active_alerts
         self.metric_query_service = metric_query_service
         self.parent_instances_map = parent_instances_map or {}
+        self.resource_ip_map = resource_ip_map or {}
+        self.display_variable_map = display_variable_map or {}
+        self.display_field_label_map = display_field_label_map or {}
         self._scoped_instance_matcher = ScopedInstanceMatcher(
             getattr(getattr(self.policy, "monitor_object", None), "instance_id_keys", None)
             or [],
@@ -168,20 +176,28 @@ class AlertDetector:
 
     def _build_metric_resource_context(self, metric_instance_id: str) -> dict:
         monitor_instance_id = self._extract_monitor_instance_id(metric_instance_id)
+        dimensions = self._parse_dimensions(metric_instance_id)
         return {
             "monitor_instance_id": monitor_instance_id,
-            **self._build_resource_context(monitor_instance_id),
+            **self._build_resource_context(monitor_instance_id, dimensions),
         }
 
-    def _build_resource_context(self, monitor_instance_id: str) -> dict:
+    def _build_resource_context(self, monitor_instance_id: str, dimensions: dict | None = None) -> dict:
         resource_name = self.instances_map.get(
             monitor_instance_id, monitor_instance_id
+        )
+        display_values = overlay_dimension_field_values(
+            self.display_variable_map.get(monitor_instance_id, {}),
+            dimensions or {},
+            self.display_field_label_map,
         )
         context = {
             "resource_id": monitor_instance_id,
             "resource_name": resource_name,
+            "resource_ip": self.resource_ip_map.get(monitor_instance_id, ""),
             "parent_resource_id": "",
             "parent_resource_name": "",
+            **display_values,
         }
 
         monitor_object = getattr(self.policy, "monitor_object", None)
@@ -219,9 +235,11 @@ class AlertDetector:
             monitor_instance_id = self._resolve_baseline_monitor_instance_id(
                 metric_instance_id
             )
-            resource_context = self._build_resource_context(monitor_instance_id)
-            resource_name = resource_context["resource_name"]
             dimensions = self._parse_dimensions(metric_instance_id)
+            resource_context = self._build_resource_context(
+                monitor_instance_id, dimensions
+            )
+            resource_name = resource_context["resource_name"]
             dimension_str = self._format_dimension_str(dimensions)
             display_name = f"{resource_name} - {dimension_str}" if dimension_str else resource_name
             group_by_keys = self._get_group_by_keys()
@@ -357,10 +375,6 @@ class AlertDetector:
 
         alert_ids = [alert.id for alert in self.active_alerts if alert.alert_type == "alert"]
 
-        alerts_to_recover = list(MonitorAlert.objects.filter(id__in=alert_ids, info_event_count__gte=self.policy.recovery_condition))
-        if not alerts_to_recover:
-            return
-
         end_time = self.policy.last_run_time
         operation_log = {
             "action": "recovered",
@@ -368,22 +382,43 @@ class AlertDetector:
             "operator": "system",
             "time": end_time.isoformat() if end_time else None,
         }
-        for alert in alerts_to_recover:
-            alert.status = "recovered"
-            alert.end_event_time = end_time
-            alert.operator = "system"
-            alert.operation_logs = (alert.operation_logs or []) + [operation_log]
-            alert.alert_center_notified = False
-        MonitorAlert.objects.bulk_update(
-            alerts_to_recover,
-            fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
-        )
-        AlertLifecycleNotifier(self.policy).notify_alerts(
-            alerts_to_recover,
-            action="recovered",
-            operator="system",
-            reason="auto_recovered",
-        )
+        notifier = AlertLifecycleNotifier(self.policy)
+        with transaction.atomic():
+            alerts_to_recover = list(
+                MonitorAlert.objects.select_for_update()
+                .filter(
+                    id__in=alert_ids,
+                    status="new",
+                    info_event_count__gte=self.policy.recovery_condition,
+                )
+                .order_by("id")
+            )
+            if not alerts_to_recover:
+                return
+            for alert in alerts_to_recover:
+                alert.status = "recovered"
+                alert.end_event_time = end_time
+                alert.operator = "system"
+                alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+                alert.alert_center_notified = False
+            MonitorAlert.objects.bulk_update(
+                alerts_to_recover,
+                fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
+            )
+            notifier.enqueue_alert_center_deliveries(
+                alerts_to_recover,
+                "recovered",
+                operator="system",
+                reason="auto_recovered",
+            )
+            transaction.on_commit(
+                lambda alerts=tuple(alerts_to_recover): notifier.notify_alerts(
+                    alerts,
+                    action="recovered",
+                    operator="system",
+                    reason="auto_recovered",
+                )
+            )
 
     def recover_no_data_alerts(self):
         if not self.policy.no_data_recovery_period:
@@ -432,22 +467,40 @@ class AlertDetector:
                 "operator": "system",
                 "time": end_time.isoformat() if end_time else None,
             }
-            for alert in alerts_to_recover:
-                alert.status = "recovered"
-                alert.end_event_time = end_time
-                alert.operator = "system"
-                alert.operation_logs = (alert.operation_logs or []) + [operation_log]
-                alert.alert_center_notified = False
-            MonitorAlert.objects.bulk_update(
-                alerts_to_recover,
-                fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
-            )
-            AlertLifecycleNotifier(self.policy).notify_alerts(
-                alerts_to_recover,
-                action="recovered",
-                operator="system",
-                reason="auto_recovered",
-            )
+            notifier = AlertLifecycleNotifier(self.policy)
+            with transaction.atomic():
+                candidate_ids = [alert.id for alert in alerts_to_recover]
+                alerts_to_recover = list(
+                    MonitorAlert.objects.select_for_update()
+                    .filter(id__in=candidate_ids, status="new", alert_type="no_data")
+                    .order_by("id")
+                )
+                if not alerts_to_recover:
+                    return
+                for alert in alerts_to_recover:
+                    alert.status = "recovered"
+                    alert.end_event_time = end_time
+                    alert.operator = "system"
+                    alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+                    alert.alert_center_notified = False
+                MonitorAlert.objects.bulk_update(
+                    alerts_to_recover,
+                    fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
+                )
+                notifier.enqueue_alert_center_deliveries(
+                    alerts_to_recover,
+                    "recovered",
+                    operator="system",
+                    reason="auto_recovered",
+                )
+                transaction.on_commit(
+                    lambda alerts=tuple(alerts_to_recover): notifier.notify_alerts(
+                        alerts,
+                        action="recovered",
+                        operator="system",
+                        reason="auto_recovered",
+                    )
+                )
             logger.info(f"Policy {self.policy.id}: recovered {len(alerts_to_recover)} no_data alerts")
         else:
             logger.debug(f"Policy {self.policy.id}: no no_data alerts to recover")

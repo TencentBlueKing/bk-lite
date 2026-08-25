@@ -1,10 +1,28 @@
 import { formatMetricValue } from './format';
 import type { BarItem } from '../widgets';
 
+type SeriesPoint = [number, string | number | null | undefined];
+
 interface RawSeries {
   metric?: Record<string, string>;
-  values?: Array<[number, string | number]>;
+  values?: SeriesPoint[];
 }
+
+/**
+ * 取序列最后一个有限值。
+ * 后端 fill_missing_points 会把 [最后采样点, end] 之间补成 null；
+ * Number(null)===0 且 isFinite(0)，直接取最后一个点会把整列显示成 0。
+ */
+export const latestFiniteValue = (values?: SeriesPoint[]): number => {
+  if (!values?.length) return 0;
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    const raw = values[i]?.[1];
+    if (raw === null || raw === undefined || raw === '') continue;
+    const n = Number(raw);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+};
 
 /**
  * 把「按维度 topk」查询结果解析为 BarList。
@@ -20,11 +38,7 @@ export const topLabelBars = (
   const rows = series
     .map((s) => {
       const label = labelKeys.map((k) => (s.metric?.[k] || '').trim()).find(Boolean) || '';
-      const nums = (s.values || [])
-        .filter(([, v]) => v !== null && v !== undefined && v !== '')
-        .map(([, v]) => Number(v))
-        .filter((n) => Number.isFinite(n));
-      const value = nums.length ? nums[nums.length - 1] : 0;
+      const value = latestFiniteValue(s.values);
       return { label, value };
     })
     .filter((r) => r.label && Number.isFinite(r.value))

@@ -1,4 +1,5 @@
 export type CatalogStatus = 'active' | 'silent' | 'archived';
+export type InstanceStatus = 'active' | 'silent';
 
 export interface ApmPage<T> {
   count: number;
@@ -17,6 +18,7 @@ export interface ApmService {
   application_name: string;
   namespace: string;
   name: string;
+  language: string;
   first_seen_at: string;
   last_seen_at: string;
   archived_at: string | null;
@@ -38,9 +40,7 @@ export interface ApmServiceInstance {
   permission_mode: 'inherited' | 'custom';
   first_seen_at: string;
   last_seen_at: string;
-  archived_at: string | null;
-  archive_reason: string;
-  status: CatalogStatus;
+  status: InstanceStatus;
   organization_ids: number[];
 }
 
@@ -174,6 +174,34 @@ export interface ApmDashboardTopRow {
   sub_value: number | null;
 }
 
+export type ApmDeploymentStatus = 'success' | 'in_progress' | 'rollback' | 'failed';
+export type ApmDeploymentSource = 'inferred' | 'reported';
+
+export interface ApmDeploymentEvent {
+  id: string;
+  service_id: string;
+  service_namespace: string;
+  service_name: string;
+  environment: string;
+  version: string;
+  deployed_at: string;
+  deployed_by: string;
+  status: ApmDeploymentStatus;
+  source: ApmDeploymentSource;
+}
+
+export interface ApmDashboardReleaseRow {
+  id: string;
+  service_id: string;
+  service_name: string;
+  environment: string;
+  version: string;
+  deployed_at: string;
+  deployed_by: string;
+  status: ApmDeploymentStatus;
+  source?: ApmDeploymentSource;
+}
+
 export interface ApmDashboard {
   empty: boolean;
   window: ApmTimeWindow;
@@ -183,7 +211,7 @@ export interface ApmDashboard {
   alerts: ApmDashboardSection<{ items: ApmDashboardAlertRow[] }>;
   top_error_rate: ApmDashboardSection<{ items: ApmDashboardTopRow[] }>;
   top_p95: ApmDashboardSection<{ items: ApmDashboardTopRow[] }>;
-  releases: ApmDashboardSection<{ items: [] }>;
+  releases: ApmDashboardSection<{ items: ApmDashboardReleaseRow[] }>;
 }
 
 export interface ApmTopologyNode {
@@ -194,6 +222,7 @@ export interface ApmTopologyNode {
   health: ApmTopologyHealth;
   sampled_spans: number;
   error_spans: number;
+  language?: string;
 }
 
 export interface ApmTopologyEdge {
@@ -337,8 +366,8 @@ export interface ApmTraceDetail {
 
 export interface ApmTraceSearchParams {
   service_namespace?: string;
-  service_name: string;
-  environment: string;
+  service_name?: string;
+  environment?: string;
   instance_id?: string;
   span_name?: string;
   status?: 'ok' | 'error';
@@ -371,10 +400,56 @@ export interface ApmSpanPage {
   next_cursor: string | null;
 }
 
-export interface ApmSpanSearchParams {
-  service_namespace?: string;
+export interface ApmIssueDistribution {
+  value: string;
+  count: number;
+  percent: number;
+}
+
+export interface ApmIssueSampleTrace {
+  trace_id: string;
+  span_id: string;
+  endpoint: string;
+  started_at: string;
+  duration_ms: number;
+}
+
+export interface ApmIssue {
+  fingerprint: string;
+  exception_type: string;
+  message: string;
+  stacktrace: string;
+  service_namespace: string;
   service_name: string;
   environment: string;
+  occurrences: number;
+  affected_traces: number;
+  last_seen_at: string;
+  version_distribution: ApmIssueDistribution[];
+  endpoint_distribution: ApmIssueDistribution[];
+  sample_traces: ApmIssueSampleTrace[];
+}
+
+export interface ApmIssuePage {
+  items: ApmIssue[];
+  next_cursor: string | null;
+  truncated: boolean;
+}
+
+export interface ApmIssueSearchParams {
+  service_namespace?: string;
+  service_name?: string;
+  environment?: string;
+  started_at?: string;
+  ended_at?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface ApmSpanSearchParams {
+  service_namespace?: string;
+  service_name?: string;
+  environment?: string;
   instance_id?: string;
   span_name?: string;
   status?: 'ok' | 'error';
@@ -390,6 +465,8 @@ export interface ApmSpanSearchParams {
 export type ApmPolicyMetric = 'error_rate' | 'p95' | 'p99' | 'throughput' | 'no_traffic';
 export type ApmPolicyComparator = 'gt' | 'gte' | 'lt' | 'lte';
 export type ApmPolicySeverity = 'critical' | 'error' | 'warning';
+export type ApmPolicyAggregation = 'avg' | 'max' | 'min' | 'last';
+export type ApmPolicyVersionMode = 'all' | 'specific' | 'grouped';
 export type ApmNotificationDeliveryMode = 'message' | 'alert_event_copy';
 export type ApmNotificationRecipientMode = 'none' | 'system_user' | 'free_text';
 
@@ -406,23 +483,31 @@ export interface ApmPolicyInput {
   name: string;
   service_id: string;
   environment: string;
+  alert_name?: string;
+  endpoints: string[];
+  version_mode: ApmPolicyVersionMode;
+  versions: string[];
   metric_type: ApmPolicyMetric;
-  comparator: ApmPolicyComparator;
-  threshold: number | string;
-  duration_window: number;
-  recovery_window: number;
-  severity: ApmPolicySeverity;
+  evaluation_interval: number;
+  metric_window: number;
+  aggregation: ApmPolicyAggregation;
+  thresholds: Array<{ severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: number | string }>;
+  trigger_after: number;
+  recover_after: number;
+  no_data_after?: number | null;
+  no_data_severity?: ApmPolicySeverity | '';
+  no_data_alert_name?: string;
   notification_targets: ApmPolicyNotificationTarget[];
-  is_enabled: boolean;
+  is_enabled?: boolean;
 }
 
-export interface ApmPolicy extends Omit<ApmPolicyInput, 'threshold'> {
+export interface ApmPolicy extends ApmPolicyInput {
   id: string;
-  threshold: string;
+  is_enabled: boolean;
   service_namespace: string;
   service_name: string;
   state: {
-    status: 'normal' | 'firing';
+    status: 'normal' | 'active';
     consecutive_hits: number;
     consecutive_recoveries: number;
     last_succeeded_at: string | null;
@@ -439,6 +524,14 @@ export interface ApmPolicyQueryResult {
   breached: boolean | null;
   evaluated_at: string;
   data_state: 'available' | 'no_data';
+  threshold: { severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: string } | null;
+  series: Array<{
+    timestamp: string;
+    request_rate: number | null;
+    error_rate: number | null;
+    p95_ms: number | null;
+    p99_ms: number | null;
+  }>;
 }
 
 export interface ApmEvent {
@@ -448,8 +541,8 @@ export interface ApmEvent {
   title: string;
   description: string;
   severity: ApmPolicySeverity | 'info';
-  action: 'created' | 'recovery';
-  status: 'firing' | 'recovered';
+  action: 'triggered' | 'escalated' | 'recovered' | 'closed';
+  status: 'active' | 'recovered' | 'closed';
   service: string;
   item: ApmPolicyMetric;
   value: number | null;
@@ -461,6 +554,9 @@ export interface ApmEvent {
   policy_id: string | null;
   environment: string;
   notification_deliveries: ApmNotificationDelivery[];
+  endpoint?: string;
+  version?: string;
+  snapshot_status?: ApmEventSnapshot['payload_status'];
 }
 
 export interface ApmEventQuery {
@@ -469,6 +565,103 @@ export interface ApmEventQuery {
   started_at?: string;
   ended_at?: string;
   limit?: number;
+}
+
+export interface ApmAlertEvent {
+  id: string;
+  event_id: string;
+  action: ApmEvent['action'];
+  severity: ApmPolicySeverity;
+  value: string | null;
+  occurred_at: string;
+  title: string;
+  description: string;
+}
+
+export interface ApmAlert {
+  id: string;
+  external_id: string;
+  title: string;
+  policy_id: string;
+  policy_name: string;
+  service_id: string | null;
+  service_namespace: string;
+  service_name: string;
+  environment: string;
+  endpoint: string;
+  version: string;
+  metric_type: ApmPolicyMetric;
+  severity: ApmPolicySeverity;
+  status: 'active' | 'recovered' | 'closed';
+  notification_status?: 'none' | 'pending' | 'delivered' | 'partial' | 'failed';
+  current_value: string | null;
+  operator: string;
+  started_at: string;
+  ended_at: string | null;
+  last_event_at: string;
+  event_count: number;
+  events: ApmAlertEvent[];
+}
+
+export interface ApmAlertQuery {
+  status?: ApmAlert['status'];
+  status_group?: 'active' | 'history';
+  severity?: ApmPolicySeverity;
+  metric_type?: ApmPolicyMetric;
+  service_id?: string;
+  keyword?: string;
+  started_at?: string;
+  ended_at?: string;
+  limit?: number;
+}
+
+export interface ApmAlertMetricSnapshotItem {
+  type: 'event' | 'info' | 'no_data';
+  snapshot_time: string;
+  event_id: string | null;
+  event_time: string | null;
+  value: string | null;
+  threshold: {
+    severity: ApmPolicySeverity;
+    comparator: ApmPolicyComparator | 'no_data';
+    value: string | number;
+  } | null;
+  data_state: 'available' | 'no_data';
+}
+
+export interface ApmAlertMetricSnapshot {
+  unit: string;
+  aggregation: ApmPolicyAggregation;
+  evaluation_interval: number;
+  metric_window: number;
+  snapshots: ApmAlertMetricSnapshotItem[];
+}
+
+export interface ApmEventSnapshot {
+  id: string;
+  event_id: string;
+  schema_version: number;
+  action: ApmEvent['action'];
+  occurred_at: string;
+  policy_snapshot: Record<string, unknown>;
+  object_snapshot: Record<string, unknown>;
+  evaluation_snapshot: {
+    value: string | null;
+    unit?: string;
+    comparator?: ApmPolicyComparator | 'closed' | null;
+    threshold?: string | null;
+    severity?: ApmPolicySeverity;
+    data_state: 'available' | 'no_data';
+  };
+  trace_context: Record<string, unknown>;
+  payload_status: 'pending' | 'available' | 'unavailable' | 'expired';
+  payload_error_code: string;
+  payload: {
+    event_point: string;
+    threshold: { severity: ApmPolicySeverity; comparator: ApmPolicyComparator; value: string } | null;
+    series: Array<{ timestamp: string; value: number | null }>;
+  } | null;
+  retention_expires_at: string;
 }
 
 export interface ApmNotificationChannel {

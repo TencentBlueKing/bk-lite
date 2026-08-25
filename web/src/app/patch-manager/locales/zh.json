@@ -236,7 +236,7 @@
       "pendingRisks": "待治理风险",
       "remediationFailures": "修复异常",
       "complianceDistribution": "主机合规分布",
-      "rateHelp": "合规率 = 合规 / (合规+不合规){rateHint}；评估覆盖率 = 已评估 / 纳管主机{coverageHint}；未配置/待评估/评估失败不计入合规率；分母为 0 时显示 -。",
+      "rateHelp": "合规率 = 合规 / (合规+不合规){rateHint}；评估覆盖率 = 已评估 / 纳管主机{coverageHint}；未配置/待评估/评估失败不计入合规率；分母为 0 时显示 --。",
       "quickActions": "快捷操作",
       "assessNow": "立即评估",
       "assessNowDescription": "立即对所有主机执行一次合规评估，刷新风险数据。",
@@ -298,14 +298,18 @@
       "invalidateTitle": "基线正在评估",
       "invalidateContent": "修改基线“{name}”的要求或绑定主机将使当前评估结果失效，是否继续？",
       "continueEditing": "继续修改",
-      "name": "基线名称", "patchRequirements": "补丁要求", "patchFilter": "按补丁筛选基线", "boundTargets": "绑定主机", "complianceDistribution": "合规分布", "unbound": "未绑定",
+      "name": "基线名称", "patchRequirements": "补丁要求", "patchFilter": "按补丁筛选基线", "boundTargets": "绑定主机", "complianceDistribution": "合规分布", "recentAssessment": "最近评估", "unbound": "未绑定",
       "deleteBlocked": "已绑定主机的基线不能删除", "bindTargets": "绑定主机", "deleteTitle": "删除基线", "deleteConfirm": "确定删除基线“{name}”？", "deleted": "基线已删除",
       "assessTitle": "立即评估基线", "assessConfirm": "将评估基线“{name}”当前绑定的 {count} 台主机，是否继续？", "confirmAssess": "确认评估", "assessCreated": "已创建评估任务，包含 {count} 台主机", "cannotAssess": "当前基线不可评估",
       "requirement": "要求", "description": "描述", "applicableVersion": "适用版本", "remove": "移除",
       "create": "新建基线", "edit": "编辑基线", "requirementRequired": "请至少添加一条补丁要求", "saved": "保存成功", "nameRequired": "请输入基线名称",
       "osLocked": "操作系统创建后锁定，编辑时不可修改。确需其他操作系统请新建基线。", "descriptionPlaceholder": "基线说明", "requirementList": "补丁要求清单", "allRequired": "全部必装", "addFromLibrary": "从补丁库添加要求",
       "bindTitle": "绑定主机 - {name}", "targetRequired": "请至少选择一台主机", "targetsBound": "已将 {count} 台主机绑定到当前基线", "confirmBind": "确认绑定", "target": "主机", "targetSearch": "主机名 / IP", "selectedTargets": "已选 {count} 台",
-      "patchRequired": "请至少选择一条补丁", "confirmAdd": "确认添加", "libraryHelp": "仅展示「就绪」状态的补丁；勾选加入当前基线清单，取消勾选移除。", "searchKb": "搜索 KB 号", "searchPackage": "搜索包名"
+      "patchRequired": "请至少选择一条补丁", "confirmAdd": "确认添加", "libraryHelp": "仅展示「就绪」状态的补丁；勾选加入当前基线清单，取消勾选移除。", "searchKb": "搜索 KB 号", "searchPackage": "搜索包名",
+      "complianceDetail": {
+        "title": "基线合规详情", "hostPerspective": "主机视角", "patchPerspective": "补丁视角", "searchHost": "搜索主机名 / IP", "searchPatch": "搜索 KB / 包名 / 描述", "searchHostIp": "主机/IP", "objectSearch": "名称/描述", "detailSearch": "名称/描述", "detailSearchLabel": "详情名称/描述", "filterStatus": "评估状态", "patch": "补丁", "host": "主机", "hostStatus": "主机状态", "requirement": "合规要求", "assessmentStatus": "评估状态", "evidence": "检测证据", "reason": "原因", "assessedAt": "评估时间", "hostScope": "主机级", "hostScopeHint": "该补丁没有单条评估快照，当前展示的是主机整体评估状态", "hostAssessmentFailed": "主机评估失败", "failureContext": "失败阶段：{stage}；错误码：{code}", "loading": "正在加载合规结果", "assessing": "评估中", "assessmentCompleted": "评估完成，合规结果已刷新", "noObjects": "暂无匹配的主机或补丁", "noBoundHosts": "当前基线尚未绑定主机，请通过操作列“绑定主机”添加", "noRequirements": "当前基线尚无补丁要求，请先编辑基线添加", "noDetails": "暂无匹配的合规明细", "noSelection": "请从左侧选择主机或补丁",
+        "status": { "satisfied": "合规", "missing": "不合规", "not_applicable": "不适用", "unknown": "无法判定", "pending": "待评估", "evaluating": "评估中", "failed": "评估失败" }
+      }
     },
     "settingsPage": {
       "type": "类型", "proxy": "代理", "applicableScope": "适用范围", "wsusApplicableScope": "Windows（WSUS）",
@@ -321,7 +325,7 @@
       "distroRequired": "请输入发行版", "distroPlaceholder": "如 Ubuntu / Rocky Linux",
       "osVersionPlaceholder": "如 22.04 / 9（apt 源必填，用于映射代号）", "archPlaceholder": "请选择 CPU 架构",
       "connectivityPassed": "连通性测试通过", "connectivityFailed": "连通性测试失败", "scanSaved": "扫描设置已保存",
-      "hourlyTrigger": "全局周期到达（每 {count} 小时）自动评估所有主机", "dailyTrigger": "全局周期到达（每天 {time}）自动评估所有主机",
+      "scheduledAssessmentTrigger": "全局周期评估", "notEnabled": "未开启", "hourlyTrigger": "全局周期到达（每 {count} 小时）自动评估所有主机", "dailyTrigger": "全局周期到达（每天 {time}）自动评估所有主机",
       "weeklyTrigger": "全局周期到达（{weekday} {time}）自动评估所有主机",
       "triggerBaselineBound": "主机首次绑定基线后进入待评估", "triggerBaselineChanged": "主机更换基线或基线补丁要求变更后重置为待评估",
       "triggerManual": "页面点击「立即评估」立即执行", "triggerPostRemediation": "安装或重启完成后自动验证",

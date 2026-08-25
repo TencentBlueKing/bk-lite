@@ -1,13 +1,13 @@
 "use client";
 
 import React, { useImperativeHandle } from "react";
-import { Button, Empty, Input, Select, Tooltip } from "antd";
+import { Button, Input, Select } from "antd";
 import {
   MinusCircleOutlined,
   PlusCircleOutlined,
-  QuestionCircleOutlined,
 } from "@ant-design/icons";
 import CustomTable from "@/components/custom-table";
+import CompactEmptyState from "@/components/compact-empty-state";
 import { useTranslation } from "@/utils/i18n";
 import { ResponseFieldDefinition } from "@/app/ops-analysis/types/dataSource";
 import {
@@ -104,6 +104,7 @@ const FieldSchemaTable = React.forwardRef<
       width: 140,
       render: (_: unknown, record: SchemaField) => (
         <Input
+          size="small"
           disabled={readOnly}
           value={record.key}
           placeholder={t("dataSource.fieldKey")}
@@ -126,6 +127,7 @@ const FieldSchemaTable = React.forwardRef<
       width: 140,
       render: (_: unknown, record: SchemaField) => (
         <Input
+          size="small"
           disabled={readOnly}
           value={record.title}
           placeholder={t("dataSource.fieldTitle")}
@@ -142,6 +144,7 @@ const FieldSchemaTable = React.forwardRef<
       width: 120,
       render: (_: unknown, record: SchemaField) => (
         <Select
+          size="small"
           disabled={readOnly}
           value={record.value_type}
           options={valueTypeOptions}
@@ -163,6 +166,7 @@ const FieldSchemaTable = React.forwardRef<
       width: 160,
       render: (_: unknown, record: SchemaField) => (
         <Input
+          size="small"
           disabled={readOnly}
           value={record.description || ""}
           placeholder={t("dataSource.fieldDescription")}
@@ -208,55 +212,24 @@ const FieldSchemaTable = React.forwardRef<
   ];
 
   return (
-    <div style={{ margin: "24px 0 0" }}>
-      <div
-        style={{
-          marginBottom: "8px",
-          color: "var(--color-text-1)",
-          fontSize: "14px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
+    <div>
+      <CustomTable
+        rowKey="id"
+        size="small"
+        columns={schemaFieldColumns}
+        dataSource={schemaFields}
+        pagination={false}
+        bordered
+        locale={{
+          emptyText: (
+            <CompactEmptyState description={t("common.noData")} />
+          ),
         }}
-      >
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <span>{t("dataSource.responseFieldSchemaConfig")}</span>
-          <Tooltip title={t("dataSource.schemaOptionalAutoGenTip")}>
-            <QuestionCircleOutlined
-              style={{ color: "var(--color-text-3)", fontSize: 14 }}
-            />
-          </Tooltip>
-        </span>
-        {readOnly ? null : (
-          <Button
-            type="dashed"
-            size="small"
-            icon={<PlusCircleOutlined />}
-            onClick={() =>
-              onChange([...schemaFields, createDefaultSchemaField()])
-            }
-          >
-            {t("dataSource.addField")}
-          </Button>
-        )}
-      </div>
-      {schemaFields.length > 0 ? (
-        <CustomTable
-          rowKey="id"
-          columns={schemaFieldColumns}
-          dataSource={schemaFields}
-          pagination={false}
-          rowDraggable={!readOnly}
-          onRowDragEnd={(targetTableData) =>
-            handleSchemaFieldDragEnd((targetTableData || []) as SchemaField[])
-          }
-        />
-      ) : (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t("common.noData")}
-        />
-      )}
+        rowDraggable={!readOnly && schemaFields.length > 0}
+        onRowDragEnd={(targetTableData) =>
+          handleSchemaFieldDragEnd((targetTableData || []) as SchemaField[])
+        }
+      />
       {duplicateFieldKeys.length > 0 && (
         <div
           style={{

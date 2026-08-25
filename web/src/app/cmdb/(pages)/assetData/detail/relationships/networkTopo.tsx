@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Empty, Spin, message, Modal } from 'antd';
+import { Spin, message, Modal } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { Graph } from '@antv/x6';
 import { ForceLayout } from '@antv/layout';
 import { useTranslation } from '@/utils/i18n';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { getIconUrl } from '@/app/cmdb/utils/common';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import { useModelApi } from '@/app/cmdb/api';
@@ -33,6 +34,11 @@ import {
 } from './networkTopo/topoEditingUtils';
 import { HUB_COLOR, NODE_LIMIT } from './networkTopo/constants';
 import {
+  NETWORK_TOPO_DEFAULT_CENTER_HOP,
+  type NetworkTopoHop,
+} from './networkTopo/hopDepth';
+import HopDepthControl from './networkTopo/HopDepthControl';
+import {
   NETWORK_TOPO_VISUAL,
   buildNetworkTopoPortLabel,
 } from './networkTopo/visualStyles';
@@ -41,19 +47,28 @@ import topoStyle from './index.module.scss';
 
 const NODE_WIDTH = NETWORK_TOPO_VISUAL.node.width;
 const NODE_HEIGHT = NETWORK_TOPO_VISUAL.node.height;
-const DEVICE_NODE_SHAPE = 'topo-network-device';
-
-// 展开策略：首屏 2 跳，最多 4 跳，节点上限 100（与后端常量一致）
-const DEFAULT_HOP = 2;
-const MAX_HOP = 4;
-
-// 分层布局列距/行距：列距需足够大，让接口标签落在设备卡片之间的空隙、不遮挡卡片
-const HIER_COL_GAP = NETWORK_TOPO_VISUAL.layout.columnGap;
-const HIER_ROW_GAP = NETWORK_TOPO_VISUAL.layout.rowGap;
+const DEVICE_NODE_SHAPE = NETWORK_TOPO_VISUAL.shape;
 
 type LayoutMode = 'hierarchical' | 'force' | 'circular';
 
-const ACTIVE_BODY_ATTRS = NETWORK_TOPO_VISUAL.node.activeBody;
+const HIER_COL_GAP = NETWORK_TOPO_VISUAL.layout.columnGap;
+const HIER_ROW_GAP = NETWORK_TOPO_VISUAL.layout.rowGap;
+
+const DEFAULT_BODY_ATTRS = NETWORK_TOPO_VISUAL.node.defaultBody;
+const ACTIVE_GLOW = NETWORK_TOPO_VISUAL.node.activeGlow;
+
+const applyNodeActiveGlow = (isActive: boolean) => ({
+  iconRing: {
+    fill: isActive ? ACTIVE_GLOW.haloFill : 'transparent',
+    opacity: isActive ? 1 : 0,
+    stroke: 'none',
+    strokeWidth: 0,
+    filter: ACTIVE_GLOW.haloBlur,
+  },
+  img: {
+    filter: isActive ? ACTIVE_GLOW.iconFilter : 'none',
+  },
+});
 
 // inst_name 形如 `${device}-${端口名}`，展示端口时剥掉设备前缀
 const stripDevicePrefix = (instName?: string, device?: string): string => {
@@ -213,6 +228,7 @@ const buildGraphData = (
     centers[id] = { x: p.x, y: p.y };
     const label = nameOf(id);
     const subtitle = subtitleOf(id);
+    const isCenter = id === centerId;
     return {
       id,
       x: p.x - NODE_WIDTH / 2,
@@ -221,27 +237,18 @@ const buildGraphData = (
       height: NODE_HEIGHT,
       shape: DEVICE_NODE_SHAPE,
       data: {
-        isCenter: id === centerId,
+        isCenter,
       },
       attrs: {
-        body: id === centerId ? ACTIVE_BODY_ATTRS : {},
-        iconColumn: {
-          fill: id === centerId ? '#eef7ff' : '#f7fbff',
-        },
-        divider: {
-          stroke: id === centerId ? '#c7def8' : '#e1ebf6',
-        },
-        statusDot: {
-          fill: id === centerId ? '#42d9a6' : '#7dd3fc',
-          stroke: id === centerId ? '#eafff7' : '#eff8ff',
-        },
+        body: { ...DEFAULT_BODY_ATTRS },
+        ...applyNodeActiveGlow(isCenter),
         img: {
           'xlink:href': getIconUrl({
             icn: '',
             model_id: merged.nodes.get(id)?.model_id || '',
           }),
+          filter: isCenter ? ACTIVE_GLOW.iconFilter : 'none',
         },
-        tt: { text: label },
         lbl: { text: label, title: label },
         subLbl: { text: subtitle, title: subtitle },
       },
@@ -281,8 +288,18 @@ const buildGraphData = (
 
     return {
       id: `edge-${l.relationship_id}`,
-      source: l.source_device,
-      target: l.target_device,
+      source: {
+        cell: l.source_device,
+        selector: 'edgeHull',
+        anchor: { name: 'nodeCenter' },
+        connectionPoint: { name: 'boundary', args: { selector: 'edgeHull' } },
+      },
+      target: {
+        cell: l.target_device,
+        selector: 'edgeHull',
+        anchor: { name: 'nodeCenter' },
+        connectionPoint: { name: 'boundary', args: { selector: 'edgeHull' } },
+      },
       vertices,
       connector: { name: 'smooth' },
       attrs: {
@@ -292,6 +309,7 @@ const buildGraphData = (
           strokeLinecap: 'round',
           strokeLinejoin: 'round',
           targetMarker: null,
+          sourceMarker: null,
           filter: 'drop-shadow(0 1px 2px rgba(28, 55, 92, 0.16))',
         },
       },
@@ -311,12 +329,35 @@ const buildGraphData = (
   return { nodes, edges };
 };
 
-interface NetworkTopoProps {
+export interface NetworkTopoFocusPayload {
   modelId: string;
-  instId: string;
+  instUuid: string;
+  instName?: string;
 }
 
-const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
+interface NetworkTopoProps {
+  modelId: string;
+  instUuid: string;
+  /** Hub flex layout: fill parent instead of viewport calc. Default false keeps detail page height. */
+  fillContainer?: boolean;
+  /** When provided (hub), enable 「设为当前」 via dblclick / context menu. */
+  onRequestFocus?: (payload: NetworkTopoFocusPayload) => void;
+  /** When provided (hub), enable 「查看详情」 via context menu. */
+  onViewDetail?: (payload: NetworkTopoFocusPayload) => void;
+  /** Hub-controlled hop depth from the selected device. Detail page keeps internal state. */
+  centerHop?: NetworkTopoHop;
+  onCenterHopChange?: (hop: NetworkTopoHop) => void;
+}
+
+const NetworkTopo: React.FC<NetworkTopoProps> = ({
+  modelId,
+  instUuid,
+  fillContainer = false,
+  onRequestFocus,
+  onViewDetail,
+  centerHop: centerHopProp,
+  onCenterHopChange,
+}) => {
   const { t } = useTranslation();
   const {
     getNetworkTopo,
@@ -328,6 +369,16 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
   const [loading, setLoading] = useState<boolean>(false);
   const [centerId, setCenterId] = useState<string>('');
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('hierarchical');
+  const [internalCenterHop, setInternalCenterHop] = useState<NetworkTopoHop>(
+    NETWORK_TOPO_DEFAULT_CENTER_HOP
+  );
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const isHopControlled = centerHopProp != null;
+  const centerHop = centerHopProp ?? internalCenterHop;
+  const setCenterHop = useCallback((hop: NetworkTopoHop) => {
+    if (!isHopControlled) setInternalCenterHop(hop);
+    onCenterHopChange?.(hop);
+  }, [isHopControlled, onCenterHopChange]);
   const mergedRef = useRef<MergedGraph>({ nodes: new Map(), links: new Map() });
   const expandedRef = useRef<Set<string>>(new Set());
   const hopMapRef = useRef<Map<string, number>>(new Map());
@@ -383,7 +434,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
         )
       )
       .catch(() => setNetworkModels([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const rebuild = useCallback(async (center: string, mode: LayoutMode) => {
@@ -427,17 +478,24 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     (data.links || []).forEach((l) => merged.links.set(l.relationship_id, l));
   }, []);
 
-  // 初次加载：默认展开 2 跳
+  // 初次加载 / 中心跳数变化：按当前选中设备重拉，右键多展开的部分收回
   useEffect(() => {
-    if (!modelId || !instId) return;
+    if (!isHopControlled) {
+      setInternalCenterHop(NETWORK_TOPO_DEFAULT_CENTER_HOP);
+    }
+    setSelectedNodeId(null);
+  }, [instUuid, isHopControlled]);
+
+  useEffect(() => {
+    if (!modelId || !instUuid) return;
     let cancelled = false;
     const load = async () => {
       setLoading(true);
       try {
         const data: NetworkTopoData = await getNetworkTopo(
           modelId,
-          instId,
-          DEFAULT_HOP
+          instUuid,
+          centerHop
         );
         if (cancelled) return;
         // 接口异常或空响应可能没有 center，按空拓扑处理，避免崩溃
@@ -461,39 +519,32 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modelId, instId]);
+     
+  }, [modelId, instUuid, centerHop]);
 
-  // 点击对端设备：取其下一跳并合并（受最大跳数与节点上限约束）
+  // 右键：从该设备再向外展开 1 / 2 / 3 跳并合并进当前图
   const handleExpand = useCallback(
-    async (node: NetworkTopoNode) => {
-      if (expandedRef.current.has(node.id)) return;
-      const hop = hopMapRef.current.get(node.id) ?? 0;
-      if (hop >= MAX_HOP) {
-        message.warning(t('Model.networkTopoMaxHop'));
-        return;
-      }
+    async (node: NetworkTopoNode, depth: NetworkTopoHop) => {
       if (mergedRef.current.nodes.size >= NODE_LIMIT) {
         message.warning(t('Model.networkTopoNodeLimit'));
         return;
       }
-      expandedRef.current.add(node.id);
       setLoading(true);
       try {
         const data: NetworkTopoData = await getNetworkTopo(
           node.model_id,
           node.id,
-          1
+          depth
         );
         if (!mountedRef.current) return;
         mergeData(data);
+        expandedRef.current.add(node.id);
         await rebuild(centerId, layoutMode);
         if (data.truncated || mergedRef.current.nodes.size >= NODE_LIMIT) {
           message.warning(t('Model.networkTopoNodeLimit'));
         }
       } catch {
-        // 展开失败：撤销已展开标记，允许用户重试
-        expandedRef.current.delete(node.id);
+        // 展开失败：允许用户重试
       } finally {
         if (mountedRef.current) setLoading(false);
       }
@@ -512,7 +563,16 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
   // 删除连线（已落库），更新合并图并 rebuild
   const handleDeleteLink = useCallback(
     async (relationshipId: string) => {
-      await deleteInstanceAssociation(relationshipId);
+      const link = mergedRef.current.links.get(relationshipId);
+      if (!link?.src_inst_uuid || !link?.dst_inst_uuid || !link?.model_asst_id) {
+        message.error(t('common.operationFailed'));
+        return;
+      }
+      await deleteInstanceAssociation(
+        link.src_inst_uuid,
+        link.dst_inst_uuid,
+        link.model_asst_id
+      );
       mergedRef.current.links.delete(relationshipId);
       message.success(t('successfullyDisassociated'));
       await rebuild(centerId, layoutMode);
@@ -537,6 +597,43 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
   const handleContextMenu = useCallback((info: ContextMenuInfo) => {
     setMenu(info);
   }, []);
+
+  const resolveFocusPayload = useCallback(
+    (nodeId: string): NetworkTopoFocusPayload | null => {
+      const n =
+        mergedRef.current.nodes.get(nodeId) ||
+        floatingRef.current.get(nodeId)?.node;
+      if (!n?.model_id) return null;
+      return {
+        modelId: n.model_id,
+        instUuid: n.id,
+        instName: n.name,
+      };
+    },
+    []
+  );
+
+  // 非编辑态右键节点 → 展开跳数 / 设为当前 / 查看详情
+  const handleNodeContextMenu = useCallback(
+    (nodeId: string, e: MouseEvent) => {
+      if (editing) return;
+      setMenu({ kind: 'node', id: nodeId, x: e.clientX, y: e.clientY });
+    },
+    [editing]
+  );
+
+  // Hub：双击节点 → 设为当前（详情页未传 onRequestFocus，不注册）
+  useEffect(() => {
+    if (!graphInstance || !onRequestFocus) return;
+    const onDbl = ({ node }: { node: { id: string } }) => {
+      const payload = resolveFocusPayload(String(node.id));
+      if (payload) onRequestFocus(payload);
+    };
+    graphInstance.on('node:dblclick', onDbl);
+    return () => {
+      graphInstance.off('node:dblclick', onDbl);
+    };
+  }, [graphInstance, onRequestFocus, resolveFocusPayload]);
 
   // 连线进行中点击目标设备：校验后弹端口小窗
   const handlePickTarget = useCallback(
@@ -566,6 +663,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     graph: graphInstance,
     editing,
     linkingSourceId,
+    selectedNodeId,
     // 节点+边总数作为版本：连线/加设备/删线后变化，触发光标/高亮重应用
     revision: graphData.nodes.length + graphData.edges.length,
     onContextMenu: handleContextMenu,
@@ -575,7 +673,6 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
 
   // Esc 取消连线 / 关闭菜单
   useEffect(() => {
-    if (!editing) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setLinkingSourceId(null);
@@ -584,7 +681,7 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editing]);
+  }, []);
 
   // 退出编辑态时清理连线/菜单状态
   useEffect(() => {
@@ -622,7 +719,8 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
         }
       });
       const link = buildLinkFromConnection({
-        relationshipId: String(res._id),
+        srcInstUuid: String(res.src_inst_uuid || r.sourcePortId),
+        dstInstUuid: String(res.dst_inst_uuid || r.targetPortId),
         sourceDevice: sourceId,
         targetDevice: targetId,
         sourcePortName: r.sourcePortName,
@@ -671,21 +769,41 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
   const handleCanvasNodeClick = useCallback(
     (id: string) => {
       if (editing) return;
-      if (id === centerId || expandedRef.current.has(id)) return;
-      const target = mergedRef.current.nodes.get(id);
-      if (target) handleExpand(target);
+      setSelectedNodeId(id);
     },
-    [centerId, editing, handleExpand]
+    [editing]
   );
+  const handleCanvasBlankClick = useCallback(() => {
+    if (editing) return;
+    setSelectedNodeId(null);
+  }, [editing]);
+
+  const handleContextExpand = (depth: NetworkTopoHop) => {
+    if (!menu || menu.kind !== 'node') return;
+    const target =
+      mergedRef.current.nodes.get(menu.id) ||
+      floatingRef.current.get(menu.id)?.node;
+    setMenu(null);
+    if (target) handleExpand(target, depth);
+  };
+
+  const showToolbarHopControl = !isHopControlled;
 
   return (
-    <div>
-      <Spin spinning={loading}>
+    <div className={fillContainer ? 'h-full min-h-0' : undefined}>
+      <Spin
+        spinning={loading}
+        wrapperClassName={
+          fillContainer
+            ? 'h-full [&_.ant-spin-container]:h-full'
+            : undefined
+        }
+      >
         <div
           className={topoStyle.topo}
           style={{
-            height: 'calc(100vh - 128px)',
-            minHeight: 560,
+            height: fillContainer ? '100%' : 'calc(100vh - 128px)',
+            minHeight: fillContainer ? 0 : 560,
             position: 'relative',
             ...NETWORK_TOPO_VISUAL.canvas,
           }}
@@ -712,6 +830,11 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
                 : t('Model.networkTopoEditHint')}
             </div>
           )}
+          {showToolbarHopControl && !hasGraph && !loading && (
+            <div className="absolute left-4 top-4 z-20">
+              <HopDepthControl value={centerHop} onChange={setCenterHop} />
+            </div>
+          )}
           {hasGraph ? (
             <NetworkTopologyX6Canvas
               data={graphData}
@@ -727,10 +850,18 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
               ].join('|')}
               onGraphReady={setGraphInstance}
               onNodeClick={handleCanvasNodeClick}
+              onBlankClick={handleCanvasBlankClick}
+              onNodeContextMenu={handleNodeContextMenu}
               toolbar={{
                 align: 'split',
                 prefix: (
                   <div className={topoStyle.topoCommandBar} style={{ marginTop: 0 }}>
+                    {showToolbarHopControl && (
+                      <HopDepthControl
+                        value={centerHop}
+                        onChange={setCenterHop}
+                      />
+                    )}
                     <EditToolbar
                       editing={editing}
                       onToggle={() => setEditing((v) => !v)}
@@ -761,11 +892,8 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
             />
           ) : (
             !loading && (
-              <div className="flex items-center justify-center h-full">
-                <Empty
-                  image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={t('Model.noNetworkTopo')}
-                />
+              <div className="flex h-full items-center justify-center">
+                <CompactEmptyState description={t('Model.noNetworkTopo')} />
               </div>
             )
           )}
@@ -806,15 +934,61 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
             }}
           >
             {menu.kind === 'node' ? (
-              <div
-                className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
-                onClick={() => {
-                  setLinkingSourceId(menu.id);
-                  setMenu(null);
-                }}
-              >
-                {t('Model.networkTopoAddLink')}
-              </div>
+              <>
+                <div
+                  className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                  onClick={() => handleContextExpand(1)}
+                >
+                  {t('Model.networkTopoExpandOne')}
+                </div>
+                <div
+                  className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                  onClick={() => handleContextExpand(2)}
+                >
+                  {t('Model.networkTopoExpandTwo')}
+                </div>
+                <div
+                  className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                  onClick={() => handleContextExpand(3)}
+                >
+                  {t('Model.networkTopoExpandThree')}
+                </div>
+                {editing && (
+                  <div
+                    className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                    onClick={() => {
+                      setLinkingSourceId(menu.id);
+                      setMenu(null);
+                    }}
+                  >
+                    {t('Model.networkTopoAddLink')}
+                  </div>
+                )}
+                {onRequestFocus && (
+                  <div
+                    className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                    onClick={() => {
+                      const payload = resolveFocusPayload(menu.id);
+                      if (payload) onRequestFocus(payload);
+                      setMenu(null);
+                    }}
+                  >
+                    {t('ViewsHub.setAsCurrent')}
+                  </div>
+                )}
+                {onViewDetail && (
+                  <div
+                    className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                    onClick={() => {
+                      const payload = resolveFocusPayload(menu.id);
+                      if (payload) onViewDetail(payload);
+                      setMenu(null);
+                    }}
+                  >
+                    {t('ViewsHub.viewDetail')}
+                  </div>
+                )}
+              </>
             ) : (
               <div
                 className="px-3 py-1.5 text-[13px] cursor-pointer text-[var(--color-error,#f53f3f)] hover:bg-[var(--color-fill-1,#f2f3f5)]"

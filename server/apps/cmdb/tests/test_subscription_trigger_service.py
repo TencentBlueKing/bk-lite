@@ -9,24 +9,16 @@
   _build_related_change_map（ChangeRecord 窗口 + 字段过滤）；
 - process 编排：空实例直接更新快照返回 []。
 """
-import pydantic.root_model  # noqa
-
 from datetime import datetime, timedelta
 
+import pydantic.root_model  # noqa
 import pytest
 from django.utils import timezone
 
 from apps.cmdb.constants.subscription import FilterType, TriggerType
-from apps.cmdb.models.change_record import (
-    CREATE_INST,
-    UPDATE_INST,
-    ChangeRecord,
-)
+from apps.cmdb.models.change_record import UPDATE_INST, ChangeRecord
 from apps.cmdb.models.subscription_rule import SubscriptionRule
-from apps.cmdb.services.subscription_trigger import (
-    SubscriptionTriggerService,
-    TriggerEvent,
-)
+from apps.cmdb.services.subscription_trigger import SubscriptionTriggerService, TriggerEvent
 
 pytestmark = pytest.mark.django_db
 
@@ -89,9 +81,7 @@ class TestNormalizeRelationModels:
         assert out[1]["fields"] == []
 
     def test_单模型旧格式(self):
-        out = SubscriptionTriggerService._normalize_relation_change_models(
-            {"related_model": "switch", "fields": ["a"]}
-        )
+        out = SubscriptionTriggerService._normalize_relation_change_models({"related_model": "switch", "fields": ["a"]})
         assert out == [{"related_model": "switch", "fields": ["a"]}]
 
     def test_空配置(self):
@@ -103,47 +93,24 @@ class TestPureStatics:
     pytestmark = pytest.mark.unit
 
     def test_get_changed_fields(self):
-        out = SubscriptionTriggerService._get_changed_fields(
-            {"a": 1, "b": 2}, {"a": 1, "b": 3, "c": 4}
-        )
+        out = SubscriptionTriggerService._get_changed_fields({"a": 1, "b": 2}, {"a": 1, "b": 3, "c": 4})
         assert out == {"b", "c"}
 
     def test_parse_to_date(self):
-        assert SubscriptionTriggerService._parse_to_date(
-            datetime(2026, 1, 2, 3, 4)
-        ) == datetime(2026, 1, 2).date()
-        assert SubscriptionTriggerService._parse_to_date(
-            "2026-06-30T00:00:00Z"
-        ) == datetime(2026, 6, 30).date()
+        assert SubscriptionTriggerService._parse_to_date(datetime(2026, 1, 2, 3, 4)) == datetime(2026, 1, 2).date()
+        assert SubscriptionTriggerService._parse_to_date("2026-06-30T00:00:00Z") == datetime(2026, 6, 30).date()
         assert SubscriptionTriggerService._parse_to_date("bad") is None
         assert SubscriptionTriggerService._parse_to_date(12345) is None
 
     def test_resolve_attribute_inst_name_优先级(self):
         # instance_map 命中 inst_name
-        assert (
-            SubscriptionTriggerService._resolve_attribute_inst_name(
-                {5: {"inst_name": "主机5"}}, 5
-            )
-            == "主机5"
-        )
+        assert SubscriptionTriggerService._resolve_attribute_inst_name({5: {"inst_name": "主机5"}}, 5) == "主机5"
         # 回退到 ip_addr
-        assert (
-            SubscriptionTriggerService._resolve_attribute_inst_name(
-                {5: {"ip_addr": "1.1.1.1"}}, 5
-            )
-            == "1.1.1.1"
-        )
+        assert SubscriptionTriggerService._resolve_attribute_inst_name({5: {"ip_addr": "1.1.1.1"}}, 5) == "1.1.1.1"
         # 全空回退到 after_data
-        assert (
-            SubscriptionTriggerService._resolve_attribute_inst_name(
-                {}, 5, after_data={"inst_name": "fromchange"}
-            )
-            == "fromchange"
-        )
+        assert SubscriptionTriggerService._resolve_attribute_inst_name({}, 5, after_data={"inst_name": "fromchange"}) == "fromchange"
         # 最终回退 str(inst_id)
-        assert (
-            SubscriptionTriggerService._resolve_attribute_inst_name({}, 5) == "5"
-        )
+        assert SubscriptionTriggerService._resolve_attribute_inst_name({}, 5) == "5"
 
 
 class TestMergeAndEmit:
@@ -173,9 +140,7 @@ class TestMergeAndEmit:
 class TestProcessEmpty:
     def test_空实例_更新快照返回空(self, mocker, patch_model_info):
         rule = make_rule(name="empty_r", trigger_types=[TriggerType.ATTRIBUTE_CHANGE.value])
-        mocker.patch.object(
-            SubscriptionTriggerService, "_get_current_instances", return_value=[]
-        )
+        mocker.patch.object(SubscriptionTriggerService, "_get_current_instances", return_value=[])
         svc = SubscriptionTriggerService(rule)
         out = svc.process()
         assert out == []
@@ -195,12 +160,8 @@ class TestCheckAttributeChange:
             snapshot_data={"instances": [1]},
         )
         # 窗口内两条变更记录，合并为一条事件
-        make_change_record(
-            "host", 1, {"cpu": "2"}, {"cpu": "4", "inst_name": "主机1"}, now - timedelta(minutes=30)
-        )
-        make_change_record(
-            "host", 1, {"mem": "8"}, {"mem": "16", "inst_name": "主机1"}, now - timedelta(minutes=20)
-        )
+        make_change_record("host", 1, {"cpu": "2"}, {"cpu": "4", "inst_name": "主机1"}, now - timedelta(minutes=30))
+        make_change_record("host", 1, {"mem": "8"}, {"mem": "16", "inst_name": "主机1"}, now - timedelta(minutes=20))
         svc = SubscriptionTriggerService(rule)
         instances = [{"_id": 1, "inst_name": "主机1"}]
         events = svc._check_attribute_change(instances, now)
@@ -230,9 +191,7 @@ class TestCheckAttributeChange:
         )
         # 合并模式下，集合增减事件与字段变更事件统一在窗口扫描后 flush；
         # 需窗口内存在至少一条变更记录，flush 才会执行（否则提前返回）。
-        make_change_record(
-            "host", 3, {"cpu": "1"}, {"cpu": "2", "inst_name": "主机3"}, now - timedelta(minutes=5)
-        )
+        make_change_record("host", 3, {"cpu": "1"}, {"cpu": "2", "inst_name": "主机3"}, now - timedelta(minutes=5))
         svc = SubscriptionTriggerService(rule)
         # 当前实例集合 {2,3} -> 新增 3，删除 1
         instances = [{"_id": 2, "inst_name": "主机2"}, {"_id": 3, "inst_name": "主机3"}]
@@ -242,6 +201,49 @@ class TestCheckAttributeChange:
         assert 1 in ids  # 离开范围
         added_event = next(e for e in events if e.inst_id == 3)
         assert "进入订阅范围" in added_event.change_summary
+
+    def test_过滤条件模式_数字快照映射到当前UUID不误报增减(self, patch_model_info):
+        now = timezone.now()
+        inst_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+        rule = make_rule(
+            name="attr_uuid_map",
+            filter_type=FilterType.CONDITION.value,
+            trigger_types=[TriggerType.ATTRIBUTE_CHANGE.value],
+            trigger_config={"attribute_change": {"fields": ["cpu"]}},
+            last_check_time=now - timedelta(hours=1),
+            snapshot_data={"instances": [1]},
+        )
+        make_change_record("host", 1, {"cpu": "1"}, {"cpu": "1", "inst_name": "主机1"}, now - timedelta(minutes=5))
+        svc = SubscriptionTriggerService(rule)
+        events = svc._check_attribute_change(
+            [{"_id": 1, "inst_uuid": inst_uuid, "inst_name": "主机1"}],
+            now,
+        )
+        assert all("进入订阅范围" not in e.change_summary for e in events)
+        assert all("离开订阅范围" not in e.change_summary for e in events)
+
+
+class TestBuildCurrentSnapshot:
+    def test_双写数字与UUID快照(self, mocker, patch_model_info):
+        host_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+        switch_uuid = "73e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+        rule = make_rule(
+            name="snap_uuid",
+            trigger_config={"relation_change": {"related_models": [{"related_model": "switch", "fields": []}]}},
+        )
+        mocker.patch(
+            "apps.cmdb.services.subscription_trigger.InstanceManage.query_entity_by_ids",
+            return_value=[{"_id": 10, "inst_uuid": switch_uuid}],
+        )
+        svc = SubscriptionTriggerService(rule)
+        snapshot = svc._build_current_snapshot(
+            [{"_id": 1, "inst_uuid": host_uuid, "inst_name": "主机1"}],
+            {"switch": {1: [10]}},
+        )
+        assert snapshot["instances"] == [1]
+        assert snapshot["instance_uuids"] == [host_uuid]
+        assert snapshot["relations"] == {"1": {"switch": [10]}}
+        assert snapshot["relations_by_uuid"] == {host_uuid: {"switch": [switch_uuid]}}
 
 
 class TestCheckExpiration:
@@ -305,9 +307,7 @@ class TestBuildRelatedChangeMap:
             name="rel_r",
             last_check_time=now - timedelta(hours=1),
         )
-        make_change_record(
-            "switch", 100, {"port": "1"}, {"port": "2"}, now - timedelta(minutes=10)
-        )
+        make_change_record("switch", 100, {"port": "1"}, {"port": "2"}, now - timedelta(minutes=10))
         svc = SubscriptionTriggerService(rule)
         change_map, count = svc._build_related_change_map(
             related_model="switch",
@@ -371,9 +371,7 @@ class TestCheckRelationChange:
         rule = make_rule(
             name="rel_change_r",
             trigger_types=[TriggerType.RELATION_CHANGE.value],
-            trigger_config={
-                "relation_change": {"related_models": [{"related_model": "switch", "fields": []}]}
-            },
+            trigger_config={"relation_change": {"related_models": [{"related_model": "switch", "fields": []}]}},
             snapshot_data={"relations": {"1": {"switch": [10]}}},
         )
         # related inst name map -> 走 InstanceManage（mock 返回空即可，事件 summary 用 id）
@@ -389,12 +387,101 @@ class TestCheckRelationChange:
         e = events[0]
         assert e.trigger_type == TriggerType.RELATION_CHANGE.value
         assert "新增关联: [11]" in e.change_summary
-        assert "删除关联: [10]" in e.change_summary
+
+    def test_新增删除关联_UUID快照对比(self, mocker, patch_model_info):
+        host_uuid = "63e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+        old_switch = "73e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+        new_switch = "83e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+        rule = make_rule(
+            name="rel_change_uuid",
+            trigger_types=[TriggerType.RELATION_CHANGE.value],
+            trigger_config={"relation_change": {"related_models": [{"related_model": "switch", "fields": []}]}},
+            snapshot_data={
+                "instances": [1],
+                "instance_uuids": [host_uuid],
+                "relations": {"1": {"switch": [10]}},
+                "relations_by_uuid": {host_uuid: {"switch": [old_switch]}},
+            },
+        )
+        mocker.patch(
+            "apps.cmdb.services.subscription_trigger.InstanceManage.instance_list",
+            return_value=([], 0),
+        )
+        svc = SubscriptionTriggerService(rule)
+        current_snapshot = {
+            "relations": {"1": {"switch": [11]}},
+            "relations_by_uuid": {host_uuid: {"switch": [new_switch]}},
+        }
+        instances = [{"_id": 1, "inst_uuid": host_uuid, "inst_name": "主机1"}]
+        events = svc._check_relation_change(current_snapshot, instances, timezone.now())
+        assert len(events) == 1
+        assert f"新增关联: ['{new_switch}']" in events[0].change_summary
+        assert f"删除关联: ['{old_switch}']" in events[0].change_summary
 
     def test_未配置关联模型_跳过(self, patch_model_info):
         rule = make_rule(name="rel_none", trigger_config={"relation_change": {}})
         svc = SubscriptionTriggerService(rule)
         assert svc._check_relation_change({"relations": {}}, [], timezone.now()) == []
+
+
+class TestGetRelationInstances:
+    def test_回退路径读取UUID端点(self, mocker, patch_model_info):
+        rule = make_rule(name="rel_fallback_uuid")
+        svc = SubscriptionTriggerService(rule)
+        mocker.patch(
+            "apps.cmdb.services.subscription_trigger.InstanceManage.instance_association_map",
+            side_effect=RuntimeError("batch failed"),
+        )
+        mocker.patch(
+            "apps.cmdb.services.subscription_trigger.InstanceManage.instance_association",
+            return_value=[
+                {
+                    "src_model_id": "host",
+                    "dst_model_id": "switch",
+                    "src_inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+                    "dst_inst_uuid": "73e4a531-b6bb-43cc-9eae-8eb8a09f795e",
+                }
+            ],
+        )
+        mocker.patch(
+            "apps.cmdb.services.subscription_trigger.InstanceManage.query_entity_by_uuids",
+            return_value=[{"_id": 10, "inst_uuid": "73e4a531-b6bb-43cc-9eae-8eb8a09f795e"}],
+        )
+        relation_map, failed = svc._get_relation_instances([1], "switch")
+        assert failed == set()
+        assert relation_map[1] == [10]
+
+    def test_回退路径UUID去重(self, mocker, patch_model_info):
+        rule = make_rule(name="rel_fallback_dedupe")
+        svc = SubscriptionTriggerService(rule)
+        switch_uuid = "73e4a531-b6bb-43cc-9eae-8eb8a09f795e"
+        mocker.patch(
+            "apps.cmdb.services.subscription_trigger.InstanceManage.instance_association_map",
+            side_effect=RuntimeError("batch failed"),
+        )
+        mocker.patch(
+            "apps.cmdb.services.subscription_trigger.InstanceManage.instance_association",
+            return_value=[
+                {
+                    "src_model_id": "host",
+                    "dst_model_id": "switch",
+                    "dst_inst_uuid": switch_uuid,
+                },
+                {
+                    "src_model_id": "host",
+                    "dst_model_id": "switch",
+                    "dst_inst_uuid": switch_uuid,
+                },
+            ],
+        )
+        query = mocker.patch(
+            "apps.cmdb.services.subscription_trigger.InstanceManage.query_entity_by_uuids",
+            return_value=[{"_id": 10, "inst_uuid": switch_uuid}],
+        )
+        relation_map, failed = svc._get_relation_instances([1], "switch")
+        assert failed == set()
+        assert relation_map[1] == [10]
+        query.assert_called_once_with([switch_uuid])
 
 
 class TestCheckConfigFile:
@@ -414,9 +501,7 @@ class TestCheckConfigFile:
 
     def test_窗口无版本跳过(self, patch_model_info):
         now = timezone.now()
-        rule = make_rule(
-            name="cf_nover", model_id="host", last_check_time=now - timedelta(hours=1)
-        )
+        rule = make_rule(name="cf_nover", model_id="host", last_check_time=now - timedelta(hours=1))
         svc = SubscriptionTriggerService(rule)
         out = svc._check_config_file([{"_id": 1, "inst_name": "h1"}], {}, now)
         assert out == []
@@ -428,9 +513,15 @@ class TestUpdateSnapshot:
         svc = SubscriptionTriggerService(rule)
         svc.events = [
             TriggerEvent(
-                rule_id=rule.id, rule_name="r", model_id="host", model_name="主机",
-                trigger_type=TriggerType.ATTRIBUTE_CHANGE.value, inst_id=1,
-                inst_name="h", change_summary="s", triggered_at="t",
+                rule_id=rule.id,
+                rule_name="r",
+                model_id="host",
+                model_name="主机",
+                trigger_type=TriggerType.ATTRIBUTE_CHANGE.value,
+                inst_id=1,
+                inst_name="h",
+                change_summary="s",
+                triggered_at="t",
             )
         ]
         checkpoint = timezone.now()

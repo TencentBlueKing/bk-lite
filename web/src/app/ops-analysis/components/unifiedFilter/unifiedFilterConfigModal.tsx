@@ -18,6 +18,11 @@ import { ParamInputConfigEditor } from '@/app/ops-analysis/components/paramInput
 import { ParamInputControl } from '@/app/ops-analysis/components/paramInputControl';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { normalizeInputConfig } from '@/app/ops-analysis/utils/paramInputConfigUtils';
+import {
+  coerceValueForMultiple,
+  isMultipleSelectInputConfig,
+  migrateParamItemsFromStringList,
+} from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
 import DateRangeSelector from '@/app/ops-analysis/components/dateRangeSelector';
@@ -57,6 +62,7 @@ import type {
   InputControlConfig,
   ParamItem,
 } from '@/app/ops-analysis/types/dataSource';
+import { isBindableDataSourceParamType } from '@/app/ops-analysis/utils/dataSourceParamContract';
 
 interface UnifiedFilterConfigModalProps {
   open: boolean;
@@ -77,7 +83,14 @@ interface ScannedParam {
   componentCount: number;
   sampleAlias: string;
   sampleDefaultValue: FilterValue;
+  sampleInputConfig?: InputControlConfig;
 }
+
+const coerceDefaultValueForInputConfig = (
+  defaultValue: FilterValue | undefined,
+  inputConfig: InputControlConfig,
+): FilterValue | null =>
+  coerceValueForMultiple(defaultValue, isMultipleSelectInputConfig(inputConfig));
 
 const SortableRow: React.FC<SortableRowProps> = (props) => {
   const {
@@ -154,10 +167,12 @@ const scanFilterParams = (
   dataSources.forEach((ds) => {
     if (!usedDataSourceIds.has(ds.id)) return;
 
-    const params = Array.isArray(ds.params) ? ds.params : [];
+    const params = migrateParamItemsFromStringList(
+      Array.isArray(ds.params) ? ds.params : [],
+    ).params;
     params.forEach((param: ParamItem) => {
       if (param.filterType !== 'filter') return;
-      if (param.type !== 'string' && param.type !== 'timeRange' && param.type !== 'dateRange') return;
+      if (!isBindableDataSourceParamType(param.type)) return;
 
       const compositeKey = `${param.name}__${param.type}`;
       const existing = paramMap.get(compositeKey);
@@ -167,10 +182,11 @@ const scanFilterParams = (
       } else {
         paramMap.set(compositeKey, {
           key: param.name,
-          type: param.type as 'string' | 'timeRange' | 'dateRange',
+          type: param.type,
           componentCount: 1,
           sampleAlias: param.alias_name || param.name,
           sampleDefaultValue: (param.value as FilterValue) ?? null,
+          sampleInputConfig: param.inputConfig,
         });
       }
     });
@@ -272,6 +288,8 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
         defaultValue: param.sampleDefaultValue,
         order: initialDefinitions.length + index,
         enabled: true,
+        inputConfig: param.sampleInputConfig,
+        inputMode: param.sampleInputConfig?.control,
       };
     });
 
@@ -330,6 +348,10 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
             inputConfig,
             inputMode: inputConfig.control,
             options: undefined,
+            defaultValue: coerceDefaultValueForInputConfig(
+              definition.defaultValue,
+              inputConfig,
+            ),
           })
           : definition,
       ),
@@ -461,9 +483,19 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
 
         if (currentMode !== 'organization') {
           const inputConfig = getFilterInputConfig(record);
+          const isMultiple = Boolean(
+            inputConfig && inputConfig.control !== 'input' && inputConfig.multiple,
+          );
+          const controlValue = Array.isArray(value)
+            ? value
+            : (typeof value === 'string' || typeof value === 'number')
+              ? value
+              : undefined;
           const fallbackInput = (
             <Input
-              value={(typeof value === 'string' || typeof value === 'number') ? String(value) : ''}
+              value={Array.isArray(value)
+                ? value.map(String).join(', ')
+                : (typeof value === 'string' || typeof value === 'number') ? String(value) : ''}
               onChange={(e) =>
                 handleFieldChange(
                   record.id,
@@ -480,8 +512,22 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
             <ParamInputControl
               inputConfig={inputConfig}
               fallback={fallbackInput}
-              value={(typeof value === 'string' || typeof value === 'number') ? value : undefined}
-              onChange={(nextValue) => handleFieldChange(record.id, 'defaultValue', nextValue ?? null)}
+              value={controlValue}
+              onChange={(nextValue) => {
+                if (isMultiple) {
+                  if (Array.isArray(nextValue)) {
+                    handleFieldChange(record.id, 'defaultValue', nextValue);
+                    return;
+                  }
+                  if (typeof nextValue === 'string' || typeof nextValue === 'number') {
+                    handleFieldChange(record.id, 'defaultValue', [nextValue]);
+                    return;
+                  }
+                  handleFieldChange(record.id, 'defaultValue', null);
+                  return;
+                }
+                handleFieldChange(record.id, 'defaultValue', nextValue ?? null);
+              }}
               placeholder={record.name}
               style={{ minWidth: 160 }}
             />

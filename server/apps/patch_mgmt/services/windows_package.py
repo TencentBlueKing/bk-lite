@@ -1,23 +1,20 @@
 """手工 Windows 补丁包校验与私有存储。"""
 
 import hashlib
-import logging
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
 
-from django.db import transaction
-from django.db.models import Q
-from django.utils import timezone
-
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.config import (
     PATCH_MGMT_MAX_PACKAGE_SIZE_MB,
     PATCH_MGMT_PACKAGE_UPLOAD_TIMEOUT,
 )
 from apps.patch_mgmt.constants import OSType, PackageStatus
 from apps.patch_mgmt.models import Patch, WindowsPatchDetail
-
-logger = logging.getLogger("app")
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 
 
 class WindowsPackageError(ValueError):

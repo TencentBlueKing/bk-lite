@@ -6,7 +6,8 @@ import {
   LoadingOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
-import { Alert, Button, Drawer, Empty, Progress, Skeleton, Steps, Tag, Typography } from 'antd';
+import { Alert, Button, Drawer, Progress, Skeleton, Steps, Tag, Typography } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 
 import type { UserSyncRun, UserSyncRunProgressPayload } from '@/app/system-manager/types/user-sync';
 import { RUN_STATUS_TEXT_STYLE } from '@/app/system-manager/utils/userSyncPageUtils';
@@ -105,7 +106,7 @@ const UserSyncRunProgressDrawer: React.FC<UserSyncRunProgressDrawerProps> = ({
       }
     >
       {!run ? (
-        loading ? <Skeleton active paragraph={{ rows: 5 }} /> : <Empty description={t('system.user.userSyncPage.progressDrawer.empty')} />
+        loading ? <Skeleton active paragraph={{ rows: 5 }} /> : <CompactEmptyState description={t('system.user.userSyncPage.progressDrawer.empty')} />
       ) : (
         <Steps
           className={styles.steps}

@@ -40,7 +40,7 @@ from apps.mlops.serializers.anomaly_detection import (
 from apps.mlops.services import ConfigurationError, get_image_by_prefix, get_mlflow_tracking_uri, get_mlflow_train_config
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.group_scope import filter_queryset_by_parent_team
-from apps.mlops.utils.i18n import mlops_message
+from apps.mlops.utils.i18n import mlops_exception_message, mlops_message
 from apps.mlops.utils.webhook_client import WebhookClient, WebhookConnectionError, WebhookError, WebhookTimeoutError
 from apps.mlops.views.base import BaseTrainJobViewSet, TeamModelViewSet
 from config.drf.pagination import CustomPageNumberPagination
@@ -194,22 +194,22 @@ class AnomalyDetectionTrainJobViewSet(BaseTrainJobViewSet):
         except WebhookTimeoutError as e:
             if train_job and previous_status is not None:
                 self.restore_train_job_status(train_job, previous_status)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
             if train_job and previous_status is not None:
                 self.restore_train_job_status(train_job, previous_status)
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             if train_job and previous_status is not None:
                 self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             if train_job and previous_status is not None:
                 self.restore_train_job_status(train_job, previous_status)
             logger.error(f"启动训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": mlops_message(request, "error.training_task_start_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.training_task_start_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -250,16 +250,16 @@ class AnomalyDetectionTrainJobViewSet(BaseTrainJobViewSet):
             )
 
         except WebhookTimeoutError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"停止训练任务失败: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"停止训练任务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": mlops_message(request, "error.training_task_stop_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.training_task_stop_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -727,7 +727,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                     serving_data["container_info"] = {
                         "status": "error",
                         "state": "unknown",
-                        "message": "webhookd 未返回此容器状态",
+                        "message": mlops_message(request, "error.webhookd_container_status_missing"),
                     }
 
             if updates:
@@ -742,7 +742,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                     **old_info,
                     "status": "error",
                     "_query_failed": True,
-                    "_error": str(e),
+                    "_error": mlops_exception_message(request, e),
                 }
 
         return response
@@ -769,7 +769,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                 response.data["container_info"] = {
                     "status": "error",
                     "state": "unknown",
-                    "message": "webhookd 未返回容器状态",
+                    "message": mlops_message(request, "error.webhookd_container_status_unavailable"),
                 }
 
         except WebhookError as e:
@@ -780,7 +780,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                 **old_info,
                 "status": "error",
                 "_query_failed": True,
-                "_error": str(e),
+                "_error": mlops_exception_message(request, e),
             }
 
         return response
@@ -809,7 +809,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                 logger.error(str(e))
                 serving.container_info = {
                     "status": "error",
-                    "message": "环境变量 MLFLOW_TRACKER_URL 未配置",
+                    "message": mlops_message(request, "error.mlflow_tracker_url_not_configured"),
                 }
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
@@ -823,11 +823,13 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                 logger.error(f"解析 model URI 失败: {e}")
                 serving.container_info = {
                     "status": "error",
-                    "message": f"解析模型 URI 失败: {str(e)}",
+                    "message": mlops_exception_message(request, e),
                 }
                 serving.save(update_fields=["container_info"])
                 response.data["container_info"] = serving.container_info
-                response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=str(e))
+                response.data["message"] = mlops_message(
+                        request, "message.serving_created_start_failed", detail=mlops_exception_message(request, e)
+                    )
                 return response
 
             # 构建 serving ID
@@ -869,7 +871,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                             else {
                                 "status": "error",
                                 "id": container_id,
-                                "message": "无法查询容器状态",
+                                "message": mlops_message(request, "error.container_status_query_failed"),
                             }
                         )
 
@@ -879,26 +881,28 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
 
                         response.data["container_info"] = container_info
                         response.data["message"] = mlops_message(request, "message.serving_created_existing_container_synced")
-                        response.data["warning"] = "容器已存在，已同步容器信息"
+                        response.data["warning"] = mlops_message(request, "message.container_already_exists_synced")
                     except WebhookError:
                         serving.container_info = {
                             "status": "error",
-                            "message": f"容器已存在但同步状态失败: {error_msg}",
+                            "message": mlops_message(request, "error.serving_container_sync_failed", detail=mlops_exception_message(request, e)),
                         }
                         serving.save(update_fields=["container_info"])
                         response.data["container_info"] = serving.container_info
                         response.data["message"] = mlops_message(request, "message.serving_created_start_failed_generic")
                 else:
                     # 其他错误
-                    serving.container_info = {"status": "error", "message": error_msg}
+                    serving.container_info = {"status": "error", "message": mlops_exception_message(request, e)}
                     serving.save(update_fields=["container_info"])
                     response.data["container_info"] = serving.container_info
-                    response.data["message"] = mlops_message(request, "message.serving_created_start_failed", detail=error_msg)
+                    response.data["message"] = mlops_message(
+                        request, "message.serving_created_start_failed", detail=mlops_exception_message(request, e)
+                    )
 
         except Exception as e:
             logger.error(f"自动启动 serving 异常: {str(e)}", exc_info=True)
             # 确保至少有基本的错误信息
-            response.data["message"] = mlops_message(request, "message.serving_created_start_exception", detail=str(e))
+            response.data["message"] = mlops_message(request, "message.serving_created_start_exception", detail=mlops_exception_message(request, e))
 
         return response
 
@@ -1002,13 +1006,15 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                 # 启动失败，仅更新容器信息
                 instance.container_info = {
                     "status": "error",
-                    "message": f"配置已更新但重启失败: {str(e)}",
+                    "message": mlops_message(request, "message.serving_updated_restart_failed", detail=mlops_exception_message(request, e)),
                 }
                 instance.save(update_fields=["container_info"])
 
                 response.data["container_info"] = instance.container_info
-                response.data["message"] = mlops_message(request, "message.serving_updated_restart_failed", detail=str(e))
-                response.data["warning"] = "请手动调用 start 接口重新启动服务"
+                response.data["message"] = mlops_message(
+                    request, "message.serving_updated_restart_failed", detail=mlops_exception_message(request, e)
+                )
+                response.data["warning"] = mlops_message(request, "message.serving_restart_manually")
 
         return response
 
@@ -1034,7 +1040,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
             try:
                 model_uri = self._resolve_model_uri(serving)
             except ValueError as e:
-                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_400_BAD_REQUEST)
 
             # 构建 serving ID
             serving_id = f"AnomalyDetection_Serving_{serving.id}"
@@ -1080,7 +1086,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                             else {
                                 "status": "error",
                                 "id": serving_id,
-                                "message": "无法查询容器状态",
+                                "message": mlops_message(request, "error.container_status_query_failed"),
                             }
                         )
 
@@ -1092,33 +1098,39 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
 
                         return Response(
                             {
-                                "message": "检测到容器已存在，已同步容器信息",
+                                "message": mlops_message(request, "message.container_already_exists_status_synced"),
                                 "container_info": container_info,
-                                "warning": "容器已存在",
+                                "warning": mlops_message(request, "message.container_already_exists"),
                             }
                         )
                     except WebhookError as sync_error:
                         logger.error(f"同步容器状态失败: {sync_error}")
                         return Response(
-                            {"error": mlops_message(request, "error.serving_container_sync_failed", detail=sync_error)},
+                            {
+                                "error": mlops_message(
+                                    request,
+                                    "error.serving_container_sync_failed",
+                                    detail=mlops_exception_message(request, sync_error),
+                                )
+                            },
                             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                         )
                 else:
                     # 其他错误直接返回
                     logger.error(f"启动 serving 失败: {error_msg}")
                     return Response(
-                        {"error": error_msg},
+                        {"error": mlops_exception_message(request, e)},
                         status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     )
 
         except WebhookTimeoutError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"启动 serving 服务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": mlops_message(request, "error.serving_start_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.serving_start_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1146,16 +1158,16 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"停止 serving 失败: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"停止 serving 服务失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": mlops_message(request, "error.serving_stop_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.serving_stop_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1179,7 +1191,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                 "status": "success",
                 "id": serving_id,
                 "state": "removed",
-                "message": "容器已删除",
+                "message": mlops_message(request, "message.container_deleted"),
             }
             serving.save(update_fields=["container_info"])
 
@@ -1192,16 +1204,16 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
             )
 
         except WebhookTimeoutError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookConnectionError as e:
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except WebhookError as e:
             logger.error(f"删除容器失败: {e}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({"error": mlops_exception_message(request, e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             logger.error(f"删除 serving 容器失败: {str(e)}", exc_info=True)
             return Response(
-                {"error": mlops_message(request, "error.serving_container_delete_failed", detail=str(e))},
+                {"error": mlops_message(request, "error.serving_container_delete_failed", detail=mlops_exception_message(request, e))},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -1274,7 +1286,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                     # 预测服务返回失败
                     error_info = result.get("error") or {}
                     error_code = error_info.get("code", "UNKNOWN")
-                    error_message = error_info.get("message", "预测失败")
+                    error_message = error_info.get("message") or mlops_message(request, "error.prediction_failed")
 
                     logger.error(f"预测服务返回失败: serving_id={serving.id}, code={error_code}, message={error_message}")
                     return Response(
@@ -1289,29 +1301,31 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                 # 预测成功
                 return Response(result)
             else:
-                error_msg = f"预测服务返回错误: HTTP {response.status_code}"
-                try:
-                    error_detail = response.json()
-                    error_msg = f"{error_msg} - {error_detail}"
-                except (ValueError, json.JSONDecodeError) as e:
-                    logger.warning(f"Failed to parse error response JSON: {e}")
-                    error_msg = f"{error_msg} - {response.text[:200]}"
-
-                logger.error(f"预测失败: {error_msg}")
-                return Response({"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                error_msg = mlops_message(request, "error.serving_prediction_service_error", status_code=response.status_code)
+                logger.error(f"{error_msg}, serving_id={serving.id}")
+                return Response(
+                    {"error": error_msg, "detail": response.text},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
         except requests.exceptions.Timeout:
-            error_msg = "预测请求超时（超过 60 秒）"
             logger.error(f"预测超时: serving_id={serving.id}, url={predict_url}")
-            return Response({"error": error_msg}, status=status.HTTP_504_GATEWAY_TIMEOUT)
+            return Response(
+                {"error": mlops_message(request, "error.serving_prediction_timeout_exceeded", seconds=60)},
+                status=status.HTTP_504_GATEWAY_TIMEOUT,
+            )
         except requests.exceptions.ConnectionError as e:
-            error_msg = f"无法连接预测服务: {str(e)}"
             logger.error(f"预测连接失败: serving_id={serving.id}, url={predict_url}, error={e}")
-            return Response({"error": error_msg}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response(
+                {"error": mlops_message(request, "error.serving_prediction_connection_failed", detail=str(e))},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except requests.exceptions.RequestException as e:
-            error_msg = f"预测请求异常: {str(e)}"
             logger.error(f"预测请求异常: serving_id={serving.id}, error={e}", exc_info=True)
-            return Response({"error": error_msg}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {"error": mlops_message(request, "error.serving_prediction_request_failed", detail=str(e))},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         except Exception as e:
             logger.error(f"预测失败: serving_id={serving.id}, error={str(e)}", exc_info=True)
             return Response(

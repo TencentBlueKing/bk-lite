@@ -4,6 +4,9 @@ import {
   clampPopoverInContainer,
   placeBesideIcon,
   placeNearCursor,
+  nextGraphScale,
+  scalePopoverChrome,
+  scalePopoverEstimate,
   screenRectToLocalRect,
   toLocalPixels,
 } from '../popoverPosition';
@@ -66,6 +69,26 @@ test('toLocalPixels undoes CSS viewport scale', () => {
   assert.equal(toLocalPixels(200, 0.5), 400);
   assert.equal(toLocalPixels(200, 1), 200);
   assert.equal(toLocalPixels(200, 0), 200); // invalid → treat as 1
+});
+
+test('nextGraphScale ignores sub-pixel zoom jitter', () => {
+  assert.equal(nextGraphScale(1.0004, 1), 1);
+  assert.equal(nextGraphScale(1.2, 1), 1.2);
+  assert.equal(nextGraphScale(0, 1.5), 1);
+});
+
+test('scalePopoverChrome follows graph zoom', () => {
+  assert.equal(scalePopoverChrome(1).fontSize, 13);
+  assert.equal(scalePopoverChrome(2).fontSize, 26);
+  assert.equal(scalePopoverChrome(0.5).fontSize, 6.5);
+  assert.equal(scalePopoverChrome(0).fontSize, 13);
+});
+
+test('scalePopoverEstimate grows with graph zoom', () => {
+  assert.deepEqual(
+    scalePopoverEstimate({ width: 200, height: 100 }, 1.5),
+    { width: 300, height: 150 },
+  );
 });
 
 test('screenRectToLocalRect restores local coords under scale', () => {

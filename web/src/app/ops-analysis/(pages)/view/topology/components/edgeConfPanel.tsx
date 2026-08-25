@@ -121,36 +121,23 @@ const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
       <div>
         <Typography.Text
           strong
-          style={{
-            fontSize: 14,
-            color: 'var(--color-text-3)',
-            marginBottom: 8,
-            display: 'block',
-          }}
+          className="mb-2 block text-sm text-[var(--color-text-3)]"
         >
           {nodeLabel}
         </Typography.Text>
-        <div
-          style={{
-            padding: '16px',
-            backgroundColor: 'var(--color-fill-1)',
-            borderRadius: '8px',
-            marginTop: '6px',
-            border: '1px solid var(--color-border-2)',
-          }}
-        >
+        <div className="mt-1.5 rounded-lg border border-[var(--color-border-2)] bg-[var(--color-fill-1)] p-4">
           <Form.Item
             label={`${t('topology.nodeName')}：`}
-            style={{ marginBottom: 8 }}
+            className="mb-2!"
           >
             <Typography.Text strong>{nodeName}</Typography.Text>
           </Form.Item>
 
-          <div style={{ marginTop: 16 }}>
+          <div className="mt-4">
             <Form.Item
               name={interfaceTypeField}
               label={`${t('topology.interface')}：`}
-              style={{ marginBottom: 8 }}
+              className="mb-2!"
             >
               <Radio.Group disabled={readonly}>
                 <Radio value="existing">
@@ -173,7 +160,7 @@ const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
                   <Form.Item
                     name={interfaceValueField}
                     rules={[{ required: true, message: t('common.selectTip') }]}
-                    style={{ marginBottom: '10px' }}
+                    className="mb-2.5!"
                   >
                     <Select
                       placeholder={t('common.selectTip')}
@@ -185,7 +172,7 @@ const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
                   <Form.Item
                     name={interfaceValueField}
                     rules={[{ required: true, message: t('common.inputMsg') }]}
-                    style={{ marginBottom: '10px' }}
+                    className="mb-2.5!"
                   >
                     <Input
                       placeholder={t('common.inputMsg')}
@@ -231,8 +218,8 @@ const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
       {({ getFieldValue }) => {
         const lineType = getFieldValue('lineType');
         return lineType === 'network_line' && edgeData ? (
-          <div style={{ marginTop: '24px' }}>
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <div className="mt-6">
+            <Space direction="vertical" size="middle" className="w-full">
               {renderInterfaceConfig('source', edgeData.sourceNode.name)}
               {renderInterfaceConfig('target', edgeData.targetNode.name)}
             </Space>
@@ -255,7 +242,7 @@ const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
       zIndex={1200}
       bodyStyle={{ padding: 0 }}
       footer={
-        <div style={{ textAlign: 'right', padding: '16px 24px' }}>
+        <div className="px-6 py-4 text-right">
           <Space>
             <Button onClick={onClose}>
               {readonly ? t('common.close') : t('common.cancel')}
@@ -269,7 +256,7 @@ const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
         </div>
       }
     >
-      <div style={{ padding: '24px' }}>
+      <div className="p-6">
         <Form
           form={form}
           layout="vertical"
@@ -342,7 +329,7 @@ const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
                 addonAfter="px"
                 disabled={readonly}
                 placeholder={t('common.inputMsg')}
-                style={{ width: '120px' }}
+                className="w-[120px]"
               />
             </Form.Item>
 
@@ -393,13 +380,7 @@ const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
                   >
                     <Switch disabled={readonly || !animationEnabled} />
                     {!animationEnabled && (
-                      <div
-                        style={{
-                          fontSize: '12px',
-                          color: 'var(--color-text-2)',
-                          marginTop: '4px',
-                        }}
-                      >
+                      <div className="mt-1 text-xs text-[var(--color-text-2)]">
                         {t('topology.edgeConfig.animationTip')}
                       </div>
                     )}

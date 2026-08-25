@@ -61,18 +61,18 @@ export const ETCD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'etcd_wal_fsync_p99',
       display_name: 'WAL fsync P99',
       description: 'WAL 刷盘延迟 P99。',
-      unit: 's',
+      unit: 'ms',
       query:
-        'histogram_quantile(0.99, sum(rate((label_replace({__name__=~"etcd_disk_wal_fsync_duration_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "etcd_disk_wal_fsync_duration_seconds_(.+)"))[5m:]) or label_replace(rate(etcd_disk_wal_fsync_duration_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (instance_id, le))',
+        '1000 * histogram_quantile(0.99, sum(rate((label_replace({__name__=~"etcd_disk_wal_fsync_duration_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "etcd_disk_wal_fsync_duration_seconds_(.+)"))[5m:]) or label_replace(rate(etcd_disk_wal_fsync_duration_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (instance_id, le))',
       color: '#722ed1'
     },
     {
       name: 'etcd_backend_commit_p99',
       display_name: 'Backend commit P99',
       description: '后端 commit 延迟 P99。',
-      unit: 's',
+      unit: 'ms',
       query:
-        'histogram_quantile(0.99, sum(rate((label_replace({__name__=~"etcd_disk_backend_commit_duration_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "etcd_disk_backend_commit_duration_seconds_(.+)"))[5m:]) or label_replace(rate(etcd_disk_backend_commit_duration_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (instance_id, le))',
+        '1000 * histogram_quantile(0.99, sum(rate((label_replace({__name__=~"etcd_disk_backend_commit_duration_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "etcd_disk_backend_commit_duration_seconds_(.+)"))[5m:]) or label_replace(rate(etcd_disk_backend_commit_duration_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (instance_id, le))',
       color: '#8a5cff'
     },
     {
@@ -230,7 +230,7 @@ export const ETCD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       title: 'WAL fsync P99',
       metric: 'etcd_wal_fsync_p99',
-      unit: 's',
+      unit: 'ms',
       color: '#722ed1',
       icon: 'clock',
       compare: true,
@@ -253,8 +253,8 @@ export const ETCD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: 'Backend', detail: '后端 commit P99。' }
       ],
       series: [
-        { metric: 'etcd_wal_fsync_p99', label: 'WAL fsync P99', color: '#722ed1', unit: 's' },
-        { metric: 'etcd_backend_commit_p99', label: 'Backend commit P99', color: '#8a5cff', unit: 's' }
+        { metric: 'etcd_wal_fsync_p99', label: 'WAL fsync P99', color: '#722ed1', unit: 'ms' },
+        { metric: 'etcd_backend_commit_p99', label: 'Backend commit P99', color: '#8a5cff', unit: 'ms' }
       ]
     },
     {

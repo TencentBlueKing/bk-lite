@@ -1,10 +1,8 @@
-import logging
-from typing import Dict, Any, Optional, List, Union
+from typing import Any, Dict, List, Optional, Union
 
+from apps.core.logger import logger
 from apps.core.utils.user_group import Group
 from apps.rpc.system_mgmt import SystemMgmt
-
-logger = logging.getLogger(__name__)
 
 
 class UserGroup:

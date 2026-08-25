@@ -1,6 +1,8 @@
 from typing import Any
 
 from apps.operation_analysis.constants.import_export import ObjectType
+from apps.operation_analysis.services.report_view_sets import normalize_report_view_sets
+from apps.operation_analysis.services.string_param_multiple_migrate import migrate_canvas_view_sets
 
 
 def _rewrite_datasource_refs(value: Any, key_map: dict[Any, Any]) -> Any:
@@ -67,7 +69,9 @@ def _normalize_screen_view_sets(view_sets: Any) -> dict:
 
 def normalize_canvas_view_sets_for_storage(view_sets: Any, object_type: ObjectType) -> list | dict:
     if object_type == ObjectType.DASHBOARD:
-        return view_sets if isinstance(view_sets, list) else []
+        base = view_sets if isinstance(view_sets, list) else []
+        migrated, _ = migrate_canvas_view_sets(base)
+        return migrated if isinstance(migrated, list) else []
 
     if object_type == ObjectType.TOPOLOGY:
         if not isinstance(view_sets, dict):
@@ -75,11 +79,13 @@ def normalize_canvas_view_sets_for_storage(view_sets: Any, object_type: ObjectTy
         nodes = view_sets.get("nodes", [])
         edges = view_sets.get("edges", [])
         filters = view_sets.get("filters", [])
-        return {
+        base = {
             "nodes": nodes if isinstance(nodes, list) else [],
             "edges": edges if isinstance(edges, list) else [],
             "filters": filters if isinstance(filters, list) else [],
         }
+        migrated, _ = migrate_canvas_view_sets(base)
+        return migrated if isinstance(migrated, dict) else base
 
     if object_type == ObjectType.ARCHITECTURE:
         if not isinstance(view_sets, dict):
@@ -92,16 +98,14 @@ def normalize_canvas_view_sets_for_storage(view_sets: Any, object_type: ObjectTy
         }
 
     if object_type == ObjectType.SCREEN:
-        return _normalize_screen_view_sets(view_sets)
+        normalized = _normalize_screen_view_sets(view_sets)
+        migrated, _ = migrate_canvas_view_sets(normalized)
+        return migrated if isinstance(migrated, dict) else normalized
 
     if object_type == ObjectType.REPORT:
-        if not isinstance(view_sets, dict):
-            return {"time_range": None, "sections": []}
-        sections = view_sets.get("sections", [])
-        return {
-            "time_range": view_sets.get("time_range"),
-            "sections": sections if isinstance(sections, list) else [],
-        }
+        normalized = normalize_report_view_sets(view_sets)
+        migrated, _ = migrate_canvas_view_sets(normalized)
+        return migrated if isinstance(migrated, dict) else normalized
 
     return view_sets if isinstance(view_sets, (list, dict)) else []
 
@@ -147,7 +151,8 @@ def rewrite_canvas_view_sets_refs_for_yaml(view_sets: list | dict, object_type: 
 
     if object_type == ObjectType.REPORT:
         return {
-            "time_range": view_sets.get("time_range"),
+            "schema_version": view_sets.get("schema_version", 1),
+            "filters": view_sets.get("filters", []) if isinstance(view_sets.get("filters", []), list) else [],
             "sections": _rewrite_datasource_refs(view_sets.get("sections", []), ds_key_map),
         }
 
@@ -155,6 +160,16 @@ def rewrite_canvas_view_sets_refs_for_yaml(view_sets: list | dict, object_type: 
 
 
 def rewrite_canvas_view_sets_refs_for_storage(view_sets: list | dict, object_type: ObjectType, datasource_key_to_id: dict[str, int]) -> list | dict:
+    if object_type == ObjectType.REPORT:
+        if not isinstance(view_sets, dict):
+            return normalize_report_view_sets(view_sets)
+        rewritten = {
+            "schema_version": view_sets.get("schema_version", 1),
+            "filters": view_sets.get("filters", []),
+            "sections": _rewrite_datasource_refs(view_sets.get("sections", []), datasource_key_to_id),
+        }
+        return normalize_report_view_sets(rewritten)
+
     normalized = normalize_canvas_view_sets_for_storage(view_sets, object_type)
 
     if object_type == ObjectType.DASHBOARD:
@@ -182,11 +197,5 @@ def rewrite_canvas_view_sets_refs_for_storage(view_sets: list | dict, object_typ
         if isinstance(normalized.get("filters"), list):
             result["filters"] = normalized.get("filters", [])
         return result
-
-    if object_type == ObjectType.REPORT:
-        return {
-            "time_range": normalized.get("time_range"),
-            "sections": _rewrite_datasource_refs(normalized.get("sections", []), datasource_key_to_id),
-        }
 
     return _rewrite_datasource_refs(normalized, datasource_key_to_id)

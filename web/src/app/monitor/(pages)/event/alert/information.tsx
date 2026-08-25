@@ -16,10 +16,14 @@ import { useLevelList } from '@/app/monitor/hooks';
 import { OBJECT_DEFAULT_ICON, LEVEL_MAP } from '@/app/monitor/constants';
 import Permission from '@/components/permission';
 import { formatUserDisplayName } from '@/utils/userDisplay';
+import { getPolicySecondaryContext } from '@/app/monitor/utils/policyDisplayName';
+import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUtils';
+import { buildAlertDimensionDisplayItems } from './alertDimensionUtils';
 
 interface InformationProps extends TableDataItem {
   eventData?: TableDataItem[];
   chartUnit?: string | null;
+  chartXAxisDomain?: [number, number] | null;
 }
 
 const Information: React.FC<InformationProps> = ({
@@ -29,7 +33,8 @@ const Information: React.FC<InformationProps> = ({
   userList,
   onClose,
   trapData,
-  chartUnit
+  chartUnit,
+  chartXAxisDomain
 }) => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -40,6 +45,10 @@ const Information: React.FC<InformationProps> = ({
   const authList = useRef(commonContext?.authOrganizations || []);
   const organizationList: Organization[] = authList.current;
   const [confirmLoading, setConfirmLoading] = useState(false);
+  const dimensionItems = buildAlertDimensionDisplayItems(
+    formData.metric?.dimensions,
+    formData.dimensions
+  );
 
   const checkDetail = (row: TableDataItem) => {
     const monitorItem = objects.find(
@@ -59,6 +68,20 @@ const Information: React.FC<InformationProps> = ({
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  const openPolicyEdit = (row: TableDataItem) => {
+    const monitorItem = objects.find(
+      (item: ObjectItem) => item.id === row.policy?.monitor_object
+    );
+    if (!row.policy?.id || !row.policy?.monitor_object) return;
+    const url = buildMonitorStrategyDetailUrl('edit', {
+      monitorObjId: row.policy.monitor_object,
+      monitorName: monitorItem?.name || monitorItem?.display_name || '',
+      id: row.policy.id,
+      name: row.policy.name || ''
+    });
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
   const handleCloseConfirm = async (row: TableDataItem) => {
     setConfirmLoading(true);
     try {
@@ -73,11 +96,18 @@ const Information: React.FC<InformationProps> = ({
   };
 
   const showNotifiers = (row: TableDataItem) => {
-    const users = row.policy?.notice_users;
-    if (!Array.isArray(users)) return users;
+    // 列表接口会补 notice_users_display；无展示名时再回退到本地 userList 映射
+    if (
+      Array.isArray(row.notice_users_display) &&
+      row.notice_users_display.length
+    ) {
+      return row.notice_users_display.join(',') || '--';
+    }
+    const users = row.notice_users || row.policy?.notice_users;
+    if (!Array.isArray(users) || !users.length) return '--';
     return (
-      (row.policy?.notice_users || [])
-        .map((item: string) => formatUserDisplayName(item, userList))
+      users
+        .map((item: string | number) => formatUserDisplayName(item, userList))
         .join(',') || '--'
     );
   };
@@ -112,8 +142,31 @@ const Information: React.FC<InformationProps> = ({
             ? convertToLocalizedTime(formData.start_event_time)
             : '--'}
         </Descriptions.Item>
-        <Descriptions.Item label={t('monitor.events.information')} span={3}>
-          {formData.content || '--'}
+        <Descriptions.Item label={t('monitor.events.alertName')} span={3}>
+          <div className="min-w-0 break-all whitespace-pre-wrap">
+            {formData.content || '--'}
+          </div>
+        </Descriptions.Item>
+        <Descriptions.Item label={t('monitor.events.dimension')} span={3}>
+          {dimensionItems.length ? (
+            <div className="flex min-w-0 flex-col gap-1">
+              {dimensionItems.map((item) => (
+                <div
+                  key={item.key}
+                  className="flex min-w-0 items-start gap-2"
+                >
+                  <span className="max-w-[40%] shrink-0 break-words text-[var(--color-text-3)]">
+                    {item.label}:
+                  </span>
+                  <span className="min-w-0 break-all whitespace-pre-wrap">
+                    {item.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            '--'
+          )}
         </Descriptions.Item>
         <Descriptions.Item label={t('monitor.events.assetType')}>
           {objects.find(
@@ -141,7 +194,42 @@ const Information: React.FC<InformationProps> = ({
           )}
         </Descriptions.Item>
         <Descriptions.Item label={t('monitor.events.strategyName')}>
-          {formData.policy?.name || '--'}
+          {(() => {
+            const monitorObj = objects.find(
+              (item: ObjectItem) => item.id === formData.policy?.monitor_object
+            );
+            const secondary = getPolicySecondaryContext({
+              ...formData.policy,
+              monitor_object_display_name: monitorObj?.display_name || monitorObj?.name
+            });
+            return (
+              <div className="flex justify-between items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <div>{formData.policy?.name || '--'}</div>
+                  {secondary ? (
+                    <div className="mt-0.5 text-[12px] leading-4 text-[var(--color-text-3)]">
+                      {secondary}
+                    </div>
+                  ) : null}
+                </div>
+                {formData.policy?.id ? (
+                  <Permission
+                    requiredPermissions={['Edit']}
+                    permissionPath="/monitor/event/strategy"
+                    instPermissions={formData.policy_permission ?? []}
+                  >
+                    <Button
+                      type="link"
+                      className="shrink-0 ml-2 p-0 h-auto"
+                      onClick={() => openPolicyEdit(formData)}
+                    >
+                      {t('common.edit')}
+                    </Button>
+                  </Permission>
+                ) : null}
+              </div>
+            );
+          })()}
         </Descriptions.Item>
         {formData.status === 'closed' && (
           <Descriptions.Item label={t('monitor.events.alertEndTime')}>
@@ -225,6 +313,14 @@ const Information: React.FC<InformationProps> = ({
                 }
                 unit={chartUnit || ''}
                 metric={formData.metric}
+                xAxisDomain={
+                  formData.alert_type === 'no_data'
+                    ? chartXAxisDomain || undefined
+                    : undefined
+                }
+                gapFit={
+                  formData.alert_type === 'no_data' ? 'plot' : 'samples'
+                }
               />
             </div>
           </div>

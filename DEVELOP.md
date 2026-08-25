@@ -27,6 +27,17 @@ make server-init      # batch_init 初始化
 make collect-static   # 收集静态文件
 make init-buckets     # 初始化 MinIO bucket
 ```
+
+运营分析目录父链发布前检查：
+
+```bash
+cd server
+python manage.py audit_directory_cycles
+```
+
+该命令只读列出循环节点，不自动修改存量数据。若发现循环，先备份数据库，再人工把
+循环中的一个目录 `parent` 置空并复跑检查。代码回滚使用 `git revert`；该修复不含
+数据库迁移，回滚代码不会恢复已经拒绝的非法写入。
 单测运行:
 ```bash
 cd server
@@ -99,7 +110,7 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 - 常见失败:缺 `keystore.properties`/keystore;Android SDK/NDK/Java 异常;3001 端口冲突
 
 ### WebChat
-- release:`webchat/.github/workflows/build.yml` 的 publish job(main push);需 `NPM_TOKEN`/`NODE_AUTH_TOKEN`
+- release:手工触发`.github/workflows/webchat-tests.yml`并显式启用publish输入;需 `NPM_TOKEN`/`NODE_AUTH_TOKEN`
 - 常见失败:token 缺失/权限不足;Node matrix 18/20 不满足
 
 ### Stargazer
@@ -137,6 +148,13 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 模板:`server/envs/.env.example`、`server/support-files/env/*.example`（APM 使用 `.env.apm.example`）、`web/.env.example`、`agents/stargazer/.env.example`、K8s `secret.*.template`。
 > 新增 env 走 `os.getenv` 默认值,不改 `.env.example`(易冲突,见团队约定)。
 
+Celery Beat 静态任务对账使用 `CELERY_BEAT_SCHEDULE_RECONCILE_MODE`，代码默认 `shadow`（只报告）；
+确认 shadow 明细后可切为 `enforce`，仅禁用带有效所有权指纹且退出完整配置快照的任务。回退代码前先切
+`restore` 并重复运行至恢复明细清空。首次上线不会接管无指纹历史任务；确认历史静态名称基线后，先将精确名称
+以逗号分隔写入 `CELERY_BEAT_SCHEDULE_LEGACY_MANAGED_NAMES` 并保持 `shadow`，再把日志输出的
+`名称@行指纹` 原样写回该配置并切 `enforce`，仅在行身份未漂移时原子导入并禁用。回滚该次存量导入时保留
+同一份 `名称@行指纹` 清单并切 `restore`，任务恢复后会释放导入的机器所有权标记。
+
 ## 5. Runbook（常见故障）
 
 1. `git pull --ff-only` 失败 → 先解决分叉/未提交变更。
@@ -149,5 +167,6 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 8. `webchat publish` 失败 → 检查 `NPM_TOKEN`、npm 权限与版本冲突。
 9. `stargazer` 不接纳采集 → 检查 Redis/NATS 与 `/api/health/ready`；Stargazer 已无独立 ARQ Worker。
 10. K8s 采集器无数据 → 检查 `secret.env` 的 `CLUSTER_NAME/NATS_*` 与 `ca.crt`。
+11. CMDB 推监控「成功但无实例 / ignored」→ 若 `.env` 的 `NATS_SERVERS` 指向远端共享集群，本地 `nats_listener` 与远端消费者抢同一 queue，请求常被远端旧代码接走并 `ignored`。本地 monorepo 开发在 `.env` 设 `IS_LOCAL_RPC=1`（模块间走本进程 `AppClient`），改完后重启 `make dev`（环境变量不随 `--reload` 热更新）。
 
 > 质量门禁与代码红线见 [工程质量规格](specs/capabilities/engineering-quality.md)；回滚与韧性见 [平台可靠性规格](specs/capabilities/platform-reliability.md)。

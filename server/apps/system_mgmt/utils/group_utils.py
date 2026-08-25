@@ -1,29 +1,42 @@
-import logging
 
 from apps.system_mgmt.models import Group
-
-_logger = logging.getLogger("system_mgmt")
 
 
 class GroupUtils(object):
     @staticmethod
-    def get_group_with_descendants(group_ids):
+    def active_queryset(**filters):
+        """正常使用路径的活动组织查询：始终带 is_delete=False。"""
+        return Group.objects.filter(is_delete=False, **filters)
+
+    @staticmethod
+    def _group_relation_queryset(include_deleted=False):
+        """活动组织投影默认排除归档；归档生命周期显式传 include_deleted=True。"""
+        if include_deleted:
+            return Group.objects.all()
+        return GroupUtils.active_queryset()
+
+    @staticmethod
+    def get_group_with_descendants(group_ids, include_deleted=False):
         """
         获取指定组织及其所有子孙组织的ID列表（内存递归，单次数据库查询）
         :param group_ids: 组织ID或组织ID列表
+        :param include_deleted: 是否包含已归档组织；默认 False（活动投影）
         :return: 包含自身及所有子孙组织的ID列表
         """
         if isinstance(group_ids, (int, str)):
             group_ids = [int(group_ids)]
         else:
             group_ids = [int(gid) for gid in group_ids]
-        all_groups = Group.objects.values_list("id", "parent_id")
+        all_groups = list(GroupUtils._group_relation_queryset(include_deleted).values_list("id", "parent_id"))
+        active_ids = {gid for gid, _pid in all_groups}
         children_map = {}
         for gid, pid in all_groups:
             if pid is not None:
                 children_map.setdefault(pid, []).append(gid)
 
         def collect_descendants(gid, result_set):
+            if gid not in active_ids:
+                return
             result_set.add(gid)
             for child_id in children_map.get(gid, []):
                 collect_descendants(child_id, result_set)
@@ -34,7 +47,7 @@ class GroupUtils(object):
         return list(result)
 
     @staticmethod
-    def get_group_with_descendants_filtered(group_ids, group_list=None):
+    def get_group_with_descendants_filtered(group_ids, group_list=None, include_deleted=False):
         """
         获取指定组织及其所有子孙组织的ID列表，支持权限过滤（单次数据库查询）
 
@@ -43,6 +56,7 @@ class GroupUtils(object):
 
         :param group_ids: 组织ID或组织ID列表
         :param group_list: 用户有权限的组织ID列表，如果为None则不过滤
+        :param include_deleted: 是否包含已归档组织；默认 False（活动投影）
         :return: 包含自身及所有子孙组织的ID列表（已过滤权限）
         """
         if isinstance(group_ids, (int, str)):
@@ -50,9 +64,9 @@ class GroupUtils(object):
         else:
             group_ids = [int(gid) for gid in group_ids]
 
-        # 单次查询获取所有组织的父子关系
-        all_groups = Group.objects.values_list("id", "parent_id")
-        all_groups_list = list(all_groups)  # 强制执行查询
+        # 单次查询获取组织父子关系（默认仅活动组织）
+        all_groups_list = list(GroupUtils._group_relation_queryset(include_deleted).values_list("id", "parent_id"))
+        active_ids = {gid for gid, _pid in all_groups_list}
 
         children_map = {}
         for gid, pid in all_groups_list:
@@ -69,6 +83,8 @@ class GroupUtils(object):
                 allowed_set = set(group_list)
 
         def collect_descendants(gid, result_set):
+            if gid not in active_ids:
+                return
             # 如果有权限过滤，只添加有权限的组织
             if allowed_set is None or gid in allowed_set:
                 result_set.add(gid)
@@ -83,7 +99,7 @@ class GroupUtils(object):
         return list(result)
 
     @staticmethod
-    def get_all_child_groups(group_id, include_self=True, group_list=None):
+    def get_all_child_groups(group_id, include_self=True, group_list=None, include_deleted=False):
         """
         递归获取指定组织的所有子组织ID（仅限用户有权限的组织）
 
@@ -93,14 +109,19 @@ class GroupUtils(object):
         :param group_id: 父组织ID
         :param include_self: 是否包含自身
         :param group_list: 用户有权限的组织ID列表，如果为None则不过滤
+        :param include_deleted: 是否包含已归档组织；默认 False（活动投影）
         :return: 组织ID列表
         """
         group_ids = set()
+        relation_qs = GroupUtils._group_relation_queryset(include_deleted)
         if include_self:
-            group_ids.add(group_id)
+            if relation_qs.filter(id=group_id).exists():
+                group_ids.add(group_id)
+            elif not include_deleted:
+                return []
 
         # 获取直接子组织
-        child_groups = Group.objects.filter(parent_id=group_id).values_list("id", flat=True)
+        child_groups = relation_qs.filter(parent_id=group_id).values_list("id", flat=True)
 
         # 如果提供了 group_list，只保留用户有权限的子组织
         if group_list is not None:
@@ -108,7 +129,11 @@ class GroupUtils(object):
 
         # 递归获取子组织的子组织
         for child_id in child_groups:
-            group_ids.update(GroupUtils.get_all_child_groups(child_id, include_self=True, group_list=group_list))
+            group_ids.update(
+                GroupUtils.get_all_child_groups(
+                    child_id, include_self=True, group_list=group_list, include_deleted=include_deleted
+                )
+            )
 
         return list(group_ids)
 
@@ -123,6 +148,10 @@ class GroupUtils(object):
         """
         # 如果目标组织不在用户权限列表中，返回空
         if target_group_id not in user_group_list:
+            return []
+
+        # 归档组织不得作为活动授权范围
+        if not GroupUtils.active_queryset(id=target_group_id).exists():
             return []
 
         # 不包含子组织，仅返回当前组织

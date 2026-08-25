@@ -8,10 +8,11 @@ YAML导入导出契约校验模块
 
 import re
 from datetime import date
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator, model_validator
 
+from apps.operation_analysis.constants.canvas_refresh import normalize_canvas_refresh_interval
 from apps.operation_analysis.constants.import_export import (
     BUSINESS_KEY_SEPARATOR,
     CANVAS_TYPES,
@@ -21,7 +22,7 @@ from apps.operation_analysis.constants.import_export import (
     ImportExportErrorCode,
     ObjectType,
 )
-
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 
 DATE_RANGE_QUICK_TYPES = {
     "today",
@@ -37,6 +38,9 @@ DATE_RANGE_QUICK_TYPES = {
 DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
+CanvasRefreshIntervalField = Annotated[int, BeforeValidator(normalize_canvas_refresh_interval)]
+
+
 def _is_valid_date_only(value: Any) -> bool:
     if not isinstance(value, str) or not DATE_ONLY_PATTERN.fullmatch(value):
         return False
@@ -46,7 +50,33 @@ def _is_valid_date_only(value: Any) -> bool:
         return False
 
 
+def _normalize_date_range_value(value: Any) -> Any:
+    """Blank strings are the historical 'unset' default from builtin datasources."""
+    if isinstance(value, str) and not value.strip():
+        return None
+    return value
+
+
+def _normalize_one_date_range_param(param: Any) -> Any:
+    if not isinstance(param, dict) or param.get("type") != "dateRange":
+        return param
+    normalized = dict(param)
+    normalized["value"] = _normalize_date_range_value(normalized.get("value"))
+    return normalized
+
+
+def normalize_date_range_param_values(params: Any) -> Any:
+    if isinstance(params, list):
+        return [_normalize_one_date_range_param(item) for item in params]
+    if isinstance(params, dict):
+        if params.get("type") == "dateRange":
+            return _normalize_one_date_range_param(params)
+        return {key: _normalize_one_date_range_param(item) for key, item in params.items()}
+    return params
+
+
 def _validate_date_range_value(value: Any) -> bool:
+    value = _normalize_date_range_value(value)
     if value is None:
         return True
     if not isinstance(value, dict):
@@ -149,6 +179,7 @@ class DatasourceItem(BaseModel):
     source_type: str = Field(default="nats")
     connection_config: dict = Field(default_factory=dict)
     query_config: dict = Field(default_factory=dict)
+    transform_config: dict = Field(default_factory=dict)
     desc: str = Field(default="")
     is_active: bool = Field(default=True)
     params: dict | list | None = Field(default_factory=list)
@@ -170,10 +201,16 @@ class DatasourceItem(BaseModel):
     def normalize_rest_api(cls, v: Any) -> str:
         return "" if v is None else str(v).strip()
 
+    @field_validator("params", mode="before")
+    @classmethod
+    def normalize_date_range_params(cls, v: Any) -> Any:
+        return normalize_date_range_param_values(v)
+
     @field_validator("source_type")
     @classmethod
     def validate_source_type(cls, v: str) -> str:
-        if v not in {"nats", "mysql", "postgresql", "rest_api", "excel"}:
+        allowed = {choice[0] for choice in DataSourceAPIModel.SOURCE_TYPE_CHOICES}
+        if v not in allowed:
             raise ValueError("source_type 不支持")
         return v
 
@@ -200,6 +237,7 @@ class DashboardItem(BaseModel):
     filters: list = Field(default_factory=list)
     other: dict = Field(default_factory=dict)
     view_sets: list = Field(default_factory=list)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")
@@ -232,6 +270,7 @@ class TopologyItem(BaseModel):
     desc: str = Field(default="")
     other: dict = Field(default_factory=dict)
     view_sets: dict = Field(default_factory=dict)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")
@@ -294,6 +333,7 @@ class ScreenItem(BaseModel):
     desc: str = Field(default="")
     other: dict = Field(default_factory=dict)
     view_sets: dict
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")
@@ -325,6 +365,7 @@ class ReportItem(BaseModel):
     desc: str = Field(default="")
     other: dict = Field(default_factory=dict)
     view_sets: dict = Field(default_factory=dict)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")
@@ -345,7 +386,10 @@ class ReportItem(BaseModel):
     @field_validator("view_sets", mode="before")
     @classmethod
     def normalize_view_sets(cls, v: Any) -> dict:
-        return _normalize_canvas_view_sets_for_storage(v, ObjectType.REPORT)
+        from apps.operation_analysis.services.report_view_sets import normalize_report_view_sets
+
+        # YAML 里 dataSource 仍是业务键；先做结构校验，导入改写后再走存储态整数 ID 合同。
+        return normalize_report_view_sets(v or {}, allow_portable_datasource_ref=True)
 
 
 class NetworkTopologyItem(BaseModel):
@@ -357,6 +401,7 @@ class NetworkTopologyItem(BaseModel):
     base_url: str
     token: str = Field(default="")
     view_sets: dict = Field(default_factory=dict)
+    refresh_interval: CanvasRefreshIntervalField = Field(default=0)
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name", "base_url")
@@ -425,6 +470,7 @@ def validate_date_range_params(doc: YAMLDocument) -> list[dict]:
         for param_index, param in enumerate(items):
             if not isinstance(param, dict) or param.get("type") != "dateRange":
                 continue
+            param["value"] = _normalize_date_range_value(param.get("value"))
             if not _validate_date_range_value(param.get("value")):
                 violations.append(
                     {
@@ -442,7 +488,7 @@ DB_ID_FIELD_PATTERN = re.compile(r"(^|_)(id|ids)$", re.IGNORECASE)
 PURE_NUMERIC_PATTERN = re.compile(r"^\d+$")
 
 NETWORK_TOPOLOGY_EXTERNAL_ID_FIELDS = {
-    "bk_inst_id",
+    "bk_inst_uuid",
     "plugin_group_id",
     "plugin_template_id",
     "network_collect_task_id",

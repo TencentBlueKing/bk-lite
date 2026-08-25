@@ -64,8 +64,18 @@ export const PROFESSIONAL_DASHBOARD_METADATA: ProfessionalDashboardMetaItem[] = 
 /** @deprecated 使用 PROFESSIONAL_DASHBOARD_METADATA；保留别名兼容旧引用。 */
 export const PROFESSIONAL_DASHBOARDS = PROFESSIONAL_DASHBOARD_METADATA;
 
-const getDashboardCandidates = (item: ProfessionalDashboardMetaItem) =>
-  [item.key, ...(item.aliases || []), item.objectName, item.objectDisplayName]
+/** URL / 路由查找：含 dashboard key。 */
+const getDashboardRouteCandidates = (item: ProfessionalDashboardMetaItem) =>
+  [item.key, ...(item.aliases || []), item.objectName]
+    .filter(Boolean)
+    .map((value) => normalizeDashboardKey(value));
+
+/**
+ * 监控对象查找：只用 objectName + aliases。
+ * 不含 dashboard key 与泛化展示名，避免腾讯云 slug `TCP` 误绑 TCP 端口盘。
+ */
+export const getDashboardObjectMatchKeys = (item: ProfessionalDashboardMetaItem) =>
+  [item.objectName, ...(item.aliases || [])]
     .filter(Boolean)
     .map((value) => normalizeDashboardKey(value));
 
@@ -75,7 +85,7 @@ export const findProfessionalDashboardMeta = (
 ) => {
   const objectCandidates = [objectName, objectDisplayName].map((value) => normalizeDashboardKey(value));
   return PROFESSIONAL_DASHBOARD_METADATA.find((item) => {
-    const candidates = getDashboardCandidates(item);
+    const candidates = getDashboardObjectMatchKeys(item);
     return objectCandidates.some((candidate) => candidate && candidates.includes(candidate));
   });
 };
@@ -84,7 +94,7 @@ export const findProfessionalDashboardMetaByKey = (objectKey?: string | null) =>
   const normalizedKey = normalizeDashboardKey(objectKey);
   if (!normalizedKey) return undefined;
   return PROFESSIONAL_DASHBOARD_METADATA.find((item) =>
-    getDashboardCandidates(item).includes(normalizedKey)
+    getDashboardRouteCandidates(item).includes(normalizedKey)
   );
 };
 
@@ -92,8 +102,16 @@ export const getProfessionalDashboardKey = (objectName?: string | null, objectDi
   return findProfessionalDashboardMeta(objectName, objectDisplayName)?.key || '';
 };
 
-/** 侧栏/列表展示名：优先 API display_name；TCPPort 等技术名回退到注册表 objectDisplayName（→ TCP）。 */
-export const getProfessionalObjectDisplayName = (objectName?: string | null, objectDisplayName?: string | null) => {
+/**
+ * 侧栏/列表展示名：优先 API display_name（后端已按账号语言翻译）。
+ * 注册表 objectDisplayName 不得在英文等语言下覆盖 API 译名
+ * （例如 Host→Host 被错盖成「主机」）。
+ * 仅当 API 仍为技术 slug TCPPort 时，回退到友好名 TCP。
+ */
+export const getProfessionalObjectDisplayName = (
+  objectName?: string | null,
+  objectDisplayName?: string | null
+) => {
   const matched = findProfessionalDashboardMeta(objectName, objectDisplayName);
   const apiName = String(objectDisplayName || '').trim();
   const technicalName = String(objectName || '').trim();
@@ -101,10 +119,11 @@ export const getProfessionalObjectDisplayName = (objectName?: string | null, obj
   const techKey = normalizeDashboardKey(technicalName);
 
   if (techKey === 'tcpport' || apiKey === 'tcpport') {
+    if (apiName && apiKey !== 'tcpport') return apiName;
     return matched?.objectDisplayName || 'TCP';
   }
-  if (apiName && apiName !== technicalName) return apiName;
-  return matched?.objectDisplayName || apiName || technicalName || '';
+  if (apiName) return apiName;
+  return technicalName || matched?.objectDisplayName || '';
 };
 
 export const getProfessionalDashboardUrl = (
@@ -120,7 +139,7 @@ export const getProfessionalDashboardUrl = (
 export const getProfessionalDashboardPermissionPath = (url?: string | null) => {
   const normalizedUrl = String(url || '').replace(/\/$/, '').toLowerCase();
   const matched = PROFESSIONAL_DASHBOARD_METADATA.find((item) => {
-    return getDashboardCandidates(item).some((candidate) => {
+    return getDashboardRouteCandidates(item).some((candidate) => {
       const dashboardPath = `/monitor/view/dashboard/${candidate}`;
       return normalizedUrl === dashboardPath || normalizedUrl.startsWith(`${dashboardPath}/`);
     });

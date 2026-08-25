@@ -15,13 +15,13 @@ export default defineConfig({
       name: 'WebChat',
       formats: ['es', 'cjs', 'umd'],
       fileName: (format) => {
-        if (format === 'es') return 'index.js';
+        if (format === 'es') return 'index.mjs';
         if (format === 'cjs') return 'index.cjs';
         return 'index.umd.js';
       },
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime', '@ant-design/x', 'antd'],
+      external: ['react', 'react-dom', 'react/jsx-runtime'],
       output: {
         globals: {
           react: 'React',

@@ -3,6 +3,7 @@ import type {
   ThresholdColorConfig,
   ValueMapping,
 } from '@/app/ops-analysis/components/ops-analysis-config-sections/types';
+import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 
 export type ChartType =
   | 'line'
@@ -39,13 +40,17 @@ export interface TableDefaultConfig {
 export interface ParamItem {
   id?: string;
   name: string;
-  value: string | number | boolean | [number, number] | null;
+  value: string | number | boolean | Array<string | number> | [number, number] | null;
   alias_name: string;
   type?: string;
   filterType?: string;
   desc?: string;
   required?: boolean;
   options?: Array<{ label: string; value: string | number }>;
+  inputConfig?: {
+    control?: 'input' | 'select' | 'radio';
+    multiple?: boolean;
+  };
 }
 
 export interface DatasourceItem {
@@ -79,7 +84,12 @@ export interface TimeRangeValue {
   selectValue?: number;
 }
 
-export type FilterValue = string | number | TimeRangeValue | null;
+export type FilterValue =
+  | string
+  | number
+  | Array<string | number>
+  | TimeRangeValue
+  | null;
 
 export interface FilterOption {
   label: string;
@@ -96,6 +106,10 @@ export interface UnifiedFilterDefinition {
   enabled: boolean;
   inputMode?: 'input' | 'select' | 'radio' | 'organization';
   options?: FilterOption[];
+  inputConfig?: {
+    control?: 'input' | 'select' | 'radio';
+    multiple?: boolean;
+  };
 }
 
 export interface DashboardFiltersState {
@@ -165,6 +179,7 @@ export interface DashboardActionConfig {
 
 export interface ValueConfig {
   chartType?: string;
+  chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
   params?: Record<string, string | number | boolean | [number, number] | null>;

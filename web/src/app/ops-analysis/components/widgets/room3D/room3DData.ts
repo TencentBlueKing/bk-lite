@@ -72,6 +72,8 @@ const isPositiveInteger = (value: unknown): value is number =>
 
 const exposeI18nKey: Room3DTranslator = (id) => id;
 
+const ROOM3D_LOCATION_PATTERN = /^([A-Z]+)(\d+)$/i;
+
 const validateOptionalNumberFields = (
   rack: Record<string, unknown>,
   index: number,
@@ -162,14 +164,40 @@ export const getRoom3DColumnLabel = (col: number) => {
   return label;
 };
 
-export const getRoom3DRowLabel = (row: number) => getRoom3DColumnLabel(row);
+export const getRoom3DRowLabel = (row: number) => {
+  if (!Number.isInteger(row) || row < 1) {
+    return '';
+  }
+  return String(row);
+};
 
 export const getRoom3DStandardLocation = (row: number, col: number) => {
-  const rowLabel = getRoom3DRowLabel(row);
+  // 机房实物约定：一整排同一字母（行），过道方向 01、02、03（列）
+  const rowLabel = getRoom3DColumnLabel(row);
   if (!rowLabel || !Number.isInteger(col) || col < 1) {
     return '';
   }
   return `${rowLabel}${String(col).padStart(2, '0')}`;
+};
+
+const parseRoom3DLocation = (value: unknown) => {
+  if (!isNonEmptyString(value)) {
+    return null;
+  }
+  const match = ROOM3D_LOCATION_PATTERN.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+
+  const row = match[1]
+    .toUpperCase()
+    .split('')
+    .reduce((total, char) => total * 26 + char.charCodeAt(0) - 64, 0);
+  const col = Number.parseInt(match[2], 10);
+  if (!Number.isInteger(row) || row < 1 || !Number.isInteger(col) || col < 1) {
+    return null;
+  }
+  return { row, col, location: getRoom3DStandardLocation(row, col) };
 };
 
 export const getRoom3DPositionLabel = (rack: Pick<Room3DRack, 'row' | 'col' | 'location'>) =>
@@ -249,11 +277,10 @@ export const validateRoom3DData = (
 
     const rackId = rack.rack_id;
     const rackName = rack.rack_name;
-    const row = rack.row;
-    const col = rack.col;
-    const location = isNonEmptyString(rack.location)
-      ? rack.location.trim()
-      : getRoom3DStandardLocation(row, col);
+    const parsedLocation = parseRoom3DLocation(rack.location);
+    const row = parsedLocation?.row ?? rack.row;
+    const col = parsedLocation?.col ?? rack.col;
+    const location = parsedLocation?.location ?? getRoom3DStandardLocation(row, col);
     const rawRackType = rack.rack_type;
     const rackType: Room3DRack['rack_type'] =
       typeof rawRackType === 'string'

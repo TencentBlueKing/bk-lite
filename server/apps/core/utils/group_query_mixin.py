@@ -3,6 +3,8 @@
 提供统一的组织权限过滤方法，确保查询集合与"选择组织 + 用户权限"一致
 """
 
+from rest_framework.exceptions import PermissionDenied
+
 from apps.core.logger import logger
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
@@ -54,6 +56,11 @@ class GroupQueryMixin:
             logger.error(f"current_team参数格式错误: {current_team}")
             return []
 
+        from apps.system_mgmt.models import Group
+
+        if Group.objects.filter(id=current_team, is_delete=True).exists():
+            raise PermissionDenied("current_team 对应组织已归档或不存在")
+
         include_children = request.COOKIES.get("include_children", "0") == "1"
         # 3. 获取用户有权限的组织列表
         user_group_list = self._get_user_group_list(request)
@@ -64,7 +71,7 @@ class GroupQueryMixin:
         )
 
         if not query_groups:
-            logger.warning(f"用户对组织 {current_team} 没有权限或该组织不存在")
+            logger.warning("用户对组织 %s 没有权限或该组织不存在", current_team)
 
         return query_groups
 
@@ -78,15 +85,16 @@ class GroupQueryMixin:
         """
         # 如果是超级用户，获取所有组织
         if hasattr(request.user, "is_superuser") and request.user.is_superuser:
-            from apps.system_mgmt.models import Group
+            return list(GroupUtils.active_queryset().values_list("id", flat=True))
 
-            return list(Group.objects.values_list("id", flat=True))
-
-        # 普通用户，从user.group_list获取
+        # 普通用户：group_list 可能残留归档 ID，活动投影只保留 is_delete=False
         if hasattr(request.user, "group_list"):
-            return normalize_user_group_ids(request.user.group_list)
+            group_ids = normalize_user_group_ids(request.user.group_list)
+            if not group_ids:
+                return []
+            return list(GroupUtils.active_queryset(id__in=group_ids).values_list("id", flat=True))
 
-        logger.warning(f"无法获取用户 {request.user.username} 的组织列表")
+        logger.warning("无法获取用户 %s 的组织列表", request.user.username)
         return []
 
     def filter_by_groups(self, queryset, request):

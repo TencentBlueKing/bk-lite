@@ -14,9 +14,9 @@ import {
   Modal,
   Tooltip,
   Tag,
-  Dropdown,
-  Empty
+  Dropdown
 } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { DownOutlined, ReloadOutlined } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import type { MenuProps, TableProps } from 'antd';
@@ -47,11 +47,13 @@ import { cloneDeep } from 'lodash';
 import { ColumnItem } from '@/types';
 import CollectorDetailDrawer from './collectorDetail';
 import EditNode from './editNode';
+import BatchEditOrganizations from './batchEditOrganizations';
 import { useCommon } from '@/app/node-manager/context/common';
 import {
   getCollectorOperationSelection,
   isControllerOperationDisabled
 } from '@/app/node-manager/utils/nodeOperation';
+import { asCollectorStatusList } from '@/app/node-manager/utils/collectorConfig';
 const { confirm } = Modal;
 
 type TableRowSelection<T extends object = object> =
@@ -75,6 +77,7 @@ const Node = () => {
   const controllerRef = useRef<ModalRef>(null);
   const collectorDetailRef = useRef<any>(null);
   const editNodeRef = useRef<ModalRef>(null);
+  const batchEditOrganizationsRef = useRef<ModalRef>(null);
   const [nodeList, setNodeList] = useState<TableDataItem[]>();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -207,8 +210,10 @@ const Node = () => {
       record.operating_system === 'linux'
         ? 'natsexecutor_linux'
         : 'natsexecutor_windows';
-    const collectors = record.status?.collectors || [];
-    const collectorsInstall = record.status?.collectors_install || [];
+    const collectors = asCollectorStatusList(record.status?.collectors);
+    const collectorsInstall = asCollectorStatusList(
+      record.status?.collectors_install
+    );
     // 获取已在 collectors 中的 collector_id 集合
     const collectorIds = new Set(collectors.map((c: any) => c.collector_id));
     // 过滤 collectors_install,排除已在 collectors 中的采集器
@@ -407,7 +412,8 @@ const Node = () => {
                         ? 'rongqifuwuContainerServi'
                         : 'zhuji'
                     }
-                    style={{ fontSize: '28px', cursor: 'pointer' }}
+                    style={{ fontSize: '28px' }}
+                    className="cursor-pointer"
                   />
                 </div>
               </Tooltip>
@@ -419,7 +425,8 @@ const Node = () => {
                 <div className="flex items-center">
                   <Icon
                     type={osValue === 'linux' ? 'Linux' : 'Window-Windows'}
-                    style={{ fontSize: '26px', cursor: 'pointer' }}
+                    style={{ fontSize: '26px' }}
+                    className="cursor-pointer"
                   />
                 </div>
               </Tooltip>
@@ -448,7 +455,8 @@ const Node = () => {
                 <div className="flex items-center">
                   <Icon
                     type="cpu"
-                    style={{ fontSize: '28px', cursor: 'pointer' }}
+                    style={{ fontSize: '28px' }}
+                    className="cursor-pointer"
                   />
                 </div>
               </Tooltip>
@@ -471,10 +479,14 @@ const Node = () => {
             record.operating_system === 'linux'
               ? 'natsexecutor_linux'
               : 'natsexecutor_windows';
-          const collectorTarget = (record.status?.collectors || []).find(
+          const collectorTarget = asCollectorStatusList(
+            record.status?.collectors
+          ).find(
             (item: TableDataItem) => item.collector_id === natsexecutorId
           );
-          const installTarget = (record.status?.collectors_install || []).find(
+          const installTarget = asCollectorStatusList(
+            record.status?.collectors_install
+          ).find(
             (item: TableDataItem) => item.collector_id === natsexecutorId
           );
           const { title, tagColor } = getStatusInfo(
@@ -484,11 +496,13 @@ const Node = () => {
 
           // 检查是否有 Ansible-Executor
           const ansibleExecutorId = 'ansibleexecutor_linux';
-          const ansibleCollectorTarget = (record.status?.collectors || []).find(
+          const ansibleCollectorTarget = asCollectorStatusList(
+            record.status?.collectors
+          ).find(
             (item: TableDataItem) => item.collector_id === ansibleExecutorId
           );
-          const ansibleInstallTarget = (
-            record.status?.collectors_install || []
+          const ansibleInstallTarget = asCollectorStatusList(
+            record.status?.collectors_install
           ).find(
             (item: TableDataItem) => item.collector_id === ansibleExecutorId
           );
@@ -555,7 +569,8 @@ const Node = () => {
                   <div>
                     <Icon
                       type="shengji"
-                      style={{ fontSize: '16px', cursor: 'pointer' }}
+                      className="cursor-pointer"
+                      style={{ fontSize: '16px' }}
                     />
                   </div>
                 </Tooltip>
@@ -687,9 +702,7 @@ const Node = () => {
     <MainLayout>
       {notDeployed === '1' ? (
         <div className="flex items-center justify-center h-full">
-          <Empty
-            description={t('node-manager.cloudregion.node.notDeployedTip')}
-          />
+          <CompactEmptyState description={t('node-manager.cloudregion.node.notDeployedTip')} />
         </div>
       ) : (
         <>
@@ -740,6 +753,23 @@ const Node = () => {
                         </Space>
                       </Button>
                     </Dropdown>
+                    <PermissionWrapper requiredPermissions={['Edit']}>
+                      <Button
+                        className="mr-[8px]"
+                        disabled={!selectedRowKeys.length}
+                        onClick={() => {
+                          batchEditOrganizationsRef.current?.showModal({
+                            type: 'batchEditOrganizations',
+                            ids: selectedRowKeys.map(String)
+                          });
+                        }}
+                      >
+                        {t(
+                          'node-manager.cloudregion.node.batchEdit',
+                          '批量编辑'
+                        )}
+                      </Button>
+                    </PermissionWrapper>
                     <ReloadOutlined onClick={() => getNodes(searchFilters)} />
                   </div>
                 </div>
@@ -778,6 +808,13 @@ const Node = () => {
                 <EditNode
                   ref={editNodeRef}
                   onSuccess={() => getNodes(searchFilters)}
+                />
+                <BatchEditOrganizations
+                  ref={batchEditOrganizationsRef}
+                  onSuccess={() => {
+                    setSelectedRowKeys([]);
+                    getNodes(searchFilters);
+                  }}
                 />
               </div>
             </div>

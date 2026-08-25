@@ -13,7 +13,9 @@ metadata:
 executors:
   protocol:
     type: protocol
-    timeout: 120
+    execution_mode: async
+    capacity_group: default
+    timeout: 300
     collector:
       module: plugins.inputs.fusioninsight.fusioninsight_info
       class: FusionInsightManager

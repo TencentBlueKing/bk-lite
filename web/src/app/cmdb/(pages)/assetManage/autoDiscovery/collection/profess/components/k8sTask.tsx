@@ -93,7 +93,7 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
       : undefined,
     formatValues: (values) => {
       const instance = baseRef.current?.instOptions?.find(
-        (item: any) => item.value === values.instId
+        (item) => item.value === values.instUuid
       );
 
       // collector_cluster_id 和 cloud_region_id 写入到 instance + params，
@@ -131,7 +131,7 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
     ...values,
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],
-    instId: values.instances?.[0]?._id,
+    instUuid: values.instances?.[0]?.inst_uuid,
     collector_cluster_id:
       values.instances?.[0]?.collector_cluster_id ??
       values.params?.collector_cluster_id ??

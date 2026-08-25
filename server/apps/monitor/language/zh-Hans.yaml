@@ -8,7 +8,9 @@ monitor_object_type:
   Container Management: 容器管理
   K8S: K8S
   VMWare: VMware
+  Cloud: 云
   Tencent Cloud: 腾讯云
+  Aliyun Cloud: 阿里云
   Other: 其他
 
 # 对象展示名兜底：插件语言未合并时仍显示「TCP」而非技术名 TCPPort

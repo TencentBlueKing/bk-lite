@@ -4,8 +4,8 @@ from types import SimpleNamespace
 import pytest
 from rest_framework.test import APIClient
 
-from apps.operation_analysis.models.models import Dashboard, Directory
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
+from apps.operation_analysis.models.models import Dashboard, Directory
 from apps.system_mgmt.models.menu import Menu
 from apps.system_mgmt.models.role import Role
 from apps.system_mgmt.models.user import User
@@ -73,9 +73,10 @@ def visitor(db):
 @pytest.mark.django_db
 def test_prepare_is_login_exempt_for_auth_middleware():
     """未登录 prepare 不带 Bearer；必须绕过 AuthMiddleware，否则登录后会被误判为会话过期。"""
+    from django.test import RequestFactory
+
     from apps.core.middlewares.auth_middleware import AuthMiddleware
     from apps.operation_analysis.views.share_view import DashboardShareAccessViewSet
-    from django.test import RequestFactory
 
     view = DashboardShareAccessViewSet.as_view({"post": "prepare"})
     assert getattr(view, "login_exempt", False) is True
@@ -242,9 +243,7 @@ def test_cross_tenant_visitor_can_exchange_and_read_dashboard(settings, dashboar
 
 
 @pytest.mark.django_db
-def test_share_query_rejects_datasource_not_declared_by_dashboard(
-    settings, dashboard, sharer, visitor, monkeypatch
-):
+def test_share_query_rejects_datasource_not_declared_by_dashboard(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
     monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
     datasource = DataSourceAPIModel.objects.create(
@@ -272,8 +271,7 @@ def test_share_query_rejects_datasource_not_declared_by_dashboard(
     )
 
     response = visitor_client.post(
-        f"/api/v1/operation_analysis/api/dashboard_share/session/"
-        f"{exchanged.data['session_id']}/query/{datasource.id}/",
+        f"/api/v1/operation_analysis/api/dashboard_share/session/" f"{exchanged.data['session_id']}/query/{datasource.id}/",
         {},
         format="json",
     )
@@ -282,9 +280,7 @@ def test_share_query_rejects_datasource_not_declared_by_dashboard(
 
 
 @pytest.mark.django_db
-def test_share_datasource_metadata_is_scoped_and_secret_free(
-    settings, dashboard, sharer, visitor, monkeypatch
-):
+def test_share_datasource_metadata_is_scoped_and_secret_free(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
     monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
     datasource = DataSourceAPIModel.objects.create(
@@ -315,8 +311,7 @@ def test_share_datasource_metadata_is_scoped_and_secret_free(
     )
 
     response = visitor_client.get(
-        f"/api/v1/operation_analysis/api/dashboard_share/session/"
-        f"{exchanged.data['session_id']}/data_sources/",
+        f"/api/v1/operation_analysis/api/dashboard_share/session/" f"{exchanged.data['session_id']}/data_sources/",
     )
 
     assert response.status_code == 200
@@ -327,10 +322,65 @@ def test_share_datasource_metadata_is_scoped_and_secret_free(
     assert "tag" not in response.data[0]
 
 
+def _share_data_sources_for_dashboard(settings, dashboard, sharer, visitor, monkeypatch, datasource):
+    settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
+    monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
+    dashboard.view_sets = [{"valueConfig": {"dataSource": datasource.id}}]
+    dashboard.save(update_fields=["view_sets"])
+    sharer_client = APIClient()
+    sharer_client.force_authenticate(sharer)
+    sharer_client.cookies["current_team"] = "1"
+    created = sharer_client.post(
+        f"/api/v1/operation_analysis/api/dashboard/{dashboard.id}/share/",
+        {},
+        format="json",
+    )
+    visitor_client = APIClient()
+    visitor_client.force_authenticate(visitor)
+    exchanged = visitor_client.post(
+        "/api/v1/operation_analysis/api/dashboard_share/exchange/",
+        {"token": created.data["url"].rsplit("/", 1)[-1]},
+        format="json",
+    )
+    return visitor_client.get(
+        f"/api/v1/operation_analysis/api/dashboard_share/session/" f"{exchanged.data['session_id']}/data_sources/",
+    )
+
+
 @pytest.mark.django_db
-def test_share_query_uses_sharer_runtime_authorization_context(
-    settings, dashboard, sharer, visitor, monkeypatch
-):
+def test_share_datasource_includes_empty_groups_builtin(settings, dashboard, sharer, visitor, monkeypatch):
+    datasource = DataSourceAPIModel.objects.create(
+        name=f"global-builtin-{uuid.uuid4()}",
+        rest_api="builtin/global-share",
+        groups=[],
+        is_build_in=True,
+        build_in_key=f"builtin::global-share-{uuid.uuid4()}",
+        created_by="alice",
+        updated_by="alice",
+    )
+    response = _share_data_sources_for_dashboard(settings, dashboard, sharer, visitor, monkeypatch, datasource)
+    assert response.status_code == 200
+    assert [item["id"] for item in response.data] == [datasource.id]
+
+
+@pytest.mark.django_db
+def test_share_datasource_excludes_restricted_builtin_outside_space(settings, dashboard, sharer, visitor, monkeypatch):
+    datasource = DataSourceAPIModel.objects.create(
+        name=f"restricted-builtin-{uuid.uuid4()}",
+        rest_api="builtin/restricted-share",
+        groups=[2],
+        is_build_in=True,
+        build_in_key=f"builtin::restricted-share-{uuid.uuid4()}",
+        created_by="alice",
+        updated_by="alice",
+    )
+    response = _share_data_sources_for_dashboard(settings, dashboard, sharer, visitor, monkeypatch, datasource)
+    assert response.status_code == 200
+    assert [item["id"] for item in response.data] == []
+
+
+@pytest.mark.django_db
+def test_share_query_uses_sharer_runtime_authorization_context(settings, dashboard, sharer, visitor, monkeypatch):
     settings.DASHBOARD_SHARE_SIGNING_KEY = "test-key"
     monkeypatch.setattr("apps.operation_analysis.services.share_service.can_view_canvas", lambda **_: True)
     namespace = NameSpace.objects.create(
@@ -399,8 +449,7 @@ def test_share_query_uses_sharer_runtime_authorization_context(
     )
 
     response = visitor_client.post(
-        f"/api/v1/operation_analysis/api/dashboard_share/session/"
-        f"{exchanged.data['session_id']}/query/{datasource.id}/",
+        f"/api/v1/operation_analysis/api/dashboard_share/session/" f"{exchanged.data['session_id']}/query/{datasource.id}/",
         {"region": "east"},
         format="json",
     )

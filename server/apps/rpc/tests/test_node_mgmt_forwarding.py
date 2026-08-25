@@ -6,7 +6,6 @@ NodeMgmt 构造时按 is_local_client 选 AppClient（本地）或 RpcClient（N
 不触达真实 NATS。
 """
 import pydantic.root_model  # noqa
-
 import pytest
 
 from apps.rpc.node_mgmt import NodeMgmt
@@ -97,6 +96,15 @@ def test_batch_add_node_config_转发(node):
 def test_get_child_configs_by_ids_转发(node):
     node.get_child_configs_by_ids([1, 2])
     assert _last(node.client) == ("get_child_configs_by_ids", ([1, 2],), {})
+
+
+def test_get_child_config_nodes_by_ids_转发配置和组织范围(node):
+    node.get_child_config_nodes_by_ids(["cfg-1", "cfg-2"], [7, 8])
+    assert _last(node.client) == (
+        "get_child_config_nodes_by_ids",
+        (["cfg-1", "cfg-2"], [7, 8]),
+        {},
+    )
 
 
 def test_get_configs_by_ids_转发(node):

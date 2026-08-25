@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
-from apps.core.utils.serializers import UsernameSerializer
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import Channel, ChannelChoices
 
 try:
@@ -43,17 +43,37 @@ class ChannelSerializer(UsernameSerializer):
     def validate_nats_config(cls, config):
         if not isinstance(config, dict):
             raise serializers.ValidationError({"config": "NATS config must be an object"})
+        if "supports_notify_person" in config and not isinstance(config["supports_notify_person"], bool):
+            raise serializers.ValidationError({"config": {"supports_notify_person": "must be a boolean"}})
         if nats_notifications is not None and nats_notifications.handles_config(config):
             return nats_notifications.validate_config(config)
         if config.get("nats_mode") not in (None, "request_reply"):
             raise serializers.ValidationError({"config": {"nats_mode": "unsupported NATS extension mode"}})
         return config
 
+    @classmethod
+    def validate_nats_subject_key_unique(cls, config, exclude_channel_id=None):
+        if nats_notifications is None or not nats_notifications.handles_config(config):
+            return
+
+        subject_key = config.get("subject_key")
+        channels = Channel.objects.filter(
+            channel_type=ChannelChoices.NATS,
+            config__nats_mode="event_publish",
+            config__subject_key=subject_key,
+        )
+        if exclude_channel_id is not None:
+            channels = channels.exclude(pk=exclude_channel_id)
+        if channels.exists():
+            raise serializers.ValidationError({"config": {"subject_key": "notification topic identifier is already in use"}})
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
         channel_type = attrs.get("channel_type", getattr(self.instance, "channel_type", None))
         if channel_type == ChannelChoices.NATS:
-            self.validate_nats_config(attrs.get("config", getattr(self.instance, "config", {}) or {}))
+            config = attrs.get("config", getattr(self.instance, "config", {}) or {})
+            self.validate_nats_config(config)
+            self.validate_nats_subject_key_unique(config, exclude_channel_id=getattr(self.instance, "pk", None))
         return attrs
 
     def create(self, validated_data):
@@ -78,6 +98,7 @@ class ChannelSerializer(UsernameSerializer):
             Channel.encrypt_field(field, config)
             config.setdefault(field, old_config.get(field, ""))
         validated_data["config"] = config
+
     def _loader(self):
         request = self.context.get("request")
         locale = getattr(getattr(request, "user", None), "locale", "en") or "en"

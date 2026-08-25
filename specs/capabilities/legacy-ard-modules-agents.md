@@ -5,7 +5,7 @@
 > 路径 `agents/*`
 
 ## stargazer —— 协议采集 agent【已实现/已存在】
-- 运行时：Python + Sanic（`server.py`，:8083）。
+- 运行时与职责【已实现/已存在】：Python + Sanic（`server.py`，:8083）在自身生命周期内装配统一配置采集运行时；该运行时以 Redis 保存运行及凭据状态，以 NATS 发布采集结果，并统一受理配置采集请求。原先文档所述独立 ARQ Worker、`core/worker.py`、`core/task_queue.py` 与 `start_worker.py` 已不在当前实现中，不能再作为运行架构或任务链路的一部分。
 - 通信：NATS pub/sub（`core/nats.py:NATSSanic`，`service/nats_server.py`）。
 - 注册处理函数（经 `@register_handler()`，主题由其派生）：`list_regions`、`test_connection`、`health_check`、`debug_snmp`、`debug_ipmi`、`handle_host_remote_callback`（证据：`agents/stargazer/service/nats_server.py:46-97`）。
 - IP 发现扫描相关 Python 文件位于 `plugins/inputs/ip/`（`__init__.py`、`ip_discovery_scanner.py`、`scan_targets.py`、`plugin.yml`），是否经 NATS `ip_scan` handler 对外暴露【待确认】。
@@ -14,10 +14,17 @@
   - collect（`/collect`）：`/credential_results`、`/collect_info`（证据：`agents/stargazer/api/collect.py:21,253,300`）。
   - monitor（`/monitor`）：`/vmware/metrics`、`/qcloud/metrics`、`/oceanstor/metrics`、`/windows/wmi/metrics`、`/host/metrics`（证据：`agents/stargazer/api/monitor.py:9,26,153,276,353,423`）。
 - enterprise 扩展机制【已实现/已存在】：`api/__init__.py` 在导入时尝试 `from enterprise.api import ENTERPRISE_BLUEPRINTS`，存在则分组挂载到 `/api/enterprise` 前缀；`server.py` 同时导入 `api` 与 `enterprise_api` 两组蓝图（证据：`agents/stargazer/api/__init__.py:12,15-17,24-25`；`agents/stargazer/server.py:2`）。
-- Redis + ARQ 任务队列依赖【已实现/已存在】：除 Sanic/NATS 外还依赖 Redis 与 ARQ。`core/redis_config.py` 提供统一 Redis 配置（`REDIS_HOST/PORT/PASSWORD/DB`），确保 Sanic Server 与 ARQ Worker 配置一致；`core/worker.py` 用 `arq.create_pool` + `WorkerSettings(RedisSettings)` 运行独立 ARQ Worker（由 `start_worker.py` 启动）；`core/task_queue.py:TaskQueue` 负责 host-remote 异步处理任务的入队、去重（`arq:queue` zscore 判活）与健康检查（证据：`agents/stargazer/core/worker.py:14-15,213,227`；`agents/stargazer/core/redis_config.py:3,19`；`agents/stargazer/core/task_queue.py:89,205,254`；`agents/stargazer/start_worker.py:4`）。
+- 统一调度与容量边界【已实现/已存在】：应用运行时按 `MAX_ACTIVE_RUNS`、`MAX_ACTIVE_TARGETS`、`TARGET_TASK_WINDOW` 构造全局容量边界；跨 `CollectionRun` 的目标由 round-robin 调度器在同一 in-flight 窗口内公平派发，新 Run 优先获得下一空闲槽位，避免大 Run 长时间占用。运行统计暴露活动 Run/目标、排队目标与峰值，作为容量观测契约。
+- 结果发布背压【已实现/已存在】：采集执行器将每个目标结果交给有界 `BufferedResultPublisher`；队列容量随目标任务窗口/目标上限确定，队列接纳与最终投递确认分离。发布阶段在统一截止时间内有限重试，投递状态区分 succeeded、failed 与 unknown，运行关闭时按宽限期排空或终止。这一队列是 NATS 结果发布链路的本地有界背压点。
+- 执行计划与阶段超时【已实现/已存在】：每次采集从环境变量与插件 YAML 解析为不可变 `ExecutionPlan`，统一约束预检、可达性/访问探测、插件采集和结果发布四个阶段的超时，并标记 `sync`、`async`、`remote` 执行模式及 `snmp`、`sync_sdk`、`remote_job`、`default` 容量组。YAML 缺失时回退默认计划；插件具体配置到真实连接的全链路重校验【待确认】。
+- 预检与出站安全【已实现/已存在】：目标在协议采集前由异步预检处理，预检结果区分通过、不可达及超时等状态；预检路径会在连接前校验出站地址或受信云端点声明。部署策略与插件真实连接是否逐项复用该校验【待确认】。
+- 指标与健康【已实现/已存在】：Sanic 生命周期启动/停止统一运行时及事件循环滞后观测；`/health/ready` 以运行时和 Redis 状态决定就绪性，`/health/stats` 返回容量、发布队列、线程、文件描述符及运行指标，`/health/metrics` 以 Prometheus 文本输出阶段耗时、超时、调度等待、发布和执行模式/容量组指标。
+- 原生异步与线程隔离矩阵【已实现/已存在】：插件矩阵将网络 I/O 明确分为原生异步（直接 `await`）、同步隔离（同步 SDK 在线程中执行）和远程异步（通过 NATS 等待独立执行端）；当前 protocol executor 统计为 15 个原生异步、6 个同步隔离，同步隔离仍受全局目标容量边界约束。矩阵中的插件适用范围及其与生产真实连接的逐项全链路一致性【待确认】。
 - 能力：协议采集（SNMP/IPMI/SSH/HTTP/WMI 等）、凭据状态管理、YAML 驱动采集（`service/collection_service.py`）、远程命令运行时。
 - 配置采集插件矩阵【已实现/已存在】：本轮插件集发生重排。新增 `ip_discovery` agentless 扫描插件，以及 `gbase8a`、`greenplum`、`kingbase`、`opengauss`、`vastbase` 等数据库/数据仓库采集插件；华为云插件目录规范化为 `hwcloud`。同时移除 `aws`、`manageone`、`openstack`、`smartx` 等旧插件目录（证据：`agents/stargazer/plugins/inputs/ip_discovery/plugin.yml:1-21`；`agents/stargazer/plugins/inputs/{gbase8a,greenplum,kingbase,opengauss,vastbase}/*`；`agents/stargazer/plugins/inputs/hwcloud/plugin.yml`）。`plugins/inputs/` 下累计 19 个 `*_info.py` 配置采集驱动，涵盖 host/physcial_server、网络设备及云/存储/集群类。除既有 aliyun/aws/qcloud/vmware_vc/oracle/mysql/mssql/postgresql 等外，新增 `hwcloud`、`fusioninsight`、`oceanstor`、`influxdb` 等云/存储/集群采集插件；另新增 `keepalived`、`minio` 输入插件（以 `__init__.py` + `plugin.yml` 形态，非 `*_info.py`）（证据：`agents/stargazer/plugins/inputs/hwcloud/huaweicloud_info.py`；`agents/stargazer/plugins/inputs/vmware_vc/vmware_info.py`；`agents/stargazer/plugins/inputs/config_file/config_file_info.py`；`agents/stargazer/plugins/inputs/vastbase/vastbase_info.py`；`agents/stargazer/plugins/inputs/fusioninsight/fusioninsight_info.py`；`agents/stargazer/plugins/inputs/oceanstor/oceanstor_info.py`；`agents/stargazer/plugins/inputs/influxdb/influxdb_info.py`；`agents/stargazer/plugins/inputs/keepalived/__init__.py`；`agents/stargazer/plugins/inputs/minio/__init__.py`）。
 - 多租户与安全收敛【已实现/已存在】：配置采集查询节点信息时优先携带 `organization_id` 缩小查询范围，未提供组织上下文时才回退 `skip_permission=True`；HTTP 监控接口对凭证/实例标识做 Prometheus label 转义与日志脱敏，避免泄露原始凭据（`service/collection_service.py:347-363`、`api/collect.py:355-521`、`api/monitor.py:12-17,247,270,429`）。
+
+> 证据来源：agents/stargazer/core/collection/scheduler.py:30-142；agents/stargazer/core/collection/application.py:48-147；agents/stargazer/core/collection/execution_plan.py:29；agents/stargazer/core/collection/executor.py:465,808；agents/stargazer/core/collection/result_publisher.py:68；agents/stargazer/core/collection/preflight.py:24；agents/stargazer/core/infra/outbound_policy.py:16；agents/stargazer/api/health.py:100；agents/stargazer/docs/configuration-plugin-async-matrix.md:46　|　同步基线：b98b782a7　|　【已实现/推断/待确认】
 
 ## nats-executor —— 命令执行 agent【已实现/已存在】
 - 运行时：Go（`main.go` v3.0.0）。
@@ -39,6 +46,7 @@
 - 运行时：Go（`setup-worker.go`）。
 - 通信：NATS JetStream Object Store（大文件传输）+ HTTP 回调。
 - 能力：下载/校验/安装/升级 sidecar 包，事件流上报进度。
+- 升级停服：Linux 在覆盖解压前停止 `bk-sidecar.service`；Windows 在暂存包校验完成、激活新目录前停止 `sidecar` 服务。两端统一上报 `stop_service` 安装步骤；首次安装未发现服务时按幂等成功处理。
 
 ### Windows 事务式安装与升级【已实现】
 - GUI 安装器将共享 worker 解压至 NSIS 插件目录后运行，与目标安装目录隔离；该边界允许 worker 在不占用目标目录的前提下完成目录切换与激活。

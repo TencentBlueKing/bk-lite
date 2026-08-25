@@ -1,11 +1,9 @@
 """Memory Engine Registry - Central registry for memory engines."""
 
-import logging
 from typing import Dict, List, Type
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.memory.engines.base import BaseMemoryEngine
-
-logger = logging.getLogger(__name__)
 
 
 def check_sdk_availability() -> Dict[str, bool]:

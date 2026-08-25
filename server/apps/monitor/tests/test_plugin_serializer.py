@@ -67,12 +67,12 @@ class TestGetParentMonitorObject:
         plugin.monitor_object.add(parent)
         assert MonitorPluginSerializer().get_parent_monitor_object(plugin) == parent.id
 
-    def test_returns_none_when_only_children(self):
+    def test_returns_parent_when_only_children_are_bound(self):
         parent = MonitorObject.objects.create(name="PSParent2", level="base")
         child = MonitorObject.objects.create(name="PSChild2", level="derivative", parent=parent)
         plugin = MonitorPlugin.objects.create(name="PSPlugin2")
         plugin.monitor_object.add(child)
-        assert MonitorPluginSerializer().get_parent_monitor_object(plugin) is None
+        assert MonitorPluginSerializer().get_parent_monitor_object(plugin) == parent.id
 
     def test_returns_first_parent_using_monitor_object_default_ordering(self):
         later_type = MonitorObjectType.objects.create(id="PSLaterType", name="Later", order=200)

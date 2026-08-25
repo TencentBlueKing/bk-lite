@@ -1,12 +1,10 @@
-import logging
-from typing import Callable, Any, Optional
 from functools import wraps
+from typing import Any, Callable, Optional
 
+from apps.core.logger import logger
 from django.views.decorators.csrf import csrf_exempt
 from rest_framework.permissions import AllowAny
 from rest_framework.viewsets import ViewSet
-
-logger = logging.getLogger(__name__)
 
 LOGIN_EXEMPT_ATTR = 'login_exempt'
 

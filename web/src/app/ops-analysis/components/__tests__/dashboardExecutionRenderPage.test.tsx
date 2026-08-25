@@ -74,6 +74,7 @@ describe('DashboardExecutionRenderPageContent', () => {
     expect(props.renderFilterValues).toEqual({
       environment: 'production',
     });
+    expect(props.renderDataSourceIds).toEqual([17]);
     expect(props.selectedDashboard).toEqual({
       id: '8',
       data_id: '8',

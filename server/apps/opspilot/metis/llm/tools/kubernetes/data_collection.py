@@ -79,6 +79,43 @@ def _json_or_raw(value):
     return value
 
 
+def _lookup_payload_error(value) -> str | None:
+    payload = _json_or_raw(value)
+    if isinstance(payload, dict):
+        err = payload.get("error")
+        if err not in (None, "", [], {}):
+            return str(err)
+    if isinstance(payload, str) and payload.strip():
+        from apps.opspilot.metis.llm.common.tool_failure import is_non_replanable_tool_failure
+
+        if is_non_replanable_tool_failure(payload):
+            return payload.strip()
+    return None
+
+
+def _cluster_config_error(config: RunnableConfig = None) -> str | None:
+    """kubeconfig 无效时尽早返回，避免被包装成「缺 namespace / 缺标识」。"""
+    configurable = _configurable(config)
+    if not configurable.get("kubernetes_instances") and not configurable.get("kubeconfig_data"):
+        return None
+    from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context
+
+    try:
+        prepare_context(config)
+    except Exception as exc:
+        return str(exc).strip() or type(exc).__name__
+    return None
+
+
+def _unresolved_connection_result(target: dict, error: str) -> str:
+    payload = dict(target or {})
+    payload["resolved"] = False
+    payload["error"] = error
+    if not payload.get("reason"):
+        payload["reason"] = error
+    return json.dumps(payload, ensure_ascii=False)
+
+
 def _evidence_block(value=None, *, status=None, error=None):
     if status is None:
         if error:
@@ -177,7 +214,27 @@ def _enrich_pod_snapshot(snapshot):
 
 def _extract_labels(alert):
     labels = alert.get("labels") or {}
-    return labels if isinstance(labels, dict) else {}
+    labels = dict(labels) if isinstance(labels, dict) else {}
+    # 模型常把 pod_name/namespace 放在告警顶层而不是 labels 里
+    for key in (
+        "pod",
+        "pod_name",
+        "namespace",
+        "cluster",
+        "cluster_id",
+        "resource_name",
+        "resource_type",
+        "kind",
+        "container",
+        "node",
+        "deployment",
+        "service",
+        "service_name",
+    ):
+        value = alert.get(key)
+        if value not in (None, "", [], {}) and not labels.get(key):
+            labels[key] = value
+    return labels
 
 
 _PAREN_GROUP_RE = re.compile(r"[（(]([^）)]+)[）)]")
@@ -340,12 +397,24 @@ def resolve_k8s_target_from_alert(normalized_alert, config: RunnableConfig = Non
 
     target = _build_k8s_target_from_alert(alert if isinstance(alert, dict) else {})
 
+    connection_error = _cluster_config_error(config)
+    if connection_error:
+        return _unresolved_connection_result(target, connection_error)
+
     needs_lookup = bool(target.get("resource_name") or target.get("pod_name")) and not target.get("namespace")
     if needs_lookup:
         from apps.opspilot.metis.llm.tools.kubernetes.resources import list_kubernetes_events, list_kubernetes_pods
 
-        pods = _json_or_raw(list_kubernetes_pods.invoke({"namespace": None}, config=config)) or []
-        events = _json_or_raw(list_kubernetes_events.invoke({"namespace": None}, config=config)) or []
+        try:
+            pods_raw = list_kubernetes_pods.invoke({"namespace": None}, config=config)
+            events_raw = list_kubernetes_events.invoke({"namespace": None}, config=config)
+        except Exception as lookup_exc:
+            return _unresolved_connection_result(target, str(lookup_exc).strip() or type(lookup_exc).__name__)
+        lookup_error = _lookup_payload_error(pods_raw) or _lookup_payload_error(events_raw)
+        if lookup_error:
+            return _unresolved_connection_result(target, lookup_error)
+        pods = _json_or_raw(pods_raw) or []
+        events = _json_or_raw(events_raw) or []
         if not isinstance(pods, list):
             pods = []
         if not isinstance(events, list):

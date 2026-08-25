@@ -16,6 +16,7 @@ import type {
   ViewConfigFormValues,
 } from '@/app/ops-analysis/types/topology';
 import type { useTopologyState } from './useTopologyState';
+import { isFiniteNumber } from '@/app/ops-analysis/utils/thresholdUtils';
 
 const DEFAULT_DROP_POSITION: DropPosition = { x: 300, y: 200 };
 
@@ -254,8 +255,12 @@ export const useNodeConfigFlow = ({
           type: selectedNodeType.id,
           name: values.name || selectedNodeType.name,
           unit: values.unit,
-          conversionFactor: values.conversionFactor,
-          decimalPlaces: values.decimalPlaces,
+          conversionFactor: isFiniteNumber(values.conversionFactor)
+            ? values.conversionFactor
+            : undefined,
+          decimalPlaces: isFiniteNumber(values.decimalPlaces)
+            ? values.decimalPlaces
+            : undefined,
           position: dropPosition,
           logoType: values.logoType,
           logoIcon: values.logoIcon,
@@ -267,6 +272,9 @@ export const useNodeConfigFlow = ({
             chartType: values.chartType,
             dataSource: values.dataSource,
             dataSourceParams: values.dataSourceParams || [],
+            ...(values.filterBindings && Object.keys(values.filterBindings).length > 0
+              ? { filterBindings: values.filterBindings }
+              : {}),
             unitId: values.unitId || undefined,
             valueMappings: values.valueMappings || undefined,
           },

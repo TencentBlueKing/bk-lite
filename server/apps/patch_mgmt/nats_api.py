@@ -2,8 +2,10 @@
 
 import nats_client
 
+from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.patch_mgmt.models import PatchTarget
+from apps.patch_mgmt.openapi_serializers import ModuleDataQuerySerializer
 
 
 @nats_client.register
@@ -12,6 +14,13 @@ def get_patch_mgmt_module_list():
 
 
 @nats_client.register
+@openapi_expose(
+    path="patch-mgmt/module-data",
+    method="GET",
+    schema=ModuleDataQuerySerializer,
+    inject="team_list",
+    summary="数据权限规则可选的补丁管理实例（组织口径：注入集合精确成员匹配，不级联子组织）",
+)
 def get_patch_mgmt_module_data(
     module, child_module, page, page_size, group_id, *, team=None
 ):

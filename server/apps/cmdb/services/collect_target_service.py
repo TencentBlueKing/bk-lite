@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import ipaddress
+from dataclasses import dataclass, field
 from typing import Any
 
 from apps.cmdb.constants.constants import CollectPluginTypes
+from apps.cmdb.services.instance_identity import optional_inst_uuid
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -34,6 +35,12 @@ class CollectTargetService:
         if task.instances:
             for instance in task.instances:
                 target = CollectTargetService._build_instance_target(task, instance)
+                if target is None:
+                    logger.warning(
+                        "[CollectTarget] 跳过缺少合法 inst_uuid 的存量任务目标 task_id=%s",
+                        task.id,
+                    )
+                    continue
                 targets.append(target)
         else:
             for host in CollectTargetService._expand_ip_range(task.ip_range):
@@ -50,12 +57,18 @@ class CollectTargetService:
                 )
 
         for target in targets:
-            logger.info(
+            logger.debug(
                 "[CollectTarget] build object key task_id=%s object_key=%s model_id=%s",
                 task.id,
                 CollectTargetService.build_object_key(target),
                 target.model_id,
             )
+        logger.info(
+            "[CollectTarget] 目标构建完成 task_id=%s target_count=%s model_count=%s",
+            task.id,
+            len(targets),
+            len({target.model_id for target in targets}),
+        )
         return targets
 
     @staticmethod
@@ -85,18 +98,17 @@ class CollectTargetService:
         }
 
     @staticmethod
-    def _build_instance_target(task, instance: dict[str, Any]) -> CanonicalCollectTarget:
-        host = str(
-            instance.get("ip")
-            or instance.get("ip_addr")
-            or instance.get("inst_name")
-            or instance.get("name")
-            or ""
-        )
+    def _build_instance_target(task, instance: dict[str, Any]) -> CanonicalCollectTarget | None:
+        if not isinstance(instance, dict):
+            return None
+        instance_id = optional_inst_uuid(instance.get("inst_uuid") or instance.get("instance_uuid"))
+        if not instance_id:
+            return None
+        host = str(instance.get("ip") or instance.get("ip_addr") or instance.get("inst_name") or instance.get("name") or "")
         port = CollectTargetService._resolve_target_port(task, instance)
         endpoint = instance.get("endpoint")
         cloud_region_id = str(instance.get("cloud_id") or instance.get("cloud_region_id") or "") or None
-        instance_id = str(instance.get("_id") or instance.get("id") or "") or None
+        snapshot = {key: value for key, value in instance.items() if key not in {"_id", "inst_id"}}
         return CanonicalCollectTarget(
             task_id=task.id,
             task_type=task.task_type,
@@ -107,7 +119,7 @@ class CollectTargetService:
             endpoint=endpoint,
             cloud_region_id=cloud_region_id,
             instance_id=instance_id,
-            snapshot=dict(instance or {}),
+            snapshot=snapshot,
         )
 
     @staticmethod

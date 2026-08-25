@@ -93,6 +93,11 @@ class ProviderManifest(BaseModel):
         description="业务配置模板字典，key 为模板名称，capability.business_template 引用此处的 key",
     )
     capabilities: list[CapabilityManifest] = Field(default_factory=list, description="provider 支持的 capabilities")
+    pack_i18n: dict[str, Any] = Field(
+        default_factory=dict,
+        exclude=True,
+        description="包内语言文件解析结果，不对外暴露",
+    )
 
     @property
     def instance_template(self) -> list[TemplateFieldManifest]:

@@ -16,11 +16,11 @@
 """
 
 import base64
-import logging
 from io import BytesIO
 from pathlib import PurePosixPath
 from typing import Any, Optional
 
+from apps.core.logger import opspilot_logger as logger
 from deepagents.backends.protocol import (
     FILE_NOT_FOUND,
     BackendProtocol,
@@ -43,8 +43,6 @@ from deepagents.backends.utils import (
     slice_read_response,
     update_file_data,
 )
-
-logger = logging.getLogger(__name__)
 
 
 class MinIOBackend(BackendProtocol):

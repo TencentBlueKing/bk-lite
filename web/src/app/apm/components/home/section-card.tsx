@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { Button } from 'antd';
+import { useTranslation } from '@/utils/i18n';
 
 interface SectionCardProps {
   icon?: ReactNode;
@@ -24,21 +25,23 @@ export default function SectionCard({
   title,
   subtitle,
   viewAllHref,
-  viewAllLabel = '查看全部 →',
+  viewAllLabel,
   failed = false,
   onRetry,
   children,
   className = '',
   bodyMinHeight = 200,
 }: SectionCardProps) {
+  const { t } = useTranslation();
+  const resolvedViewAllLabel = viewAllLabel ?? t('apm.common.viewAll', '查看全部 →');
   return (
     <div
-      className={`flex h-full min-h-0 flex-col rounded-[6px] border border-[var(--color-border)] bg-[var(--color-bg)] px-6 py-5 ${className}`}
+      className={`flex h-full min-h-0 flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 ${className}`}
     >
       <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          {icon ? <span className="inline-flex shrink-0 text-[15px] leading-none">{icon}</span> : null}
-          <h3 className="m-0 truncate text-[15px] font-semibold leading-6 text-[var(--color-text-1)]">
+          {icon ? <span className="inline-flex shrink-0 text-base leading-none">{icon}</span> : null}
+          <h3 className="m-0 truncate text-sm font-semibold leading-5 text-[var(--color-text-1)]">
             {title}
           </h3>
           {subtitle ? (
@@ -48,9 +51,9 @@ export default function SectionCard({
         {viewAllHref ? (
           <Link
             href={viewAllHref}
-            className="shrink-0 text-[13px] text-[var(--color-primary)] hover:underline"
+            className="shrink-0 text-sm text-[var(--color-primary)] hover:underline"
           >
-            {viewAllLabel}
+            {resolvedViewAllLabel}
           </Link>
         ) : null}
       </div>
@@ -58,7 +61,7 @@ export default function SectionCard({
         {failed ? (
           <div className="flex h-full items-center justify-center py-10 text-center">
             <Button type="link" onClick={onRetry}>
-              加载失败，点击重试
+              {t('apm.common.loadFailedRetry', '加载失败，点击重试')}
             </Button>
           </div>
         ) : (
@@ -78,7 +81,7 @@ export function SectionEmpty({
 }) {
   return (
     <div
-      className={`flex h-full min-h-[160px] items-center justify-center px-4 py-10 text-center text-[13px] leading-5 ${
+      className={`flex h-full min-h-[160px] items-center justify-center px-4 py-10 text-center text-sm leading-5 ${
         tone === 'success' ? 'text-[var(--color-success)]' : 'text-[var(--color-text-3)]'
       }`}
     >
@@ -92,27 +95,32 @@ export function StatusPill({
   tone,
 }: {
   label: string;
-  tone: 'success' | 'danger' | 'warning';
+  tone: 'success' | 'danger' | 'warning' | 'info';
 }) {
   const styles =
     tone === 'success'
       ? {
-          color: 'var(--color-success)',
-          background: 'color-mix(in srgb, var(--color-success) 12%, var(--color-bg))',
-        }
+        color: 'var(--color-success)',
+        background: 'color-mix(in srgb, var(--color-success) 12%, var(--color-bg))',
+      }
       : tone === 'danger'
         ? {
-            color: 'var(--color-fail)',
-            background: 'color-mix(in srgb, var(--color-fail) 12%, var(--color-bg))',
+          color: 'var(--color-fail)',
+          background: 'color-mix(in srgb, var(--color-fail) 12%, var(--color-bg))',
+        }
+        : tone === 'info'
+          ? {
+            color: 'var(--color-primary)',
+            background: 'color-mix(in srgb, var(--color-primary) 12%, var(--color-bg))',
           }
-        : {
+          : {
             color: 'var(--theme-color-status-warning)',
             background: 'color-mix(in srgb, var(--theme-color-status-warning) 12%, var(--color-bg))',
           };
 
   return (
     <span
-      className="inline-block min-w-[50px] rounded px-2.5 py-0.5 text-center text-[11px] font-medium leading-[18px]"
+      className="inline-block min-w-[50px] rounded px-2.5 py-0.5 text-center text-xs font-medium leading-[18px]"
       style={styles}
     >
       {label}

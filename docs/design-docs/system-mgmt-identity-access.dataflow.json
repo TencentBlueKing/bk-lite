@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "SystemMgmt 身份与权限核心数据流",
+    "output": "system-mgmt-identity-access.dataflow.html",
+    "viewBox": [1420, 760],
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "views": [
+      {"id": "sync", "label": "目录同步", "focus": ["providers", "contract", "run", "snapshot", "directory", "organization"], "note": "外部目录经能力契约进入有 fencing 的同步 Run，但本轮仍在内存持有完整 user_list/group_list。"},
+      {"id": "compile", "label": "权限投影", "focus": ["directory", "organization", "assignments", "policy", "version", "cache"], "note": "多份组织、角色与规则表示在读取时重新拼装，并以用户权限代际使缓存失效。"},
+      {"id": "consume", "label": "消费与范围", "focus": ["cache", "scoped", "directory", "organization"], "note": "HTTP 与 scoped NATS 读取版本化权限投影；legacy 无范围入口作为旁路风险记录在图下说明。"}
+    ]
+  },
+  "stages": [
+    {"label": "01 / 外部目录"},
+    {"label": "02 / 契约与运行"},
+    {"label": "03 / 身份事实"},
+    {"label": "04 / 权限投影"},
+    {"label": "05 / 消费边界"}
+  ],
+  "nodes": [
+    {"id": "providers", "type": "external", "label": "企业目录", "sublabel": "Feishu / WeCom / AD / LDAP", "stage": 0, "row": 2, "width": 130, "tag": "外部事实"},
+    {"id": "contract", "type": "security", "label": "Capability Contract", "sublabel": "mapping / schedule / provider state", "stage": 1, "row": 0, "width": 155, "tag": "强 seam"},
+    {"id": "run", "type": "backend", "label": "UserSyncRun", "sublabel": "唯一 guard / heartbeat / phase", "stage": 1, "row": 2, "width": 155, "tag": "可回收运行"},
+    {"id": "snapshot", "type": "database", "label": "完整目录快照", "sublabel": "user_list + group_list in memory", "stage": 1, "row": 4, "width": 155, "tag": "容量拐点"},
+    {"id": "directory", "type": "database", "label": "User Facts", "sublabel": "profile / group_list / role_list", "stage": 2, "row": 1, "width": 155, "tag": "JSON 投影"},
+    {"id": "organization", "type": "database", "label": "Group Tree", "sublabel": "parent_id / roles / archive", "stage": 2, "row": 3, "width": 155, "tag": "无 FK 父引用"},
+    {"id": "assignments", "type": "database", "label": "Role & Data Rules", "sublabel": "M2M / raw group_id / rules JSON", "stage": 3, "row": 0, "width": 155, "tag": "多份事实"},
+    {"id": "policy", "type": "backend", "label": "Policy Assembly", "sublabel": "继承 / 后代遍历 / JSON contains", "stage": 3, "row": 2, "width": 155, "tag": "读取时拼装"},
+    {"id": "version", "type": "database", "label": "Permission Version", "sublabel": "username + domain + monotonic version", "stage": 3, "row": 4, "width": 155, "tag": "fencing token"},
+    {"id": "cache", "type": "database", "label": "Permission Cache", "sublabel": "team / app / key / descendants", "stage": 4, "row": 0, "width": 155, "tag": "10 min fallback"},
+    {"id": "scoped", "type": "security", "label": "Scoped Interface", "sublabel": "持久化用户 + current_team", "stage": 4, "row": 2, "width": 155, "tag": "显式范围"}
+  ],
+  "flows": [
+    {"id": "providers_contract", "from": "providers", "to": "contract", "label": "directory capability", "variant": "security"},
+    {"id": "contract_run", "from": "contract", "to": "run", "label": "validated config", "variant": "emphasis"},
+    {"id": "run_snapshot", "from": "run", "to": "snapshot", "label": "fetch result", "variant": "default"},
+    {"id": "snapshot_directory", "from": "snapshot", "to": "directory", "label": "batch upsert", "variant": "emphasis", "labelDx": -45},
+    {"id": "snapshot_organization", "from": "snapshot", "to": "organization", "label": "groups", "variant": "emphasis", "labelDx": 42},
+    {"id": "directory_assignments", "from": "directory", "to": "assignments", "label": "user roles", "variant": "default", "labelDx": -78},
+    {"id": "organization_assignments", "from": "organization", "to": "assignments", "label": "group roles", "variant": "security", "labelAt": [800, 320]},
+    {"id": "assignments_policy", "from": "assignments", "to": "policy", "label": "compile at read", "variant": "security", "labelDx": 48},
+    {"id": "policy_version", "from": "policy", "to": "version", "label": "invalidate", "variant": "emphasis", "labelDx": 42},
+    {"id": "version_cache", "from": "version", "to": "cache", "label": "versioned key", "variant": "emphasis", "labelAt": [853, 428]},
+    {"id": "cache_scoped", "from": "cache", "to": "scoped", "label": "authorized projection", "variant": "security"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "已存在的可靠性机制", "items": ["同步运行具有唯一活跃 guard、数据库锁、心跳和 stale 回收", "权限缓存键包含数据库单调代际，物理删除失败不会重新激活旧授权"]},
+    {"dot": "rose", "title": "事实表达没有收敛", "items": ["User.group_list/role_list、Group.roles、GroupDataRule 和 UserRule 共同表达授权", "调用方需理解整数列表、字典列表、树继承与 JSON contains 等内部表示"]},
+    {"dot": "amber", "title": "规模与信任边界", "items": ["后代查询每次加载完整组织关系，旧递归接口仍有 N+1；完整同步将目录快照留在内存", "图外旁路：legacy NATS 入口没有可信 caller identity 与 tenant scope，安全性依赖消息总线外部 ACL"]}
+  ]
+}

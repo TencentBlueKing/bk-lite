@@ -8,9 +8,19 @@ import React, {
   useEffect,
   useCallback
 } from 'react';
-import { Input, Button, Select, message, Spin, Tag, Popover, Empty } from 'antd';
+import {
+  Input,
+  Button,
+  Select,
+  message,
+  Spin,
+  Tag,
+  Popover,
+  Tooltip
+} from 'antd';
 import { PlusOutlined, CloseOutlined, HolderOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
+import CompactEmptyState from '@/components/compact-empty-state';
 import { ModalRef, ModalConfig } from '@/app/monitor/types';
 import {
   MonitorObjectItem,
@@ -20,6 +30,7 @@ import {
 } from './types';
 import { useTranslation } from '@/utils/i18n';
 import useObjectApi from './api';
+import { invalidateMonitorObjectsCache } from '@/app/monitor/utils/monitorObjectCache';
 
 interface DisplayFieldsModalProps {
   onSuccess?: () => void;
@@ -74,6 +85,8 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       bindIdx: -1
     });
     const dragIndexRef = useRef<number | null>(null);
+    const columnsMapRef = useRef<Record<number, DisplayColumn[]>>({});
+    const activeIdRef = useRef<number | null>(null);
     // 镜像 pluginsMap，供 loadNodeOptions 同步读取已加载状态（避免在 setState updater 内做副作用）
     const pluginsMapRef = useRef<Record<number, PluginOption[]>>({});
     // 正在请求中的指标 key，避免预热与下拉懒加载并发重复请求同一插件
@@ -90,6 +103,14 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     useEffect(() => {
       pluginsMapRef.current = pluginsMap;
     }, [pluginsMap]);
+
+    useEffect(() => {
+      columnsMapRef.current = columnsMap;
+    }, [columnsMap]);
+
+    useEffect(() => {
+      activeIdRef.current = activeId;
+    }, [activeId]);
 
     const loadNodeOptions = useCallback(
       async (node: ConfigObjectNode) => {
@@ -154,7 +175,9 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
             }
           }
           setNodes(allNodes);
+          columnsMapRef.current = initColumns;
           setColumnsMap(initColumns);
+          activeIdRef.current = obj.id;
           setActiveId(obj.id);
           await loadNodeOptions(baseNode);
         } catch {
@@ -175,44 +198,59 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     const currentColumns = activeId != null ? columnsMap[activeId] || [] : [];
     const currentPlugins = activeId != null ? pluginsMap[activeId] || [] : [];
 
-    const setCurrentColumns = (cols: DisplayColumn[]) => {
-      if (activeId == null) return;
-      dirtyRef.current.add(activeId);
-      setColumnsMap((prev) => ({ ...prev, [activeId]: cols }));
+    const setCurrentColumns = (
+      cols:
+        | DisplayColumn[]
+        | ((prev: DisplayColumn[]) => DisplayColumn[])
+    ) => {
+      const targetId = activeIdRef.current;
+      if (targetId == null) return;
+      dirtyRef.current.add(targetId);
+      setColumnsMap((prev) => {
+        const current = prev[targetId] || [];
+        const nextCols = typeof cols === 'function' ? cols(current) : cols;
+        const next = { ...prev, [targetId]: nextCols };
+        columnsMapRef.current = next;
+        return next;
+      });
     };
 
     const addColumn = (type: DisplayColumn['type'] = 'metric') => {
-      setCurrentColumns([
-        ...currentColumns,
+      setCurrentColumns((cols) => [
+        ...cols,
         {
           name:
             type === 'field'
               ? t('monitor.object.newFieldDisplayColumn')
               : t('monitor.object.newDisplayColumn'),
           ...(type === 'field' ? { type: 'field' } : {}),
-          sort_order: currentColumns.length,
+          sort_order: cols.length,
           metrics: []
         }
       ]);
     };
 
     const removeColumn = (idx: number) => {
-      setCurrentColumns(
-        currentColumns
-          .filter((_, i) => i !== idx)
-          .map((c, i) => ({ ...c, sort_order: i }))
+      setCurrentColumns((cols) =>
+        cols.filter((_, i) => i !== idx).map((c, i) => ({ ...c, sort_order: i }))
       );
     };
 
     const updateColumnName = (idx: number, name: string) => {
-      setCurrentColumns(
-        currentColumns.map((c, i) => (i === idx ? { ...c, name } : c))
+      setCurrentColumns((cols) =>
+        cols.map((c, i) => (i === idx ? { ...c, name } : c))
+      );
+    };
+
+    const updateColumnVariableId = (idx: number, variableId: string) => {
+      setCurrentColumns((cols) =>
+        cols.map((c, i) => (i === idx ? { ...c, variable_id: variableId } : c))
       );
     };
 
     const addBinding = (colIdx: number) => {
-      setCurrentColumns(
-        currentColumns.map((c, i) =>
+      setCurrentColumns((cols) =>
+        cols.map((c, i) =>
           i === colIdx
             ? {
               ...c,
@@ -229,8 +267,8 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     };
 
     const removeBinding = (colIdx: number, bindIdx: number) => {
-      setCurrentColumns(
-        currentColumns.map((c, i) =>
+      setCurrentColumns((cols) =>
+        cols.map((c, i) =>
           i === colIdx
             ? { ...c, metrics: c.metrics.filter((_, b) => b !== bindIdx) }
             : c
@@ -302,8 +340,8 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       bindIdx: number,
       plugin: string
     ) => {
-      setCurrentColumns(
-        currentColumns.map((c, i) =>
+      setCurrentColumns((cols) =>
+        cols.map((c, i) =>
           i === colIdx
             ? {
               ...c,
@@ -340,8 +378,8 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
           }));
         }
       }
-      setCurrentColumns(
-        currentColumns.map((c, i) =>
+      setCurrentColumns((cols) =>
+        cols.map((c, i) =>
           i === colIdx
             ? {
               ...c,
@@ -397,8 +435,8 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       bindIdx: number,
       field: string
     ) => {
-      setCurrentColumns(
-        currentColumns.map((c, i) =>
+      setCurrentColumns((cols) =>
+        cols.map((c, i) =>
           i === colIdx
             ? {
               ...c,
@@ -468,7 +506,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
                   type="button"
                   className={`block min-h-8 w-full rounded px-3 text-left text-sm leading-8 hover:bg-[var(--color-fill-1)] ${
                     selectedField === field
-                      ? 'bg-[#e6f4ff] text-[#1677ff]'
+                      ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
                       : 'text-[var(--color-text-1)]'
                   }`}
                   onClick={() => selectField(field)}
@@ -478,7 +516,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
               ))}
             </div>
           ) : (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            <CompactEmptyState description={t('common.noData')} />
           )}
         </Spin>
       </div>
@@ -492,15 +530,19 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       const from = dragIndexRef.current;
       dragIndexRef.current = null;
       if (from == null || from === idx) return;
-      const next = [...currentColumns];
-      const [moved] = next.splice(from, 1);
-      next.splice(idx, 0, moved);
-      setCurrentColumns(next.map((c, i) => ({ ...c, sort_order: i })));
+      setCurrentColumns((cols) => {
+        const next = [...cols];
+        const [moved] = next.splice(from, 1);
+        next.splice(idx, 0, moved);
+        return next.map((c, i) => ({ ...c, sort_order: i }));
+      });
     };
 
     const handleCancel = () => {
       setVisible(false);
       setNodes([]);
+      columnsMapRef.current = {};
+      activeIdRef.current = null;
       setColumnsMap({});
       setActiveId(null);
       dirtyRef.current = new Set();
@@ -509,9 +551,15 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     const handleSubmit = async () => {
       setConfirmLoading(true);
       try {
-        for (const id of Array.from(dirtyRef.current)) {
-          await saveDisplayFields(id, columnsMap[id] || []);
+        const currentId = activeIdRef.current;
+        if (currentId != null) {
+          dirtyRef.current.add(currentId);
         }
+        const latest = columnsMapRef.current;
+        for (const id of Array.from(dirtyRef.current)) {
+          await saveDisplayFields(id, latest[id] || []);
+        }
+        invalidateMonitorObjectsCache();
         message.success(t('common.updateSuccess'));
         handleCancel();
         onSuccess?.();
@@ -562,28 +610,40 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
         <Spin spinning={loading}>
           <div className="flex gap-4 min-h-[420px]">
             {showTree && (
-              <div className="w-[180px] border-r border-[var(--color-border-2)] pr-3">
+              <div className="w-[220px] border-r border-[var(--color-border-2)] pr-3">
                 <div className="text-xs text-[var(--color-text-3)] mb-2">
                   {t('monitor.object.configObject')}
                 </div>
-                {nodes.map((node) => (
-                  <div
-                    key={node.id}
-                    className={`flex items-center justify-between px-2 py-1.5 rounded cursor-pointer mb-1 ${
-                      activeId === node.id
-                        ? 'bg-[#e6f4ff] text-[#1890ff]'
-                        : 'hover:bg-[var(--color-fill-1)]'
-                    }`}
-                    onClick={() => setActiveId(node.id)}
-                  >
-                    <span className="truncate">{node.display_name}</span>
-                    <Tag color={node.isBase ? 'blue' : 'default'}>
-                      {node.isBase
-                        ? t('monitor.object.baseObject')
-                        : t('monitor.object.childObject')}
-                    </Tag>
-                  </div>
-                ))}
+                {nodes.map((node) => {
+                  const label = node.display_name || node.name;
+                  const tip =
+                    node.name && node.name !== label
+                      ? `${label} (${node.name})`
+                      : label;
+                  return (
+                    <div
+                      key={node.id}
+                      className={`flex items-center gap-1 px-2 py-1.5 rounded cursor-pointer mb-1 ${
+                        activeId === node.id
+                          ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
+                          : 'hover:bg-[var(--color-fill-1)]'
+                      }`}
+                      onClick={() => setActiveId(node.id)}
+                    >
+                      <Tooltip title={tip}>
+                        <span className="min-w-0 flex-1 truncate">{label}</span>
+                      </Tooltip>
+                      <Tag
+                        className="shrink-0 m-0"
+                        color={node.isBase ? 'blue' : 'default'}
+                      >
+                        {node.isBase
+                          ? t('monitor.object.baseObject')
+                          : t('monitor.object.childObject')}
+                      </Tag>
+                    </div>
+                  );
+                })}
               </div>
             )}
             <div className="flex-1">
@@ -614,6 +674,19 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
                       )}
                       onChange={(e) => updateColumnName(colIdx, e.target.value)}
                     />
+                    <Input
+                      className="w-[160px]"
+                      value={col.variable_id || ''}
+                      placeholder={t('monitor.object.variableIdPlaceholder')}
+                      onChange={(e) =>
+                        updateColumnVariableId(colIdx, e.target.value)
+                      }
+                    />
+                    {col.variable_id ? (
+                      <span className="font-mono text-xs text-[var(--color-text-3)]">
+                        {`\${${col.variable_id}}`}
+                      </span>
+                    ) : null}
                     <Button
                       type="text"
                       danger

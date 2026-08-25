@@ -21,50 +21,61 @@ def test_build_oid_dict_carries_group():
     assert record["group"] == "bridge"
 
 
-def test_bulk_cmd_falls_back_per_oid_on_retryable_error():
+@pytest.mark.asyncio
+async def test_bulk_cmd_falls_back_per_oid_on_retryable_error():
     collector = _make_collector()
     fallback_records = [{"tag": "IFTable-IfDescr", "ifindex": "1", "val": "eth0", "group": "interfaces"}]
-    with mock.patch.object(
-        collector, "_bulk_walk_all", side_effect=RuntimeError("OID not increasing")
-    ), mock.patch.object(
-        collector, "_fallback_walk_cmd", return_value=fallback_records
+
+    async def failing_bulk():
+        raise RuntimeError("OID not increasing")
+
+    async def fake_fallback():
+        return fallback_records
+
+    with mock.patch.object(collector, "_bulk_walk_all", side_effect=failing_bulk), mock.patch.object(
+        collector, "_fallback_walk_cmd", side_effect=fake_fallback
     ) as fallback:
-        result = collector.bulkCmd()
-    fallback.assert_called_once()
+        result = await collector.bulkCmd()
+    fallback.assert_awaited_once()
     assert result == fallback_records
 
 
-def test_bulk_cmd_does_not_fall_back_on_non_retryable_error():
+@pytest.mark.asyncio
+async def test_bulk_cmd_does_not_fall_back_on_non_retryable_error():
     collector = _make_collector()
-    with mock.patch.object(
-        collector, "_bulk_walk_all", side_effect=RuntimeError("timeout")
-    ):
+
+    async def failing_bulk():
+        raise RuntimeError("timeout")
+
+    with mock.patch.object(collector, "_bulk_walk_all", side_effect=failing_bulk):
         with pytest.raises(RuntimeError, match="timeout"):
-            collector.bulkCmd()
+            await collector.bulkCmd()
 
 
-def test_fallback_skips_optional_oid_and_keeps_required():
+@pytest.mark.asyncio
+async def test_fallback_skips_optional_oid_and_keeps_required():
     collector = _make_collector()
 
-    def fake_collect(oid):
+    async def fake_collect(oid):
         if oid in topo_mod.OPTIONAL_FALLBACK_ROOTS:
             return FallbackOidResult(records=[], skipped=True)
         return FallbackOidResult(records=[{"tag": "x", "root": oid, "group": "interfaces"}])
 
     with mock.patch.object(collector, "_fallback_collect_oid", side_effect=fake_collect):
-        records = collector._fallback_walk_cmd()
+        records = await collector._fallback_walk_cmd()
     assert records  # 可选 OID 跳过不影响整体
 
 
-def test_fallback_raises_when_required_oid_skipped():
+@pytest.mark.asyncio
+async def test_fallback_raises_when_required_oid_skipped():
     collector = _make_collector()
     required_oid = "1.3.6.1.2.1.2.2.1.2"  # IFTable-IfDescr 属于必采
 
-    def fake_collect(oid):
+    async def fake_collect(oid):
         if oid == required_oid:
             return FallbackOidResult(records=[], skipped=True)
         return FallbackOidResult(records=[{"tag": "x", "root": oid, "group": "interfaces"}])
 
     with mock.patch.object(collector, "_fallback_collect_oid", side_effect=fake_collect):
         with pytest.raises(topo_mod.IncompleteFallbackError):
-            collector._fallback_walk_cmd()
+            await collector._fallback_walk_cmd()

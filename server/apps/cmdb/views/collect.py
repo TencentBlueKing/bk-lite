@@ -3,9 +3,7 @@
 # @Time: 2025/2/27 14:00
 # @Author: windyzhao
 import re
-from pathlib import Path
 
-from django.conf import settings
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
@@ -26,12 +24,15 @@ from apps.cmdb.serializers.collect_serializer import (
     CollectModelSerializer,
     OidModelSerializer,
 )
+from apps.cmdb.services.collect_document import get_collect_model_document
 from apps.cmdb.services.collect_object_tree import get_collect_obj_tree
 from apps.cmdb.services.collect_service import CollectModelService
+from apps.cmdb.services.instance_identity import optional_inst_uuid
 from apps.cmdb.services.network_config_file_policy import get_supported_brand_options
 from apps.cmdb.utils.base import get_current_team_from_request
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet
@@ -342,9 +343,14 @@ class CollectModelViewSet(AuthViewSet):
             instance_data = instance[0]
             if not isinstance(instance_data, dict):
                 continue
-            instance_id = instance_data.get("_id")
+            instance_id = optional_inst_uuid(instance_data.get("inst_uuid"))
             instance_name = instance_data.get("inst_name")
             if instance_id is None or instance_name is None:
+                if instance_data.get("_id") is not None and instance_id is None:
+                    logger.warning(
+                        "[CollectModel] 跳过缺少合法 inst_uuid 的存量任务目标 task_type=%s",
+                        task_type,
+                    )
                 continue
             result.append({"id": instance_id, "inst_name": instance_name})
         return WebUtils.response_success(result)
@@ -445,18 +451,7 @@ class CollectModelViewSet(AuthViewSet):
         if not re.fullmatch(r"[A-Za-z0-9_]+", model_id):
             return WebUtils.response_error(error_message="id 参数非法", status_code=400)
 
-        template_dir = (Path(settings.BASE_DIR) / "apps/cmdb/support-files/plugins_doc").resolve()
-        file_path = (template_dir / f"{model_id}.md").resolve()
-        if template_dir not in file_path.parents:
-            return WebUtils.response_error(error_message="非法文档路径", status_code=400)
-
-        data = ""
-        if file_path.exists():
-            with file_path.open("r", encoding="utf-8") as f:
-                data = f.read()
-        else:
-            data = "未找到对应的文档！"
-        return WebUtils.response_success(data)
+        return WebUtils.response_success(get_collect_model_document(model_id))
 
 
 class OidModelViewSet(ModelViewSet):

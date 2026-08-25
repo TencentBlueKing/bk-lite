@@ -14,7 +14,14 @@ from apps.job_mgmt.views import (
     ScriptViewSet,
     TargetViewSet,
 )
-from apps.job_mgmt.views.open_api import OpenFileDeleteView, OpenFileUploadView
+from apps.job_mgmt.views.open_api import (
+    OpenFileDeleteView,
+    OpenFileUploadView,
+    OpenJobDetailView,
+    OpenJobListView,
+    OpenJobStatusView,
+    OpenScriptExecuteView,
+)
 
 router = routers.DefaultRouter(trailing_slash=True)
 
@@ -48,4 +55,8 @@ router.register(r"api/distribution_file", DistributionFileViewSet, basename="dis
 urlpatterns = router.urls + [
     path("api/open/upload_file", OpenFileUploadView.as_view(), name="open_upload_file"),
     path("api/open/delete_file", OpenFileDeleteView.as_view(), name="open_delete_file"),
+    path("api/open/job_list", OpenJobListView.as_view(), name="open_job_list"),
+    path("api/open/script_execute", OpenScriptExecuteView.as_view(), name="open_script_execute"),
+    path("api/open/job_status", OpenJobStatusView.as_view(), name="open_job_status"),
+    path("api/open/job_detail/<int:task_id>", OpenJobDetailView.as_view(), name="open_job_detail"),
 ]

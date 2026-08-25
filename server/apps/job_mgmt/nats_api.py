@@ -1,10 +1,15 @@
 """Job Management NATS API - 用于数据权限规则"""
 
+import os
+
 import nats_client
 from apps.core.logger import job_logger as logger
+from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
+from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TriggerSource
-from apps.job_mgmt.models import DistributionFile, JobExecution, Script, Target
+from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Script, Target
+from apps.job_mgmt.openapi_serializers import FileDistributeRequestSerializer
 from apps.job_mgmt.services.ansible_callback_service import handle_ansible_task_callback
 from apps.job_mgmt.services.celery_dispatch import dispatch_celery_task
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
@@ -14,11 +19,14 @@ from apps.job_mgmt.services.execution_cancellation_service import (
     request_execution_cancel,
 )
 from apps.job_mgmt.services.nats_module_service import get_module_data, get_module_list
+from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_script_task
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
+from apps.node_mgmt.models import Node
 from apps.system_mgmt.nats.common import _verify_token
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 def _validate_callback_config(callback_type: str, callback_url: str, callback_subject: str, tag: str):
@@ -82,6 +90,100 @@ def job_script_detail(data: dict):
             "content": script.content,
             "params": script.params,
             "timeout": script.timeout,
+        },
+    }
+
+
+_MAX_JOB_LIST_PAGE_SIZE = 100
+
+
+def _masked_params(params):
+    if not isinstance(params, list):
+        return []
+    return ParamCrypto.mask_encrypted_defaults(params)
+
+
+def _parse_job_list_page(data: dict):
+    try:
+        page = int(data.get("page") or 1)
+        page_size = int(data.get("page_size") or 20)
+    except (TypeError, ValueError):
+        return None, "page/page_size 参数非法"
+    if page < 1:
+        return None, "page 必须大于 0"
+    if page_size < 1 or page_size > _MAX_JOB_LIST_PAGE_SIZE:
+        return None, f"page_size 范围为 1-{_MAX_JOB_LIST_PAGE_SIZE}"
+    return (page, page_size), None
+
+
+def _team_owned_queryset(model, authorized_team_ids):
+    queryset = model.objects.all()
+    return queryset.filter(build_json_membership_query(queryset, "team", list(authorized_team_ids)))
+
+
+def _paginate_queryset(queryset, page, page_size):
+    total = queryset.count()
+    start = (page - 1) * page_size
+    return total, list(queryset.order_by("-updated_at", "-id")[start : start + page_size])
+
+
+def _serialize_script_job(script):
+    return {
+        "id": script.id,
+        "job_type": "script",
+        "name": script.name,
+        "description": script.description,
+        "script_type": script.script_type,
+        "params": _masked_params(script.params),
+        "timeout": script.timeout,
+        "is_built_in": script.is_built_in,
+    }
+
+
+def _serialize_playbook_job(playbook):
+    return {
+        "id": playbook.id,
+        "job_type": "playbook",
+        "name": playbook.name,
+        "description": playbook.description,
+        "version": playbook.version,
+        "params": _masked_params(playbook.params),
+    }
+
+
+@nats_client.register
+def job_list(data: dict):
+    """返回当前团队可执行的作业模板列表（脚本库 + Playbook），含参数定义、不含脚本/包内容。
+
+    供第三方 App 在执行前获取作业背景信息。
+    Args:
+        data: {"team": [...], "name": 可选模糊搜索, "page": 默认1, "page_size": 默认20，最大100}
+    Returns:
+        {"result": True, "data": {"scripts": {"count", "items"}, "playbooks": {"count", "items"}}}
+    """
+    authorized_team_ids = normalize_team((data or {}).get("team"))
+    if not authorized_team_ids:
+        return {"result": False, "message": "team 不能为空"}
+
+    page_info, error = _parse_job_list_page(data or {})
+    if error:
+        return {"result": False, "message": error}
+    page, page_size = page_info
+
+    name = (data or {}).get("name") or ""
+    scripts = _team_owned_queryset(Script, authorized_team_ids)
+    playbooks = _team_owned_queryset(Playbook, authorized_team_ids)
+    if name:
+        scripts = scripts.filter(name__icontains=name)
+        playbooks = playbooks.filter(name__icontains=name)
+
+    script_count, script_rows = _paginate_queryset(scripts, page, page_size)
+    playbook_count, playbook_rows = _paginate_queryset(playbooks, page, page_size)
+    return {
+        "result": True,
+        "data": {
+            "scripts": {"count": script_count, "items": [_serialize_script_job(item) for item in script_rows]},
+            "playbooks": {"count": playbook_count, "items": [_serialize_playbook_job(item) for item in playbook_rows]},
         },
     }
 
@@ -194,6 +296,21 @@ def job_script_execute(data: dict):
 
 @nats_client.register
 def job_file_distribute(data: dict):
+    """旧版 NATS 文件分发入口；默认兼容，支持显式退役与即时回滚。"""
+    if os.getenv("JOB_FILE_DISTRIBUTE_NATS_ENABLED", "1").strip().lower() not in {"1", "true", "yes", "on"}:
+        logger.warning("[job_file_distribute] legacy NATS entry disabled")
+        return {"result": False, "message": "旧版 NATS 文件分发入口已停用，请迁移至 OpenAPI 网关"}
+
+    logger.info(
+        "[job_file_distribute] legacy NATS call: team=%s, file_count=%s, target_count=%s",
+        data.get("team"),
+        len(data.get("file_keys") or []),
+        len(data.get("target_list") or []),
+    )
+    return _run_file_distribute(data)
+
+
+def _run_file_distribute(data: dict, *, trusted_actor=None):
     """
     文件分发（NATS 开放接口）
 
@@ -227,6 +344,9 @@ def job_file_distribute(data: dict):
     callback_type = data.get("callback_type", CallbackType.WEB)
     callback_url = data.get("callback_url")
     callback_subject = data.get("callback_subject")
+    actor = trusted_actor if isinstance(trusted_actor, dict) else {}
+    actor_name = actor.get("user") or "api"
+    actor_domain = actor.get("domain") or "domain.com"
 
     if not name:
         return {"result": False, "message": "name 不能为空"}
@@ -280,8 +400,13 @@ def job_file_distribute(data: dict):
         callback_type=callback_type,
         callback_url=callback_url,
         callback_subject=callback_subject,
-        created_by="api",
-        updated_by="api",
+        executor_user=actor_name,
+        # 通用 MaintainerInfo 字段历史上限为 32；完整可信身份保存在
+        # executor_user + domain，维护人列仅作兼容投影，避免合法长账号落库失败。
+        created_by=actor_name[:32],
+        updated_by=actor_name[:32],
+        domain=actor_domain,
+        updated_by_domain=actor_domain,
     )
 
     # 触发异步执行（Celery Worker）
@@ -289,6 +414,91 @@ def job_file_distribute(data: dict):
         return {"result": False, "message": "任务调度服务暂不可用，请稍后重试"}
 
     return {"result": True, "data": {"task_id": execution.id}}
+
+
+def _validate_openapi_distribute_scope(file_keys, target_source, target_list, authorized_team_ids):
+    """校验网关文件与目标均属于可信身份绑定组织。"""
+    files = list(DistributionFile.objects.filter(file_key__in=file_keys))
+    if len({item.file_key for item in files}) != len(set(file_keys)) or any(not is_team_authorized(item.team, authorized_team_ids) for item in files):
+        return "部分文件不存在、已过期或无权访问该组织的文件"
+
+    id_field = "target_id" if target_source == "manual" else "node_id"
+    target_ids = [item.get(id_field) for item in target_list]
+    if any(not target_id for target_id in target_ids) or len(set(target_ids)) != len(target_ids):
+        return f"目标列表必须包含唯一的 {id_field}"
+
+    if target_source == "manual":
+        targets = list(Target.objects.filter(id__in=target_ids))
+        authorized = len(targets) == len(target_ids) and all(is_team_authorized(item.team, authorized_team_ids) for item in targets)
+    else:
+        authorized = Node.objects.filter(
+            id__in=target_ids,
+            nodeorganization__organization__in=authorized_team_ids,
+        ).distinct().count() == len(target_ids)
+    if not authorized:
+        return "部分目标不存在或无权访问该组织的目标"
+    return None
+
+
+@openapi_expose(
+    path="job-mgmt/file-distribute",
+    method="POST",
+    schema=FileDistributeRequestSerializer,
+    inject="team_list_with_user",
+    summary="提交文件分发作业（组织口径：API 令牌绑定组织精确匹配，不级联子组织）",
+)
+def openapi_file_distribute(
+    name,
+    file_keys,
+    target_source,
+    target_list,
+    target_path,
+    overwrite_strategy,
+    timeout,
+    *,
+    team=None,
+    user_info=None,
+):
+    """经统一网关绑定可信组织后复用旧 NATS 文件分发实现。"""
+    authorized_team_ids = normalize_team(team)
+    authorized_team_id = next(iter(authorized_team_ids), None)
+    if len(authorized_team_ids) != 1 or not GroupUtils.active_queryset(id=authorized_team_id).exists():
+        return {"result": False, "message": "用户未关联活动团队"}
+
+    scope_error = _validate_openapi_distribute_scope(file_keys, target_source, target_list, authorized_team_ids)
+    if scope_error:
+        id_field = "target_id" if target_source == "manual" else "node_id"
+        logger.warning(
+            "[openapi_file_distribute] scope rejected: user=%s domain=%s team=%s file_keys=%s " "target_source=%s target_ids=%s reason=%s",
+            (user_info or {}).get("user", ""),
+            (user_info or {}).get("domain", ""),
+            authorized_team_id,
+            file_keys,
+            target_source,
+            [item.get(id_field) for item in target_list],
+            scope_error,
+        )
+        return {"result": False, "message": scope_error}
+
+    result = _run_file_distribute(
+        {
+            "name": name,
+            "file_keys": file_keys,
+            "target_source": target_source,
+            "target_list": target_list,
+            "target_path": target_path,
+            "overwrite_strategy": overwrite_strategy,
+            "timeout": timeout,
+            "team": [authorized_team_id],
+            # 新入口暂不接受调用方控制的出站回调；调用方通过查询接口获取结果。
+            "callback_type": CallbackType.WEB,
+            "callback_url": "",
+        },
+        trusted_actor=user_info,
+    )
+    if not result.get("result"):
+        return result
+    return result.get("data") or {}
 
 
 @nats_client.register
@@ -404,11 +614,7 @@ def job_task_terminate(data=None, task_id=None, **kwargs):
                 task_id = int(normalized_task_id)
             except ValueError:
                 task_id = None
-    if (
-        isinstance(task_id, bool)
-        or not isinstance(task_id, int)
-        or not 1 <= task_id <= 2**63 - 1
-    ):
+    if isinstance(task_id, bool) or not isinstance(task_id, int) or not 1 <= task_id <= 2**63 - 1:
         return {"result": False, "message": "task_id 必须为正整数或其字符串形式"}
     if not caller_token:
         return {"result": False, "message": "caller_token 不能为空"}

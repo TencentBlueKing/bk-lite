@@ -71,7 +71,9 @@ docs/ai-product-capabilities/
 docs/superpowers/
 
 # 本机 IDE / agent 工作区（skills 仍由仓内跟踪）
-.cursor/
+# Cloud Agents 读取仓库内 environment.json；其它 .cursor 文件仍只留本机
+.cursor/*
+!.cursor/environment.json
 .claude/launch.json
 .claude/settings.local.json
 .superpowers/
@@ -79,6 +81,7 @@ docs/superpowers/
 # 本机开发底座与热同步脚本（不进入生产交付）
 /deploy/local/
 /scripts/
+/examples/
 /web/scripts/sync_lite_web_build.sh
 /server/scripts/sync_lite_server_apps.sh
 

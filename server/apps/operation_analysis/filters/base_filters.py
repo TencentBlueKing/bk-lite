@@ -5,9 +5,7 @@
 from django.db.models import Q
 from django_filters import FilterSet
 
-from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.team_utils import get_current_team
-from apps.operation_analysis.constants.constants import APP_NAME
 
 
 class GroupPermissionMixin:
@@ -41,12 +39,6 @@ class GroupPermissionMixin:
         if not request or not hasattr(request, "user"):
             return False, None
 
-        # user = request.user
-        #
-        # # 超级用户无需验证，返回 None 表示可以访问所有数据
-        # if getattr(user, 'is_superuser', False):
-        #     return True, None
-
         # 获取当前选中的组织
         current_team = get_current_team(request)
 
@@ -58,11 +50,6 @@ class GroupPermissionMixin:
         except (ValueError, TypeError):
             return False, None
 
-        # 验证用户权限
-        # user_group_list = getattr(user, 'group_list', [])
-        # if current_team not in user_group_list:
-        #     return False, None
-
         return True, current_team
 
     @classmethod
@@ -72,72 +59,27 @@ class GroupPermissionMixin:
 
         :param queryset: Django QuerySet
         :param current_team: 当前组织ID (None 表示超级用户,不过滤)
-        :param permission_key: 权限键，用于获取实例级权限
-        :param user: 当前用户
+        :param permission_key: 兼容旧调用方，已忽略（可见性不按实例/个人收紧）
+        :param user: 兼容旧调用方，已忽略（可见性不按创建人收紧）
         :param group_ids: 扩展的组织ID列表（用于 include_children），传入时使用 OR 查询
         :return: 过滤后的 QuerySet
 
-        示例:
-        - groups 字段值: [1, 2, 3]
-        - current_team: 1
-        - 结果: 查询包含 1 的所有记录
-
         过滤逻辑:
-        - 必须满足组织权限 (groups__contains=current_team) AND
-        - 必须满足 (实例级权限 id__in OR 创建者是当前用户 created_by)
+        - 仅按组织归属过滤 (groups 包含 current_team / group_ids)
+        - 不按实例数据权限或 created_by 收缩可见范围
         """
 
         if current_team is None:
             # 超级用户,返回所有数据
             return queryset
 
-        # 第一层: 必须在当前组织下（支持 include_children 展开的组织列表）
         if group_ids and len(group_ids) > 1:
             org_query = Q()
             for gid in group_ids:
                 org_query |= Q(groups__contains=int(gid))
-            queryset = queryset.filter(org_query)
-        else:
-            queryset = queryset.filter(groups__contains=int(current_team))
+            return queryset.filter(org_query)
 
-        # 第二层: 构建或查询条件 (实例级权限 OR 创建者权限)
-        permission_q = Q()
-        if user:
-            # 如果提供了实例ID列表,添加实例级权限查询
-            id_list = cls.get_permission_rules(current_team=current_team, user=user, permission_key=permission_key)
-            if id_list:
-                permission_q |= Q(id__in=id_list)
-
-            # 如果提供了创建者,添加创建者查询
-            created_by = getattr(user, "username", None)
-            if created_by:
-                permission_q |= Q(created_by=created_by)
-
-        # 只有当存在权限条件时才应用过滤
-        if permission_q:
-            queryset = queryset.filter(permission_q)
-
-        return queryset
-
-    @staticmethod
-    def get_permission_rules(current_team, user, permission_key):
-        """
-        获取当前用户的组织权限规则
-
-        :param current_team: 当前组织ID
-        :param user: 用户名
-        :param permission_key: 权限键
-        :return: 组织权限规则列表
-        """
-        _permission_rules = {}
-        if permission_key:
-            _permission_rules = get_permission_rules(user=user, current_team=current_team, app_name=APP_NAME, permission_key=permission_key)
-            """
-            {'instance': [{'id': 3, 'name': '【目录A】监控222', 'permission': ['View', 'Operate']}], 'team': []}
-            """
-
-        result = [item["id"] for item in _permission_rules.get("instance", [])]
-        return result
+        return queryset.filter(groups__contains=int(current_team))
 
 
 class BaseGroupFilter(FilterSet):
@@ -171,25 +113,3 @@ class BaseGroupFilter(FilterSet):
         """重写查询集,添加组织过滤"""
         queryset = super().qs
         return queryset
-        # request = getattr(self, 'request', None)
-        #
-        # not_check_permission, _ = GroupPermissionMixin.validate_all_groups_permission(request)
-        # if not_check_permission:
-        #     return queryset
-        #
-        # # if self.is_directory:
-        # #     return queryset
-        #
-        # # 验证权限
-        # is_valid, current_team = GroupPermissionMixin.validate_group_permission(request)
-        #
-        # if not is_valid:
-        #     return queryset.none()
-        #
-        # current_team = get_current_team(request)
-        # _permission_key = self.permission_key()
-        #
-        # # 应用组织过滤
-        # return GroupPermissionMixin.apply_group_filter(queryset=queryset, current_team=current_team,
-        #                                                permission_key=_permission_key,
-        #                                                user=request.user)

@@ -108,6 +108,62 @@ def test_second_runner_skips_when_lease_held(monkeypatch, wiki_factory):
     queue.release_kb_build_runner(lease)
 
 
+def test_release_runner_marks_partial_or_failed_when_items_fail(wiki_factory):
+    from apps.opspilot.models import BuildRecord
+    from apps.opspilot.services.wiki import material_build_queue_service as queue
+
+    kb = wiki_factory.knowledge_base()
+    lease = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger=queue.RUNNER_TRIGGER,
+        stage="running",
+        status="running",
+        counts={"processed": 0, "failed": 0},
+    )
+    queue.release_kb_build_runner(lease, processed=2, failed=1)
+    lease.refresh_from_db()
+    assert lease.status == "partial"
+    assert lease.counts["processed"] == 2
+    assert lease.counts["failed"] == 1
+
+    all_failed = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger=queue.RUNNER_TRIGGER,
+        stage="running",
+        status="running",
+    )
+    queue.release_kb_build_runner(all_failed, processed=0, failed=3)
+    all_failed.refresh_from_db()
+    assert all_failed.status == "failed"
+
+
+def test_repair_queue_runner_status_from_counts(wiki_factory):
+    from apps.opspilot.models import BuildRecord
+    from apps.opspilot.services.wiki import material_build_queue_service as queue
+
+    kb = wiki_factory.knowledge_base()
+    dirty = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger=queue.RUNNER_TRIGGER,
+        stage="done",
+        status="success",
+        counts={"processed": 1, "failed": 1},
+    )
+    clean = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger=queue.RUNNER_TRIGGER,
+        stage="done",
+        status="success",
+        counts={"processed": 2, "failed": 0},
+    )
+    fixed = queue.repair_queue_runner_status_from_counts(kb.pk)
+    dirty.refresh_from_db()
+    clean.refresh_from_db()
+    assert fixed == 1
+    assert dirty.status == "partial"
+    assert clean.status == "success"
+
+
 def test_claim_sets_building_status(monkeypatch, wiki_factory):
     from apps.opspilot.models import BuildRecord, Material
     from apps.opspilot.serializers.wiki_serializers import MaterialSerializer
@@ -297,6 +353,52 @@ def test_process_counts_missing_material_and_build_failure(monkeypatch, wiki_fac
     assert result["processed"] == 0
     assert result["failed"] == 2
     assert material.status == "build_failed"
+    stuck = BuildRecord.objects.filter(
+        knowledge_base=kb,
+        trigger="material",
+        status="running",
+        inputs__material_id=material.pk,
+    )
+    assert stuck.count() == 0
+    failed_build = BuildRecord.objects.filter(
+        knowledge_base=kb,
+        trigger="material",
+        status="failed",
+        inputs__material_id=material.pk,
+    ).latest("id")
+    assert failed_build.stage == "failed"
+
+
+def test_reconcile_closes_orphaned_preparing_builds(wiki_factory):
+    from apps.opspilot.models import BuildRecord, Material
+    from apps.opspilot.services.wiki import material_build_queue_service as queue
+
+    kb = wiki_factory.knowledge_base()
+    material = Material.objects.create(knowledge_base=kb, name="done", material_type="text", status="built")
+    orphan = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material",
+        stage="preparing",
+        status="running",
+        inputs={"material_id": material.pk},
+        counts={},
+    )
+    active = Material.objects.create(knowledge_base=kb, name="busy", material_type="text", status="building")
+    keep = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material",
+        stage="preparing",
+        status="running",
+        inputs={"material_id": active.pk},
+    )
+
+    closed = queue.reconcile_orphaned_material_builds(kb.pk)
+    orphan.refresh_from_db()
+    keep.refresh_from_db()
+    assert closed == 1
+    assert orphan.status == "failed"
+    assert orphan.stage == "failed"
+    assert keep.status == "running"
 
 
 def test_cancel_stale_queue_items_for_missing_materials(wiki_factory):

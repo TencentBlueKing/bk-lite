@@ -9,8 +9,8 @@ class ApplicationResourceEntrySerializer(serializers.Serializer):
     model_id = serializers.ChoiceField(choices=["system", "application"])
 
 
-class ApplicationResourceNodeIdsSerializer(serializers.Serializer):
-    node_ids = serializers.ListField(
+class ApplicationResourceNodeUuidsSerializer(serializers.Serializer):
+    node_uuids = serializers.ListField(
         child=serializers.CharField(),
         allow_empty=False,
     )

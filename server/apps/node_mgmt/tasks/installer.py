@@ -1,39 +1,24 @@
 import hashlib
 import json
-import logging
 import queue
 import threading
 import time
 import uuid
 
-from celery import shared_task
-from django.db import transaction
-from django.db.models import Q
-from django.utils import timezone
-
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
-
 from apps.node_mgmt.models import (
-    ControllerTask,
     CollectorTask,
-    PackageVersion,
+    ControllerTask,
+    ControllerTaskNode,
     Node,
     NodeCollectorInstallStatus,
-)
-from apps.node_mgmt.models import ControllerTaskNode
-
-from apps.node_mgmt.utils.installer import (
-    exec_command_to_remote,
-    exec_command_to_remote_stream,
-    download_to_local,
-    exec_command_to_local,
-    get_uninstall_command,
-    unzip_file,
+    PackageVersion,
 )
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.package import PackageService
@@ -41,16 +26,15 @@ from apps.node_mgmt.services.windows_remote_bootstrap import (
     WindowsBootstrapTarget,
     WindowsRemoteBootstrapService,
 )
+from apps.node_mgmt.tasks.version_discovery import discover_node_versions
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
-from apps.node_mgmt.utils.step_tracker import (
-    advance_step,
-    append_step,
-    append_steps,
-    build_step,
-    clone_steps,
-    now_iso,
-    update_latest_step_by_action,
-    update_last_running_step,
+from apps.node_mgmt.utils.installer import (
+    download_to_local,
+    exec_command_to_local,
+    exec_command_to_remote,
+    exec_command_to_remote_stream,
+    get_uninstall_command,
+    unzip_file,
 )
 from apps.node_mgmt.utils.installer_schema import (
     build_installer_event_record,
@@ -58,16 +42,28 @@ from apps.node_mgmt.utils.installer_schema import (
     normalize_overall_status,
     summarize_installer_progress,
 )
+from apps.node_mgmt.utils.step_tracker import (
+    advance_step,
+    append_step,
+    append_steps,
+    build_step,
+    clone_steps,
+    now_iso,
+    update_last_running_step,
+    update_latest_step_by_action,
+)
 from apps.node_mgmt.utils.task_result_schema import (
     _extract_latest_failure_from_steps,
     _extract_latest_installer_failure_from_steps,
     apply_result_envelope,
 )
-from apps.node_mgmt.tasks.version_discovery import discover_node_versions
+from apps.node_mgmt.utils.winrm import default_winrm_port, winrm_profile_error
+from celery import shared_task
 from config.components.nats import NATS_NAMESPACE
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 from nats_client.clients import subscribe_lines_sync
-
-logger = logging.getLogger(__name__)
 
 CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS = InstallerConstants.CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS
 
@@ -766,7 +762,7 @@ def install_controller_on_nodes(
                 _build_step(
                     "credential_check",
                     "success",
-                    f"Check credential configuration ({auth_method})",
+                    f"Check credential configuration ({auth_method}); connectivity is not probed in this step",
                 ),
                 _build_step("run", "running", "Run installer"),
             ],
@@ -1298,9 +1294,9 @@ def retry_controller(
         passphrase: 私钥密码短语（明文，将被加密后存储，可选）
         port: 远程连接端口（可选）
         username: 远程连接账号（可选）
-        winrm_scheme: Windows WinRM 协议（可选，仅支持 HTTPS）
+        winrm_scheme: Windows WinRM 协议（可选，https 或显式 http）
         winrm_transport: Windows WinRM 认证传输（可选，仅支持 NTLM）
-        winrm_cert_validation: 是否校验 WinRM 与安装服务 HTTPS 证书（可选）
+        winrm_cert_validation: 是否校验 WinRM 与安装服务 HTTPS 证书（可选，仅 HTTPS 生效）
     """
 
     task_obj = ControllerTask.objects.filter(id=task_id).first()
@@ -1343,8 +1339,6 @@ def retry_controller(
     if passphrase:
         update_data["passphrase"] = aes_obj.encode(passphrase)
     if winrm_scheme is not None:
-        if winrm_scheme != "https":
-            raise BaseAppException("Windows remote retry requires WinRM HTTPS")
         update_data["winrm_scheme"] = winrm_scheme
     if winrm_transport is not None:
         if winrm_transport != "ntlm":
@@ -1354,6 +1348,19 @@ def retry_controller(
         if not isinstance(winrm_cert_validation, bool):
             raise BaseAppException("WinRM certificate validation must be a boolean")
         update_data["winrm_cert_validation"] = winrm_cert_validation
+
+    if winrm_scheme == "http":
+        update_data["winrm_cert_validation"] = False
+
+    for retry_node in retry_nodes:
+        if getattr(retry_node, "os", "") != NodeConstants.WINDOWS_OS:
+            continue
+        effective_scheme = update_data.get("winrm_scheme", retry_node.winrm_scheme or "https")
+        effective_port = update_data.get("port", retry_node.port or default_winrm_port(effective_scheme))
+        effective_transport = update_data.get("winrm_transport", retry_node.winrm_transport or "ntlm")
+        profile_error = winrm_profile_error(effective_scheme, effective_port, effective_transport)
+        if profile_error:
+            raise BaseAppException(profile_error)
 
     if update_data:
         retry_nodes.update(**update_data)
@@ -1418,7 +1425,7 @@ def uninstall_controller(task_id):
                 _build_step(
                     "credential_check",
                     "success",
-                    f"Check credential configuration ({auth_method})",
+                    f"Check credential configuration ({auth_method}); connectivity is not probed in this step",
                 ),
                 _build_step("stop_run", "running", "Stop controller service"),
             ],

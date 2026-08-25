@@ -10,6 +10,49 @@ import { MetricExpressionMode } from './formulaExpressionUtils';
 
 export const FORMULA_DEFAULT_RESULT_UNIT = 'percent';
 
+/** 组织变更后，剔除不再属于候选用户列表的已选通知人 */
+export const pruneNoticeUsers = <T extends string | number>(
+  noticeUsers: T[] | undefined,
+  userList: Array<{ id: string | number; username?: string }>
+): T[] => {
+  if (!Array.isArray(noticeUsers) || !noticeUsers.length) {
+    return [];
+  }
+  if (!Array.isArray(userList) || !userList.length) {
+    return [];
+  }
+
+  const allowed = new Set<string>();
+  userList.forEach((user) => {
+    allowed.add(String(user.id));
+    if (user.username) {
+      allowed.add(user.username);
+    }
+  });
+
+  return noticeUsers.filter((item) => allowed.has(String(item)));
+};
+
+/** 开启通知且所选渠道中存在需要通知人的渠道时，通知人必填 */
+export const shouldRequireNoticeUsers = ({
+  notice,
+  noticeTypeIds,
+  channelList
+}: {
+  notice?: boolean;
+  noticeTypeIds?: Array<string | number>;
+  channelList: Array<{ id: string | number; channel_type: string }>;
+}): boolean => {
+  if (!notice) return false;
+  const selectedIds = noticeTypeIds || [];
+  if (!selectedIds.length) return false;
+  const selectedChannels = channelList.filter((channel) =>
+    selectedIds.some((id) => String(id) === String(channel.id))
+  );
+  if (!selectedChannels.length) return false;
+  return selectedChannels.some((channel) => channel.channel_type !== 'nats');
+};
+
 const INVALID_THRESHOLD_UNIT_IDS = new Set(['none', 'short']);
 
 /** 无量纲 / 不参与阈值单位选配的单位（none、short、空） */
@@ -317,6 +360,25 @@ export const resolveEffectiveCalculationUnit = ({
     : null;
 };
 
+/** 将告警名称变量插入光标/选区位置；未提供选区时追加到末尾 */
+export const insertAlertNameVariableAtCursor = (
+  text: string,
+  variable: string,
+  selectionStart?: number | null,
+  selectionEnd?: number | null
+): { value: string; cursor: number } => {
+  const fallback = text.length;
+  const rawStart =
+    typeof selectionStart === 'number' ? selectionStart : fallback;
+  const rawEnd = typeof selectionEnd === 'number' ? selectionEnd : rawStart;
+  const start = Math.max(0, Math.min(rawStart, text.length));
+  const end = Math.max(start, Math.min(rawEnd, text.length));
+  return {
+    value: `${text.slice(0, start)}${variable}${text.slice(end)}`,
+    cursor: start + variable.length
+  };
+};
+
 // 公式 → 单指标 retract:返回新值;否则返回 undefined 表示「无变化」
 export const getReverseModeCalculationUnit = ({
   previousMode,
@@ -331,4 +393,26 @@ export const getReverseModeCalculationUnit = ({
     return filterInvalidCalculationUnit(primaryMetricUnit);
   }
   return undefined;
+};
+
+export const METRIC_DIMENSION_VARIABLE_PREFIX = 'metric__';
+
+export const buildMetricDimensionVariable = (dimension: string) =>
+  `\${${METRIC_DIMENSION_VARIABLE_PREFIX}${dimension}}`;
+
+/** 所选分组维度渲染为后端可替换的 ${metric__key} 名称变量。 */
+export const buildMetricDimensionVariables = (groupBy?: string[] | null) => {
+  const seen = new Set<string>();
+  const items: Array<{ key: string; variable: string; dimension: string }> = [];
+  for (const raw of groupBy || []) {
+    const dimension = String(raw || '').trim();
+    if (!dimension || seen.has(dimension)) continue;
+    seen.add(dimension);
+    items.push({
+      key: `${METRIC_DIMENSION_VARIABLE_PREFIX}${dimension}`,
+      variable: buildMetricDimensionVariable(dimension),
+      dimension
+    });
+  }
+  return items;
 };

@@ -1,13 +1,13 @@
 'use client';
 import React, { useState, useEffect } from 'react';
 import { Button, Table, Space, Popconfirm, message, Tooltip, Spin, Modal, Checkbox, Typography } from 'antd';
-import { CopyOutlined, DeleteOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons';
+import { DeleteOutlined, PlusOutlined, WarningOutlined } from '@ant-design/icons';
 import TopSection from '@/components/top-section';
 import PermissionWrapper from '@/components/permission';
+import SecretValueDisplay from '@/components/secret-value-display';
 import { UserApiSecretListItem, useSettingsApi } from '@/app/system-manager/api/settings';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
-import { useCopy } from '@/hooks/useCopy';
 import Cookies from 'js-cookie';
 
 interface TableData {
@@ -24,7 +24,6 @@ const ScrectKeyPage: React.FC = () => {
   const { t } = useTranslation();
   const { fetchUserApiSecrets, deleteUserApiSecret, createUserApiSecret } = useSettingsApi();
   const { convertToLocalizedTime } = useLocalizedTime();
-  const { copy } = useCopy();
   const [dataSource, setDataSource] = useState(initialDataSource);
   const [loading, setLoading] = useState<boolean>(false);
   const [creating, setCreating] = useState<boolean>(false);
@@ -237,31 +236,20 @@ const ScrectKeyPage: React.FC = () => {
         </div>
 
         <div className="mb-6">
-          <div className="flex items-center gap-2">
-            <div
-              className="flex-1 break-all border p-2 font-mono"
-              style={{
-                backgroundColor: 'var(--color-fill-1)',
-                borderColor: 'var(--color-border-2)',
-                color: 'var(--color-text-1)',
-              }}
-            >
-              <Typography.Text strong className="whitespace-nowrap mr-1">
-                {t('system.settings.secret.key')}:
-              </Typography.Text>
-              {newSecret}
-            </div>
+          <div className="mb-1">
+            <Typography.Text strong className="whitespace-nowrap mr-1">
+              {t('system.settings.secret.key')}:
+            </Typography.Text>
           </div>
-          <div className="mt-1 flex justify-start">
-            <Button
-              type="link"
-              size="small"
-              className='text-xs'
-              icon={<CopyOutlined />}
-              onClick={() => copy(newSecret)}
-            >
-              {t('common.copy')}
-            </Button>
+          <div
+            className="break-all border p-2"
+            style={{
+              backgroundColor: 'var(--color-fill-1)',
+              borderColor: 'var(--color-border-2)',
+              color: 'var(--color-text-1)',
+            }}
+          >
+            <SecretValueDisplay value={newSecret} masked={false} />
           </div>
         </div>
       </Modal>

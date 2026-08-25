@@ -26,7 +26,6 @@ import {
 import GraphCanvas, {
   GraphCanvasHandle,
   communityColor,
-  graphEdgeId,
 } from "@/app/opspilot/components/wiki/GraphCanvas";
 import { pageTypeLabelKey } from "./wikiFormat";
 
@@ -128,20 +127,6 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
       graph.edges.filter(
         (e) =>
           shownNodeIds.has(String(e.from)) && shownNodeIds.has(String(e.to)),
-      ),
-    [graph.edges, shownNodeIds],
-  );
-  const shownEdgeIds = useMemo(
-    () =>
-      new Set(
-        graph.edges
-          .map((edge, index) => ({ edge, index }))
-          .filter(
-            ({ edge }) =>
-              shownNodeIds.has(String(edge.from)) &&
-              shownNodeIds.has(String(edge.to)),
-          )
-          .map(({ edge, index }) => graphEdgeId(edge, index)),
       ),
     [graph.edges, shownNodeIds],
   );
@@ -258,24 +243,17 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
     >
       {/* 图谱铺满 */}
       <div className="absolute inset-0">
-        {graph.nodes.length ? (
+        {shownNodes.length ? (
           <GraphCanvas
             ref={canvasRef}
-            nodes={graph.nodes}
-            edges={graph.edges}
-            visibleNodeIds={shownNodeIds}
-            visibleEdgeIds={shownEdgeIds}
+            nodes={shownNodes}
+            edges={shownEdges}
             height="100%"
             nodeScale={nodeScale / 100}
             linkDistance={Math.round((spacing / 100) * 160)}
           />
         ) : (
           <div className="flex h-full items-center justify-center">
-            <Empty />
-          </div>
-        )}
-        {graph.nodes.length > 0 && !shownNodes.length && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <Empty />
           </div>
         )}
@@ -599,10 +577,12 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
         </div>
       )}
 
-      {/* 社区图例(左下)：点击条目筛选该社区，再点取消 */}
+      {/* 社区图例(左下)：限制高度避免盖住左上过滤器，列表可滚动 */}
       {showLegend && legend.length > 0 && (
-        <div className={`${panelCls} bottom-3 left-3 max-w-[260px] p-3`}>
-          <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div
+          className={`${panelCls} bottom-3 left-3 flex max-h-[min(280px,calc(100%-9rem))] max-w-[260px] flex-col p-3`}
+        >
+          <div className="mb-1.5 flex shrink-0 items-center justify-between gap-2">
             <span className="text-xs font-medium text-[var(--color-text-2)]">
               {t("wiki.communities")}
             </span>
@@ -616,10 +596,10 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
               </button>
             )}
           </div>
-          <div className="mb-1.5 text-[11px] text-[var(--color-text-3)]">
+          <div className="mb-1.5 shrink-0 text-[11px] text-[var(--color-text-3)]">
             {t("wiki.filterCommunityTip")}
           </div>
-          <ul className="space-y-1">
+          <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto">
             {legend.map((l) => {
               const active = selectedCommunity === l.community;
               return (

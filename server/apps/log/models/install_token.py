@@ -19,6 +19,11 @@ class K8sInstallToken(models.Model):
     cluster_name = models.CharField(max_length=200, verbose_name="集群名称")
     cloud_region_id = models.CharField(max_length=200, verbose_name="云区域 ID")
     config_type = models.CharField(max_length=20, default="log", verbose_name="配置类型")
+    image_registry_prefix = models.CharField(
+        max_length=255,
+        default="bk-lite.tencentcloudcr.com/bklite",
+        verbose_name="镜像仓库前缀",
+    )
     usage_count = models.PositiveSmallIntegerField(default=0, verbose_name="已使用次数")
     max_usage = models.PositiveSmallIntegerField(default=5, verbose_name="最大使用次数")
     expires_at = models.DateTimeField(db_index=True, verbose_name="过期时间")

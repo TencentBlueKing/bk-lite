@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import { Spin } from 'antd';
 import WidgetState from '@/app/ops-analysis/components/widget-state';
@@ -18,6 +18,8 @@ import { applyValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import {
   scaleScreenMetric,
 } from './shared/screenMetrics';
+import { useGaugeResponsiveLayout } from './shared/useGaugeResponsiveLayout';
+import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import {
   getOpsChartThemeByMode,
   isScreenChartThemeMode,
@@ -112,14 +114,30 @@ const ComGauge: React.FC<ComGaugeProps> = ({
         config?.unitId,
       );
 
-  useEffect(() => {
-    if (!loading) {
-      onReady?.(hasData);
-    }
-  }, [hasData, loading, onReady]);
+  const isCircle = config?.gaugeShape === 'circle';
+  const axisLineWidth = usesScreenTheme
+    ? scaleScreenMetric(14, screenRenderContext)
+    : 14;
+  const { containerRef, chartRef, layout, geometry, hasValidContainerSize } =
+    useGaugeResponsiveLayout({
+      gaugeShape: config?.gaugeShape,
+      desiredRadiusPercent: usesScreenTheme
+        ? isCircle ? 76 : 108
+        : isCircle ? 90 : 108,
+      desiredCenterPercent: [
+        50,
+        usesScreenTheme ? (isCircle ? 52 : 68) : (isCircle ? 52 : 74),
+      ],
+      axisLineWidth,
+    });
+  const { onEvents } = useEchartsFinishedReady({
+    loading,
+    isDataReady: hasData,
+    canReportReady: hasValidContainerSize,
+    onReady,
+  });
 
   const option = useMemo(() => {
-    const isCircle = config?.gaugeShape === 'circle';
     const currentValue = clamp(numericValue ?? safeMin, safeMin, safeMax);
 
     return {
@@ -129,12 +147,11 @@ const ComGauge: React.FC<ComGaugeProps> = ({
           type: 'gauge',
           min: safeMin,
           max: safeMax,
+          splitNumber: usesScreenTheme ? 5 : layout.splitNumber,
           startAngle: isCircle ? 225 : 180,
           endAngle: isCircle ? -45 : 0,
-          center: ['50%', isCircle ? '52%' : usesScreenTheme ? '68%' : '74%'],
-          radius: usesScreenTheme
-            ? isCircle ? '76%' : '108%'
-            : isCircle ? '90%' : '108%',
+          center: geometry.center,
+          radius: geometry.radius,
           progress: {
             show: true,
             roundCap: true,
@@ -168,6 +185,7 @@ const ComGauge: React.FC<ComGaugeProps> = ({
             length: usesScreenTheme
               ? scaleScreenMetric(8, screenRenderContext)
               : 10,
+            // Negative distance keeps white ticks on the colored arc.
             distance: usesScreenTheme
               ? -scaleScreenMetric(14, screenRenderContext)
               : -16,
@@ -184,7 +202,7 @@ const ComGauge: React.FC<ComGaugeProps> = ({
             show: !usesScreenTheme,
             distance: usesScreenTheme
               ? scaleScreenMetric(24, screenRenderContext)
-              : 18,
+              : layout.axisLabelDistance,
             color: usesScreenTheme
               ? chartTheme.singleValueMetaColor
               : '#7A869A',
@@ -208,11 +226,13 @@ const ComGauge: React.FC<ComGaugeProps> = ({
             valueAnimation: true,
             offsetCenter: [
               0,
-              usesScreenTheme ? (isCircle ? '48%' : '20%') : isCircle ? '66%' : '38%',
+              usesScreenTheme
+                ? (isCircle ? '48%' : '20%')
+                : layout.detailOffsetCenterY,
             ],
             fontSize: usesScreenTheme
               ? scaleScreenMetric(20, screenRenderContext)
-              : 26,
+              : layout.detailFontSize,
             fontWeight: usesScreenTheme ? 800 : 600,
             color,
             formatter: () => displayValue,
@@ -228,6 +248,12 @@ const ComGauge: React.FC<ComGaugeProps> = ({
     chartTheme.splitLineColor,
     config?.gaugeShape,
     displayValue,
+    geometry.center,
+    geometry.radius,
+    layout.axisLabelDistance,
+    layout.detailFontSize,
+    layout.detailOffsetCenterY,
+    layout.splitNumber,
     numericValue,
     safeMax,
     safeMin,
@@ -249,7 +275,14 @@ const ComGauge: React.FC<ComGaugeProps> = ({
   }
 
   return (
-    <ReactEcharts option={option} style={{ height: '100%', width: '100%' }} />
+    <div ref={containerRef} className="h-full w-full">
+      <ReactEcharts
+        ref={chartRef}
+        option={option}
+        onEvents={onEvents}
+        style={{ height: '100%', width: '100%' }}
+      />
+    </div>
   );
 };
 

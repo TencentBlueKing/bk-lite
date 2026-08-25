@@ -566,10 +566,8 @@ class Neo4jClient:
             f"MATCH (n:{validated_label}) WHERE id(n) = row.id "
             f"SET n.{validated_field} = row.value RETURN n"
         )
-        return self.session.run(
-            query,
-            property_values=validated_property_values,
-        )
+        result = self.session.run(query, property_values=validated_property_values)
+        return self.entity_to_list(result)
 
     def format_properties_remove(self, attrs: list):
         """格式化properties的remove数据"""

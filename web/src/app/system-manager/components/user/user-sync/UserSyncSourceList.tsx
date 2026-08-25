@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Button, Empty, Input, Space, Spin, Tag, Tooltip } from 'antd';
+import { Button, Input, Space, Spin, Tag, Tooltip } from 'antd';
+import CompactEmptyState from '@/components/compact-empty-state';
 import Icon from '@/components/icon';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
@@ -25,6 +26,8 @@ export interface UserSyncSourceCardItem {
   latestStatusText: string;
   latestStatusTone: UserSyncStatusTone;
   syncDisabled: boolean;
+  deleteDisabled?: boolean;
+  deleteDisabledReason?: string;
   dependencyStatusText?: string;
 }
 
@@ -88,8 +91,15 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
     },
     {
       key: 'delete',
-      label: t('common.delete'),
+      label: item.deleteDisabled && item.deleteDisabledReason ? (
+        <Tooltip title={item.deleteDisabledReason}>
+          <span>{t('common.delete')}</span>
+        </Tooltip>
+      ) : (
+        t('common.delete')
+      ),
       danger: true,
+      disabled: Boolean(item.deleteDisabled),
       onClick: () => onDelete(item),
     },
   ];
@@ -115,7 +125,7 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
           <Spin spinning={loading} />
         </div>
       ) : filteredItems.length === 0 ? (
-        <Empty description={t('common.noData')} />
+        <CompactEmptyState description={t('common.noData')} />
       ) : (
         <div className="flex flex-wrap gap-5">
           {filteredItems.map((item) => (

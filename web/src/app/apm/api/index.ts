@@ -6,11 +6,17 @@ import type {
   ApmApplicationInput,
   ApmCloudRegion,
   ApmDashboard,
+  ApmDeploymentEvent,
+  ApmDeploymentStatus,
   ApmIngestSnippet,
   ApmIngestSnippetInput,
   ApmTimeWindow,
   ApmEvent,
   ApmEventQuery,
+  ApmAlert,
+  ApmAlertMetricSnapshot,
+  ApmAlertQuery,
+  ApmEventSnapshot,
   ApmHealth,
   ApmService,
   ApmServiceInstance,
@@ -30,14 +36,15 @@ import type {
   ApmSpanPage,
   ApmSpanSearchParams,
   ApmTopologyGraph,
-  CatalogStatus,
+  ApmIssuePage,
+  ApmIssueSearchParams,
+  InstanceStatus,
 } from '@/app/apm/types';
 
 interface InstanceQuery {
   application?: string;
   environment?: string;
-  status?: CatalogStatus;
-  include_archived?: boolean;
+  status?: InstanceStatus;
   started_at?: string;
   ended_at?: string;
   keyword?: string;
@@ -80,14 +87,6 @@ const useApmApi = () => {
     [put]
   );
 
-  const setInstanceArchived = useCallback(
-    (instanceId: string, archived: boolean) =>
-      post<ApmServiceInstance>(`/apm/instances/${instanceId}/${archived ? 'archive' : 'restore'}/`, {
-        reason: 'manual',
-      }),
-    [post]
-  );
-
   const setServiceOrganizations = useCallback(
     (serviceId: string, organizationIds: number[]) =>
       put<ApmService>(`/apm/services/${serviceId}/organizations/`, {
@@ -106,6 +105,11 @@ const useApmApi = () => {
 
   const getApplications = useCallback(
     (config: RequestConfig = {}) => get<ApmApplication[]>('/apm/applications/', config),
+    [get]
+  );
+
+  const getApplication = useCallback(
+    (applicationId: string) => get<ApmApplication>(`/apm/applications/${applicationId}/`),
     [get]
   );
 
@@ -136,15 +140,28 @@ const useApmApi = () => {
 
   const getHealth = useCallback(() => get<ApmHealth>('/apm/health/'), [get]);
 
+  const getDeployments = useCallback(
+    (params: {
+      service_id?: string;
+      environment?: string;
+      status?: ApmDeploymentStatus;
+      started_at?: string;
+      ended_at?: string;
+      page?: number;
+      page_size?: number;
+    } = {}) => get<ApmPage<ApmDeploymentEvent>>('/apm/deployments/', { params }),
+    [get]
+  );
+
   const getDashboard = useCallback(
     (window: ApmTimeWindow) => get<ApmDashboard>('/apm/dashboard/', { params: { window } }),
     [get]
   );
 
   const getServiceRed = useCallback(
-    (serviceId: string, environment: string, startedAt?: string, endedAt?: string) =>
+    (serviceId: string, environment: string, startedAt?: string, endedAt?: string, endpoint?: string) =>
       get<ApmServiceRed>(`/apm/services/${serviceId}/metrics/`, {
-        params: { environment, started_at: startedAt, ended_at: endedAt },
+        params: { environment, started_at: startedAt, ended_at: endedAt, endpoint },
       }),
     [get]
   );
@@ -178,6 +195,11 @@ const useApmApi = () => {
     [get]
   );
 
+  const getIssues = useCallback(
+    (params: ApmIssueSearchParams = {}) => get<ApmIssuePage>('/apm/issues/', { params }),
+    [get]
+  );
+
   const getTrace = useCallback(
     (traceId: string) => get<ApmTraceDetail>(`/apm/traces/${traceId}/`),
     [get]
@@ -190,6 +212,11 @@ const useApmApi = () => {
   );
 
   const getPolicies = useCallback(() => get<ApmPolicy[]>('/apm/policies/'), [get]);
+
+  const getPolicy = useCallback(
+    (policyId: string) => get<ApmPolicy>(`/apm/policies/${policyId}/`),
+    [get]
+  );
 
   const createPolicy = useCallback(
     (payload: ApmPolicyInput) => post<ApmPolicy>('/apm/policies/', payload),
@@ -218,9 +245,50 @@ const useApmApi = () => {
     [post]
   );
 
+  const previewPolicy = useCallback(
+    (payload: ApmPolicyInput, suppressErrorNotification = false) => post<ApmPolicyQueryResult>(
+      '/apm/policies/preview/',
+      payload,
+      suppressErrorNotification ? { suppressErrorNotification: true } : undefined,
+    ),
+    [post]
+  );
+
   const getEvents = useCallback(
     (params: ApmEventQuery = {}) => get<ApmEvent[]>('/apm/events/', { params }),
     [get]
+  );
+
+  const getAlerts = useCallback(
+    (params: ApmAlertQuery = {}) => get<ApmAlert[]>('/apm/alerts/', { params }),
+    [get]
+  );
+
+  const getAlertDistribution = useCallback(
+    (params: Pick<ApmAlertQuery, 'started_at' | 'ended_at' | 'status_group'>) =>
+      get<Array<{ time: string; critical: number; error: number; warning: number }>>(
+        '/apm/alerts/distribution/',
+        { params }
+      ),
+    [get]
+  );
+
+  const getEventEvidence = useCallback(
+    (alertId: string, eventId?: string) =>
+      get<ApmEventSnapshot[]>(`/apm/alerts/${alertId}/event-evidence/`, {
+        params: eventId ? { event_id: eventId } : {},
+      }),
+    [get]
+  );
+
+  const getAlertSnapshots = useCallback(
+    (alertId: string) => get<ApmAlertMetricSnapshot>(`/apm/alerts/${alertId}/snapshots/`),
+    [get]
+  );
+
+  const closeAlert = useCallback(
+    (alertId: string) => post<ApmAlert>(`/apm/alerts/${alertId}/close/`),
+    [post]
   );
 
   const getNotificationChannels = useCallback(
@@ -253,15 +321,16 @@ const useApmApi = () => {
     getInstances,
     getInstancePage,
     setInstanceOrganizations,
-    setInstanceArchived,
     setServiceOrganizations,
     setServiceArchived,
     getApplications,
+    getApplication,
     getCloudRegions,
     createApplication,
     updateApplication,
     getIngestSnippet,
     getHealth,
+    getDeployments,
     getDashboard,
     getServiceRed,
     getSlos,
@@ -271,15 +340,23 @@ const useApmApi = () => {
     setSloEnabled,
     getTraces,
     getSpans,
+    getIssues,
     getTrace,
     getTopology,
     getPolicies,
+    getPolicy,
     createPolicy,
     updatePolicy,
     deletePolicy,
     setPolicyEnabled,
     testPolicy,
+    previewPolicy,
     getEvents,
+    getAlerts,
+    getAlertDistribution,
+    getAlertSnapshots,
+    getEventEvidence,
+    closeAlert,
     getNotificationChannels,
     getNotificationDeliveries,
     getNotificationRecipients,

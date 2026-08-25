@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "APM 模块现状架构",
+    "output": "apm-current.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {"url": "https://github.com/zhouzhuangjie/bk-lite-1.git", "revision": "fe407afdc44ff2b543871888e8934f5ee869764e"},
+    "viewBox": [1460, 720],
+    "views": [
+      {"id": "telemetry", "label": "遥测数据面", "focus": ["apps", "pipeline", "vt", "query"], "note": "OpenTelemetry 经区域采集、NATS JetStream 和系统采集进入 VictoriaTraces；查询 Adapter 已限制窗口、响应和唯一 Span 数。"},
+      {"id": "catalog", "label": "目录与授权控制面", "focus": ["entry", "access", "query", "reconcile", "catalog"], "note": "服务/实例目录每分钟从遥测活动对账；Trace 列表在分页后过滤，详情只需任一 span 可见便返回整条 trace。"},
+      {"id": "policy", "label": "策略与告警生命周期", "focus": ["policy", "facts", "outbox", "snapshot", "external"], "note": "逐目标状态和事件身份保护重复副作用；通知有 outbox，但 claim 无 token，指标快照 JSON 持续增长。"}
+    ]
+  },
+  "boundaries": [
+    {"kind": "region", "label": "APM 遥测基础设施", "wraps": ["apps", "pipeline", "vt"], "pad": 18},
+    {"kind": "security-group", "label": "APM 接口与组织授权", "wraps": ["entry", "access", "query"], "pad": 18},
+    {"kind": "region", "label": "目录、策略与领域事实", "wraps": ["reconcile", "catalog", "policy", "facts", "outbox", "snapshot"], "pad": 18}
+  ],
+  "components": [
+    {"id": "apps", "type": "external", "label": "Instrumented Apps", "sublabel": "Java / Python / Node.js / Go", "pos": [20, 80], "size": [180, 95]},
+    {"id": "pipeline", "type": "messagebus", "label": "OTel Pipeline", "sublabel": "regional → NATS → system collector", "tag": "运行期健康探测", "pos": [245, 80], "size": [220, 95]},
+    {"id": "vt", "type": "database", "label": "VictoriaTraces", "sublabel": "Trace / Span / RED / topology", "tag": "遥测事实源", "pos": [510, 80], "size": [210, 95]},
+    {"id": "entry", "type": "frontend", "label": "HTTP / Open Probe", "sublabel": "catalog / trace / SLO / policy", "pos": [20, 315], "size": [180, 100]},
+    {"id": "access", "type": "security", "label": "Organization Access", "sublabel": "current team + catalog identity", "tag": "详情 any-span 放行", "pos": [245, 315], "size": [220, 100]},
+    {"id": "query", "type": "backend", "label": "Telemetry Query Ports", "sublabel": "TraceStore + MetricStore Adapter", "tag": "列表分页后过滤", "pos": [510, 315], "size": [210, 100], "sources": [{"path": "server/apps/apm/views/traces.py", "line": 65, "label": "Trace 查询授权"}]},
+    {"id": "reconcile", "type": "backend", "label": "Catalog Reconciler", "sublabel": "每分钟 20m activity 对账", "tag": "≤10k 逐条事务", "pos": [770, 80], "size": [215, 95], "sources": [{"path": "server/apps/apm/services/reconciler.py", "line": 12, "label": "目录对账"}]},
+    {"id": "catalog", "type": "database", "label": "Application / Service / Instance", "sublabel": "组织关系 + last_seen + archive", "pos": [1030, 80], "size": [225, 95]},
+    {"id": "policy", "type": "messagebus", "label": "Policy Scheduler", "sublabel": "分钟扫描 → endpoint × version", "tag": "单策略最多 10k 目标", "pos": [770, 315], "size": [215, 100], "sources": [{"path": "server/apps/apm/services/policies.py", "line": 148, "label": "策略目标展开"}]},
+    {"id": "facts", "type": "database", "label": "TargetState / Alert / Event", "sublabel": "cursor + deterministic lifecycle", "tag": "正确裁决基础", "pos": [1030, 315], "size": [225, 100]},
+    {"id": "outbox", "type": "database", "label": "Alert Outbox", "sublabel": "retry / claimed_at / manual audit", "tag": "无 claim token", "pos": [1030, 545], "size": [225, 100]},
+    {"id": "snapshot", "type": "database", "label": "Evidence / Metric Snapshot", "sublabel": "MinIO staging + 可变 JSON 列表", "tag": "锁内对象 I/O", "pos": [770, 545], "size": [215, 100]},
+    {"id": "external", "type": "external", "label": "SystemMgmt / Alerts", "sublabel": "消息通知与告警副本", "pos": [1300, 545], "size": [140, 100]}
+  ],
+  "connections": [
+    {"id": "apps_pipeline", "from": "apps", "to": "pipeline", "variant": "emphasis"},
+    {"id": "pipeline_vt", "from": "pipeline", "to": "vt", "variant": "emphasis"},
+    {"id": "entry_access", "from": "entry", "to": "access", "variant": "security"},
+    {"id": "access_query", "from": "access", "to": "query", "variant": "security"},
+    {"id": "vt_query", "from": "vt", "to": "query", "variant": "emphasis"},
+    {"id": "vt_reconcile", "from": "vt", "to": "reconcile", "variant": "default"},
+    {"id": "reconcile_catalog", "from": "reconcile", "to": "catalog", "variant": "emphasis"},
+    {"id": "query_policy", "from": "query", "to": "policy", "variant": "default"},
+    {"id": "policy_facts", "from": "policy", "to": "facts", "variant": "security"},
+    {"id": "facts_snapshot", "from": "facts", "to": "snapshot", "variant": "default"},
+    {"id": "facts_outbox", "from": "facts", "to": "outbox", "variant": "emphasis"},
+    {"id": "outbox_external", "from": "outbox", "to": "external", "variant": "dashed"}
+  ],
+  "cards": [
+    {"dot": "emerald", "title": "可靠性基础已形成", "items": ["TelemetryStore Port 隐藏 VictoriaTraces 协议；窗口、响应大小、唯一 Span 和 endpoint 输出均有界", "PolicyTargetState 的 cursor、策略 updated_at 校验、Event 唯一键、不可变 EventSnapshot 与通知 Outbox 已建立明确裁决点"]},
+    {"dot": "rose", "title": "授权和 fencing 仍有缺口", "items": ["Trace 详情以 any visible span 放行整条 trace，可能返回其他组织服务 span；列表在外部分页后过滤，出现空页和跨团队查询成本", "Outbox 只记录 claimed_at，过期 worker 和新 worker 没有 token fencing；MinIO 上传/删除仍在快照行锁事务内"]},
+    {"dot": "amber", "title": "分钟级任务与请求内扇出", "items": ["endpoint≤100 × version≤100，单策略最多 10,000 目标并顺序查询；重复 Celery delivery 会在锁前重复遥测查询", "目录每分钟最多 10,000 活动逐条事务；Dashboard 每请求最多 40 个 RED 查询并自建 8 线程池，无团队/VT 共享预算"]}
+  ]
+}

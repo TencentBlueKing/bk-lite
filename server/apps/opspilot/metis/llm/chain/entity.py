@@ -65,9 +65,12 @@ class ExtraConfig(BaseModel):
     enable_rag_source: Optional[bool] = None
     enable_rag_strict_mode: Optional[bool] = None
     matched_skill_packages: List[Any] = Field(default_factory=list)
+    enabled_skill_packages: List[Any] = Field(default_factory=list)
     skill_package_capabilities: List[str] = Field(default_factory=list)
     skill_package_reports: Dict[str, Any] = Field(default_factory=dict)
     skill_package_workflows: Dict[str, Any] = Field(default_factory=dict)
+    skill_id: Optional[Any] = None
+    skill_package_params_overlay: Optional[Dict[str, Any]] = None
 
     # 多实例强制选择
     instance_name: Optional[str] = None

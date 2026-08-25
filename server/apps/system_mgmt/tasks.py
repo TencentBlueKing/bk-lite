@@ -47,6 +47,11 @@ def write_error_log_async(self, username, app, module, error_message, domain, st
 
 @shared_task
 def sync_user_and_group_by_login_module(login_module_id):
+    """执行遗留 LoginModule 的 bk_lite 用户/组织同步。
+
+    管理入口已关闭。后续同步必须使用集成中心 Provider 的 ``user_sync``
+    capability；此任务只为存量定时任务兼容保留，不得新增调用方。
+    """
     login_module = LoginModule.objects.filter(id=login_module_id, enabled=True).first()
     if not login_module:
         return {"result": False, "message": "Login module not found or not enabled."}
@@ -64,7 +69,7 @@ def sync_user_and_group_by_login_module(login_module_id):
 
 
 def sync_user_and_groups(user_list, group_list, login_module):
-    """同步用户和组数据到本地数据库"""
+    """遗留 LoginModule 同步实现；迁移目标为集成中心 ``user_sync`` Provider。"""
     try:
         parent_group, _ = Group.objects.get_or_create(
             name=login_module.other_config.get("root_group", login_module.name),

@@ -26,6 +26,11 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
+import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
+import {
+  resolveMonitorObjectQueryId,
+  resolveMonitorObjectTreeKey
+} from '@/app/monitor/utils/monitorObjectQuery';
 
 const GroupPage = () => {
   const { isLoading } = useApiClient();
@@ -51,6 +56,8 @@ const GroupPage = () => {
   const [searchText, setSearchText] = useState<string>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
   const [objectId, setObjectId] = useState<React.Key>('');
+  const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
+  const { syncObjectId, searchParams } = useMonitorObjectQuery();
 
   const columns = useMemo(() => {
     const columnItems: ColumnItem[] = [
@@ -162,6 +169,7 @@ const GroupPage = () => {
     cancelAllRequests();
     setRuleList([]);
     setObjectId(id);
+    syncObjectId(id);
     setPagination((prev) => ({
       ...prev,
       current: 1
@@ -224,6 +232,18 @@ const GroupPage = () => {
       setObjects(data);
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
+      setDefaultSelectObj(
+        resolveMonitorObjectTreeKey(
+          data,
+          resolveMonitorObjectQueryId({
+            searchParams,
+            objects: data,
+            allowAll: true,
+            fallback: 'all'
+          }),
+          'all'
+        )
+      );
     } finally {
       setTreeLoading(false);
     }
@@ -289,7 +309,7 @@ const GroupPage = () => {
           <TreeSelector
             showAllMenu
             data={treeData}
-            defaultSelectedKey={'all'}
+            defaultSelectedKey={defaultSelectObj as string}
             onNodeSelect={handleObjectChange}
             loading={treeLoading}
           />

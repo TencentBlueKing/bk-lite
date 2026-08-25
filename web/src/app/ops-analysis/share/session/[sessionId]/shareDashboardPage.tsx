@@ -7,6 +7,7 @@ import Dashboard from '@/app/ops-analysis/(pages)/view/dashBoard';
 import Topology from '@/app/ops-analysis/(pages)/view/topology';
 import Architecture from '@/app/ops-analysis/(pages)/view/architecture';
 import Screen from '@/app/ops-analysis/(pages)/view/screen';
+import Report from '@/app/ops-analysis/(pages)/view/report';
 import NetworkTopology from '@/app/ops-analysis/(pages)/view/networkTopology';
 import { useCanvasShareApi } from '@/app/ops-analysis/api/dashboardShare';
 import { ShareCanvasDetailProvider } from '@/app/ops-analysis/context/shareCanvasDetail';
@@ -19,7 +20,7 @@ import type { DirItem } from '@/app/ops-analysis/types';
 import type { SharedCanvasDto } from '@/app/ops-analysis/types/dashboardShare';
 import type { NetworkTopologyConfig, NetworkTopologyLink } from '@/app/ops-analysis/types/networkTopology';
 
-const DS_TYPES = new Set(['dashboard', 'topology', 'screen']);
+const DS_TYPES = new Set(['dashboard', 'topology', 'screen', 'report']);
 
 export default function ShareDashboardPage() {
   const params = useParams<{ sessionId: string }>();
@@ -53,8 +54,17 @@ export default function ShareDashboardPage() {
 
   const getDetailOverride = useCallback(async () => canvas, [canvas]);
   const queryDataSource = useCallback(
-    (dataSourceId: number, requestParams?: unknown) =>
-      api.querySharedDataSource(params.sessionId, dataSourceId, requestParams),
+    (
+      dataSourceId: number,
+      requestParams?: unknown,
+      options?: { suppressErrorNotification?: boolean },
+    ) =>
+      api.querySharedDataSource(
+        params.sessionId,
+        dataSourceId,
+        requestParams,
+        options,
+      ),
     [api.querySharedDataSource, params.sessionId],
   );
   const shareAccess = useMemo(
@@ -99,22 +109,6 @@ export default function ShareDashboardPage() {
     return <Spin fullscreen tip={t('dashboard.shareLoading')} />;
   }
 
-  // 第一阶段不渲染 report：页面未完成，避免分享态进入占位页。
-  if (canvas.resource_type === 'report') {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-[var(--color-bg-1)] p-8">
-        <div className="w-full max-w-[400px] text-center">
-          <h2 className="mb-6 text-base font-medium text-[var(--color-text-1)]">
-            {t('dashboard.shareInvalid')}
-          </h2>
-          <Button type="primary" onClick={() => router.push('/')}>
-            {t('common.backToHome')}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   const content = (() => {
     switch (canvas.resource_type) {
       case 'dashboard':
@@ -132,6 +126,14 @@ export default function ShareDashboardPage() {
         return <Architecture selectedArchitecture={selectedItem} shareMode />;
       case 'screen':
         return <Screen selectedScreen={selectedItem} shareMode />;
+      case 'report':
+        return (
+          <Report
+            selectedReport={selectedItem}
+            shareMode
+            getReportDetailOverride={getDetailOverride}
+          />
+        );
       case 'networkTopology':
         return (
           <NetworkTopology

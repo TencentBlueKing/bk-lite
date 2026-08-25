@@ -14,7 +14,15 @@ from apps.monitor.tasks.services.policy_scan.event_alert_manager import (
     EventAlertManager,
 )
 from apps.monitor.tasks.services.policy_scan.snapshot_recorder import SnapshotRecorder
-from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.alert_name_variables import (
+    field_label_map,
+    load_display_variable_map,
+    resolve_resource_ip,
+)
+from apps.monitor.utils.dimension import (
+    normalize_instance_identity,
+    parse_instance_id,
+)
 from apps.core.logger import celery_logger as logger
 
 
@@ -23,8 +31,15 @@ class MonitorPolicyScan:
 
     def __init__(self, policy):
         self.policy = policy
-        self.instances_map = self._build_instances_map()
+        self.instances_map, self.resource_ip_map = self._build_instances_map()
         self.parent_instances_map = self._build_parent_instances_map()
+        self.display_variable_map = load_display_variable_map(
+            self.policy.monitor_object,
+            list(self.instances_map.keys()),
+        )
+        self.display_field_label_map = field_label_map(
+            getattr(self.policy.monitor_object, "display_fields", None)
+        )
         self.baselines_map = self._build_baselines_map()
         self.active_alerts = self._get_active_alerts()
 
@@ -36,6 +51,9 @@ class MonitorPolicyScan:
             self.active_alerts,
             self.metric_query_service,
             parent_instances_map=self.parent_instances_map,
+            resource_ip_map=self.resource_ip_map,
+            display_variable_map=self.display_variable_map,
+            display_field_label_map=self.display_field_label_map,
         )
         self.event_alert_manager = EventAlertManager(policy, self.instances_map, self.active_alerts)
         self.snapshot_recorder = SnapshotRecorder(policy, self.instances_map, self.active_alerts, self.metric_query_service)
@@ -50,7 +68,7 @@ class MonitorPolicyScan:
     def _build_instances_map(self):
         """构建策略适用的实例映射: {monitor_instance_id: monitor_instance_name}"""
         if not self.policy.source:
-            return {}
+            return {}, {}
 
         source_type = self.policy.source["type"]
         source_values = self.policy.source["values"]
@@ -61,8 +79,15 @@ class MonitorPolicyScan:
             monitor_object_id=self.policy.monitor_object_id,
             id__in=instance_list,
             is_deleted=False,
-        )
-        return {instance.id: instance.name for instance in instances}
+        ).only("id", "name", "ip", "summary_facts")
+        instances_map = {}
+        resource_ip_map = {}
+        for instance in instances:
+            instances_map[instance.id] = instance.name
+            resource_ip_map[instance.id] = resolve_resource_ip(
+                instance.summary_facts, instance.ip
+            )
+        return instances_map, resource_ip_map
 
     def _build_parent_instances_map(self):
         """构建子对象所属父实例映射，供告警模板展示父对象身份。"""
@@ -99,10 +124,33 @@ class MonitorPolicyScan:
         )
         return {b.metric_instance_id: b.monitor_instance_id for b in baselines}
 
+    @staticmethod
+    def _expand_instance_source_values(source_values):
+        """兼容逻辑 ID 与存储键，避免单维对象（如 K8s Cluster）扫不到实例。
+
+        页面/过滤器常给出 prod-cluster，库中主键却是 "('prod-cluster',)"。
+        Docker Container 这类多维对象两种写法本来一致，扩键是幂等的。
+        """
+        expanded = []
+        seen = set()
+        for value in source_values or []:
+            candidates = [str(value)]
+            try:
+                candidates.append(
+                    normalize_instance_identity(value)["storage_instance_key"]
+                )
+            except ValueError:
+                pass
+            for key in candidates:
+                if key and key not in seen:
+                    seen.add(key)
+                    expanded.append(key)
+        return expanded
+
     def _get_instance_list_by_source(self, source_type, source_values):
         """根据来源类型获取实例列表"""
         if source_type == "instance":
-            return source_values
+            return self._expand_instance_source_values(source_values)
 
         if source_type == "organization":
             return list(

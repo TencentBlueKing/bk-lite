@@ -1,6 +1,6 @@
+import json
 import os
 import re
-import json
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
@@ -11,17 +11,11 @@ from apps.core.utils.loader import LanguageLoader
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.constants.plugin import PluginConstants
-from apps.monitor.models import (
-    Metric,
-    MonitorObject,
-    CollectConfig,
-    MonitorPlugin,
-    MonitorInstanceOrganization,
-    MonitorInstance,
-)
+from apps.monitor.models import CollectConfig, Metric, MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorPlugin
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+from apps.rpc.node_mgmt import NodeMgmt
 
 # 实例列表页插件状态查询的最大并发度：每个插件的 status_query 是一次独立 VM 读，
 # 去重后并发拉取以消除「插件越多越慢」的串行 N+1。保守默认 8，可经 env 调。
@@ -29,6 +23,13 @@ PLUGIN_STATUS_QUERY_MAX_WORKERS = int(os.getenv("MONITOR_PLUGIN_STATUS_QUERY_MAX
 
 # vm_params 中非 Enum 指标名的保留键（不参与通用 Enum 过滤）。
 _VM_PARAM_RESERVED_KEYS = frozenset({"instance_id", "node", "status", "asset.ip"})
+
+# 字段展示列（云平台子对象 IP 等）的筛选参数前缀。与主机 asset.ip 的筛选参数彼此独立，
+# 取值来自指标 label 而非 summary_facts。
+FIELD_PARAM_PREFIX = "field:"
+
+# 字段展示列候选项上限：label 取值是开放集合，配合下拉内检索使用，避免下发超大列表。
+FIELD_OPTION_LIMIT = int(os.getenv("MONITOR_FIELD_OPTION_LIMIT", "500"))
 
 
 class InstanceSearch:
@@ -127,6 +128,26 @@ class InstanceSearch:
 
     @staticmethod
     def get_query_params_enum(monitor_obj_name, monitor_object_id=None):
+        """获取查询参数枚举。
+
+        在对象各自的枚举之上，合并字段展示列（云平台子对象 IP 等）的候选取值。
+        """
+        data = InstanceSearch._get_query_params_enum(monitor_obj_name, monitor_object_id)
+        field_options = InstanceSearch.collect_display_field_options(monitor_object_id)
+        if not field_options:
+            return data
+        # ESXI/VM 等父实例枚举是 list；不能 dict(list) 丢掉，否则前端 colony 筛选为空。
+        if isinstance(data, dict):
+            merged = dict(data)
+        elif isinstance(data, list):
+            merged = {"items": data}
+        else:
+            merged = {}
+        merged["field_options"] = field_options
+        return merged
+
+    @staticmethod
+    def _get_query_params_enum(monitor_obj_name, monitor_object_id=None):
         """获取查询参数枚举"""
         if monitor_obj_name == "Host":
             return {"asset_ips": InstanceSearch.collect_asset_ip_options("Host")}
@@ -154,7 +175,7 @@ class InstanceSearch:
             instance_id_strs = [str(iid) for iid in instance_ids]
             node_id_strs = [str(nid) for nid in node_ids]
 
-            # 从数据库查询 Cluster 和 Node 实例名称
+            # 从数据库查询 Cluster / Node 实例名称
             instance_name_map = {}
             node_name_map = {}
 
@@ -164,7 +185,6 @@ class InstanceSearch:
                 instance_name_map = {inst["id"]: inst["name"] for inst in cluster_instances}
 
             if node_id_strs:
-                # 查询 Node 实例名称
                 node_instances = MonitorInstance.objects.filter(id__in=node_id_strs).values("id", "name")
                 node_name_map = {inst["id"]: inst["name"] for inst in node_instances}
 
@@ -177,13 +197,19 @@ class InstanceSearch:
                 for iid in instance_ids
             ]
 
-            node_list = [
-                {
-                    "id": nid[-1],  # 原始 node 维度值（如 "worker-node-1"）
-                    "name": node_name_map.get(str(nid), nid[-1]),  # Node 名称
-                }
-                for nid in node_ids
-            ]
+            # 节点过滤：保留手动改名；仅当库内名等于自动发现拼接名（uuid__hostname）
+            # 时改展示 kube 节点名，避免 240px 下拉被截成一串 id。
+            seen_nodes = set()
+            node_list = []
+            for nid in node_ids:
+                node = nid[-1]
+                if node in seen_nodes:
+                    continue
+                seen_nodes.add(node)
+                db_name = node_name_map.get(str(nid))
+                auto_joined = "__".join(str(part) for part in nid)
+                display_name = node if (not db_name or db_name == auto_joined) else db_name
+                node_list.append({"id": node, "name": display_name})
             return {"cluster": instance_list, "node": node_list}
         elif monitor_obj_name == "Node":
             query = "count(prometheus_remote_write_kube_node_info) by (instance_id)"
@@ -260,7 +286,7 @@ class InstanceSearch:
         items = []
         instance_id_keys = self.obj_metric_map.get("instance_id_keys")
         for metric in vm_metrics:
-            instance_id = str(tuple([metric["metric"].get(i) for i in instance_id_keys]))
+            instance_id = str(tuple(metric["metric"].get(i) for i in instance_id_keys))
             if instance_id not in objs_map:
                 continue
             obj = objs_map[instance_id]
@@ -279,9 +305,7 @@ class InstanceSearch:
 
         vm_params = self.query_data.get("vm_params") or {}
         if isinstance(vm_params, dict):
-            items = InstanceSearch.apply_status_filter_to_items(
-                items, vm_params.get("status")
-            )
+            items = InstanceSearch.apply_status_filter_to_items(items, vm_params.get("status"))
 
         # 数据合并，取objs和vm_metrics的交集
         page = self.query_data.get("page", 1)
@@ -314,15 +338,18 @@ class InstanceSearch:
             monitor_instance_id__in=[i["instance_id"] for i in data["results"]],
         )
         confs_map = {}
+        config_ids_by_instance_plugin = {}
         for conf in confs:
             if conf.monitor_instance_id not in confs_map:
                 confs_map[conf.monitor_instance_id] = set()
-            plugin_key = (
-                conf.monitor_plugin_id
-                if conf.monitor_plugin_id
-                else (self.monitor_obj.id, conf.collector, conf.collect_type)
-            )
+            plugin_key = conf.monitor_plugin_id if conf.monitor_plugin_id else (self.monitor_obj.id, conf.collector, conf.collect_type)
             confs_map[conf.monitor_instance_id].add(plugin_key)
+            if conf.is_child:
+                config_ids_by_instance_plugin.setdefault((conf.monitor_instance_id, plugin_key), set()).add(conf.id)
+
+        nodes_by_config_id = self._batch_collection_nodes_by_config_ids(
+            {config_id for config_ids in config_ids_by_instance_plugin.values() for config_id in config_ids}
+        )
 
         plugin_map, plugin_status_map = {}, {}
         plugins = list(MonitorPlugin.objects.filter(monitor_object=self.monitor_obj))
@@ -439,6 +466,13 @@ class InstanceSearch:
                         collect_mode=collect_mode,
                         configured=configured,
                         config_source=config_source,
+                        collector_nodes=self._collection_nodes_for_plugin(
+                            item["instance_id"],
+                            c_tuple,
+                            collect_mode,
+                            config_ids_by_instance_plugin,
+                            nodes_by_config_id,
+                        ),
                     )
                     item["plugins"].append(info)
 
@@ -448,6 +482,55 @@ class InstanceSearch:
             item["plugins"] = self._dedupe_instance_plugins(item["plugins"])
 
         return data
+
+    def _batch_collection_nodes_by_config_ids(self, config_ids):
+        """一次 RPC 获取当前页所有子配置的授权采集节点。"""
+        normalized_ids = sorted({str(config_id) for config_id in config_ids if config_id not in (None, "")})
+        if not normalized_ids or not self.visible_organization_ids:
+            return {}
+        try:
+            rows = NodeMgmt().get_child_config_nodes_by_ids(
+                normalized_ids,
+                sorted(self.visible_organization_ids),
+            )
+        except Exception:
+            logger.exception("批量查询采集配置关联节点失败，实例列表将按未关联展示")
+            return {}
+
+        nodes_by_config_id = {}
+        for row in rows or []:
+            if not isinstance(row, dict) or row.get("id") in (None, ""):
+                continue
+            normalized_nodes = {}
+            for node in row.get("nodes") or []:
+                if not isinstance(node, dict) or node.get("id") in (None, ""):
+                    continue
+                node_id = str(node["id"])
+                normalized_nodes[node_id] = {
+                    "id": node_id,
+                    "name": str(node.get("name") or node_id),
+                }
+            nodes_by_config_id[str(row["id"])] = list(normalized_nodes.values())
+        return nodes_by_config_id
+
+    @staticmethod
+    def _collection_nodes_for_plugin(
+        instance_id,
+        plugin_key,
+        collect_mode,
+        config_ids_by_instance_plugin,
+        nodes_by_config_id,
+    ):
+        if collect_mode != PluginConstants.COLLECT_MODE_AUTO:
+            return []
+        nodes_by_id = {}
+        for config_id in config_ids_by_instance_plugin.get((instance_id, plugin_key), set()):
+            for node in nodes_by_config_id.get(str(config_id), []):
+                nodes_by_id[node["id"]] = node
+        return sorted(
+            nodes_by_id.values(),
+            key=lambda node: (node["name"].casefold(), node["name"], node["id"]),
+        )
 
     @staticmethod
     def _dedupe_instance_plugins(plugins):
@@ -485,26 +568,109 @@ class InstanceSearch:
         )
 
     @staticmethod
-    def apply_process_instance_filters(
-        qs, monitor_obj_name, vm_params, monitor_object_id=None
-    ):
-        """按 vm_params 过滤实例：Process 主机多选 + asset.ip 多选 + Enum 指标多选。"""
+    def apply_process_instance_filters(qs, monitor_obj_name, vm_params, monitor_object_id=None):
+        """按 vm_params 过滤实例：Process 主机多选 + asset.ip 多选 + 字段展示列多选 + Enum 指标多选。"""
         qs = InstanceSearch.apply_process_host_filters(qs, monitor_obj_name, vm_params)
         qs = InstanceSearch.apply_asset_ip_filters(qs, vm_params)
         object_id = monitor_object_id
         if object_id is None and monitor_obj_name:
-            object_id = (
-                MonitorObject.objects.filter(name=monitor_obj_name)
-                .values_list("id", flat=True)
-                .first()
-            )
+            object_id = MonitorObject.objects.filter(name=monitor_obj_name).values_list("id", flat=True).first()
+        qs = InstanceSearch.apply_display_field_filters(qs, object_id, vm_params)
         return InstanceSearch.apply_enum_metric_filters(qs, object_id, vm_params)
 
     @staticmethod
-    def apply_instance_vm_param_filters(qs, monitor_object_id, monitor_obj_name, vm_params):
-        return InstanceSearch.apply_process_instance_filters(
-            qs, monitor_obj_name, vm_params, monitor_object_id=monitor_object_id
+    def display_field_param_key(field):
+        """字段展示列的筛选参数键，与 asset.ip 等既有键隔离。"""
+        return f"{FIELD_PARAM_PREFIX}{field}"
+
+    @staticmethod
+    def role_display_field_bindings(monitor_object_id):
+        """取该对象带 role 的字段展示列绑定（当前为云平台子对象 IP）。
+
+        只认 role 列：普通字段展示列由用户自由配置，不承诺筛选能力。
+        """
+        if not monitor_object_id:
+            return []
+        display_fields = (
+            MonitorObject.objects.filter(id=monitor_object_id).values_list("display_fields", flat=True).first() or []
         )
+        bindings = []
+        seen = set()
+        for col in display_fields:
+            if not isinstance(col, dict) or (col.get("type") or "metric") != "field" or not col.get("role"):
+                continue
+            for binding in col.get("metrics") or []:
+                if not isinstance(binding, dict):
+                    continue
+                field = (binding.get("field") or "").strip()
+                metric = (binding.get("metric") or "").strip()
+                if not field or not metric:
+                    continue
+                plugin = (binding.get("plugin") or "").strip()
+                dedup_key = (plugin, metric, field)
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+                bindings.append({"plugin": plugin, "metric": metric, "field": field})
+                break
+        return bindings
+
+    @staticmethod
+    def _resolve_field_metric(monitor_object_id, binding):
+        qs = Metric.objects.filter(monitor_object_id=monitor_object_id, name=binding["metric"])
+        if binding["plugin"]:
+            qs = qs.filter(monitor_plugin__name=binding["plugin"])
+        return qs.first()
+
+    @staticmethod
+    def apply_display_field_filters(qs, monitor_object_id, vm_params):
+        """按字段展示列 label 取值过滤实例：同列多值 OR，多列 AND。"""
+        if not monitor_object_id or not isinstance(vm_params, dict):
+            return qs
+        if not any(str(key).startswith(FIELD_PARAM_PREFIX) for key in vm_params):
+            return qs
+
+        for binding in InstanceSearch.role_display_field_bindings(monitor_object_id):
+            raw = vm_params.get(InstanceSearch.display_field_param_key(binding["field"]))
+            if raw is None or raw == "" or raw == []:
+                continue
+            metric_obj = InstanceSearch._resolve_field_metric(monitor_object_id, binding)
+            if not metric_obj:
+                continue
+            value_map = MonitorObjectService.query_field_label_values(metric_obj, binding["field"])
+            # 候选取值本身可能含逗号（多网卡 IP），不能先按逗号拆再匹配。
+            selected = InstanceSearch.normalize_field_filter_values(raw, value_map.values())
+            if not selected:
+                continue
+            matched_ids = [instance_id for instance_id, value in value_map.items() if str(value) in selected]
+            qs = qs.filter(id__in=matched_ids)
+        return qs
+
+    @staticmethod
+    def collect_display_field_options(monitor_object_id):
+        """收集字段展示列的候选取值，供列头筛选下拉使用。"""
+        options = {}
+        for binding in InstanceSearch.role_display_field_bindings(monitor_object_id):
+            metric_obj = InstanceSearch._resolve_field_metric(monitor_object_id, binding)
+            if not metric_obj:
+                continue
+            try:
+                value_map = MonitorObjectService.query_field_label_values(metric_obj, binding["field"])
+            except Exception:
+                logger.warning(
+                    "收集字段展示列候选值失败: monitor_object_id=%s field=%s",
+                    monitor_object_id,
+                    binding["field"],
+                    exc_info=True,
+                )
+                continue
+            values = sorted({str(value).strip() for value in value_map.values() if str(value).strip()})
+            options[InstanceSearch.display_field_param_key(binding["field"])] = values[:FIELD_OPTION_LIMIT]
+        return options
+
+    @staticmethod
+    def apply_instance_vm_param_filters(qs, monitor_object_id, monitor_obj_name, vm_params):
+        return InstanceSearch.apply_process_instance_filters(qs, monitor_obj_name, vm_params, monitor_object_id=monitor_object_id)
 
     @staticmethod
     def apply_process_host_filters(qs, monitor_obj_name, vm_params):
@@ -553,6 +719,38 @@ class InstanceSearch:
         else:
             parts = [part.strip() for part in str(raw).split(",")]
         return {part for part in parts if part}
+
+    @staticmethod
+    def normalize_field_filter_values(raw, known_values):
+        """解析字段展示列筛选值；已知候选取值优先整串匹配，避免多 IP 被逗号拆开。"""
+        if raw is None:
+            return set()
+        if isinstance(raw, (list, tuple, set)):
+            return {str(item).strip() for item in raw if str(item).strip()}
+
+        text = str(raw).strip()
+        if not text:
+            return set()
+
+        known = sorted(
+            {str(value).strip() for value in known_values if str(value).strip()},
+            key=len,
+            reverse=True,
+        )
+        if text in known:
+            return {text}
+
+        selected = set()
+        remaining = text
+        while remaining:
+            matched = next((value for value in known if remaining == value or remaining.startswith(value + ",")), None)
+            if not matched:
+                # 多 IP label 本身含逗号，禁止按逗号拆；整串作为单一筛选值。
+                selected.add(remaining)
+                break
+            selected.add(matched)
+            remaining = remaining[len(matched) :].lstrip(",")
+        return selected
 
     @staticmethod
     def parse_enum_unit_option_ids(unit):
@@ -613,9 +811,7 @@ class InstanceSearch:
             return None
         if len(values) == 1:
             return f'{key}="{InstanceSearch._escape_promql_label_value(values[0])}"'
-        joined = "|".join(
-            InstanceSearch._escape_promql_label_value(re.escape(v)) for v in values
-        )
+        joined = "|".join(InstanceSearch._escape_promql_label_value(re.escape(v)) for v in values)
         return f'{key}=~"{joined}"'
 
     @staticmethod
@@ -624,25 +820,19 @@ class InstanceSearch:
         if not monitor_object_id or not isinstance(vm_params, dict):
             return qs
 
-        metrics = (
-            Metric.objects.filter(
-                monitor_object_id=monitor_object_id, data_type="Enum"
-            )
-            .exclude(query="")
-            .order_by("id")
-        )
+        metrics = Metric.objects.filter(monitor_object_id=monitor_object_id, data_type="Enum").exclude(query="").order_by("id")
         seen_names = set()
         unique_metrics = []
         for metric in metrics:
             if metric.name in seen_names or metric.name in _VM_PARAM_RESERVED_KEYS:
                 continue
+            if str(metric.name).startswith(FIELD_PARAM_PREFIX):
+                continue
             seen_names.add(metric.name)
             unique_metrics.append(metric)
 
         label_parts = []
-        instance_clause = InstanceSearch._promql_label_clause(
-            "instance_id", vm_params.get("instance_id")
-        )
+        instance_clause = InstanceSearch._promql_label_clause("instance_id", vm_params.get("instance_id"))
         if instance_clause:
             label_parts.append(instance_clause)
         node_clause = InstanceSearch._promql_label_clause("node", vm_params.get("node"))
@@ -798,9 +988,7 @@ class InstanceSearch:
         max_workers = min(len(unique_queries), PLUGIN_STATUS_QUERY_MAX_WORKERS)
         status_map_by_query = {}
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_query = {
-                executor.submit(self.get_plugin_normal_status_map, instance_id_keys, query): query for query in unique_queries
-            }
+            future_to_query = {executor.submit(self.get_plugin_normal_status_map, instance_id_keys, query): query for query in unique_queries}
             for future in as_completed(future_to_query):
                 query = future_to_query[future]
                 try:
@@ -817,7 +1005,7 @@ class InstanceSearch:
         metrics = resp.get("data", {}).get("result", [])
         status_map = {}
         for metric in metrics:
-            instance_id = str(tuple([metric["metric"].get(i) for i in instance_id_keys]))
+            instance_id = str(tuple(metric["metric"].get(i) for i in instance_id_keys))
             iso_time = datetime.fromtimestamp(metric["value"][0], tz=timezone.utc).isoformat()
             status_map[instance_id] = iso_time
         return status_map
@@ -877,7 +1065,7 @@ class InstanceSearch:
             metrics = VictoriaMetricsAPI().query(query, step="10m")
             _metric_map = {}
             for metric in metrics.get("data", {}).get("result", []):
-                instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
+                instance_id = str(tuple(metric["metric"].get(i) for i in metric_obj.instance_id_keys))
                 value = metric["value"][1]
                 if instance_id not in _metric_map:
                     _metric_map[instance_id] = value

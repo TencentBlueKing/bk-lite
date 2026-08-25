@@ -17,12 +17,12 @@ from apps.job_mgmt.serializers.execution import (
     JobExecutionListSerializer,
     QuickExecuteSerializer,
 )
-from apps.job_mgmt.services.execution_service import ExecutionAuthorizationError, ExecutionDispatchError, ExecutionService
 from apps.job_mgmt.services.execution_cancellation_service import (
     ExecutionCancellationAuthorizationError,
     ExecutionCancellationError,
     request_execution_cancel,
 )
+from apps.job_mgmt.services.execution_service import ExecutionAuthorizationError, ExecutionDispatchError, ExecutionService
 from apps.job_mgmt.services.execution_stream_service import (
     JOB_LOG_MAX_AGE_SECONDS,
     JOB_LOG_MAX_BYTES,
@@ -33,6 +33,7 @@ from apps.job_mgmt.services.execution_stream_service import (
 )
 from apps.job_mgmt.utils.team_authz import normalize_authorized_team_ids
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from config.drf.renderers import CustomRenderer, EventStreamRenderer
 from nats_client.clients import ensure_stream_sync
 
 
@@ -124,7 +125,7 @@ class JobExecutionViewSet(AuthViewSet):
         log_operation(request, "execute", "job", f"快速执行作业: {playbook_name}")
 
         return Response(
-            JobExecutionDetailSerializer(execution).data,
+            JobExecutionDetailSerializer(execution, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -170,7 +171,7 @@ class JobExecutionViewSet(AuthViewSet):
         log_operation(request, "execute", "job", "文件分发")
 
         return Response(
-            JobExecutionDetailSerializer(execution).data,
+            JobExecutionDetailSerializer(execution, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )
 
@@ -183,7 +184,11 @@ class JobExecutionViewSet(AuthViewSet):
         execution = self.get_object()
         return Response(execution.execution_results or [])
 
-    @action(detail=True, methods=["get"])
+    @action(
+        detail=True,
+        methods=["get"],
+        renderer_classes=[CustomRenderer, EventStreamRenderer],
+    )
     @HasPermission("job_record-View")
     def stream(self, request, pk=None):
         """SSE 实时流式输出：非终态走 JetStream 实时回放+tail，终态走结果快照。"""
@@ -262,6 +267,6 @@ class JobExecutionViewSet(AuthViewSet):
             return Response({"error": e.message}, status=e.status_code)
 
         return Response(
-            JobExecutionDetailSerializer(execution).data,
+            JobExecutionDetailSerializer(execution, context={"request": request}).data,
             status=status.HTTP_201_CREATED,
         )

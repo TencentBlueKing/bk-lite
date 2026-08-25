@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import type { RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Button, Empty, Spin } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -28,6 +29,7 @@ import {
   buildDashboardGridStackLayout,
   buildDashboardGridStackStructureKey,
   deserializeDashboardGridStackLayout,
+  flattenDashboardGridStackLayout,
   type DashboardGridStackStoredWidget,
 } from '@/app/ops-analysis/utils/dashboardGridStack';
 import {
@@ -35,10 +37,23 @@ import {
   getOrCreateDashboardWidgetHost,
   prepareDashboardWidgetHosts,
 } from '@/app/ops-analysis/utils/dashboardWidgetHosts';
+import {
+  isDashboardWidgetItem,
+  sortDashboardLayoutItems,
+} from '@/app/ops-analysis/utils/dashboardGroups';
+import {
+  activateAllRuntimeWidgets,
+  resolveRuntimeActivation,
+  shouldCommitRuntimeStates,
+  type RuntimeActivationState,
+} from '@/app/ops-analysis/utils/dashboardRuntimeActivation';
 
 import GroupHeader from './groupHeader';
-import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
+import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { WidgetHeaderRuntimeSlotProvider } from '@/app/ops-analysis/components/widgetHeaderRuntimeSlot';
+import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
+import { DashboardRuntimeSchedulerProvider } from '@/app/ops-analysis/context/dashboardRuntimeScheduler';
+import type { RuntimeRequestPriority } from '@/app/ops-analysis/utils/dashboardRuntimeScheduler';
 
 import 'gridstack/dist/gridstack.min.css';
 import type { DashboardWidgetRenderResult } from '@/app/ops-analysis/renderContract';
@@ -47,9 +62,22 @@ const DASHBOARD_GRID_COLS = 12;
 const DASHBOARD_GRID_ROW_HEIGHT = 60;
 const DASHBOARD_GRID_MARGIN: [number, number] = [4, 4];
 const DASHBOARD_GRID_CONTAINER_PADDING: [number, number] = [6, 2];
+const DASHBOARD_WIDGET_RESIZE_HANDLES = 'se,sw,ne,nw';
 
 const acceptOnlyWidgetNodes = (element: Element) =>
   element instanceof HTMLElement && element.dataset.nodeKind === 'widget';
+
+const getDashboardGridInteractionOptions = (editable: boolean) => ({
+  acceptWidgets: editable ? acceptOnlyWidgetNodes : false,
+  disableDrag: !editable,
+  disableResize: !editable,
+  draggable: {
+    cancel: '.no-drag, .widget-body',
+  },
+  resizable: {
+    handles: DASHBOARD_WIDGET_RESIZE_HANDLES,
+  },
+});
 
 interface DashboardCanvasProps {
   loading: boolean;
@@ -65,6 +93,7 @@ interface DashboardCanvasProps {
   filterSearchVersion: number;
   namespaceSearchVersion: number;
   dashboardReloadVersion: number;
+  refreshCause?: CanvasRuntimeRefreshCause;
   widgetReloadVersions: Record<string, number>;
   dataSourceResolver: (
     dataSource?: string | number,
@@ -88,6 +117,7 @@ interface DashboardCanvasProps {
     >,
   ) => void;
   renderMode?: boolean;
+  scrollRootRef: RefObject<HTMLDivElement | null>;
   onWidgetRenderStatus?: (result: DashboardWidgetRenderResult) => void;
 }
 
@@ -102,6 +132,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   filterSearchVersion,
   namespaceSearchVersion,
   dashboardReloadVersion,
+  refreshCause = 'manual',
   widgetReloadVersions,
   dataSourceResolver,
   appliedFilterValues,
@@ -118,6 +149,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   onDeleteWidget,
   onTopologyLayoutChange,
   renderMode = false,
+  scrollRootRef,
   onWidgetRenderStatus,
 }) => {
   const { t } = useTranslation();
@@ -154,7 +186,62 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   const handleWidgetMutationStopRef = useRef<
     (element: HTMLElement | null) => void
       >(() => undefined);
-  const [, setPortalVersion] = useState(0);
+  const [portalVersion, setPortalVersion] = useState(0);
+  const [runtimeStates, setRuntimeStates] = useState<Record<string, RuntimeActivationState>>({});
+
+  useEffect(() => {
+    if (renderMode) {
+      const widgetIds = gridStackLayout.topLevelNodes
+        .filter((node) => node.kind === 'widget')
+        .map((node) => node.id)
+        .concat(gridStackLayout.groupNodes.flatMap((node) => node.children.map((child) => child.id)));
+      setRuntimeStates(activateAllRuntimeWidgets(widgetIds));
+      return undefined;
+    }
+
+    const root = scrollRootRef.current;
+    if (!root) return undefined;
+    let frame: number | null = null;
+    const update = () => {
+      frame = null;
+      const rootRect = root.getBoundingClientRect();
+      const margin = root.clientHeight;
+      const widgetOrder = new Map(
+        sortDashboardLayoutItems(flattenDashboardGridStackLayout(gridStackLayout))
+          .filter(isDashboardWidgetItem)
+          .map((item, index) => [item.i, index]),
+      );
+      const next: Record<string, { active: boolean; priority: RuntimeRequestPriority }> = {};
+      widgetHostRegistryRef.current.hosts.forEach((host, id) => {
+        const shell = host.closest<HTMLElement>('[data-node-kind="widget"]');
+        if (!shell) return;
+        const rect = shell.getBoundingClientRect();
+        next[id] = resolveRuntimeActivation({
+          root: rootRect,
+          widget: rect,
+          activationMargin: margin,
+          order: widgetOrder.get(id) ?? Number.MAX_SAFE_INTEGER,
+        });
+      });
+      setRuntimeStates((previous) =>
+        shouldCommitRuntimeStates(previous, next) ? next : previous,
+      );
+    };
+    const scheduleUpdate = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(update);
+    };
+    scheduleUpdate();
+    root.addEventListener('scroll', scheduleUpdate, { passive: true });
+    const resizeObserver = new ResizeObserver(scheduleUpdate);
+    resizeObserver.observe(root);
+    if (gridRootRef.current) resizeObserver.observe(gridRootRef.current);
+    return () => {
+      root.removeEventListener('scroll', scheduleUpdate);
+      resizeObserver.disconnect();
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, [layout, portalVersion, renderMode, scrollRootRef, gridStackLayout]);
 
   useEffect(() => {
     layoutRef.current = layout;
@@ -551,11 +638,14 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
                   filterSearchVersion={filterSearchVersion}
                   namespaceSearchVersion={namespaceSearchVersion}
                   reloadVersion={`${dashboardReloadVersion}:${widgetReloadVersions[item.i] || 0}`}
+                  refreshCause={refreshCause}
                   dataSource={dataSourceResolver(item.valueConfig?.dataSource)}
                   unifiedFilterValues={appliedFilterValues}
                   filterDefinitions={appliedFilterDefinitions}
                   builtinNamespaceId={appliedNamespaceId}
                   onRenderStatus={onWidgetRenderStatus}
+                  runtimeActive={runtimeStates[item.i]?.active ?? renderMode}
+                  runtimePriority={runtimeStates[item.i]?.priority}
                   layoutEditable={isEditMode}
                   onTopologyLayoutChange={
                     isEditMode && onTopologyLayoutChange
@@ -576,6 +666,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       chartTheme.panelBg,
       chartTheme.panelBorderColor,
       dashboardReloadVersion,
+      refreshCause,
       dataSourceResolver,
       filterSearchVersion,
       isEditMode,
@@ -586,6 +677,8 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       t,
       widgetReloadVersions,
       onWidgetRenderStatus,
+      renderMode,
+      runtimeStates,
     ],
   );
 
@@ -652,12 +745,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           margin: DASHBOARD_GRID_MARGIN[0],
           float: false,
           animate: false,
-          acceptWidgets: isEditMode ? acceptOnlyWidgetNodes : false,
-          disableDrag: !isEditMode,
-          disableResize: !isEditMode,
-          draggable: {
-            cancel: '.no-drag, .widget-body',
-          },
+          ...getDashboardGridInteractionOptions(isEditMode),
         },
         gridRootRef.current,
       );
@@ -727,12 +815,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
             margin: DASHBOARD_GRID_MARGIN[0],
             float: false,
             animate: false,
-            acceptWidgets: isEditMode ? acceptOnlyWidgetNodes : false,
-            disableDrag: !isEditMode,
-            disableResize: !isEditMode,
-            draggable: {
-              cancel: '.no-drag, .widget-body',
-            },
+            ...getDashboardGridInteractionOptions(isEditMode),
           },
           subGridRoot,
         );
@@ -812,20 +895,12 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       return;
     }
 
-    rootGrid.updateOptions({
-      acceptWidgets: isEditMode ? acceptOnlyWidgetNodes : false,
-      disableDrag: !isEditMode,
-      disableResize: !isEditMode,
-    });
+    rootGrid.updateOptions(getDashboardGridInteractionOptions(isEditMode));
     rootGrid.enableMove(isEditMode);
     rootGrid.enableResize(isEditMode);
 
     subGridRefs.current.forEach((subGrid) => {
-      subGrid.updateOptions({
-        acceptWidgets: isEditMode ? acceptOnlyWidgetNodes : false,
-        disableDrag: !isEditMode,
-        disableResize: !isEditMode,
-      });
+      subGrid.updateOptions(getDashboardGridInteractionOptions(isEditMode));
       subGrid.enableMove(isEditMode);
       subGrid.enableResize(isEditMode);
     });
@@ -969,12 +1044,13 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   });
 
   return (
-    <div
-      className="relative w-full"
-      style={{
-        padding: `${DASHBOARD_GRID_CONTAINER_PADDING[1]}px ${DASHBOARD_GRID_CONTAINER_PADDING[0]}px`,
-      }}
-    >
+    <DashboardRuntimeSchedulerProvider>
+      <div
+        className="relative w-full"
+        style={{
+          padding: `${DASHBOARD_GRID_CONTAINER_PADDING[1]}px ${DASHBOARD_GRID_CONTAINER_PADDING[0]}px`,
+        }}
+      >
       <style jsx global>{`
         .grid-stack > .grid-stack-item > .grid-stack-item-content,
         .grid-stack > .grid-stack-placeholder > .placeholder-content {
@@ -989,13 +1065,31 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           box-sizing: border-box;
           background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiMwMDAwMDAiLz48L2c+PC9zdmc+');
           background-position: bottom right;
-          transform: rotate(0);
-          padding: 0 3px 3px 0;
+          padding: 3px;
         }
 
         .grid-stack-item > .ui-resizable-se {
           right: calc(var(--gs-item-margin-right) + 2px);
           bottom: calc(var(--gs-item-margin-bottom));
+          transform: rotate(0deg);
+        }
+
+        .grid-stack-item > .ui-resizable-sw {
+          left: calc(var(--gs-item-margin-left) + 2px);
+          bottom: calc(var(--gs-item-margin-bottom));
+          transform: rotate(90deg);
+        }
+
+        .grid-stack-item > .ui-resizable-nw {
+          left: calc(var(--gs-item-margin-left) + 2px);
+          top: calc(var(--gs-item-margin-top));
+          transform: rotate(180deg);
+        }
+
+        .grid-stack-item > .ui-resizable-ne {
+          right: calc(var(--gs-item-margin-right) + 2px);
+          top: calc(var(--gs-item-margin-top));
+          transform: rotate(270deg);
         }
 
         .grid-stack-item[data-node-kind='group'] > .ui-resizable-handle {
@@ -1008,19 +1102,17 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         }
 
         .grid-stack-item > .ui-resizable-n,
-        .grid-stack-item > .ui-resizable-ne,
         .grid-stack-item > .ui-resizable-e,
         .grid-stack-item > .ui-resizable-s,
-        .grid-stack-item > .ui-resizable-sw,
-        .grid-stack-item > .ui-resizable-w,
-        .grid-stack-item > .ui-resizable-nw {
+        .grid-stack-item > .ui-resizable-w {
           display: none !important;
         }
       `}</style>
       <div ref={gridRootRef} className="grid-stack relative z-10 w-full" />
       {groupHeaderPortals as unknown as React.ReactNode}
       {widgetPortals as unknown as React.ReactNode}
-    </div>
+      </div>
+    </DashboardRuntimeSchedulerProvider>
   );
 };
 

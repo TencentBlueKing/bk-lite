@@ -1,6 +1,9 @@
 from apps.apm.serializers.control_plane import (
+    ApmAlertQuerySerializer,
     ApmApplicationSerializer,
     ApmDashboardQuerySerializer,
+    ApmDeploymentEventSerializer,
+    ApmDeploymentQuerySerializer,
     ApmEventQuerySerializer,
     ApmPolicySerializer,
     ApmServiceInstanceSerializer,
@@ -9,6 +12,8 @@ from apps.apm.serializers.control_plane import (
     ApplicationMutationSerializer,
     CatalogListQuerySerializer,
     IngestSnippetSerializer,
+    InstanceCatalogListQuerySerializer,
+    IssueSearchSerializer,
     NotificationDeliveryQuerySerializer,
     NotificationDeliveryRetrySerializer,
     NotificationRecipientQuerySerializer,
@@ -20,7 +25,10 @@ from apps.apm.serializers.control_plane import (
 
 __all__ = [
     "ApmApplicationSerializer",
+    "ApmAlertQuerySerializer",
     "ApmDashboardQuerySerializer",
+    "ApmDeploymentEventSerializer",
+    "ApmDeploymentQuerySerializer",
     "ApmEventQuerySerializer",
     "ApmPolicySerializer",
     "ApmServiceInstanceSerializer",
@@ -29,6 +37,8 @@ __all__ = [
     "ApplicationMutationSerializer",
     "CatalogListQuerySerializer",
     "IngestSnippetSerializer",
+    "InstanceCatalogListQuerySerializer",
+    "IssueSearchSerializer",
     "OrganizationAssignmentSerializer",
     "NotificationDeliveryQuerySerializer",
     "NotificationDeliveryRetrySerializer",

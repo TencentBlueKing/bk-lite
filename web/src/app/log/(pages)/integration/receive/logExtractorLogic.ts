@@ -1,3 +1,17 @@
+import type { ExtractorType } from '@/app/log/types/extractor';
+
+const EXTRACTOR_TYPE_LABEL_KEYS: Record<ExtractorType, string> = {
+  copy: 'log.extractor.typeCopy',
+  split: 'log.extractor.typeSplit',
+  kv: 'log.extractor.typeKv',
+  regex: 'log.extractor.typeRegex',
+  regex_replace: 'log.extractor.typeRegexReplace',
+  json: 'log.extractor.typeJson'
+};
+
+export const extractorTypeLabelKey = (type: ExtractorType): string =>
+  EXTRACTOR_TYPE_LABEL_KEYS[type];
+
 export const flattenExtractorPaths = (
   value: unknown,
   prefix = '',

@@ -6,11 +6,10 @@
 import datetime
 
 import pytest
-from django.utils import timezone
-
 from apps.alerts.utils import util
 from apps.alerts.utils.rule_matcher import RuleMatcher, filter_by_rules
 from apps.alerts.utils.time_range_checker import TimeRangeChecker, check_time_range
+from django.utils import timezone
 
 # --------------------------------------------------------------------------
 # util.py 纯函数

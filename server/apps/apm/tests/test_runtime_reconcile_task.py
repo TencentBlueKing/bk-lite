@@ -33,6 +33,7 @@ def test_catalog_reconcile_is_a_runtime_beat_task_and_not_batch_init():
         batch_init = file.read()
         assert "reconcile_telemetry_catalog" not in batch_init
         assert "probe_apm_runtime_dependencies" not in batch_init
+        assert "apm_backfill_deployment_events" not in batch_init
     assert CELERY_BEAT_SCHEDULE["apm_probe_runtime_dependencies"]["task"] == ("apps.apm.tasks.probe_apm_runtime_dependencies")
 
 
@@ -42,7 +43,7 @@ def test_runtime_task_returns_reconcile_health_without_startup_side_effects(mock
     set_health = mocker.patch("apps.apm.tasks.cache.set")
     reconcile = mocker.patch(
         "apps.apm.tasks.TelemetryCatalogReconciler.reconcile",
-        return_value=CatalogReconcileResult(2, 3, 1, 4, 5),
+        return_value=CatalogReconcileResult(2, 3, 1, 4),
     )
 
     result = reconcile_telemetry_catalog.run()
@@ -52,9 +53,11 @@ def test_runtime_task_returns_reconcile_health_without_startup_side_effects(mock
         "discovered_instances": 3,
         "missing_instance_identities": 1,
         "archived_services": 4,
-        "archived_instances": 5,
         "unknown_applications": 0,
         "invalid_activities": 0,
+        "deployment_events_created": 0,
+        "deployment_events_updated": 0,
+        "deployment_events_pruned": 0,
     }
     reconcile.assert_called_once()
     delete.assert_called_once()

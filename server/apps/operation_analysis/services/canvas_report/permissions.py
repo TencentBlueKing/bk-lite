@@ -1,13 +1,8 @@
 from django.core.exceptions import ObjectDoesNotExist
 
 from apps.core.utils.team_utils import get_current_team
-from apps.operation_analysis.services.canvas_report.registry import (
-    get_canvas_report_adapter,
-)
-from apps.operation_analysis.services.canvas_report.types import (
-    RESOURCE_TYPE_DASHBOARD,
-    RESOURCE_TYPE_SCREEN,
-)
+from apps.operation_analysis.services.canvas_report.registry import get_canvas_report_adapter
+from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD, RESOURCE_TYPE_REPORT, RESOURCE_TYPE_SCREEN
 
 
 def _resolve_user_and_team_context(
@@ -26,9 +21,7 @@ def _resolve_user_and_team_context(
             except (TypeError, ValueError):
                 team_id = None
         if include_children is None:
-            include_children = (
-                request.COOKIES.get("include_children", "0") == "1"
-            )
+            include_children = request.COOKIES.get("include_children", "0") == "1"
     else:
         user = request_or_user
         if include_children is None:
@@ -52,6 +45,16 @@ def _instance_can_view(
         is_check=True,
         include_children=include_children,
     )
+
+
+def _canvas_viewset_cls(resource_type: str):
+    from apps.operation_analysis.views.view import DashboardModelViewSet, ReportModelViewSet, ScreenModelViewSet
+
+    return {
+        RESOURCE_TYPE_DASHBOARD: DashboardModelViewSet,
+        RESOURCE_TYPE_SCREEN: ScreenModelViewSet,
+        RESOURCE_TYPE_REPORT: ReportModelViewSet,
+    }.get(resource_type)
 
 
 def can_view_canvas(
@@ -79,34 +82,22 @@ def can_view_canvas(
     except ObjectDoesNotExist:
         return False
 
-    if resource_type == RESOURCE_TYPE_DASHBOARD:
-        from apps.operation_analysis.views.view import DashboardModelViewSet
+    viewset_cls = _canvas_viewset_cls(resource_type)
+    if viewset_cls is None:
+        return False
 
-        return _instance_can_view(
-            viewset_cls=DashboardModelViewSet,
-            user=user,
-            resource=resource,
-            team_id=team_id,
-            include_children=include_children,
-        )
-    if resource_type == RESOURCE_TYPE_SCREEN:
-        from apps.operation_analysis.views.view import ScreenModelViewSet
-
-        return _instance_can_view(
-            viewset_cls=ScreenModelViewSet,
-            user=user,
-            resource=resource,
-            team_id=team_id,
-            include_children=include_children,
-        )
-    return False
+    return _instance_can_view(
+        viewset_cls=viewset_cls,
+        user=user,
+        resource=resource,
+        team_id=team_id,
+        include_children=include_children,
+    )
 
 
 def canvas_resource_exists(resource_type: str, resource_id: int) -> bool:
     """画布无关：经 Adapter 判断 resource_id 对应实体是否仍存在。"""
-    from apps.operation_analysis.services.canvas_report.registry import (
-        UnknownCanvasReportType,
-    )
+    from apps.operation_analysis.services.canvas_report.registry import UnknownCanvasReportType
 
     try:
         adapter = get_canvas_report_adapter(resource_type)

@@ -495,6 +495,28 @@ def test_manifest_overlay_skill_md_overrides_skill_yaml_and_db_manifest(tmp_path
     assert overlay["capabilities"] == ["config_analysis_report", "repair_diff_report"]
 
 
+def test_manifest_overlay_reads_variables_from_skill_yaml(tmp_path):
+    """skill.yaml / SKILL.md 的 variables 经 overlay 热生效。"""
+    from types import SimpleNamespace
+
+    from apps.opspilot.services.skill_package.runtime import _manifest_with_storage_overlay
+
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    (extracted / "skill.yaml").write_text(
+        "name: ad-toolkit\n" "variables:\n" "  - name: AD_SERVER\n" "    required: true\n" "    secret: false\n",
+        encoding="utf-8",
+    )
+    (extracted / "SKILL.md").write_text(
+        "---\n" "name: ad-toolkit\n" "variables:\n" "  - name: AD_PASSWORD\n" "    required: true\n" "    type: password\n" "---\n\n# body\n",
+        encoding="utf-8",
+    )
+    stored = SimpleNamespace(manifest={"variables": [{"name": "LEGACY"}]}, storage_path=str(tmp_path))
+    overlay = _manifest_with_storage_overlay(stored)
+    assert overlay["variables"][0]["name"] == "AD_PASSWORD"
+    assert overlay["variables"][0]["type"] == "password"
+
+
 def test_manifest_overlay_falls_back_to_db_when_skill_md_lacks_strategy_field(tmp_path):
     """SKILL.md frontmatter 没声明 capabilities 时,沿用 DB manifest(不删能力)。"""
     from types import SimpleNamespace
@@ -555,6 +577,29 @@ def test_manifest_overlay_tolerates_malformed_skill_md(tmp_path):
     overlay = _manifest_with_storage_overlay(stored)
 
     assert overlay["capabilities"] == ["config_analysis_report"]
+
+
+def test_skill_markdown_from_storage_uses_disk_body_not_frontmatter(tmp_path):
+    """磁盘 SKILL.md 正文热生效到物化,frontmatter 不进沙箱文档。"""
+    from apps.opspilot.services.skill_package.runtime import _skill_markdown_from_storage
+
+    extracted = tmp_path / "extracted"
+    extracted.mkdir()
+    (extracted / "SKILL.md").write_text(
+        "---\nname: ad-domain-ops\n---\n\n" "# AD\n\npython3 /skills/ad-domain-ops/scripts/ad_search.py --query administrator\n",
+        encoding="utf-8",
+    )
+
+    body = _skill_markdown_from_storage(str(tmp_path))
+
+    assert "python3 /skills/ad-domain-ops/scripts/ad_search.py" in body
+    assert "name: ad-domain-ops" not in body
+
+
+def test_skill_markdown_from_storage_falls_back_when_file_missing(tmp_path):
+    from apps.opspilot.services.skill_package.runtime import _skill_markdown_from_storage
+
+    assert _skill_markdown_from_storage(str(tmp_path)) == ""
 
 
 def test_skill_package_runtime_does_not_match_enabled_package_for_unrelated_message():

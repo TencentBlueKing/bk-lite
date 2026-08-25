@@ -175,6 +175,38 @@
   animation: pulse 2s infinite;
 }
 
-.floating-button {
-  animation: pulse 2s infinite;
+#webchat-root {
+  overflow: visible;
+}
+
+#webchat-root .wc-fab-launcher {
+  display: block;
+  overflow: visible;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  line-height: 0;
+  filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--color-text-1, #1e252e) 16%, transparent));
+}
+
+#webchat-root .wc-fab-launcher:hover img {
+  transform: scale(1.06);
+}
+
+#webchat-root .wc-fab-launcher:focus-visible {
+  outline: 2px solid var(--color-primary, #155AEF);
+  outline-offset: 4px;
+  border-radius: 12px;
+}
+
+#webchat-root .wc-fab-launcher img {
+  display: block;
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  background: transparent;
+  transition: transform 0.2s ease;
 }

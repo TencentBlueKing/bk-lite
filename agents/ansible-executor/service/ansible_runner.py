@@ -35,6 +35,9 @@ _SENSITIVE_INVENTORY_PATTERNS = (
     "ansible_become_password",
 )
 
+_SSH_KNOWN_HOSTS_FILE_ENV = "SSH_KNOWN_HOSTS_FILE"
+_LEGACY_PASSWORD_SSH_COMMON_ARGS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
 
 def _redact_cli_command(args: list[str]) -> list[str]:
     redacted = [str(arg) for arg in args]
@@ -97,6 +100,8 @@ class AdhocRequest:
     private_key_content: str | None = None
     private_key_passphrase: str | None = None
     host_credentials: list[dict[str, Any]] | None = None
+    stream_remote_output: bool = False
+    stream_remote_type: str | None = None
 
 
 @dataclass
@@ -160,6 +165,10 @@ def to_adhoc_request(payload: dict[str, Any]) -> AdhocRequest:
     if private_key_passphrase is not None and not isinstance(private_key_passphrase, str):
         raise ValueError("private_key_passphrase must be string")
 
+    stream_remote_type = str(payload.get("stream_remote_type") or "").strip().lower()
+    if stream_remote_type and stream_remote_type not in {"bat", "powershell"}:
+        raise ValueError("stream_remote_type must be bat or powershell")
+
     return AdhocRequest(
         inventory=inventory,
         inventory_content=inventory_content,
@@ -173,6 +182,8 @@ def to_adhoc_request(payload: dict[str, Any]) -> AdhocRequest:
         private_key_content=private_key_content,
         private_key_passphrase=private_key_passphrase,
         host_credentials=host_credentials,
+        stream_remote_output=payload.get("stream_remote_output") is True,
+        stream_remote_type=stream_remote_type or None,
     )
 
 
@@ -426,11 +437,34 @@ def _mask_sensitive_inventory_content(content: str) -> str:
     return masked
 
 
-def _get_password_auth_ssh_common_args(item: dict[str, Any]) -> str:
+def _get_explicit_ssh_common_args(item: dict[str, Any]) -> str | None:
     explicit_args = item.get("ansible_ssh_common_args") or item.get("ssh_common_args")
     if explicit_args:
         return str(explicit_args)
-    return "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    return None
+
+
+def _validate_known_hosts_file(known_hosts_file: str) -> None:
+    path = Path(known_hosts_file)
+    try:
+        if not stat.S_ISREG(path.stat().st_mode):
+            raise ValueError(f"{_SSH_KNOWN_HOSTS_FILE_ENV} must reference a readable regular file")
+        with path.open("rb"):
+            pass
+    except OSError as exc:
+        raise ValueError(f"{_SSH_KNOWN_HOSTS_FILE_ENV} must reference a readable regular file ({type(exc).__name__})") from exc
+
+
+def _get_password_auth_ssh_common_args(item: dict[str, Any]) -> str:
+    explicit_args = _get_explicit_ssh_common_args(item)
+    if explicit_args:
+        return explicit_args
+
+    known_hosts_file = os.getenv(_SSH_KNOWN_HOSTS_FILE_ENV, "").strip()
+    if known_hosts_file:
+        return f"-o StrictHostKeyChecking=yes -o UserKnownHostsFile={shlex.quote(known_hosts_file)}"
+
+    return _LEGACY_PASSWORD_SSH_COMMON_ARGS
 
 
 def _normalize_ansible_host_status(raw_status: str) -> str:
@@ -646,6 +680,16 @@ def _extract_meaningful_output(raw_output: str) -> str:
 
 def _build_host_credentials_inventory(workspace: Path, host_credentials: list[dict[str, Any]]) -> str:
     lines: list[str] = []
+    legacy_password_ssh_host_count = 0
+    known_hosts_file = os.getenv(_SSH_KNOWN_HOSTS_FILE_ENV, "").strip()
+    if known_hosts_file and any(
+        item.get("password")
+        and str(item.get("connection", "")).strip().lower() == "ssh"
+        and not _get_explicit_ssh_common_args(item)
+        for item in host_credentials
+    ):
+        _validate_known_hosts_file(known_hosts_file)
+
     for idx, item in enumerate(host_credentials):
         host = str(item.get("host", "")).strip()
         parts = [host]
@@ -677,7 +721,11 @@ def _build_host_credentials_inventory(workspace: Path, host_credentials: list[di
         if password:
             parts.append(f"ansible_password={_quote_inventory_value(password)}")
             if str(connection).strip().lower() == "ssh":
-                parts.append(f"ansible_ssh_common_args={_quote_inventory_value(_get_password_auth_ssh_common_args(item))}")
+                ssh_common_args = _get_password_auth_ssh_common_args(item)
+                parts.append(f"ansible_ssh_common_args={_quote_inventory_value(ssh_common_args)}")
+                explicit_args = _get_explicit_ssh_common_args(item)
+                if not explicit_args and ssh_common_args == _LEGACY_PASSWORD_SSH_COMMON_ARGS:
+                    legacy_password_ssh_host_count += 1
 
         private_key_file = item.get("private_key_file")
         private_key_content = item.get("private_key_content")
@@ -694,6 +742,13 @@ def _build_host_credentials_inventory(workspace: Path, host_credentials: list[di
             parts.append(f"ansible_ssh_passphrase={_quote_inventory_value(passphrase)}")
 
         lines.append(" ".join(parts))
+
+    if legacy_password_ssh_host_count:
+        logger.warning(
+            "password SSH host key verification is disabled: host_count=%d; set %s to enable strict verification",
+            legacy_password_ssh_host_count,
+            _SSH_KNOWN_HOSTS_FILE_ENV,
+        )
 
     if not lines:
         return ""
@@ -768,6 +823,8 @@ def prepare_adhoc_execution(payload: AdhocRequest) -> tuple[list[str], Path]:
             private_key_content=None,
             private_key_passphrase=None,
             host_credentials=None,
+            stream_remote_output=payload.stream_remote_output,
+            stream_remote_type=payload.stream_remote_type,
         )
     )
     return cmd, workspace
@@ -1034,7 +1091,7 @@ class LineEventStreamer:
 StreamPublish = Callable[[str, bytes], Awaitable[None]]
 
 
-def _build_stream_log_payload(execution_id: str, line: str) -> bytes:
+def build_stream_log_payload(execution_id: str, line: str) -> bytes:
     payload = {
         "execution_id": execution_id,
         "stream": "stdout",
@@ -1069,7 +1126,7 @@ async def run_command(
     async def _publish_line(line: str) -> None:
         # Streaming is best-effort: a publish failure must never break the run.
         try:
-            data = _build_stream_log_payload(execution_id, line)
+            data = build_stream_log_payload(execution_id, line)
             await stream_publish(stream_log_topic, data)
         except Exception as publish_err:  # noqa: BLE001 - intentionally swallowed
             logger.warning("stream log publish failed: %s", publish_err)

@@ -5,13 +5,14 @@ from rest_framework import serializers
 from apps.job_mgmt.models import JobExecution, Playbook, Script
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
+from apps.job_mgmt.utils.i18n import choice_message, localize_execution_name
 
 
 class JobExecutionListSerializer(serializers.ModelSerializer):
     """作业执行列表序列化器"""
 
-    job_type_display = serializers.CharField(source="get_job_type_display", read_only=True)
-    trigger_source_display = serializers.CharField(source="get_trigger_source_display", read_only=True)
+    job_type_display = serializers.SerializerMethodField()
+    trigger_source_display = serializers.SerializerMethodField()
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     duration = serializers.SerializerMethodField(help_text="耗时（秒）")
 
@@ -44,12 +45,23 @@ class JobExecutionListSerializer(serializers.ModelSerializer):
             return int((obj.finished_at - obj.started_at).total_seconds())
         return None
 
+    def get_job_type_display(self, obj):
+        return choice_message(self, "job_type", obj.job_type, obj.get_job_type_display())
+
+    def get_trigger_source_display(self, obj):
+        return choice_message(self, "trigger_source", obj.trigger_source, obj.get_trigger_source_display())
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["name"] = localize_execution_name(self.context.get("request"), data.get("name"))
+        return data
+
 
 class JobExecutionDetailSerializer(serializers.ModelSerializer):
     """作业执行详情序列化器"""
 
-    job_type_display = serializers.CharField(source="get_job_type_display", read_only=True)
-    trigger_source_display = serializers.CharField(source="get_trigger_source_display", read_only=True)
+    job_type_display = serializers.SerializerMethodField()
+    trigger_source_display = serializers.SerializerMethodField()
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     script_type_display = serializers.CharField(source="get_script_type_display", read_only=True)
     duration = serializers.SerializerMethodField(help_text="耗时（秒）")
@@ -98,6 +110,17 @@ class JobExecutionDetailSerializer(serializers.ModelSerializer):
         if obj.started_at and obj.finished_at:
             return int((obj.finished_at - obj.started_at).total_seconds())
         return None
+
+    def get_job_type_display(self, obj):
+        return choice_message(self, "job_type", obj.job_type, obj.get_job_type_display())
+
+    def get_trigger_source_display(self, obj):
+        return choice_message(self, "trigger_source", obj.trigger_source, obj.get_trigger_source_display())
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["name"] = localize_execution_name(self.context.get("request"), data.get("name"))
+        return data
 
 
 class QuickExecuteSerializer(serializers.Serializer):
