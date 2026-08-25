@@ -87,6 +87,11 @@ export interface WebChatConfig {
   enableSSE?: boolean;
   enableStorage?: boolean;
   storageKey?: string;
+  /**
+   * Stable owner + endpoint scope for persisted local sessions. When set,
+   * WebChat stores under an isolated v2 key. Do not use a rotating access token.
+   */
+  storageScope?: string;
   /** Coalesce streaming text per animation frame; set false for immediate rollback. */
   streamingTextBatching?: boolean;
   /** Maximum images accepted for one unsent message. Defaults to 4. */

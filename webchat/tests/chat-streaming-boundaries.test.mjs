@@ -24,6 +24,7 @@ const virtualModules = new Map([
     export class StateMachine { on() { return () => {}; } transition() {} transitionToChatting() {} destroy() {} }
     export class SSEStreamParser { push() { return []; } }
     export const normalizeWebChatConfig = (config) => config;
+    export const isSilentCustomEvent = () => false;
     let nextId = 0;
     export const generateId = () => 'message-' + ++nextId;`,
   ],

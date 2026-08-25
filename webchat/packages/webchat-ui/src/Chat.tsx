@@ -71,6 +71,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     placeholder = 'Type a message...',
     enableStorage = true,
     storageKey = 'webchat_session',
+    storageScope,
     onStateChange,
     onMessageReceived,
     onError,
@@ -172,6 +173,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     sessionManagerRef.current = new SessionManager({
       enableStorage,
       storageKey,
+      storageScope,
       customData,
     });
 
