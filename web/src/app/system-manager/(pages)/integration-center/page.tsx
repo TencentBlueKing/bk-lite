@@ -203,9 +203,9 @@ const IntegrationCenterPage: React.FC = () => {
   const instanceCards = useMemo(
     () => filteredInstances.map((instance) => {
       const provider = providers.find((p) => p.key === instance.provider_key);
-      return buildIntegrationInstanceCardItem(instance, provider, t);
+      return buildIntegrationInstanceCardItem(instance, provider);
     }),
-    [filteredInstances, providers, t],
+    [filteredInstances, providers],
   );
 
   const generateDescSlot = (data: IntegrationInstanceCardItem) => (

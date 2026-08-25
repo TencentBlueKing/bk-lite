@@ -420,6 +420,18 @@ def get_user_sync_root_scope_value(source, default=None):
     provider_key = getattr(integration_instance, "provider_key", "")
     root_scope_field = get_user_sync_root_scope_field(provider_key) if provider_key else "root_department_id"
     business_config = getattr(source, "business_config", None) or {}
+
+    adapter_cls = None
+    if provider_key:
+        try:
+            adapter_cls = RuntimeApplicationService().get_adapter_class(provider_key, "user_sync")
+        except ValueError:
+            adapter_cls = None
+    if adapter_cls is not None:
+        return adapter_cls.resolve_root_scope_value(
+            business_config, field=root_scope_field, default=default
+        )
+
     if root_scope_field in business_config:
         return business_config.get(root_scope_field, default)
     return business_config.get("root_department_id", default)

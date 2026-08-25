@@ -1283,20 +1283,10 @@
       },
       "provider": {
         "label": "集成类型",
-        "ad": "Active Directory",
-        "feishu": "飞书",
-        "wechat": "微信",
-        "wecom": "企业微信",
         "ldap": "LDAP",
         "oidc": "OIDC",
         "saml": "SAML",
         "github": "GitHub"
-      },
-      "providerDesc": {
-        "feishu": "飞书接入，支持登录认证、用户同步、通知渠道和群协作。",
-        "wechat": "微信接入，用于登录认证。",
-        "wecom": "企业微信接入，支持登录认证、用户同步、通知渠道和群协作。",
-        "ad": "Active Directory 接入，用于登录认证和用户同步。"
       },
       "providerTypeLabel": "集成类型",
       "statusSummary": "状态摘要",

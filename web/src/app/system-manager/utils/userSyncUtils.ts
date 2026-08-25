@@ -204,10 +204,51 @@ export function getUserSyncEditFormBusinessConfig(
     ? { ...(businessConfig || {}) }
     : excludeUserSyncRootScope(businessConfig, rootScopeFieldKey);
 
-  return mergeUserSyncBusinessConfigWithDefaults(configForForm, template, {
+  const merged = mergeUserSyncBusinessConfigWithDefaults(configForForm, template, {
     excludeRootScope: true,
     rootScopeFieldKey,
   });
+
+  // AD root_dns 存列表；表单 textarea 需要多行文本。
+  if (rootScopeFieldKey === 'root_dns' || rootScopeFieldKey === 'root_dn') {
+    const raw = merged[rootScopeFieldKey] ?? merged.root_dns ?? merged.root_dn;
+    if (Array.isArray(raw)) {
+      merged[rootScopeFieldKey] = raw.map((item) => String(item)).join('\n');
+    } else if (typeof raw === 'string') {
+      merged[rootScopeFieldKey] = raw;
+    }
+    if (rootScopeFieldKey === 'root_dns') {
+      delete merged.root_dn;
+    }
+  }
+
+  return merged;
+}
+
+export function normalizeUserSyncBusinessConfigForSubmit(
+  businessConfig: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const next = { ...(businessConfig || {}) };
+  if (!('root_dns' in next) && !('root_dn' in next)) {
+    return next;
+  }
+
+  const raw = next.root_dns ?? next.root_dn;
+  let items: string[] = [];
+  if (Array.isArray(raw)) {
+    items = raw.map((item) => String(item || '').trim()).filter(Boolean);
+  } else if (typeof raw === 'string') {
+    items = raw
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  next.root_dns = items;
+  delete next.root_dn;
+  return next;
 }
 
 export function shouldFetchDepartmentOptions(input: {
@@ -264,9 +305,7 @@ export function buildCreateSyncSourcePayload(
     root_group_name: values.root_group_name,
     field_mapping: fieldMapping,
     schedule_config: { mode: 'disabled', timezone: 'Asia/Shanghai' },
-    business_config: {
-      ...(values.business_config || {}),
-    },
+    business_config: normalizeUserSyncBusinessConfigForSubmit(values.business_config || {}),
     platform_config: { ...(values.platform_config || {}) },
   };
 }
@@ -291,9 +330,7 @@ export function buildConfigUpdatePayload(
   return {
     ...buildExistingSourcePayload(source),
     field_mapping: fieldMapping,
-    business_config: {
-      ...(businessConfig || {}),
-    },
+    business_config: normalizeUserSyncBusinessConfigForSubmit(businessConfig),
     platform_config: {
       ...(source.platform_config || {}),
       ...(platformConfig || {}),
