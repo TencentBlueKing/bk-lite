@@ -17,7 +17,6 @@ executors:
     type: protocol
     execution_mode: async
     capacity_group: default
-    timeout: 120
     collector:
       module: plugins.inputs.oceanstor.oceanstor_info
       class: OceanStorManager

@@ -88,10 +88,19 @@ const PCTask: React.FC<PCTaskFormProps> = ({
       return {
         ...baseData,
         ...instanceData,
-        ...buildPCSubmitPayload({
-          osType: values.osType,
-          credentialPool: values.credentialPool,
-        }),
+        ...(() => {
+          const pcPayload = buildPCSubmitPayload({
+            osType: values.osType,
+            credentialPool: values.credentialPool,
+          });
+          return {
+            ...pcPayload,
+            params: {
+              ...baseData.params,
+              ...pcPayload.params,
+            },
+          };
+        })(),
       };
     },
   });

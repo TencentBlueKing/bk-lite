@@ -78,6 +78,46 @@ async def test_lightweight_direct_reply_merges_leading_system_for_qwen():
     assert result["messages"][0].content == "ok"
 
 
+@pytest.mark.asyncio
+async def test_lightweight_direct_reply_records_stream_usage_from_final_chunk():
+    """轻量直答 astream 终包带 usage 时必须记入 accumulator，不能落成全 0。"""
+    from langchain_core.messages import AIMessageChunk
+
+    from apps.opspilot.metis.llm.chain.node import ToolsNodes
+    from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
+
+    class _FakeStreamLLM:
+        async def astream(self, messages, config=None, stream_usage=False):
+            assert stream_usage is True
+            yield AIMessageChunk(content="你好")
+            yield AIMessageChunk(
+                content="",
+                usage_metadata={"input_tokens": 41, "output_tokens": 9, "total_tokens": 50},
+            )
+
+        async def ainvoke(self, messages, config=None):
+            raise AssertionError("有 astream 时不应回退 ainvoke")
+
+    accumulator = TokenUsageAccumulator()
+    node = ToolsNodes()
+    result = await node._invoke_lightweight_direct_reply(
+        llm=_FakeStreamLLM(),
+        light_system="轻量系统",
+        original_messages=[HumanMessage(content="你好")],
+        config={"configurable": {}},
+        token_usage_accumulator=accumulator,
+        log_reason="unit",
+    )
+
+    assert result["messages"][0].content == "你好"
+    assert accumulator.as_openai_usage() == {
+        "prompt_tokens": 41,
+        "completion_tokens": 9,
+        "total_tokens": 50,
+    }
+    assert accumulator.calls[0].reported is True
+
+
 def test_normalize_messages_empty_input():
     assert node.normalize_messages_for_llm([]) == []
 
@@ -190,6 +230,57 @@ def test_prompt_suggestion_and_history_nodes_build_valid_message_sequence():
     ]
     assert state["messages"][2].content == "plain question"
     assert state["messages"][3].content == "previous answer"
+
+
+def test_history_node_keeps_bot_replies_from_skill_channel():
+    """skill_channel 历史 event=bot；漏掉则模型会把旧问题当成未答再讲一遍。"""
+    request = SimpleNamespace(
+        chat_history=[
+            SimpleNamespace(event="user", message="介绍下系统负载趋势", image_data=[]),
+            SimpleNamespace(event="bot", message="负载约 1.98 / 1.80 / 1.58", image_data=[]),
+            SimpleNamespace(event="user", message="分析下磁盘使用率情况", image_data=[]),
+            SimpleNamespace(event="bot", message="磁盘使用率约 80.9%", image_data=[]),
+        ],
+    )
+    state = {"messages": []}
+    node.BasicNode().add_chat_history_node(state, graph_config(request))
+    assert [type(msg).__name__ for msg in state["messages"]] == [
+        "HumanMessage",
+        "AIMessage",
+        "HumanMessage",
+        "AIMessage",
+    ]
+    assert state["messages"][1].content == "负载约 1.98 / 1.80 / 1.58"
+    assert state["messages"][3].content == "磁盘使用率约 80.9%"
+
+
+def test_history_image_without_text_does_not_inject_weather_prompt():
+    request = SimpleNamespace(
+        chat_history=[
+            SimpleNamespace(event="user", message="", image_data=["data:image/png;base64,abc"]),
+        ]
+    )
+    state = {"messages": []}
+    node.BasicNode().add_chat_history_node(state, graph_config(request))
+    content = state["messages"][0].content
+    assert content == [{"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}}]
+    assert "weather" not in str(content).lower()
+
+
+def test_user_message_node_attaches_current_images_to_question():
+    request = SimpleNamespace(
+        user_message="介绍下网络吞吐趋势",
+        graph_user_message="",
+        enable_query_rewrite=False,
+        extra_config={"current_image_data": ["data:image/png;base64,abc"]},
+    )
+    state = {"messages": []}
+    node.BasicNode().user_message_node(state, graph_config(request))
+    assert state["messages"][0].content == [
+        {"type": "text", "text": "介绍下网络吞吐趋势"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,abc"}},
+    ]
+    assert request.graph_user_message == "介绍下网络吞吐趋势"
 
 
 def test_suggestion_node_inserts_system_prompt_when_state_has_no_system_message():

@@ -129,6 +129,8 @@ async def handle_host_remote_callback(data: dict) -> dict:
             task_id,
             payload,
         )
+        if callback_context is None:
+            raise RuntimeError("Host Remote callback context disappeared before record")
         await _clear_host_remote_running_flag_best_effort(task_id)
         task_info = await schedule_host_remote_processing(
             task_id, claim_token=claim_token

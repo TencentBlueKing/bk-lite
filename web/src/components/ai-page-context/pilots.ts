@@ -1,7 +1,8 @@
 import type { AiPageContextPilot } from './types';
+import { GENERATED_PAGE_CONTEXT_PILOTS } from './pilots.generated';
 
-/** App pilots register via `registerPageContextPilot`; this module must not import app routes. */
-export const PAGE_CONTEXT_PILOTS: AiPageContextPilot[] = [];
+/** Codegen pilots plus optional runtime registration via `registerPageContextPilot`. */
+export const PAGE_CONTEXT_PILOTS: AiPageContextPilot[] = [...GENERATED_PAGE_CONTEXT_PILOTS];
 
 export function registerPageContextPilot(pilot: AiPageContextPilot): () => void {
   PAGE_CONTEXT_PILOTS.push(pilot);

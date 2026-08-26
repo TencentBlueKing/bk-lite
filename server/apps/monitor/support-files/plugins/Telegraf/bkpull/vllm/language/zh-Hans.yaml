@@ -1,0 +1,90 @@
+VLLM:
+  name: vLLM 推理服务
+  desc: 由 Telegraf 拉取 vLLM Prometheus 指标
+monitor_object:
+  VLLM: vLLM
+monitor_object_type:
+  LLM Inference: 大模型推理
+monitor_object_metric:
+  VLLM:
+    vllm:num_requests_running_gauge:
+      name: 运行中请求数
+      desc: 当前正在模型执行批次中的请求数量。
+    vllm:num_requests_waiting_gauge:
+      name: 排队请求数
+      desc: 当前等待调度容量的请求数量。
+    vllm:kv_cache_usage_perc_gauge:
+      name: KV缓存占用比例
+      desc: 已使用 KV cache 块占比（0–1）。
+    vllm:prompt_tokens_total_counter_rate:
+      name: Prefill Token 速率
+      desc: 最近5分钟 prompt（prefill）token 处理速率。
+    vllm:generation_tokens_total_counter_rate:
+      name: 生成 Token 速率
+      desc: 最近5分钟生成 token 速率。
+    vllm:time_to_first_token_seconds_p99:
+      name: 首 Token 时延 P99
+      desc: 最近5分钟 Time-to-First-Token（TTFT）P99。
+    vllm:e2e_request_latency_seconds_p99:
+      name: 端到端请求时延 P99
+      desc: 最近5分钟端到端请求时延 P99。
+    vllm:request_success_total_counter_rate:
+      name: 成功请求速率
+      desc: 最近5分钟成功完成请求速率。
+    vllm:time_to_first_token_seconds_p50:
+      name: 首 Token 时延 P50
+      desc: 最近5分钟 TTFT P50。
+    vllm:time_to_first_token_seconds_p90:
+      name: 首 Token 时延 P90
+      desc: 最近5分钟 TTFT P90。
+    vllm:time_to_first_token_seconds_avg:
+      name: 首 Token 时延均值
+      desc: 最近5分钟 TTFT 均值。
+    vllm:e2e_request_latency_seconds_p50:
+      name: 端到端请求时延 P50
+      desc: 最近5分钟端到端请求时延 P50。
+    vllm:e2e_request_latency_seconds_p90:
+      name: 端到端请求时延 P90
+      desc: 最近5分钟端到端请求时延 P90。
+    vllm:e2e_request_latency_seconds_avg:
+      name: 端到端请求时延均值
+      desc: 最近5分钟端到端请求时延均值。
+    vllm:inter_token_latency_seconds_p50:
+      name: 逐 Token 时延 P50
+      desc: 最近5分钟 ITL P50。
+    vllm:inter_token_latency_seconds_p90:
+      name: 逐 Token 时延 P90
+      desc: 最近5分钟 ITL P90。
+    vllm:inter_token_latency_seconds_p99:
+      name: 逐 Token 时延 P99
+      desc: 最近5分钟 ITL P99。
+    vllm:inter_token_latency_seconds_avg:
+      name: 逐 Token 时延均值
+      desc: 最近5分钟 ITL 均值。
+    vllm:iteration_tokens_total_count_rate:
+      name: 迭代 Token 速率
+      desc: 最近5分钟单次模型迭代处理的 token 数速率。
+    vllm:request_prompt_tokens_p50:
+      name: 输入 Token 长度 P50
+      desc: 最近5分钟请求 prompt token 数 P50。
+    vllm:request_prompt_tokens_p90:
+      name: 输入 Token 长度 P90
+      desc: 最近5分钟请求 prompt token 数 P90。
+    vllm:request_prompt_tokens_p99:
+      name: 输入 Token 长度 P99
+      desc: 最近5分钟请求 prompt token 数 P99。
+    vllm:request_prompt_tokens_avg:
+      name: 输入 Token 长度均值
+      desc: 最近5分钟请求 prompt token 数均值。
+    vllm:request_generation_tokens_p50:
+      name: 输出 Token 长度 P50
+      desc: 最近5分钟请求生成 token 数 P50。
+    vllm:request_generation_tokens_p90:
+      name: 输出 Token 长度 P90
+      desc: 最近5分钟请求生成 token 数 P90。
+    vllm:request_generation_tokens_p99:
+      name: 输出 Token 长度 P99
+      desc: 最近5分钟请求生成 token 数 P99。
+    vllm:request_generation_tokens_avg:
+      name: 输出 Token 长度均值
+      desc: 最近5分钟请求生成 token 数均值。

@@ -15,12 +15,21 @@ class _LiteralDumper(yaml.SafeDumper):
     pass
 
 
+class _UnquotedEnv(str):
+    """Keep Vector env placeholders unquoted so interpolated true/false stay YAML booleans."""
+
+
 def _represent_string(dumper: yaml.SafeDumper, value: str):
     style = "|" if "\n" in value else None
     return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
 
 
+def _represent_unquoted_env(dumper: yaml.SafeDumper, value: _UnquotedEnv):
+    return dumper.represent_scalar("tag:yaml.org,2002:str", str(value), style="")
+
+
 _LiteralDumper.add_representer(str, _represent_string)
+_LiteralDumper.add_representer(_UnquotedEnv, _represent_unquoted_env)
 
 
 def get_system_vector_config_contract_version(content: str) -> int:
@@ -267,6 +276,11 @@ def compile_system_vector_config(records: Iterable[Any]) -> str:
                     },
                 },
                 "decoding": {"codec": "json"},
+                "tls": {
+                    "enabled": _UnquotedEnv("${VECTOR_NATS_TLS_ENABLED}"),
+                    "ca_file": "${VECTOR_NATS_TLS_CA_FILE}",
+                    "verify_certificate": True,
+                },
             }
         },
         "transforms": {

@@ -1,0 +1,54 @@
+SGLang:
+  name: SGLang 推理服务
+  desc: 由 Telegraf 拉取 SGLang Prometheus 指标
+monitor_object:
+  SGLang: SGLang
+monitor_object_type:
+  LLM Inference: 大模型推理
+monitor_object_metric:
+  SGLang:
+    sglang:num_running_reqs_gauge:
+      name: 运行中请求数
+      desc: 当前正在处理的请求数量。
+    sglang:num_queue_reqs_gauge:
+      name: 排队请求数
+      desc: 当前等待队列中的请求数量。
+    sglang:token_usage_gauge:
+      name: Token 用量比例
+      desc: KV/token 用量比例（0–1）。
+    sglang:cache_hit_rate_gauge:
+      name: 缓存命中率
+      desc: Prefix cache 命中率（0–1）。
+    sglang:prompt_tokens_total_counter_rate:
+      name: Prefill Token 速率
+      desc: 最近5分钟 prefill token 处理速率。
+    sglang:generation_tokens_total_counter_rate:
+      name: 生成 Token 速率
+      desc: 最近5分钟生成 token 速率。
+    sglang:gen_throughput_gauge:
+      name: 生成吞吐
+      desc: 当前生成吞吐（token/s）。
+    sglang:time_to_first_token_seconds_p99:
+      name: 首 Token 时延 P99
+      desc: 最近5分钟 TTFT P99。
+    sglang:e2e_request_latency_seconds_p99:
+      name: 端到端请求时延 P99
+      desc: 最近5分钟端到端请求时延 P99。
+    sglang:time_to_first_token_seconds_p50:
+      name: 首 Token 时延 P50
+      desc: 最近5分钟 TTFT P50。
+    sglang:time_to_first_token_seconds_p90:
+      name: 首 Token 时延 P90
+      desc: 最近5分钟 TTFT P90。
+    sglang:time_to_first_token_seconds_avg:
+      name: 首 Token 时延均值
+      desc: 最近5分钟 TTFT 均值。
+    sglang:e2e_request_latency_seconds_p50:
+      name: 端到端请求时延 P50
+      desc: 最近5分钟端到端请求时延 P50。
+    sglang:e2e_request_latency_seconds_p90:
+      name: 端到端请求时延 P90
+      desc: 最近5分钟端到端请求时延 P90。
+    sglang:e2e_request_latency_seconds_avg:
+      name: 端到端请求时延均值
+      desc: 最近5分钟端到端请求时延均值。

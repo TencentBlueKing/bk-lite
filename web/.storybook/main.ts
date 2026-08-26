@@ -27,6 +27,17 @@ const toAliasArray = (aliases: unknown) => {
   return Object.entries(aliases).map(([name, alias]) => ({ name, alias }));
 };
 
+const storybookExactMockPlugin = {
+  apply(compiler: any) {
+    compiler.hooks.normalModuleFactory.tap('StorybookExactMockPlugin', (normalModuleFactory: any) => {
+      normalModuleFactory.hooks.beforeResolve.tap('StorybookExactMockPlugin', (resolveData: any) => {
+        const mock = mockAliases.find(({ name }) => name === resolveData?.request);
+        if (mock) resolveData.request = mock.alias;
+      });
+    });
+  },
+};
+
 const config: StorybookConfig = {
   stories: ['../src/**/*.mdx', '../src/**/*.stories.@(js|jsx|mjs|ts|tsx)'],
   addons: [],
@@ -36,6 +47,7 @@ const config: StorybookConfig = {
   },
   staticDirs: ['../public'],
   webpackFinal: async (config) => {
+    config.plugins = [...(config.plugins || []), storybookExactMockPlugin];
     if (config.resolve) {
       config.resolve.alias = [
         ...mockAliases,

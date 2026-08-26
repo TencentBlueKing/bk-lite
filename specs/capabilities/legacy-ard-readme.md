@@ -39,10 +39,10 @@
 已完成三轮"ARD↔代码"双向校验并修正，主要更正：
 1. **nats-executor 主题模式**：实为 `{action}.{location}.{id}`（如 `local.execute.{id}`、`ssh.execute.{id}`），原文方向写反，已改。
 2. **MySQL 引擎（澄清，原疑似缺陷已不成立）**：`database.py:31` 实为 `cw_cornerstone.db.mysql.backend`（正确 mysql 分支，非达梦），早期"指向达梦"的论断经直核证伪，已从风险表移除。
-3. **opspilot 外部依赖**：`METIS_SERVER_URL`/`MUNCHKIN_BASE_URL`/`CONVERSATION_MQ_*` 仅在 config.py 定义、代码未引用（占位）；RAG 走本地 pgvector；K8s 经运行时 `kubeconfig_data` 而非 `KUBE_CONFIG_FILE`。
+3. **opspilot 外部依赖**：`METIS_SERVER_URL`/`MUNCHKIN_BASE_URL`/`CONVERSATION_MQ_*` 仅在 config.py 定义、代码未引用（占位）；知识库已切 Wiki，对话侧不再提供可配置 RAG 开关；K8s 经运行时 `kubeconfig_data` 而非 `KUBE_CONFIG_FILE`。
 4. **operation_analysis**：为通用 NATS 数据源取数器，未硬编码调用 alerts 统计。
 5. **完整性补充**：alerts 漏列 6 个 Celery 任务、log `AlertSnapshot`/补偿任务、node_mgmt/cmdb/opspilot/mlops 漏列模型，均已补。
-6. **前端**：web 实为 11 产品模块 + `(core)`/`api`/`no-permission`；鉴权由 axios 拦截器注入（代理透明）。
+6. **前端**：web 实为 13 产品模块（含 `apm` 与 `patch-manager`）+ `(core)`/`no-permission`/`no-found`；鉴权由 axios 拦截器注入（代理透明）。
 7. **细节**：后端端口 dev:8011 vs 生产 Docker:8000；认证后端顺序 AuthBackend→APISecretAuthBackend→ModelBackend；仅 object_detection 有 bentofile.yaml。
 
 最终一致性：第三轮抽检 37 项中 36 项通过，余 1 项（alerts webhook 路径含额外 `api/` 段）已修正。

@@ -80,6 +80,7 @@ COLLECT_MODEL_DETAIL_FIELDS = (
 
 
 class CollectModelSerializer(AuthSerializer):
+    STRICT_PLATFORM_TARGET_MODELS = frozenset({"sangforscp", "sangforhci"})
     TRUSTED_INSTANCE_SNAPSHOT_FIELDS = {
         "inst_uuid",
         "model_id",
@@ -153,6 +154,16 @@ class CollectModelSerializer(AuthSerializer):
                 raise serializers.ValidationError({"instances": "部分实例不存在或缺少访问权限"})
         return trusted_instances
 
+    @classmethod
+    def _resolve_target_model_id(cls, model_id):
+        collect_meta = get_collect_object_meta(model_id) or {}
+        target_model_id = collect_meta.get("target_model_id")
+        if target_model_id:
+            return target_model_id
+        if model_id in cls.STRICT_PLATFORM_TARGET_MODELS:
+            return model_id
+        return ""
+
     def _normalize_instance_identity_contract(self, raw_instances, model_id):
         if raw_instances in (None, []):
             return raw_instances
@@ -193,6 +204,9 @@ class CollectModelSerializer(AuthSerializer):
         trusted_by_uuid = {trusted.get("inst_uuid"): trusted for trusted in trusted_instances if trusted.get("inst_uuid")}
         if any(inst_uuid not in trusted_by_uuid for inst_uuid in normalized_instances):
             raise serializers.ValidationError({"instances": "部分实例不存在或缺少访问权限"})
+        target_model_id = self._resolve_target_model_id(model_id)
+        if target_model_id and any(trusted_by_uuid[inst_uuid].get("model_id") != target_model_id for inst_uuid in normalized_instances):
+            raise serializers.ValidationError({"instances": "采集任务与平台实例模型不匹配"})
         snapshots = []
         for inst_uuid in normalized_instances:
             trusted = trusted_by_uuid[inst_uuid]
@@ -240,6 +254,18 @@ class CollectModelSerializer(AuthSerializer):
             if min_confidence < 0 or min_confidence > 1:
                 errors["min_confidence"] = "置信度阈值必须是 0 到 1 之间的数字"
 
+        raw_interval = params.get("topology_interval_minutes")
+        interval_mode = params.get("topology_interval_mode") or "recommended"
+        if interval_mode not in ("recommended", "custom"):
+            errors["topology_interval_mode"] = "拓扑周期模式不合法"
+        try:
+            topology_interval_minutes = int(raw_interval) if raw_interval not in (None, "") else None
+        except (TypeError, ValueError):
+            topology_interval_minutes = None
+            errors["topology_interval_minutes"] = "拓扑采集周期必须是正整数分钟"
+        if topology_interval_minutes is not None and topology_interval_minutes < 1:
+            errors["topology_interval_minutes"] = "拓扑采集周期最小为 1 分钟"
+
         if errors:
             raise serializers.ValidationError({"params": errors})
 
@@ -249,6 +275,8 @@ class CollectModelSerializer(AuthSerializer):
                 "topology_protocols": topology_protocols,
                 "topology_fallback_strategy": topology_fallback_strategy,
                 "min_confidence": min_confidence,
+                "topology_interval_minutes": topology_interval_minutes,
+                "topology_interval_mode": interval_mode,
             }
         )
         params.update(normalized)

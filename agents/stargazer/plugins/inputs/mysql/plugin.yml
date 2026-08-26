@@ -15,7 +15,6 @@ executors:
     type: job
     execution_mode: remote
     capacity_group: remote_job
-    timeout: 60
     scripts:
       linux: plugins/shell/mysql_default_discover.sh
       windows: plugins/shell/mysql_windows_discover.ps1
@@ -26,7 +25,6 @@ executors:
     type: protocol
     execution_mode: async
     capacity_group: default
-    timeout: 30
     collector:
       module: plugins.inputs.mysql.mysql_info
       class: MysqlInfo

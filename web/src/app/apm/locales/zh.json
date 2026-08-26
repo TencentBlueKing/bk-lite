@@ -797,7 +797,7 @@
       "filterEnvironment": "按环境筛选拓扑",
       "view": "拓扑视图",
       "graph": "图形",
-      "list": "依赖列表",
+      "list": "列表",
       "edgeTitle": "{source} 调用 {target}，观测调用 {calls} 次，平均耗时 {duration}",
       "refresh": "刷新拓扑",
       "locate": "定位拓扑节点",

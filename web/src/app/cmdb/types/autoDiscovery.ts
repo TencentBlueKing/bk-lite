@@ -4,8 +4,13 @@ export type TopologyFallbackStrategy =
   | 'prefer_neighbors_then_fdb_then_arp'
   | 'strict_neighbors_only';
 
+export type TopologyIntervalMode = 'recommended' | 'custom';
+
 export interface TopologyTaskParams {
   has_network_topo?: boolean;
+  topology_interval_minutes?: number;
+  topology_interval_mode?: TopologyIntervalMode;
+  topology_timeout?: number;
   topology_protocols?: TopologyProtocol[];
   topology_fallback_strategy?: TopologyFallbackStrategy;
   min_confidence?: number;
@@ -14,6 +19,9 @@ export interface TopologyTaskParams {
 
 export interface SnmpTopologyFormValues {
   hasNetworkTopo?: boolean;
+  topologyIntervalMinutes?: number;
+  topologyIntervalMode?: TopologyIntervalMode;
+  topologyTimeout?: number;
   topologyProtocols?: TopologyProtocol[];
   topologyFallbackStrategy?: TopologyFallbackStrategy;
   minConfidence?: number;
@@ -108,6 +116,8 @@ export interface TreeNode {
   id: string;
   model_id?: string;
   target_model_id?: string;
+  classification_id?: string;
+  default_timeout?: number;
   key: string;
   name: string;
   type?: string;
@@ -128,6 +138,8 @@ export interface ModelItem {
   id: string;
   model_id: string;
   target_model_id?: string;
+  classification_id?: string;
+  default_timeout?: number;
   key: string;
   name: string;
   type?: string;

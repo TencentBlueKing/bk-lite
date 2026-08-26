@@ -3,12 +3,8 @@
 # @Time: 2025/11/3 15:32
 # @Author: windyzhao
 
-from apps.operation_analysis.models.datasource_models import (
-    DataConnection,
-    DataSourceAPIModel,
-    DataSourceTag,
-    NameSpace,
-)
+from apps.operation_analysis.models.canvas_draft import CanvasDraftCheckpoint
+from apps.operation_analysis.models.datasource_models import DataConnection, DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.models.excel_materialization_models import ExcelMaterializationSlot
 from apps.operation_analysis.models.share_models import DashboardShareLink, DashboardShareSession
 from apps.operation_analysis.models.subscription_models import (
@@ -21,6 +17,7 @@ from apps.operation_analysis.models.subscription_models import (
 )
 
 __all__ = [
+    "CanvasDraftCheckpoint",
     "DataConnection",
     "DataSourceAPIModel",
     "DataSourceTag",

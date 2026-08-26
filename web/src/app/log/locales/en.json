@@ -600,6 +600,10 @@
       "selectContainer": "Select container",
       "selectLogGroup": "Please select a log group",
       "selectInstance": "Please select an instance",
+      "networkTraffic": {
+        "flowsLayer": "Session Traffic",
+        "httpLayer": "HTTP Application"
+      },
       "packetbeat": {
         "destinationPort": "Destination Port",
         "sourceIP": "Source IP",

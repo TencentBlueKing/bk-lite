@@ -3,11 +3,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Input, Popconfirm, Spin, Switch, message } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
-import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { useProviderApi } from '@/app/opspilot/api/provider';
 import { isSilentRequestError } from '@/utils/request';
 import ModelItemModal from '@/app/opspilot/components/provider/modelItemModal';
-import { CONFIG_MAP, MODEL_TABS } from '@/app/opspilot/constants/provider';
+import { CONFIG_MAP, MODEL_TABS, isVendorSyncSupported } from '@/app/opspilot/constants/provider';
 import type { Model, ModelVendor, ProviderResourceType } from '@/app/opspilot/types/provider';
 import { useThemeMode } from '@/theme';
 import { useTranslation } from '@/utils/i18n';
@@ -64,8 +64,9 @@ const EMPTY_MODELS: ModelSectionState = {
 const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendorId }) => {
   const { t } = useTranslation();
   const { mode } = useThemeMode();
-  const { fetchModelsByVendor, fetchModelDetail, addProvider, updateProvider, deleteProvider, fetchVendorDetail } = useProviderApi();
+  const { fetchModelsByVendor, fetchModelDetail, addProvider, updateProvider, deleteProvider, fetchVendorDetail, syncVendorModels } = useProviderApi();
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   const [modelsByType, setModelsByType] = useState<ModelSectionState>(EMPTY_MODELS);
   const [vendorDetail, setVendorDetail] = useState<ModelVendor | null>(null);
@@ -75,12 +76,12 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
   const [editingModel, setEditingModel] = useState<Model | null>(null);
   const [switchingKey, setSwitchingKey] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const loadData = async (keyword = searchValue) => {
     setLoading(true);
     try {
       const [vendor, ...responses] = await Promise.all([
         fetchVendorDetail(vendorId),
-        ...MODEL_TABS.map(({ type }) => fetchModelsByVendor(type, vendorId)),
+        ...MODEL_TABS.map(({ type }) => fetchModelsByVendor(type, vendorId, keyword)),
       ]);
 
       setVendorDetail(vendor);
@@ -100,22 +101,6 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
   useEffect(() => {
     loadData();
   }, [vendorId]);
-
-  const filteredModelsByType = useMemo(() => {
-    const keyword = searchValue.trim().toLowerCase();
-    if (!keyword) {
-      return modelsByType;
-    }
-
-    return MODEL_TABS.reduce((acc, { type }) => {
-      acc[type] = modelsByType[type].filter((model) => {
-        const modelId = getModelIdentifier(model, type).toLowerCase();
-        const modelName = (model.name || '').toLowerCase();
-        return modelId.includes(keyword) || modelName.includes(keyword);
-      });
-      return acc;
-    }, { ...EMPTY_MODELS });
-  }, [modelsByType, searchValue]);
 
   const sectionStyleMap = useMemo(() => getSectionStyleMap(mode), [mode]);
 
@@ -145,7 +130,7 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
     }));
   };
 
-  const handleModalSubmit = async (values: { name: string; model: string; team: number[] }) => {
+  const handleModalSubmit = async (values: { name: string; model: string; team: number[]; is_multimodal?: boolean }) => {
     if (!vendorDetail) {
       message.error(t('common.fetchFailed'));
       return;
@@ -155,6 +140,7 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
       vendor: vendorDetail,
       values,
       model: editingModel,
+      resourceType: modalType,
     });
 
     setModalLoading(true);
@@ -207,6 +193,35 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
     }
   };
 
+  const canSyncModels = isVendorSyncSupported(vendorDetail?.vendor_type);
+
+  const handleSyncModels = async () => {
+    if (!canSyncModels || syncing) {
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      await syncVendorModels(vendorId);
+      message.success(t('provider.model.syncSuccess'));
+      await loadData();
+    } catch {
+      // 不展示后端原始异常；按是否支持同步给出固定文案
+      if (!isVendorSyncSupported(vendorDetail?.vendor_type)) {
+        message.error(t('provider.model.syncNotSupported'));
+      } else {
+        message.error(t('provider.model.syncFailed'));
+      }
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleSearch = (value: string) => {
+    setSearchValue(value);
+    void loadData(value.trim());
+  };
+
   return (
     <div className="flex h-full flex-col gap-4">
       <div className="flex flex-wrap items-center justify-end gap-2">
@@ -217,15 +232,19 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
           placeholder={t('provider.model.searchPlaceholder')}
           className="w-full max-w-[320px]"
           onChange={(event) => setSearchValue(event.target.value)}
-          onSearch={() => {}}
+          onSearch={handleSearch}
         />
-        <Button icon={<ReloadOutlined />} onClick={loadData} />
+        {canSyncModels ? (
+          <Button loading={syncing} disabled={syncing} onClick={handleSyncModels}>
+            {t('provider.model.sync')}
+          </Button>
+        ) : null}
       </div>
 
       <Spin spinning={loading} className="flex-1">
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {MODEL_TABS.map(({ type }) => {
-            const sectionModels = filteredModelsByType[type];
+            const sectionModels = modelsByType[type];
             const sectionStyle = sectionStyleMap[type];
 
             return (
@@ -267,10 +286,17 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
                 ) : (
                   <div className="relative flex-1 overflow-auto backdrop-blur-[2px]" style={{ background: sectionStyle.tableBg }}>
                     <div className="min-w-160">
-                      <div className="grid grid-cols-[1.2fr_1.4fr_1fr_88px_100px] border-b border-[var(--color-border-2)] px-4 py-3 text-xs font-medium text-[var(--color-text-3)]">
+                      <div
+                        className={`grid border-b border-[var(--color-border-2)] px-4 py-3 text-xs font-medium text-[var(--color-text-3)] ${
+                          type === 'llm_model'
+                            ? 'grid-cols-[1.2fr_1.4fr_1fr_88px_88px_100px]'
+                            : 'grid-cols-[1.2fr_1.4fr_1fr_88px_100px]'
+                        }`}
+                      >
                         <span>{t('provider.model.modelName')}</span>
                         <span>{t('provider.model.modelId')}</span>
                         <span>{t('provider.model.availableGroups')}</span>
+                        {type === 'llm_model' ? <span>{t('provider.model.multimodal')}</span> : null}
                         <span>{t('provider.model.enabled')}</span>
                         <span>{t('common.edit')}</span>
                       </div>
@@ -278,11 +304,18 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
                       {sectionModels.map((model) => (
                         <div
                           key={`${type}-${model.id}`}
-                          className="grid grid-cols-[1.2fr_1.4fr_1fr_88px_100px] items-center border-b border-[var(--color-border-2)] px-4 py-3 text-sm text-[var(--color-text-2)]"
+                          className={`grid items-center border-b border-[var(--color-border-2)] px-4 py-3 text-sm text-[var(--color-text-2)] ${
+                            type === 'llm_model'
+                              ? 'grid-cols-[1.2fr_1.4fr_1fr_88px_88px_100px]'
+                              : 'grid-cols-[1.2fr_1.4fr_1fr_88px_100px]'
+                          }`}
                         >
                           <span className="truncate pr-3">{model.name || '--'}</span>
                           <span className="truncate pr-3">{getModelIdentifier(model, type) || '--'}</span>
                           <span className="truncate pr-3">{getTeamText(model)}</span>
+                          {type === 'llm_model' ? (
+                            <span>{model.is_multimodal !== false ? t('common.yes') : t('common.no')}</span>
+                          ) : null}
                           <span>
                             <Switch
                               size="small"
@@ -323,6 +356,7 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
       <ModelItemModal
         visible={modalVisible}
         mode={editingModel ? 'edit' : 'add'}
+        resourceType={modalType}
         model={editingModel}
         confirmLoading={modalLoading}
         onOk={handleModalSubmit}
@@ -365,10 +399,12 @@ const buildModelPayload = ({
   vendor,
   values,
   model,
+  resourceType,
 }: {
   vendor: ModelVendor;
-  values: { name: string; model: string; team: number[] };
+  values: { name: string; model: string; team: number[]; is_multimodal?: boolean };
   model?: Model | null;
+  resourceType: ProviderResourceType;
 }) => {
   const payload: Record<string, unknown> = {
     name: values.name,
@@ -380,6 +416,10 @@ const buildModelPayload = ({
 
   if (model?.label) {
     payload.label = model.label;
+  }
+
+  if (resourceType === 'llm_model') {
+    payload.is_multimodal = values.is_multimodal ?? model?.is_multimodal ?? true;
   }
 
   return payload;

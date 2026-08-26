@@ -86,6 +86,22 @@ export async function fetchPlatformMessages(
   return mapPlatformMessages(asRecordList(payload));
 }
 
+export async function deletePlatformSession(
+  contract: PlatformContract,
+  sessionId: string,
+  init: PlatformRequestInit
+): Promise<void> {
+  if (!contract.deleteSessionUrl || !sessionId) {
+    return;
+  }
+  const url = fillUrlTemplate(contract.deleteSessionUrl, { sessionId });
+  await fetchPlatformJson(url, init, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+}
+
 export async function interruptPlatformChat(
   contract: PlatformContract,
   init: PlatformRequestInit

@@ -315,7 +315,7 @@ export const useElasticsearchDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 160 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 160 },
             { title: '节点', dataIndex: 'instance_id', key: 'instance_id', width: 140 },
             { title: '索引', dataIndex: 'elasticsearch.slowlog.index', key: 'elasticsearch.slowlog.index', width: 160 },
             { title: '类型', dataIndex: 'elasticsearch.slowlog.type', key: 'elasticsearch.slowlog.type', width: 90 },
@@ -340,7 +340,7 @@ export const useElasticsearchDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 160 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 160 },
             { title: '节点', dataIndex: 'elasticsearch.server.node.name', key: 'elasticsearch.server.node.name', width: 140 },
             { title: '级别', dataIndex: 'elasticsearch.server.level', key: 'elasticsearch.server.level', width: 90, render: renderEsLevel },
             { title: '组件', dataIndex: 'elasticsearch.server.component', key: 'elasticsearch.server.component', width: 120 },

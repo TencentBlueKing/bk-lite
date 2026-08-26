@@ -96,8 +96,34 @@ def test_network_node_params_pushes_snmp_timeout_and_retry_settings():
 
     headers = NetworkNodeParams(instance).custom_headers()
 
-    assert headers["cmdbtimeout"] == "10"
-    assert headers["cmdbretries"] == "1"
+    # 单对象预算取表单 timeout；SNMP 连接超时/重试由插件硬编码，不再随凭据下发。
+    assert headers["cmdbtimeout"] == "60"
+    assert "cmdbretries" not in headers
+    assert "cmdbtimeout" in headers
+
+
+def test_base_node_params_forwards_ip_precheck_and_executor_node_ip():
+    from apps.cmdb.node_configs.ssh.host import HostNodeParams
+
+    instance = SimpleNamespace(
+        id=101,
+        model_id="host",
+        driver_type="job",
+        decrypt_credentials=[
+            {"credential_id": "cred-1", "username": "admin", "password": "secret", "port": 22},
+        ],
+        params={"ip_precheck": True},
+        timeout=60,
+        access_point=[{"id": 3, "ip": "10.0.0.8"}],
+        instances=[{"ip_addr": "10.0.0.9"}],
+        ip_range="",
+    )
+
+    headers = HostNodeParams(instance).custom_headers()
+
+    assert headers["cmdbip_precheck"] == "True"
+    assert headers["cmdbexecutor_node_ip"] == "10.0.0.8"
+    assert "cmdbexecute_timeout" not in headers
 
 
 def test_base_node_params_push_params_renders_template_with_default_filter():
@@ -288,7 +314,7 @@ def test_base_node_params_single_credential_keeps_legacy_headers():
     assert node.env_config()["PASSWORD_password_cmdb_94"] == "first-secret"
 
 
-def test_network_node_params_single_credential_carries_topology_contract():
+def test_network_node_params_device_channel_disables_inline_topo():
     from apps.cmdb.node_configs.network.network import NetworkNodeParams
 
     instance = SimpleNamespace(
@@ -313,12 +339,49 @@ def test_network_node_params_single_credential_carries_topology_contract():
     node = NetworkNodeParams(instance)
     credential = node.set_credential()
 
+    assert credential["has_network_topo"] is False
+    assert "topology_protocols" not in credential
+    assert node.tags["instance_id"] == "cmdb_95"
+    assert node.tags["collection_role"] == "device"
+
+
+def test_network_topo_node_params_carries_topology_contract():
+    from apps.cmdb.node_configs.network.network import NetworkTopoNodeParams
+
+    instance = SimpleNamespace(
+        id=95,
+        model_id="network",
+        driver_type="protocol",
+        decrypt_credentials=[
+            {"credential_id": "cred-1", "version": "v2c", "community": "public", "snmp_port": 161},
+        ],
+        params={
+            "has_network_topo": True,
+            "topology_protocols": ["lldp", "fdb"],
+            "topology_fallback_strategy": "strict_neighbors_only",
+            "min_confidence": 0.75,
+            "topology_interval_minutes": 150,
+            "topology_timeout": 900,
+        },
+        timeout=60,
+        cycle_value_type="cycle",
+        cycle_value="30",
+        access_point=[{"id": 3}],
+        instances=[{"ip_addr": "10.0.0.11"}],
+        ip_range="",
+    )
+
+    node = NetworkTopoNodeParams(instance)
+    credential = node.set_credential()
+
+    assert node.config_id == "cmdb_95_topology"
+    assert node.metric_scope_id == "cmdb_95"
+    assert node.timeout == 900
     assert credential["has_network_topo"] is True
-    # 下发给 agent 的拓扑协议必须是逗号串（agent 按逗号 split 解析），
-    # 不能是 Python 列表 repr（会被 custom_headers 的 str() 破坏成 "['lldp', 'fdb']"）
     assert credential["topology_protocols"] == "lldp,fdb"
     assert credential["topology_fallback_strategy"] == "strict_neighbors_only"
     assert credential["min_confidence"] == 0.75
+    assert node.tags["collection_role"] == "topology"
 
 
 def test_config_file_node_params_carries_execution_id():
@@ -347,7 +410,7 @@ def test_config_file_node_params_carries_execution_id():
 def test_network_node_params_topology_protocols_header_is_agent_parseable():
     """复现并防回归：topology_protocols 下发到 header 后必须能被 agent 的 split(',') 正确解析。
     旧实现把列表 str() 成 "['lldp', 'cdp', 'fdb', 'arp']"，agent 解析为空 → 不采 LLDP/CDP/FDB。"""
-    from apps.cmdb.node_configs.network.network import NetworkNodeParams
+    from apps.cmdb.node_configs.network.network import NetworkTopoNodeParams
 
     instance = SimpleNamespace(
         id=97,
@@ -359,9 +422,11 @@ def test_network_node_params_topology_protocols_header_is_agent_parseable():
         access_point=[{"id": 3}],
         instances=[{"ip_addr": "10.0.0.11"}],
         ip_range="",
+        cycle_value_type="cycle",
+        cycle_value="30",
     )
 
-    node = NetworkNodeParams(instance)
+    node = NetworkTopoNodeParams(instance)
     headers = node.custom_headers()
 
     raw = headers["cmdbtopology_protocols"]
@@ -373,7 +438,7 @@ def test_network_node_params_topology_protocols_header_is_agent_parseable():
 
 
 def test_network_node_params_multicred_pool_carries_topology_contract_defaults():
-    from apps.cmdb.node_configs.network.network import NetworkNodeParams
+    from apps.cmdb.node_configs.network.network import NetworkTopoNodeParams
 
     instance = SimpleNamespace(
         id=96,
@@ -388,9 +453,11 @@ def test_network_node_params_multicred_pool_carries_topology_contract_defaults()
         access_point=[{"id": 3}],
         instances=[{"ip_addr": "10.0.0.12"}],
         ip_range="",
+        cycle_value_type="cycle",
+        cycle_value="30",
     )
 
-    node = NetworkNodeParams(instance)
+    node = NetworkTopoNodeParams(instance)
     credentials_pool = node.build_credentials_pool()
 
     assert len(credentials_pool) == 2

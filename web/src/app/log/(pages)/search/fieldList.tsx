@@ -59,7 +59,17 @@ const FieldList: React.FC<FieldListProps> = ({
 
   const hiddenFields = useMemo(() => {
     return fields.filter(
-      (item) => ![...displayFields, 'message', '_msg', '_time', '*'].includes(item)
+      (item) =>
+        ![
+          ...displayFields,
+          'message',
+          '_msg',
+          '_time',
+          '_stream',
+          '_stream_id',
+          '*',
+          '@timestamp'
+        ].includes(item)
     );
   }, [fields, displayFields]);
 

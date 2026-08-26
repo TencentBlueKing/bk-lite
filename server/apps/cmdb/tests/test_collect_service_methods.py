@@ -16,11 +16,7 @@ import types
 import pydantic.root_model  # noqa
 import pytest
 
-from apps.cmdb.constants.constants import (
-    CollectDriverTypes,
-    CollectPluginTypes,
-    CollectRunStatusType,
-)
+from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.services.collect_service import CollectModelService
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -156,6 +152,10 @@ class TestPrimitives:
     def test_should_sync_node_params(self):
         assert CollectModelService.should_sync_node_params(fake_instance(is_k8s=False))
         assert not CollectModelService.should_sync_node_params(fake_instance(is_k8s=True))
+
+    def test_should_register_sync_beat(self):
+        assert not CollectModelService.should_register_sync_beat(fake_instance(task_type=CollectPluginTypes.HOST))
+        assert CollectModelService.should_register_sync_beat(fake_instance(task_type=CollectPluginTypes.CONFIG_FILE))
 
 
 class TestResolveCloudMeta:
@@ -757,16 +757,35 @@ class TestCollectCrudSideEffects:
         mocker.patch.object(CollectModelService, "enrich_host_cloud_snapshot_payload", return_value=False)
         mocker.patch("apps.cmdb.services.collect_service.create_change_record")
         create_task = mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.create_or_update_periodic_task")
+        delete_task = mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.delete_periodic_task")
         push_node_params = mocker.patch.object(CollectModelService, "push_butch_node_params")
 
         assert CollectModelService.create(request, view) == instance.id
 
         assert len(callbacks) == 1
         create_task.assert_not_called()
+        delete_task.assert_not_called()
         push_node_params.assert_not_called()
         callbacks[0]()
-        create_task.assert_called_once()
+        # VM 对账任务不再注册按任务 beat，仅清理遗留 beat 并推送节点参数
+        create_task.assert_not_called()
+        delete_task.assert_called_once()
         push_node_params.assert_called_once_with(instance)
+
+    def test_create_config_file_仍注册按任务beat(self, mocker):
+        callbacks = patch_transaction_callbacks(mocker)
+        instance = collect_instance(task_type=CollectPluginTypes.CONFIG_FILE, model_id="config_file")
+        view = FakeCollectView(instance)
+        request = fake_request(collect_payload(task_type=CollectPluginTypes.CONFIG_FILE, model_id="config_file"))
+        mocker.patch.object(CollectModelService, "enrich_host_cloud_snapshot_payload", return_value=False)
+        mocker.patch("apps.cmdb.services.collect_service.create_change_record")
+        create_task = mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.create_or_update_periodic_task")
+        mocker.patch.object(CollectModelService, "push_butch_node_params")
+        mocker.patch.object(CollectModelService, "schedule_delayed_sync_if_needed")
+
+        assert CollectModelService.create(request, view) == instance.id
+        callbacks[0]()
+        create_task.assert_called_once()
 
     def test_update_事务内后续失败不提前同步外部副作用(self, mocker):
         patch_transaction_callbacks(mocker)
@@ -800,6 +819,7 @@ class TestCollectCrudSideEffects:
         mocker.patch("apps.cmdb.services.collect_service.CollectHitStateService.clear_by_credential_ids", return_value=0)
         mocker.patch("apps.cmdb.services.collect_service.create_change_record")
         create_task = mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.create_or_update_periodic_task")
+        delete_task = mocker.patch("apps.cmdb.services.collect_service.CeleryUtils.delete_periodic_task")
         delete_node_params = mocker.patch.object(CollectModelService, "delete_butch_node_params")
         push_node_params = mocker.patch.object(CollectModelService, "push_butch_node_params")
 
@@ -810,7 +830,8 @@ class TestCollectCrudSideEffects:
         delete_node_params.assert_not_called()
         push_node_params.assert_not_called()
         callbacks[0]()
-        create_task.assert_called_once()
+        create_task.assert_not_called()
+        delete_task.assert_called_once()
         delete_node_params.assert_called_once()
         push_node_params.assert_called_once_with(instance)
 

@@ -129,10 +129,10 @@ describe('GlobalWebChat', () => {
       'script[data-bk-global-webchat]',
     );
 
-    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js?v=20260824-1');
+    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js?v=20260826-1');
     expect(
       document.querySelector<HTMLLinkElement>('link[data-bk-global-webchat]')?.getAttribute('href'),
-    ).toBe('/webchat/style.css?v=20260824-1');
+    ).toBe('/webchat/style.css?v=20260826-1');
 
     window.WebChat = {
       default: initialize,
@@ -149,10 +149,10 @@ describe('GlobalWebChat', () => {
         teamId: '7',
         platform: expect.objectContaining({
           applicationsUrl: '/api/proxy/opspilot/skill_channel/platform/',
+          deleteSessionUrl: '/api/proxy/opspilot/skill_channel/conversations/delete/',
           storageKey: 'webchat:platform:alice:7',
         }),
         collectContext: expect.any(Function),
-        hasPageContext: expect.any(Function),
       }),
       null,
     );

@@ -1,0 +1,45 @@
+LlamaServer:
+  name: llama.cpp Server
+  desc: Collect llama-server Prometheus metrics via Telegraf Pull
+monitor_object:
+  LlamaServer: llama-server
+monitor_object_type:
+  LLM Inference: LLM Inference
+monitor_object_metric:
+  LlamaServer:
+    llamacpp:requests_processing_gauge:
+      name: Processing Requests
+      desc: Number of requests currently processing.
+    llamacpp:requests_deferred_gauge:
+      name: Deferred Requests
+      desc: Number of deferred requests.
+    llamacpp:kv_cache_usage_ratio_gauge:
+      name: KV Cache Usage Ratio
+      desc: KV cache usage ratio (1 means 100%).
+    llamacpp:prompt_tokens_total_counter_rate:
+      name: Prompt Token Rate
+      desc: Prompt token processing rate over the last 5 minutes.
+    llamacpp:tokens_predicted_total_counter_rate:
+      name: Predicted Token Rate
+      desc: Predicted token rate over the last 5 minutes.
+    llamacpp:prompt_tokens_seconds_gauge:
+      name: Prompt Throughput
+      desc: Average prompt throughput (tokens/s).
+    llamacpp:predicted_tokens_seconds_gauge:
+      name: Generation Throughput
+      desc: Average generation throughput (tokens/s).
+    llamacpp:n_decode_total_counter_rate:
+      name: Decode Call Rate
+      desc: llama_decode() call rate over the last 5 minutes.
+    llamacpp:n_busy_slots_per_decode_gauge:
+      name: Busy Slots per Decode
+      desc: Average busy slots per llama_decode() call.
+    llamacpp:tokens_per_decode_gauge:
+      name: Tokens per Decode
+      desc: Average predicted tokens processed per decode over the last 5 minutes.
+    llamacpp:prompt_tokens_total_counter_gauge:
+      name: Total Prompt Tokens
+      desc: Cumulative prompt tokens processed since startup.
+    llamacpp:tokens_predicted_total_counter_gauge:
+      name: Total Predicted Tokens
+      desc: Cumulative predicted tokens generated since startup.

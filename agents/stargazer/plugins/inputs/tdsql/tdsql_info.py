@@ -25,7 +25,7 @@ class TdsqlInfo:
         self.user = kwargs.get("user", "tdsql")
         self.password = kwargs.get("password", "")
         self.charset = kwargs.get("charset", "utf8mb4")
-        self.timeout = int(kwargs.get("timeout", 10))
+        self.timeout = 10  # 连接超时硬编码；表单 timeout 由框架作单对象预算
 
     def _connect(self):
         if pymysql is None:
@@ -81,9 +81,7 @@ class TdsqlInfo:
             # 3. 用户列表
             try:
                 rows = self._query("SELECT user, host FROM mysql.user ORDER BY user, host")
-                model_data["users"] = [
-                    f"{r.get('user', '')}@{r.get('host', '')}" for r in rows
-                ]
+                model_data["users"] = [f"{r.get('user', '')}@{r.get('host', '')}" for r in rows]
                 model_data["user_count"] = len(model_data["users"])
             except Exception:
                 model_data["user_count"] = 0
@@ -98,6 +96,7 @@ class TdsqlInfo:
             inst_data = {"result": {"tdsql": [model_data]}, "success": True}
         except Exception as err:
             import traceback
+
             logger.error(f"tdsql_info main error! {traceback.format_exc()}")
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 

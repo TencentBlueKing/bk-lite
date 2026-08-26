@@ -1,35 +1,25 @@
-"""插件异常日志：输出有界、可检索且不包含异常正文的调用链。"""
+"""插件异常日志：输出有界、可检索且不包含异常正文的源码调用上下文。"""
 
 from __future__ import annotations
 
 import re
-import threading
 import traceback
 from typing import Any, Mapping
 
 _MAX_CALL_CHAIN_FRAMES = 12
+_MAX_SOURCE_LINE_LENGTH = 300
+_MAX_ERROR_MESSAGE_LENGTH = 1000
 _SAFE_TOKEN = re.compile(r"[^A-Za-z0-9_.:/@-]+")
-
-
-class PluginExceptionSampler:
-    """一个 Run 共享的异常样本额度；兼容插件在线程中报告异常。"""
-
-    def __init__(self, limit: int = 3) -> None:
-        self._remaining = max(0, int(limit))
-        self._lock = threading.Lock()
-
-    def take(self) -> bool:
-        with self._lock:
-            if self._remaining <= 0:
-                return False
-            self._remaining -= 1
-            return True
+_SENSITIVE_ERROR_MESSAGE = re.compile(r"(?i)\b(?:password|passwd|pwd|token|secret|community|auth_?key|priv_?key|cookie|credential)\b")
+_SENSITIVE_SOURCE_DOUBLE_QUOTED = re.compile(
+    r'(?i)(?:[rubf]*)"[^"\n]*(?:password|passwd|pwd|token|community|secret|auth_?key|priv_?key|cookie|credential)[^"\n]*"'
+)
+_SENSITIVE_SOURCE_SINGLE_QUOTED = re.compile(
+    r"(?i)(?:[rubf]*)'[^'\n]*(?:password|passwd|pwd|token|community|secret|auth_?key|priv_?key|cookie|credential)[^'\n]*'"
+)
 
 
 def should_log_plugin_exception(params: Mapping[str, Any]) -> bool:
-    sampler = params.get("_plugin_exception_sampler")
-    if isinstance(sampler, PluginExceptionSampler):
-        return sampler.take()
     return bool(params.get("_log_plugin_call_chain"))
 
 
@@ -49,7 +39,18 @@ def _short_filename(filename: str) -> str:
     return "/".join(parts[-4:]) or "unknown"
 
 
-def _call_chain(error: BaseException) -> str:
+def _safe_error_message(error: BaseException) -> str:
+    text = str(error or "").strip()
+    if not text:
+        return "-"
+    text = " ".join(text.replace("\r", " ").replace("\n", " ").split())
+    text = "".join(char if char.isprintable() else "?" for char in text)
+    if _SENSITIVE_ERROR_MESSAGE.search(text):
+        return "[REDACTED]"
+    return text[:_MAX_ERROR_MESSAGE_LENGTH]
+
+
+def _traceback_frames(error: BaseException) -> list[traceback.FrameSummary]:
     frames = []
     seen_errors = set()
     current: BaseException | None = error
@@ -57,9 +58,28 @@ def _call_chain(error: BaseException) -> str:
         seen_errors.add(id(current))
         frames.extend(traceback.extract_tb(current.__traceback__))
         current = current.__cause__ or current.__context__
+    return frames[-_MAX_CALL_CHAIN_FRAMES:]
+
+
+def _call_chain(frames: list[traceback.FrameSummary]) -> str:
     if not frames:
         return "-"
-    return ">".join(f"{_short_filename(frame.filename)}:{frame.lineno}:{_safe_token(frame.name)}" for frame in frames[-_MAX_CALL_CHAIN_FRAMES:])
+    return ">".join(f"{_short_filename(frame.filename)}:{frame.lineno}:{_safe_token(frame.name)}" for frame in frames)
+
+
+def _source_context(frames: list[traceback.FrameSummary]) -> str:
+    """格式化 traceback 的源码行；不包含异常正文、局部变量或运行时参数值。"""
+    if not frames:
+        return "-"
+    lines = []
+    for frame in frames:
+        lines.append(f'  File "{_short_filename(frame.filename)}", line {frame.lineno}, ' f"in {_safe_token(frame.name)}")
+        source_line = str(frame.line or "<source unavailable>").strip()
+        source_line = "".join(char if char.isprintable() else "?" for char in source_line)
+        source_line = _SENSITIVE_SOURCE_DOUBLE_QUOTED.sub('"[REDACTED]"', source_line)
+        source_line = _SENSITIVE_SOURCE_SINGLE_QUOTED.sub("'[REDACTED]'", source_line)
+        lines.append(f"    {source_line[:_MAX_SOURCE_LINE_LENGTH]}")
+    return "\n".join(lines)
 
 
 def log_plugin_exception(
@@ -73,16 +93,21 @@ def log_plugin_exception(
     target: Any,
     level: str = "error",
 ) -> None:
-    """记录插件异常上下文；刻意不记录 ``str(error)`` 或源码内容。"""
+    """记录插件异常的安全正文和源码调用上下文，不记录局部变量或凭据。"""
 
     log_method = getattr(logger, level, logger.error)
+    frames = _traceback_frames(error)
     log_method(
-        "event=plugin_exception task_id=%s plugin_ref=%s model_id=%s " "plugin_name=%s target=%s error_type=%s call_chain=%s",
+        "event=plugin_exception task_id=%s plugin_ref=%s model_id=%s "
+        "plugin_name=%s target=%s error_type=%s error_message=%s call_chain=%s\n"
+        "source_context=\n%s",
         _safe_token(task_id),
         _safe_token(plugin_ref),
         _safe_token(model_id),
         _safe_token(plugin_name),
         _safe_token(target, default="logical"),
         _safe_token(type(error).__name__),
-        _call_chain(error),
+        _safe_error_message(error),
+        _call_chain(frames),
+        _source_context(frames),
     )

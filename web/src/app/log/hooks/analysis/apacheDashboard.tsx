@@ -270,7 +270,7 @@ export const useApacheDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 160 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 160 },
             { title: '状态码', dataIndex: 'apache.access.response_code', key: 'apache.access.response_code', width: 90, render: renderStatusTag },
             { title: '方法', dataIndex: 'apache.access.method', key: 'apache.access.method', width: 86 },
             { title: 'URL', dataIndex: 'apache.access.url', key: 'apache.access.url', width: 220 },
@@ -294,7 +294,7 @@ export const useApacheDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 160 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 160 },
             { title: '级别', dataIndex: 'apache.error.level', key: 'apache.error.level', width: 90, render: renderWebLevel },
             { title: '客户端', dataIndex: 'apache.error.client', key: 'apache.error.client', width: 120 },
             { title: '消息摘要', dataIndex: 'apache.error.message', key: 'apache.error.message', width: 360 }

@@ -85,6 +85,7 @@ export const useTaskForm = ({
         ...data,
         taskName: data.name,
         instUuid: data.instances?.[0]?.inst_uuid,
+        ip_precheck: Boolean(data.params?.ip_precheck),
         ...cycleFields,
         ...cleanupFields,
       };

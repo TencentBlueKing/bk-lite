@@ -101,6 +101,51 @@ def test_existing_outbox_kinds_keep_their_original_dispatch_contracts():
     assignment.assert_called_once_with(["A1"])
 
 
+@pytest.mark.django_db(transaction=True)
+def test_notification_outbox_retries_when_every_selected_channel_fails():
+    record = AlertOutbox.objects.create(
+        kind="notification",
+        payload={"params": [{"channel_id": 1}, {"channel_id": 2}]},
+        idempotency_key="notification-all-failed",
+    )
+
+    results = [
+        {"result": False, "message": "email unavailable"},
+        {"errcode": 500, "errmsg": "sms unavailable"},
+    ]
+    with mock.patch("apps.alerts.tasks.sync_notify", return_value=results):
+        with pytest.raises(RuntimeError, match="all notification channels failed"):
+            deliver_outbox_record(record.pk)
+
+    record.refresh_from_db()
+    assert record.status == AlertOutbox.Status.PENDING
+    assert record.attempts == 1
+    assert record.delivered_at is None
+    assert record.next_retry_at is not None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_notification_outbox_keeps_partial_success_compatibility_without_retrying_successful_channel():
+    record = AlertOutbox.objects.create(
+        kind="notification",
+        payload={"params": [{"channel_id": 1}, {"channel_id": 2}]},
+        idempotency_key="notification-partial-success",
+    )
+
+    results = [
+        {"result": True},
+        {"code": 500, "message": "sms unavailable"},
+    ]
+    with mock.patch("apps.alerts.tasks.sync_notify", return_value=results) as notify:
+        assert deliver_outbox_record(record.pk) is True
+
+    notify.assert_called_once()
+    record.refresh_from_db()
+    assert record.status == AlertOutbox.Status.DELIVERED
+    assert record.attempts == 1
+    assert record.delivered_at is not None
+
+
 def test_unknown_non_incident_outbox_kind_is_rejected():
     with pytest.raises(ValueError, match="unsupported alert outbox kind"):
         _deliver_payload("unknown", {})

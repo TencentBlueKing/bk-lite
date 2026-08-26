@@ -868,15 +868,17 @@ export default function ApmServicesPage() {
             {t('apm.services.updatingMetrics', '更新 {window} 指标', { window: timeWindow })}
           </span>
         ) : null}
-        <Button
-          icon={<InboxOutlined aria-hidden="true" />}
-          onClick={() => setArchivedOpen(true)}
-        >
-          {t('apm.status.archived', '已归档')}
-          {archivedServices.length ? (
-            <span className="ml-1 tabular-nums text-[var(--color-text-3)]">{archivedServices.length}</span>
-          ) : null}
-        </Button>
+        {perspective === 'service' ? (
+          <Button
+            icon={<InboxOutlined aria-hidden="true" />}
+            onClick={() => setArchivedOpen(true)}
+          >
+            {t('apm.status.archived', '已归档')}
+            {archivedServices.length ? (
+              <span className="ml-1 tabular-nums text-[var(--color-text-3)]">{archivedServices.length}</span>
+            ) : null}
+          </Button>
+        ) : null}
       </div>
     </FilterToolbar>
   );

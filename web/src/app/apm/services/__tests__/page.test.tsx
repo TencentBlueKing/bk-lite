@@ -210,6 +210,8 @@ describe('APM 服务目录应用视角', () => {
     );
     expect(within(cardArticle!).queryByText(/个服务/)).toBeNull();
     expect(within(cardArticle!).getByText(/应用 · 1h/)).not.toBeNull();
+    expect(screen.getByRole('radiogroup', { name: '服务指标时间窗口' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /已归档/ })).toBeNull();
     expect(within(cardArticle!).getByTitle('吞吐量趋势')).not.toBeNull();
     expect(within(cardArticle!).getByTitle('错误率趋势')).not.toBeNull();
     const alertLink = within(cardArticle!).getByRole('link', { name: /应用内 1 个活跃告警/ });
@@ -247,6 +249,8 @@ describe('APM 服务目录服务视角与归档', () => {
     expect(actionHeader.classList.contains('ant-table-cell-fix-right')).toBe(true);
     expect(screen.getByRole('button', { name: '调整组织' })).not.toBeNull();
     expect(screen.getByRole('button', { name: '归档' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: /已归档/ })).not.toBeNull();
+    expect(screen.getByRole('radiogroup', { name: '服务指标时间窗口' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: /更多操作/ })).toBeNull();
     expect(screen.queryByText('全部服务')).toBeNull();
     expect(screen.queryByText(/个环境视图/)).toBeNull();
@@ -288,8 +292,9 @@ describe('APM 服务目录服务视角与归档', () => {
     const user = userEvent.setup();
     renderWithApmIntl(<ApmServicesPage />);
 
-    await screen.findByRole('link', { name: '查看应用 电商应用 详情' });
-    await user.click(screen.getByRole('button', { name: /已归档/ }));
+    const servicePerspective = await screen.findByRole('radio', { name: '服务' });
+    await user.click(servicePerspective.closest('label')!);
+    await user.click(await screen.findByRole('button', { name: /已归档/ }));
 
     expect(await screen.findByText('已归档服务')).not.toBeNull();
     expect(screen.getByText('legacy-server')).not.toBeNull();

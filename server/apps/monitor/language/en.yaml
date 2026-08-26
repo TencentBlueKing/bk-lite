@@ -3,6 +3,7 @@ monitor_object_type:
   Web: Probe
   Database: Database
   Middleware: Middleware
+  LLM Inference: LLM Inference
   Network Device: Network Device
   Hardware Device: Hardware Device
   Container Management: Container Management

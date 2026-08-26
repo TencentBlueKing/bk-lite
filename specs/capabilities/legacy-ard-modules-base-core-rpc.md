@@ -13,11 +13,14 @@
 - **Celery**（`celery.py`）：app=`bklite`，自动发现各 app 任务；与 `django_celery_beat` 同步周期任务（从各 app `CELERY_BEAT_SCHEDULE` 聚合）。
 - **认证后端**（`backends.py`，`AUTHENTICATION_BACKENDS` 顺序：`AuthBackend` → `APISecretAuthBackend` → `ModelBackend`，见 `config/components/app.py:61-64`）：
   - `AuthBackend`（默认优先）：Token 经 system_mgmt RPC 校验，填充 locale/timezone/groups/roles。
-  - `APISecretAuthBackend`：按 api_secret 查用户，填充角色/权限，权限缓存 TTL 60s。
+  - `APISecretAuthBackend`：按 api_secret 查用户，填充角色/权限，权限缓存 TTL 默认 600s（`API_TOKEN_PERMISSION_CACHE_TTL`）。
 - **中间件**（`middlewares/`）：auth、api、app_exception、request_timing、drf、dameng_connection。
 - **加密**（`mixinx.py:EncryptMixin`）：基于 `cryptography.fernet.Fernet`，密钥由 `SECRET_KEY` 经 sha256 + urlsafe_b64 派生；`encrypt_field`/`decrypt_field` 按字段加解密，解密遇 `InvalidToken` 视为明文静默跳过（`mixinx.py:6,17-35,37-58,60-85`）。【已实现】密文形如标准 Fernet token（以 `gAAAAA` 开头）系 Fernet 编码格式，代码中无对该前缀的引用或校验逻辑（grep 无命中）【推断】。
 - **公共模型**（`models/`）：`TimeInfo`、`MaintainerInfo`、`Groups`、`VtypeMixin`（均为 `abstract=True` Mixin）。`core/models/__init__.py` 为空文件，未 re-export 任何模型，各模型需从子文件直接导入（如 `from apps.core.models.time_info import TimeInfo`，见 `base/models/user.py:9`）。【已实现，证据 `models/group_info.py:10`、`models/vtype_mixin.py:16`、`models/time_info.py:5`、`models/maintainer_info.py:5`、`models/__init__.py`（空）】
 - **工具**：permission_cache、custom_error、loader（i18n）、web_utils、logger（分模块）。
+- **OpenAPI 网关**【已实现】：Core 持有 `apps.core.openapi` 包；根路由静态挂载 `openapi/v1/`，不走 `api/v1/<app>/` 动态循环。契约细节见 [[openapi-gateway.md]]。
+
+> 证据来源：server/urls.py:14-16　|　同步基线：61bace9f　|　【已实现】
 - **模板执行边界**：Core 提供两种 Jinja 沙箱工厂并按信任级隔离。不可信的字符串模板使用严格沙箱：禁止私有属性与可调用对象，并仅开放调用方显式登记的过滤器；仓库内受控模板使用兼容宏与公开数据容器方法的受限沙箱，同样清空默认全局对象、过滤器和测试，再按需恢复已审计能力。生产 app 不得直接引用普通 Jinja 环境，统一通过 Core 安全工厂收口。该边界由 [[legacy-ard-modules-log.md#模块 ARD：Log（日志中心）]] 和 [[legacy-ard-modules-monitor.md#模块 ARD：Monitor（监控告警策略）]] 的模板使用方遵循。
 
 > 证据来源：server/apps/core/utils/safe_template.py:31-57,235-297　|　同步基线：d2769559　|　【已实现】
@@ -41,7 +44,7 @@ CMDB 实例 UUID 清洗属于非关键、可重建的运行期收敛能力。`ba
   - `AppClient`：本进程模块导入回退（`__import__(path)` → `getattr(method)`）。
   - `OperationAnalysisRpc`：独立 server/namespace，支持 request_v2。
 - `jetstream.py:JetStreamService`：NATS 对象存储封装（put/get/delete/list/watch/streaming）。
-- RPC 客户端（均为客户端封装）：`executor.py`（local/ssh execute、download/upload、unzip、health）、`ansible.py`、`cmdb.py`、`monitor.py`、`log.py`、`node_mgmt.py`、`system_mgmt.py`、`opspilot.py`、`alerts.py`、`job_mgmt.py`、`mlops.py`、`console_mgmt.py`（`ConsoleMgmt`，创建通知）、`stargazer.py`（`StargazerRpcClient`/`Stargazer`，独立 namespace + health_check）、`operation_analysis.py`。【已实现，证据 `rpc/console_mgmt.py:4`、`rpc/stargazer.py:6,11`】其中 `system_mgmt.py` 始终使用 `AppClient` 本进程导入 `apps.system_mgmt.nats_api`，不读取 `IS_LOCAL_RPC`。
+- RPC 客户端（均为客户端封装）：`executor.py`、`ansible.py`、`cmdb.py`、`monitor.py`、`log.py`、`node_mgmt.py`、`system_mgmt.py`、`opspilot.py`、`alerts.py`、`job_mgmt.py`、`mlops.py`、`console_mgmt.py`、`stargazer.py`、`operation_analysis.py`、`patch_mgmt.py`。
 - `sensitive.py`：RPC 可观测面敏感字段脱敏工具，`MASKED_VALUE='***'`，对 `password`/`private_key`/`passphrase`/`inventory_content`/`ansible_*` 等键直接掩码，并用正则掩码字符串内的赋值片段与私钥块。【已实现，证据 `rpc/sensitive.py:1-30`】
 - 处理函数（`@nats_client.register`）不在 `apps/rpc/` 内——`apps/rpc/` 全为客户端封装，grep `@nats_client` 无命中；`register` 处理函数位于各业务 app 的 `nats_api.py`/`nats/` 模块（如 `system_mgmt/nats_api.py:63` 的 `get_user_all_roles` 等），由各 app 启动时自动发现。【已实现，证据 `apps/rpc/` grep `@nats_client` 无命中、`system_mgmt/nats_api.py:63`】
 - **跨模块写入契约**：CMDB、监控与节点管理新增统一的 `params` 信封入口；调用方将来源模块、来源标识、事件类型、发生时间、原始载荷及可选关联标识整体传递，接收端返回创建、更新、忽略、冲突或认领等处理状态。CMDB 与监控入口分别解析授权上下文，监控禁止以原始载荷中的组织字段反推授权范围；节点管理入口只负责既有节点关联而不创建节点。各领域的归并、冲突和生命周期规则归入 [[legacy-ard-modules-cmdb.md#模块 ARD：CMDB（配置管理）]]、[[legacy-ard-modules-monitor.md#模块 ARD：Monitor（监控告警策略）]] 和 [[legacy-ard-modules-node-mgmt.md#模块 ARD：Node Management（节点管理）]]。

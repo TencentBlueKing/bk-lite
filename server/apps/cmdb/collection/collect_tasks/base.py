@@ -41,6 +41,9 @@ class BaseCollect(object):
             collector_cluster_id = instance.get("collector_cluster_id") or self.task.params.get("collector_cluster_id")
             if collector_cluster_id:
                 kwargs["collector_cluster_id"] = collector_cluster_id
+        round_ts = getattr(self.task, "_sync_round_ts", None)
+        if round_ts is not None:
+            kwargs["round_ts"] = round_ts
         return kwargs
 
     def format_params(self):

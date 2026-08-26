@@ -25,11 +25,7 @@ from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Incident, Level
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
 from apps.core.logger import alert_logger as logger
-from apps.core.utils.internal_event_auth import (
-    TRUSTED_INTERNAL_EVENT_CALLERS,
-    legacy_internal_event_auth_allowed,
-    verify_internal_event,
-)
+from apps.core.utils.internal_event_auth import TRUSTED_INTERNAL_EVENT_CALLERS, legacy_internal_event_auth_allowed, verify_internal_event
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.time_util import parse_rfc3339_range_utc, parse_rfc3339_utc
 from apps.core.utils.trend_granularity import resolve_trend_group_by_from_range
@@ -450,12 +446,15 @@ def get_alert_source_distribution(*args, **kwargs) -> Dict[str, Any]:
 
     counts = {}
     unknown_count = 0
-    for source_name in queryset.values_list("source_name", flat=True):
+    source_counts = queryset.order_by().values("source_name").annotate(count=Count("id", distinct=True))
+    for item in source_counts:
+        source_name = item["source_name"]
+        count = item["count"]
         name = source_name.strip() if isinstance(source_name, str) and source_name.strip() else None
         if name is None:
-            unknown_count += 1
+            unknown_count += count
             continue
-        counts[name] = counts.get(name, 0) + 1
+        counts[name] = counts.get(name, 0) + count
 
     ordered = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     data = [{"name": name, "value": value} for name, value in ordered]

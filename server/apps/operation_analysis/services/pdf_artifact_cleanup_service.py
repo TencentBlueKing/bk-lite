@@ -13,15 +13,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from apps.core.logger import operation_analysis_logger as logger
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-    DashboardReportPdfArtifact,
-)
-from apps.operation_analysis.services.report_render_service import (
-    DashboardReportRenderService,
-)
 from django.utils import timezone
+
+from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportPdfArtifact
+from apps.operation_analysis.services.report_render_service import DashboardReportRenderService
 
 DEFAULT_ARTIFACT_CLEANUP_BATCH_SIZE = 200
 
@@ -83,8 +79,7 @@ class PdfArtifactCleanupService:
             except Exception:
                 errors += 1
                 logger.exception(
-                    "PDF artifact cleanup failed: artifact_id=%s "
-                    "execution_id=%s",
+                    "PDF artifact cleanup failed: artifact_id=%s " "execution_id=%s",
                     artifact.id,
                     artifact.execution_id,
                 )
@@ -97,8 +92,7 @@ class PdfArtifactCleanupService:
         )
         if stats.scanned:
             logger.info(
-                "PdfArtifactCleanup finished: scanned=%s deleted=%s "
-                "file_missing=%s errors=%s",
+                "PdfArtifactCleanup finished: scanned=%s deleted=%s " "file_missing=%s errors=%s",
                 stats.scanned,
                 stats.deleted,
                 stats.file_missing,
@@ -108,7 +102,7 @@ class PdfArtifactCleanupService:
 
     @classmethod
     def _cleanup_one(cls, artifact: DashboardReportPdfArtifact) -> str:
-        """删文件（缺文件幂等）后删 DB 行。返回 deleted | file_missing。"""
+        """删文件（缺文件幂等）后删 DB 行；删除异常向上抛出并保留索引。"""
         root = DashboardReportRenderService._artifact_root()
         path = (root / artifact.storage_reference).resolve()
         file_was_missing = False
@@ -121,24 +115,16 @@ class PdfArtifactCleanupService:
             )
         else:
             try:
-                if path.is_file():
-                    path.unlink()
-                else:
-                    file_was_missing = True
-                # 尽量去掉空的 execution-{id}/ 目录
-                parent = path.parent
-                if parent != root and parent.is_dir():
-                    try:
-                        parent.rmdir()
-                    except OSError:
-                        pass
-            except Exception:
-                logger.warning(
-                    "删除 PDF 文件失败（继续删 DB 行）: artifact_id=%s path=%s",
-                    artifact.id,
-                    path,
-                    exc_info=True,
-                )
+                path.unlink()
+            except FileNotFoundError:
+                file_was_missing = True
+            # 尽量去掉空的 execution-{id}/ 目录
+            parent = path.parent
+            if parent != root and parent.is_dir():
+                try:
+                    parent.rmdir()
+                except OSError:
+                    pass
 
         artifact.delete()
         return "file_missing" if file_was_missing else "deleted"

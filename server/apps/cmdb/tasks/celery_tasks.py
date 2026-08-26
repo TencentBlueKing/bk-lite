@@ -17,6 +17,18 @@ from django.utils.timezone import is_aware, now
 from apps.cmdb.collection.collect_plugin.base import is_failed_vm_metric
 from apps.cmdb.collection.collect_tasks.job_collect import JobCollect
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
+from apps.cmdb.collection.round_sync import (
+    GATE_PAGE_SIZE,
+    LAST_SYNCED_ROUND_KEY,
+    ORPHAN_BEAT_PURGE_LIMIT,
+    SYNC_BEAT_NAME_PREFIX,
+    cmdb_instance_id,
+    decide_gate_action,
+    get_last_synced_round,
+    has_instance_vm_data,
+    query_latest_round_ts,
+    uses_vm_reconciliation,
+)
 from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.collect_dispatch_service import CollectDispatchService
@@ -24,6 +36,7 @@ from apps.cmdb.services.collect_tool_service import CollectToolService
 from apps.cmdb.services.subscription_task import SubscriptionTaskService
 from apps.cmdb.tasks.node_mgmt_sync import run_collect, run_sync
 from apps.core.logger import cmdb_logger as logger
+from apps.core.utils.celery_utils import CeleryUtils
 
 _COLLECT_TERMINAL_STATUSES = (
     CollectRunStatusType.SUCCESS,
@@ -467,7 +480,7 @@ def trigger_first_collection(self, task_id, expected_fingerprint, reason):
 
 
 @shared_task(bind=True)
-def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None, node_config_version=None):
+def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None, node_config_version=None, sync_round_ts=None):  # noqa: C901
     """
     同步采集任务
     """
@@ -482,6 +495,9 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
     ):
         logger.info("[CollectTask] 节点同步配置已变化，跳过旧版本任务 task_id=%s", instance_id)
         return
+    # 领取前保留游标：对账失败时不得丢失 last_synced_round，否则守门会误判进兼容路径。
+    prev_digest = CollectModels._default_manager.filter(id=instance_id).values_list("collect_digest", flat=True).first()
+    prev_synced_round = get_last_synced_round(prev_digest)
     instance = _claim_collect_task_execution(instance_id, start_time, execution_id=execution_id)
     if not instance:
         exists = CollectModels._default_manager.filter(id=instance_id).exists()
@@ -492,6 +508,19 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
         return
     execution_id = instance.task_id
     claim_token = instance.claim_token
+    resolved_round_ts = None
+    if sync_round_ts not in (None, ""):
+        try:
+            resolved_round_ts = int(sync_round_ts)
+        except (TypeError, ValueError):
+            logger.warning(
+                "[CollectTask] sync_round_ts 非法，忽略轮次过滤 task_id=%s value=%s",
+                instance_id,
+                sync_round_ts,
+            )
+            resolved_round_ts = None
+    if resolved_round_ts is not None:
+        instance._sync_round_ts = resolved_round_ts
     logger.info(
         "event=collect_task_execution_started task_id=%s execution_id=%s",
         instance_id,
@@ -613,6 +642,13 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
             elif decided == CollectRunStatusType.PARTIAL_SUCCESS:
                 instance.exec_status = CollectRunStatusType.PARTIAL_SUCCESS
                 collect_digest["message"] = "部分采集或数据写入失败，请检查原始数据及错误数"
+        _apply_last_synced_round(
+            collect_digest,
+            instance_id=instance_id,
+            exec_status=instance.exec_status,
+            sync_round_ts=resolved_round_ts,
+            prev_synced_round=prev_synced_round,
+        )
         update_values = {
             "collect_data": result,
             "format_data": format_data,
@@ -633,6 +669,19 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
                 instance_id,
                 execution_id,
             )
+        elif instance.exec_status in (
+            CollectRunStatusType.SUCCESS,
+            CollectRunStatusType.PARTIAL_SUCCESS,
+        ) and (getattr(instance, "model_id", None) == "network" or getattr(instance, "task_type", None) == CollectPluginTypes.SNMP):
+            try:
+                from apps.cmdb.services.topology_replay_service import wake_pending_topology_replay
+
+                wake_pending_topology_replay(instance_id)
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "[CollectTask] 唤醒拓扑 pending 重放失败 task_id=%s",
+                    instance_id,
+                )
     except Exception as err:
         failed_stage = "result_persistence"
         logger.exception(
@@ -642,18 +691,21 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
             failed_stage,
             type(err).__name__,
         )
+        error_digest = {
+            "message": "采集结果写入失败（task_id={}）：{}".format(
+                instance_id,
+                _build_safe_error_message(err),
+            )
+        }
+        if prev_synced_round is not None:
+            error_digest[LAST_SYNCED_ROUND_KEY] = prev_synced_round
         result_persisted = _save_collect_result_if_current(
             instance_id,
             execution_id,
             claim_token,
             {
                 "exec_status": CollectRunStatusType.ERROR,
-                "collect_digest": {
-                    "message": "采集结果写入失败（task_id={}）：{}".format(
-                        instance_id,
-                        _build_safe_error_message(err),
-                    )
-                },
+                "collect_digest": error_digest,
                 "updated_at": now(),
             },
         )
@@ -671,6 +723,138 @@ def sync_collect_task(self, instance_id, execution_id=None, node_config_id=None,
         config_file_pending,
         (time.monotonic() - run_started_at) * 1000,
     )
+
+
+def _apply_last_synced_round(
+    collect_digest: dict,
+    *,
+    instance_id,
+    exec_status,
+    sync_round_ts,
+    prev_synced_round,
+):
+    """成功对账后写入游标；失败时保留旧游标。手动路径无 sync_round_ts 时从标记刷新。"""
+    success_statuses = (
+        CollectRunStatusType.SUCCESS,
+        CollectRunStatusType.PARTIAL_SUCCESS,
+    )
+    if exec_status in success_statuses:
+        round_to_store = sync_round_ts
+        if round_to_store is None:
+            round_to_store = query_latest_round_ts(cmdb_instance_id(instance_id))
+        if round_to_store is not None:
+            collect_digest[LAST_SYNCED_ROUND_KEY] = int(round_to_store)
+            return
+    if prev_synced_round is not None:
+        collect_digest[LAST_SYNCED_ROUND_KEY] = prev_synced_round
+
+
+def _purge_legacy_vm_sync_beats(limit: int = ORPHAN_BEAT_PURGE_LIMIT) -> int:
+    """运行期幂等清理 VM 对账任务残留的按任务 beat（不在启动期执行）。"""
+    from django_celery_beat.models import PeriodicTask
+
+    purged = 0
+    qs = PeriodicTask.objects.filter(name__startswith=SYNC_BEAT_NAME_PREFIX).order_by("id").values_list("id", "name")[:limit]
+    for beat_id, name in qs:
+        suffix = name[len(SYNC_BEAT_NAME_PREFIX) :]
+        try:
+            task_id = int(suffix)
+        except (TypeError, ValueError):
+            continue
+        task_type = CollectModels._default_manager.filter(id=task_id).values_list("task_type", flat=True).first()
+        # 任务已删除，或仍为 VM 对账类型：清理旧 beat。
+        if task_type is None or uses_vm_reconciliation(task_type):
+            CeleryUtils.delete_periodic_task(name)
+            purged += 1
+            logger.info("[RoundGate] 清理遗留对账 beat name=%s beat_id=%s", name, beat_id)
+    return purged
+
+
+@shared_task
+def sync_collect_tasks_gate():
+    """全局 5 分钟守门：仅在出现新完整轮次时触发对账。"""
+    from apps.cmdb.models.collect_model import COLLECTION_ROLE_DEVICE
+    from apps.cmdb.services.topology_replay_service import maybe_replay_topology_from_gate
+
+    logger.info("[RoundGate] 开始扫描采集对账守门")
+    purged = _purge_legacy_vm_sync_beats()
+    scanned = 0
+    dispatched = 0
+    skipped = 0
+    topo_replayed = 0
+    after_id = 0
+    while True:
+        page = list(
+            CollectModels._default_manager.filter(id__gt=after_id)
+            .exclude(task_type=CollectPluginTypes.CONFIG_FILE)
+            .order_by("id")
+            .values("id", "exec_status", "collect_digest", "params", "model_id", "task_type")[:GATE_PAGE_SIZE]
+        )
+        if not page:
+            break
+        for row in page:
+            scanned += 1
+            task_id = row["id"]
+            instance_id = cmdb_instance_id(task_id)
+            last_synced = get_last_synced_round(row.get("collect_digest"))
+            # 设备通道优先按 collection_role=device 取标记；兼容旧无 role 标记。
+            round_ts = query_latest_round_ts(instance_id, collection_role=COLLECTION_ROLE_DEVICE)
+            if round_ts is None:
+                round_ts = query_latest_round_ts(instance_id)
+            has_data = False
+            if round_ts is None and last_synced is None:
+                has_data = has_instance_vm_data(instance_id)
+            action = decide_gate_action(
+                exec_status=row["exec_status"],
+                round_ts=round_ts,
+                last_synced_round=last_synced,
+                has_vm_data=has_data,
+            )
+            if action == "sync_round":
+                sync_collect_task.delay(task_id, sync_round_ts=round_ts)
+                dispatched += 1
+                logger.info(
+                    "[RoundGate] 派发轮次对账 task_id=%s round_ts=%s last_synced=%s",
+                    task_id,
+                    round_ts,
+                    last_synced,
+                )
+            elif action == "sync_compat":
+                sync_collect_task.delay(task_id)
+                dispatched += 1
+                logger.info("[RoundGate] 兼容回退对账 task_id=%s", task_id)
+            else:
+                skipped += 1
+                logger.debug(
+                    "[RoundGate] 跳过 task_id=%s action=%s round_ts=%s last_synced=%s",
+                    task_id,
+                    action,
+                    round_ts,
+                    last_synced,
+                )
+
+            if row.get("model_id") == "network" or row.get("task_type") == CollectPluginTypes.SNMP:
+                topo_status = maybe_replay_topology_from_gate(task_id, row.get("params"), row.get("collect_digest"))
+                if topo_status == "played":
+                    topo_replayed += 1
+        after_id = page[-1]["id"]
+        if len(page) < GATE_PAGE_SIZE:
+            break
+    logger.info(
+        "[RoundGate] 守门扫描完成 scanned=%s dispatched=%s skipped=%s " "topo_replayed=%s purged_beats=%s",
+        scanned,
+        dispatched,
+        skipped,
+        topo_replayed,
+        purged,
+    )
+    return {
+        "scanned": scanned,
+        "dispatched": dispatched,
+        "skipped": skipped,
+        "topo_replayed": topo_replayed,
+        "purged_beats": purged,
+    }
 
 
 @shared_task

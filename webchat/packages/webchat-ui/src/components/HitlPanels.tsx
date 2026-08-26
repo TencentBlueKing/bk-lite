@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { isSilentCustomEvent } from '@webchat/core';
 import type { CustomProtocolEvent } from '../agui';
 import { WC } from '../chrome';
 
@@ -52,6 +53,9 @@ export function isBlockingHitlEvent(event: CustomProtocolEvent | null): boolean 
 }
 
 export function formatDegradedCustomEvent(event: CustomProtocolEvent): string {
+  if (isSilentCustomEvent(event.name)) {
+    return '';
+  }
   const value = event.value;
   if (value && typeof value === 'object') {
     const record = value as Record<string, unknown>;

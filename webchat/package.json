@@ -16,7 +16,7 @@
     "build:browser": "npm run build:browser --workspace @webchat/ui",
     "sync:web": "node scripts/sync-web-public.mjs",
     "build:demo": "npm run build --workspace @webchat/demo",
-    "test": "node tests/state-machine.issue-3882.mjs && node --test tests/stream-lifecycle.issue-3556.test.mjs && node --test tests/agui-event-batching.test.mjs tests/chat-streaming-boundaries.test.mjs tests/content-chunks.test.mjs tests/streaming-frame-batcher.test.mjs tests/workspace-install.test.mjs tests/publish-workspaces.test.mjs tests/workflow-registration.test.mjs && npm run test:core && npm run test:config && npm run test:issue-4636 && npm run test:image-budget",
+    "test": "node tests/state-machine.issue-3882.mjs && node --test tests/stream-lifecycle.issue-3556.test.mjs && node --test tests/agui-event-batching.test.mjs tests/chat-streaming-boundaries.test.mjs tests/content-chunks.test.mjs tests/message-content-actions.test.mjs tests/streaming-frame-batcher.test.mjs tests/workspace-install.test.mjs tests/publish-workspaces.test.mjs tests/workflow-registration.test.mjs && npm run test:core && npm run test:config && npm run test:issue-4636 && npm run test:image-budget",
     "pretest:core": "node -e \"require('node:fs').rmSync('.test-dist', { recursive: true, force: true })\"",
     "test:core": "tsc -p tests/tsconfig.json && node --test .test-dist/tests/core/core.test.js",
     "pretest:config": "node -e \"require('node:fs').rmSync('packages/webchat-ui/.test-dist/issue-4037', { recursive: true, force: true })\"",

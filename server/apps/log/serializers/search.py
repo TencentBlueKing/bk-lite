@@ -5,7 +5,7 @@ from apps.log.constants.victoriametrics import VictoriaLogsConstants
 
 class LogFieldValuesSerializer(serializers.Serializer):
     filed = serializers.RegexField(
-        regex=r"^[A-Za-z_][A-Za-z0-9_.]*$",
+        regex=r"^[A-Za-z_@][A-Za-z0-9_.@/-]*$",
         max_length=200,
         error_messages={"invalid": "filed 参数格式非法"},
     )
@@ -40,7 +40,7 @@ class LogHitsSerializer(serializers.Serializer):
     start_time = serializers.CharField(required=False, allow_blank=True, default="")
     end_time = serializers.CharField(required=False, allow_blank=True, default="")
     field = serializers.RegexField(
-        regex=r"^[A-Za-z_][A-Za-z0-9_.]*$",
+        regex=r"^[A-Za-z_@][A-Za-z0-9_.@/-]*$",
         max_length=200,
         error_messages={"invalid": "field 参数格式非法"},
     )
@@ -65,7 +65,7 @@ class LogTopStatsSerializer(serializers.Serializer):
     start_time = serializers.CharField(required=False, allow_blank=True, default="")
     end_time = serializers.CharField(required=False, allow_blank=True, default="")
     attr = serializers.RegexField(
-        regex=r"^[A-Za-z_][A-Za-z0-9_.]*$",
+        regex=r"^[A-Za-z_@][A-Za-z0-9_.@/-]*$",
         max_length=200,
         error_messages={"invalid": "attr 参数格式非法"},
     )

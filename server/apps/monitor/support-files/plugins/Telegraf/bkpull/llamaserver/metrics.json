@@ -1,0 +1,238 @@
+{
+  "plugin": "LlamaServer",
+  "plugin_desc": "由 Telegraf Pull 采集器通过 Prometheus 指标端点采集 llama.cpp llama-server 关键监控指标，覆盖处理中请求、KV 缓存占用与 Token 吞吐等核心运维场景。",
+  "status_query": "any({instance_type='llamaserver', collect_type='bkpull'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "asset.ip",
+      "value_type": "ip",
+      "resolver": "input",
+      "options": {
+        "field": "server_url"
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "asset.ip",
+      "title": "monitor.views.assetIp",
+      "order": 10
+    }
+  ],
+  "name": "LlamaServer",
+  "icon": "mm-llamaserver_LlamaServer",
+  "type": "LLM Inference",
+  "description": "",
+  "default_metric": "any({instance_type='llamaserver'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "llamacpp:requests_processing_gauge",
+    "llamacpp:requests_deferred_gauge",
+    "llamacpp:predicted_tokens_seconds_gauge",
+    "llamacpp:n_decode_total_counter_rate",
+    "llamacpp:n_busy_slots_per_decode_gauge",
+    "llamacpp:tokens_per_decode_gauge"
+  ],
+  "display_fields": [
+    {
+      "name": "处理中请求数",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "LlamaServer",
+          "metric": "llamacpp:requests_processing_gauge"
+        }
+      ]
+    },
+    {
+      "name": "延迟请求数",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "LlamaServer",
+          "metric": "llamacpp:requests_deferred_gauge"
+        }
+      ]
+    },
+    {
+      "name": "KV缓存占用",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "LlamaServer",
+          "metric": "llamacpp:kv_cache_usage_ratio_gauge"
+        }
+      ]
+    },
+    {
+      "name": "生成吞吐",
+      "sort_order": 3,
+      "metrics": [
+        {
+          "plugin": "LlamaServer",
+          "metric": "llamacpp:predicted_tokens_seconds_gauge"
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_group": "请求队列",
+      "name": "llamacpp:requests_processing_gauge",
+      "display_name": "处理中请求数",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "当前正在处理的请求数量。",
+      "query": "llamacpp:requests_processing_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "请求队列",
+      "name": "llamacpp:requests_deferred_gauge",
+      "display_name": "延迟请求数",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "当前被延迟（deferred）的请求数量。",
+      "query": "llamacpp:requests_deferred_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "缓存",
+      "name": "llamacpp:kv_cache_usage_ratio_gauge",
+      "display_name": "KV缓存占用比例",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "percentunit",
+      "dimensions": [],
+      "description": "KV cache 占用比例（官方说明 1 表示 100%）。",
+      "query": "llamacpp:kv_cache_usage_ratio_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Token吞吐",
+      "name": "llamacpp:prompt_tokens_total_counter_rate",
+      "display_name": "Prompt Token 速率",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "最近 5 分钟 prompt token 处理速率。",
+      "query": "sum(rate(llamacpp:prompt_tokens_total_counter{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Token吞吐",
+      "name": "llamacpp:tokens_predicted_total_counter_rate",
+      "display_name": "生成 Token 速率",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "最近 5 分钟生成（predicted）token 速率。",
+      "query": "sum(rate(llamacpp:tokens_predicted_total_counter{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Token吞吐",
+      "name": "llamacpp:prompt_tokens_seconds_gauge",
+      "display_name": "Prompt 平均吞吐",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "Prompt 平均吞吐（tokens/s）。",
+      "query": "llamacpp:prompt_tokens_seconds_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Token吞吐",
+      "name": "llamacpp:predicted_tokens_seconds_gauge",
+      "display_name": "生成平均吞吐",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "生成平均吞吐（tokens/s）。",
+      "query": "llamacpp:predicted_tokens_seconds_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Decode",
+      "name": "llamacpp:n_decode_total_counter_rate",
+      "display_name": "Decode 调用速率",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "最近 5 分钟 llama_decode() 调用速率。",
+      "query": "sum(rate(llamacpp:n_decode_total_counter{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Decode",
+      "name": "llamacpp:n_busy_slots_per_decode_gauge",
+      "display_name": "Decode 平均忙槽位",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "每次 llama_decode() 调用平均 busy slot 数，反映连续批处理效率。",
+      "query": "llamacpp:n_busy_slots_per_decode_counter{__$labels__}"
+    },
+    {
+      "metric_group": "Decode",
+      "name": "llamacpp:tokens_per_decode_gauge",
+      "display_name": "每次 Decode Token 数",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "最近 5 分钟每次 decode 平均处理的 predicted token 数。",
+      "query": "sum(rate(llamacpp:tokens_predicted_total_counter{__$labels__}[5m])) by (instance_id) / sum(rate(llamacpp:n_decode_total_counter{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Token累计",
+      "name": "llamacpp:prompt_tokens_total_counter_gauge",
+      "display_name": "累计 Prompt Token",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "自启动以来累计处理的 prompt token 总数。",
+      "query": "sum(llamacpp:prompt_tokens_total_counter{__$labels__}) by (instance_id)"
+    },
+    {
+      "metric_group": "Token累计",
+      "name": "llamacpp:tokens_predicted_total_counter_gauge",
+      "display_name": "累计生成 Token",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "自启动以来累计生成的 token 总数。",
+      "query": "sum(llamacpp:tokens_predicted_total_counter{__$labels__}) by (instance_id)"
+    }
+  ]
+}

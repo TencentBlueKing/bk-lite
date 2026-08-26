@@ -91,6 +91,62 @@ describe('LogQueryInput', () => {
     expect(input.value).toBe('host.name:');
   });
 
+  it('方向键高亮的字段与回车选中的字段一致', async () => {
+    const user = userEvent.setup();
+    render(<ControlledInput />);
+
+    const input = screen.getByPlaceholderText('query-input') as HTMLInputElement;
+    await user.click(input);
+    fireEvent.keyDown(input, {
+      key: 'ArrowDown',
+      code: 'ArrowDown',
+      keyCode: 40,
+      which: 40
+    });
+    await user.keyboard('{Enter}');
+
+    expect(input.value).toBe('host.os.family:');
+  });
+
+  it('输入 message 时不会吞掉最后一个字母', async () => {
+    const user = userEvent.setup();
+    render(<ControlledInput fields={['message', 'host']} />);
+
+    const input = screen.getByPlaceholderText('query-input') as HTMLInputElement;
+    await user.click(input);
+    await user.type(input, 'message');
+
+    expect(['message', 'message:']).toContain(input.value);
+  });
+
+  it('字段候选中不展示内部时间与流字段', async () => {
+    const user = userEvent.setup();
+    render(
+      <ControlledInput
+        fields={['@timestamp', '_stream_id', '_stream', 'host.name', 'message']}
+      />
+    );
+
+    const input = screen.getByPlaceholderText('query-input') as HTMLInputElement;
+    await user.click(input);
+
+    expect(screen.queryByText('@timestamp')).toBeNull();
+    expect(screen.queryByText('_stream_id')).toBeNull();
+    expect(screen.queryByText('_stream')).toBeNull();
+    expect(screen.getAllByText('host.name').length).toBeGreaterThan(0);
+  });
+
+  it('选择 @metadata 字段时会加上 LogsQL 引号', async () => {
+    const user = userEvent.setup();
+    render(<ControlledInput fields={['@metadata.beat', 'host.name']} />);
+
+    const input = screen.getByPlaceholderText('query-input') as HTMLInputElement;
+    await user.click(input);
+    await user.click(screen.getAllByText('@metadata.beat').at(-1)!);
+
+    expect(input.value).toBe('"@metadata.beat":');
+  });
+
   it('按当前日志分组和时间范围加载字段值并安全插入', async () => {
     vi.useFakeTimers();
     getFieldValues.mockResolvedValue({

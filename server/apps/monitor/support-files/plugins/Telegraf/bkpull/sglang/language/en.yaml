@@ -1,0 +1,54 @@
+SGLang:
+  name: SGLang Inference Server
+  desc: Collect SGLang Prometheus metrics via Telegraf Pull
+monitor_object:
+  SGLang: SGLang
+monitor_object_type:
+  LLM Inference: LLM Inference
+monitor_object_metric:
+  SGLang:
+    sglang:num_running_reqs_gauge:
+      name: Running Requests
+      desc: Number of requests currently being processed.
+    sglang:num_queue_reqs_gauge:
+      name: Queued Requests
+      desc: Number of requests waiting in the queue.
+    sglang:token_usage_gauge:
+      name: Token Usage
+      desc: KV/token usage ratio (0–1).
+    sglang:cache_hit_rate_gauge:
+      name: Cache Hit Rate
+      desc: Prefix cache hit rate (0–1).
+    sglang:prompt_tokens_total_counter_rate:
+      name: Prefill Token Rate
+      desc: Prefill token processing rate over the last 5 minutes.
+    sglang:generation_tokens_total_counter_rate:
+      name: Generation Token Rate
+      desc: Generation token rate over the last 5 minutes.
+    sglang:gen_throughput_gauge:
+      name: Generation Throughput
+      desc: Current generation throughput (token/s).
+    sglang:time_to_first_token_seconds_p99:
+      name: TTFT P99
+      desc: Time-to-First-Token P99 over the last 5 minutes.
+    sglang:e2e_request_latency_seconds_p99:
+      name: E2E Latency P99
+      desc: End-to-end request latency P99 over the last 5 minutes.
+    sglang:time_to_first_token_seconds_p50:
+      name: TTFT P50
+      desc: Time-to-First-Token P50 over the last 5 minutes.
+    sglang:time_to_first_token_seconds_p90:
+      name: TTFT P90
+      desc: Time-to-First-Token P90 over the last 5 minutes.
+    sglang:time_to_first_token_seconds_avg:
+      name: TTFT Average
+      desc: Average Time-to-First-Token over the last 5 minutes.
+    sglang:e2e_request_latency_seconds_p50:
+      name: E2E Latency P50
+      desc: End-to-end request latency P50 over the last 5 minutes.
+    sglang:e2e_request_latency_seconds_p90:
+      name: E2E Latency P90
+      desc: End-to-end request latency P90 over the last 5 minutes.
+    sglang:e2e_request_latency_seconds_avg:
+      name: E2E Latency Average
+      desc: Average end-to-end request latency over the last 5 minutes.

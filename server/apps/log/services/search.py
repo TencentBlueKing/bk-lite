@@ -6,7 +6,16 @@ from decimal import Decimal, ROUND_HALF_UP
 from typing import AsyncIterator
 
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
-from apps.log.services.log_event_contract import to_logical_event, to_logical_field, to_logical_json_line, to_storage_field, to_storage_query
+from apps.log.services.log_event_contract import (
+    SPECIAL_LOGSQL_FIELDS,
+    normalize_user_logsql_query,
+    quote_logsql_field,
+    to_logical_event,
+    to_logical_json_line,
+    to_public_logical_field,
+    to_storage_field,
+    to_storage_query,
+)
 from apps.log.utils.query_log import VictoriaMetricsAPI
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.core.logger import log_logger as logger
@@ -53,7 +62,7 @@ class SearchService:
     @staticmethod
     def _build_storage_query(query, log_groups=None, resolved_groups=None):
         logical_query, group_info = LogGroupQueryBuilder.build_query_with_groups(
-            query,
+            normalize_user_logsql_query(query),
             log_groups,
             resolved_groups=resolved_groups,
         )
@@ -81,7 +90,10 @@ class SearchService:
         """获取字段值列表"""
         start_time, end_time = SearchService._apply_default_time_window(start_time, end_time)
         storage_field = to_storage_field(field)
-        value_filter_query = SearchService._append_filter(query, f"{field}:*")
+        exists_filter = None
+        if storage_field not in SPECIAL_LOGSQL_FIELDS and field not in SPECIAL_LOGSQL_FIELDS:
+            exists_filter = f"{quote_logsql_field(field)}:*"
+        value_filter_query = SearchService._append_filter(query, exists_filter) if exists_filter else query
         final_query, group_info = SearchService._build_storage_query(value_filter_query, log_groups, resolved_groups)
         SearchService._log_query_context(
             "field_values",
@@ -128,8 +140,11 @@ class SearchService:
             if not isinstance(item, dict):
                 continue
             value = item.get("value")
-            if isinstance(value, str) and value:
-                field_names.append(to_logical_field(value))
+            if not isinstance(value, str) or not value:
+                continue
+            logical_field = to_public_logical_field(value)
+            if logical_field:
+                field_names.append(logical_field)
 
         return sorted(set(field_names))
 

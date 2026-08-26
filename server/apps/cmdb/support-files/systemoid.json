@@ -9978,11 +9978,11 @@
   },
   "1.3.6.1.4.1.2011.2.23.23": {
     "OID": "1.3.6.1.4.1.2011.2.23.23",
-    "FirstTypeId": "Router",
-    "FirstTypeName": "路由器",
-    "SecondTypeId": "HuaWeiRouter",
-    "SecondTypeName": "华为路由器",
-    "model": "s2403H",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "HuaWeiSwitch",
+    "SecondTypeName": "华为交换机",
+    "model": "S2403H",
     "brand": "Huawei",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"

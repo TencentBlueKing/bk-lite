@@ -54,6 +54,15 @@ const DEFAULT_TIME_RANGE: LogQueryTimeRange = {
 };
 const FIELD_VALUE_LIMIT = 50;
 const FIELD_VALUE_DEBOUNCE_MS = 300;
+const HIDDEN_QUERY_FIELDS = new Set([
+  '@timestamp',
+  '_msg',
+  '_time',
+  '_stream',
+  '_stream_id',
+  '*'
+]);
+const SIMPLE_LOGSQL_FIELD = /^[A-Za-z_][A-Za-z0-9_.]*$/;
 
 const quoteLogsqlValue = (value: string) => {
   const escaped = value
@@ -62,6 +71,16 @@ const quoteLogsqlValue = (value: string) => {
     .replace(/\n/g, '\\n')
     .replace(/\r/g, '\\r');
   return `"${escaped}"`;
+};
+
+const quoteLogsqlField = (field: string) =>
+  SIMPLE_LOGSQL_FIELD.test(field) ? field : quoteLogsqlValue(field);
+
+const unwrapLogsqlField = (field: string) => {
+  if (field.length >= 2 && field.startsWith('"') && field.endsWith('"')) {
+    return field.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+  }
+  return field;
 };
 
 const findSegmentBounds = (inputValue: string, cursorPos: number) => {
@@ -143,7 +162,7 @@ const parseQueryContext = (
   return {
     type: 'value',
     prefix: currentSegment.slice(colonIndex + 1, positionInSegment),
-    fieldName: currentSegment.slice(0, colonIndex),
+    fieldName: unwrapLogsqlField(currentSegment.slice(0, colonIndex)),
     startPos: segmentStart + colonIndex + 1,
     endPos: segmentEnd
   };
@@ -185,8 +204,6 @@ const LogQueryInput: React.FC<LogQueryInputProps> = React.memo(
     const { getFieldValues } = useIntegrationApi();
     const inputRef = useRef<InputRef>(null);
     const realCursorPosRef = useRef(0);
-    const keyboardOptionIndexRef = useRef(-1);
-    const ignoreNextAutoSelectRef = useRef(false);
     const refreshSuggestionsRef = useRef<
       (inputValue: string, cursorPosition?: number | null) => void
         >(() => undefined);
@@ -219,10 +236,6 @@ const LogQueryInput: React.FC<LogQueryInputProps> = React.memo(
     useEffect(() => {
       valueRef.current = resolvedValue;
     }, [resolvedValue]);
-
-    useEffect(() => {
-      keyboardOptionIndexRef.current = -1;
-    }, [options]);
 
     const clearPendingRequest = useCallback(() => {
       if (debounceTimerRef.current) {
@@ -311,6 +324,7 @@ const LogQueryInput: React.FC<LogQueryInputProps> = React.memo(
           filteredValues.map((item) => ({
             value: item.value,
             type: 'value',
+            title: item.value,
             label: (
               <div className="flex max-w-full items-center gap-2">
                 <span
@@ -426,8 +440,10 @@ const LogQueryInput: React.FC<LogQueryInputProps> = React.memo(
         }
 
         const normalizedPrefix = prefix.toLowerCase();
-        const fields = availableFields.filter((field) =>
-          field.toLowerCase().includes(normalizedPrefix)
+        const fields = availableFields.filter(
+          (field) =>
+            !HIDDEN_QUERY_FIELDS.has(field) &&
+            field.toLowerCase().includes(normalizedPrefix)
         );
         if (!fields.length) {
           setOptions(messageOption('log.search.noMatchingFields'));
@@ -439,6 +455,7 @@ const LogQueryInput: React.FC<LogQueryInputProps> = React.memo(
           fields.map((field) => ({
             value: field,
             type: 'field',
+            title: field,
             label: (
               <div className="flex items-center justify-between gap-2">
                 <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
@@ -511,10 +528,25 @@ const LogQueryInput: React.FC<LogQueryInputProps> = React.memo(
     }, [availableFields, fieldsLoading]);
 
     const handleChange = useCallback(
-      (nextValue: string, option?: QueryOption) => {
-        // AutoComplete 选择候选时会先触发 onChange，再触发 onSelect。
-        // 候选值必须由 handleSelect 基于选择前的完整表达式完成替换。
-        if (option?.type) return;
+      (nextValue: string, option?: QueryOption | QueryOption[]) => {
+        const selected = Array.isArray(option) ? option[0] : option;
+        const currentValue = valueRef.current;
+        const isTypedChar =
+          nextValue.length === currentValue.length + 1 &&
+          nextValue.startsWith(currentValue);
+        const isDeletedChar =
+          nextValue.length === currentValue.length - 1 &&
+          currentValue.startsWith(nextValue);
+        // 点击候选会把输入框整段替换成 option.value，必须交给 handleSelect。
+        // 输入刚好等于字段名时（例如 message 的最后一个 e）AntD 也会带上 option。
+        if (
+          selected?.type &&
+          nextValue === selected.value &&
+          !isTypedChar &&
+          !isDeletedChar
+        ) {
+          return;
+        }
         commitValue(nextValue);
         const cursorPosition =
           inputRef.current?.input?.selectionStart ?? nextValue.length;
@@ -546,14 +578,15 @@ const LogQueryInput: React.FC<LogQueryInputProps> = React.memo(
           realCursorPosRef.current
         );
         if (option.type === 'field') {
+          const encodedField = quoteLogsqlField(selectedValue);
           const afterSelection = currentValue.slice(context.endPos);
           const suffix = afterSelection.startsWith(':') ? '' : ':';
           const nextValue = `${currentValue.slice(
             0,
             context.startPos
-          )}${selectedValue}${suffix}${afterSelection}`;
+          )}${encodedField}${suffix}${afterSelection}`;
           const cursorPosition =
-            context.startPos + selectedValue.length + suffix.length;
+            context.startPos + encodedField.length + suffix.length;
           commitValue(nextValue);
           restoreCursor(cursorPosition);
           cacheRef.current = null;
@@ -581,55 +614,56 @@ const LogQueryInput: React.FC<LogQueryInputProps> = React.memo(
 
     const handleSelect = useCallback(
       (selectedValue: string, option: QueryOption) => {
-        if (ignoreNextAutoSelectRef.current) {
-          ignoreNextAutoSelectRef.current = false;
-          return;
-        }
         applySelection(selectedValue, option);
       },
       [applySelection]
     );
 
+    const getHighlightedOption = useCallback((selectableOptions: QueryOption[]) => {
+      const activeOption = document.querySelector(
+        '.ant-select-item-option-active:not(.ant-select-item-option-disabled)'
+      );
+      if (!activeOption) {
+        return selectableOptions[0];
+      }
+      const title = activeOption.getAttribute('title');
+      const byTitle = selectableOptions.find(
+        (option) => String(option.value) === title
+      );
+      if (byTitle) return byTitle;
+      const labelText = activeOption
+        .querySelector('.ant-select-item-option-content span')
+        ?.textContent?.trim();
+      return (
+        selectableOptions.find((option) => String(option.value) === labelText) ||
+        selectableOptions[0]
+      );
+    }, []);
+
     const handleKeyDown = useCallback(
       (event: React.KeyboardEvent<HTMLInputElement>) => {
+        if (event.key !== 'Enter') return;
         const selectableOptions = options.filter((option) => !option.disabled);
         if (dropdownOpen && selectableOptions.length) {
-          if (event.key === 'ArrowDown') {
-            keyboardOptionIndexRef.current = Math.min(
-              keyboardOptionIndexRef.current + 1,
-              selectableOptions.length - 1
-            );
-            return;
-          }
-          if (event.key === 'ArrowUp') {
-            keyboardOptionIndexRef.current = Math.max(
-              keyboardOptionIndexRef.current - 1,
-              0
-            );
-            return;
-          }
-          if (event.key === 'Enter') {
-            event.preventDefault();
-            event.stopPropagation();
-            const selectedOption =
-              selectableOptions[
-                Math.max(keyboardOptionIndexRef.current, 0)
-              ];
-            ignoreNextAutoSelectRef.current = true;
-            applySelection(String(selectedOption.value), selectedOption);
-            queueMicrotask(() => {
-              ignoreNextAutoSelectRef.current = false;
-            });
-            return;
-          }
+          event.preventDefault();
+          event.stopPropagation();
+          const selectedOption = getHighlightedOption(selectableOptions);
+          applySelection(String(selectedOption.value), selectedOption);
+          return;
         }
-        if (event.key !== 'Enter') return;
         event.preventDefault();
         event.stopPropagation();
         closeDropdown();
         onPressEnter?.();
       },
-      [applySelection, closeDropdown, dropdownOpen, onPressEnter, options]
+      [
+        applySelection,
+        closeDropdown,
+        dropdownOpen,
+        getHighlightedOption,
+        onPressEnter,
+        options
+      ]
     );
 
     const input = useMemo(

@@ -181,6 +181,7 @@ export const useGraphOperations = (
     handleSaveTopology: nodeOperations.handleSaveTopology,
     handleLoadTopology: nodeOperations.handleLoadTopology,
     loadTopologyData: nodeOperations.loadTopologyData,
+    serializeTopologyData: nodeOperations.serializeTopologyData,
     loadChartNodeData: nodeOperations.loadChartNodeData,
     refreshAllChartNodes: nodeOperations.refreshAllChartNodes,
   };

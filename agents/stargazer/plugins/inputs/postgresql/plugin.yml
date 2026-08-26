@@ -15,7 +15,6 @@ executors:
     type: job
     execution_mode: remote
     capacity_group: remote_job
-    timeout: 60
     scripts:
       linux: plugins/inputs/pgsql/pgsql_default_discover.sh
     collector:
@@ -28,7 +27,6 @@ executors:
     type: protocol
     execution_mode: async
     capacity_group: default
-    timeout: 30
     collector:
       module: plugins.inputs.postgresql.postgresql_info
       class: PostgresqlInfo

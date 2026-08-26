@@ -16,7 +16,6 @@ executors:
     type: protocol
     execution_mode: sync
     capacity_group: sync_sdk
-    timeout: 30
     collector:
       module: plugins.inputs.mssql.mssql_info
       class: MSSQLInfo

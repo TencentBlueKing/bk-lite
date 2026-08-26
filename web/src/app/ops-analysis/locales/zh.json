@@ -402,6 +402,27 @@
     }
   },
   "opsAnalysis": {
+    "canvasDraft": {
+      "menu": "快照",
+      "history": "快照记录",
+      "historyEmpty": "暂无快照，可通过「存一版」保存当前编辑内容",
+      "historyVersion": "序号",
+      "historyName": "备注",
+      "historyTime": "时间",
+      "historyActions": "操作",
+      "namePlaceholder": "添加备注以描述此快照",
+      "nameEditHint": "点击添加备注",
+      "saveFrame": "存一版",
+      "saveFrameSuccess": "已存一版",
+      "validationFailed": "草稿校验失败",
+      "updateLabelFailed": "备注保存失败",
+      "frameYamlTitle": "{name}",
+      "viewYaml": "YAML",
+      "restore": "恢复",
+      "restoreFrame": "恢复到此快照",
+      "restoreFailed": "恢复失败",
+      "restoreSuccess": "已恢复该快照"
+    },
     "architecture": {
       "loadFailed": "加载失败"
     },
@@ -427,6 +448,7 @@
       "canvasEmpty": "暂无组件",
       "builderPending": "大屏编辑能力将在后续迭代完善",
       "addWidget": "添加组件",
+      "widgetShort": "组件",
       "addThisWidget": "添加组件",
       "screenSettings": "大屏设置",
       "screenTitle": "大屏标题",
@@ -477,6 +499,7 @@
       "title": "报表",
       "selectFirst": "请选择一个报表",
       "addComponent": "添加组件",
+      "componentShort": "组件",
       "emptyDescription": "暂无组件，进入编辑态后可添加普通表格或事件表格",
       "unnamedComponent": "未命名组件",
       "dragComponent": "拖拽调整组件顺序",
@@ -710,6 +733,8 @@
       "normal": "正常"
     },
     "addView": "添加视图",
+    "viewShort": "视图",
+    "groupShort": "分组",
     "filterType": "筛选类型",
     "startTime": "开始时间",
     "dataCannotRenderAsChart": "数据无法渲染为图表",

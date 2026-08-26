@@ -1,3 +1,5 @@
+import re
+
 from django.db.models import Q, Subquery
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -5,6 +7,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.logger import monitor_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.database import DatabaseConstants
@@ -15,6 +18,7 @@ from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
+from apps.monitor.utils.metric_query_labels import ensure_metric_labels_placeholder, is_raw_vector_selector
 from apps.monitor.utils.snmp_ifmib_capability import (
     COMMON_IFMIB_METRIC_NAMES,
     IFMIB_ZH_DISPLAY_TEXTS,
@@ -22,6 +26,9 @@ from apps.monitor.utils.snmp_ifmib_capability import (
     is_ifmib_capable_plugin,
 )
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+
+# PromQL 中紧跟 `{` 的指标名（用于目录兜底提取）。
+_METRIC_NAME_BEFORE_BRACE = re.compile(r"([a-zA-Z_:][a-zA-Z0-9_:]*)\s*\{")
 
 
 class MetricCatalogPagination(PageNumberPagination):
@@ -146,10 +153,7 @@ def apply_inherited_metric_filters(queryset, query_params, locale=""):
     if keyword:
         localized_names = get_ifmib_metric_names_matching_keyword(keyword, locale)
         queryset = queryset.filter(
-            Q(name__icontains=keyword)
-            | Q(display_name__icontains=keyword)
-            | Q(description__icontains=keyword)
-            | Q(name__in=localized_names)
+            Q(name__icontains=keyword) | Q(display_name__icontains=keyword) | Q(description__icontains=keyword) | Q(name__in=localized_names)
         )
     is_ifmib = query_params.get("is_ifmib")
     if is_ifmib is not None and str(is_ifmib).strip() != "":
@@ -201,6 +205,23 @@ def merge_inherited_metrics(vendor_metrics, base_metrics, vendor_groups_by_name,
     return merged
 
 
+def sanitize_metric_query_for_vm(query):
+    """Strip catalog placeholders so a draft formula can be sent to VictoriaMetrics."""
+    normalized = ensure_metric_labels_placeholder(query)
+    cleaned = (
+        (normalized or "").replace("__$labels__", "").replace("{, ", "{").replace("{,", "{").replace(", }", "}").replace(",}", "}").replace("{}", "")
+    )
+    cleaned = re.sub(
+        r"([a-zA-Z_:][a-zA-Z0-9_:]*)\s*,(?=\s*(?:[+\-*/)]|$))",
+        r"\1",
+        cleaned,
+    )
+    cleaned = re.sub(r"\{\s*,", "{", cleaned)
+    cleaned = re.sub(r",\s*\}", "}", cleaned)
+    cleaned = re.sub(r"\{\s*\}", "", cleaned)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
 def collect_vm_field_names(metric_obj):
     api = VictoriaMetricsAPI()
     metric_name = (getattr(metric_obj, "name", "") or "").strip()
@@ -211,20 +232,192 @@ def collect_vm_field_names(metric_obj):
         if fields:
             return sorted(fields)
 
-    query = (
-        (metric_obj.query or "")
-        .replace("__$labels__", "")
-        .replace("{, ", "{")
-        .replace("{,", "{")
-        .replace(", }", "}")
-        .replace(",}", "}")
-    )
+    query = sanitize_metric_query_for_vm(metric_obj.query)
     response = api.query(query)
     fields = set()
     for item in response.get("data", {}).get("result", []):
         fields.update(item.get("metric", {}).keys())
     fields.discard("__name__")
     return sorted(fields)
+
+
+def build_template_vm_match(instance_type, collect_type=None):
+    """Build a VM match[] selector for series belonging to a monitor template."""
+    parts = [f'instance_type="{instance_type}"']
+    if collect_type:
+        parts.append(f'collect_type="{collect_type}"')
+    return "{" + ",".join(parts) + "}"
+
+
+def extract_metric_names_from_queries(queries):
+    """Extract PromQL metric identifiers that appear before a label selector."""
+    names = set()
+    for query in queries:
+        if not query:
+            continue
+        names.update(_METRIC_NAME_BEFORE_BRACE.findall(query))
+    return sorted(names)
+
+
+def collect_computed_catalog_metric_names(monitor_object_id, monitor_plugin_id):
+    """本模板中公式非原始向量选择器的目录指标 ID（防点选套娃）。"""
+    computed = set()
+    rows = Metric.objects.filter(
+        monitor_object_id=monitor_object_id,
+        monitor_plugin_id=monitor_plugin_id,
+    ).values_list("name", "query")
+    for name, query in rows:
+        metric_id = (name or "").strip()
+        if metric_id and not is_raw_vector_selector(query):
+            computed.add(metric_id)
+    return computed
+
+
+def extract_raw_catalog_metric_names(monitor_object_id, monitor_plugin_id):
+    """兜底：仅从原始公式提取可点选的序列名。"""
+    names = set()
+    rows = Metric.objects.filter(
+        monitor_object_id=monitor_object_id,
+        monitor_plugin_id=monitor_plugin_id,
+    ).values_list("query", flat=True)
+    for query in rows:
+        if not is_raw_vector_selector(query):
+            continue
+        trimmed = (query or "").strip()
+        match = re.match(r"^([a-zA-Z_:][a-zA-Z0-9_:]*)", trimmed)
+        if match:
+            names.add(match.group(1))
+    return sorted(names)
+
+
+def list_vm_metric_names(monitor_object_id, monitor_plugin_id, keyword=""):
+    """List live VM __name__ values for a template; fall back to catalog query names."""
+    monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name").first()
+    if monitor_object is None:
+        raise ValidationAppException("monitor_object_id 无效")
+    plugin = MonitorPlugin.objects.filter(id=monitor_plugin_id).only("id", "collect_type").first()
+    if plugin is None:
+        raise ValidationAppException("monitor_plugin_id 无效")
+
+    instance_type = (monitor_object.name or "").strip()
+    collect_type = (plugin.collect_type or "").strip() or None
+    match = build_template_vm_match(instance_type, collect_type) if instance_type else None
+
+    names = []
+    try:
+        response = VictoriaMetricsAPI().label_values("__name__", match=match)
+        names = sorted({item for item in (response.get("data") or []) if isinstance(item, str) and item})
+    except Exception:
+        logger.error(
+            "list_vm_metric_names failed to query VictoriaMetrics",
+            extra={
+                "monitor_object_id": monitor_object_id,
+                "monitor_plugin_id": monitor_plugin_id,
+                "failed_stage": "vm_label_values",
+                "error_type": "VictoriaMetricsError",
+            },
+            exc_info=True,
+        )
+
+    if not names:
+        names = extract_raw_catalog_metric_names(monitor_object_id, monitor_plugin_id)
+
+    computed_names = collect_computed_catalog_metric_names(monitor_object_id, monitor_plugin_id)
+    if computed_names:
+        names = [name for name in names if name not in computed_names]
+
+    keyword = (keyword or "").strip().lower()
+    if keyword:
+        names = [name for name in names if keyword in name.lower()]
+
+    logger.info(
+        "list_vm_metric_names completed",
+        extra={
+            "monitor_object_id": monitor_object_id,
+            "monitor_plugin_id": monitor_plugin_id,
+            "count": len(names),
+        },
+    )
+    return names
+
+
+def _bounded_vm_error_message(payload, fallback="公式语法错误"):
+    """Prefer VM error text but keep it bounded for UI display."""
+    raw = ""
+    if isinstance(payload, dict):
+        raw = payload.get("error") or payload.get("errorType") or ""
+    text = str(raw).strip() or fallback
+    if len(text) > 200:
+        return f"{text[:200]}..."
+    return text
+
+
+def probe_metric_query(query):
+    """Probe a draft formula against VM and classify syntax / data / infra failures."""
+    cleaned = sanitize_metric_query_for_vm(query)
+    if not cleaned.strip():
+        return {
+            "ok": False,
+            "reason": "empty_query",
+            "message": "公式不能为空",
+            "label_keys": [],
+            "sample_count": 0,
+        }
+
+    try:
+        response, http_error = VictoriaMetricsAPI().query_allow_error(cleaned)
+    except Exception as exc:
+        logger.error(
+            "probe_metric_query VictoriaMetrics request failed",
+            extra={
+                "failed_stage": "vm_query",
+                "error_type": type(exc).__name__,
+            },
+            exc_info=True,
+        )
+        return {
+            "ok": False,
+            "reason": "vm_error",
+            "message": "指标试算失败，请稍后重试",
+            "label_keys": [],
+            "sample_count": 0,
+        }
+
+    if http_error is not None or (isinstance(response, dict) and response.get("status") == "error"):
+        return {
+            "ok": False,
+            "reason": "syntax_error",
+            "message": _bounded_vm_error_message(response if isinstance(response, dict) else {}),
+            "label_keys": [],
+            "sample_count": 0,
+        }
+
+    results = (response or {}).get("data", {}).get("result") or []
+    if not results:
+        return {
+            "ok": False,
+            "reason": "no_data",
+            "message": "暂无匹配数据，可继续保存；有数据后可再测试以选择维度字段",
+            "label_keys": [],
+            "sample_count": 0,
+        }
+
+    label_keys = set()
+    for item in results:
+        label_keys.update((item.get("metric") or {}).keys())
+    label_keys.discard("__name__")
+    return {
+        "ok": True,
+        "reason": "ok",
+        "message": "测试成功，可在下方选择维度字段",
+        "label_keys": sorted(label_keys),
+        "sample_count": len(results),
+    }
+
+
+def evaluate_metric_query(query):
+    """Instant-query a draft formula for real samples; never blocks save."""
+    return probe_metric_query(query)
 
 
 class MetricGroupViewSet(viewsets.ModelViewSet):
@@ -260,9 +453,7 @@ class MetricGroupViewSet(viewsets.ModelViewSet):
                 monitor_plugin=base_plugin,
             ).order_by()
             base_groups = apply_inherited_group_filters(base_groups, request.query_params)
-            queryset = vendor_groups.union(
-                base_groups.exclude(name__in=Subquery(vendor_groups.values("name")))
-            ).order_by("sort_order", "id")
+            queryset = vendor_groups.union(base_groups.exclude(name__in=Subquery(vendor_groups.values("name")))).order_by("sort_order", "id")
         else:
             queryset = vendor_groups.order_by("sort_order", "id")
         page = self.paginate_queryset(queryset)
@@ -271,9 +462,7 @@ class MetricGroupViewSet(viewsets.ModelViewSet):
 
         # 获取监控对象ID与名称的映射
         object_ids = [i["monitor_object"] for i in results if i.get("monitor_object")]
-        object_map = dict(
-            MonitorObject.objects.filter(id__in=object_ids).values_list("id", "name")
-        ) if object_ids else {}
+        object_map = dict(MonitorObject.objects.filter(id__in=object_ids).values_list("id", "name")) if object_ids else {}
 
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
         for result in results:
@@ -367,25 +556,17 @@ class MetricViewSet(viewsets.ModelViewSet):
                 request.query_params,
                 request.user.locale,
             )
-            queryset = vendor_metrics.union(
-                base_metrics.exclude(name__in=Subquery(vendor_metrics.values("name")))
-            ).order_by("sort_order", "id")
+            queryset = vendor_metrics.union(base_metrics.exclude(name__in=Subquery(vendor_metrics.values("name")))).order_by("sort_order", "id")
         else:
             queryset = vendor_metrics.order_by("sort_order", "id")
         page = self.paginate_queryset(queryset)
         page_metric_ids = [metric.id for metric in page]
-        page_metrics = Metric.objects.filter(id__in=page_metric_ids).select_related(
-            "metric_group", "monitor_object", "monitor_plugin"
-        )
+        page_metrics = Metric.objects.filter(id__in=page_metric_ids).select_related("metric_group", "monitor_object", "monitor_plugin")
         metrics_by_id = {metric.id: metric for metric in page_metrics}
         page = [metrics_by_id[metric_id] for metric_id in page_metric_ids]
 
         if base_plugin is not None:
-            base_group_names = {
-                metric.metric_group.name
-                for metric in page
-                if metric.monitor_plugin_id == base_plugin.id
-            }
+            base_group_names = {metric.metric_group.name for metric in page if metric.monitor_plugin_id == base_plugin.id}
             vendor_groups_by_name = {
                 group.name: group.id
                 for group in MetricGroup.objects.filter(
@@ -403,9 +584,7 @@ class MetricViewSet(viewsets.ModelViewSet):
 
         # 获取监控对象ID与名称的映射
         object_ids = [i["monitor_object"] for i in results if i.get("monitor_object")]
-        object_map = dict(
-            MonitorObject.objects.filter(id__in=object_ids).values_list("id", "name")
-        ) if object_ids else {}
+        object_map = dict(MonitorObject.objects.filter(id__in=object_ids).values_list("id", "name")) if object_ids else {}
 
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
         for result in results:
@@ -425,20 +604,14 @@ class MetricViewSet(viewsets.ModelViewSet):
                 or lan.get(f"{lan_key}.name")
                 or result["display_name"]
             )
-            result["display_description"] = (
-                (ifmib_text[1] if ifmib_text else None)
-                or lan.get(f"{lan_key}.desc")
-                or result["description"]
-            )
+            result["display_description"] = (ifmib_text[1] if ifmib_text else None) or lan.get(f"{lan_key}.desc") or result["description"]
             if (result.get("data_type") or "").lower() == "enum":
                 result["unit"] = localize_metric_enum_unit(
                     result.get("unit") or "",
                     enum_translations=lan.get(f"{lan_key}.enum"),
                 )
 
-        metric_groups = MetricGroup.objects.filter(
-            id__in={metric.metric_group_id for metric in page}
-        ).order_by("sort_order", "id")
+        metric_groups = MetricGroup.objects.filter(id__in={metric.metric_group_id for metric in page}).order_by("sort_order", "id")
         metric_group_results = MetricGroupSerializer(metric_groups, many=True).data
         for result in metric_group_results:
             object_name = object_map.get(result.get("monitor_object"))
@@ -469,3 +642,18 @@ class MetricViewSet(viewsets.ModelViewSet):
     def vm_fields(self, request, *args, **kwargs):
         metric = self.get_object()
         return WebUtils.response_success(collect_vm_field_names(metric))
+
+    @action(detail=False, methods=["get"], url_path="vm-metric-names")
+    def vm_metric_names(self, request, *args, **kwargs):
+        monitor_object_id = get_required_query_param_id(request, "monitor_object_id")
+        monitor_plugin_id = get_required_query_param_id(request, "monitor_plugin_id")
+        keyword = request.query_params.get("keyword") or ""
+        names = list_vm_metric_names(monitor_object_id, monitor_plugin_id, keyword=keyword)
+        return WebUtils.response_success(names)
+
+    @action(detail=False, methods=["post"], url_path="test_query")
+    def test_query(self, request, *args, **kwargs):
+        query = request.data.get("query")
+        if query is None or not isinstance(query, str):
+            raise ValidationAppException("query 不能为空")
+        return WebUtils.response_success(evaluate_metric_query(query))

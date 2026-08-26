@@ -59,9 +59,11 @@ const filterTreeData = (treeData: any, searchText: string) => {
     .filter((item: any) => item !== null);
 };
 
-const getLabelByKey = (key: string, treeData: any): string => {
+const getLabelByKey = (key: string | number, treeData: any): string => {
+  const target = String(key);
   for (const node of treeData) {
-    if (node.key === key) {
+    // 组织树 key 为 number，勾选回调/状态里可能是 string，须归一化
+    if (String(node.key) === target) {
       return node.title;
     }
     if (node.children?.length) {

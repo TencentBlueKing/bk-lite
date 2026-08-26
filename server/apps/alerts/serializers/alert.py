@@ -1,4 +1,6 @@
 # -- coding: utf-8 --
+from django.db.models import Count, F, Q, Window
+from django.db.models.functions import RowNumber
 from django.db.models.query import QuerySet
 from django.utils import timezone
 from rest_framework import serializers
@@ -98,19 +100,44 @@ class AlertModelSerializer(AuthSerializer):
         total_map = {}
         raw_records_map = {}
         usernames = set()
-        notify_results = NotifyResult.objects.filter(
+        notify_result_filter = NotifyResult.objects.filter(
             notify_type="alert",
             notify_object__in=alert_ids,
-        ).order_by("notify_object", "-notify_time", "-id")
+        )
 
-        for notify_result in notify_results:
+        aggregate_rows = notify_result_filter.values("notify_object").annotate(
+            total=Count("id"),
+            success=Count("id", filter=Q(notify_result=NotifyResultStatus.SUCCESS)),
+        )
+        for row in aggregate_rows:
+            notify_object = row["notify_object"]
+            total = row["total"]
+            success = row["success"]
+            total_map[notify_object] = total
+            if success == total:
+                status_map[notify_object] = [True]
+            elif success == 0:
+                status_map[notify_object] = [False]
+            else:
+                status_map[notify_object] = [True, False]
+
+        latest_notify_results = (
+            notify_result_filter.annotate(
+                row_number=Window(
+                    expression=RowNumber(),
+                    partition_by=[F("notify_object")],
+                    order_by=[F("notify_time").desc(), F("id").desc()],
+                )
+            )
+            .filter(row_number__lte=5)
+            .order_by("notify_object", "-notify_time", "-id")
+        )
+
+        for notify_result in latest_notify_results:
             notify_object = notify_result.notify_object
-            status_map.setdefault(notify_object, []).append(notify_result.notify_result == NotifyResultStatus.SUCCESS)
-            total_map[notify_object] = total_map.get(notify_object, 0) + 1
             records = raw_records_map.setdefault(notify_object, [])
-            if len(records) < 5:
-                records.append(notify_result)
-                usernames.update(str(user) for user in (notify_result.notify_people or []))
+            records.append(notify_result)
+            usernames.update(str(user) for user in (notify_result.notify_people or []))
 
         user_map = dict(User.objects.filter(username__in=usernames).values_list("username", "display_name")) if usernames else {}
         records_map = {}

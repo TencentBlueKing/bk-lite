@@ -1,0 +1,45 @@
+LlamaServer:
+  name: llama.cpp Server
+  desc: 由 Telegraf 拉取 llama-server Prometheus 指标
+monitor_object:
+  LlamaServer: llama-server
+monitor_object_type:
+  LLM Inference: 大模型推理
+monitor_object_metric:
+  LlamaServer:
+    llamacpp:requests_processing_gauge:
+      name: 处理中请求数
+      desc: 当前正在处理的请求数量。
+    llamacpp:requests_deferred_gauge:
+      name: 延迟请求数
+      desc: 当前被延迟（deferred）的请求数量。
+    llamacpp:kv_cache_usage_ratio_gauge:
+      name: KV缓存占用比例
+      desc: KV cache 占用比例（1 表示 100%）。
+    llamacpp:prompt_tokens_total_counter_rate:
+      name: Prompt Token 速率
+      desc: 最近5分钟 prompt token 处理速率。
+    llamacpp:tokens_predicted_total_counter_rate:
+      name: 生成 Token 速率
+      desc: 最近5分钟生成 token 速率。
+    llamacpp:prompt_tokens_seconds_gauge:
+      name: Prompt 平均吞吐
+      desc: Prompt 平均吞吐（tokens/s）。
+    llamacpp:predicted_tokens_seconds_gauge:
+      name: 生成平均吞吐
+      desc: 生成平均吞吐（tokens/s）。
+    llamacpp:n_decode_total_counter_rate:
+      name: Decode 调用速率
+      desc: 最近5分钟 llama_decode() 调用速率。
+    llamacpp:n_busy_slots_per_decode_gauge:
+      name: Decode 平均忙槽位
+      desc: 每次 llama_decode() 调用平均 busy slot 数。
+    llamacpp:tokens_per_decode_gauge:
+      name: 每次 Decode Token 数
+      desc: 最近5分钟每次 decode 平均处理的 predicted token 数。
+    llamacpp:prompt_tokens_total_counter_gauge:
+      name: 累计 Prompt Token
+      desc: 自启动以来累计处理的 prompt token 总数。
+    llamacpp:tokens_predicted_total_counter_gauge:
+      name: 累计生成 Token
+      desc: 自启动以来累计生成的 token 总数。

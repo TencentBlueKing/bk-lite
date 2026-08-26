@@ -227,7 +227,7 @@ export const usePostgresqlDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 156 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 156 },
             { title: '数据库', dataIndex: 'postgresql.log.database', key: 'postgresql.log.database', width: 110 },
             { title: '用户', dataIndex: 'postgresql.log.user', key: 'postgresql.log.user', width: 110 },
             { title: '耗时', dataIndex: 'postgresql.log.duration', key: 'postgresql.log.duration', width: 90 },
@@ -251,7 +251,7 @@ export const usePostgresqlDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 156 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 156 },
             { title: '数据库', dataIndex: 'postgresql.log.database', key: 'postgresql.log.database', width: 110 },
             { title: '用户', dataIndex: 'postgresql.log.user', key: 'postgresql.log.user', width: 110 },
             { title: '级别', dataIndex: 'postgresql.log.level', key: 'postgresql.log.level', width: 92, render: renderPgLevel },
