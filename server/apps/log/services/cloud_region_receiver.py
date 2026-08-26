@@ -26,7 +26,7 @@ class CloudRegionReceiverService:
             if not isinstance(node_data, dict) or not node_data.get("nodes"):
                 return ""
 
-        env_config = node_mgmt.get_cloud_region_envconfig(cloud_region_id)
+        env_config = node_mgmt.get_cloud_region_public_config(cloud_region_id)
         if not isinstance(env_config, dict):
             return ""
 

@@ -55,7 +55,7 @@ def test_monitor_install_command_binds_registry_to_generated_token(monkeypatch):
         generate_token,
     )
     node_mgmt = Mock()
-    node_mgmt.return_value.get_cloud_region_envconfig.return_value = {
+    node_mgmt.return_value.get_cloud_region_public_config.return_value = {
         "NODE_SERVER_URL": "https://node.internal/base",
     }
     monkeypatch.setattr("apps.rpc.node_mgmt.NodeMgmt", node_mgmt)
