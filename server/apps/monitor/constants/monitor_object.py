@@ -27,6 +27,10 @@ class MonitorObjConstants:
             ],
             "type": "Middleware",
         },
+        {
+            "name_list": ["VLLM", "SGLang", "LlamaServer"],
+            "type": "LLM Inference",
+        },
         {"name_list": ["Switch", "Router", "Firewall", "Loadbalance", "Detection Device", "Scanning Device"], "type": "Network Device"},
         {"name_list": ["Bastion Host", "Storage", "Hardware Server"], "type": "Hardware Device"},
         {"name_list": ["Docker", "Docker Container"], "type": "Container Management"},

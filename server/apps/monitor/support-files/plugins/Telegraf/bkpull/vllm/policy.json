@@ -1,0 +1,106 @@
+{
+  "object": "VLLM",
+  "plugin": "VLLM",
+  "templates": [
+    {
+      "name": "vLLM 排队请求积压",
+      "alert_name": "vLLM ${resource_name} 排队请求积压",
+      "description": "检测等待调度的请求数量，持续偏高通常意味着并发打满或 KV 缓存不足。",
+      "metric_name": "vllm:num_requests_waiting_gauge",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "vLLM KV 缓存占用过高",
+      "alert_name": "vLLM ${resource_name} KV缓存占用过高",
+      "description": "检测 KV cache 占用比例，长期偏高会导致排队增加与吞吐下降。",
+      "metric_name": "vllm:kv_cache_usage_perc_gauge",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0.9,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 0.8,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "vLLM 首 Token 时延过高",
+      "alert_name": "vLLM ${resource_name} TTFT P99 过高",
+      "description": "监控最近窗口内 TTFT P99，持续升高通常意味着 prefill 拥塞或资源争用。",
+      "metric_name": "vllm:time_to_first_token_seconds_p99",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 2,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "vLLM 端到端时延过高",
+      "alert_name": "vLLM ${resource_name} 端到端时延 P99 过高",
+      "description": "监控端到端请求时延 P99，持续升高影响用户体验与 SLA。",
+      "metric_name": "vllm:e2e_request_latency_seconds_p99",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 60,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 30,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "vLLM 逐 Token 时延过高",
+      "alert_name": "vLLM ${resource_name} ITL P99 过高",
+      "description": "监控 Inter-Token Latency P99，持续升高通常意味着 decode 阶段变慢。",
+      "metric_name": "vllm:inter_token_latency_seconds_p99",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0.5,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 0.2,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}
