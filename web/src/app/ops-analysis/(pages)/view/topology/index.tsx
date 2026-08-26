@@ -30,6 +30,7 @@ import { canPersistCanvasRefreshInterval, normalizeCanvasRefreshInterval } from 
 import {
   TopologyProps,
   TopologyRef,
+  TopologyViewSets,
 } from '@/app/ops-analysis/types/topology';
 import type { FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import TopologyToolbar from './components/toolbar';
@@ -57,6 +58,14 @@ import {
   AppViewFullscreenExit,
   useAppViewFullscreen,
 } from '@/app/ops-analysis/components/appFullscreen';
+import { useCanvasDraft } from '@/app/ops-analysis/hooks/useCanvasDraft';
+import {
+  restoreDraftRefreshInterval,
+  toCanvasDraftResourceId,
+  type CanvasDraftPayload,
+} from '@/app/ops-analysis/api/canvasDraft';
+import { syncFilterValuesWithDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
+import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
 
 const Topology = forwardRef<TopologyRef, TopologyProps>(
   ({ selectedTopology, shareMode = false }, ref) => {
@@ -132,6 +141,8 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       handleAddChartNode,
       handleSaveTopology,
       handleLoadTopology,
+      loadTopologyData,
+      serializeTopologyData,
       resizeCanvas,
       loading,
       toggleEditMode,
@@ -229,6 +240,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         canvasId: selectedTopology?.data_id,
         savedInterval: savedRefreshInterval,
         canPersist: canPersistRefreshInterval,
+        enabled: !state.isEditMode,
         patchRefreshInterval: async (interval) => {
           if (!selectedTopology?.data_id) {
             return;
@@ -335,10 +347,80 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       updateSingleNodeData,
     });
 
-    const handleSave = () => {
-      if (selectedTopology) {
-        handleSaveTopology(selectedTopology, definitions);
-      }
+    const topologyDraftResourceId = toCanvasDraftResourceId(
+      selectedTopology?.data_id,
+    );
+    const getTopologyDraftPayload = useCallback(
+      (): CanvasDraftPayload => {
+        const topologyData = serializeTopologyData();
+        return {
+          name: selectedTopology?.name,
+          desc: selectedTopology?.desc,
+          view_sets: {
+            nodes: topologyData.nodes,
+            edges: topologyData.edges,
+            filters: definitions,
+          },
+          refresh_interval: savedRefreshInterval,
+        };
+      },
+      [
+        definitions,
+        savedRefreshInterval,
+        selectedTopology?.desc,
+        selectedTopology?.name,
+        serializeTopologyData,
+      ],
+    );
+    const applyTopologyDraftPayload = useCallback(
+      (payload: CanvasDraftPayload) => {
+        const viewSets = (payload.view_sets || {}) as TopologyViewSets;
+        const loadedDefinitions = Array.isArray(viewSets.filters)
+          ? viewSets.filters
+          : [];
+        const nextValues = syncFilterValuesWithDefinitions(loadedDefinitions, {});
+
+        restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
+        loadTopologyData(viewSets);
+        setDefinitions(loadedDefinitions);
+        setFilterValues(nextValues);
+        setAppliedFilterValues(nextValues);
+        void syncTopologyCanvasResources().then(() => {
+          refreshTopologyNodes(
+            'reload',
+            nextValues,
+            loadedDefinitions,
+            appliedNamespaceId,
+          );
+        });
+      },
+      [
+        appliedNamespaceId,
+        loadTopologyData,
+        refreshTopologyNodes,
+        setAppliedFilterValues,
+        setDefinitions,
+        setFilterValues,
+        setSavedRefreshInterval,
+        syncTopologyCanvasResources,
+      ],
+    );
+    const topologyDraft = useCanvasDraft({
+      resourceType: 'topology',
+      resourceId: topologyDraftResourceId,
+      enabled: Boolean(
+        state.isEditMode &&
+          !shareMode &&
+          topologyDraftResourceId &&
+          !selectedTopology?.is_build_in,
+      ),
+      getPayload: getTopologyDraftPayload,
+      applyPayload: applyTopologyDraftPayload,
+    });
+
+    const handleSave = async () => {
+      if (!selectedTopology) return;
+      await handleSaveTopology(selectedTopology, definitions);
     };
 
     useEffect(() => {
@@ -346,7 +428,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     }, [rebuildFiltersFromNodes]);
 
     const hasUnsavedChanges = () => {
-      return state.isEditMode;
+      return state.isEditMode && canUndo;
     };
 
     useImperativeHandle(ref, () => ({
@@ -380,6 +462,10 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         setSavedRefreshInterval(normalizeCanvasRefreshInterval(interval));
       },
     });
+
+    const onCancelEdit = () => {
+      handleCancelEdit();
+    };
 
     const handleSelectMode = () => {
       state.setIsSelectMode(!state.isSelectMode);
@@ -433,7 +519,8 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         }
         onEdit={handleEnterEditMode}
         onSave={handleSave}
-        onCancel={handleCancelEdit}
+        onCancel={onCancelEdit}
+        editExtra={bindCanvasDraftControls(topologyDraft)}
         onFilterConfig={() => setFilterConfigModalVisible(true)}
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}

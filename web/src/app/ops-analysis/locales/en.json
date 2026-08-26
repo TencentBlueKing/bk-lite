@@ -402,6 +402,27 @@
     }
   },
   "opsAnalysis": {
+    "canvasDraft": {
+      "menu": "Snapshots",
+      "history": "Snapshot history",
+      "historyEmpty": "No snapshots yet. Use Save version to keep the current layout.",
+      "historyVersion": "#",
+      "historyName": "Note",
+      "historyTime": "Time",
+      "historyActions": "Actions",
+      "namePlaceholder": "Add a note to describe this snapshot",
+      "nameEditHint": "Click to add a note",
+      "saveFrame": "Save version",
+      "saveFrameSuccess": "Version saved",
+      "validationFailed": "Draft validation failed",
+      "updateLabelFailed": "Failed to save note",
+      "frameYamlTitle": "{name}",
+      "viewYaml": "YAML",
+      "restore": "Restore",
+      "restoreFrame": "Restore this snapshot",
+      "restoreFailed": "Restore failed",
+      "restoreSuccess": "Snapshot restored"
+    },
     "architecture": {
       "loadFailed": "Failed to load"
     },
@@ -710,6 +731,8 @@
       "normal": "Normal"
     },
     "addView": "Add View",
+    "viewShort": "View",
+    "groupShort": "Group",
     "filterType": "Filter Type",
     "startTime": "Start Time",
     "dataCannotRenderAsChart": "Data cannot be rendered as chart",
