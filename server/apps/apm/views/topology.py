@@ -40,7 +40,8 @@ class ApmTopologyViewSet(viewsets.ViewSet):
 
     @staticmethod
     def _service():
-        return DjangoApmTopologyService(VictoriaTracesTelemetryStore())
+        store = VictoriaTracesTelemetryStore()
+        return DjangoApmTopologyService(store, store)
 
     @HasPermission("services-View")
     def list(self, request):

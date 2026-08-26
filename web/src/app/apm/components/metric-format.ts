@@ -91,10 +91,8 @@ export function formatCompactLatency(ms: number): string {
 
 export function formatTopologyEdgeMetrics(edge: {
   sampled_calls: number;
-  average_duration_ms: number;
-  error_calls: number;
 }): string {
-  return `${formatNumber(edge.sampled_calls)} | ${formatCompactLatency(edge.average_duration_ms)} | ${formatNumber(edge.error_calls)}`;
+  return formatNumber(edge.sampled_calls);
 }
 
 export function formatPerSecond(value: string, t?: Translate): string {

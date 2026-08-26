@@ -1,10 +1,16 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import datetime, timedelta
 
+from apps.apm.adapters.errors import TelemetryStoreUnavailable
 from apps.apm.services.contracts import (
+    MetricStore,
     ServiceDependency,
+    ServiceMetricQuery,
+    ServiceRed,
     TopologyDependencyQuery,
     TopologyEdge,
     TopologyGraph,
@@ -13,9 +19,14 @@ from apps.apm.services.contracts import (
     TopologyTarget,
 )
 from apps.apm.services.identity import normalize_identity
+from apps.core.logger import apm_logger as logger
 
 MAX_TOPOLOGY_WINDOW = timedelta(days=7)
+MAX_RED_WINDOW = timedelta(hours=24)
 MAX_TOPOLOGY_TARGETS = 30
+RED_WORKERS = 8
+ERROR_RATE_CRITICAL = 0.05
+ERROR_RATE_WARNING = 0.01
 
 
 def _identity(namespace: str, name: str, environment: str) -> tuple[str, str, str]:
@@ -26,11 +37,22 @@ def _node_id(identity: tuple[str, str, str]) -> str:
     return ":".join(identity)
 
 
-class DjangoApmTopologyService:
-    """从 VT servicegraph 依赖聚合构建组织可见的服务调用图。"""
+def health_from_error_rate(error_rate: float | None) -> str:
+    if error_rate is None:
+        return "unknown"
+    if error_rate >= ERROR_RATE_CRITICAL:
+        return "critical"
+    if error_rate >= ERROR_RATE_WARNING:
+        return "warning"
+    return "healthy"
 
-    def __init__(self, topology_store: TopologyStore):
+
+class DjangoApmTopologyService:
+    """从 VT servicegraph 依赖聚合构建组织可见的服务调用图，并叠服务级 RED。"""
+
+    def __init__(self, topology_store: TopologyStore, metric_store: MetricStore | None = None):
         self.topology_store = topology_store
+        self.metric_store = metric_store
 
     def build(
         self,
@@ -85,6 +107,7 @@ class DjangoApmTopologyService:
             )
             for identity, calls in sorted(node_calls.items())
         )
+        nodes = self._overlay_red(nodes, started_at=started_at, ended_at=ended_at)
         edges = tuple(
             TopologyEdge(
                 source=_node_id(source),
@@ -108,3 +131,55 @@ class DjangoApmTopologyService:
             data_state="available" if visible_dependencies else "no_data",
             diagnostics=(f"omitted_ambiguous_dependencies:{ambiguous}",) if ambiguous else (),
         )
+
+    def _overlay_red(
+        self,
+        nodes: tuple[TopologyNode, ...],
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+    ) -> tuple[TopologyNode, ...]:
+        metric_store = self.metric_store
+        if metric_store is None or not nodes:
+            return nodes
+        metric_started_at = started_at
+        if ended_at - started_at > MAX_RED_WINDOW:
+            metric_started_at = ended_at - MAX_RED_WINDOW
+
+        def _fetch(node: TopologyNode) -> TopologyNode:
+            query = ServiceMetricQuery(
+                service_namespace=node.service_namespace,
+                service_name=node.service_name,
+                environment=node.environment,
+                started_at=metric_started_at,
+                ended_at=ended_at,
+            )
+            try:
+                red = metric_store.service_red(query)
+            except TelemetryStoreUnavailable:
+                return node
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("APM topology RED query failed for %s: %s", node.id, exc)
+                return node
+            return _node_with_red(node, red)
+
+        if len(nodes) == 1:
+            return (_fetch(nodes[0]),)
+
+        overlaid = {node.id: node for node in nodes}
+        with ThreadPoolExecutor(max_workers=min(RED_WORKERS, len(nodes))) as pool:
+            futures = [pool.submit(_fetch, node) for node in nodes]
+            for future in as_completed(futures):
+                node = future.result()
+                overlaid[node.id] = node
+        return tuple(overlaid[node.id] for node in nodes)
+
+
+def _node_with_red(node: TopologyNode, red: ServiceRed) -> TopologyNode:
+    return replace(
+        node,
+        health=health_from_error_rate(red.error_rate),
+        request_rate=red.request_rate,
+        error_rate=red.error_rate,
+        p95_ms=red.p95_ms,
+    )

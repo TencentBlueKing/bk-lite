@@ -258,6 +258,9 @@ class TopologyNode:
     sampled_spans: int
     error_spans: int
     language: str = ""
+    request_rate: float | None = None
+    error_rate: float | None = None
+    p95_ms: float | None = None
 
 
 @dataclass(frozen=True)

@@ -31,11 +31,18 @@ export const TOPOLOGY_CANVAS_SIZE = {
   height: 640,
 } as const;
 
+export const TOPOLOGY_NODE_CARD = {
+  minWidth: 148,
+  widthSpan: 28,
+  height: 44,
+  radius: 6,
+} as const;
+
 const CANVAS_PADDING = {
-  top: 56,
-  right: 168,
-  bottom: 56,
-  left: 64,
+  top: 52,
+  right: 96,
+  bottom: 52,
+  left: 96,
 } as const;
 
 const roundCoordinate = (value: number) => Math.round(value * 100) / 100;
@@ -78,10 +85,10 @@ export const layoutLayeredTopology = async (
   const layout = new DagreLayout({
     rankdir: 'TB',
     align: 'UL',
-    nodesep: 128,
+    nodesep: 56,
     edgesep: 28,
-    ranksep: 118,
-    nodeSize: [36, 36],
+    ranksep: 96,
+    nodeSize: [TOPOLOGY_NODE_CARD.minWidth, TOPOLOGY_NODE_CARD.height],
     edgeLabelSize: [96, 18],
     edgeLabelOffset: 10,
     controlPoints: true,
@@ -117,13 +124,19 @@ export const buildTopologyEdgeGeometry = (
   routing: TopologyEdgeRouting = 'curve',
 ): TopologyEdgeGeometry => {
   if (routing === 'polyline') {
+    const ySign = Math.sign(target.y - source.y || 1);
     const startX = source.x;
-    const startY = source.y + Math.sign(target.y - source.y || 1) * (source.radius + 4);
+    const startY = source.y + ySign * (source.radius + 4);
     const endX = target.x;
-    const endY = target.y - Math.sign(target.y - source.y || 1) * (target.radius + 9);
+    const endY = target.y - ySign * (target.radius + 9);
     const midY = (startY + endY) / 2 + (reciprocal ? 18 : 0);
+    const spanX = Math.abs(endX - startX);
+    const corner = Math.min(10, spanX / 2, Math.abs(endY - startY) / 4);
+    const path = spanX < 1
+      ? `M ${roundCoordinate(startX)} ${roundCoordinate(startY)} L ${roundCoordinate(endX)} ${roundCoordinate(endY)}`
+      : `M ${roundCoordinate(startX)} ${roundCoordinate(startY)} L ${roundCoordinate(startX)} ${roundCoordinate(midY - ySign * corner)} Q ${roundCoordinate(startX)} ${roundCoordinate(midY)} ${roundCoordinate(startX + Math.sign(endX - startX) * corner)} ${roundCoordinate(midY)} L ${roundCoordinate(endX - Math.sign(endX - startX) * corner)} ${roundCoordinate(midY)} Q ${roundCoordinate(endX)} ${roundCoordinate(midY)} ${roundCoordinate(endX)} ${roundCoordinate(midY + ySign * corner)} L ${roundCoordinate(endX)} ${roundCoordinate(endY)}`;
     return {
-      path: `M ${roundCoordinate(startX)} ${roundCoordinate(startY)} L ${roundCoordinate(startX)} ${roundCoordinate(midY)} L ${roundCoordinate(endX)} ${roundCoordinate(midY)} L ${roundCoordinate(endX)} ${roundCoordinate(endY)}`,
+      path,
       startX,
       startY,
       endX,
@@ -178,11 +191,11 @@ export const layoutForceTopology = async (
     dimensions: 2,
     width: TOPOLOGY_CANVAS_SIZE.width,
     height: TOPOLOGY_CANVAS_SIZE.height,
-    linkDistance: 168,
+    linkDistance: 196,
     nodeStrength: 900,
     preventOverlap: true,
-    nodeSize: 48,
-    nodeSpacing: 72,
+    nodeSize: TOPOLOGY_NODE_CARD.minWidth,
+    nodeSpacing: 36,
   });
 
   try {
@@ -227,4 +240,54 @@ export const focusApplicationTopology = (
       edges: graph.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)),
     },
   };
+};
+
+export const isolateTopologyNeighborhood = (
+  nodes: ApmTopologyNode[],
+  edges: ApmTopologyEdge[],
+  nodeId: string,
+): { nodes: ApmTopologyNode[]; edges: ApmTopologyEdge[] } => {
+  const visibleIds = new Set([nodeId]);
+  const visibleEdges = edges.filter((edge) => {
+    if (edge.source === nodeId) {
+      visibleIds.add(edge.target);
+      return true;
+    }
+    if (edge.target === nodeId) {
+      visibleIds.add(edge.source);
+      return true;
+    }
+    return false;
+  });
+  return {
+    nodes: nodes.filter((node) => visibleIds.has(node.id)),
+    edges: visibleEdges,
+  };
+};
+
+export const filterTopologyByKeyword = (
+  nodes: ApmTopologyNode[],
+  edges: ApmTopologyEdge[],
+  keyword: string,
+): { nodes: ApmTopologyNode[]; edges: ApmTopologyEdge[] } => {
+  const needle = keyword.trim().toLowerCase();
+  if (!needle) return { nodes, edges };
+  const visibleIds = new Set(
+    nodes
+      .filter((node) => `${node.service_namespace} ${node.service_name}`.toLowerCase().includes(needle))
+      .map((node) => node.id),
+  );
+  return {
+    nodes: nodes.filter((node) => visibleIds.has(node.id)),
+    edges: edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)),
+  };
+};
+
+export const topologyNeighborIds = (edges: ApmTopologyEdge[], nodeId: string): Set<string> => {
+  const ids = new Set<string>([nodeId]);
+  edges.forEach((edge) => {
+    if (edge.source === nodeId) ids.add(edge.target);
+    if (edge.target === nodeId) ids.add(edge.source);
+  });
+  return ids;
 };

@@ -223,6 +223,9 @@ export interface ApmTopologyNode {
   sampled_spans: number;
   error_spans: number;
   language?: string;
+  request_rate?: number | null;
+  error_rate?: number | null;
+  p95_ms?: number | null;
 }
 
 export interface ApmTopologyEdge {

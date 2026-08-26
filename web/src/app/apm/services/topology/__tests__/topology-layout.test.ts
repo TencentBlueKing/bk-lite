@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyNode } from '@/app/apm/types';
 import {
   buildTopologyEdgeGeometry,
+  filterTopologyByKeyword,
   focusApplicationTopology,
+  isolateTopologyNeighborhood,
   layoutForceTopology,
   layoutLayeredTopology,
 } from '../topology-layout';
@@ -77,7 +79,7 @@ describe('APM 服务拓扑连线', () => {
 
     expect(geometry.path).toMatch(/^M /);
     expect(geometry.path).toContain(' L ');
-    expect(geometry.path).not.toContain(' Q ');
+    expect(geometry.path).toContain(' Q ');
     expect(geometry.startY).toBeLessThan(geometry.endY);
     expect(geometry.labelY).toBeGreaterThan(geometry.startY);
     expect(geometry.labelY).toBeLessThan(geometry.endY);
@@ -162,5 +164,28 @@ describe('APM 服务拓扑力导向布局', () => {
       expect(item.y).toBeGreaterThanOrEqual(90);
       expect(item.y).toBeLessThanOrEqual(540);
     });
+  });
+});
+
+describe('APM 服务拓扑调查过滤', () => {
+  it('隔离只保留目标服务的直接入出邻居', () => {
+    const isolated = isolateTopologyNeighborhood(demoNodes, demoEdges, 'demo-orders');
+    expect(isolated.nodes.map((item) => item.id).sort()).toEqual([
+      'demo-inventory',
+      'demo-orders',
+      'demo-payment',
+      'demo-storefront',
+    ]);
+    expect(isolated.edges.map((item) => `${item.source}>${item.target}`).sort()).toEqual([
+      'demo-orders>demo-inventory',
+      'demo-orders>demo-payment',
+      'demo-storefront>demo-orders',
+    ]);
+  });
+
+  it('关键字过滤隐藏不匹配的节点和边', () => {
+    const filtered = filterTopologyByKeyword(demoNodes, demoEdges, 'payment');
+    expect(filtered.nodes.map((item) => item.id)).toEqual(['demo-payment']);
+    expect(filtered.edges).toEqual([]);
   });
 });

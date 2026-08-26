@@ -1,8 +1,7 @@
 'use client';
 
-import { AimOutlined, MinusOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, WarningOutlined } from '@ant-design/icons';
+import { ReloadOutlined, SearchOutlined, WarningOutlined } from '@ant-design/icons';
 import { Alert, Button, Input, Segmented, Select } from 'antd';
-import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
@@ -10,9 +9,12 @@ import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm
 import TopologyCanvas, {
   TopologyLegendDot,
   topologyHealthColors,
+  type TopologyCanvasSelection,
   type TopologyLayoutMode,
 } from '@/app/apm/services/topology/topology-canvas';
-import type { ApmTopologyGraph, ApmTopologyNode } from '@/app/apm/types';
+import TopologyInspectPanel from '@/app/apm/services/topology/topology-inspect-panel';
+import { filterTopologyByKeyword, isolateTopologyNeighborhood } from '@/app/apm/services/topology/topology-layout';
+import type { ApmTopologyGraph, ApmTraceSummary } from '@/app/apm/types';
 import FilterToolbar from '@/components/filter-toolbar';
 import { useTranslation } from '@/utils/i18n';
 
@@ -31,8 +33,7 @@ const windowMs: Record<TimeWindow, number> = {
 
 export default function ApmTopologyPage() {
   const { t } = useTranslation();
-  const router = useRouter();
-  const { getServices, getTopology } = useApmApi();
+  const { getServices, getTopology, getTraces } = useApmApi();
   const [graph, setGraph] = useState<ApmTopologyGraph>({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
   const [state, setState] = useState<PageState>('loading');
   const [layout, setLayout] = useState<TopologyLayoutMode>('layered');
@@ -42,7 +43,14 @@ export default function ApmTopologyPage() {
   const [serviceIds, setServiceIds] = useState<Map<string, string>>(new Map());
   const [anomalyOnly, setAnomalyOnly] = useState(false);
   const [keyword, setKeyword] = useState('');
-  const [zoom, setZoom] = useState(1);
+  const [selection, setSelection] = useState<TopologyCanvasSelection | null>(null);
+  const [isolatedNodeId, setIsolatedNodeId] = useState<string | null>(null);
+  const [range, setRange] = useState(() => {
+    const endedAt = new Date();
+    return { startedAt: new Date(endedAt.getTime() - windowMs['1h']).toISOString(), endedAt: endedAt.toISOString() };
+  });
+  const [traces, setTraces] = useState<ApmTraceSummary[]>([]);
+  const [tracesLoading, setTracesLoading] = useState(false);
 
   useEffect(() => {
     getServices().then((services) => {
@@ -56,8 +64,10 @@ export default function ApmTopologyPage() {
     setState('loading');
     const endedAt = new Date();
     const startedAt = new Date(endedAt.getTime() - windowMs[timeWindow]);
+    const nextRange = { startedAt: startedAt.toISOString(), endedAt: endedAt.toISOString() };
+    setRange(nextRange);
     try {
-      const result = await getTopology({ started_at: startedAt.toISOString(), ended_at: endedAt.toISOString(), environment });
+      const result = await getTopology({ started_at: nextRange.startedAt, ended_at: nextRange.endedAt, environment });
       setGraph(result);
       setState(result.nodes.length ? 'ready' : 'empty');
     } catch (error) {
@@ -69,23 +79,59 @@ export default function ApmTopologyPage() {
     void load();
   }, [load]);
 
-  const visibleNodes = useMemo(() => graph.nodes.filter((node) => !anomalyOnly || node.health === 'warning' || node.health === 'critical'), [anomalyOnly, graph.nodes]);
-  const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
-  const visibleEdges = useMemo(() => graph.edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)), [graph.edges, visibleNodeIds]);
+  const visibleGraph = useMemo(() => {
+    const anomalyNodes = graph.nodes.filter((node) => !anomalyOnly || node.health === 'warning' || node.health === 'critical');
+    const anomalyIds = new Set(anomalyNodes.map((node) => node.id));
+    const anomalyEdges = graph.edges.filter((edge) => anomalyIds.has(edge.source) && anomalyIds.has(edge.target));
+    const filtered = filterTopologyByKeyword(anomalyNodes, anomalyEdges, keyword);
+    if (!isolatedNodeId) return filtered;
+    return isolateTopologyNeighborhood(filtered.nodes, filtered.edges, isolatedNodeId);
+  }, [anomalyOnly, graph.edges, graph.nodes, isolatedNodeId, keyword]);
+
   const anomalyCount = graph.nodes.filter((node) => node.health === 'warning' || node.health === 'critical').length;
   const totalCalls = useMemo(() => graph.edges.reduce((sum, edge) => sum + edge.sampled_calls, 0), [graph.edges]);
 
-  const openNode = (node: ApmTopologyNode) => {
-    const serviceId = serviceIds.get(`${node.service_namespace}::${node.service_name}`);
-    if (!serviceId) return;
-    const query = node.environment ? `?environment=${encodeURIComponent(node.environment)}` : '';
-    router.push(`/apm/services/${serviceId}${query}`);
-  };
+  const sampleNode = useMemo(() => {
+    if (selection?.kind === 'node') return visibleGraph.nodes.find((node) => node.id === selection.id);
+    if (selection?.kind === 'edge') return visibleGraph.nodes.find((node) => node.id === selection.target);
+    return undefined;
+  }, [selection, visibleGraph.nodes]);
+
+  useEffect(() => {
+    if (!sampleNode) {
+      setTraces([]);
+      setTracesLoading(false);
+      return;
+    }
+    let active = true;
+    setTracesLoading(true);
+    getTraces({
+      service_namespace: sampleNode.service_namespace,
+      service_name: sampleNode.service_name,
+      environment: sampleNode.environment,
+      started_at: range.startedAt,
+      ended_at: range.endedAt,
+      limit: 5,
+    })
+      .then((page) => {
+        if (active) setTraces(page.items);
+      })
+      .catch(() => {
+        if (active) setTraces([]);
+      })
+      .finally(() => {
+        if (active) setTracesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [getTraces, range.endedAt, range.startedAt, sampleNode]);
 
   return (
-    <ApmRouteShell dependency="telemetry" description={t('apm.topology.description', '按时间窗内观测到的 Trace 聚合服务依赖；节点大小表示观测调用量，颜色表示状态。')} title={t('apm.topology.title', '服务拓扑')}>
+    <ApmRouteShell dependency="telemetry" description={t('apm.topology.description', '按时间窗内观测到的 Trace 聚合服务依赖；节点大小表示观测调用量，颜色表示错误率，标签展示 P95。点选节点或边可在右侧查看样本 Trace。')} title={t('apm.topology.title', '服务拓扑')}>
       <div className="flex flex-col gap-3">
         {graph.truncated ? <Alert showIcon type="warning" message={t('apm.topology.truncated', '当前拓扑仅聚合查询上限内的最近 Trace，调用量不代表全量流量。')} /> : null}
+        {isolatedNodeId ? <Alert showIcon type="info" message={t('apm.topology.isolateBanner', '正在隔离查看一个服务及其直接依赖。')} action={<Button type="link" onClick={() => setIsolatedNodeId(null)}>{t('apm.topology.showFullMap', '显示全图')}</Button>} /> : null}
         <ApmSurface className="overflow-hidden" padding="none">
           <div className="border-b border-[var(--color-border)] p-4">
             <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
@@ -114,24 +160,25 @@ export default function ApmTopologyPage() {
               <Button aria-label={t('apm.topology.refresh', '刷新拓扑')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
             </FilterToolbar>
           </div>
-          <div className="relative min-h-[640px]">
-            {state === 'ready' ? (
-              <>
-                <div className="absolute left-3 top-3 z-10 flex w-52 max-w-[calc(100%-24px)] flex-col gap-2">
-                  <Input allowClear aria-label={t('apm.topology.locate', '定位拓扑节点')} placeholder={t('apm.topology.locatePlaceholder', '定位节点')} prefix={<SearchOutlined aria-hidden="true" />} value={keyword} onChange={(event) => setKeyword(event.target.value)} />
-                  <div className="inline-flex w-fit flex-col overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
-                    <Button aria-label={t('apm.topology.zoomIn', '放大拓扑')} type="text" size="small" icon={<PlusOutlined aria-hidden="true" />} onClick={() => setZoom((value) => Math.min(1.3, value + 0.1))} />
-                    <Button aria-label={t('apm.topology.zoomOut', '缩小拓扑')} type="text" size="small" icon={<MinusOutlined aria-hidden="true" />} onClick={() => setZoom((value) => Math.max(0.7, value - 0.1))} />
-                    <Button aria-label={t('apm.topology.resetZoom', '重置拓扑缩放')} type="text" size="small" icon={<AimOutlined aria-hidden="true" />} onClick={() => setZoom(1)} />
-                  </div>
-                </div>
+          {state === 'ready' ? (
+            <div className="flex min-w-0">
+              <div className="relative min-w-0 flex-1">
                 <TopologyCanvas
-                  edges={visibleEdges}
-                  keyword={keyword}
+                  edges={visibleGraph.edges}
                   layout={layout}
-                  nodes={visibleNodes}
-                  zoom={zoom}
-                  onNodeClick={openNode}
+                  nodes={visibleGraph.nodes}
+                  selected={selection}
+                  toolbar={(
+                    <Input
+                      allowClear
+                      aria-label={t('apm.topology.locate', '定位拓扑节点')}
+                      placeholder={t('apm.topology.locatePlaceholder', '定位节点')}
+                      prefix={<SearchOutlined aria-hidden="true" />}
+                      value={keyword}
+                      onChange={(event) => setKeyword(event.target.value)}
+                    />
+                  )}
+                  onSelect={setSelection}
                 />
                 <div
                   aria-label={t('apm.topology.healthLegend', '节点健康图例')}
@@ -142,15 +189,31 @@ export default function ApmTopologyPage() {
                   <TopologyLegendDot color={topologyHealthColors.warning} label={t('apm.severity.warning', '警告')} />
                   <TopologyLegendDot color={topologyHealthColors.critical} label={t('apm.severity.critical', '严重')} />
                 </div>
-              </>
-            ) : state === 'empty' ? (
+              </div>
+              <TopologyInspectPanel
+                edges={visibleGraph.edges}
+                isolated={Boolean(isolatedNodeId)}
+                nodes={visibleGraph.nodes}
+                selection={selection}
+                serviceIds={serviceIds}
+                startedAt={range.startedAt}
+                endedAt={range.endedAt}
+                traces={traces}
+                tracesLoading={tracesLoading}
+                onIsolate={setIsolatedNodeId}
+                onSelectNode={(nodeId) => setSelection({ kind: 'node', id: nodeId })}
+                onShowFullMap={() => setIsolatedNodeId(null)}
+              />
+            </div>
+          ) : state === 'empty' ? (
+            <div className="min-h-[640px]">
               <CatalogState
                 kind="empty"
                 description={t('apm.topology.empty', '当前范围内没有观测到可用于构建拓扑的调用链。')}
                 onRetry={() => void load()}
               />
-            ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />}
-          </div>
+            </div>
+          ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />}
         </ApmSurface>
       </div>
     </ApmRouteShell>
