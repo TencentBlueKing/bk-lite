@@ -4,6 +4,7 @@ import base64
 import json
 import math
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -12,9 +13,9 @@ import requests
 from apps.apm.adapters.errors import TelemetryStoreUnavailable
 from apps.apm.services.contracts import (
     DeploymentReleaseQuery,
+    InferredDeploymentRelease,
     InstanceActivity,
     InstanceActivityQuery,
-    InferredDeploymentRelease,
     MetricDataState,
     ServiceDependency,
     ServiceEndpointRed,
@@ -28,12 +29,15 @@ from apps.apm.services.contracts import (
     SpanSearchQuery,
     SpanSummary,
     TopologyDependencyQuery,
+    TopologySampleQuery,
+    TopologyTraceSample,
     TraceDetail,
     TracePage,
     TraceSearchQuery,
     TraceSummary,
 )
 from apps.apm.services.identity import normalize_identity
+from apps.core.logger import apm_logger as logger
 
 MAX_QUERY_WINDOW = timedelta(days=35)
 MAX_TOPOLOGY_WINDOW = timedelta(days=7)
@@ -43,6 +47,7 @@ MAX_UNIQUE_SPANS = 1_000_000
 MAX_ACTIVITY_DIMENSIONS = 10_000
 MAX_DEPLOYMENT_RELEASES = 10_000
 MAX_DEPENDENCIES = 10_000
+MAX_TOPOLOGY_SAMPLE_TRACES = 200
 MAX_RED_POINTS = 120
 MAX_TOP_ENDPOINTS = 10
 MAX_ENDPOINT_NAME_LENGTH = 256
@@ -446,7 +451,7 @@ class VictoriaTracesTelemetryStore:
             f"{_SERVICE_FIELD}:* | stats by ({_NAMESPACE_FIELD}, {_SERVICE_FIELD}, "
             f"{_ENVIRONMENT_FIELD}, {_VERSION_FIELD}) "
             "min(start_time_unix_nano) as first_seen, max(end_time_unix_nano) as last_seen "
-            f"| filter {_VERSION_FIELD}:!=\"\" "
+            f'| filter {_VERSION_FIELD}:!="" '
             f"| sort by (first_seen) desc | limit {MAX_DEPLOYMENT_RELEASES + 1}"
         )
         rows = self._query_rows(logs_query, query.started_at, query.ended_at)
@@ -478,6 +483,84 @@ class VictoriaTracesTelemetryStore:
                 )
             )
         return releases
+
+    def sample_traces(self, query: TopologySampleQuery) -> TopologyTraceSample:
+        _validate_window(query.started_at, query.ended_at, maximum=MAX_TOPOLOGY_WINDOW)
+        if query.limit < 1 or query.limit > MAX_TOPOLOGY_SAMPLE_TRACES:
+            raise ValueError(f"拓扑样本 limit 必须在 1 到 {MAX_TOPOLOGY_SAMPLE_TRACES} 之间")
+        if query.status is not None and query.status not in _STATUS_TO_CODE:
+            raise ValueError("status 仅支持 ok 或 error")
+        if query.min_duration_ms is not None and query.min_duration_ms < 0:
+            raise ValueError("min_duration_ms 不能为负数")
+        if not query.service_names:
+            return TopologyTraceSample((), False)
+
+        filters = ["*", self._service_name_filter(query.service_names)]
+        if query.environment is not None:
+            filters.append(f"{_ENVIRONMENT_FIELD}:={_logsql_string(query.environment)}")
+        if query.span_name:
+            filters.append(f"name:={_logsql_string(query.span_name)}")
+        if query.status == "error":
+            filters.append(f"status_code:={_logsql_string(_STATUS_TO_CODE[query.status])}")
+        if query.min_duration_ms is not None:
+            filters.append(f"duration:>={int(query.min_duration_ms * 1_000_000)}")
+        logs_query = (
+            f"{' '.join(filters)} | stats by (trace_id) max(start_time_unix_nano) as matched_at "
+            f"| sort by (matched_at) desc | limit {query.limit + 1}"
+        )
+        rows = self._query_rows(logs_query, query.started_at, query.ended_at, limit=query.limit + 1)
+        trace_ids: list[str] = []
+        seen: set[str] = set()
+        for row in rows:
+            trace_id = str(row.get("trace_id", "")).strip()
+            if not trace_id or trace_id in seen:
+                continue
+            seen.add(trace_id)
+            trace_ids.append(trace_id)
+        truncated = len(trace_ids) > query.limit
+        selected_ids = trace_ids[: query.limit]
+        traces, omitted = self._fetch_topology_traces(selected_ids)
+        return TopologyTraceSample(traces=tuple(traces), truncated=truncated, omitted_trace_fetches=omitted)
+
+    def _fetch_topology_traces(self, trace_ids: list[str]) -> tuple[list[TraceDetail], int]:
+        if not trace_ids:
+            return [], 0
+        traces: list[TraceDetail] = []
+        omitted = 0
+
+        def _load(trace_id: str) -> TraceDetail | None:
+            try:
+                return self.get_trace(trace_id)
+            except TelemetryStoreUnavailable as exc:
+                logger.warning(
+                    "event=apm_topology_trace_fetch_failed failed_stage=get_trace error_type=%s",
+                    type(exc).__name__,
+                )
+                return None
+
+        if len(trace_ids) == 1:
+            detail = _load(trace_ids[0])
+            if detail is None:
+                return [], 1
+            return [detail], 0
+
+        loaded: dict[str, TraceDetail | None] = {}
+        with ThreadPoolExecutor(max_workers=min(8, len(trace_ids))) as pool:
+            futures = {pool.submit(_load, trace_id): trace_id for trace_id in trace_ids}
+            for future in as_completed(futures):
+                loaded[futures[future]] = future.result()
+        for trace_id in trace_ids:
+            detail = loaded.get(trace_id)
+            if detail is None:
+                omitted += 1
+                continue
+            traces.append(detail)
+        return traces, omitted
+
+    @staticmethod
+    def _service_name_filter(service_names: tuple[str, ...]) -> str:
+        quoted = ",".join(_logsql_string(name) for name in service_names if name)
+        return f"{_SERVICE_FIELD}:in({quoted})"
 
     def service_dependencies(self, query: TopologyDependencyQuery) -> tuple[ServiceDependency, ...]:
         _validate_window(query.started_at, query.ended_at, maximum=MAX_TOPOLOGY_WINDOW)

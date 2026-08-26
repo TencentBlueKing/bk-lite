@@ -128,4 +128,12 @@ describe('APM metric-format', () => {
       sampled_calls: 153,
     })).toBe('153');
   });
+
+  it('有边级 P95 和错误率时附加在调用量后面', () => {
+    expect(formatTopologyEdgeMetrics({
+      sampled_calls: 153,
+      p95_ms: 40,
+      error_rate: 0.02,
+    })).toContain('153');
+  });
 });
