@@ -10,7 +10,13 @@ import pytest
 
 from apps.core.openapi import renderer
 
-_EMPTY_SNAPSHOT = {"config": None, "services": [], "entries": {}, "checked_at": 0.0}
+_EMPTY_SNAPSHOT = {
+    "config": None,
+    "services": [],
+    "entries": {},
+    "checked_at": 0.0,
+    "fetch_started_at": 0.0,
+}
 
 
 @pytest.fixture(autouse=True)

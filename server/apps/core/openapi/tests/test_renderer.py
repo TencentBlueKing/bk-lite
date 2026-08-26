@@ -213,14 +213,25 @@ class FakeClock:
 
 @pytest.fixture
 def clock(monkeypatch):
+    """FakeClock + 干净快照；后台对账默认改为同步执行以保证测试确定性。
+
+    需要验证真实异步行为的测试自行 setattr 回线程版 _refresh_in_background。
+    """
     fake = FakeClock()
     monkeypatch.setattr(renderer, "time", fake)
     monkeypatch.setattr(
         renderer,
         "_snapshot",
-        {"config": None, "services": [], "entries": {}, "checked_at": 0.0},
+        {
+            "config": None,
+            "services": [],
+            "entries": {},
+            "checked_at": 0.0,
+            "fetch_started_at": 0.0,
+        },
     )
     monkeypatch.setattr(renderer, "_internal_services", lambda: [])
+    monkeypatch.setattr(renderer, "_refresh_in_background", renderer._background_refresh_run)
     return fake
 
 
@@ -238,7 +249,7 @@ def install_fetch(monkeypatch, result):
 
 
 def test_read_side_refreshes_stale_snapshot(env, clock, monkeypatch):
-    """快照过期时读侧自行回源，无需等 provider 轮询轮到本进程。"""
+    """冷启动（无任何成功快照）首读同步回源并立即可见，无需等 provider 轮询。"""
     fetch = install_fetch(monkeypatch, {"itsm": dict(GOOD, doc_url="http://d/x")})
     assert renderer.get_external_services() == ["itsm"]
     assert renderer.get_external_catalog() == [{"name": "itsm", "doc_url": "http://d/x"}]
@@ -258,7 +269,11 @@ def test_reads_within_ttl_hit_snapshot(env, clock, monkeypatch):
 
 
 def test_new_registration_visible_after_ttl(env, clock, monkeypatch):
-    """覆盖 _auth miss 场景：新注册条目最迟一个 TTL 后本进程可见。"""
+    """覆盖 _auth miss 场景：新注册条目最迟 TTL + 一次对账后本进程可见。
+
+    clock fixture 将后台对账同步化，故过期读在此直接命中新条目；真实
+    异步下过期首读先返回旧快照（见 test_warm_expiry_serves_stale_without_waiting）。
+    """
     fetch = install_fetch(monkeypatch, {})
     assert renderer.get_external_entry("itsm") is None
     fetch["result"] = {"itsm": dict(GOOD)}
@@ -266,6 +281,7 @@ def test_new_registration_visible_after_ttl(env, clock, monkeypatch):
     assert fetch["calls"] == 1
     clock.advance(renderer.DEFAULT_REGISTRY_CACHE_TTL + 1)
     assert renderer.get_external_entry("itsm") is not None
+    assert fetch["calls"] == 2
 
 
 def test_kv_down_falls_back_without_hammering(env, clock, monkeypatch):
@@ -289,11 +305,88 @@ def test_provider_refresh_warms_read_cache(env, clock, monkeypatch):
 
 
 def test_ttl_zero_fetches_every_read(env, clock, monkeypatch):
+    """TTL=0（读时点新鲜度档位）：每次读同步回源，不得转后台线程。"""
     monkeypatch.setenv("OPENAPI_REGISTRY_CACHE_TTL", "0")
     fetch = install_fetch(monkeypatch, {"itsm": dict(GOOD)})
+
+    def must_not_spawn():
+        raise AssertionError("TTL=0 必须走同步回源，不得转后台")
+
+    monkeypatch.setattr(renderer, "_refresh_in_background", must_not_spawn)
     renderer.get_external_services()
     renderer.get_external_services()
     assert fetch["calls"] == 2
+
+
+def test_warm_expiry_serves_stale_without_waiting(env, clock, monkeypatch):
+    """温快照过期读绝不阻塞在在途对账上（stale-while-revalidate 真异步验证）。
+
+    后台 fetch 被 Event 挂起时，读立即返回现有快照；放行后对账结果生效。
+    """
+    import threading
+    import time as real_time
+
+    monkeypatch.setattr(
+        renderer,
+        "_refresh_in_background",
+        lambda: threading.Thread(target=renderer._background_refresh_run, daemon=True).start(),
+    )
+    release = threading.Event()
+    state = {"calls": 0}
+
+    def fake_fetch():
+        state["calls"] += 1
+        if state["calls"] == 1:
+            return {"itsm": dict(GOOD)}
+        release.wait(5)  # 后台对账挂起，模拟 NATS 慢/半死
+        return {}
+
+    monkeypatch.setattr(renderer, "fetch_entries", fake_fetch)
+
+    assert renderer.get_external_services() == ["itsm"]  # 冷启动同步预热
+    clock.advance(renderer.DEFAULT_REGISTRY_CACHE_TTL + 1)
+    # 在途对账被挂起期间，读立即以现有快照响应（若同步等待，这两行会卡 5 秒）
+    assert renderer.get_external_services() == ["itsm"]
+    assert renderer.get_external_entry("itsm") is not None
+    assert state["calls"] == 2  # 且只触发了一次后台对账
+
+    release.set()
+    deadline = real_time.monotonic() + 5
+    while renderer.get_external_services() == ["itsm"]:
+        assert real_time.monotonic() < deadline, "后台对账结果未在期限内生效"
+        real_time.sleep(0.01)
+    assert renderer.get_external_services() == []
+
+
+def test_stale_fetch_does_not_overwrite_newer_snapshot(env, clock, monkeypatch):
+    """写回围栏：发起早、完成晚的旧回源不得覆盖更新的数据（已删条目不复活）。"""
+    import threading
+
+    old_inflight = threading.Event()
+    old_release = threading.Event()
+    state = {"calls": 0}
+
+    def fake_fetch():
+        state["calls"] += 1
+        if state["calls"] == 1:
+            old_inflight.set()
+            old_release.wait(5)
+            return {"itsm": dict(GOOD)}  # 旧数据：itsm 尚存
+        return {}  # 新数据：itsm 已从 KV 删除
+
+    monkeypatch.setattr(renderer, "fetch_entries", fake_fetch)
+
+    old_thread = threading.Thread(target=renderer.refresh_snapshot)
+    old_thread.start()  # 旧回源先发起（started=t0），随即挂起
+    assert old_inflight.wait(5)
+    clock.advance(1)
+    renderer.refresh_snapshot()  # 新回源后发起（started=t0+1）、先完成
+    assert renderer.get_external_services() == []
+
+    old_release.set()
+    old_thread.join(5)
+    assert not old_thread.is_alive()
+    assert renderer.get_external_services() == []  # 乱序旧结果被围栏丢弃
 
 
 def test_invalid_ttl_falls_back_to_default(monkeypatch):
