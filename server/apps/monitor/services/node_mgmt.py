@@ -832,7 +832,7 @@ class InstanceConfigService:
         # 快速失败:无实例直接返回
         if not instances:
             logger.info("没有需要创建的实例")
-            return
+            return []
 
         sanitized_instances = instances
         if actor_context is not None:
@@ -910,6 +910,9 @@ class InstanceConfigService:
                 raise BaseAppException(f"实例识别失败：{e}")
 
         # ============ 使用单一外层事务包裹所有操作 ============
+        processed_instance_ids = []
+        created_instance_ids = []
+        existing_instances = []
         try:
             with transaction.atomic():
                 new_instances, existing_instances, reclaimable_ids = InstanceConfigService._prepare_instances_for_creation(
@@ -929,7 +932,7 @@ class InstanceConfigService:
                         raise BaseAppException("监控实例已存在主机监控配置，无法重复接入")
                 if not new_instances and not existing_instances:
                     logger.info("没有需要处理的实例")
-                    return
+                    return []
 
                 logger.info(f"需要创建 {len(new_instances)} 个新实例,需要复用 {len(existing_instances)} 个已存在实例," f"需要回收 {len(reclaimable_ids)} 个历史墓碑")
                 if reclaimable_ids:
@@ -961,6 +964,9 @@ class InstanceConfigService:
                     collect_type,
                 )
                 logger.info("采集配置创建成功")
+                processed_instance_ids = [
+                    str(instance["instance_id"]) for instance in new_instances + existing_instances if instance.get("instance_id") not in (None, "")
+                ]
 
                 # ✅ 所有操作成功，事务自动提交
 
@@ -977,6 +983,7 @@ class InstanceConfigService:
             raise BaseAppException("创建监控实例失败，请稍后重试") from e
 
         logger.info(f"创建监控实例成功,共 {len(created_instance_ids)} 个新实例,{len(existing_instances)} 个复用实例")
+        return processed_instance_ids
 
     @staticmethod
     def update_instance_config(child_info, base_info, actor_context=None):
