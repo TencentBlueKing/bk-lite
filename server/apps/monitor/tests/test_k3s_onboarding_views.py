@@ -55,6 +55,7 @@ def test_create_instance_view_checks_scope_and_calls_k3s_module(mocker):
         instance_id="edge-1",
         name="边缘 K3S",
         organizations=[10],
+        actor_context={"actor": "test"},
     )
 
 

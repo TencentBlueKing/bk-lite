@@ -9,6 +9,7 @@ from django.db.models.fields.json import KeyTextTransform
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as logger
+from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
@@ -593,11 +594,13 @@ class MonitorObjectService:
         return value_str.replace("\\", "\\\\").replace('"', '\\"')
 
     @staticmethod
-    def generate_monitor_instance_id(monitor_object_id, monitor_instance_name, interval):
+    def generate_monitor_instance_id(monitor_object_id, monitor_instance_name, interval, actor_context=None):
         """生成监控对象实例ID"""
         obj = MonitorInstance.objects.filter(monitor_object_id=monitor_object_id, name=monitor_instance_name).first()
         if obj:
             obj.interval = interval
+            for key, value in maintainer_kwargs(actor_context, include_created=False).items():
+                setattr(obj, key, value)
             obj.save()
             return obj.id
         else:
@@ -608,6 +611,7 @@ class MonitorObjectService:
                 name=monitor_instance_name,
                 interval=interval,
                 monitor_object_id=monitor_object_id,
+                **maintainer_kwargs(actor_context),
             )
 
             return instance_id
@@ -697,7 +701,7 @@ class MonitorObjectService:
             MonitorObject.objects.filter(id__in=target_ids).update(is_visible=is_visible)
 
     @staticmethod
-    def update_instance(instance_id, name=None, organizations=None, **extra_fields):
+    def update_instance(instance_id, name=None, organizations=None, actor_context=None, **extra_fields):
         """更新监控对象实例"""
         instance = MonitorInstance.objects.filter(id=instance_id).first()
         if not instance:
@@ -708,6 +712,8 @@ class MonitorObjectService:
         for field in ("cloud_region_id", "ip", "fallback_sampling_rate", "auto"):
             if field in extra_fields and extra_fields[field] is not None:
                 setattr(instance, field, extra_fields[field])
+        for key, value in maintainer_kwargs(actor_context, include_created=False).items():
+            setattr(instance, key, value)
         instance.save()
 
         # 更新组织信息
