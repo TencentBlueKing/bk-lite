@@ -703,9 +703,19 @@ class TargetCollectionExecutor:
         duration_ms: float,
     ) -> None:
         error_code = result.error_code or result.status
-        if error_code.startswith("preflight_") or (
+        is_preflight_failure = error_code.startswith("preflight_") or (
             result.status == "unreachable" and result.attempts == 0
-        ):
+        )
+        if is_preflight_failure and request.ip_precheck_enabled:
+            logger.warning(
+                "event=ip_precheck_failed task_id=%s target=%s "
+                "failed_stage=ip_precheck error_type=%s",
+                request.task_id,
+                result.target,
+                error_code,
+            )
+            return
+        if is_preflight_failure:
             stage = "preflight"
             timeout_seconds = self._plan.preflight_timeout_seconds
         elif error_code.startswith("access_probe_") or error_code in {

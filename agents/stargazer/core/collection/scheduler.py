@@ -36,6 +36,7 @@ class CollectionScheduler:
         *,
         max_in_flight: int,
         topology_max_in_flight: int | None = None,
+        allow_topology_idle_borrow: bool = True,
         metrics=None,
     ) -> None:
         if max_in_flight <= 0:
@@ -44,6 +45,7 @@ class CollectionScheduler:
             raise ValueError("topology_max_in_flight must be greater than zero")
         self._max_in_flight = int(max_in_flight)
         self._topology_max_in_flight = None if topology_max_in_flight is None else int(topology_max_in_flight)
+        self._allow_topology_idle_borrow = bool(allow_topology_idle_borrow)
         self._metrics = metrics
         self._condition = asyncio.Condition()
         self._runs: dict[str, _RunState] = {}
@@ -224,12 +226,31 @@ class CollectionScheduler:
         if topology_limit is None:
             return True
         if workload == "network_topology":
-            return self.topology_active < topology_limit
+            return self.topology_active < self._effective_topology_limit()
         if not self._topology_is_waiting():
             return True
         general_active = self.active - self.topology_active
         general_reserved = max(0, self._max_in_flight - topology_limit)
         return general_active < general_reserved + self.topology_active
+
+    def _effective_topology_limit(self) -> int:
+        """普通目标完全空闲时，允许拓扑借用普通容量的一半。"""
+
+        topology_limit = self._topology_max_in_flight
+        assert topology_limit is not None
+        if not self._allow_topology_idle_borrow or self._general_is_present():
+            return topology_limit
+        general_capacity = max(0, self._max_in_flight - topology_limit)
+        return min(self._max_in_flight, topology_limit + general_capacity // 2)
+
+    def _general_is_present(self) -> bool:
+        if self.active > self.topology_active:
+            return True
+        return any(
+            state is not None and not state.exhausted and state.workload == "general"
+            for run_id in self._order
+            if (state := self._runs.get(run_id)) is not None
+        )
 
     def _topology_is_waiting(self) -> bool:
         return any(

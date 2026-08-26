@@ -128,6 +128,7 @@ def test_env_example_uses_split_timeout_contract():
     assert "CONNECT_TIMEOUT" not in keys
     assert "PLUGIN_TIMEOUT" not in keys
     assert "PUBLISH_TIMEOUT" not in keys
+    assert "PREFLIGHT_REACHABILITY" not in keys
 
 
 def test_target_executor_settings_allow_zero_unlimited():

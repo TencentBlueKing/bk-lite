@@ -38,7 +38,6 @@ executors:
             collection_seconds=60,
             publish_seconds=30,
         ),
-        preflight_enabled=True,
     )
 
     plan = resolver.resolve(
@@ -76,7 +75,6 @@ executors:
     resolver = ExecutionPlanResolver(
         reader=PluginYamlReader(plugins_base_dir=str(tmp_path)),
         defaults=TimeoutDefaults(),
-        preflight_enabled=False,
     )
 
     plan = resolver.resolve(
@@ -96,6 +94,43 @@ executors:
     assert plan.capacity_group == "default"
 
 
+def test_execution_plan_preflight_switch_comes_from_each_request(tmp_path):
+    _write_plugin(
+        tmp_path,
+        """
+metadata:
+  type: network
+executors:
+  protocol:
+    type: protocol
+""",
+    )
+    resolver = ExecutionPlanResolver(
+        reader=PluginYamlReader(plugins_base_dir=str(tmp_path)),
+        defaults=TimeoutDefaults(),
+    )
+
+    enabled = resolver.resolve(
+        CollectionRequest(
+            task_id="precheck-on",
+            plugin_ref="network.config",
+            targets=("10.10.24.1",),
+            params={"ip_precheck": "true"},
+        )
+    )
+    disabled = resolver.resolve(
+        CollectionRequest(
+            task_id="precheck-off",
+            plugin_ref="network.config",
+            targets=("10.10.24.2",),
+            params={"ip_precheck": False},
+        )
+    )
+
+    assert enabled.preflight_enabled is True
+    assert disabled.preflight_enabled is False
+
+
 def test_execution_plan_accepts_network_topology_capacity_group(tmp_path):
     _write_plugin(
         tmp_path,
@@ -112,7 +147,6 @@ executors:
     resolver = ExecutionPlanResolver(
         reader=PluginYamlReader(plugins_base_dir=str(tmp_path)),
         defaults=TimeoutDefaults(),
-        preflight_enabled=True,
     )
 
     plan = resolver.resolve(
@@ -152,7 +186,6 @@ executors:
     resolver = ExecutionPlanResolver(
         reader=PluginYamlReader(plugins_base_dir=str(tmp_path)),
         defaults=TimeoutDefaults(collection_seconds=60),
-        preflight_enabled=True,
     )
     params = {"executor_type": "protocol"}
     if raw_timeout is not None:
@@ -185,7 +218,6 @@ executors:
     resolver = ExecutionPlanResolver(
         reader=PluginYamlReader(plugins_base_dir=str(tmp_path)),
         defaults=TimeoutDefaults(collection_seconds=60),
-        preflight_enabled=True,
     )
 
     plan = resolver.resolve(
