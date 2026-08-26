@@ -1,15 +1,13 @@
-from django.db.models.signals import pre_delete, pre_save
-from django.dispatch import receiver
+from django.db.models.signals import post_delete, pre_delete, pre_save
 from django.utils import timezone
 
 from apps.operation_analysis.models.models import Architecture, Dashboard, NetworkTopology, Report, Screen, Topology
 from apps.operation_analysis.models.share_models import DashboardShareLink
 from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
+from apps.operation_analysis.services.canvas_draft.service import delete_for_resource
 
 _CANVAS_MODELS = (Dashboard, Topology, Architecture, Screen, Report, NetworkTopology)
-_MODEL_TO_RESOURCE_TYPE = {
-    meta.model: object_type for object_type, meta in CANVAS_TYPE_REGISTRY.items()
-}
+_MODEL_TO_RESOURCE_TYPE = {meta.model: object_type for object_type, meta in CANVAS_TYPE_REGISTRY.items()}
 
 
 def _invalidate_resource_links(resource_type, resource_id):
@@ -48,6 +46,18 @@ def _register_canvas_share_signals():
 
             return handler
 
+        def make_purge_handler(rt):
+            def handler(sender, instance, **kwargs):
+                delete_for_resource(rt, instance.pk)
+
+            return handler
+
+        post_delete.connect(
+            make_purge_handler(resource_type),
+            sender=model,
+            weak=False,
+            dispatch_uid=f"canvas_draft_purge_{resource_type}",
+        )
         pre_delete.connect(
             make_delete_handler(resource_type),
             sender=model,

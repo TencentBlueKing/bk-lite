@@ -65,6 +65,13 @@ import { UnifiedFilterBar, UnifiedFilterConfigModal } from '@/app/ops-analysis/c
 import { DashboardRuntimeSchedulerProvider } from '@/app/ops-analysis/context/dashboardRuntimeScheduler';
 import ViewWorkspace from '../components/viewWorkspace';
 import ReportToolbar from './components/reportToolbar';
+import { useCanvasDraft } from '@/app/ops-analysis/hooks/useCanvasDraft';
+import {
+  restoreDraftRefreshInterval,
+  toCanvasDraftResourceId,
+  type CanvasDraftPayload,
+} from '@/app/ops-analysis/api/canvasDraft';
+import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
 
 export interface ReportRef {
   hasUnsavedChanges: () => boolean;
@@ -154,6 +161,45 @@ const Report = forwardRef<ReportRef, ReportProps>(({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const themeName = renderMode ? 'light' : resolveOpsChartThemeName();
   const chartTheme = getOpsChartTheme(themeName);
+
+  const reportDraftResourceId = toCanvasDraftResourceId(selectedReport?.data_id);
+  const getReportDraftPayload = useCallback(
+    (): CanvasDraftPayload => ({
+      name: selectedReport?.name,
+      desc: selectedReport?.desc,
+      view_sets: draftViewSets,
+      refresh_interval: savedRefreshInterval,
+    }),
+    [draftViewSets, savedRefreshInterval, selectedReport?.desc, selectedReport?.name],
+  );
+  const applyReportDraftPayload = useCallback(
+    (payload: CanvasDraftPayload) => {
+      restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
+      const normalized = normalizeReportViewSets(payload.view_sets);
+      setDraftViewSets(normalized);
+      const nextFilterValues = syncFilterValuesWithDefinitions(
+        normalized.filters,
+        filterValues,
+      );
+      setFilterValues(nextFilterValues);
+      setAppliedFilterValues(nextFilterValues);
+      setAppliedFilterDefinitions(normalized.filters);
+    },
+    [filterValues, setSavedRefreshInterval],
+  );
+  const reportDraft = useCanvasDraft({
+    resourceType: 'report',
+    resourceId: reportDraftResourceId,
+    enabled: Boolean(
+      editing &&
+        !shareMode &&
+        !renderMode &&
+        reportDraftResourceId &&
+        !selectedReport?.is_build_in,
+    ),
+    getPayload: getReportDraftPayload,
+    applyPayload: applyReportDraftPayload,
+  });
 
   const dirty = editing && isReportDraftDirty(savedViewSets, draftViewSets);
   useImperativeHandle(ref, () => ({ hasUnsavedChanges: () => dirty }), [dirty]);
@@ -645,6 +691,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       onToggleEditMode={enterEditMode}
       onCancelEdit={cancelEdit}
       onSave={save}
+      editExtra={bindCanvasDraftControls(reportDraft)}
       shareMode={shareMode}
       shareLoading={shareLoading}
       onOpenShare={!shareMode && selectedReport?.data_id ? () => { void openShare(selectedReport.data_id); } : undefined}

@@ -20,8 +20,10 @@ interface ArchitectureToolbarProps {
   onOpenShare?: () => void;
   loading: boolean;
   onEdit: () => void;
+  onCancel?: () => void;
   onSave: () => void;
   onFullscreenToggle: () => void;
+  editExtra?: React.ReactNode;
 }
 
 const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
@@ -33,8 +35,10 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
   onOpenShare,
   loading,
   onEdit,
+  onCancel,
   onSave,
   onFullscreenToggle,
+  editExtra,
 }) => {
   const { t } = useTranslation();
   return (
@@ -59,48 +63,39 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
       </div>
 
       {/* 右侧：工具栏 */}
-      <div className="flex items-center space-x-2">
-        <Tooltip
-          title={
-            isFullscreen ? t('common.exitFullscreen') : t('common.fullscreen')
-          }
-        >
-          <Button
-            type="text"
-            icon={
-              isFullscreen ? (
-                <FullscreenExitOutlined style={{ fontSize: 16 }} />
-              ) : (
-                <FullscreenOutlined style={{ fontSize: 16 }} />
-              )
+      <div className="flex items-center gap-2">
+        <div className="flex items-center gap-0.5">
+          <Tooltip
+            title={
+              isFullscreen ? t('common.exitFullscreen') : t('common.fullscreen')
             }
-            onClick={onFullscreenToggle}
-          />
-        </Tooltip>
-        {!shareMode && !isEditMode && onOpenShare && (
-          <Tooltip title={t('dashboard.share')}>
+          >
             <Button
               type="text"
-              icon={<ShareAltOutlined style={{ fontSize: 16 }} />}
-              loading={shareLoading}
-              disabled={shareLoading}
-              aria-label={t('dashboard.share')}
-              onClick={onOpenShare}
+              icon={
+                isFullscreen ? (
+                  <FullscreenExitOutlined style={{ fontSize: 16 }} />
+                ) : (
+                  <FullscreenOutlined style={{ fontSize: 16 }} />
+                )
+              }
+              onClick={onFullscreenToggle}
             />
           </Tooltip>
-        )}
-        {!shareMode && (
-          <PermissionWrapper requiredPermissions={['EditChart']}>
-            {isEditMode ? (
+          {!shareMode && !isEditMode && onOpenShare && (
+            <Tooltip title={t('dashboard.share')}>
               <Button
-                icon={<SaveOutlined />}
-                loading={loading}
-                onClick={onSave}
-                type="primary"
-              >
-                {t('common.save')}
-              </Button>
-            ) : (
+                type="text"
+                icon={<ShareAltOutlined style={{ fontSize: 16 }} />}
+                loading={shareLoading}
+                disabled={shareLoading}
+                aria-label={t('dashboard.share')}
+                onClick={onOpenShare}
+              />
+            </Tooltip>
+          )}
+          {!shareMode && !isEditMode && (
+            <PermissionWrapper requiredPermissions={['EditChart']}>
               <Tooltip title={t('common.edit')}>
                 <Button
                   type="text"
@@ -109,7 +104,27 @@ const ArchitectureToolbar: React.FC<ArchitectureToolbarProps> = ({
                   disabled={selectedArchitecture?.is_build_in}
                 />
               </Tooltip>
-            )}
+            </PermissionWrapper>
+          )}
+        </div>
+        {!shareMode && isEditMode && (
+          <PermissionWrapper requiredPermissions={['EditChart']}>
+            <div className="flex items-center gap-2">
+              {editExtra}
+              {onCancel && (
+                <Button type="default" onClick={onCancel}>
+                  {t('common.cancel')}
+                </Button>
+              )}
+              <Button
+                icon={<SaveOutlined />}
+                loading={loading}
+                onClick={onSave}
+                type="primary"
+              >
+                {t('common.save')}
+              </Button>
+            </div>
           </PermissionWrapper>
         )}
       </div>

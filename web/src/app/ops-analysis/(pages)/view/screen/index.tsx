@@ -74,6 +74,13 @@ import {
 import ViewConfig from "@/app/ops-analysis/components/widgetConfig";
 import ViewSelector from "@/app/ops-analysis/components/widgetSelector";
 import { omitForeignChartTypeFields } from "@/app/ops-analysis/components/widgetConfig/utils/submitConfig";
+import { useCanvasDraft } from "@/app/ops-analysis/hooks/useCanvasDraft";
+import {
+  restoreDraftRefreshInterval,
+  toCanvasDraftResourceId,
+  type CanvasDraftPayload,
+} from "@/app/ops-analysis/api/canvasDraft";
+import { bindCanvasDraftControls } from "@/app/ops-analysis/components/canvasDraftControls";
 
 export interface ScreenRef {
   hasUnsavedChanges: () => boolean;
@@ -217,10 +224,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     [draftViewSets, editMode, savedViewSets],
   );
 
-  useImperativeHandle(ref, () => ({
-    hasUnsavedChanges,
-  }));
-
   const syncScreenCanvasResources = useCallback(
     (nextViewSets: ScreenViewSets) =>
       syncCanvasResources({
@@ -230,6 +233,59 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       }),
     [syncCanvasResources],
   );
+
+  const screenDraftResourceId = toCanvasDraftResourceId(selectedScreen?.data_id);
+  const getScreenDraftPayload = useCallback(
+    (): CanvasDraftPayload => ({
+      name: selectedScreen?.name,
+      desc: selectedScreen?.desc,
+      view_sets: {
+        ...draftViewSets,
+        filters: queryState.definitions,
+      },
+      refresh_interval: savedRefreshInterval,
+    }),
+    [
+      draftViewSets,
+      queryState.definitions,
+      savedRefreshInterval,
+      selectedScreen?.desc,
+      selectedScreen?.name,
+    ],
+  );
+  const applyScreenDraftPayload = useCallback(
+    (payload: CanvasDraftPayload) => {
+      restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
+      const normalized = normalizeScreenViewSets(payload.view_sets);
+      const loadedDefinitions = normalized.filters ?? [];
+
+      setDraftViewSets({
+        ...normalized,
+        filters: loadedDefinitions,
+      });
+      queryState.resetQueryState({ definitions: loadedDefinitions });
+      setRefreshVersion((current) => current + 1);
+      setRefreshCause("manual");
+      void syncScreenCanvasResources(normalized);
+    },
+    [queryState, setSavedRefreshInterval, syncScreenCanvasResources],
+  );
+  const screenDraft = useCanvasDraft({
+    resourceType: "screen",
+    resourceId: screenDraftResourceId,
+    enabled: Boolean(
+      editMode &&
+        !shareMode &&
+        screenDraftResourceId &&
+        !selectedScreen?.is_build_in,
+    ),
+    getPayload: getScreenDraftPayload,
+    applyPayload: applyScreenDraftPayload,
+  });
+
+  useImperativeHandle(ref, () => ({
+    hasUnsavedChanges,
+  }));
 
   useEffect(() => {
     const screenId = selectedScreen?.data_id;
@@ -392,6 +448,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       canvasId: selectedScreen?.data_id,
       savedInterval: savedRefreshInterval,
       canPersist: canPersistRefreshInterval,
+      enabled: !editMode,
       patchRefreshInterval: async (interval) => {
         if (!selectedScreen?.data_id) {
           return;
@@ -723,6 +780,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
               onEdit={handleStartEdit}
               onCancel={handleCancelEdit}
               onSave={handleSave}
+              editExtra={bindCanvasDraftControls(screenDraft)}
             />
           }
           filterBar={
