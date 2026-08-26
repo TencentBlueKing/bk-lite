@@ -6,6 +6,17 @@ from apps.cmdb.constants.constants import PERMISSION_INSTANCES
 from apps.core.openapi.serializers import PaginatedRequestSerializer
 
 
+class CmdbInstanceListSerializer(PaginatedRequestSerializer):
+    """查询实例列表（原 /api/open/models/{model_id}/instances）。组织身份只允许由网关注入。"""
+
+    model_id = serializers.CharField()
+    order = serializers.CharField(required=False, default="", allow_blank=True)
+    filters = serializers.CharField(required=False, default="[]", allow_blank=True)
+
+    def validate_page_size(self, value):
+        return min(max(int(value), 1), 200)
+
+
 class CmdbModuleDataQuerySerializer(PaginatedRequestSerializer):
     # M1 仅暴露带用户权限过滤的实例分支；PERMISSION_MODEL / PERMISSION_TASK
     # 分支在现有实现中不做按用户过滤，不得经网关暴露

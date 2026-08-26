@@ -22,6 +22,11 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.core.openapi.tests.test_gateway::test_jwt_anchor_passthrough",
         "apps.core.openapi.tests.test_gateway::test_jwt_missing_anchor_rejected",
     ],
+    "cmdb/instances": [
+        "apps.cmdb.tests.test_openapi_instance_list::test_api_tenant_can_list_own_org_instances",
+        "apps.cmdb.tests.test_openapi_instance_list::test_api_tenant_cannot_list_other_org_instances",
+        "apps.cmdb.tests.test_openapi_instance_list::test_forged_team_is_rejected",
+    ],
     "job-mgmt/file-distribute": [
         "apps.job_mgmt.tests.test_open_file_distribute_views::test_api_tenant_can_distribute_own_file",
         "apps.job_mgmt.tests.test_open_file_distribute_views::test_api_tenant_cannot_distribute_other_tenant_file",
@@ -31,5 +36,20 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.job_mgmt.tests.test_open_file_distribute_views::test_target_list_v2_tenant_reads_only_own_targets",
         "apps.job_mgmt.tests.test_open_file_distribute_views::test_target_list_v2_other_tenant_cannot_read_first_tenant_targets",
         "apps.job_mgmt.tests.test_open_file_distribute_views::test_target_list_v2_rejects_forged_team",
+    ],
+    "job-mgmt/script-execute": [
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_can_execute_script_on_own_target",
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_cannot_execute_script_on_other_tenant_target",
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_script_execute_forged_team_is_rejected",
+    ],
+    "job-mgmt/job-status": [
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_can_read_own_job_status",
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_cannot_read_other_org_job_status",
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_job_status_forged_team_is_rejected",
+    ],
+    "job-mgmt/job-detail": [
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_can_read_own_job_detail",
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_cannot_read_other_org_job_detail",
+        "apps.job_mgmt.tests.test_openapi_job_execute::test_job_detail_forged_team_is_rejected",
     ],
 }

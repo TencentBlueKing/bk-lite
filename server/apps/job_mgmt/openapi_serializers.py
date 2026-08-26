@@ -16,6 +16,20 @@ class FileDistributeTargetSerializer(OpenAPIRequestSerializer):
     os = serializers.CharField(required=False, max_length=32)
 
 
+def _validate_target_source_ids(attrs):
+    id_field = "target_id" if attrs["target_source"] == "manual" else "node_id"
+    unexpected_id_field = "node_id" if id_field == "target_id" else "target_id"
+    errors = {}
+    for index, target in enumerate(attrs["target_list"]):
+        if id_field not in target:
+            errors[index] = {id_field: ["required"]}
+        elif unexpected_id_field in target:
+            errors[index] = {unexpected_id_field: ["not allowed for target_source"]}
+    if errors:
+        raise serializers.ValidationError({"target_list": errors})
+    return attrs
+
+
 class FileDistributeRequestSerializer(OpenAPIRequestSerializer):
     """可信身份文件分发请求；团队身份只允许由网关注入。"""
 
@@ -40,17 +54,54 @@ class FileDistributeRequestSerializer(OpenAPIRequestSerializer):
     timeout = serializers.IntegerField(required=False, default=600, min_value=1, max_value=86400)
 
     def validate(self, attrs):
-        id_field = "target_id" if attrs["target_source"] == "manual" else "node_id"
-        unexpected_id_field = "node_id" if id_field == "target_id" else "target_id"
-        errors = {}
-        for index, target in enumerate(attrs["target_list"]):
-            if id_field not in target:
-                errors[index] = {id_field: ["required"]}
-            elif unexpected_id_field in target:
-                errors[index] = {unexpected_id_field: ["not allowed for target_source"]}
-        if errors:
-            raise serializers.ValidationError({"target_list": errors})
-        return attrs
+        return _validate_target_source_ids(attrs)
+
+
+class ScriptExecuteParamSerializer(OpenAPIRequestSerializer):
+    """脚本位置参数；值允许为空以保留占位。"""
+
+    name = serializers.CharField(max_length=128)
+    value = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ScriptExecuteRequestSerializer(OpenAPIRequestSerializer):
+    """可信身份脚本执行请求；团队身份只允许由网关注入。"""
+
+    name = serializers.CharField(max_length=256)
+    target_source = serializers.ChoiceField(choices=["node_mgmt", "manual"])
+    target_list = serializers.ListField(
+        child=FileDistributeTargetSerializer(),
+        min_length=1,
+        max_length=500,
+    )
+    script_type = serializers.ChoiceField(choices=["shell", "python", "powershell", "bat"])
+    script_content = serializers.CharField()
+    params = serializers.ListField(
+        child=ScriptExecuteParamSerializer(),
+        required=False,
+        default=list,
+        max_length=100,
+    )
+    timeout = serializers.IntegerField(required=False, default=600, min_value=1, max_value=86400)
+
+    def validate(self, attrs):
+        return _validate_target_source_ids(attrs)
+
+
+class JobStatusRequestSerializer(OpenAPIRequestSerializer):
+    """批量查询作业状态；团队身份只允许由网关注入。"""
+
+    task_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        min_length=1,
+        max_length=100,
+    )
+
+
+class JobDetailRequestSerializer(OpenAPIRequestSerializer):
+    """查询单个作业详情；团队身份只允许由网关注入。"""
+
+    task_id = serializers.IntegerField(min_value=1)
 
 
 class TargetListV2RequestSerializer(OpenAPIRequestSerializer):
