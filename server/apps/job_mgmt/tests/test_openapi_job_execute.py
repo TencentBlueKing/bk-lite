@@ -114,6 +114,35 @@ def test_api_tenant_cannot_execute_script_on_other_tenant_target(tenant):
     mock_delay.assert_not_called()
 
 
+def test_script_execute_scope_reject_logs_stable_template(tenant):
+    with patch("apps.job_mgmt.openapi_api.logger.warning") as mock_log, patch("apps.job_mgmt.nats_api.execute_script_task.delay") as mock_delay:
+        response = APIClient().post(
+            EXECUTE_URL,
+            _execute_body(
+                tenant,
+                target_list=[{"target_id": tenant.other_target.id, "name": tenant.other_target.name, "ip": tenant.other_target.ip}],
+            ),
+            format="json",
+            **_auth(tenant),
+        )
+
+    assert response.status_code == 403
+    mock_delay.assert_not_called()
+    template, user, domain, team_id, target_source, target_count, target_ids, reason = mock_log.call_args.args
+    assert "%s" in template
+    assert "user=%s" in template
+    assert user == tenant.user.username
+    assert domain == tenant.user.domain
+    assert team_id == tenant.team.id
+    assert target_source == "manual"
+    assert target_count == 1
+    assert target_ids == [tenant.other_target.id]
+    formatted = template % (user, domain, team_id, target_source, target_count, target_ids, reason)
+    assert tenant.user.username in formatted
+    assert str(tenant.other_target.id) in formatted
+    assert "无权访问该组织" in reason
+
+
 def test_script_execute_forged_team_is_rejected(tenant):
     with patch("apps.job_mgmt.nats_api.execute_script_task.delay") as mock_delay:
         response = APIClient().post(

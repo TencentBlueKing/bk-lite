@@ -6,7 +6,7 @@ from apps.core.logger import job_logger as logger
 from apps.core.openapi.decorators import openapi_expose
 from apps.job_mgmt.constants import CallbackType
 from apps.job_mgmt.models import JobExecution
-from apps.job_mgmt.nats_api import _validate_openapi_target_scope, job_detail_query, job_script_execute, job_status_batch_query
+from apps.job_mgmt.nats_api import _run_script_execute, _validate_openapi_target_scope, job_detail_query, job_status_batch_query
 from apps.job_mgmt.openapi_serializers import (
     JobDetailRequestSerializer,
     JobStatusRequestSerializer,
@@ -78,18 +78,20 @@ def openapi_script_execute(
     scope_error = _validate_openapi_target_scope(target_source, target_list, {authorized_team_id})
     if scope_error:
         id_field = "target_id" if target_source == "manual" else "node_id"
+        target_ids = [item.get(id_field) for item in target_list]
         logger.warning(
-            "[openapi_script_execute] scope rejected: user=%s domain=%s team=%s " "target_source=%s target_ids=%s reason=%s",
+            "[openapi_script_execute] scope rejected: user=%s domain=%s team=%s " "target_source=%s target_count=%s target_ids=%s reason=%s",
             (user_info or {}).get("user", ""),
             (user_info or {}).get("domain", ""),
             authorized_team_id,
             target_source,
-            [item.get(id_field) for item in target_list],
+            len(target_ids),
+            target_ids[:20],
             scope_error,
         )
         return {"result": False, "message": scope_error}
 
-    result = job_script_execute(
+    result = _run_script_execute(
         {
             "name": name,
             "target_source": target_source,

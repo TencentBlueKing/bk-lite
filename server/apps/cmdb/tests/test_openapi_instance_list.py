@@ -2,12 +2,14 @@
 
 import uuid
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from rest_framework.test import APIClient
 
 from apps.base.models import User, UserAPISecret
+from apps.cmdb.open_api.errors import CMDBOpenAPIError
+from apps.cmdb.open_api.services import CMDBOpenAPIService
 from apps.system_mgmt.models import Group, Menu, Role
 from apps.system_mgmt.models import User as SystemUser
 
@@ -189,6 +191,17 @@ def test_missing_model_id_is_rejected(tenants, instance_catalog):
     assert response.json()["code"] == "SCHEMA_INVALID"
 
 
+def test_page_size_over_limit_is_clamped(tenants, instance_catalog):
+    response = APIClient().get(
+        URL,
+        {"model_id": "host", "page_size": 999},
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["page_size"] == 200
+
+
 def test_missing_asset_view_permission_is_forbidden():
     tenant = _make_tenant(
         team_name="cmdb-openapi-noperm",
@@ -204,3 +217,14 @@ def test_missing_asset_view_permission_is_forbidden():
 
     assert response.status_code == 403
     assert response.json()["code"] == "PERM_MISSING"
+
+
+def test_get_model_attrs_still_requires_model_management_view():
+    context = MagicMock()
+    context.require_feature.side_effect = CMDBOpenAPIError("cmdb.permission.denied", "权限不足", 403)
+
+    with pytest.raises(CMDBOpenAPIError) as exc_info:
+        CMDBOpenAPIService(context).get_model_attrs("host")
+
+    assert exc_info.value.status_code == 403
+    context.require_feature.assert_called_once_with("model_management-View")

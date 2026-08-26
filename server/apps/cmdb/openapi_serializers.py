@@ -14,6 +14,7 @@ class CmdbInstanceListSerializer(PaginatedRequestSerializer):
     filters = serializers.CharField(required=False, default="[]", allow_blank=True)
 
     def validate_page_size(self, value):
+        # 内层 InstanceListQuerySerializer 上限 200；越限钳制，避免落到 BUSINESS_REJECTED。
         return min(max(int(value), 1), 200)
 
 

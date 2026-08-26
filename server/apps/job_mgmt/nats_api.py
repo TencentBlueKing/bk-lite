@@ -199,9 +199,14 @@ def ansible_task_callback(data: dict):
 
 
 @nats_client.register
-def job_script_execute(data: dict, *, trusted_actor=None):
+def job_script_execute(data: dict, **_ignored):
+    """脚本执行（NATS 开放接口）。忽略调用方 kwargs，身份固定为 api。"""
+    return _run_script_execute(data)
+
+
+def _run_script_execute(data: dict, *, trusted_actor=None):
     """
-    脚本执行（NATS 开放接口）
+    脚本执行实现。
 
     Args:
         data: 请求数据，包含：
@@ -216,7 +221,7 @@ def job_script_execute(data: dict, *, trusted_actor=None):
             - callback_type: 回调通道 web|nats|both（可选，默认 web）
             - callback_url: web 通道回调地址（callback_type 含 web 时使用）
             - callback_subject: nats 通道回调主题，如 bklite.alert_job_result（callback_type 含 nats 时必填）
-        trusted_actor: 仅网关封装传入的可信身份；NATS 入口保持 created_by=api。
+        trusted_actor: 仅网关封装传入的可信身份；NATS 入口不得传入。
 
     Returns:
         {"result": True, "data": {"task_id": <int>}} 或 {"result": False, "message": "..."}
