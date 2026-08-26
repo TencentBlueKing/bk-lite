@@ -2396,6 +2396,8 @@ class RecoveryFallbackTestCase(TestCase):
         self.assertEqual(payload["source_type"], AlertsSourceTypes.PROMETHEUS)
         self.assertIn(f"/api/v1/alerts/api/source/{source.source_id}/webhook/", payload["webhook_url"])
         self.assertIn("alertmanager_default_config", payload)
+        self.assertEqual(payload["headers"], {"SECRET": "{{TEAM_SECRET}}"})
+        self.assertNotIn(source.secret, str(payload))
 
     def test_integration_guide_returns_zabbix_template(self):
         source = AlertSource.objects.create(
@@ -2415,10 +2417,11 @@ class RecoveryFallbackTestCase(TestCase):
         payload = response.data
         self.assertEqual(payload["source_type"], AlertsSourceTypes.ZABBIX)
         self.assertIn(f"/api/v1/alerts/api/source/{source.source_id}/webhook/", payload["webhook_url"])
-        self.assertEqual(payload["headers"], {"SECRET": source.secret})
+        self.assertEqual(payload["headers"], {"SECRET": "{{TEAM_SECRET}}"})
+        self.assertNotIn(source.secret, str(payload))
         self.assertIn("setup_steps", payload)
-        self.assertEqual(len(payload["setup_steps"]), 2)
-        self.assertEqual(payload["setup_steps"][0]["title"], "准备 BK-Lite 告警源")
+        self.assertGreaterEqual(len(payload["setup_steps"]), 2)
+        self.assertEqual(payload["setup_steps"][0]["title"], "1. 先确定 BK-Lite 侧三个值")
         self.assertIn("parameter_guidance", payload)
         self.assertTrue(any(item["name"] == "ProblemId" and item["required"] for item in payload["parameter_guidance"]))
         self.assertIn("verification", payload)

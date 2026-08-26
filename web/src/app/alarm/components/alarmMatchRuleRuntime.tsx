@@ -16,7 +16,7 @@ const AlarmMatchRuleRuntime = ({
   sourceOptions,
   ...props
 }: AlarmMatchRuleRuntimeProps) => {
-  const { getAlertSources } = useSourceApi();
+  const { getAlertSourceOptions } = useSourceApi();
   const { levelMeta } = useCommon();
 
   return (
@@ -25,7 +25,7 @@ const AlarmMatchRuleRuntime = ({
       levelType={levelType}
       sourceOptions={sourceOptions}
       levelOptionsOverride={levelMeta[levelType]?.list || []}
-      loadSourceOptions={sourceOptions ? undefined : getAlertSources}
+      loadSourceOptions={sourceOptions ? undefined : getAlertSourceOptions}
     />
   );
 };

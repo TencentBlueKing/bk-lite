@@ -44,6 +44,7 @@ const IntegrationDetail: FC = () => {
     downloadK8sFile,
     listTeamSecrets,
     addTeamSecret,
+    revealTeamSecret,
   } = useSourceApi();
   const { flatGroups } = useUserInfoContext();
   const { getEventList } = useAlarmApi();
@@ -72,6 +73,7 @@ const IntegrationDetail: FC = () => {
   const [guideTeamSecrets, setGuideTeamSecrets] = useState<TeamSecretItem[]>([]);
   const [guideTeamSecretsLoading, setGuideTeamSecretsLoading] = useState<boolean>(false);
   const [selectedGuideTeamId, setSelectedGuideTeamId] = useState<string | undefined>();
+  const [selectedGuideSecret, setSelectedGuideSecret] = useState<string | undefined>();
   const [showInlineAddTeam, setShowInlineAddTeam] = useState<boolean>(false);
   const [inlineAddTeamId, setInlineAddTeamId] = useState<number | undefined>();
   const [inlineAddSubmitting, setInlineAddSubmitting] = useState<boolean>(false);
@@ -135,7 +137,7 @@ const IntegrationDetail: FC = () => {
     message.success(t('alarmCommon.copied'));
   };
 
-  const fetchGuideTeamSecrets = async (autoSelect = false) => {
+  const fetchGuideTeamSecrets = async () => {
     if (!source?.id) return;
     setGuideTeamSecretsLoading(true);
     try {
@@ -151,9 +153,6 @@ const IntegrationDetail: FC = () => {
           item.team_id,
       }));
       setGuideTeamSecrets(normalized);
-      if (autoSelect && normalized.length > 0 && !selectedGuideTeamId) {
-        setSelectedGuideTeamId(normalized[0].team_id);
-      }
     } catch (error) {
       console.error('Failed to load team secrets:', error);
     } finally {
@@ -167,22 +166,41 @@ const IntegrationDetail: FC = () => {
     !!source && (guideUsesDefaultRenderer || isZabbixSource || isK8sSource);
 
   useEffect(() => {
+    setSelectedGuideTeamId(undefined);
+    setSelectedGuideSecret(undefined);
     if (guideHasTeamSecretSupport) {
-      fetchGuideTeamSecrets(true);
+      fetchGuideTeamSecrets();
     } else {
       setGuideTeamSecrets([]);
-      setSelectedGuideTeamId(undefined);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source?.id, guideHasTeamSecretSupport]);
 
-  const selectedGuideSecret =
-    guideTeamSecrets.find((item) => item.team_id === selectedGuideTeamId)?.secret;
+  useEffect(() => {
+    if (!source?.id || !selectedGuideTeamId) {
+      setSelectedGuideSecret(undefined);
+      return;
+    }
+    setSelectedGuideSecret(undefined);
+    let cancelled = false;
+    const revealSelectedSecret = async () => {
+      try {
+        const result = await revealTeamSecret(source.id, selectedGuideTeamId);
+        if (!cancelled) setSelectedGuideSecret(result.secret);
+      } catch (error) {
+        console.error('Failed to reveal selected team secret:', error);
+        if (!cancelled) setSelectedGuideSecret(undefined);
+      }
+    };
+    revealSelectedSecret();
+    return () => {
+      cancelled = true;
+    };
+  }, [source?.id, selectedGuideTeamId]);
 
   const renderExampleWithSelectedSecret = (raw?: string) => {
     if (!raw) return '';
-    if (!selectedGuideSecret || !source?.secret) return raw;
-    return raw.split(source.secret).join(selectedGuideSecret);
+    if (!selectedGuideSecret) return raw;
+    return raw.split('{{TEAM_SECRET}}').join(selectedGuideSecret);
   };
 
   const handleInlineAddTeamSecret = async () => {
@@ -197,7 +215,10 @@ const IntegrationDetail: FC = () => {
       setShowInlineAddTeam(false);
       setInlineAddTeamId(undefined);
       await fetchGuideTeamSecrets();
-      if (res?.team_id) setSelectedGuideTeamId(res.team_id);
+      if (res?.team_id) {
+        setSelectedGuideTeamId(res.team_id);
+        setSelectedGuideSecret(res.secret);
+      }
     } catch (error) {
       console.error('Failed to add team secret:', error);
     } finally {
@@ -794,18 +815,18 @@ const IntegrationDetail: FC = () => {
         labelStyle={{ width: 120 }}
       >
         <Descriptions.Item label="ID">{source?.source_id}</Descriptions.Item>
-        <Descriptions.Item label="url">{source?.config.url}</Descriptions.Item>
+        <Descriptions.Item label="url">{source?.config?.url}</Descriptions.Item>
         <Descriptions.Item label="method">
-          {source?.config.method}
+          {source?.config?.method}
         </Descriptions.Item>
         <Descriptions.Item label="headers">
-          {JSON.stringify(source?.config.headers)}
+          {JSON.stringify(source?.config?.headers)}
         </Descriptions.Item>
         <Descriptions.Item label="params">
-          {JSON.stringify(source?.config.params)}
+          {JSON.stringify(source?.config?.params)}
         </Descriptions.Item>
         <Descriptions.Item label="content_type">
-          {source?.config.content_type}
+          {source?.config?.content_type}
         </Descriptions.Item>
         <Descriptions.Item label="description">
           {source?.description}
@@ -820,7 +841,7 @@ const IntegrationDetail: FC = () => {
         column={1}
         labelStyle={{ width: 120 }}
       >
-        {Object.entries(source?.config?.event_fields_mapping as any).map(
+        {Object.entries(source?.config?.event_fields_mapping || {}).map(
           ([key, val]: any) => (
             <Descriptions.Item key={key} label={key}>
               {val}
@@ -837,7 +858,7 @@ const IntegrationDetail: FC = () => {
         column={1}
         labelStyle={{ width: 120 }}
       >
-        {Object.entries(source?.config?.event_fields_desc_mapping as any).map(
+        {Object.entries(source?.config?.event_fields_desc_mapping || {}).map(
           ([key, desc]: any) => (
             <Descriptions.Item key={key} label={key}>
               {desc}
@@ -905,6 +926,7 @@ const IntegrationDetail: FC = () => {
                             meta={k8sMeta}
                             loading={k8sMetaLoading}
                             onDownload={handleK8sDownload}
+                            selectedTeamId={selectedGuideTeamId}
                             selectedTeamSecret={selectedGuideSecret}
                             credentialsSlot={renderTeamSecretSelector({ showSecretRow: true })}
                           />
