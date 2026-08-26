@@ -9,10 +9,11 @@ import { LocaleProvider } from '@/context/locale';
 import zhCommon from '@/locales/zh.json';
 import zhOpspilot from '@/app/opspilot/locales/zh.json';
 import { ThemeBootstrap, ThemeProvider } from '@/theme';
-import { ClientProvider } from '@/context/client';
 import { PermissionsProvider } from '@/context/permissions';
-import { UserInfoProvider } from '@/context/userInfo';
+// 相对路径引入 mock；webpack 同时把 `@/context/auth` 等换成同一批文件，避免真登录壳 / 双 Context。
 import AuthProvider from './mocks/auth';
+import { ClientProvider } from './mocks/client';
+import { UserInfoProvider } from './mocks/user-info';
 import { installMonitorDashboardRequestInterceptor } from './mocks/monitor-dashboard-request';
 
 installMonitorDashboardRequestInterceptor();
