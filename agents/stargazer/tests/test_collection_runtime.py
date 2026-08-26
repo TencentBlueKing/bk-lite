@@ -117,10 +117,16 @@ async def test_run_lifecycle_logs_merge_searchable_context(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_same_task_id_and_request_only_schedule_one_collection_run():
+async def test_same_task_id_and_request_only_schedule_one_collection_run(monkeypatch):
     started = asyncio.Event()
     release = asyncio.Event()
     scheduled_tasks = []
+    warning_calls = []
+
+    monkeypatch.setattr(
+        "core.collection.runtime.logger.warning",
+        lambda message, *args: warning_calls.append((message, args)),
+    )
 
     async def execute(_request, _lease):
         started.set()
@@ -142,7 +148,7 @@ async def test_same_task_id_and_request_only_schedule_one_collection_run():
         task_id="collect-001",
         plugin_ref="mysql.config",
         targets=("10.10.24.1",),
-        credentials=({"credential_id": "credential-1"},),
+        credentials=({"credential_id": "credential-1", "password": "duplicate-secret-sentinel"},),
         params={"model_id": "mysql"},
     )
 
@@ -155,6 +161,15 @@ async def test_same_task_id_and_request_only_schedule_one_collection_run():
     assert duplicate.task_id == first.task_id
     assert duplicate.fence == first.fence
     assert len(scheduled_tasks) == 1
+    assert warning_calls == [
+        (
+            "event=collection_run_duplicate_skipped task_id=%s status=duplicate_active fence=%s",
+            ("collect-001", first.fence),
+        )
+    ]
+    rendered = warning_calls[0][0] % warning_calls[0][1]
+    assert rendered == "event=collection_run_duplicate_skipped task_id=collect-001 status=duplicate_active fence=1"
+    assert "duplicate-secret-sentinel" not in rendered
 
     release.set()
     await scheduled_tasks[0]

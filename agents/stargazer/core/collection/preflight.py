@@ -1,7 +1,7 @@
 """采集协议级异步预检。
 
-默认不做连通性拨测；任务显式开启 ``ip_precheck`` 或环境变量 ``PREFLIGHT_REACHABILITY``
-开启时，按插件协议做无凭据连接性探测：
+默认不做连通性拨测；单次任务通过 ``request.params["ip_precheck"]`` 显式开启时，
+按插件协议做无凭据连接性探测：
 
 - TCP/TLS/SSH：拨端口；
 - SNMP/UDP：方案 B——明确网络层失败判不可达，纯超时放行进凭据探测。
@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import errno
 import ipaddress
-import os
 import socket
 import ssl
 from urllib.parse import urlsplit
@@ -23,20 +22,6 @@ from core.collection.contracts import PreflightResult, PreflightStatus
 from core.collection.runtime import CollectionRequest
 from core.infra.outbound_policy import OutboundTargetPolicy, OutboundTargetRejected
 from core.logger import logger
-
-_REACHABILITY_OFF = {"", "0", "off", "false", "no"}
-_TRUTHY = {"1", "true", "yes", "on"}
-
-
-def reachability_enabled_from_env() -> bool:
-    raw = str(os.getenv("PREFLIGHT_REACHABILITY", "off")).strip().lower()
-    return raw not in _REACHABILITY_OFF
-
-
-def _as_bool(value) -> bool:
-    if isinstance(value, bool):
-        return value
-    return str(value or "").strip().lower() in _TRUTHY
 
 
 def _is_ip_literal(host: str) -> bool:
@@ -59,16 +44,13 @@ class AsyncProtocolPreflight:
         self,
         policy: OutboundTargetPolicy | None = None,
         remote_probe=None,
-        reachability_enabled: bool | None = None,
     ) -> None:
         self._policy = policy or OutboundTargetPolicy()
         self._remote_probe = remote_probe
-        self._reachability_enabled = reachability_enabled_from_env() if reachability_enabled is None else bool(reachability_enabled)
 
-    def _reachability_enabled_for(self, request: CollectionRequest) -> bool:
-        if self._reachability_enabled:
-            return True
-        return _as_bool(request.params.get("ip_precheck"))
+    @staticmethod
+    def _reachability_enabled_for(request: CollectionRequest) -> bool:
+        return request.ip_precheck_enabled
 
     async def check(  # noqa: C901
         self,
