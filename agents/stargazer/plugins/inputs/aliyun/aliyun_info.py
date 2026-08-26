@@ -90,9 +90,7 @@ from aliyunsdkvpc.request.v20160428 import (
 )
 from common.cmp.cloud_apis.constant import CloudType
 from common.cmp.cloud_apis.resource_apis.cw_aliyun import RESOURCE_MAP
-from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import (
-    get_format_method,
-)
+from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.utils import set_dir_size
 from plugins.base_utils import ts_to_dts, utc_to_dts
 from six.moves import range
@@ -192,7 +190,7 @@ class CwAliyun(object):
         self.AccessKey = params["secret_id"]
         self.AccessSecret = params["secret_key"]
         self.RegionId = params.get("region_id", "cn-hangzhou")
-        self.timeout = int(params.get("timeout", 30))
+        self.timeout = 30  # 连接超时硬编码；读超时用 timeout*2；表单 timeout 由框架作单对象预算
 
         # 🆕 支持自定义endpoint（私有云场景）
         # 从host参数读取endpoint，如: ecs.private-cloud.example.com
@@ -225,9 +223,7 @@ class CwAliyun(object):
         self.auth = oss2.Auth(self.AccessKey, self.AccessSecret)
 
         # 创建配置 - 不使用credential对象，直接设置access_key_id和access_key_secret
-        self.auth_config = open_api_models.Config(
-            access_key_id=self.AccessKey, access_key_secret=self.AccessSecret
-        )
+        self.auth_config = open_api_models.Config(access_key_id=self.AccessKey, access_key_secret=self.AccessSecret)
         self.auth_config.region_id = self.RegionId
 
     def __getattr__(self, item):
@@ -255,9 +251,7 @@ class Aliyun(object):
     阿里云接口类。使用阿里云开发者工具套件（SDK），并进行封装，访问阿里云服务
     """
 
-    def __init__(
-        self, aliyun_client, name, region, auth, auth_config, custom_endpoint=None
-    ):
+    def __init__(self, aliyun_client, name, region, auth, auth_config, custom_endpoint=None):
         """
         初始化方法
         :param aliyun_client:
@@ -275,22 +269,16 @@ class Aliyun(object):
 
         # 如果有自定义endpoint，优先使用自定义endpoint
         domain_config = copy.deepcopy(auth_config)
-        domain_config.endpoint = (
-            custom_endpoint if custom_endpoint else "domain.aliyuncs.com"
-        )
+        domain_config.endpoint = custom_endpoint if custom_endpoint else "domain.aliyuncs.com"
         self.domain_client = Domain20180129Client(domain_config)
         dns_config = copy.deepcopy(auth_config)
-        dns_config.endpoint = (
-            custom_endpoint if custom_endpoint else f"alidns.{region}.aliyuncs.com"
-        )
+        dns_config.endpoint = custom_endpoint if custom_endpoint else f"alidns.{region}.aliyuncs.com"
         self.dns_client = Alidns20150109Client(dns_config)
         cdn_config = copy.deepcopy(auth_config)
         cdn_config.endpoint = custom_endpoint if custom_endpoint else "cdn.aliyuncs.com"
         self.cdn_client = Cdn20180510Client(cdn_config)
         waf_config = copy.deepcopy(auth_config)
-        waf_config.endpoint = (
-            custom_endpoint if custom_endpoint else f"wafopenapi.{region}.aliyuncs.com"
-        )
+        waf_config.endpoint = custom_endpoint if custom_endpoint else f"wafopenapi.{region}.aliyuncs.com"
         self.waf_client = WafOpenapi20211001Client(waf_config)
         cas_config = copy.deepcopy(auth_config)
         cas_config.endpoint = custom_endpoint if custom_endpoint else "cas.aliyuncs.com"
@@ -299,52 +287,34 @@ class Aliyun(object):
         rds_config.endpoint = custom_endpoint if custom_endpoint else "rds.aliyuncs.com"
         self.rds_client = Rds20140815Client(rds_config)
         kvs_config = copy.deepcopy(auth_config)
-        kvs_config.endpoint = (
-            custom_endpoint if custom_endpoint else "r-kvstore.aliyuncs.com"
-        )
+        kvs_config.endpoint = custom_endpoint if custom_endpoint else "r-kvstore.aliyuncs.com"
         self.kvs_client = R_kvstore20150101Client(kvs_config)
         oss_config = copy.deepcopy(auth_config)
-        oss_config.endpoint = (
-            custom_endpoint if custom_endpoint else f"oss-{region}.aliyuncs.com"
-        )
+        oss_config.endpoint = custom_endpoint if custom_endpoint else f"oss-{region}.aliyuncs.com"
         self.oss_client = Oss20190517Client(oss_config)
         dds_config = copy.deepcopy(auth_config)
-        dds_config.endpoint = (
-            custom_endpoint if custom_endpoint else "mongodb.aliyuncs.com"
-        )
+        dds_config.endpoint = custom_endpoint if custom_endpoint else "mongodb.aliyuncs.com"
         self.dds_client = Dds20151201Client(dds_config)
         kafka_config = copy.deepcopy(auth_config)
-        kafka_config.endpoint = (
-            custom_endpoint if custom_endpoint else f"alikafka.{region}.aliyuncs.com"
-        )
+        kafka_config.endpoint = custom_endpoint if custom_endpoint else f"alikafka.{region}.aliyuncs.com"
         self.kafka_client = alikafka20190916Client(kafka_config)
         slb_config = copy.deepcopy(auth_config)
-        slb_config.endpoint = (
-            custom_endpoint if custom_endpoint else f"slb.{region}.aliyuncs.com"
-        )
+        slb_config.endpoint = custom_endpoint if custom_endpoint else f"slb.{region}.aliyuncs.com"
         self.slb_client = Slb20140515Client(slb_config)
         cs_config = copy.deepcopy(auth_config)
-        cs_config.endpoint = (
-            custom_endpoint if custom_endpoint else f"cs.{region}.aliyuncs.com"
-        )
+        cs_config.endpoint = custom_endpoint if custom_endpoint else f"cs.{region}.aliyuncs.com"
         self.cs_client = CS20151215Client(cs_config)
         vpc_config = copy.deepcopy(auth_config)
         vpc_config.endpoint = custom_endpoint if custom_endpoint else "vpc.aliyuncs.com"
         self.vpc_client = Vpc20160428Client(vpc_config)
         mse_config = copy.deepcopy(auth_config)
-        mse_config.endpoint = (
-            custom_endpoint if custom_endpoint else f"mse.{region}.aliyuncs.com"
-        )
+        mse_config.endpoint = custom_endpoint if custom_endpoint else f"mse.{region}.aliyuncs.com"
         self.mse_client = mse20190531Client(mse_config)
         alb_config = copy.deepcopy(auth_config)
-        alb_config.endpoint = (
-            custom_endpoint if custom_endpoint else f"alb.{region}.aliyuncs.com"
-        )
+        alb_config.endpoint = custom_endpoint if custom_endpoint else f"alb.{region}.aliyuncs.com"
         self.alb_client = Alb20200616Client(alb_config)
         nas_config = copy.deepcopy(auth_config)
-        nas_config.endpoint = (
-            custom_endpoint if custom_endpoint else f"nas.{region}.aliyuncs.com"
-        )
+        nas_config.endpoint = custom_endpoint if custom_endpoint else f"nas.{region}.aliyuncs.com"
         self.nas_client = NAS20170626Client(nas_config)
 
     def __call__(self, *args, **kwargs):
@@ -439,9 +409,7 @@ class Aliyun(object):
         page_number = 1
         page_size = 50
         try:
-            request = self._add_required_params(
-                request, {"PageNumber": page_number, "PageSize": page_size}
-            )
+            request = self._add_required_params(request, {"PageNumber": page_number, "PageSize": page_size})
             ali_response = self._get_result_c(request, True)
             total_count = ali_response.get("TotalCount", 0)
             page = (total_count + page_size - 1) // page_size
@@ -485,9 +453,7 @@ class Aliyun(object):
             ali_result[key1] = {key2: ali_result[key1]}
         ali_result_flag = ali_result
         while ali_result_flag.get("NextToken", None):
-            request = add_required_params(
-                request, {"NextToken": ali_result_flag["NextToken"]}
-            )
+            request = add_required_params(request, {"NextToken": ali_result_flag["NextToken"]})
             ali_res = self._get_result_c(request, True)
             if isinstance(ali_result[key1], list):
                 ali_result[key1][key2].extend(ali_res[key1])
@@ -545,12 +511,8 @@ class Aliyun(object):
         if kwargs.get("datadisk"):
             for index, i in enumerate(kwargs["datadisk"]):
                 if index < 4:
-                    getattr(request, "set_DataDisk" + str(index + 1) + "Category")(
-                        i["data_category"]
-                    )
-                    getattr(request, "set_DataDisk" + str(index + 1) + "Size")(
-                        i["data_size"]
-                    )
+                    getattr(request, "set_DataDisk" + str(index + 1) + "Category")(i["data_category"])
+                    getattr(request, "set_DataDisk" + str(index + 1) + "Size")(i["data_size"])
         request.set_accept_format("json")
         return request
 
@@ -598,9 +560,7 @@ class Aliyun(object):
         :param kwargs:
         :return:
         """
-        request = (
-            DescribeInstanceTypeFamiliesRequest.DescribeInstanceTypeFamiliesRequest()
-        )
+        request = DescribeInstanceTypeFamiliesRequest.DescribeInstanceTypeFamiliesRequest()
         request.set_accept_format("json")
         ali_response = self.client.do_action_with_exception(request)
         ali_result = json.loads(ali_response)
@@ -608,9 +568,7 @@ class Aliyun(object):
         type_list = []
         for i in ali_result["InstanceTypeFamilies"]["InstanceTypeFamily"]:
             if i["InstanceTypeFamilyId"] not in type_list:
-                return_data.append(
-                    {"id": i["InstanceTypeFamilyId"], "name": i["InstanceTypeFamilyId"]}
-                )
+                return_data.append({"id": i["InstanceTypeFamilyId"], "name": i["InstanceTypeFamilyId"]})
                 type_list.append(i["InstanceTypeFamilyId"])
         return {"result": True, "data": return_data}
 
@@ -648,9 +606,7 @@ class Aliyun(object):
         :param kwargs:
         :return:
         """
-        request = (
-            DescribeInstanceTypeFamiliesRequest.DescribeInstanceTypeFamiliesRequest()
-        )
+        request = DescribeInstanceTypeFamiliesRequest.DescribeInstanceTypeFamiliesRequest()
         # 可以根据系列信息查询指定系列下的规格族列表 这里先简写只查第一个
         if ids:
             request.set_Generation(ids[0])
@@ -773,9 +729,8 @@ class Aliyun(object):
             ali_response = self.client.do_action_with_exception(request)
             ali_result = json.loads(ali_response)
             vnc_url = ali_result["VncUrl"]
-            url = (
-                "https://g.alicdn.com/aliyun/ecs-console-vnc2/0.0.5/index.html?vncUrl={0}&instanceId={"
-                "1}&isWindows={2}".format(vnc_url, vm_id, is_windows)
+            url = "https://g.alicdn.com/aliyun/ecs-console-vnc2/0.0.5/index.html?vncUrl={0}&instanceId={" "1}&isWindows={2}".format(
+                vnc_url, vm_id, is_windows
             )
             return {"result": True, "data": url}
         except Exception as e:
@@ -790,15 +745,11 @@ class Aliyun(object):
         :return:
         """
         if "ResourceId" in kwargs:
-            request = (
-                DescribeResourcesModificationRequest.DescribeResourcesModificationRequest()
-            )
+            request = DescribeResourcesModificationRequest.DescribeResourcesModificationRequest()
             request.set_DestinationResource(kwargs["DestinationResource"])
             request.set_ResourceId(kwargs["ResourceId"])
         else:
-            request = (
-                DescribeAvailableResourceRequest.DescribeAvailableResourceRequest()
-            )
+            request = DescribeAvailableResourceRequest.DescribeAvailableResourceRequest()
             request.set_DestinationResource("InstanceType")
             if kwargs.get("ZoneId", None):
                 request.set_ZoneId(kwargs["ZoneId"])
@@ -821,13 +772,9 @@ class Aliyun(object):
             ali_result = json.loads(ali_response)
             data = ""
             if "Code" not in ali_result:
-                available_resource = ali_result["AvailableZones"]["AvailableZone"][0][
-                    "AvailableResources"
-                ]["AvailableResource"]
+                available_resource = ali_result["AvailableZones"]["AvailableZone"][0]["AvailableResources"]["AvailableResource"]
                 if available_resource:
-                    supported_resource = available_resource[0]["SupportedResources"][
-                        "SupportedResource"
-                    ]
+                    supported_resource = available_resource[0]["SupportedResources"]["SupportedResource"]
                     t5_vm = ""
                     for i in supported_resource:
                         if "t5" not in i["Value"]:
@@ -849,9 +796,7 @@ class Aliyun(object):
         :return: 实例规格id
         """
         try:
-            request = (
-                DescribeResourcesModificationRequest.DescribeResourcesModificationRequest()
-            )
+            request = DescribeResourcesModificationRequest.DescribeResourcesModificationRequest()
             request.set_accept_format("json")
             request.set_ResourceId(kwargs.get("resource_id", ""))
             request.set_DestinationResource("InstanceType")
@@ -868,14 +813,10 @@ class Aliyun(object):
         """
         try:
             all_domain_list = []
-            scroll_domain_list_request = (
-                domain_20180129_models.ScrollDomainListRequest()
-            )
+            scroll_domain_list_request = domain_20180129_models.ScrollDomainListRequest()
             runtime = util_models.RuntimeOptions()
             while True:
-                resp = self.domain_client.scroll_domain_list_with_options(
-                    scroll_domain_list_request, runtime
-                )
+                resp = self.domain_client.scroll_domain_list_with_options(scroll_domain_list_request, runtime)
 
                 result = TeaCore.to_map(resp.body)
                 domain = result.get("Data", {}).get("Domain", [])
@@ -892,9 +833,7 @@ class Aliyun(object):
             return {"result": False, "message": repr(e)}
 
     def get_domain_parsing(self, domain_name, **kwargs):
-        describe_domain_records_request = (
-            alidns_20150109_models.DescribeDomainRecordsRequest()
-        )
+        describe_domain_records_request = alidns_20150109_models.DescribeDomainRecordsRequest()
         describe_domain_records_request.domain_name = domain_name
         describe_domain_records_request.page_number = 1
         describe_domain_records_request.page_size = 50
@@ -902,9 +841,7 @@ class Aliyun(object):
         domain_records = []
         try:
             while True:
-                resp = self.dns_client.describe_domain_records_with_options(
-                    describe_domain_records_request, runtime
-                )
+                resp = self.dns_client.describe_domain_records_with_options(describe_domain_records_request, runtime)
                 # 处理分页
                 result = TeaCore.to_map(resp.body)
                 domain_record = result.get("DomainRecords", {}).get("Record", [])
@@ -950,9 +887,7 @@ class Aliyun(object):
         describe_cdn_service_request = cdn_20180510_models.DescribeCdnServiceRequest()
         runtime = util_models.RuntimeOptions()
         try:
-            resp = self.cdn_client.describe_cdn_service_with_options(
-                describe_cdn_service_request, runtime
-            )
+            resp = self.cdn_client.describe_cdn_service_with_options(describe_cdn_service_request, runtime)
             result = TeaCore.to_map(resp.body)
             result = [result]
             return {"result": True, "data": result}
@@ -961,15 +896,11 @@ class Aliyun(object):
             return {"result": False, "message": repr(e)}
 
     def list_waf(self, **kwargs):
-        describe_instance_info_request = (
-            waf_openapi_20211001_models.DescribeInstanceRequest()
-        )
+        describe_instance_info_request = waf_openapi_20211001_models.DescribeInstanceRequest()
         describe_instance_info_request.region_id = self.RegionId
         runtime = util_models.RuntimeOptions()
         try:
-            resp = self.waf_client.describe_instance_with_options(
-                describe_instance_info_request, runtime
-            )
+            resp = self.waf_client.describe_instance_with_options(describe_instance_info_request, runtime)
             result = TeaCore.to_map(resp.body)
             if result and result.get("InstanceId", None):
                 result = [result]
@@ -980,9 +911,7 @@ class Aliyun(object):
             return {"result": False, "message": repr(e)}
 
     def list_cas(self, **kwargs):
-        list_user_certificate_order_request = (
-            cas_20200407_models.ListUserCertificateOrderRequest()
-        )
+        list_user_certificate_order_request = cas_20200407_models.ListUserCertificateOrderRequest()
         runtime = util_models.RuntimeOptions()
         # 分页查询
         list_user_certificate_order_request.current_page = 1
@@ -992,9 +921,7 @@ class Aliyun(object):
         try:
             cas = []
             while True:
-                resp = self.cas_client.list_user_certificate_order_with_options(
-                    list_user_certificate_order_request, runtime
-                )
+                resp = self.cas_client.list_user_certificate_order_with_options(list_user_certificate_order_request, runtime)
                 result = TeaCore.to_map(resp.body)
                 page_cas = result.get("CertificateOrderList", [])
                 if not page_cas:
@@ -1018,17 +945,13 @@ class Aliyun(object):
         list_buckets_request.max_keys = 1000
 
         try:
-            resp = self.oss_client.list_buckets_with_options(
-                list_buckets_request, list_buckets_header, runtime
-            )
+            resp = self.oss_client.list_buckets_with_options(list_buckets_request, list_buckets_header, runtime)
             result = TeaCore.to_map(resp.body)
             buckets = result.get("buckets", [])
             for bucket in buckets:
                 # 获取bucket详情
                 bucket_name = bucket.get("Name")
-                resp = self.oss_client.get_bucket_info_with_options(
-                    bucket_name, {}, runtime
-                )
+                resp = self.oss_client.get_bucket_info_with_options(bucket_name, {}, runtime)
                 result = TeaCore.to_map(resp.body)
                 bucket.update(result.get("Bucket", {}))
             return {"result": True, "data": buckets}
@@ -1054,9 +977,7 @@ class Aliyun(object):
         rds_instances = []
         try:
             while True:
-                resp = self.rds_client.describe_dbinstances_with_options(
-                    describe_db_instances_request, runtime
-                )
+                resp = self.rds_client.describe_dbinstances_with_options(describe_db_instances_request, runtime)
                 result = TeaCore.to_map(resp.body)
                 db_instances = result.get("Items", {}).get("DBInstance", [])
                 if not db_instances:
@@ -1074,9 +995,7 @@ class Aliyun(object):
         """
         查询redis实例列表
         """
-        describe_instances_request = (
-            r_kvstore_20150101_models.DescribeInstancesRequest()
-        )
+        describe_instances_request = r_kvstore_20150101_models.DescribeInstancesRequest()
         runtime = util_models.RuntimeOptions()
         describe_instances_request.region_id = self.RegionId
         describe_instances_request.page_number = 1
@@ -1084,9 +1003,7 @@ class Aliyun(object):
         redis_instances = []
         try:
             while True:
-                resp = self.kvs_client.describe_instances_with_options(
-                    describe_instances_request, runtime
-                )
+                resp = self.kvs_client.describe_instances_with_options(describe_instances_request, runtime)
                 result = TeaCore.to_map(resp.body)
                 instances = result.get("Instances", {}).get("KVStoreInstance", [])
                 if not instances:
@@ -1121,9 +1038,7 @@ serverless"""
                 describe_db_instances_request.page_number = 1
                 describe_db_instances_request.page_size = 100
                 while True:
-                    resp = self.dds_client.describe_dbinstances_with_options(
-                        describe_db_instances_request, runtime
-                    )
+                    resp = self.dds_client.describe_dbinstances_with_options(describe_db_instances_request, runtime)
                     result = TeaCore.to_map(resp.body)
                     instances = result.get("DBInstances", {}).get("DBInstance", [])
                     if not instances:
@@ -1145,9 +1060,7 @@ serverless"""
         runtime = util_models.RuntimeOptions()
         get_instance_list_request.region_id = self.RegionId
         try:
-            resp = self.kafka_client.get_instance_list_with_options(
-                get_instance_list_request, runtime
-            )
+            resp = self.kafka_client.get_instance_list_with_options(get_instance_list_request, runtime)
             result = TeaCore.to_map(resp.body)
             kafka_instances = result.get("InstanceList", {}).get("InstanceVO", [])
             return {"result": True, "data": kafka_instances}
@@ -1166,27 +1079,19 @@ serverless"""
             kafka_instances = kafka_instances.get("data", [])
         if not kafka_instances:
             return {"result": True, "data": []}
-        get_consumer_group_list_request = (
-            alikafka_20190916_models.GetConsumerListRequest()
-        )
+        get_consumer_group_list_request = alikafka_20190916_models.GetConsumerListRequest()
         runtime = util_models.RuntimeOptions()
         kafka_consumer_groups = []
         try:
             for kafka_instance in kafka_instances:
-                get_consumer_group_list_request.instance_id = kafka_instance.get(
-                    "InstanceId"
-                )
+                get_consumer_group_list_request.instance_id = kafka_instance.get("InstanceId")
                 get_consumer_group_list_request.region_id = self.RegionId
                 get_consumer_group_list_request.current_page = 1
                 get_consumer_group_list_request.page_size = 100
                 while True:
-                    resp = self.kafka_client.get_consumer_list_with_options(
-                        get_consumer_group_list_request, runtime
-                    )
+                    resp = self.kafka_client.get_consumer_list_with_options(get_consumer_group_list_request, runtime)
                     result = TeaCore.to_map(resp.body)
-                    consumer_groups = result.get("ConsumerList", {}).get(
-                        "ConsumerVO", []
-                    )
+                    consumer_groups = result.get("ConsumerList", {}).get("ConsumerVO", [])
                     if not consumer_groups:
                         break
                     kafka_consumer_groups.extend(consumer_groups)
@@ -1200,21 +1105,15 @@ serverless"""
         """
         查询kafka topic订阅状态
         """
-        get_topic_subscribe_status_request = (
-            alikafka_20190916_models.GetTopicSubscribeStatusRequest()
-        )
+        get_topic_subscribe_status_request = alikafka_20190916_models.GetTopicSubscribeStatusRequest()
         runtime = util_models.RuntimeOptions()
         get_topic_subscribe_status_request.instance_id = instance_id
         get_topic_subscribe_status_request.region_id = self.RegionId
         get_topic_subscribe_status_request.topic = topic
         try:
-            resp = self.kafka_client.get_topic_subscribe_status_with_options(
-                get_topic_subscribe_status_request, runtime
-            )
+            resp = self.kafka_client.get_topic_subscribe_status_with_options(get_topic_subscribe_status_request, runtime)
             result = TeaCore.to_map(resp.body)
-            consumer_groups = result.get("TopicSubscribeStatus", {}).get(
-                "ConsumerGroups", []
-            )
+            consumer_groups = result.get("TopicSubscribeStatus", {}).get("ConsumerGroups", [])
 
             return {"result": True, "data": {topic: consumer_groups}}
         except Exception as e:
@@ -1242,20 +1141,14 @@ serverless"""
                 get_topic_list_request.current_page = 1
                 get_topic_list_request.page_size = 100
                 while True:
-                    resp = self.kafka_client.get_topic_list_with_options(
-                        get_topic_list_request, runtime
-                    )
+                    resp = self.kafka_client.get_topic_list_with_options(get_topic_list_request, runtime)
                     result = TeaCore.to_map(resp.body)
                     topics = result.get("TopicList", {}).get("TopicVO", [])
                     total = result.get("Total")
                     if not topics:
                         break
                     kafka_topics.extend(topics)
-                    if (
-                        total
-                        <= get_topic_list_request.current_page
-                        * get_topic_list_request.page_size
-                    ):
+                    if total <= get_topic_list_request.current_page * get_topic_list_request.page_size:
                         break
                     get_topic_list_request.current_page += 1
             # 开启多线程查询topic订阅状态
@@ -1264,11 +1157,7 @@ serverless"""
             for kafka_topic in kafka_topics:
                 instance_id = kafka_topic.get("InstanceId")
                 topic = kafka_topic.get("Topic")
-                futures.append(
-                    pool.submit(
-                        self.get_kafka_topic_subscribe_status, instance_id, topic
-                    )
-                )
+                futures.append(pool.submit(self.get_kafka_topic_subscribe_status, instance_id, topic))
             topic_group_map = {}
             for future in as_completed(futures):
                 result = future.result()
@@ -1286,9 +1175,7 @@ serverless"""
         """
         查询SLB实例列表
         """
-        describe_load_balancers_request = (
-            slb_20140515_models.DescribeLoadBalancersRequest()
-        )
+        describe_load_balancers_request = slb_20140515_models.DescribeLoadBalancersRequest()
         runtime = util_models.RuntimeOptions()
         describe_load_balancers_request.region_id = self.RegionId
         describe_load_balancers_request.page_number = 1
@@ -1296,20 +1183,14 @@ serverless"""
         clb_instances = []
         try:
             while True:
-                resp = self.slb_client.describe_load_balancers_with_options(
-                    describe_load_balancers_request, runtime
-                )
+                resp = self.slb_client.describe_load_balancers_with_options(describe_load_balancers_request, runtime)
                 result = TeaCore.to_map(resp.body)
                 instances = result.get("LoadBalancers", {}).get("LoadBalancer", [])
                 if not instances:
                     break
                 clb_instances.extend(instances)
                 total = result.get("TotalCount", 0)
-                if (
-                    total
-                    <= describe_load_balancers_request.page_number
-                    * describe_load_balancers_request.page_size
-                ):
+                if total <= describe_load_balancers_request.page_number * describe_load_balancers_request.page_size:
                     break
                 describe_load_balancers_request.page_number += 1
             return {"result": True, "data": clb_instances}
@@ -1331,20 +1212,14 @@ serverless"""
         k8s_clusters = []
         try:
             while True:
-                resp = self.cs_client.describe_clusters_v1with_options(
-                    describe_clusters_request, {}, runtime
-                )
+                resp = self.cs_client.describe_clusters_v1with_options(describe_clusters_request, {}, runtime)
                 result = TeaCore.to_map(resp.body)
                 clusters = result.get("clusters", [])
                 if not clusters:
                     break
                 k8s_clusters.extend(clusters)
                 total = result.get("page_info").get("total", 0)
-                if (
-                    total
-                    <= describe_clusters_request.page_number
-                    * describe_clusters_request.page_size
-                ):
+                if total <= describe_clusters_request.page_number * describe_clusters_request.page_size:
                     break
                 describe_clusters_request.page_number += 1
             return {"result": True, "data": k8s_clusters}
@@ -1356,9 +1231,7 @@ serverless"""
         """
         查询EIP列表
         """
-        describe_eip_addresses_request = (
-            vpc_20160428_models.DescribeEipAddressesRequest()
-        )
+        describe_eip_addresses_request = vpc_20160428_models.DescribeEipAddressesRequest()
         runtime = util_models.RuntimeOptions()
         describe_eip_addresses_request.region_id = self.RegionId
         describe_eip_addresses_request.page_number = 1
@@ -1366,20 +1239,14 @@ serverless"""
         eips = []
         try:
             while True:
-                resp = self.vpc_client.describe_eip_addresses_with_options(
-                    describe_eip_addresses_request, runtime
-                )
+                resp = self.vpc_client.describe_eip_addresses_with_options(describe_eip_addresses_request, runtime)
                 result = TeaCore.to_map(resp.body)
                 eip_addresses = result.get("EipAddresses", {}).get("EipAddress", [])
                 if not eip_addresses:
                     break
                 eips.extend(eip_addresses)
                 total = result.get("TotalCount", 0)
-                if (
-                    total
-                    <= describe_eip_addresses_request.page_number
-                    * describe_eip_addresses_request.page_size
-                ):
+                if total <= describe_eip_addresses_request.page_number * describe_eip_addresses_request.page_size:
                     break
                 describe_eip_addresses_request.page_number += 1
             return {"result": True, "data": eips}
@@ -1399,19 +1266,14 @@ serverless"""
         mse_clusters = []
         try:
             while True:
-                resp = self.mse_client.list_clusters_with_options(
-                    list_clusters_request, runtime
-                )
+                resp = self.mse_client.list_clusters_with_options(list_clusters_request, runtime)
                 result = TeaCore.to_map(resp.body)
                 clusters = result.get("Data", [])
                 if not clusters:
                     break
                 mse_clusters.extend(clusters)
                 total = result.get("TotalCount", 0)
-                if (
-                    total
-                    <= list_clusters_request.page_num * list_clusters_request.page_size
-                ):
+                if total <= list_clusters_request.page_num * list_clusters_request.page_size:
                     break
                 list_clusters_request.page_num += 1
             return {"result": True, "data": mse_clusters}
@@ -1432,15 +1294,11 @@ serverless"""
         mse_namespaces = []
         try:
             for mse_cluster in mse_clusters:
-                list_mse_namespace_request = (
-                    mse20190531_models.ListEngineNamespacesRequest()
-                )
+                list_mse_namespace_request = mse20190531_models.ListEngineNamespacesRequest()
                 runtime = util_models.RuntimeOptions()
                 list_mse_namespace_request.instance_id = mse_cluster.get("InstanceId")
 
-                resp = self.mse_client.list_engine_namespaces_with_options(
-                    list_mse_namespace_request, runtime
-                )
+                resp = self.mse_client.list_engine_namespaces_with_options(list_mse_namespace_request, runtime)
                 result = TeaCore.to_map(resp.body)
                 namespaces = result.get("Data", [])
                 if not namespaces:
@@ -1469,18 +1327,12 @@ serverless"""
             for mse_namespace in mse_namespaces:
                 list_mse_service_request = mse20190531_models.ListAnsServicesRequest()
                 runtime = util_models.RuntimeOptions()
-                list_mse_service_request.instance_id = mse_namespace.get(
-                    "ClusterId", ""
-                )
-                list_mse_service_request.namespace_id = mse_namespace.get(
-                    "Namespace", ""
-                )
+                list_mse_service_request.instance_id = mse_namespace.get("ClusterId", "")
+                list_mse_service_request.namespace_id = mse_namespace.get("Namespace", "")
                 list_mse_service_request.page_num = 1
                 list_mse_service_request.page_size = 100
                 while True:
-                    resp = self.mse_client.list_ans_services_with_options(
-                        list_mse_service_request, runtime
-                    )
+                    resp = self.mse_client.list_ans_services_with_options(list_mse_service_request, runtime)
                     result = TeaCore.to_map(resp.body)
                     services = result.get("Data", [])
                     if not services:
@@ -1490,11 +1342,7 @@ serverless"""
                         service["Namespace"] = mse_namespace.get("Namespace")
                     mse_services.extend(services)
                     total = result.get("TotalCount", 0)
-                    if (
-                        total
-                        <= list_mse_service_request.page_num
-                        * list_mse_service_request.page_size
-                    ):
+                    if total <= list_mse_service_request.page_num * list_mse_service_request.page_size:
                         break
                     list_mse_service_request.page_num += 1
             return {"result": True, "data": mse_services}
@@ -1523,9 +1371,7 @@ serverless"""
                 list_mse_inst_request.page_num = 1
                 list_mse_inst_request.page_size = 100
                 while True:
-                    resp = self.mse_client.list_ans_instances_with_options(
-                        list_mse_inst_request, runtime
-                    )
+                    resp = self.mse_client.list_ans_instances_with_options(list_mse_inst_request, runtime)
                     result = TeaCore.to_map(resp.body)
                     insts = result.get("Data", [])
                     if not insts:
@@ -1537,11 +1383,7 @@ serverless"""
                         inst["Namespace"] = mse_service.get("Namespace")
                     mse_insts.extend(insts)
                     total = result.get("TotalCount", 0)
-                    if (
-                        total
-                        <= list_mse_inst_request.page_num
-                        * list_mse_inst_request.page_size
-                    ):
+                    if total <= list_mse_inst_request.page_num * list_mse_inst_request.page_size:
                         break
                     list_mse_inst_request.page_num += 1
             return {"result": True, "data": mse_insts}
@@ -1559,9 +1401,7 @@ serverless"""
         alb_instances = []
         try:
             while True:
-                resp = self.alb_client.list_load_balancers_with_options(
-                    list_load_balancers_request, runtime
-                )
+                resp = self.alb_client.list_load_balancers_with_options(list_load_balancers_request, runtime)
                 result = TeaCore.to_map(resp.body)
                 instances = result.get("LoadBalancers", {})
                 if not instances:
@@ -1570,11 +1410,7 @@ serverless"""
                     i.update(region_id=self.RegionId)
                 alb_instances.extend(instances)
                 total = result.get("TotalCount", 0)
-                if (
-                    total
-                    <= list_load_balancers_request.page_number
-                    * list_load_balancers_request.page_size
-                ):
+                if total <= list_load_balancers_request.page_number * list_load_balancers_request.page_size:
                     break
                 list_load_balancers_request.page_number += 1
             return {"result": True, "data": alb_instances}
@@ -1592,20 +1428,14 @@ serverless"""
         nas_instances = []
         try:
             while True:
-                resp = self.nas_client.describe_file_systems_with_options(
-                    describe_file_systems_request, runtime
-                )
+                resp = self.nas_client.describe_file_systems_with_options(describe_file_systems_request, runtime)
                 result = TeaCore.to_map(resp.body)
                 instances = result.get("FileSystems", {}).get("FileSystem", [])
                 if not instances:
                     break
                 nas_instances.extend(instances)
                 total = result.get("TotalCount", 0)
-                if (
-                    total
-                    <= describe_file_systems_request.page_number
-                    * describe_file_systems_request.page_size
-                ):
+                if total <= describe_file_systems_request.page_number * describe_file_systems_request.page_size:
                     break
                 describe_file_systems_request.page_number += 1
             return {"result": True, "data": nas_instances}
@@ -1629,11 +1459,7 @@ serverless"""
             except Exception as e:
                 import traceback
 
-                return {
-                    resource_name: {
-                        "cmdb_collect_error": str(e) + "\n" + traceback.format_exc()
-                    }
-                }
+                return {resource_name: {"cmdb_collect_error": str(e) + "\n" + traceback.format_exc()}}
 
         try:
             kafka_result = self.list_kafka()
@@ -1669,10 +1495,7 @@ serverless"""
             data = {}
             with ThreadPoolExecutor(max_workers=10) as executor:
                 future_to_resource = {
-                    executor.submit(
-                        handle_resource, resource_func, resource_name
-                    ): resource_name
-                    for resource_func, resource_name in resources
+                    executor.submit(handle_resource, resource_func, resource_name): resource_name for resource_func, resource_name in resources
                 }
                 for future in as_completed(future_to_resource):
                     result = future.result()
@@ -1686,9 +1509,7 @@ serverless"""
 
             from sanic.log import logger
 
-            logger.error(
-                "aliyun_list_all_resources_error: {}".format(traceback.format_exc())
-            )
+            logger.error("aliyun_list_all_resources_error: {}".format(traceback.format_exc()))
             result_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         return result_data
@@ -1703,9 +1524,7 @@ serverless"""
                     "resource_name": data["resource_name"],
                     "resource_id": data["resource_id"],
                     "ip_addr": data["inner_ip"][0] if data["inner_ip"] else "",
-                    "public_ip": data["public_ip"][0]
-                    if data["public_ip"]
-                    else (data["inner_ip"][0] if data["inner_ip"] else ""),
+                    "public_ip": data["public_ip"][0] if data["public_ip"] else (data["inner_ip"][0] if data["inner_ip"] else ""),
                     "region": data["region"],
                     "zone": data["zone"],
                     "vpc": data["vpc"],
@@ -1736,9 +1555,7 @@ serverless"""
                     "storage_class": data["StorageClass"],
                     "cross_region_replication": data["CrossRegionReplication"],
                     "block_public_access": data["BlockPublicAccess"],
-                    "creation_date": utc_to_dts(
-                        data["CreationDate"], utc_fmt="%Y-%m-%dT%H:%M:%S.%fZ"
-                    ),
+                    "creation_date": utc_to_dts(data["CreationDate"], utc_fmt="%Y-%m-%dT%H:%M:%S.%fZ"),
                 }
             )
 
@@ -1748,9 +1565,7 @@ serverless"""
     def format_aliyun_mysql(data_list):
         result = []
         for data in data_list:
-            zone_slave = ",".join(
-                [data[i] for i in data if i.startswith("ZoneIdSlave")]
-            )
+            zone_slave = ",".join([data[i] for i in data if i.startswith("ZoneIdSlave")])
             result.append(
                 {
                     "resource_name": data.get("DBInstanceDescription"),
@@ -1780,9 +1595,7 @@ serverless"""
     def format_aliyun_pgsql(data_list):
         result = []
         for data in data_list:
-            zone_slave = ",".join(
-                [data[i] for i in data if i.startswith("ZoneIdSlave")]
-            )
+            zone_slave = ",".join([data[i] for i in data if i.startswith("ZoneIdSlave")])
             result.append(
                 {
                     "resource_name": data.get("DBInstanceDescription"),
@@ -1841,9 +1654,7 @@ serverless"""
     def format_aliyun_mongodb(data_list):
         result = []
         for data in data_list:
-            zone_slave = ",".join(
-                [data.get("SecondaryZoneId", "") or data.get("HiddenZoneId", "")]
-            )
+            zone_slave = ",".join([data.get("SecondaryZoneId", "") or data.get("HiddenZoneId", "")])
             result.append(
                 {
                     "resource_name": data.get("DBInstanceDescription"),
@@ -1860,12 +1671,8 @@ serverless"""
                     "storage_gb": data.get("DBInstanceStorage", ""),
                     "lock_mode": data.get("LockMode", ""),
                     "charge_type": data.get("ChargeType", ""),
-                    "create_time": utc_to_dts(
-                        data.get("CreateTime"), utc_fmt="%Y-%m-%dT%H:%MZ"
-                    ),
-                    "expire_time": utc_to_dts(
-                        data.get("ExpireTime"), utc_fmt="%Y-%m-%dT%H:%MZ"
-                    ),
+                    "create_time": utc_to_dts(data.get("CreateTime"), utc_fmt="%Y-%m-%dT%H:%MZ"),
+                    "expire_time": utc_to_dts(data.get("ExpireTime"), utc_fmt="%Y-%m-%dT%H:%MZ"),
                 }
             )
         return result
@@ -1911,9 +1718,7 @@ serverless"""
                     "status": data.get("LoadBalancerStatus"),
                     "class": data.get("LoadBalancerSpec"),
                     "charge_type": data.get("PayType", ""),
-                    "create_time": utc_to_dts(
-                        data["CreateTime"], utc_fmt="%Y-%m-%dT%H:%MZ"
-                    ),
+                    "create_time": utc_to_dts(data["CreateTime"], utc_fmt="%Y-%m-%dT%H:%MZ"),
                 }
             )
         return result
@@ -1944,9 +1749,7 @@ serverless"""
                     result[model_id] = func(model_data)
                 else:
                     # 如果没有对应的格式化函数，直接使用原数据
-                    result[model_id] = (
-                        model_data if isinstance(model_data, list) else [model_data]
-                    )
+                    result[model_id] = model_data if isinstance(model_data, list) else [model_data]
 
         return result
 
@@ -1965,9 +1768,7 @@ serverless"""
             return {"result": False, "message": "未获取到存储桶信息"}
         region = buckets.get(bucket_name, {}).get("Location")
         try:
-            bucket = oss2.Bucket(
-                self.auth, f"http://{region}.aliyuncs.com", bucket_name
-            )
+            bucket = oss2.Bucket(self.auth, f"http://{region}.aliyuncs.com", bucket_name)
             # 获取存储空间的统计信息。
             result = bucket.get_bucket_stat()
             if result.status == 200:
@@ -2040,9 +1841,7 @@ serverless"""
             ins_list = []
             total_count = ali_result["TotalCount"]
             ins_list.extend(ali_result["Instances"]["Instance"])
-            page = (
-                total_count // 50 if total_count // 50 == 0 else total_count // 50 + 1
-            )
+            page = total_count // 50 if total_count // 50 == 0 else total_count // 50 + 1
             for i in range(page):
                 kwargs["PageNumber"] = str(i + 2)
                 request = self._set_vm_info_params(**kwargs)
@@ -2104,9 +1903,7 @@ serverless"""
             self._get_result(request)
             return {"result": True}
         except Exception as e:
-            print(
-                "tag_resources：" + kwargs["ResourceType"] + ":" + kwargs["ResourceIds"]
-            )
+            print("tag_resources：" + kwargs["ResourceType"] + ":" + kwargs["ResourceIds"])
             return {"result": False, "message": str(e)}
 
     def list_resource_tags(self, **kwargs):
@@ -2326,9 +2123,7 @@ serverless"""
         """
         if ids:
             kwargs["AutoSnapshotPolicyId"] = ids[0]
-        request = (
-            DescribeAutoSnapshotPolicyExRequest.DescribeAutoSnapshotPolicyExRequest()
-        )
+        request = DescribeAutoSnapshotPolicyExRequest.DescribeAutoSnapshotPolicyExRequest()
         list_optional_params = ["AutoSnapshotPolicyId", "PageNumber", "PageSize", "Tag"]
         request = set_optional_params(request, list_optional_params, kwargs)
         return self._handle_list_request_with_page("auto_snapshot_policy", request)
@@ -2367,26 +2162,18 @@ serverless"""
                 "PageSize",
             ]
             action_name = "DescribeLoadBalancers"
-            request = self._set_common_request_params(
-                action_name, list_optional_params, **kwargs
-            )
+            request = self._set_common_request_params(action_name, list_optional_params, **kwargs)
             result = self._handle_list_request_with_page_c("load_balancer", request)
             for index, items in enumerate(result["data"]):
                 if items.get("resource_id"):
-                    ret = self.get_load_balancer_detail(
-                        LoadBalancerId=items.get("resource_id")
-                    )
+                    ret = self.get_load_balancer_detail(LoadBalancerId=items.get("resource_id"))
                     if not ret.get("result"):
                         continue
                     result["data"][index]["backend_servers"] = (
-                        ret["data"]["BackendServers"].get("BackendServer")
-                        if isinstance(ret["data"].get("BackendServers"), dict)
-                        else []
+                        ret["data"]["BackendServers"].get("BackendServer") if isinstance(ret["data"].get("BackendServers"), dict) else []
                     )
                     if isinstance(ret["data"].get("ListenerPortsAndProtocal"), dict):
-                        result["data"][index]["port"] = ret["data"][
-                            "ListenerPortsAndProtocal"
-                        ].get("ListenerPortAndProtocal", [])
+                        result["data"][index]["port"] = ret["data"]["ListenerPortsAndProtocal"].get("ListenerPortAndProtocal", [])
             return result
         except Exception as e:
             print("list_load_balancer failed")
@@ -2403,9 +2190,7 @@ serverless"""
                 return {"result": False, "message": "need param LoadBalancerId"}
             list_optional_params = ["LoadBalancerId"]
             action_name = "DescribeLoadBalancerAttribute"
-            request = self._set_common_request_params(
-                action_name, list_optional_params, **kwargs
-            )
+            request = self._set_common_request_params(action_name, list_optional_params, **kwargs)
             response = self.client.do_action(request)
             ali_result = json.loads(response)
             return {"result": True, "data": ali_result}
@@ -2423,9 +2208,7 @@ serverless"""
         try:
             if ids:
                 kwargs["ServerCertificateId"] = ids[0]
-            request = (
-                DescribeServerCertificatesRequest.DescribeServerCertificatesRequest()
-            )
+            request = DescribeServerCertificatesRequest.DescribeServerCertificatesRequest()
             list_optional_params = ["ServerCertificateId", "ResourceGroupId"]
             request = set_optional_params(request, list_optional_params, kwargs)
             ali_result = self._get_result(request, True)
@@ -2449,18 +2232,14 @@ serverless"""
             kwargs["IncludeListener"] = True
             list_optional_params = ["LoadBalancerId", "IncludeRule", "IncludeListener"]
             action_name = "DescribeVServerGroups"
-            request = self._set_common_request_params(
-                action_name, list_optional_params, **kwargs
-            )
+            request = self._set_common_request_params(action_name, list_optional_params, **kwargs)
             ali_res = self._get_result_c(request, True)
             data = self._format_resource_result("vserver_groups", ali_res)
             for index, item in enumerate(data):
                 if item.get("resource_id"):
                     ret = self.get_vserver_group(VServerGroupId=item["resource_id"])
                     if ret["result"]:
-                        item["backend_servers"] = ret["data"]["BackendServers"][
-                            "BackendServer"
-                        ]
+                        item["backend_servers"] = ret["data"]["BackendServers"]["BackendServer"]
                         item["load_balancer"] = ret["data"].get("LoadBalancerId", "")
             return {"result": True, "data": data}
         except Exception as e:
@@ -2477,9 +2256,7 @@ serverless"""
             return {"result": False, "message": "need param VServerGroupId"}
         list_optional_params = ["VServerGroupId"]
         action_name = "DescribeVServerGroupAttribute"
-        request = self._set_common_request_params(
-            action_name, list_optional_params, **kwargs
-        )
+        request = self._set_common_request_params(action_name, list_optional_params, **kwargs)
         response = self.client.do_action(request)
         ali_result = json.loads(response)
         return {"result": True, "data": ali_result}
@@ -2495,9 +2272,7 @@ serverless"""
             checkout_required_parameters(required_list, kwargs)
             list_optional_params = ["VServerGroupId", "BackendServers"]
             action_name = "AddVServerGroupBackendServers"
-            request = self._set_common_request_params(
-                action_name, list_optional_params, **kwargs
-            )
+            request = self._set_common_request_params(action_name, list_optional_params, **kwargs)
             ali_result = self._get_result(request, True)
             return {"result": True, "data": ali_result}
         except Exception as e:
@@ -2515,9 +2290,7 @@ serverless"""
             checkout_required_parameters(required_list, kwargs)
             list_optional_params = ["VServerGroupId", "BackendServers"]
             action_name = "RemoveVServerGroupBackendServers"
-            request = self._set_common_request_params(
-                action_name, list_optional_params, **kwargs
-            )
+            request = self._set_common_request_params(action_name, list_optional_params, **kwargs)
             ali_result = self._get_result(request, True)
             return {"result": True, "data": ali_result}
         except Exception as e:
@@ -2539,9 +2312,7 @@ serverless"""
                 "NewBackendServers",
             ]
             action_name = "ModifyVServerGroupBackendServers"
-            request = self._set_common_request_params(
-                action_name, list_optional_params, **kwargs
-            )
+            request = self._set_common_request_params(action_name, list_optional_params, **kwargs)
             response = self.client.do_action(request)
             ali_result = json.loads(response)
             return {"result": True, "data": ali_result}
@@ -2630,9 +2401,7 @@ serverless"""
                 "TLSCipherPolicy",
             ]
             action_name = "CreateLoadBalancerTCPListener"
-            request = self._set_common_request_params(
-                action_name, list_optional_params, **kwargs
-            )
+            request = self._set_common_request_params(action_name, list_optional_params, **kwargs)
             response = self.client.do_action(request)
             ali_result = json.loads(response)
             if ali_result.get("Message"):
@@ -2652,9 +2421,7 @@ serverless"""
         checkout_required_parameters(required_list, kwargs)
         list_optional_params = ["LoadBalancerId", "ListenerProtocol", "ListenerPort"]
         action_name = "DescribeRules"
-        request = self._set_common_request_params(
-            action_name, list_optional_params, **kwargs
-        )
+        request = self._set_common_request_params(action_name, list_optional_params, **kwargs)
         ali_res = self._get_result_c(request, True)
         data = self._format_resource_result("rule", ali_res, **kwargs)
         for item in data:
@@ -2674,9 +2441,7 @@ serverless"""
             return {"result": False, "message": "need param RuleIds"}
         list_optional_params = ["RuleId"]
         action_name = "DescribeRuleAttribute"
-        request = self._set_common_request_params(
-            action_name, list_optional_params, **kwargs
-        )
+        request = self._set_common_request_params(action_name, list_optional_params, **kwargs)
         response = self.client.do_action(request)
         ali_result = json.loads(response)
         return {"result": True, "data": ali_result}
@@ -2699,9 +2464,7 @@ serverless"""
                 "LoadBalancerId",
             ]
             action_name = "DescribeLoadBalancerListeners"
-            request = self._set_common_request_params(
-                action_name, list_optional_params, **kwargs
-            )
+            request = self._set_common_request_params(action_name, list_optional_params, **kwargs)
             return self.__handle_list_request_with_next_token_c("listener", request)
         except Exception as e:
             print("start_listener failed")
@@ -2721,11 +2484,7 @@ serverless"""
         request.set_version("2014-05-15")
         request.set_action_name(action_name)
         params_dict = {"RegionId": self.RegionId}
-        [
-            params_dict.update({item: kwargs[item]})
-            for item in list_optional_params
-            if item in kwargs
-        ]
+        [params_dict.update({item: kwargs[item]}) for item in list_optional_params if item in kwargs]
         request = add_required_params(request, params_dict)
         return request
 
@@ -2926,37 +2685,22 @@ serverless"""
         """获取存储桶下的所有object"""
         format_func = get_format_method(self.cloud_type, "bucket_file")
         try:
-            bucket = oss2.Bucket(
-                self.auth, "http://oss-" + location + ".aliyuncs.com", bucket_name
-            )
+            bucket = oss2.Bucket(self.auth, "http://oss-" + location + ".aliyuncs.com", bucket_name)
             file_path = ""
             object_lists = bucket.list_objects(prefix=file_path).object_list
             for item in object_lists:
                 if item.key.endswith("/"):
                     item.type = "DIR"
-                    item.parent = (
-                        "/".join(item.key.split("/")[:-2])
-                        if "/" in item.key.strip("/")
-                        else ""
-                    )
+                    item.parent = "/".join(item.key.split("/")[:-2]) if "/" in item.key.strip("/") else ""
                     item.name = item.key.split("/")[-2]
                 else:
                     item.type = "FILE"
-                    item.parent = (
-                        "/".join(item.key.split("/")[:-1]) if "/" in item.key else ""
-                    )
+                    item.parent = "/".join(item.key.split("/")[:-1]) if "/" in item.key else ""
                     item.name = item.key.split("/")[-1]
-            top_dir_list = [
-                item
-                for item in object_lists
-                if item.parent == "" and item.type == "DIR"
-            ]
+            top_dir_list = [item for item in object_lists if item.parent == "" and item.type == "DIR"]
             for top_dir in top_dir_list:
                 set_dir_size(top_dir, object_lists)
-            ali_result = [
-                format_func(item, bucket=bucket_name, location=location)
-                for item in object_lists
-            ]
+            ali_result = [format_func(item, bucket=bucket_name, location=location) for item in object_lists]
             return {"result": True, "data": ali_result}
         except Exception as e:
             print("list_object fail")
@@ -3103,10 +2847,7 @@ serverless"""
         :param kwargs:
         :return:
         """
-        request = (
-            kwargs.pop("request", "")
-            or DescribeVSwitchesRequest.DescribeVSwitchesRequest()
-        )
+        request = kwargs.pop("request", "") or DescribeVSwitchesRequest.DescribeVSwitchesRequest()
         list_optional_params = [
             "VpcId",
             "VSwitchId",
@@ -3140,9 +2881,7 @@ serverless"""
         :return:
         """
         request = kwargs.get("request", "")
-        request = (
-            request or DescribeRouteTableListRequest.DescribeRouteTableListRequest()
-        )
+        request = request or DescribeRouteTableListRequest.DescribeRouteTableListRequest()
         list_optional_params = [
             "RouterType",
             "RouterId",
@@ -3191,9 +2930,7 @@ serverless"""
             ]
             request = DescribeRouteEntryListRequest.DescribeRouteEntryListRequest()
             kwargs["list_optional_params"] = list_optional_params
-            return self._handle_list_request_with_next_token(
-                "route_entry", request, **kwargs
-            )
+            return self._handle_list_request_with_next_token("route_entry", request, **kwargs)
         except Exception as e:
             print("describe_route_entry_list")
             return {"result": False, "data": [], "message": str(e)}
@@ -3264,9 +3001,7 @@ serverless"""
                 all：不区分方向.默认值：all。
         :return:
         """
-        request = (
-            DescribeSecurityGroupAttributeRequest.DescribeSecurityGroupAttributeRequest()
-        )
+        request = DescribeSecurityGroupAttributeRequest.DescribeSecurityGroupAttributeRequest()
         if not security_group_id:
             return {"result": False, "message": "安全组id不能为空"}
         list_optional_params = ["NicType", "Direction"]
@@ -3282,9 +3017,7 @@ serverless"""
         copy_ali_result = copy.deepcopy(ali_result)
         copy_ali_result.pop("Permissions")
 
-        data = self._format_resource_result(
-            "security_group_rule", ali_result, **copy_ali_result
-        )
+        data = self._format_resource_result("security_group_rule", ali_result, **copy_ali_result)
         return {"result": True, "data": data}
 
         # return self._handle_list_request("security_group_rule", request)

@@ -108,6 +108,7 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
             return credential;
           }),
           params: {
+            ...baseData.params,
             config_name: values.configName?.trim(),
             commands: values.commands,
             need_enable: needEnable,
@@ -138,6 +139,7 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],
     accessPointId: values.access_point?.[0]?.id,
+    ip_precheck: Boolean(values.params?.ip_precheck),
     configName: values.params?.config_name || '',
     commands: values.params?.commands || '',
   });

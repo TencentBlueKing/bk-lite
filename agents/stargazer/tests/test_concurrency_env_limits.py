@@ -2,13 +2,14 @@ from pathlib import Path
 
 import pytest
 from core.collection.application import CollectionApplicationSettings, concurrency_limit_from_env
-from core.collection.constants import DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
+from core.collection.constants import DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
 from core.collection.contracts import TargetExecutorSettings
 from core.collection.executor import TargetWorkerBudget
 
 
 def test_default_concurrency_matches_production_baseline():
     assert DEFAULT_MAX_ACTIVE_TARGETS == 250
+    assert DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS == 50
     assert DEFAULT_TARGET_TASK_WINDOW == 250
     assert TargetExecutorSettings().max_active_targets == 250
     assert TargetExecutorSettings().target_task_window == 250
@@ -30,22 +31,53 @@ def test_concurrency_limit_from_env_uses_default_and_zero_unlimited(monkeypatch)
 
 
 def test_application_settings_from_env_reads_concurrency(monkeypatch):
-    monkeypatch.setenv("MAX_ACTIVE_TARGETS", "0")
+    monkeypatch.setenv("MAX_ACTIVE_TARGETS", "250")
+    monkeypatch.setenv("NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS", "30")
     monkeypatch.setenv("TARGET_TASK_WINDOW", "0")
     settings = CollectionApplicationSettings.from_env()
-    assert settings.max_active_targets == 0
+    assert settings.max_active_targets == 250
+    assert settings.network_topology_max_active_targets == 30
     assert settings.target_task_window == 0
 
     monkeypatch.delenv("MAX_ACTIVE_TARGETS", raising=False)
+    monkeypatch.delenv("NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS", raising=False)
     monkeypatch.delenv("TARGET_TASK_WINDOW", raising=False)
     settings = CollectionApplicationSettings.from_env()
     assert settings.max_active_targets == DEFAULT_MAX_ACTIVE_TARGETS
+    assert settings.network_topology_max_active_targets == DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS
     assert settings.target_task_window == DEFAULT_TARGET_TASK_WINDOW
     monkeypatch.delenv("CAPACITY_LOG_INTERVAL", raising=False)
     assert CollectionApplicationSettings.from_env().capacity_log_interval_seconds == 180
 
     monkeypatch.setenv("CAPACITY_LOG_INTERVAL", "45")
     assert CollectionApplicationSettings.from_env().capacity_log_interval_seconds == 45
+
+
+@pytest.mark.parametrize("raw_value", ("0", "101", "-1", "not-an-int"))
+def test_network_topology_limit_rejects_invalid_values(monkeypatch, raw_value):
+    monkeypatch.setenv("MAX_ACTIVE_TARGETS", "250")
+    monkeypatch.setenv("NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS", raw_value)
+
+    with pytest.raises(ValueError, match="NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS"):
+        CollectionApplicationSettings.from_env()
+
+
+def test_network_topology_limit_must_be_less_than_bounded_total(monkeypatch):
+    monkeypatch.setenv("MAX_ACTIVE_TARGETS", "50")
+    monkeypatch.setenv("NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS", "50")
+
+    with pytest.raises(ValueError, match="less than MAX_ACTIVE_TARGETS"):
+        CollectionApplicationSettings.from_env()
+
+
+def test_network_topology_limit_allows_unbounded_total(monkeypatch):
+    monkeypatch.setenv("MAX_ACTIVE_TARGETS", "0")
+    monkeypatch.setenv("NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS", "100")
+
+    settings = CollectionApplicationSettings.from_env()
+
+    assert settings.max_active_targets == 0
+    assert settings.network_topology_max_active_targets == 100
 
 
 def test_application_settings_split_timeouts_and_keep_legacy_fallback(monkeypatch):
@@ -91,6 +123,7 @@ def test_env_example_uses_split_timeout_contract():
     assert "PUBLISH_TOTAL_TIMEOUT=120" in example
     assert "CAPACITY_LOG_INTERVAL=180" in example
     assert "MAX_ACTIVE_TARGETS=250" in example
+    assert "NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=50" in example
     assert "TARGET_TASK_WINDOW=250" in example
     assert "CONNECT_TIMEOUT" not in keys
     assert "PLUGIN_TIMEOUT" not in keys

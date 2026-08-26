@@ -628,6 +628,87 @@ class TestModelMigrateWithDB:
         # 真实 DB：新模型的 FieldGroup 已创建
         assert FieldGroup.objects.filter(model_id="router", group_name="网络").exists()
 
+    def test_migrate_models_updates_only_existing_model_name(self, monkeypatch):
+        from apps.cmdb.constants.constants import CLASSIFICATION, MODEL
+
+        cfg = {
+            "models": [
+                {
+                    "model_id": "sangforscp",
+                    "model_name": "SCP云平台",
+                    "classification_id": "sangforscp",
+                    "icn": "new-icon-must-not-overwrite",
+                }
+            ]
+        }
+        m, mod = self._make(monkeypatch, cfg)
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+        existing = {
+            "_id": "model-1",
+            "model_id": "sangforscp",
+            "model_name": "深信服云平台",
+            "classification_id": "sangforscp",
+            "icn": "existing-icon",
+            "attrs": "[]",
+        }
+        fake = _patch_graph(
+            monkeypatch,
+            "apps.cmdb.model_migrate.migrete_service",
+            query_entity=lambda label, *args, **kwargs: (
+                ([existing], 1)
+                if label == MODEL
+                else ([{"_id": "classification-1", "classification_id": "sangforscp"}], 1)
+                if label == CLASSIFICATION
+                else ([], 0)
+            ),
+            set_entity_properties=[{**existing, "model_name": "SCP云平台"}],
+        )
+
+        m.migrate_models()
+
+        update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+        assert len(update_calls) == 1
+        assert update_calls[0][1][2] == {"model_name": "SCP云平台"}
+
+    def test_migrate_models_skips_existing_model_when_name_is_current(self, monkeypatch):
+        from apps.cmdb.constants.constants import CLASSIFICATION, MODEL
+
+        cfg = {
+            "models": [
+                {
+                    "model_id": "sangforscp",
+                    "model_name": "SCP云平台",
+                    "classification_id": "sangforscp",
+                    "icn": "new-icon-must-not-overwrite",
+                }
+            ]
+        }
+        m, mod = self._make(monkeypatch, cfg)
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+        existing = {
+            "_id": "model-1",
+            "model_id": "sangforscp",
+            "model_name": "SCP云平台",
+            "classification_id": "sangforscp",
+            "icn": "existing-icon",
+            "attrs": "[]",
+        }
+        fake = _patch_graph(
+            monkeypatch,
+            "apps.cmdb.model_migrate.migrete_service",
+            query_entity=lambda label, *args, **kwargs: (
+                ([existing], 1)
+                if label == MODEL
+                else ([{"_id": "classification-1", "classification_id": "sangforscp"}], 1)
+                if label == CLASSIFICATION
+                else ([], 0)
+            ),
+        )
+
+        m.migrate_models()
+
+        assert not [call for call in fake.calls if call[0] == "set_entity_properties"]
+
     def test_main_orchestrates_all(self, monkeypatch):
         cfg = {
             "classifications": [{"classification_id": "net", "classification_name": "网络"}],

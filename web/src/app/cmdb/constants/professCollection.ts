@@ -109,6 +109,10 @@ export const DEFAULT_TOPOLOGY_PROTOCOLS: TopologyProtocol[] = [
 export const DEFAULT_TOPOLOGY_FALLBACK_STRATEGY: TopologyFallbackStrategy =
   'prefer_neighbors_then_fdb_then_arp';
 export const DEFAULT_TOPOLOGY_MIN_CONFIDENCE = 0;
+export const DEFAULT_DEVICE_INTERVAL_MINUTES = 30;
+export const DEFAULT_TOPOLOGY_TIMEOUT_SECONDS = 600;
+export const recommendedTopologyIntervalMinutes = (deviceMinutes: number) =>
+  deviceMinutes * 5;
 export interface TopologyFactRowKeyFields {
   source_protocol?: string;
   instance_id?: string;
@@ -161,12 +165,34 @@ export const TOPOLOGY_FALLBACK_STRATEGY_OPTIONS: Array<{
 ];
 
 export const getSnmpTopologyFormValues = (
-  params?: TopologyTaskParams
+  params?: TopologyTaskParams,
+  deviceCycleMinutes = DEFAULT_DEVICE_INTERVAL_MINUTES
 ): Required<SnmpTopologyFormValues> => {
   const hasNetworkTopo = params?.has_network_topo ?? false;
+  const normalizedDeviceCycleMinutes =
+    Number.isInteger(deviceCycleMinutes) && deviceCycleMinutes > 0
+      ? deviceCycleMinutes
+      : DEFAULT_DEVICE_INTERVAL_MINUTES;
+  const hasPersistedInterval =
+    Number.isInteger(params?.topology_interval_minutes) &&
+    Number(params?.topology_interval_minutes) >= 1;
+  const hasPersistedMode =
+    params?.topology_interval_mode === 'recommended' ||
+    params?.topology_interval_mode === 'custom';
 
   return {
     hasNetworkTopo,
+    topologyIntervalMinutes: hasPersistedInterval
+      ? Number(params?.topology_interval_minutes)
+      : recommendedTopologyIntervalMinutes(normalizedDeviceCycleMinutes),
+    topologyIntervalMode:
+      hasPersistedInterval && hasPersistedMode
+        ? params.topology_interval_mode!
+        : 'recommended',
+    topologyTimeout: Number.isInteger(params?.topology_timeout) &&
+      Number(params?.topology_timeout) >= 1
+      ? Number(params?.topology_timeout)
+      : DEFAULT_TOPOLOGY_TIMEOUT_SECONDS,
     topologyProtocols: params?.topology_protocols
       ? [...params.topology_protocols]
       : [...DEFAULT_TOPOLOGY_PROTOCOLS],
@@ -179,13 +205,19 @@ export const getSnmpTopologyFormValues = (
 };
 
 export const getTaskTopologyDisplayConfig = (
-  params?: TopologyTaskParams
-): Required<SnmpTopologyFormValues> => getSnmpTopologyFormValues(params);
+  params?: TopologyTaskParams,
+  deviceCycleMinutes?: number
+): Required<SnmpTopologyFormValues> =>
+  getSnmpTopologyFormValues(params, deviceCycleMinutes);
 
 export const buildSnmpTopologyParams = (
   values: SnmpTopologyFormValues
 ): TopologyTaskParams => ({
   has_network_topo: values.hasNetworkTopo ?? false,
+  topology_interval_minutes: values.topologyIntervalMinutes,
+  topology_interval_mode: values.topologyIntervalMode ?? 'recommended',
+  topology_timeout:
+    values.topologyTimeout ?? DEFAULT_TOPOLOGY_TIMEOUT_SECONDS,
   topology_protocols: values.topologyProtocols
     ? [...values.topologyProtocols]
     : [...DEFAULT_TOPOLOGY_PROTOCOLS],
@@ -212,7 +244,7 @@ export const VM_FORM_INITIAL_VALUES = {
   intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
   port: '443',
-  timeout: 300,
+  timeout: 600,
   sslVerify: false,
   cleanupStrategy: 'after_expiration',
   cleanupDays: 3,
@@ -225,11 +257,15 @@ export const SNMP_FORM_INITIAL_VALUES = {
   enterType: ENTER_TYPE.AUTOMATIC,
   version: 'v2',
   snmp_port: '161',
-  timeout: 5,
-  level: 'authNoPriv',
+  timeout: 30,
   integrity: 'sha',
   privacy: 'aes',
   hasNetworkTopo: true,
+  topologyIntervalMinutes: recommendedTopologyIntervalMinutes(
+    DEFAULT_DEVICE_INTERVAL_MINUTES
+  ),
+  topologyIntervalMode: 'recommended',
+  topologyTimeout: DEFAULT_TOPOLOGY_TIMEOUT_SECONDS,
   topologyProtocols: [...DEFAULT_TOPOLOGY_PROTOCOLS],
   topologyFallbackStrategy: DEFAULT_TOPOLOGY_FALLBACK_STRATEGY,
   minConfidence: DEFAULT_TOPOLOGY_MIN_CONFIDENCE,
@@ -246,7 +282,7 @@ export const SQL_FORM_INITIAL_VALUES = {
   database: '',
   password: '',
   port: '3306',
-  timeout: 20,
+  timeout: 60,
   cleanupStrategy: 'no_cleanup',
   cleanupDays: 3,
 };
@@ -259,10 +295,15 @@ export const CLOUD_FORM_INITIAL_VALUES = {
   accessKey: '',
   accessSecret: '',
   regionId: '',
-  timeout: 300,
+  timeout: 600,
   cleanupStrategy: 'after_expiration',
   cleanupDays: 3,
 };
+
+export const getCloudFormInitialValues = (defaultTimeout?: number) => ({
+  ...CLOUD_FORM_INITIAL_VALUES,
+  timeout: defaultTimeout ?? CLOUD_FORM_INITIAL_VALUES.timeout,
+});
 
 /** FusionInsight / OceanStor / 华三 UIS 等平台 HTTPS API 采集表单默认值 */
 export const PLATFORM_API_FORM_INITIAL_VALUES = {
@@ -275,6 +316,12 @@ export const PLATFORM_API_FORM_INITIAL_VALUES = {
   cleanupDays: 3,
 };
 
+/** 优先使用采集对象元数据 default_timeout（如深信服 SCP/HCI=3000）。 */
+export const getPlatformApiFormInitialValues = (defaultTimeout?: number) => ({
+  ...PLATFORM_API_FORM_INITIAL_VALUES,
+  timeout: defaultTimeout ?? PLATFORM_API_FORM_INITIAL_VALUES.timeout,
+});
+
 export const HOST_FORM_INITIAL_VALUES = {
   instUuid: undefined,
   cycle: CYCLE_OPTIONS.INTERVAL,
@@ -283,7 +330,7 @@ export const HOST_FORM_INITIAL_VALUES = {
   username: '',
   password: '',
   port: '22',
-  timeout: 20,
+  timeout: 120,
   cleanupStrategy: 'no_cleanup',
   cleanupDays: 3,
 };
@@ -294,7 +341,7 @@ export const PC_FORM_INITIAL_VALUES = {
   intervalValue: 30,
   enterType: ENTER_TYPE.AUTOMATIC,
   osType: 'windows',
-  timeout: 120,
+  timeout: 180,
   cleanupStrategy: 'immediately',
   cleanupDays: 3,
 };
@@ -308,7 +355,7 @@ export const CONFIG_FILE_FORM_INITIAL_VALUES = {
 export const NETWORK_CONFIG_FILE_FORM_INITIAL_VALUES = {
   ...HOST_FORM_INITIAL_VALUES,
   intervalValue: 60,
-  timeout: 60,
+  timeout: 180,
   configName: '',
   commands: '',
   needEnable: false,

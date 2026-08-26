@@ -18,6 +18,7 @@ from apps.cmdb.constants.constants import (
     MODEL_ASSOCIATION,
     ORGANIZATION,
     SUBORDINATE_MODEL,
+    UPDATE_MODEL_CHECK_ATTR_MAP,
 )
 from apps.cmdb.constants.field_constraints import (
     DEFAULT_NUMBER_CONSTRAINT,
@@ -771,6 +772,20 @@ class ModelMigrate:
             exist_classifications, _ = ag.query_entity(CLASSIFICATION, [])
             classification_map = {i["classification_id"]: i["_id"] for i in exist_classifications}
             models = [i for i in models if i.get("classification_id") in classification_map]
+            for model in models:
+                existing_model = exist_model_map.get(model.get("model_id"))
+                incoming_name = str(model.get("model_name") or "").strip()
+                if not existing_model or not incoming_name or existing_model.get("model_name") == incoming_name:
+                    continue
+                other_models = [item for item in exist_items if item.get("_id") != existing_model.get("_id")]
+                ag.set_entity_properties(
+                    MODEL,
+                    [existing_model["_id"]],
+                    {"model_name": incoming_name},
+                    UPDATE_MODEL_CHECK_ATTR_MAP,
+                    other_models,
+                )
+                existing_model["model_name"] = incoming_name
             new_models = [i for i in models if i.get("model_id") not in exist_model_map]
             result = ag.batch_create_entity(MODEL, new_models, CREATE_MODEL_CHECK_ATTR, exist_items) if new_models else []
 

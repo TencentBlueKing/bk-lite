@@ -10,6 +10,7 @@ Nacos 2.x REST API:健康检查 + 命名空间 + 服务列表 + 配置列表
 采集字段:版本、命名空间数量、服务数量、配置数量、健康状态。
 """
 import logging
+
 import requests
 
 try:
@@ -30,7 +31,7 @@ class NacosInfo:
         self.username = kwargs.get("username", "nacos")
         self.password = kwargs.get("password", "nacos")
         self.namespace = kwargs.get("namespace", "")
-        self.timeout = int(kwargs.get("timeout", 10))
+        self.timeout = 10  # 请求超时硬编码；表单 timeout 由框架作单对象预算
         scheme = "https" if str(kwargs.get("ssl", "")).lower() in ("1", "true", "yes") else "http"
         self.base_url = f"{scheme}://{self.host}:{self.port}"
         self.auth = (self.username, self.password) if self.username else None
@@ -71,10 +72,7 @@ class NacosInfo:
                     ns_data = ns_resp.json() or {}
                     ns_list = ns_data.get("data", []) if isinstance(ns_data, dict) else []
                     model_data["namespace_count"] = len(ns_list)
-                    model_data["namespaces"] = [
-                        {"id": ns.get("namespaceId", ""), "name": ns.get("namespaceName", "")}
-                        for ns in ns_list[:10]
-                    ]
+                    model_data["namespaces"] = [{"id": ns.get("namespaceId", ""), "name": ns.get("namespaceName", "")} for ns in ns_list[:10]]
                 else:
                     model_data["namespace_count"] = 0
             except Exception:
@@ -133,6 +131,7 @@ class NacosInfo:
             inst_data = {"result": {"nacos": [model_data]}, "success": True}
         except Exception as err:
             import traceback
+
             logger.error(f"nacos_info main error! {traceback.format_exc()}")
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 

@@ -3,6 +3,7 @@
 # @Time: 2025/11/13 14:25
 # @Author: windyzhao
 
+
 class SSHNodeParamsMixin:
     supported_model_id = ""
     plugin_name = f"{supported_model_id}_info"
@@ -17,7 +18,7 @@ class SSHNodeParamsMixin:
     def set_credential(self, *args, **kwargs):
         credential_data = {
             "node_id": self.instance.access_point[0]["id"],
-            "execute_timeout": self.instance.timeout,
+            # 脚本执行上限由 agent 侧硬编码（默认 60s）；表单 timeout 仅作单对象采集预算。
         }
         if self.credential:
             _password = self._password_env_name()
@@ -46,7 +47,6 @@ class SSHNodeParamsMixin:
         for index, credential in enumerate(self.credential_pool or []):
             item = {
                 "node_id": self.instance.access_point[0]["id"],
-                "execute_timeout": self.instance.timeout,
                 "password": "${" + self._password_env_name(index) + "}",
                 "port": credential.get("port", 22),
                 "username": credential.get("username", credential.get("user", "")),

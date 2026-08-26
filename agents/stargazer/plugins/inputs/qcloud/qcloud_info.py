@@ -83,7 +83,7 @@ class TencentCloudManager:
         self.params = params
         self.secret_id = params.get("secret_id")
         self.secret_key = params.get("secret_key")
-        self.timeout = int(params.get("timeout", 60))
+        self.timeout = 60  # 请求超时硬编码；表单 timeout 由框架作单对象预算
         ssl = params.get("ssl", "false")
         self.protocol = "https" if str(ssl).strip().lower() == "true" else "http"
 

@@ -51,7 +51,9 @@ export const formatTaskValues = ({
       values.cleanupStrategy === 'after_expiration'
         ? (values.cleanupDays ?? 0)
         : 0,
-    params: {},
+    params: {
+      ip_precheck: Boolean(values.ip_precheck),
+    },
   };
 };
 

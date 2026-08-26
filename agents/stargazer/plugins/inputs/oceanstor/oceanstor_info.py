@@ -27,13 +27,9 @@ class OceanStorManager:
         self.scheme = params.get("scheme", "https") or "https"
         self.username = params.get("username") or params.get("user", "")
         self.password = params.get("password", "")
-        self.timeout = int(params.get("timeout", 60))
+        self.timeout = 60  # 请求超时硬编码；表单 timeout 由框架作单对象预算
         raw_verify_tls = params.get("verify_tls", True)
-        self.verify_tls = (
-            raw_verify_tls
-            if isinstance(raw_verify_tls, bool)
-            else str(raw_verify_tls).strip().lower() in {"1", "true", "yes", "on"}
-        )
+        self.verify_tls = raw_verify_tls if isinstance(raw_verify_tls, bool) else str(raw_verify_tls).strip().lower() in {"1", "true", "yes", "on"}
         self.base_url = f"{self.scheme}://{self.host}:{self.port}"
         self.token = None
         self.device_id = None
@@ -76,9 +72,7 @@ class OceanStorManager:
         items, start = [], 0
         while True:
             params = {"range": f"[{start}-{start + self.PAGE_SIZE - 1}]"}
-            resp = await self._client.get(
-                url, headers=self._headers(), params=params
-            )
+            resp = await self._client.get(url, headers=self._headers(), params=params)
             body = resp.json() or {}
             if (body.get("error") or {}).get("code", 0) != 0:
                 logger.warning(f"OceanStor fetch {path} error: {body.get('error')}")
@@ -103,7 +97,7 @@ class OceanStorManager:
 
             def _gb(sectors, sector_size):
                 try:
-                    return int(int(float(sectors)) * int(float(sector_size)) / (1024 ** 3))
+                    return int(int(float(sectors)) * int(float(sector_size)) / (1024**3))
                 except (TypeError, ValueError):
                     return 0
 
@@ -139,6 +133,7 @@ class OceanStorManager:
             return {"result": result, "success": True}
         except Exception as err:  # noqa
             import traceback
+
             logger.error(f"oceanstor_info main error! {traceback.format_exc()}")
             return {"result": {"cmdb_collect_error": str(err)}, "success": False}
         finally:

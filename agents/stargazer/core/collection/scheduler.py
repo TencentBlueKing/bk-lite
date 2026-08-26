@@ -19,6 +19,7 @@ class _RunState(Generic[T, R]):
     handler: Callable[[T], Awaitable[R]]
     results: list[R | None]
     done: asyncio.Future[tuple[R, ...]]
+    workload: str = "general"
     completed: int = 0
     exhausted: bool = False
     enqueued_at: float = 0.0
@@ -30,10 +31,19 @@ class _RunState(Generic[T, R]):
 class CollectionScheduler:
     """以 round-robin 和全局窗口公平执行多个 Run 的目标。"""
 
-    def __init__(self, *, max_in_flight: int, metrics=None) -> None:
+    def __init__(
+        self,
+        *,
+        max_in_flight: int,
+        topology_max_in_flight: int | None = None,
+        metrics=None,
+    ) -> None:
         if max_in_flight <= 0:
             raise ValueError("max_in_flight must be greater than zero")
+        if topology_max_in_flight is not None and topology_max_in_flight <= 0:
+            raise ValueError("topology_max_in_flight must be greater than zero")
         self._max_in_flight = int(max_in_flight)
+        self._topology_max_in_flight = None if topology_max_in_flight is None else int(topology_max_in_flight)
         self._metrics = metrics
         self._condition = asyncio.Condition()
         self._runs: dict[str, _RunState] = {}
@@ -41,6 +51,7 @@ class CollectionScheduler:
         self._dispatcher: asyncio.Task | None = None
         self._closing = False
         self.active = 0
+        self.topology_active = 0
         self.peak = 0
         self.completed_total = 0
 
@@ -67,13 +78,17 @@ class CollectionScheduler:
         run_id: str,
         items: Iterable[T],
         handler: Callable[[T], Awaitable[R]],
+        *,
+        workload: str = "general",
     ) -> tuple[R, ...]:
         loop = asyncio.get_running_loop()
+        workload_class = "network_topology" if self._topology_max_in_flight is not None and workload == "network_topology" else "general"
         state = _RunState(
             items=iter(items),
             handler=handler,
             results=[],
             done=loop.create_future(),
+            workload=workload_class,
             enqueued_at=time.monotonic(),
             pending=max(0, operator.length_hint(items, 0)),
         )
@@ -117,11 +132,13 @@ class CollectionScheduler:
     async def _dispatch_loop(self) -> None:
         while True:
             async with self._condition:
-                await self._condition.wait_for(lambda: self._closing or (self.active < self._max_in_flight and bool(self._order)))
+                await self._condition.wait_for(lambda: self._closing or self._has_dispatchable_run())
                 if self._closing:
                     return
-                while self.active < self._max_in_flight and self._order:
-                    run_id = self._order.popleft()
+                while self._has_dispatchable_run():
+                    run_id = self._take_next_dispatchable_run()
+                    if run_id is None:
+                        break
                     state = self._runs.get(run_id)
                     if state is None or state.exhausted:
                         continue
@@ -145,6 +162,8 @@ class CollectionScheduler:
                             )
                     self._order.append(run_id)
                     self.active += 1
+                    if state.workload == "network_topology":
+                        self.topology_active += 1
                     self.peak = max(self.peak, self.active)
                     task = asyncio.create_task(
                         self._run_item(run_id, state, index, item),
@@ -174,7 +193,50 @@ class CollectionScheduler:
             async with self._condition:
                 state.tasks.discard(current)
                 self.active = max(0, self.active - 1)
+                if state.workload == "network_topology":
+                    self.topology_active = max(0, self.topology_active - 1)
                 self._condition.notify_all()
+
+    def _has_dispatchable_run(self) -> bool:
+        if self.active >= self._max_in_flight:
+            return False
+        return any(
+            state is not None and not state.exhausted and self._workload_has_capacity(state.workload)
+            for run_id in self._order
+            if (state := self._runs.get(run_id)) is not None
+        )
+
+    def _take_next_dispatchable_run(self) -> str | None:
+        for _ in range(len(self._order)):
+            run_id = self._order.popleft()
+            state = self._runs.get(run_id)
+            if state is None or state.exhausted:
+                continue
+            if self._workload_has_capacity(state.workload):
+                return run_id
+            self._order.append(run_id)
+        return None
+
+    def _workload_has_capacity(self, workload: str) -> bool:
+        if self.active >= self._max_in_flight:
+            return False
+        topology_limit = self._topology_max_in_flight
+        if topology_limit is None:
+            return True
+        if workload == "network_topology":
+            return self.topology_active < topology_limit
+        if not self._topology_is_waiting():
+            return True
+        general_active = self.active - self.topology_active
+        general_reserved = max(0, self._max_in_flight - topology_limit)
+        return general_active < general_reserved + self.topology_active
+
+    def _topology_is_waiting(self) -> bool:
+        return any(
+            state is not None and not state.exhausted and state.workload == "network_topology"
+            for run_id in self._order
+            if (state := self._runs.get(run_id)) is not None
+        )
 
     async def _cancel_run(self, run_id: str, *, exclude: asyncio.Task | None = None) -> None:
         async with self._condition:

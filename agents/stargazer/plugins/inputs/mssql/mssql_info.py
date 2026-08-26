@@ -4,11 +4,11 @@ MSSQL Server Information Collector
 
 A standalone script to gather information about MSSQL servers.
 """
-import aioodbc
-from sanic.log import logger
-from typing import Dict, Any
+from typing import Any, Dict
 
+import aioodbc
 from core.decorator import timer
+from sanic.log import logger
 
 
 class MSSQLInfo:
@@ -29,7 +29,7 @@ class MSSQLInfo:
         self.user = kwargs.get("user")
         self.password = kwargs.get("password")
         self.database = kwargs.get("database")
-        self.timeout = int(kwargs.get("timeout", 5))
+        self.timeout = 5  # 连接超时硬编码；表单 timeout 由框架作单对象预算
         self.info: Dict[str, Any] = {}
         self.connection = None
         self.cursor = None
@@ -44,9 +44,7 @@ class MSSQLInfo:
                 f"UID={self.user};"
                 f"PWD={self.password}"
             )
-            self.connection = await aioodbc.connect(
-                dsn=conn_str, timeout=self.timeout, autocommit=True
-            )
+            self.connection = await aioodbc.connect(dsn=conn_str, timeout=self.timeout, autocommit=True)
             self.cursor = await self.connection.cursor()
             logger.info(f"Connected to MSSQL database at {self.host}:{self.port}")
         except Exception as e:
