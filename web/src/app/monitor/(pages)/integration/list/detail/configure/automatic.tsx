@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Form, Button, message, Spin, Dropdown, Modal, Tag } from 'antd';
+import { Form, Button, message, Spin, Dropdown, Modal, Tag, Select } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   CheckCircleOutlined,
@@ -15,6 +15,20 @@ import { v4 as uuidv4 } from 'uuid';
 import { useSearchParams, useRouter } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/monitor/api/integration';
+import useEventApi from '@/app/monitor/api/event';
+import FieldGuideTip from '@/components/field-guide-tip';
+import type { PolicyTemplateItem } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
+import {
+  COLLECTION_POLICY_CONTROL_WIDTH,
+  COLLECTION_POLICY_FIELD,
+  buildCollectionPolicyApplyPayload,
+  defaultSelectedTemplateKeys,
+  extractCollectInstanceIds,
+  omitCollectionPolicyField,
+  policyTemplateSelectOptions,
+  resolvePolicyTemplateList,
+  selectedPolicyTemplates
+} from './automaticPolicyApply';
 import { TableDataItem } from '@/app/monitor/types';
 import {
   IntegrationAccessProps,
@@ -91,6 +105,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     getMonitorNodeList,
     updateNodeChildConfig
   } = useIntegrationApi();
+  const { getPolicyTemplate, bulkCreatePoliciesFromTemplates } = useEventApi();
   const router = useRouter();
   const { renderTableColumn } = useConfigRenderer();
   const jsonConfig = usePluginFromJson();
@@ -99,6 +114,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const groupId = [currentGroup?.current?.id || ''];
   const pluginId = searchParams.get('plugin_id') || '';
   const objectId = searchParams.get('id') || '';
+  const objectName = searchParams.get('name') || '';
   const enableIfmibFromUrl = searchParams.get('enable_ifmib') !== 'false';
   // URL 常见参数：name / plugin_name；兼容历史 plugin_display_name。
   const pluginDisplayName =
@@ -118,6 +134,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const hasInitializedFormRef = useRef(false);
   const [currentConfig, setCurrentConfig] = useState<any>(null);
   const [configLoading, setConfigLoading] = useState<boolean>(false);
+  const [policyTemplates, setPolicyTemplates] = useState<PolicyTemplateItem[]>(
+    []
+  );
+  const [policyTemplatesLoading, setPolicyTemplatesLoading] =
+    useState<boolean>(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [collectDetectTasks, setCollectDetectTasks] = useState<
     Record<string, CollectDetectState>
@@ -154,6 +175,43 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         });
     }
   }, [pluginId, jsonConfig.getPluginConfig]);
+
+  useEffect(() => {
+    if (isLoading || !pluginId || !objectName) {
+      setPolicyTemplates([]);
+      setPolicyTemplatesLoading(false);
+      form.setFieldsValue({ [COLLECTION_POLICY_FIELD]: [] });
+      return;
+    }
+    let cancelled = false;
+    setPolicyTemplatesLoading(true);
+    getPolicyTemplate({
+      monitor_object_name: objectName,
+      plugin_id: pluginId
+    })
+      .then((data) => {
+        if (cancelled) return;
+        const templates = resolvePolicyTemplateList(data, pluginId);
+        setPolicyTemplates(templates);
+        form.setFieldsValue({
+          [COLLECTION_POLICY_FIELD]: defaultSelectedTemplateKeys(templates)
+        });
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setPolicyTemplates([]);
+        form.setFieldsValue({ [COLLECTION_POLICY_FIELD]: [] });
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setPolicyTemplatesLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+    // 模板列表只随当前插件/对象切换；getPolicyTemplate 引用变化不应冲掉用户选择。
+  }, [isLoading, pluginId, objectName, form]);
 
   // 获取基础配置（不依赖 dataSource）
   const baseConfig = useMemo(() => {
@@ -295,7 +353,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const buildDetectInstance = (record: IntegrationMonitoredObject) => {
-    const formValues = cloneDeep(form.getFieldsValue());
+    const formValues = omitCollectionPolicyField(
+      cloneDeep(form.getFieldsValue())
+    );
     delete formValues.nodes;
     const rowValues = Object.keys(record)
       .filter((key) => key !== 'key' && !key.endsWith('_error'))
@@ -951,6 +1011,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const handleSave = () => {
+    if (policyTemplatesLoading) {
+      return;
+    }
     const normalizedForm = normalizePasswordFields(
       form.getFieldsValue(true),
       currentConfig?.form_fields,
@@ -975,7 +1038,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           mutexErrors.forEach((msg) => message.error(msg));
           return;
         }
-        const row = cloneDeep(values);
+        const templatesToApply = selectedPolicyTemplates(
+          policyTemplates,
+          values[COLLECTION_POLICY_FIELD]
+        );
+        const row = omitCollectionPolicyField(cloneDeep(values));
         delete row.nodes;
         const params =
           configsInfo?.getParams?.(row, {
@@ -985,23 +1052,61 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }) || {};
         params.monitor_object_id = Number(objectId);
         params.monitor_plugin_id = Number(pluginId);
-        addNodesConfig(params);
+        addNodesConfig(params, templatesToApply);
       } catch (error: any) {
         message.error(error?.message || t('common.operationFailed'));
       }
     });
   };
 
-  const addNodesConfig = async (params = {}) => {
+  const addNodesConfig = async (
+    params: Record<string, any> = {},
+    templatesToApply: PolicyTemplateItem[] = []
+  ) => {
     try {
       setConfirmLoading(true);
-      await updateNodeChildConfig(params);
-      message.success(t('common.addSuccess'));
-      const searchParams = new URLSearchParams({
+      const collectResult = await updateNodeChildConfig(params);
+      if (templatesToApply.length) {
+        const policyPayload = buildCollectionPolicyApplyPayload({
+          monitorObjectId: objectId,
+          templates: templatesToApply,
+          instanceIds: extractCollectInstanceIds(collectResult, params)
+        });
+        if (!policyPayload) {
+          message.success(t('common.addSuccess'));
+          message.error(
+            t('monitor.integrations.policyCreateFailed', '', {
+              error: t('common.operationFailed')
+            })
+          );
+        } else {
+          try {
+            const result = await bulkCreatePoliciesFromTemplates(policyPayload);
+            message.success(t('common.addSuccess'));
+            message.success(
+              t('monitor.events.bulkCreateSuccess', '', {
+                count: result?.created_count ?? templatesToApply.length
+              })
+            );
+          } catch (policyError: any) {
+            message.success(t('common.addSuccess'));
+            message.error(
+              t('monitor.integrations.policyCreateFailed', '', {
+                error:
+                  policyError?.response?.data?.message ||
+                  policyError?.message ||
+                  t('common.operationFailed')
+              })
+            );
+          }
+        }
+      } else {
+        message.success(t('common.addSuccess'));
+      }
+      const nextSearch = new URLSearchParams({
         objId: objectId
       });
-      const targetUrl = `/monitor/integration/list?${searchParams.toString()}`;
-      router.push(targetUrl);
+      router.push(`/monitor/integration/list?${nextSearch.toString()}`);
     } catch (error: any) {
       message.error(
         error?.response?.data?.message ||
@@ -1030,7 +1135,15 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       name="basic"
       layout="vertical"
       onValuesChange={(changed, all) => {
-        clearCollectDetectState();
+        const changedKeys = Object.keys(changed);
+        if (
+          !(
+            changedKeys.length === 1 &&
+            changedKeys[0] === COLLECTION_POLICY_FIELD
+          )
+        ) {
+          clearCollectDetectState();
+        }
         const defaultIfTypeExclude = currentConfig?.form_fields?.find(
           (field: { name?: string }) => field.name === 'iftype_exclude'
         )?.default_value;
@@ -1067,6 +1180,30 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         <GuideEntryButton />
       </div>
       {formItems}
+      <Form.Item
+        name={COLLECTION_POLICY_FIELD}
+        label={
+          <span className="inline-flex items-center">
+            {t('monitor.integrations.monitoringPolicy')}
+            <FieldGuideTip
+              short={t('monitor.integrations.monitoringPolicyDes')}
+              title={t('monitor.integrations.fieldGuideTip')}
+            />
+          </span>
+        }
+      >
+        <Select
+          mode="multiple"
+          allowClear
+          maxTagCount="responsive"
+          loading={policyTemplatesLoading}
+          options={policyTemplateSelectOptions(policyTemplates)}
+          placeholder={t(
+            'monitor.integrations.monitoringPolicyPlaceholder'
+          )}
+          style={{ width: COLLECTION_POLICY_CONTROL_WIDTH }}
+        />
+      </Form.Item>
       <b className="text-[14px] flex mb-[10px] ml-[-10px]">
         {t('monitor.integrations.basicInformation')}
       </b>
@@ -1188,7 +1325,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   );
 
   return (
-    <Spin spinning={configLoading || nodesLoading}>
+    <Spin spinning={configLoading || nodesLoading || policyTemplatesLoading}>
       <div className="px-[10px]">
         <PluginGuidePanel
           pluginId={pluginId}

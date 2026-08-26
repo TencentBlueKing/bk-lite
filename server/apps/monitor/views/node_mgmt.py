@@ -60,26 +60,14 @@ class NodeMgmtView(ViewSet):
             node_selector = InstanceConfigService._get_plugin_node_selector(monitor_plugin_id)
             query_data = merge_node_query_with_selector(query_data, node_selector)
         data = NodeMgmt().node_list(query_data)
-        plugin = (
-            MonitorPlugin.objects.filter(id=monitor_plugin_id)
-            .prefetch_related("monitor_object")
-            .first()
-            if monitor_plugin_id
-            else None
-        )
+        plugin = MonitorPlugin.objects.filter(id=monitor_plugin_id).prefetch_related("monitor_object").first() if monitor_plugin_id else None
         is_host_monitoring_plugin = bool(
-            plugin
-            and any(
-                HostDeploymentStatus.applies_to(obj.name, plugin.collector, plugin.collect_type)
-                for obj in plugin.monitor_object.all()
-            )
+            plugin and any(HostDeploymentStatus.applies_to(obj.name, plugin.collector, plugin.collect_type) for obj in plugin.monitor_object.all())
         )
         if is_host_monitoring_plugin:
             nodes = data.get("nodes", [])
             try:
-                configured_node_ids = HostDeploymentStatus().get_configured_node_ids(
-                    [node.get("id") for node in nodes]
-                )
+                configured_node_ids = HostDeploymentStatus().get_configured_node_ids([node.get("id") for node in nodes])
             except (NatsError, TimeoutError) as error:
                 logger.warning(
                     "主机监控接入状态查询失败，节点列表将以不可选状态返回: %s",
@@ -90,9 +78,7 @@ class NodeMgmtView(ViewSet):
                 data["nodes"] = [
                     {
                         **node,
-                        "deployment_state": (
-                            "configured" if str(node.get("id")) in configured_node_ids else "available"
-                        ),
+                        "deployment_state": ("configured" if str(node.get("id")) in configured_node_ids else "available"),
                     }
                     for node in nodes
                 ]
@@ -106,8 +92,8 @@ class NodeMgmtView(ViewSet):
             request.user.username,
             get_current_team(request),
         )
-        InstanceConfigService.create_monitor_instance_by_node_mgmt(request.data, actor_context)
-        return WebUtils.response_success()
+        instance_ids = InstanceConfigService.create_monitor_instance_by_node_mgmt(request.data, actor_context)
+        return WebUtils.response_success({"instance_ids": instance_ids or []})
 
     @action(methods=["post"], detail=False, url_path="get_instance_asso_config")
     def get_instance_child_config(self, request):
