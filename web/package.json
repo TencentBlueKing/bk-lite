@@ -96,6 +96,7 @@
     "test:opspilot-download-url-security": "pnpm exec tsx scripts/opspilot-download-url-security-test.ts",
     "test:opspilot-tour": "playwright test --config=playwright.opspilot-tour.config.ts",
     "test:opspilot-planned-execution-step": "pnpm exec tsx scripts/opspilot-planned-execution-step-test.ts",
+    "test:storybook-auth-isolation": "pnpm exec tsx scripts/storybook-auth-isolation-test.ts",
     "gen:capability-matrix": "pnpm exec tsx scripts/generate-capability-matrix.ts",
     "test:monitor-template-bulk": "pnpm exec tsx scripts/monitor-template-bulk-logic-test.ts",
     "test:related-alerts": "pnpm exec tsx scripts/related-alerts-validation.ts",

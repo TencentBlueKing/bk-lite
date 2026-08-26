@@ -12,7 +12,7 @@ import { ThemeBootstrap, ThemeProvider } from '@/theme';
 import { ClientProvider } from '@/context/client';
 import { PermissionsProvider } from '@/context/permissions';
 import { UserInfoProvider } from '@/context/userInfo';
-import AuthProvider from '@/context/auth';
+import AuthProvider from './mocks/auth';
 import { installMonitorDashboardRequestInterceptor } from './mocks/monitor-dashboard-request';
 
 installMonitorDashboardRequestInterceptor();
