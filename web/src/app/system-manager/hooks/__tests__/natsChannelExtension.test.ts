@@ -44,6 +44,7 @@ describeNats('normalizeNatsChannelConfig', () => {
     })).toEqual({
       nats_mode: 'event_publish',
       subject_key: 'customer-alerts',
+      supports_notify_person: true,
     });
   });
 
@@ -59,7 +60,22 @@ describeNats('normalizeNatsChannelConfig', () => {
       namespace: 'bklite',
       method_name: 'receive_alert_events',
       timeout: 60,
+      supports_notify_person: true,
     });
+  });
+
+  it('preserves the notify-person switch across mode changes', () => {
+    expect(normalizeNatsChannelConfig({
+      nats_mode: 'event_publish',
+      subject_key: 'alerts',
+      supports_notify_person: false,
+      namespace: 'bklite',
+    }).supports_notify_person).toBe(false);
+    expect(normalizeNatsChannelConfig({
+      nats_mode: 'request_reply',
+      supports_notify_person: true,
+      subject_key: 'alerts',
+    }).supports_notify_person).toBe(true);
   });
 
   it('rejects Event Publish settings without a notification topic identifier', () => {

@@ -1,8 +1,5 @@
-import logging
 
 from apps.system_mgmt.models import Group
-
-_logger = logging.getLogger("system_mgmt")
 
 
 class GroupUtils(object):

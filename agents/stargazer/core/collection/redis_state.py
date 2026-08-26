@@ -7,23 +7,24 @@ import json
 import time
 import uuid
 
+from core.collection.credential_policy import CredentialFailure, CredentialScope
 from core.collection.runtime import (
-    LeaseAcquisition,
     LeaseAcquireStatus,
+    LeaseAcquisition,
     RunLease,
     RunStatus,
 )
-from core.collection.credential_policy import CredentialFailure, CredentialScope
-
 
 _ACQUIRE_RUN_LUA = """
 -- 薄租约：执行中则 duplicate_active；否则取得租约。不做 digest 冲突、不做 fencing 接管续跑。
 local run_key = KEYS[1]
+local generation_key = KEYS[2]
 local request_digest = ARGV[1]
 local owner_id = ARGV[2]
 local ttl_ms = tonumber(ARGV[3])
 local now_ms = tonumber(ARGV[4])
 local attempt_id = ARGV[5]
+local generation_retention_ms = tonumber(ARGV[6])
 
 local existing_owner = redis.call('HGET', run_key, 'owner_id') or ''
 local existing_expires = tonumber(redis.call('HGET', run_key, 'expires_at_ms') or '0')
@@ -48,6 +49,14 @@ redis.call(
 )
 redis.call('HDEL', run_key, 'summary')
 redis.call('PEXPIRE', run_key, ttl_ms * 2)
+redis.call(
+    'HSET',
+    generation_key,
+    'owner_id', owner_id,
+    'fence', 1,
+    'attempt_id', attempt_id
+)
+redis.call('PEXPIRE', generation_key, generation_retention_ms)
 return {'acquired', owner_id, 1, expires_at_ms, '', attempt_id}
 """
 
@@ -130,13 +139,15 @@ class RedisRunStateStore:
         ttl_ms = max(1, int(ttl_seconds * 1000))
         raw = await self._redis.eval(
             _ACQUIRE_RUN_LUA,
-            1,
+            2,
             self._run_key(task_id),
+            self._fence_key(task_id),
             request_digest,
             owner_id,
             ttl_ms,
             now_ms,
             uuid.uuid4().hex,
+            self._fence_retention_ms,
         )
         status_value, lease_owner, fence, expires_at_ms, summary_value, attempt_id = raw
         status = LeaseAcquireStatus(self._text(status_value))
@@ -171,9 +182,7 @@ class RedisRunStateStore:
         )
         return bool(result)
 
-    async def heartbeat(
-        self, lease: RunLease, *, ttl_seconds: float
-    ) -> bool:
+    async def heartbeat(self, lease: RunLease, *, ttl_seconds: float) -> bool:
         ttl_ms = max(1, int(ttl_seconds * 1000))
         result = await self._redis.eval(
             _HEARTBEAT_RUN_LUA,
@@ -231,8 +240,7 @@ class RedisCredentialStateStore:
         keys = [self._success_key(scope)]
         normalized_ids = [str(item or "") for item in credential_ids]
         keys.extend(
-            self._failure_key(scope, credential_id)
-            for credential_id in normalized_ids
+            self._failure_key(scope, credential_id) for credential_id in normalized_ids
         )
         values = await self._redis.mget(keys)
         success_id = self._text(values[0] if values else None)
@@ -242,9 +250,7 @@ class RedisCredentialStateStore:
             failures[credential_id] = self._parse_failure(raw)
         return success_id, failures
 
-    async def set_success(
-        self, scope: CredentialScope, credential_id: str
-    ) -> None:
+    async def set_success(self, scope: CredentialScope, credential_id: str) -> None:
         await self._redis.set(
             self._success_key(scope),
             credential_id,
@@ -290,9 +296,7 @@ class RedisCredentialStateStore:
             ex=self._failure_ttl_seconds,
         )
 
-    async def clear_failure(
-        self, scope: CredentialScope, credential_id: str
-    ) -> None:
+    async def clear_failure(self, scope: CredentialScope, credential_id: str) -> None:
         await self._redis.delete(self._failure_key(scope, credential_id))
 
     async def clear_scope_failures(self, scope: CredentialScope) -> None:
@@ -312,12 +316,8 @@ class RedisCredentialStateStore:
     def _success_key(self, scope: CredentialScope) -> str:
         return f"{self._key_prefix}:scope:{self._scope_digest(scope)}:success"
 
-    def _failure_key(
-        self, scope: CredentialScope, credential_id: str
-    ) -> str:
-        credential_digest = hashlib.sha256(
-            credential_id.encode("utf-8")
-        ).hexdigest()
+    def _failure_key(self, scope: CredentialScope, credential_id: str) -> str:
+        credential_digest = hashlib.sha256(credential_id.encode("utf-8")).hexdigest()
         return (
             f"{self._key_prefix}:scope:{self._scope_digest(scope)}:"
             f"credential:{credential_digest}:failure"

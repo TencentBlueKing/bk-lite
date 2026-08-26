@@ -12,12 +12,10 @@
 """
 
 import asyncio
-import logging
 from typing import Any, Dict, List, Optional
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import ToolVerificationSpec, VerificationConfig
-
-logger = logging.getLogger("opspilot")
 
 # ---------------------------------------------------------------------------
 # 全局验证注册表（代码级默认映射）

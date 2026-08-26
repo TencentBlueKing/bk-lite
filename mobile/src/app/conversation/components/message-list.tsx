@@ -145,6 +145,13 @@ export const MessageList: React.FC<MessageListProps> = ({
                                     if (!part.content) {
                                         return null;
                                     }
+                                    if (part.isStreamingText) {
+                                        return (
+                                            <span key={`text-${idx}`} className="whitespace-pre-wrap break-words">
+                                                {part.content}
+                                            </span>
+                                        );
+                                    }
                                     return <React.Fragment key={`text-${idx}`}>{part.content}</React.Fragment>;
                                 } else if (part.type === 'tool_call' && part.toolCall) {
                                     // 渲染工具调用

@@ -36,6 +36,7 @@ interface ReportToolbarProps {
   onToggleEditMode: () => void;
   onCancelEdit: () => void;
   onSave: () => void;
+  editExtra?: React.ReactNode;
   shareMode?: boolean;
   shareLoading?: boolean;
   onOpenShare?: () => void;
@@ -60,6 +61,7 @@ const ReportToolbar: React.FC<ReportToolbarProps> = ({
   onToggleEditMode,
   onCancelEdit,
   onSave,
+  editExtra,
   shareMode = false,
   shareLoading = false,
   onOpenShare,
@@ -172,6 +174,7 @@ const ReportToolbar: React.FC<ReportToolbarProps> = ({
             </Tooltip>
           ) : (
             <div className="flex items-center gap-2 ml-4">
+              {editExtra}
               <Button
                 disabled={!selectedReport?.data_id}
                 onClick={onCancelEdit}

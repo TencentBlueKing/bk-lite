@@ -7,12 +7,12 @@
 """
 
 import json
+from types import SimpleNamespace
 
 import pydantic.root_model  # noqa
 import pytest
-from types import SimpleNamespace
 
-from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin, protected_delete_response
+from apps.opspilot.utils.vendor_model_mixin import protected_delete_response
 
 pytestmark = pytest.mark.unit
 
@@ -122,8 +122,8 @@ class TestByVendor:
         assert _body(resp)["result"] is False
 
     def test_无current_team返回空(self):
-        from apps.opspilot.models.model_provider_mgmt import ModelVendor
         from apps.opspilot.models import LLMModel
+        from apps.opspilot.models.model_provider_mgmt import ModelVendor
 
         v = ModelVendor.objects.create(name="v", vendor_type="openai", team=[1])
         LLMModel.objects.create(name="m", vendor=v, model="m", enabled=True, team=[1])
@@ -166,3 +166,17 @@ class TestByVendor:
         resp = self._call(self._su(), {"vendor": str(v.id)}, current_team=1)
         assert resp.status_code == 200
         assert len(self._data(resp)) == 0
+
+    def test_search按name或model筛选(self):
+        from apps.opspilot.models import LLMModel
+        from apps.opspilot.models.model_provider_mgmt import ModelVendor
+
+        v = ModelVendor.objects.create(name="v", vendor_type="openai", team=[1])
+        hit_name = LLMModel.objects.create(name="gpt-alpha", vendor=v, model="id-1", enabled=True, team=[1])
+        hit_model = LLMModel.objects.create(name="other", vendor=v, model="gpt-beta", enabled=True, team=[1])
+        LLMModel.objects.create(name="claude", vendor=v, model="claude-3", enabled=True, team=[1])
+
+        resp = self._call(self._su(), {"vendor": str(v.id), "search": "gpt"}, current_team=1)
+        assert resp.status_code == 200
+        ids = {item["id"] for item in self._data(resp)}
+        assert ids == {hit_name.id, hit_model.id}

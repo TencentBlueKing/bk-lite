@@ -88,3 +88,4 @@ Status: implemented
 - 产品决策记忆：`docs/design/product-decisions/ops-analysis-unified-filter.md`
 - 用户于 2026-08-20 确认：不做健康主机指标；其余筛选管道与主机取数继续落地。
 - 非内置画布样例（可 YAML 导入，不进 `init_builtin_canvases`）：`server/apps/operation_analysis/support-files/host_comprehensive_dashboard.yaml`
+- **类型表达已被后续规格修正**：列表传参保留，但不再使用一等类型 `stringList`；见 `specs/changes/ops-analysis-string-param-multiple/spec.md`（`string` + `inputConfig.multiple`）。

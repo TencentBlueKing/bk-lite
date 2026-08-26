@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import test from 'node:test';
+import createDOMPurify from 'dompurify';
+import { JSDOM } from 'jsdom';
+import MarkdownIt from 'markdown-it';
 import ts from 'typescript';
 
 const projectRoot = new URL('../', import.meta.url);
@@ -29,6 +32,39 @@ async function loadConversationManager(aiChatStream) {
     const aiChatStream = (...args) => globalThis.__conversationAiChatStream(...args);
     ${managerDeclaration.getText(sourceFile)}
     export { ConversationManager };
+  `;
+  const compiled = ts.transpileModule(moduleSource, {
+    compilerOptions: {
+      module: ts.ModuleKind.ES2022,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+
+  return import(`data:text/javascript;base64,${Buffer.from(compiled).toString('base64')}#${Math.random()}`);
+}
+
+async function loadSanitizeMarkdownHtml(domPurify) {
+  const source = await readProjectFile('src/app/conversation/page.tsx');
+  const sourceFile = ts.createSourceFile(
+    'page.tsx',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const declaration = sourceFile.statements.find(
+    (statement) => ts.isVariableStatement(statement)
+      && statement.declarationList.declarations.some(
+        (item) => ts.isIdentifier(item.name) && item.name.text === 'sanitizeMarkdownHtml',
+      ),
+  );
+  assert.ok(declaration, 'sanitizeMarkdownHtml declaration must exist');
+
+  globalThis.__conversationDOMPurify = domPurify;
+  const moduleSource = `
+    const DOMPurify = globalThis.__conversationDOMPurify;
+    ${declaration.getText(sourceFile)}
+    export { sanitizeMarkdownHtml };
   `;
   const compiled = ts.transpileModule(moduleSource, {
     compilerOptions: {
@@ -773,6 +809,7 @@ test('AI 流未收到 RUN_FINISHED 时保留部分内容并标记中断', async 
     assert.equal(response?.status, 'interrupted');
     assert.equal(response?.streamError, '响应中断，请重试');
     assert.equal(response?.contentParts?.[0]?.content, 'partial answer');
+    assert.equal(manager.getMessageMarkdown('session-1', response?.id), 'partial answer');
     assert.match(messageList, /isAIMessage\s*=[^;]*msg\.status === 'interrupted'/);
     assert.match(messageList, /showActions\s*=\s*isAIMessage/);
   } finally {
@@ -807,6 +844,392 @@ test('AI 流收到 RUN_FINISHED 后标记正常结束', async () => {
     assert.equal(response?.streamError, undefined);
     assert.equal(response?.contentParts?.[0]?.content, 'complete answer');
   } finally {
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
+test('AI 长流只在文本段结束时渲染完整 Markdown，流式中间态保持纯文本', async () => {
+  const messageList = await readProjectFile('src/app/conversation/components/message-list.tsx');
+  let releaseStream;
+  let markContentReady;
+  const contentReady = new Promise((resolve) => {
+    markContentReady = resolve;
+  });
+  const continueStream = new Promise((resolve) => {
+    releaseStream = resolve;
+  });
+  const deltas = [
+    '<img src=x onerror=alert(1)>',
+    '\n\n| na',
+    'me | value |\n| ---',
+    ' | --- |\n| item | **ok** |',
+    '\n\n```ts\n',
+    ...Array(100).fill('const value = 1;\n'),
+    '```',
+  ];
+  const fullText = deltas.join('');
+  const dom = new JSDOM('');
+  const domPurify = createDOMPurify(dom.window);
+  const { sanitizeMarkdownHtml } = await loadSanitizeMarkdownHtml(domPurify);
+  const md = new MarkdownIt({ html: true, linkify: true, typographer: true, breaks: true });
+  const React = await import('react');
+  const { renderToStaticMarkup } = await import('react-dom/server');
+  const renderProductionMarkdown = (text) => React.createElement('div', {
+    className: 'markdown-body',
+    dangerouslySetInnerHTML: { __html: sanitizeMarkdownHtml(md.render(text)) },
+  });
+  const oldFinalMarkup = renderToStaticMarkup(renderProductionMarkdown(fullText));
+  const { ConversationManager } = await loadConversationManager(async function* () {
+    yield { type: 'RUN_STARTED', timestamp: 1 };
+    yield { type: 'TEXT_MESSAGE_START' };
+    for (const delta of deltas) {
+      yield { type: 'TEXT_MESSAGE_CONTENT', delta };
+    }
+    markContentReady();
+    await continueStream;
+    yield { type: 'TEXT_MESSAGE_END' };
+    yield { type: 'RUN_FINISHED' };
+  });
+  const manager = new ConversationManager();
+  const renderedInputs = [];
+  let notifications = 0;
+  let markStreamingFlush;
+  const streamingFlush = new Promise((resolve) => {
+    markStreamingFlush = resolve;
+  });
+  const unsubscribe = manager.subscribe(() => {
+    notifications += 1;
+    const content = manager.getSessionState('session-long-stream')?.messages[0]?.contentParts?.[0]?.content;
+    if (content === fullText) {
+      markStreamingFlush();
+    }
+  });
+
+  try {
+    const responsePromise = manager.startAIResponse(
+      'session-long-stream',
+      9,
+      'mobile-node',
+      'question',
+      (text) => {
+        renderedInputs.push(text);
+        return renderProductionMarkdown(text);
+      },
+      '响应中断，请重试',
+      false,
+    );
+    await contentReady;
+    await streamingFlush;
+
+    const streamingPart = manager.getSessionState('session-long-stream')?.messages[0]?.contentParts?.[0];
+    assert.equal(renderedInputs.length, 0);
+    assert.equal(streamingPart?.content, fullText);
+    assert.equal(typeof streamingPart?.content, 'string');
+    assert.equal(streamingPart?.isStreamingText, true);
+    assert.ok(notifications <= 6, `expected batched stream updates, received ${notifications}`);
+    assert.match(messageList, /part\.isStreamingText[\s\S]*whitespace-pre-wrap[\s\S]*\{part\.content\}/);
+    assert.doesNotMatch(messageList, /dangerouslySetInnerHTML/);
+    const streamingHtml = renderToStaticMarkup(React.createElement('span', null, streamingPart.content));
+    assert.match(streamingHtml, /&lt;img src=x onerror=alert\(1\)&gt;/);
+    assert.doesNotMatch(streamingHtml, /<img/);
+
+    releaseStream();
+    await responsePromise;
+
+    const finalPart = manager.getSessionState('session-long-stream')?.messages[0]?.contentParts?.[0];
+    assert.deepEqual(renderedInputs, [fullText]);
+    const finalMarkup = renderToStaticMarkup(finalPart?.content);
+    assert.equal(finalMarkup, oldFinalMarkup);
+    assert.match(finalMarkup, /<table>/);
+    assert.match(finalMarkup, /<pre><code class="language-ts">/);
+    assert.match(finalMarkup, /<img src="x">/);
+    assert.doesNotMatch(finalMarkup, /onerror|<script/i);
+    assert.equal(finalPart?.isStreamingText, false);
+  } finally {
+    unsubscribe();
+    releaseStream?.();
+    dom.window.close();
+    delete globalThis.__conversationDOMPurify;
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
+test('AI 文本段完成后发生流错误不会把最终 Markdown 退回纯文本', async () => {
+  const { ConversationManager } = await loadConversationManager(async function* () {
+    yield { type: 'TEXT_MESSAGE_START' };
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: '**completed**' };
+    yield { type: 'TEXT_MESSAGE_END' };
+    throw new Error('stream failed after text end');
+  });
+  const manager = new ConversationManager();
+  const renderedInputs = [];
+  const originalConsoleError = console.error;
+
+  try {
+    console.error = () => {};
+    await manager.startAIResponse(
+      'session-ended-before-error',
+      9,
+      'mobile-node',
+      'question',
+      (text) => {
+        renderedInputs.push(text);
+        return `rendered:${text}`;
+      },
+      '响应中断，请重试',
+      false,
+    );
+
+    const response = manager.getSessionState('session-ended-before-error')?.messages[0];
+    assert.equal(response?.status, 'interrupted');
+    assert.deepEqual(renderedInputs, ['**completed**']);
+    assert.equal(response?.contentParts?.[0]?.content, 'rendered:**completed**');
+    assert.equal(response?.contentParts?.[0]?.isStreamingText, false);
+  } finally {
+    console.error = originalConsoleError;
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
+test('AI 文本段开始但首个内容未到达时保持加载状态', { timeout: 5000 }, async () => {
+  let markStarted;
+  let releaseContent;
+  const started = new Promise((resolve) => {
+    markStarted = resolve;
+  });
+  const continueStream = new Promise((resolve) => {
+    releaseContent = resolve;
+  });
+  const { ConversationManager } = await loadConversationManager(async function* () {
+    yield { type: 'TEXT_MESSAGE_START' };
+    markStarted();
+    await continueStream;
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'ready' };
+    yield { type: 'TEXT_MESSAGE_END' };
+    yield { type: 'RUN_FINISHED' };
+  });
+  const manager = new ConversationManager();
+
+  try {
+    const responsePromise = manager.startAIResponse(
+      'session-waiting-content',
+      9,
+      'mobile-node',
+      'question',
+      (text) => `rendered:${text}`,
+      '响应中断，请重试',
+      false,
+    );
+    await started;
+    assert.equal(manager.getSessionState('session-waiting-content')?.messages[0]?.status, 'loading');
+
+    releaseContent();
+    await responsePromise;
+  } finally {
+    releaseContent?.();
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
+test('主动取消 AI 流后保留已接收的部分原文供复制', { timeout: 5000 }, async () => {
+  let markContentReady;
+  const contentReady = new Promise((resolve) => {
+    markContentReady = resolve;
+  });
+  const { ConversationManager } = await loadConversationManager(async function* (
+    _bot,
+    _nodeId,
+    _message,
+    _sessionId,
+    options,
+  ) {
+    yield { type: 'TEXT_MESSAGE_START' };
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'partial **copy**' };
+    markContentReady();
+    await new Promise((resolve) => options.signal.addEventListener('abort', resolve, { once: true }));
+  });
+  const manager = new ConversationManager();
+
+  try {
+    const responsePromise = manager.startAIResponse(
+      'session-copy-after-cancel',
+      9,
+      'mobile-node',
+      'question',
+      (text) => `rendered:${text}`,
+      '响应中断，请重试',
+      false,
+    );
+    await contentReady;
+    manager.abortStream('session-copy-after-cancel');
+    await responsePromise;
+
+    const response = manager.getSessionState('session-copy-after-cancel')?.messages[0];
+    assert.equal(response?.status, 'interrupted');
+    assert.equal(response?.streamError, undefined);
+    assert.equal(response?.contentParts?.[0]?.content, 'partial **copy**');
+    assert.equal(manager.getMessageMarkdown('session-copy-after-cancel', response?.id), 'partial **copy**');
+    assert.equal(manager.isSessionRunning('session-copy-after-cancel'), false);
+  } finally {
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
+test('文本、工具和自定义组件按流事件顺序渲染', async () => {
+  const { ConversationManager } = await loadConversationManager(async function* () {
+    yield { type: 'TEXT_MESSAGE_START' };
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'before' };
+    yield { type: 'TOOL_CALL_START', toolCallId: 'tool-1', toolCallName: 'inspect' };
+    yield { type: 'TOOL_CALL_ARGS', toolCallId: 'tool-1', delta: '{"id":1}' };
+    yield { type: 'TOOL_CALL_RESULT', toolCallId: 'tool-1', content: 'done' };
+    yield { type: 'CUSTOM', name: 'render_component', value: { component: 'Card', props: { id: 1 } } };
+    yield { type: 'TEXT_MESSAGE_START' };
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'after' };
+    yield { type: 'TEXT_MESSAGE_END' };
+    yield { type: 'RUN_FINISHED' };
+  });
+  const manager = new ConversationManager();
+
+  try {
+    await manager.startAIResponse(
+      'session-event-order',
+      9,
+      'mobile-node',
+      'question',
+      (text) => `rendered:${text}`,
+      '响应中断，请重试',
+      false,
+    );
+
+    const parts = manager.getSessionState('session-event-order')?.messages[0]?.contentParts;
+    assert.deepEqual(parts?.map((part) => part.type), ['text', 'tool_call', 'component', 'text']);
+    assert.equal(parts?.[0]?.content, 'rendered:before');
+    assert.deepEqual(parts?.[1]?.toolCall, {
+      id: 'tool-1',
+      name: 'inspect',
+      args: '{"id":1}',
+      result: 'done',
+      status: 'completed',
+    });
+    assert.deepEqual(parts?.[2]?.component, { name: 'Card', props: { id: 1 } });
+    assert.equal(parts?.[3]?.content, 'rendered:after');
+  } finally {
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
+test('同会话重连后旧 timer 和回调不会覆盖新回答', { timeout: 5000 }, async () => {
+  const originalDateNow = Date.now;
+  Date.now = () => 1730000000000;
+  let markOldContentReady;
+  const oldContentReady = new Promise((resolve) => {
+    markOldContentReady = resolve;
+  });
+  const { ConversationManager } = await loadConversationManager(async function* (
+    _bot,
+    _nodeId,
+    message,
+    _sessionId,
+    options,
+  ) {
+    yield { type: 'TEXT_MESSAGE_START' };
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: message };
+    if (message === 'old') {
+      markOldContentReady();
+      await new Promise((resolve) => options.signal.addEventListener('abort', resolve, { once: true }));
+      return;
+    }
+    yield { type: 'TEXT_MESSAGE_END' };
+    yield { type: 'RUN_FINISHED' };
+  });
+  const manager = new ConversationManager();
+  let notifications = 0;
+  const unsubscribe = manager.subscribe(() => {
+    notifications += 1;
+  });
+
+  try {
+    const oldResponse = manager.startAIResponse(
+      'session-reconnect',
+      9,
+      'mobile-node',
+      'old',
+      (text) => `rendered:${text}`,
+      '响应中断，请重试',
+      false,
+    );
+    await oldContentReady;
+    const newResponse = manager.startAIResponse(
+      'session-reconnect',
+      9,
+      'mobile-node',
+      'new',
+      (text) => `rendered:${text}`,
+      '响应中断，请重试',
+      false,
+    );
+    await Promise.all([oldResponse, newResponse]);
+
+    const messages = manager.getSessionState('session-reconnect')?.messages;
+    assert.equal(messages?.length, 2);
+    assert.notEqual(messages?.[0]?.id, messages?.[1]?.id);
+    assert.equal(messages?.[0]?.status, 'interrupted');
+    assert.equal(messages?.[0]?.contentParts?.[0]?.content, 'old');
+    assert.equal(messages?.[1]?.status, 'ended');
+    assert.equal(messages?.[1]?.contentParts?.[0]?.content, 'rendered:new');
+    assert.equal(manager.isSessionRunning('session-reconnect'), false);
+
+    const notificationsAfterCompletion = notifications;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(notifications, notificationsAfterCompletion);
+  } finally {
+    Date.now = originalDateNow;
+    unsubscribe();
+    delete globalThis.__conversationAiChatStream;
+  }
+});
+
+test('登出后旧流取消收尾不会写入新账号同 ID 会话', { timeout: 5000 }, async () => {
+  let markOldContentReady;
+  const oldContentReady = new Promise((resolve) => {
+    markOldContentReady = resolve;
+  });
+  const { ConversationManager } = await loadConversationManager(async function* (
+    _bot,
+    _nodeId,
+    _message,
+    _sessionId,
+    options,
+  ) {
+    yield { type: 'TEXT_MESSAGE_START' };
+    yield { type: 'TEXT_MESSAGE_CONTENT', delta: 'old-account-secret' };
+    markOldContentReady();
+    await new Promise((resolve) => options.signal.addEventListener('abort', resolve, { once: true }));
+  });
+  const manager = new ConversationManager();
+
+  try {
+    const oldResponse = manager.startAIResponse(
+      'shared-session-id',
+      9,
+      'mobile-node',
+      'old',
+      (text) => `rendered:${text}`,
+      '响应中断，请重试',
+      false,
+    );
+    await oldContentReady;
+
+    manager.clearAll();
+    manager.initSession('shared-session-id');
+    await oldResponse;
+
+    const newScopeState = manager.getSessionState('shared-session-id');
+    assert.deepEqual(newScopeState?.messages, []);
+    assert.equal(newScopeState?.messageMarkdown.size, 0);
+    assert.equal(manager.isSessionRunning('shared-session-id'), false);
+  } finally {
+    manager.clearAll();
     delete globalThis.__conversationAiChatStream;
   }
 });

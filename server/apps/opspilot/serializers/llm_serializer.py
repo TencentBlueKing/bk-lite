@@ -28,6 +28,7 @@ class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
             "team",
             "is_build_in",
             "is_demo",
+            "is_multimodal",
             "vendor",
             "model",
             "label",

@@ -20,6 +20,7 @@ import CustomTable from '@/components/custom-table';
 import SelectAssets from './selectAssets';
 import UserAvatar from '@/components/user-avatar';
 import { findLabelById } from '@/app/monitor/utils/common';
+import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUtils';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { PlusOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -381,15 +382,14 @@ const Strategy: React.FC = () => {
   const linkToStrategyDetail = (type: string, row = { id: '', name: '' }) => {
     const monitorObjId = objectId as string;
     const monitorName = findLabelById(treeData, monitorObjId) as string;
-    const params = new URLSearchParams({
-      monitorObjId,
-      monitorName,
-      type,
-      id: row.id,
-      name: row.name
-    });
-    const targetUrl = `/monitor/event/strategy/detail?${params.toString()}`;
-    router.push(targetUrl);
+    router.push(
+      buildMonitorStrategyDetailUrl(type, {
+        monitorObjId,
+        monitorName,
+        id: row.id,
+        name: row.name
+      })
+    );
   };
 
   return (

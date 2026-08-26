@@ -6,9 +6,10 @@ OpenAI /models 响应;upsert 走真实 ORM 落库,断言分类/创建/更新副�
 等纯逻辑分支。
 """
 
+from types import SimpleNamespace
+
 import pydantic.root_model  # noqa
 import pytest
-from types import SimpleNamespace
 
 from apps.opspilot.models import EmbedProvider, LLMModel, OCRProvider, RerankProvider
 from apps.opspilot.models.model_provider_mgmt import ModelVendor
@@ -56,7 +57,7 @@ class TestSupportProtocol:
         assert Svc._get_protocol_type(v) == "anthropic"
 
     def test_openai兼容类型支持(self):
-        for t in ("openai", "azure", "deepseek"):
+        for t in ("openai", "azure", "aliyun", "zhipu", "baidu", "deepseek", "other"):
             assert Svc.is_supported(SimpleNamespace(vendor_type=t, protocol_type="openai")) is True
 
     def test_deepseek协议跟随(self):
@@ -65,7 +66,7 @@ class TestSupportProtocol:
         assert Svc._get_protocol_type(SimpleNamespace(vendor_type="deepseek", protocol_type="")) == "openai"
 
     def test_未知类型不支持(self):
-        assert Svc.is_supported(SimpleNamespace(vendor_type="zhipu", protocol_type="openai")) is False
+        assert Svc.is_supported(SimpleNamespace(vendor_type="unknown-vendor", protocol_type="openai")) is False
         # zhipu 协议固定 openai
         assert Svc._get_protocol_type(SimpleNamespace(vendor_type="zhipu", protocol_type="x")) == "openai"
 
@@ -167,7 +168,7 @@ class TestSyncVendorModels:
             Svc.sync_vendor_models(v)
 
     def test_不支持类型拒绝(self):
-        v = self._vendor(vendor_type="zhipu")
+        v = self._vendor(vendor_type="unknown-vendor")
         with pytest.raises(ValueError):
             Svc.sync_vendor_models(v)
 
@@ -199,13 +200,12 @@ class TestSyncVendorModels:
         llm = LLMModel.objects.get(vendor=v, model="gpt-4o")
         assert llm.enabled is True
         assert llm.team == [7]
-        assert llm.is_build_in is True
         emb = EmbedProvider.objects.get(vendor=v, model="text-embedding-3-small")
-        assert emb.is_build_in is False
+        assert emb.team == [7]
         assert RerankProvider.objects.filter(vendor=v, model="bge-reranker-base").exists()
         assert OCRProvider.objects.filter(vendor=v, model="olmocr-7b").exists()
 
-    def test_已存在则更新而非重复创建(self, mocker):
+    def test_已存在则只更新name(self, mocker):
         v = self._vendor(team=[3])
         # 预置一个 disabled、team 不同、name 不同的旧 LLM
         LLMModel.objects.create(name="old-name", vendor=v, model="gpt-4o", enabled=False, team=[9], is_build_in=False)
@@ -225,9 +225,9 @@ class TestSyncVendorModels:
         assert LLMModel.objects.filter(vendor=v, model="gpt-4o").count() == 1
         updated = LLMModel.objects.get(vendor=v, model="gpt-4o")
         assert updated.name == "gpt-4o"  # name 同步为 model_id
-        assert updated.enabled is True  # 被重新启用
-        assert updated.team == [3]  # team 同步为 vendor.team
-        assert updated.is_build_in is True
+        assert updated.enabled is False  # 启停不动
+        assert updated.team == [9]  # team 不动
+        assert updated.is_build_in is False  # is_build_in 不动
 
     def test_无变化不计入更新(self, mocker):
         v = self._vendor(team=[3])

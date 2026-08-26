@@ -13,19 +13,16 @@
 """
 
 import json
-import logging
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional
 from urllib.parse import urlparse
 
 import winrm
-from django.utils import timezone
-
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.patch_mgmt.models import PatchSource
 from apps.patch_mgmt.utils.architecture import X86_64
-
-logger = logging.getLogger("app")
+from django.utils import timezone
 
 WINRM_PORT = 5985
 DEFAULT_WSUS_PORT = 8530

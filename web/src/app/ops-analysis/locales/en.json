@@ -225,7 +225,7 @@
   },
   "dataSource": {
     "duplicateParamNames": "Duplicate parameter names: ",
-    "invalidFilterParamType": "Only string, string list, time range, and date range parameters can be configured as filters.",
+    "invalidFilterParamType": "Only string, time range, and date range parameters can be configured as filters.",
     "addParam": "Add Parameter",
     "paramTypes": {
       "timeRange": "Time Range",
@@ -233,7 +233,6 @@
       "number": "Number",
       "boolean": "Boolean",
       "date": "Date",
-      "stringList": "String list",
       "string": "String"
     },
     "title": "Data Source",
@@ -403,6 +402,27 @@
     }
   },
   "opsAnalysis": {
+    "canvasDraft": {
+      "menu": "Snapshots",
+      "history": "Snapshot history",
+      "historyEmpty": "No snapshots yet. Use Save version to keep the current layout.",
+      "historyVersion": "#",
+      "historyName": "Note",
+      "historyTime": "Time",
+      "historyActions": "Actions",
+      "namePlaceholder": "Add a note to describe this snapshot",
+      "nameEditHint": "Click to add a note",
+      "saveFrame": "Save version",
+      "saveFrameSuccess": "Version saved",
+      "validationFailed": "Draft validation failed",
+      "updateLabelFailed": "Failed to save note",
+      "frameYamlTitle": "{name}",
+      "viewYaml": "YAML",
+      "restore": "Restore",
+      "restoreFrame": "Restore this snapshot",
+      "restoreFailed": "Restore failed",
+      "restoreSuccess": "Snapshot restored"
+    },
     "architecture": {
       "loadFailed": "Failed to load"
     },
@@ -673,6 +693,7 @@
     "duplicateFieldKey": "Field key must be unique",
     "componentSwitch": "Widget Switch",
     "componentSwitchOccupied": "Parameter \"{label}\" already uses the widget switch. Each widget can configure only one",
+    "componentSwitchDisabledByMultiple": "Multiple selection is enabled, so widget switch cannot be enabled at the same time",
     "multipleComponentSwitchParams": "Each widget can configure only one widget switch parameter",
     "selectDashboardFirst": "Please select a dashboard first",
     "fetchDataFieldsFailed": "Failed to fetch data fields",
@@ -710,6 +731,8 @@
       "normal": "Normal"
     },
     "addView": "Add View",
+    "viewShort": "View",
+    "groupShort": "Group",
     "filterType": "Filter Type",
     "startTime": "Start Time",
     "dataCannotRenderAsChart": "Data cannot be rendered as chart",
@@ -1220,6 +1243,8 @@
   "paramInput": {
     "title": "Parameter input settings",
     "controlType": "Control type",
+    "multiple": "Multiple",
+    "multipleDisabledByComponentSwitch": "Widget switch is enabled, so multiple selection cannot be enabled at the same time",
     "control": {
       "input": "Input",
       "select": "Select",

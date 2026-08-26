@@ -7,9 +7,10 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { Graph as X6Graph, Node, Edge } from '@antv/x6';
 import { message } from 'antd';
-import { fetchWidgetData, buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { fetchWidgetData, resolveEffectiveFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import { normalizeCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
+import { normalizeStoredFilterDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 import {
   beginMappedOwnerRequest,
   finishMappedOwnerRequest,
@@ -177,7 +178,7 @@ export const useGraphData = (
   ) => {
     if (!selectedTopology?.data_id) {
       message.error(t('topology.saveTopologySelectMsg'));
-      return;
+      return false;
     }
 
     setLoading(true);
@@ -195,8 +196,10 @@ export const useGraphData = (
       await saveTopology(selectedTopology.data_id, saveData);
       handleSaveCallback?.();
       message.success(t('topology.saveTopologySuccess'));
+      return true;
     } catch (error) {
       message.error(t('topology.saveTopologyFailed') + String(error));
+      return false;
     } finally {
       setLoading(false);
     }
@@ -232,8 +235,11 @@ export const useGraphData = (
     const previousData = node.getData();
 
     try {
-      const effectiveFilterBindings = valueConfig.filterBindings || 
-        buildDefaultFilterBindings(valueConfig.dataSourceParams || [], filterDefinitions || [], undefined);
+      const effectiveFilterBindings = resolveEffectiveFilterBindings(
+        valueConfig.dataSourceParams || [],
+        filterDefinitions || [],
+        valueConfig.filterBindings,
+      );
       
       const extraParams: TableQueryParams = {};
       if (namespaceId !== undefined) {
@@ -439,7 +445,9 @@ export const useGraphData = (
       graphInstance.zoomToFit({ padding: 20, maxScale: 1 });
 
       const rawFilters = viewSets.filters;
-      const loadedFilters: UnifiedFilterDefinition[] = Array.isArray(rawFilters) ? rawFilters : [];
+      const loadedFilters = normalizeStoredFilterDefinitions(rawFilters, {
+        canvasId: topologyId,
+      });
       return {
         filters: loadedFilters,
         refreshInterval: normalizeCanvasRefreshInterval(topologyData.refresh_interval),
@@ -520,6 +528,7 @@ export const useGraphData = (
     handleSaveTopology,
     handleLoadTopology,
     loadTopologyData: loadTopologyData as (data: TopologyViewSets) => void,
+    serializeTopologyData,
     loadChartNodeData,
     refreshAllChartNodes,
   };

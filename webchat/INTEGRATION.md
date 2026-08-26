@@ -48,6 +48,7 @@ The host injects URLs. WebChat does not hardcode console paths. URL templates ma
     applicationsUrl: 'https://host.example/skill_channel/platform/',
     sessionsUrl: 'https://host.example/skill_channel/conversations/?channel_id={channelId}',
     messagesUrl: 'https://host.example/skill_channel/conversations/messages/?session_id={sessionId}',
+    deleteSessionUrl: 'https://host.example/skill_channel/conversations/delete/',
     chatUrlTemplate: 'https://host.example/skill_channel/{channelId}/chat/',
     interruptUrl: 'https://host.example/interrupt',
     approvalUrl: 'https://host.example/approval',

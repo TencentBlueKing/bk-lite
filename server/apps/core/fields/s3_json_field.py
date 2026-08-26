@@ -14,12 +14,17 @@ import json
 import uuid
 from typing import Any, Optional
 
+from apps.core.logger import logger, safe_exception_call_chain, safe_exception_info, safe_log_value
 from django.core.files.base import ContentFile
 from django.db import models, transaction
 from django.db.models.signals import post_save
 from django_minio_backend import MinioBackend
 
-from apps.core.logger import logger
+LOG_PATH_MAX_LENGTH = 500
+
+
+def _safe_log_path(path):
+    return safe_log_value(path, max_length=LOG_PATH_MAX_LENGTH)
 
 
 def s3_json_upload_path(instance, filename):
@@ -165,11 +170,15 @@ class S3JSONField(models.CharField):
                 setattr(model_instance, self.attname, uploaded_path)
                 self._register_cleanup_task(model_instance, previous_path, uploaded_path)
 
-                logger.debug("S3JSONField uploaded: %s", uploaded_path)
                 return uploaded_path
 
             except Exception as e:
-                logger.error(f"Failed to upload JSON to S3: {e}", exc_info=True)
+                logger.error(
+                    "event=s3_json_upload_failed failed_stage=storage_write error_type=%s call_chain=%s",
+                    type(e).__name__,
+                    safe_exception_call_chain(e),
+                    exc_info=safe_exception_info(e),
+                )
                 raise
 
         # 其他情况（如 FieldFile 对象）调用父类方法
@@ -248,11 +257,13 @@ class S3JSONField(models.CharField):
         # 上传到 S3
         saved_path = self.storage.save(filename, content)
 
-        logger.info(
-            f"Uploaded to S3: {saved_path}, "
-            f"original={len(json_bytes)} bytes, "
-            f"compressed={len(content_bytes)} bytes, "
-            f"ratio={len(content_bytes) / len(json_bytes):.1%}"
+        logger.debug(
+            "event=s3_json_upload_succeeded path=%s compressed=%s "
+            "original_bytes=%s stored_bytes=%s",
+            _safe_log_path(saved_path),
+            self.compressed,
+            len(json_bytes),
+            len(content_bytes),
         )
 
         return saved_path
@@ -292,10 +303,8 @@ class S3JSONField(models.CharField):
         Returns:
             Python 对象（list 或 dict）
         """
-        logger.info("[S3JSONField] Loading from S3: %s", file_path)
-
         if not file_path:
-            logger.warning("[S3JSONField] Empty file_path, returning None")
+            logger.warning("event=s3_json_load_skipped reason=empty_path")
             return None
 
         try:
@@ -303,36 +312,56 @@ class S3JSONField(models.CharField):
             with self.storage.open(file_path, "rb") as f:
                 content_bytes = f.read()
 
-            logger.info("[S3JSONField] Read %s bytes from S3", len(content_bytes))
-
             if not content_bytes:
-                logger.warning("S3 file is empty: %s", file_path)
+                logger.warning(
+                    "event=s3_json_load_skipped reason=empty_object path=%s",
+                    _safe_log_path(file_path),
+                )
                 return None
 
             # 解压（智能检测）
             try:
                 # 尝试解压
                 json_bytes = gzip.decompress(content_bytes)
-                logger.info("[S3JSONField] Decompressed %s -> %s bytes", len(content_bytes), len(json_bytes))
+                was_compressed = True
             except gzip.BadGzipFile:
                 # 不是 gzip 文件，使用原始内容
                 json_bytes = content_bytes
-                logger.info("[S3JSONField] Not gzipped, using raw content")
+                was_compressed = False
 
             # 解析 JSON
             json_str = json_bytes.decode("utf-8")
             data = json.loads(json_str)
 
-            logger.info(
-                f"[S3JSONField] Successfully loaded from S3: {file_path}, type: {type(data)}, items: {len(data) if isinstance(data, (list, dict)) else 'N/A'}"
+            logger.debug(
+                "event=s3_json_load_succeeded path=%s compressed=%s "
+                "stored_bytes=%s decoded_bytes=%s value_type=%s item_count=%s",
+                _safe_log_path(file_path),
+                was_compressed,
+                len(content_bytes),
+                len(json_bytes),
+                type(data).__name__,
+                len(data) if isinstance(data, (list, dict)) else "-",
             )
             return data
 
         except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in S3 file {file_path}: {e}")
+            logger.error(
+                "event=s3_json_load_failed path=%s failed_stage=json_decode error_type=%s call_chain=%s",
+                _safe_log_path(file_path),
+                type(e).__name__,
+                safe_exception_call_chain(e),
+                exc_info=safe_exception_info(e),
+            )
             return None
         except Exception as e:
-            logger.error("Failed to load from S3 %s: %s", file_path, e, exc_info=True)
+            logger.error(
+                "event=s3_json_load_failed path=%s failed_stage=storage_or_decode error_type=%s call_chain=%s",
+                _safe_log_path(file_path),
+                type(e).__name__,
+                safe_exception_call_chain(e),
+                exc_info=safe_exception_info(e),
+            )
             return None
 
     def get_prep_value(self, value):
@@ -432,7 +461,11 @@ class S3JSONFieldDescriptor:
             loaded_value = self.field._load_from_s3(value)
             if loaded_value is None:
                 # S3 加载失败时保留路径，避免后续 save 把 DB 中的引用清空
-                logger.warning("[S3JSONField] Load failed for %s, preserving path reference", value)
+                logger.warning(
+                    "event=s3_json_descriptor_load_failed failed_stage=descriptor_load error_type=load_returned_none "
+                    "path=%s action=preserve_reference",
+                    _safe_log_path(value),
+                )
                 return None
             instance.__dict__[self.field.attname] = loaded_value
             return loaded_value
@@ -475,19 +508,22 @@ def _handle_s3jsonfield_post_save_cleanup(sender, instance, **kwargs):
             try:
                 storage.delete(old_path)
                 logger.info(
-                    "Deleted previous S3JSONField object for %s(%s): %s -> %s",
-                    model_label,
+                    "event=s3_json_previous_object_deleted model=%s object_id=%s old_path=%s new_path=%s",
+                    safe_log_value(model_label),
                     pk,
-                    old_path,
-                    new_path,
+                    _safe_log_path(old_path),
+                    _safe_log_path(new_path),
                 )
             except Exception as exc:
-                logger.warning(
-                    "Failed to delete previous S3JSONField object for %s(%s): %s, error=%s",
-                    model_label,
+                logger.error(
+                    "event=s3_json_previous_object_delete_failed failed_stage=cleanup model=%s object_id=%s old_path=%s "
+                    "error_type=%s call_chain=%s",
+                    safe_log_value(model_label),
                     pk,
-                    old_path,
-                    exc,
+                    _safe_log_path(old_path),
+                    type(exc).__name__,
+                    safe_exception_call_chain(exc),
+                    exc_info=safe_exception_info(exc),
                 )
 
         transaction.on_commit(_cleanup_old_object, using=using)

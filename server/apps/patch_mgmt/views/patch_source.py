@@ -1,15 +1,7 @@
 """补丁源视图"""
 
-import logging
-
-from django.db import transaction
-from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
-from rest_framework.response import Response
-
-logger = logging.getLogger(__name__)
-
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import patch_mgmt_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.patch_mgmt.filters.patch_source import PatchSourceFilter
 from apps.patch_mgmt.models import PatchSource
@@ -22,6 +14,10 @@ from apps.patch_mgmt.services.patch_origin import snapshot_deleted_source
 from apps.patch_mgmt.services.target_access import GlobalSharedResourceMixin
 from apps.patch_mgmt.utils.i18n import patch_message
 from apps.patch_mgmt.utils.operation_log import log_source_changed
+from django.db import transaction
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.response import Response
 
 
 class PatchSourceViewSet(GlobalSharedResourceMixin, AuthViewSet):
@@ -214,13 +210,12 @@ class PatchSourceViewSet(GlobalSharedResourceMixin, AuthViewSet):
 
         同步执行，返回 {total, created, updated, ...}。
         """
-        from rest_framework import status as drf_status
-
         from apps.patch_mgmt.services.linux_repo_sync import RepoSyncError
         from apps.patch_mgmt.services.source_sync_service import (
             SourceSyncError,
             SourceSyncService,
         )
+        from rest_framework import status as drf_status
 
         source = self.get_object()
         if source.is_builtin:
@@ -267,10 +262,9 @@ class PatchSourceViewSet(GlobalSharedResourceMixin, AuthViewSet):
         请求体: {"search": "openssl", "page": 1, "page_size": 20}
         返回: {"items": [...], "total": N, "page": 1, "page_size": 20}
         """
-        from rest_framework import status as drf_status
-
         from apps.patch_mgmt.services.linux_repo_sync import RepoSyncError
         from apps.patch_mgmt.services.source_sync_service import SourceSyncError, SourceSyncService
+        from rest_framework import status as drf_status
 
         source = self.get_object()
         search = (request.data.get("search") or "").strip().lower()
@@ -318,12 +312,11 @@ class PatchSourceViewSet(GlobalSharedResourceMixin, AuthViewSet):
 
         请求体: {"keys": ["ALSA-2023:6595", "ALSA-2023:6593"]}
         """
-        from rest_framework import status as drf_status
-        from rest_framework.exceptions import ValidationError as DRFValidationError
-
         from apps.patch_mgmt.services.linux_repo_sync import RepoSyncError
         from apps.patch_mgmt.services.source_sync_service import SourceSyncError, SourceSyncService
         from apps.patch_mgmt.tasks import ingest_patch_source
+        from rest_framework import status as drf_status
+        from rest_framework.exceptions import ValidationError as DRFValidationError
 
         source = self.get_object()
         current_team = self._validate_current_team_permission(request)
@@ -413,10 +406,9 @@ class PatchSourceViewSet(GlobalSharedResourceMixin, AuthViewSet):
         请求体：{ "source_ids": [1, 2, 3] }
         返回：[{ "source_id": 1, "connectivity_status": "connected", ... }, ...]
         """
+        from apps.patch_mgmt.tasks import check_patch_source_connectivity
         from rest_framework import status as drf_status
         from rest_framework.exceptions import ValidationError as DRFValidationError
-
-        from apps.patch_mgmt.tasks import check_patch_source_connectivity
 
         self._validate_current_team_permission(request)
 

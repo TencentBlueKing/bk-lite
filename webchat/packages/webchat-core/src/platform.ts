@@ -1,4 +1,4 @@
-import type { Message, PlatformContract, WebChatConfig } from './types';
+import type { ChatState, Message, PlatformContract, WebChatConfig } from './types';
 import { assembleAguiHistoryParts, assembleAguiHistoryText } from './aguiHistoryText';
 
 const TEMPLATE_TOKEN = /\{(\w+)\}/g;
@@ -352,6 +352,44 @@ export function shouldFetchPlatformMessages(input: {
     return false;
   }
   return input.loadedSessionId !== input.sessionId;
+}
+
+export function isPersistedPlatformSession(
+  sessionId: string | null | undefined,
+  sessions: PlatformSession[]
+): boolean {
+  return Boolean(sessionId && sessions.some((item) => item.id === sessionId));
+}
+
+export function sessionTitleFromUserContent(content: Message['content'], max = 50): string {
+  let text = '';
+  if (typeof content === 'string') {
+    text = content;
+  } else if (Array.isArray(content)) {
+    text = content
+      .map((part) => (typeof part.message === 'string' ? part.message : part.text) || '')
+      .join('');
+  }
+  text = text.trim().replace(/\s+/g, ' ');
+  if (!text) return '新会话';
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+/** 发完一轮后才拉历史：握手阶段的 connected 不刷新，避免会话还没落库。 */
+export function shouldRefreshPlatformSessions(from: ChatState, to: ChatState): boolean {
+  return to === 'idle' || (from === 'chatting' && to === 'connected');
+}
+
+/** Drop a session from the list. If it was current, `currentId` becomes null. */
+export function removePlatformSession(
+  sessions: PlatformSession[],
+  deletedId: string,
+  currentId: string | null
+): { sessions: PlatformSession[]; currentId: string | null } {
+  return {
+    sessions: sessions.filter((item) => item.id !== deletedId),
+    currentId: currentId === deletedId ? null : currentId,
+  };
 }
 
 export function isRequiredPlatformContract(

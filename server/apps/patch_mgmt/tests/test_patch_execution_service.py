@@ -54,6 +54,47 @@ def test_reboot_command():
     assert pes._reboot_command(OSType.LINUX).startswith('nohup')
 
 
+@pytest.mark.unit
+def test_stale_result_uses_execution_token_for_fencing_without_logging_it(mocker):
+    execution_token = "execution-token-must-not-enter-logs"
+    host = SimpleNamespace(
+        pk=11,
+        stage="running",
+        execution_token=execution_token,
+        task_id=22,
+        target_id=33,
+        refresh_from_db=mocker.Mock(),
+    )
+    queryset = mocker.Mock()
+    queryset.update.return_value = 0
+    filter_hosts = mocker.patch.object(
+        pes.GovernanceTaskHost.objects,
+        "filter",
+        return_value=queryset,
+    )
+    warning = mocker.patch.object(pes.logger, "warning")
+
+    updated = pes._record_host_result(
+        host,
+        stage="failed",
+        stage_color="failed",
+    )
+
+    assert updated is False
+    filter_hosts.assert_called_once_with(
+        pk=11,
+        stage="running",
+        execution_token=execution_token,
+    )
+    warning.assert_called_once_with(
+        "event=patch_execution_stale_result_ignored task_id=%s target_id=%s current_stage=%s",
+        22,
+        33,
+        "running",
+    )
+    assert execution_token not in str(warning.call_args)
+
+
 @pytest.mark.django_db
 def test_install_commands_linux():
     """Linux 安装命令只使用预先识别出的原生包管理器。"""

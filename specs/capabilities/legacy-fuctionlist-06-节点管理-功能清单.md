@@ -133,7 +133,7 @@
 
 ### 5.1 内置采集器支持矩阵
 
-平台随包注册 **12 种**采集器（`collector.name` 去重），展开为 **17 条**操作系统/架构注册项（`support-files/collectors/*.json`）。CPU 架构当前全部为 **x86_64**（`NodeConstants` 同时定义 x86_64、arm64 两种架构与 amd64/aarch64 别名，但内置注册项仅含 x86_64）。
+平台随包注册 **12 种**采集器（`collector.name` 去重），展开为 **28 条**操作系统/架构注册项（`support-files/collectors/*.json`），其中 x86_64 与 arm64 均有内置包，不能再写成“仅 x86_64”。
 
 | 采集器 | Linux | Windows | 用途标签（tags） |
 |---|---|---|---|
@@ -173,7 +173,7 @@
 | 安装包文件扩展名 | `.tar.gz`、`.tgz`、`.zip`、`.tar`、`.gz`、`.exe`、`.deb`、`.rpm` |
 | 安装包唯一维度 | 操作系统 + CPU 架构 + 对象 + 版本（控制器默认包名 `fusion-collectors`） |
 
-> 说明：以上均取自节点管理源码常量与 support-files 注册数据。控制器常量声明 linux/arm64 注册项，而内置采集器注册项当前仅含 x86_64（如需 arm64 采集器需另行上传安装包）。源码中采集器与控制器均未标注 Beta，全部为 GA。NATS-Executor、Ansible-Executor 属执行类采集器（承载作业本地执行与 Ansible 任务），前端采集器列表默认隐藏其部分注册项。
+> 说明：以上均取自节点管理源码常量与 support-files 注册数据。内置采集器 28 条注册项为 linux/x86_64 11、linux/arm64 11、windows/x86_64 6，**不能**再写成采集器仅 x86_64；当前无 windows/arm64 内置包。源码中采集器与控制器均未标注 Beta，全部为 GA。NATS-Executor、Ansible-Executor 属执行类采集器（承载作业本地执行与 Ansible 任务），前端采集器列表默认隐藏其部分注册项。
 
 
 ## 六、枚举与对象取值明细附录
@@ -184,25 +184,25 @@
 
 | 枚举项 | 取值 | 中文含义 |
 |---|---|---|
-| x86_64 | `x86_64` | x86_64 架构（采集器实际仅此架构） |
-| arm64 | `arm64` | arm64 架构（控制器常量声明，采集器未实际提供） |
+| x86_64 | `x86_64` | x86_64 架构（linux/windows 内置采集器均有） |
+| arm64 | `arm64` | arm64 架构（linux 内置采集器 11 条；windows 无内置 arm64 包） |
 
 ### 内置采集器
 
 | 枚举项 | 取值 | 中文含义 |
 |---|---|---|
-| Telegraf | `telegraf` | 指标采集器，多源实时采集（支持 linux/windows，架构 x86_64） |
-| Vector | `vector` | 高性能可观测性数据管道（支持 linux/windows，架构 x86_64） |
-| Filebeat | `filebeat` | 轻量级日志采集转发器（支持 linux/windows，架构 x86_64） |
-| Auditbeat | `auditbeat` | 审计数据采集器（支持 linux，架构 x86_64） |
-| Packetbeat | `packetbeat` | 实时网络报文分析采集器（支持 linux/windows，架构 x86_64） |
-| Winlogbeat | `winlogbeat` | Windows 事件日志采集器（支持 windows，架构 x86_64） |
-| Snmptrapd | `snmptrapd` | SNMP Trap 接收采集器（支持 linux，架构 x86_64） |
-| NATS-Executor | `natsexecutor` | 基于 NATS 的任务调度执行器（支持 linux/windows，架构 x86_64） |
-| Ansible-Executor | `ansibleexecutor` | 轻量级 RPC sidecar，执行 Ansible 任务（支持 linux，架构 x86_64） |
-| JVM-JMX | `jvm-jmx` | JMX 监控采集工具（支持 linux，架构 x86_64） |
-| Kafka-Exporter | `kafka-exporter` | Kafka 指标导出采集器（支持 linux，架构 x86_64） |
-| Oracle-Exporter | `oracle-exporter` | Oracle 指标导出采集器（支持 linux，架构 x86_64） |
+| Telegraf | `telegraf` | 指标采集器，多源实时采集（linux x86_64/arm64，windows x86_64） |
+| Vector | `vector` | 高性能可观测性数据管道（linux x86_64/arm64，windows x86_64） |
+| Filebeat | `filebeat` | 轻量级日志采集转发器（linux x86_64/arm64，windows x86_64） |
+| Auditbeat | `auditbeat` | 审计数据采集器（linux x86_64/arm64） |
+| Packetbeat | `packetbeat` | 实时网络报文分析采集器（linux x86_64/arm64，windows x86_64） |
+| Winlogbeat | `winlogbeat` | Windows 事件日志采集器（windows x86_64） |
+| Snmptrapd | `snmptrapd` | SNMP Trap 接收采集器（linux x86_64/arm64） |
+| NATS-Executor | `natsexecutor` | 基于 NATS 的任务调度执行器（linux x86_64/arm64，windows x86_64） |
+| Ansible-Executor | `ansibleexecutor` | 轻量级 RPC sidecar，执行 Ansible 任务（linux x86_64/arm64） |
+| JVM-JMX | `jvm-jmx` | JMX 监控采集工具（linux x86_64/arm64） |
+| Kafka-Exporter | `kafka-exporter` | Kafka 指标导出采集器（linux x86_64/arm64） |
+| Oracle-Exporter | `oracle-exporter` | Oracle 指标导出采集器（linux x86_64/arm64） |
 
 ### 安装包类型
 

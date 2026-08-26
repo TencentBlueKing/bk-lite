@@ -1,9 +1,22 @@
 from types import SimpleNamespace
 
-from apps.core.utils.serializers import AuthSerializer
-from apps.mlops.models.anomaly_detection import *
-from apps.mlops.utils.i18n import serializer_message
 from rest_framework import serializers
+
+from apps.core.utils.serializers import AuthSerializer
+from apps.mlops.models.anomaly_detection import (
+    AnomalyDetectionDataset,
+    AnomalyDetectionDatasetRelease,
+    AnomalyDetectionServing,
+    AnomalyDetectionTrainData,
+    AnomalyDetectionTrainJob,
+)
+from apps.mlops.serializers.train_data_inline import (
+    BoundedInlineTrainDataListSerializer,
+    InlineTrainDataLimitExceeded,
+    consume_inline_records,
+    inline_csv_read_options,
+    open_inline_train_data,
+)
 from apps.mlops.utils.group_scope import (
     assert_dataset_version_scope,
     assert_parent_team_matches,
@@ -11,6 +24,7 @@ from apps.mlops.utils.group_scope import (
     get_current_team,
     validate_requested_teams,
 )
+from apps.mlops.utils.i18n import serializer_message
 
 
 class AnomalyDetectionDatasetSerializer(AuthSerializer):
@@ -32,6 +46,7 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
     class Meta:
         model = AnomalyDetectionTrainData
         fields = "__all__"  # 允许新增时包含所有字段
+        list_serializer_class = BoundedInlineTrainDataListSerializer
         extra_kwargs = {
             "name": {"required": False},
             "train_data": {"required": False},
@@ -62,7 +77,9 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
             required_columns = ["timestamp", "value", "label"]
             missing = set(required_columns) - set(df.columns)
             if missing:
-                raise serializers.ValidationError(serializer_message(self, "error.training_data_required_columns_missing", columns=", ".join(missing)))
+                raise serializers.ValidationError(
+                    serializer_message(self, "error.training_data_required_columns_missing", columns=", ".join(missing))
+                )
 
             # 检查数据类型
             if df["value"].isnull().any():
@@ -88,8 +105,9 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
         自定义返回数据，根据 include_train_data 参数动态控制 train_data 字段
         当 include_train_data=true 时，后端直接读取 CSV 并解析为结构化数据返回
         """
-        from apps.core.logger import mlops_logger as logger
         import pandas as pd
+
+        from apps.core.logger import mlops_logger as logger
 
         representation = super().to_representation(instance)
 
@@ -97,7 +115,18 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
         if self.include_train_data and instance.train_data:
             try:
                 # 读取 CSV 文件
-                df = pd.read_csv(instance.train_data.open("rb"))
+                train_data_stream = open_inline_train_data(instance.train_data, self)
+                csv_options, csv_cells = inline_csv_read_options(self, train_data_stream)
+                df = pd.read_csv(
+                    train_data_stream,
+                    **csv_options,
+                )
+                consume_inline_records(
+                    self,
+                    len(df),
+                    csv_columns=len(df.columns),
+                    csv_cells=csv_cells,
+                )
 
                 # 🔥 处理 timestamp 字段：转换为 Unix 时间戳（秒）
                 if "timestamp" in df.columns:
@@ -118,6 +147,8 @@ class AnomalyDetectionTrainDataSerializer(AuthSerializer):
                 representation["train_data"] = data_list
                 logger.info(f"Successfully loaded train_data for instance {instance.id}: {len(data_list)} rows")
 
+            except InlineTrainDataLimitExceeded:
+                raise
             except Exception as e:
                 logger.error(
                     f"Failed to read train_data for instance {instance.id}: {e}",
@@ -180,7 +211,9 @@ class AnomalyDetectionDatasetReleaseSerializer(AuthSerializer):
             allow_failed_retry = bool(train_file_id and val_file_id and test_file_id) and existing and existing.status == "failed"
 
             if existing and not allow_failed_retry:
-                raise serializers.ValidationError({"version": serializer_message(self, "error.dataset_release_version_exists", dataset_name=dataset.name, version=version)})
+                raise serializers.ValidationError(
+                    {"version": serializer_message(self, "error.dataset_release_version_exists", dataset_name=dataset.name, version=version)}
+                )
 
         return attrs
 
@@ -188,8 +221,6 @@ class AnomalyDetectionDatasetReleaseSerializer(AuthSerializer):
         """
         自定义创建方法，支持从文件ID创建数据集发布版本
         """
-        from apps.core.logger import mlops_logger as logger
-
         # 提取文件ID
         train_file_id = validated_data.pop("train_file_id", None)
         val_file_id = validated_data.pop("val_file_id", None)
@@ -233,7 +264,9 @@ class AnomalyDetectionDatasetReleaseSerializer(AuthSerializer):
                     release.save(update_fields=["status", "file_size", "metadata"])
                 else:
                     logger.info(f"数据集版本已存在 - Dataset: {dataset.id}, Version: {version}, Status: {existing.status}")
-                    raise serializers.ValidationError(serializer_message(self, "error.dataset_release_version_unavailable", dataset_name=dataset.name, version=version))
+                    raise serializers.ValidationError(
+                        serializer_message(self, "error.dataset_release_version_unavailable", dataset_name=dataset.name, version=version)
+                    )
             else:
                 # 创建 pending 状态的发布记录
                 validated_data["status"] = "pending"

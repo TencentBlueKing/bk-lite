@@ -61,6 +61,7 @@ export const useProviderApi = () => {
   const patchVendor = async (id: number, payload: Partial<ModelVendorPayload>) => ({ ...vendors[0], id, ...payload });
   const deleteVendor = async () => {};
   const testVendorConnection = async () => ({ success: true });
+  const syncVendorModels = async () => {};
 
   const fetchModelGroups = async () => groups;
   const createModelGroup = async (_type: string, payload: ModelGroupPayload) => ({ ...groups[0], ...payload, id: groups.length + 1 });
@@ -87,6 +88,7 @@ export const useProviderApi = () => {
     patchVendor,
     deleteVendor,
     testVendorConnection,
+    syncVendorModels,
     fetchModelGroups,
     createModelGroup,
     updateModelGroup,

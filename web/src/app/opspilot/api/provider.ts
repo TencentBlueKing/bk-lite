@@ -17,8 +17,13 @@ export const useProviderApi = () => {
     return get(`/opspilot/model_provider_mgmt/${type}/`, params ? { params } : undefined);
   };
 
-  const fetchModelsByVendor = async (type: string, vendorId: number): Promise<Model[]> => {
-    return get(`/opspilot/model_provider_mgmt/${type}/by_vendor/`, { params: { vendor: vendorId } });
+  const fetchModelsByVendor = async (type: string, vendorId: number, search?: string): Promise<Model[]> => {
+    const params: Record<string, unknown> = { vendor: vendorId };
+    const keyword = search?.trim();
+    if (keyword) {
+      params.search = keyword;
+    }
+    return get(`/opspilot/model_provider_mgmt/${type}/by_vendor/`, { params });
   };
 
   const fetchModelDetail = async (type: string, id: number): Promise<Model> => {
@@ -74,6 +79,12 @@ export const useProviderApi = () => {
     }
   };
 
+  const syncVendorModels = async (id: number): Promise<void> => {
+    await post(`/opspilot/model_provider_mgmt/model_vendor/${id}/sync_models/`, undefined, {
+      suppressErrorNotification: true,
+    });
+  };
+
   const fetchModelGroups = async (_type: string, provider_type?: string): Promise<ModelGroup[]> => {
     const params = provider_type ? { provider_type } : {};
     return get(`/opspilot/model_provider_mgmt/model_type/`, { params });
@@ -110,6 +121,7 @@ export const useProviderApi = () => {
     patchVendor,
     deleteVendor,
     testVendorConnection,
+    syncVendorModels,
     fetchModelGroups,
     createModelGroup,
     updateModelGroup,

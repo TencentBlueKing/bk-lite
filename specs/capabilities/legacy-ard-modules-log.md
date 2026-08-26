@@ -8,6 +8,10 @@
 日志采集配置、基于 VictoriaLogs 的查询管线、以及基于日志模式的告警策略执行。
 
 ## 2. 数据模型与存储【已实现/已存在】
+
+本轮补录：`LogExtractor`（六类抽取动作，按采集实例排序）、`SystemVectorConfigState` / `SystemVectorToken`（中心 Vector 配置拉取）、`UserHabit`（用户检索习惯）。路由：`log_extractors`、`open_api/system_vector`、`user_habits`。
+
+> 证据来源：server/apps/log/urls.py:33-35，server/apps/log/models/extractor.py:7-24　|　同步基线：61bace9f　|　【已实现】
 | 模型 | 文件 | 说明 |
 |------|------|------|
 | CollectType | `models/collect_type.py` | 采集方式（采集器、默认查询） |

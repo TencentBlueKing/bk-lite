@@ -12,7 +12,7 @@ from urllib.parse import parse_qs, urlparse
 import json_repair
 from deepagents import create_deep_agent
 from langchain_core.callbacks import adispatch_custom_event, dispatch_custom_event
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -119,6 +119,28 @@ def _safe_log_preview(content: str, max_len: int = 200) -> str:
     return str(content)[:max_len]
 
 
+def _image_urls(value) -> List[str]:
+    return [url for url in (value or []) if url]
+
+
+def human_message_with_images(text: str, image_urls) -> HumanMessage:
+    """当前轮或历史用户话：有图则拼多模态；无文本时不再塞天气示例句。"""
+    urls = _image_urls(image_urls)
+    if not urls:
+        return HumanMessage(content=text or "")
+    content: List[dict] = []
+    if str(text or "").strip():
+        content.append({"type": "text", "text": text})
+    for url in urls:
+        content.append({"type": "image_url", "image_url": {"url": url}})
+    return HumanMessage(content=content)
+
+
+def _request_current_image_urls(request) -> List[str]:
+    extra = ExtraConfig.from_raw(getattr(request, "extra_config", None))
+    return _image_urls(extra.current_image_data)
+
+
 def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
     """
     规范化消息列表，确保兼容 Qwen 等对消息顺序有严格要求的模型。
@@ -205,30 +227,10 @@ class BasicNode:
         """添加聊天历史到消息列表"""
         if config["configurable"]["graph_request"].chat_history:
             for chat in config["configurable"]["graph_request"].chat_history:
-                if chat.event == "user":
-                    if chat.image_data:
-                        # 构建多模态消息内容 (文本 + 多张图片)
-                        content = []
-
-                        # 添加文本部分
-                        if chat.message:
-                            content.append({"type": "text", "text": chat.message})
-                        else:
-                            content.append(
-                                {
-                                    "type": "text",
-                                    "text": "describe the weather in this image",
-                                }
-                            )
-
-                        # 添加图片列表 (chat.image_data 是列表)
-                        for image_url in chat.image_data:
-                            content.append({"type": "image_url", "image_url": {"url": image_url}})
-
-                        state["messages"].append(HumanMessage(content=content))
-                    else:
-                        state["messages"].append(HumanMessage(content=chat.message))
-                elif chat.event == "assistant":
+                event = str(getattr(chat, "event", "") or "").strip().lower()
+                if event == "user":
+                    state["messages"].append(human_message_with_images(chat.message, chat.image_data))
+                elif event in {"assistant", "bot"}:
                     state["messages"].append(AIMessage(content=chat.message))
         return state
 
@@ -637,7 +639,7 @@ class BasicNode:
                 logger.warning("问题改写失败，使用原始问题: %r", e)
                 user_message = request.user_message
 
-        state["messages"].append(HumanMessage(content=user_message))
+        state["messages"].append(human_message_with_images(user_message, _request_current_image_urls(request)))
         request.graph_user_message = user_message
         logger.info(
             "[%s] user_message_node 执行结束, appended_user_message(len=%s, preview=%r), message_count=%s",
@@ -3089,6 +3091,67 @@ class ToolsNodes(BasicNode):
             return f"{role}\n\n" "直接用中文简洁回答用户。" "本轮不需要调用工具或读取技能文件，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
         return f"{role}\n\n" "直接用中文简洁回答用户。" "当前没有可用工具与技能，不要假装调用工具或读写文件。" "严禁泄露密码、密钥、令牌等敏感信息。"
 
+    @staticmethod
+    def _is_unsupported_stream_usage_error(exc: BaseException) -> bool:
+        text = str(exc).casefold()
+        return "stream_options" in text or "include_usage" in text
+
+    @staticmethod
+    def _lightweight_chunk_text(chunk) -> str:
+        piece = getattr(chunk, "content", None)
+        if isinstance(piece, str):
+            return piece
+        if isinstance(piece, list):
+            parts = []
+            for block in piece:
+                if isinstance(block, str):
+                    parts.append(block)
+                elif isinstance(block, dict) and block.get("type") == "text":
+                    parts.append(str(block.get("text") or ""))
+            return "".join(parts)
+        return ""
+
+    @staticmethod
+    def _merge_lightweight_stream_response(merged: AIMessage | None, content_parts: list[str]) -> AIMessage:
+        if merged is None:
+            return AIMessage(content="".join(content_parts))
+        if str(merged.content or "").strip() or not content_parts:
+            return merged
+        return AIMessage(
+            content="".join(content_parts),
+            additional_kwargs=getattr(merged, "additional_kwargs", {}) or {},
+            response_metadata=getattr(merged, "response_metadata", {}) or {},
+            usage_metadata=getattr(merged, "usage_metadata", None),
+        )
+
+    async def _astream_lightweight_reply(self, astream, light_messages, config) -> AIMessage:
+        """流式直答：合并 chunk 以免终包 usage 被正文覆盖；优先带 include_usage。"""
+
+        async def _consume(stream) -> tuple[AIMessage | None, list[str]]:
+            content_parts: list[str] = []
+            merged: AIMessage | None = None
+            async for chunk in stream:
+                text = self._lightweight_chunk_text(chunk)
+                if text:
+                    content_parts.append(text)
+                if isinstance(chunk, AIMessageChunk):
+                    merged = chunk if merged is None else merged + chunk
+                elif isinstance(chunk, AIMessage) and not isinstance(merged, AIMessageChunk):
+                    merged = chunk
+            return merged, content_parts
+
+        try:
+            merged, content_parts = await _consume(astream(light_messages, config=config, stream_usage=True))
+            return self._merge_lightweight_stream_response(merged, content_parts)
+        except TypeError:
+            merged, content_parts = await _consume(astream(light_messages, config=config))
+            return self._merge_lightweight_stream_response(merged, content_parts)
+        except Exception as exc:
+            if not self._is_unsupported_stream_usage_error(exc):
+                raise
+            merged, content_parts = await _consume(astream(light_messages, config=config))
+            return self._merge_lightweight_stream_response(merged, content_parts)
+
     async def _invoke_lightweight_direct_reply(
         self,
         *,
@@ -3124,28 +3187,7 @@ class ToolsNodes(BasicNode):
             response: AIMessage | None = None
             astream = getattr(llm, "astream", None)
             if callable(astream):
-                content_parts: list[str] = []
-                async for chunk in astream(light_messages, config=config):
-                    piece = getattr(chunk, "content", None)
-                    if isinstance(piece, str) and piece:
-                        content_parts.append(piece)
-                    elif isinstance(piece, list):
-                        for block in piece:
-                            if isinstance(block, str):
-                                content_parts.append(block)
-                            elif isinstance(block, dict) and block.get("type") == "text":
-                                content_parts.append(str(block.get("text") or ""))
-                    if isinstance(chunk, AIMessage):
-                        response = chunk
-                if response is None:
-                    response = AIMessage(content="".join(content_parts))
-                elif not str(response.content or "").strip() and content_parts:
-                    response = AIMessage(
-                        content="".join(content_parts),
-                        additional_kwargs=getattr(response, "additional_kwargs", {}) or {},
-                        response_metadata=getattr(response, "response_metadata", {}) or {},
-                        usage_metadata=getattr(response, "usage_metadata", None),
-                    )
+                response = await self._astream_lightweight_reply(astream, light_messages, config)
             else:
                 response = await llm.ainvoke(light_messages, config=config)
                 if not isinstance(response, AIMessage):

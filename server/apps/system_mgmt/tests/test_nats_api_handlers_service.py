@@ -596,8 +596,22 @@ def test_search_channel_list_filters_nats_method_without_exposing_config():
             "name": "alert-center",
             "channel_type": "nats",
             "description": "d",
+            "supports_notify_person": False,
         }
     ]
+
+def test_search_channel_list_projects_notify_person_only_for_nats():
+    Channel.objects.create(name="nats-enabled", channel_type=ChannelChoices.NATS, config={"supports_notify_person": True}, description="d", team=[8])
+    Channel.objects.create(name="nats-disabled", channel_type=ChannelChoices.NATS, config={"supports_notify_person": "true"}, description="d", team=[8])
+    Channel.objects.create(name="email", channel_type=ChannelChoices.EMAIL, config={"supports_notify_person": True, "secret": "hidden"}, description="d", team=[8])
+
+    result = nats_api.search_channel_list(teams=[8])
+
+    by_name = {item["name"]: item for item in result["data"]}
+    assert by_name["nats-enabled"]["supports_notify_person"] is True
+    assert by_name["nats-disabled"]["supports_notify_person"] is False
+    assert "supports_notify_person" not in by_name["email"]
+    assert "secret" not in str(result)
 
 
 def test_search_channel_list_include_children():

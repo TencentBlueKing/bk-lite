@@ -3,11 +3,12 @@ import { Button, Tooltip } from 'antd';
 import {
   DownloadOutlined,
   EditOutlined,
+  FilterOutlined,
   FullscreenOutlined,
   MailOutlined,
   PlusOutlined,
+  ReloadOutlined,
   ShareAltOutlined,
-  SettingOutlined,
 } from '@ant-design/icons';
 
 import type { DirItem } from '@/app/ops-analysis/types';
@@ -36,6 +37,7 @@ interface DashboardToolbarProps {
   onToggleEditMode: () => void;
   onCancelEdit: () => void;
   onSave: () => void;
+  editExtra?: React.ReactNode;
   shareMode?: boolean;
   shareLoading?: boolean;
   onOpenShare?: () => void;
@@ -60,33 +62,119 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
   onToggleEditMode,
   onCancelEdit,
   onSave,
+  editExtra,
   shareMode = false,
   shareLoading = false,
   onOpenShare,
   onOpenSubscriptions,
 }) => {
   const { t } = useTranslation();
+  const iconButtonClassName =
+    'h-8 w-8 min-w-8 px-0! flex items-center justify-center';
+
+  if (!shareMode && isEditMode) {
+    const boxButtonStyle = {
+      borderColor: chartTheme.panelBorderColor,
+      color: 'var(--color-text-1)',
+      background: chartTheme.panelBg,
+    };
+
+    return (
+      <div className="flex items-center gap-2" data-export-hidden="true">
+        <div className="flex items-center gap-0.5">
+          <Tooltip title={t('common.fullscreen')}>
+            <Button
+              type="text"
+              icon={<FullscreenOutlined style={{ fontSize: 16 }} />}
+              aria-pressed={isFullscreen}
+              onClick={onToggleFullscreen}
+              className={iconButtonClassName}
+            />
+          </Tooltip>
+          <Tooltip title={t('common.refresh')}>
+            <Button
+              type="text"
+              icon={<ReloadOutlined style={{ fontSize: 16 }} />}
+              aria-label={t('common.refresh')}
+              onClick={onRefresh}
+              className={iconButtonClassName}
+            />
+          </Tooltip>
+          <PermissionWrapper requiredPermissions={['EditChart']}>
+            <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
+              <Button
+                type="text"
+                icon={<FilterOutlined style={{ fontSize: 16 }} />}
+                aria-label={t('dashboard.configUnifiedFilterFields')}
+                onClick={onOpenFilterConfig}
+                className={iconButtonClassName}
+              />
+            </Tooltip>
+          </PermissionWrapper>
+        </div>
+
+        <PermissionWrapper requiredPermissions={['EditChart']}>
+          <div className="flex items-center gap-2">
+            {editExtra}
+            <Button
+              type="default"
+              icon={<PlusOutlined />}
+              onClick={onOpenAddView}
+              style={boxButtonStyle}
+            >
+              {t('dashboard.viewShort')}
+            </Button>
+            <Button
+              type="default"
+              icon={<PlusOutlined />}
+              onClick={onOpenAddGroup}
+              style={boxButtonStyle}
+            >
+              {t('dashboard.groupShort')}
+            </Button>
+            <Button
+              type="default"
+              disabled={!selectedDashboard?.data_id}
+              onClick={onCancelEdit}
+              style={boxButtonStyle}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="primary"
+              loading={saving}
+              disabled={!selectedDashboard?.data_id}
+              onClick={onSave}
+            >
+              {t('common.save')}
+            </Button>
+          </div>
+        </PermissionWrapper>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-1.5" data-export-hidden="true">
-        <TimeSelector
-          onlyRefresh
-          frequenceValue={frequenceValue}
-          onRefresh={onRefresh}
-          onFrequenceChange={onFrequencyChange}
+      <TimeSelector
+        onlyRefresh
+        frequenceValue={frequenceValue}
+        onRefresh={onRefresh}
+        onFrequenceChange={onFrequencyChange}
+      />
+
+      <Tooltip title={t('common.fullscreen')}>
+        <Button
+          type="text"
+          icon={<FullscreenOutlined style={{ fontSize: 16 }} />}
+          aria-pressed={isFullscreen}
+          onClick={onToggleFullscreen}
+          className="rounded-full!"
         />
+      </Tooltip>
 
-        <Tooltip title={t('common.fullscreen')}>
-          <Button
-            type="text"
-            icon={<FullscreenOutlined style={{ fontSize: 16 }} />}
-            aria-pressed={isFullscreen}
-            onClick={onToggleFullscreen}
-            className="rounded-full!"
-          />
-        </Tooltip>
-
-        {!shareMode && !isEditMode && (
+      {!shareMode && (
+        <>
           <Tooltip title={t('dashboard.exportPdf')}>
             <Button
               type="text"
@@ -96,80 +184,30 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
               className="rounded-full!"
             />
           </Tooltip>
-        )}
-
-        {!shareMode && !isEditMode && onOpenShare && (
-          <Tooltip title={t('dashboard.share')}>
-            <Button
-              type="text"
-              icon={<ShareAltOutlined />}
-              loading={shareLoading}
-              disabled={shareLoading}
-              onClick={onOpenShare}
-              className="rounded-full!"
-            />
-          </Tooltip>
-        )}
-
-        {!shareMode && !isEditMode && onOpenSubscriptions && (
-          <Tooltip title={t('dashboard.subscriptionTitle')}>
-            <Button
-              type="text"
-              icon={<MailOutlined aria-hidden="true" />}
-              aria-label={t('dashboard.subscriptionTitle')}
-              onClick={onOpenSubscriptions}
-              className="rounded-full!"
-            />
-          </Tooltip>
-        )}
-
-        {!shareMode && isEditMode && (
-          <>
-            <PermissionWrapper requiredPermissions={['EditChart']}>
-              <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
-                <Button
-                  type="text"
-                  icon={<SettingOutlined style={{ fontSize: 16 }} />}
-                  onClick={onOpenFilterConfig}
-                  className="rounded-full!"
-                />
-              </Tooltip>
-            </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={['EditChart']}>
+          {onOpenShare && (
+            <Tooltip title={t('dashboard.share')}>
               <Button
-                type="default"
-                icon={<PlusOutlined />}
-                onClick={onOpenAddView}
+                type="text"
+                icon={<ShareAltOutlined />}
+                loading={shareLoading}
+                disabled={shareLoading}
+                onClick={onOpenShare}
                 className="rounded-full!"
-                style={{
-                  borderColor: chartTheme.panelBorderColor,
-                  color: 'var(--color-text-1)',
-                  background: chartTheme.panelBg,
-                }}
-              >
-                {t('dashboard.addView')}
-              </Button>
-            </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={['EditChart']}>
+              />
+            </Tooltip>
+          )}
+          {onOpenSubscriptions && (
+            <Tooltip title={t('dashboard.subscriptionTitle')}>
               <Button
-                type="default"
-                icon={<PlusOutlined />}
-                onClick={onOpenAddGroup}
+                type="text"
+                icon={<MailOutlined aria-hidden="true" />}
+                aria-label={t('dashboard.subscriptionTitle')}
+                onClick={onOpenSubscriptions}
                 className="rounded-full!"
-                style={{
-                  borderColor: chartTheme.panelBorderColor,
-                  color: 'var(--color-text-1)',
-                  background: chartTheme.panelBg,
-                }}
-              >
-                {t('dashboard.addGroup')}
-              </Button>
-            </PermissionWrapper>
-          </>
-        )}
-
-        {!shareMode && <PermissionWrapper requiredPermissions={['EditChart']}>
-          {!isEditMode ? (
+              />
+            </Tooltip>
+          )}
+          <PermissionWrapper requiredPermissions={['EditChart']}>
             <Tooltip title={t('common.edit')}>
               <Button
                 type="text"
@@ -184,27 +222,9 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
                 className="rounded-full!"
               />
             </Tooltip>
-          ) : (
-            <div className="flex items-center gap-2 ml-4">
-              <Button
-                disabled={!selectedDashboard?.data_id}
-                onClick={onCancelEdit}
-                className="rounded-full!"
-              >
-                {t('common.cancel')}
-              </Button>
-              <Button
-                type="primary"
-                loading={saving}
-                disabled={!selectedDashboard?.data_id}
-                onClick={onSave}
-                className="rounded-full!"
-              >
-                {t('common.save')}
-              </Button>
-            </div>
-          )}
-        </PermissionWrapper>}
+          </PermissionWrapper>
+        </>
+      )}
     </div>
   );
 };

@@ -632,7 +632,7 @@ class TargetCollectionExecutor:
             error_code = preflight.error_code or "target_unreachable"
             if log_failure_detail:
                 logger.warning(
-                    "🚫 event=target_unreachable task_id=%s plugin_ref=%s "
+                    "event=target_unreachable task_id=%s plugin_ref=%s "
                     "model_id=%s target=%s "
                     "reason=%s detail=%s",
                     request.task_id,
@@ -991,7 +991,7 @@ class TargetCollectionExecutor:
                 error_code=error_code,
             )
             logger.debug(
-                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "event=access_probe_failed task_id=%s plugin_ref=%s "
                 "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s action=rotate",
                 request.task_id,
@@ -1013,7 +1013,7 @@ class TargetCollectionExecutor:
         if access.status == AccessProbeStatus.NO_RESPONSE:
             no_response_attempts += 1
             logger.debug(
-                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "event=access_probe_failed task_id=%s plugin_ref=%s "
                 "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s "
                 "no_response_attempts=%s",
@@ -1044,7 +1044,7 @@ class TargetCollectionExecutor:
             )
         if access.status == AccessProbeStatus.TARGET_UNREACHABLE:
             logger.debug(
-                "🚫 event=target_unreachable task_id=%s plugin_ref=%s "
+                "event=target_unreachable task_id=%s plugin_ref=%s "
                 "model_id=%s target=%s "
                 "credential_id=%s reason=%s",
                 request.task_id,
@@ -1067,7 +1067,7 @@ class TargetCollectionExecutor:
             )
         if access.status == AccessProbeStatus.RATE_LIMITED:
             logger.debug(
-                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "event=access_probe_failed task_id=%s plugin_ref=%s "
                 "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s action=defer",
                 request.task_id,
@@ -1096,7 +1096,7 @@ class TargetCollectionExecutor:
             AccessProbeStatus.MISCONFIGURED,
         }:
             logger.debug(
-                "🚫 event=access_probe_failed task_id=%s plugin_ref=%s "
+                "event=access_probe_failed task_id=%s plugin_ref=%s "
                 "model_id=%s target=%s "
                 "credential_id=%s probe_status=%s error_code=%s action=stop",
                 request.task_id,

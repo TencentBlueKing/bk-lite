@@ -14,13 +14,11 @@
 3. 配合 CONN_MAX_AGE=0 使用，确保不复用连接
 """
 
-import logging
 import os
 import threading
 
+from apps.core.logger import logger
 from django.db import connections
-
-logger = logging.getLogger(__name__)
 
 # 只在达梦数据库环境下启用
 _IS_DAMENG = os.getenv("DB_ENGINE", "").lower() == "dameng"

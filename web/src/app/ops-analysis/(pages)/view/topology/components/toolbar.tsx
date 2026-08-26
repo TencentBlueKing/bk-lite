@@ -44,6 +44,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
   frequenceValue = 0,
   onCancel,
   onFilterConfig,
+  editExtra,
 }) => {
   const { t } = useTranslation();
   const iconButtonClassName =
@@ -52,171 +53,167 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
 
   return (
     <div className="flex items-center gap-1.5">
-        <div className="flex items-center gap-0.5">
-          <Tooltip title={t('topology.zoomIn')}>
-            <Button
-              type="text"
-              icon={<ZoomInOutlined className={iconClassName} />}
-              onClick={onZoomIn}
-              className={iconButtonClassName}
-            />
-          </Tooltip>
-          <Tooltip title={t('topology.zoomOut')}>
-            <Button
-              type="text"
-              icon={<ZoomOutOutlined className={iconClassName} />}
-              onClick={onZoomOut}
-              className={iconButtonClassName}
-            />
-          </Tooltip>
-          <Tooltip title={t('topology.fitView')}>
-            <Button
-              type="text"
-              icon={<PlusSquareOutlined className={iconClassName} />}
-              onClick={onFit}
-              className={iconButtonClassName}
-            />
-          </Tooltip>
-          <Tooltip
-            title={
-              isFullscreen ? t('common.exitFullscreen') : t('common.fullscreen')
-            }
-          >
-            <Button
-              type="text"
-              icon={
-                isFullscreen ? (
-                  <FullscreenExitOutlined className={iconClassName} />
-                ) : (
-                  <FullscreenOutlined className={iconClassName} />
-                )
-              }
-              onClick={onFullscreenToggle}
-              className={iconButtonClassName}
-            />
-          </Tooltip>
-        </div>
-
-        {!shareMode && isEditMode && (
-          <div className="ml-0.5 flex items-center gap-0.5">
-            <Tooltip title={t('topology.undo')}>
-              <Button
-                type="text"
-                icon={<UndoOutlined className={iconClassName} />}
-                onClick={onUndo}
-                disabled={!canUndo}
-                className={iconButtonClassName}
-              />
-            </Tooltip>
-            <Tooltip title={t('topology.redo')}>
-              <Button
-                type="text"
-                icon={<RedoOutlined className={iconClassName} />}
-                onClick={onRedo}
-                disabled={!canRedo}
-                className={iconButtonClassName}
-              />
-            </Tooltip>
-            <Tooltip title={t('topology.selectMode')}>
-              <Button
-                type="text"
-                icon={<SelectOutlined className={iconClassName} />}
-                onClick={onSelectMode}
-                className={iconButtonClassName}
-                style={{
-                  backgroundColor: isSelectMode ? '#1677ff15' : 'transparent',
-                  color: isSelectMode ? '#1677ff' : undefined,
-                }}
-              />
-            </Tooltip>
-            <Tooltip title={t('topology.deleteSelected')}>
-              <Button
-                type="text"
-                aria-label={t('topology.deleteSelected')}
-                icon={
-                  <DeleteOutlined aria-hidden="true" className={iconClassName} />
-                }
-                onClick={onDelete}
-                className={iconButtonClassName}
-              />
-            </Tooltip>
-            {onFilterConfig && (
-              <PermissionWrapper requiredPermissions={['EditChart']}>
-                <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
-                  <Button
-                    type="text"
-                    aria-label={t('dashboard.configUnifiedFilterFields')}
-                    icon={
-                      <SettingOutlined
-                        aria-hidden="true"
-                        className={iconClassName}
-                      />
-                    }
-                    onClick={onFilterConfig}
-                    className={iconButtonClassName}
-                  />
-                </Tooltip>
-              </PermissionWrapper>
-            )}
-          </div>
-        )}
-
-        {/* 刷新控件 */}
-        {onRefresh && onFrequencyChange && (
-          <TimeSelector
-            onlyRefresh={true}
-            frequenceValue={frequenceValue}
-            onRefresh={onRefresh}
-            onFrequenceChange={onFrequencyChange}
+      <div className="flex items-center gap-0.5">
+        <Tooltip title={t('topology.zoomIn')}>
+          <Button
+            type="text"
+            icon={<ZoomInOutlined className={iconClassName} />}
+            onClick={onZoomIn}
+            className={iconButtonClassName}
           />
-        )}
+        </Tooltip>
+        <Tooltip title={t('topology.zoomOut')}>
+          <Button
+            type="text"
+            icon={<ZoomOutOutlined className={iconClassName} />}
+            onClick={onZoomOut}
+            className={iconButtonClassName}
+          />
+        </Tooltip>
+        <Tooltip title={t('topology.fitView')}>
+          <Button
+            type="text"
+            icon={<PlusSquareOutlined className={iconClassName} />}
+            onClick={onFit}
+            className={iconButtonClassName}
+          />
+        </Tooltip>
+        <Tooltip
+          title={
+            isFullscreen ? t('common.exitFullscreen') : t('common.fullscreen')
+          }
+        >
+          <Button
+            type="text"
+            icon={
+              isFullscreen ? (
+                <FullscreenExitOutlined className={iconClassName} />
+              ) : (
+                <FullscreenOutlined className={iconClassName} />
+              )
+            }
+            onClick={onFullscreenToggle}
+            className={iconButtonClassName}
+          />
+        </Tooltip>
+      </div>
 
-        {!shareMode && !isEditMode && onOpenShare && (
-          <Tooltip title={t('dashboard.share')}>
+      {!shareMode && isEditMode && (
+        <div className="ml-0.5 flex items-center gap-0.5">
+          <Tooltip title={t('topology.undo')}>
             <Button
               type="text"
-              icon={<ShareAltOutlined className={iconClassName} />}
-              loading={shareLoading}
-              disabled={shareLoading}
-              aria-label={t('dashboard.share')}
-              onClick={onOpenShare}
+              icon={<UndoOutlined className={iconClassName} />}
+              onClick={onUndo}
+              disabled={!canUndo}
               className={iconButtonClassName}
             />
           </Tooltip>
-        )}
-
-        {!shareMode && (
-          <div>
+          <Tooltip title={t('topology.redo')}>
+            <Button
+              type="text"
+              icon={<RedoOutlined className={iconClassName} />}
+              onClick={onRedo}
+              disabled={!canRedo}
+              className={iconButtonClassName}
+            />
+          </Tooltip>
+          <Tooltip title={t('topology.selectMode')}>
+            <Button
+              type="text"
+              icon={<SelectOutlined className={iconClassName} />}
+              onClick={onSelectMode}
+              className={iconButtonClassName}
+              style={{
+                backgroundColor: isSelectMode ? '#1677ff15' : 'transparent',
+                color: isSelectMode ? '#1677ff' : undefined,
+              }}
+            />
+          </Tooltip>
+          <Tooltip title={t('topology.deleteSelected')}>
+            <Button
+              type="text"
+              aria-label={t('topology.deleteSelected')}
+              icon={
+                <DeleteOutlined aria-hidden="true" className={iconClassName} />
+              }
+              onClick={onDelete}
+              className={iconButtonClassName}
+            />
+          </Tooltip>
+          {onFilterConfig && (
             <PermissionWrapper requiredPermissions={['EditChart']}>
-              {isEditMode ? (
-                <div className="flex items-center gap-2 ml-2">
-                  {onCancel && (
-                    <Button onClick={onCancel} className="rounded-full!">
-                      {t('common.cancel')}
-                    </Button>
-                  )}
-                  <Button
-                    type="primary"
-                    onClick={onSave}
-                    className="rounded-full!"
-                  >
-                    {t('common.save')}
-                  </Button>
-                </div>
-              ) : (
-                <Tooltip title={t('common.edit')}>
-                  <Button
-                    type="text"
-                    icon={<EditOutlined className={iconClassName} />}
-                    onClick={onEdit}
-                    disabled={selectedTopology?.is_build_in}
-                    className="rounded-full!"
-                  />
-                </Tooltip>
-              )}
+              <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
+                <Button
+                  type="text"
+                  aria-label={t('dashboard.configUnifiedFilterFields')}
+                  icon={
+                    <SettingOutlined
+                      aria-hidden="true"
+                      className={iconClassName}
+                    />
+                  }
+                  onClick={onFilterConfig}
+                  className={iconButtonClassName}
+                />
+              </Tooltip>
             </PermissionWrapper>
-          </div>
-        )}
+          )}
+        </div>
+      )}
+
+      {onRefresh && onFrequencyChange && (
+        <TimeSelector
+          onlyRefresh={true}
+          frequenceValue={frequenceValue}
+          onRefresh={onRefresh}
+          onFrequenceChange={onFrequencyChange}
+        />
+      )}
+
+      {!shareMode && !isEditMode && onOpenShare && (
+        <Tooltip title={t('dashboard.share')}>
+          <Button
+            type="text"
+            icon={<ShareAltOutlined className={iconClassName} />}
+            loading={shareLoading}
+            disabled={shareLoading}
+            aria-label={t('dashboard.share')}
+            onClick={onOpenShare}
+            className={iconButtonClassName}
+          />
+        </Tooltip>
+      )}
+
+      {!shareMode && (
+        <div>
+          <PermissionWrapper requiredPermissions={['EditChart']}>
+            {isEditMode ? (
+              <div className="ml-2 flex items-center gap-2">
+                {editExtra}
+                {onCancel && (
+                  <Button onClick={onCancel} className="rounded-full!">
+                    {t('common.cancel')}
+                  </Button>
+                )}
+                <Button type="primary" onClick={onSave} className="rounded-full!">
+                  {t('common.save')}
+                </Button>
+              </div>
+            ) : (
+              <Tooltip title={t('common.edit')}>
+                <Button
+                  type="text"
+                  icon={<EditOutlined className={iconClassName} />}
+                  onClick={onEdit}
+                  disabled={selectedTopology?.is_build_in}
+                  className="rounded-full!"
+                />
+              </Tooltip>
+            )}
+          </PermissionWrapper>
+        </div>
+      )}
     </div>
   );
 };

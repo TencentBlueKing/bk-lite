@@ -8,11 +8,8 @@
     在 CoreConfig.ready() 中调用 apply_patches() 即可。
 """
 
-import logging
-
+from apps.core.logger import logger
 from django.conf import settings
-
-logger = logging.getLogger(__name__)
 
 # 引擎关键字 → 补丁模块映射
 # 新增数据库引擎时，只需在此处添加映射并创建对应的 .py 文件

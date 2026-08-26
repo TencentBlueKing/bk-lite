@@ -71,6 +71,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     placeholder = 'Type a message...',
     enableStorage = true,
     storageKey = 'webchat_session',
+    storageScope,
     onStateChange,
     onMessageReceived,
     onError,
@@ -100,7 +101,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     imageReadConcurrency,
     allowUnknownImagePreview,
     collectContext,
-    hasPageContext,
   } = normalizeWebChatConfig(props) as ChatProps;
   const imageBudget = React.useMemo(
     () => resolveImageBudget({
@@ -131,8 +131,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const [imageSelectionError, setImageSelectionError] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useState<PendingImage[]>([]);
   const [hitlEvent, setHitlEvent] = useState<CustomProtocolEvent | null>(null);
-  const [attachPageContext, setAttachPageContext] = useState(true);
-  const [pageContextAvailable, setPageContextAvailable] = useState(false);
 
   // Refs
   const sessionManagerRef = useRef<SessionManager | null>(null);
@@ -166,32 +164,22 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     onMessageReceivedRef.current = onMessageReceived;
   }, [onMessageReceived]);
 
-  useEffect(() => {
-    if (!collectContext && !hasPageContext) {
-      setPageContextAvailable(false);
-      return undefined;
-    }
-    const probe = () => {
-      try {
-        setPageContextAvailable(hasPageContext ? Boolean(hasPageContext()) : Boolean(collectContext));
-      } catch {
-        setPageContextAvailable(false);
-      }
-    };
-    probe();
-    const timer = window.setInterval(probe, 1000);
-    return () => window.clearInterval(timer);
-  }, [collectContext, hasPageContext]);
-
   // Initialize core components
   useEffect(() => {
     const streamLifecycle = streamLifecycleRef.current;
     streamLifecycle?.mount();
+    handleAGUIEvent.cancelPendingText();
+    streamingContentRef.current = '';
+    currentMessageIdRef.current = null;
+    setIsLoading(false);
+    setIsThinking(false);
+    setHitlEvent(null);
 
     // Initialize SessionManager
     sessionManagerRef.current = new SessionManager({
       enableStorage,
       storageKey,
+      storageScope,
       customData,
     });
 
@@ -207,12 +195,11 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     const aguiSubscription = setupAGUIEventHandlers();
     // Load previous session
     const session = sessionManagerRef.current.initSession();
-    if (initialMessages && initialMessages.length > 0) {
-      session.messages = initialMessages;
-      setMessages(initialMessages);
-    } else if (session && session.messages.length > 0) {
-      setMessages(session.messages);
-    }
+    const restoredMessages = initialMessages && initialMessages.length > 0
+      ? [...initialMessages]
+      : [...session.messages];
+    session.messages = [...restoredMessages];
+    setMessages(restoredMessages);
 
     return () => {
       handleAGUIEvent.cancelPendingText();
@@ -223,7 +210,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       unsubscribeState();
       stateMachineRef.current?.destroy();
     };
-  }, [cancelPendingImageBatches]);
+  }, [cancelPendingImageBatches, enableStorage, storageKey, storageScope]);
 
   // Setup AG-UI event handlers
   const setupAGUIEventHandlers = () => {
@@ -546,9 +533,9 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         // Get current session data
         const currentSession = sessionManagerRef.current?.getSession();
         let pageContext: unknown = null;
-        if (attachPageContext && collectContext) {
+        if (collectContext) {
           try {
-            pageContext = await collectContext();
+            pageContext = await collectContext({ message: value.trim() });
           } catch (error) {
             console.warn('page context collect failed', error);
           }
@@ -614,6 +601,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
             handleAGUIEvent.flushPendingText();
             setIsLoading(false);
             setIsThinking(false);
+            stateMachineRef.current?.transition('connected');
           },
         });
       } else {
@@ -652,7 +640,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     apiKey,
     credentials,
     requestHeaders,
-    attachPageContext,
     collectContext,
   ]);
 
@@ -881,23 +868,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
             {imageSelectionError}
           </p>
         )}
-        {pageContextAvailable && collectContext ? (
-          <div className="px-4 pt-2">
-            <button
-              type="button"
-              title="图表理解需要模型支持多模态；关闭后本次对话不采集当前页面"
-              onClick={() => setAttachPageContext((value) => !value)}
-              className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs"
-              style={{
-                borderColor: attachPageContext ? WC.indigo : WC.botBorder,
-                color: attachPageContext ? WC.indigo : WC.muted,
-                background: attachPageContext ? WC.primaryBg : 'transparent',
-              }}
-            >
-              {attachPageContext ? '已附加当前页面' : '未附加当前页面'}
-            </button>
-          </div>
-        ) : null}
         {uploadedImages.length > 0 && (
           <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2">
             {uploadedImages.map((img, index) => (

@@ -1,4 +1,3 @@
-import logging
 import os
 import re
 import shutil
@@ -8,9 +7,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
-
-logger = logging.getLogger("apps.opspilot.skill_package.importer")
-
+from apps.core.logger import opspilot_logger as logger
 
 DEFAULT_SKILL_PACKAGE_ROOT = Path(__file__).resolve().parents[4] / ".skill" / "packages"
 

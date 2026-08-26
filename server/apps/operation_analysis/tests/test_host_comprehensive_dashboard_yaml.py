@@ -114,16 +114,16 @@ def test_sample_yaml_parses_and_has_no_health_kpi():
     assert max_memory["valueConfig"]["descriptionField"] == "max_memory_host"
 
     filter_ids = {item["id"] for item in dashboard.filters}
-    assert filter_ids == {"instance_ids__stringList", "time__timeRange"}
-    host_filter = next(item for item in dashboard.filters if item["id"] == "instance_ids__stringList")
-    assert host_filter["type"] == "stringList"
+    assert filter_ids == {"instance_ids__string", "time__timeRange"}
+    host_filter = next(item for item in dashboard.filters if item["id"] == "instance_ids__string")
+    assert host_filter["type"] == "string"
     assert host_filter["inputConfig"]["multiple"] is True
     assert host_filter["inputConfig"]["picker"] == "table"
     assert host_filter["inputConfig"]["optionsSource"]["sourceRef"]["value"] == "monitor/get_host_instance_list"
 
     for item in widgets:
         bindings = item["valueConfig"]["filterBindings"]
-        assert bindings.get("instance_ids__stringList") is True
+        assert bindings.get("instance_ids__string") is True
         if item["valueConfig"]["chartType"] == "line":
             assert bindings.get("time__timeRange") is True
         else:

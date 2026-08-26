@@ -427,6 +427,74 @@ class TestIntegrationInstanceViewSet:
         provider_keys = {item["key"] for item in response.data}
         assert {"feishu", "wechat"}.issubset(provider_keys)
 
+    def test_providers_follow_account_locale_when_auth_user_locale_differs(
+        self, api_client, authenticated_user
+    ):
+        from apps.system_mgmt.models import User as AccountUser
+
+        authenticated_user.is_superuser = True
+        authenticated_user.permission = {"system-manager": {"integration_center-View"}}
+        authenticated_user.locale = "zh-Hans"
+        authenticated_user.save(update_fields=["is_superuser", "locale"])
+        AccountUser.objects.create(
+            username=authenticated_user.username,
+            domain=authenticated_user.domain,
+            locale="en",
+            email="testuser@example.com",
+            display_name="testuser",
+            password="x",
+        )
+
+        response = api_client.get("/api/v1/system_mgmt/integration_instance/providers/")
+        providers = {item["key"]: item for item in response.data}
+        assert providers["feishu"]["name"] == "Feishu"
+        connection_fields = {
+            field["key"]: field
+            for group in providers["ad"]["instance_templates"]["base_connection"]["groups"]
+            for field in group["fields"]
+        }
+        assert connection_fields["connection_url"]["label"] == "Server IP"
+
+    def test_providers_localizes_name_and_description(self, api_client, authenticated_user):
+        authenticated_user.is_superuser = True
+        authenticated_user.permission = {"system-manager": {"integration_center-View"}}
+        authenticated_user.save(update_fields=["is_superuser"])
+
+        authenticated_user.locale = "zh-Hans"
+        authenticated_user.save(update_fields=["locale"])
+        zh_response = api_client.get("/api/v1/system_mgmt/integration_instance/providers/")
+        zh_providers = {item["key"]: item for item in zh_response.data}
+        assert zh_providers["feishu"]["name"] == "飞书"
+        assert "登录认证" in zh_providers["feishu"]["description"]
+        assert zh_providers["wechat"]["name"] == "微信"
+        zh_ad_fields = {
+            field["key"]: field
+            for group in zh_providers["ad"]["instance_templates"]["base_connection"]["groups"]
+            for field in group["fields"]
+        }
+        assert zh_ad_fields["connection_url"]["label"] == "服务器 IP"
+
+        authenticated_user.locale = "en"
+        authenticated_user.save(update_fields=["locale"])
+        en_response = api_client.get("/api/v1/system_mgmt/integration_instance/providers/")
+        en_providers = {item["key"]: item for item in en_response.data}
+        assert en_providers["feishu"]["name"] == "Feishu"
+        assert "login authentication" in en_providers["feishu"]["description"]
+
+        ad = en_providers["ad"]
+        connection_fields = {
+            field["key"]: field
+            for group in ad["instance_templates"]["base_connection"]["groups"]
+            for field in group["fields"]
+        }
+        assert connection_fields["connection_url"]["label"] == "Server IP"
+        identity = next(
+            field
+            for field in next(cap for cap in ad["capabilities"] if cap["key"] == "login_auth")["connection_template"]
+            if field["key"] == "login_auth_identity_field"
+        )
+        assert identity["label"] == "Login account type"
+
     def test_status_returns_current_instance_status(self, api_client, authenticated_user, draft_instance):
         authenticated_user.is_superuser = True
         authenticated_user.permission = {"system-manager": {"integration_center-View"}}
@@ -553,6 +621,7 @@ class TestIntegrationInstanceViewSet:
             "login_auth": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
             "user_sync": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
             "im_notification": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
+            "im_group": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
         }
         mock_logger.warning.assert_not_called()
         assert "test_connection: failed" in str(mock_logger.debug.call_args_list)

@@ -37,9 +37,22 @@ def _deliver_payload(kind: str, payload: dict, *, delivery_claim=None) -> None:
     if outbox_handlers.deliver(kind, payload, delivery_claim=delivery_claim):
         return
     if kind == "notification":
+        from apps.alerts.constants.constants import NotifyResultStatus
+        from apps.alerts.service.notify_service import NotifyResultService
         from apps.alerts.tasks import sync_notify
 
-        sync_notify(payload.get("params") or [])
+        params = payload.get("params") or []
+        results = sync_notify(params)
+        if (
+            params
+            and isinstance(results, list)
+            and len(results) == len(params)
+            and all(
+                NotifyResultService.classify_notify_result(result) == NotifyResultStatus.FAILED
+                for result in results
+            )
+        ):
+            raise RuntimeError("all notification channels failed")
         return
     if kind == "action":
         from apps.alerts.tasks.action_tasks import process_alert_actions

@@ -113,10 +113,10 @@ class TestProcessChatHistory:
         assert out[0]["event"] == "bot"
         assert out[0]["message"] == "line1\nline2"
 
-    def test_trailing_image_data_appended(self):
+    def test_trailing_image_data_not_appended_as_empty_turn(self):
         history = [{"event": "user", "message": "上一句"}]
         out = HistoryService.process_chat_history(history, window_size=10, image_data=["new_img"])
-        assert out[-1] == {"event": "user", "message": "", "image_data": ["new_img"]}
+        assert out == [{"event": "user", "message": "上一句"}]
 
     def test_role_content_openai_shape_accepted(self):
         history = [

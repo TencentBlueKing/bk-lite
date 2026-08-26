@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import os
 import re
 import tempfile
@@ -9,10 +8,7 @@ from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
-from django.conf import settings
-from django.db import transaction
-from django.utils import timezone
-
+from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.models.subscription_models import (
     DashboardReportExecution,
     DashboardReportExecutionSnapshot,
@@ -27,8 +23,9 @@ from apps.operation_analysis.services.dashboard_report_renderer import (
 from apps.operation_analysis.services.render_token_service import (
     DashboardReportRenderTokenService,
 )
-
-logger = logging.getLogger(__name__)
+from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
 
 
 class DashboardReportRenderService:

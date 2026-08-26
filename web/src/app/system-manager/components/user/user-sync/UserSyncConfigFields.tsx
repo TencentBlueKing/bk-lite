@@ -262,19 +262,36 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
       ? t('system.integrationCenter.keepSecretPlaceholder')
       : field.placeholder || undefined;
     const wrapperClassName = field.field_type === 'textarea' ? 'md:col-span-2' : '';
+    const isPullDnsListField = field.key === 'root_dns' || field.key === 'root_dn';
 
     if (field.key === rootDepartmentFieldKey) {
       if (inputMode === 'manual_input') {
+        const isTextArea = field.field_type === 'textarea';
         return (
-          <div key={field.key} className={wrapperClassName}>
+          <div key={field.key} className={isTextArea ? 'md:col-span-2' : wrapperClassName}>
             <Form.Item
               name={namePath}
               label={field.label}
               required={field.required}
               rules={rules}
-              tooltip={field.help_text || undefined}
+              extra={isPullDnsListField && field.help_text ? field.help_text : undefined}
+              tooltip={!isPullDnsListField && field.help_text ? field.help_text : undefined}
             >
-              <Input placeholder={placeholder} />
+              {isTextArea ? (
+                <Input.TextArea
+                  placeholder={placeholder}
+                  autoSize={isPullDnsListField ? { minRows: 2, maxRows: 8 } : { minRows: 3, maxRows: 8 }}
+                  // 长 DN 横向滚动，避免视觉折行被误当成「多行 / 多个 DN」
+                  wrap={isPullDnsListField ? 'off' : undefined}
+                  className={
+                    isPullDnsListField
+                      ? 'font-mono text-[13px] leading-6 whitespace-nowrap overflow-x-auto'
+                      : undefined
+                  }
+                />
+              ) : (
+                <Input placeholder={placeholder} />
+              )}
             </Form.Item>
           </div>
         );
@@ -333,7 +350,10 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
               rules={rules}
               tooltip={field.help_text || undefined}
             >
-              <Input.TextArea rows={4} placeholder={placeholder} />
+              <Input.TextArea
+                autoSize={{ minRows: 3, maxRows: 8 }}
+                placeholder={placeholder}
+              />
             </Form.Item>
           </div>
         );

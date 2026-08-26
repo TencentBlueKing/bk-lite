@@ -240,10 +240,16 @@ export const calculateMetrics = (
   };
 };
 
-// 树形组件根据id查其title
-export const findLabelById = (data: TreeItem[], key: string): string | null => {
+// 树形组件根据 id 查 label（监控对象 name）。
+// TreeSelector 的 onNodeSelect 会 String(key)，而建树时常用数字 id 作 key，
+// 必须按字符串比较，否则查不到 name，策略模板等列表会整页空白。
+export const findLabelById = (
+  data: TreeItem[],
+  key: string | number
+): string | null => {
+  const target = String(key);
   for (const node of data) {
-    if (node.key === key) {
+    if (String(node.key) === target) {
       return node.label || null;
     }
     if (node.children) {
@@ -452,9 +458,10 @@ export const findTreeParentKey = (
   targetKey: React.Key
 ): React.Key | null => {
   let parentKey: React.Key | null = null;
+  const target = String(targetKey);
   const loop = (nodes: TreeItem[], parent: React.Key | null) => {
     for (const node of nodes) {
-      if (node.key === targetKey) {
+      if (String(node.key) === target) {
         parentKey = parent;
         return;
       }

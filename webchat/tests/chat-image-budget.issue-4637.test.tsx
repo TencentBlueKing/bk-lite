@@ -190,10 +190,14 @@ test('Chat 未知格式默认接受但不解码预览，显式兼容配置可恢
     sender.props.onSubmit('未知格式仍发送');
     await Promise.resolve();
   });
-  assert.match(
-    strictRenderer.root.findAllByProps({ role: 'status' }).at(-1)?.props['aria-label'] ?? '',
-    /图片已发送.*未在浏览器解码预览/,
-  );
+  let sentStatus = '';
+  for (let attempt = 0; attempt < 20 && !sentStatus; attempt += 1) {
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 5)));
+    sentStatus = strictRenderer.root.findAllByProps({ role: 'status' })
+      .map((node) => String(node.props['aria-label'] ?? ''))
+      .find((label) => /图片已发送/.test(label)) ?? '';
+  }
+  assert.match(sentStatus, /图片已发送.*未在浏览器解码预览/);
   assert.deepEqual(received[0]?.content, [
     { image_url: 'data:legacy.avif', type: 'image_url' },
     { message: '未知格式仍发送', type: 'message' },
@@ -272,8 +276,9 @@ test('FloatingButton 将预算配置透传给 Chat', async () => {
       <FloatingButton maxImageCount={1} onError={(error) => errors.push(error)} />,
     );
   });
-  act(() => {
-    renderer.root.find((node) => node.type === 'button' && node.props.title === 'Open chat').props.onClick();
+  await act(async () => {
+    renderer.root.find((node) => node.type === 'button' && node.props.title === '打开对话').props.onClick();
+    await new Promise((resolve) => setTimeout(resolve, 20));
   });
 
   await selectFiles(renderer.root, [imageFile('one.png'), imageFile('two.png')]);

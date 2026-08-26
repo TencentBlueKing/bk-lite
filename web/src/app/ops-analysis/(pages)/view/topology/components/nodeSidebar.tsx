@@ -193,8 +193,14 @@ const Sidebar: React.FC<NodeSidebarProps> = ({
           }}
         />
 
-        {!collapsed && (
-          <div className="h-full p-2 pt-1 opacity-100 transition-opacity duration-300">
+        <div
+          className={`h-full p-2 pt-1 transition-opacity duration-300 ${
+            collapsed
+              ? 'pointer-events-none opacity-0'
+              : 'opacity-100'
+          }`}
+          aria-hidden={collapsed}
+        >
             <div className="h-full overflow-auto rounded-r-2xl pr-1">
               <div className="mb-3 px-1 pb-2">
                 <div className="flex items-center gap-2">
@@ -235,8 +241,7 @@ const Sidebar: React.FC<NodeSidebarProps> = ({
               </div>
             </div>
           </div>
-        )}
-      </div>
+        </div>
     </>
   );
 };

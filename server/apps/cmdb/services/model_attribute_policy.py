@@ -8,12 +8,44 @@ from collections.abc import Callable
 from typing import Any
 
 from apps.cmdb.constants.constants import ENUM_SELECT_MODE_DEFAULT
+from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
+from apps.cmdb.validators.field_validator import normalize_tag_field_option as normalize_tag_field_option_config
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
 
 class ModelAttributePolicy:
     """模型字段定义的无状态策略集合。"""
+
+    @staticmethod
+    def _is_tag_attr(attr: dict) -> bool:
+        return attr.get("attr_type") == "tag" or attr.get("attr_id") == TAG_ATTR_ID
+
+    @staticmethod
+    def validate_tag_attr_definition(attrs: list[dict], incoming_attr: dict) -> None:
+        attr_type = incoming_attr.get("attr_type")
+        incoming_attr_id = incoming_attr.get("attr_id")
+
+        if attr_type == "tag" and incoming_attr_id != TAG_ATTR_ID:
+            raise BaseAppException("tag 字段 attr_id 必须固定为 tag")
+        if incoming_attr_id == TAG_ATTR_ID and attr_type != "tag":
+            raise BaseAppException("attr_id 为 tag 的字段类型必须为 tag")
+        if attr_type != "tag":
+            return
+
+        tag_count = sum(1 for attr in attrs if ModelAttributePolicy._is_tag_attr(attr))
+        if tag_count >= 1:
+            raise BaseAppException("单模型最多允许一个 tag 字段")
+
+    @staticmethod
+    def normalize_tag_field_option(option: dict | list[Any] | None) -> dict:
+        if isinstance(option, list):
+            option = {"mode": TAG_MODE_FREE, "options": option}
+        config = normalize_tag_field_option_config(option)
+        return {
+            "mode": config.mode,
+            "options": [{"key": item.key, "value": item.value} for item in config.options],
+        }
 
     @staticmethod
     def _normalize_default_value(raw_value: Any) -> list[str]:
@@ -184,7 +216,6 @@ class ModelAttributePolicy:
             return runtime_options if isinstance(runtime_options, list) else []
         except Exception as e:
             active_logger.warning(
-                f"[EnumPublicBinding] resolve_runtime_enum_options fallback to snapshot, "
-                f"public_library_id={public_library_id}, error={e}"
+                f"[EnumPublicBinding] resolve_runtime_enum_options fallback to snapshot, " f"public_library_id={public_library_id}, error={e}"
             )
             return option if isinstance(option, list) else []
