@@ -230,7 +230,7 @@ describe('APM 服务目录服务视角与归档', () => {
 
     expect((await screen.findAllByText('吞吐量（请求/秒）')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('错误率').length).toBeGreaterThan(0);
-    expect(screen.getByText('Java')).not.toBeNull();
+    expect(screen.getByLabelText('OpenTelemetry SDK 语言：Java')).not.toBeNull();
     expect(screen.getByLabelText('最高活跃告警：严重')).not.toBeNull();
     expect(screen.getByRole('link', { name: 'bklite-server' }).getAttribute('href')).toBe(
       '/apm/services/service-bklite?environment=production&window=1h'
