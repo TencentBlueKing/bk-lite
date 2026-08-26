@@ -970,7 +970,7 @@ class InstanceSearch:
             }
             for obj in results
         ]
-        fill_missing_host_container_asset_ips(serialized)
+        fill_missing_host_container_asset_ips(serialized, getattr(self.monitor_obj, "name", None))
         return dict(count=count, results=serialized)
 
     def _batch_plugin_status_maps(self, instance_id_keys, queries):

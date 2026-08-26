@@ -10,19 +10,22 @@ from apps.node_mgmt.utils.region_display_ip import as_ip, load_region_display_ip
 ASSET_IP_FACT = "asset.ip"
 
 
-def fill_missing_host_container_asset_ips(items):
+def fill_missing_host_container_asset_ips(items, monitor_object_name=None):
     """列表期回填 Host 本地采集缺失的 asset.ip，不落库。
 
     仅走 CollectConfig(Telegraf/host) → ChildConfig → Node → 云区域展示 IP。
     容器节点无可用 node.ip 时用区域 proxy / 平台 IP；普通主机节点仍用 node.ip。
     Host Remote / k8s / 云 resource_ip 不在此路径。
     """
+    if monitor_object_name not in (None, "", HostDeploymentStatus.MONITOR_OBJECT_NAME):
+        return
     try:
         _fill_missing_host_container_asset_ips(items)
     except Exception as exc:
         logger.exception(
-            "event=fill_host_container_asset_ip_failed failed_stage=list_fill error_type=%s",
+            "event=fill_host_container_asset_ip_failed failed_stage=list_fill error_type=%s item_count=%s",
             type(exc).__name__,
+            len(items or []),
         )
 
 
@@ -46,6 +49,7 @@ def _fill_missing_host_container_asset_ips(items):
             monitor_instance_id__in=missing_ids,
             collector=HostDeploymentStatus.COLLECTOR,
             collect_type=HostDeploymentStatus.COLLECT_TYPE,
+            is_child=True,
         ).values_list("id", "monitor_instance_id")
     )
     if not config_rows:

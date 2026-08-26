@@ -270,7 +270,7 @@ class MonitorObjectService:
 
         for obj in objs:
             result.append(MonitorObjectService._serialize_instance_list_item(obj, instance_map, org_map))
-        fill_missing_host_container_asset_ips(result)
+        fill_missing_host_container_asset_ips(result, monitor_obj.name)
 
         if add_metrics and page_size != -1:
             MonitorObjectService._safe_fill_display_metrics(monitor_object_id, obj_metric_map, result)
