@@ -36,7 +36,8 @@ def test_set_alert_notify_result_map_aggregates():
     NotifyResult.objects.create(notify_type="alert", notify_object="A1", notify_result=NotifyResultStatus.SUCCESS)
     NotifyResult.objects.create(notify_type="alert", notify_object="A1", notify_result=NotifyResultStatus.FAILED)
     result = AlertModelSerializer.set_alert_notify_result_map([alert])
-    assert result["A1"] == [False, True]
+    serializer = _ser(notify_map=result)
+    assert serializer.get_notify_status(alert) == NotifyResultStatus.PARTIAL_SUCCESS
 
 
 @pytest.mark.django_db
@@ -49,19 +50,17 @@ def test_notification_details_return_total_latest_five_and_recipient_display_nam
     alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp")
     User.objects.create(username="alice", display_name="Alice Zhang", domain="domain.com")
     now = timezone.now()
-    rows = []
-    for index in range(6):
+    for index in range(100):
         row = NotifyResult.objects.create(
             notify_type="alert",
             notify_object="A1",
             notify_people=["alice", "deleted-user"],
             notify_channel="wechat",
             notify_channel_name="企业微信",
-            notify_result=(NotifyResultStatus.FAILED if index == 5 else NotifyResultStatus.SUCCESS),
-            failure_reason="receiver rejected" if index == 5 else None,
+            notify_result=(NotifyResultStatus.FAILED if index == 99 else NotifyResultStatus.SUCCESS),
+            failure_reason="receiver rejected" if index == 99 else None,
         )
         NotifyResult.objects.filter(pk=row.pk).update(notify_time=now + timedelta(minutes=index))
-        rows.append(row)
 
     serializer = _ser()
     (
@@ -70,7 +69,7 @@ def test_notification_details_return_total_latest_five_and_recipient_display_nam
         serializer.alert_notify_records_map,
     ) = AlertModelSerializer.set_alert_notification_maps([alert])
 
-    assert serializer.get_notify_total(alert) == 6
+    assert serializer.get_notify_total(alert) == 100
     records = serializer.get_notify_records(alert)
     assert len(records) == 5
     assert records[0]["result"] == NotifyResultStatus.FAILED
@@ -100,7 +99,9 @@ def test_notification_detail_maps_use_constant_query_count(django_assert_num_que
             notify_result=NotifyResultStatus.SUCCESS,
         )
 
-    with django_assert_num_queries(2):
+    # 聚合状态/总数、每个告警最近五条、收件人展示名各一条查询，
+    # 查询数量不随告警数或通知历史量增长。
+    with django_assert_num_queries(3):
         maps = AlertModelSerializer.set_alert_notification_maps(alerts)
 
     serializer = _ser()
