@@ -207,8 +207,8 @@ const HistoryRail: React.FC<{
                       title="删除会话"
                       aria-label="删除会话"
                       onClick={() => onRequestDelete(session.id)}
-                      className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded border-none opacity-50 group-hover:opacity-100"
-                      style={{ color: WC.muted, background: 'transparent' }}
+                      className="mt-0.5 flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded border-none opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+                      style={{ color: WC.dim, background: 'transparent' }}
                     >
                       <svg
                         width="14"
@@ -669,7 +669,11 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
               : 'fixed bottom-0 right-0 top-0 z-[1200] flex flex-col overflow-hidden font-sans'
           }
           style={{
-            width: isFullscreen ? undefined : DOCK_CHAT_WIDTH,
+            width: isFullscreen
+              ? undefined
+              : historyOpen
+                ? DOCK_CHAT_WIDTH + HISTORY_RAIL_DOCK
+                : DOCK_CHAT_WIDTH,
             background: WC.white,
             borderLeft: isFullscreen ? undefined : `1px solid ${WC.dockEdge}`,
             boxShadow: isFullscreen ? undefined : WC.dockShadow,
