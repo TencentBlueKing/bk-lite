@@ -9,7 +9,12 @@ const PROMQL_KEYWORDS = new Set(
     'min',
     'max',
     'avg',
+    'group',
+    'stddev',
+    'stdvar',
     'count',
+    'count_values',
+    'quantile',
     'rate',
     'irate',
     'increase',
@@ -72,6 +77,7 @@ const PROMQL_KEYWORDS = new Set(
 const SELECTOR_RE = /\{([^{}]*)\}/g;
 const CLAUSE_PROTECT_RE =
   /\b(?:by|without|on|ignoring|group_left|group_right)\s*\([^)]*\)/gi;
+const STRING_RE = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g;
 
 /** 编辑回显 / 界面展示：去掉 `__$labels__`，避免用户困惑。 */
 export const stripMetricLabelsPlaceholder = (query = ''): string => {
@@ -85,8 +91,28 @@ export const stripMetricLabelsPlaceholder = (query = ''): string => {
     .replace(/\{\s*\}/g, '');
 };
 
-const injectIntoSelectors = (query: string): string =>
-  query.replace(/\{([^{}]*)\}/g, (_match, inner: string) => {
+const inProtectedRange = (
+  start: number,
+  ranges: Array<[number, number]>
+): boolean => ranges.some(([left, right]) => start >= left && start < right);
+
+const collectStringRanges = (query: string): Array<[number, number]> => {
+  const ranges: Array<[number, number]> = [];
+  STRING_RE.lastIndex = 0;
+  let match = STRING_RE.exec(query);
+  while (match) {
+    ranges.push([match.index, match.index + match[0].length]);
+    match = STRING_RE.exec(query);
+  }
+  return ranges;
+};
+
+const injectIntoSelectors = (query: string): string => {
+  const stringRanges = collectStringRanges(query);
+  return query.replace(/\{([^{}]*)\}/g, (match, inner: string, offset: number) => {
+    if (inProtectedRange(offset, stringRanges)) {
+      return match;
+    }
     if (inner.includes(METRIC_LABELS_PLACEHOLDER)) {
       return `{${inner}}`;
     }
@@ -96,9 +122,10 @@ const injectIntoSelectors = (query: string): string =>
     }
     return `{${trimmed},${METRIC_LABELS_PLACEHOLDER}}`;
   });
+};
 
 const collectProtectedRanges = (query: string): Array<[number, number]> => {
-  const ranges: Array<[number, number]> = [];
+  const ranges = collectStringRanges(query);
   SELECTOR_RE.lastIndex = 0;
   let match = SELECTOR_RE.exec(query);
   while (match) {
@@ -122,9 +149,7 @@ const injectBareMetricNames = (query: string): string => {
       if (PROMQL_KEYWORDS.has(name.toLowerCase())) {
         return match;
       }
-      if (
-        protectedRanges.some(([start, end]) => offset >= start && offset < end)
-      ) {
+      if (inProtectedRange(offset, protectedRanges)) {
         return match;
       }
       return `${name}{${METRIC_LABELS_PLACEHOLDER}}`;

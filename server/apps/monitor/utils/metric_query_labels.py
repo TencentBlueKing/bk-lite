@@ -12,6 +12,7 @@ _CLAUSE_PROTECT_RE = re.compile(
     r"\b(?:by|without|on|ignoring|group_left|group_right)\s*\([^)]*\)",
     re.IGNORECASE,
 )
+_STRING_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
 # 单个瞬时向量选择器：裸指标名，或指标名 + 一层 {...} 标签选择器。
 _RAW_VECTOR_SELECTOR_RE = re.compile(r"^[a-zA-Z_:][a-zA-Z0-9_:]*(?:\{[^{}]*\})?\s*$")
 
@@ -20,7 +21,12 @@ _PROMQL_KEYWORDS = {
     "min",
     "max",
     "avg",
+    "group",
+    "stddev",
+    "stdvar",
     "count",
+    "count_values",
+    "quantile",
     "rate",
     "irate",
     "increase",
@@ -90,6 +96,10 @@ def is_raw_vector_selector(query: str | None) -> bool:
     return bool(_RAW_VECTOR_SELECTOR_RE.fullmatch(trimmed))
 
 
+def _in_protected_range(start: int, ranges: list[tuple[int, int]]) -> bool:
+    return any(start >= left and start < right for left, right in ranges)
+
+
 def ensure_metric_labels_placeholder(query: str | None) -> str:
     """写入前确保公式带有 __$labels__，兼容用户只写裸指标名的场景。"""
     if query is None:
@@ -98,7 +108,12 @@ def ensure_metric_labels_placeholder(query: str | None) -> str:
     if not trimmed:
         return query
 
+    # 引号字符串内的标识符/花括号不得注入（如 label_replace 的 dst/src）。
+    string_ranges = [(m.start(), m.end()) for m in _STRING_RE.finditer(trimmed)]
+
     def _inject_selector(match: re.Match[str]) -> str:
+        if _in_protected_range(match.start(), string_ranges):
+            return match.group(0)
         inner = match.group(1)
         if METRIC_LABELS_PLACEHOLDER in inner:
             return match.group(0)
@@ -108,17 +123,16 @@ def ensure_metric_labels_placeholder(query: str | None) -> str:
         return "{" + cleaned + "," + METRIC_LABELS_PLACEHOLDER + "}"
 
     with_selectors = _SELECTOR_RE.sub(_inject_selector, trimmed)
-    # 已有 {...} 选择器内部（含标签键/值）不得再当裸指标注入；
-    # by/without/on 等聚合子句同理。
-    protected_ranges = [(m.start(), m.end()) for m in _SELECTOR_RE.finditer(with_selectors)]
+    # 选择器 / by|without|on 子句 / 字符串均不得再当裸指标注入。
+    protected_ranges = [(m.start(), m.end()) for m in _STRING_RE.finditer(with_selectors)]
+    protected_ranges.extend((m.start(), m.end()) for m in _SELECTOR_RE.finditer(with_selectors))
     protected_ranges.extend((m.start(), m.end()) for m in _CLAUSE_PROTECT_RE.finditer(with_selectors))
 
     def _inject_bare(match: re.Match[str]) -> str:
         name = match.group(1)
         if name.lower() in _PROMQL_KEYWORDS:
             return name
-        start = match.start()
-        if any(start >= left and start < right for left, right in protected_ranges):
+        if _in_protected_range(match.start(), protected_ranges):
             return name
         return f"{name}{{{METRIC_LABELS_PLACEHOLDER}}}"
 
