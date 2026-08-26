@@ -52,6 +52,7 @@ export interface LoginAuthLoginResult {
   require_otp?: boolean;
   challenge_id?: string;
   qr_code?: string;
+  otp_recommended_apps?: string[];
 }
 
 export interface LoginAuthStatusResponseData {

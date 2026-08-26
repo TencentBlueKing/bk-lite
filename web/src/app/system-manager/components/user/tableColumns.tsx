@@ -15,6 +15,7 @@ interface TableColumnsProps {
   onOpenPasswordModal: (userId: Key) => void;
   onDeleteUser: (userId: Key) => void;
   onChangeUserStatus: (userId: Key, action: ChangeUserStatusAction) => void;
+  otpEnabled?: boolean;
   convertToLocalizedTime: (isoString: string, format?: string) => string;
 }
 
@@ -25,6 +26,7 @@ export const createUserTableColumns = ({
   onOpenPasswordModal,
   onDeleteUser,
   onChangeUserStatus,
+  otpEnabled = false,
   convertToLocalizedTime,
 }: TableColumnsProps): ColumnsType<UserDataType> => {
   return [
@@ -260,6 +262,13 @@ export const createUserTableColumns = ({
                   onConfirm={() => onChangeUserStatus(key, 'disable')}
                 >
                   <Button type="link" className="mr-[8px] p-0">{t('common.disable') || 'Disable'}</Button>
+                </Popconfirm>
+              </PermissionWrapper>
+            )}
+            {otpEnabled && record.has_otp && (
+              <PermissionWrapper requiredPermissions={['Edit User']}>
+                <Popconfirm title={t('system.user.status.unbindOtpConfirm') || t('common.operateConfirm')} okText={t('common.confirm')} cancelText={t('common.cancel')} onConfirm={() => onChangeUserStatus(key, 'unbind_otp')}>
+                  <Button type="link" className="mr-[8px] p-0">{t('system.user.status.unbindOtp')}</Button>
                 </Popconfirm>
               </PermissionWrapper>
             )}

@@ -11,6 +11,9 @@ export const useUserApi = () => {
   function getUsersList(params: any) {
     return get('/system_mgmt/user/search_user_list/', { params });
   }
+  function getUserIdAll() {
+    return get('/system_mgmt/user/user_id_all/');
+  }
   async function getOrgTree() {
     return await get('/system_mgmt/group/search_group_list/');
   }
@@ -43,6 +46,7 @@ export const useUserApi = () => {
   }
   return {
     getUsersList,
+    getUserIdAll,
     getOrgTree,
     getClientDetail,
     getRoleList,

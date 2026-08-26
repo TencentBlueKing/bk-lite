@@ -1,15 +1,15 @@
 from django.core.management import BaseCommand
 from django.db import transaction
-
 from apps.system_mgmt.models import (
     IntegrationInstance,
     IntegrationInstanceStatusChoices,
     LoginAuthBinding,
     LoginAuthBindingPlatformFieldChoices,
     LoginAuthBindingUnmatchedActionChoices,
+    LoginModule,
     SystemSettings,
 )
-from apps.system_mgmt.models.login_module import LoginModule
+from apps.system_mgmt.utils.otp_settings import DEFAULT_OTP_RECOMMENDED_APPS, default_otp_whitelist_value
 
 
 BUILTIN_PLATFORM_PROVIDER_KEY = "bk_lite_builtin"
@@ -86,6 +86,14 @@ class Command(BaseCommand):
 
         SystemSettings.objects.get_or_create(key="login_expired_time", defaults={"value": "24"})
         SystemSettings.objects.get_or_create(key="enable_otp", defaults={"value": "0"})
+        SystemSettings.objects.get_or_create(
+            key="otp_recommended_apps",
+            defaults={"value": DEFAULT_OTP_RECOMMENDED_APPS},
+        )
+        SystemSettings.objects.get_or_create(
+            key="otp_whitelist",
+            defaults={"value": default_otp_whitelist_value()},
+        )
         SystemSettings.objects.get_or_create(key="portal_name", defaults={"value": "BlueKing Lite"})
         SystemSettings.objects.get_or_create(key="portal_logo_url", defaults={"value": ""})
         SystemSettings.objects.get_or_create(key="portal_favicon_url", defaults={"value": ""})

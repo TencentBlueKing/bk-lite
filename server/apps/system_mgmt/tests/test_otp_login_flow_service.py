@@ -8,6 +8,7 @@ Tests cover:
 - Rate limiting integration in verify_otp_login
 """
 
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
@@ -96,6 +97,60 @@ class TestLoginFlowWithOTP:
         assert "token" not in result["data"]
         assert "qr_code" not in result["data"]  # No QR code for already configured users
         assert result["data"]["username"] == otp_enabled_user.username
+
+    @pytest.mark.django_db
+    def test_login_skips_otp_for_whitelisted_user(self, clear_cache, otp_enabled_user, enable_otp_setting):
+        SystemSettings.objects.update_or_create(key="otp_whitelist", defaults={"value": json.dumps([otp_enabled_user.id])})
+
+        from apps.system_mgmt.nats_api import get_user_login_token
+
+        result = get_user_login_token(user=otp_enabled_user, username=otp_enabled_user.username, skip_token_for_otp=True)
+
+        assert result["result"] is True
+        assert "token" in result["data"]
+        assert "challenge_id" not in result["data"]
+
+    @pytest.mark.django_db
+    def test_login_skips_otp_for_whitelisted_user_with_string_ids(self, clear_cache, otp_enabled_user, enable_otp_setting):
+        SystemSettings.objects.update_or_create(
+            key="otp_whitelist",
+            defaults={"value": json.dumps([str(otp_enabled_user.id)])},
+        )
+
+        from apps.system_mgmt.nats_api import get_user_login_token
+
+        result = get_user_login_token(user=otp_enabled_user, username=otp_enabled_user.username, skip_token_for_otp=True)
+
+        assert result["result"] is True
+        assert "token" in result["data"]
+        assert "challenge_id" not in result["data"]
+
+    @pytest.mark.django_db
+    def test_login_requires_otp_when_user_not_whitelisted(self, clear_cache, otp_enabled_user, enable_otp_setting):
+        other = User.objects.create(username="other-whitelist", password=make_password("testpass123"), domain="domain.com")
+        SystemSettings.objects.update_or_create(key="otp_whitelist", defaults={"value": json.dumps([other.id])})
+
+        from apps.system_mgmt.nats_api import get_user_login_token
+
+        result = get_user_login_token(user=otp_enabled_user, username=otp_enabled_user.username, skip_token_for_otp=True)
+
+        assert result["result"] is True
+        assert result["data"]["require_otp"] is True
+        assert "challenge_id" in result["data"]
+        assert "token" not in result["data"]
+
+    @pytest.mark.django_db
+    def test_login_otp_response_includes_recommended_apps(self, clear_cache, otp_enabled_user, enable_otp_setting):
+        SystemSettings.objects.update_or_create(
+            key="otp_recommended_apps",
+            defaults={"value": "Microsoft Authenticator, FreeOTP"},
+        )
+
+        from apps.system_mgmt.nats_api import get_user_login_token
+
+        result = get_user_login_token(user=otp_enabled_user, username=otp_enabled_user.username, skip_token_for_otp=True)
+
+        assert result["data"]["otp_recommended_apps"] == ["Microsoft Authenticator", "FreeOTP"]
 
     @pytest.mark.django_db
     def test_login_with_otp_not_configured_returns_challenge_and_qrcode(self, clear_cache, test_user, enable_otp_setting):

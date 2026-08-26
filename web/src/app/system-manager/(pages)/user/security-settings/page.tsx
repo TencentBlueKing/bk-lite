@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { message } from 'antd';
 import { useSecurityApi } from '@/app/system-manager/api/security';
 import { useChannelApi } from '@/app/system-manager/api/channel';
+import { useUserApi } from '@/app/system-manager/api/user';
 import LoginSettings from '@/app/system-manager/components/security/authSettings';
 import { useTranslation } from '@/utils/i18n';
 
@@ -12,6 +13,11 @@ type InitialPasswordMode = 'fixed' | 'random' | 'none';
 const SecuritySettingsPage: React.FC = () => {
   const { t } = useTranslation();
   const [otpEnabled, setOtpEnabled] = useState(false);
+  const [otpWhitelist, setOtpWhitelist] = useState<string[]>([]);
+  const [pendingOtpWhitelist, setPendingOtpWhitelist] = useState<string[]>([]);
+  const [otpRecommendedApps, setOtpRecommendedApps] = useState<string[]>([]);
+  const [pendingOtpRecommendedApps, setPendingOtpRecommendedApps] = useState<string[]>([]);
+  const [otpUsers, setOtpUsers] = useState<Array<{ value: string; label: string }>>([]);
   const [pendingOtpEnabled, setPendingOtpEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(false);
@@ -47,12 +53,18 @@ const SecuritySettingsPage: React.FC = () => {
 
   const { getSystemSettings, updateOtpSettings } = useSecurityApi();
   const { getChannelData } = useChannelApi();
-
+  const { getUserIdAll } = useUserApi();
   useEffect(() => {
     fetchSystemSettings();
     fetchEmailChannels();
+    getUserIdAll().then((res: unknown) => {
+      const users = Array.isArray(res) ? res : [];
+      setOtpUsers(users.filter((user): user is { id: string | number; display_name?: string; username: string } => !!user && typeof user === 'object' && 'id' in user && 'username' in user).map((user) => ({
+        value: String(user.id),
+        label: `${user.display_name || user.username} (${user.username})`,
+      })));
+    }).catch(() => setOtpUsers([]));
   }, []);
-
   const fetchEmailChannels = async () => {
     try {
       setEmailChannelsError(false);
@@ -71,6 +83,21 @@ const SecuritySettingsPage: React.FC = () => {
       setFetching(true);
       const settings = await getSystemSettings();
       const otpValue = settings.enable_otp === '1';
+      let whitelist: Array<string | number> = [];
+      try {
+        const whitelistValue = settings.otp_whitelist;
+        const parsed = typeof whitelistValue === 'string' ? JSON.parse(whitelistValue || '[]') : (whitelistValue || []);
+        whitelist = Array.isArray(parsed) ? parsed : [];
+      } catch (error: unknown) {
+        console.error('Failed to parse OTP whitelist:', error);
+        whitelist = [];
+      }
+      const apps = String(settings.otp_recommended_apps ?? 'Microsoft Authenticator,FreeOTP,Google Authenticator').split(',').map((item) => item.trim()).filter(Boolean);
+      const whitelistIds = whitelist.map(String);
+      setOtpWhitelist(whitelistIds);
+      setPendingOtpWhitelist(whitelistIds);
+      setOtpRecommendedApps(apps);
+      setPendingOtpRecommendedApps(apps);
       setOtpEnabled(otpValue);
       setPendingOtpEnabled(otpValue);
       const expiredTime = settings.login_expired_time || '24';
@@ -187,6 +214,10 @@ const SecuritySettingsPage: React.FC = () => {
   );
 
   const handleSaveSettings = async () => {
+    if (pendingOtpEnabled && !pendingOtpRecommendedApps.length) {
+      message.error(t('system.security.otpRecommendedAppsRequired'));
+      return;
+    }
     if (pendingInitialPasswordMode === 'fixed' && initialPasswordRequired && !initialPassword) {
       message.error(t('system.security.initialPasswordRequired'));
       return;
@@ -213,12 +244,16 @@ const SecuritySettingsPage: React.FC = () => {
         pwdSetMaxRetryCount: pendingLoginAttempts,
         pwdSetLockDuration: pendingLockDuration,
         pwdSetExpiryReminderDays: pendingReminderDays,
+        otpWhitelist: pendingOtpWhitelist,
+        otpRecommendedApps: pendingOtpRecommendedApps.length ? pendingOtpRecommendedApps.join(',') : undefined,
         userCreateInitialPasswordMode: pendingInitialPasswordMode,
         userCreateInitialPassword: initialPassword || undefined,
         userCreateInitialPasswordEmailChannelId:
           pendingInitialPasswordMode !== 'none' ? pendingInitialPasswordEmailChannelId : undefined,
       });
       setOtpEnabled(pendingOtpEnabled);
+      setOtpWhitelist(pendingOtpWhitelist);
+      setOtpRecommendedApps(pendingOtpRecommendedApps);
       setLoginExpiredTime(pendingLoginExpiredTime);
       setPasswordExpiration(pendingPasswordExpiration);
       setPasswordComplexity(pendingPasswordComplexity);
@@ -241,6 +276,8 @@ const SecuritySettingsPage: React.FC = () => {
       setPendingPasswordExpiration(passwordExpiration);
       setPendingPasswordComplexity(passwordComplexity);
       setPendingMinimumLength(minimumLength);
+      setPendingOtpWhitelist(otpWhitelist);
+      setPendingOtpRecommendedApps(otpRecommendedApps);
       setPendingMaximumLength(maximumLength);
       setPendingLoginAttempts(loginAttempts);
       setPendingLockDuration(lockDuration);
@@ -258,6 +295,11 @@ const SecuritySettingsPage: React.FC = () => {
   return (
     <LoginSettings
       otpEnabled={pendingOtpEnabled}
+      otpWhitelist={pendingOtpWhitelist}
+      otpRecommendedApps={pendingOtpRecommendedApps}
+      otpUsers={otpUsers}
+      onOtpWhitelistChange={setPendingOtpWhitelist}
+      onOtpRecommendedAppsChange={setPendingOtpRecommendedApps}
       loginExpiredTime={pendingLoginExpiredTime}
       passwordExpiration={pendingPasswordExpiration}
       passwordComplexity={pendingPasswordComplexity}

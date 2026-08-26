@@ -18,6 +18,7 @@ interface LoginResponse {
   challenge_id?: string;
   qr_code?: string;  // QR code for first-time OTP binding
   need_binding?: boolean;  // Flag indicating first-time OTP binding
+  otp_recommended_apps?: string[];
 }
 
 interface OtpVerificationFormProps {
@@ -38,6 +39,7 @@ export default function OtpVerificationForm({
   const [otpCode, setOtpCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const { t } = useTranslation();
+  const recommendedApps = loginData.otp_recommended_apps ?? [];
 
   const handleOtpVerification = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,12 +107,14 @@ export default function OtpVerificationForm({
       
       {qrCodeUrl && (
         <div className="mb-6">
-          <p className="text-sm text-[var(--color-text-1)] mb-3">{t('signin.otp.installAppsStep')}</p>
-          <div className="text-sm text-[var(--color-text-2)] mb-3 pl-4">
-            <div>Microsoft Authenticator</div>
-            <div>FreeOTP</div>
-            <div>Google Authenticator</div>
-          </div>
+          {recommendedApps.length > 0 && (
+            <>
+              <p className="text-sm text-[var(--color-text-1)] mb-3">{t(recommendedApps.length === 1 ? 'signin.otp.installAppsSingle' : 'signin.otp.installAppsMultiple')}</p>
+              <div className="text-sm text-[var(--color-text-2)] mb-3 pl-4">
+                {recommendedApps.map((app) => <div key={app}>{app}</div>)}
+              </div>
+            </>
+          )}
           <p className="text-sm text-[var(--color-text-1)] mb-3">{t('signin.otp.scanQrStep')}</p>
           <div className="flex pl-4">
             <img src={`data:image/png;base64, ${qrCodeUrl}`} alt={t('signin.otp.qrAlt')} className="h-48 w-48 rounded-md border border-(--color-border)" />

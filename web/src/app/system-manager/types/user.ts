@@ -2,7 +2,7 @@ import type { TableProps } from 'antd';
 import type { Key } from 'react';
 
 type UserStatus = 'normal' | 'disabled' | 'locked' | 'password_expired';
-type ChangeUserStatusAction = 'enable' | 'disable' | 'unlock';
+type ChangeUserStatusAction = 'enable' | 'disable' | 'unlock' | 'unbind_otp';
 
 // 定义接口
 interface UserDataType {
@@ -21,6 +21,7 @@ interface UserDataType {
   last_login?: string;
   status?: UserStatus;
   sync_source?: number | null;
+  has_otp?: boolean;
 }
 
 interface ChangeUserStatusParams {
