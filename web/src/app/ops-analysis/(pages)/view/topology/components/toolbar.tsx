@@ -3,6 +3,7 @@ import { Button, Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ToolbarProps } from '@/app/ops-analysis/types/topology';
 import TimeSelector from '@/components/time-selector';
+import Icon from '@/components/icon';
 import PermissionWrapper from '@/components/permission';
 import {
   ZoomInOutlined,
@@ -15,7 +16,7 @@ import {
   EditOutlined,
   UndoOutlined,
   RedoOutlined,
-  SettingOutlined,
+  ReloadOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
 
@@ -53,6 +54,15 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
 
   return (
     <div className="flex items-center gap-1.5">
+      {!isEditMode && onRefresh && onFrequencyChange && (
+        <TimeSelector
+          onlyRefresh={true}
+          frequenceValue={frequenceValue}
+          onRefresh={onRefresh}
+          onFrequenceChange={onFrequencyChange}
+        />
+      )}
+
       <div className="flex items-center gap-0.5">
         <Tooltip title={t('topology.zoomIn')}>
           <Button
@@ -147,28 +157,25 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
                 <Button
                   type="text"
                   aria-label={t('dashboard.configUnifiedFilterFields')}
-                  icon={
-                    <SettingOutlined
-                      aria-hidden="true"
-                      className={iconClassName}
-                    />
-                  }
+                  icon={<Icon type="shaixuantiaojian" style={{ fontSize: 20 }} />}
                   onClick={onFilterConfig}
                   className={iconButtonClassName}
                 />
               </Tooltip>
             </PermissionWrapper>
           )}
+          {onRefresh && (
+            <Tooltip title={t('common.refresh')}>
+              <Button
+                type="text"
+                icon={<ReloadOutlined className={iconClassName} />}
+                aria-label={t('common.refresh')}
+                onClick={onRefresh}
+                className={iconButtonClassName}
+              />
+            </Tooltip>
+          )}
         </div>
-      )}
-
-      {onRefresh && onFrequencyChange && (
-        <TimeSelector
-          onlyRefresh={true}
-          frequenceValue={frequenceValue}
-          onRefresh={onRefresh}
-          onFrequenceChange={onFrequencyChange}
-        />
       )}
 
       {!shareMode && !isEditMode && onOpenShare && (
