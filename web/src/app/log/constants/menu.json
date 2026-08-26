@@ -56,7 +56,14 @@
               "title": "配置",
               "icon": "settings-fill",
               "url": "/log/integration/list/detail/configure",
-              "name": "integration_configure"
+              "name": "integration_configure",
+              "children": [
+                {
+                  "url": "/log/integration/list/detail/extractor",
+                  "name": "integration_extractor",
+                  "isNotMenuItem": true
+                }
+              ]
             },
             {
               "title": "简介",
@@ -138,7 +145,14 @@
               "title": "Configure",
               "icon": "settings-fill",
               "url": "/log/integration/list/detail/configure",
-              "name": "integration_configure"
+              "name": "integration_configure",
+              "children": [
+                {
+                  "url": "/log/integration/list/detail/extractor",
+                  "name": "integration_extractor",
+                  "isNotMenuItem": true
+                }
+              ]
             },
             {
               "title": "Introduction",

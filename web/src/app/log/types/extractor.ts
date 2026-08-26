@@ -30,7 +30,8 @@ export interface ExtractorCondition {
 export interface LogExtractorRule {
   id: number;
   name: string;
-  collect_instance: string;
+  collect_instance: string | null;
+  collect_type: string | null;
   condition: ExtractorCondition;
   extractor_type: ExtractorType;
   source_field: string;
@@ -44,7 +45,8 @@ export interface LogExtractorRule {
 
 export interface LogExtractorDraft {
   name: string;
-  collect_instance: string;
+  collect_instance?: string | null;
+  collect_type?: string | null;
   condition: ExtractorCondition;
   extractor_type: ExtractorType;
   source_field: string;
@@ -52,6 +54,11 @@ export interface LogExtractorDraft {
   delete_source: boolean;
   config: Record<string, unknown>;
 }
+
+export type LogExtractorScopeQuery = {
+  collect_instance?: string;
+  collect_type?: string;
+};
 
 export interface ExtractorPublicationStatus {
   desired_generation: number;
@@ -64,6 +71,7 @@ export interface ExtractorPublicationStatus {
 export interface LogExtractorListResponse {
   items: LogExtractorRule[];
   publication: ExtractorPublicationStatus;
+  can_operate?: boolean;
 }
 
 export interface LogExtractorPreviewResult {

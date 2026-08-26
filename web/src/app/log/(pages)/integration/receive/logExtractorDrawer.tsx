@@ -34,7 +34,8 @@ import {
   ExtractorType,
   LogExtractorDraft,
   LogExtractorPreviewResult,
-  LogExtractorRule
+  LogExtractorRule,
+  LogExtractorScopeQuery
 } from '@/app/log/types/extractor';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -48,9 +49,13 @@ import {
 } from './logExtractorLogic';
 
 interface Props {
-  instance: { id: string; name: string; canOperate: boolean } | null;
+  instance?: { id: string; name: string; canOperate: boolean } | null;
+  collectType?: { name: string; displayName: string; canOperate: boolean } | null;
   open: boolean;
-  onClose: () => void;
+  onClose?: () => void;
+  presentation?: 'drawer' | 'page';
+  autoCreate?: boolean;
+  initialSample?: Record<string, unknown> | null;
 }
 
 interface FormValue {
@@ -126,7 +131,15 @@ const parseMapping = (value: string | undefined, errorMessage: string) => {
   }
 };
 
-const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
+const LogExtractorDrawer = ({
+  instance: instanceProp,
+  collectType,
+  open,
+  onClose,
+  presentation = 'drawer',
+  autoCreate = false,
+  initialSample = null
+}: Props) => {
   const { t } = useTranslation();
   const api = useLogApi();
   const apiRef = useRef(api);
@@ -147,53 +160,86 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
   const [sampleIndex, setSampleIndex] = useState<number | null>(null);
   const [preview, setPreview] = useState<LogExtractorPreviewResult | null>(null);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const autoCreateConsumed = useRef(false);
+  const [serverCanOperate, setServerCanOperate] = useState<boolean | null>(null);
+  const collectTypeName = collectType?.name;
+  const instanceId = instanceProp?.id;
+  const instance = collectType
+    ? {
+        id: collectType.name,
+        name: collectType.displayName,
+        canOperate: serverCanOperate ?? collectType.canOperate
+      }
+    : instanceProp
+      ? {
+          ...instanceProp,
+          canOperate: serverCanOperate ?? instanceProp.canOperate
+        }
+      : null;
+  const scopeQuery = useMemo<LogExtractorScopeQuery | null>(() => {
+    if (collectTypeName) return { collect_type: collectTypeName };
+    if (instanceId) return { collect_instance: instanceId };
+    return null;
+  }, [collectTypeName, instanceId]);
+
+  useEffect(() => {
+    setServerCanOperate(null);
+  }, [collectTypeName, instanceId]);
 
   const refresh = useCallback(async () => {
-    if (!instance) return;
+    if (!scopeQuery) return;
     setLoading(true);
     try {
-      const data = await apiRef.current.getLogExtractors(instance.id);
+      const data = await apiRef.current.getLogExtractors(scopeQuery);
       setRules(data.items);
       setPublication(data.publication);
+      if (typeof data.can_operate === 'boolean') {
+        setServerCanOperate(data.can_operate);
+      }
     } finally {
       setLoading(false);
     }
-  }, [instance]);
+  }, [scopeQuery]);
 
   const loadSamples = useCallback(async () => {
-    if (!instance) return;
+    if (!scopeQuery) return;
     setSamplesLoading(true);
     setSamplesError(false);
     try {
       const data = normalizeExtractorSamples(
-        await apiRef.current.getLogExtractorSamples(instance.id)
+        await apiRef.current.getLogExtractorSamples(scopeQuery)
       );
-      setSamples(data);
-      setSampleIndex(data.length ? 0 : null);
+      const merged = initialSample ? [initialSample, ...data] : data;
+      setSamples(merged);
+      setSampleIndex(merged.length ? 0 : null);
     } catch (error) {
+      if (initialSample) {
+        setSamples([initialSample]);
+        setSampleIndex(0);
+      }
       setSamplesError(true);
       throw error;
     } finally {
       setSamplesLoading(false);
     }
-  }, [instance]);
+  }, [scopeQuery, initialSample]);
 
   useEffect(() => {
-    if (!open || !instance) return;
+    if (!open || !scopeQuery) return;
     void refresh().catch(() => undefined);
     void loadSamples().catch(() => undefined);
-  }, [open, instance, refresh, loadSamples]);
+  }, [open, scopeQuery, refresh, loadSamples]);
 
   useEffect(() => {
-    if (!open || !instance) return;
+    if (!open || !scopeQuery) return;
     const timer = window.setInterval(() => {
       void apiRef.current
-        .getLogExtractorPublicationStatus(instance.id)
+        .getLogExtractorPublicationStatus(scopeQuery)
         .then(setPublication)
         .catch(() => undefined);
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [open, instance]);
+  }, [open, scopeQuery]);
 
   const fieldOptions = useMemo(
     () =>
@@ -255,8 +301,8 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
     }
     return {
       name: values.name,
-      collect_instance: instance?.id || '',
-      condition: {
+      ...(scopeQuery || {}),
+      condition: editing?.condition || {
         mode: 'AND',
         conditions: []
       },
@@ -269,7 +315,7 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
   };
 
   const save = async () => {
-    if (!instance) return;
+    if (!scopeQuery) return;
     setSaving(true);
     try {
       const draft = buildDraft(await form.validateFields());
@@ -304,13 +350,13 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
   };
 
   const persistOrder = async (next: LogExtractorRule[]) => {
-    if (!instance) return;
+    if (!scopeQuery) return;
     const previous = rules;
     setRules(next);
     setActionLoading(true);
     try {
       const response = await api.reorderLogExtractors(
-        instance.id,
+        scopeQuery,
         next.map((rule) => rule.id)
       );
       setPublication(response.publication);
@@ -334,11 +380,11 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
   };
 
   const runPreview = async () => {
-    if (!instance || sampleIndex === null) return;
+    if (!scopeQuery || sampleIndex === null) return;
     try {
       const draft = buildDraft(await form.validateFields());
       const result = await api.previewLogExtractor({
-        collect_instance: instance.id,
+        ...scopeQuery,
         event: samples[sampleIndex],
         draft,
         rule_id: editing?.id
@@ -355,10 +401,10 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
   };
 
   const retry = async () => {
-    if (!instance) return;
+    if (!scopeQuery) return;
     setActionLoading(true);
     try {
-      const response = await api.retryLogExtractorPublication(instance.id);
+      const response = await api.retryLogExtractorPublication(scopeQuery);
       setPublication(response.publication);
       message.success(t('log.extractor.retrySubmitted'));
     } finally {
@@ -366,80 +412,87 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
     }
   };
 
-  return (
-    <>
-      <Drawer
-        title={`${t('log.extractor.title')} · ${instance?.name || ''}`}
-        width="min(920px, 100vw)"
-        open={open}
-        onClose={onClose}
-        extra={
-          <Space>
-            {publication && (
-              <Popover
-                title={t('log.extractor.publicationDetails')}
-                trigger={['hover', 'focus', 'click']}
-                content={
-                  <Space
-                    direction="vertical"
-                    size={4}
-                    className="max-w-[360px]"
-                  >
-                    <Space size={8}>
-                      <span>{t('log.extractor.globalStatus')}</span>
-                      <Tag
-                        className="m-0"
-                        color={publicationColor[publication.status]}
-                      >
-                        {t(`log.extractor.${publication.status}`)}
-                      </Tag>
-                    </Space>
-                    <span className="tabular-nums">
-                      {t('log.extractor.publishedVersion')}:{' '}
-                      <strong>{publication.published_generation}</strong>
-                    </span>
-                    <span className="tabular-nums">
-                      {t('log.extractor.targetVersion')}:{' '}
-                      <strong>{publication.desired_generation}</strong>
-                    </span>
-                    {publication.last_published_at && (
-                      <span>
-                        {t('log.extractor.lastPublishedAt')}:{' '}
-                        {publication.last_published_at}
-                      </span>
-                    )}
-                    <Typography.Text type="secondary">
-                      {`${t('log.extractor.publishedHint')} ${t('log.extractor.affectedHint')}`}
-                    </Typography.Text>
-                  </Space>
-                }
-              >
-                <Button
-                  type="text"
-                  aria-label={`${t('log.extractor.globalStatus')}: ${t(`log.extractor.${publication.status}`)}`}
+  useEffect(() => {
+    if (!open) {
+      autoCreateConsumed.current = false;
+      return;
+    }
+    if (!autoCreate || autoCreateConsumed.current || !instance?.canOperate) {
+      return;
+    }
+    autoCreateConsumed.current = true;
+    openEditor();
+  }, [autoCreate, open, instance]);
+
+  const headerActions = (
+    <Space>
+      {publication && (
+        <Popover
+          title={t('log.extractor.publicationDetails')}
+          trigger={['hover', 'focus', 'click']}
+          content={
+            <Space
+              direction="vertical"
+              size={4}
+              className="max-w-[360px]"
+            >
+              <Space size={8}>
+                <span>{t('log.extractor.globalStatus')}</span>
+                <Tag
+                  className="m-0"
+                  color={publicationColor[publication.status]}
                 >
-                  <Tag
-                    className="m-0"
-                    color={publicationColor[publication.status]}
-                  >
-                    {t(`log.extractor.${publication.status}`)}
-                  </Tag>
-                </Button>
-              </Popover>
-            )}
-            {shouldShowExtractorHeaderAdd(instance?.canOperate, rules.length) && (
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                disabled={actionLoading || rules.length >= 20}
-                onClick={() => openEditor()}
-              >
-                {t('log.extractor.add')}
-              </Button>
-            )}
-          </Space>
-        }
-      >
+                  {t(`log.extractor.${publication.status}`)}
+                </Tag>
+              </Space>
+              <span className="tabular-nums">
+                {t('log.extractor.publishedVersion')}:{' '}
+                <strong>{publication.published_generation}</strong>
+              </span>
+              <span className="tabular-nums">
+                {t('log.extractor.targetVersion')}:{' '}
+                <strong>{publication.desired_generation}</strong>
+              </span>
+              {publication.last_published_at && (
+                <span>
+                  {t('log.extractor.lastPublishedAt')}:{' '}
+                  {publication.last_published_at}
+                </span>
+              )}
+              <Typography.Text type="secondary">
+                {`${t('log.extractor.publishedHint')} ${t('log.extractor.affectedHint')}`}
+              </Typography.Text>
+            </Space>
+          }
+        >
+          <Button
+            type="text"
+            aria-label={`${t('log.extractor.globalStatus')}: ${t(`log.extractor.${publication.status}`)}`}
+          >
+            <Tag
+              className="m-0"
+              color={publicationColor[publication.status]}
+            >
+              {t(`log.extractor.${publication.status}`)}
+            </Tag>
+          </Button>
+        </Popover>
+      )}
+      {shouldShowExtractorHeaderAdd(instance?.canOperate, rules.length) && (
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          disabled={actionLoading || rules.length >= 20}
+          onClick={() => openEditor()}
+        >
+          {t('log.extractor.add')}
+        </Button>
+      )}
+    </Space>
+  );
+
+  const panel = (
+    <>
         {publication &&
           shouldShowExtractorPublicationAlert(publication.status) && (
           <Alert
@@ -562,7 +615,27 @@ const LogExtractorDrawer = ({ instance, open, onClose }: Props) => {
             }
           ]}
         />
-      </Drawer>
+    </>
+  );
+
+  return (
+    <>
+      {presentation === 'page' ? (
+        <div className="p-4 h-[calc(100vh-270px)] overflow-y-auto bg-[var(--color-bg-1)]">
+          <div className="mb-4 flex justify-end">{headerActions}</div>
+          {panel}
+        </div>
+      ) : (
+        <Drawer
+          title={`${t('log.extractor.title')} · ${instance?.name || ''}`}
+          width="min(920px, 100vw)"
+          open={open}
+          onClose={onClose}
+          extra={headerActions}
+        >
+          {panel}
+        </Drawer>
+      )}
 
       <Modal
         width="min(820px, calc(100vw - 32px))"
