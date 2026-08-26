@@ -3,12 +3,7 @@
 import { useParams } from 'next/navigation';
 import ApplicationObservability from '@/app/apm/components/application-observability';
 
-export default function ApmApplicationDetailPage() {
+export default function ApmServiceApplicationDetailPage() {
   const params = useParams<{ applicationId: string }>();
-  return (
-    <ApplicationObservability
-      applicationId={params.applicationId}
-      showAddIngest
-    />
-  );
+  return <ApplicationObservability applicationId={params.applicationId} />;
 }

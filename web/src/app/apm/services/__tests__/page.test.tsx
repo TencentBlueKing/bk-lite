@@ -196,7 +196,7 @@ describe('APM 服务目录应用视角', () => {
     renderWithApmIntl(<ApmServicesPage />);
 
     const card = await screen.findByRole('link', { name: '查看应用 电商应用 详情' });
-    expect(card.getAttribute('href')).toBe('/apm/integration/applications/bklite');
+    expect(card.getAttribute('href')).toBe('/apm/services/applications/bklite');
     const cardArticle = card.closest('article');
     expect(cardArticle).not.toBeNull();
     await waitFor(() => expect(within(cardArticle!).getByText('12.5')).not.toBeNull());

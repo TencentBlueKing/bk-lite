@@ -798,7 +798,7 @@
       "view": "Topology view",
       "graph": "Graph",
       "list": "List",
-      "edgeTitle": "{source} calls {target}. {calls} observed calls, {duration} average duration",
+      "edgeTitle": "{source} calls {target}. {calls} calls, {duration} average duration, {errors} errors",
       "refresh": "Refresh topology",
       "locate": "Locate topology node",
       "locatePlaceholder": "Locate node",
@@ -808,6 +808,10 @@
       "empty": "No traces were observed in the current scope that can be used to build a topology.",
       "dependency": "Dependencies",
       "observedTraces": "Observed Traces",
+      "totalCalls": "Total calls",
+      "layout": "Topology layout",
+      "layered": "Hierarchical",
+      "force": "Force-directed",
       "anomalyOnly": "Anomalies only",
       "healthLegend": "Node health legend",
       "legendHint": "Observed data is a bounded query result within the time window. Click a node to open service details."
@@ -876,7 +880,10 @@
       "backToList": "Back to list",
       "topology": "Application service topology",
       "noTopology": "No application-internal call relationships in the current time window.",
-      "kpi": "Application KPIs"
+      "kpi": "Application KPIs",
+      "keyInfo": "Key information",
+      "alertCount": "Alerts",
+      "observabilityDescription": "View application topology, key information, and services in this application."
     },
     "integration": {
       "copyEndpoint": "Copy HTTP ingest endpoint",

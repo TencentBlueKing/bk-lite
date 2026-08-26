@@ -34,6 +34,11 @@
           "url": "/apm/services/[serviceId]",
           "name": "service_detail",
           "isNotMenuItem": true
+        },
+        {
+          "url": "/apm/services/applications/[applicationId]",
+          "name": "service_application_detail",
+          "isNotMenuItem": true
         }
       ]
     },
@@ -166,6 +171,11 @@
         {
           "url": "/apm/services/[serviceId]",
           "name": "service_detail",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/apm/services/applications/[applicationId]",
+          "name": "service_application_detail",
           "isNotMenuItem": true
         }
       ]
