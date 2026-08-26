@@ -5,7 +5,7 @@
 > 路径 `server/apps/opspilot` ｜ API 前缀 `api/v1/opspilot/`
 
 ## 1. 职责【已实现/已存在】
-AI 助手平台：RAG 检索增强、知识库管理、Bot 编排、LLM 厂商接入、工作流自动化与记忆管理。
+AI 助手平台：Wiki 知识库、Bot 编排、LLM 厂商接入、工作流自动化与记忆管理。历史文件切分 / 问答对 / 图谱 RAG 产品面已下线。
 
 ## 2. 数据模型与存储【已实现/已存在】
 
@@ -19,7 +19,7 @@ AI 助手平台：RAG 检索增强、知识库管理、Bot 编排、LLM 厂商�
 | LLMModel | `:68` | LLM 模型（关联厂商）。`protocol_type` 为只读 property（`:100-110`）：anthropic 厂商→anthropic；deepseek/other→读取 `vendor.protocol_type`；其余→openai，支撑非 OpenAI 协议接入 |
 | EmbedProvider / RerankProvider | `:118,154` | Embed / Rerank 模型（密钥经厂商解密） |
 | OCRProvider | `:190` | OCR 解析提供方（EncryptMixin，供 KnowledgeDocument 解析） |
-| LLMSkill | `:232` | 智能体/技能（LLM 模型、提示词、RAG 配置、工具列表、技能类型、对话历史窗口、知识库路由等；可关联技能包） |
+| LLMSkill | `:232` | 智能体/技能（LLM 模型、提示词、工具列表、技能类型、对话历史窗口、Wiki 知识库绑定 `wiki_knowledge_bases` 等；可关联技能包） |
 | SkillPackage | `:296` | 技能包元数据，供 LLMSkill 关联并在运行时注入命中提示 |
 | SkillTools | `:295` | 工具集（参数、标签、tools 列表，可复用注册） |
 | SkillRequestLog | `:309` | 技能调用请求日志（请求/响应明细、来源 IP、成败状态） |
@@ -40,15 +40,15 @@ AI 助手平台：RAG 检索增强、知识库管理、Bot 编排、LLM 厂商�
 | WorkFlowTaskNodeResult | `:325` | 工作流节点执行明细（节点输入/输出、状态、耗时） |
 | WorkFlowConversationHistory | `:361` | ChatFlow 对话历史（用户输入 + 系统输出两条/次，入口类型分流，定时触发不记录） |
 
-**知识库子域（`models/knowledge_mgmt.py`）**
+**知识库子域（`models/wiki_mgmt.py`，已替换历史 `knowledge_mgmt` RAG 模型）**
 
 | 模型 | 行 | 说明 |
 |------|----|------|
-| KnowledgeBase | `:28` | 知识库（embed/rerank、naive/QA/graph RAG 开关、阈值/召回模式） |
-| KnowledgeDocument | `:56` | 知识文档（解析模式、分块类型、OCR、训练状态） |
-| FileKnowledge / WebPageKnowledge / ManualKnowledge | `:120,149,177` | 文件知识（MinIO `munchkin-private`）、网页知识（可定时同步）、手工录入知识 |
-| QAPairs | `:192` | 问答对（生成模型、问/答提示词、状态） |
-| KnowledgeGraph / GraphChunkMap / KnowledgeTask | `:218,228,234` | 知识图谱（一对一知识库）、Chunk↔Graph 映射、知识训练任务（进度/状态） |
+| WikiKnowledgeBase | `:11` | Wiki 知识库本体：用途/结构说明、生成规则、目录启用状态 |
+| WikiStructureRevision | `:57` | 不可变目录结构快照 |
+| WikiDirectory / Material / KnowledgePage | `:80` / `:146` / `:213` | 目录、材料（file/web/text）与页面；智能体经 `LLMSkill.wiki_knowledge_bases` 绑定 |
+
+> 证据来源：server/apps/opspilot/models/wiki_mgmt.py:11-67　|　同步基线：61bace9f　|　【已实现】
 
 **记忆子域（`models/memory_mgmt.py`）**
 
@@ -67,7 +67,7 @@ AI 助手平台：RAG 检索增强、知识库管理、Bot 编排、LLM 厂商�
 **存储**：PostgreSQL + **pgvector**（向量）；MinIO（知识文件/Rasa 模型/工作流附件，桶 `munchkin-private`）；Elasticsearch（metis 工具检索）。
 
 ## 3. 接口【已实现/已存在】
-`model_provider_mgmt/*`、`bot_mgmt/*`（含 OpenAI 兼容 `/v1/chat/completions`、`/lobe_chat/v1/chat/completions`、`execute_chat_flow_enterprise_wechat_aibot/<bot_id>/`）、`channel_mgmt/*`、`knowledge_mgmt/*`、`memory_mgmt/*`。
+`model_provider_mgmt/*`、`bot_mgmt/*`、`channel_mgmt/*`、`wiki_mgmt/*`、`memory_mgmt/*`。知识库 HTTP 前缀为 `wiki_mgmt/`，旧 `knowledge_mgmt/*` 已下线。
 
 企业微信智能机器人入口【已实现/已存在】：`execute_chat_flow_enterprise_wechat_aibot/<bot_id>/` 支持 GET 回调校验与 POST 消息接收，消息清洗后转为 ChatFlow 输入，通过异步任务发送 Markdown 回复；非文本消息直接返回固定提示（`urls.py:139-143`、`utils/enterprise_wechat_aibot_chat_flow_utils.py:61-211`）。
 
@@ -95,10 +95,10 @@ CMDB 工具以 `inst_uuid` 作为实例的外部身份。`cmdb_search_instances`
 
 > 证据来源：server/apps/opspilot/metis/llm/tools/tools_loader.py:30-53，server/apps/opspilot/metis/llm/tools/cmdb/instances.py:24-26,30-66,70-96,98-133,137-160,166-194,249-280，server/apps/opspilot/tests/test_tools_cmdb_service.py:59-75,121-157,187-201　|　同步基线：b98b782a7　|　【已实现 / 待确认】
 - AG-UI 兼容 LangGraph Overwrite(messages) 包装【已实现/已存在】：`BasicGraph` 新增静态方法 `_unwrap_overwrite_messages`（`metis/llm/chain/graph.py:778-783`），在 `_handle_chain_end_messages`（`:807`）与 `_handle_chain_end_messages_dedup`（`:909`）解析 `output.messages` 后统一调用解包：当消息被 LangGraph 包装为 `Overwrite(messages)` 时从其 `value` 取实际消息列表，避免 `Overwrite` 类型阻断 `ToolMessage`/`AIMessage` 发射；缺值或非 `Overwrite` 类型时透传原值。配套静态测试 `test_agui_stream.py:596-652` 覆盖 Overwrite 包裹时 AG-UI 能正确解包并发出 `TOOL_CALL_RESULT` 与 `TEXT_MESSAGE_CONTENT`。
-- RAG 模式：naive（**本地 pgvector**）/QA/graph（`services/{rag_service,knowledge_search_service,chat_service}.py`）。
+- 知识问答：技能绑定 Wiki 知识库后由对话链路注入 Wiki 上下文；`chat_service.py` 将 `enable_naive_rag` 固定为 `False`，不再提供产品面的朴素/问答对/图谱 RAG 开关。
 - **外部依赖更正**（基于代码核对）：
   - Kubernetes：**已使用**，但经运行时 `kubeconfig_data` 参数加载（`metis/llm/tools/kubernetes/{utils,connection}.py`），**非** `KUBE_CONFIG_FILE` 环境变量。
-  - `METIS_SERVER_URL`、`MUNCHKIN_BASE_URL`、`CONVERSATION_MQ_*`：仅在 `config.py` 中定义，**代码中未被引用**（占位/预留，当前 RAG 走本地 pgvector）。【待确认是否为历史遗留】
+  - `METIS_SERVER_URL`、`MUNCHKIN_BASE_URL`、`CONVERSATION_MQ_*`：仅在 `config.py` 中定义，**代码中未被引用**（占位/预留）。【待确认是否为历史遗留】
 
 ## 5. 任务与 NATS【已实现/已存在】
 - 定时（`config.py`）：`cleanup-expired-workflow-attachments`（每日 3 点）、`flush-pending-memory-write-cache`（每日 0 点）。
@@ -121,7 +121,7 @@ CMDB 工具以 `inst_uuid` 作为实例的外部身份。`cmdb_search_instances`
 
 ## 2026-07-09 Code-ARD 校准
 - `[opspilot#20260709-001]` AG-UI 兼容 LangGraph `Overwrite(messages)` 包装：`BasicGraph._unwrap_overwrite_messages` 在 `_handle_chain_end_messages` 与 `_handle_chain_end_messages_dedup` 解析 `output.messages` 后统一解包，避免 `Overwrite` 阻断 `ToolMessage`/`AIMessage` 发射。
-- `[opspilot#20260709-002]` 知识库资料 `update` 预览补充「此页面继承新内容，旧版本将进入待审核」受影响原因文案：`preview_material_update` 在拼装受影响页面载荷时显式传 `update_reason`，覆盖原「仅透传 `page_impact_payload`」实现（`services/wiki/update_service.py:76-84`）。
+- `[opspilot#20260709-002]` 知识库资料 `update` 预览补充受影响原因文案：`preview_material_update` 在拼装受影响页面载荷时显式传 `update_reason`（`services/wiki/update_service.py:107-114`）。
 
 ## 7. 证据来源
-`server/apps/opspilot/{urls.py,models/*,services/*,metis/llm/*,tasks.py,config.py,nats_api.py,utils/enterprise_wechat_aibot_chat_flow_utils.py,utils/workflow_sensitive_config.py}`；模型表见 `models/{model_provider_mgmt.py,bot_mgmt.py,knowledge_mgmt.py,memory_mgmt.py,user_pin.py}`；内置工具见 `metis/llm/tools/tools_loader.py:31-52`、`services/builtin_tools.py`；protocol_type 持久化见 `migrations/0049_modelvendor_protocol_type.py`；超时策略见 `metis/llm/common/llm_client_factory.py:24-59`。
+`server/apps/opspilot/{urls.py,models/*,services/*,metis/llm/*,tasks.py,config.py,nats_api.py,utils/enterprise_wechat_aibot_chat_flow_utils.py,utils/workflow_sensitive_config.py}`；模型表见 `models/{model_provider_mgmt.py,bot_mgmt.py,wiki_mgmt.py,memory_mgmt.py,user_pin.py}`；内置工具见 `metis/llm/tools/tools_loader.py:31-52`、`services/builtin_tools.py`；protocol_type 持久化见 `migrations/0049_modelvendor_protocol_type.py`；超时策略见 `metis/llm/common/llm_client_factory.py:24-59`。

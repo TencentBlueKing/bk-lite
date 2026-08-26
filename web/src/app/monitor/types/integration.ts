@@ -104,6 +104,7 @@ export interface MetricListItem {
 
 export interface DimensionItem {
   name: string;
+  description?: string;
   [key: string]: unknown;
 }
 

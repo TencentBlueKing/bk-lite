@@ -94,8 +94,10 @@ CMDB 是平台统一的资产与配置数据中心，围绕模型定义、资产
 | 插件说明 | 查看采集插件说明文档 | — | GA |
 | 实例侧关联任务 | 在实例侧查看可关联的采集任务名称 | — | GA |
 | 部分数据库采集 | MongoDB、Elasticsearch、HBase、TiDB、MSSQL 等数据库对象采集 | 部分对象处于试验阶段 | Beta |
+| 网段扫描发现 | 按网段创建扫描任务，查看执行与命中并回写采集/资产 | 允许家族：网络/主机/物理服务器/MySQL/PostgreSQL/MSSQL/InfluxDB；网段前缀不得宽于 /21 | GA |
 
-相关 PRD：[[legacy-prd-cmdb-自动发现.md#3.2 采集任务]]；相关架构：[[legacy-ard-modules-cmdb.md#5. 核心数据流 / 任务]]
+相关 PRD：[[legacy-prd-cmdb-自动发现.md#3.2 采集任务]]；相关架构：[[legacy-ard-modules-cmdb.md#3. 接口]]
+> 证据来源：server/apps/cmdb/urls.py:27，server/apps/cmdb/models/scan_model.py:10-22,39，web/src/app/cmdb/(pages)/assetManage/autoDiscovery/scan/page.tsx　|　同步基线：61bace9f　|　【已实现】
 > 证据来源：server/apps/cmdb/constants/constants.py:377-403，server/apps/cmdb/node_configs/network_config_file.py:5-63，server/apps/cmdb/services/ipam_discovery.py:104-175　|　同步基线：83091efe　|　【已实现】
 
 ### 6. SOID 特征库

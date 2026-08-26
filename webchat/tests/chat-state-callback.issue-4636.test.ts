@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { StateMachine } from '@webchat/core';
+import { SessionManager, StateMachine } from '@webchat/core';
 import { Chat } from '../packages/webchat-ui/src/Chat';
 import { FloatingButton } from '../packages/webchat-ui/src/FloatingButton';
 
@@ -116,7 +116,7 @@ test('Chat commits the latest callback before passive effects run', () => {
   }
 });
 
-test('FloatingButton supports the legacy callback without the standard callback', () => {
+test('FloatingButton supports the legacy callback without the standard callback', async () => {
   const legacyStates: string[] = [];
   const captured = captureMountedStateMachine();
   let renderer: ReactTestRenderer;
@@ -130,7 +130,10 @@ test('FloatingButton supports the legacy callback without the standard callback'
         })
       );
     });
-    act(() => renderer.root.findByType('button').props.onClick());
+    await act(async () => {
+      renderer.root.findByType('button').props.onClick();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     const stateMachine = captured.get();
     act(() => {
       stateMachine.transition('connecting');
@@ -143,7 +146,7 @@ test('FloatingButton supports the legacy callback without the standard callback'
   }
 });
 
-test('FloatingButton keeps standard and legacy callback compatibility across rerenders', () => {
+test('FloatingButton keeps standard and legacy callback compatibility across rerenders', async () => {
   const standardStates: string[] = [];
   const legacyStates: string[] = [];
   const captured = captureMountedStateMachine();
@@ -158,7 +161,10 @@ test('FloatingButton keeps standard and legacy callback compatibility across rer
         })
       );
     });
-    act(() => renderer.root.findByType('button').props.onClick());
+    await act(async () => {
+      renderer.root.findByType('button').props.onClick();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     const stateMachine = captured.get();
     act(() => {
       stateMachine.transition('connecting');
@@ -189,5 +195,28 @@ test('FloatingButton keeps standard and legacy callback compatibility across rer
     assert.deepEqual(legacyStates, ['connected']);
   } finally {
     captured.restore();
+  }
+});
+
+test('Chat reinitializes scoped session storage when scope changes without unmounting', () => {
+  const storageKeys: string[] = [];
+  const originalInitSession = SessionManager.prototype.initSession;
+  SessionManager.prototype.initSession = function captureStorageKey(userId?: string) {
+    storageKeys.push((this as unknown as { storageKey: string }).storageKey);
+    return originalInitSession.call(this, userId);
+  };
+  let renderer: ReactTestRenderer;
+
+  try {
+    act(() => {
+      renderer = create(React.createElement(Chat, { enableStorage: false, storageScope: 'alice' }));
+    });
+    act(() => {
+      renderer.update(React.createElement(Chat, { enableStorage: false, storageScope: 'bob' }));
+    });
+    assert.deepEqual(storageKeys, ['webchat_session:v2:alice', 'webchat_session:v2:bob']);
+    act(() => renderer.unmount());
+  } finally {
+    SessionManager.prototype.initSession = originalInitSession;
   }
 });

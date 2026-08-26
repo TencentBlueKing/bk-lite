@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys
+from apps.monitor.utils.metric_query_labels import ensure_metric_labels_placeholder
 
 
 class MetricGroupSerializer(serializers.ModelSerializer):
@@ -134,9 +135,16 @@ class MetricSerializer(serializers.ModelSerializer):
         if self.instance is not None:
             queryset = queryset.exclude(id=self.instance.id)
         if queryset.exists():
-            raise serializers.ValidationError({"name": "同模板内指标名称不能重复"})
+            raise serializers.ValidationError({"name": "同模板内指标 ID 不能重复"})
+
+        if "query" in attrs and attrs.get("query") is not None:
+            attrs["query"] = ensure_metric_labels_placeholder(attrs.get("query"))
 
         return attrs
+
+    def get_unique_together_validators(self):
+        # 禁用 DRF 默认 unique_together 文案，改由 validate() 给出字段级错误
+        return []
 
     def create(self, validated_data):
         """

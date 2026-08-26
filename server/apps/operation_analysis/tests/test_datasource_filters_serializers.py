@@ -74,6 +74,20 @@ def test_validate_field_schema_non_list_rejected():
         _validate_field_schema({"key": "x"})
 
 
+@pytest.mark.parametrize("value", [[1], [None], ["x"], [{"key": 1}]])
+@pytest.mark.django_db
+def test_validate_field_schema_malformed_items_return_serializer_error(value, authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    serializer = DataSourceAPIModelSerializer(
+        data=_nats_datasource_payload(field_schema=value),
+        context={"request": _serializer_request(authenticated_user)},
+    )
+
+    assert serializer.is_valid() is False
+    assert "field_schema" in serializer.errors
+
+
 def test_validate_field_schema_empty_key_rejected():
     with pytest.raises(serializers.ValidationError):
         _validate_field_schema([{"key": "  "}])

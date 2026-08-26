@@ -1,11 +1,11 @@
-from django.db.models import Q
+from django.db.models import Q, Subquery
 from rest_framework.exceptions import PermissionDenied
 
 from apps.alerts.constants.constants import LogTargetType
 from apps.alerts.models.models import Alert, Incident
-from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import build_json_membership_query
+from apps.system_mgmt.utils.group_utils import GroupUtils
 
 
 def get_current_team_from_request(request, required=False):
@@ -87,9 +87,7 @@ def extract_child_group_ids(group_tree, current_team_id):
 def apply_team_scope_with_group_ids(queryset, group_ids, field_name="team"):
     if not group_ids:
         return queryset.none()
-    return queryset.filter(
-        build_json_membership_query(queryset, field_name, group_ids)
-    ).distinct()
+    return queryset.filter(build_json_membership_query(queryset, field_name, group_ids)).distinct()
 
 
 def apply_team_scope_for_request(queryset, request, field_name="team"):
@@ -107,9 +105,7 @@ def _build_team_query(field_name, group_ids):
 
 
 def _filter_json_membership_fallback(queryset, field_name, expected_values):
-    return queryset.filter(
-        build_json_membership_query(queryset, field_name, expected_values)
-    )
+    return queryset.filter(build_json_membership_query(queryset, field_name, expected_values))
 
 
 def filter_alert_queryset_for_request(queryset, request):
@@ -142,14 +138,10 @@ def filter_operator_log_queryset_for_request(queryset, request):
     if not current_team:
         return queryset.none()
 
-    scoped_alert_ids = list(filter_alert_queryset_for_request(Alert.objects.all(), request).values_list("alert_id", flat=True))
-    scoped_incident_ids = list(filter_incident_queryset_for_request(Incident.objects.all(), request).values_list("incident_id", flat=True))
-    if not scoped_alert_ids and not scoped_incident_ids:
-        return queryset.none()
-
-    query = Q()
-    if scoped_alert_ids:
-        query |= Q(target_type=LogTargetType.ALERT, target_id__in=scoped_alert_ids)
-    if scoped_incident_ids:
-        query |= Q(target_type=LogTargetType.INCIDENT, target_id__in=scoped_incident_ids)
+    scoped_alert_ids = filter_alert_queryset_for_request(Alert.objects.all(), request).order_by().values("alert_id")
+    scoped_incident_ids = filter_incident_queryset_for_request(Incident.objects.all(), request).order_by().values("incident_id")
+    query = Q(target_type=LogTargetType.ALERT, target_id__in=Subquery(scoped_alert_ids)) | Q(
+        target_type=LogTargetType.INCIDENT,
+        target_id__in=Subquery(scoped_incident_ids),
+    )
     return queryset.filter(query).distinct()

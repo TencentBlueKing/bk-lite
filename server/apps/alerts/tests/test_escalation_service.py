@@ -187,6 +187,7 @@ def _due_task(alert, assignment, index=0, minutes_ago=15):
     task = ES.create_escalation_task(alert, assignment)
     task.current_layer_index = index
     task.layer_started_at = timezone.now() - timedelta(minutes=minutes_ago)
+    task.next_escalation_at = ES._next_escalation_at(task.layers, index, task.layer_started_at)
     task.save()
     return task
 
@@ -216,6 +217,59 @@ def test_scan_not_due_does_nothing(mock_send):
     ES.check_and_process_escalations()
     assert AlertEscalationTask.objects.get(alert=alert).current_layer_index == 0
     mock_send.assert_not_called()
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.escalation_service.EscalationService._send_escalation_notification")
+def test_scan_filters_future_tasks_before_opening_per_task_transactions(mock_send):
+    assignment = _make_assignment(escalation=_chain())
+    for index in range(10):
+        alert = _make_alert(alert_id=f"future-{index}", status="pending")
+        _due_task(alert, assignment, index=0, minutes_ago=0)
+
+    result = ES.check_and_process_escalations()
+
+    assert result == {"processed": 0, "escalated": 0}
+    mock_send.assert_not_called()
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.escalation_service.EscalationService._send_escalation_notification")
+def test_scan_backfills_legacy_future_deadline_without_escalating(mock_send):
+    alert = _make_alert(status="pending")
+    assignment = _make_assignment(escalation=_chain())
+    task = _due_task(alert, assignment, index=0, minutes_ago=0)
+    expected_deadline = task.next_escalation_at
+    AlertEscalationTask.objects.filter(pk=task.pk).update(next_escalation_at=None)
+
+    result = ES.check_and_process_escalations()
+
+    task.refresh_from_db()
+    assert result == {"processed": 1, "escalated": 0}
+    assert task.next_escalation_at == expected_deadline
+    assert task.current_layer_index == 0
+    mock_send.assert_not_called()
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.escalation_service.EscalationService._send_escalation_notification")
+def test_scan_processes_at_most_one_configured_batch(mock_send, monkeypatch):
+    monkeypatch.setattr(ES, "SCAN_BATCH_SIZE", 2)
+    assignment = _make_assignment(escalation=_chain())
+    tasks = []
+    for index in range(3):
+        alert = _make_alert(alert_id=f"due-{index}", status="pending")
+        tasks.append(_due_task(alert, assignment, index=0, minutes_ago=15))
+
+    result = ES.check_and_process_escalations()
+
+    assert result == {"processed": 2, "escalated": 2}
+    assert list(
+        AlertEscalationTask.objects.filter(pk__in=[task.pk for task in tasks])
+        .order_by("alert_id")
+        .values_list("current_layer_index", flat=True)
+    ) == [1, 1, 0]
+    assert mock_send.call_count == 2
 
 
 @pytest.mark.django_db

@@ -162,8 +162,10 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
 
         keys = []
         for idx, field in enumerate(value):
+            if not isinstance(field, dict):
+                raise serializers.ValidationError(f"[{idx}] 必须为对象")
             key = field.get("key", "")
-            if not key or not key.strip():
+            if not isinstance(key, str) or not key.strip():
                 raise serializers.ValidationError(f"[{idx}].key 不能为空")
             if key in keys:
                 raise serializers.ValidationError(f"[{idx}].key '{key}' 重复")
