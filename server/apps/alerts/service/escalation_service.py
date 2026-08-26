@@ -3,6 +3,7 @@ from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from django.db import connection, transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.alerts.common.notification_target import (
@@ -21,6 +22,11 @@ VALID_MODES = ("append", "replace")
 
 class EscalationService:
     EXPIRED_DAYS = 30
+    SCAN_BATCH_SIZE = 200
+
+    @staticmethod
+    def _next_escalation_at(layers, layer_index, started_at):
+        return started_at + timedelta(minutes=layers[layer_index]["wait_minutes"])
 
     @staticmethod
     def parse_escalation_config(config: Optional[dict]) -> Optional[dict]:
@@ -194,6 +200,7 @@ class EscalationService:
                 "layers": effective,
                 "current_layer_index": 0,
                 "layer_started_at": now,
+                "next_escalation_at": cls._next_escalation_at(effective, 0, now),
             },
         )
         cls._union_into_operator(alert, effective[0]["personnel"])
@@ -206,7 +213,7 @@ class EscalationService:
         """认领/解决/关闭后停止升级。"""
         updated = AlertEscalationTask.objects.filter(
             alert=alert, is_active=True
-        ).update(is_active=False, updated_at=timezone.now())
+        ).update(is_active=False, next_escalation_at=None, updated_at=timezone.now())
         return updated > 0
 
     @classmethod
@@ -294,11 +301,12 @@ class EscalationService:
         now = timezone.now()
         task.current_layer_index = next_index
         task.layer_started_at = now
+        task.next_escalation_at = cls._next_escalation_at(task.layers, next_index, now)
         # 升级是时间驱动：本层等待时长已过即推进，无论通知是否成功投递
         # （spec §3.2/§3.5：提醒因屏蔽/投递失败被跳过时升级时钟照常推进）。
         # 因此此处先持久化层级推进、再发通知；通知的同步构建部分仍在扫描的
         # transaction.atomic() 内，构建异常会连同推进一起回滚。
-        task.save(update_fields=["current_layer_index", "layer_started_at", "updated_at"])
+        task.save(update_fields=["current_layer_index", "layer_started_at", "next_escalation_at", "updated_at"])
 
         roster = cls.resolve_roster(task.layers, next_index, task.mode)
         cls._union_into_operator(alert, next_personnel)
@@ -320,10 +328,12 @@ class EscalationService:
         processed = 0
         escalated = 0
         try:
+            now = timezone.now()
             ids = list(
-                AlertEscalationTask.objects.filter(is_active=True).values_list(
-                    "alert_id", flat=True
-                )
+                AlertEscalationTask.objects.filter(is_active=True)
+                .filter(Q(next_escalation_at__lte=now) | Q(next_escalation_at__isnull=True))
+                .order_by("next_escalation_at", "alert_id")
+                .values_list("alert_id", flat=True)[: cls.SCAN_BATCH_SIZE]
             )
             select_for_update_kwargs = {}
             if connection.features.has_select_for_update_skip_locked:
@@ -346,19 +356,24 @@ class EscalationService:
 
                         if task.alert.status != AlertStatus.PENDING:
                             task.is_active = False
-                            task.save(update_fields=["is_active", "updated_at"])
+                            task.next_escalation_at = None
+                            task.save(update_fields=["is_active", "next_escalation_at", "updated_at"])
                             continue
 
-                        deadline = task.layer_started_at + timedelta(
-                            minutes=task.layers[task.current_layer_index]["wait_minutes"]
+                        deadline = task.next_escalation_at or cls._next_escalation_at(
+                            task.layers, task.current_layer_index, task.layer_started_at
                         )
-                        if timezone.now() < deadline:
+                        if now < deadline:
+                            if task.next_escalation_at is None:
+                                task.next_escalation_at = deadline
+                                task.save(update_fields=["next_escalation_at", "updated_at"])
                             continue
 
                         is_last = task.current_layer_index >= len(task.layers) - 1
                         if is_last:
                             task.is_active = False
-                            task.save(update_fields=["is_active", "updated_at"])
+                            task.next_escalation_at = None
+                            task.save(update_fields=["is_active", "next_escalation_at", "updated_at"])
                             logger.info("告警已达最后一层，不再升级: alert_id=%s", task.alert.alert_id)
                             continue
 

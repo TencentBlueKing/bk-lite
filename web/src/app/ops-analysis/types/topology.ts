@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { DirItem } from './index';
 import type { ParamItem } from './dataSource';
 import type {
@@ -321,6 +322,7 @@ export interface ToolbarProps {
   frequenceValue?: number;
   onCancel?: () => void;
   onFilterConfig?: () => void;
+  editExtra?: ReactNode;
 }
 
 // ViewConfig 表单值类型

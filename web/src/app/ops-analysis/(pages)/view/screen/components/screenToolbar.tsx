@@ -1,13 +1,14 @@
 'use client';
 
 import React from 'react';
-import { Button, Space, Tooltip } from 'antd';
+import { Button, Tooltip } from 'antd';
 import {
   EditOutlined,
   FilterOutlined,
   FullscreenOutlined,
   MailOutlined,
   PlusOutlined,
+  ReloadOutlined,
   SettingOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
@@ -34,6 +35,7 @@ interface ScreenToolbarProps {
   onCancel: () => void;
   onSave: () => void;
   saving?: boolean;
+  editExtra?: React.ReactNode;
 }
 
 const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
@@ -54,13 +56,78 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
   onCancel,
   onSave,
   saving = false,
+  editExtra,
 }) => {
   const { t } = useTranslation();
   const iconButtonClassName =
     'rounded-full! h-8 w-8 min-w-8 flex items-center justify-center';
 
+  if (!shareMode && editMode) {
+    return (
+      <div className="flex items-center gap-2" data-export-hidden="true">
+        <div className="flex items-center gap-0.5">
+          <Tooltip title={t('opsAnalysis.screen.canvasSettings')}>
+            <Button
+              type="text"
+              icon={<SettingOutlined />}
+              aria-label={t('opsAnalysis.screen.canvasSettings')}
+              onClick={onOpenSettings}
+              className={iconButtonClassName}
+            />
+          </Tooltip>
+          <Tooltip title={t('opsAnalysis.screen.fullscreenPreview')}>
+            <Button
+              type="text"
+              icon={<FullscreenOutlined />}
+              aria-label={t('opsAnalysis.screen.fullscreenPreview')}
+              onClick={onPreview}
+              className={iconButtonClassName}
+            />
+          </Tooltip>
+          <Tooltip title={t('common.refresh')}>
+            <Button
+              type="text"
+              icon={<ReloadOutlined style={{ fontSize: 16 }} />}
+              aria-label={t('common.refresh')}
+              onClick={onRefresh}
+              className={iconButtonClassName}
+            />
+          </Tooltip>
+          <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
+            <Button
+              type="text"
+              icon={<FilterOutlined style={{ fontSize: 16 }} />}
+              aria-label={t('dashboard.configUnifiedFilterFields')}
+              onClick={onOpenFilterConfig}
+              className={iconButtonClassName}
+            />
+          </Tooltip>
+        </div>
+
+        <PermissionWrapper requiredPermissions={['EditChart']}>
+          <div className="flex items-center gap-2">
+            {editExtra}
+            <Button
+              type="default"
+              icon={<PlusOutlined />}
+              onClick={onOpenWidgetSelector}
+            >
+              {t('opsAnalysis.screen.addWidget')}
+            </Button>
+            <Button type="default" onClick={onCancel}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="primary" loading={saving} onClick={onSave}>
+              {t('common.save')}
+            </Button>
+          </div>
+        </PermissionWrapper>
+      </div>
+    );
+  }
+
   return (
-    <Space>
+    <div className="flex items-center gap-1.5">
       <TimeSelector
         onlyRefresh
         frequenceValue={frequenceValue}
@@ -76,7 +143,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           onClick={onPreview}
         />
       </Tooltip>
-      {!shareMode && !editMode && onOpenShare && (
+      {!shareMode && onOpenShare && (
         <Tooltip title={t('dashboard.share')}>
           <Button
             type="text"
@@ -89,7 +156,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           />
         </Tooltip>
       )}
-      {!shareMode && !editMode && onOpenSubscription && (
+      {!shareMode && onOpenSubscription && (
         <Tooltip title={t('dashboard.subscriptionTitle')}>
           <Button
             type="text"
@@ -100,66 +167,21 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           />
         </Tooltip>
       )}
-      {!shareMode && editMode && (
-        <>
-          <Tooltip title={t('opsAnalysis.screen.canvasSettings')}>
-            <Button
-              type="text"
-              icon={<SettingOutlined />}
-              aria-label={t('opsAnalysis.screen.canvasSettings')}
-              className={iconButtonClassName}
-              onClick={onOpenSettings}
-            />
-          </Tooltip>
-          <Button
-            type="default"
-            icon={<PlusOutlined />}
-            className="rounded-full!"
-            onClick={onOpenWidgetSelector}
-          >
-            {t('opsAnalysis.screen.addWidget')}
-          </Button>
-          <Button
-            type="default"
-            icon={<FilterOutlined />}
-            className="rounded-full!"
-            onClick={onOpenFilterConfig}
-          >
-            {t('dashboard.unifiedFilterConfig')}
-          </Button>
-        </>
-      )}
       {!shareMode && (
         <PermissionWrapper requiredPermissions={['EditChart']}>
-          {!editMode ? (
-            <Tooltip title={t('common.edit')}>
-              <Button
-                type="text"
-                icon={<EditOutlined />}
-                aria-label={t('common.edit')}
-                disabled={!selectedScreen?.data_id || selectedScreen?.is_build_in}
-                className={iconButtonClassName}
-                onClick={onEdit}
-              />
-            </Tooltip>
-          ) : (
-            <div className="ml-2 flex items-center gap-2">
-              <Button className="rounded-full!" onClick={onCancel}>
-                {t('common.cancel')}
-              </Button>
-              <Button
-                type="primary"
-                loading={saving}
-                className="rounded-full!"
-                onClick={onSave}
-              >
-                {t('common.save')}
-              </Button>
-            </div>
-          )}
+          <Tooltip title={t('common.edit')}>
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              aria-label={t('common.edit')}
+              disabled={!selectedScreen?.data_id || selectedScreen?.is_build_in}
+              className={iconButtonClassName}
+              onClick={onEdit}
+            />
+          </Tooltip>
         </PermissionWrapper>
       )}
-    </Space>
+    </div>
   );
 };
 

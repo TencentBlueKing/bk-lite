@@ -1,4 +1,5 @@
 import pydantic.root_model  # noqa
+
 """apps/core/utils/viewset_utils.py 补充覆盖（baseline 未触达的方法）。
 
 聚焦：
@@ -238,6 +239,32 @@ class TestGetQuerysetByPermission:
         assert g2.id not in ids
 
     @pytest.mark.django_db
+    def test_instance_rule_cannot_expand_current_team_scope(self):
+        from apps.system_mgmt.models import Group
+
+        current_team = Group.objects.create(name="current-scope", parent_id=0)
+        foreign_team = Group.objects.create(name="foreign-scope", parent_id=0)
+        vs = _auth_vs(app_name="system_mgmt", permission_key="instance", org_field="id")
+        user = SimpleNamespace(
+            is_superuser=False,
+            group_list=[{"id": current_team.id}, {"id": foreign_team.id}],
+            group_tree=[],
+        )
+        req = SimpleNamespace(user=user, COOKIES={"include_children": "0"})
+        rules = {
+            "instance": [{"id": foreign_team.id, "permission": ["View"]}],
+            "team": [current_team.id],
+        }
+        with (
+            patch.object(AuthViewSet, "ORGANIZATION_FIELD", "id"),
+            patch("apps.core.utils.viewset_utils.get_current_team", return_value=str(current_team.id)),
+            patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules),
+        ):
+            queryset = vs.get_queryset_by_permission(req, Group.objects.all())
+
+        assert set(queryset.values_list("id", flat=True)) == {current_team.id}
+
+    @pytest.mark.django_db
     def test_empty_rules_returns_id_zero_filter(self):
         from apps.system_mgmt.models import Group
 
@@ -268,9 +295,7 @@ class TestFilterByGroup:
         user = SimpleNamespace(is_superuser=True, group_list=[], group_tree=[])
         req = SimpleNamespace(user=user, COOKIES={"include_children": "0"})
         with patch("apps.core.utils.viewset_utils.get_current_team", return_value="5"):
-            current_team, include_children, org_field, query = AuthViewSet.filter_by_group(
-                Group.objects.all(), req, user
-            )
+            current_team, include_children, org_field, query = AuthViewSet.filter_by_group(Group.objects.all(), req, user)
         assert current_team == 5
         assert include_children is False
 
@@ -295,9 +320,7 @@ class TestFilterByGroup:
         )
         req = SimpleNamespace(user=user, COOKIES={"include_children": "1"})
         with patch("apps.core.utils.viewset_utils.get_current_team", return_value="1"):
-            current_team, include_children, org_field, query = AuthViewSet.filter_by_group(
-                Group.objects.all(), req, user
-            )
+            current_team, include_children, org_field, query = AuthViewSet.filter_by_group(Group.objects.all(), req, user)
         assert include_children is True
         # org_field "team" 不在 Group 字段中 -> query 为空 Q（走 else 分支也可），仅断言不抛异常
         assert current_team == 1

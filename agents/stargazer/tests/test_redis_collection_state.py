@@ -12,6 +12,7 @@ import pytest_asyncio
 from core.collection.application import CollectionApplication, CollectionApplicationSettings
 from core.collection.contracts import CollectOutcome, CollectOutcomeStatus, PreflightResult, PreflightStatus
 from core.collection.credential_policy import CredentialPolicy
+from core.collection.host_remote import callback as callback_state
 from core.collection.redis_state import RedisCredentialStateStore, RedisRunStateStore
 from core.collection.runtime import CollectionRequest, LeaseAcquireStatus, RunStatus
 from core.infra.credential_state_cache import CredentialStateCache
@@ -115,6 +116,135 @@ async def test_two_pods_atomically_share_one_run_lease(redis_client):
     assert duplicate.lease.fence == first.lease.fence == 1
     assert duplicate.lease.attempt_id == first.lease.attempt_id
     assert first.lease.attempt_id
+
+
+@pytest.mark.asyncio
+async def test_run_acquire_persists_latest_generation_tombstone(redis_client):
+    run_store = RedisRunStateStore(redis_client, key_prefix="test:generation")
+
+    acquisition = await run_store.acquire(
+        task_id="collect-generation",
+        request_digest="digest-a",
+        owner_id="pod-a",
+        ttl_seconds=60,
+    )
+
+    assert acquisition.lease is not None
+    latest_generation = await redis_client.hgetall(run_store._fence_key("collect-generation"))
+    assert latest_generation == {
+        "owner_id": acquisition.lease.owner_id,
+        "fence": str(acquisition.lease.fence),
+        "attempt_id": acquisition.lease.attempt_id,
+    }
+    assert await redis_client.pttl(run_store._fence_key("collect-generation")) > 0
+
+
+@pytest.mark.asyncio
+async def test_callback_record_rechecks_latest_finished_generation_atomically(
+    redis_client,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "HOST_REMOTE_CALLBACK_TOKEN_SECRET",
+        "issue-4280-test-token-secret-with-32-bytes",
+    )
+    monkeypatch.setattr(callback_state, "_host_remote_callback_pool", redis_client)
+    run_store = RedisRunStateStore(redis_client)
+    first = await run_store.acquire(
+        task_id="callback-generation",
+        request_digest="digest-a",
+        owner_id="pod-a",
+        ttl_seconds=60,
+    )
+    assert first.lease is not None
+    callback_identity, trusted_identity = callback_state.issue_host_remote_callback_identity(
+        fence=first.lease.fence,
+        target="10.0.0.1",
+        collection_task_id=first.lease.task_id,
+        plugin_ref="host.monitor",
+        owner_id=first.lease.owner_id,
+        attempt=first.lease.attempt_id,
+        caller="executor-a",
+    )
+    callback_task_id = "remote-v2-generation-race"
+    await callback_state.store_host_remote_callback_context(
+        callback_task_id,
+        {"host": "10.0.0.1"},
+        trusted_identity,
+        ttl_seconds=60,
+    )
+    assert await run_store.finish(first.lease, RunStatus.COMPLETED)
+    second = await run_store.acquire(
+        task_id="callback-generation",
+        request_digest="digest-b",
+        owner_id="pod-b",
+        ttl_seconds=60,
+    )
+    assert second.lease is not None
+    assert await run_store.finish(second.lease, RunStatus.FAILED)
+
+    with pytest.raises(RuntimeError, match="latest generation is stale"):
+        await callback_state.record_host_remote_callback_payload(
+            callback_task_id,
+            {
+                "task_id": callback_task_id,
+                "callback_context": callback_identity,
+                "result": {"cpu": 1},
+            },
+        )
+
+    stored = await callback_state.load_host_remote_callback_context(callback_task_id)
+    assert stored["raw_callback"] is None
+
+
+@pytest.mark.asyncio
+async def test_callback_record_removes_consumed_token_from_redis(
+    redis_client,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        "HOST_REMOTE_CALLBACK_TOKEN_SECRET",
+        "issue-4280-test-token-secret-with-32-bytes",
+    )
+    monkeypatch.setattr(callback_state, "_host_remote_callback_pool", redis_client)
+    run_store = RedisRunStateStore(redis_client)
+    acquisition = await run_store.acquire(
+        task_id="callback-token-redaction",
+        request_digest="digest",
+        owner_id="pod-a",
+        ttl_seconds=60,
+    )
+    assert acquisition.lease is not None
+    callback_identity, trusted_identity = callback_state.issue_host_remote_callback_identity(
+        fence=acquisition.lease.fence,
+        target="10.0.0.1",
+        collection_task_id=acquisition.lease.task_id,
+        plugin_ref="host.monitor",
+        owner_id=acquisition.lease.owner_id,
+        attempt=acquisition.lease.attempt_id,
+        caller="executor-a",
+    )
+    callback_task_id = "remote-v2-token-redaction"
+    await callback_state.store_host_remote_callback_context(
+        callback_task_id,
+        {"host": "10.0.0.1"},
+        trusted_identity,
+        ttl_seconds=60,
+    )
+    assert await run_store.finish(acquisition.lease, RunStatus.COMPLETED)
+
+    stored = await callback_state.record_host_remote_callback_payload(
+        callback_task_id,
+        {
+            "task_id": callback_task_id,
+            "callback_context": callback_identity,
+            "result": {"cpu": 1},
+        },
+    )
+
+    assert "token" not in stored["ctx"]
+    assert "token" not in stored["raw_callback"]["callback_context"]
+    assert stored["ctx"]["token_hash"] == trusted_identity["token_hash"]
 
 
 @pytest.mark.asyncio

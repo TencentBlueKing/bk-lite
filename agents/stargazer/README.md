@@ -192,9 +192,23 @@ rg 'event=collection_capacity' stargazer.log
 ## Host Remote
 
 Host Remote 提交返回 `Deferred`。每个目标使用独立 callback ID；可信上下文包含父任务 ID、
-目标、owner 和 fencing token。回调必须同时匹配父任务、目标和 fencing，处理任务直接注册在
-Sanic 本地生命周期中，不再进入 ARQ。Redis 中的 callback 上下文继续提供重复回调和发布重试
-所需的短期状态。
+目标、owner、fencing token、真实 `attempt_id`、Executor caller 和一次性 v2 token。回调先匹配
+完整身份，再用单个 Lua 快照核对 Redis generation、latest-run tombstone 与可选 active run 的
+fence、attempt 和 owner；该指针在 run 返回 `Deferred` 并完成薄租约后继续存在，latest-run 又在
+每次 acquire 时原子推进，因此新 run 即使在创建首个 context 前结束也会让旧 generation 失败关闭。
+首次保存 callback payload 时会再次原子核对三层身份，并移除 raw payload 中已消费的 token。
+token 由独立环境密钥和不可变执行身份确定性 HMAC 派生，Redis 只存摘要。失败时不会 claim、
+清 running 或启动处理。创建 callback context 的 Lua 同时核验当前 run 并保留首次身份，让同 task 重投幂等；失败
+重投不删除共享 context，而由 1 小时 TTL / 300 秒 pre-accept sweeper 有界收敛。处理任务直接注册
+在 Sanic 本地生命周期中，不再进入 ARQ。
+
+滚动升级时 `HOST_REMOTE_CALLBACK_V2_ENABLED` 默认关闭；先升级并排空旧 Executor/context/retry，
+再设置至少 32 字符的 `HOST_REMOTE_CALLBACK_TOKEN_SECRET` 并启用。旧 `remote-` callback 仅在
+context TTL/deadline 内兼容，排空后可把 `HOST_REMOTE_CALLBACK_LEGACY_MAX_AGE_SECONDS` 设为 0。
+回滚前先关闭 v2 新签发并排空 v2 context、执行任务及 Executor retry；无法排空时保留 v2 handler。
+
+该 token 只阻断无法读取任务请求的盲伪造；共享 NATS 管理员仍能观察 token。最终信任根需用
+独立服务身份和最小 subject ACL，或 Executor 独立签名完成，相关治理完成前 Issue #4280 保持开放。
 
 ## 网络拓扑发现契约
 

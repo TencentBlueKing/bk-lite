@@ -71,6 +71,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     placeholder = 'Type a message...',
     enableStorage = true,
     storageKey = 'webchat_session',
+    storageScope,
     onStateChange,
     onMessageReceived,
     onError,
@@ -167,11 +168,18 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   useEffect(() => {
     const streamLifecycle = streamLifecycleRef.current;
     streamLifecycle?.mount();
+    handleAGUIEvent.cancelPendingText();
+    streamingContentRef.current = '';
+    currentMessageIdRef.current = null;
+    setIsLoading(false);
+    setIsThinking(false);
+    setHitlEvent(null);
 
     // Initialize SessionManager
     sessionManagerRef.current = new SessionManager({
       enableStorage,
       storageKey,
+      storageScope,
       customData,
     });
 
@@ -187,12 +195,11 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     const aguiSubscription = setupAGUIEventHandlers();
     // Load previous session
     const session = sessionManagerRef.current.initSession();
-    if (initialMessages && initialMessages.length > 0) {
-      session.messages = initialMessages;
-      setMessages(initialMessages);
-    } else if (session && session.messages.length > 0) {
-      setMessages(session.messages);
-    }
+    const restoredMessages = initialMessages && initialMessages.length > 0
+      ? [...initialMessages]
+      : [...session.messages];
+    session.messages = [...restoredMessages];
+    setMessages(restoredMessages);
 
     return () => {
       handleAGUIEvent.cancelPendingText();
@@ -203,7 +210,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       unsubscribeState();
       stateMachineRef.current?.destroy();
     };
-  }, [cancelPendingImageBatches]);
+  }, [cancelPendingImageBatches, enableStorage, storageKey, storageScope]);
 
   // Setup AG-UI event handlers
   const setupAGUIEventHandlers = () => {

@@ -33,6 +33,7 @@ export interface ContentPart {
   }; // 组件配置
   toolCall?: ToolCall; // 工具调用信息
   segmentIndex?: number; // 分段索引
+  isStreamingText?: boolean; // 流式纯文本中间态；结束后替换为完整 Markdown 渲染结果
 }
 
 export interface Message {

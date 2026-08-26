@@ -5,7 +5,7 @@
 > 路径 `server/apps/operation_analysis` ｜ API 前缀 `api/v1/operation_analysis/`
 
 ## 1. 职责【已实现/已存在】
-统一可视化层：聚合外部 REST/NATS 数据源，组织仪表盘、拓扑、架构图，并向大屏、报表两类新画布扩展；同时提供网络状态拓扑场景组件与配置导入导出能力。
+统一可视化层：聚合外部 REST/NATS 数据源，组织仪表盘、拓扑、架构图、大屏、报表与网络拓扑六类画布；同时提供网络状态拓扑场景组件与配置导入导出能力。
 
 ## 2. 数据模型与存储【已实现/已存在 / PostgreSQL】
 | 模型 | 文件 | 说明 |
@@ -13,6 +13,7 @@
 | Directory | `models/models.py` | 层级目录（最多 3 级）；含 `is_build_in`/`build_in_key`（unique）内置标识 |
 | Dashboard / Topology / Architecture | `models/models.py` | 仪表盘/拓扑/架构图（filters、view_sets JSON）；三者均含 `is_build_in`/`build_in_key`（unique）内置标识 |
 | Screen / Report | `models/models.py` | 大屏/报表画布；均含 `directory`、`view_sets`、`is_build_in`/`build_in_key`、`refresh_interval` |
+| NetworkTopology | `models/models.py` | 第六类画布：网络拓扑；含 WeOps 连接、视图集与运行缓存 |
 | NameSpace | `models/datasource_models.py` | NATS 连接配置（域/账号/密码加密/TLS）；含 `namespace`（NATS 命名空间标识，消息主题前缀，default=`bklite`）；含 `is_active`（内部预留，前端不暴露、运行时不校验） |
 | DataSourceAPIModel | `models/datasource_models.py` | 数据源定义；含 `source_type`、`connection` FK（可空，引用公共数据连接）、`connection_config`/`connection_overrides`、`query_config`、`transform_config`（REST/Excel 可选 Python）、Excel 双槽 FK（`excel_success_slot`/`excel_candidate_slot`/`excel_materialization_generation`）、`chart_type`、`field_schema`、内置标记与稳定键 |
 | DataConnection | `models/datasource_models.py` | 组织内可复用 MySQL/PostgreSQL/REST 物理连接；凭据加密；被引用时删除受 PROTECT |
@@ -30,7 +31,7 @@
 > 证据来源：server/apps/operation_analysis/models/datasource_models.py:121-122，server/apps/operation_analysis/common/builtin_datasource_identity.py:19-45，server/apps/operation_analysis/management/commands/init_source_api_data.py:95-160，server/apps/operation_analysis/views/datasource_view.py:590-604　|　同步基线：d2769559　|　【已实现】
 
 ## 3. 接口【已实现/已存在】
-路由组：`data_source`/`data_connection`/`dashboard`/`dashboard_subscription`/`dashboard_execution`/`directory`/`topology`/`architecture`/`screen`/`report`/`namespace`/`tag`/`import_export`/`scene_widgets`；开放端点 `open_api/import_export`。
+路由组：`data_source`/`data_connection`/`dashboard`/`dashboard_subscription`/`dashboard_execution`/`directory`/`topology`/`architecture`/`screen`/`report`/`network_topology`/`dashboard_share`/`namespace`/`tag`/`import_export`/`scene_widgets`；开放端点 `open_api/import_export`。
 
 关键自定义动作【已实现/已存在】：
 - `data_connection` CRUD / `test_connection` / `references`【已实现】：组织内连接库；权限绑定 `data_source-*`；详情脱敏回显。
@@ -63,12 +64,16 @@
 | topN | comTopN.tsx | Top-N |
 | gauge | comGauge.tsx | 仪表盘（半圆/整圆） |
 | eventTable | eventTable/eventTable.tsx | 事件表（事件流） |
-| networkStatusTopology | networkStatusTopology/index.tsx | 网络状态拓扑场景组件 |
-| topologyMap | topologyMap/index.tsx | 普通 DataSource 驱动的通用关系拓扑；消费 `{nodes, edges}`，使用 Dagre + X6 渲染 |
+| eventTimeline | widgets/comEventTimeline.tsx | 事件时间线 |
 | cardList | widgets/comCardList.tsx | 普通 DataSource 驱动的记录卡片列表；消费 `array<object>` 或 `{items}`，经 `valueConfig.cardList` 映射固定槽位 |
+| radar | widgets/comRadar.tsx | 雷达图 |
 | room3D | widgets/room3D/index.tsx | 3D 机房大屏组件：消费 CMDB NATS `get_room3d_layout`，渲染 row/col 网格、U 占用、机柜类型、设备摘要与图例 |
+| networkStatusTopology | networkStatusTopology/index.tsx | 网络状态拓扑场景组件 |
+| multiValue | widgets/comMultiValue.tsx | 多值 |
+| text | ops-analysis-widgets/text-panel | 文本面板 |
+| topologyMap | topologyMap/index.tsx | 普通 DataSource 驱动的通用关系拓扑；消费 `{nodes, edges}`，使用 Dagre + X6 渲染 |
 
-证据：`web/src/app/ops-analysis/components/widgetRegistry.ts:11,22`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`、`web/src/app/ops-analysis/api/networkStatusTopology.ts:11-25`、`web/src/app/ops-analysis/components/widgets/room3D/{index.tsx,room3DData.ts,room3DMeshes.ts,room3DScene.ts}`。
+证据：`web/src/app/ops-analysis/components/widgetRegistry.ts:19-36`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`、`web/src/app/ops-analysis/api/networkStatusTopology.ts:11-25`、`web/src/app/ops-analysis/components/widgets/room3D/{index.tsx,room3DData.ts,room3DMeshes.ts,room3DScene.ts}`。
 
 **大屏与报表前端入口**【已实现】
 - `screen`：前端提供独立页面、全屏、统一筛选、命名空间选择、组件布局与保存接口（`(pages)/view/screen/index.tsx:76-213`、`api/screen.ts:4-28`）。

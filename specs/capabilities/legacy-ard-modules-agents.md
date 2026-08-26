@@ -21,7 +21,7 @@
 - 指标与健康【已实现/已存在】：Sanic 生命周期启动/停止统一运行时及事件循环滞后观测；`/health/ready` 以运行时和 Redis 状态决定就绪性，`/health/stats` 返回容量、发布队列、线程、文件描述符及运行指标，`/health/metrics` 以 Prometheus 文本输出阶段耗时、超时、调度等待、发布和执行模式/容量组指标。
 - 原生异步与线程隔离矩阵【已实现/已存在】：插件矩阵将网络 I/O 明确分为原生异步（直接 `await`）、同步隔离（同步 SDK 在线程中执行）和远程异步（通过 NATS 等待独立执行端）；当前 protocol executor 统计为 15 个原生异步、6 个同步隔离，同步隔离仍受全局目标容量边界约束。矩阵中的插件适用范围及其与生产真实连接的逐项全链路一致性【待确认】。
 - 能力：协议采集（SNMP/IPMI/SSH/HTTP/WMI 等）、凭据状态管理、YAML 驱动采集（`service/collection_service.py`）、远程命令运行时。
-- 配置采集插件矩阵【已实现/已存在】：本轮插件集发生重排。新增 `ip_discovery` agentless 扫描插件，以及 `gbase8a`、`greenplum`、`kingbase`、`opengauss`、`vastbase` 等数据库/数据仓库采集插件；华为云插件目录规范化为 `hwcloud`。同时移除 `aws`、`manageone`、`openstack`、`smartx` 等旧插件目录（证据：`agents/stargazer/plugins/inputs/ip_discovery/plugin.yml:1-21`；`agents/stargazer/plugins/inputs/{gbase8a,greenplum,kingbase,opengauss,vastbase}/*`；`agents/stargazer/plugins/inputs/hwcloud/plugin.yml`）。`plugins/inputs/` 下累计 19 个 `*_info.py` 配置采集驱动，涵盖 host/physcial_server、网络设备及云/存储/集群类。除既有 aliyun/aws/qcloud/vmware_vc/oracle/mysql/mssql/postgresql 等外，新增 `hwcloud`、`fusioninsight`、`oceanstor`、`influxdb` 等云/存储/集群采集插件；另新增 `keepalived`、`minio` 输入插件（以 `__init__.py` + `plugin.yml` 形态，非 `*_info.py`）（证据：`agents/stargazer/plugins/inputs/hwcloud/huaweicloud_info.py`；`agents/stargazer/plugins/inputs/vmware_vc/vmware_info.py`；`agents/stargazer/plugins/inputs/config_file/config_file_info.py`；`agents/stargazer/plugins/inputs/vastbase/vastbase_info.py`；`agents/stargazer/plugins/inputs/fusioninsight/fusioninsight_info.py`；`agents/stargazer/plugins/inputs/oceanstor/oceanstor_info.py`；`agents/stargazer/plugins/inputs/influxdb/influxdb_info.py`；`agents/stargazer/plugins/inputs/keepalived/__init__.py`；`agents/stargazer/plugins/inputs/minio/__init__.py`）。
+- 配置采集插件矩阵【已实现/已存在】：`plugins/inputs/` 下 `*_info.py` 以当前仓库枚举为准（约 30 个，含 highgo/iris/nacos/oceanbase/sap_hana 等新增采集对象）。另有 `keepalived`、`minio` 以非 `*_info.py` 形态存在；IP 发现位于 `plugins/inputs/ip/`。历史“19 个 *_info.py、仅 x86 采集器”口径作废。
 - 多租户与安全收敛【已实现/已存在】：配置采集查询节点信息时优先携带 `organization_id` 缩小查询范围，未提供组织上下文时才回退 `skip_permission=True`；HTTP 监控接口对凭证/实例标识做 Prometheus label 转义与日志脱敏，避免泄露原始凭据（`service/collection_service.py:347-363`、`api/collect.py:355-521`、`api/monitor.py:12-17,247,270,429`）。
 
 > 证据来源：agents/stargazer/core/collection/scheduler.py:30-142；agents/stargazer/core/collection/application.py:48-147；agents/stargazer/core/collection/execution_plan.py:29；agents/stargazer/core/collection/executor.py:465,808；agents/stargazer/core/collection/result_publisher.py:68；agents/stargazer/core/collection/preflight.py:24；agents/stargazer/core/infra/outbound_policy.py:16；agents/stargazer/api/health.py:100；agents/stargazer/docs/configuration-plugin-async-matrix.md:46　|　同步基线：b98b782a7　|　【已实现/推断/待确认】
@@ -58,6 +58,13 @@
 ## webhookd —— webhook 接入【已实现/已存在】
 - 形态：配置模板（K8s 清单 `bk-lite-{log,metric,resource}-collector.yaml`）。
 - 能力：接收外部 webhook/告警的 HTTP 端点；`bk-lite-resource-collector.yaml` 部署 kube-state-metrics 相关资源采集能力。
+
+## ops-analysis-transform-runner —— 运营分析脚本变换【已实现/已存在】
+- 独立薄 Runner：接收 `{script,rows,params,org_id}`，执行 `transform(rows, params) -> list[dict]`；不持有数据库凭据或用户 Token。
+- 契约：`POST /v1/transform`，服务间 Token；单副本单 worker；行数上限 10000；默认超时 5s。
+- 不参与 `batch_init`；不可用时脚本 REST 失败，不拖垮 Server 启动。
+
+> 证据来源：agents/ops-analysis-transform-runner/README.md:1-36　|　同步基线：61bace9f　|　【已实现】
 
 ## 2026-07-01 Code-ARD 校准
 - `[agents#20260701-031]` 移除 Stargazer `ip_scan` NATS handler 已落地结论：当前 `service/nats_server.py` 注册列表与 `plugins/inputs/ip_discovery/` 目录均不匹配（grep `ip_scan` 无命中），`plugins/inputs/ip/` 下的 IP 发现扫描文件是否经 NATS handler 暴露尚待确认。
