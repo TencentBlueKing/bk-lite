@@ -94,6 +94,10 @@ describe('APM Trace 详情', () => {
     await user.click(screen.getByRole('radio', { name: '跨度列表' }));
     expect((await screen.findAllByText('POST /pay')).length).toBeGreaterThan(0);
 
+    await user.click(screen.getByRole('radio', { name: '火焰图' }));
+    expect(await screen.findByLabelText('checkout · POST /pay')).not.toBeNull();
+    expect(screen.getByText('Span 火焰图')).not.toBeNull();
+
     await user.click(screen.getByRole('button', { name: '跳到首个错误' }));
     await waitFor(() => expect(screen.getByText('http.status_code')).not.toBeNull());
   });
