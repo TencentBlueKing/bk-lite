@@ -234,7 +234,7 @@ export const useKafkaDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 180 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 180 },
             { title: '实例 / Broker', dataIndex: 'instance_id', key: 'instance_id', width: 170 },
             { title: '级别', dataIndex: 'kafka.log.level', key: 'kafka.log.level', width: 90, render: renderKafkaLevel },
             { title: '组件', dataIndex: 'kafka.log.component', key: 'kafka.log.component', width: 140 },
@@ -259,7 +259,7 @@ export const useKafkaDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 180 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 180 },
             { title: '实例 / Broker', dataIndex: 'instance_id', key: 'instance_id', width: 170 },
             { title: '级别', dataIndex: 'kafka.log.level', key: 'kafka.log.level', width: 90, render: renderKafkaLevel },
             { title: '组件', dataIndex: 'kafka.log.component', key: 'kafka.log.component', width: 140 },

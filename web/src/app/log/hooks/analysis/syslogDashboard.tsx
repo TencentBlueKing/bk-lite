@@ -271,7 +271,7 @@ export const useSyslogDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 160 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 160 },
             { title: '主机', dataIndex: 'hostname', key: 'hostname', width: 140 },
             { title: '应用', dataIndex: 'appname', key: 'appname', width: 120 },
             { title: 'Facility', dataIndex: 'facility', key: 'facility', width: 90 },
@@ -298,7 +298,7 @@ export const useSyslogDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 160 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 160 },
             { title: '主机', dataIndex: 'hostname', key: 'hostname', width: 140 },
             { title: '应用', dataIndex: 'appname', key: 'appname', width: 120 },
             { title: 'Facility', dataIndex: 'facility', key: 'facility', width: 90 },

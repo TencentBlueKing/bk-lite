@@ -249,7 +249,7 @@ export const useFileIntegrityDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 166 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 166 },
             { title: '主机', dataIndex: 'host.name', key: 'host.name', width: 82 },
             { title: '动作', dataIndex: 'file_action', key: 'file_action', width: 88, render: renderActionTag },
             { title: '路径', dataIndex: 'file_path', key: 'file_path', width: 210 },
@@ -277,7 +277,7 @@ export const useFileIntegrityDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 166 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 166 },
             { title: '主机', dataIndex: 'host.name', key: 'host.name', width: 82 },
             { title: '动作', dataIndex: 'file_action', key: 'file_action', width: 88, render: renderActionTag },
             { title: '路径', dataIndex: 'file_path', key: 'file_path', width: 180 },

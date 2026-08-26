@@ -270,7 +270,7 @@ export const useNginxDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 160 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 160 },
             { title: '状态码', dataIndex: 'nginx.access.response_code', key: 'nginx.access.response_code', width: 90, render: renderStatusTag },
             { title: '方法', dataIndex: 'nginx.access.method', key: 'nginx.access.method', width: 86 },
             { title: 'URL', dataIndex: 'nginx.access.url', key: 'nginx.access.url', width: 220 },
@@ -294,7 +294,7 @@ export const useNginxDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 160 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 160 },
             { title: '级别', dataIndex: 'nginx.error.level', key: 'nginx.error.level', width: 90, render: renderWebLevel },
             { title: '连接 ID', dataIndex: 'nginx.error.connection_id', key: 'nginx.error.connection_id', width: 110 },
             { title: '消息摘要', dataIndex: 'nginx.error.message', key: 'nginx.error.message', width: 360 }
