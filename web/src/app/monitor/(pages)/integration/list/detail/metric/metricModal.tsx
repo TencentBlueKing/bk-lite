@@ -25,11 +25,11 @@ import {
   Empty
 } from 'antd';
 import { AggregationColor } from 'antd/es/color-picker/color';
-import { PlusOutlined, MinusOutlined } from '@ant-design/icons';
+import { PlusOutlined, MinusOutlined, CloseOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/monitor/context/common';
 import OperateModal from '@/components/operate-modal';
 import type { FormInstance } from 'antd';
-import useApiClient from '@/utils/request';
+import useApiClient, { HandledRequestError } from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import { ModalRef, ListItem } from '@/app/monitor/types';
 import { MetricInfo } from '@/app/monitor/types/integration';
@@ -38,6 +38,10 @@ import { useTranslation } from '@/utils/i18n';
 import type { ColorPickerProps } from 'antd';
 import { generate, green, presetPalettes, red } from '@ant-design/colors';
 import { findCascaderPath } from '@/app/monitor/utils/common';
+import {
+  ensureMetricLabelsPlaceholder,
+  stripMetricLabelsPlaceholder
+} from '@/app/monitor/utils/metricQueryLabels';
 import { cloneDeep } from 'lodash';
 const { Option } = Select;
 
@@ -50,6 +54,85 @@ interface ModalProps {
 
 type Presets = Required<ColorPickerProps>['presets'][number];
 type DimensionMode = 'input' | 'select';
+type FormulaTestStatus = 'idle' | 'passed' | 'failed';
+
+const METRIC_FORMULA_ERROR_TOAST_KEY = 'monitor-metric-formula-error';
+
+/** 报错 toast：文案与「查看详情」基线对齐；详情浮层贴着链接右侧弹出 */
+const MetricQueryErrorToast = ({
+  summary,
+  detail,
+  viewDetailLabel,
+  detailTitle,
+  closeLabel,
+  onClose
+}: {
+  summary: string;
+  detail?: string;
+  viewDetailLabel: string;
+  detailTitle: string;
+  closeLabel: string;
+  onClose: () => void;
+}) => {
+  const detailText = (detail || '').trim();
+  const hasDetail = !!detailText && detailText !== summary.trim();
+
+  return (
+    <div
+      role="alert"
+      className="inline-flex w-fit max-w-[min(440px,72vw)] items-baseline gap-2 text-left"
+    >
+      <p className="m-0 min-w-0 whitespace-normal break-words text-sm leading-5 text-[var(--color-text-1)]">
+        {summary}
+      </p>
+      {hasDetail ? (
+        <Popover
+          trigger={['hover', 'click']}
+          placement="right"
+          arrow={{ pointAtCenter: true }}
+          mouseEnterDelay={0.08}
+          mouseLeaveDelay={0.2}
+          autoAdjustOverflow
+          destroyOnHidden
+          getPopupContainer={() => document.body}
+          zIndex={3000}
+          styles={{
+            body: {
+              padding: 0,
+              borderRadius: 8,
+              overflow: 'hidden'
+            }
+          }}
+          content={
+            <div className="w-[min(340px,80vw)]">
+              <div className="border-b border-[var(--color-border-2)] bg-[var(--color-fill-1)] px-3 py-2 text-sm font-medium text-[var(--color-text-1)]">
+                {detailTitle}
+              </div>
+              <div className="max-h-[240px] overflow-auto whitespace-pre-wrap break-words px-3 py-2 text-sm leading-5 text-[var(--color-text-2)]">
+                {detailText}
+              </div>
+            </div>
+          }
+        >
+          <button
+            type="button"
+            className="shrink-0 border-0 bg-transparent p-0 text-sm leading-5 text-[var(--color-primary)] hover:underline"
+          >
+            {viewDetailLabel}
+          </button>
+        </Popover>
+      ) : null}
+      <button
+        type="button"
+        aria-label={closeLabel}
+        className="shrink-0 border-0 bg-transparent p-0 text-[var(--color-text-3)] hover:text-[var(--color-text-1)]"
+        onClick={onClose}
+      >
+        <CloseOutlined className="text-xs" />
+      </button>
+    </div>
+  );
+};
 
 const genPresets = (presets = presetPalettes) => {
   return Object.entries(presets).map<Presets>(([label, colors]) => ({
@@ -75,8 +158,7 @@ const normalizeDimensions = (items?: DimensionItem[]): DimensionItem[] => {
   }));
 };
 
-const buildMetricSnippet = (metricName: string) =>
-  `${metricName}{__$labels__}`;
+const buildMetricSnippet = (metricName: string) => metricName;
 
 const MetricModal = forwardRef<ModalRef, ModalProps>(
   ({ onSuccess, groupList, monitorObject, pluginId }, ref) => {
@@ -124,6 +206,9 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     const [metricNamesLoading, setMetricNamesLoading] = useState(false);
     const [metricSearch, setMetricSearch] = useState('');
     const [testLoading, setTestLoading] = useState(false);
+    const [formulaTestStatus, setFormulaTestStatus] =
+      useState<FormulaTestStatus>('idle');
+    const lastProbedQueryRef = useRef<string>('');
     const metricSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
       null
     );
@@ -133,6 +218,100 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     const resetDimensionGuideState = () => {
       setDimensionMode('input');
       setDimensionLabelKeys([]);
+    };
+
+    const clearFormulaProbeCache = () => {
+      lastProbedQueryRef.current = '';
+      setFormulaTestStatus('idle');
+    };
+
+    const markFormulaProbeAllowed = (normalizedQuery: string) => {
+      lastProbedQueryRef.current = normalizedQuery;
+      setFormulaTestStatus('passed');
+    };
+
+    const showFormulaErrorToast = (summary: string, detail?: string) => {
+      const detailText = (detail || '').trim();
+      const hasDetail = !!detailText && detailText !== summary.trim();
+      message.error({
+        key: METRIC_FORMULA_ERROR_TOAST_KEY,
+        className:
+          'metric-query-error-toast [&_.ant-message-notice-content]:!w-fit [&_.ant-message-custom-content]:!items-baseline [&_.ant-message-custom-content]:!gap-2',
+        content: (
+          <MetricQueryErrorToast
+            summary={summary}
+            detail={detail}
+            viewDetailLabel={t('monitor.integrations.viewErrorDetail')}
+            detailTitle={t('monitor.integrations.errorDetailTitle')}
+            closeLabel={t('common.close')}
+            onClose={() => message.destroy(METRIC_FORMULA_ERROR_TOAST_KEY)}
+          />
+        ),
+        duration: hasDetail ? 10 : 4
+      });
+    };
+
+    const applyMetricSaveFieldErrors = (error: unknown): boolean => {
+      if (!(error instanceof HandledRequestError)) {
+        return false;
+      }
+      const duplicateIdMessage = t('monitor.integrations.duplicateMetricId');
+      const isUniqueTogetherNoise = (text: string) =>
+        /必须能构成唯一集合|unique set|params_error/i.test(text);
+
+      const payload = error.payload as
+        | { data?: { errors?: Record<string, string[] | string> } }
+        | undefined;
+      const fieldErrors = payload?.data?.errors;
+
+      const formFields: Array<{ name: string; errors: string[] }> = [];
+      const leftover: string[] = [];
+
+      if (fieldErrors && typeof fieldErrors === 'object') {
+        Object.entries(fieldErrors).forEach(([field, value]) => {
+          const messages = (Array.isArray(value) ? value : [value])
+            .map((item) => String(item || '').trim())
+            .filter(Boolean);
+          if (!messages.length) return;
+
+          if (
+            field === 'params_error' &&
+            messages.some((item) => isUniqueTogetherNoise(item))
+          ) {
+            formFields.push({ name: 'name', errors: [duplicateIdMessage] });
+            return;
+          }
+
+          if (
+            [
+              'name',
+              'display_name',
+              'metric_group',
+              'query',
+              'data_type',
+              'unit',
+              'display_description',
+              'description'
+            ].includes(field)
+          ) {
+            formFields.push({ name: field, errors: messages });
+          } else {
+            leftover.push(...messages);
+          }
+        });
+      } else if (error.message && isUniqueTogetherNoise(error.message)) {
+        formFields.push({ name: 'name', errors: [duplicateIdMessage] });
+      } else {
+        return false;
+      }
+
+      if (formFields.length) {
+        formRef.current?.setFields(formFields);
+      }
+      if (leftover.length) {
+        message.error(leftover.join('; '));
+      }
+      return formFields.length > 0 || leftover.length > 0;
     };
 
     const loadGroupOptions = async (keyword = '') => {
@@ -239,6 +418,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
         setType(type);
         setTitle(title);
         resetDimensionGuideState();
+        clearFormulaProbeCache();
         setMetricPickerOpen(false);
         setMetricSearch('');
         setMetricNames([]);
@@ -265,8 +445,14 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
               setEnumList(_enumList);
             }
           }
+          if (typeof formData.query === 'string') {
+            formData.query = stripMetricLabelsPlaceholder(formData.query);
+          }
           setGroupForm(formData);
         } catch {
+          if (typeof formData.query === 'string') {
+            formData.query = stripMetricLabelsPlaceholder(formData.query);
+          }
           setGroupForm(formData);
           setEnumList([{ name: null, id: null, color: null }]);
         }
@@ -281,46 +467,121 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     }, [groupVisible, groupForm]);
 
     const operateGroup = async (params: MetricInfo) => {
+      const msg: string = t(
+        type === 'add'
+          ? 'common.successfullyAdded'
+          : 'common.successfullyModified'
+      );
+      const url: string =
+        type === 'add'
+          ? '/monitor/api/metrics/'
+          : `/monitor/api/metrics/${groupForm.id}/`;
+      const requestType = type === 'add' ? post : put;
       try {
-        setConfirmLoading(true);
-        const msg: string = t(
-          type === 'add'
-            ? 'common.successfullyAdded'
-            : 'common.successfullyModified'
-        );
-        const url: string =
-          type === 'add'
-            ? '/monitor/api/metrics/'
-            : `/monitor/api/metrics/${groupForm.id}/`;
-        const requestType = type === 'add' ? post : put;
-        await requestType(url, params);
-        message.success(msg);
-        handleCancel();
-        onSuccess();
-      } finally {
-        setConfirmLoading(false);
+        await requestType(url, params, {
+          suppressErrorNotification: true
+        });
+      } catch (error) {
+        if (!applyMetricSaveFieldErrors(error)) {
+          if (error instanceof HandledRequestError && error.message) {
+            message.error(error.message);
+          }
+        }
+        return;
       }
+      message.success(msg);
+      handleCancel();
+      onSuccess();
     };
 
     const handleSubmit = () => {
-      formRef.current?.validateFields().then((values) => {
-        const cleanedDimensions = dimensions
-          .filter((item) => item.name?.trim())
-          .map((item) => ({
-            name: item.name.trim(),
-            description: (item.description || item.name).trim()
-          }));
-        operateGroup({
-          ...values,
-          dimensions: cleanedDimensions,
-          monitor_object: monitorObject,
-          monitor_plugin: pluginId,
-          type: 'metric',
-          unit:
-            values.data_type === 'Enum'
-              ? JSON.stringify(enumList)
-              : values.unit.at(-1)
-        });
+      formRef.current?.validateFields().then(async (values) => {
+        const query = String(values.query || '');
+        if (!query.trim()) {
+          message.warning(t('common.required'));
+          return;
+        }
+
+        const normalizedQuery = ensureMetricLabelsPlaceholder(query);
+        const canSkipProbe =
+          formulaTestStatus === 'passed' &&
+          lastProbedQueryRef.current === normalizedQuery;
+
+        setConfirmLoading(true);
+        try {
+          if (!canSkipProbe) {
+            let result;
+            try {
+              result = await testMetricQuery({
+                query: normalizedQuery,
+                monitor_object_id: monitorObject,
+                monitor_plugin_id: pluginId
+              });
+            } catch {
+              lastProbedQueryRef.current = '';
+              setFormulaTestStatus('failed');
+              resetDimensionGuideState();
+              message.error(t('monitor.integrations.confirmBlockedByFailedTest'));
+              return;
+            }
+
+            if (!result?.ok) {
+              if (result?.reason === 'syntax_error') {
+                lastProbedQueryRef.current = '';
+                setFormulaTestStatus('failed');
+                resetDimensionGuideState();
+                showFormulaErrorToast(
+                  t('monitor.integrations.confirmSyntaxError'),
+                  result.message
+                );
+                return;
+              }
+              if (result?.reason === 'no_data') {
+                resetDimensionGuideState();
+                markFormulaProbeAllowed(normalizedQuery);
+                message.warning(t('monitor.integrations.confirmNoDataWarning'));
+              } else {
+                lastProbedQueryRef.current = '';
+                setFormulaTestStatus('failed');
+                resetDimensionGuideState();
+                message.error(
+                  t('monitor.integrations.confirmBlockedByFailedTest')
+                );
+                return;
+              }
+            } else {
+              const keys = Array.isArray(result.label_keys)
+                ? result.label_keys
+                : [];
+              setDimensionLabelKeys(keys);
+              markFormulaProbeAllowed(normalizedQuery);
+              if (keys.length) {
+                setDimensionMode('select');
+              }
+            }
+          }
+
+          const cleanedDimensions = dimensions
+            .filter((item) => item.name?.trim())
+            .map((item) => ({
+              name: item.name.trim(),
+              description: (item.description || item.name).trim()
+            }));
+          await operateGroup({
+            ...values,
+            query: normalizedQuery,
+            dimensions: cleanedDimensions,
+            monitor_object: monitorObject,
+            monitor_plugin: pluginId,
+            type: 'metric',
+            unit:
+              values.data_type === 'Enum'
+                ? JSON.stringify(enumList)
+                : values.unit.at(-1)
+          });
+        } finally {
+          setConfirmLoading(false);
+        }
       });
     };
 
@@ -339,6 +600,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     const handleCancel = () => {
       setGroupVisible(false);
       setMetricPickerOpen(false);
+      clearFormulaProbeCache();
       resetDimensionGuideState();
     };
 
@@ -358,6 +620,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
       if (dimensionMode === 'select') {
         resetDimensionGuideState();
       }
+      clearFormulaProbeCache();
     };
 
     const appendMetricToFormula = (metricName: string) => {
@@ -369,6 +632,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
           : `${current}${snippet}`;
       formRef.current?.setFieldsValue({ query: next });
       resetDimensionGuideState();
+      clearFormulaProbeCache();
       setMetricPickerOpen(false);
     };
 
@@ -388,27 +652,46 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
       }
       setTestLoading(true);
       try {
+        const normalizedQuery = ensureMetricLabelsPlaceholder(query);
         const result = await testMetricQuery({
-          query,
+          query: normalizedQuery,
           monitor_object_id: monitorObject,
           monitor_plugin_id: pluginId
         });
         if (result?.ok) {
-          setDimensionLabelKeys(
-            Array.isArray(result.label_keys) ? result.label_keys : []
+          const keys = Array.isArray(result.label_keys) ? result.label_keys : [];
+          setDimensionLabelKeys(keys);
+          markFormulaProbeAllowed(normalizedQuery);
+          if (keys.length) {
+            setDimensionMode('select');
+            message.success(t('monitor.integrations.testMetricSuccess'));
+          } else {
+            resetDimensionGuideState();
+            message.success(t('monitor.integrations.testMetricSuccessNoFields'));
+          }
+          return;
+        }
+
+        resetDimensionGuideState();
+        if (result?.reason === 'syntax_error') {
+          lastProbedQueryRef.current = '';
+          setFormulaTestStatus('failed');
+          showFormulaErrorToast(
+            t('monitor.integrations.testMetricSyntaxError'),
+            result.message
           );
-          setDimensionMode('select');
-          message.success(
-            result.message || t('monitor.integrations.testMetricSuccess')
-          );
+        } else if (result?.reason === 'no_data') {
+          markFormulaProbeAllowed(normalizedQuery);
+          message.warning(t('monitor.integrations.testMetricNoData'));
         } else {
-          resetDimensionGuideState();
-          message.warning(
-            result?.message || t('monitor.integrations.testMetricFailed')
-          );
+          lastProbedQueryRef.current = '';
+          setFormulaTestStatus('failed');
+          message.warning(t('monitor.integrations.testMetricFailed'));
         }
       } catch {
         resetDimensionGuideState();
+        lastProbedQueryRef.current = '';
+        setFormulaTestStatus('failed');
         message.warning(t('monitor.integrations.testMetricFailed'));
       } finally {
         setTestLoading(false);
@@ -481,7 +764,7 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     };
 
     const metricPickerContent = (
-      <div className="w-[280px]">
+      <div className="w-[min(520px,80vw)] min-w-[280px]">
         <Input
           allowClear
           value={metricSearch}
@@ -489,14 +772,18 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
           onChange={(e) => handleMetricSearch(e.target.value)}
           className="mb-2"
         />
+        <p className="mb-2 text-xs leading-5 text-[var(--color-text-3)]">
+          {t('monitor.integrations.selectMetricRawOnlyHint')}
+        </p>
         <Spin spinning={metricNamesLoading}>
-          <div className="max-h-[240px] overflow-auto">
+          <div className="max-h-[280px] overflow-auto">
             {metricNames.length ? (
               metricNames.map((name) => (
                 <button
                   key={name}
                   type="button"
-                  className="block w-full truncate border-0 bg-transparent px-2 py-1 text-left text-[var(--color-text-1)] hover:bg-[var(--color-bg-hover)]"
+                  title={name}
+                  className="block w-full break-all border-0 bg-transparent px-2 py-1.5 text-left text-sm leading-5 text-[var(--color-text-1)] hover:bg-[var(--color-bg-hover)]"
                   onClick={() => appendMetricToFormula(name)}
                 >
                   {name}
@@ -505,7 +792,11 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
             ) : (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={t('monitor.integrations.noVmMetricNames')}
+                description={
+                  metricSearch.trim()
+                    ? t('monitor.integrations.noVmMetricNamesForSearch')
+                    : t('monitor.integrations.noVmMetricNames')
+                }
               />
             )}
           </div>
@@ -587,7 +878,9 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
               </Descriptions.Item>
               <Descriptions.Item label={t('monitor.integrations.formula')}>
                 <div className="whitespace-pre-wrap break-all">
-                  {groupForm.query || '--'}
+                  {stripMetricLabelsPlaceholder(
+                    String(groupForm.query || '')
+                  ) || '--'}
                 </div>
               </Descriptions.Item>
               <Descriptions.Item label={t('monitor.integrations.dimension')}>
@@ -708,32 +1001,6 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
                           onDimensionDisplayNameChange(e, index)
                         }
                       />
-                      {dimensionMode === 'select' &&
-                        dimensionLabelKeys.length > 0 && (
-                          <Popover
-                            trigger="click"
-                            content={
-                              <div className="max-h-[200px] w-[200px] overflow-auto">
-                                {dimensionLabelKeys.map((key) => (
-                                  <button
-                                    key={key}
-                                    type="button"
-                                    className="block w-full truncate border-0 bg-transparent px-2 py-1 text-left hover:bg-[var(--color-bg-hover)]"
-                                    onClick={() =>
-                                      onDimensionIdChange(key, index)
-                                    }
-                                  >
-                                    {key}
-                                  </button>
-                                ))}
-                              </div>
-                            }
-                          >
-                            <Button type="link" className="ml-[4px] px-0">
-                              {t('monitor.integrations.selectField')}
-                            </Button>
-                          </Popover>
-                      )}
                       <Button
                         icon={<PlusOutlined />}
                         className="ml-[10px]"

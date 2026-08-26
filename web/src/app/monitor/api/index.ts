@@ -205,7 +205,9 @@ const useMonitorApi = () => {
     monitor_object_id?: React.Key;
     monitor_plugin_id?: React.Key;
   }) => {
-    return await post(`/monitor/api/metrics/test_query/`, data);
+    return await post(`/monitor/api/metrics/test_query/`, data, {
+      suppressErrorNotification: true
+    });
   };
 
   return {

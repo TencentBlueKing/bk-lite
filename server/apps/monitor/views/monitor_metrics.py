@@ -18,6 +18,7 @@ from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
+from apps.monitor.utils.metric_query_labels import ensure_metric_labels_placeholder, is_raw_vector_selector
 from apps.monitor.utils.snmp_ifmib_capability import (
     COMMON_IFMIB_METRIC_NAMES,
     IFMIB_ZH_DISPLAY_TEXTS,
@@ -206,7 +207,19 @@ def merge_inherited_metrics(vendor_metrics, base_metrics, vendor_groups_by_name,
 
 def sanitize_metric_query_for_vm(query):
     """Strip catalog placeholders so a draft formula can be sent to VictoriaMetrics."""
-    return (query or "").replace("__$labels__", "").replace("{, ", "{").replace("{,", "{").replace(", }", "}").replace(",}", "}")
+    normalized = ensure_metric_labels_placeholder(query)
+    cleaned = (
+        (normalized or "").replace("__$labels__", "").replace("{, ", "{").replace("{,", "{").replace(", }", "}").replace(",}", "}").replace("{}", "")
+    )
+    cleaned = re.sub(
+        r"([a-zA-Z_:][a-zA-Z0-9_:]*)\s*,(?=\s*(?:[+\-*/)]|$))",
+        r"\1",
+        cleaned,
+    )
+    cleaned = re.sub(r"\{\s*,", "{", cleaned)
+    cleaned = re.sub(r",\s*\}", "}", cleaned)
+    cleaned = re.sub(r"\{\s*\}", "", cleaned)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 
 def collect_vm_field_names(metric_obj):
@@ -246,6 +259,37 @@ def extract_metric_names_from_queries(queries):
     return sorted(names)
 
 
+def collect_computed_catalog_metric_names(monitor_object_id, monitor_plugin_id):
+    """本模板中公式非原始向量选择器的目录指标 ID（防点选套娃）。"""
+    computed = set()
+    rows = Metric.objects.filter(
+        monitor_object_id=monitor_object_id,
+        monitor_plugin_id=monitor_plugin_id,
+    ).values_list("name", "query")
+    for name, query in rows:
+        metric_id = (name or "").strip()
+        if metric_id and not is_raw_vector_selector(query):
+            computed.add(metric_id)
+    return computed
+
+
+def extract_raw_catalog_metric_names(monitor_object_id, monitor_plugin_id):
+    """兜底：仅从原始公式提取可点选的序列名。"""
+    names = set()
+    rows = Metric.objects.filter(
+        monitor_object_id=monitor_object_id,
+        monitor_plugin_id=monitor_plugin_id,
+    ).values_list("query", flat=True)
+    for query in rows:
+        if not is_raw_vector_selector(query):
+            continue
+        trimmed = (query or "").strip()
+        match = re.match(r"^([a-zA-Z_:][a-zA-Z0-9_:]*)", trimmed)
+        if match:
+            names.add(match.group(1))
+    return sorted(names)
+
+
 def list_vm_metric_names(monitor_object_id, monitor_plugin_id, keyword=""):
     """List live VM __name__ values for a template; fall back to catalog query names."""
     monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name").first()
@@ -276,11 +320,11 @@ def list_vm_metric_names(monitor_object_id, monitor_plugin_id, keyword=""):
         )
 
     if not names:
-        catalog_queries = Metric.objects.filter(
-            monitor_object_id=monitor_object_id,
-            monitor_plugin_id=monitor_plugin_id,
-        ).values_list("query", flat=True)
-        names = extract_metric_names_from_queries(catalog_queries)
+        names = extract_raw_catalog_metric_names(monitor_object_id, monitor_plugin_id)
+
+    computed_names = collect_computed_catalog_metric_names(monitor_object_id, monitor_plugin_id)
+    if computed_names:
+        names = [name for name in names if name not in computed_names]
 
     keyword = (keyword or "").strip().lower()
     if keyword:
@@ -297,22 +341,34 @@ def list_vm_metric_names(monitor_object_id, monitor_plugin_id, keyword=""):
     return names
 
 
-def evaluate_metric_query(query):
-    """Instant-query a draft formula; never raises for empty/failed calculation."""
+def _bounded_vm_error_message(payload, fallback="公式语法错误"):
+    """Prefer VM error text but keep it bounded for UI display."""
+    raw = ""
+    if isinstance(payload, dict):
+        raw = payload.get("error") or payload.get("errorType") or ""
+    text = str(raw).strip() or fallback
+    if len(text) > 200:
+        return f"{text[:200]}..."
+    return text
+
+
+def probe_metric_query(query):
+    """Probe a draft formula against VM and classify syntax / data / infra failures."""
     cleaned = sanitize_metric_query_for_vm(query)
     if not cleaned.strip():
         return {
             "ok": False,
+            "reason": "empty_query",
             "message": "公式不能为空",
             "label_keys": [],
             "sample_count": 0,
         }
 
     try:
-        response = VictoriaMetricsAPI().query(cleaned)
+        response, http_error = VictoriaMetricsAPI().query_allow_error(cleaned)
     except Exception as exc:
         logger.error(
-            "evaluate_metric_query VictoriaMetrics request failed",
+            "probe_metric_query VictoriaMetrics request failed",
             extra={
                 "failed_stage": "vm_query",
                 "error_type": type(exc).__name__,
@@ -321,16 +377,27 @@ def evaluate_metric_query(query):
         )
         return {
             "ok": False,
-            "message": "指标试算失败，可继续保存",
+            "reason": "vm_error",
+            "message": "指标试算失败，请稍后重试",
             "label_keys": [],
             "sample_count": 0,
         }
 
-    results = response.get("data", {}).get("result") or []
+    if http_error is not None or (isinstance(response, dict) and response.get("status") == "error"):
+        return {
+            "ok": False,
+            "reason": "syntax_error",
+            "message": _bounded_vm_error_message(response if isinstance(response, dict) else {}),
+            "label_keys": [],
+            "sample_count": 0,
+        }
+
+    results = (response or {}).get("data", {}).get("result") or []
     if not results:
         return {
             "ok": False,
-            "message": "暂无计算结果，可能尚未采集到数据，可继续保存",
+            "reason": "no_data",
+            "message": "暂无匹配数据，可继续保存；有数据后可再测试以选择维度字段",
             "label_keys": [],
             "sample_count": 0,
         }
@@ -341,10 +408,16 @@ def evaluate_metric_query(query):
     label_keys.discard("__name__")
     return {
         "ok": True,
-        "message": "试算成功",
+        "reason": "ok",
+        "message": "测试成功，可在下方选择维度字段",
         "label_keys": sorted(label_keys),
         "sample_count": len(results),
     }
+
+
+def evaluate_metric_query(query):
+    """Instant-query a draft formula for real samples; never blocks save."""
+    return probe_metric_query(query)
 
 
 class MetricGroupViewSet(viewsets.ModelViewSet):
