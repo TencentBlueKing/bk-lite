@@ -25,18 +25,22 @@ BK-Lite 提供一体化的运维能力中台，覆盖以下业务域（均对应
 |--------|----------|----------|
 | 配置管理（CMDB） | `apps/cmdb` | 资产模型、实例、关系图谱、自动采集 |
 | 监控告警 | `apps/monitor` | 监控对象/指标/插件、策略扫描、告警生命周期 |
+| 应用性能（APM） | `apps/apm` | 应用目录、调用链、拓扑、SLO 与自有告警；遥测存 VictoriaTraces |
 | 统一告警 | `apps/alerts` | 多源事件接入、富化、降噪/关联、分派与通知 |
 | 日志中心 | `apps/log` | 日志采集配置、查询、日志告警策略 |
 | 运营分析 | `apps/operation_analysis` | 仪表盘、拓扑、架构图、数据源聚合 |
 | 节点管理 | `apps/node_mgmt` | 节点/控制器/采集器、云区域、sidecar 配置下发 |
 | 作业平台 | `apps/job_mgmt` | 脚本/playbook/文件分发、定时任务 |
+| 补丁管理 | `apps/patch_mgmt` | 补丁源、基线合规、风险与治理任务 |
 | MLOps | `apps/mlops` | 数据集、训练任务、模型发布与服务 |
-| AI 助手 | `apps/opspilot` | RAG、知识库、Bot、LLM 接入 |
+| AI 助手 | `apps/opspilot` | Wiki 知识库、Bot、LLM 接入 |
 | 系统管理 | `apps/system_mgmt` | 用户/组/角色/权限、登录、审计、通知渠道 |
 | 控制台 | `apps/console_mgmt` | 用户初始化、站内通知、应用偏好 |
 
+> 证据来源：server/apps/ 目录；server/apps/apm/apps.py:4-7；web/src/app 顶层产品目录　|　同步基线：61bace9f　|　【已实现】
+
 ### 2.2 业务边界【已实现/已存在 + 推断】
-- 平台**自身不直接存储时序与日志原始数据**，而是依赖外部 VictoriaMetrics（指标）与 VictoriaLogs（日志）。【已实现】（`apps/monitor/utils/victoriametrics_api.py`、`apps/log/constants/victoriametrics.py`）
+- 平台**自身不直接存储时序、日志与调用链原始数据**，而是依赖外部 VictoriaMetrics（指标）、VictoriaLogs（日志）与 VictoriaTraces（APM 调用链）。【已实现】（`apps/monitor/utils/victoriametrics_api.py`、`apps/log/constants/victoriametrics.py`、`apps/apm/adapters/victoriatraces.py`）
 - 数据采集与命令执行下沉到分布式 agents（stargazer / nats-executor / ansible-executor / fusion-collector），平台通过 **NATS** 与之通信。【已实现】（`agents/*`、`apps/rpc/*`）
 - AI 推理能力（异常检测、时序预测、日志聚类、文本/图像分类、目标检测）由独立的 BentoML 服务承载。【已实现】（`algorithms/classify_*_server`）
 
@@ -50,13 +54,13 @@ BK-Lite 提供一体化的运维能力中台，覆盖以下业务域（均对应
 ## 3. 总体架构
 
 ### 3.1 分层视图【已实现/已存在】
-1. **接入层**：Next.js Web（`web/`，11 个产品模块）+ 移动端（`mobile/`，Tauri，opspilot 会话 + workbench 子集）。前端通过 `/api/proxy/[...path]` 反向代理到后端 `NEXTAPI_URL/api/v1/`。
+1. **接入层**：Next.js Web（`web/`，13 个产品模块，含 `apm` 与 `patch-manager`）+ 移动端（`mobile/`，Tauri，opspilot 会话 + 工作台，并含资产/监控/待办）。前端通过 `/api/proxy/[...path]` 反向代理到后端 `NEXTAPI_URL/api/v1/`。
 2. **应用层（后端单体多 app）**：Django 4.2 + Uvicorn(ASGI)，`server/apps/*`。URL 路由自动发现（`server/urls.py` 遍历 `apps.*` 注册 `api/v1/<app>/`）。app 自动注册进 `INSTALLED_APPS`（`base`/`core`/`rpc` 常驻，其余受 `INSTALL_APPS` 环境变量控制）。
 3. **异步层**：Celery（broker 默认 RabbitMQ）+ Beat 调度，各 app 提供 `tasks.py`/`tasks/`；NATS 监听器（`nats_api.py`/`nats/`）。
 4. **服务间通信层**：`apps/rpc/*` 封装基于 NATS 的 RPC（`RpcClient` 按 `NATS_NAMESPACE`=`bklite` 路由），并提供 `AppClient` 本进程回退调用。
 5. **agents 层**：stargazer（Sanic，协议采集）、nats-executor（Go，命令执行）、ansible-executor（Python，playbook）、fusion-collector（sidecar 容器：telegraf/vector/beats/snmptrapd 等）、sidecar-installer（Go，安装）、webhookd（webhook 接入）。
 6. **算法层**：`algorithms/classify_*_server`，BentoML 服务，集成 MLflow。
-7. **基础设施层**：PostgreSQL/MySQL/达梦/GaussDB/GoldenDB/OceanBase（多引擎）、Redis（可选缓存：设置 `REDIS_CACHE_URL` 时 `default` 走 Redis，否则回退 LocMem；另预置 `db`(DatabaseCache)/`dummy` 命名别名）、RabbitMQ（Celery broker）、NATS（消息/RPC）、MinIO（对象存储）、MLflow（模型注册）、VictoriaMetrics/VictoriaLogs（时序/日志）。
+7. **基础设施层**：PostgreSQL/MySQL/达梦/GaussDB/GoldenDB/OceanBase（多引擎）、Redis（可选缓存：设置 `REDIS_CACHE_URL` 时 `default` 走 Redis，否则回退 LocMem；另预置 `db`(DatabaseCache)/`dummy` 命名别名）、RabbitMQ（Celery broker）、NATS（消息/RPC）、MinIO（对象存储）、MLflow（模型注册）、VictoriaMetrics/VictoriaLogs/VictoriaTraces（时序/日志/调用链）。
 
 **证据来源**：`server/urls.py`、`server/config/components/{base,database,cache,celery,nats,minio,mlflow}.py`、`server/apps/rpc/base.py`、`agents/*`、`algorithms/*`、`web/src/app/(core)/api/proxy/[...path]/route.ts`、`web/src/utils/request.ts`。
 
@@ -205,7 +209,7 @@ VictoriaMetrics、VictoriaLogs、MLflow、MinIO、Kubernetes（opspilot bot 部�
 - 健康检查：stargazer `health_check`、nats-executor `*.local.health`、node_mgmt `check_all_region_services`。
 
 ### 10.2 待确认
-- 统一的链路追踪（OpenTelemetry/Jaeger）【待确认】——未见明确集成。
+- 平台自身请求的统一 OpenTelemetry/Jaeger 埋点未见【待确认】。业务 APM 模块（`apps/apm` + VictoriaTraces）已存在，见 [[apm-architecture.md]]。
 - 平台级监控自监控（self-monitoring）方案【待确认】。
 
 **证据来源**：`apps/core/{logger.py,middlewares/request_timing_middleware.py}`、`config/components/log.py`、`agents/fusion-collector/telegraf/telegraf.conf`、`algorithms/*/serving/metrics.py`、`apps/node_mgmt/tasks/services/cloud_service_check_health.py`。
@@ -237,7 +241,7 @@ VictoriaMetrics、VictoriaLogs、MLflow、MinIO、Kubernetes（opspilot bot 部�
 3. 多租户（domain）隔离是否在所有数据访问路径强制生效。【待确认】
 4. opspilot 的 `METIS_SERVER_URL`/`MUNCHKIN_BASE_URL`/`CONVERSATION_MQ_*` 在 config.py 定义但代码未引用——是预留外部联动还是历史遗留。【待确认】
 5. NATS JetStream 生产是否启用（影响 job 日志与 sidecar 安装）。【待确认】
-6. 是否存在统一链路追踪 / APM。【待确认】
+6. 业务 APM 模块已落地（VictoriaTraces）；平台自身统一链路追踪（OTel/Jaeger）仍未见。【待确认后者】
 7. VictoriaMetrics/VictoriaLogs 的数据写入路径（采集器→VM 的具体 remote write 配置）。【推断为 telegraf/vector，需确认】
 
 ---

@@ -2,6 +2,8 @@
 
 APM 独立拥有策略、Alert 生命周期、Event、告警指标快照、事件原始证据和通知投递记录。Monitor 是交互和模型设计的参照，但 APM 不复用 Monitor 的业务表。
 
+模块入口：[[apm-architecture.md#职责与边界]] · [[apm-product.md#告警]] · [[apm-function-list.md#3. 可靠性]]
+
 ## 长期契约
 
 - 策略只表达 APM Service、Endpoint、必选环境和受控版本维度，只允许 `error_rate / p95 / p99 / throughput / no_traffic`；禁止任意表达式、MonitorObject、采集插件、LogSQL 和日志组。

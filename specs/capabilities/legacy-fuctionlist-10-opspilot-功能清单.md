@@ -42,18 +42,15 @@ OpsPilot 是 BK-Lite 的智能应用构建与运营平台，提供从基础模�
 
 | 功能项 | 功能说明 | 规格 / 约束 | 状态 |
 |---|---|---|---|
-| 知识库 CRUD | 知识库的新增、编辑、删除、详情查看 | 名称唯一；删除前检查是否被智能体引用 | GA |
-| 知识来源 | 支持三类知识来源 | 本地文件、网页链接、自定义文本 | GA |
-| 文档预处理 | 文本提取、分块预览与训练 | 默认分块大小 256、重叠 32，分块方式默认 fixed_size | GA |
-| OCR 解析 | 文档可选启用 OCR 解析 | 依赖已配置的 OCR 模型 | GA |
-| 文档训练状态 | 文档训练状态展示 | 5 态：待处理(Pending)、分块中(Chunking)、训练中(Training)、就绪(Ready)、错误(Error) | GA |
-| 检索配置 | 配置检索模式、阈值、返回规模 | 默认检索类型 similarity_score_threshold，默认分数阈值 0.7 | GA |
-| Rerank 与召回 | 配置 Rerank 模型与召回 | 默认启用 Rerank，默认 Top K 10；召回模式默认 chunk | GA |
-| RAG 模式 | 支持多种 RAG 模式开关 | 朴素 RAG（默认开）、问答对 RAG（默认开）、知识图谱 RAG（默认关） | GA |
-| 问答对管理 | 问答对生成、导入、编辑、删除、预览 | — | GA |
-| 知识图谱 | 知识图谱创建、查看、更新与社区重建 | — | GA |
-| 基础模型变更约束 | 变更知识库基础模型后须对文档重训练 | — | GA |
-| 资料 update 预览原因 | 资料 update 预览时为受影响页面补充「此页面继承新内容，旧版本将进入待审核」受影响原因 | 由 `preview_material_update` 显式传 `update_reason` 实现（server/apps/opspilot/services/wiki/update_service.py:76-84） | GA |
+| Wiki 知识库 CRUD | 知识库的新增、编辑、归档/详情查看 | 按团队隔离；配置用途、结构说明、生成语言与规则 | GA |
+| 目录与结构修订 | 维护层级目录并以修订快照固化 | 生成使用活动结构修订，避免过程中目录漂移 | GA |
+| 材料管理 | 上传文件、同步网页或录入文本作为生成原料 | 类型 `file` / `web` / `text`；文件扩展名以解析白名单为准；可选 OCR | GA |
+| 材料构建状态 | 展示材料解析与构建状态 | 用户可见未构建/排队中/构建中/成功/失败；内部保留阶段 key | GA |
+| 页面生成 | 按用途与结构说明生成或更新 Wiki 页面 | 异步；页面未就绪不能当作已发布知识 | GA |
+| 检查项 | 生成质量与治理检查 | 随知识库维护 | GA |
+| 智能体绑定 | 技能绑定一个或多个 Wiki 知识库 | `LLMSkill.wiki_knowledge_bases`；对话链路注入 Wiki 上下文 | GA |
+| 媒体代理 | 同源代理读取知识库内图片等材料 | HMAC，供无 Bearer 的 `<img>` 加载 | GA |
+| 资料 update 预览原因 | 资料 update 预览时为受影响页面补充「资料更新后将自动重新评估；仅知识结论冲突时需要人工选择」受影响原因 | 由 `preview_material_update` 显式传 `update_reason` 实现（server/apps/opspilot/services/wiki/update_service.py:107-114） | GA |
 
 ### 4. 记忆管理
 
@@ -79,8 +76,8 @@ OpsPilot 是 BK-Lite 的智能应用构建与运营平台，提供从基础模�
 | 智能体 CRUD | 智能体的创建、编辑、删除 | — | GA |
 | 模板化创建 | 智能体模板列表与模板化创建 | — | GA |
 | 基础配置 | 配置模型、提示词、温度、简介、分组 | 默认温度 0.7 | GA |
-| 增强配置 | 聊天历史、RAG、工具增强 | 默认对话窗口大小 10 | GA |
-| 知识库阈值与严格模式 | 每知识库独立阈值配置与 RAG 严格模式配置 | 关闭 RAG 时清空关联知识库与阈值映射 | GA |
+| 增强配置 | 聊天历史、工具增强、追问建议与问题优化 | 默认对话窗口大小 10；`enable_suggest` / `enable_query_rewrite` 默认关 | GA |
+| Wiki 知识库绑定 | 技能绑定一个或多个 Wiki 知识库 | `wiki_knowledge_bases` M2M；对话注入 Wiki 上下文，无旧 RAG 阈值/严格模式开关 | GA |
 | 技能类型 | 智能体技能类型 | 4 种：基础工具、知识工具、Plan-Execute、LATS | GA |
 | 流式执行 | 智能体执行（流式响应）与 AG-UI 协议执行 | 兼容 LangGraph `Overwrite(messages)` 包装：链尾 `BasicGraph._unwrap_overwrite_messages` 在解析 `output.messages` 后统一解包，确保 `ToolMessage`/`AIMessage` 正常发射（server/apps/opspilot/metis/llm/chain/graph.py:778-783,807,909） | GA |
 
@@ -125,7 +122,7 @@ OpsPilot 是 BK-Lite 的智能应用构建与运营平台，提供从基础模�
 
 ## 三、能力边界与约束
 
-资源可见范围以团队分组为边界，非超级管理员仅可访问有权限团队内资源，关键资源编辑需通过模块权限点校验。知识库名称唯一，删除前须检查智能体引用，变更基础模型后须重训练文档；文档须经"上传—处理—训练—可检索"全状态机方可使用。个人记忆条目仅创建者可见，记忆空间删除时其条目一并删除。应用由 ChatFlow 工作流保存时自动同步，不经应用接口直接创建。模型密钥、工具密码、渠道密钥全程加密存储且对外脱敏展示。本模块不含非 OpsPilot 模块的资产管理、作业编排与监控能力，不定义第三方平台的组织权限模型。
+资源可见范围以团队分组为边界，非超级管理员仅可访问有权限团队内资源，关键资源编辑需通过模块权限点校验。知识库为 Wiki 资产，删除前须检查智能体引用；不提供已下线的朴素/问答对/图谱 RAG 开关、问答对训练与图谱抽取。个人记忆条目仅创建者可见，记忆空间删除时其条目一并删除。应用由 ChatFlow 工作流保存时自动同步，不经应用接口直接创建。模型密钥、工具密码、渠道密钥全程加密存储且对外脱敏展示。本模块不含非 OpsPilot 模块的资产管理、作业编排与监控能力，不定义第三方平台的组织权限模型。
 
 ## 四、平台协同
 
@@ -163,26 +160,23 @@ OpsPilot 的知识库与智能体可结合 CMDB 资产事实数据回答运维�
 
 供应商类型共 8 种；协议类型 2 种：OpenAI 兼容（`openai`）、Anthropic 兼容（`anthropic`）。Anthropic 类供应商固定 Anthropic 协议，DeepSeek/其它类型支持协议选择。
 
-### 5.3 知识库文档来源类型（knowledge_source_type）
+### 5.3 知识库材料来源类型（material_type）
 
 | 来源类型 | 取值 |
 |---|---|
-| 文件上传 | `file` |
-| 网页 | `web_page` |
-| 手动录入 | `manual` |
+| 文件 | `file` |
+| 网页 | `web` |
+| 文本 | `text` |
 
-共 3 种来源（另含 QA 问答对衍生数据）。文件来源支持扩展名 10 种：md、docx、xlsx、csv、pptx、pdf、txt、png、jpg、jpeg（`KNOWLEDGE_TYPES`）。
+共 3 种材料类型。文件扩展名以 `SUPPORTED_FILE_EXTENSIONS`（`services/wiki/parsing/markitdown_parser.py`）为准，含 pdf/docx/pptx/xlsx/txt/md/csv/图片等，不把已下线的问答对衍生数据列为产品来源。
 
-### 5.4 知识库检索能力
+### 5.4 知识库问答能力
 
-| 能力 | 字段 | 默认 |
+| 能力 | 实现 | 说明 |
 |---|---|---|
-| 朴素 RAG（分块检索） | `enable_naive_rag` | 开 |
-| QA 问答对 RAG | `enable_qa_rag` | 开 |
-| 图谱 RAG（GraphRAG） | `enable_graph_rag` | 关 |
-| 重排（Rerank） | `enable_rerank` | 开（默认 Top K 10） |
-
-检索方式默认 `similarity_score_threshold`（相似度阈值）；召回模式默认按 chunk。共 3 类 RAG 检索能力可组合启用。
+| Wiki 绑定 | `LLMSkill.wiki_knowledge_bases` | 技能可关联多个 Wiki 知识库 |
+| 对话注入 | 对话链路注入 Wiki 上下文 | 回答可带 Wiki 引用 |
+| 旧 RAG 开关 | `enable_naive_rag=False` 硬编码 | 朴素/问答对/图谱 RAG 产品开关已下线 |
 
 ### 5.5 内置可用工具（ToolsLoader 注册类目）
 
