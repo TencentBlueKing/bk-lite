@@ -953,26 +953,31 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
                 name="query"
                 rules={[{ required: true, message: t('common.required') }]}
                 extra={
-                  <div className="mt-1 flex gap-4">
-                    <Popover
-                      trigger="click"
-                      open={metricPickerOpen}
-                      onOpenChange={handleSelectMetricOpenChange}
-                      content={metricPickerContent}
-                      placement="bottomLeft"
-                    >
-                      <Button type="link" className="h-auto px-0">
-                        {t('monitor.integrations.selectMetric')}
+                  <div className="mt-1 space-y-1">
+                    <p className="m-0 text-xs leading-5 text-[var(--color-text-3)]">
+                      {t('monitor.integrations.formulaLabelsAutoHint')}
+                    </p>
+                    <div className="flex gap-4">
+                      <Popover
+                        trigger="click"
+                        open={metricPickerOpen}
+                        onOpenChange={handleSelectMetricOpenChange}
+                        content={metricPickerContent}
+                        placement="bottomLeft"
+                      >
+                        <Button type="link" className="h-auto px-0">
+                          {t('monitor.integrations.selectMetric')}
+                        </Button>
+                      </Popover>
+                      <Button
+                        type="link"
+                        className="h-auto px-0"
+                        loading={testLoading}
+                        onClick={handleTestMetric}
+                      >
+                        {t('monitor.integrations.testMetric')}
                       </Button>
-                    </Popover>
-                    <Button
-                      type="link"
-                      className="h-auto px-0"
-                      loading={testLoading}
-                      onClick={handleTestMetric}
-                    >
-                      {t('monitor.integrations.testMetric')}
-                    </Button>
+                    </div>
                   </div>
                 }
               >

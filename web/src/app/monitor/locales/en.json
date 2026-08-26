@@ -527,6 +527,7 @@
       "dbTypeDes": "The database types required for collection",
       "mappedValue": "Mapped Value",
       "formula": "Formula",
+      "formulaLabelsAutoHint": "Instance match labels are added automatically on save and query. You do not need to write them in the formula.",
       "selectMetric": "Select Metric",
       "testMetric": "Test Metric",
       "dimensionId": "Dimension ID",

@@ -527,6 +527,7 @@
       "dbTypeDes": "采集中所需要的数据库类型",
       "mappedValue": "映射值",
       "formula": "公式",
+      "formulaLabelsAutoHint": "实例匹配标签由系统在保存与查询时自动补充，无需在公式中手写。",
       "selectMetric": "选择指标",
       "testMetric": "测试指标",
       "dimensionId": "维度ID",
