@@ -64,19 +64,6 @@ export function useResolveObjectId(objectKey: string) {
       );
     };
 
-    const nameParam = searchParams.get('name');
-    const displayParam = searchParams.get('monitorObjDisplayName');
-    const urlObjectHintsMatchRoute =
-      (!!nameParam &&
-        registryCandidates.includes(normalizeDashboardKey(nameParam))) ||
-      (!!displayParam &&
-        registryCandidates.includes(normalizeDashboardKey(displayParam)));
-
-    // 对象与实例均已对齐当前路由时无需再请求。
-    if (monitorObjId && instanceId && urlObjectHintsMatchRoute) {
-      return;
-    }
-
     resolving.current = true;
 
     const resolve = async () => {
