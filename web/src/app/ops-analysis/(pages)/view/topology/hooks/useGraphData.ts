@@ -178,7 +178,7 @@ export const useGraphData = (
   ) => {
     if (!selectedTopology?.data_id) {
       message.error(t('topology.saveTopologySelectMsg'));
-      return;
+      return false;
     }
 
     setLoading(true);
@@ -196,8 +196,10 @@ export const useGraphData = (
       await saveTopology(selectedTopology.data_id, saveData);
       handleSaveCallback?.();
       message.success(t('topology.saveTopologySuccess'));
+      return true;
     } catch (error) {
       message.error(t('topology.saveTopologyFailed') + String(error));
+      return false;
     } finally {
       setLoading(false);
     }
@@ -526,6 +528,7 @@ export const useGraphData = (
     handleSaveTopology,
     handleLoadTopology,
     loadTopologyData: loadTopologyData as (data: TopologyViewSets) => void,
+    serializeTopologyData,
     loadChartNodeData,
     refreshAllChartNodes,
   };

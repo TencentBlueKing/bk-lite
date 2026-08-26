@@ -28,6 +28,13 @@ import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeri
 import { canPersistCanvasRefreshInterval, normalizeCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
 import { shouldSkipIntervalTick } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { useNetworkEditor } from './hooks/useNetworkEditor';
+import { useCanvasDraft } from '@/app/ops-analysis/hooks/useCanvasDraft';
+import {
+  restoreDraftRefreshInterval,
+  toCanvasDraftResourceId,
+  type CanvasDraftPayload,
+} from '@/app/ops-analysis/api/canvasDraft';
+import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
 import { useNetworkLibrary } from './hooks/useNetworkLibrary';
 import { useTranslation } from '@/utils/i18n';
 import { useCollapsedState } from '../hooks/useCollapsedState';
@@ -242,6 +249,39 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
     );
 
     const editor = useNetworkEditor({ config, savedConfig });
+    const networkDraftResourceId = toCanvasDraftResourceId(
+      selectedNetworkTopology?.data_id,
+    );
+    const getNetworkDraftPayload = useCallback(
+      (): CanvasDraftPayload => ({
+        name: selectedNetworkTopology?.name,
+        desc: selectedNetworkTopology?.desc,
+        view_sets: config,
+        refresh_interval: savedRefreshInterval,
+      }),
+      [
+        config,
+        savedRefreshInterval,
+        selectedNetworkTopology?.desc,
+        selectedNetworkTopology?.name,
+      ],
+    );
+    const applyNetworkDraftPayload = useCallback((payload: CanvasDraftPayload) => {
+      restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
+      setConfig((payload.view_sets as NetworkTopologyConfig) || emptyConfig);
+    }, [setSavedRefreshInterval]);
+    const networkDraft = useCanvasDraft({
+      resourceType: 'networkTopology',
+      resourceId: networkDraftResourceId,
+      enabled: Boolean(
+        editor.editMode &&
+          !shareMode &&
+          networkDraftResourceId &&
+          !selectedNetworkTopology?.is_build_in,
+      ),
+      getPayload: getNetworkDraftPayload,
+      applyPayload: applyNetworkDraftPayload,
+    });
     // 设备库侧栏的展开/收起状态(参考 topology 侧栏的折叠交互)。
     const libraryCollapsed = useCollapsedState(true);
 
@@ -522,6 +562,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         canvasId,
         savedInterval: savedRefreshInterval,
         canPersist: canPersistRefreshInterval,
+        enabled: !editor.editMode,
         patchRefreshInterval: async (interval) => {
           if (!canvasId) {
             return;
@@ -1239,6 +1280,7 @@ const NetworkTopology = forwardRef<NetworkTopologyRef, NetworkTopologyProps>(
         onEnterEdit={onEnterEdit}
         onCancelEdit={onCancelEdit}
         onSave={() => void onSaveConfig()}
+        editExtra={bindCanvasDraftControls(networkDraft)}
       />
     );
 

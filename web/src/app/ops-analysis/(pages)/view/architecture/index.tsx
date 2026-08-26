@@ -32,6 +32,12 @@ import {
   AppViewFullscreenExit,
   useAppViewFullscreen,
 } from '@/app/ops-analysis/components/appFullscreen';
+import { useCanvasDraft } from '@/app/ops-analysis/hooks/useCanvasDraft';
+import {
+  toCanvasDraftResourceId,
+  type CanvasDraftPayload,
+} from '@/app/ops-analysis/api/canvasDraft';
+import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
 
 const Isoflow = dynamic(
   () => import('x-isoflow-react-19').then((mod) => ({ default: mod.Isoflow })),
@@ -84,6 +90,7 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
     const { isFullscreen, enterFullscreen, exitFullscreen } =
       useAppViewFullscreen();
 
+    const officialSnapshotRef = useRef('');
     const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const lastModelUpdateRef = useRef<string>('');
     const isUpdatingRef = useRef<boolean>(false);
@@ -188,12 +195,99 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
       }
     }, [uniqueIcons, selectedArchitecture?.data_id, loadedArchitectureId]);
 
+    const architectureDraftResourceId = toCanvasDraftResourceId(
+      selectedArchitecture?.data_id,
+    );
+    const getArchitectureDraftPayload = useCallback(
+      (): CanvasDraftPayload => ({
+        name: diagramName,
+        view_sets: {
+          items: currentModel?.items || [],
+          views: currentModel?.views || [],
+        },
+      }),
+      [currentModel?.items, currentModel?.views, diagramName],
+    );
+    const applyArchitectureDraftPayload = useCallback(
+      (payload: CanvasDraftPayload) => {
+        const viewSets = (payload.view_sets || {}) as {
+          items?: DiagramData['items'];
+          views?: DiagramData['views'];
+        };
+        isUpdatingRef.current = true;
+        const merged: DiagramData = {
+          items: viewSets.items || [],
+          views: viewSets.views || [],
+          title: diagramName || 'Untitled Diagram',
+          icons: uniqueIcons,
+          colors: DEFAULT_COLORS,
+          fitToScreen: true,
+        };
+        setDiagramData({ ...merged });
+        setCurrentModel({ ...merged });
+        setFossflowKey((prev) => prev + 1);
+        setHasUnsaved(true);
+        lastModelUpdateRef.current = JSON.stringify({
+          items: merged.items,
+          views: merged.views,
+        });
+        window.setTimeout(() => {
+          isUpdatingRef.current = false;
+        }, 0);
+      },
+      [diagramName, uniqueIcons],
+    );
+    const architectureDraft = useCanvasDraft({
+      resourceType: 'architecture',
+      resourceId: architectureDraftResourceId,
+      enabled: Boolean(
+        isEditMode &&
+          !shareMode &&
+          architectureDraftResourceId &&
+          !selectedArchitecture?.is_build_in,
+      ),
+      getPayload: getArchitectureDraftPayload,
+      applyPayload: applyArchitectureDraftPayload,
+    });
+
     const toggleEditMode = () => {
       const newEditMode = !isEditMode;
       setIsEditMode(newEditMode);
       if (newEditMode) {
+        officialSnapshotRef.current = lastModelUpdateRef.current;
         setHasUnsaved(false);
       }
+    };
+
+    const handleCancelEdit = () => {
+      if (officialSnapshotRef.current) {
+        try {
+          const parsed = JSON.parse(officialSnapshotRef.current) as {
+            items?: DiagramData['items'];
+            views?: DiagramData['views'];
+          };
+          isUpdatingRef.current = true;
+          setCurrentModel((prev) =>
+            prev
+              ? { ...prev, items: parsed.items || [], views: parsed.views || [] }
+              : prev,
+          );
+          setDiagramData((prev) => ({
+            ...prev,
+            items: parsed.items || [],
+            views: parsed.views || [],
+          }));
+          setFossflowKey((prev) => prev + 1);
+          lastModelUpdateRef.current = officialSnapshotRef.current;
+          window.setTimeout(() => {
+            isUpdatingRef.current = false;
+          }, 0);
+        } catch {
+          // 进入编辑时的快照无法解析时，保持当前画面并退出编辑。
+        }
+      }
+      setHasUnsaved(false);
+      setIsEditMode(false);
     };
 
     useEffect(() => {
@@ -349,7 +443,9 @@ const Architecture = forwardRef<ArchitectureRef, ArchitectureProps>(
             }
             loading={loading}
             onEdit={toggleEditMode}
+            onCancel={handleCancelEdit}
             onSave={saveDiagram}
+            editExtra={bindCanvasDraftControls(architectureDraft)}
             onFullscreenToggle={handleFullscreenToggle}
           />
         )}

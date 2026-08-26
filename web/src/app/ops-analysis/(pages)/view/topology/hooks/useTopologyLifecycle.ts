@@ -115,24 +115,19 @@ export const useTopologyLifecycle = ({
     setDefinitions(restoredDefs);
     setFilterValues(restoredValues);
     setAppliedFilterValues(restoredValues);
-    toggleEditMode();
-    refreshTopologyNodes(
-      'reload',
-      restoredValues,
-      restoredDefs,
-      appliedNamespaceId,
-    );
+    // 先完成 fromJSON 绘制，再退出编辑态（收起组件库、触发 resize）
+    requestAnimationFrame(() => {
+      toggleEditMode();
+    });
   }, [
     state.graphInstance,
     originalGraphState,
     originalDefinitions,
     appliedFilterValues,
-    appliedNamespaceId,
     setDefinitions,
     setFilterValues,
     setAppliedFilterValues,
     toggleEditMode,
-    refreshTopologyNodes,
   ]);
 
   useEffect(() => {
