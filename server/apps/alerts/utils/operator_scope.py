@@ -41,6 +41,10 @@ def _build_out_of_scope_message(usernames, scope_name):
     return f"以下处理人不在{scope_name}组织范围内: {', '.join(usernames)}"
 
 
+def _build_disabled_users_message(usernames):
+    return f"以下处理人已禁用: {', '.join(usernames)}"
+
+
 def validate_usernames_in_groups(usernames, allowed_group_ids, scope_name):
     normalized_usernames = normalize_usernames(usernames)
     if not normalized_usernames:
@@ -62,9 +66,33 @@ def validate_usernames_in_groups(usernames, allowed_group_ids, scope_name):
     return normalized_usernames, None
 
 
+def validate_effective_usernames(usernames):
+    """存在且未禁用即可；不再要求属于某组织。按 username 查找，与告警处理人字段一致。"""
+    normalized_usernames = normalize_usernames(usernames)
+    if not normalized_usernames:
+        return normalized_usernames, None
+
+    user_map = {item["username"]: item["disabled"] for item in User.objects.filter(username__in=normalized_usernames).values("username", "disabled")}
+
+    missing_users = [username for username in normalized_usernames if username not in user_map]
+    if missing_users:
+        return normalized_usernames, _build_missing_users_message(missing_users)
+
+    disabled_users = [username for username in normalized_usernames if user_map[username]]
+    if disabled_users:
+        return normalized_usernames, _build_disabled_users_message(disabled_users)
+
+    return normalized_usernames, None
+
+
 def validate_alert_assignees(alert, usernames):
-    allowed_group_ids = normalize_group_ids(getattr(alert, "team", []))
-    return validate_usernames_in_groups(usernames, allowed_group_ids, "告警所属")
+    # 分派不读 Alert.team。事故协同人仍走 validate_usernames_in_groups。
+    return validate_effective_usernames(usernames)
+
+
+def username_is_current_operator(username, alert):
+    operators = getattr(alert, "operator", None) or []
+    return isinstance(operators, list) and username in operators
 
 
 def validate_incident_operators(alerts, usernames):

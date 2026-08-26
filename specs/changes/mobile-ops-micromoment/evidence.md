@@ -29,13 +29,13 @@
 
 | 能力 | 接口与证据 | 权限/状态结论 |
 |---|---|---|
-| 列表 | `GET /alerts/api/alerts/`；`AlertModelViewSet.list` | `Alarms-View`，服务端再按组织数据范围过滤；默认 `created_at` 倒序。 |
-| 我的告警 | 参数 `my_alert=<非空值>` | `AlertModelFilter.filter_my_alert` 使用当前用户名匹配 `operator`。 |
+| 列表 | `GET /alerts/api/alerts/`；`AlertModelViewSet.list` | `Alarms-View`；默认「当前组织 ∪ 处理人是我」，`org_only` 时只按组织。 |
+| 我的告警 | 参数 `my_alert=1/true/yes` | 按当前处理人精确成员匹配，跨组织汇总；组织列表仍只看归属。 |
 | 未关闭 | 参数 `activate=<非空值>`，或 `status=unassigned,pending,processing` | `AlertStatus.ACTIVATE_STATUS` 与已确认三状态一致。 |
 | 高优先级 | 列表支持 `level=<逗号分隔>` | 级别列表 `GET /alerts/api/level/?type=alert` 按 `level_id` 排序，但接口需要 `global_config-View`。见确认项 A。 |
 | 标题/内容/ID 搜索 | `title`、`content`、`alert_id` 查询参数 | 当前过滤器直接支持。 |
-| 详情 | `GET /alerts/api/alerts/{pk}/` | `Alarms-View`。 |
-| 事件 | `GET /alerts/api/alerts/{pk}/events/` | `Alarms-View`，同时应用告警与事件数据范围。 |
+| 详情 | `GET /alerts/api/alerts/{pk}/` | `Alarms-View`；归属组织成员或当前处理人可进入。 |
+| 事件 | `GET /alerts/api/alerts/{pk}/events/` | `Alarms-View`；能看见该告警即可看本条关联事件。 |
 | 相关告警 | `GET /alerts/api/alerts/{pk}/related/` | `Alarms-View`，结果受组织范围限制。 |
 | 分派 | `POST /alerts/api/alerts/operator/assign/` | `Alarms-Edit`；仅 `unassigned -> pending`，校验有效处理人。 |
 | 认领 | `POST /alerts/api/alerts/operator/acknowledge/` | `Alarms-Edit`；仅 `pending -> processing`，当前用户必须在 `operator`。 |

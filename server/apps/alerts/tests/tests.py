@@ -1,32 +1,27 @@
 import json
-from io import StringIO
 from datetime import datetime, timedelta
+from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.hashers import make_password
 from django.core.management import call_command
 from django.db import DEFAULT_DB_ALIAS, connections
-from django.test import Client
-from django.test import TestCase
-from django.utils import timezone
-from django.utils import translation
+from django.test import Client, TestCase
+from django.utils import timezone, translation
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.alerts.aggregation.builder.synthetic_alert_builder import (
-    SyntheticAlertBuilder,
-)
+from apps.alerts.aggregation.builder.synthetic_alert_builder import SyntheticAlertBuilder
 from apps.alerts.aggregation.processor.aggregation_processor import AggregationProcessor
-from apps.alerts.aggregation.window.factory import WindowFactory
-from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
+from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
+from apps.alerts.aggregation.window.factory import WindowFactory
 from apps.alerts.common.assignment import AlertAssignmentOperator
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
-from apps.alerts.nats.nats import receive_alert_events
 from apps.alerts.constants import (
-    AlertStatus,
     AlarmStrategyType,
     AlertsSourceTypes,
+    AlertStatus,
     EventAction,
     EventType,
     HeartbeatActivationMode,
@@ -34,23 +29,17 @@ from apps.alerts.constants import (
     HeartbeatStatus,
     LevelType,
 )
-from apps.alerts.constants.constants import (
-    AlertAssignmentMatchType,
-    IncidentStatus,
-    LogAction,
-    LogTargetType,
-    SessionStatus,
-)
-from apps.alerts.utils.util import str_to_md5
-from apps.alerts.models import Alert, AlertOutbox, AlertSource, AlarmStrategy, Event, Level, OperatorLog
+from apps.alerts.constants.constants import AlertAssignmentMatchType, IncidentStatus, LogAction, LogTargetType, SessionStatus
+from apps.alerts.models import AlarmStrategy, Alert, AlertOutbox, AlertSource, Event, Level, OperatorLog
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Incident
+from apps.alerts.nats.nats import receive_alert_events
+from apps.alerts.serializers.alert_source import AlertSourceModelSerializer
 from apps.alerts.serializers.event import EventModelSerializer
 from apps.alerts.serializers.incident import IncidentModelSerializer
-from apps.alerts.serializers.alert_source import AlertSourceModelSerializer
 from apps.alerts.serializers.strategy import AlarmStrategySerializer
-from apps.alerts.utils.util import MAX_AGGREGATION_WINDOW_SIZE_MINUTES
 from apps.alerts.utils.rule_matcher import RuleMatcher
+from apps.alerts.utils.util import MAX_AGGREGATION_WINDOW_SIZE_MINUTES, str_to_md5
 from apps.alerts.views.alert import AlertModelViewSet
 from apps.alerts.views.alert_source import AlertSourceModelViewSet
 from apps.alerts.views.event import EventModelViewSet
@@ -380,9 +369,7 @@ class MissingDetectionProcessorTestCase(TestCase):
         missing_strategy = self.create_strategy(name="missing-rule")
         now = timezone.now()
 
-        with patch.object(
-            self.processor, "_process_missing_detection_strategy"
-        ) as missing_mock, patch.object(
+        with patch.object(self.processor, "_process_missing_detection_strategy") as missing_mock, patch.object(
             self.processor, "get_events_for_strategy"
         ) as events_mock:
             events_mock.return_value.exists.return_value = False
@@ -1663,9 +1650,7 @@ class AutoAssignmentTaskTestCase(TestCase):
     def test_async_auto_assignment_for_alerts_deduplicates_before_execution(self):
         from apps.alerts.tasks.tasks import async_auto_assignment_for_alerts
 
-        with patch(
-            "apps.alerts.common.assignment.execute_auto_assignment_for_alerts"
-        ) as execute_assignment:
+        with patch("apps.alerts.common.assignment.execute_auto_assignment_for_alerts") as execute_assignment:
             execute_assignment.return_value = {
                 "total_alerts": 2,
                 "assigned_alerts": 1,
@@ -1679,16 +1664,11 @@ class AutoAssignmentTaskTestCase(TestCase):
         execute_assignment.assert_called_once_with(["ALERT-1", "ALERT-2"])
 
     def test_async_auto_assignment_for_alerts_chunks_large_batches(self):
-        from apps.alerts.tasks.tasks import (
-            AUTO_ASSIGNMENT_CHUNK_SIZE,
-            async_auto_assignment_for_alerts,
-        )
+        from apps.alerts.tasks.tasks import AUTO_ASSIGNMENT_CHUNK_SIZE, async_auto_assignment_for_alerts
 
         alert_ids = [f"ALERT-{i}" for i in range(AUTO_ASSIGNMENT_CHUNK_SIZE + 3)]
 
-        with patch(
-            "apps.alerts.tasks.tasks.async_auto_assignment_for_alerts.delay"
-        ) as delay_mock, patch(
+        with patch("apps.alerts.tasks.tasks.async_auto_assignment_for_alerts.delay") as delay_mock, patch(
             "apps.alerts.common.assignment.execute_auto_assignment_for_alerts"
         ) as execute_assignment:
             result = async_auto_assignment_for_alerts(alert_ids)
@@ -1819,9 +1799,7 @@ class AlertAssignmentOperatorTestCase(TestCase):
                     }
                 ],
             ],
-        ) as execute_mock, patch.object(
-            AlertAssignmentOperator, "_batch_create_log"
-        ):
+        ) as execute_mock, patch.object(AlertAssignmentOperator, "_batch_create_log"):
             result = operator.execute_auto_assignment()
 
         self.assertEqual(result["assigned_alerts"], 2)
@@ -2590,6 +2568,14 @@ class AlertPermissionScopeTestCase(TestCase):
         self.factory = APIRequestFactory()
         self._ensure_groups(1, 2)
 
+    def _grant_current_team_alert_rules(self, team_id=1):
+        patcher = patch(
+            "apps.core.utils.viewset_utils.get_permission_rules",
+            return_value={"instance": [], "team": [team_id]},
+        )
+        self.addCleanup(patcher.stop)
+        patcher.start()
+
     @staticmethod
     def _ensure_groups(*group_ids):
         for group_id in group_ids:
@@ -2669,7 +2655,8 @@ class AlertPermissionScopeTestCase(TestCase):
         return alert
 
     def test_alert_list_is_scoped_by_operator_and_authorized_team(self):
-        user = self._build_user("alert-owner", [1], ["Alarms-View"])
+        self._grant_current_team_alert_rules()
+        user = self._build_user("alert-owner", [{"id": 1}], ["Alarms-View"])
         team_alert = self._build_alert([1], [], "team")
         assigned_alert = self._build_alert([2], ["alert-owner"], "assigned")
         hidden_alert = self._build_alert([2], ["someone-else"], "hidden")
@@ -2685,6 +2672,15 @@ class AlertPermissionScopeTestCase(TestCase):
         self.assertIn(team_alert.alert_id, returned_alert_ids)
         self.assertIn(assigned_alert.alert_id, returned_alert_ids)
         self.assertNotIn(hidden_alert.alert_id, returned_alert_ids)
+
+        mine_request = self.factory.get("/api/alert?my_alert=1")
+        mine_request.COOKIES["current_team"] = "1"
+        force_authenticate(mine_request, user=user)
+        mine_response = AlertModelViewSet.as_view({"get": "list"})(mine_request)
+        mine_ids = {item["alert_id"] for item in json.loads(mine_response.content)["data"]}
+        self.assertNotIn(team_alert.alert_id, mine_ids)
+        self.assertIn(assigned_alert.alert_id, mine_ids)
+        self.assertNotIn(hidden_alert.alert_id, mine_ids)
 
     def test_incident_retrieve_rejects_cross_team_access(self):
         user = self._build_user("incident-reader", [1], ["Incidents-View"])
@@ -2801,7 +2797,8 @@ class AlertPermissionScopeTestCase(TestCase):
         self.assertEqual(response.data["detail"], "alert must be a list of ids.")
 
     def test_alert_operator_rejects_unscoped_alert_ids(self):
-        user = self._build_user("alert-editor", [1], ["Alarms-Edit"])
+        self._grant_current_team_alert_rules()
+        user = self._build_user("alert-editor", [{"id": 1}], ["Alarms-Edit"])
         hidden_alert = self._build_alert([2], ["someone-else"], "hidden-operator")
 
         request = self.factory.post(
@@ -2824,8 +2821,10 @@ class AlertPermissionScopeTestCase(TestCase):
         )
         self.assertEqual(hidden_alert.status, AlertStatus.UNASSIGNED)
 
-    def test_alert_operator_rejects_assignee_outside_alert_team_scope(self):
-        user = self._build_user("alert-editor-scope", [1], ["Alarms-Edit"])
+    @patch("apps.alerts.service.alter_operator.AlertOperator.format_notify_data", return_value={})
+    def test_alert_operator_accepts_assignee_outside_alert_team_scope(self, _format_notify_data):
+        self._grant_current_team_alert_rules()
+        user = self._build_user("alert-editor-scope", [{"id": 1}], ["Alarms-Edit"])
         self._build_user("foreign-alert-operator", [2], [])
         visible_alert = self._build_alert([1], [], "visible-operator-scope")
 
@@ -2841,21 +2840,15 @@ class AlertPermissionScopeTestCase(TestCase):
         force_authenticate(request, user=user)
 
         response = AlertModelViewSet.as_view({"post": "operator"})(request, operator_action="assign")
-        payload = json.loads(response.content)
+        self.assertEqual(response.status_code, 200)
         visible_alert.refresh_from_db()
-
-        self.assertEqual(response.status_code, 500)
-        self.assertFalse(payload["result"])
-        self.assertEqual(
-            payload["data"][visible_alert.alert_id]["message"],
-            "以下处理人不在告警所属组织范围内: foreign-alert-operator",
-        )
-        self.assertEqual(visible_alert.status, AlertStatus.UNASSIGNED)
-        self.assertEqual(visible_alert.operator, [])
+        self.assertEqual(visible_alert.status, AlertStatus.PENDING)
+        self.assertEqual(visible_alert.operator, ["foreign-alert-operator"])
 
     @patch("apps.alerts.service.alter_operator.AlertOperator.format_notify_data", return_value={})
     def test_alert_operator_accepts_assignee_within_alert_team_scope(self, _format_notify_data):
-        user = self._build_user("alert-editor-valid", [1], ["Alarms-Edit"])
+        self._grant_current_team_alert_rules()
+        user = self._build_user("alert-editor-valid", [{"id": 1}], ["Alarms-Edit"])
         self._build_user("team-alert-operator", [1], [])
         visible_alert = self._build_alert([1], [], "visible-operator-valid")
 
@@ -2951,7 +2944,8 @@ class AlertPermissionScopeTestCase(TestCase):
         self.assertEqual(incident.operator, ["incident-editor-scope-patch"])
 
     def test_alert_operator_rejects_nonexistent_assignee(self):
-        user = self._build_user("alert-editor-missing", [1], ["Alarms-Edit"])
+        self._grant_current_team_alert_rules()
+        user = self._build_user("alert-editor-missing", [{"id": 1}], ["Alarms-Edit"])
         visible_alert = self._build_alert([1], [], "visible-operator-missing")
 
         request = self.factory.post(

@@ -22,8 +22,14 @@ def sys_user(db):
 
 def _make_alert(alert_id="A1", status=AlertStatus.UNASSIGNED, operator=None, team=None):
     return Alert.objects.create(
-        alert_id=alert_id, level="0", title="t", content="c", fingerprint="fp",
-        status=status, operator=operator or [], team=team or [1],
+        alert_id=alert_id,
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp",
+        status=status,
+        operator=operator or [],
+        team=team or [1],
     )
 
 
@@ -93,14 +99,15 @@ def test_assign_nonexistent_alert():
 
 
 @pytest.mark.django_db
-def test_assign_invalid_assignee_out_of_scope():
+def test_assign_invalid_assignee_disabled():
     from apps.system_mgmt.models.user import User
 
-    User.objects.create(username="outsider", domain="domain.com", group_list=[{"id": 99}])
+    User.objects.create(username="disabled-op", domain="domain.com", group_list=[{"id": 1}], disabled=True)
     _make_alert(status=AlertStatus.UNASSIGNED, team=[1])
     op = AlertOperator(user="system")
-    result = op.operate("assign", "A1", {"assignee": ["outsider"]})
+    result = op.operate("assign", "A1", {"assignee": ["disabled-op"]})
     assert result["result"] is False
+    assert "禁用" in result["message"]
 
 
 # --------------------------------------------------------------------------
@@ -238,7 +245,9 @@ def test_assign_with_assignment_id_creates_reminder(sys_user):
     from apps.alerts.models.alert_operator import AlertAssignment, AlertReminderTask
 
     assignment = AlertAssignment.objects.create(
-        name="分派", match_type="all", is_active=True,
+        name="分派",
+        match_type="all",
+        is_active=True,
         notification_frequency={"0": {"interval_minutes": 30}},
     )
     _make_alert(status=AlertStatus.UNASSIGNED, team=[1], alert_id="A1")
@@ -330,7 +339,9 @@ def test_format_assignment_notify_data_builds_from_notify_channels(_mt, _mc):
     from apps.alerts.models.alert_operator import AlertAssignment
 
     assignment = AlertAssignment.objects.create(
-        name="分派", match_type="all", is_active=True,
+        name="分派",
+        match_type="all",
+        is_active=True,
         notify_channels=[{"id": 9, "channel_type": "nats"}, {"id": 3, "channel_type": "email"}],
     )
     alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-AN", team=[2])
@@ -362,7 +373,10 @@ def test_format_assignment_notify_data_empty_channels_returns_empty():
     from apps.alerts.models.alert_operator import AlertAssignment
 
     assignment = AlertAssignment.objects.create(
-        name="分派", match_type="all", is_active=True, notify_channels=[],
+        name="分派",
+        match_type="all",
+        is_active=True,
+        notify_channels=[],
     )
     alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-EC", team=[2])
     op = AlertOperator(user="system")
@@ -382,7 +396,9 @@ def test_assign_auto_dispatch_notifies_via_notify_channels(mock_enqueue, _mt, _m
     from apps.alerts.models.alert_operator import AlertAssignment
 
     assignment = AlertAssignment.objects.create(
-        name="分派", match_type="all", is_active=True,
+        name="分派",
+        match_type="all",
+        is_active=True,
         personnel=["op1"],
         notify_channels=[{"id": 9, "channel_type": "nats"}],
         notification_frequency={"0": {"interval_minutes": 30}},
@@ -430,7 +446,9 @@ def test_assign_inactive_assignment_falls_back_to_default_email(mock_enqueue, _m
 
     # 非活跃策略：_assign_alert 用 is_active=True 查不到 → assignment=None → 回退默认邮件
     assignment = AlertAssignment.objects.create(
-        name="分派", match_type="all", is_active=False,
+        name="分派",
+        match_type="all",
+        is_active=False,
         notify_channels=[{"id": 9, "channel_type": "nats"}],
     )
     _make_alert(status=AlertStatus.UNASSIGNED, team=[1], alert_id="A1")
