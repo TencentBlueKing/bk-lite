@@ -45,7 +45,7 @@ const isMetricCatalogPage = <T,>(value: unknown): value is MetricCatalogPage<T> 
 );
 
 const useMonitorApi = () => {
-  const { get, patch } = useApiClient();
+  const { get, patch, post } = useApiClient();
 
   const getMetricCatalogPage = async <T,>(
     url: string,
@@ -192,6 +192,24 @@ const useMonitorApi = () => {
     return await get(`/monitor/api/unit/list`);
   };
 
+  const getVmMetricNames = async (params: {
+    monitor_object_id: React.Key;
+    monitor_plugin_id: React.Key;
+    keyword?: string;
+  }) => {
+    return await get(`/monitor/api/metrics/vm-metric-names/`, { params });
+  };
+
+  const testMetricQuery = async (data: {
+    query: string;
+    monitor_object_id?: React.Key;
+    monitor_plugin_id?: React.Key;
+  }) => {
+    return await post(`/monitor/api/metrics/test_query/`, data, {
+      suppressErrorNotification: true
+    });
+  };
+
   return {
     getMonitorMetrics,
     getMetricsGroup,
@@ -202,7 +220,9 @@ const useMonitorApi = () => {
     getMonitorPlugin,
     patchMonitorAlert,
     getAllUsers,
-    getUnitList
+    getUnitList,
+    getVmMetricNames,
+    testMetricQuery
   };
 };
 
