@@ -60,11 +60,9 @@ class ExecutionPlanResolver:
         *,
         reader: PluginYamlReader | None = None,
         defaults: TimeoutDefaults | None = None,
-        preflight_enabled: bool,
     ) -> None:
         self._reader = reader or yaml_reader
         self._defaults = defaults or TimeoutDefaults()
-        self._preflight_enabled = bool(preflight_enabled)
 
     def resolve(self, request: CollectionRequest) -> ExecutionPlan:
         plugin_name = _plugin_name(request)
@@ -85,7 +83,10 @@ class ExecutionPlanResolver:
                 plugin_name or "-",
                 executor_type or "protocol",
             )
-            return self._default_plan(executor_type or "protocol")
+            return self._default_plan(
+                executor_type or "protocol",
+                preflight_enabled=request.ip_precheck_enabled,
+            )
         executor = resolved.executor_config
         config = executor.config or {}
         target_policy = config.get("target_policy") or {}
@@ -95,7 +96,7 @@ class ExecutionPlanResolver:
         execution_mode = str(config.get("execution_mode") or ("remote" if executor.is_job else "sync")).strip().lower()
         capacity_group = str(config.get("capacity_group") or ("remote_job" if executor.is_job else "default")).strip().lower()
         return ExecutionPlan(
-            preflight_enabled=self._preflight_enabled,
+            preflight_enabled=request.ip_precheck_enabled,
             preflight_timeout_seconds=_configured_timeout(
                 target_policy,
                 "timeout",
@@ -117,10 +118,10 @@ class ExecutionPlanResolver:
             capacity_group=capacity_group,
         )
 
-    def _default_plan(self, executor_type: str) -> ExecutionPlan:
+    def _default_plan(self, executor_type: str, *, preflight_enabled: bool) -> ExecutionPlan:
         is_remote = executor_type == "job"
         return ExecutionPlan(
-            preflight_enabled=self._preflight_enabled,
+            preflight_enabled=preflight_enabled,
             preflight_timeout_seconds=self._defaults.preflight_seconds,
             probe_timeout_seconds=self._defaults.probe_seconds,
             collection_timeout_seconds=self._defaults.collection_seconds,

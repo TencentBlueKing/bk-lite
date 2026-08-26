@@ -58,6 +58,8 @@ STARGAZER_MONITOR_AUTH_PREVIOUS_TOKEN=<previous-token>
 MAX_ACTIVE_RUNS=16
 # 配置采集目标并发；设为 0 表示不限制（尽快打满机器、靠监控扩容）
 MAX_ACTIVE_TARGETS=250
+# 网络拓扑基础配额；普通采集完全空闲时可借用普通容量的一半
+NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=50
 TARGET_TASK_WINDOW=250
 REDIS_MAX_CONNECTIONS=2560
 REDIS_POOL_TIMEOUT=2
@@ -76,18 +78,24 @@ EVENT_LOOP_LAG_INTERVAL=1
 CAPACITY_LOG_INTERVAL=180
 OUTBOUND_ALLOWED_CIDRS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 OUTBOUND_ALLOWED_DOMAINS=
-# 默认 off：跳过 TCP/TLS 端口短探，CIDR 出站与 Job remote 通道检查仍保留；设为 on 恢复探活
-PREFLIGHT_REACHABILITY=off
 ```
 
 这些值都是部署参数。未设置时默认 `MAX_ACTIVE_TARGETS=250`、
-`TARGET_TASK_WINDOW=250`。二者是单 Pod、跨所有运行共享的配置采集目标并发与任务窗口；
+`NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=50`、`TARGET_TASK_WINDOW=250`。这些参数是单 Pod、跨所有运行
+共享的配置采集目标并发与任务窗口；
 全局调度器在 Run 之间 round-robin，单个大 Run 不再预占 worker。需要临时去掉目标并发上限时：
 
 ```bash
 MAX_ACTIVE_TARGETS=0
 TARGET_TASK_WINDOW=0
 ```
+
+网络拓扑使用共享目标池，`NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS` 是普通采集存在时的基础配额。
+当普通目标既未运行也未排队时，拓扑最多再借用普通容量的一半：动态上限为
+`基础配额 + floor((全局目标容量 - 基础配额) / 2)`。因此默认 `250/50` 下拓扑可临时运行到 150；
+普通任务到达后立即停止派发超出基础配额的新拓扑目标，但不会抢占已经运行的目标，空出的全局槽位
+优先回流普通采集。若同时把 `MAX_ACTIVE_TARGETS` 和 `TARGET_TASK_WINDOW` 设为 `0`，由于全局容量
+不再有可计算的有限边界，拓扑借槽关闭并保持基础配额。
 
 `MAX_ACTIVE_RUNS` 仍保留 run 级准入；满了返回 busy/429。
 
@@ -100,8 +108,9 @@ TARGET_TASK_WINDOW=0
 若 Redis 过旧或不支持 `HELLO` 的代理会在启动 `ping` 时直接失败，因此显式钉在 RESP2。
 
 `PREFLIGHT_TIMEOUT` 与 `PROBE_TIMEOUT` 分别控制协议预检和插件 AccessProbe，默认均为 15 秒。
-`PREFLIGHT_REACHABILITY` 默认 `off`：保留 CIDR/SSRF 出站安全检查，但跳过 TCP/TLS、SNMP、
-remote/job 及其他所有采集前探测，直接进入正式采集；设为 `on` 时才执行预检和插件 probe。
+是否执行 IP 预检不再由全局环境变量控制。每个请求仅在 `params.ip_precheck` 为 `true`、`1`、
+`yes` 或 `on` 时执行协议连通性预检及插件 AccessProbe；缺失或为其他值时跳过这些探测，直接进入
+正式采集。CIDR/SSRF 出站安全检查不属于可选预检，无论请求开关如何都必须执行。
 `COLLECTION_TIMEOUT` 是正式采集缺省值 60 秒，插件 YAML executor 的 `timeout` 优先；
 发布阶段拆为三层：`PUBLISH_QUEUE_TIMEOUT` 默认 60 秒，控制等待有界发布队列接纳结果；
 `PUBLISH_DELIVERY_TIMEOUT` 默认 30 秒，控制实际 NATS publish/flush；`PUBLISH_TOTAL_TIMEOUT`

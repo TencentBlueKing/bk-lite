@@ -238,6 +238,55 @@ async def test_preflight_failure_detail_logs_include_every_failed_target(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_ip_precheck_failure_logs_each_ip_with_stable_safe_template(monkeypatch):
+    warning_calls = []
+    monkeypatch.setattr(
+        "core.collection.executor.logger.warning",
+        lambda message, *args: warning_calls.append((message, args)),
+    )
+    publisher = RecordingPublisher()
+    executor = TargetCollectionExecutor(
+        preflight=UnreachablePreflight(),
+        plugin=RecordingPlugin(),
+        publisher=publisher,
+        settings=TargetExecutorSettings(max_active_targets=2, target_task_window=2),
+    )
+    request = CollectionRequest(
+        task_id="ip-precheck-log",
+        plugin_ref="network.config",
+        targets=("10.10.69.21", "10.10.69.22"),
+        credentials=(
+            {
+                "credential_id": "credential-1",
+                "password": "precheck-secret-sentinel",
+            },
+        ),
+        params={"model_id": "network", "ip_precheck": True},
+    )
+
+    summary = await executor.execute(
+        request,
+        RunLease(request.task_id, request.digest, "pod-a", 1, 999999),
+    )
+
+    precheck_calls = [item for item in warning_calls if item[0].startswith("event=ip_precheck_failed")]
+    expected_template = "event=ip_precheck_failed task_id=%s target=%s " "failed_stage=ip_precheck error_type=%s"
+    assert precheck_calls == [
+        (expected_template, ("ip-precheck-log", "10.10.69.21", "tcp_connect_failed")),
+        (expected_template, ("ip-precheck-log", "10.10.69.22", "tcp_connect_failed")),
+    ]
+    rendered = [template % args for template, args in precheck_calls]
+    assert all("precheck-secret-sentinel" not in message for message in rendered)
+    all_rendered = [template % args for template, args in warning_calls]
+    assert all("precheck-secret-sentinel" not in message for message in all_rendered)
+    assert summary.unreachable == 2
+    assert [result.error_code for _, result, _ in publisher.results] == [
+        "tcp_connect_failed",
+        "tcp_connect_failed",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_plugin_failure_has_central_searchable_log_without_secret(monkeypatch):
     warning_logs = []
     error_logs = []
