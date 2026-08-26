@@ -176,8 +176,8 @@ TOKEN=<API 令牌>       # 在「系统管理 → API 密钥」页自助生成
 BASE=https://<平台地址>:<端口>
 
 # 目录里应出现该服务，kind=external
-# 注意：server 多 worker 时该列表来自各自进程内的快照，刚注册后可能要多请求几次
-# 才会出现；以下面的实际调用是否连通为准，不要仅凭 _docs 判断接入失败
+# 注意：刚注册后最迟约 10 秒出现（读侧回源 TTL，可用 OPENAPI_REGISTRY_CACHE_TTL 调整，
+# 0 为每次回源）；服务实际可调还取决于 Traefik 拉取路由，以下面的实际调用连通为准
 curl -sk -H "Authorization: Bearer $TOKEN" $BASE/openapi/v1/_docs | jq '.data.services'
 
 # 无凭据必须被网关挡回 401

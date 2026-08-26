@@ -11,10 +11,17 @@
 
 渲染层持有最近一次成功快照：KV 整体不可达时返回快照并告警
 （Traefik providers.http 拉取失败时自身也保留最后配置，双层兜底）。
+
+读侧（_me / _docs / _auth）在快照距上次 KV 对账超过 TTL 时现场回源一次
+（OPENAPI_REGISTRY_CACHE_TTL，默认 10 秒，0 表示每次读都回源），把多 worker
+下「等 Traefik 轮询轮到本进程」的无界滞后收敛到 ≤ TTL；KV 不可达时仍降级
+到最近快照。注意这只保证注册表数据的新鲜度，外部服务实际可调还取决于
+Traefik 已拉取渲染配置，故 _docs / _me 依旧不可作为可用性判据。
 """
 
 import os
 import threading
+import time
 from urllib.parse import urlparse
 
 from apps.core.logger import openapi_logger as logger
@@ -26,8 +33,10 @@ SUPPORTED_SCHEMA_VERSIONS = {1}
 VALID_TYPES = {"http"}
 VALID_AUTH_MODES = {"trusted-header", "service-token"}
 
+DEFAULT_REGISTRY_CACHE_TTL = 10.0
+
 _lock = threading.Lock()
-_snapshot = {"config": None, "services": [], "entries": {}}
+_snapshot = {"config": None, "services": [], "entries": {}, "checked_at": 0.0}
 
 
 def _resolve_ref(ref):
@@ -280,6 +289,8 @@ def refresh_snapshot(internal_services=()):
     """拉取 KV 并渲染；KV 不可达时保留最近一次成功快照（告警）。"""
     entries = fetch_entries()
     with _lock:
+        # 无论成败都记账：本次已付过一次 KV 往返，读侧 TTL 窗口内不再重试
+        _snapshot["checked_at"] = time.monotonic()
         if entries is None:
             if _snapshot["config"] is None:
                 logger.warning("openapi_registry 不可达且无历史快照，返回空配置")
@@ -294,14 +305,46 @@ def refresh_snapshot(internal_services=()):
         return config
 
 
-def get_external_services():
-    """最近一次成功快照中的外部 service 名（_me 使用，最终一致）。"""
+def _cache_ttl():
+    raw = os.getenv("OPENAPI_REGISTRY_CACHE_TTL", "")
+    if not raw:
+        return DEFAULT_REGISTRY_CACHE_TTL
+    try:
+        return max(float(raw), 0.0)
+    except ValueError:
+        logger.warning(
+            "OPENAPI_REGISTRY_CACHE_TTL=%r 非法，使用默认 %s 秒",
+            raw,
+            DEFAULT_REGISTRY_CACHE_TTL,
+        )
+        return DEFAULT_REGISTRY_CACHE_TTL
+
+
+def _internal_services():
+    from apps.core.openapi.registry import default_registry
+
+    return default_registry.services()
+
+
+def _ensure_snapshot_fresh():
+    """读侧准实时兜底：距上次 KV 对账超过 TTL 时回源一次。
+
+    checked_at 记录的是最近一次「尝试」而非「成功」——KV 故障期间不得让
+    _me / _docs / _auth 的每次读取都付一次 NATS 连接超时（放大故障、打穿
+    NATS），失败后同样要等下个 TTL 窗口再试。锁内先占位再到锁外回源，
+    并发读不会齐发；provider 轮询触发的 refresh_snapshot 同样刷新
+    checked_at，正常部署下读侧多数时候直接命中快照。
+    """
+    ttl = _cache_ttl()
+    now = time.monotonic()
     with _lock:
-        return list(_snapshot["services"])
+        if ttl > 0 and now - _snapshot["checked_at"] < ttl:
+            return
+        _snapshot["checked_at"] = now
+    refresh_snapshot(internal_services=_internal_services())
 
 
-def get_external_entry(name: str):
-    """按名取最近快照中的有效外部条目（ForwardAuth 授权检查使用）。"""
+def _get_entry_normalized(name: str):
     with _lock:
         entry = _snapshot["entries"].get(name)
     if entry is None:
@@ -310,11 +353,31 @@ def get_external_entry(name: str):
     return normalized
 
 
+def get_external_services():
+    """外部 service 名（_me 使用）：快照 + TTL 回源，KV 不可达时最终一致。"""
+    _ensure_snapshot_fresh()
+    with _lock:
+        return list(_snapshot["services"])
+
+
+def get_external_entry(name: str):
+    """按名取有效外部条目（ForwardAuth 授权检查使用）。
+
+    查找前先经 TTL 闸门与 KV 对账，新注册服务在本进程的 miss 窗口 ≤ TTL；
+    fail-closed 语义不变：对账后仍查无此名即返回 None（上层 404）。
+    """
+    _ensure_snapshot_fresh()
+    return _get_entry_normalized(name)
+
+
 def get_external_catalog():
-    """最近快照中有效外部条目的目录信息（_docs 使用，最终一致）。"""
+    """有效外部条目的目录信息（_docs 使用）：快照 + TTL 回源。"""
+    _ensure_snapshot_fresh()
+    with _lock:
+        services = list(_snapshot["services"])
     catalog = []
-    for name in get_external_services():
-        normalized = get_external_entry(name)
+    for name in services:
+        normalized = _get_entry_normalized(name)
         if normalized is not None:
             catalog.append({"name": name, "doc_url": normalized["doc_url"]})
     return catalog

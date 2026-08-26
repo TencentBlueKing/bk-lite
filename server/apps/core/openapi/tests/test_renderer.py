@@ -195,3 +195,111 @@ def test_gateway_versions_default_active(env):
     config, report = render_one(entry)
     assert report["rendered"] == ["itsm"]
     assert set(config["http"]["routers"]) == {"openapi-v1-itsm"}
+
+
+# ---------- 读侧 TTL 回源（_me / _docs / _auth 数据新鲜度） ----------
+
+
+class FakeClock:
+    def __init__(self):
+        self.now = 1000.0
+
+    def monotonic(self):
+        return self.now
+
+    def advance(self, seconds):
+        self.now += seconds
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    fake = FakeClock()
+    monkeypatch.setattr(renderer, "time", fake)
+    monkeypatch.setattr(
+        renderer,
+        "_snapshot",
+        {"config": None, "services": [], "entries": {}, "checked_at": 0.0},
+    )
+    monkeypatch.setattr(renderer, "_internal_services", lambda: [])
+    return fake
+
+
+def install_fetch(monkeypatch, result):
+    """monkeypatch fetch_entries 为可计数、可换返回值的 fake。"""
+    state = {"calls": 0, "result": result}
+
+    def fake():
+        state["calls"] += 1
+        value = state["result"]
+        return dict(value) if isinstance(value, dict) else value
+
+    monkeypatch.setattr(renderer, "fetch_entries", fake)
+    return state
+
+
+def test_read_side_refreshes_stale_snapshot(env, clock, monkeypatch):
+    """快照过期时读侧自行回源，无需等 provider 轮询轮到本进程。"""
+    fetch = install_fetch(monkeypatch, {"itsm": dict(GOOD, doc_url="http://d/x")})
+    assert renderer.get_external_services() == ["itsm"]
+    assert renderer.get_external_catalog() == [{"name": "itsm", "doc_url": "http://d/x"}]
+    assert renderer.get_external_entry("itsm") is not None
+    assert fetch["calls"] == 1  # 三次读共享同一次回源
+
+
+def test_reads_within_ttl_hit_snapshot(env, clock, monkeypatch):
+    fetch = install_fetch(monkeypatch, {"itsm": dict(GOOD)})
+    renderer.get_external_services()
+    clock.advance(renderer.DEFAULT_REGISTRY_CACHE_TTL - 1)
+    renderer.get_external_services()
+    assert fetch["calls"] == 1
+    clock.advance(2)
+    renderer.get_external_services()
+    assert fetch["calls"] == 2
+
+
+def test_new_registration_visible_after_ttl(env, clock, monkeypatch):
+    """覆盖 _auth miss 场景：新注册条目最迟一个 TTL 后本进程可见。"""
+    fetch = install_fetch(monkeypatch, {})
+    assert renderer.get_external_entry("itsm") is None
+    fetch["result"] = {"itsm": dict(GOOD)}
+    assert renderer.get_external_entry("itsm") is None  # TTL 内维持 miss，不重复回源
+    assert fetch["calls"] == 1
+    clock.advance(renderer.DEFAULT_REGISTRY_CACHE_TTL + 1)
+    assert renderer.get_external_entry("itsm") is not None
+
+
+def test_kv_down_falls_back_without_hammering(env, clock, monkeypatch):
+    """KV 故障期间读侧降级快照，且 TTL 窗口内不重复付 NATS 往返。"""
+    fetch = install_fetch(monkeypatch, {"itsm": dict(GOOD)})
+    renderer.get_external_services()
+    fetch["result"] = None
+    clock.advance(renderer.DEFAULT_REGISTRY_CACHE_TTL + 1)
+    assert renderer.get_external_services() == ["itsm"]  # 降级到最近成功快照
+    assert fetch["calls"] == 2
+    renderer.get_external_services()
+    renderer.get_external_entry("itsm")
+    assert fetch["calls"] == 2  # 失败也占用 TTL 窗口，不放大故障
+
+
+def test_provider_refresh_warms_read_cache(env, clock, monkeypatch):
+    fetch = install_fetch(monkeypatch, {"itsm": dict(GOOD)})
+    renderer.refresh_snapshot()
+    renderer.get_external_services()
+    assert fetch["calls"] == 1
+
+
+def test_ttl_zero_fetches_every_read(env, clock, monkeypatch):
+    monkeypatch.setenv("OPENAPI_REGISTRY_CACHE_TTL", "0")
+    fetch = install_fetch(monkeypatch, {"itsm": dict(GOOD)})
+    renderer.get_external_services()
+    renderer.get_external_services()
+    assert fetch["calls"] == 2
+
+
+def test_invalid_ttl_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("OPENAPI_REGISTRY_CACHE_TTL", "abc")
+    assert renderer._cache_ttl() == renderer.DEFAULT_REGISTRY_CACHE_TTL
+    monkeypatch.setenv("OPENAPI_REGISTRY_CACHE_TTL", "-5")
+    assert renderer._cache_ttl() == 0.0
+    monkeypatch.setenv("OPENAPI_REGISTRY_CACHE_TTL", "30")
+    assert renderer._cache_ttl() == 30.0
