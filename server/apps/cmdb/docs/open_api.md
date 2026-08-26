@@ -18,6 +18,32 @@ https://bk-lite.example.com/api/v1/cmdb/api/open/models
 
 接口路径末尾不带 `/`。
 
+新接入统一网关入口为 `{BK_LITE_BASE_URL}/openapi/v1/cmdb/*`，认证头为
+`Authorization: Bearer <API_SECRET>`。网关 path 不含 `{id}`：`model_id` /
+`inst_uuid` 在 GET 上走 query、写方法走 JSON body。原 REST PATCH 更新在网关上
+对应 `PUT /openapi/v1/cmdb/instance`。存量 `/api/v1/cmdb/api/open` 仍可用。
+
+网关路径对照：
+
+| 旧 REST | 网关 |
+|---|---|
+| `GET /classifications` | `GET /openapi/v1/cmdb/classifications` |
+| `GET /models` | `GET /openapi/v1/cmdb/models` |
+| `GET /models/{model_id}` | `GET /openapi/v1/cmdb/model?model_id=` |
+| `GET /models/{model_id}/attributes` | `GET /openapi/v1/cmdb/model-attributes?model_id=` |
+| `GET /models/{model_id}/associations` | `GET /openapi/v1/cmdb/model-associations?model_id=` |
+| `GET /models/{model_id}/instances` | `GET /openapi/v1/cmdb/instances?model_id=` |
+| `POST /models/{model_id}/instances` | `POST /openapi/v1/cmdb/instance-create`（body：`model_id` + `attrs`） |
+| `GET /models/{model_id}/instances/{inst_uuid}` | `GET /openapi/v1/cmdb/instance?model_id=&inst_uuid=` |
+| `PATCH /models/{model_id}/instances/{inst_uuid}` | `PUT /openapi/v1/cmdb/instance` |
+| `DELETE /models/{model_id}/instances/{inst_uuid}` | `DELETE /openapi/v1/cmdb/instance` |
+| `POST .../batch_create` | `POST /openapi/v1/cmdb/instance-batch-create` |
+| `POST .../batch_update` | `POST /openapi/v1/cmdb/instance-batch-update` |
+| `POST .../batch_delete` | `POST /openapi/v1/cmdb/instance-batch-delete` |
+| `GET .../associations` | `GET /openapi/v1/cmdb/instance-associations` |
+| `POST .../associations` | `POST /openapi/v1/cmdb/instance-associations` |
+| `DELETE .../associations/{dst}/{asst}` | `DELETE /openapi/v1/cmdb/instance-association` |
+
 ### 1.2 认证方式
 
 API Token 需要在 BK-Lite 产品页面申请，入口为：
