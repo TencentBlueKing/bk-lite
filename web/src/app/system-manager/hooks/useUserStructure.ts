@@ -142,7 +142,7 @@ export function useUserTable(
   const { confirm } = Modal;
 
   const isChangeUserStatusAction = (action: string): action is ChangeUserStatusAction => {
-    return ['enable', 'disable', 'unlock'].includes(action);
+    return ['enable', 'disable', 'unlock', 'unbind_otp'].includes(action);
   };
 
   const getStatusConfirmTitle = useCallback((action: ChangeUserStatusAction) => {
@@ -153,6 +153,8 @@ export function useUserTable(
         return t('system.user.status.disableConfirm');
       case 'unlock':
         return t('system.user.status.unlockConfirm');
+      case 'unbind_otp':
+        return t('system.user.status.unbindOtpConfirm');
     }
   }, [t]);
 
@@ -175,6 +177,7 @@ export function useUserTable(
         last_login: item.last_login,
         status: item.status,
         sync_source: item.sync_source ?? null,
+        has_otp: item.has_otp === true,
       }));
       setTableData(data);
       setTotal(res.count);

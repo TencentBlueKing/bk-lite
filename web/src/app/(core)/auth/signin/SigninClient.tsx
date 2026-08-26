@@ -67,6 +67,7 @@ interface LoginResponse {
   challenge_id?: string;
   qr_code?: string;  // QR code for first-time OTP binding
   need_binding?: boolean;  // Flag indicating first-time OTP binding
+  otp_recommended_apps?: string[];
 }
 
 const VALIDATION_MODE_DEFAULT_DOMAIN = "domain.com";
@@ -153,6 +154,7 @@ export default function SigninClient({
       password_expiry_reminder: otpLoginResult.password_expiry_reminder,
       require_otp: otpLoginResult.require_otp,
       challenge_id: otpLoginResult.challenge_id,
+      otp_recommended_apps: otpLoginResult.otp_recommended_apps,
       qr_code: otpLoginResult.qr_code,
       redirect_url: otpLoginResult.redirect_url,
       legacy_external_callback_url: otpLoginResult.legacy_external_callback_url,
