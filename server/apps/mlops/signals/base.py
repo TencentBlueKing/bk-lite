@@ -4,13 +4,14 @@ MLOps 信号处理器基础模块
 提供通用的信号处理器工厂函数，用于统一注册各 ML 任务类型的资源清理信号
 """
 
-from typing import Callable, Optional, Type
+from typing import Type
 
 from django.db import models, transaction
 from django.db.models.signals import post_delete
 from django_minio_backend import MinioBackend
 
 from apps.core.logger import mlops_logger as logger
+from apps.mlops.services.external_resource_cleanup import create_mlflow_cleanup_intent
 from apps.mlops.utils import mlflow_service
 from apps.mlops.utils.webhook_client import WebhookClient, WebhookError
 
@@ -84,6 +85,7 @@ def register_cleanup_signals(
         model=serving_model,
     )
 
+
 def _register_dataset_release_cleanup(
     *,
     prefix: str,
@@ -103,20 +105,11 @@ def _register_dataset_release_cleanup(
             try:
                 if instance.dataset_file:
                     instance.dataset_file.delete(save=False)
-                    logger.info(
-                        f"成功删除数据集发布文件: {instance.dataset_file.name}, "
-                        f"dataset_release_id={instance.id}, version={instance.version}"
-                    )
+                    logger.info(f"成功删除数据集发布文件: {instance.dataset_file.name}, " f"dataset_release_id={instance.id}, version={instance.version}")
                 else:
-                    logger.debug(
-                        f"数据集发布版本没有文件, "
-                        f"dataset_release_id={instance.id}, version={instance.version}"
-                    )
+                    logger.debug(f"数据集发布版本没有文件, " f"dataset_release_id={instance.id}, version={instance.version}")
             except Exception as e:
-                logger.error(
-                    f"删除数据集发布文件失败: {str(e)}, "
-                    f"dataset_release_id={instance.id}, version={instance.version}"
-                )
+                logger.error(f"删除数据集发布文件失败: {str(e)}, " f"dataset_release_id={instance.id}, version={instance.version}")
 
         transaction.on_commit(delete_files)
 
@@ -154,9 +147,7 @@ def _register_train_data_cleanup(
             try:
                 # 删除训练数据文件
                 if train_data_path:
-                    from apps.mlops.services.train_data_file_cleanup import (
-                        delete_train_data_file_with_retry,
-                    )
+                    from apps.mlops.services.train_data_file_cleanup import delete_train_data_file_with_retry
 
                     result = delete_train_data_file_with_retry(
                         model_label=sender._meta.label,
@@ -179,38 +170,22 @@ def _register_train_data_cleanup(
                         try:
                             if hasattr(instance.metadata, "delete"):
                                 instance.metadata.delete(save=False)
-                                logger.info(
-                                    f"成功删除元数据文件, "
-                                    f"train_data_id={instance.id}, name={instance.name}"
-                                )
+                                logger.info(f"成功删除元数据文件, " f"train_data_id={instance.id}, name={instance.name}")
                         except Exception as metadata_error:
-                            logger.warning(
-                                f"删除元数据文件时出现警告: {str(metadata_error)}, "
-                                f"train_data_id={instance.id}"
-                            )
+                            logger.warning(f"删除元数据文件时出现警告: {str(metadata_error)}, " f"train_data_id={instance.id}")
                 elif metadata_strategy == MetadataDeleteStrategy.MINIO_BACKEND:
                     if instance.metadata:
                         storage = MinioBackend(bucket_name=minio_bucket)
                         storage.delete(instance.metadata)
-                        logger.info(
-                            f"成功删除元数据文件: {instance.metadata}, "
-                            f"train_data_id={instance.id}, name={instance.name}"
-                        )
+                        logger.info(f"成功删除元数据文件: {instance.metadata}, " f"train_data_id={instance.id}, name={instance.name}")
 
                 # 无文件时的日志
                 if not instance.train_data and (
-                    metadata_strategy == MetadataDeleteStrategy.NONE
-                    or not (hasattr(instance, "metadata") and instance.metadata)
+                    metadata_strategy == MetadataDeleteStrategy.NONE or not (hasattr(instance, "metadata") and instance.metadata)
                 ):
-                    logger.debug(
-                        f"训练数据没有关联文件, "
-                        f"train_data_id={instance.id}, name={instance.name}"
-                    )
+                    logger.debug(f"训练数据没有关联文件, " f"train_data_id={instance.id}, name={instance.name}")
             except Exception as e:
-                logger.error(
-                    f"删除训练数据文件失败: {str(e)}, "
-                    f"train_data_id={instance.id}, name={instance.name}"
-                )
+                logger.error(f"删除训练数据文件失败: {str(e)}, " f"train_data_id={instance.id}, name={instance.name}")
 
         transaction.on_commit(delete_files, using=using)
 
@@ -241,20 +216,11 @@ def _register_train_job_cleanup(
             try:
                 if instance.config_url:
                     instance.config_url.delete(save=False)
-                    logger.info(
-                        f"成功删除训练任务配置文件: {instance.config_url.name}, "
-                        f"train_job_id={instance.id}, name={instance.name}"
-                    )
+                    logger.info(f"成功删除训练任务配置文件: {instance.config_url.name}, " f"train_job_id={instance.id}, name={instance.name}")
                 else:
-                    logger.debug(
-                        f"训练任务没有配置文件, "
-                        f"train_job_id={instance.id}, name={instance.name}"
-                    )
+                    logger.debug(f"训练任务没有配置文件, " f"train_job_id={instance.id}, name={instance.name}")
             except Exception as e:
-                logger.error(
-                    f"删除训练任务配置文件失败: {str(e)}, "
-                    f"train_job_id={instance.id}, name={instance.name}"
-                )
+                logger.error(f"删除训练任务配置文件失败: {str(e)}, " f"train_job_id={instance.id}, name={instance.name}")
 
         transaction.on_commit(delete_files)
 
@@ -275,41 +241,38 @@ def _register_mlflow_cleanup(
     """注册 MLflow 资源清理信号"""
 
     def cleanup_mlflow_experiment(sender, instance, **kwargs):
-        logger.info(
-            f"[Signal] post_delete 触发: {prefix}TrainJob (MLflow清理), "
-            f"train_job_id={instance.id}, algorithm={instance.algorithm}"
+        using = kwargs.get("using", "default")
+        train_job_id = instance.id
+        logger.info(f"[Signal] post_delete 触发: {prefix}TrainJob (MLflow清理), " f"train_job_id={train_job_id}, algorithm={instance.algorithm}")
+
+        experiment_name = mlflow_service.build_experiment_name(
+            prefix=prefix,
+            algorithm=instance.algorithm,
+            train_job_id=train_job_id,
+        )
+        model_name = mlflow_service.build_model_name(
+            prefix=prefix,
+            algorithm=instance.algorithm,
+            train_job_id=train_job_id,
+        )
+        intent = create_mlflow_cleanup_intent(
+            experiment_name,
+            model_name,
+            using=using,
         )
 
-        def delete_mlflow_resources():
-            try:
-                experiment_name = mlflow_service.build_experiment_name(
-                    prefix=prefix,
-                    algorithm=instance.algorithm,
-                    train_job_id=instance.id,
-                )
-                model_name = mlflow_service.build_model_name(
-                    prefix=prefix,
-                    algorithm=instance.algorithm,
-                    train_job_id=instance.id,
+        def dispatch_mlflow_cleanup():
+            from apps.mlops.tasks.external_resource_cleanup import enqueue_external_resource_cleanup_intent
+
+            scheduled = enqueue_external_resource_cleanup_intent(intent.pk, using=using)
+            if not scheduled:
+                logger.warning(
+                    "MLflow 清理任务未立即投递，将由周期扫描补偿: intent_id=%s, train_job_id=%s",
+                    intent.pk,
+                    train_job_id,
                 )
 
-                mlflow_service.delete_experiment_and_model(
-                    experiment_name=experiment_name, model_name=model_name
-                )
-
-                logger.info(
-                    f"成功删除 MLflow 资源: experiment={experiment_name}, model={model_name}, "
-                    f"train_job_id={instance.id}"
-                )
-
-            except Exception as e:
-                logger.error(
-                    f"删除 MLflow 资源失败 (不影响数据库删除): {str(e)}, "
-                    f"train_job_id={instance.id}, algorithm={instance.algorithm}",
-                    exc_info=True,
-                )
-
-        transaction.on_commit(delete_mlflow_resources)
+        transaction.on_commit(dispatch_mlflow_cleanup, using=using)
 
     post_delete.connect(
         cleanup_mlflow_experiment,
@@ -329,10 +292,7 @@ def _register_docker_cleanup(
 
     def cleanup_docker_container(sender, instance, origin=None, **kwargs):
         if origin is instance or getattr(origin, "model", None) is sender:
-            logger.info(
-                f"[Signal] 跳过 direct delete 的 {prefix}Serving 容器清理, "
-                f"serving_id={instance.id}"
-            )
+            logger.info(f"[Signal] 跳过 direct delete 的 {prefix}Serving 容器清理, " f"serving_id={instance.id}")
             return
 
         origin_class_name = getattr(getattr(origin, "__class__", None), "__name__", "")
@@ -342,42 +302,30 @@ def _register_docker_cleanup(
             and origin_class_name.endswith("TrainJob")
         ):
             logger.info(
-                f"[Signal] 跳过 train job cascade delete 的 {prefix}Serving 容器清理, "
-                f"serving_id={instance.id}, train_job_id={instance.train_job_id}"
+                f"[Signal] 跳过 train job cascade delete 的 {prefix}Serving 容器清理, " f"serving_id={instance.id}, train_job_id={instance.train_job_id}"
             )
             return
 
-        logger.info(
-            f"[Signal] post_delete 触发: {prefix}Serving (容器清理), "
-            f"serving_id={instance.id}, port={instance.port}"
-        )
+        logger.info(f"[Signal] post_delete 触发: {prefix}Serving (容器清理), " f"serving_id={instance.id}, port={instance.port}")
 
         def delete_container():
             try:
                 container_id = f"{prefix}_Serving_{instance.id}"
                 result = WebhookClient.remove(container_id)
 
-                logger.info(
-                    f"成功删除 Docker 容器: container_id={container_id}, "
-                    f"serving_id={instance.id}, result={result}"
-                )
+                logger.info(f"成功删除 Docker 容器: container_id={container_id}, " f"serving_id={instance.id}, result={result}")
 
             except WebhookError as e:
                 if "not found" in str(e).lower() or "does not exist" in str(e).lower():
-                    logger.warning(
-                        f"容器已不存在，跳过删除: container_id={prefix}_Serving_{instance.id}, "
-                        f"serving_id={instance.id}"
-                    )
+                    logger.warning(f"容器已不存在，跳过删除: container_id={prefix}_Serving_{instance.id}, " f"serving_id={instance.id}")
                 else:
                     logger.error(
-                        f"删除 Docker 容器失败 (不影响数据库删除): {str(e)}, "
-                        f"serving_id={instance.id}",
+                        f"删除 Docker 容器失败 (不影响数据库删除): {str(e)}, " f"serving_id={instance.id}",
                         exc_info=True,
                     )
             except Exception as e:
                 logger.error(
-                    f"删除 Docker 容器失败 (不影响数据库删除): {str(e)}, "
-                    f"serving_id={instance.id}",
+                    f"删除 Docker 容器失败 (不影响数据库删除): {str(e)}, " f"serving_id={instance.id}",
                     exc_info=True,
                 )
 
