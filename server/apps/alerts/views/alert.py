@@ -6,13 +6,20 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.alerts.constants import PERMISSION_ALERT
-from apps.alerts.constants.constants import PERMISSION_EVENT, SessionStatus
+from apps.alerts.constants.constants import SessionStatus
 from apps.alerts.filters import AlertModelFilter
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.serializers import AlertModelSerializer, EventModelSerializer
 from apps.alerts.service.alter_operator import AlertOperator
 from apps.alerts.service.related_alerts import RelatedAlertsService
-from apps.alerts.utils.permission_scope import get_authorized_group_ids
+from apps.alerts.utils.operator_scope import username_is_current_operator
+from apps.alerts.utils.permission_scope import (
+    apply_operator_scope,
+    get_authorized_group_ids,
+    get_query_group_ids,
+    is_my_alert_query,
+    is_org_only_query,
+)
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
@@ -68,9 +75,58 @@ class AlertModelViewSet(AuthViewSet):
             return {}
         return dict(User.objects.filter(username__in=operator_usernames).values_list("username", "display_name"))
 
+    def get_has_permission(self, user, instance, current_team, is_list=False, is_check=False, include_children=False):
+        # 仅查看路径（is_check）允许当前处理人进入；改删仍走组织权限，避免值班身份扩大 CRUD。
+        if is_check and not is_list and username_is_current_operator(getattr(user, "username", None), instance):
+            return True
+        return super().get_has_permission(
+            user,
+            instance,
+            current_team,
+            is_list=is_list,
+            is_check=is_check,
+            include_children=include_children,
+        )
+
+    def _ensure_current_team_session(self, request):
+        group_ids = get_query_group_ids(request)
+        if not group_ids and not getattr(request.user, "is_superuser", False):
+            return False
+        return True
+
+    def _get_accessible_alert_queryset(self, request, queryset=None):
+        """当前组织归属 ∪ 处理人是我。调用方须已有合法当前组织会话。"""
+        if queryset is None:
+            queryset = self.filter_queryset(self.get_queryset())
+        if not self._ensure_current_team_session(request):
+            return queryset.none()
+        owned = self.get_queryset_by_permission(request, queryset)
+        operated = apply_operator_scope(queryset, getattr(request.user, "username", ""))
+        return (owned | operated).distinct()
+
     def _get_permission_filtered_queryset(self, request):
         queryset = self.filter_queryset(self.get_queryset())
-        return self.get_queryset_by_permission(request, queryset)
+        if is_my_alert_query(request):
+            # FilterSet 已按处理人精确成员过滤，这里不再叠组织范围。
+            if not self._ensure_current_team_session(request):
+                return queryset.none()
+            return queryset
+        if is_org_only_query(request):
+            return self.get_queryset_by_permission(request, queryset)
+        return self._get_accessible_alert_queryset(request, queryset)
+
+    def _get_visible_alert_or_404(self, request, pk):
+        instance = self.get_object()
+        user = getattr(request, "user", None)
+        if getattr(user, "is_superuser", False):
+            return instance
+        if not self._ensure_current_team_session(request):
+            raise Http404
+        current_team = self._parse_current_team_cookie(request)
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+        if self.get_has_permission(user, instance, current_team, is_check=True, include_children=include_children):
+            return instance
+        raise Http404
 
     @HasPermission("Alarms-View")
     def list(self, request, *args, **kwargs):
@@ -121,12 +177,8 @@ class AlertModelViewSet(AuthViewSet):
     @HasPermission("Alarms-View")
     @action(methods=["get"], detail=True, url_path="events", url_name="events")
     def events(self, request, *args, **kwargs):
-        alert_queryset = self.get_queryset_by_permission(request, self.get_queryset())
-        alert = alert_queryset.get(pk=kwargs["pk"])
-        queryset = self.get_queryset_by_permission(
-            request, Event.objects.select_related("source").filter(alert=alert), permission_key=PERMISSION_EVENT
-        )
-        queryset = queryset.order_by("-received_at")
+        alert = self._get_visible_alert_or_404(request, kwargs["pk"])
+        queryset = Event.objects.select_related("source").filter(alert=alert).order_by("-received_at")
 
         page = self.paginate_queryset(queryset)
         if page is not None:
@@ -139,10 +191,9 @@ class AlertModelViewSet(AuthViewSet):
     @HasPermission("Alarms-View")
     @action(methods=["get"], detail=True, url_path="related", url_name="related")
     def related(self, request, *args, **kwargs):
-        alert_queryset = self.get_queryset_by_permission(request, self.get_queryset())
         try:
-            alert = alert_queryset.get(pk=kwargs["pk"])
-        except Alert.DoesNotExist as err:
+            alert = self._get_visible_alert_or_404(request, kwargs["pk"])
+        except Http404 as err:
             raise Http404 from err
         try:
             time_window = int(request.query_params.get("time_window", 60))
@@ -175,7 +226,7 @@ class AlertModelViewSet(AuthViewSet):
         Custom operator method to handle alert operations.
         """
         alert_id_list = request.data["alert_id"]
-        allowed_alert_ids = set(self._get_permission_filtered_queryset(request).filter(alert_id__in=alert_id_list).values_list("alert_id", flat=True))
+        allowed_alert_ids = set(self._get_accessible_alert_queryset(request).filter(alert_id__in=alert_id_list).values_list("alert_id", flat=True))
         operator = AlertOperator(
             user=self.request.user.username,
             allowed_alert_ids=allowed_alert_ids,

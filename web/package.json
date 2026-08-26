@@ -34,6 +34,7 @@
     "test:alarm-batch-action-toolbar": "pnpm exec tsx scripts/alarm-batch-action-toolbar-test.ts",
     "test:alarm-action-i18n": "pnpm exec tsx scripts/alarm-action-i18n-test.ts",
     "test:alarm-table-column-order": "pnpm exec tsx scripts/alarm-table-column-order-test.ts",
+    "test:alarm-operator-org-path": "pnpm exec tsx scripts/alarm-operator-org-path-test.ts",
     "test:alarm-notification-tooltip": "pnpm exec tsx scripts/alarm-notification-tooltip-test.ts",
     "test:incident-im-group-ui": "pnpm exec tsx enterprise/scripts/incident-im-group-ui-test.ts",
     "test:prepare-enterprise-dependency-link": "node scripts/prepare-enterprise-dependency-link-test.mjs",

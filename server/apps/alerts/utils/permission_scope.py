@@ -4,6 +4,7 @@ from rest_framework.exceptions import PermissionDenied
 from apps.alerts.constants.constants import LogTargetType
 from apps.alerts.models.models import Alert, Incident
 from apps.core.utils.team_utils import get_current_team
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
@@ -28,7 +29,7 @@ def get_query_group_ids(request):
         return []
 
     if not getattr(user, "is_superuser", False):
-        user_group_ids = {group["id"] for group in getattr(user, "group_list", [])}
+        user_group_ids = set(normalize_user_group_ids(getattr(user, "group_list", [])))
         if current_team not in user_group_ids:
             raise PermissionDenied("无权访问该团队数据")
 
@@ -92,6 +93,33 @@ def apply_team_scope_with_group_ids(queryset, group_ids, field_name="team"):
 
 def apply_team_scope_for_request(queryset, request, field_name="team"):
     return apply_team_scope_with_group_ids(queryset, get_query_group_ids(request), field_name=field_name)
+
+
+def is_my_alert_query(request):
+    """仅 1/true/yes 视为「我的告警」；空串、其它值不启用处理人过滤。"""
+    query_params = getattr(request, "query_params", None)
+    if query_params is not None:
+        value = query_params.get("my_alert")
+    else:
+        value = request.GET.get("my_alert")
+    return str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def is_org_only_query(request):
+    """显式只要归属组织。告警中心页面趋势不再传该参数。"""
+    query_params = getattr(request, "query_params", None)
+    if query_params is not None:
+        value = query_params.get("org_only")
+    else:
+        value = request.GET.get("org_only")
+    return str(value or "").strip().lower() in {"1", "true", "yes"}
+
+
+def apply_operator_scope(queryset, username, field_name="operator"):
+    """JSON 数组成员精确匹配，避免把用户名当 contains 子串。"""
+    if not username:
+        return queryset.none()
+    return queryset.filter(build_json_membership_query(queryset, field_name, [username]))
 
 
 def _build_team_query(field_name, group_ids):
