@@ -1,6 +1,14 @@
 # APM 推断下游（服务拓扑）
 
-Status: implementing
+Status: implemented
+
+## Completion Evidence
+
+- 别名集中在 `server/apps/apm/adapters/span_aliases.py`：`db.system` 或 `db.system.name` 单独出现都能折叠成 mysql 推断节点；`span_attr:` 前缀同样生效。
+- `DjangoApmTopologyService` 在有界 Trace 样本上识别 client/producer、无另一 `service.name` 子 Span 的调用；不 import / 不写入 `ApmService`。无组织可见调用方时不出现推断节点。
+- 仅服务拓扑页传 `include_inferred=true`。画布展示「推断」角标与虚线描边；调查栏列出调用方和样本 Client Span，隐藏服务详情。应用详情 `focusApplicationTopology` 丢弃推断邻居。
+- demo catalog `/products` 发出模拟 mysql Client Span；探针手册钉死 Java 2.31.1、Python 0.65b0（SDK 1.44.0）、Node 0.79.0、Go v1.46.0。
+- 测试：`apps/apm/tests/test_topology_service.py` 中别名 / 可见性 / 不写目录用例；`topology-canvas.test.tsx`、`topology-layout.test.ts`；`apm-service-workflow-test.ts`、`apm-i18n-coverage-test.ts` 通过。sqlite 下 `@pytest.mark.django_db` 拓扑 API 仍因无关迁移 `NewSessionEventRelation.event` 无法建库。
 
 ## Problem Statement
 

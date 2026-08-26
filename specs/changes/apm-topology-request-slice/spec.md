@@ -1,6 +1,14 @@
 # APM 服务拓扑按请求切片
 
-Status: implementing
+Status: implemented
+
+## Completion Evidence
+
+- 拓扑服务构图改为 `TopologyStore.sample_traces` 的有界 Trace 样本；图、节点 RED、边 P95/错误率和样本 Trace 同源。Adapter 用模板化 LogsQL，禁止用户粘贴 TraceQL。
+- 切片字段复用调用链探索：`status` / `span_name` / `min_duration_ms` / `environment`。`status=error` 后图中不含仅正常请求才有的边；操作名切片只保留命中该操作的路径。
+- 边样本 Trace 带 caller 与 callee 身份。截断时 `truncated=true`。单个 Trace 拉取失败记 WARNING 并省略，不让整张图失败。
+- 拓扑页增加请求状态 / 操作名 / 耗时下限与「清空切片」；「只看异常」仍是节点健康度的客户端过滤，不触发重新取数。
+- 测试：`apps/apm/tests/test_topology_service.py` 切片与边 RED 用例；`test_victoriatraces_adapter.py` 的 `sample_traces` 模板查询；`topology-canvas.test.tsx`；`apm-service-workflow-test.ts` 通过。sqlite 下原有 `test_topology_api_*` 仍因无关迁移无法建库。
 
 ## Problem Statement
 
