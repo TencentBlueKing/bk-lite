@@ -239,8 +239,10 @@ const CanvasDraftControls = ({
         styles={{
           body: {
             maxHeight: 'min(480px, calc(100vh - 280px))',
-            overflowY: 'auto',
+            overflow: 'hidden',
             paddingTop: 4,
+            display: 'flex',
+            flexDirection: 'column',
           },
         }}
       >
@@ -254,24 +256,25 @@ const CanvasDraftControls = ({
             description={t('opsAnalysis.canvasDraft.historyEmpty')}
           />
         ) : (
-          <div>
-            <div className="grid grid-cols-[44px_minmax(0,200px)_148px_96px] items-center gap-x-4 px-2 pt-2 text-[12px] leading-none text-[var(--color-text-3)]">
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="grid shrink-0 grid-cols-[44px_minmax(0,200px)_148px_96px] items-center gap-x-4 border-b border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-2 pb-2 pt-2 text-[12px] leading-none text-[var(--color-text-3)]">
               <span>{t('opsAnalysis.canvasDraft.historyVersion')}</span>
               <span>{t('opsAnalysis.canvasDraft.historyName')}</span>
               <span>{t('opsAnalysis.canvasDraft.historyTime')}</span>
               <span>{t('opsAnalysis.canvasDraft.historyActions')}</span>
             </div>
-            <ul className="m-0 list-none p-0">
-              {history.map((item, index) => {
-                const versionNo = history.length - index;
-                const restoring = restoringId === item.id;
-                const editing = editingId === item.id;
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <ul className="m-0 list-none p-0">
+                {history.map((item, index) => {
+                  const versionNo = history.length - index;
+                  const restoring = restoringId === item.id;
+                  const editing = editingId === item.id;
 
-                return (
-                  <li
-                    key={item.id}
-                    className="grid grid-cols-[44px_minmax(0,200px)_148px_96px] items-center gap-x-4 border-t border-[var(--color-border-2)] px-2 py-2.5 first:border-t-0"
-                  >
+                  return (
+                    <li
+                      key={item.id}
+                      className="grid grid-cols-[44px_minmax(0,200px)_148px_96px] items-center gap-x-4 border-b border-[var(--color-border-2)] px-2 py-2.5 last:border-b-0"
+                    >
                     <span className="text-[13px] font-medium leading-5 text-[var(--color-text-1)]">
                       #{versionNo}
                     </span>
@@ -313,7 +316,8 @@ const CanvasDraftControls = ({
                   </li>
                 );
               })}
-            </ul>
+              </ul>
+            </div>
           </div>
         )}
       </Modal>
