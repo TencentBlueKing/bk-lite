@@ -7,7 +7,6 @@ import type { ComponentType } from 'react';
 import { loadDashboardComponent } from '@/app/monitor/dashboards/component-loaders';
 import { normalizeDashboardKey } from '@/app/monitor/dashboards/shared/utils';
 import { useResolveObjectId } from '@/app/monitor/dashboards/shared/utils/use-resolve-object-id';
-import { DashboardLayout } from '@/app/monitor/dashboards/components/dashboard-layout';
 
 export default function ProfessionalDashboardPage() {
   const params = useParams<{ objectKey: string }>();
@@ -41,17 +40,17 @@ export default function ProfessionalDashboardPage() {
     };
   }, [objectKey]);
 
-  return (
-    <DashboardLayout objectKey={params?.objectKey || ''}>
-      {loadState === 'loading' ? (
-        <div className="flex justify-center items-center" style={{ minHeight: 240 }}>
-          <Spin />
-        </div>
-      ) : DashboardComponent ? (
-        <DashboardComponent />
-      ) : (
-        <Empty description="未找到对应的专业仪表盘" style={{ margin: '120px auto' }} />
-      )}
-    </DashboardLayout>
-  );
+  if (loadState === 'loading') {
+    return (
+      <div className="flex justify-center items-center" style={{ minHeight: 240 }}>
+        <Spin />
+      </div>
+    );
+  }
+
+  if (DashboardComponent) {
+    return <DashboardComponent />;
+  }
+
+  return <Empty description="未找到对应的专业仪表盘" style={{ margin: '120px auto' }} />;
 }
