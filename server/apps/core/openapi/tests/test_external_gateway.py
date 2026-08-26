@@ -25,15 +25,6 @@ SAMPLE_ENTRY = {
 }
 
 
-@pytest.fixture(autouse=True)
-def reset_snapshot():
-    with renderer._lock:
-        renderer._snapshot.update({"config": None, "services": [], "entries": {}})
-    yield
-    with renderer._lock:
-        renderer._snapshot.update({"config": None, "services": [], "entries": {}})
-
-
 @pytest.fixture
 def external_env(monkeypatch):
     monkeypatch.setenv("OPENAPI_BASEURL_ALLOWLIST", "itsm-svc")
@@ -123,7 +114,6 @@ def test_forward_auth_empty_required_roles_allows_any_authenticated(
         **bearer(token),
     )
     assert resp.status_code == 200
-    user, _ = None, None
     assert resp["X-BK-Team"] == "9"
     assert resp["X-BK-User"].endswith("@domain.com")
 
