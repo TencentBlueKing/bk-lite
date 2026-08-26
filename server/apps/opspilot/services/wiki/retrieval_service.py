@@ -21,6 +21,7 @@ from apps.opspilot.services.wiki.active_generation_query_service import (
     page_snapshot,
 )
 from apps.opspilot.services.wiki.embedding_service import cosine, embed_texts, rrf_fuse
+from apps.opspilot.services.wiki.embed_cache import embed_texts_cached
 from apps.opspilot.services.wiki.title_service import title_identity_key
 from django.core.cache import cache
 
@@ -321,7 +322,7 @@ def hybrid_search(
     by_key = {_key(c): c for c in candidates}
     kw_rank = [_key(c) for c in candidates]
 
-    embed = embed_fn or (lambda texts: embed_texts(texts, knowledge_base.embed_provider))
+    embed = embed_fn or (lambda texts: embed_texts_cached(texts, knowledge_base.embed_provider))
     qvecs = embed([query])
     cvecs = embed([f"{c['title']} {c['snippet']}" for c in candidates])
     if not qvecs or not cvecs or len(cvecs) != len(candidates):
