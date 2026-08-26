@@ -11,6 +11,7 @@ import {
   formatRelativeTime,
   formatRequestRate,
   formatThroughput,
+  formatTopologyEdgeMetrics,
   isErrorRateDanger,
   metricEmptyHint,
 } from '../metric-format';
@@ -120,5 +121,13 @@ describe('APM metric-format', () => {
       requestRateTrend: [],
       errorRateTrend: [],
     });
+  });
+
+  it('拓扑连线使用调用数 | 平均耗时 | 错误数', () => {
+    expect(formatTopologyEdgeMetrics({
+      sampled_calls: 153,
+      average_duration_ms: 0.32,
+      error_calls: 1,
+    })).toBe('153 | 0.32ms | 1');
   });
 });

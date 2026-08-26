@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import type { ApmTopologyEdge, ApmTopologyNode } from '@/app/apm/types';
+import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyNode } from '@/app/apm/types';
 import {
   buildTopologyEdgeGeometry,
+  focusApplicationTopology,
+  layoutForceTopology,
   layoutLayeredTopology,
 } from '../topology-layout';
 
@@ -41,14 +43,14 @@ const demoEdges = [
 ];
 
 describe('APM 服务拓扑布局', () => {
-  it('根据真实依赖关系分层，而不是按节点名称排成一行', async () => {
+  it('按调用方向自上而下分层，根服务在上层', async () => {
     const result = await layoutLayeredTopology(demoNodes, demoEdges);
     const byId = new Map(result.map((item) => [item.id, item]));
 
-    expect(byId.get('demo-storefront')?.x).toBeLessThan(byId.get('demo-catalog')?.x ?? 0);
-    expect(byId.get('demo-storefront')?.x).toBeLessThan(byId.get('demo-orders')?.x ?? 0);
-    expect(byId.get('demo-catalog')?.x).toBeLessThan(byId.get('demo-inventory')?.x ?? 0);
-    expect(byId.get('demo-orders')?.x).toBeLessThan(byId.get('demo-payment')?.x ?? 0);
+    expect(byId.get('demo-storefront')?.y).toBeLessThan(byId.get('demo-catalog')?.y ?? 0);
+    expect(byId.get('demo-storefront')?.y).toBeLessThan(byId.get('demo-orders')?.y ?? 0);
+    expect(byId.get('demo-catalog')?.y).toBeLessThan(byId.get('demo-inventory')?.y ?? 0);
+    expect(byId.get('demo-orders')?.y).toBeLessThan(byId.get('demo-payment')?.y ?? 0);
     expect(new Set(result.map((item) => `${item.x}:${item.y}`)).size).toBe(result.length);
   });
 
@@ -65,36 +67,100 @@ describe('APM 服务拓扑布局', () => {
 });
 
 describe('APM 服务拓扑连线', () => {
-  it('单向依赖只在目标端生成箭头路径', () => {
+  it('层次布局使用折线连接上下层', () => {
     const geometry = buildTopologyEdgeGeometry(
-      { x: 100, y: 100, radius: 28 },
-      { x: 300, y: 100, radius: 28 },
+      { x: 100, y: 80, radius: 16 },
+      { x: 220, y: 220, radius: 16 },
       false,
+      'polyline',
     );
 
     expect(geometry.path).toMatch(/^M /);
-    expect(geometry.path).toContain(' Q ');
-    expect(geometry.startX).toBeLessThan(geometry.endX);
-    expect(geometry.labelX).toBeGreaterThan(geometry.startX);
-    expect(geometry.labelX).toBeLessThan(geometry.endX);
+    expect(geometry.path).toContain(' L ');
+    expect(geometry.path).not.toContain(' Q ');
+    expect(geometry.startY).toBeLessThan(geometry.endY);
+    expect(geometry.labelY).toBeGreaterThan(geometry.startY);
+    expect(geometry.labelY).toBeLessThan(geometry.endY);
   });
 
-  it('真实双向依赖绘制为两条分离曲线', () => {
+  it('真实双向依赖绘制为两条分离折线', () => {
+    const forward = buildTopologyEdgeGeometry(
+      { x: 100, y: 80, radius: 16 },
+      { x: 220, y: 220, radius: 16 },
+      true,
+      'polyline',
+    );
+    const reverse = buildTopologyEdgeGeometry(
+      { x: 220, y: 220, radius: 16 },
+      { x: 100, y: 80, radius: 16 },
+      true,
+      'polyline',
+    );
+
+    expect(forward.path).not.toBe(reverse.path);
+    expect(forward.controlY).not.toBe(reverse.controlY);
+  });
+
+  it('力导向连线使用分离曲线', () => {
     const forward = buildTopologyEdgeGeometry(
       { x: 100, y: 100, radius: 28 },
       { x: 300, y: 100, radius: 28 },
       true,
+      'curve',
     );
     const reverse = buildTopologyEdgeGeometry(
       { x: 300, y: 100, radius: 28 },
       { x: 100, y: 100, radius: 28 },
       true,
+      'curve',
     );
 
+    expect(forward.path).toContain(' Q ');
     expect(forward.path).not.toBe(reverse.path);
     expect(forward.controlY).toBeGreaterThan(100);
     expect(reverse.controlY).toBeLessThan(100);
-    expect(forward.labelY).toBeGreaterThan(100);
-    expect(reverse.labelY).toBeLessThan(100);
+  });
+});
+
+describe('APM 应用拓扑聚焦', () => {
+  it('保留本应用服务及其一跳上下游', () => {
+    const graph: ApmTopologyGraph = {
+      nodes: [
+        { ...node('gateway'), id: 'gateway', service_namespace: 'store' },
+        { ...node('checkout'), id: 'checkout', service_namespace: 'shop' },
+        { ...node('invoice'), id: 'invoice', service_namespace: 'billing' },
+        { ...node('email'), id: 'email', service_namespace: 'notify' },
+      ],
+      edges: [
+        edge('gateway', 'checkout'),
+        edge('checkout', 'invoice'),
+        edge('invoice', 'email'),
+      ],
+      sampled_traces: 3,
+      truncated: false,
+      data_state: 'available',
+    };
+
+    const focused = focusApplicationTopology(graph, 'shop');
+    expect([...focused.focusNodeIds]).toEqual(['checkout']);
+    expect(focused.graph.nodes.map((item) => item.id).sort()).toEqual(['checkout', 'gateway', 'invoice']);
+    expect(focused.graph.edges.map((item) => `${item.source}>${item.target}`).sort()).toEqual([
+      'checkout>invoice',
+      'gateway>checkout',
+    ]);
+  });
+});
+
+describe('APM 服务拓扑力导向布局', () => {
+  it('为每个节点生成画布内坐标', async () => {
+    const result = await layoutForceTopology(demoNodes, demoEdges);
+    expect(result).toHaveLength(demoNodes.length);
+    expect(new Set(result.map((item) => item.id)).size).toBe(demoNodes.length);
+    result.forEach((item) => {
+      expect(item.x).toBeGreaterThanOrEqual(90);
+      expect(item.x).toBeLessThanOrEqual(950);
+      expect(item.y).toBeGreaterThanOrEqual(90);
+      expect(item.y).toBeLessThanOrEqual(540);
+    });
   });
 });
