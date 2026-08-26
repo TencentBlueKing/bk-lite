@@ -58,6 +58,15 @@ const virtualModules = new Map([
     `import React from 'react'; export const ConfirmDialog = ({ isOpen, onConfirm }) => isOpen ? React.createElement('button', { 'data-test': 'confirm-clear', onClick: onConfirm }, 'confirm') : null;`,
   ],
   [
+    './components/PillComposer',
+    `import React from 'react'; export const PillComposer = (props) => React.createElement(
+      React.Fragment,
+      null,
+      React.createElement('button', { 'data-test': 'stop', onClick: props.onCancel }, 'stop'),
+      React.createElement('button', { 'data-test': 'submit', onClick: () => props.onSubmit('hi') }, 'submit')
+    );`,
+  ],
+  [
     './hooks/useMessageHandlers',
     `export const useMessageHandlers = () => ({ handleRegenerate() {}, handleCopy() {}, handleDelete() {} });`,
   ],
