@@ -1,11 +1,37 @@
 import pandas as pd
 import pytest
 
-
 MODEL_CONFIG = "apps/cmdb/support-files/model_config.xlsx"
 
 
-REMAINING_MODEL_CLASSES = [('tonglinkq', 'middleware'), ('tonggtp', 'middleware'), ('ihs', 'middleware'), ('cics', 'middleware'), ('ibm_storwize', 'harware'), ('ibm_ds', 'harware'), ('emc_symmetrix', 'harware'), ('hds_vsp', 'harware'), ('macrosan', 'harware'), ('pure_array', 'harware'), ('netapp_cluster', 'harware'), ('oraclezfs', 'harware'), ('infinidat', 'harware'), ('tape_library', 'harware'), ('brocade_fc', 'network_device'), ('cisco_fc', 'network_device'), ('f5', 'network_device'), ('informix', 'database'), ('sybase', 'database'), ('couchbase', 'database'), ('mycat', 'database'), ('sap_hana', 'database'), ('iris', 'database'), ('aix', 'host_manage'), ('hpux', 'host_manage'), ('hmc', 'harware'), ('hdfs', 'middleware'), ('yarn', 'middleware'), ('storm', 'middleware'), ('ambari', 'middleware'), ('redis_sentinel', 'database'), ('bes', 'middleware'), ('apusic', 'middleware'), ('inforsuite_as', 'middleware'), ('gbase8s', 'database'), ('oscar', 'database'), ('security_device', 'network_device'), ('domestic_linux', 'host_manage'), ('tongrds', 'database'), ('tdsql', 'database'), ('zstack', 'zstack'), ('h3c_cas', 'h3c_cas'), ('xsky', 'harware')]
+REMAINING_MODEL_CLASSES = [
+    ("tonglinkq", "middleware"),
+    ("tonggtp", "middleware"),
+    ("ihs", "middleware"),
+    ("cics", "middleware"),
+    ("tape_library", "harware"),
+    ("informix", "database"),
+    ("sybase", "database"),
+    ("couchbase", "database"),
+    ("mycat", "database"),
+    ("sap_hana", "database"),
+    ("iris", "database"),
+    ("hdfs", "middleware"),
+    ("yarn", "middleware"),
+    ("storm", "middleware"),
+    ("ambari", "middleware"),
+    ("redis_sentinel", "database"),
+    ("bes", "middleware"),
+    ("apusic", "middleware"),
+    ("inforsuite_as", "middleware"),
+    ("gbase8s", "database"),
+    ("oscar", "database"),
+    ("security_device", "network_device"),
+    ("tongrds", "database"),
+    ("tdsql", "database"),
+    ("zstack", "zstack"),
+    ("h3c_cas", "h3c_cas"),
+]
 
 
 def test_remaining_models_exist_in_model_config():
