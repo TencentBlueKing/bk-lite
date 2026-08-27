@@ -274,8 +274,8 @@ function webchatAssetUrl(fileName: string): string {
 }
 
 const FabLauncher: React.FC<{ onOpen: () => void }> = ({ onOpen }) => {
-  const gifSrc = webchatAssetUrl('fab-dolphin.gif');
-  const pngSrc = webchatAssetUrl('fab-dolphin.png');
+  const webpSrc = webchatAssetUrl('fab-whaledou.webp');
+  const pngSrc = webchatAssetUrl('fab-whaledou.png');
 
   return (
     <button
@@ -286,7 +286,7 @@ const FabLauncher: React.FC<{ onOpen: () => void }> = ({ onOpen }) => {
       className="wc-fab-launcher"
     >
       <picture>
-        <source srcSet={gifSrc} type="image/gif" media="(prefers-reduced-motion: no-preference)" />
+        <source srcSet={webpSrc} type="image/webp" media="(prefers-reduced-motion: no-preference)" />
         <img src={pngSrc} alt="" width={72} height={72} draggable={false} />
       </picture>
     </button>
