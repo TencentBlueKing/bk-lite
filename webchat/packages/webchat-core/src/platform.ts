@@ -428,3 +428,93 @@ export function platformDockInsetWidth(input: {
     ? PLATFORM_DOCK_CHAT_WIDTH + PLATFORM_HISTORY_RAIL_DOCK
     : PLATFORM_DOCK_CHAT_WIDTH;
 }
+
+export const FAB_SIZE = 72;
+export const FAB_MARGIN = 8;
+export const FAB_DRAG_THRESHOLD = 6;
+export const DEFAULT_FAB_POSITION: FabPosition = { right: 12, bottom: 16 };
+
+export interface FabPosition {
+  right: number;
+  bottom: number;
+}
+
+export function fabPositionStorageKey(prefix: string, userId: string, teamId: string): string {
+  return `${prefix}:fab:${userId}:${teamId}`;
+}
+
+export function shouldTreatAsFabDrag(
+  dx: number,
+  dy: number,
+  threshold = FAB_DRAG_THRESHOLD
+): boolean {
+  return dx * dx + dy * dy >= threshold * threshold;
+}
+
+export function clampFabPosition(
+  position: FabPosition,
+  viewport: { width: number; height: number },
+  size = FAB_SIZE,
+  margin = FAB_MARGIN
+): FabPosition {
+  const maxRight = Math.max(margin, viewport.width - size - margin);
+  const maxBottom = Math.max(margin, viewport.height - size - margin);
+  return {
+    right: Math.min(maxRight, Math.max(margin, position.right)),
+    bottom: Math.min(maxBottom, Math.max(margin, position.bottom)),
+  };
+}
+
+export function moveFabPosition(
+  start: FabPosition,
+  delta: { dx: number; dy: number },
+  viewport: { width: number; height: number }
+): FabPosition {
+  return clampFabPosition(
+    {
+      right: start.right - delta.dx,
+      bottom: start.bottom - delta.dy,
+    },
+    viewport
+  );
+}
+
+export function readFabPosition(
+  storage: Pick<Storage, 'getItem'> | null | undefined,
+  key: string
+): FabPosition | null {
+  if (!storage) {
+    return null;
+  }
+  try {
+    const raw = storage.getItem(key);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as { right?: unknown; bottom?: unknown };
+    if (typeof parsed.right !== 'number' || typeof parsed.bottom !== 'number') {
+      return null;
+    }
+    if (!Number.isFinite(parsed.right) || !Number.isFinite(parsed.bottom)) {
+      return null;
+    }
+    return { right: parsed.right, bottom: parsed.bottom };
+  } catch {
+    return null;
+  }
+}
+
+export function writeFabPosition(
+  storage: Pick<Storage, 'setItem'> | null | undefined,
+  key: string,
+  position: FabPosition
+): void {
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(key, JSON.stringify(position));
+  } catch {
+    // Ignore quota / private-mode failures.
+  }
+}

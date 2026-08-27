@@ -14,6 +14,14 @@ import {
   PLATFORM_HISTORY_RAIL_DOCK,
   platformDockInsetWidth,
   shouldShowPlatformLauncher,
+  DEFAULT_FAB_POSITION,
+  FAB_SIZE,
+  clampFabPosition,
+  fabPositionStorageKey,
+  moveFabPosition,
+  readFabPosition,
+  shouldTreatAsFabDrag,
+  writeFabPosition,
   mapPlatformMessages,
   mapPlatformSessions,
   readDockCollapsed,
@@ -392,4 +400,34 @@ test('dock inset matches the open pane and drops to zero when collapsed or fulls
     platformDockInsetWidth({ visible: true, fullscreen: true, historyOpen: true }),
     0,
   );
+});
+
+test('fab drag ignores jitter and clamps to the viewport', () => {
+  assert.equal(shouldTreatAsFabDrag(3, 3), false);
+  assert.equal(shouldTreatAsFabDrag(6, 0), true);
+  const viewport = { width: 400, height: 300 };
+  assert.deepEqual(
+    clampFabPosition({ right: -40, bottom: 900 }, viewport),
+    { right: 8, bottom: 300 - FAB_SIZE - 8 },
+  );
+  assert.deepEqual(
+    moveFabPosition({ right: 12, bottom: 16 }, { dx: 20, dy: -30 }, viewport),
+    { right: 8, bottom: 46 },
+  );
+});
+
+test('fab position persists per user and team', () => {
+  const store = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+  };
+  const key = fabPositionStorageKey('webchat:platform', 'alice', '7');
+  assert.equal(key, 'webchat:platform:fab:alice:7');
+  assert.equal(readFabPosition(storage, key), null);
+  writeFabPosition(storage, key, { right: 40, bottom: 80 });
+  assert.deepEqual(readFabPosition(storage, key), { right: 40, bottom: 80 });
+  assert.deepEqual(DEFAULT_FAB_POSITION, { right: 12, bottom: 16 });
 });
