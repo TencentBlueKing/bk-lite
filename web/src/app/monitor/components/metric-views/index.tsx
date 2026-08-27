@@ -40,7 +40,6 @@ import { buildHostProcessLabelPairs,
   resolveProcessNameFromInstance,
   withHostProcessMetricsTab
 } from '@/app/monitor/dashboards/objects/host/host-process-metrics-tab';
-import { maybeMockFlowQueryRange } from '@/app/monitor/mocks/monitor-flow-mock';
 
 const MYSQL_GROUP_NAME_MAP: Record<string, string> = {
   ConnStatus: '连接状态',
@@ -615,7 +614,6 @@ const MetricViews: React.FC<ViewDetailProps> = ({
         params,
         signal: abortController.signal
       });
-      response = maybeMockFlowQueryRange(params, response);
     } catch (error: any) {
       if (error.name === 'AbortError') {
         return;

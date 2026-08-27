@@ -5,8 +5,6 @@ import { Segmented } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
-import { resolveFlowViewSwitchPlugins } from '@/app/monitor/mocks/monitor-flow-mock';
-import { isMonitorViewDemoEnabled } from '@/app/monitor/mocks/monitor-view-demo-data';
 import type { FlowDashboardPlugin } from '../utils/flow-dashboard-route';
 import {
   buildFlowViewSwitchUrl,
@@ -78,17 +76,9 @@ export function CollectProtocolBar({
     };
   }, [getEffectivePlugins, instanceId, isLoading, monitorObjectId]);
 
-  const resolvedPlugins = useMemo(
-    () => resolveFlowViewSwitchPlugins(plugins, {
-      routeKey,
-      monitorObjectName: resolvedObjectName,
-    }),
-    [plugins, resolvedObjectName, routeKey],
-  );
-
   const availableViews = useMemo(
-    () => getAvailableFlowViews(resolvedPlugins),
-    [resolvedPlugins],
+    () => getAvailableFlowViews(plugins),
+    [plugins],
   );
   const currentView = resolveCurrentFlowView(routeKey);
   const visible = useMemo(
@@ -105,10 +95,9 @@ export function CollectProtocolBar({
     [availableViews],
   );
 
-  const waitingForPlugins = plugins === null && !isMonitorViewDemoEnabled();
   const inFlowContext = isFlowViewSwitchContext(routeKey, resolvedObjectName);
 
-  if (!inFlowContext || !visible || !currentView || waitingForPlugins) return null;
+  if (!inFlowContext || !visible || !currentView || plugins === null) return null;
 
   const onChange = (value: FlowViewKind) => {
     if (value === currentView) return;
