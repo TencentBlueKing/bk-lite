@@ -10,7 +10,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.collector import CollectorConstants
@@ -19,7 +19,6 @@ from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import CollectorTask, ControllerTask, ControllerTaskNode, Node, NodeCollectorInstallStatus, PackageVersion
 from apps.node_mgmt.services.installer import InstallerService
-from apps.node_mgmt.services.node_identity import resolve_reusable_node_id
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.services.windows_remote_bootstrap import WindowsBootstrapTarget, WindowsRemoteBootstrapService
 from apps.node_mgmt.tasks.version_discovery import discover_node_versions
@@ -679,23 +678,6 @@ def _handle_step_exception(node_obj, error_message, exception_obj=None, timestam
         )
 
 
-def _bind_controller_install_node_id(task_obj, node_obj):
-    result = node_obj.result or {}
-    install_node_id = (
-        resolve_reusable_node_id(
-            task_obj.cloud_region_id,
-            node_obj.ip,
-            result.get(InstallerConstants.INSTALL_NODE_ID_KEY) or node_obj.node_id or "",
-        )
-        or uuid.uuid4().hex
-    )
-    result[InstallerConstants.INSTALL_NODE_ID_KEY] = install_node_id
-    node_obj.result = result
-    node_obj.node_id = install_node_id
-    node_obj.save(update_fields=["result", "node_id"])
-    return install_node_id
-
-
 def install_controller_on_nodes(  # noqa: C901
     task_obj,
     nodes,
@@ -797,13 +779,11 @@ def install_controller_on_nodes(  # noqa: C901
                 },
             )
 
-            try:
-                install_node_id = _bind_controller_install_node_id(task_obj, node_obj)
-            except ValidationAppException as exc:
-                _handle_step_exception(node_obj, str(exc), exc)
-                _save_node_result(node_obj, "error", str(exc))
-                _dispatch_or_finalize_controller_task(task_obj.id)
-                continue
+            result = node_obj.result or {}
+            install_node_id = result.get(InstallerConstants.INSTALL_NODE_ID_KEY) or uuid.uuid4().hex
+            result[InstallerConstants.INSTALL_NODE_ID_KEY] = install_node_id
+            node_obj.result = result
+            node_obj.save(update_fields=["result"])
 
             if resolved_package.os == NodeConstants.WINDOWS_OS:
                 execution_id = execution_id or uuid.uuid4().hex

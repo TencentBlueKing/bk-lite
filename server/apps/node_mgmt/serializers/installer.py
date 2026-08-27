@@ -5,10 +5,10 @@ from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.services.installer import InstallerService
 from apps.node_mgmt.services.node_identity import (
-    bind_existing_cloud_ip_node_ids,
+    assert_cloud_ip_available,
+    assert_cloud_ips_available,
     duplicate_ip_in_batch_message,
     first_duplicate_ip,
-    resolve_reusable_node_id,
 )
 from apps.node_mgmt.utils.winrm import default_winrm_port, winrm_profile_error
 
@@ -106,9 +106,10 @@ class ControllerInstallRequestSerializer(serializers.Serializer):
             )
             normalized_nodes.append(node)
         try:
-            attrs["nodes"] = bind_existing_cloud_ip_node_ids(attrs["cloud_region_id"], normalized_nodes)
+            assert_cloud_ips_available(attrs["cloud_region_id"], normalized_nodes)
         except ValidationAppException as exc:
             raise serializers.ValidationError({"nodes": exc.message}) from exc
+        attrs["nodes"] = normalized_nodes
         return attrs
 
 
@@ -210,7 +211,7 @@ class ControllerManualInstallRequestSerializer(serializers.Serializer):
         if duplicate_ip:
             raise serializers.ValidationError({"nodes": duplicate_ip_in_batch_message(duplicate_ip)})
         try:
-            attrs["nodes"] = bind_existing_cloud_ip_node_ids(attrs["cloud_region_id"], attrs["nodes"])
+            assert_cloud_ips_available(attrs["cloud_region_id"], attrs["nodes"])
         except ValidationAppException as exc:
             raise serializers.ValidationError({"nodes": exc.message}) from exc
         return attrs
@@ -236,14 +237,7 @@ class InstallCommandRequestSerializer(serializers.Serializer):
             attrs["cpu_architecture"],
         )
         try:
-            attrs["node_id"] = (
-                resolve_reusable_node_id(
-                    attrs["cloud_region_id"],
-                    attrs["ip"],
-                    attrs.get("node_id") or "",
-                )
-                or attrs["node_id"]
-            )
+            assert_cloud_ip_available(attrs["cloud_region_id"], attrs["ip"])
         except ValidationAppException as exc:
             raise serializers.ValidationError({"ip": exc.message}) from exc
         return attrs

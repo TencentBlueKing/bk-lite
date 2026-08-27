@@ -25,7 +25,7 @@ from apps.node_mgmt.models.installer import ControllerTaskNode
 from apps.node_mgmt.models.sidecar import Collector, CollectorConfiguration, Node, NodeCollectorConfiguration, NodeOrganization
 from apps.node_mgmt.services.cloudregion import RegionService
 from apps.node_mgmt.services.node_host_metadata import NodeHostMetadataRenderContext
-from apps.node_mgmt.services.node_identity import resolve_sidecar_create_node
+from apps.node_mgmt.services.node_identity import assert_cloud_ip_available
 from apps.node_mgmt.services.sidecar_cache import build_configuration_etag_cache_key, invalidate_node_configuration_etags
 from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
 from apps.node_mgmt.tasks.installer import _matches_install_connectivity_target, converge_controller_install_connectivity_for_node
@@ -503,8 +503,8 @@ class Sidecar:
         return {name: collector for name, (_, collector) in selected_collectors.items()}
 
     @staticmethod
-    def _create_or_attach_sidecar_node(node_id, request_data):
-        """Create a Node, or attach the sidecar to the unique existing (cloud_region, ip)."""
+    def _create_sidecar_node(node_id, request_data):
+        """Create a Node only when (cloud_region, ip) is still free."""
         lookup_cloud_region_id = request_data.get("cloud_region_id") or CloudRegionConstants.DEFAULT_CLOUD_REGION_ID
         with transaction.atomic():
             CloudRegion.objects.select_for_update().filter(id=lookup_cloud_region_id).first()
@@ -512,10 +512,9 @@ class Sidecar:
             if locked_self:
                 return locked_self, node_id, False
             try:
-                attached = resolve_sidecar_create_node(
-                    reported_node_id=node_id,
-                    cloud_region_id=lookup_cloud_region_id,
-                    ip=request_data.get("ip", ""),
+                assert_cloud_ip_available(
+                    lookup_cloud_region_id,
+                    request_data.get("ip", ""),
                     lock=True,
                 )
             except ValidationAppException as exc:
@@ -528,18 +527,7 @@ class Sidecar:
                     lookup_cloud_region_id,
                 )
                 raise
-            if attached is None:
-                return Node.objects.create(**request_data), node_id, True
-            logger.info(
-                "event=sidecar_create_attached_existing_node existing_node_id=%s " "reported_node_id=%s ip=%s cloud_region_id=%s",
-                attached.id,
-                node_id,
-                request_data.get("ip", ""),
-                lookup_cloud_region_id,
-            )
-            request_data.pop("id", None)
-            request_data.pop("cloud_region_id", None)
-            return attached, attached.id, False
+            return Node.objects.create(**request_data), node_id, True
 
     @staticmethod
     def _refresh_existing_sidecar_node(node, node_id, request_data):
@@ -624,14 +612,11 @@ class Sidecar:
 
         # 补充云区域关联
         clouds = tags_data.get(ControllerConstants.CLOUD_TAG, [])
-        registration_cloud_region_id = None
-        if clouds:
+        if clouds and not node:
             try:
-                registration_cloud_region_id = int(clouds[0])
+                request_data.update(cloud_region_id=int(clouds[0]))
             except (TypeError, ValueError) as exc:
                 raise ValidationAppException("node_details.tags contains an invalid zone") from exc
-        if registration_cloud_region_id is not None and not node:
-            request_data.update(cloud_region_id=registration_cloud_region_id)
 
         # 补充安装方法
         install_methods = tags_data.get(ControllerConstants.INSTALL_METHOD_TAG, [])
@@ -658,7 +643,7 @@ class Sidecar:
 
         created = False
         if not node:
-            node, node_id, created = Sidecar._create_or_attach_sidecar_node(node_id, request_data)
+            node, node_id, created = Sidecar._create_sidecar_node(node_id, request_data)
             if created:
                 Sidecar.asso_groups(node_id, tags_data.get(ControllerConstants.GROUP_TAG, []))
                 Sidecar.create_default_config(node, node_types)
