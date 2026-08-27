@@ -160,26 +160,42 @@ export default function Application3DDetail({
             {detail && (
               <>
                 <div className="flex flex-wrap gap-2">
-                  <Tag color="processing">{detail.application.health.state}</Tag>
+                  <Tag color="processing">
+                    {t(
+                      `dashboard.application3DHealth_${detail.application.health.state}`,
+                      detail.application.health.state,
+                    )}
+                  </Tag>
                   <Tag color="error">
                     {t('dashboard.application3DActiveAlarms')}:{' '}
                     {detail.application.health.activeAlarmCount ?? '-'}
                   </Tag>
                 </div>
                 {availableAlarms && (
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    {(['critical', 'error', 'warning', 'info'] as const).map((severity) => (
-                      <div
-                        key={severity}
-                        className="rounded border border-[var(--color-application3d-alarm-panel-border)] bg-[var(--color-application3d-surface-overlay)] p-2"
-                      >
-                        <div className="text-[var(--color-application3d-text-subtle)]">{severity}</div>
-                        <strong>{availableAlarms.severityCounts[severity]}</strong>
-                      </div>
-                    ))}
-                    <div className="rounded border border-[var(--color-application3d-alarm-panel-border)] bg-[var(--color-application3d-surface-overlay)] p-2">
-                      <div className="text-[var(--color-application3d-text-subtle)]">no data</div>
-                      <strong>{availableAlarms.noDataAlarmCount}</strong>
+                  <div className="space-y-2 text-xs">
+                    <div className="text-[var(--color-application3d-text-subtle)]">
+                      {t('dashboard.application3DSeverity')}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(['critical', 'error', 'warning'] as const).map((severity) => (
+                        <div
+                          key={severity}
+                          className="rounded border border-[var(--color-application3d-alarm-panel-border)] bg-[var(--color-application3d-surface-overlay)] p-2"
+                        >
+                          <div className="text-[var(--color-application3d-text-subtle)]">
+                            {t(`dashboard.application3DSeverity_${severity}`)}
+                          </div>
+                          <strong>{availableAlarms.severityCounts[severity]}</strong>
+                        </div>
+                      ))}
+                      {availableAlarms.severityCounts.info > 0 && (
+                        <div className="rounded border border-[var(--color-application3d-alarm-panel-border)] bg-[var(--color-application3d-surface-overlay)] p-2">
+                          <div className="text-[var(--color-application3d-text-subtle)]">
+                            {t('dashboard.application3DSeverity_info')}
+                          </div>
+                          <strong>{availableAlarms.severityCounts.info}</strong>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -325,7 +341,19 @@ export default function Application3DDetail({
                             </span>
                           }
                         />
-                        <Tag>{alarm.isNoData ? 'NO DATA' : alarm.severity?.label || '-'}</Tag>
+                        <span className="flex flex-wrap items-center justify-end gap-1">
+                          {alarm.isNoData && (
+                            <Tag>{t('dashboard.application3DNoDataAlarm')}</Tag>
+                          )}
+                          <Tag>
+                            {alarm.severity
+                              ? t(
+                                  `dashboard.application3DSeverity_${alarm.severity.id}`,
+                                  alarm.severity.label,
+                              )
+                              : '-'}
+                          </Tag>
+                        </span>
                       </List.Item>
                     )}
                   />

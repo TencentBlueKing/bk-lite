@@ -167,7 +167,7 @@ class Application3DQueryService:
             "alarm": {
                 "id": str(alert.id),
                 "content": alert.content or "",
-                "severity": None if is_no_data else severity_from_monitor_level(alert.level),
+                "severity": severity_from_monitor_level(alert.level),
                 "isNoData": is_no_data,
                 "occurredAt": iso_datetime(alert.start_event_time),
                 "status": "new",

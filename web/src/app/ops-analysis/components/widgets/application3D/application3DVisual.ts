@@ -14,7 +14,7 @@ export const CARD_GAP = 0.4;
 export const CARD_TEXTURE_WIDTH = 512;
 export const CARD_TEXTURE_HEIGHT = 640;
 
-export type Application3DNeonLevel = 'normal' | 'fatal' | 'warning' | 'remain';
+export type Application3DNeonLevel = 'normal' | 'fatal' | 'error' | 'warning' | 'info' | 'remain';
 
 export const NEON_PANEL: Record<
   Application3DNeonLevel,
@@ -30,10 +30,20 @@ export const NEON_PANEL: Record<
     border: '2px solid var(--color-application3d-panel-fatal-border)',
     shadow: 'var(--color-application3d-panel-fatal-shadow)',
   },
+  error: {
+    gradient: 'var(--color-application3d-panel-error-gradient)',
+    border: '2px solid var(--color-application3d-panel-error-border)',
+    shadow: 'var(--color-application3d-panel-error-shadow)',
+  },
   warning: {
     gradient: 'var(--color-application3d-panel-warning-gradient)',
     border: '2px solid var(--color-application3d-panel-warning-border)',
     shadow: 'var(--color-application3d-panel-warning-shadow)',
+  },
+  info: {
+    gradient: 'var(--color-application3d-panel-info-gradient)',
+    border: '2px solid var(--color-application3d-panel-info-border)',
+    shadow: 'var(--color-application3d-panel-info-shadow)',
   },
   remain: {
     gradient: 'var(--color-application3d-panel-remain-gradient)',
@@ -74,14 +84,14 @@ export const resolveNeonLevel = (item: {
 }): Application3DNeonLevel => {
   if (item.health.state === 'normal') return 'normal';
   if (item.health.reason === 'unavailable') return 'remain';
-  if (item.health.reason === 'no_data_alarm') return 'remain';
   const color = item.health.highestSeverity?.color || item.health.highestSeverity?.id || '';
-  if (color === 'critical' || color === 'danger' || color === 'fail' || color === 'error') {
-    return 'fatal';
-  }
+  if (color === 'critical' || color === 'fail') return 'fatal';
+  if (color === 'error' || color === 'danger') return 'error';
   if (color === 'warning') return 'warning';
-  if (color === 'info' || color === 'success') return 'remain';
-  if (item.health.state === 'alarming') return 'fatal';
+  if (color === 'info') return 'info';
+  // alarming but highestSeverity missing (non-empty unmapped level): warning, never fatal.
+  // Empty MonitorAlert.level is already normalized to warning on the backend.
+  if (item.health.state === 'alarming') return 'warning';
   return 'remain';
 };
 

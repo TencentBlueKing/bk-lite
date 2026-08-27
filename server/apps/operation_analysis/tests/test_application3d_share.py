@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from apps.operation_analysis.services.application3d.health import aggregate_application_health
 from apps.operation_analysis.services.application3d.presenters import present_application_properties
 from apps.operation_analysis.services.application3d.query_service import Application3DQueryService, _ApplicationScope
 from apps.operation_analysis.views.share_view import DashboardShareAccessViewSet
@@ -217,3 +218,73 @@ def test_application_detail_with_sharer_identity_applies_field_permissions(monke
     assert "secret_token" not in {item["key"] for item in result["application"]["properties"]}
     assert "operator" not in {item["key"] for item in result["application"]["properties"]}
     assert "bak_operator" not in {item["key"] for item in result["application"]["properties"]}
+
+
+def test_share_and_normal_no_data_critical_uses_same_alarming_health(monkeypatch):
+    """Share and Normal both call Application3DQueryService; health aggregation is shared."""
+    aggregated = aggregate_application_health([{"alert_type": "no_data", "level": "critical", "count": 1}])
+    assert aggregated["state"] == "alarming"
+    assert aggregated["highestSeverity"]["id"] == "critical"
+    assert aggregated["noDataAlarmCount"] == 1
+    assert aggregated["severityCounts"]["critical"] == 1
+
+    applications = [{"inst_uuid": APP_A, "inst_name": "nodata", "model_id": "application"}]
+    scope = _ApplicationScope(
+        applications=applications,
+        hosts_by_app={APP_A: [{"inst_uuid": "host-1", "monitor_id": "monitor-1"}]},
+        policies={1: SimpleNamespace(id=1)},
+        complete_apps={APP_A},
+    )
+    grouped = [{"monitor_instance_id": "monitor-1", "alert_type": "no_data", "level": "critical", "count": 1}]
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_grouped_alert_counts_by_monitor",
+        classmethod(lambda cls, scoped, monitor_ids: [row for row in grouped if row["monitor_instance_id"] in monitor_ids]),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_filter_definition",
+        classmethod(lambda cls: ([], set())),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_applications",
+        classmethod(lambda cls, request: applications),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_build_scope",
+        classmethod(lambda cls, request, apps: scope),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_application",
+        classmethod(lambda cls, request, application_id: applications[0]),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.ModelManage.search_model_attr",
+        lambda model_id: [],
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.ApplicationResourceOverviewService._get_show_fields",
+        lambda model_id, user: None,
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_paged_scoped_alerts",
+        classmethod(lambda cls, scoped, app_id, *, cursor: ([], False)),
+    )
+
+    request = SimpleNamespace(
+        user=SimpleNamespace(username="sharer-alice", is_superuser=False),
+        COOKIES={"current_team": "42", "include_children": "0"},
+        data={},
+    )
+    wall_health = Application3DQueryService.wall(request)["items"][0]["health"]
+    detail_health = Application3DQueryService.application_detail(request, APP_A)["application"]["health"]
+    for health in (wall_health, detail_health):
+        assert health["state"] == aggregated["state"] == "alarming"
+        assert health["highestSeverity"]["id"] == "critical"
+        assert health["noDataAlarmCount"] == 1
+        assert health["severityCounts"]["critical"] == 1
+        assert health["reason"] != "unavailable"

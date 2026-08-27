@@ -217,7 +217,6 @@ type ApplicationHealthState = 'normal' | 'alarming' | 'unknown';
 type ApplicationHealthReason =
   | 'no_active_alarm'
   | 'active_alarm'
-  | 'no_data_alarm'
   | 'unavailable'
   | 'stale_after_refresh_failure';
 
@@ -228,15 +227,27 @@ type ApplicationHealthInternalReason =
   | 'source_failure';
 ```
 
+Health、Alert Severity、Alert Type 是三条正交轴：
+
+- **Application health**：`normal` / `alarming` / `unknown`。`unknown` 只表示无法得到可信完整结论，不等于 no_data，也不等于 info。
+- **Alert severity**：`MonitorAlert.level` → canonical `critical` > `error` > `warning`，外加 `info` 仅作 defensive compatibility。
+- **Alert type**：`MonitorAlert.alert_type` = `alert` | `no_data`。
+
+Health invariant（查询 scope 完整时）：
+
+```text
+incomplete mapping/permission/aggregation → unknown / unavailable
+complete && activeAlarmCount == 0 → normal
+complete && activeAlarmCount > 0 → alarming
+```
+
 规则：
 
 | Condition | state | reason | count semantics |
 | --- | --- | --- | --- |
-| 查询完整，非 `no_data` active alert ≥ 1 | alarming | active_alarm | exact non-null |
+| 查询完整，任意 `status=new` MonitorAlert ≥ 1（含 only `alert_type=no_data`） | alarming | active_alarm | exact non-null；按每条 Alert 的 `level` 计入 `severityCounts` / `highestSeverity` |
 | 查询完整，无任何 active alert | normal | no_active_alarm | `0` |
 | 查询完整，且无 `application_run_host` 关联 Host（零 Host） | normal | no_active_alarm | `0` |
-| 查询完整，仅存在 `alert_type=no_data` active alert | unknown | no_data_alarm | exact active total，包含 no_data |
-| 存在 no_data，同时存在普通 active alert | alarming | active_alarm | exact active total；noDataAlarmCount 单列 |
 | 必需 Host 缺 monitor_id / mapping 无法确认 | unknown | unavailable | `null`，不得伪造部分 count |
 | CMDB Host、MonitorInstance 或 MonitorPolicy scope 不完整 | unknown | unavailable | `null` |
 | 单个 Application 聚合无法完成 | unknown | unavailable | `null` |
@@ -245,6 +256,8 @@ type ApplicationHealthInternalReason =
 `null` 表示无法证明完整、精确的计数；`0` 只表示完整查询明确得到零条。Widget-level 功能权限拒绝使用现有 permission/error UI，不通过单张 Application card 暗示隐藏资源。
 
 Backend 可以使用 `ApplicationHealthInternalReason` 做控制流、审计和诊断，但不得把它、隐藏资源数量或可反推出隐藏资源存在性的错误文案序列化到 Normal/Share wire response。所有 per-Application mapping、permission 或局部 source completeness 问题在 wire 上统一折叠为 `unknown/unavailable`。无法生成可信 Wall 的整体 source failure 继续使用 Widget-level hard error，不伪装成某张 Application 的具体内部原因。Normal 与 Share 使用同一 presenter 和折叠规则。
+
+禁止 `unknown/no_data_alarm`。已完整查到的 no_data Alert 是真实活跃告警，health 必须是 `alarming`。
 
 ### Canonical severity
 
@@ -260,26 +273,30 @@ interface Severity {
 }
 ```
 
-| id | rank | semantic color | meaning |
+| id | rank | semantic color | product role |
 | --- | ---: | --- | --- |
-| critical | 400 | critical | 最高级、需要立即处理；可 pulse，但 pulse 不是唯一载体 |
-| error | 300 | danger | 明确故障 |
-| warning | 200 | warning | 风险/退化 |
-| info | 100 | info | active informational alert，仍属于 alarming，但不使用危险色 |
+| critical | 400 | critical | Monitor 正式告警档：最高级 |
+| error | 300 | danger | Monitor 正式告警档：明确故障 |
+| warning | 200 | warning | Monitor 正式告警档：风险/退化 |
+| info | 100 | info | **defensive compatibility only**。正常 Monitor UI 不产生；若 API/evaluator 产生 `MonitorAlert(level=info,status=new)`，仍按 alarming + info 处理，不得映射为 unknown |
 | normal | 0 | success | 仅完整查询且无 active alert 时使用 |
+
+正式产品告警档位只有 critical / error / warning。canonical type 保留 info ≠ Wall/Detail 固定展示「提示」档，也不新增 Application health state。
 
 后端把 Monitor 原始 `level` 归一成完整 `Severity`；Widget 不解释 Monitor level 排序，不硬编码跨域 severity mapping。`color` 是平台语义色 key，前端统一映射到现有 design token，不由后端返回十六进制颜色。
 
 ### `no_data`
 
-`no_data` 是 `MonitorAlert.alert_type`，不是 canonical severity。它表示监控数据不可用/缺失：
+`no_data` 是 `MonitorAlert.alert_type`，与 `MonitorAlert.level` 正交。生产数据可以是 `alert_type=no_data` 且 `level=critical|error|warning`（info 仅 edge compatibility）。
 
-- 不进入 critical/error/warning/info 的最高等级竞争。
-- 不因其记录上的 `level` 值被粗暴塞进 severity rank。
-- 单独统计为 `noDataAlarmCount`。
-- 只有 no_data 时 Application 为 `unknown/no_data_alarm`。
-- 与普通 active alerts 并存时，普通 alerts 决定 `highestSeverity`，health 为 `alarming`；Detail 同时展示 no-data 数量。
-- `severityCounts` 只包含四种 active severity；normal 不作为告警计数，no_data 不伪装成某一 severity。
+- 所有 scoped `status=new` MonitorAlert（含 no_data）都按自身 `level` 计入 `activeAlarmCount`、`severityCounts`、`highestSeverity`。
+- `noDataAlarmCount` 只统计 `alert_type=no_data`，是类型维，不是 severity 维。
+- 同一条 no_data + critical 同时：`severityCounts.critical += 1` 且 `noDataAlarmCount += 1`。这不是 double-count。`activeAlarmCount` 按 Alert 记录数只加一次。
+- 识别到的 severity 求和：对可映射的 `critical|error|warning|info`，以及 **空 `MonitorAlert.level`（防御性按 warning 计入）**，`sum(severityCounts) == activeAlarmCount`。非空但无法映射的 level 仍只计入 `activeAlarmCount`，可不进入 `severityCounts`。`noDataAlarmCount` 不参与该求和。
+- only no_data critical → `state=alarming`，`highestSeverity=critical`，不得 `highestSeverity=null`，不得 unknown。
+- 空 `level` 的 active alert（含 no_data）→ 按 `warning` 计入 severity / highestSeverity / 卡片文案「警告」；不得画成 critical/「严重告警」，也不得「状态未知」。
+- Alarm list/detail 的 no_data 项必须返回真实 `severity`，禁止 `isNoData=true → severity=null`。
+- Detail UI：严重/错误/警告是固定产品级别；左侧应用信息不单独展示「告警类型 / 无数据告警」统计格；告警列表项可保留「无数据告警」类型标签。info 仅当 `severityCounts.info > 0` 时动态出现。
 
 ## Backend Architecture
 
@@ -388,7 +405,6 @@ type ApplicationHealthState = 'normal' | 'alarming' | 'unknown';
 type ApplicationHealthReason =
   | 'no_active_alarm'
   | 'active_alarm'
-  | 'no_data_alarm'
   | 'unavailable'
   | 'stale_after_refresh_failure';
 
@@ -471,7 +487,7 @@ interface ApplicationWallItem {
 Semantics：
 
 - `items=[]` 是合法 empty wall，不是 failure。
-- `highestSeverity=null`：normal、only-no-data 或无法完整计算；由 health state/reason 区分。
+- `highestSeverity=null`：`unknown/unavailable`，或 `alarming` 但 scoped active alerts 仅含非空且无法映射的 level。`normal` 使用 `id=normal` 的 Severity。空 `level` 防御性按 warning。有可映射 level（含空→warning、no_data、defensive info）的 `alarming` 必须带最高 Severity。
 - `severityCounts=null`、`activeAlarmCount=null` 表示查询不完整，不得渲染为零。
 - `stale=true` 只允许来自同一 actor/scope/filter 的上一次完整成功 snapshot；权限撤销不能保留 stale detail。
 - `supportedCount=null` 表示 benchmark 尚未校准 hard capacity，不表示无限支持。
@@ -532,6 +548,7 @@ Semantics：
 - `alarms.items=[]` 且 `activeAlarmCount=0` 是合法 zero alarms，只能出现在 `available` 分支。
 - 列表分页只用于 Detail DOM alarm browser，不改变连续 Wall；cursor 必须 opaque、scope-bound，不能携带可篡改权限范围。
 - `metricName=null` 表示当前告警没有可展示指标名称；不是 metric request failure。
+- `isNoData` 与 `severity` 正交：no_data Alert 仍返回按 `MonitorAlert.level` 归一的 Severity；`severity=null` 只用于无法映射的 level，不得仅因 `isNoData` 清空。
 - Application properties 由 CMDB display conversion 生成，遵循字段权限并排除 sensitive/password fields。空 properties 合法。
 - Detail silent refresh 的普通网络失败可以在客户端暂留同 actor/scope 的上次完整数据并显式显示 stale；服务端新响应不使用 `unavailable` 表达 transient transport failure。权限/作用域变化必须清除暂留数据。
 
@@ -862,12 +879,16 @@ Rules：
 - 深色科技视觉，但遵循 BK-Lite 克制、可靠、高密度可读的产品原则。
 - WebGL perspective camera、depth、lighting、emissive/glow。
 - 3D Application cards 显示 name、health visual、alarm badge。
-- Wall 视觉 tone 为 `normal | critical | warning | unknown`：
+- Wall 视觉 tone 为 `normal | critical | error | warning | info | unknown`：
   - `normal`：无活跃告警；badge 不显示 `0`。
-  - `critical`：致命 / 错误级告警；badge 显示 count（1–99 实际值，≥100 为 `99+`）。
-  - `warning`：警告级告警；badge 显示 count（同上）。
-  - `unknown`：no data、unavailable、info，以及其他无法归入前三类的状态；badge 固定为 `--`，即使 DTO 带有精确 count。
-- 后端 health DTO 的 `alarming + info` 仍属于 alarming 数据合同；Wall 展示将其映射为 `unknown` 视觉。
+  - `critical`：`alarming` 且 highestSeverity=critical；badge 显示 count（1–99 实际值，≥100 为 `99+`）。
+  - `error`：`alarming` 且 highestSeverity=error；badge 显示 count（同上）。
+  - `warning`：`alarming` 且 highestSeverity=warning；badge 显示 count（同上）。
+  - `info`：`alarming` 且 highestSeverity=info 的 defensive 信息态；badge 显示 count；文案不得为「状态未知」。
+  - `unknown`：仅 `unavailable`（无法完整计算）；badge 固定为 `--`。
+- `alarming` 但 `highestSeverity=null`（非空且无法映射的 level）：文案为「警告」，使用 warning 视觉；**不得**默认画成 critical/「严重告警」，也不得画成「状态未知」。空 `level` 在后端已按 warning 归一，卡片走正常 warning 路径。
+- no_data Alert 按自身 `level` 着色（例如 no_data + critical → critical 视觉），不得显示「状态未知」。
+- `info` 使用现有 semantic information token 的低强度视觉，不走红/黄危险级别，不新增 health enum。
 - 状态不能只靠颜色；badge、文字/形态和 unknown 标识提供辅助区分。
 - 首次有效 Wall 播放 camera intro；reduced-motion 环境缩短或关闭非必要过渡，但功能完整。
 - focus：selected card 移动/旋转/突出，其他 cards 弱化，显示“应用详情”和“返回应用墙”。
@@ -1000,7 +1021,7 @@ view/share mode: application3D owns supported interaction（完整 Wall → Focu
 - exact `application_run_host` batch projection。
 - Host `monitor_id` mapping。
 - MonitorInstance/MonitorPolicy permission reuse。
-- `status=new` MonitorAlert scope、no_data semantics、severity aggregation。
+- `status=new` MonitorAlert scope；`alert_type` 与 `level` 正交聚合。
 - Wall/Detail/Alarm/Metric DTO presenters。
 - IDOR、notification summary、query-count backend tests。
 
@@ -1074,8 +1095,9 @@ Phase 2 先于前端 Wall，是为了让 Normal/Share transport contract 在 UI 
 - active 仅 `status=new`；closed/recovered 不计。
 - multi Host 去重与聚合。
 - shared Host 影响多个显式关联 Applications；每 Application 内不重复计数。
-- critical/error/warning/info severity count/order。
-- only no_data → unknown；no_data + ordinary alert semantics。
+- critical/error/warning 正式档 + info defensive compatibility 的 count/order。
+- no_data 按自身 `level` 参与 `severityCounts`/`highestSeverity`；only no_data → alarming，不是 unknown。
+- `sum(severityCounts) == activeAlarmCount`（在可识别 level 下）；`noDataAlarmCount` 是正交类型维。
 - zero active alerts 明确返回 count=0/normal。
 - Wall/Detail count 与 statistics consistency。
 - Application cross-IDOR。
@@ -1101,7 +1123,8 @@ Phase 2 先于前端 Wall，是为了让 Normal/Share transport contract 在 UI 
 - initializing、empty、hard error、retry。
 - silent refresh stale；permission error 不 stale-retain。
 - unknown/mapping incomplete 不显示 normal。
-- unknown/unavailable 不显示或记录 backend internal reason，Normal/Share 文案一致。
+- unknown/unavailable 不显示或记录 backend internal reason，Normal/Share 文案一致；only no_data 与 info 不得渲染「状态未知」。
+- Detail 固定展示严重/错误/警告；`severityCounts.info>0` 才动态展示提示；左侧不单独展示无数据类型统计；告警列表可保留无数据标签。
 - real WebGL Wall render；badge 99+；severity/unknown 非纯颜色表达。
 - health refresh 不重建 renderer、不改变 card positions、不重播 intro。
 - filter creates new Wall/reconcile/camera fit。
@@ -1150,7 +1173,7 @@ Benchmark target 是待验证要求，不是已验证事实。测试报告必须
 4. MonitorAlert 是唯一 authoritative alarm；Central Alert 不在 contract 或查询链。
 5. Wall/Detail/Alarm navigation 使用同一 Application-scoped active MonitorAlert 集合。
 6. `0` 只来自完整查询（含零 Host）；mapping/permission/source failure 均非 normal。
-7. `no_data` 不进入 severity rank；其 health/statistics 语义符合本 Spec。
+7. `no_data` 是 alert type，按 `MonitorAlert.level` 参与 severity；only no_data 为 alarming。`info` 仅为 defensive compatibility，不得固定产品化，也不得渲染为 unknown。
 8. 前端 wire 不含 permission/mapping 等内部诊断原因，Normal/Share 只获得一致的 `unknown/unavailable`。
 9. Application properties 只来自 backend ordered allowlist（六字段）和 CMDB display conversion，不默认返回全部非敏感字段。
 10. NotificationSummary 只表达 configured/state，不暴露 users/channels，也不读取 `alert_center_notified`。

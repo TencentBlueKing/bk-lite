@@ -8,10 +8,12 @@ import type { Application3DWallItem } from '@/app/ops-analysis/types/sceneWidget
 import {
   APPLICATION3D_CAMERA_FOV,
   buildApplication3DLayout,
+  defaultApplication3DTranslate,
   fitApplication3DCameraDistance,
   formatApplication3DCardTitle,
   resolveApplication3DCardVisual,
   type Application3DCardTone,
+  type Application3DTranslate,
 } from './application3DLayout';
 import {
   CARD_GLASS,
@@ -45,7 +47,7 @@ export interface Application3DFocusChromeLayout {
 export interface Application3DSceneController {
   reconcile: (
     items: Application3DWallItem[],
-    options?: { playIntro?: boolean; playFilter?: boolean },
+    options?: { playIntro?: boolean; playFilter?: boolean; forceRepaint?: boolean },
   ) => void;
   focus: (applicationId: string) => void;
   restoreWall: () => void;
@@ -113,8 +115,11 @@ const paintCardTexture = (
   return texture;
 };
 
-const createCardTextures = (item: Application3DWallItem) => {
-  const visual = resolveApplication3DCardVisual(item);
+const createCardTextures = (
+  item: Application3DWallItem,
+  translate: Application3DTranslate,
+) => {
+  const visual = resolveApplication3DCardVisual(item, translate);
   return {
     texture: paintCardTexture(item, visual),
     cardTone: visual.cardTone,
@@ -313,6 +318,7 @@ export const createApplication3DScene = (
   options: {
     interactive: boolean;
     active?: boolean;
+    translate?: Application3DTranslate;
     onSelect: (item: Application3DWallItem) => void;
     onFocusSettled?: (item: Application3DWallItem) => void;
     onBackground?: () => void;
@@ -320,6 +326,7 @@ export const createApplication3DScene = (
   },
 ): Application3DSceneController => {
   const reducedMotion = prefersReducedMotion();
+  const translate = options.translate ?? defaultApplication3DTranslate;
   const scene = new THREE.Scene();
 
   const camera = new THREE.PerspectiveCamera(APPLICATION3D_CAMERA_FOV, 1, 0.1, 500);
@@ -847,7 +854,7 @@ export const createApplication3DScene = (
 
   const reconcile = (
     items: Application3DWallItem[],
-    reconcileOptions?: { playIntro?: boolean; playFilter?: boolean },
+    reconcileOptions?: { playIntro?: boolean; playFilter?: boolean; forceRepaint?: boolean },
   ) => {
     const playIntro =
       Boolean(reconcileOptions?.playIntro) &&
@@ -859,6 +866,7 @@ export const createApplication3DScene = (
       items.length > 0 &&
       !selectedId &&
       !playIntro;
+    const forceRepaint = Boolean(reconcileOptions?.forceRepaint);
     if (playIntro) {
       entrancePlayed = true;
       clearIntroTimers();
@@ -881,6 +889,7 @@ export const createApplication3DScene = (
       const previous = visuals.get(item.id);
       if (previous) {
         if (
+          !forceRepaint &&
           previous.item.name === item.name &&
           JSON.stringify(previous.item.health) === JSON.stringify(item.health)
         ) {
@@ -889,7 +898,7 @@ export const createApplication3DScene = (
         }
         previous.item = item;
         previous.texture.dispose();
-        const next = createCardTextures(item);
+        const next = createCardTextures(item, translate);
         previous.texture = next.texture;
         previous.cardTone = next.cardTone;
         previous.material.map = previous.texture;
@@ -899,7 +908,7 @@ export const createApplication3DScene = (
         applyCardSideMaterial(previous.sideMaterial, previous.sideTexture);
         return;
       }
-      const painted = createCardTextures(item);
+      const painted = createCardTextures(item, translate);
       const material = createGlassFaceMaterial(painted.texture);
       applyFaceMaterial(material);
       const sideTexture = paintCardSideTexture(painted.cardTone);

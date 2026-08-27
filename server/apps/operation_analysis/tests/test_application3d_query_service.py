@@ -260,8 +260,51 @@ def test_wall_health_uses_db_group_counts_without_model_materialization(monkeypa
     assert health["activeAlarmCount"] == 125
     assert health["noDataAlarmCount"] == 5
     assert health["severityCounts"]["critical"] == 120
+    assert health["severityCounts"]["warning"] == 5
+    assert health["highestSeverity"]["id"] == "critical"
     assert tracking.materialized == 0
     assert tracking.values_calls == 1
+
+
+def test_wall_and_detail_only_no_data_critical_is_alarming(monkeypatch):
+    applications = [_application(APP_A, "nodata")]
+    scope = _scope(
+        applications,
+        hosts_by_app={APP_A: [{"inst_uuid": "host-1", "monitor_id": "monitor-1"}]},
+        policies={1: SimpleNamespace(id=1)},
+    )
+    grouped = [
+        {"monitor_instance_id": "monitor-1", "alert_type": "no_data", "level": "critical", "count": 1},
+    ]
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_grouped_alert_counts_by_monitor",
+        classmethod(lambda cls, scope, monitor_ids: [row for row in grouped if row["monitor_instance_id"] in monitor_ids]),
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: applications))
+    monkeypatch.setattr(Application3DQueryService, "_build_scope", classmethod(lambda cls, request, apps: scope))
+    monkeypatch.setattr(Application3DQueryService, "_visible_application", classmethod(lambda cls, request, application_id: applications[0]))
+    monkeypatch.setattr("apps.operation_analysis.services.application3d.query_service.ModelManage.search_model_attr", lambda model_id: [])
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.ApplicationResourceOverviewService._get_show_fields",
+        lambda model_id, user: None,
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_paged_scoped_alerts",
+        classmethod(lambda cls, scope, app_id, *, cursor: ([], False)),
+    )
+
+    wall_health = Application3DQueryService.wall(_request())["items"][0]["health"]
+    detail_health = Application3DQueryService.application_detail(_request(), APP_A)["application"]["health"]
+    for health in (wall_health, detail_health):
+        assert health["state"] == "alarming"
+        assert health["reason"] == "active_alarm"
+        assert health["activeAlarmCount"] == 1
+        assert health["noDataAlarmCount"] == 1
+        assert health["severityCounts"]["critical"] == 1
+        assert health["highestSeverity"]["id"] == "critical"
 
 
 def test_wall_alert_aggregation_query_count_does_not_scale_with_applications(monkeypatch):
@@ -345,11 +388,12 @@ def test_wall_alert_aggregation_query_count_does_not_scale_with_applications(mon
                 # first app also has critical monitor
                 assert items[app_id]["activeAlarmCount"] == 4
                 assert items[app_id]["severityCounts"]["critical"] == 1
-                assert items[app_id]["severityCounts"]["warning"] == 2
+                # ordinary warning=2 + empty-level no_data → warning
+                assert items[app_id]["severityCounts"]["warning"] == 3
                 assert items[app_id]["noDataAlarmCount"] == 1
             else:
                 assert items[app_id]["activeAlarmCount"] == 3
-                assert items[app_id]["severityCounts"]["warning"] == 2
+                assert items[app_id]["severityCounts"]["warning"] == 3
                 assert items[app_id]["noDataAlarmCount"] == 1
         if sample["incomplete_id"]:
             assert items[sample["incomplete_id"]]["reason"] == "unavailable"
@@ -402,6 +446,64 @@ def test_wall_and_detail_health_counts_are_consistent(monkeypatch):
     assert wall_health["noDataAlarmCount"] == detail_health["noDataAlarmCount"] == 1
     assert wall_health["severityCounts"] == detail_health["severityCounts"]
     assert wall_health["highestSeverity"]["id"] == detail_health["highestSeverity"]["id"] == "error"
+
+
+def test_alarm_detail_no_data_keeps_severity(monkeypatch):
+    application = _application(APP_A, "app")
+    policy = SimpleNamespace(
+        id=1,
+        alert_name="cpu",
+        name="CPU",
+        notice=False,
+        monitor_object=SimpleNamespace(name="Host"),
+        metric_unit="",
+        calculation_unit="",
+        threshold_unit="",
+    )
+    alert = SimpleNamespace(
+        id="7",
+        content="主机无数据",
+        alert_type="no_data",
+        level="critical",
+        start_event_time=None,
+        end_event_time=None,
+        policy_id=1,
+        metric_instance_id=None,
+        monitor_instance_id="monitor-1",
+        value=None,
+        monitor_instance_name="host-1",
+        notice_logs=[],
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_application",
+        classmethod(lambda cls, request, application_id: application),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_build_scope",
+        classmethod(
+            lambda cls, request, apps: _scope(
+                apps,
+                policies={1: policy},
+                hosts_by_app={APP_A: [{"inst_uuid": "host-1", "inst_name": "host-1", "monitor_id": "monitor-1"}]},
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_scoped_alert_or_404",
+        classmethod(lambda cls, scope, app_id, alarm_id: alert),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_adjacent_scoped_alert_ids",
+        classmethod(lambda cls, scope, app_id, current: (None, None)),
+    )
+
+    result = Application3DQueryService.alarm_detail(_request(), APP_A, "7")
+    assert result["alarm"]["isNoData"] is True
+    assert result["alarm"]["severity"]["id"] == "critical"
 
 
 def test_alarm_detail_cross_application_idor_fails_closed(monkeypatch):

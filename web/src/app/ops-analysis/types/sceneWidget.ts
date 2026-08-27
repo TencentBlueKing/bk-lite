@@ -5,7 +5,6 @@ export type ApplicationHealthState = 'normal' | 'alarming' | 'unknown';
 export type ApplicationHealthReason =
   | 'no_active_alarm'
   | 'active_alarm'
-  | 'no_data_alarm'
   | 'unavailable'
   | 'stale_after_refresh_failure';
 

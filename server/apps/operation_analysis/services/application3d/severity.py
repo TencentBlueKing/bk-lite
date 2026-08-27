@@ -4,10 +4,15 @@ from apps.operation_analysis.services.application3d.constants import MONITOR_LEV
 
 
 def severity_from_monitor_level(level: str | None) -> dict | None:
-    """Normalize Monitor alert level into canonical Severity; unknown levels → None."""
-    if not level:
-        return None
-    severity_id = MONITOR_LEVEL_TO_SEVERITY_ID.get(str(level).strip().lower())
+    """Normalize Monitor alert level into canonical Severity.
+
+    Empty / blank level is treated as warning (aligns with Monitor
+    `no_data_level or "warning"`). Non-empty unmapped values → None.
+    """
+    normalized = str(level or "").strip().lower()
+    if not normalized:
+        return dict(SEVERITY_TABLE["warning"])
+    severity_id = MONITOR_LEVEL_TO_SEVERITY_ID.get(normalized)
     if not severity_id:
         return None
     return dict(SEVERITY_TABLE[severity_id])

@@ -87,6 +87,12 @@ html.dark {
   --color-application3d-panel-warning-gradient: linear-gradient(180deg, #ba561d 0%, #562205 100%);
   --color-application3d-panel-warning-border: rgba(255, 122, 47, 0.8);
   --color-application3d-panel-warning-shadow: 0 0 20px 4px rgba(255, 122, 47, 0.57), inset 0 0 4px rgba(255, 122, 47, 0.71);
+  --color-application3d-panel-error-gradient: linear-gradient(180deg, #8a3a12 0%, #4a1c08 100%);
+  --color-application3d-panel-error-border: rgba(217, 112, 7, 0.8);
+  --color-application3d-panel-error-shadow: 0 0 20px 4px rgba(217, 112, 7, 0.45), inset 0 0 4px rgba(217, 112, 7, 0.6);
+  --color-application3d-panel-info-gradient: linear-gradient(180deg, #1d4f7a 0%, #0f2a44 100%);
+  --color-application3d-panel-info-border: rgba(96, 165, 250, 0.7);
+  --color-application3d-panel-info-shadow: 0 0 16px 3px rgba(96, 165, 250, 0.28), inset 0 0 4px rgba(96, 165, 250, 0.4);
   --color-application3d-panel-remain-gradient: linear-gradient(180deg, #a48639 0%, #553d0f 100%);
   --color-application3d-panel-remain-border: rgba(255, 188, 17, 0.8);
   --color-application3d-panel-remain-shadow: 0 0 20px 4px rgba(255, 188, 17, 0.57), inset 0 0 4px rgba(255, 188, 17, 0.71);

@@ -43,6 +43,28 @@ const selected: Application3DWallItem = {
   health: criticalHealth,
 };
 
+const alarmItem = {
+  id: 'alarm-1',
+  content: 'CPU 过高',
+  severity: { id: 'critical', label: '致命', rank: 400, color: 'critical' } as const,
+  isNoData: false,
+  occurredAt: '2026-08-26T00:00:00Z',
+  resource: { id: 'host-1', name: 'host-1' },
+  metricName: 'cpu',
+  durationSeconds: 60,
+  policyName: 'CPU 策略',
+};
+
+const availableAlarms = {
+  state: 'available' as const,
+  activeAlarmCount: 1,
+  severityCounts: { critical: 1, error: 0, warning: 0, info: 0 },
+  noDataAlarmCount: 0,
+  highestSeverity: { id: 'critical', label: '致命', rank: 400, color: 'critical' } as const,
+  items: [alarmItem],
+  page: { nextCursor: null, hasMore: false },
+};
+
 const detail: Application3DDetailData = {
   application: {
     id: 'app-1',
@@ -50,25 +72,7 @@ const detail: Application3DDetailData = {
     health: criticalHealth,
     properties: [{ key: 'owner', label: '负责人', displayValue: '张三' }],
   },
-  alarms: {
-    state: 'available',
-    activeAlarmCount: 1,
-    severityCounts: { critical: 1, error: 0, warning: 0, info: 0 },
-    noDataAlarmCount: 0,
-    highestSeverity: { id: 'critical', label: '致命', rank: 400, color: 'critical' },
-    items: [{
-      id: 'alarm-1',
-      content: 'CPU 过高',
-      severity: { id: 'critical', label: '致命', rank: 400, color: 'critical' },
-      isNoData: false,
-      occurredAt: '2026-08-26T00:00:00Z',
-      resource: { id: 'host-1', name: 'host-1' },
-      metricName: 'cpu',
-      durationSeconds: 60,
-      policyName: 'CPU 策略',
-    }],
-    page: { nextCursor: null, hasMore: false },
-  },
+  alarms: availableAlarms,
   refreshedAt: '2026-08-26T00:00:00Z',
 };
 
@@ -122,7 +126,118 @@ describe('application3D detail panels', () => {
     const style = left?.getAttribute('style') ?? '';
     expect(style).toContain(NEON_PANEL.fatal.border);
     expect(style).not.toContain(NEON_PANEL.normal.border);
+    expect(style).not.toContain(NEON_PANEL.remain.border);
     expect(left?.textContent).toContain('运营门户');
+  });
+
+  it('shows product severity cells and hides info when count is zero', () => {
+    const view = render(
+      <Application3DDetail
+        selected={selected}
+        detail={detail}
+        loading={false}
+        {...panelHandlers}
+      />,
+    );
+
+    const left = view.container.querySelector('.app3d-biz-panel')?.textContent ?? '';
+    expect(left).toContain('application3DSeverity_critical');
+    expect(left).toContain('application3DSeverity_error');
+    expect(left).toContain('application3DSeverity_warning');
+    expect(left).not.toContain('application3DSeverity_info');
+  });
+
+  it('shows a defensive info row only when severityCounts.info > 0', () => {
+    const infoHealth: Application3DHealth = {
+      ...criticalHealth,
+      activeAlarmCount: 1,
+      severityCounts: { critical: 0, error: 0, warning: 0, info: 1 },
+      highestSeverity: { id: 'info', label: '提示', rank: 100, color: 'info' },
+    };
+    const infoDetail: Application3DDetailData = {
+      ...detail,
+      application: { ...detail.application, health: infoHealth },
+      alarms: {
+        ...availableAlarms,
+        activeAlarmCount: 1,
+        severityCounts: { critical: 0, error: 0, warning: 0, info: 1 },
+        highestSeverity: infoHealth.highestSeverity,
+        items: [{
+          ...alarmItem,
+          severity: infoHealth.highestSeverity,
+        }],
+      },
+    };
+    const view = render(
+      <Application3DDetail
+        selected={{ ...selected, health: infoHealth }}
+        detail={infoDetail}
+        loading={false}
+        {...panelHandlers}
+      />,
+    );
+
+    const left = view.container.querySelector('.app3d-biz-panel');
+    expect(left?.textContent).toContain('application3DSeverity_info');
+    expect(left?.getAttribute('style') ?? '').toContain(NEON_PANEL.info.border);
+    expect(left?.getAttribute('style') ?? '').not.toContain(NEON_PANEL.remain.border);
+  });
+
+  it('keeps no-data tag on alarm list but omits alert-type stats from left panel', () => {
+    const noDataHealth: Application3DHealth = {
+      ...criticalHealth,
+      noDataAlarmCount: 1,
+    };
+    const noDataDetail: Application3DDetailData = {
+      ...detail,
+      application: { ...detail.application, health: noDataHealth },
+      alarms: {
+        ...availableAlarms,
+        noDataAlarmCount: 1,
+        items: [{
+          ...alarmItem,
+          content: '主机无数据',
+          isNoData: true,
+        }],
+      },
+    };
+    const view = render(
+      <Application3DDetail
+        selected={{ ...selected, health: noDataHealth }}
+        detail={noDataDetail}
+        loading={false}
+        {...panelHandlers}
+      />,
+    );
+
+    const left = view.container.querySelector('.app3d-biz-panel')?.textContent ?? '';
+    expect(left).not.toContain('application3DNoDataAlarm');
+    expect(left).toContain('application3DSeverity_critical');
+    expect(left).not.toContain('application3DSeverity_info');
+    expect(view.container.textContent).toContain('主机无数据');
+    expect(view.container.textContent).toContain('application3DSeverity_critical');
+    expect(view.container.querySelector('.app3d-alarm-panel')?.textContent).toContain(
+      'application3DNoDataAlarm',
+    );
+  });
+
+  it('keeps critical panel color for no_data critical while detail is loading', () => {
+    const noDataSelected: Application3DWallItem = {
+      ...selected,
+      health: { ...criticalHealth, noDataAlarmCount: 1 },
+    };
+    const view = render(
+      <Application3DDetail
+        selected={noDataSelected}
+        detail={null}
+        loading
+        {...panelHandlers}
+      />,
+    );
+
+    const style = view.container.querySelector('.app3d-biz-panel')?.getAttribute('style') ?? '';
+    expect(style).toContain(NEON_PANEL.fatal.border);
+    expect(style).not.toContain(NEON_PANEL.remain.border);
   });
 });
 

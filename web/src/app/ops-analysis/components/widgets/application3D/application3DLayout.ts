@@ -20,7 +20,10 @@ export interface Application3DLayout {
   wallHeight: number;
 }
 
-export type Application3DCardTone = 'normal' | 'critical' | 'warning' | 'unknown';
+export type Application3DCardTone = 'normal' | 'critical' | 'error' | 'warning' | 'info' | 'unknown';
+
+/** Locale lookup used by Wall canvas chrome (outside React). */
+export type Application3DTranslate = (id: string, defaultMessage?: string) => string;
 
 export interface Application3DCardVisual {
   /** Short wall title (common demo prefix stripped when present). */
@@ -36,6 +39,12 @@ export interface Application3DCardVisual {
 }
 
 const DEMO_NAME_PREFIX = '本地演示-';
+
+/** Fallback translator keeps Chinese defaults when callers omit locale. */
+export const defaultApplication3DTranslate: Application3DTranslate = (
+  _id,
+  defaultMessage = '',
+) => defaultMessage;
 
 export const buildApplication3DLayout = (
   count: number,
@@ -164,29 +173,42 @@ const cardStatusLabel = (
   item: {
     health: {
       state: string;
+      highestSeverity: { id: string } | null;
     };
   },
   tone: Application3DCardTone,
+  t: Application3DTranslate,
 ): string => {
-  if (item.health.state === 'normal') return '无活跃告警';
-  if (tone === 'critical') return '严重告警';
-  if (tone === 'warning') return '警告';
-  return '状态未知';
+  if (item.health.state === 'normal') {
+    return t('dashboard.application3DStatus_normal', '无活跃告警');
+  }
+  // Active alerts with empty/unmapped level: treat as warning (not critical/unknown).
+  if (item.health.state === 'alarming' && !item.health.highestSeverity) {
+    return t('dashboard.application3DStatus_warning', '警告');
+  }
+  if (tone === 'critical') return t('dashboard.application3DStatus_critical', '严重告警');
+  if (tone === 'error') return t('dashboard.application3DStatus_error', '错误告警');
+  if (tone === 'warning') return t('dashboard.application3DStatus_warning', '警告');
+  if (tone === 'info') return t('dashboard.application3DStatus_info', '提示');
+  return t('dashboard.application3DStatus_unknown', '状态未知');
 };
 
 /**
  * Resolve Wall card chrome from health DTO.
  * Uses highestSeverity / reason so alarming cards are not collapsed into one look.
  */
-export const resolveApplication3DCardVisual = (item: {
-  name: string;
-  health: {
-    state: string;
-    reason: string;
-    activeAlarmCount: number | null;
-    highestSeverity: { id: string; label: string; color: string } | null;
-  };
-}): Application3DCardVisual => {
+export const resolveApplication3DCardVisual = (
+  item: {
+    name: string;
+    health: {
+      state: string;
+      reason: string;
+      activeAlarmCount: number | null;
+      highestSeverity: { id: string; label: string; color: string } | null;
+    };
+  },
+  t: Application3DTranslate = defaultApplication3DTranslate,
+): Application3DCardVisual => {
   const { health } = item;
   const neonLevel = resolveNeonLevel(item);
   const cardTone = neonLevelToCardTone(neonLevel);
@@ -194,7 +216,7 @@ export const resolveApplication3DCardVisual = (item: {
 
   return {
     title: formatApplication3DCardTitle(item.name),
-    statusLabel: cardStatusLabel(item, cardTone),
+    statusLabel: cardStatusLabel(item, cardTone, t),
     neonLevel,
     cardTone,
     showBadge,

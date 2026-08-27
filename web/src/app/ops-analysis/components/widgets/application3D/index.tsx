@@ -50,6 +50,8 @@ export default function Application3D({
   runtimeActive = true,
 }: Application3DProps) {
   const { t } = useTranslation();
+  const translateRef = useRef(t);
+  translateRef.current = t;
   const shareMode = useShareMode();
   const params = useParams<{ sessionId?: string }>();
   const {
@@ -118,6 +120,7 @@ export default function Application3D({
       const controller = createApplication3DScene(mountNode, {
         interactive: !editMode,
         active: runtimeActive,
+        translate: (id, defaultMessage) => translateRef.current(id, defaultMessage),
         onSelect: (item) => {
           if (editMode) return;
           if (selectedRef.current?.id === item.id) {
@@ -198,6 +201,13 @@ export default function Application3D({
       wallMotionRef.current = 'none';
     }
   }, [wall]);
+
+  useEffect(() => {
+    const controller = controllerRef.current;
+    const items = wallRef.current?.items;
+    if (!controller || !items?.length) return;
+    controller.reconcile(items, { forceRepaint: true });
+  }, [t]);
 
   // Screen fitScale is a CSS transform; ResizeObserver content-box does not change.
   useLayoutEffect(() => {

@@ -68,7 +68,7 @@ def present_alarm_list_item(alert: Any, *, host: dict[str, Any], policy: Any) ->
     return {
         "id": str(alert.id),
         "content": alert.content or "",
-        "severity": None if is_no_data else severity_from_monitor_level(alert.level),
+        "severity": severity_from_monitor_level(alert.level),
         "isNoData": is_no_data,
         "occurredAt": iso_datetime(alert.start_event_time),
         "resource": {
