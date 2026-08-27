@@ -835,13 +835,16 @@ initial empty → wall(empty)
 initial hard failure → hardError
 
 wall + select(A) → focusing(A) → focused(A)
-focused(A) + openDetail → detailLoading(A) → detail(A)
-detail(A) + closeDetail → focused(A)
+focused(A) + openDetail → returning(A) → wall + Detail overlay
+detail overlay + closeDetail → wall
 focused(A) + back → returning(A) → wall
+focused(A) + blank scene click → returning(A) → wall
 ```
 
 Rules：
 
+- 点击「应用详情」时 Focus Card 回到 Application Wall，然后展示 Detail overlay。这是正式设计，不是回退到 Focus。
+- Focus 下点击场景空白区域返回 Application Wall。这是正式设计。
 - select/focus transition 纯本地，点击后立即开始，不等待 Detail 请求。
 - 再次点击已 selected card 不创建重复 transition。
 - focusing 中选择另一 Application：取消旧 tween，以最新 selection 启动新 transition。
@@ -858,7 +861,13 @@ Rules：
 
 - 深色科技视觉，但遵循 BK-Lite 克制、可靠、高密度可读的产品原则。
 - WebGL perspective camera、depth、lighting、emissive/glow。
-- 3D Application cards 显示 name、health visual、alarm badge；badge 1–99 显示实际值，≥100 显示 `99+`。
+- 3D Application cards 显示 name、health visual、alarm badge。
+- Wall 视觉 tone 为 `normal | critical | warning | unknown`：
+  - `normal`：无活跃告警；badge 不显示 `0`。
+  - `critical`：致命 / 错误级告警；badge 显示 count（1–99 实际值，≥100 为 `99+`）。
+  - `warning`：警告级告警；badge 显示 count（同上）。
+  - `unknown`：no data、unavailable、info，以及其他无法归入前三类的状态；badge 固定为 `--`，即使 DTO 带有精确 count。
+- 后端 health DTO 的 `alarming + info` 仍属于 alarming 数据合同；Wall 展示将其映射为 `unknown` 视觉。
 - 状态不能只靠颜色；badge、文字/形态和 unknown 标识提供辅助区分。
 - 首次有效 Wall 播放 camera intro；reduced-motion 环境缩短或关闭非必要过渡，但功能完整。
 - focus：selected card 移动/旋转/突出，其他 cards 弱化，显示“应用详情”和“返回应用墙”。
@@ -970,8 +979,9 @@ view/share mode: application3D owns supported interaction（完整 Wall → Focu
 | wall hard failure | hard error + retry；不得显示 normal wall |
 | silent refresh failure | 保留同 scope 上次成功 cards，health 标 stale；不改变位置/selection |
 | Application unknown | 中性视觉 + reason 对应通用文案；不泄露隐藏资源 |
-| detail loading | 保持 focused Scene，DOM overlay loading |
-| detail failure | focused 保留，局部 retry |
+| detail loading | Focus Card 回到 Wall，然后展示 Detail overlay loading |
+| detail failure | Wall 保持；Detail overlay 局部 retry |
+| detail close | 关闭 overlay，停留在 Wall；不回到 Focus |
 | zero active alarms | statistics 全零、合法空列表 |
 | alarm detail failure | Detail 列表保留，alarm 局部 retry/返回 |
 | metric no_snapshot | “暂无指标快照” |
