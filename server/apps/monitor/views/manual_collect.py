@@ -198,7 +198,7 @@ class ManualCollect(viewsets.ViewSet):
     def create_manual_instance(self, request):
         actor_context = _build_actor_context(request)
         _ensure_target_organizations(request.data.get("organizations", []), actor_context)
-        data = ManualCollectService.create_manual_collect_instance(request.data)
+        data = ManualCollectService.create_manual_collect_instance(request.data, actor_context=actor_context)
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="flow_asset")
@@ -243,6 +243,7 @@ class ManualCollect(viewsets.ViewSet):
             data = FlowOnboardingService.create_or_bind_asset(
                 **payload,
                 conflict_permission_checker=_build_conflict_permission_checker(request, actor_context),
+                actor_context=actor_context,
             )
         return WebUtils.response_success(data)
 
@@ -268,6 +269,7 @@ class ManualCollect(viewsets.ViewSet):
         data = FlowOnboardingService.update_asset(
             **payload,
             conflict_permission_checker=_build_conflict_permission_checker(request, actor_context),
+            actor_context=actor_context,
         )
         return WebUtils.response_success(data)
 

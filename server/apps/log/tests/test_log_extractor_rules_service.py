@@ -4,7 +4,7 @@ import pytest
 from rest_framework.exceptions import ValidationError
 
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType, LogExtractor, SystemVectorConfigState
-from apps.log.services.log_extractor.rules import create_rule, delete_rule, load_samples, reorder_rules, update_rule
+from apps.log.services.log_extractor.rules import create_rule, create_type_rule, delete_rule, load_samples, load_type_samples, reorder_rules, reorder_type_rules, update_rule
 from apps.log.views.collect_config import CollectInstanceViewSet
 
 
@@ -117,3 +117,62 @@ def test_deleting_instance_with_multiple_rules_marks_one_generation(rule_instanc
     assert not LogExtractor.objects.exists()
     assert SystemVectorConfigState.objects.get().desired_generation == 1
     task.return_value.delay.assert_called_once_with(1)
+
+
+@pytest.fixture
+def syslog_type(db):
+    return CollectType.objects.create(name="syslog", collector="Vector", icon="", attrs=[])
+
+
+@pytest.mark.unit
+def test_type_samples_query_collect_type_not_instance_id(mocker, syslog_type):
+    search = mocker.patch(
+        "apps.log.services.log_extractor.rules.SearchService.search_logs",
+        return_value=[{"collect_type": "syslog", "message": "kernel: oops"}],
+    )
+
+    samples = load_type_samples(syslog_type, 10)
+
+    assert samples == [{"collect_type": "syslog", "message": "kernel: oops"}]
+    assert search.call_args.args[0] == 'collect_type:"syslog"'
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+def test_type_rule_mutations_increment_one_generation_and_stay_instance_free(syslog_type, mocker):
+    task = mocker.patch("apps.log.services.log_extractor.publication._publication_task")
+    actor = SimpleNamespace(username="alice", domain="default")
+
+    first, generation = create_type_rule(syslog_type, _draft("first"), actor)
+    assert generation == 1
+    assert first.collect_instance_id is None
+    assert first.collect_type_id == syslog_type.id
+    second, generation = create_type_rule(syslog_type, _draft("second"), actor)
+    assert generation == 2
+    generation = reorder_type_rules(syslog_type, [second.id, first.id])
+    assert generation == 3
+    generation = delete_rule(second)
+    assert generation == 4
+
+    remaining = LogExtractor.objects.get()
+    assert remaining.pk == first.pk
+    assert remaining.sort_order == 0
+    assert remaining.collect_instance_id is None
+    assert SystemVectorConfigState.objects.get().desired_generation == 4
+    assert task.return_value.delay.call_count == 4
+
+
+@pytest.mark.integration
+@pytest.mark.django_db(transaction=True)
+def test_type_rule_limit_is_enforced_without_dirty_generation(syslog_type):
+    LogExtractor.objects.bulk_create(
+        [
+            LogExtractor(collect_type=syslog_type, collect_instance=None, sort_order=index, **_draft(f"rule{index}"))
+            for index in range(20)
+        ]
+    )
+
+    with pytest.raises(ValidationError, match="最多 20 条"):
+        create_type_rule(syslog_type, _draft("overflow"), SimpleNamespace(username="alice", domain="default"))
+
+    assert not SystemVectorConfigState.objects.exists()

@@ -84,6 +84,8 @@ class TestSyncMonitorInstances:
         SyncInstance().run()
         inst = MonitorInstance.objects.get(id="('h1',)")
         assert inst.auto is True and inst.is_deleted is False and inst.is_active is True
+        assert inst.created_by == "system"
+        assert inst.updated_by == "system"
         assert MonitorInstanceOrganization.objects.filter(monitor_instance_id="('h1',)", organization=3).exists()
 
     def test_recovers_soft_deleted_instance(self, mocker):

@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import TimeSelector from '@/components/time-selector';
 import { ListItem, TimeSelectorDefaultValue, TimeSelectorRef } from '@/types';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   SearchOutlined,
   BulbFilled,
@@ -55,6 +55,14 @@ import MarkdownRenderer from '@/components/markdown';
 import AddConditions from './addConditions';
 import { v4 as uuidv4 } from 'uuid';
 import ConditionList from './conditionList';
+import usePermissions from '@/hooks/usePermissions';
+import { CollectTypeItem } from '@/app/log/types/integration';
+import {
+  buildInstanceExtractorPath,
+  buildTypeExtractorPath,
+  resolveExtractorCreateTarget,
+  storeExtractorCreateSample
+} from '@/app/log/(pages)/integration/receive/logExtractorLogic';
 
 const { Option } = Select;
 const PAGE_LIMIT = 100;
@@ -108,9 +116,14 @@ const QUERY_CONNECTOR_REGEXP = /(\||\(|AND|OR)$/i;
 
 const SearchView: React.FC = () => {
   const { t } = useTranslation();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { isLoading } = useApiClient();
-  const { getLogStreams, getFields } = useIntegrationApi();
+  const { getLogStreams, getFields, getCollectTypes, getLogExtractors } =
+    useIntegrationApi();
+  const { hasPermission: hasConfigurePermission } = usePermissions(
+    '/log/integration/list/detail/configure'
+  );
   const { getHits, getLogs } = useSearchApi();
   const { getUserHabit, saveUserHabit } = useLogUserHabitApi();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -405,6 +418,57 @@ const SearchView: React.FC = () => {
     setHasSearchText(!!searchTextRef.current);
   };
 
+  const createExtractorFromLog = async (record: TableDataItem) => {
+    const target = resolveExtractorCreateTarget({
+      collect_type: record.collect_type,
+      instance_id: record.instance_id
+    });
+    if (target.kind === 'unavailable') {
+      message.error(t('log.extractor.missingInstance'));
+      return;
+    }
+    if (target.kind === 'type') {
+      if (!hasConfigurePermission(['Add'])) {
+        message.error(t('common.noAuth'));
+        return;
+      }
+      try {
+        const types = await getCollectTypes();
+        const list: CollectTypeItem[] = Array.isArray(types) ? types : [];
+        const meta = list.find((item) => item.name === target.collectType);
+        if (!meta) {
+          message.error(t('log.extractor.unsupportedCollectType'));
+          return;
+        }
+        storeExtractorCreateSample(
+          { ...record },
+          { kind: 'type', id: target.collectType }
+        );
+        router.push(buildTypeExtractorPath(meta, { create: true }));
+      } catch {
+        message.error(t('log.extractor.unsupportedCollectType'));
+      }
+      return;
+    }
+    try {
+      const list = await getLogExtractors({
+        collect_instance: target.instanceId
+      });
+      if (list.can_operate !== true) {
+        message.error(t('log.extractor.instanceUnavailable'));
+        return;
+      }
+    } catch {
+      message.error(t('log.extractor.instanceUnavailable'));
+      return;
+    }
+    storeExtractorCreateSample(
+      { ...record },
+      { kind: 'instance', id: target.instanceId }
+    );
+    router.push(buildInstanceExtractorPath(target.instanceId, { create: true }));
+  };
+
   const onXRangeChange = (arr: [Dayjs, Dayjs]) => {
     setTimeDefaultValue((pre) => ({
       ...pre,
@@ -671,6 +735,9 @@ const SearchView: React.FC = () => {
                   fields={columnFields}
                   scroll={{ x: 'calc(100vw-350px)', y: scrollHeight }}
                   addToQuery={addToQuery}
+                  onCreateExtractor={(row) => {
+                    void createExtractorFromLog(row);
+                  }}
                 />
               </div>
             </Card>

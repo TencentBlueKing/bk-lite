@@ -43,11 +43,14 @@ def test_create_instance_only_accepts_k3s_cluster(k3s_objects):
         instance_id="edge-1",
         name="边缘 K3S",
         organizations=[10, 20],
+        actor_context={"username": "admin", "domain": "domain.com"},
     )
 
     instance = MonitorInstance.objects.get(id=created["instance_id"])
     assert instance.monitor_object == cluster
     assert instance.auto is False
+    assert instance.created_by == "admin"
+    assert instance.updated_by == "admin"
     assert set(instance.monitorinstanceorganization_set.values_list("organization", flat=True)) == {10, 20}
 
     with pytest.raises(BaseAppException, match="K3SCluster"):

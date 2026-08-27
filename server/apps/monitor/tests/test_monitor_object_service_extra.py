@@ -45,16 +45,26 @@ class TestValidateInstanceNameUnique:
 class TestGenerateMonitorInstanceId:
     def test_creates_new_instance(self):
         obj = _obj("GMIObj")
-        iid = S.generate_monitor_instance_id(obj.id, "host-a", 30)
-        assert MonitorInstance.objects.filter(id=iid, name="host-a").exists()
+        iid = S.generate_monitor_instance_id(
+            obj.id, "host-a", 30, actor_context={"username": "alice"},
+        )
+        inst = MonitorInstance.objects.get(id=iid, name="host-a")
+        assert inst.created_by == "alice"
+        assert inst.updated_by == "alice"
 
     def test_reuses_existing_and_updates_interval(self):
         obj = _obj("GMIObj2")
-        inst = MonitorInstance.objects.create(id="('h1',)", name="host-b", monitor_object=obj, interval=10)
-        iid = S.generate_monitor_instance_id(obj.id, "host-b", 60)
+        inst = MonitorInstance.objects.create(
+            id="('h1',)", name="host-b", monitor_object=obj, interval=10, created_by="alice",
+        )
+        iid = S.generate_monitor_instance_id(
+            obj.id, "host-b", 60, actor_context={"username": "bob"},
+        )
         assert iid == "('h1',)"
         inst.refresh_from_db()
         assert inst.interval == 60
+        assert inst.created_by == "alice"
+        assert inst.updated_by == "bob"
 
 
 class TestCheckMonitorInstance:
@@ -99,9 +109,13 @@ class TestUpdateInstance:
         obj = _obj("UIObj")
         inst = MonitorInstance.objects.create(id="('h1',)", name="old", monitor_object=obj)
         MonitorInstanceOrganization.objects.create(monitor_instance=inst, organization=1)
-        S.update_instance("('h1',)", name="newname", organizations=[2, 3])
+        S.update_instance(
+            "('h1',)", name="newname", organizations=[2, 3],
+            actor_context={"username": "alice"},
+        )
         inst.refresh_from_db()
         assert inst.name == "newname"
+        assert inst.updated_by == "alice"
         orgs = set(inst.monitorinstanceorganization_set.values_list("organization", flat=True))
         assert orgs == {2, 3}
 

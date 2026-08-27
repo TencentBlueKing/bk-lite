@@ -83,6 +83,23 @@ export function formatLatency(ms: number | null, unavailable = false, t?: Transl
     : formatUnitValue(formatNumber(Math.round(ms), 0), 'apm.common.millisecondsValue', '{value}ms', t);
 }
 
+export function formatCompactLatency(ms: number): string {
+  if (ms < 1) return `${ms.toFixed(2)}ms`;
+  if (ms >= 1000) return `${(ms / 1000).toFixed(2)}s`;
+  return `${Math.round(ms)}ms`;
+}
+
+export function formatTopologyEdgeMetrics(edge: {
+  sampled_calls: number;
+  p95_ms?: number | null;
+  error_rate?: number | null;
+}): string {
+  const parts = [formatNumber(edge.sampled_calls)];
+  if (edge.p95_ms != null) parts.push(formatCompactLatency(edge.p95_ms));
+  if (edge.error_rate != null) parts.push(formatErrorRate(edge.error_rate));
+  return parts.join(' · ');
+}
+
 export function formatPerSecond(value: string, t?: Translate): string {
   return formatUnitValue(value, 'apm.common.perSecondValue', '{value}/s', t);
 }
