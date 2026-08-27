@@ -26,7 +26,7 @@
 
 #webchat-root button[aria-label='打开对话'] img {
   display: block;
-  width: 56px;
-  height: 56px;
+  width: 72px;
+  height: 72px;
   background: transparent;
 }
