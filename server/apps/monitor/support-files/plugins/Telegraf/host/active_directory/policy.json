@@ -1,0 +1,71 @@
+{
+  "object": "Active Directory",
+  "plugin": "Active Directory",
+  "templates": [
+    {
+      "name": "LDAP 端口探测失败",
+      "alert_name": "Active Directory ${resource_name} LDAP 端口不可达",
+      "description": "域控制器本机 LDAP TCP 探测失败，服务可能未监听或 telegraf_windows 未装在 DC 上。",
+      "metric_name": "ad_ldap_probe_result_code",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "LDAP 绑定时间过高",
+      "alert_name": "Active Directory ${resource_name} LDAP 绑定时间过高",
+      "description": "NTDS LDAP Bind Time 持续偏高，可能表示域控制器认证压力过大。",
+      "metric_name": "ad_ldap_bind_time",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 200,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "复制积压过高",
+      "alert_name": "Active Directory ${resource_name} 待处理复制操作过多",
+      "description": "DRA Pending Replication Operations 过高，域控制器复制可能滞后。",
+      "metric_name": "ad_dra_pending_replication_operations",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

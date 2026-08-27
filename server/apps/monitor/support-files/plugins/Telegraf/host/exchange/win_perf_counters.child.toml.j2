@@ -1,0 +1,140 @@
+# MSExchange performance counters from windows_exporter collector "exchange".
+# win_perf_counters MUST run on the Exchange Windows box via local telegraf_windows.
+# Out of scope: Get-HealthReport and agentless remote WMI.
+[[inputs.win_perf_counters]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchangeTransport Queues"
+        Instances = ["*"]
+        Counters = [
+      "External Active Remote Delivery Queue Length",
+      "Internal Active Remote Delivery Queue Length",
+      "Active Mailbox Delivery Queue Length",
+      "Retry Mailbox Delivery Queue Length",
+      "Unreachable Queue Length",
+      "External Largest Delivery Queue Length",
+      "Internal Largest Delivery Queue Length",
+      "Poison Queue Length",
+      "Messages Queued For Delivery Total",
+      "Messages Submitted Total",
+      "Messages Delayed Total",
+      "Messages Completed Delivery Total",
+      "Aggregate Shadow Queue Length",
+      "Submission Queue Length",
+      "Delay Queue Length",
+      "Items Completed Delivery Total",
+      "Items Queued For Delivery Expired Total",
+      "Items Queued For Delivery Total",
+      "Items Resubmitted Total",
+        ]
+        Measurement = "win_exchange_transport_queues"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchange OWA"
+        Instances = ["*"]
+        Counters = [
+      "Current Unique Users",
+      "Requests/sec",
+        ]
+        Measurement = "win_exchange_owa"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchange HttpProxy"
+        Instances = ["*"]
+        Counters = [
+      "MailboxServerLocator Average Latency (Moving Average)",
+      "Average Authentication Latency",
+      "Average ClientAccess Server Processing Latency",
+      "Mailbox Server Proxy Failure Rate",
+      "Outstanding Proxy Requests",
+      "Proxy Requests/Sec",
+        ]
+        Measurement = "win_exchange_http_proxy"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchange ActiveSync"
+        Instances = ["*"]
+        Counters = [
+      "Requests/sec",
+      "Ping Commands Pending",
+      "Sync Commands/sec",
+        ]
+        Measurement = "win_exchange_activesync"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchange Availability Service"
+        Instances = ["*"]
+        Counters = [
+      "Availability Requests (sec)",
+        ]
+        Measurement = "win_exchange_availability"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchangeAutodiscover"
+        Instances = ["------"]
+        Counters = [
+      "Requests/sec",
+        ]
+        Measurement = "win_exchange_autodiscover"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchange WorkloadManagement Workloads"
+        Instances = ["*"]
+        Counters = [
+      "ActiveTasks",
+      "CompletedTasks",
+      "QueuedTasks",
+      "YieldedTasks",
+      "Active",
+        ]
+        Measurement = "win_exchange_workload"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchange RpcClientAccess"
+        Instances = ["*"]
+        Counters = [
+      "RPC Averaged Latency",
+      "RPC Requests",
+      "Active User Count",
+      "Connection Count",
+      "RPC Operations/sec",
+      "User Count",
+        ]
+        Measurement = "win_exchange_rpc"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchange MapiHttp Emsmdb"
+        Instances = ["*"]
+        Counters = [
+      "Active User Count",
+        ]
+        Measurement = "win_exchange_mapihttp"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchange ADAccess Processes"
+        Instances = ["*"]
+        Counters = [
+      "LDAP Read Time",
+      "LDAP Search Time",
+      "LDAP Write Time",
+      "LDAP Timeout Errors/sec",
+      "Long Running LDAP Operations/min",
+        ]
+        Measurement = "win_exchange_adaccess"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [inputs.win_perf_counters.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "host"
+        config_type = "win_perf_counters"

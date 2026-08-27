@@ -1,0 +1,28 @@
+# LDAP/LDAPS TCP probes on the DC. telegraf_windows must be installed on this host.
+[[inputs.net_response]]
+    startup_error_behavior = "retry"
+    protocol = "tcp"
+    address = "127.0.0.1:{{ ldap_port | default(389, true) }}"
+    timeout = "{{ timeout | default(5) }}s"
+    interval = "{{ interval }}s"
+    [inputs.net_response.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "host"
+        config_type = "net_response"
+        endpoint = "ldap"
+        port = "{{ ldap_port | default(389, true) }}"
+
+[[inputs.net_response]]
+    startup_error_behavior = "retry"
+    protocol = "tcp"
+    address = "127.0.0.1:{{ ldaps_port | default(636, true) }}"
+    timeout = "{{ timeout | default(5) }}s"
+    interval = "{{ interval }}s"
+    [inputs.net_response.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "host"
+        config_type = "net_response"
+        endpoint = "ldaps"
+        port = "{{ ldaps_port | default(636, true) }}"

@@ -1,0 +1,147 @@
+"Exchange":
+  desc: >-
+    必须在 Exchange Windows 主机本机安装 telegraf_windows，通过 win_perf_counters 采集 MSExchange 队列/OWA 等计数器，并用 http_response 探测 OWA/EWS。不实现 Get-HealthReport 或无代理远程 WMI。
+  name: Exchange（Telegraf）
+monitor_object:
+  "Exchange": Exchange
+monitor_object_type:
+  Middleware: 中间件
+monitor_object_metric:
+  "Exchange":
+    exchange_active_mailbox_delivery_queue_length:
+      name: 活动邮箱投递队列长度
+      desc: >-
+        MSExchangeTransport Queues 活动邮箱投递队列长度。
+    exchange_retry_mailbox_delivery_queue_length:
+      name: 重试邮箱投递队列长度
+      desc: >-
+        MSExchangeTransport Queues 重试邮箱投递队列长度。
+    exchange_poison_queue_length:
+      name: Poison 队列长度
+      desc: >-
+        MSExchangeTransport Queues poison 队列长度。
+    exchange_unreachable_queue_length:
+      name: 不可达队列长度
+      desc: >-
+        MSExchangeTransport Queues 不可达队列长度。
+    exchange_submission_queue_length:
+      name: 提交队列长度
+      desc: >-
+        MSExchangeTransport Queues 提交队列长度。
+    exchange_external_active_remote_delivery_queue_length:
+      name: 外部活动远程投递队列
+      desc: >-
+        MSExchangeTransport Queues 外部活动远程投递队列长度。
+    exchange_owa_current_unique_users:
+      name: OWA 当前独立用户
+      desc: >-
+        MSExchange OWA 当前已登录独立用户数。
+    exchange_owa_requests_persec:
+      name: OWA 请求速率
+      desc: >-
+        MSExchange OWA 每秒请求数。
+    exchange_http_proxy_outstanding_proxy_requests:
+      name: 未完成代理请求
+      desc: >-
+        MSExchange HttpProxy 当前未完成的代理请求数。
+    exchange_http_proxy_avg_auth_latency:
+      name: 平均认证时延
+      desc: >-
+        MSExchange HttpProxy 平均认证时延。
+    exchange_http_proxy_requests_persec:
+      name: 代理请求速率
+      desc: >-
+        MSExchange HttpProxy 每秒代理请求数。
+    exchange_http_proxy_mailbox_proxy_failure_rate:
+      name: 邮箱代理失败率
+      desc: >-
+        MSExchange HttpProxy 到邮箱服务器的代理失败率。
+    exchange_rpc_active_user_count:
+      name: RPC 活动用户数
+      desc: >-
+        MSExchange RpcClientAccess 活动用户数。
+    exchange_rpc_requests:
+      name: RPC 请求数
+      desc: >-
+        MSExchange RpcClientAccess 正在处理的请求数。
+    exchange_rpc_averaged_latency:
+      name: RPC 平均时延
+      desc: >-
+        MSExchange RpcClientAccess 平均时延。
+    exchange_rpc_user_count:
+      name: RPC 用户数
+      desc: >-
+        MSExchange RpcClientAccess 用户数。
+    exchange_activesync_requests_persec:
+      name: ActiveSync 请求速率
+      desc: >-
+        MSExchange ActiveSync 每秒请求数。
+    exchange_activesync_ping_commands_pending:
+      name: ActiveSync 待处理 Ping
+      desc: >-
+        MSExchange ActiveSync 待处理 Ping 命令数。
+    exchange_availability_requests_sec:
+      name: Availability 请求速率
+      desc: >-
+        MSExchange Availability Service 每秒请求数。
+    exchange_autodiscover_requests_persec:
+      name: Autodiscover 请求速率
+      desc: >-
+        MSExchangeAutodiscover 每秒请求数。
+    exchange_mapihttp_active_user_count:
+      name: MAPI HTTP 活动用户
+      desc: >-
+        MSExchange MapiHttp Emsmdb 活动用户数。
+    exchange_adaccess_ldap_timeout_errors_persec:
+      name: AD Access LDAP 超时
+      desc: >-
+        MSExchange ADAccess Processes LDAP 超时错误速率。
+    exchange_adaccess_ldap_read_time:
+      name: AD Access LDAP 读取耗时
+      desc: >-
+        MSExchange ADAccess Processes LDAP 读取耗时。
+    exchange_workload_active_tasks:
+      name: Workload 活动任务
+      desc: >-
+        MSExchange WorkloadManagement Workloads 活动任务数。
+    exchange_workload_queued_tasks:
+      name: Workload 排队任务
+      desc: >-
+        MSExchange WorkloadManagement Workloads 排队任务数。
+    exchange_owa_probe_result_code:
+      name: OWA 探测结果
+      desc: >-
+        本机 http_response 探测 OWA 的结果，0 表示成功。
+    exchange_ews_probe_result_code:
+      name: EWS 探测结果
+      desc: >-
+        本机 http_response 探测 EWS 的结果，0 表示成功。
+    exchange_owa_probe_response_time:
+      name: OWA 探测耗时
+      desc: >-
+        OWA HTTP 探测响应时间（秒）。
+    exchange_ews_probe_response_time:
+      name: EWS 探测耗时
+      desc: >-
+        EWS HTTP 探测响应时间（秒）。
+    exchange_owa_http_response_code:
+      name: OWA HTTP 状态码
+      desc: >-
+        OWA 探测返回的 HTTP 状态码。
+    exchange_ews_http_response_code:
+      name: EWS HTTP 状态码
+      desc: >-
+        EWS 探测返回的 HTTP 状态码。
+monitor_object_metric_group:
+  "Exchange":
+    Transport Queue: 传输队列
+    OWA: OWA
+    HTTP Proxy: HTTP 代理
+    RPC: RPC
+    ActiveSync: ActiveSync
+    Availability: Availability
+    Autodiscover: Autodiscover
+    MAPI: MAPI
+    AD Access: AD Access
+    Workload: Workload
+    Probe: 探测
