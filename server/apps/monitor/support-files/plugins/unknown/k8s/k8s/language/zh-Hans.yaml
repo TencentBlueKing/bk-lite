@@ -40,6 +40,9 @@ monitor_object_metric:
       name: 磁盘使用率
       desc: Kubernetes 集群的整体磁盘使用率。
   Pod:
+    pod_info:
+      name: Pod 信息
+      desc: 来自 kube_pod_info 的 Pod 元数据，用作 IP 展示列的载体指标。
     pod_status_phase:
       name: Pod 阶段
       desc: Pod 当前的生命周期阶段。
@@ -65,6 +68,9 @@ monitor_object_metric:
       name: 网络出流量
       desc: Pod 发送的出向网络流量速率。
   Node:
+    node_info:
+      name: 节点信息
+      desc: 来自 kube_node_info 的节点元数据，用作 IP 展示列的载体指标。
     node_status_condition:
       name: 节点状态
       desc: 节点当前的运行状态。
