@@ -1,0 +1,61 @@
+{
+  "object": "Exchange",
+  "plugin": "Exchange",
+  "templates": [
+    {
+      "name": "邮箱投递队列积压",
+      "alert_name": "Exchange ${resource_name} 邮箱投递队列过长",
+      "description": "MSExchangeTransport Queues 活动邮箱投递队列持续偏高，邮件可能积压。",
+      "metric_name": "exchange_active_mailbox_delivery_queue_length",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Poison 队列非空",
+      "alert_name": "Exchange ${resource_name} Poison 队列存在邮件",
+      "description": "Poison Queue Length 大于 0，存在无法投递的问题邮件。",
+      "metric_name": "exchange_poison_queue_length",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "OWA 探测失败",
+      "alert_name": "Exchange ${resource_name} OWA 探测失败",
+      "description": "本机 http_response 探测 OWA 失败，Outlook Web App 可能不可用。",
+      "metric_name": "exchange_owa_probe_result_code",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

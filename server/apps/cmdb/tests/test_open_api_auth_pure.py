@@ -33,6 +33,13 @@ def test_context_uses_only_secret_bound_team_and_ignores_child_cookie():
     assert context.user_groups == [{"id": 7}]
 
 
+def test_from_gateway_rejects_empty_team_ids():
+    with pytest.raises(CMDBOpenAPIError) as exc:
+        CMDBOpenAPIContext.from_gateway(user_info={"user": "u", "domain": "d.com"}, team_ids=[])
+    assert exc.value.code == "cmdb.auth.invalid_team"
+    assert exc.value.status_code == 400
+
+
 @patch("apps.cmdb.open_api.auth.get_permission_rules")
 def test_permission_map_is_fail_closed_and_never_includes_children(mock_rules):
     mock_rules.return_value = {}

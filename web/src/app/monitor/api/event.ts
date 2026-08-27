@@ -40,6 +40,7 @@ const useEventApi = () => {
   const getPolicyTemplate = async (
     params: {
       monitor_object_name?: string | null;
+      plugin_id?: string | number;
     },
     config?: AxiosRequestConfig
   ) => {

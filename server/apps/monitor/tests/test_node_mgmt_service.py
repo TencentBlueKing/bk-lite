@@ -143,6 +143,20 @@ class TestSyncExistingInstanceAttrs:
         assert inst.auto is False
         assert inst.is_active is True
         assert inst.is_deleted is False
+        assert inst.updated_by == "system"
+
+    def test_records_actor_as_updater(self):
+        obj = MonitorObject.objects.create(name="SyncAttrActorObj", level="base")
+        MonitorInstance.objects.create(
+            id="('h1',)", name="old", monitor_object=obj, created_by="alice",
+        )
+        SVC._sync_existing_instance_attrs(
+            [{"instance_id": "('h1',)", "instance_name": "new"}],
+            actor_context=_actor_context(),
+        )
+        inst = MonitorInstance.objects.get(id="('h1',)")
+        assert inst.created_by == "alice"
+        assert inst.updated_by == "admin"
 
     def test_merges_summary_facts(self):
         obj = MonitorObject.objects.create(name="ProbeSyncObj", level="base")
@@ -164,6 +178,29 @@ class TestSyncExistingInstanceAttrs:
             "asset.ip": "2001:db8::1",
             "probe.target": "[2001:db8::1]:443",
         }
+
+
+class TestBuildInstanceObjects:
+    def test_fills_maintainer_from_actor(self):
+        objs, assocs, ids = SVC._build_instance_objects(
+            [{"instance_id": "('h1',)", "instance_name": "h1", "group_ids": [1]}],
+            1,
+            actor_context=_actor_context(),
+        )
+        assert ids == ["('h1',)"]
+        assert objs[0].created_by == "admin"
+        assert objs[0].updated_by == "admin"
+        assert objs[0].domain == "domain.com"
+        assert objs[0].updated_by_domain == "domain.com"
+        assert assocs[0].organization == 1
+
+    def test_defaults_to_system_without_actor(self):
+        objs, _, _ = SVC._build_instance_objects(
+            [{"instance_id": "('h1',)", "instance_name": "h1", "group_ids": [1]}],
+            1,
+        )
+        assert objs[0].created_by == "system"
+        assert objs[0].updated_by == "system"
 
 
 class TestGetConfigContent:

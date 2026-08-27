@@ -21,7 +21,7 @@ from core.collection.execution_plan import ExecutionPlanResolver, TimeoutDefault
 from core.collection.executor import TargetActivityTracker, TargetCollectionExecutor
 from core.collection.metrics import CollectionMetrics
 from core.collection.plugins import UnifiedPluginFactory
-from core.collection.preflight import AsyncProtocolPreflight, reachability_enabled_from_env
+from core.collection.preflight import AsyncProtocolPreflight
 from core.collection.redis_state import RedisCredentialStateStore, RedisRunStateStore
 from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher
 from core.collection.runtime import CollectionRequest, CollectionRuntime, CollectionRuntimeSettings, RunLease, Submission
@@ -73,7 +73,6 @@ class CollectionApplicationSettings:
     run_deadline_seconds: float = 0.0
     max_no_response_attempts: int = 3
     publish_max_attempts: int = 2
-    access_probe_enabled: bool = True
     capacity_log_interval_seconds: float = 180.0
 
     def __post_init__(self) -> None:
@@ -128,7 +127,6 @@ class CollectionApplicationSettings:
             run_deadline_seconds=float(os.getenv("RUN_DEADLINE", "0")),
             max_no_response_attempts=int(os.getenv("MAX_NO_RESPONSE_ATTEMPTS", "3")),
             publish_max_attempts=int(os.getenv("PUBLISH_MAX_ATTEMPTS", "2")),
-            access_probe_enabled=reachability_enabled_from_env(),
             capacity_log_interval_seconds=float(os.getenv("CAPACITY_LOG_INTERVAL", "180")),
         )
 
@@ -182,7 +180,6 @@ class CollectionApplication:
                 collection_seconds=self.settings.plugin_timeout_seconds,
                 publish_seconds=self.settings.publish_timeout_seconds,
             ),
-            preflight_enabled=self.settings.access_probe_enabled,
         )
         self._target_activity = TargetActivityTracker()
         scheduler_limits = tuple(
@@ -196,6 +193,8 @@ class CollectionApplication:
         self._scheduler = CollectionScheduler(
             max_in_flight=min(scheduler_limits) if scheduler_limits else 1_000_000,
             topology_max_in_flight=self.settings.network_topology_max_active_targets,
+            # 两个全局边界都显式关闭时，不以内部哨兵容量计算借槽上限。
+            allow_topology_idle_borrow=bool(scheduler_limits),
             metrics=self._metrics,
         )
         self._submission_counts: dict[str, int] = {}
@@ -219,7 +218,6 @@ class CollectionApplication:
             publish_total_timeout_seconds=self.settings.publish_total_timeout_seconds,
             max_no_response_attempts=self.settings.max_no_response_attempts,
             publish_max_attempts=self.settings.publish_max_attempts,
-            access_probe_enabled=self.settings.access_probe_enabled,
         )
         self.runtime = CollectionRuntime(
             state_store=RedisRunStateStore(redis_client, key_prefix=prefix),

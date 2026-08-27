@@ -18,12 +18,12 @@ from apps.alerts.service.alter_operator import AlertOperator
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.viewset_utils import build_json_membership_query
 
-
 ALLOWED_ACTIONS = {"assign", "acknowledge", "reassign", "close"}
 
 
 class AlertsOpenAPIService:
     ALLOWED_ACTIONS = ALLOWED_ACTIONS
+
     def __init__(self, context):
         self.context = context
 
@@ -64,10 +64,7 @@ class AlertsOpenAPIService:
             raise AlertsOpenAPIError("alerts.alert.not_found", message, 404)
         if "无法进行" in message:
             raise AlertsOpenAPIError("alerts.operator.invalid_state", message, 409)
-        if any(
-            token in message
-            for token in ("没有权限认领", "没有权限转派", "没有权限关闭", "没有权限操作")
-        ):
+        if any(token in message for token in ("没有权限认领", "没有权限转派", "没有权限关闭", "没有权限操作")):
             raise AlertsOpenAPIError("alerts.operator.not_assignee", message, 403)
         if any(
             token in message
@@ -76,6 +73,7 @@ class AlertsOpenAPIService:
                 "请指定新的处理人",
                 "处理人不存在",
                 "处理人不在",
+                "处理人已禁用",
                 "分派目标",
             )
         ):

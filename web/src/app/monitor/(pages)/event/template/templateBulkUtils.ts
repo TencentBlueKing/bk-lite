@@ -477,6 +477,23 @@ export const normalizeBulkConfig = (
   return normalized;
 };
 
+export const COLLECTION_POLICY_BULK_CONFIG_DEFAULTS: BulkConfig = {
+  name_prefix: '',
+  enable: true,
+  schedule: { type: 'min', value: 5 },
+  period: { type: 'min', value: 5 },
+  trigger_count: 1,
+  notice: false,
+  notice_type: '',
+  notice_type_ids: [],
+  notice_users: [],
+  enable_alerts: ['threshold'],
+  no_data_enabled: false,
+};
+
+export const buildCollectionPolicyBulkConfig = (): BulkConfig =>
+  normalizeBulkConfig({ ...COLLECTION_POLICY_BULK_CONFIG_DEFAULTS });
+
 interface OrganizationOption {
   value?: string | number;
   label?: string;

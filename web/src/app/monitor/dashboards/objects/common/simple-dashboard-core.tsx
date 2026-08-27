@@ -75,6 +75,8 @@ export interface SummaryFieldConfig {
   enumMap?: MetricEnumMap;
   /** 详情行语义色：error→红 / warning→琥珀 / 缺省→中性蓝。仅影响缩略图与数值配色。 */
   tone?: 'error' | 'warning' | 'normal';
+  /** 为 true 时不渲染 sparkline/进度条缩略图，仅展示数值。 */
+  hideViz?: boolean;
 }
 
 export interface SummaryCardConfig {
@@ -121,7 +123,14 @@ export interface DetailPanelConfig {
   title: string;
   subtitle: string;
   rows: SummaryFieldConfig[];
+  /** rows=标签·缩略图·数值行；tiles=网格磁贴(标签在上、数值在下)。 */
+  layout?: 'rows' | 'tiles';
+  /** @deprecated 请改用 layout: 'tiles' */
+  compact?: boolean;
 }
+
+export const isDetailTilesLayout = (panel: Pick<DetailPanelConfig, 'layout' | 'compact'>): boolean =>
+  panel.layout === 'tiles' || Boolean(panel.compact);
 
 export interface RingSegmentConfig {
   label: string;
@@ -867,7 +876,14 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           const series = metricMap[row.metric]?.viewData ?? [];
           const hasSeries = series.length > 0;
           let viz: DetailRowViz = 'none';
-          if (value !== '--' && !isTextual && isChartableUnit && hasSeries) {
+          if (
+            !row.hideViz
+            && value !== '--'
+            && !isTextual
+            && isChartableUnit
+            && hasSeries
+            && !isDetailTilesLayout(panel)
+          ) {
             // 实时数值统一用 sparkline 呈现趋势(含百分比——趋势比静态"满度"更有意义)。
             viz = 'spark';
           }

@@ -161,7 +161,12 @@
       "typeKv": "Key-value",
       "typeRegex": "Regex extract",
       "typeRegexReplace": "Regex replace",
-      "typeJson": "JSON"
+      "typeJson": "JSON",
+      "menuTitle": "Extractors",
+      "createFromLog": "Create extractor",
+      "missingInstance": "This log has no collection instance, so an extractor cannot be created.",
+      "instanceUnavailable": "The collection instance for this log was not found, or the current team cannot edit its extractors.",
+      "unsupportedCollectType": "This collect type does not support type-level extractors."
     },
     "integration": {
       "connect": "Connect",
@@ -226,6 +231,7 @@
       "sampleRateDes": "It can be adjusted according to network traffic to reduce data volume.",
       "metricsets": "Metric Sets",
       "configuration": "Configuration",
+      "introduction": "Introduction",
       "fileSystemDes": "The System filesystem metricset provides file system statistics. For each file system, one document is provided.",
       "command": "Command",
       "interval": "Interval",

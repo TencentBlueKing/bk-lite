@@ -10,6 +10,10 @@ import {
   isPlatformMode,
   lastSessionStorageKey,
   mapPlatformApplications,
+  PLATFORM_DOCK_CHAT_WIDTH,
+  PLATFORM_HISTORY_RAIL_DOCK,
+  platformDockInsetWidth,
+  shouldShowPlatformLauncher,
   mapPlatformMessages,
   mapPlatformSessions,
   readDockCollapsed,
@@ -364,4 +368,28 @@ test('dock collapsed helpers default to collapsed when storage is empty', () => 
   writeDockCollapsed(storage, key, false);
   assert.equal(readDockCollapsed(storage, key), false);
   assert.equal(readDockCollapsed({ getItem: () => null }, key), true);
+});
+
+test('hides the launcher when the published app list is empty and the host is not a manager', () => {
+  assert.equal(shouldShowPlatformLauncher({ appCount: 2, canManageAgents: false }), true);
+  assert.equal(shouldShowPlatformLauncher({ appCount: 0, canManageAgents: false }), false);
+  assert.equal(shouldShowPlatformLauncher({ appCount: 0, canManageAgents: true }), true);
+  assert.equal(shouldShowPlatformLauncher({ appCount: 0 }), true);
+});
+
+test('dock inset matches the open pane and drops to zero when collapsed or fullscreen', () => {
+  assert.equal(
+    platformDockInsetWidth({ visible: true }),
+    PLATFORM_DOCK_CHAT_WIDTH,
+  );
+  assert.equal(
+    platformDockInsetWidth({ visible: true, historyOpen: true }),
+    PLATFORM_DOCK_CHAT_WIDTH + PLATFORM_HISTORY_RAIL_DOCK,
+  );
+  assert.equal(platformDockInsetWidth({ visible: false }), 0);
+  assert.equal(platformDockInsetWidth({ visible: true, fullscreen: true }), 0);
+  assert.equal(
+    platformDockInsetWidth({ visible: true, fullscreen: true, historyOpen: true }),
+    0,
+  );
 });

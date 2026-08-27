@@ -12,12 +12,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 from opentelemetry import propagate, trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import SpanKind, Status, StatusCode
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-
 
 SERVICE = os.environ.get("APM_DEMO_SERVICE", "storefront")
 NAMESPACE = os.environ.get("APM_DEMO_NAMESPACE", "apm-demo-shop")
@@ -113,7 +112,10 @@ def catalog(method: str, path: str, query: dict[str, list[str]]) -> tuple[int, d
         return response(HTTPStatus.NOT_FOUND, {"error": "route_not_found"})
     scenario = query.get("scenario", ["normal"])[0]
     with tracer.start_as_current_span("SELECT featured products", kind=SpanKind.CLIENT) as span:
-        span.set_attribute("db.system", "postgresql")
+        span.set_attribute("db.system", "mysql")
+        span.set_attribute("db.name", "shop")
+        span.set_attribute("server.address", "mysql.demo.svc")
+        span.set_attribute("server.port", 3306)
         span.set_attribute("db.operation.name", "SELECT")
         pause(12, 35)
         span.set_status(Status(StatusCode.OK))
@@ -125,14 +127,10 @@ def orders(method: str, path: str, query: dict[str, list[str]]) -> tuple[int, di
     if method != "POST" or path != "/orders":
         return response(HTTPStatus.NOT_FOUND, {"error": "route_not_found"})
     scenario = query.get("scenario", ["normal"])[0]
-    reserve_status, reserve = downstream(
-        "POST", f"{os.environ['APM_DEMO_INVENTORY_URL']}/reserve?scenario={scenario}", {"sku": "demo-1"}
-    )
+    reserve_status, reserve = downstream("POST", f"{os.environ['APM_DEMO_INVENTORY_URL']}/reserve?scenario={scenario}", {"sku": "demo-1"})
     if reserve_status >= 500:
         return response(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "inventory_reservation_failed", "detail": reserve})
-    payment_status, payment = downstream(
-        "POST", f"{os.environ['APM_DEMO_PAYMENT_URL']}/charge?scenario={scenario}", {"amount": 129.90}
-    )
+    payment_status, payment = downstream("POST", f"{os.environ['APM_DEMO_PAYMENT_URL']}/charge?scenario={scenario}", {"amount": 129.90})
     if payment_status >= 500:
         return response(HTTPStatus.BAD_GATEWAY, {"error": "payment_declined", "detail": payment})
     with tracer.start_as_current_span("INSERT order", kind=SpanKind.CLIENT) as span:

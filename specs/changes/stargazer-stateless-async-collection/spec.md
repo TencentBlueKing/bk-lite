@@ -3,14 +3,18 @@
 Status: approved for implementation (COMPLETE-PLAN-2026-08-06.md); code converging from superseding digest/fencing/AccessProbe workspace
 
 2026-08-14 补充锁定：以同目录
-`collection-failure-remediation-plan-2026-08-14.md` 为准。关闭
-`PREFLIGHT_REACHABILITY` 时跳过全部采集前探测但保留出站安全检查；全局容量默认
+`collection-failure-remediation-plan-2026-08-14.md` 为准。请求未开启 `params.ip_precheck` 时跳过
+全部采集前探测但保留出站安全检查；全局容量默认
 `MAX_ACTIVE_RUNS=16`、`MAX_ACTIVE_TARGETS=250`、`TARGET_TASK_WINDOW=250`；单目标发布失败不得取消
 同 Run 其他目标，Run 汇总为 `completed_with_errors`。
 
 2026-08-20 容量补充锁定：单 Pod 默认目标并发与任务窗口由 `150/150` 提升为 `250/250`；
 `collection_capacity` 同步记录进程 CPU/RSS/线程/FD 与 cgroup CPU、内存、throttling，供压测后
 判断是否继续扩容。下文保留的 `150` 仅为既有验证示例，不代表当前默认值。
+
+2026-08-26 workload 容量补充锁定：网络拓扑基础配额默认 50；普通目标既未运行也未排队时，
+拓扑可借用普通容量的一半，默认动态上限为 150。普通目标到达后停止新增借槽但不抢占在途目标，
+单 Pod 总目标并发仍受 `MAX_ACTIVE_TARGETS` 与 `TARGET_TASK_WINDOW` 的较小非零值约束。
 
 2026-08-17 结果发布补充锁定：发布状态、成功/失败结果微批、超时拆分、NATS 重连与
 Redis 结果事件隔离以同目录 `nats-result-publishing-final-plan-2026-08-17.md` 为准；该文档替代
@@ -447,6 +451,7 @@ Stargazer 与 CMDB 凭据命中事件字段对齐，以及 CMDB「查询 VM → 
 | --- | --- |
 | `MAX_ACTIVE_RUNS` | 单 Pod 同时运行的 `CollectionRun` 数量 |
 | `MAX_ACTIVE_TARGETS` | 单 Pod 同时活跃的 `TargetCollection` 数量 |
+| `NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS` | 网络拓扑 workload 的基础目标配额；普通采集完全空闲时可动态借槽 |
 | `TARGET_TASK_WINDOW` | 已创建但未完成的目标协程上限，并复用为有界发布队列容量 |
 | `MAX_TARGETS_PER_RUN` | 单个请求允许的目标数量上限 |
 | `MAX_CREDENTIALS_PER_RUN` | 单个请求允许的候选凭据数量上限 |
@@ -460,6 +465,12 @@ Stargazer 与 CMDB 凭据命中事件字段对齐，以及 CMDB「查询 VM → 
 统一控制；无调度器的兼容执行路径才使用本地 Semaphore/worker budget。结果进入容量为
 `TARGET_TASK_WINDOW` 的发布队列后释放目标调度槽位，Run 通过发布回执等待最终状态。队列满时
 入队等待形成有界背压，不能把内存中的大量等待协程当成免费队列。
+
+网络拓扑和普通采集不拆成两套执行器或两个固定池。调度器只在普通目标既未运行也未排队时，
+把拓扑上限从基础配额临时提高到
+`基础配额 + floor((全局目标容量 - 基础配额) / 2)`；普通目标一旦出现，停止派发超出基础配额的
+新拓扑目标，但不取消或抢占已开始的目标。两个全局目标边界都显式关闭时不基于内部哨兵容量借槽，
+拓扑维持基础配额。
 
 验证示例：255 个 IP、5 个凭据、`MAX_ACTIVE_TARGETS=150`、预检超时 5 秒。
 
@@ -611,8 +622,8 @@ Run 开始、进度、汇总和终态日志必须携带 `instance_id`。生产 I
 - 云：对 API Endpoint 做 TCP/TLS（非 ICMP）；不通则不进凭据；
 - ICMP 不得作为硬过滤；
 - 出站策略拒绝 → 稳定错误码，不进凭据。
-- **IP 预检锁定修订（2026-08-24）**：默认不做采集前拨测（`PREFLIGHT_REACHABILITY`
-  默认 off）。任务显式开启 `params.ip_precheck`（或环境变量开启）时，按协议做无凭据
+- **IP 预检锁定修订（2026-08-26）**：移除全局 `PREFLIGHT_REACHABILITY` 开关。任务仅在
+  `params.ip_precheck` 显式开启时，按协议做无凭据
   连接性探测作为准入：TCP/TLS 直连类拨协议端口；SSH/job 拨目标 SSH 端口（目标 IP 与
   执行节点管理 IP 一致时跳过）；SNMP/UDP 等未确认类型本期放行；云账号等逻辑目标忽略
   开关。预检组件自身故障时放行目标并记告警，不得阻断采集。

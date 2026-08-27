@@ -1,5 +1,5 @@
 # -- coding: utf-8 --
-from django_filters import FilterSet, CharFilter
+from django_filters import CharFilter, FilterSet
 
 from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.models.models import Alert
@@ -16,6 +16,7 @@ class AlertModelFilter(FilterSet):
     lt	小于	数值比较
     in	在列表中	匹配列表中的任意值
     """
+
     # inst_id = NumberFilter(field_name="inst_id", lookup_expr="exact", label="实例ID")
     title = CharFilter(field_name="title", lookup_expr="icontains", label="名称")
     content = CharFilter(field_name="content", lookup_expr="icontains", label="内容")
@@ -33,24 +34,40 @@ class AlertModelFilter(FilterSet):
 
     class Meta:
         model = Alert
-        fields = ["title", "content", "alert_id", "activate", "my_alert", "level", "status", "source_name",
-                  "created_at_after", "created_at_before", "incident_id", "rule_id"]
+        fields = [
+            "title",
+            "content",
+            "alert_id",
+            "activate",
+            "my_alert",
+            "level",
+            "status",
+            "source_name",
+            "created_at_after",
+            "created_at_before",
+            "incident_id",
+            "rule_id",
+        ]
 
     @staticmethod
     def filter_activate(qs, field_name, value):
-        """查询类型 """
+        """查询类型"""
         return qs.exclude(status__in=AlertStatus.CLOSED_STATUS)
 
     def filter_my_alert(self, qs, field_name, value):
-        """查询我的告警"""
-        username = self.request.user.username
-        return qs.filter(operator__contains=username)
+        """查询我的告警：按当前处理人精确成员匹配，不把用户名当 JSON 子串。"""
+        from apps.alerts.utils.permission_scope import apply_operator_scope
+
+        if str(value or "").strip().lower() not in {"1", "true", "yes"}:
+            return qs
+        username = getattr(getattr(self.request, "user", None), "username", None)
+        return apply_operator_scope(qs, username)
 
     def filter_level(self, qs, field_name, value):
         """支持多选的告警级别过滤"""
         if value:
             # 支持逗号分隔的多个值
-            levels = [level.strip() for level in value.split(',')]
+            levels = [level.strip() for level in value.split(",")]
             return qs.filter(level__in=levels)
         return qs
 
@@ -58,7 +75,7 @@ class AlertModelFilter(FilterSet):
         """支持多选的告警状态过滤"""
         if value:
             # 支持逗号分隔的多个值
-            statuses = [status.strip() for status in value.split(',')]
+            statuses = [status.strip() for status in value.split(",")]
             return qs.filter(status__in=statuses)
         return qs
 
@@ -66,7 +83,7 @@ class AlertModelFilter(FilterSet):
         """支持多选的告警源过滤"""
         if value:
             # 支持逗号分隔的多个值
-            source_names = [source.strip() for source in value.split(',')]
+            source_names = [source.strip() for source in value.split(",")]
             return qs.filter(source_name__in=source_names)
         return qs
 

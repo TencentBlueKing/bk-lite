@@ -4,6 +4,8 @@ import os
 from django.conf import settings
 
 import nats_client
+from apps.core.logger import logger
+from apps.rpc.exceptions import RpcMethodNotFoundError, RpcTimeoutError
 
 DEFAULT_REQUEST_TIMEOUT = 60
 
@@ -19,24 +21,27 @@ class RpcClient(object):
     def run(self, method_name, *args, **kwargs):
         timeout = kwargs.get("_timeout")
         effective_timeout = timeout if timeout is not None else getattr(settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT)
-        try:
-            request_coro = nats_client.request(self.namespace, method_name, *args, **kwargs)
-            if effective_timeout and effective_timeout > 0:
-                request_coro = asyncio.wait_for(request_coro, timeout=effective_timeout)
-            return asyncio.run(request_coro)
-        except TimeoutError:
-            raise TimeoutError(f"RPC request timeout: namespace={self.namespace}, method={method_name}, timeout={effective_timeout}s")
+        return self._request_with_timeout(nats_client.request, method_name, effective_timeout, *args, **kwargs)
 
     def request(self, method_name, **kwargs):
         timeout = kwargs.get("_timeout")
         effective_timeout = timeout if timeout is not None else getattr(settings, "NATS_REQUEST_TIMEOUT", DEFAULT_REQUEST_TIMEOUT)
+        return self._request_with_timeout(nats_client.nat_request, method_name, effective_timeout, **kwargs)
+
+    def _request_with_timeout(self, request_func, method_name, effective_timeout, *args, **kwargs):
         try:
-            request_coro = nats_client.nat_request(self.namespace, method_name, **kwargs)
+            request_coro = request_func(self.namespace, method_name, *args, **kwargs)
             if effective_timeout and effective_timeout > 0:
                 request_coro = asyncio.wait_for(request_coro, timeout=effective_timeout)
             return asyncio.run(request_coro)
-        except TimeoutError:
-            raise TimeoutError(f"RPC request timeout: namespace={self.namespace}, method={method_name}, timeout={effective_timeout}s")
+        except TimeoutError as exc:
+            logger.warning(
+                "RPC request timeout: namespace=%s, method=%s, timeout=%ss",
+                self.namespace,
+                method_name,
+                effective_timeout,
+            )
+            raise RpcTimeoutError(self.namespace, method_name, effective_timeout) from exc
 
 
 class AppClient(object):
@@ -47,7 +52,8 @@ class AppClient(object):
         m = __import__(self.path, globals(), locals(), ["*"])
         method = getattr(m, method_name, None)
         if not method:
-            raise ValueError(f"Method {method_name} not found in {self.path}")
+            logger.warning("RPC method not found: path=%s, method=%s", self.path, method_name)
+            raise RpcMethodNotFoundError(self.path, method_name)
         return method(*args, **kwargs)
 
 

@@ -38,6 +38,26 @@ class TestJobScriptExecute:
         assert result["result"] is True
         assert "task_id" in result["data"]
 
+    def test_nats_entry_ignores_trusted_actor_kwarg(self):
+        from apps.job_mgmt.models import JobExecution
+        from apps.job_mgmt.nats_api import job_script_execute
+
+        with patch("apps.job_mgmt.services.dangerous_checker.DangerousChecker.check_command") as mock_check, patch(
+            "apps.job_mgmt.nats_api.execute_script_task.delay"
+        ) as mock_delay:
+            mock_check.return_value = MagicMock(can_execute=True, forbidden=[])
+            mock_delay.return_value.id = "fake-celery-task-id"
+            result = job_script_execute(
+                self._valid_data(name="spoof-actor"),
+                trusted_actor={"user": "root", "domain": "evil.example"},
+            )
+
+        assert result["result"] is True
+        execution = JobExecution.objects.get(id=result["data"]["task_id"])
+        assert execution.created_by == "api"
+        assert execution.executor_user == "api"
+        assert execution.domain == "domain.com"
+
     def test_dispatch_failure_marks_execution_failed(self):
         from apps.job_mgmt.constants import ExecutionStatus
         from apps.job_mgmt.models import JobExecution

@@ -2,6 +2,7 @@ import ipaddress
 from urllib.parse import urlsplit
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.node_mgmt.constants.controller import ControllerConstants
 
 
 class InstanceFactResolver:
@@ -68,11 +69,7 @@ class InstanceFactResolver:
     @classmethod
     def merge(cls, existing, generated, source=None):
         merged = dict(existing or {})
-        source_map = {
-            fact: dict(contributions)
-            for fact, contributions in (merged.get("_sources") or {}).items()
-            if isinstance(contributions, dict)
-        }
+        source_map = {fact: dict(contributions) for fact, contributions in (merged.get("_sources") or {}).items() if isinstance(contributions, dict)}
         for fact, value in (generated or {}).items():
             if fact.startswith("_"):
                 continue
@@ -100,6 +97,7 @@ class InstanceFactResolver:
     def _resolve_binding(cls, binding, instance_input, context):
         resolver = binding["resolver"]
         options = binding["options"]
+        skip_required = False
         if resolver == "input":
             raw_value = instance_input.get(options.get("field"))
         elif resolver == "constant":
@@ -107,6 +105,11 @@ class InstanceFactResolver:
         elif resolver == "selected_node":
             nodes = cls._selected_nodes(instance_input, context, options)
             raw_value = nodes[0].get(options.get("node_field", "ip")) if nodes else None
+            raw_value, skip_required = cls._map_container_node_ip(
+                nodes[0] if nodes else None,
+                options.get("node_field", "ip"),
+                raw_value,
+            )
         elif resolver == "selected_nodes":
             return [cls._node_ref(node) for node in cls._selected_nodes(instance_input, context, options)]
         elif resolver == "compose_endpoint":
@@ -119,11 +122,29 @@ class InstanceFactResolver:
         else:  # pragma: no cover - validate_bindings 已拦截
             raise BaseAppException(f"不支持的实例事实解析器: {resolver}")
         normalized = cls._normalize(raw_value, binding["value_type"])
+        if skip_required:
+            return normalized
         if raw_value in (None, "") and options.get("required") is True:
             raise BaseAppException(f"必需实例事实缺失: {binding['fact']}")
         if raw_value not in (None, "") and normalized in (None, "", []) and options.get("required") is True:
             raise BaseAppException(f"必需实例事实无法规整: {binding['fact']}")
         return normalized
+
+    @classmethod
+    def _map_container_node_ip(cls, node, node_field, raw_value):
+        """容器节点无可用 node.ip 时回退云区域展示 IP；域名不入库。"""
+        if str(node_field or "ip") != "ip" or not cls._is_container_node(node):
+            return raw_value, False
+        if cls._normalize(raw_value, "ip"):
+            return raw_value, False
+        mapped = (node or {}).get("region_display_ip")
+        if cls._normalize(mapped, "ip"):
+            return mapped, False
+        return None, True
+
+    @staticmethod
+    def _is_container_node(node):
+        return bool(node) and str(node.get("node_type") or "") == ControllerConstants.NODE_TYPE_CONTAINER
 
     @staticmethod
     def _selected_nodes(instance_input, context, options):

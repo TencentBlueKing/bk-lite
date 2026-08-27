@@ -53,6 +53,29 @@ def test_list_alerts_filters_by_team():
 
 
 @pytest.mark.django_db
+def test_list_alerts_does_not_include_operator_assigned_other_team():
+    alert = _create_alert(alert_id="A-mine-other-team", team=[2])
+    Alert.objects.filter(pk=alert.pk).update(operator=["api-user"])
+
+    result = _service(team_id=1).list_alerts({})
+    ids = {item["alert_id"] for item in result["items"]}
+
+    assert "A-mine-other-team" not in ids
+
+
+@pytest.mark.django_db
+def test_get_alert_other_team_not_found_even_if_operator_matches():
+    alert = _create_alert(alert_id="A-other-operator", team=[2])
+    Alert.objects.filter(pk=alert.pk).update(operator=["api-user"])
+
+    with pytest.raises(AlertsOpenAPIError) as exc:
+        _service(team_id=1).get_alert("A-other-operator")
+
+    assert exc.value.code == "alerts.alert.not_found"
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.django_db
 def test_list_alerts_excludes_no_confirmed_session_status():
     _create_alert(alert_id="A-visible", session_status="")
     _create_alert(alert_id="A-observing", session_status=SessionStatus.OBSERVING)
