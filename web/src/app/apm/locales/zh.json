@@ -838,6 +838,7 @@
       "inferredBadge": "推断",
       "caller": "调用方",
       "peerAddress": "地址",
+      "dbName": "库名",
       "sampleClientSpans": "样本 Client Span",
       "requestStatus": "按请求状态切片",
       "allRequests": "全部请求",

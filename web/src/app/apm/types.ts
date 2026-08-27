@@ -224,6 +224,8 @@ export interface ApmTopologySampleTrace {
   duration_ms: number;
   status: 'ok' | 'error';
   caller_service_name?: string;
+  peer_address?: string;
+  db_name?: string;
 }
 
 export interface ApmTopologyNode {
@@ -239,6 +241,7 @@ export interface ApmTopologyNode {
   fold_key?: string;
   inferred_system?: string;
   peer_address?: string;
+  db_name?: string;
   request_rate?: number | null;
   error_rate?: number | null;
   p95_ms?: number | null;

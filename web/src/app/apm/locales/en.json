@@ -838,6 +838,7 @@
       "inferredBadge": "Inferred",
       "caller": "Caller",
       "peerAddress": "Address",
+      "dbName": "Database",
       "sampleClientSpans": "Sample client spans",
       "requestStatus": "Slice by request status",
       "allRequests": "All requests",

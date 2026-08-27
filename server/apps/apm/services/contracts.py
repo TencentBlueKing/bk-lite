@@ -276,6 +276,8 @@ class TopologySampleTrace:
     duration_ms: float
     status: str
     caller_service_name: str = ""
+    peer_address: str = ""
+    db_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -292,6 +294,7 @@ class TopologyNode:
     fold_key: str = ""
     inferred_system: str = ""
     peer_address: str = ""
+    db_name: str = ""
     request_rate: float | None = None
     error_rate: float | None = None
     p95_ms: float | None = None

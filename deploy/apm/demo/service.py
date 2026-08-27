@@ -115,6 +115,7 @@ def catalog(method: str, path: str, query: dict[str, list[str]]) -> tuple[int, d
         span.set_attribute("db.system", "mysql")
         span.set_attribute("db.name", "shop")
         span.set_attribute("server.address", "mysql.demo.svc")
+        span.set_attribute("server.port", 3306)
         span.set_attribute("db.operation.name", "SELECT")
         pause(12, 35)
         span.set_status(Status(StatusCode.OK))
