@@ -511,22 +511,11 @@ class Sidecar:
             locked_self = Node.objects.select_for_update().filter(id=node_id).first()
             if locked_self:
                 return locked_self, node_id, False
-            try:
-                assert_cloud_ip_available(
-                    lookup_cloud_region_id,
-                    request_data.get("ip", ""),
-                    lock=True,
-                )
-            except ValidationAppException as exc:
-                logger.warning(
-                    "event=sidecar_create_duplicate_cloud_ip failed_stage=sidecar_create "
-                    "error_type=%s reported_node_id=%s ip=%s cloud_region_id=%s",
-                    type(exc).__name__,
-                    node_id,
-                    request_data.get("ip", ""),
-                    lookup_cloud_region_id,
-                )
-                raise
+            assert_cloud_ip_available(
+                lookup_cloud_region_id,
+                request_data.get("ip", ""),
+                lock=True,
+            )
             return Node.objects.create(**request_data), node_id, True
 
     @staticmethod

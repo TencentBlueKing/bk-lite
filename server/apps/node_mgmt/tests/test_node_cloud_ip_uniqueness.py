@@ -193,31 +193,20 @@ def test_sidecar_create_rejects_existing_cloud_ip(monkeypatch, caplog):
     existing.refresh_from_db()
     assert existing.id == "existing-node-6"
     assert existing.ip == "10.0.0.6"
-    reject_records = [
-        record for record in caplog.records if record.name == "node" and record.msg.startswith("event=sidecar_create_duplicate_cloud_ip")
-    ]
-    assert len(reject_records) == 1
-    assert reject_records[0].levelno == logging.WARNING
-    assert reject_records[0].args == (
-        "ValidationAppException",
-        "brand-new-node-id",
-        "10.0.0.6",
-        region.id,
+    assert not any(record.name == "node" and record.exc_info for record in caplog.records)
+    assert not any(
+        record.name == "node" and "sidecar_create_duplicate_cloud_ip" in (record.msg or "")
+        for record in caplog.records
     )
-    assert reject_records[0].getMessage() == (
-        "event=sidecar_create_duplicate_cloud_ip failed_stage=sidecar_create "
-        "error_type=ValidationAppException reported_node_id=brand-new-node-id "
-        f"ip=10.0.0.6 cloud_region_id={region.id}"
-    )
-    assert reject_records[0].exc_info is None
 
 
-def test_sidecar_create_allows_same_ip_in_different_cloud_region(monkeypatch):
+def test_sidecar_create_allows_same_ip_in_different_cloud_region(monkeypatch, caplog):
     region_a = CloudRegion.objects.create(name="uniqueness-sidecar-a")
     region_b = CloudRegion.objects.create(name="uniqueness-sidecar-b")
     _create_node(region_a, "10.0.0.7", "node-in-a")
     monkeypatch.setattr(Sidecar, "create_default_config", lambda *args, **kwargs: None)
     monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+    caplog.set_level(logging.INFO, logger="node")
 
     response = Sidecar.update_node_client(
         _heartbeat_request("node-in-b", _node_details(region_b.id, "10.0.0.7")),
@@ -227,6 +216,7 @@ def test_sidecar_create_allows_same_ip_in_different_cloud_region(monkeypatch):
     assert response.status_code == 202
     assert Node.objects.filter(ip="10.0.0.7").count() == 2
     assert Node.objects.get(id="node-in-b").cloud_region_id == region_b.id
+    assert not any(record.name == "node" and record.levelno >= logging.INFO for record in caplog.records)
 
 
 def test_historical_duplicate_nodes_remain_and_third_create_is_blocked(monkeypatch, caplog):
@@ -248,24 +238,11 @@ def test_historical_duplicate_nodes_remain_and_third_create_is_blocked(monkeypat
     assert Node.objects.filter(id=first.id).exists()
     assert Node.objects.filter(id=second.id).exists()
     assert not Node.objects.filter(id="historical-three").exists()
-    reject_records = [
-        record for record in caplog.records if record.name == "node" and record.msg.startswith("event=sidecar_create_duplicate_cloud_ip")
-    ]
-    assert len(reject_records) == 1
-    assert reject_records[0].levelno == logging.WARNING
-    assert reject_records[0].args == (
-        "ValidationAppException",
-        "historical-three",
-        "10.0.0.8",
-        region.id,
-    )
-    assert reject_records[0].getMessage() == (
-        "event=sidecar_create_duplicate_cloud_ip failed_stage=sidecar_create "
-        "error_type=ValidationAppException reported_node_id=historical-three "
-        f"ip=10.0.0.8 cloud_region_id={region.id}"
-    )
-    assert reject_records[0].exc_info is None
     assert not any(record.name == "node" and record.exc_info for record in caplog.records)
+    assert not any(
+        record.name == "node" and "sidecar_create_duplicate_cloud_ip" in (record.msg or "")
+        for record in caplog.records
+    )
 
     with pytest.raises(ValidationAppException, match=cloud_ip_already_exists_message("10.0.0.8")):
         assert_cloud_ips_available(region.id, [_install_payload("10.0.0.8")])
