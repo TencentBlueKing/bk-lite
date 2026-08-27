@@ -19,6 +19,7 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 import PermissionWrapper from '@/components/permission';
+import { notifyWebchatAppsChanged } from '@/app/(core)/components/global-webchat/apps-changed';
 
 interface SkillChannelItem {
   id: number;
@@ -206,6 +207,7 @@ const SkillChannelPage: React.FC = () => {
       message.success(t('common.saveSuccess') || '保存成功');
       setModalOpen(false);
       await load();
+      notifyWebchatAppsChanged();
     } catch (e: any) {
       if (e?.errorFields) return;
       const detail = e?.response?.data?.name || e?.response?.data?.message || e?.message;
@@ -221,6 +223,7 @@ const SkillChannelPage: React.FC = () => {
     try {
       await setSkillChannelEnabled(item.id, enabled);
       await load();
+      notifyWebchatAppsChanged();
     } catch (e: any) {
       message.error(e?.message || t('skill.channel.toggleFailed'));
     }
@@ -235,6 +238,7 @@ const SkillChannelPage: React.FC = () => {
       onOk: async () => {
         await deleteSkillChannel(item.id);
         await load();
+        notifyWebchatAppsChanged();
       },
     });
   };

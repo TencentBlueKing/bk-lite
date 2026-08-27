@@ -18,6 +18,8 @@ interface ClientState {
 interface UserInfoState {
   userId: string;
   selectedGroup: { id: number } | null;
+  isSuperUser: boolean;
+  loading: boolean;
 }
 
 let authState: AuthState = {
@@ -32,6 +34,8 @@ let clientState: ClientState = {
 let userInfoState: UserInfoState = {
   userId: 'alice',
   selectedGroup: { id: 7 },
+  isSuperUser: true,
+  loading: false,
 };
 let pathname = '/cmdb';
 
@@ -86,6 +90,8 @@ afterEach(() => {
   userInfoState = {
     userId: 'alice',
     selectedGroup: { id: 7 },
+    isSuperUser: true,
+    loading: false,
   };
   pathname = '/cmdb';
   vi.clearAllMocks();
@@ -129,10 +135,10 @@ describe('GlobalWebChat', () => {
       'script[data-bk-global-webchat]',
     );
 
-    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js?v=20260827-1');
+    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js?v=20260827-5');
     expect(
       document.querySelector<HTMLLinkElement>('link[data-bk-global-webchat]')?.getAttribute('href'),
-    ).toBe('/webchat/style.css?v=20260827-1');
+    ).toBe('/webchat/style.css?v=20260827-5');
 
     window.WebChat = {
       default: initialize,
@@ -147,6 +153,8 @@ describe('GlobalWebChat', () => {
         apiKey: 'user-token',
         userId: 'alice',
         teamId: '7',
+        canManageAgents: true,
+        manageAgentsUrl: '/opspilot/studio',
         platform: expect.objectContaining({
           applicationsUrl: '/api/proxy/opspilot/skill_channel/platform/',
           deleteSessionUrl: '/api/proxy/opspilot/skill_channel/conversations/delete/',
@@ -215,5 +223,65 @@ describe('GlobalWebChat', () => {
 
     expect(document.getElementById('webchat-root')).toBeNull();
     expect(showError).toHaveBeenCalledWith('common.loadFailed');
+  });
+
+  it('waits for user info so canManageAgents is not the default superuser flag', () => {
+    authState = {
+      token: 'user-token',
+      isAuthenticated: true,
+      isCheckingAuth: false,
+    };
+    clientState = {
+      clientData: [{ name: 'opspilot' }],
+      loading: false,
+    };
+    userInfoState = {
+      userId: 'alice',
+      selectedGroup: { id: 7 },
+      isSuperUser: true,
+      loading: true,
+    };
+
+    render(<GlobalWebChat />);
+
+    expect(document.querySelector('script[data-bk-global-webchat]')).toBeNull();
+  });
+
+  it('tells WebChat when the current user cannot manage agents', () => {
+    authState = {
+      token: 'user-token',
+      isAuthenticated: true,
+      isCheckingAuth: false,
+    };
+    clientState = {
+      clientData: [{ name: 'opspilot' }],
+      loading: false,
+    };
+    userInfoState = {
+      userId: 'alice',
+      selectedGroup: { id: 7 },
+      isSuperUser: false,
+      loading: false,
+    };
+    const initialize = vi.fn(() => {
+      const root = document.createElement('div');
+      root.id = 'webchat-root';
+      document.body.appendChild(root);
+    });
+
+    render(<GlobalWebChat />);
+    window.WebChat = { default: initialize };
+    document.querySelector<HTMLLinkElement>('link[data-bk-global-webchat]')
+      ?.dispatchEvent(new Event('load'));
+    document.querySelector<HTMLScriptElement>('script[data-bk-global-webchat]')
+      ?.dispatchEvent(new Event('load'));
+
+    expect(initialize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        canManageAgents: false,
+        manageAgentsUrl: '/opspilot/studio',
+      }),
+      null,
+    );
   });
 });

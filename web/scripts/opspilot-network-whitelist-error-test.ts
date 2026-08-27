@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { isValidElement, type ReactElement } from 'react';
 import {
+  extractRequestErrorMessage,
   getRequestErrorPresentation,
   NETWORK_WHITELIST_REQUIRED,
   renderRequestErrorPresentation,
@@ -36,7 +37,21 @@ assert.equal(link.props.href, '/system-manager/settings/network-whitelist');
 assert.equal(link.props.target, '_blank');
 assert.equal(link.props.rel, 'noopener noreferrer');
 
+assert.equal(
+  extractRequestErrorMessage({ result: false, message: '', data: '实例不存在' }, 404),
+  '实例不存在',
+);
+assert.equal(
+  extractRequestErrorMessage({ result: false, message: '实例不存在', data: {} }, 404),
+  '实例不存在',
+);
+assert.equal(
+  extractRequestErrorMessage({ message: '   ' }, 404),
+  'Request failed (404)',
+);
+
 const requestSource = readFileSync(new URL('../src/utils/request.ts', import.meta.url), 'utf8');
+assert.match(requestSource, /extractRequestErrorMessage\(payload, status\)/);
 assert.match(
   requestSource,
   /new HandledRequestError\(messageText,[\s\S]*presentation: presentation \?\? undefined/,

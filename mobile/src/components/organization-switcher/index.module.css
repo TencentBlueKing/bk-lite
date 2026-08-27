@@ -26,10 +26,10 @@
   display: inline-flex;
   width: 100%;
   min-width: 0;
-  min-height: 44px;
+  min-height: 28px;
   padding: 0;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: space-between;
   gap: 4px;
   color: var(--color-text-1);
   cursor: pointer;
@@ -53,8 +53,8 @@
   min-width: 0;
   overflow: hidden;
   font-size: var(--font-size-secondary);
-  font-weight: 400;
-  line-height: 1.4;
+  font-weight: 600;
+  line-height: 1.35;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;

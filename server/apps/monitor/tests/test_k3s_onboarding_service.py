@@ -76,7 +76,7 @@ def test_generate_commands_are_bounded_and_match_private_ca_install_convention(
     )
     mocker.patch(
         "apps.monitor.services.k3s_onboarding.NodeMgmt"
-    ).return_value.get_cloud_region_envconfig.return_value = {
+    ).return_value.get_cloud_region_public_config.return_value = {
         "NODE_SERVER_URL": "https://bk-lite.example/base",
     }
 

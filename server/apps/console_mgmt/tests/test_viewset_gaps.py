@@ -7,7 +7,6 @@
 - UserAppSetViewSet.current_user_apps 内置应用翻译 description/tags 分支。
 """
 import pydantic.root_model  # noqa
-
 import pytest
 
 from apps.console_mgmt.models import Notification, NotificationRead, UserAppSet
@@ -47,9 +46,7 @@ class TestMarkBatchAsRead:
         n_new = NotificationFactory()
         # 预置一条 is_read=False 的已存在行
         NotificationRead.objects.create(notification=n_existing, user=user, is_read=False)
-        resp = client.post(
-            f"{BASE}mark_batch_as_read/", data={"ids": [n_existing.id, n_new.id]}, format="json"
-        )
+        resp = client.post(f"{BASE}mark_batch_as_read/", data={"ids": [n_existing.id, n_new.id]}, format="json")
         assert resp.status_code == 200
         existing = NotificationRead.objects.get(user=user, notification_id=n_existing.id)
         assert existing.is_read is True
@@ -108,6 +105,29 @@ class TestCurrentUserAppsTranslation:
         item = data[0]
         # tags 应从 App 表最新值刷新（经 loader 翻译，缺翻译时回退原 key）
         assert item["tags"] == ["tag.ops"] or all(isinstance(t, str) for t in item["tags"])
+
+    def test_内置应用翻译display_name(self, make_client):
+        from apps.system_mgmt.models.app import App
+
+        user, client = make_client("namedisplay", locale="zh-Hans")
+        App.objects.create(
+            name="alarm",
+            display_name="Alarm",
+            url="/alarm",
+            is_build_in=True,
+            tags=[],
+        )
+        UserAppSet.objects.create(
+            username=user.username,
+            domain=user.domain,
+            app_config_list=[
+                {"name": "alarm", "is_build_in": True, "display_name": "Alarm", "description": "old"},
+            ],
+        )
+        resp = client.get(f"{APP_BASE}current_user_apps/")
+        assert resp.status_code == 200
+        item = _data(resp)[0]
+        assert item["display_name"] == "告警中心"
 
     def test_内置应用入口url跟随App表刷新(self, make_client):
         from apps.system_mgmt.models.app import App

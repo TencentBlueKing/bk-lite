@@ -13,7 +13,7 @@ pytestmark = pytest.mark.unit
 def _patch_nodemgmt(env_config):
     return patch(
         "apps.monitor.services.flow_access_guide.NodeMgmt",
-        return_value=type("M", (), {"get_cloud_region_envconfig": lambda self, _id: env_config})(),
+        return_value=type("M", (), {"get_cloud_region_public_config": lambda self, _id: env_config})(),
     )
 
 

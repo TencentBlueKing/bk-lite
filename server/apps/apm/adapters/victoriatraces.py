@@ -157,7 +157,12 @@ class VictoriaTracesTelemetryStore:
         *,
         session: requests.Session | None = None,
     ):
-        self.endpoint = (endpoint or os.getenv("APM_VICTORIATRACES_QUERY_ENDPOINT") or "http://127.0.0.1:10428").rstrip("/")
+        self.endpoint = (
+            endpoint
+            or os.getenv("VICTORIATRACES_HOST")
+            or os.getenv("APM_VICTORIATRACES_QUERY_ENDPOINT")
+            or "http://127.0.0.1:10428"
+        ).rstrip("/")
         self.session = session or requests.Session()
         self.timeout = (3, int(os.getenv("APM_VICTORIATRACES_QUERY_TIMEOUT", "15")))
         self.verify = os.getenv("APM_VICTORIATRACES_VERIFY_TLS", "true").casefold() != "false"

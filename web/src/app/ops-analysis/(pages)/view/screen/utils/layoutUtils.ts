@@ -27,6 +27,10 @@ import {
 import { validateDateRangeValue } from "@/app/ops-analysis/utils/dateRange";
 import { getScreenWidgetDefinition } from "../constants/widgets";
 import { omitForeignChartTypeFields } from "@/app/ops-analysis/components/widgetConfig/utils/submitConfig";
+import {
+  isSceneWidgetAllowedOnSurface,
+  isSceneWidgetType,
+} from "@/app/ops-analysis/types/sceneWidgetCapability";
 
 const DEFAULT_INSERT_X = 48;
 const DEFAULT_INSERT_Y = 96;
@@ -45,7 +49,7 @@ export const normalizeScreenWidgetAppearance = (
 
 export const canConfigureScreenWidgetFrame = (
   chartType?: ScreenWidgetChartType | string,
-) => chartType === "room3D";
+) => chartType === "room3D" || chartType === "application3D";
 
 export const getDefaultScreenWidgetAppearance = (
   chartType?: ScreenWidgetChartType | string,
@@ -270,8 +274,8 @@ export const createScreenWidgetItem = (
     valueConfig: {
       chartType,
       appearance: getDefaultScreenWidgetAppearance(chartType),
-      ...(chartType === "networkStatusTopology"
-        ? { sceneWidgetType: "networkStatusTopology" as const }
+      ...(isSceneWidgetType(chartType)
+        ? { sceneWidgetType: chartType }
         : {}),
     },
   };
@@ -288,12 +292,13 @@ export const addConfiguredScreenWidget = (
   viewSets: ScreenViewSets,
   values: WidgetConfig,
 ): ScreenViewSets => {
-  const chartType =
-    values.sceneWidgetType === "networkStatusTopology"
-      ? "networkStatusTopology"
-      : values.chartType;
+  const chartType = values.sceneWidgetType || values.chartType;
 
-  if (!isScreenWidgetChartType(chartType)) {
+  if (
+    !isScreenWidgetChartType(chartType) ||
+    (values.sceneWidgetType &&
+      !isSceneWidgetAllowedOnSurface(values.sceneWidgetType, "screen"))
+  ) {
     throw new Error(`Unsupported screen widget type: ${chartType || "empty"}`);
   }
 
@@ -314,8 +319,8 @@ export const addConfiguredScreenWidget = (
               chartType,
               values.appearance,
             ),
-            ...(chartType === "networkStatusTopology"
-              ? { sceneWidgetType: "networkStatusTopology" as const }
+            ...(isSceneWidgetType(chartType)
+              ? { sceneWidgetType: chartType }
               : {}),
           },
           chartType,

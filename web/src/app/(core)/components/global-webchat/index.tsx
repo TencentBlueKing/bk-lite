@@ -17,9 +17,10 @@ import {
 } from './visibility';
 import './global-webchat.css';
 
-const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20260827-1';
-const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20260827-1';
+const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20260827-5';
+const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20260827-5';
 const WEBCHAT_ROOT_ID = 'webchat-root';
+const MANAGE_AGENTS_URL = '/opspilot/studio';
 
 const PLATFORM = {
   applicationsUrl: '/api/proxy/opspilot/skill_channel/platform/',
@@ -41,6 +42,8 @@ interface WebChatPlatformConfig {
   platform: typeof PLATFORM & { storageKey: string };
   userId: string;
   teamId: string;
+  canManageAgents?: boolean;
+  manageAgentsUrl?: string;
   collectContext?: (hint?: { message?: string }) => Promise<unknown>;
 }
 
@@ -90,13 +93,14 @@ const getOrCreateScript = () => {
 const destroyWebChat = () => {
   window.WebChat?.destroy?.();
   document.getElementById(WEBCHAT_ROOT_ID)?.remove();
+  document.documentElement.style.setProperty('--bk-webchat-dock-width', '0px');
 };
 
 const GlobalWebchat = () => {
   const pathname = usePathname();
   const { token, isAuthenticated, isCheckingAuth } = useAuth();
   const { clientData, appConfigList, loading, appConfigLoading } = useClientData();
-  const { userId, selectedGroup } = useUserInfoContext();
+  const { userId, selectedGroup, isSuperUser, loading: userInfoLoading } = useUserInfoContext();
   const { t } = useTranslation();
   const loadErrorMessage = t('common.loadFailed');
   const apps = appConfigList.length > 0 ? appConfigList : clientData;
@@ -105,6 +109,7 @@ const GlobalWebchat = () => {
   const shouldMount = shouldKeepGlobalWebchat({
     authenticated: isAuthenticated && !isCheckingAuth,
     clientLoading: loading || appConfigLoading,
+    userInfoLoading,
     hasOpsPilotAccess: hasOpsPilotClientAccess(apps),
     pathname,
     alreadyMounted: mountedRef.current,
@@ -153,6 +158,8 @@ const GlobalWebchat = () => {
           },
           userId: resolvedUserId,
           teamId,
+          canManageAgents: isSuperUser,
+          manageAgentsUrl: MANAGE_AGENTS_URL,
           collectContext: async (hint) => {
             installPageContextBridge();
             return window.__BK_AI_PAGE_CONTEXT__?.collect(hint) ?? null;
@@ -198,7 +205,7 @@ const GlobalWebchat = () => {
       script.removeEventListener('error', handleResourceError);
       destroyWebChat();
     };
-  }, [shouldMount, token, storageKey, resolvedUserId, teamId, loadErrorMessage]);
+  }, [shouldMount, token, storageKey, resolvedUserId, teamId, isSuperUser, loadErrorMessage]);
 
   return null;
 };

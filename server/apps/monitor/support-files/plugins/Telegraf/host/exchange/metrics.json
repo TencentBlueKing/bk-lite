@@ -1,0 +1,598 @@
+{
+  "plugin": "Exchange",
+  "plugin_desc": "Collects Exchange MSExchange queue/OWA/HttpProxy (and related) performance counters with local Telegraf win_perf_counters, plus http_response probes of OWA and EWS. Install telegraf_windows on the Exchange Windows host. Does not implement Get-HealthReport or agentless remote WMI.",
+  "collector": "Telegraf",
+  "collect_type": "host",
+  "support_collect_detect": false,
+  "status_query": "any({instance_type='exchange', collect_type='host'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "asset.ip",
+      "value_type": "ip",
+      "resolver": "selected_node",
+      "options": {
+        "selection_field": "node_ids",
+        "node_field": "ip",
+        "required": true
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "asset.ip",
+      "title": "monitor.views.assetIp",
+      "order": 10
+    }
+  ],
+  "name": "Exchange",
+  "icon": "mm-exchange_Exchange",
+  "type": "Middleware",
+  "description": "Exchange Server monitoring via local telegraf_windows",
+  "default_metric": "any({instance_type='exchange'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "exchange_active_mailbox_delivery_queue_length",
+    "exchange_owa_current_unique_users",
+    "exchange_poison_queue_length",
+    "exchange_owa_probe_result_code"
+  ],
+  "display_fields": [
+    {
+      "name": "Mailbox Delivery Queue",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "Exchange",
+          "metric": "exchange_active_mailbox_delivery_queue_length"
+        }
+      ]
+    },
+    {
+      "name": "Poison Queue",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "Exchange",
+          "metric": "exchange_poison_queue_length"
+        }
+      ]
+    },
+    {
+      "name": "OWA Unique Users",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "Exchange",
+          "metric": "exchange_owa_current_unique_users"
+        }
+      ]
+    },
+    {
+      "name": "OWA Requests",
+      "sort_order": 3,
+      "metrics": [
+        {
+          "plugin": "Exchange",
+          "metric": "exchange_owa_requests_persec"
+        }
+      ]
+    },
+    {
+      "name": "OWA Probe",
+      "sort_order": 4,
+      "metrics": [
+        {
+          "plugin": "Exchange",
+          "metric": "exchange_owa_probe_result_code"
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_group": "Transport Queue",
+      "name": "exchange_active_mailbox_delivery_queue_length",
+      "query": "win_exchange_transport_queues_Active_Mailbox_Delivery_Queue_Length{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Active Mailbox Delivery Queue Length",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchangeTransport Queues active mailbox delivery queue length."
+    },
+    {
+      "metric_group": "Transport Queue",
+      "name": "exchange_retry_mailbox_delivery_queue_length",
+      "query": "win_exchange_transport_queues_Retry_Mailbox_Delivery_Queue_Length{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Retry Mailbox Delivery Queue Length",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchangeTransport Queues retry mailbox delivery queue length."
+    },
+    {
+      "metric_group": "Transport Queue",
+      "name": "exchange_poison_queue_length",
+      "query": "win_exchange_transport_queues_Poison_Queue_Length{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Poison Queue Length",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchangeTransport Queues poison queue length."
+    },
+    {
+      "metric_group": "Transport Queue",
+      "name": "exchange_unreachable_queue_length",
+      "query": "win_exchange_transport_queues_Unreachable_Queue_Length{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Unreachable Queue Length",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchangeTransport Queues unreachable queue length."
+    },
+    {
+      "metric_group": "Transport Queue",
+      "name": "exchange_submission_queue_length",
+      "query": "win_exchange_transport_queues_Submission_Queue_Length{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Submission Queue Length",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchangeTransport Queues submission queue length."
+    },
+    {
+      "metric_group": "Transport Queue",
+      "name": "exchange_external_active_remote_delivery_queue_length",
+      "query": "win_exchange_transport_queues_External_Active_Remote_Delivery_Queue_Length{instance_type=\"exchange\", __$labels__}",
+      "display_name": "External Active Remote Delivery Queue Length",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchangeTransport Queues external active remote delivery queue length."
+    },
+    {
+      "metric_group": "OWA",
+      "name": "exchange_owa_current_unique_users",
+      "query": "win_exchange_owa_Current_Unique_Users{instance_type=\"exchange\", __$labels__}",
+      "display_name": "OWA Current Unique Users",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange OWA currently logged-on unique users."
+    },
+    {
+      "metric_group": "OWA",
+      "name": "exchange_owa_requests_persec",
+      "query": "win_exchange_owa_Requests_persec{instance_type=\"exchange\", __$labels__}",
+      "display_name": "OWA Requests",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange OWA requests per second."
+    },
+    {
+      "metric_group": "HTTP Proxy",
+      "name": "exchange_http_proxy_outstanding_proxy_requests",
+      "query": "win_exchange_http_proxy_Outstanding_Proxy_Requests{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Outstanding Proxy Requests",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange HttpProxy outstanding proxy requests."
+    },
+    {
+      "metric_group": "HTTP Proxy",
+      "name": "exchange_http_proxy_avg_auth_latency",
+      "query": "win_exchange_http_proxy_Average_Authentication_Latency{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Average Authentication Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange HttpProxy average authentication latency."
+    },
+    {
+      "metric_group": "HTTP Proxy",
+      "name": "exchange_http_proxy_requests_persec",
+      "query": "win_exchange_http_proxy_Proxy_Requests_persec{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Proxy Requests",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange HttpProxy proxy requests per second."
+    },
+    {
+      "metric_group": "HTTP Proxy",
+      "name": "exchange_http_proxy_mailbox_proxy_failure_rate",
+      "query": "win_exchange_http_proxy_Mailbox_Server_Proxy_Failure_Rate{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Mailbox Proxy Failure Rate",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange HttpProxy mailbox server proxy failure rate."
+    },
+    {
+      "metric_group": "RPC",
+      "name": "exchange_rpc_active_user_count",
+      "query": "win_exchange_rpc_Active_User_Count{instance_type=\"exchange\", __$labels__}",
+      "display_name": "RPC Active User Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange RpcClientAccess active user count."
+    },
+    {
+      "metric_group": "RPC",
+      "name": "exchange_rpc_requests",
+      "query": "win_exchange_rpc_RPC_Requests{instance_type=\"exchange\", __$labels__}",
+      "display_name": "RPC Requests",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange RpcClientAccess requests currently being processed."
+    },
+    {
+      "metric_group": "RPC",
+      "name": "exchange_rpc_averaged_latency",
+      "query": "win_exchange_rpc_RPC_Averaged_Latency{instance_type=\"exchange\", __$labels__}",
+      "display_name": "RPC Averaged Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange RpcClientAccess averaged latency."
+    },
+    {
+      "metric_group": "RPC",
+      "name": "exchange_rpc_user_count",
+      "query": "win_exchange_rpc_User_Count{instance_type=\"exchange\", __$labels__}",
+      "display_name": "RPC User Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange RpcClientAccess user count."
+    },
+    {
+      "metric_group": "ActiveSync",
+      "name": "exchange_activesync_requests_persec",
+      "query": "win_exchange_activesync_Requests_persec{instance_type=\"exchange\", __$labels__}",
+      "display_name": "ActiveSync Requests",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange ActiveSync requests per second."
+    },
+    {
+      "metric_group": "ActiveSync",
+      "name": "exchange_activesync_ping_commands_pending",
+      "query": "win_exchange_activesync_Ping_Commands_Pending{instance_type=\"exchange\", __$labels__}",
+      "display_name": "ActiveSync Ping Commands Pending",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange ActiveSync ping commands pending."
+    },
+    {
+      "metric_group": "Availability",
+      "name": "exchange_availability_requests_sec",
+      "query": "win_exchange_availability_Availability_Requests_(sec){instance_type=\"exchange\", __$labels__}",
+      "display_name": "Availability Requests",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange Availability Service requests per second."
+    },
+    {
+      "metric_group": "Autodiscover",
+      "name": "exchange_autodiscover_requests_persec",
+      "query": "win_exchange_autodiscover_Requests_persec{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Autodiscover Requests",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchangeAutodiscover requests per second."
+    },
+    {
+      "metric_group": "MAPI",
+      "name": "exchange_mapihttp_active_user_count",
+      "query": "win_exchange_mapihttp_Active_User_Count{instance_type=\"exchange\", __$labels__}",
+      "display_name": "MAPI HTTP Active User Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange MapiHttp Emsmdb active user count."
+    },
+    {
+      "metric_group": "AD Access",
+      "name": "exchange_adaccess_ldap_timeout_errors_persec",
+      "query": "win_exchange_adaccess_LDAP_Timeout_Errors_persec{instance_type=\"exchange\", __$labels__}",
+      "display_name": "AD Access LDAP Timeout Errors",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange ADAccess Processes LDAP timeout errors per second."
+    },
+    {
+      "metric_group": "AD Access",
+      "name": "exchange_adaccess_ldap_read_time",
+      "query": "win_exchange_adaccess_LDAP_Read_Time{instance_type=\"exchange\", __$labels__}",
+      "display_name": "AD Access LDAP Read Time",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange ADAccess Processes LDAP read time."
+    },
+    {
+      "metric_group": "Workload",
+      "name": "exchange_workload_active_tasks",
+      "query": "win_exchange_workload_ActiveTasks{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Workload Active Tasks",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange WorkloadManagement Workloads active tasks."
+    },
+    {
+      "metric_group": "Workload",
+      "name": "exchange_workload_queued_tasks",
+      "query": "win_exchange_workload_QueuedTasks{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Workload Queued Tasks",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange WorkloadManagement Workloads queued tasks."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "exchange_owa_probe_result_code",
+      "query": "http_response_result_code{instance_type=\"exchange\", endpoint=\"owa\", __$labels__}",
+      "display_name": "OWA Probe Result",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"响应内容不匹配\",\"id\":1,\"color\":\"#faad14\"},{\"name\":\"响应体读取失败\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"连接失败\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"超时\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"DNS错误\",\"id\":5,\"color\":\"#ff4d4f\"},{\"name\":\"响应状态码不匹配\",\"id\":6,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Local Telegraf http_response probe of the OWA URL. 0 means the probe succeeded."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "exchange_ews_probe_result_code",
+      "query": "http_response_result_code{instance_type=\"exchange\", endpoint=\"ews\", __$labels__}",
+      "display_name": "EWS Probe Result",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"响应内容不匹配\",\"id\":1,\"color\":\"#faad14\"},{\"name\":\"响应体读取失败\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"连接失败\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"超时\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"DNS错误\",\"id\":5,\"color\":\"#ff4d4f\"},{\"name\":\"响应状态码不匹配\",\"id\":6,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Local Telegraf http_response probe of the EWS URL. 0 means the probe succeeded."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "exchange_owa_probe_response_time",
+      "query": "http_response_response_time{instance_type=\"exchange\", endpoint=\"owa\", __$labels__}",
+      "display_name": "OWA Probe Response Time",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "OWA HTTP probe response time in seconds."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "exchange_ews_probe_response_time",
+      "query": "http_response_response_time{instance_type=\"exchange\", endpoint=\"ews\", __$labels__}",
+      "display_name": "EWS Probe Response Time",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "EWS HTTP probe response time in seconds."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "exchange_owa_http_response_code",
+      "query": "http_response_http_response_code{instance_type=\"exchange\", endpoint=\"owa\", __$labels__}",
+      "display_name": "OWA HTTP Status Code",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "HTTP status code returned by the OWA probe."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "exchange_ews_http_response_code",
+      "query": "http_response_http_response_code{instance_type=\"exchange\", endpoint=\"ews\", __$labels__}",
+      "display_name": "EWS HTTP Status Code",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "HTTP status code returned by the EWS probe."
+    }
+  ]
+}

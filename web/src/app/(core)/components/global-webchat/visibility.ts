@@ -22,10 +22,11 @@ export function isGlobalWebchatExcludedPath(pathname: string | null | undefined)
 export function shouldMountGlobalWebchat(options: {
   authenticated: boolean;
   clientLoading: boolean;
+  userInfoLoading?: boolean;
   hasOpsPilotAccess: boolean;
   pathname: string | null | undefined;
 }): boolean {
-  if (!options.authenticated || options.clientLoading) {
+  if (!options.authenticated || options.clientLoading || options.userInfoLoading) {
     return false;
   }
   if (!options.hasOpsPilotAccess) {
@@ -37,11 +38,15 @@ export function shouldMountGlobalWebchat(options: {
 export function shouldKeepGlobalWebchat(options: {
   authenticated: boolean;
   clientLoading: boolean;
+  userInfoLoading?: boolean;
   hasOpsPilotAccess: boolean;
   pathname: string | null | undefined;
   alreadyMounted: boolean;
 }): boolean {
   if (!options.authenticated || isGlobalWebchatExcludedPath(options.pathname)) {
+    return false;
+  }
+  if (options.userInfoLoading && !options.alreadyMounted) {
     return false;
   }
   if (options.clientLoading) {
