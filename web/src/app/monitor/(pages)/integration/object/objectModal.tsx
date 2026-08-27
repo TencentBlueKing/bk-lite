@@ -67,6 +67,7 @@ const ICON_LIST = [
   'cc-node_Node',
   'cc-pod_Pod',
   'cc-zookeeper_ZooKeeper',
+  'cc-active-directory_AD',
   'cc-nacos_Nacos',
   'cc-minio_Minio',
   'cc-tidb_TiDB',
@@ -118,6 +119,7 @@ const ICON_LIST = [
   'mm-weblogic_Weblogic',
   'mm-website_网站',
   'mm-zookeeper_Zookeeper',
+  'mm-active-directory_AD',
   'mm-influxdb_InfluxDB',
   'mm-haproxy_HAProxy',
   'mm-consul_Consul'

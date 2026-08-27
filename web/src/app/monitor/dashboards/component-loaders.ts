@@ -19,6 +19,7 @@ const COMMUNITY_DASHBOARD_COMPONENT_LOADERS: Record<string, DashboardComponentLo
   rabbitmq: () => import('./objects/rabbitmq'),
   tomcat: () => import('./objects/tomcat'),
   zookeeper: () => import('./objects/zookeeper'),
+  'active-directory': () => import('./objects/active-directory'),
   kafka: () => import('./objects/kafka'),
   etcd: () => import('./objects/etcd'),
   haproxy: () => import('./objects/haproxy'),

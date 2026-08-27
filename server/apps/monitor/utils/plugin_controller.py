@@ -58,6 +58,8 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "ip",
     "ip_version",
     "jmx_url",
+    "ldap_port",
+    "ldaps_port",
     "logical_instance_value",
     "metric_extensions",
     "metrics_api_version",
