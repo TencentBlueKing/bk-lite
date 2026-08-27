@@ -7,6 +7,10 @@ import type { Graph as X6Graph, Node, Edge, Cell } from '@antv/x6';
 import type { Attr } from '@antv/x6/es/registry/attr';
 import { COLORS } from '../constants/nodeDefaults';
 import { addEdgeTools } from '../utils/topologyUtils';
+import {
+  highlightTopologyNode,
+  resetTopologyNodeChrome,
+} from '../utils/topologySelectionChrome';
 
 const OPERATION_HISTORY_LIMIT = 50; // 操作历史记录最大数量
 const UNDO_REDO_DEBOUNCE = 50; // 撤销/重做防抖时间（ms）
@@ -38,17 +42,7 @@ export const useGraphHistory = (graphInstance: X6Graph | null) => {
 
   const resetAllStyles = useCallback((graph: X6Graph) => {
     graph.getNodes().forEach((node: Node) => {
-      const nodeData = node.getData();
-      let borderColor;
-      if (nodeData?.type === 'single-value') {
-        borderColor = nodeData.styleConfig?.borderColor || 'transparent';
-      } else if (nodeData?.type === 'text') {
-        borderColor = 'transparent';
-      } else {
-        borderColor = nodeData.styleConfig?.borderColor || COLORS.BORDER.DEFAULT;
-      }
-      node.setAttrByPath('body/stroke', borderColor);
-      node.setAttrByPath('body/strokeWidth', 1);
+      resetTopologyNodeChrome(node);
     });
 
     graph.getEdges().forEach((edge: Edge) => {
@@ -66,8 +60,7 @@ export const useGraphHistory = (graphInstance: X6Graph | null) => {
 
   const highlightCell = useCallback((cell: Cell) => {
     if (cell.isNode()) {
-      cell.setAttrByPath('body/stroke', '#1890ff');
-      cell.setAttrByPath('body/strokeWidth', 2);
+      highlightTopologyNode(cell);
     } else if (cell.isEdge()) {
       cell.setAttrs({
         line: {
@@ -81,22 +74,11 @@ export const useGraphHistory = (graphInstance: X6Graph | null) => {
   }, []);
 
   const highlightNode = useCallback((node: Node) => {
-    node.setAttrByPath('body/stroke', '#1890ff');
-    node.setAttrByPath('body/strokeWidth', 2);
+    highlightTopologyNode(node);
   }, []);
 
   const resetNodeStyle = useCallback((node: Node) => {
-    const nodeData = node.getData();
-    let borderColor;
-    if (nodeData?.type === 'single-value') {
-      borderColor = nodeData.styleConfig?.borderColor || 'transparent';
-    } else if (nodeData?.type === 'text') {
-      borderColor = 'transparent';
-    } else {
-      borderColor = nodeData.styleConfig?.borderColor || COLORS.BORDER.DEFAULT;
-    }
-    node.setAttrByPath('body/stroke', borderColor);
-    node.setAttrByPath('body/strokeWidth', 1);
+    resetTopologyNodeChrome(node);
   }, []);
 
   const recordOperation = useCallback((operation: OperationRecord) => {
