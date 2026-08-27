@@ -786,7 +786,7 @@
     },
     "topology": {
       "title": "Service topology",
-      "description": "Service dependencies are aggregated from Traces observed in the time window. Node size represents observed call volume; color represents error-rate health; labels show P95.",
+      "description": "Service dependencies are aggregated from Traces observed in the time window. Node size represents observed call volume; color represents error-rate health; labels show P95. Uninstrumented downstreams appear on this page as inferred nodes.",
       "chartAria": "APM service call topology",
       "nodeAria": "{name}, {health}, P95 {latency}, {spans} calls observed in the time window",
       "nodeTitle": "{name}\n{language} · {namespace} · {environment}\nP95 {latency} · error rate {errors} · observed calls {spans}",
@@ -834,7 +834,19 @@
       "callerP95": "Caller P95",
       "calleeP95": "Callee P95",
       "callCount": "{count} calls",
-      "none": "None"
+      "none": "None",
+      "inferredBadge": "Inferred",
+      "caller": "Caller",
+      "peerAddress": "Address",
+      "sampleClientSpans": "Sample client spans",
+      "requestStatus": "Slice by request status",
+      "allRequests": "All requests",
+      "errorRequestsOnly": "Error requests only",
+      "okRequestsOnly": "OK requests only",
+      "filterOperation": "Slice by operation name",
+      "minDuration": "Minimum duration",
+      "minDurationPlaceholder": "Min duration ms",
+      "clearSlice": "Clear slice"
     },
     "instances": {
       "defaultActiveHelp": "Active instances are shown by default. Change the status or time range to view silent and historical instances.",

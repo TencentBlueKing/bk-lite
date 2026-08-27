@@ -204,6 +204,54 @@ describe('APM 服务拓扑画布', () => {
     expect(screen.getByText('正在隔离查看一个服务及其直接依赖。')).not.toBeNull();
   });
 
+  it('推断节点展示角标，调查栏隐藏服务详情并列出样本 Client Span', async () => {
+    api.getTopology.mockResolvedValue({
+      nodes: [
+        node('catalog'),
+        node('mysql', {
+          kind: 'inferred',
+          fold_key: 'mysql',
+          inferred_system: 'mysql',
+          language: '',
+          request_rate: null,
+          sample_traces: [{
+            trace_id: 'mysql-trace',
+            span_id: 'span-1',
+            span_name: 'SELECT orders',
+            started_at: '2026-08-26T00:00:00.000Z',
+            duration_ms: 12,
+            status: 'ok',
+            caller_service_name: 'catalog',
+          }],
+        }),
+      ],
+      edges: [edge('catalog', 'mysql')],
+      sampled_traces: 1,
+      truncated: false,
+      data_state: 'available',
+    });
+    const result = renderWithApmIntl(<ApmTopologyPage />);
+    await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
+    await waitFor(() => expect(result.container.querySelector('[data-node-kind="inferred"]')).not.toBeNull());
+    expect(screen.getAllByText('推断').length).toBeGreaterThan(0);
+    fireEvent.click(result.container.querySelector('[data-node-id="mysql"]') as Element);
+    expect(await screen.findByText('样本 Client Span')).not.toBeNull();
+    expect(screen.getByRole('link', { name: /SELECT orders/ })).not.toBeNull();
+    expect(screen.queryByRole('link', { name: '服务详情' })).toBeNull();
+    expect(screen.getByRole('button', { name: '隔离一跳' })).not.toBeNull();
+  });
+
+  it('仅错误请求与只看异常可同时存在且语义不同', async () => {
+    renderWithApmIntl(<ApmTopologyPage />);
+    await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
+    expect(screen.getByRole('button', { name: '只看异常' })).not.toBeNull();
+    expect(screen.getByRole('combobox', { name: '按请求状态切片' })).not.toBeNull();
+    expect(screen.getByRole('textbox', { name: '按操作名切片' })).not.toBeNull();
+    const callsBeforeAnomaly = api.getTopology.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: '只看异常' }));
+    expect(api.getTopology.mock.calls.length).toBe(callsBeforeAnomaly);
+  });
+
   it('缩放按钮改变画布视图而不离开页面', async () => {
     renderWithApmIntl(<ApmTopologyPage />);
     const svg = await screen.findByRole('img', { name: 'APM 服务调用拓扑' });

@@ -1,7 +1,7 @@
 # APM 推断下游产品决策记忆
 
 - 最近更新：2026-08-26
-- 当前规格：尚未拆 change spec；本文件是已对齐的设计方案。
+- 当前规格：`specs/changes/apm-inferred-downstream/spec.md`
 
 ## 产品定位
 

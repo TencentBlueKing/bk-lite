@@ -91,8 +91,13 @@ export function formatCompactLatency(ms: number): string {
 
 export function formatTopologyEdgeMetrics(edge: {
   sampled_calls: number;
+  p95_ms?: number | null;
+  error_rate?: number | null;
 }): string {
-  return formatNumber(edge.sampled_calls);
+  const parts = [formatNumber(edge.sampled_calls)];
+  if (edge.p95_ms != null) parts.push(formatCompactLatency(edge.p95_ms));
+  if (edge.error_rate != null) parts.push(formatErrorRate(edge.error_rate));
+  return parts.join(' · ');
 }
 
 export function formatPerSecond(value: string, t?: Translate): string {

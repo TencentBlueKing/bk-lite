@@ -151,6 +151,22 @@ describe('APM 应用拓扑聚焦', () => {
       'gateway>checkout',
     ]);
   });
+
+  it('应用聚焦不把推断下游算进一跳邻居', () => {
+    const graph: ApmTopologyGraph = {
+      nodes: [
+        { ...node('checkout'), id: 'checkout', service_namespace: 'shop' },
+        { ...node('mysql'), id: 'inferred:prod:mysql', kind: 'inferred', fold_key: 'mysql' },
+      ],
+      edges: [edge('checkout', 'inferred:prod:mysql')],
+      sampled_traces: 1,
+      truncated: false,
+      data_state: 'available',
+    };
+    const focused = focusApplicationTopology(graph, 'shop');
+    expect(focused.graph.nodes.map((item) => item.id)).toEqual(['checkout']);
+    expect(focused.graph.edges).toEqual([]);
+  });
 });
 
 describe('APM 服务拓扑力导向布局', () => {

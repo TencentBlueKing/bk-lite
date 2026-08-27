@@ -225,7 +225,13 @@ export default function TopologyCanvas({
           const isHighlighted = highlightedIds
             ? highlightedIds.has(edge.source) && highlightedIds.has(edge.target) && (edge.source === highlightNodeId || edge.target === highlightNodeId)
             : true;
-          const color = isSelected ? EDGE_STROKE_ACTIVE : EDGE_STROKE;
+          const color = isSelected
+            ? EDGE_STROKE_ACTIVE
+            : edge.health === 'critical'
+              ? topologyHealthColors.critical
+              : edge.health === 'warning'
+                ? topologyHealthColors.warning
+                : EDGE_STROKE;
           const strokeWidth = Math.max(1, Math.min(2.4, 0.9 + (edge.sampled_calls / maxCalls) * 1.4));
           return (
             <g
@@ -302,6 +308,7 @@ export default function TopologyCanvas({
               role={onSelect || onNodeClick ? 'button' : undefined}
               tabIndex={onSelect || onNodeClick ? 0 : undefined}
               data-node-id={node.id}
+              data-node-kind={node.kind || 'instrumented'}
               data-selected={isSelected ? 'true' : undefined}
               className={onSelect || onNodeClick ? 'cursor-pointer' : undefined}
               transform={`translate(${node.x},${node.y})`}
@@ -333,6 +340,7 @@ export default function TopologyCanvas({
                 height={cardHeight}
                 rx={TOPOLOGY_NODE_CARD.radius}
                 stroke={isSelected ? 'var(--color-primary)' : 'var(--color-border)'}
+                strokeDasharray={node.kind === 'inferred' ? '4 3' : undefined}
                 strokeWidth={isSelected ? 1.5 : 1}
                 width={cardWidth}
                 x={cardX}
@@ -358,6 +366,17 @@ export default function TopologyCanvas({
               >
                 {node.service_name}
               </text>
+              {node.kind === 'inferred' ? (
+                <text
+                  fill="var(--color-text-3)"
+                  fontSize="9"
+                  textAnchor="end"
+                  x={cardX + cardWidth - 20}
+                  y={-8}
+                >
+                  {t('apm.topology.inferredBadge', '推断')}
+                </text>
+              ) : null}
               <text
                 clipPath={`url(#apm-node-label-${index})`}
                 fill="var(--color-text-3)"

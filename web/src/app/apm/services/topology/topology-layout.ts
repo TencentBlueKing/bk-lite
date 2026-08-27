@@ -218,19 +218,24 @@ export const layoutForceTopology = async (
   }
 };
 
+export const isInferredTopologyNode = (node: ApmTopologyNode | undefined): boolean => node?.kind === 'inferred';
+
 export const focusApplicationTopology = (
   graph: ApmTopologyGraph,
   applicationId: string,
 ): { graph: ApmTopologyGraph; focusNodeIds: Set<string> } => {
+  const nodeMap = new Map(graph.nodes.map((node) => [node.id, node]));
   const focusNodeIds = new Set(
     graph.nodes
-      .filter((node) => node.service_namespace === applicationId)
+      .filter((node) => node.service_namespace === applicationId && !isInferredTopologyNode(node))
       .map((node) => node.id),
   );
   const visibleIds = new Set(focusNodeIds);
   graph.edges.forEach((edge) => {
-    if (focusNodeIds.has(edge.source)) visibleIds.add(edge.target);
-    if (focusNodeIds.has(edge.target)) visibleIds.add(edge.source);
+    const source = nodeMap.get(edge.source);
+    const target = nodeMap.get(edge.target);
+    if (focusNodeIds.has(edge.source) && !isInferredTopologyNode(target)) visibleIds.add(edge.target);
+    if (focusNodeIds.has(edge.target) && !isInferredTopologyNode(source)) visibleIds.add(edge.source);
   });
   return {
     focusNodeIds,
