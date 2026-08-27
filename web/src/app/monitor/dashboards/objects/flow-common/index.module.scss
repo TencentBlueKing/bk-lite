@@ -22,6 +22,18 @@
 .flowTableWrap {
   :global(.ant-table) {
     background: transparent;
+    table-layout: fixed;
+  }
+
+  :global(.ant-table-thead > tr > th),
+  :global(.ant-table-tbody > tr > td) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :global(.ant-table-tbody > tr > td:nth-child(2)),
+  :global(.ant-table-tbody > tr > td:nth-child(4)) {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
   }
 }
 

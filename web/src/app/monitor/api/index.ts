@@ -7,6 +7,7 @@ import {
   MetricItem
 } from '@/app/monitor/types';
 import { filterVisibleMonitorObjects } from '@/app/monitor/utils/monitorObject';
+import { enrichDemoFlowEffectivePlugins } from '@/app/monitor/mocks/monitor-flow-mock';
 
 export interface MetricsParam {
   monitor_object_id?: React.Key;
@@ -145,10 +146,13 @@ const useMonitorApi = () => {
     } = {},
     config?: AxiosRequestConfig
   ) => {
-    return await get(`/monitor/api/monitor_instance/${String(objectId)}/effective_plugins/`, {
+    const response = await get(`/monitor/api/monitor_instance/${String(objectId)}/effective_plugins/`, {
       params,
       ...config
     });
+    return enrichDemoFlowEffectivePlugins(objectId, response, () =>
+      getMonitorPlugin({ monitor_object_id: objectId }),
+    );
   };
 
   const getMonitorPlugin = async (

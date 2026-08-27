@@ -98,6 +98,17 @@ const formatCountRate = (value: number): { value: string; unit: string } => {
   return { value: `${scaled.value}${scaled.unit}`, unit: '/s' };
 };
 
+export const formatSamplingRate = (value: number): { value: string; unit: string } => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return { value: '--', unit: '' };
+  }
+  const rounded = Math.round(value);
+  return {
+    value: `1:${rounded.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+    unit: '',
+  };
+};
+
 export const formatMetricValue = (value: number, unit: MetricUnit): { value: string; unit: string } => {
   if (!Number.isFinite(value)) {
     return { value: '--', unit: '' };

@@ -7,6 +7,10 @@ import {
   ViewInstanceSearchProps,
 } from '@/app/monitor/types/view';
 import { InstanceParam } from '@/app/monitor/types';
+import {
+  maybeMockFlowInstantQuery,
+  maybeMockFlowQueryRange,
+} from '@/app/monitor/mocks/monitor-flow-mock';
 
 const useViewApi = () => {
   const { get, post, put } = useApiClient();
@@ -19,16 +23,18 @@ const useViewApi = () => {
         query: '',
       }
     ) => {
-      return await get(`/monitor/api/metrics_instance/query_range/`, {
+      const response = await get(`/monitor/api/metrics_instance/query_range/`, {
         params,
       });
+      return maybeMockFlowQueryRange(params, response);
     },
     [get]
   );
 
   const getInstanceInstantQuery = useCallback(
     async (params: SearchParams = { query: '' }) => {
-      return await get(`/monitor/api/metrics_instance/query/`, { params });
+      const response = await get(`/monitor/api/metrics_instance/query/`, { params });
+      return maybeMockFlowInstantQuery(params, response);
     },
     [get]
   );

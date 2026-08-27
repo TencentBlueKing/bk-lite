@@ -118,7 +118,7 @@ export function FlowDashboardPage({ protocol }: FlowDashboardPageProps) {
           ) : null}
 
           <div className={styles.sectionLabel}>流量概览</div>
-          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={4} styles={styles} />
+          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
           <div className={styles.sectionLabel}>Top 会话</div>
           {instanceType ? (

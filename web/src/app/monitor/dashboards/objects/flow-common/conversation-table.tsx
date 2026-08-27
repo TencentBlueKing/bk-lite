@@ -93,10 +93,16 @@ export function FlowConversationTable({
     {
       title: '#',
       key: 'rank',
-      width: 52,
+      width: 48,
       render: (_value, _row, index) => index + 1,
     },
-    { title: '源 IP', dataIndex: 'srcIp', key: 'srcIp', ellipsis: true },
+    {
+      title: '源 IP',
+      dataIndex: 'srcIp',
+      key: 'srcIp',
+      width: 132,
+      ellipsis: true,
+    },
     {
       title: (
         <Tooltip title="会话聚合维度不含源端口，当前版本显示为 --">
@@ -105,17 +111,24 @@ export function FlowConversationTable({
       ),
       dataIndex: 'srcPort',
       key: 'srcPort',
-      width: 88,
+      width: 72,
+      align: 'center',
     },
-    { title: '目的 IP', dataIndex: 'dstIp', key: 'dstIp', ellipsis: true },
-    { title: '目的端口', dataIndex: 'dstPort', key: 'dstPort', width: 100 },
-    { title: '协议', dataIndex: 'protocol', key: 'protocol', width: 120, ellipsis: true },
+    {
+      title: '目的 IP',
+      dataIndex: 'dstIp',
+      key: 'dstIp',
+      width: 132,
+      ellipsis: true,
+    },
+    { title: '目的端口', dataIndex: 'dstPort', key: 'dstPort', width: 88, align: 'center' },
+    { title: '协议', dataIndex: 'protocol', key: 'protocol', width: 108, ellipsis: true },
     {
       title: '流量速率',
       dataIndex: 'bytesRate',
       key: 'bytesRate',
       align: 'right',
-      width: 120,
+      width: 112,
       render: (value: number) => formatBytesRate(value),
     },
   ];
@@ -123,7 +136,7 @@ export function FlowConversationTable({
   return (
     <DashboardPanel
       title="Top 会话"
-      subtitle="按流量速率排序的近五元组会话（Top 10）"
+      subtitle="当前时间窗流量最高的 10 组会话，按源/目的 IP、目的端口与协议聚合"
       className={`${styles.span12} ${styles.flowTablePanel}`}
       bodyClassName={styles.flowTableWrap}
       styles={styles}
