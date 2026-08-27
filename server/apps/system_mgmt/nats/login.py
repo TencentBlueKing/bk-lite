@@ -1,4 +1,5 @@
 # flake8: noqa
+from apps.system_mgmt.utils.otp_settings import parse_otp_recommended_apps, parse_otp_whitelist_ids
 from .common import *  # noqa: F401,F403
 from .common import _build_jwt_payload, _get_pwd_policy_settings, _verify_token
 
@@ -167,9 +168,13 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
     if user.disabled:
         return {"result": False, "message": "User is disabled"}
 
-    # Check if OTP is enabled globally
+    # Check if OTP is enabled globally and whether this user is whitelisted.
     enable_otp_setting = SystemSettings.objects.filter(key="enable_otp").first()
     enable_otp = enable_otp_setting and enable_otp_setting.value == "1"
+    whitelist_setting = SystemSettings.objects.filter(key="otp_whitelist").first()
+    otp_whitelist = parse_otp_whitelist_ids(whitelist_setting.value if whitelist_setting else "")
+    if skip_token_for_otp and enable_otp and user.id in otp_whitelist:
+        skip_token_for_otp = False
 
     # Check if user has OTP configured (has otp_secret)
     user_has_otp = user.otp_secret is not None and user.otp_secret != ""
@@ -200,9 +205,12 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
             qr_code_base64 = base64.b64encode(buffer.getvalue()).decode()
 
         challenge_id = create_challenge(user.id, username)
+        apps_value = SystemSettings.objects.filter(key="otp_recommended_apps").values_list("value", flat=True).first() or ""
+        otp_recommended_apps = parse_otp_recommended_apps(apps_value)
         response_data = {
             "require_otp": True,
             "challenge_id": challenge_id,
+            "otp_recommended_apps": otp_recommended_apps,
             "username": username,
             "display_name": user.display_name,
             "id": user.id,

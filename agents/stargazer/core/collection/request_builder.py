@@ -7,12 +7,7 @@ import json
 import os
 from typing import Any, Mapping, Sequence
 
-from core.collection.constants import (
-    CLOUD_TYPES,
-    CREDENTIAL_KEYS,
-    DEFAULT_PORTS,
-    FLATTENED_CREDENTIAL_KEY,
-)
+from core.collection.constants import CLOUD_TYPES, CREDENTIAL_KEYS, DEFAULT_PORTS, FLATTENED_CREDENTIAL_KEY
 from core.collection.runtime import CollectionRequest
 from core.logger import logger
 
@@ -53,9 +48,7 @@ def parse_flattened_credentials_pool(
     return credentials_pool
 
 
-def parse_credentials_pool(
-    raw_value: Any = None, params: Mapping[str, Any] | None = None
-) -> list[dict[str, Any]]:
+def parse_credentials_pool(raw_value: Any = None, params: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
     """优先平铺 header，其次 JSON/base64 列表。"""
     flattened_pool = parse_flattened_credentials_pool(params)
     if flattened_pool:
@@ -73,10 +66,7 @@ def parse_credentials_pool(
                 decoded_value = base64.urlsafe_b64decode(raw_value.encode()).decode()
                 credentials_pool = json.loads(decoded_value)
             except Exception:
-                logger.warning(
-                    "Failed to parse credentials_pool payload, "
-                    "fallback to single credential mode"
-                )
+                logger.warning("Failed to parse credentials_pool payload, " "fallback to single credential mode")
                 return []
 
     if not isinstance(credentials_pool, list):
@@ -85,9 +75,7 @@ def parse_credentials_pool(
     return [item for item in credentials_pool if isinstance(item, dict)]
 
 
-def build_collection_request(
-    *, task_id: str, params: Mapping[str, Any]
-) -> CollectionRequest:
+def build_collection_request(*, task_id: str, params: Mapping[str, Any]) -> CollectionRequest:
     normalized_task_id = str(task_id or "").strip()
     if not normalized_task_id:
         raise ValueError("task_id is required")
@@ -101,27 +89,17 @@ def build_collection_request(
 
     max_targets = int(os.getenv("MAX_TARGETS_PER_RUN", "10000"))
     raw_targets = source.get("targets", source.get("hosts"))
-    if (
-        isinstance(raw_targets, Sequence)
-        and not isinstance(raw_targets, (str, bytes, bytearray))
-        and len(raw_targets) > max_targets
-    ):
-        raise ValueError(
-            f"target count {len(raw_targets)} exceeds MAX_TARGETS_PER_RUN={max_targets}"
-        )
+    if isinstance(raw_targets, Sequence) and not isinstance(raw_targets, (str, bytes, bytearray)) and len(raw_targets) > max_targets:
+        raise ValueError(f"target count {len(raw_targets)} exceeds MAX_TARGETS_PER_RUN={max_targets}")
     if isinstance(raw_targets, str) and raw_targets.count(",") + 1 > max_targets:
         raise ValueError("target count exceeds MAX_TARGETS_PER_RUN")
     targets, logical_target = _targets(source, plugin_name)
     if len(targets) > max_targets:
-        raise ValueError(
-            f"target count {len(targets)} exceeds MAX_TARGETS_PER_RUN={max_targets}"
-        )
+        raise ValueError(f"target count {len(targets)} exceeds MAX_TARGETS_PER_RUN={max_targets}")
     credentials = _credentials(source)
     max_credentials = int(os.getenv("MAX_CREDENTIALS_PER_RUN", "100"))
     if len(credentials) > max_credentials:
-        raise ValueError(
-            f"credential count {len(credentials)} exceeds MAX_CREDENTIALS_PER_RUN={max_credentials}"
-        )
+        raise ValueError(f"credential count {len(credentials)} exceeds MAX_CREDENTIALS_PER_RUN={max_credentials}")
     public_params = {
         key: value
         for key, value in source.items()
@@ -160,26 +138,14 @@ def _targets(source: dict[str, Any], plugin_name: str) -> tuple[tuple[str, ...],
     raw_targets = source.get("targets", source.get("hosts"))
     if isinstance(raw_targets, str):
         raw_targets = [item.strip() for item in raw_targets.split(",")]
-    if isinstance(raw_targets, Sequence) and not isinstance(
-        raw_targets, (str, bytes, bytearray)
-    ):
-        targets = tuple(
-            dict.fromkeys(
-                str(item).strip() for item in raw_targets if str(item).strip()
-            )
-        )
+    if isinstance(raw_targets, Sequence) and not isinstance(raw_targets, (str, bytes, bytearray)):
+        targets = tuple(dict.fromkeys(str(item).strip() for item in raw_targets if str(item).strip()))
         if targets:
             return targets, False
-    host = str(
-        source.get("host") or source.get("hostname") or source.get("base_url") or ""
-    ).strip()
+    host = str(source.get("host") or source.get("hostname") or source.get("base_url") or "").strip()
     if host:
         return (host,), False
-    logical = str(
-        (source.get("tags") or {}).get("instance_id")
-        or source.get("instance_id")
-        or plugin_name
-    )
+    logical = str((source.get("tags") or {}).get("instance_id") or source.get("instance_id") or plugin_name)
     return (logical,), True
 
 
@@ -193,26 +159,32 @@ def _credentials(source: dict[str, Any]) -> tuple[Mapping[str, Any], ...]:
     return tuple(credentials)
 
 
-def _apply_preflight_defaults(
-    params: dict[str, Any], plugin_name: str, family: str
-) -> None:
+def _apply_preflight_defaults(params: dict[str, Any], plugin_name: str, family: str) -> None:
     if params.get("preflight_kind"):
         return
     if plugin_name in CLOUD_TYPES:
         params["preflight_kind"] = "cloud"
         return
-    if plugin_name in {"network", "network_topo"}:
+    if plugin_name in {"network", "network_topo", "security_device", "tape_library"}:
         params["preflight_kind"] = "snmp"
         params.setdefault("port", 161)
         return
-    if plugin_name == "host":
-        params["preflight_kind"] = "remote"
+    if plugin_name == "pc":
+        os_type = str(params.get("os_type") or params.get("osType") or "").strip().lower()
+        if os_type in {"windows", "win", "winrm"}:
+            scheme = str(params.get("winrm_scheme") or "https").strip().lower()
+            params["preflight_kind"] = "tcp"
+            params["port"] = 5985 if scheme == "http" else 5986
+            params["ssl"] = False
+        else:
+            params["preflight_kind"] = "remote"
+            params.setdefault("port", 22)
         return
-    if (
-        family == "configuration"
-        and str(params.get("executor_type") or "").lower() == "job"
-        and not params.get("target_is_logical")
-    ):
+    if plugin_name in {"host", "network_config_file"}:
+        params["preflight_kind"] = "remote"
+        params.setdefault("port", 22)
+        return
+    if family == "configuration" and str(params.get("executor_type") or "").lower() == "job" and not params.get("target_is_logical"):
         params["preflight_kind"] = "remote"
         return
     if params.get("base_url"):

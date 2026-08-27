@@ -290,6 +290,7 @@ const Alert: React.FC = () => {
     const chartParams = deepClone(params);
     delete chartParams.page;
     delete chartParams.page_size;
+    // 可见性与当前列表相同（含 my_alert）。去掉 page 后走接口默认「不分页」，在前端聚合成趋势。
     chartParams.search = '';
     if (activeTab === 'activeAlarms') {
       chartParams.created_at_after = '';

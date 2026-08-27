@@ -14,11 +14,10 @@ executors:
     type: protocol
     execution_mode: async
     capacity_group: snmp
-    timeout: 300
     collector:
       module: plugins.inputs.network.snmp_facts
       class: SnmpFacts
     target_policy:
-      mode: outbound_only
+      mode: snmp
       port: 161
 default_executor: protocol

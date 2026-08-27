@@ -27,6 +27,8 @@ export const useSecurityApi = () => {
     pwdSetMaxRetryCount,
     pwdSetLockDuration,
     pwdSetExpiryReminderDays,
+    otpWhitelist,
+    otpRecommendedApps,
     userCreateInitialPassword,
     userCreateInitialPasswordMode,
     userCreateInitialPasswordEmailChannelId,
@@ -40,6 +42,8 @@ export const useSecurityApi = () => {
     pwdSetMaxRetryCount?: string;
     pwdSetLockDuration?: string;
     pwdSetExpiryReminderDays?: string;
+    otpWhitelist?: string | number[] | string[];
+    otpRecommendedApps?: string;
     userCreateInitialPassword?: string;
     userCreateInitialPasswordMode?: 'fixed' | 'random' | 'none' | string;
     userCreateInitialPasswordEmailChannelId?: string | number;
@@ -55,6 +59,12 @@ export const useSecurityApi = () => {
       pwd_set_lock_duration: pwdSetLockDuration,
       pwd_set_expiry_reminder_days: pwdSetExpiryReminderDays,
     };
+    if (otpWhitelist !== undefined) {
+      payload.otp_whitelist = otpWhitelist;
+    }
+    if (otpRecommendedApps !== undefined && otpRecommendedApps !== '') {
+      payload.otp_recommended_apps = otpRecommendedApps;
+    }
     if (userCreateInitialPassword) {
       payload.user_create_initial_password = userCreateInitialPassword;
     }

@@ -11,24 +11,20 @@ from decimal import Decimal
 from typing import Any, Dict
 
 import psycopg
-from psycopg.rows import dict_row
-
+from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 from core.decorator import timer
-from core.collection.contracts import (
-    AccessProbeResult,
-    AccessProbeStatus,
-)
+from psycopg.rows import dict_row
 from sanic.log import logger
 
 
 class PostgresqlInfo:
     def __init__(self, kwargs):
-        self.host = kwargs.get('host', 'localhost')
-        self.port = int(kwargs.get('port', 5432))
-        self.user = kwargs.get('user')
-        self.password = kwargs.get('password', '')
-        self.database = kwargs.get('database', 'postgres')
-        self.timeout = int(kwargs.get('timeout', 10))
+        self.host = kwargs.get("host", "localhost")
+        self.port = int(kwargs.get("port", 5432))
+        self.user = kwargs.get("user")
+        self.password = kwargs.get("password", "")
+        self.database = kwargs.get("database", "postgres")
+        self.timeout = 10  # 连接超时硬编码；表单 timeout 由框架作单对象预算
         self.info: Dict[str, Any] = {}
         self.connection = None
         self.cursor = None
@@ -52,9 +48,7 @@ class PostgresqlInfo:
         try:
             await self._connect()
             rows = await self._exec_sql("SHOW server_version")
-            version = (
-                str(rows[0].get("server_version") or "") if rows else ""
-            )
+            version = str(rows[0].get("server_version") or "") if rows else ""
             return AccessProbeResult(
                 status=AccessProbeStatus.READY,
                 evidence={"server_version": version},
@@ -83,12 +77,12 @@ class PostgresqlInfo:
 
     async def _collect(self):
         queries = {
-            'version': "SHOW server_version",
-            'config': "SHOW config_file",
-            'data_directory': "SHOW data_directory",
-            'max_connections': "SHOW max_connections",
-            'shared_buffers': "SHOW shared_buffers",
-            'log_directory': "SHOW log_directory",
+            "version": "SHOW server_version",
+            "config": "SHOW config_file",
+            "data_directory": "SHOW data_directory",
+            "max_connections": "SHOW max_connections",
+            "shared_buffers": "SHOW shared_buffers",
+            "log_directory": "SHOW log_directory",
         }
         for key, sql in queries.items():
             result = await self._exec_sql(sql)
@@ -96,19 +90,19 @@ class PostgresqlInfo:
                 self.info[key] = list(result[0].values())[0]
 
     def _shared_buffers_mb(self):
-        value = self.info.get('shared_buffers', '')
+        value = self.info.get("shared_buffers", "")
         if isinstance(value, (int, float)):
             return int(value)
         if isinstance(value, str):
             lower = value.lower().strip()
             multiplier = 1
-            if lower.endswith('kb'):
+            if lower.endswith("kb"):
                 multiplier = 1 / 1024
-            elif lower.endswith('mb'):
+            elif lower.endswith("mb"):
                 multiplier = 1
-            elif lower.endswith('gb'):
+            elif lower.endswith("gb"):
                 multiplier = 1024
-            number = ''.join(filter(lambda x: (x.isdigit() or x == '.'), lower))
+            number = "".join(filter(lambda x: (x.isdigit() or x == "."), lower))
             try:
                 return int(float(number) * multiplier)
             except ValueError:
@@ -116,11 +110,11 @@ class PostgresqlInfo:
         return 0
 
     def _log_directory_path(self):
-        log_directory = self.info.get('log_directory', '')
-        data_directory = self.info.get('data_directory', '')
+        log_directory = self.info.get("log_directory", "")
+        data_directory = self.info.get("data_directory", "")
         if not log_directory:
-            return ''
-        if log_directory.startswith('/'):
+            return ""
+        if log_directory.startswith("/"):
             return log_directory
         return f"{data_directory.rstrip('/')}/{log_directory}" if data_directory else log_directory
 
@@ -130,21 +124,22 @@ class PostgresqlInfo:
             await self._connect()
             await self._collect()
             model_data = {
-                'inst_name': f"{self.host}-pg-{self.port}",
-                'ip_addr': self.host,
-                'port': self.port,
-                'version': self.info.get('version', ''),
-                'conf_path': self.info.get('config', ''),
-                'data_path': self.info.get('data_directory', ''),
-                'max_conn': self._convert(self.info.get('max_connections', 0)),
-                'cache_memory_mb': self._shared_buffers_mb(),
-                'log_path': self._log_directory_path(),
+                "inst_name": f"{self.host}-pg-{self.port}",
+                "ip_addr": self.host,
+                "port": self.port,
+                "version": self.info.get("version", ""),
+                "conf_path": self.info.get("config", ""),
+                "data_path": self.info.get("data_directory", ""),
+                "max_conn": self._convert(self.info.get("max_connections", 0)),
+                "cache_memory_mb": self._shared_buffers_mb(),
+                "log_path": self._log_directory_path(),
             }
-            inst_data = {'result': {'postgresql': [model_data]}, 'success': True}
+            inst_data = {"result": {"postgresql": [model_data]}, "success": True}
         except Exception as err:  # noqa
             import traceback
+
             logger.error(f"postgresql_info main error! {traceback.format_exc()}")
-            inst_data = {'result': {'cmdb_collect_error': str(err)}, 'success': False}
+            inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
         finally:
             await self.close()
         return inst_data

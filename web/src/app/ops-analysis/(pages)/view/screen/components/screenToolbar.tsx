@@ -4,7 +4,6 @@ import React from 'react';
 import { Button, Tooltip } from 'antd';
 import {
   EditOutlined,
-  FilterOutlined,
   FullscreenOutlined,
   MailOutlined,
   PlusOutlined,
@@ -12,6 +11,7 @@ import {
   SettingOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
+import Icon from '@/components/icon';
 import PermissionWrapper from '@/components/permission';
 import TimeSelector from '@/components/time-selector';
 import { useTranslation } from '@/utils/i18n';
@@ -61,6 +61,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
   const { t } = useTranslation();
   const iconButtonClassName =
     'rounded-full! h-8 w-8 min-w-8 flex items-center justify-center';
+  const iconClassName = 'text-[16px]';
 
   if (!shareMode && editMode) {
     return (
@@ -69,7 +70,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           <Tooltip title={t('opsAnalysis.screen.canvasSettings')}>
             <Button
               type="text"
-              icon={<SettingOutlined />}
+              icon={<SettingOutlined className={iconClassName} />}
               aria-label={t('opsAnalysis.screen.canvasSettings')}
               onClick={onOpenSettings}
               className={iconButtonClassName}
@@ -78,7 +79,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           <Tooltip title={t('opsAnalysis.screen.fullscreenPreview')}>
             <Button
               type="text"
-              icon={<FullscreenOutlined />}
+              icon={<FullscreenOutlined className={iconClassName} />}
               aria-label={t('opsAnalysis.screen.fullscreenPreview')}
               onClick={onPreview}
               className={iconButtonClassName}
@@ -87,7 +88,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           <Tooltip title={t('common.refresh')}>
             <Button
               type="text"
-              icon={<ReloadOutlined style={{ fontSize: 16 }} />}
+              icon={<ReloadOutlined className={iconClassName} />}
               aria-label={t('common.refresh')}
               onClick={onRefresh}
               className={iconButtonClassName}
@@ -96,7 +97,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
             <Button
               type="text"
-              icon={<FilterOutlined style={{ fontSize: 16 }} />}
+              icon={<Icon type="shaixuantiaojian" style={{ fontSize: 20 }} />}
               aria-label={t('dashboard.configUnifiedFilterFields')}
               onClick={onOpenFilterConfig}
               className={iconButtonClassName}
@@ -112,7 +113,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
               icon={<PlusOutlined />}
               onClick={onOpenWidgetSelector}
             >
-              {t('opsAnalysis.screen.addWidget')}
+              {t('opsAnalysis.screen.widgetShort')}
             </Button>
             <Button type="default" onClick={onCancel}>
               {t('common.cancel')}
@@ -137,7 +138,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
       <Tooltip title={t('opsAnalysis.screen.fullscreenPreview')}>
         <Button
           type="text"
-          icon={<FullscreenOutlined />}
+          icon={<FullscreenOutlined className={iconClassName} />}
           aria-label={t('opsAnalysis.screen.fullscreenPreview')}
           className={iconButtonClassName}
           onClick={onPreview}
@@ -147,7 +148,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
         <Tooltip title={t('dashboard.share')}>
           <Button
             type="text"
-            icon={<ShareAltOutlined />}
+            icon={<ShareAltOutlined className={iconClassName} />}
             loading={shareLoading}
             disabled={shareLoading}
             aria-label={t('dashboard.share')}
@@ -160,7 +161,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
         <Tooltip title={t('dashboard.subscriptionTitle')}>
           <Button
             type="text"
-            icon={<MailOutlined />}
+            icon={<MailOutlined className={iconClassName} />}
             aria-label={t('dashboard.subscriptionTitle')}
             className={iconButtonClassName}
             onClick={onOpenSubscription}
@@ -172,7 +173,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           <Tooltip title={t('common.edit')}>
             <Button
               type="text"
-              icon={<EditOutlined />}
+              icon={<EditOutlined className={iconClassName} />}
               aria-label={t('common.edit')}
               disabled={!selectedScreen?.data_id || selectedScreen?.is_build_in}
               className={iconButtonClassName}

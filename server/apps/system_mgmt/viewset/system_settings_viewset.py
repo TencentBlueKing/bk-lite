@@ -1,3 +1,4 @@
+import json
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from django.http import JsonResponse
@@ -6,10 +7,14 @@ from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.system_mgmt.models import Channel, ChannelChoices
-from apps.system_mgmt.models.system_settings import SystemSettings
+from apps.system_mgmt.models import Channel, ChannelChoices, SystemSettings, User
 from apps.system_mgmt.serializers.system_settings_serializer import SystemSettingsSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from apps.system_mgmt.utils.otp_settings import (
+    DEFAULT_OTP_RECOMMENDED_APPS,
+    default_otp_whitelist_value,
+    parse_otp_recommended_apps,
+)
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.password_vault import encrypt_for_vault
 from apps.system_mgmt.utils.pwd_policy_cache import invalidate_pwd_policy_cache as _invalidate_pwd_policy_cache
@@ -67,10 +72,11 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
             **self.PORTAL_SETTING_DEFAULTS,
             **self.SENSITIVE_INFO_SETTING_DEFAULTS,
             **self.INITIAL_PASSWORD_DEFAULTS,
+            "otp_recommended_apps": DEFAULT_OTP_RECOMMENDED_APPS,
+            "otp_whitelist": default_otp_whitelist_value(),
         }
         existing_keys = set(SystemSettings.objects.filter(key__in=default_settings.keys()).values_list("key", flat=True))
         missing_settings = [SystemSettings(key=key, value=value) for key, value in default_settings.items() if key not in existing_keys]
-
         if missing_settings:
             SystemSettings.objects.bulk_create(missing_settings, ignore_conflicts=True)
 
@@ -103,6 +109,31 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
             initial_password = initial_password[-1] if initial_password else None
 
         current_settings = dict(SystemSettings.objects.values_list("key", "value"))
+        if "otp_recommended_apps" in kwargs:
+            kwargs["otp_recommended_apps"] = ",".join(parse_otp_recommended_apps(kwargs["otp_recommended_apps"]))
+        enable_otp = str(kwargs.get("enable_otp", current_settings.get("enable_otp", "0")))
+        if enable_otp == "1":
+            apps_value = kwargs["otp_recommended_apps"] if "otp_recommended_apps" in kwargs else current_settings.get("otp_recommended_apps", "")
+            if not parse_otp_recommended_apps(apps_value):
+                return JsonResponse({"result": False, "message": "推荐认证器应用不能为空"}, status=400)
+        if "otp_whitelist" in kwargs:
+            raw_whitelist = kwargs["otp_whitelist"]
+            if isinstance(raw_whitelist, str):
+                try:
+                    raw_whitelist = json.loads(raw_whitelist)
+                except json.JSONDecodeError:
+                    raw_whitelist = None
+            if not isinstance(raw_whitelist, list) or any(isinstance(item, bool) for item in raw_whitelist):
+                return JsonResponse({"result": False, "message": "OTP 白名单必须是用户 ID 列表"}, status=400)
+            try:
+                whitelist = [int(item) for item in raw_whitelist]
+            except (TypeError, ValueError):
+                return JsonResponse({"result": False, "message": "OTP 白名单必须是用户 ID 列表"}, status=400)
+            if len(set(whitelist)) != len(whitelist):
+                return JsonResponse({"result": False, "message": "OTP 白名单包含重复的用户 ID"}, status=400)
+            if User.objects.filter(id__in=whitelist).count() != len(whitelist):
+                return JsonResponse({"result": False, "message": "OTP 白名单包含不存在的用户"}, status=400)
+            kwargs["otp_whitelist"] = json.dumps(whitelist)
         current_mode = current_settings.get(self.INITIAL_PASSWORD_MODE_KEY, "none")
         if self.INITIAL_PASSWORD_MODE_KEY in kwargs:
             requested_mode = str(kwargs[self.INITIAL_PASSWORD_MODE_KEY])

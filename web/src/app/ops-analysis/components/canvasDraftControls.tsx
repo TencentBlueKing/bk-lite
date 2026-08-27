@@ -314,8 +314,8 @@ const CanvasDraftControls = ({
                       </Button>
                     </Space>
                   </li>
-                );
-              })}
+                  );
+                })}
               </ul>
             </div>
           </div>

@@ -436,11 +436,11 @@ const InstallConfig: React.FC<InstallConfigProps> = ({ onNext, cancel }) => {
 
   const handleImportSuccess = (importedData: any[]) => {
       const newRows = importedData.map((row) => ({
-      ...createInfoItem(os, winrmCertValidation, winrmScheme),
-      ...row,
-      winrm_scheme: winrmScheme,
-      key: uuidv4()
-    }));
+        ...createInfoItem(os, winrmCertValidation, winrmScheme),
+        ...row,
+        winrm_scheme: winrmScheme,
+        key: uuidv4()
+      }));
     setTableData([...tableData, ...newRows]);
   };
 

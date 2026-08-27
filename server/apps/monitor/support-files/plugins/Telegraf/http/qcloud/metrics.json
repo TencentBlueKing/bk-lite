@@ -40,7 +40,7 @@
       "default_metric": "any({resource_type='qcloud_cvm'}) by (instance_id, resource_id)",
       "instance_id_keys": ["instance_id", "resource_id"],
       "supplementary_indicators": ["CPUUsage_gauge", "MemUsage_gauge", "CvmDiskUsage_gauge"],
-      "display_fields": [{"name": "CPU Utilization", "sort_order": 0, "metrics": [{"plugin": "Tencent Cloud", "metric": "CPUUsage_gauge"}]}, {"name": "Memory Utilization", "sort_order": 1, "metrics": [{"plugin": "Tencent Cloud", "metric": "MemUsage_gauge"}]}, {"name": "Disk Utilization", "sort_order": 2, "metrics": [{"plugin": "Tencent Cloud", "metric": "CvmDiskUsage_gauge"}]}],
+      "display_fields": [{"name": "IP 地址", "type": "field", "role": "resource_ip", "variable_id": "vm_ip", "sort_order": 0, "metrics": [{"plugin": "Tencent Cloud", "metric": "CPUUsage_gauge", "field": "resource_ip"}]}, {"name": "CPU Utilization", "sort_order": 1, "metrics": [{"plugin": "Tencent Cloud", "metric": "CPUUsage_gauge"}]}, {"name": "Memory Utilization", "sort_order": 2, "metrics": [{"plugin": "Tencent Cloud", "metric": "MemUsage_gauge"}]}, {"name": "Disk Utilization", "sort_order": 3, "metrics": [{"plugin": "Tencent Cloud", "metric": "CvmDiskUsage_gauge"}]}],
       "metrics": [
         {
           "metric_group": "CPU",

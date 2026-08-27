@@ -296,6 +296,8 @@
       "title": "OTP Verification",
       "description": "Please enter the verification code to complete your login.",
       "installAppsStep": "1. Install one of the following apps on your device:",
+      "installAppsSingle": "1. Install the following authenticator app on your device:",
+      "installAppsMultiple": "1. Install any of the following authenticator apps on your device:",
       "scanQrStep": "2. Scan the QR code with your authenticator app:",
       "qrAlt": "QR Code",
       "verificationCode": "Verification Code",

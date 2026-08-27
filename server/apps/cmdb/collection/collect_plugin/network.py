@@ -26,14 +26,12 @@ class CollectNetworkMetrics(CollectBase):
         super().__init__(inst_name, inst_id, task_id, *args, **kwargs)
         self.oid_map = self.get_oid_map()
         # 4：other  （冗余用的）
-        self.interface_status_map = {
-            "1": "UP",
-            "2": "Down",
-            "3": "Testing"
-        }
+        self.interface_status_map = {"1": "UP", "2": "Down", "3": "Testing"}
         self.instance_id_map = {}
         self.collect_inst = self.get_collect_inst()
-        self.is_topo = self.collect_inst.is_network_topo
+        # 拓扑拆分后：设备对账不再内联解析拓扑；拓扑由 topology_replay_service 触发。
+        # 子类 TopologyReplayCollector 可强制 is_topo=True。
+        self.is_topo = bool(kwargs.pop("force_topology_replay", False))
         self._instance_metrics = list(self._metrics)
         self.set_metrics()
         self.interfaces_data = {}
@@ -93,12 +91,7 @@ class CollectNetworkMetrics(CollectBase):
         instance = self.instance_id_map[instance_id]
         model_id = instance["device_type"]
         return [
-            {
-                "model_id": model_id,
-                "inst_name": self.set_inst_name(instance),
-                "asst_id": "belong",
-                "model_asst_id": f"interface_belong_{model_id}"
-            }
+            {"model_id": model_id, "inst_name": self.set_inst_name(instance), "asst_id": "belong", "model_asst_id": f"interface_belong_{model_id}"}
         ]
 
     @property
@@ -108,7 +101,7 @@ class CollectNetworkMetrics(CollectBase):
 
     @staticmethod
     def interface_name(data, *args, **kwargs):
-        return data.get("alias", data['description'])
+        return data.get("alias", data["description"])
 
     @property
     def model_field_mapping(self):
@@ -161,8 +154,8 @@ class CollectNetworkMetrics(CollectBase):
             for index_data in metrics:
                 if index_data["instance_id"] not in self.instance_id_map:
                     logger.info(
-                        "This data is discarded because no feature library can be found for the OID. instance_id={}".format(
-                            index_data["instance_id"]))
+                        "This data is discarded because no feature library can be found for the OID. instance_id={}".format(index_data["instance_id"])
+                    )
                     continue
                 if "sysobjectid" in index_data:
                     model_id = index_data["device_type"]
@@ -207,10 +200,7 @@ class CollectNetworkMetrics(CollectBase):
         topology = parsed.get("topology", {})
         current_links = list(topology.get("authoritative_links", [])) + list(topology.get("inferred_links", []))
         for link in current_links:
-            if (
-                str(link.get("relationship_type", "")) != "authoritative"
-                and int(link.get("confidence", 0) or 0) < min_confidence
-            ):
+            if str(link.get("relationship_type", "")) != "authoritative" and int(link.get("confidence", 0) or 0) < min_confidence:
                 dropped.append(self.slim_topology_link(link, reason="below_min_confidence"))
                 continue
             source_inst_name = self.resolve_pipeline_inst_name(link.get("source_port_id"))
@@ -286,11 +276,12 @@ class CollectNetworkMetrics(CollectBase):
             source_interface_data = self.interfaces_data.get(source_inst_name)
             if not source_interface_data:
                 continue
-            data = {'asst_id': 'connect',
-                    'inst_name': relationship["target_inst_name"],
-                    'model_asst_id': 'interface_connect_interface',
-                    'model_id': 'interface'
-                    }
+            data = {
+                "asst_id": "connect",
+                "inst_name": relationship["target_inst_name"],
+                "model_asst_id": "interface_connect_interface",
+                "model_id": "interface",
+            }
             assos = source_interface_data.setdefault("assos", [])
             if data not in assos:
                 assos.append(data)

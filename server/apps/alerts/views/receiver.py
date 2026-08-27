@@ -21,6 +21,7 @@ from apps.core.utils.web_utils import WebUtils
 
 def _receive_events(request, path_source_id=None, expected_source_type=None):
     source_id = path_source_id
+    logger.info("==receive_events source_id={}===".format(source_id))
     try:
         data = json.loads(request.body.decode("utf-8"))
         if not isinstance(data, dict):
@@ -95,8 +96,10 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
             }
         )
     except AuthenticationSourceError:
+        logger.exception("Authentication source error source_id={}===".format(source_id))
         return JsonResponse({"status": "error", "message": "Invalid secret."}, status=403)
     except ValueError as e:
+        logger.exception("receiver error source_id={}===".format(source_id))
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
     except Exception as e:
         logger.error(

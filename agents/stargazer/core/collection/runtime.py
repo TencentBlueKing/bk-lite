@@ -47,6 +47,13 @@ class CollectionRequest:
             raise ValueError("at least one target is required")
 
     @property
+    def ip_precheck_enabled(self) -> bool:
+        value = self.params.get("ip_precheck")
+        if isinstance(value, bool):
+            return value
+        return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+    @property
     def digest(self) -> str:
         credential_refs = []
         for credential in self.credentials:
@@ -269,10 +276,16 @@ class CollectionRuntime:
         )
         lease = acquisition.lease
         if acquisition.status == LeaseAcquireStatus.DUPLICATE_ACTIVE:
+            fence = lease.fence if lease else 0
+            logger.warning(
+                "event=collection_run_duplicate_skipped task_id=%s status=duplicate_active fence=%s",
+                request.task_id,
+                fence,
+            )
             return Submission(
                 task_id=request.task_id,
                 status=SubmissionStatus.DUPLICATE_ACTIVE,
-                fence=lease.fence if lease else 0,
+                fence=fence,
             )
         if lease is None:
             raise RuntimeError("state store acquired a run without a lease")
@@ -365,9 +378,7 @@ class CollectionRuntime:
             await self._state_store.finish(lease, status, summary)
             duration_ms = round((time.monotonic() - run_started_at) * 1000, 2)
             logger.info(
-                "event=collection_run_terminal %s plugin_ref=%s "
-                "model_id=%s status=%s duration_ms=%s | "
-                "任务结束 最终状态=%s 总耗时=%sms 执行批次=%s",
+                "event=collection_run_terminal %s plugin_ref=%s " "model_id=%s status=%s duration_ms=%s | " "任务结束 最终状态=%s 总耗时=%sms 执行批次=%s",
                 _run_log_identity(request),
                 request.plugin_ref,
                 request.params.get("model_id") or "-",

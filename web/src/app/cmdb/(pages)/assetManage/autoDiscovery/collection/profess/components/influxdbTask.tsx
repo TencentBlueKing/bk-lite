@@ -43,7 +43,7 @@ const InfluxdbTask: React.FC<InfluxdbTaskProps> = ({
   const modelId = modelItem.model_id;
   const initialValues = {
     credentialPool: [createInfluxdbCredential()],
-    timeout: 60,
+    timeout: 120,
   };
 
   const {

@@ -25,7 +25,7 @@ class HighgoInfo:
         self.user = kwargs.get("user", "highgo")
         self.password = kwargs.get("password", "")
         self.database = kwargs.get("database", "highgo")
-        self.timeout = int(kwargs.get("timeout", 10))
+        self.timeout = 10  # 连接超时硬编码；表单 timeout 由框架作单对象预算
 
     def _connect(self, dbname=None):
         if psycopg2 is None:
@@ -68,9 +68,7 @@ class HighgoInfo:
 
             # 2. 数据库列表(排除 template)
             try:
-                rows = self._query(
-                    "SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"
-                )
+                rows = self._query("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
                 model_data["databases"] = [r.get("datname", "") for r in rows]
                 model_data["database_count"] = len(model_data["databases"])
             except Exception:
@@ -94,6 +92,7 @@ class HighgoInfo:
             inst_data = {"result": {"highgo": [model_data]}, "success": True}
         except Exception as err:
             import traceback
+
             logger.error(f"highgo_info main error! {traceback.format_exc()}")
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 

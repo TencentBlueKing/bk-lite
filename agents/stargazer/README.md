@@ -58,6 +58,8 @@ STARGAZER_MONITOR_AUTH_PREVIOUS_TOKEN=<previous-token>
 MAX_ACTIVE_RUNS=16
 # 配置采集目标并发；设为 0 表示不限制（尽快打满机器、靠监控扩容）
 MAX_ACTIVE_TARGETS=250
+# 网络拓扑基础配额；普通采集完全空闲时可借用普通容量的一半
+NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=50
 TARGET_TASK_WINDOW=250
 REDIS_MAX_CONNECTIONS=2560
 REDIS_POOL_TIMEOUT=2
@@ -76,18 +78,24 @@ EVENT_LOOP_LAG_INTERVAL=1
 CAPACITY_LOG_INTERVAL=180
 OUTBOUND_ALLOWED_CIDRS=10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
 OUTBOUND_ALLOWED_DOMAINS=
-# 默认 off：跳过 TCP/TLS 端口短探，CIDR 出站与 Job remote 通道检查仍保留；设为 on 恢复探活
-PREFLIGHT_REACHABILITY=off
 ```
 
 这些值都是部署参数。未设置时默认 `MAX_ACTIVE_TARGETS=250`、
-`TARGET_TASK_WINDOW=250`。二者是单 Pod、跨所有运行共享的配置采集目标并发与任务窗口；
+`NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=50`、`TARGET_TASK_WINDOW=250`。这些参数是单 Pod、跨所有运行
+共享的配置采集目标并发与任务窗口；
 全局调度器在 Run 之间 round-robin，单个大 Run 不再预占 worker。需要临时去掉目标并发上限时：
 
 ```bash
 MAX_ACTIVE_TARGETS=0
 TARGET_TASK_WINDOW=0
 ```
+
+网络拓扑使用共享目标池，`NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS` 是普通采集存在时的基础配额。
+当普通目标既未运行也未排队时，拓扑最多再借用普通容量的一半：动态上限为
+`基础配额 + floor((全局目标容量 - 基础配额) / 2)`。因此默认 `250/50` 下拓扑可临时运行到 150；
+普通任务到达后立即停止派发超出基础配额的新拓扑目标，但不会抢占已经运行的目标，空出的全局槽位
+优先回流普通采集。若同时把 `MAX_ACTIVE_TARGETS` 和 `TARGET_TASK_WINDOW` 设为 `0`，由于全局容量
+不再有可计算的有限边界，拓扑借槽关闭并保持基础配额。
 
 `MAX_ACTIVE_RUNS` 仍保留 run 级准入；满了返回 busy/429。
 
@@ -100,8 +108,9 @@ TARGET_TASK_WINDOW=0
 若 Redis 过旧或不支持 `HELLO` 的代理会在启动 `ping` 时直接失败，因此显式钉在 RESP2。
 
 `PREFLIGHT_TIMEOUT` 与 `PROBE_TIMEOUT` 分别控制协议预检和插件 AccessProbe，默认均为 15 秒。
-`PREFLIGHT_REACHABILITY` 默认 `off`：保留 CIDR/SSRF 出站安全检查，但跳过 TCP/TLS、SNMP、
-remote/job 及其他所有采集前探测，直接进入正式采集；设为 `on` 时才执行预检和插件 probe。
+是否执行 IP 预检不再由全局环境变量控制。每个请求仅在 `params.ip_precheck` 为 `true`、`1`、
+`yes` 或 `on` 时执行协议连通性预检及插件 AccessProbe；缺失或为其他值时跳过这些探测，直接进入
+正式采集。CIDR/SSRF 出站安全检查不属于可选预检，无论请求开关如何都必须执行。
 `COLLECTION_TIMEOUT` 是正式采集缺省值 60 秒，插件 YAML executor 的 `timeout` 优先；
 发布阶段拆为三层：`PUBLISH_QUEUE_TIMEOUT` 默认 60 秒，控制等待有界发布队列接纳结果；
 `PUBLISH_DELIVERY_TIMEOUT` 默认 30 秒，控制实际 NATS publish/flush；`PUBLISH_TOTAL_TIMEOUT`
@@ -147,23 +156,24 @@ cgroup 内存利用率持续超过 80%、发布队列长期超过 80%，或 thro
 
 ### 配置采集日志约定
 
-配置采集在生产 INFO 级别只保留 Run 级生命周期和基础设施异常，不逐目标打印插件执行步骤或
-预期内的协议超时堆栈：
+配置采集在生产 INFO 级别保留 Run 生命周期；每个失败目标额外保留可检索的终态和安全异常上下文，
+不记录凭据正文：
 
 - `collection_run_started`：中文“任务开始”，优先记录 `instance_id`，缺失时才回退记录 `task_id`；
   同时包含 `plugin_ref`、`plugin_name`、`model_id`、目标数、凭据数和租约；
 - `collection_progress`：Run 约每完成 10% 输出一条，最多约 11 条；包含插件、完成/活动/待处理数、
   最近完成目标、中文结果和最多 5 个活动目标样本；
-- `target_collection_started`：每个目标开始采集时在 INFO 级别输出一条精确记录；
 - `target_collection_succeeded`：仅网络设备 SNMP 采集成功时，每个 IP 输出一条 INFO，包含凭据标识和
   单目标采集耗时（不记录凭据内容）；
-- `target_collection_failed`：每个 Run 最多 3 个目标失败样本；协议无响应会明确记录
+- `target_collection_failed`：每个失败目标输出一条；协议无响应会明确记录
   `stage=access_probe reason=timeout timeout_seconds=10`，不伪装成插件代码异常；
 - `collection_run_summary`：中文“任务汇总”，包含总目标、采集成功/失败、不可达、延后处理、跳过、
   发布统计、总耗时、聚合后的失败类型，以及最多 3 个脱敏失败样本；
-- `plugin_exception`：插件执行、协议预检或插件内部捕获到的异常样本；每个 Run 最多 3 条，包含
-  `task_id`、`plugin_ref`、`model_id`、`plugin_name`、`target`、`error_type` 和有界 `call_chain`；
-  `call_chain` 只保留文件、行号、函数名，不记录异常正文或源码行；
+- `plugin_exception`：插件执行、协议预检或插件内部捕获到的每个异常均记录，包含 `task_id`、
+  `plugin_ref`、`model_id`、`plugin_name`、`target`、`error_type`、脱敏且有长度上限的
+  `error_message`，以及有界 `call_chain` / `source_context`；不记录局部变量、请求头或凭据；
+- `snmp_facts_collection_started`：SNMP 插件每次正式采集输出当前目标 IP 和任务、插件上下文；执行器
+  不再重复输出通用的目标开始日志；
 - `collection_run_terminal`：中文“任务结束”，包含中文终态和总耗时，同时保留稳定英文 `status`；
 - `collection_capacity`：每 3 分钟输出中文容量快照，明确区分采集任务和目标任务，并展示目标的
   等待执行、正在执行、本轮已完成和容器启动后累计已完成数量，以及进程和容器资源；
@@ -174,11 +184,8 @@ cgroup 内存利用率持续超过 80%、发布队列长期超过 80%，或 thro
   成功行数、总行数和取消前跳过的行数；
 - NATS、Redis、租约、发布终态等 WARNING/ERROR：保留单次失败诊断字段。
 
-主日志继续写 stdout，由日志平台按 `event`、`task_id`、`plugin_ref`、`model_id` 建立字段和视图。
-网络设备 `snmp_facts` 额外复制到独立滚动文件 `logs/snmp_facts.log`；默认单文件 50 MiB、保留 5 个
-历史文件，可通过 `SNMP_LOG_FILE`、`SNMP_LOG_MAX_BYTES`、`SNMP_LOG_BACKUP_COUNT` 调整。该文件只
-接收 `network.config` / `snmp_facts` Run 日志及其插件内部日志，不接收其他插件；若需跨容器重启
-保留，部署时应把日志目录挂载到持久卷。
+日志统一写 stdout，由日志平台按 `event`、`task_id`、`plugin_ref`、`model_id`、`target` 建立字段和
+视图；不再创建 SNMP 专用日志文件。
 
 常用本地检索：
 
@@ -187,8 +194,8 @@ rg 'task_id=<task-id>' stargazer.log
 rg 'event=collection_run_(started|summary|terminal)' stargazer.log
 rg 'event=collection_progress|event=target_collection_failed' stargazer.log
 rg 'event=plugin_exception' stargazer.log
+rg 'event=snmp_facts_collection_started|target=<ip>' stargazer.log
 rg 'event=collection_capacity' stargazer.log
-rg 'task_id=<task-id>|target=<ip>' logs/snmp_facts.log
 ```
 
 ## Host Remote
