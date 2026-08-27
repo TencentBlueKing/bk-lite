@@ -13,6 +13,7 @@ from apps.node_mgmt.models import Node, PackageVersion, SidecarEnv
 from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode, ControllerTask, ControllerTaskNode
 from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
+from apps.node_mgmt.services.node_identity import bind_existing_cloud_ip_node_ids
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.permission import normalize_orgs
@@ -35,9 +36,7 @@ class InstallerService:
             # that would route the batch through the wrong operating-system path.
             return None
         if package_obj.os != target_os:
-            raise BaseAppException(
-                f"Controller package operating system mismatch: package={package_obj.os}, target={target_os}"
-            )
+            raise BaseAppException(f"Controller package operating system mismatch: package={package_obj.os}, target={target_os}")
         return package_obj
 
     @staticmethod
@@ -204,6 +203,7 @@ class InstallerService:
         if len(node_operating_systems) != 1:
             raise BaseAppException("A controller installation batch must use one operating system")
         InstallerService.validate_controller_package_os(package_version_id, node_operating_systems.pop())
+        nodes = bind_existing_cloud_ip_node_ids(cloud_region_id, nodes)
         task_obj = ControllerTask.objects.create(
             cloud_region_id=cloud_region_id,
             work_node=work_node,
@@ -257,7 +257,7 @@ class InstallerService:
     def get_manual_install_status(nodes):
         """获取手动安装节点状态"""
         exists_id = Node.objects.filter(id__in=nodes).values("id")
-        exists_id_set = set([item["id"] for item in exists_id])
+        exists_id_set = {item["id"] for item in exists_id}
         result = []
         for node_id in nodes:
             info = {"node_id": node_id, "status": ""}
@@ -333,15 +333,8 @@ class InstallerService:
         if scope is None:
             return linked_nodes
 
-        snapshot_node_ids = {
-            str(node_id)
-            for node_id in task_nodes.values_list("node_id", flat=True)
-            if node_id
-        }
-        existing_node_ids = {
-            str(node_id)
-            for node_id in Node.objects.filter(id__in=snapshot_node_ids).values_list("id", flat=True)
-        }
+        snapshot_node_ids = {str(node_id) for node_id in task_nodes.values_list("node_id", flat=True) if node_id}
+        existing_node_ids = {str(node_id) for node_id in Node.objects.filter(id__in=snapshot_node_ids).values_list("id", flat=True)}
         data_team_ids = set(scope.data_team_ids)
         historical_nodes = []
         for item in task_nodes:
@@ -381,14 +374,9 @@ class InstallerService:
         username = getattr(request_user, "username", "") if request_user is not None else ""
         domain = getattr(request_user, "domain", "") if request_user is not None else ""
         snapshot_node_ids = {str(task_node.node_id) for task_node in scoped_task_nodes if task_node.node_id}
-        existing_node_ids = {
-            str(node_id)
-            for node_id in Node.objects.filter(id__in=snapshot_node_ids).values_list("id", flat=True)
-        }
+        existing_node_ids = {str(node_id) for node_id in Node.objects.filter(id__in=snapshot_node_ids).values_list("id", flat=True)}
         historical_task_node_ids = [
-            task_node.id
-            for task_node in scoped_task_nodes
-            if not task_node.node_id or str(task_node.node_id) not in existing_node_ids
+            task_node.id for task_node in scoped_task_nodes if not task_node.node_id or str(task_node.node_id) not in existing_node_ids
         ]
         historical_node_filter = Q(pk__in=historical_task_node_ids)
         historical_owner_filter = Q(pk__in=[])
@@ -418,12 +406,8 @@ class InstallerService:
             task_result = (task_node.result or {}).copy()
             if task_node.connectivity_observed_at:
                 task_result[InstallerConstants.CONNECTIVITY_OBSERVED_KEY] = True
-                task_result[InstallerConstants.CONNECTIVITY_OBSERVED_NODE_ID_KEY] = (
-                    task_node.connectivity_observed_node_id
-                )
-                task_result[InstallerConstants.CONNECTIVITY_OBSERVED_AT_KEY] = (
-                    task_node.connectivity_observed_at.isoformat()
-                )
+                task_result[InstallerConstants.CONNECTIVITY_OBSERVED_NODE_ID_KEY] = task_node.connectivity_observed_node_id
+                task_result[InstallerConstants.CONNECTIVITY_OBSERVED_AT_KEY] = task_node.connectivity_observed_at.isoformat()
             result.append(
                 dict(
                     task_node_id=task_node.id,

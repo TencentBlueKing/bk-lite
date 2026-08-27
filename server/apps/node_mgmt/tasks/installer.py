@@ -5,27 +5,23 @@ import threading
 import time
 import uuid
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from celery import shared_task
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
+
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.node_mgmt.constants.node import NodeConstants
-from apps.node_mgmt.models import (
-    CollectorTask,
-    ControllerTask,
-    ControllerTaskNode,
-    Node,
-    NodeCollectorInstallStatus,
-    PackageVersion,
-)
+from apps.node_mgmt.models import CollectorTask, ControllerTask, ControllerTaskNode, Node, NodeCollectorInstallStatus, PackageVersion
 from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.node_identity import resolve_reusable_node_id
 from apps.node_mgmt.services.package import PackageService
-from apps.node_mgmt.services.windows_remote_bootstrap import (
-    WindowsBootstrapTarget,
-    WindowsRemoteBootstrapService,
-)
+from apps.node_mgmt.services.windows_remote_bootstrap import WindowsBootstrapTarget, WindowsRemoteBootstrapService
 from apps.node_mgmt.tasks.version_discovery import discover_node_versions
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.installer import (
@@ -58,11 +54,7 @@ from apps.node_mgmt.utils.task_result_schema import (
     apply_result_envelope,
 )
 from apps.node_mgmt.utils.winrm import default_winrm_port, winrm_profile_error
-from celery import shared_task
 from config.components.nats import NATS_NAMESPACE
-from django.db import transaction
-from django.db.models import Q
-from django.utils import timezone
 from nats_client.clients import subscribe_lines_sync
 
 CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS = InstallerConstants.CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS
@@ -96,11 +88,7 @@ def _apply_installer_events_to_node(node_obj, output_text: str):
 
     steps = (node_obj.result or {}).get("steps", [])
     command_step = next(
-        (
-            step
-            for step in reversed(steps)
-            if isinstance(step, dict) and step.get("action") == "run"
-        ),
+        (step for step in reversed(steps) if isinstance(step, dict) and step.get("action") == "run"),
         None,
     )
     if command_step and command_step.get("status") == InstallerConstants.STEP_STATUS_RUNNING:
@@ -156,10 +144,7 @@ def _apply_installer_events_for_execution(node_id: int, output_text: str, execut
     with transaction.atomic():
         locked_node = ControllerTaskNode.objects.select_for_update().get(id=node_id)
         result = locked_node.result or {}
-        if (
-            result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) != execution_id
-            or _get_execution_attempt(locked_node) != attempt
-        ):
+        if result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) != execution_id or _get_execution_attempt(locked_node) != attempt:
             return False
         return _apply_installer_events_to_node(locked_node, output_text)
 
@@ -169,10 +154,7 @@ def _claim_installer_execution(node_id: int, execution_id: str, attempt: int) ->
     with transaction.atomic():
         locked_node = ControllerTaskNode.objects.select_for_update().get(id=node_id)
         result = locked_node.result or {}
-        if (
-            _get_execution_attempt(locked_node) != attempt
-            or result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY)
-        ):
+        if _get_execution_attempt(locked_node) != attempt or result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY):
             return None
         result[InstallerConstants.INSTALLER_EXECUTION_ID_KEY] = execution_id
         locked_node.result = result
@@ -199,10 +181,7 @@ def _finish_installer_execution(node_id: int, output_text: str, execution_id: st
     with transaction.atomic():
         locked_node = ControllerTaskNode.objects.select_for_update().get(id=node_id)
         result = locked_node.result or {}
-        if (
-            result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) != execution_id
-            or _get_execution_attempt(locked_node) != attempt
-        ):
+        if result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) != execution_id or _get_execution_attempt(locked_node) != attempt:
             return None
         _apply_installer_events_to_node(locked_node, output_text)
         result = locked_node.result or {}
@@ -223,10 +202,7 @@ def _fail_installer_execution(
     with transaction.atomic():
         locked_node = ControllerTaskNode.objects.select_for_update().get(id=node_id)
         result = locked_node.result or {}
-        if (
-            result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) != execution_id
-            or _get_execution_attempt(locked_node) != attempt
-        ):
+        if result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) != execution_id or _get_execution_attempt(locked_node) != attempt:
             return None
         _handle_step_exception(locked_node, error_message, exception_obj)
         result = locked_node.result or {}
@@ -241,10 +217,7 @@ def _close_installer_execution(node_id: int, execution_id: str, attempt: int) ->
     with transaction.atomic():
         locked_node = ControllerTaskNode.objects.select_for_update().get(id=node_id)
         result = locked_node.result or {}
-        if (
-            result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) == execution_id
-            and _get_execution_attempt(locked_node) == attempt
-        ):
+        if result.get(InstallerConstants.INSTALLER_EXECUTION_ID_KEY) == execution_id and _get_execution_attempt(locked_node) == attempt:
             result.pop(InstallerConstants.INSTALLER_EXECUTION_ID_KEY, None)
             locked_node.result = result
             locked_node.save(update_fields=["result"])
@@ -411,10 +384,7 @@ def _save_node_result(node_obj, overall_status, final_message):
         result,
         overall_status=normalize_overall_status(overall_status),
         final_message=final_message,
-        failure=(
-            _extract_latest_installer_failure_from_steps(result.get("steps"))
-            or _extract_latest_failure_from_steps(result.get("steps"))
-        ),
+        failure=(_extract_latest_installer_failure_from_steps(result.get("steps")) or _extract_latest_failure_from_steps(result.get("steps"))),
     )
     result[InstallerConstants.EXECUTION_PHASE_KEY] = InstallerConstants.EXECUTION_PHASE_FINISHED
     result["installer_progress"] = summarize_installer_progress(result)
@@ -436,18 +406,11 @@ def _save_node_pending_connectivity(node_obj, final_message):
     node_obj.result = result
     node_obj.save(update_fields=["status", "result"])
 
-    observation = (
-        ControllerTaskNode.objects.filter(id=node_obj.id)
-        .values("connectivity_observed_at", "connectivity_observed_node_id")
-        .first()
-        or {}
-    )
+    observation = ControllerTaskNode.objects.filter(id=node_obj.id).values("connectivity_observed_at", "connectivity_observed_node_id").first() or {}
     observed_at = observation.get("connectivity_observed_at")
     if observed_at:
         result[InstallerConstants.CONNECTIVITY_OBSERVED_KEY] = True
-        result[InstallerConstants.CONNECTIVITY_OBSERVED_NODE_ID_KEY] = observation.get(
-            "connectivity_observed_node_id"
-        )
+        result[InstallerConstants.CONNECTIVITY_OBSERVED_NODE_ID_KEY] = observation.get("connectivity_observed_node_id")
         result[InstallerConstants.CONNECTIVITY_OBSERVED_AT_KEY] = observed_at.isoformat()
         node_obj.result = result
         node_obj.save(update_fields=["result"])
@@ -566,9 +529,7 @@ def _dispatch_or_finalize_controller_task(task_id: int):
             result = node_obj.result or {}
             result[InstallerConstants.EXECUTION_PHASE_KEY] = InstallerConstants.EXECUTION_PHASE_BOOTSTRAP_RUNNING
             result[InstallerConstants.EXECUTION_ATTEMPT_KEY] = attempt
-            result[InstallerConstants.EXECUTION_DEADLINE_UNIX_KEY] = (
-                int(time.time()) + CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS
-            )
+            result[InstallerConstants.EXECUTION_DEADLINE_UNIX_KEY] = int(time.time()) + CONTROLLER_INSTALL_TASK_TIMEOUT_SECONDS
             node_obj.status = InstallerConstants.STEP_STATUS_RUNNING
             node_obj.result = result
             node_obj.save(update_fields=["status", "result"])
@@ -584,6 +545,7 @@ def _dispatch_or_finalize_controller_task(task_id: int):
         task_obj.save(update_fields=["status"])
 
         if dispatch_items:
+
             def dispatch_claimed_nodes(items=tuple(dispatch_items), current_task_id=task_id):
                 for item_index, (task_node_id, attempt) in enumerate(items):
                     try:
@@ -612,9 +574,7 @@ def _dispatch_or_finalize_controller_task(task_id: int):
                             _dispatch_or_finalize_controller_task(current_task_id)
                         return
 
-            transaction.on_commit(
-                dispatch_claimed_nodes
-            )
+            transaction.on_commit(dispatch_claimed_nodes)
 
     if should_refresh_controller_versions:
         discover_node_versions.delay()
@@ -719,7 +679,24 @@ def _handle_step_exception(node_obj, error_message, exception_obj=None, timestam
         )
 
 
-def install_controller_on_nodes(
+def _bind_controller_install_node_id(task_obj, node_obj):
+    result = node_obj.result or {}
+    install_node_id = (
+        resolve_reusable_node_id(
+            task_obj.cloud_region_id,
+            node_obj.ip,
+            result.get(InstallerConstants.INSTALL_NODE_ID_KEY) or node_obj.node_id or "",
+        )
+        or uuid.uuid4().hex
+    )
+    result[InstallerConstants.INSTALL_NODE_ID_KEY] = install_node_id
+    node_obj.result = result
+    node_obj.node_id = install_node_id
+    node_obj.save(update_fields=["result", "node_id"])
+    return install_node_id
+
+
+def install_controller_on_nodes(  # noqa: C901
     task_obj,
     nodes,
     package_obj,
@@ -741,11 +718,7 @@ def install_controller_on_nodes(
 
         is_windows = getattr(node_obj, "os", "") == NodeConstants.WINDOWS_OS
         if (is_windows and not has_password) or (not is_windows and not has_password and not has_private_key):
-            credential_message = (
-                "Windows remote installation requires a password."
-                if is_windows
-                else "Password or private key is required."
-            )
+            credential_message = "Windows remote installation requires a password." if is_windows else "Password or private key is required."
             _add_step(
                 node_obj,
                 "credential_check",
@@ -824,11 +797,13 @@ def install_controller_on_nodes(
                 },
             )
 
-            result = node_obj.result or {}
-            install_node_id = result.get(InstallerConstants.INSTALL_NODE_ID_KEY) or uuid.uuid4().hex
-            result[InstallerConstants.INSTALL_NODE_ID_KEY] = install_node_id
-            node_obj.result = result
-            node_obj.save(update_fields=["result"])
+            try:
+                install_node_id = _bind_controller_install_node_id(task_obj, node_obj)
+            except ValidationAppException as exc:
+                _handle_step_exception(node_obj, str(exc), exc)
+                _save_node_result(node_obj, "error", str(exc))
+                _dispatch_or_finalize_controller_task(task_obj.id)
+                continue
 
             if resolved_package.os == NodeConstants.WINDOWS_OS:
                 execution_id = execution_id or uuid.uuid4().hex
@@ -867,9 +842,7 @@ def install_controller_on_nodes(
                 task_node_id=node_obj.id if resolved_package.os == NodeConstants.WINDOWS_OS else None,
                 execution_id=execution_id if resolved_package.os == NodeConstants.WINDOWS_OS else "",
                 execution_attempt=execution_attempt if resolved_package.os == NodeConstants.WINDOWS_OS else None,
-                execution_deadline_unix=(node_obj.result or {}).get(
-                    InstallerConstants.EXECUTION_DEADLINE_UNIX_KEY
-                )
+                execution_deadline_unix=(node_obj.result or {}).get(InstallerConstants.EXECUTION_DEADLINE_UNIX_KEY)
                 if resolved_package.os == NodeConstants.WINDOWS_OS
                 else None,
             )
@@ -925,6 +898,7 @@ def install_controller_on_nodes(
                         current_execution_id,
                         current_attempt,
                     )
+
                 result_queue, subscribe_runner = subscribe_lines_sync(
                     progress_subject,
                     timeout=InstallerConstants.COMMAND_EXECUTE_TIMEOUT,
