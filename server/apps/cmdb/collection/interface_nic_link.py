@@ -4,6 +4,7 @@
 不把 nic 改成 interface，不编造 nic，不把逻辑主机 host 混进这条路径。
 """
 from apps.cmdb.collection.nic_inventory import normalize_nic_mac
+from apps.core.logger import cmdb_logger as logger
 
 INTERFACE_MODEL_ID = "interface"
 NIC_MODEL_ID = "nic"
@@ -215,7 +216,15 @@ def load_nic_instances_by_mac(macs) -> list[dict]:
         return ag.query_entity_by_inst_names(mac_list, model_id=NIC_MODEL_ID) or []
 
 
-def ensure_interface_connect_nic_association() -> bool:
+_ENSURE_FAILED_TEMPLATE = "event=network_topology_nic_association_ensure_failed task_id=%s failed_stage=%s error_type=%s"
+_ENSURE_FAILED_STAGE = "ensure_interface_connect_nic_association"
+
+
+def _log_nic_association_ensure_failed(task_id, error_type: str) -> None:
+    logger.warning(_ENSURE_FAILED_TEMPLATE, task_id or "", _ENSURE_FAILED_STAGE, error_type)
+
+
+def ensure_interface_connect_nic_association(task_id=None) -> bool:
     """存量环境若缺少 interface_connect_nic 模型关联则补上；已存在则幂等成功。"""
     from apps.cmdb.services.model import ModelManage
     from apps.core.exceptions.base_app_exception import BaseAppException
@@ -226,6 +235,7 @@ def ensure_interface_connect_nic_association() -> bool:
     src = ModelManage.search_model_info(INTERFACE_MODEL_ID)
     dst = ModelManage.search_model_info(NIC_MODEL_ID)
     if not src or not dst:
+        _log_nic_association_ensure_failed(task_id, "model_not_found")
         return False
     try:
         ModelManage.model_association_create(
@@ -244,5 +254,6 @@ def ensure_interface_connect_nic_association() -> bool:
         message = str(getattr(exc, "message", exc) or "")
         if "repetition" in message.lower() or "already exists" in message.lower():
             return True
+        _log_nic_association_ensure_failed(task_id, type(exc).__name__)
         return False
     return True

@@ -9,6 +9,8 @@ from apps.cmdb.collection.collect_plugin.topology import build_pipeline_aggregat
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS, NETWORK_TOPOLOGY_FACTS
 from apps.cmdb.collection.interface_nic_link import (
+    _ENSURE_FAILED_STAGE,
+    _ENSURE_FAILED_TEMPLATE,
     bind_fdb_learned_macs_to_nics,
     bind_unresolved_neighbors_to_nics,
     candidate_nic_lookup_macs,
@@ -230,14 +232,19 @@ class CollectNetworkMetrics(CollectBase):
             self.append_unique_relationship(relationships, seen, relation)
 
         nic_relationships, unmatched_macs, nic_dropped = self.collect_nic_connect_relationships(parsed)
+        if nic_relationships:
+            try:
+                ensure_interface_connect_nic_association(task_id=self.task_id)
+            except Exception as exc:  # noqa: BLE001 — 模型关联补齐失败不阻断拓扑主路径
+                logger.warning(
+                    _ENSURE_FAILED_TEMPLATE,
+                    self.task_id or "",
+                    _ENSURE_FAILED_STAGE,
+                    type(exc).__name__,
+                )
         for relation in nic_relationships:
             self.append_unique_relationship(relationships, seen, relation)
         dropped.extend(nic_dropped)
-        if nic_relationships:
-            try:
-                ensure_interface_connect_nic_association()
-            except Exception:  # noqa: BLE001 — 模型关联补齐失败不阻断拓扑主路径
-                pass
 
         summary = dict(parsed.get("summary") or {})
         summary["unmatched_macs"] = len(unmatched_macs)
@@ -289,7 +296,13 @@ class CollectNetworkMetrics(CollectBase):
             return {}
         try:
             instances = load_nic_instances_by_mac(macs)
-        except Exception:  # noqa: BLE001 — 拓扑主路径不因 nic 查询失败中断
+        except Exception as exc:  # noqa: BLE001 — 拓扑主路径不因 nic 查询失败中断
+            logger.warning(
+                "event=network_topology_nic_index_load_failed task_id=%s failed_stage=%s error_type=%s",
+                self.task_id or "",
+                "load_nic_mac_index",
+                type(exc).__name__,
+            )
             return {}
         return nic_index_from_instances(instances)
 

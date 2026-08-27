@@ -9,6 +9,7 @@
 - 不把逻辑主机 host 混进 nic 查找
 - LLDP/CDP 未解析邻居若带 nic MAC，可顺带连上
 """
+import logging
 from unittest import mock
 
 import pandas as pd
@@ -16,6 +17,7 @@ import pytest
 
 from apps.cmdb.collection.common import Management
 from apps.cmdb.collection.interface_nic_link import (
+    _ENSURE_FAILED_TEMPLATE,
     INTERFACE_CONNECT_NIC,
     bind_fdb_learned_macs_to_nics,
     bind_unresolved_neighbors_to_nics,
@@ -417,3 +419,139 @@ def test_ensure_interface_connect_nic_is_idempotent(monkeypatch):
     assert creates[0]["dst_model_id"] == "nic"
     assert ensure_interface_connect_nic_association() is True
     assert len(creates) == 1
+
+
+_NIC_INDEX_LOAD_FAILED_TEMPLATE = "event=network_topology_nic_index_load_failed task_id=%s failed_stage=%s error_type=%s"
+_SECRET_SENTINEL = "secret-token-do-not-log"
+
+
+def _warning_records(caplog, template):
+    return [record for record in caplog.records if record.msg == template]
+
+
+def test_ensure_returns_false_and_logs_when_models_missing(monkeypatch, caplog):
+    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.model_association_info_search", lambda _mid: {})
+    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.search_model_info", lambda _mid: None)
+    create = mock.Mock()
+    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.model_association_create", create)
+
+    with caplog.at_level(logging.WARNING, logger="cmdb"):
+        result = ensure_interface_connect_nic_association(task_id=7001)
+
+    assert result is False
+    create.assert_not_called()
+    records = _warning_records(caplog, _ENSURE_FAILED_TEMPLATE)
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.WARNING
+    assert record.args == (7001, "ensure_interface_connect_nic_association", "model_not_found")
+    rendered = record.getMessage()
+    assert rendered == (
+        "event=network_topology_nic_association_ensure_failed "
+        "task_id=7001 failed_stage=ensure_interface_connect_nic_association error_type=model_not_found"
+    )
+    assert record.exc_info is None
+
+
+def test_ensure_returns_false_and_logs_without_secret_on_non_repetition(monkeypatch, caplog):
+    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.model_association_info_search", lambda _mid: {})
+    monkeypatch.setattr(
+        "apps.cmdb.services.model.ModelManage.search_model_info",
+        lambda mid: {"_id": 1, "model_id": mid},
+    )
+
+    def create(**_payload):
+        raise BaseAppException(_SECRET_SENTINEL)
+
+    monkeypatch.setattr("apps.cmdb.services.model.ModelManage.model_association_create", create)
+
+    with caplog.at_level(logging.WARNING, logger="cmdb"):
+        result = ensure_interface_connect_nic_association(task_id=7001)
+
+    assert result is False
+    records = _warning_records(caplog, _ENSURE_FAILED_TEMPLATE)
+    assert len(records) == 1
+    record = records[0]
+    assert record.args == (7001, "ensure_interface_connect_nic_association", "BaseAppException")
+    rendered = record.getMessage()
+    assert "error_type=BaseAppException" in rendered
+    assert _SECRET_SENTINEL not in rendered
+    assert _SECRET_SENTINEL not in str(record.args)
+    assert record.exc_info is None
+
+
+def test_pipeline_ensure_exception_logs_and_still_writes_nic_connect(caplog):
+    plugin = _make_plugin()
+    plugin.interfaces_data = {SOURCE_IFACE: {"inst_name": SOURCE_IFACE, "assos": []}}
+    plugin.load_nic_mac_index = lambda macs: _nic_index(SERVER_NIC_MAC) if SERVER_NIC_MAC in macs else {}
+    captured = {}
+    rows = _fdb_rows(learned_mac_oid="204.204.204.204.204.204")
+    with mock.patch.object(
+        plugin,
+        "save_topology_snapshot",
+        side_effect=lambda snapshot: captured.update(snapshot),
+    ), mock.patch(
+        "apps.cmdb.collection.collect_plugin.network.ensure_interface_connect_nic_association",
+        side_effect=RuntimeError(_SECRET_SENTINEL),
+    ), caplog.at_level(logging.WARNING, logger="cmdb"):
+        relationships = plugin.collect_topology_relationships([], rows)
+        plugin.add_interface_assos(relationships)
+
+    assert relationships == [
+        {
+            "source_inst_name": SOURCE_IFACE,
+            "target_inst_name": SERVER_NIC_MAC,
+            "model_id": "nic",
+            "asst_id": "connect",
+            "model_asst_id": INTERFACE_CONNECT_NIC,
+        }
+    ]
+    assert plugin.interfaces_data[SOURCE_IFACE]["assos"][0]["model_asst_id"] == INTERFACE_CONNECT_NIC
+    assert captured["summary"]["nic_connects"] == 1
+    records = _warning_records(caplog, _ENSURE_FAILED_TEMPLATE)
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.WARNING
+    assert record.args == (7001, "ensure_interface_connect_nic_association", "RuntimeError")
+    rendered = record.getMessage()
+    assert rendered == (
+        "event=network_topology_nic_association_ensure_failed "
+        "task_id=7001 failed_stage=ensure_interface_connect_nic_association error_type=RuntimeError"
+    )
+    assert _SECRET_SENTINEL not in rendered
+    assert _SECRET_SENTINEL not in str(record.args)
+    assert record.exc_info is None
+    assert not any(item.exc_info for item in caplog.records)
+
+
+def test_pipeline_nic_query_failure_logs_drops_mac_and_does_not_fabricate(caplog):
+    plugin = _make_plugin()
+    captured = {}
+    with mock.patch(
+        "apps.cmdb.collection.collect_plugin.network.load_nic_instances_by_mac",
+        side_effect=RuntimeError(_SECRET_SENTINEL),
+    ), mock.patch.object(
+        plugin,
+        "save_topology_snapshot",
+        side_effect=lambda snapshot: captured.update(snapshot),
+    ), caplog.at_level(
+        logging.WARNING, logger="cmdb"
+    ):
+        relationships = plugin.collect_topology_relationships([], _fdb_rows(learned_mac_oid="204.204.204.204.204.204"))
+
+    assert relationships == []
+    assert captured["summary"]["unmatched_macs"] == 1
+    assert captured["summary"]["nic_connects"] == 0
+    assert any(item.get("drop_reason") == "unmatched_mac" for item in captured["dropped"])
+    records = _warning_records(caplog, _NIC_INDEX_LOAD_FAILED_TEMPLATE)
+    assert len(records) == 1
+    record = records[0]
+    assert record.levelno == logging.WARNING
+    assert record.msg == _NIC_INDEX_LOAD_FAILED_TEMPLATE
+    assert record.args == (7001, "load_nic_mac_index", "RuntimeError")
+    rendered = record.getMessage()
+    assert rendered == ("event=network_topology_nic_index_load_failed task_id=7001 failed_stage=load_nic_mac_index error_type=RuntimeError")
+    assert _SECRET_SENTINEL not in rendered
+    assert _SECRET_SENTINEL not in str(record.args)
+    assert record.exc_info is None
+    assert not any(item.levelno >= logging.ERROR for item in caplog.records)
