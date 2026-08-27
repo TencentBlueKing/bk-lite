@@ -13,7 +13,7 @@ from unittest import mock
 
 import pytest
 
-from apps.rpc.base import AppClient, DEFAULT_REQUEST_TIMEOUT, RpcClient
+from apps.rpc.base import AppClient, RpcClient
 
 pytestmark = pytest.mark.unit
 
@@ -41,8 +41,12 @@ class TestAppClientDispatch:
 
     def test_函数不存在抛_valueerror(self):
         client = AppClient("math")
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(ValueError) as exc_info:
             client.run("no_such_function")
+
+        assert str(exc_info.value) == "rpc.method_not_found"
+        assert exc_info.value.code == "rpc.method_not_found"
+        assert exc_info.value.params == {}
 
 
 class TestRpcClientRequestTimeout:
@@ -50,8 +54,10 @@ class TestRpcClientRequestTimeout:
 
     def _make_mock_coro(self, return_value):
         """返回一个可以被 asyncio.run / asyncio.wait_for 使用的真实协程。"""
+
         async def _coro(*args, **kwargs):
             return return_value
+
         return _coro
 
     def test_request_使用_wait_for_包裹_nat_request(self):
@@ -59,9 +65,9 @@ class TestRpcClientRequestTimeout:
         client = RpcClient(namespace="test_ns")
         expected = {"result": True, "data": {}}
 
-        with mock.patch("apps.rpc.base.nats_client") as mock_nc, \
-             mock.patch("apps.rpc.base.asyncio.wait_for", wraps=asyncio.wait_for) as mock_wait_for, \
-             mock.patch("apps.rpc.base.asyncio.run", wraps=asyncio.run):
+        with mock.patch("apps.rpc.base.nats_client") as mock_nc, mock.patch(
+            "apps.rpc.base.asyncio.wait_for", wraps=asyncio.wait_for
+        ) as mock_wait_for, mock.patch("apps.rpc.base.asyncio.run", wraps=asyncio.run):
             mock_nc.nat_request = self._make_mock_coro(expected)
             client.request("some_method", key="val")
 
@@ -72,10 +78,9 @@ class TestRpcClientRequestTimeout:
         client = RpcClient(namespace="test_ns")
         expected = {"result": True, "data": {}}
 
-        with mock.patch("apps.rpc.base.nats_client") as mock_nc, \
-             mock.patch("apps.rpc.base.asyncio.wait_for", wraps=asyncio.wait_for) as mock_wait_for, \
-             mock.patch("apps.rpc.base.asyncio.run", wraps=asyncio.run), \
-             mock.patch("apps.rpc.base.settings") as mock_settings:
+        with mock.patch("apps.rpc.base.nats_client") as mock_nc, mock.patch(
+            "apps.rpc.base.asyncio.wait_for", wraps=asyncio.wait_for
+        ) as mock_wait_for, mock.patch("apps.rpc.base.asyncio.run", wraps=asyncio.run), mock.patch("apps.rpc.base.settings") as mock_settings:
             mock_settings.NATS_REQUEST_TIMEOUT = 30
             mock_nc.nat_request = self._make_mock_coro(expected)
             client.request("some_method")
@@ -88,9 +93,9 @@ class TestRpcClientRequestTimeout:
         client = RpcClient(namespace="test_ns")
         expected = {"result": True, "data": {}}
 
-        with mock.patch("apps.rpc.base.nats_client") as mock_nc, \
-             mock.patch("apps.rpc.base.asyncio.wait_for", wraps=asyncio.wait_for) as mock_wait_for, \
-             mock.patch("apps.rpc.base.asyncio.run", wraps=asyncio.run):
+        with mock.patch("apps.rpc.base.nats_client") as mock_nc, mock.patch(
+            "apps.rpc.base.asyncio.wait_for", wraps=asyncio.wait_for
+        ) as mock_wait_for, mock.patch("apps.rpc.base.asyncio.run", wraps=asyncio.run):
             mock_nc.nat_request = self._make_mock_coro(expected)
             client.request("some_method", _timeout=15)
 
@@ -104,8 +109,7 @@ class TestRpcClientRequestTimeout:
         async def _never_return(*args, **kwargs):
             await asyncio.sleep(9999)
 
-        with mock.patch("apps.rpc.base.nats_client") as mock_nc, \
-             mock.patch("apps.rpc.base.settings") as mock_settings:
+        with mock.patch("apps.rpc.base.nats_client") as mock_nc, mock.patch("apps.rpc.base.settings") as mock_settings:
             mock_settings.NATS_REQUEST_TIMEOUT = 0.01
             mock_nc.nat_request = _never_return
             with pytest.raises(TimeoutError):
