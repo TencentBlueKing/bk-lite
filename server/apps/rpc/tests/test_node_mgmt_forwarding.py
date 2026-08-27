@@ -165,6 +165,11 @@ def test_get_cloud_region_envconfig_转发(node):
     assert _last(node.client) == ("get_cloud_region_envconfig", (5,), {})
 
 
+def test_get_cloud_region_public_config_转发(node):
+    node.get_cloud_region_public_config(5)
+    assert _last(node.client) == ("get_cloud_region_public_config", (5,), {})
+
+
 def test_install_collector_组装字典(node):
     node.install_collector(3, ["n1", "n2"])
     assert _last(node.client) == ("install_collector", ({"collector_package": 3, "nodes": ["n1", "n2"]},), {})

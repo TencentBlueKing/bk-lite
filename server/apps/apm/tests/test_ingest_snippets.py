@@ -281,7 +281,7 @@ def test_resolve_region_builds_the_probe_download_url_from_node_server_url(langu
     node_mgmt = Mock()
     node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
     node_mgmt.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
-    node_mgmt.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
+    node_mgmt.get_cloud_region_public_config.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
 
     endpoints = DjangoIntegrationConfigurationService().resolve_region(
         node_mgmt,
@@ -293,7 +293,7 @@ def test_resolve_region_builds_the_probe_download_url_from_node_server_url(langu
 
     assert endpoints.http_endpoint == "http://apm-east.example.com:4318"
     assert endpoints.probe_download_url == f"http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/{artifact_name}"
-    node_mgmt.get_cloud_region_envconfig.assert_called_once_with(7)
+    node_mgmt.get_cloud_region_public_config.assert_called_once_with(7)
 
 
 def test_resolve_region_skips_env_config_when_probe_download_is_not_needed():
@@ -304,7 +304,7 @@ def test_resolve_region_skips_env_config_when_probe_download_is_not_needed():
     endpoints = DjangoIntegrationConfigurationService().resolve_region(node_mgmt, 7, organization_ids=[10])
 
     assert endpoints.probe_download_url == ""
-    node_mgmt.get_cloud_region_envconfig.assert_not_called()
+    node_mgmt.get_cloud_region_public_config.assert_not_called()
 
 
 @pytest.mark.parametrize("env_config", [{}, {"NODE_SERVER_URL": "ftp://10.10.10.1:8011"}, "not-a-dict"])
@@ -312,7 +312,7 @@ def test_resolve_region_fails_closed_when_the_probe_download_address_is_unavaila
     node_mgmt = Mock()
     node_mgmt.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
     node_mgmt.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
-    node_mgmt.get_cloud_region_envconfig.return_value = env_config
+    node_mgmt.get_cloud_region_public_config.return_value = env_config
 
     with pytest.raises(CloudRegionConfigurationError) as exc_info:
         DjangoIntegrationConfigurationService().resolve_region(
