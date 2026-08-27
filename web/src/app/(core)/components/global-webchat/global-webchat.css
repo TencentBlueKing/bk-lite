@@ -1,5 +1,9 @@
 /* Launcher is a transparent logo; do not paint the old 40px primary disc. */
 
+html {
+  --bk-webchat-dock-width: 0px;
+}
+
 #webchat-root button[aria-label='打开对话'] {
   width: auto !important;
   height: auto !important;
