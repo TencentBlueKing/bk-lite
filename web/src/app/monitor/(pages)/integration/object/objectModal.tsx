@@ -120,6 +120,7 @@ const ICON_LIST = [
   'mm-website_网站',
   'mm-zookeeper_Zookeeper',
   'mm-active-directory_AD',
+  'mm-exchange_Exchange',
   'mm-influxdb_InfluxDB',
   'mm-haproxy_HAProxy',
   'mm-consul_Consul'

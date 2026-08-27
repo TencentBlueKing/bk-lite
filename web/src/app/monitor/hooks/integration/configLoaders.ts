@@ -27,6 +27,7 @@ const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {
   Nginx: () => import('./objects/middleware/nginx').then((m) => m.useNginxConfig),
   'Active Directory': () =>
     import('./objects/middleware/activeDirectory').then((m) => m.useActiveDirectoryConfig),
+  Exchange: () => import('./objects/middleware/exchange').then((m) => m.useExchangeConfig),
   Apache: () => import('./objects/middleware/apache').then((m) => m.useApacheConfig),
   Haproxy: () => import('./objects/middleware/haproxy').then((m) => m.useHaproxyConfig),
   Consul: () => import('./objects/middleware/consul').then((m) => m.useConsulConfig),

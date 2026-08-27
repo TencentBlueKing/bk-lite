@@ -27,6 +27,7 @@ const COMMUNITY_DASHBOARD_METADATA: ProfessionalDashboardMetaItem[] = [
   { key: 'tomcat', groupKey: 'middleware', objectName: 'Tomcat', objectDisplayName: 'Tomcat', inheritedPermissionPath: '/monitor/view' },
   { key: 'zookeeper', aliases: ['zk'], groupKey: 'middleware', objectName: 'Zookeeper', objectDisplayName: 'Zookeeper', inheritedPermissionPath: '/monitor/view' },
   { key: 'active-directory', aliases: ['active_directory'], groupKey: 'middleware', objectName: 'Active Directory', objectDisplayName: 'Active Directory', inheritedPermissionPath: '/monitor/view' },
+  { key: 'exchange', groupKey: 'middleware', objectName: 'Exchange', objectDisplayName: 'Exchange', inheritedPermissionPath: '/monitor/view' },
   { key: 'kafka', groupKey: 'middleware', objectName: 'Kafka', objectDisplayName: 'Kafka', inheritedPermissionPath: '/monitor/view' },
   { key: 'etcd', groupKey: 'middleware', objectName: 'Etcd', objectDisplayName: 'Etcd', inheritedPermissionPath: '/monitor/view' },
   { key: 'haproxy', groupKey: 'middleware', objectName: 'Haproxy', objectDisplayName: 'HAProxy', inheritedPermissionPath: '/monitor/view' },
