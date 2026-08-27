@@ -3,6 +3,12 @@ import os
 from urllib.parse import urlencode, urlparse
 
 import requests
+from django.conf import settings as django_settings
+from django.core.cache import cache
+from django.http import HttpResponseRedirect, JsonResponse
+from django.shortcuts import render
+from rest_framework.decorators import api_view
+
 from apps.core.logger import logger, safe_exception_call_chain, safe_exception_info
 from apps.core.services.login_auth_request_service import (
     AUTH_REQUEST_TTL,
@@ -18,6 +24,7 @@ from apps.core.services.login_auth_request_service import (
     validate_poll_token,
     validate_redirect_origin,
 )
+from apps.core.utils.builtin_app_i18n import localized_app_display_name, translate_builtin_app_display_name
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.rpc.base import RpcClient
@@ -27,11 +34,6 @@ from apps.system_mgmt.models.login_module import LoginModule
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.services.login_auth_binding_service import build_login_auth_redirect, get_active_login_auth_bindings
 from apps.system_mgmt.utils.login_log_utils import log_user_login_from_request
-from django.conf import settings as django_settings
-from django.core.cache import cache
-from django.http import HttpResponseRedirect, JsonResponse
-from django.shortcuts import render
-from rest_framework.decorators import api_view
 
 PORTAL_BRANDING_KEYS = ("portal_name", "portal_logo_url", "portal_favicon_url", "watermark_enabled", "watermark_text")
 LOGIN_AUTH_BINDINGS_RATE_LIMIT = 60
@@ -207,8 +209,7 @@ def verify_wechat_code(code: str) -> dict:
 
         if "errcode" in token_data:
             logger.warning(
-                "event=wechat_token_exchange_failed failed_stage=token_exchange "
-                "http_status=%s errcode=%s error_type=%s",
+                "event=wechat_token_exchange_failed failed_stage=token_exchange " "http_status=%s errcode=%s error_type=%s",
                 token_resp.status_code,
                 token_data.get("errcode"),
                 "wechat_api_error",
@@ -229,8 +230,7 @@ def verify_wechat_code(code: str) -> dict:
 
         if "errcode" in userinfo_data:
             logger.warning(
-                "event=wechat_userinfo_fetch_failed failed_stage=userinfo_fetch "
-                "http_status=%s errcode=%s error_type=%s",
+                "event=wechat_userinfo_fetch_failed failed_stage=userinfo_fetch " "http_status=%s errcode=%s error_type=%s",
                 userinfo_resp.status_code,
                 userinfo_data.get("errcode"),
                 "wechat_api_error",
@@ -779,6 +779,7 @@ def get_client(request):
             loader = _get_loader(request)
             for i in return_data["data"]:
                 if i.get("is_build_in"):
+                    translate_builtin_app_display_name(i, loader)
                     # 翻译 description（格式为 "app.xxx"）
                     if i.get("description"):
                         i["description"] = loader.get(i["description"], i["description"])
@@ -837,6 +838,11 @@ def get_client_detail(request):
             desc_key = data.get("description", "")
             translated = loader.get(desc_key) if desc_key else ""
             data["description"] = translated or desc_key
+            data["display_name"] = localized_app_display_name(
+                data.get("name") or "",
+                loader,
+                data.get("display_name"),
+            )
         return JsonResponse(return_data)
     except Exception as e:
         logger.error(f"Error retrieving client detail for {client_name}: {e}")
@@ -962,9 +968,7 @@ def start_login_auth(request):
         if not _is_safe_relative_callback_url(callback_url):
             return JsonResponse({"result": False, "message": "callback_url must be an in-site relative path"}, status=400)
         if legacy_external_callback_url and not legacy_third_login_code:
-            return JsonResponse(
-                {"result": False, "message": "legacy_external_callback_url requires third_login_code"}, status=400
-            )
+            return JsonResponse({"result": False, "message": "legacy_external_callback_url requires third_login_code"}, status=400)
         if legacy_external_callback_url and not _is_safe_legacy_external_callback_url(legacy_external_callback_url):
             return JsonResponse({"result": False, "message": "legacy_external_callback_url must be an absolute HTTP(S) URL"}, status=400)
         if redirect_origin and not validate_redirect_origin(request, redirect_origin):

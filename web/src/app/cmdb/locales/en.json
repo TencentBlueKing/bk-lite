@@ -1608,6 +1608,10 @@
     },
     "ViewsHub": {
         "selectInstance": "Select instance",
+        "selectInstanceMultiple": "Select racks (compare)",
+        "selectInstanceGrouped": "Select racks by room (searchable)",
+        "unassociatedRoom": "Unassociated room",
+        "rackWithRoom": "{room} / {rack}",
         "emptyHint": "Select an instance",
         "recent": "Recent",
         "viewDetail": "View details",
