@@ -1,7 +1,8 @@
 Firewall Blockbit SNMP:
   name: Blockbit (Telegraf)
   desc: SNMP monitoring template for Blockbit firewall. It reports system uptime,
-    interface speed, inbound error packets, and other key metrics
+    per-core CPU utilization (HOST-RESOURCES), interface speed, inbound error packets,
+    and other key metrics
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -116,9 +117,10 @@ monitor_object_metric:
         for observing VPN decryption load and anomalous spikes.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the overall CPU utilization of the FortiGate firewall
-        (FORTINET-FORTIGATE-MIB fgSysCpuUsage). Sustained high CPU usage may indicate
-        heavy traffic inspection load, attack activity or a control-plane bottleneck.
+      desc: This metric reports per-core CPU load on the Blockbit firewall as a percentage
+        (HOST-RESOURCES-MIB hrProcessorLoad, per index dimension). Sustained high values
+        may indicate heavy traffic inspection load, attack activity or a control-plane
+        bottleneck.
     device_memory_usage:
       name: Memory Usage
       desc: This metric reports the overall memory utilization of the FortiGate firewall

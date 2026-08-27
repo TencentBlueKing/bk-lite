@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_blockbit",
   "plugin": "Firewall Blockbit SNMP",
-  "plugin_desc": "Baseline SNMP collection template for Blockbit UTM / NGFW security appliances. Based on standard MIB-II / IF-MIB, it collects device uptime, 64-bit HC interface traffic, interface RX/TX error and discard rates, interface admin/operational status and bandwidth, and device-wide total traffic roll-ups. Blockbit appliances run a hardened Unix-like OS whose CPU/memory/disk are exposed only via row-indexed standard host-resource tables that telegraf inputs.snmp cannot filter row-wise, and no vendor private health scalar is publicly documented, so CPU/memory/temperature/fan/power are N/A and not faked. Applicable to Blockbit UTM / NGFW security gateways managed over SNMP.",
+  "plugin_desc": "SNMP collection template for Blockbit UTM / NGFW security appliances. Based on standard MIB-II / IF-MIB, it collects device uptime, HOST-RESOURCES hrProcessorLoad per-core CPU utilization, 64-bit HC interface traffic, interface RX/TX error and discard rates, interface admin/operational status and bandwidth, and device-wide total traffic roll-ups. Memory, temperature, fan and power remain N/A: hrStorage mixes RAM/Flash rows that telegraf inputs.snmp cannot filter row-wise, and no vendor private health scalar is publicly documented. Applicable to Blockbit UTM / NGFW security gateways managed over SNMP.",
   "status_query": "any({instance_type='firewall', collect_type='snmp_blockbit'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",
@@ -14,6 +14,7 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
+    "device_cpu_usage",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
@@ -30,6 +31,24 @@
         "instance_id"
       ],
       "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='firewall', __$labels__}",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports per-core CPU load on the Blockbit firewall as a percentage (HOST-RESOURCES-MIB hrProcessorLoad). Sustained high values may indicate heavy traffic inspection load, attack activity or a control-plane bottleneck."
     },
     {
       "metric_group": "Status",

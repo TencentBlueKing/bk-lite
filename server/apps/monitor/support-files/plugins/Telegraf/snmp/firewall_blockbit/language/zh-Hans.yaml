@@ -1,6 +1,6 @@
 Firewall Blockbit SNMP:
   name: Blockbit（Telegraf）
-  desc: 面向 Blockbit 防火墙的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标。
+  desc: 面向 Blockbit 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率（HOST-RESOURCES）、接口速率、入向错误包等主要指标。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:
@@ -79,8 +79,8 @@ monitor_object_metric:
         VPN 解密流量负载与异常波动。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标报告 FortiGate 防火墙整体 CPU 使用率（FORTINET-FORTIGATE-MIB fgSysCpuUsage）。持续高
-        CPU 可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
+      desc: 该指标报告 Blockbit 防火墙各 CPU 核心的负载百分比（HOST-RESOURCES-MIB hrProcessorLoad，按 index
+        维度上报）。持续偏高可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
     device_memory_usage:
       name: 内存使用率
       desc: 该指标报告 FortiGate 防火墙整体内存使用率（FORTINET-FORTIGATE-MIB fgSysMemUsage，直接以百分比上报）。内存压力过高时设备可能进入保护模式并丢弃新会话。
