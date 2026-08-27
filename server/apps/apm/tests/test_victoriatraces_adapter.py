@@ -208,6 +208,24 @@ def test_transport_failures_are_mapped_to_trace_store_degradation():
         store.get_trace("a" * 32)
 
 
+def test_store_reads_victoria_traces_host(monkeypatch):
+    monkeypatch.delenv("APM_VICTORIATRACES_QUERY_ENDPOINT", raising=False)
+    monkeypatch.setenv("VICTORIATRACES_HOST", "http://victoria-traces:10428")
+
+    store = VictoriaTracesTelemetryStore()
+
+    assert store.endpoint == "http://victoria-traces:10428"
+
+
+def test_store_prefers_victoria_traces_host_over_legacy_query_endpoint(monkeypatch):
+    monkeypatch.setenv("VICTORIATRACES_HOST", "http://victoria-traces:10428")
+    monkeypatch.setenv("APM_VICTORIATRACES_QUERY_ENDPOINT", "http://127.0.0.1:10428")
+
+    store = VictoriaTracesTelemetryStore()
+
+    assert store.endpoint == "http://victoria-traces:10428"
+
+
 def _vector(**values):
     return {
         "status": "success",
