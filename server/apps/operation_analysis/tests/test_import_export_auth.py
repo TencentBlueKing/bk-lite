@@ -1,17 +1,21 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 import yaml
+from django.db import close_old_connections, transaction
 from rest_framework import status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.operation_analysis.constants.import_export import ObjectType
-from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
 from apps.operation_analysis.models.models import Dashboard, Directory, Topology
+from apps.operation_analysis.serializers.import_export_serializers import ExportRequestSerializer
 from apps.operation_analysis.services.import_export.authorization_service import ImportExportAuthorizationService
+from apps.operation_analysis.services.import_export.export_service import ExportService
 from apps.operation_analysis.views.import_export_view import ImportExportViewSet
 from apps.operation_analysis.views.openapi_import_export_view import OpenImportExportViewSet
 from apps.system_mgmt.models import OperationLog
@@ -103,6 +107,55 @@ def _unwrap_payload(payload: dict):
     return payload.get("data", payload)
 
 
+def _create_canvas_dependency_graph(*, datasource_groups: list[int]):
+    namespace = NameSpace.objects.create(
+        name="dependency-namespace",
+        domain="nats.internal.example",
+        account="dependency-account",
+        password="dependency-password",
+    )
+    datasource = DataSourceAPIModel.objects.create(
+        name="dependency-datasource",
+        rest_api="monitor/private_query",
+        groups=datasource_groups,
+        created_by="other-user",
+        updated_by="other-user",
+    )
+    datasource.namespaces.set([namespace.id])
+    dashboard = Dashboard.objects.create(
+        name="allowed-dashboard-with-dependency",
+        groups=[1],
+        created_by="other-user",
+        view_sets=[{"valueConfig": {"dataSource": datasource.id}}],
+    )
+    return dashboard, datasource, namespace
+
+
+def _permission_rules_for_export(*, dashboard_id: int, datasource_ids: list[int]):
+    def get_rules(user, current_team, app_name, permission_key, include_children=False):
+        del user, current_team, app_name, include_children
+        if permission_key == "directory.dashboard":
+            return {"instance": [{"id": dashboard_id, "permission": ["View"]}], "team": []}
+        if permission_key == "datasource":
+            return {
+                "instance": [{"id": datasource_id, "permission": ["View"]} for datasource_id in datasource_ids],
+                "team": [],
+            }
+        return {"instance": [], "team": []}
+
+    return get_rules
+
+
+@pytest.mark.unit
+def test_export_request_rejects_unbounded_object_id_list():
+    serializer = ExportRequestSerializer(
+        data={"object_type": "dashboard", "object_ids": list(range(1, ExportRequestSerializer.MAX_OBJECT_IDS + 2))}
+    )
+
+    assert not serializer.is_valid()
+    assert "object_ids" in serializer.errors
+
+
 @pytest.mark.django_db
 @pytest.mark.parametrize(
     ("object_type", "permissions"),
@@ -141,6 +194,211 @@ def test_openapi_export_rejects_authenticated_token_without_module_permission(au
     response.render()
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_backend_canvas_export_rejects_dependency_without_datasource_permission(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View", "namespace-View"}}
+    dashboard, datasource, _ = _create_canvas_dependency_graph(datasource_groups=[1])
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        _permission_rules_for_export(dashboard_id=dashboard.id, datasource_ids=[datasource.id]),
+    )
+
+    request = _build_request(
+        "/operation_analysis/api/import_export/export",
+        authenticated_user,
+        data={"object_type": "dashboard", "object_ids": [dashboard.id]},
+    )
+
+    response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
+    response.render()
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_backend_canvas_export_rejects_cross_team_datasource_dependency(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View", "data_source-View", "namespace-View"}}
+    dashboard, datasource, _ = _create_canvas_dependency_graph(datasource_groups=[2])
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        _permission_rules_for_export(dashboard_id=dashboard.id, datasource_ids=[datasource.id]),
+    )
+
+    request = _build_request(
+        "/operation_analysis/api/import_export/export",
+        authenticated_user,
+        data={"object_type": "dashboard", "object_ids": [dashboard.id]},
+    )
+
+    response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
+    response.render()
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_backend_canvas_export_rejects_partially_visible_dependency_closure(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View", "data_source-View", "namespace-View"}}
+    dashboard, visible_datasource, _ = _create_canvas_dependency_graph(datasource_groups=[1])
+    hidden_datasource = DataSourceAPIModel.objects.create(
+        name="hidden-dependency-datasource",
+        rest_api="monitor/private_query",
+        groups=[2],
+        created_by="other-user",
+        updated_by="other-user",
+    )
+    dashboard.view_sets.append({"valueConfig": {"dataSource": hidden_datasource.id}})
+    dashboard.save(update_fields=["view_sets"])
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        _permission_rules_for_export(
+            dashboard_id=dashboard.id,
+            datasource_ids=[visible_datasource.id, hidden_datasource.id],
+        ),
+    )
+
+    request = _build_request(
+        "/operation_analysis/api/import_export/export",
+        authenticated_user,
+        data={"object_type": "dashboard", "object_ids": [dashboard.id]},
+    )
+
+    response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
+    response.render()
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_openapi_canvas_export_rejects_dependency_without_namespace_permission(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View", "data_source-View"}}
+    authenticated_user.group_list = [{"id": 1, "name": "Default Team"}]
+    dashboard, datasource, _ = _create_canvas_dependency_graph(datasource_groups=[1])
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        _permission_rules_for_export(dashboard_id=dashboard.id, datasource_ids=[datasource.id]),
+    )
+
+    request = _build_request(
+        "/operation_analysis/open_api/import_export/export",
+        authenticated_user,
+        data={"object_type": "dashboard", "object_ids": [dashboard.id]},
+        api_pass=True,
+    )
+
+    response = OpenImportExportViewSet.as_view({"post": "export_objects"})(request)
+    response.render()
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_backend_canvas_export_keeps_authorized_dependency_closure(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View", "data_source-View", "namespace-View"}}
+    dashboard, datasource, namespace = _create_canvas_dependency_graph(datasource_groups=[1])
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        _permission_rules_for_export(dashboard_id=dashboard.id, datasource_ids=[datasource.id]),
+    )
+
+    request = _build_request(
+        "/operation_analysis/api/import_export/export",
+        authenticated_user,
+        data={"object_type": "dashboard", "object_ids": [dashboard.id]},
+    )
+
+    response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
+    response.render()
+    payload = json.loads(response.rendered_content)
+    exported = yaml.safe_load(_unwrap_payload(payload)["yaml_content"])
+
+    assert response.status_code == status.HTTP_200_OK
+    assert exported["meta"]["object_counts"]["datasources"] == 1
+    assert exported["meta"]["object_counts"]["namespaces"] == 1
+    assert exported["datasources"][0]["name"] == datasource.name
+    assert exported["namespaces"][0]["name"] == namespace.name
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_backend_canvas_export_never_expands_past_authorized_dependency_plan(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View", "data_source-View", "namespace-View"}}
+    dashboard, datasource, authorized_namespace = _create_canvas_dependency_graph(datasource_groups=[1])
+    hidden_namespace = NameSpace.objects.create(
+        name="hidden-after-authorization",
+        domain="hidden.internal.example",
+        account="hidden-account",
+        password="hidden-password",
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        _permission_rules_for_export(dashboard_id=dashboard.id, datasource_ids=[datasource.id]),
+    )
+    original_collect = ExportService.collect_export_dependencies
+    collect_calls = 0
+    lock_values = []
+
+    def collect_then_change_relation(cls, scope_type, object_type, object_ids, *, lock=False):
+        nonlocal collect_calls
+        del cls
+        collect_calls += 1
+        lock_values.append(lock)
+        dependencies = original_collect(scope_type, object_type, object_ids, lock=lock)
+        datasource.namespaces.set([hidden_namespace.id])
+        return dependencies
+
+    monkeypatch.setattr(ExportService, "collect_export_dependencies", classmethod(collect_then_change_relation))
+    request = _build_request(
+        "/operation_analysis/api/import_export/export",
+        authenticated_user,
+        data={"object_type": "dashboard", "object_ids": [dashboard.id]},
+    )
+
+    response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
+    response.render()
+    payload = json.loads(response.rendered_content)
+    exported = yaml.safe_load(_unwrap_payload(payload)["yaml_content"])
+
+    assert response.status_code == status.HTTP_200_OK
+    assert collect_calls == 1
+    assert lock_values == [True]
+    assert [namespace["name"] for namespace in exported["namespaces"]] == [authorized_namespace.name]
+    assert exported["datasources"][0]["namespace_keys"] == [authorized_namespace.name]
+    assert hidden_namespace.name not in response.rendered_content.decode()
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_backend_canvas_export_legacy_mode_is_an_explicit_rollback(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View"}}
+    dashboard, datasource, namespace = _create_canvas_dependency_graph(datasource_groups=[2])
+    monkeypatch.setenv("OPS_ANALYSIS_EXPORT_DEPENDENCY_PERMISSION_MODE", "legacy")
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        _permission_rules_for_export(dashboard_id=dashboard.id, datasource_ids=[]),
+    )
+
+    request = _build_request(
+        "/operation_analysis/api/import_export/export",
+        authenticated_user,
+        data={"object_type": "dashboard", "object_ids": [dashboard.id]},
+    )
+
+    response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
+    response.render()
+    payload = json.loads(response.rendered_content)
+    exported = yaml.safe_load(_unwrap_payload(payload)["yaml_content"])
+
+    assert response.status_code == status.HTTP_200_OK
+    assert exported["datasources"][0]["name"] == datasource.name
+    assert exported["namespaces"][0]["name"] == namespace.name
 
 
 @pytest.mark.django_db
@@ -412,7 +670,8 @@ def test_backend_import_submit_logs_success_results_as_create_and_update(authent
 
 
 @pytest.mark.django_db
-def test_backend_export_filters_to_instance_permissions_with_real_dashboards(authenticated_user, monkeypatch):
+@pytest.mark.integration
+def test_backend_export_rejects_partially_authorized_root_set(authenticated_user, monkeypatch):
     authenticated_user.permission = {"ops-analysis": {"view-View"}}
     allowed_dashboard = Dashboard.objects.create(name="allowed-dashboard", groups=[1], view_sets=[])
     hidden_dashboard = Dashboard.objects.create(name="hidden-dashboard", groups=[1], view_sets=[])
@@ -434,13 +693,107 @@ def test_backend_export_filters_to_instance_permissions_with_real_dashboards(aut
     response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
     response.render()
     payload = json.loads(response.rendered_content)
-    data = _unwrap_payload(payload)
-    yaml_content = data["yaml_content"]
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert payload["result"] is False
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("view", "path", "api_pass"),
+    [
+        (ImportExportViewSet, "/operation_analysis/api/import_export/export", False),
+        (OpenImportExportViewSet, "/operation_analysis/open_api/import_export/export", True),
+    ],
+)
+def test_legacy_export_preserves_partially_authorized_root_set(
+    authenticated_user,
+    monkeypatch,
+    view,
+    path,
+    api_pass,
+):
+    authenticated_user.permission = {"ops-analysis": {"view-View"}}
+    authenticated_user.group_list = [{"id": 1, "name": "Default Team"}]
+    monkeypatch.setenv("OPS_ANALYSIS_EXPORT_DEPENDENCY_PERMISSION_MODE", "legacy")
+    allowed_dashboard = Dashboard.objects.create(name="legacy-allowed-dashboard", groups=[1], view_sets=[])
+    hidden_dashboard = Dashboard.objects.create(name="legacy-hidden-dashboard", groups=[1], view_sets=[])
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        lambda user, current_team, app_name, permission_key, include_children=False: {
+            "instance": [{"id": allowed_dashboard.id, "permission": ["View", "Operate"]}],
+            "team": [],
+        },
+    )
+
+    request = _build_request(
+        path,
+        authenticated_user,
+        data={"object_type": "dashboard", "object_ids": [allowed_dashboard.id, hidden_dashboard.id]},
+        api_pass=api_pass,
+    )
+
+    response = view.as_view({"post": "export_objects"})(request)
+    response.render()
+    payload = json.loads(response.rendered_content)
 
     assert response.status_code == status.HTTP_200_OK
-    assert payload["result"] is True
-    assert "allowed-dashboard" in yaml_content
-    assert "hidden-dashboard" not in yaml_content
+    yaml_content = _unwrap_payload(payload)["yaml_content"]
+    assert allowed_dashboard.name in yaml_content
+    assert hidden_dashboard.name not in yaml_content
+
+
+@pytest.mark.django_db
+@pytest.mark.integration
+def test_backend_legacy_export_rechecks_root_after_competing_transaction(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View"}}
+    monkeypatch.setenv("OPS_ANALYSIS_EXPORT_DEPENDENCY_PERMISSION_MODE", "legacy")
+
+    def run_committed(callback):
+        def execute():
+            close_old_connections()
+            try:
+                with transaction.atomic():
+                    return callback()
+            finally:
+                close_old_connections()
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            return executor.submit(execute).result(timeout=5)
+
+    dashboard_id = run_committed(
+        lambda: Dashboard.objects.create(name="permission-race-dashboard", groups=[1], view_sets=[]).id
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        lambda user, current_team, app_name, permission_key, include_children=False: {
+            "instance": [{"id": dashboard_id, "permission": ["View"]}],
+            "team": [],
+        },
+    )
+    original_collect = ExportService.collect_export_dependencies
+
+    def collect_after_permission_change(cls, scope_type, object_type, object_ids, *, lock=False):
+        del cls
+        run_committed(lambda: Dashboard.objects.filter(id=dashboard_id).update(groups=[2]))
+        return original_collect(scope_type, object_type, object_ids, lock=lock)
+
+    monkeypatch.setattr(ExportService, "collect_export_dependencies", classmethod(collect_after_permission_change))
+    request = _build_request(
+        "/operation_analysis/api/import_export/export",
+        authenticated_user,
+        data={"object_type": "dashboard", "object_ids": [dashboard_id]},
+    )
+
+    try:
+        response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
+        response.render()
+    finally:
+        run_committed(lambda: Dashboard.objects.filter(id=dashboard_id).delete())
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 @pytest.mark.django_db
