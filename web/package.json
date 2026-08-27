@@ -121,6 +121,8 @@
     "test:cmdb-k8s-resource-overview": "pnpm exec tsx scripts/cmdb-k8s-resource-overview-test.ts",
     "test:cmdb-views-hub-core": "pnpm exec tsx scripts/cmdb-views-hub-core-test.ts",
     "test:cmdb-views-hub-menu": "pnpm exec tsx scripts/cmdb-views-hub-menu-test.ts",
+    "test:cmdb-scene-view-groups": "pnpm exec tsx scripts/cmdb-scene-view-groups-test.ts",
+    "test:cmdb-tag-view-search": "pnpm exec tsx scripts/cmdb-tag-view-search-test.ts",
     "test:cmdb-views-hub-wiring": "pnpm exec tsx scripts/cmdb-views-hub-wiring-test.ts",
     "test:monitor-network-device-cloud-region-fill": "pnpm exec tsx scripts/monitor-network-device-cloud-region-fill-test.ts",
     "test:opspilot-enterprise-wechat-aibot-node": "pnpm exec tsx scripts/opspilot-enterprise-wechat-aibot-node-test.ts",

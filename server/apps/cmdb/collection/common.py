@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from apps.cmdb.collect.extensions import get_collect_enterprise_extension
 from apps.cmdb.collection.change_records import write_collect_instance_change_records
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, DataCleanupStrategy
+from apps.cmdb.constants.field_constraints import TAG_ATTR_ID
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.instance_identity import prepare_new_instance_identity
 from apps.cmdb.services.model import ModelManage
@@ -62,6 +63,18 @@ class Management:
 
         return check_attr_map
 
+    @staticmethod
+    def coerce_collected_tag(instance_info: dict) -> dict:
+        """采集写入的 tag 必须是列表。空串/字符串会让图查询 Type mismatch。"""
+        if not isinstance(instance_info, dict) or TAG_ATTR_ID not in instance_info:
+            return instance_info
+        value = instance_info[TAG_ATTR_ID]
+        if isinstance(value, list):
+            return instance_info
+        cleaned = dict(instance_info)
+        cleaned[TAG_ATTR_ID] = []
+        return cleaned
+
     def format_data(self):
         """数据格式化"""
         old_map, new_map = {}, {}
@@ -70,7 +83,7 @@ class Management:
             old_map[key] = info
         for info in self.new_data:
             key = tuple(info[key] for key in self.unique_keys)
-            new_map[key] = info
+            new_map[key] = self.coerce_collected_tag(info)
         return old_map, new_map
 
     @classmethod
@@ -171,6 +184,7 @@ class Management:
         with GraphClient() as ag:
             exist_items = self._query_existing_unique_candidates(ag, inst_list)
             for instance_info in inst_list:
+                instance_info = self.coerce_collected_tag(instance_info)
                 assos = instance_info.pop("assos", [])
                 try:
                     instance_info.update(
@@ -204,6 +218,7 @@ class Management:
         with GraphClient() as ag:
             exist_items = self._query_existing_unique_candidates(ag, inst_list)
             for instance_info in inst_list:
+                instance_info = self.coerce_collected_tag(instance_info)
                 try:
                     instance_info.update(
                         model_id=self.model_id,

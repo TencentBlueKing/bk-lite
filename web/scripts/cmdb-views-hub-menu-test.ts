@@ -10,15 +10,23 @@ for (const locale of ['zh', 'en']) {
   const names = (views.children || []).map((c: { name: string }) => c.name);
   assert.deepEqual(names, [
     'asset_views_overview',
+    'asset_views_scene',
     'asset_views_application',
     'asset_views_k8s',
     'asset_views_network',
     'asset_views_ip',
     'asset_views_rack_room',
   ]);
+  const tagView = (views.children || []).find((c: { name: string }) => c.name === 'asset_views_scene');
+  assert.equal(
+    tagView.title,
+    locale === 'zh' ? '标签视图' : 'Tag View',
+    `${locale}: 标签视图菜单标题`
+  );
   const urls = (views.children || []).map((c: { url: string }) => c.url);
   assert.deepEqual(urls, [
     '/cmdb/assetOverview',
+    '/cmdb/views/scene',
     '/cmdb/views/application',
     '/cmdb/views/k8s',
     '/cmdb/views/network',
