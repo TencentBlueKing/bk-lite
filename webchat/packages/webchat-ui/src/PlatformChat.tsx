@@ -10,9 +10,17 @@ import {
   isPersistedPlatformSession,
   isPlatformMode,
   lastSessionStorageKey,
+  mergePlatformCurrentApp,
   PLATFORM_DOCK_CHAT_WIDTH,
   PLATFORM_HISTORY_RAIL_DOCK,
   platformDockInsetWidth,
+  clampFabPosition,
+  DEFAULT_FAB_POSITION,
+  fabPositionStorageKey,
+  moveFabPosition,
+  readFabPosition,
+  shouldTreatAsFabDrag,
+  writeFabPosition,
   readLastSelection,
   removePlatformSession,
   resolvePlatformSelection,
@@ -20,6 +28,7 @@ import {
   shouldFetchPlatformMessages,
   shouldRefreshPlatformSessions,
   shouldShowPlatformLauncher,
+  WEBCHAT_APPS_CHANGED_EVENT,
   WEBCHAT_DOCK_INSET_VAR,
   writeLastSelection,
   type Message,
@@ -280,25 +289,154 @@ function webchatAssetUrl(fileName: string): string {
   return url.toString();
 }
 
-const FabLauncher: React.FC<{ onOpen: () => void }> = ({ onOpen }) => {
+function currentViewport(): { width: number; height: number } {
+  if (typeof window === 'undefined') {
+    return { width: 1280, height: 800 };
+  }
+  return { width: window.innerWidth, height: window.innerHeight };
+}
+
+const FabLauncher = React.forwardRef<
+  HTMLDivElement,
+  {
+    onOpen: () => void;
+    storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
+    storageKey: string;
+  }
+>(({ onOpen, storage, storageKey }, ref) => {
   const webpSrc = webchatAssetUrl('fab-whaledou.webp');
   const pngSrc = webchatAssetUrl('fab-whaledou.png');
+  const [position, setPosition] = useState(() =>
+    clampFabPosition(readFabPosition(storage, storageKey) ?? DEFAULT_FAB_POSITION, currentViewport())
+  );
+  const [dragging, setDragging] = useState(false);
+  const positionRef = useRef(position);
+  positionRef.current = position;
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    start: { right: number; bottom: number };
+    moved: boolean;
+  } | null>(null);
+  const ignoreClickRef = useRef(false);
+
+  useEffect(() => {
+    setPosition(
+      clampFabPosition(readFabPosition(storage, storageKey) ?? DEFAULT_FAB_POSITION, currentViewport())
+    );
+  }, [storage, storageKey]);
+
+  useEffect(() => {
+    const onResize = () => {
+      setPosition((current) => clampFabPosition(current, currentViewport()));
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    const applyMove = (clientX: number, clientY: number) => {
+      const drag = dragRef.current;
+      if (!drag) {
+        return;
+      }
+      const dx = clientX - drag.startX;
+      const dy = clientY - drag.startY;
+      if (!drag.moved && !shouldTreatAsFabDrag(dx, dy)) {
+        return;
+      }
+      drag.moved = true;
+      setDragging(true);
+      const next = moveFabPosition(drag.start, { dx, dy }, currentViewport());
+      positionRef.current = next;
+      setPosition(next);
+    };
+    const finishDrag = () => {
+      const drag = dragRef.current;
+      if (!drag) {
+        return;
+      }
+      dragRef.current = null;
+      if (drag.moved) {
+        ignoreClickRef.current = true;
+        setDragging(false);
+        writeFabPosition(storage, storageKey, positionRef.current);
+      }
+    };
+    const onMove = (event: PointerEvent | MouseEvent) => {
+      applyMove(event.clientX, event.clientY);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('pointerup', finishDrag);
+    window.addEventListener('mouseup', finishDrag);
+    window.addEventListener('pointercancel', finishDrag);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('pointerup', finishDrag);
+      window.removeEventListener('mouseup', finishDrag);
+      window.removeEventListener('pointercancel', finishDrag);
+    };
+  }, [storage, storageKey]);
+
+  const beginDrag = (clientX: number, clientY: number) => {
+    ignoreClickRef.current = false;
+    dragRef.current = {
+      startX: clientX,
+      startY: clientY,
+      start: positionRef.current,
+      moved: false,
+    };
+  };
+
+  const onPointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) {
+      return;
+    }
+    beginDrag(event.clientX, event.clientY);
+  };
+
+  const onMouseDown = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0 || dragRef.current) {
+      return;
+    }
+    beginDrag(event.clientX, event.clientY);
+  };
+
+  const onClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (ignoreClickRef.current) {
+      event.preventDefault();
+      ignoreClickRef.current = false;
+      return;
+    }
+    onOpen();
+  };
 
   return (
-    <button
-      type="button"
-      title="打开对话"
-      aria-label="打开对话"
-      onClick={onOpen}
-      className="wc-fab-launcher"
+    <div
+      ref={ref}
+      className="fixed z-[1200] select-none"
+      style={{ right: position.right, bottom: position.bottom }}
     >
-      <picture>
-        <source srcSet={webpSrc} type="image/webp" media="(prefers-reduced-motion: no-preference)" />
-        <img src={pngSrc} alt="" width={72} height={72} draggable={false} />
-      </picture>
-    </button>
+      <button
+        type="button"
+        title="打开对话，按住可拖动"
+        aria-label="打开对话"
+        onClick={onClick}
+        onPointerDown={onPointerDown}
+        onMouseDown={onMouseDown}
+        className={`wc-fab-launcher${dragging ? ' is-dragging' : ''}`}
+      >
+        <picture>
+          <source srcSet={webpSrc} type="image/webp" media="(prefers-reduced-motion: no-preference)" />
+          <img src={pngSrc} alt="" width={72} height={72} draggable={false} />
+        </picture>
+      </button>
+    </div>
   );
-};
+});
+FabLauncher.displayName = 'FabLauncher';
 
 export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, PlatformChatProps>((props, ref) => {
   const {
@@ -354,6 +492,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const chatStateRef = useRef<ChatState>('idle');
   const menuRef = useRef<HTMLDivElement>(null);
   const loadedSessionIdRef = useRef<string | null>(null);
+  const appsLoadGenerationRef = useRef(0);
   const onAccessDeniedRef = useRef(onAccessDenied);
   onAccessDeniedRef.current = onAccessDenied;
 
@@ -364,35 +503,59 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     [storage, storageKey]
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadApps() {
-      setLoading(true);
+  const reloadApps = useCallback(
+    async (options?: { showLoading?: boolean }) => {
+      const generation = ++appsLoadGenerationRef.current;
+      if (options?.showLoading) {
+        setLoading(true);
+      }
       try {
         const nextApps = await fetchPlatformApplications(platform, requestInit);
-        if (cancelled) return;
+        if (generation !== appsLoadGenerationRef.current) return;
         setApps(nextApps);
         const stored = readLastSelection(storage, storageKey);
-        const resolved = resolvePlatformSelection(nextApps, [], stored);
-        setCurrentApp((prev) => (prev?.id === resolved.app?.id ? prev : resolved.app));
+        setCurrentApp((prev) => mergePlatformCurrentApp(nextApps, prev, stored));
+        setForbidden(false);
       } catch (error) {
-        if (cancelled) return;
+        if (generation !== appsLoadGenerationRef.current) return;
         if (error instanceof PlatformAccessDeniedError) {
           setForbidden(true);
           onAccessDeniedRef.current?.();
-        } else {
+        } else if (options?.showLoading) {
           setApps([]);
           setCurrentApp(null);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (generation === appsLoadGenerationRef.current) {
+          setLoading(false);
+        }
       }
-    }
-    void loadApps();
-    return () => {
-      cancelled = true;
+    },
+    [platform, requestInit, storage, storageKey]
+  );
+  const reloadAppsRef = useRef(reloadApps);
+  reloadAppsRef.current = reloadApps;
+
+  useEffect(() => {
+    void reloadApps({ showLoading: true });
+  }, [reloadApps]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void reloadAppsRef.current({ showLoading: false });
     };
-  }, [platform, requestInit, storage, storageKey]);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    };
+    window.addEventListener(WEBCHAT_APPS_CHANGED_EVENT, refresh);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener(WEBCHAT_APPS_CHANGED_EVENT, refresh);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
   const currentAppId = currentApp?.id;
   const currentChannelId = currentApp?.channelId;
@@ -635,7 +798,8 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const handleOpen = useCallback(() => {
     setHasOpened(true);
     setCollapsed(false);
-  }, []);
+    void reloadApps({ showLoading: false });
+  }, [reloadApps]);
 
   useEffect(() => {
     if (collapsed || !isFullscreen) return undefined;
@@ -682,9 +846,12 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   return (
     <>
       {collapsed ? (
-        <div ref={!hasOpened ? ref : undefined} className="fixed bottom-4 right-3 z-[1200]">
-          <FabLauncher onOpen={handleOpen} />
-        </div>
+        <FabLauncher
+          ref={!hasOpened ? ref : undefined}
+          onOpen={handleOpen}
+          storage={storage}
+          storageKey={fabPositionStorageKey(storagePrefix, userId, teamId)}
+        />
       ) : null}
       {hasOpened ? (
         <div

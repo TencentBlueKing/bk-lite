@@ -10,10 +10,19 @@ import {
   isPlatformMode,
   lastSessionStorageKey,
   mapPlatformApplications,
+  mergePlatformCurrentApp,
   PLATFORM_DOCK_CHAT_WIDTH,
   PLATFORM_HISTORY_RAIL_DOCK,
   platformDockInsetWidth,
   shouldShowPlatformLauncher,
+  DEFAULT_FAB_POSITION,
+  FAB_SIZE,
+  clampFabPosition,
+  fabPositionStorageKey,
+  moveFabPosition,
+  readFabPosition,
+  shouldTreatAsFabDrag,
+  writeFabPosition,
   mapPlatformMessages,
   mapPlatformSessions,
   readDockCollapsed,
@@ -23,6 +32,7 @@ import {
   shouldFetchPlatformMessages,
   shouldRefreshPlatformSessions,
   unwrapPlatformPayload,
+  WEBCHAT_APPS_CHANGED_EVENT,
   writeDockCollapsed,
 } from '../../packages/webchat-core/src/platform';
 import { isSilentCustomEvent } from '../../packages/webchat-core/src/aguiHistoryText';
@@ -146,6 +156,46 @@ test('maps published platform skill channels and restores last selection', () =>
     resolvePlatformSelection([apps[0]], sessions, { appId: '1', sessionId: 's-old' }),
     { app: apps[0], sessionId: 's-new' }
   );
+});
+
+test('published-app refetch keeps the current app, or falls back when it was disabled', () => {
+  const remaining = {
+    id: '2',
+    name: '配置检查',
+    channelId: '2',
+    skillId: '20',
+    skillName: 'cfg-skill',
+  };
+  const current = {
+    id: '1',
+    name: 'K8s RCA',
+    channelId: '1',
+    skillId: '10',
+    skillName: 'K8s RCA',
+  };
+  const renamed = { ...current, name: '值班助手（已改名）' };
+  assert.deepEqual(
+    mergePlatformCurrentApp([remaining, renamed], current, {
+      appId: current.id,
+      sessionId: 's-old',
+    }),
+    renamed
+  );
+  assert.deepEqual(
+    mergePlatformCurrentApp([remaining], current, {
+      appId: current.id,
+      sessionId: 's-old',
+    }),
+    remaining
+  );
+  assert.equal(
+    mergePlatformCurrentApp([], current, { appId: current.id, sessionId: 's-old' }),
+    null
+  );
+});
+
+test('host and webchat share the published-app refresh event name', () => {
+  assert.equal(WEBCHAT_APPS_CHANGED_EVENT, 'bk-webchat:apps-changed');
 });
 
 test('draft sessions do not refetch history; clicking the current session does not either', () => {
@@ -392,4 +442,34 @@ test('dock inset matches the open pane and drops to zero when collapsed or fulls
     platformDockInsetWidth({ visible: true, fullscreen: true, historyOpen: true }),
     0,
   );
+});
+
+test('fab drag ignores jitter and clamps to the viewport', () => {
+  assert.equal(shouldTreatAsFabDrag(3, 3), false);
+  assert.equal(shouldTreatAsFabDrag(6, 0), true);
+  const viewport = { width: 400, height: 300 };
+  assert.deepEqual(
+    clampFabPosition({ right: -40, bottom: 900 }, viewport),
+    { right: 8, bottom: 300 - FAB_SIZE - 8 },
+  );
+  assert.deepEqual(
+    moveFabPosition({ right: 12, bottom: 16 }, { dx: 20, dy: -30 }, viewport),
+    { right: 8, bottom: 46 },
+  );
+});
+
+test('fab position persists per user and team', () => {
+  const store = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value);
+    },
+  };
+  const key = fabPositionStorageKey('webchat:platform', 'alice', '7');
+  assert.equal(key, 'webchat:platform:fab:alice:7');
+  assert.equal(readFabPosition(storage, key), null);
+  writeFabPosition(storage, key, { right: 40, bottom: 80 });
+  assert.deepEqual(readFabPosition(storage, key), { right: 40, bottom: 80 });
+  assert.deepEqual(DEFAULT_FAB_POSITION, { right: 12, bottom: 16 });
 });
