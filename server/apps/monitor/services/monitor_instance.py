@@ -12,6 +12,7 @@ from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.models import CollectConfig, Metric, MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorPlugin
+from apps.monitor.services.host_container_asset_ip import fill_missing_host_container_asset_ips
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
@@ -591,9 +592,7 @@ class InstanceSearch:
         """
         if not monitor_object_id:
             return []
-        display_fields = (
-            MonitorObject.objects.filter(id=monitor_object_id).values_list("display_fields", flat=True).first() or []
-        )
+        display_fields = MonitorObject.objects.filter(id=monitor_object_id).values_list("display_fields", flat=True).first() or []
         bindings = []
         seen = set()
         for col in display_fields:
@@ -955,25 +954,24 @@ class InstanceSearch:
                 org_map[org.monitor_instance_id] = set()
             org_map[org.monitor_instance_id].add(org.organization)
 
-        return dict(
-            count=count,
-            results=[
-                {
-                    "instance_id": obj.id,
-                    "instance_name": obj.name,
-                    "instance_id_values": list(parse_instance_id(obj.id)),
-                    "interval": obj.interval,
-                    "cloud_region_id": obj.cloud_region_id,
-                    "ip": obj.ip,
-                    "summary_facts": obj.summary_facts,
-                    "fallback_sampling_rate": obj.fallback_sampling_rate,
-                    "node_id": obj.node_id or "",
-                    "cmdb_id": obj.cmdb_id or "",
-                    "organizations": list(org_map.get(obj.id, [])),
-                }
-                for obj in results
-            ],
-        )
+        serialized = [
+            {
+                "instance_id": obj.id,
+                "instance_name": obj.name,
+                "instance_id_values": list(parse_instance_id(obj.id)),
+                "interval": obj.interval,
+                "cloud_region_id": obj.cloud_region_id,
+                "ip": obj.ip,
+                "summary_facts": obj.summary_facts,
+                "fallback_sampling_rate": obj.fallback_sampling_rate,
+                "node_id": obj.node_id or "",
+                "cmdb_id": obj.cmdb_id or "",
+                "organizations": list(org_map.get(obj.id, [])),
+            }
+            for obj in results
+        ]
+        fill_missing_host_container_asset_ips(serialized, getattr(self.monitor_obj, "name", None))
+        return dict(count=count, results=serialized)
 
     def _batch_plugin_status_maps(self, instance_id_keys, queries):
         """并发拉取多个插件 status_query 的正常状态映射，返回 {query: status_map}。

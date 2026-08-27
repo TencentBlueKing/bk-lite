@@ -270,6 +270,8 @@ class UserViewSet(ViewSetUtils):
             return None if not user.disabled else "user_not_enabled"
         if action == "unlock":
             return None if is_user_locked(user, now=now) else "user_not_locked"
+        if action == "unbind_otp":
+            return None if user.otp_secret else "otp_not_bound"
         return "invalid_action"
 
     @action(detail=False, methods=["GET"])
@@ -315,9 +317,10 @@ class UserViewSet(ViewSetUtils):
         for i in roles:
             role_map[i["id"]] = f"{i['app']}@@{i['name']}"
 
+        otp_user_ids = set(User.objects.filter(id__in=[item["id"] for item in data], otp_secret__isnull=False).exclude(otp_secret="").values_list("id", flat=True))
         for user_data in data:
+            user_data["has_otp"] = user_data["id"] in otp_user_ids
             user_data["roles"] = [role_map.get(role_id, "") for role_id in user_data.get("role_list", [])]
-
         data = self._mask_user_payload_list(data, request)
 
         return JsonResponse({"result": True, "data": {"count": total, "users": data}})
@@ -694,7 +697,7 @@ class UserViewSet(ViewSetUtils):
         if not isinstance(user_ids, list) or not user_ids:
             return JsonResponse({"result": False, "message": self._get_loader(request).get("error.user_ids_list_required")}, status=400)
 
-        if action_name not in {"enable", "disable", "unlock"}:
+        if action_name not in {"enable", "disable", "unlock", "unbind_otp"}:
             return JsonResponse({"result": False, "message": self._get_loader(request).get("error.invalid_user_status_action")}, status=400)
 
         normalized_user_ids, invalid_user_ids = self._normalize_user_ids(user_ids)
@@ -742,6 +745,9 @@ class UserViewSet(ViewSetUtils):
                     user.account_locked_until = None
                     user.password_error_count = 0
                     update_fields = ["account_locked_until", "password_error_count"]
+                elif action_name == "unbind_otp":
+                    user.otp_secret = None
+                    update_fields = ["otp_secret"]
 
                 user.save(update_fields=update_fields)
                 transaction.on_commit(lambda user_id=user.id: cache.delete(f"menus-user:{user_id}"), robust=True)

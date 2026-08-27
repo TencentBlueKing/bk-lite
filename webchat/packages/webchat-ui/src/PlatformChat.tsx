@@ -287,7 +287,7 @@ const FabLauncher: React.FC<{ onOpen: () => void }> = ({ onOpen }) => {
     >
       <picture>
         <source srcSet={gifSrc} type="image/gif" media="(prefers-reduced-motion: no-preference)" />
-        <img src={pngSrc} alt="" width={56} height={56} draggable={false} />
+        <img src={pngSrc} alt="" width={72} height={72} draggable={false} />
       </picture>
     </button>
   );

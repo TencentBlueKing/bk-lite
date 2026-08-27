@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_6wind",
   "plugin": "Router 6WIND VSR SNMP",
-  "plugin_desc": "6WIND VSR router SNMP child template (enterprise 7336). The currently verified profile is a clean baseline built on standard MIB-II and IF-MIB ifXTable; no stable vendor-specific scalar device-health gauges are confirmed for CPU, memory, temperature, fan or power state. This child therefore declares no vendor-specific metric deltas in metrics.json. The shared Router SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/router metric model while this plugin provides the 6WIND collect_type, UI and Telegraf child template. Supported brands/models — 6WIND Virtual Service Router.",
+  "plugin_desc": "6WIND VSR router SNMP child template (enterprise 7336). The verified profile builds on standard MIB-II and IF-MIB ifXTable plus HOST-RESOURCES hrProcessorLoad for per-core CPU utilization. Memory, temperature, fan and power state remain N/A: hrStorage mixes RAM/Flash rows that telegraf inputs.snmp cannot filter row-wise, and no stable vendor-specific scalar device-health gauges are confirmed. The shared Router SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/router metric model while this plugin provides the 6WIND collect_type, UI and Telegraf child template. Supported brands/models — 6WIND Virtual Service Router.",
   "status_query": "any({instance_type='router', collect_type='snmp_6wind'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",
@@ -13,7 +13,8 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage"
   ],
   "metrics": [
     {
@@ -51,6 +52,24 @@
         "instance_id"
       ],
       "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Router",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='router', __$labels__}",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports per-core CPU load on the 6WIND VSR router as a percentage (HOST-RESOURCES-MIB hrProcessorLoad). Sustained high values indicate control-plane or forwarding load."
     },
     {
       "metric_group": "Base",

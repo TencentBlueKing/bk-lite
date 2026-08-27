@@ -42,11 +42,13 @@ function iconSvg(
   x: number | undefined,
   y: number | undefined,
   children: ReactNode,
+  kind?: string,
 ) {
   return (
     <svg
       aria-hidden="true"
       className={className}
+      data-service-icon={kind}
       fill="none"
       height={size}
       viewBox="0 0 16 16"
@@ -154,18 +156,13 @@ function CppIcon({ size = 16, className, x, y }: LanguageIconProps) {
 
 function UnknownIcon({ size = 16, className, x, y }: LanguageIconProps) {
   return iconSvg(size, className, x, y, (
-    <text
-      fill="currentColor"
-      fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-      fontSize="8"
-      fontWeight="700"
-      textAnchor="middle"
-      x="8"
-      y="11"
-    >
-      {'</>'}
-    </text>
-  ));
+    <>
+      <rect fill="var(--color-text-3)" height="5" rx="1" width="5" x="2" y="2" />
+      <rect fill="var(--color-text-3)" height="5" rx="1" width="5" x="9" y="2" />
+      <rect fill="var(--color-text-3)" height="5" rx="1" width="5" x="2" y="9" />
+      <rect fill="var(--color-text-3)" height="5" rx="1" width="5" x="9" y="9" />
+    </>
+  ), 'default');
 }
 
 const LANGUAGE_ICONS: Record<string, (props: LanguageIconProps) => ReactNode> = {
@@ -184,6 +181,10 @@ const LANGUAGE_ICONS: Record<string, (props: LanguageIconProps) => ReactNode> = 
   ruby: RubyIcon,
   rust: RustIcon,
 };
+
+export function hasKnownServiceLanguage(language?: string) {
+  return Boolean(LANGUAGE_ICONS[normalizeServiceLanguage(language)]);
+}
 
 export default function ServiceLanguageIcon({
   language,

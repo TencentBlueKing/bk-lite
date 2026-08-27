@@ -105,19 +105,22 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
         }
         : undefined;
 
+      const baseData = formatTaskValues({
+        values,
+        baseRef,
+        selectedNode,
+        modelItem,
+        modelId,
+        formatCycleValue,
+      });
+
       return {
-        ...formatTaskValues({
-          values,
-          baseRef,
-          selectedNode,
-          modelItem,
-          modelId,
-          formatCycleValue,
-        }),
+        ...baseData,
         instances: enrichedInstance ? [enrichedInstance] : [],
         input_method: 0,
         ip_range: '',
         params: {
+          ...baseData.params,
           collector_cluster_id: values.collector_cluster_id,
           cloud_region_id: values.cloud_region_id,
         },
@@ -132,6 +135,7 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],
     instUuid: values.instances?.[0]?.inst_uuid,
+    ip_precheck: Boolean(values.params?.ip_precheck),
     collector_cluster_id:
       values.instances?.[0]?.collector_cluster_id ??
       values.params?.collector_cluster_id ??
@@ -171,11 +175,8 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
           submitLoading={submitLoading}
           instPlaceholder={`${t('common.select')} ${t('Collection.k8sTask.selectK8S')}`}
           submitText={onAfterSave ? `${t('common.next')} →` : undefined}
-          timeoutProps={{
-            min: 0,
-            defaultValue: 60,
-            addonAfter: t('Collection.k8sTask.second'),
-          }}
+          showTimeout={false}
+          showIpPrecheck={false}
         >
           <Form.Item
             label={t('Collection.k8sTask.collectorClusterId') || 'Cluster ID'}

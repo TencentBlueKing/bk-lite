@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Form, Spin } from 'antd';
 
-import { PLATFORM_API_FORM_INITIAL_VALUES } from '@/app/cmdb/constants/professCollection';
+import { getPlatformApiFormInitialValues } from '@/app/cmdb/constants/professCollection';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
 import type { ModelItem, TreeNode } from '@/app/cmdb/types/autoDiscovery';
 import { useTranslation } from '@/utils/i18n';
@@ -46,8 +46,11 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
   const baseRef = useRef<BaseTaskRef>(null as any);
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const modelId = modelItem.model_id;
+  const platformFormInitialValues = getPlatformApiFormInitialValues(
+    modelItem.default_timeout
+  );
   const initialValues = {
-    ...PLATFORM_API_FORM_INITIAL_VALUES,
+    ...platformFormInitialValues,
     credentialPool: [createPlatformApiCredential(modelId)],
   };
 
@@ -146,7 +149,7 @@ const PlatformApiTask: React.FC<PlatformApiTaskProps> = ({
           instPlaceholder={t('Collection.chooseAsset')}
           timeoutProps={{
             min: 1,
-            defaultValue: PLATFORM_API_FORM_INITIAL_VALUES.timeout,
+            defaultValue: platformFormInitialValues.timeout,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

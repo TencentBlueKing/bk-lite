@@ -160,6 +160,37 @@ async def test_snmp_topo_list_all_resources_does_not_stall(monkeypatch):
     assert result["result"]["network_topo"][0]["val"] == "eth0"
 
 
+@pytest.mark.asyncio
+async def test_snmp_facts_ignores_legacy_inline_topology_parameters(monkeypatch):
+    facts = SnmpFacts(
+        {
+            "host": "127.0.0.1",
+            "version": "v2c",
+            "community": "public",
+            "has_network_topo": "True",
+            "topology_protocols": ("lldp", "cdp"),
+        }
+    )
+
+    async def fake_collect():
+        return {
+            "system": {"sysname": "edge-sw-1"},
+            "interfaces": [{"index": "7"}],
+        }
+
+    monkeypatch.setattr(facts, "collect", fake_collect)
+
+    result = await facts.list_all_resources()
+
+    assert result == {
+        "success": True,
+        "result": {
+            "network_system": [{"sysname": "edge-sw-1"}],
+            "network_interfaces": [{"index": "7"}],
+        },
+    }
+
+
 def test_snmp_modules_have_no_to_thread():
     import plugins.inputs.network.snmp_facts as facts_mod
     import plugins.inputs.network_topo.snmp_topo as topo_mod

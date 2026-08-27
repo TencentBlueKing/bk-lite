@@ -7,8 +7,17 @@ import PermissionWrapper from '@/components/permission';
 
 type InitialPasswordMode = 'fixed' | 'random' | 'none';
 
+const DEFAULT_OTP_RECOMMENDED_APPS = [
+  'Microsoft Authenticator',
+  'FreeOTP',
+  'Google Authenticator',
+];
+
 interface LoginSettingsProps {
   otpEnabled: boolean;
+  otpWhitelist: string[];
+  otpRecommendedApps: string[];
+  otpUsers: Array<{ value: string; label: string }>;
   loginExpiredTime: string;
   passwordExpiration: string;
   passwordComplexity: string[];
@@ -29,6 +38,8 @@ interface LoginSettingsProps {
   loading: boolean;
   disabled?: boolean;
   onOtpChange: (checked: boolean) => void;
+  onOtpWhitelistChange: (value: string[]) => void;
+  onOtpRecommendedAppsChange: (value: string[]) => void;
   onLoginExpiredTimeChange: (value: string) => void;
   onPasswordExpirationChange: (value: string) => void;
   onPasswordComplexityChange: (value: string[]) => void;
@@ -48,6 +59,9 @@ interface LoginSettingsProps {
 
 const LoginSettings: React.FC<LoginSettingsProps> = ({
   otpEnabled,
+  otpWhitelist,
+  otpRecommendedApps,
+  otpUsers,
   loginExpiredTime,
   passwordExpiration,
   passwordComplexity,
@@ -68,6 +82,8 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
   loading,
   disabled = false,
   onOtpChange,
+  onOtpWhitelistChange,
+  onOtpRecommendedAppsChange,
   onLoginExpiredTimeChange,
   onPasswordExpirationChange,
   onPasswordComplexityChange,
@@ -85,6 +101,10 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
   onSave
 }) => {
   const { t } = useTranslation();
+  const otpRecommendedAppOptions = Array.from(new Set([...DEFAULT_OTP_RECOMMENDED_APPS, ...otpRecommendedApps])).map((app) => ({
+    value: app,
+    label: app,
+  }));
   const initialPasswordEmailChannelSelector = (
     <>
       <div className="flex items-center">
@@ -120,16 +140,106 @@ const LoginSettings: React.FC<LoginSettingsProps> = ({
   return (
     <div className="bg-(--color-bg) p-4 rounded-lg shadow-sm mb-4">
       <h3 className="text-base font-semibold mb-4">{t('system.security.loginSettings')}</h3>
-      <div className="flex items-center mb-4">
-        <span className="text-xs mr-4">{t('system.security.otpSetting')}</span>
-        <Switch
-          size="small"
-          checked={otpEnabled}
-          onChange={onOtpChange}
-          loading={loading}
-          disabled={disabled}
-        />
-      </div>
+      <section className="mb-6 space-y-4" aria-labelledby="otp-settings-heading">
+        <h4 id="otp-settings-heading" className="text-sm font-semibold text-[var(--color-text-1)]">
+          {t('system.security.otpSectionTitle')}
+        </h4>
+        <div className="flex items-start">
+          <label htmlFor="otp-enabled" className="text-xs mr-4 w-40 shrink-0 pt-0.5 leading-5">
+            {t('system.security.otpSetting')}
+          </label>
+          <div className="min-w-0 max-w-xl flex-1 space-y-2">
+            <Switch
+              id="otp-enabled"
+              size="small"
+              checked={otpEnabled}
+              onChange={onOtpChange}
+              loading={loading}
+              disabled={disabled}
+            />
+            <p className="text-xs leading-5 text-[var(--color-text-2)]">
+              {t('system.security.otpEnableHint')}
+            </p>
+          </div>
+        </div>
+        {otpEnabled && (
+          <div className="space-y-4 border-t border-[var(--color-border-1)] pt-4">
+            <div className="flex items-start">
+              <label htmlFor="otp-whitelist" className="text-xs mr-4 w-40 shrink-0 pt-1 leading-5">
+                {t('system.security.otpWhitelist')}
+              </label>
+              <div className="min-w-0 max-w-xl flex-1 space-y-2">
+                <Select
+                  id="otp-whitelist"
+                  mode="multiple"
+                  className="w-full"
+                  showSearch
+                  optionFilterProp="label"
+                  value={otpWhitelist}
+                  onChange={onOtpWhitelistChange}
+                  disabled={disabled || loading}
+                  options={otpUsers}
+                  placeholder={t('system.security.otpWhitelistPlaceholder')}
+                  maxTagCount="responsive"
+                  aria-describedby="otp-whitelist-help"
+                />
+                <p id="otp-whitelist-help" className="text-xs leading-5 text-[var(--color-text-2)]">
+                  {otpWhitelist.length
+                    ? t('system.security.otpWhitelistCount', undefined, { count: otpWhitelist.length })
+                    : t('system.security.otpWhitelistCountZero')}
+                  {' '}
+                  {t('system.security.otpWhitelistHint')}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start">
+              <label htmlFor="otp-recommended-apps" className="text-xs mr-4 w-40 shrink-0 pt-1 leading-5">
+                {t('system.security.otpRecommendedApps')}
+              </label>
+              <div className="min-w-0 max-w-xl flex-1 space-y-2">
+                <Select
+                  id="otp-recommended-apps"
+                  mode="tags"
+                  className="w-full"
+                  value={otpRecommendedApps}
+                  onChange={onOtpRecommendedAppsChange}
+                  disabled={disabled || loading}
+                  status={otpRecommendedApps.length ? undefined : 'error'}
+                  aria-required
+                  aria-invalid={!otpRecommendedApps.length}
+                  placeholder={t('system.security.otpRecommendedAppsPlaceholder')}
+                  options={otpRecommendedAppOptions}
+                  aria-describedby="otp-recommended-apps-help"
+                />
+                <p id="otp-recommended-apps-help" className="text-xs leading-5 text-[var(--color-text-2)]">
+                  {t('system.security.otpRecommendedAppsHint')}
+                </p>
+                {!otpRecommendedApps.length && (
+                  <p className="text-xs leading-5 text-[var(--color-fail)]" role="alert">
+                    {t('system.security.otpRecommendedAppsRequired')}
+                  </p>
+                )}
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-2">
+                  <p className="text-xs leading-5 text-[var(--color-text-1)]">
+                    {otpRecommendedApps.length === 1
+                      ? t('system.security.otpAppsPreviewSingle')
+                      : otpRecommendedApps.length
+                        ? t('system.security.otpAppsPreviewMultiple')
+                        : t('system.security.otpAppsEmptyPreview')}
+                  </p>
+                  {otpRecommendedApps.length > 0 && (
+                    <ul className="mt-1 list-none pl-0 text-xs leading-5 text-[var(--color-text-2)]">
+                      {otpRecommendedApps.map((app) => (
+                        <li key={app} className="truncate" title={app}>{app}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
       <div className="flex items-center mb-4">
         <span className="text-xs mr-4">{t('system.security.loginExpiredTime')}</span>
         <InputNumber

@@ -10,15 +10,6 @@ pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 DOCS_URL = "/openapi/v1/_docs"
 
 
-@pytest.fixture(autouse=True)
-def reset_snapshot():
-    with renderer._lock:
-        renderer._snapshot.update({"config": None, "services": [], "entries": {}})
-    yield
-    with renderer._lock:
-        renderer._snapshot.update({"config": None, "services": [], "entries": {}})
-
-
 def test_docs_requires_credential(client):
     resp = client.get(DOCS_URL)
     assert resp.status_code == 401

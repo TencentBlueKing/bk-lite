@@ -120,7 +120,7 @@ Query 参数：
 | `content` | string | 否 | 空 | 告警内容，模糊匹配（不区分大小写） |
 | `alert_id` | string | 否 | 空 | 告警 ID，精确匹配 |
 | `activate` | string | 否 | 空 | 传入任意值时，排除已关闭类状态（`closed`、`auto_close`、`auto_recovery`） |
-| `my_alert` | string | 否 | 空 | 传入任意值时，仅返回当前绑定用户为处理人的告警 |
+| `my_alert` | string | 否 | 空 | 传入 `1` / `true` / `yes` 时，仅返回当前绑定用户为处理人的告警；仍受绑定组织约束 |
 | `level` | string | 否 | 空 | 告警级别，多个值用英文逗号分隔 |
 | `status` | string | 否 | 空 | 告警状态，多个值用英文逗号分隔 |
 | `source_name` | string | 否 | 空 | 告警源名称，多个值用英文逗号分隔 |

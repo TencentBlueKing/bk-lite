@@ -1,6 +1,35 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import CustomTable from '@/components/custom-table';
 import { TableDataItem } from '@/app/log/types';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+
+const TIME_FIELD_KEYS = new Set([
+  '_time',
+  '@timestamp',
+  'timestamp',
+  'last_change_time',
+  'last_time'
+]);
+
+const normalizeTimeColumn = (
+  column: Record<string, unknown>,
+  formatTime: (value: unknown) => string
+) => {
+  const dataIndex = String(column.dataIndex ?? '');
+  const normalizedIndex = dataIndex === '@timestamp' ? '_time' : dataIndex;
+  const isTimeField = TIME_FIELD_KEYS.has(dataIndex);
+
+  if (!isTimeField) {
+    return column;
+  }
+
+  return {
+    ...column,
+    dataIndex: normalizedIndex,
+    key: column.key === dataIndex ? normalizedIndex : column.key,
+    render: column.render ?? ((value: unknown) => formatTime(value))
+  };
+};
 
 interface ComTableProps {
   rawData: any;
@@ -13,9 +42,17 @@ const ComTable: React.FC<ComTableProps> = ({
   loading = false,
   config
 }) => {
+  const { convertToLocalizedTime } = useLocalizedTime();
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
   const [scrollY, setScrollY] = useState<number>(300);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  const formatTime = useCallback((value: unknown) => {
+    if (value === null || value === undefined || value === '') {
+      return '--';
+    }
+    return convertToLocalizedTime(String(value), 'YYYY-MM-DD HH:mm:ss');
+  }, [convertToLocalizedTime]);
 
   useEffect(() => {
     if (!loading) {
@@ -51,8 +88,16 @@ const ComTable: React.FC<ComTableProps> = ({
     };
   }, []);
 
-  const columns = config?.showIndex
-    ? [
+  const columns = useMemo(() => {
+    const configuredColumns = (config?.columns || []).map((column: Record<string, unknown>) =>
+      normalizeTimeColumn(column, formatTime)
+    );
+
+    if (!config?.showIndex) {
+      return configuredColumns;
+    }
+
+    return [
       {
         key: '__index__',
         title: '#',
@@ -65,9 +110,9 @@ const ComTable: React.FC<ComTableProps> = ({
           </span>
         )
       },
-      ...(config?.columns || [])
-    ]
-    : config?.columns || [];
+      ...configuredColumns
+    ];
+  }, [config?.columns, config?.showIndex, formatTime]);
 
   return (
     <div ref={containerRef} className="h-full flex">

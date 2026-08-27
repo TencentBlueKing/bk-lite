@@ -8,7 +8,8 @@ export const PROFESSIONAL_DASHBOARD_GROUPS = {
   os: { label: '操作系统', order: 20 },
   network: { label: '网络', order: 30 },
   database: { label: '数据库', order: 40 },
-  middleware: { label: '中间件', order: 50 }
+  middleware: { label: '中间件', order: 50 },
+  llm: { label: '大模型推理', order: 55 }
 } as const;
 
 const COMMUNITY_DASHBOARD_METADATA: ProfessionalDashboardMetaItem[] = [
@@ -29,6 +30,16 @@ const COMMUNITY_DASHBOARD_METADATA: ProfessionalDashboardMetaItem[] = [
   { key: 'etcd', groupKey: 'middleware', objectName: 'Etcd', objectDisplayName: 'Etcd', inheritedPermissionPath: '/monitor/view' },
   { key: 'haproxy', groupKey: 'middleware', objectName: 'Haproxy', objectDisplayName: 'HAProxy', inheritedPermissionPath: '/monitor/view' },
   { key: 'minio', groupKey: 'middleware', objectName: 'Minio', objectDisplayName: 'MinIO', inheritedPermissionPath: '/monitor/view' },
+  { key: 'vllm', aliases: ['VLLM'], groupKey: 'llm', objectName: 'VLLM', objectDisplayName: 'vLLM', inheritedPermissionPath: '/monitor/view' },
+  { key: 'sglang', aliases: ['SGLang'], groupKey: 'llm', objectName: 'SGLang', objectDisplayName: 'SGLang', inheritedPermissionPath: '/monitor/view' },
+  {
+    key: 'llamaserver',
+    aliases: ['LlamaServer', 'llama-server', 'llamacpp'],
+    groupKey: 'llm',
+    objectName: 'LlamaServer',
+    objectDisplayName: 'llama-server',
+    inheritedPermissionPath: '/monitor/view'
+  },
   { key: 'postgres', aliases: ['postgresql'], groupKey: 'database', objectName: 'Postgres', objectDisplayName: 'PostgreSQL', inheritedPermissionPath: '/monitor/view' },
   { key: 'elasticsearch', groupKey: 'database', objectName: 'ElasticSearch', objectDisplayName: 'Elasticsearch', inheritedPermissionPath: '/monitor/view' },
   { key: 'oracle', groupKey: 'database', objectName: 'Oracle', objectDisplayName: 'Oracle', inheritedPermissionPath: '/monitor/view' },

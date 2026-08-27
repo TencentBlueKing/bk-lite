@@ -204,8 +204,8 @@
 
 #webchat-root .wc-fab-launcher img {
   display: block;
-  width: 56px;
-  height: 56px;
+  width: 72px;
+  height: 72px;
   object-fit: contain;
   background: transparent;
   transition: transform 0.2s ease;

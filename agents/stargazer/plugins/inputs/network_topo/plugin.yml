@@ -14,12 +14,11 @@ executors:
   protocol:
     type: protocol
     execution_mode: async
-    capacity_group: snmp
-    timeout: 300
+    capacity_group: network_topology
     collector:
       module: plugins.inputs.network_topo.snmp_topo
       class: SnmpTopo
     target_policy:
-      mode: outbound_only
+      mode: snmp
       port: 161
 default_executor: protocol

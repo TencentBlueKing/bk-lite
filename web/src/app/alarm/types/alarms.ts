@@ -40,6 +40,7 @@ export interface AlarmTableDataItem {
   duration: string;
   operator_user: string;
   operator: string[];
+  team?: Array<string | number>;
   created_at: string;
   updated_at: string;
   alert_id: string;

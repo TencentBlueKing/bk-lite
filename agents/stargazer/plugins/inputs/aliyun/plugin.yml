@@ -16,7 +16,6 @@ executors:
     type: protocol
     execution_mode: sync
     capacity_group: sync_sdk
-    timeout: 300
     collector:
       module: plugins.inputs.aliyun.aliyun_info
       class: CwAliyun

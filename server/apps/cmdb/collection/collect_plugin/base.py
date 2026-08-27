@@ -30,6 +30,9 @@ class CollectBase(metaclass=ABCMeta):
         self.task_id = task_id
         self.inst_name = inst_name
         self._instance_id = f"cmdb_{self.task_id}"
+        self.round_ts = kwargs.pop("round_ts", None)
+        if self.round_ts is None and collect_inst is not None:
+            self.round_ts = getattr(collect_inst, "_sync_round_ts", None)
         if not self.inst_name:
             self.inst_name = self._resolve_inst_name_from_task() or self.inst_name
         assert self.check_metrics(), "请定义_metrics"
@@ -85,7 +88,7 @@ class CollectBase(metaclass=ABCMeta):
     def query_data(self):
         """查询数据"""
         sql = self.prom_sql()
-        data = Collection().query(sql)
+        data = Collection().query(sql, min_timestamp=self.round_ts)
         return data.get("data", [])
 
     def run(self):

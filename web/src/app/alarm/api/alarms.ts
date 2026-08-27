@@ -19,7 +19,10 @@ export const useAlarmApi = () => {
   };
 
   const alertActionOperate = async (actionType: string, params: any) => {
-    return post(`/alerts/api/alerts/operator/${actionType}/`, params);
+    // Operator endpoints return per-alert messages in `data`; callers render them.
+    return post(`/alerts/api/alerts/operator/${actionType}/`, params, {
+      suppressErrorNotification: true,
+    });
   };
 
   return { getAlarmList, getEventList, getRelatedAlerts, alertActionOperate };

@@ -4,9 +4,10 @@ Oracle Server Information Collector
 
 A standalone script to gather information about Oracle servers.
 """
+from typing import Any, Dict
+
 import oracledb
 from sanic.log import logger
-from typing import Dict, Any
 
 
 class OracleInfo:
@@ -27,7 +28,7 @@ class OracleInfo:
         self.user = kwargs.get("user")
         self.password = kwargs.get("password", "")
         self.service_name = kwargs.get("service_name", "orclpdb")
-        self.timeout = int(kwargs.get("timeout", 20))
+        self.timeout = 20  # 连接超时硬编码；表单 timeout 由框架作单对象预算
         self.info: Dict[str, Any] = {}
         self.connection = None
         self.cursor = None

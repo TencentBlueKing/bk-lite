@@ -1,0 +1,54 @@
+{
+  "object": "SGLang",
+  "plugin": "SGLang",
+  "templates": [
+    {
+      "name": "SGLang 排队请求积压",
+      "alert_name": "SGLang ${resource_name} 排队请求积压",
+      "description": "检测等待队列中的请求数量，持续偏高通常意味着并发打满或缓存不足。",
+      "metric_name": "sglang:num_queue_reqs_gauge",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {"level": "critical", "value": 50, "method": ">="},
+        {"level": "warning", "value": 20, "method": ">="}
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "SGLang Token 用量过高",
+      "alert_name": "SGLang ${resource_name} Token用量过高",
+      "description": "检测 token/KV 用量比例，长期偏高会导致排队增加。",
+      "metric_name": "sglang:token_usage_gauge",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {"level": "critical", "value": 0.9, "method": ">="},
+        {"level": "warning", "value": 0.8, "method": ">="}
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "SGLang 首 Token 时延过高",
+      "alert_name": "SGLang ${resource_name} TTFT P99 过高",
+      "description": "监控 TTFT P99，持续升高通常意味着 prefill 拥塞。",
+      "metric_name": "sglang:time_to_first_token_seconds_p99",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {"level": "critical", "value": 5, "method": ">="},
+        {"level": "warning", "value": 2, "method": ">="}
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "SGLang 端到端时延过高",
+      "alert_name": "SGLang ${resource_name} 端到端时延 P99 过高",
+      "description": "监控端到端请求时延 P99。",
+      "metric_name": "sglang:e2e_request_latency_seconds_p99",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {"level": "critical", "value": 60, "method": ">="},
+        {"level": "warning", "value": 30, "method": ">="}
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

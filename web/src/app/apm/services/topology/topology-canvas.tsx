@@ -4,13 +4,16 @@ import { AimOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react';
 import { formatCompactLatency, formatErrorRate, formatNumber, formatTopologyEdgeMetrics } from '@/app/apm/components/metric-format';
-import ServiceLanguageIcon, { serviceLanguageLabel } from '@/app/apm/components/service-language-icon';
+import { serviceLanguageLabel } from '@/app/apm/components/service-language-icon';
+import TopologyServiceIcon from '@/app/apm/components/topology-service-icon';
 import {
   buildTopologyEdgeGeometry,
   hasReciprocalTopologyEdge,
   layoutForceTopology,
   layoutLayeredTopology,
   topologyNeighborIds,
+  topologyNodeNameWidth,
+  truncateTopologyNodeLabel,
   TOPOLOGY_CANVAS_SIZE,
   TOPOLOGY_NODE_CARD,
   type PositionedApmTopologyNode,
@@ -294,7 +297,10 @@ export default function TopologyCanvas({
           const isHighlighted = !highlightedIds || highlightedIds.has(node.id);
           const isSelected = selected?.kind === 'node' && selected.id === node.id;
           const languageTitle = serviceLanguageLabel(node.language, t('apm.language.unknown', '未知'));
-          const labelWidth = cardWidth - 52;
+          const inferred = node.kind === 'inferred';
+          const labelWidth = topologyNodeNameWidth(cardWidth, inferred);
+          const displayName = truncateTopologyNodeLabel(node.service_name, labelWidth);
+          const inferredBadgeX = cardX + cardWidth - TOPOLOGY_NODE_CARD.healthGutter;
           return (
             <g
               key={node.id}
@@ -342,38 +348,42 @@ export default function TopologyCanvas({
                 height={cardHeight}
                 rx={TOPOLOGY_NODE_CARD.radius}
                 stroke={isSelected ? 'var(--color-primary)' : 'var(--color-border)'}
-                strokeDasharray={node.kind === 'inferred' ? '4 3' : undefined}
+                strokeDasharray={inferred ? '4 3' : undefined}
                 strokeWidth={isSelected ? 1.5 : 1}
                 width={cardWidth}
                 x={cardX}
                 y={cardY}
               />
-              <ServiceLanguageIcon
+              <TopologyServiceIcon
+                inferredSystem={node.inferred_system}
+                kind={node.kind}
                 language={node.language}
+                serviceName={node.service_name}
                 size={14}
                 x={cardX + 10}
                 y={-7}
               />
               <clipPath id={`apm-node-label-${index}`}>
-                <rect height={cardHeight} width={labelWidth} x={cardX + 30} y={cardY} />
+                <rect height={cardHeight} width={labelWidth} x={cardX + TOPOLOGY_NODE_CARD.nameOffsetX} y={cardY} />
               </clipPath>
               <text
                 clipPath={`url(#apm-node-label-${index})`}
+                data-node-label="true"
                 fill="var(--color-text-1)"
                 fontSize="12"
                 fontWeight="600"
                 textAnchor="start"
-                x={cardX + 30}
+                x={cardX + TOPOLOGY_NODE_CARD.nameOffsetX}
                 y={-3}
               >
-                {node.service_name}
+                {displayName}
               </text>
-              {node.kind === 'inferred' ? (
+              {inferred ? (
                 <text
                   fill="var(--color-text-3)"
                   fontSize="9"
                   textAnchor="end"
-                  x={cardX + cardWidth - 20}
+                  x={inferredBadgeX}
                   y={-8}
                 >
                   {t('apm.topology.inferredBadge', '推断')}
@@ -384,7 +394,7 @@ export default function TopologyCanvas({
                 fill="var(--color-text-3)"
                 fontSize="11"
                 textAnchor="start"
-                x={cardX + 30}
+                x={cardX + TOPOLOGY_NODE_CARD.nameOffsetX}
                 y={12}
               >
                 {nodeMetricLine(node)}

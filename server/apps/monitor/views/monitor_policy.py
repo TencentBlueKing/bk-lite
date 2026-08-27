@@ -286,13 +286,9 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         # 在事务内同步触发 NATS(NATS 推送放到事务 commit 之后)。
         with transaction.atomic():
             PolicyBaselineService(policy).clear()
-            alerts_to_close = list(
-                MonitorAlert.objects.filter(policy_id=policy_id, status="new")
-            )
+            alerts_to_close = list(MonitorAlert.objects.filter(policy_id=policy_id, status="new"))
             # 纯 DB 写版本(原 close_alerts 会同步触发 NATS,这里事务内只做 DB 写)
-            self._close_alerts_in_tx(
-                policy, alerts_to_close, request.user.username, "policy_deleted"
-            )
+            self._close_alerts_in_tx(policy, alerts_to_close, request.user.username, "policy_deleted")
             if alerts_to_close:
                 notifier = AlertLifecycleNotifier(policy)
                 notifier.enqueue_alert_center_deliveries(
@@ -557,7 +553,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
     def update_policy_organizations(self, policy_id, organizations):
         """更新策略的组织"""
         old_organizations = PolicyOrganization.objects.filter(policy_id=policy_id)
-        old_set = set([org.organization for org in old_organizations])
+        old_set = {org.organization for org in old_organizations}
         new_set = set(organizations)
         # 删除不存在的组织
         delete_set = old_set - new_set
@@ -572,14 +568,13 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         data = PolicyService.get_policy_templates(
             request.data["monitor_object_name"],
             organization=self._get_data_scope().current_team,
+            plugin_id=request.data.get("plugin_id"),
         )
         return WebUtils.response_success(data)
 
     @action(methods=["get"], detail=False, url_path="template/monitor_object")
     def template_monitor_object(self, request):
-        data = PolicyService.get_policy_templates_monitor_object(
-            organization=self._get_data_scope().current_team
-        )
+        data = PolicyService.get_policy_templates_monitor_object(organization=self._get_data_scope().current_team)
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="template/save")

@@ -12,6 +12,7 @@ import { useAlarmApi } from '@/app/alarm/api/alarms';
 import { useIncidentsApi } from '@/app/alarm/api/incidents';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { useSession } from 'next-auth/react';
+import { showOperatorFailureMessages } from '@/app/alarm/utils/operatorResult';
 
 const AlarmAction: React.FC<AlarmActionProps> = ({
   rowData,
@@ -112,21 +113,21 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
       cancelText: t('common.cancel'),
       centered: true,
       onOk: async () => {
+        const fallback = `${t(`alarms.${type}`)}${t(`alarms.alert`)}${t('alarmCommon.partialFailure')}`;
         try {
           const data = await apiNameMap[from](type, {
             [idKeyMap[from]]: idList,
             assignee: [],
           });
           if (Object.values(data).some((res: any) => !res.result)) {
-            message.error(
-              `${t(`alarms.${type}`)}${t(`alarms.alert`)}${t('alarmCommon.partialFailure')}`
-            );
+            showOperatorFailureMessages(data, fallback);
           } else {
             message.success(t(`alarms.${type}`) + t('alarmCommon.success'));
             onAction();
           }
         } catch (err) {
           console.error(err);
+          showOperatorFailureMessages(null, fallback, err);
         }
       },
     });

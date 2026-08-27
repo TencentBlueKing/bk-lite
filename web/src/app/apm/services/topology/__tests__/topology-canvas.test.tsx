@@ -247,6 +247,8 @@ describe('APM 服务拓扑画布', () => {
     const result = renderWithApmIntl(<ApmTopologyPage />);
     await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
     await waitFor(() => expect(result.container.querySelector('[data-node-kind="inferred"]')).not.toBeNull());
+    expect(result.container.querySelector('[data-node-kind="inferred"] [data-service-icon="mysql"]')).not.toBeNull();
+    expect(result.container.querySelector('[data-node-kind="inferred"] image')?.getAttribute('href')).toContain('cc-mysql_MySQL');
     expect(screen.getAllByText('推断').length).toBeGreaterThan(0);
     fireEvent.click(result.container.querySelector('[data-node-id="mysql"]') as Element);
     expect(await screen.findByText('样本 Client Span')).not.toBeNull();
@@ -257,6 +259,36 @@ describe('APM 服务拓扑画布', () => {
     expect(screen.getByRole('link', { name: /SELECT inventory/ }).textContent).toContain('10.0.0.2:3306');
     expect(screen.queryByRole('link', { name: '服务详情' })).toBeNull();
     expect(screen.getByRole('button', { name: '隔离一跳' })).not.toBeNull();
+  });
+
+  it('推断网关节点使用网关图标，长服务名在推断角标前截断', async () => {
+    const result = renderWithApmIntl(
+      <TopologyCanvas
+        edges={[edge('catalog', 'demo-payment-gateway')]}
+        keyword=""
+        nodes={[
+          node('catalog'),
+          node('demo-payment-gateway', {
+            kind: 'inferred',
+            fold_key: 'demo-payment-gateway',
+            inferred_system: 'http',
+            language: '',
+            service_name: 'demo-payment-gateway',
+          }),
+        ]}
+        zoom={1}
+      />,
+    );
+
+    await waitFor(() => expect(result.container.querySelector('[data-node-id="demo-payment-gateway"]')).not.toBeNull());
+    const inferred = result.container.querySelector('[data-node-id="demo-payment-gateway"]') as SVGGElement;
+    expect(inferred.querySelector('[data-service-icon="gateway"]')).not.toBeNull();
+    expect(inferred.querySelector('image')?.getAttribute('href')).toContain('cc-nginx_Nginx');
+    expect(inferred.textContent).not.toContain('</>');
+    const label = inferred.querySelector('[data-node-label]');
+    expect(label?.textContent).toMatch(/…$/);
+    expect(label?.textContent).not.toBe('demo-payment-gateway');
+    expect(screen.getAllByText('推断').length).toBeGreaterThan(0);
   });
 
   it('仅错误请求与只看异常可同时存在且语义不同', async () => {

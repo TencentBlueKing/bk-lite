@@ -13,6 +13,12 @@ from apps.core.logger import openapi_logger as logger
 
 BUCKET = "openapi_registry"
 
+# 单次全量读取的整体硬预算（连接 + 逐条读取）。NATS 半死时 connect 内部的
+# 重连循环会耗满 NATS_CONNECT_TIMEOUT（默认 10s），这里以更短的总预算兜底，
+# 让调用方（冷启动同步回源 / 后台对账线程 / provider 轮询）尽快拿到失败并
+# 降级快照。注册条目为个位/十位量级，健康路径毫秒级完成，5s 足够宽裕。
+FETCH_TIMEOUT_SECONDS = 5
+
 
 async def _fetch_async():
     from nats_client.clients import get_nc_client
@@ -54,11 +60,12 @@ async def _fetch_async():
 def fetch_entries():
     """同步读取全部注册条目。
 
-    返回 {service_name: entry_dict}；NATS 不可达等整体失败时返回 None
-    （区别于空注册表 {}），调用方据此降级到最近一次成功快照。
+    返回 {service_name: entry_dict}；NATS 不可达等整体失败（含超出
+    FETCH_TIMEOUT_SECONDS 硬预算）时返回 None（区别于空注册表 {}），
+    调用方据此降级到最近一次成功快照。
     """
     try:
-        return asyncio.run(_fetch_async())
+        return asyncio.run(asyncio.wait_for(_fetch_async(), timeout=FETCH_TIMEOUT_SECONDS))
     except Exception:
         logger.exception("openapi_registry 读取失败")
         return None

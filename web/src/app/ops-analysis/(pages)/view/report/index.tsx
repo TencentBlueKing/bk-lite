@@ -355,7 +355,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       canvasId: selectedReport?.data_id,
       savedInterval: savedRefreshInterval,
       canPersist: canPersistRefreshInterval,
-      enabled: !renderMode && !pdfExportPreparing,
+      enabled: !renderMode && !pdfExportPreparing && !editing,
       patchRefreshInterval: async (interval) => {
         if (!selectedReport?.data_id) {
           return;

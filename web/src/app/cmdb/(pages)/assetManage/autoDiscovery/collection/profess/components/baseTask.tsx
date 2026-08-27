@@ -97,6 +97,7 @@ import {
   Dropdown,
   Drawer,
   Alert,
+  Switch,
 } from 'antd';
 
 interface TableItem {
@@ -109,12 +110,15 @@ interface BaseTaskFormProps {
   children?: React.ReactNode;
   nodeId?: string;
   showAdvanced?: boolean;
+  showTimeout?: boolean;
+  showIpPrecheck?: boolean;
   modelItem: ModelItem;
   submitLoading?: boolean;
   instPlaceholder?: string;
   assetOptionLabel?: string;
   timeoutProps?: {
     min?: number;
+    max?: number;
     defaultValue?: number;
     addonAfter?: string;
   };
@@ -139,11 +143,14 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     {
       children,
       showAdvanced = true,
+      showTimeout = true,
+      showIpPrecheck = true,
       nodeId,
       submitLoading,
       modelItem,
       timeoutProps = {
-        min: 0,
+        min: 1,
+        max: 86400,
         defaultValue: 600,
         addonAfter: '',
       },
@@ -161,6 +168,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const { model_id: modelId, task_type: taskType, target_model_id: targetModelId } = modelItem;
     const isNetworkConfigFileTask = modelId === 'network_config_file';
     const instanceModelId = targetModelId || modelId;
+    const previousInstanceModelIdRef = useRef(instanceModelId);
     const normalizedTaskType = taskType || nodeId || '';
     const { t } = useTranslation();
     const guardClose = useUnsavedConfirm();
@@ -520,6 +528,16 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     );
 
     useEffect(() => {
+      if (previousInstanceModelIdRef.current === instanceModelId) {
+        return;
+      }
+      previousInstanceModelIdRef.current = instanceModelId;
+      form.setFieldValue('instUuid', undefined);
+      setOptions([]);
+      setSelectedInstUuids([]);
+    }, [form, instanceModelId]);
+
+    useEffect(() => {
       const init = async () => {
         if (requiresSingleInstanceSelect) {
           const selectedIds = (await fetchSelectedInstances()) || [];
@@ -600,7 +618,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
     const showFieldModal = async () => {
       try {
-        const attrList = await modelApi.getModelAttrList(modelId);
+        const attrList = await modelApi.getModelAttrList(instanceModelId);
         // API 返回扁平数组，需要转换为分组结构
         const groupMap = new Map<string, any[]>();
         (attrList || []).forEach((attr: any) => {
@@ -1007,6 +1025,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                 }
                 key="advanced"
               >
+                {showTimeout && (
                 <Form.Item
                   label={
                     <span>
@@ -1021,10 +1040,29 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                 >
                   <InputNumber
                     className="w-40"
-                    min={timeoutProps.min}
+                    min={timeoutProps.min ?? 1}
+                    max={timeoutProps.max ?? 86400}
                     addonAfter={timeoutProps.addonAfter}
                   />
                 </Form.Item>
+                )}
+                {showIpPrecheck && (
+                <Form.Item
+                  label={
+                    <span>
+                      {t('Collection.ipPrecheck')}
+                      <Tooltip title={t('Collection.ipPrecheckTooltip')}>
+                        <QuestionCircleOutlined className="ml-1 text-gray-400" />
+                      </Tooltip>
+                    </span>
+                  }
+                  name="ip_precheck"
+                  valuePropName="checked"
+                  initialValue={false}
+                >
+                  <Switch />
+                </Form.Item>
+                )}
                 <Form.Item
                   label={t('Collection.cleanupStrategy')}
                   name="cleanupStrategy"
