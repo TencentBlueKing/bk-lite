@@ -1199,12 +1199,15 @@
       "permanentlyDelete": "永久删除",
       "permanentlyDeleteConfirm": "确定要永久删除该归档组织吗？",
       "permanentlyDeleteConfirmCxt": "永久删除后数据无法恢复。请先自行处理该组织下各应用模块中的业务资产（监控、日志、CMDB等），再执行此操作。",
+      "permanentlyDeleteConfirmCxtSynced": "永久删除后数据无法恢复，原组织 ID 不再保留。若外部目录再次出现该组织，同步将创建新组织。请先自行处理该组织下各应用模块中的业务资产（监控、日志、CMDB等），再执行此操作。",
       "permanentlyDeleteSuccess": "永久删除成功",
       "permanentlyDeleteFailed": "永久删除失败",
       "archivedKind": {
         "local": "本地组织",
         "synced": "同步源组织"
       },
+      "syncReconcileArchived": "由同步对账归档",
+      "syncReconcileArchivedHint": "该组织仍绑定有效同步源。目录中还在时，下次同步会按原 ID 带回活动树；目录中已不在时会继续留在归档。请到对应用户同步源处理，不要在此手工恢复或删除。",
       "childrenTruncated": "该归档组织子树过大，列表仅展示部分子组织。"
     },
     "role": {
