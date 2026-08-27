@@ -572,7 +572,7 @@
         "automatic": "自动",
         "advanced": "高级",
         "timeout": "超时时间",
-        "timeoutTooltip": "该超时时间为单个对象的采集超时时间，超过该时长将跳过该对象的采集。",
+        "timeoutTooltip": "该超时时间为单个对象正式采集阶段的超时时间，不包含调度排队、连通性预检和结果发布。超过该时长将跳过该对象的正式采集。",
         "ipPrecheck": "IP预检",
         "ipPrecheckTooltip": "开启后，在使用凭据连接前先按协议探测目标可达性；不通的目标直接跳过，不消耗凭据尝试。云账号等逻辑目标自动忽略。SNMP/UDP：明确的网络层失败（无路由、ICMP unreachable 等）判为不可达；探测超时仍进入凭据尝试（与 community 错误不可区分）。",
         "cleanupStrategy": "数据清理策略",

@@ -26,12 +26,12 @@ from core.collection.redis_state import RedisCredentialStateStore, RedisRunState
 from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher
 from core.collection.runtime import CollectionRequest, CollectionRuntime, CollectionRuntimeSettings, RunLease, Submission
 from core.collection.scheduler import CollectionScheduler
-from core.collection.yaml_target_policy import apply_yaml_target_policy
+from core.collection.yaml_target_policy import apply_executor_target_policy, apply_yaml_target_policy_async
 from core.infra.event_loop_monitor import EventLoopLagMonitor
 from core.infra.nats_utils import close_shared_nats, nats_metrics_connection_stats
 from core.infra.process_resources import ProcessResourceSampler
 from core.infra.redis_client import get_redis_client
-from core.logger import logger
+from core.logger import logger, safe_exception_info, safe_log_value
 
 
 def concurrency_limit_from_env(name: str, default: int) -> int:
@@ -180,6 +180,7 @@ class CollectionApplication:
                 collection_seconds=self.settings.plugin_timeout_seconds,
                 publish_seconds=self.settings.publish_timeout_seconds,
             ),
+            metrics=self._metrics,
         )
         self._target_activity = TargetActivityTracker()
         scheduler_limits = tuple(
@@ -337,10 +338,22 @@ class CollectionApplication:
         )
 
     async def _execute(self, request: CollectionRequest, lease: RunLease):
-        # 一次 run 用 yaml target_policy 覆盖预检；显式 preflight_kind 仍优先
-        request = apply_yaml_target_policy(request)
         plugin = self._plugin_factory.resolve(request)
-        plan = self._execution_plan_resolver.resolve(request)
+        prepare_plugin = getattr(plugin, "prepare", None)
+        if callable(prepare_plugin):
+            await prepare_plugin(request)
+        prepared_executor_config = getattr(plugin, "prepared_executor_config", None)
+        if prepared_executor_config is None:
+            # 非配置采集插件仍按 YAML 解析策略与执行计划。
+            request = await apply_yaml_target_policy_async(request)
+            plan = self._execution_plan_resolver.resolve(request)
+        else:
+            # Enterprise Collector 加载失败时，策略与计划必须跟随最终 OSS 配置。
+            request = apply_executor_target_policy(request, prepared_executor_config)
+            plan = self._execution_plan_resolver.resolve(
+                request,
+                executor_config=prepared_executor_config,
+            )
         # 有 probe 且未显式关闭时启用廉价 AccessProbe；否则 CredentialAttempt=collect
         access_probe = None
         if callable(getattr(plugin, "probe", None)) and getattr(plugin, "supports_access_probe", True):
@@ -364,11 +377,12 @@ class CollectionApplication:
             if callable(close_plugin):
                 try:
                     await close_plugin()
-                except Exception:  # noqa: BLE001 - 清理失败不覆盖 Run 原始结果
+                except Exception as exc:  # noqa: BLE001 - 清理失败不覆盖 Run 原始结果
                     logger.exception(
-                        "event=collection_plugin_close_failed task_id=%s plugin_ref=%s",
-                        request.task_id,
-                        request.plugin_ref,
+                        "event=collection_plugin_close_failed task_id=%s plugin_ref=%s " "failed_stage=plugin_close error_type=PluginCloseFailure",
+                        safe_log_value(request.task_id),
+                        safe_log_value(request.plugin_ref),
+                        exc_info=safe_exception_info(exc),
                     )
 
     async def stats(self) -> dict:

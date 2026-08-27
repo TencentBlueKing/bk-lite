@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+import traceback
 import tracemalloc
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -121,10 +122,31 @@ class RecordingPlugin:
 class ClosableRecordingPlugin(RecordingPlugin):
     def __init__(self):
         super().__init__()
+        self.prepare_calls = 0
+        self.prepared = False
         self.close_calls = 0
+
+    async def prepare(self, request):
+        assert request.targets == ("10.10.24.1", "10.10.24.2")
+        self.prepare_calls += 1
+        self.prepared = True
+
+    async def collect(self, target, credential, context):
+        assert self.prepared
+        return await super().collect(target, credential, context)
 
     async def close(self):
         self.close_calls += 1
+
+
+class FailingClosePlugin(ClosableRecordingPlugin):
+    def __init__(self, secret):
+        super().__init__()
+        self.secret = secret
+
+    async def close(self):
+        self.close_calls += 1
+        raise RuntimeError("password=" + self.secret)
 
 
 class PluginFactory:
@@ -330,7 +352,6 @@ def build_application(redis_client, plugin, published, scheduled, *, fail_once=F
 class FixedFiveSecondPlanResolver:
     def resolve(self, _request):
         return ExecutionPlan(
-            preflight_enabled=False,
             preflight_timeout_seconds=15,
             probe_timeout_seconds=15,
             collection_timeout_seconds=5,
@@ -427,7 +448,40 @@ async def test_collection_run_closes_run_scoped_plugin(redis_client, monkeypatch
         await scheduled[0]
 
     assert accepted.status_code == 202
+    assert plugin.prepare_calls == 1
     assert plugin.close_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_plugin_close_failure_keeps_run_result_and_logs_safe_traceback(redis_client, monkeypatch):
+    published = []
+    scheduled = []
+    log_calls = []
+    plugin = FailingClosePlugin("plugin-close-secret-sentinel")
+    application, _preflight = build_application(redis_client, plugin, published, scheduled)
+    monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
+    monkeypatch.setattr(
+        "core.collection.application.logger.exception",
+        lambda message, *args, **kwargs: log_calls.append((message, args, kwargs)),
+    )
+
+    async with http_client(collect_api.collect_router, "e2e-plugin-close-failure-app") as client:
+        accepted = await client.get(
+            "/collect/collect_info",
+            headers=configuration_request("e2e-plugin-close-failure"),
+        )
+        await scheduled[0]
+
+    assert accepted.status_code == 202
+    assert plugin.close_calls == 1
+    assert len(log_calls) == 1
+    message, args, kwargs = log_calls[0]
+    formatted = (message % args) + "\n" + "".join(traceback.format_exception(*kwargs["exc_info"]))
+    assert "failed_stage=plugin_close" in formatted
+    assert "error_type=PluginCloseFailure" in formatted
+    assert "test_collection_end_to_end.py" in formatted
+    assert "in close" in formatted
+    assert "plugin-close-secret-sentinel" not in formatted
 
 
 @pytest.mark.asyncio
@@ -437,11 +491,13 @@ async def test_http_chain_uses_credential_protocol_probe_before_collection(redis
     plugin = CredentialProbePlugin()
     application, _preflight = build_application(redis_client, plugin, published, scheduled)
     monkeypatch.setattr(collect_api, "get_collection_application", lambda: application)
+    headers = configuration_request("e2e-credential-probe")
+    headers["cmdbip_precheck"] = "true"
 
     async with http_client(collect_api.collect_router, "e2e-credential-probe-app") as client:
         accepted = await client.get(
             "/collect/collect_info",
-            headers=configuration_request("e2e-credential-probe"),
+            headers=headers,
         )
         await scheduled[0]
 

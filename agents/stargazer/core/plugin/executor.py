@@ -2,12 +2,36 @@ import asyncio
 import importlib
 import inspect
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from core.collection.contracts import AccessProbeResult, AccessProbeStatus
-from core.logger import logger
+from core.logger import logger, safe_log_value
 from core.plugin.source_resolver import PluginResolution
 from core.plugin.yaml_reader import ExecutorConfig
+
+
+@dataclass(frozen=True)
+class PreparedPluginExecutorFactory:
+    """Run 级静态执行计划；目标级只复制参数并构造 Collector 实例。"""
+
+    model: str
+    executor_config: ExecutorConfig
+    plugin_resolution: Optional[PluginResolution]
+    fallback_executor_config: Optional[ExecutorConfig]
+    strict_enterprise: bool
+    collector_class: type
+
+    def __call__(self, params: Dict[str, Any]) -> "PluginExecutor":
+        return PluginExecutor(
+            self.model,
+            self.executor_config,
+            params,
+            plugin_resolution=self.plugin_resolution,
+            fallback_executor_config=self.fallback_executor_config,
+            strict_enterprise=self.strict_enterprise,
+            collector_class=self.collector_class,
+        )
 
 
 class PluginExecutor:
@@ -25,6 +49,7 @@ class PluginExecutor:
         plugin_resolution: Optional[PluginResolution] = None,
         fallback_executor_config: Optional[ExecutorConfig] = None,
         strict_enterprise: bool = False,
+        collector_class: type | None = None,
     ):
         self.model = model
         self.params = params
@@ -32,6 +57,38 @@ class PluginExecutor:
         self.plugin_resolution = plugin_resolution
         self.fallback_executor_config = fallback_executor_config
         self.strict_enterprise = strict_enterprise
+        self._collector_class = collector_class
+
+    @classmethod
+    async def prepare(
+        cls,
+        model: str,
+        executor_config: ExecutorConfig,
+        *,
+        plugin_resolution: Optional[PluginResolution] = None,
+        fallback_executor_config: Optional[ExecutorConfig] = None,
+        strict_enterprise: bool = False,
+    ) -> PreparedPluginExecutorFactory:
+        """在目标调度前解析一次 Collector 类，同时保留每目标独立实例。"""
+        executor = cls(
+            model,
+            executor_config,
+            {},
+            plugin_resolution=plugin_resolution,
+            fallback_executor_config=fallback_executor_config,
+            strict_enterprise=strict_enterprise,
+        )
+        collector_info = executor.executor_config.get_collector_info()
+        collector_class = await asyncio.to_thread(executor._load_collector_with_fallback, collector_info)
+        used_oss_fallback = executor.executor_config is fallback_executor_config
+        return PreparedPluginExecutorFactory(
+            model=model,
+            executor_config=executor.executor_config,
+            plugin_resolution=None if used_oss_fallback else plugin_resolution,
+            fallback_executor_config=None if used_oss_fallback else fallback_executor_config,
+            strict_enterprise=strict_enterprise,
+            collector_class=collector_class,
+        )
 
     async def execute(self) -> Dict[str, Any]:
         """
@@ -73,9 +130,15 @@ class PluginExecutor:
         return result
 
     async def _prepare_collector(self):
-        collector_info = self.executor_config.get_collector_info()
-        logger.debug(f" Loading collector: {collector_info['module']}.{collector_info['class']}")
-        collector_class = await asyncio.to_thread(self._load_collector_with_fallback, collector_info)
+        collector_class = self._collector_class
+        if collector_class is None:
+            collector_info = self.executor_config.get_collector_info()
+            logger.debug(
+                "Loading collector: %s.%s",
+                safe_log_value(collector_info["module"]),
+                safe_log_value(collector_info["class"]),
+            )
+            collector_class = await asyncio.to_thread(self._load_collector_with_fallback, collector_info)
         collector_params = dict(self.params)
         trusted_options = (self.executor_config.config.get("collector") or {}).get("options", {})
         if not isinstance(trusted_options, Mapping):
@@ -87,7 +150,7 @@ class PluginExecutor:
             if not script_path:
                 raise ValueError(f"Script not found for os_type '{os_type}'. " f"Available: {self.executor_config.list_available_os()}")
             collector_params["script_path"] = script_path
-            logger.debug(f"Script path: {script_path}")
+            logger.debug("Script path: %s", safe_log_value(script_path, max_length=255))
         return await asyncio.to_thread(collector_class, collector_params)
 
     def _determine_os_type(self) -> str:
@@ -121,7 +184,11 @@ class PluginExecutor:
         """动态加载采集器类"""
         module = importlib.import_module(module_name)
         collector_class = getattr(module, class_name)
-        logger.debug(f"✅ Collector loaded: {module_name}.{class_name}")
+        logger.debug(
+            "Collector loaded: %s.%s",
+            safe_log_value(module_name),
+            safe_log_value(class_name),
+        )
         return collector_class
 
     def _load_collector_with_fallback(self, collector_info: Dict[str, str]):
@@ -133,8 +200,9 @@ class PluginExecutor:
 
             if self.strict_enterprise:
                 logger.error(
-                    "event=plugin_enterprise_load_failed model_id=%s selected_source=enterprise " "strict=true error_type=%s",
-                    self.model,
+                    "event=plugin_enterprise_load_failed model_id=%s selected_source=enterprise "
+                    "strict=true failed_stage=run_preparation error_type=%s",
+                    safe_log_value(self.model),
                     type(exc).__name__,
                 )
                 raise
@@ -143,12 +211,16 @@ class PluginExecutor:
                 raise
 
             logger.warning(
-                "event=plugin_fallback model_id=%s failed_source=enterprise " "fallback_source=oss error_type=%s",
-                self.model,
+                "event=plugin_fallback model_id=%s failed_source=enterprise " "fallback_source=oss failed_stage=run_preparation error_type=%s",
+                safe_log_value(self.model),
                 type(exc).__name__,
             )
 
             self.executor_config = self.fallback_executor_config
             fallback_collector_info = self.executor_config.get_collector_info()
-            logger.info(f"Retry loading fallback collector: {fallback_collector_info['module']}.{fallback_collector_info['class']}")
+            logger.debug(
+                "event=plugin_fallback_load_started module=%s class=%s",
+                safe_log_value(fallback_collector_info["module"]),
+                safe_log_value(fallback_collector_info["class"]),
+            )
             return self._load_collector(fallback_collector_info["module"], fallback_collector_info["class"])

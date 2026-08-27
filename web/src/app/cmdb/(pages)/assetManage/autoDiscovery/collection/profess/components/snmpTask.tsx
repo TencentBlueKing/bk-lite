@@ -279,9 +279,9 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
           submitLoading={submitLoading}
           instPlaceholder={`${t('Collection.chooseAsset')}`}
           timeoutProps={{
-            min: 1,
+            min: 30,
             max: 86400,
-            defaultValue: 30,
+            defaultValue: 60,
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >

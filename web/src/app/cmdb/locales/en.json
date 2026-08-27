@@ -572,7 +572,7 @@
         "sslVerify": "SSL verify",
         "advanced": "Advanced",
         "timeout": "Timeout",
-        "timeoutTooltip": "This timeout is the collection timeout for a single object, and if it exceeds this time, the collection for that object will be skipped.",
+        "timeoutTooltip": "Timeout for the formal collection stage of one object. Scheduler queueing, connectivity preflight, and result publishing are excluded. The object's formal collection is skipped when this limit is exceeded.",
         "ipPrecheck": "IP Precheck",
         "ipPrecheckTooltip": "When enabled, probes target reachability by protocol before credential attempts; unreachable targets are skipped without consuming credentials. Logical targets such as cloud accounts are ignored. For SNMP/UDP, clear network-layer failures (no route / ICMP unreachable) are treated as unreachable; probe timeouts still proceed to credential attempts.",
         "cleanupStrategy": "Data Cleanup Strategy",

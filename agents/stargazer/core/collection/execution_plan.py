@@ -7,12 +7,13 @@ from dataclasses import dataclass
 from typing import Any
 
 from core.collection.runtime import CollectionRequest
-from core.logger import logger
-from core.plugin.yaml_reader import PluginYamlReader, yaml_reader
+from core.logger import logger, safe_log_value
+from core.plugin.yaml_reader import ExecutorConfig, PluginYamlReader, yaml_reader
 
 _EXECUTION_MODES = {"sync", "async", "remote"}
 _CAPACITY_GROUPS = {"snmp", "sync_sdk", "remote_job", "network_topology", "default"}
 _MIN_COLLECTION_TIMEOUT_SECONDS = 1.0
+_MIN_SNMP_COLLECTION_TIMEOUT_SECONDS = 30.0
 _MAX_COLLECTION_TIMEOUT_SECONDS = 86400.0
 
 
@@ -30,7 +31,6 @@ class TimeoutDefaults:
 
 @dataclass(frozen=True)
 class ExecutionPlan:
-    preflight_enabled: bool
     preflight_timeout_seconds: float
     probe_timeout_seconds: float
     collection_timeout_seconds: float
@@ -60,43 +60,75 @@ class ExecutionPlanResolver:
         *,
         reader: PluginYamlReader | None = None,
         defaults: TimeoutDefaults | None = None,
+        metrics=None,
     ) -> None:
         self._reader = reader or yaml_reader
         self._defaults = defaults or TimeoutDefaults()
+        self._metrics = metrics
 
-    def resolve(self, request: CollectionRequest) -> ExecutionPlan:
+    def resolve(
+        self,
+        request: CollectionRequest,
+        *,
+        executor_config: ExecutorConfig | None = None,
+    ) -> ExecutionPlan:
         plugin_name = _plugin_name(request)
         executor_type = str(request.params.get("executor_type") or "").strip()
-        try:
-            if not executor_type:
-                plugin_config = self._reader.read_plugin_config(plugin_name)
-                executor_type = str(plugin_config.get("default_executor") or "protocol")
-            resolved = self._reader.get_executor_config_with_resolution(
-                plugin_name,
-                executor_type,
-                prefer_enterprise=_as_bool(request.params.get("prefer_enterprise"), True),
-            )
-        except FileNotFoundError:
-            logger.warning(
-                "event=execution_plan_yaml_missing task_id=%s plugin=%s " "executor=%s action=use_defaults",
-                request.task_id,
-                plugin_name or "-",
-                executor_type or "protocol",
-            )
-            return self._default_plan(
-                executor_type or "protocol",
-                preflight_enabled=request.ip_precheck_enabled,
-            )
-        executor = resolved.executor_config
+        executor = executor_config
+        if executor is None:
+            try:
+                if not executor_type:
+                    plugin_config = self._reader.read_plugin_config(plugin_name)
+                    executor_type = str(plugin_config.get("default_executor") or "protocol")
+                resolved = self._reader.get_executor_config_with_resolution(
+                    plugin_name,
+                    executor_type,
+                    prefer_enterprise=_as_bool(request.params.get("prefer_enterprise"), True),
+                )
+            except FileNotFoundError as exc:
+                logger.warning(
+                    "event=execution_plan_yaml_missing task_id=%s plugin=%s executor=%s "
+                    "action=use_defaults failed_stage=run_preparation error_type=%s",
+                    safe_log_value(request.task_id),
+                    safe_log_value(plugin_name or "-"),
+                    safe_log_value(executor_type or "protocol"),
+                    type(exc).__name__,
+                )
+                return self._default_plan(executor_type or "protocol")
+            executor = resolved.executor_config
         config = executor.config or {}
         target_policy = config.get("target_policy") or {}
         if not isinstance(target_policy, dict):
             target_policy = {}
+        target_policy_mode = str(target_policy.get("mode") or "").strip().lower()
 
         execution_mode = str(config.get("execution_mode") or ("remote" if executor.is_job else "sync")).strip().lower()
         capacity_group = str(config.get("capacity_group") or ("remote_job" if executor.is_job else "default")).strip().lower()
+        minimum_collection_timeout = _MIN_SNMP_COLLECTION_TIMEOUT_SECONDS if target_policy_mode == "snmp" else _MIN_COLLECTION_TIMEOUT_SECONDS
+        raw_collection_timeout = request.params.get("timeout")
+        requested_collection_timeout = _task_collection_timeout_candidate(
+            raw_collection_timeout,
+            self._defaults.collection_seconds,
+        )
+        collection_timeout = _task_collection_timeout(
+            raw_collection_timeout,
+            self._defaults.collection_seconds,
+            minimum=minimum_collection_timeout,
+        )
+        timeout_was_clamped = target_policy_mode == "snmp" and requested_collection_timeout < minimum_collection_timeout
+        if timeout_was_clamped:
+            if self._metrics is not None:
+                self._metrics.increment("snmp_timeout_clamped_total")
+            logger.warning(
+                "event=snmp_collection_timeout_clamped task_id=%s plugin=%s "
+                "configured_seconds=%s effective_seconds=%s "
+                "failed_stage=run_preparation error_type=CollectionTimeoutClamped",
+                safe_log_value(request.task_id),
+                safe_log_value(plugin_name or "-"),
+                requested_collection_timeout,
+                collection_timeout,
+            )
         return ExecutionPlan(
-            preflight_enabled=request.ip_precheck_enabled,
             preflight_timeout_seconds=_configured_timeout(
                 target_policy,
                 "timeout",
@@ -109,19 +141,15 @@ class ExecutionPlanResolver:
                 self._defaults.probe_seconds,
                 "probe_timeout_seconds",
             ),
-            collection_timeout_seconds=_task_collection_timeout(
-                request.params.get("timeout"),
-                self._defaults.collection_seconds,
-            ),
+            collection_timeout_seconds=collection_timeout,
             publish_timeout_seconds=self._defaults.publish_seconds,
             execution_mode=execution_mode,
             capacity_group=capacity_group,
         )
 
-    def _default_plan(self, executor_type: str, *, preflight_enabled: bool) -> ExecutionPlan:
+    def _default_plan(self, executor_type: str) -> ExecutionPlan:
         is_remote = executor_type == "job"
         return ExecutionPlan(
-            preflight_enabled=preflight_enabled,
             preflight_timeout_seconds=self._defaults.preflight_seconds,
             probe_timeout_seconds=self._defaults.probe_seconds,
             collection_timeout_seconds=self._defaults.collection_seconds,
@@ -141,8 +169,22 @@ def _configured_timeout(
     return _positive_timeout(field_name, value)
 
 
-def _task_collection_timeout(raw_value: Any, default: float) -> float:
+def _task_collection_timeout(
+    raw_value: Any,
+    default: float,
+    *,
+    minimum: float = _MIN_COLLECTION_TIMEOUT_SECONDS,
+) -> float:
     """单对象采集预算：表单 timeout → 钳制 1s～86400s；空/0 回落环境默认。"""
+    timeout = _task_collection_timeout_candidate(raw_value, default)
+    clamped = min(
+        _MAX_COLLECTION_TIMEOUT_SECONDS,
+        max(minimum, timeout),
+    )
+    return _positive_timeout("collection_timeout_seconds", clamped)
+
+
+def _task_collection_timeout_candidate(raw_value: Any, default: float) -> float:
     if raw_value is None:
         return _positive_timeout("collection_timeout_seconds", default)
     if isinstance(raw_value, str) and not raw_value.strip():
@@ -153,11 +195,7 @@ def _task_collection_timeout(raw_value: Any, default: float) -> float:
         return _positive_timeout("collection_timeout_seconds", default)
     if not math.isfinite(timeout) or timeout <= 0:
         return _positive_timeout("collection_timeout_seconds", default)
-    clamped = min(
-        _MAX_COLLECTION_TIMEOUT_SECONDS,
-        max(_MIN_COLLECTION_TIMEOUT_SECONDS, timeout),
-    )
-    return _positive_timeout("collection_timeout_seconds", clamped)
+    return timeout
 
 
 def _positive_timeout(field_name: str, value: Any) -> float:

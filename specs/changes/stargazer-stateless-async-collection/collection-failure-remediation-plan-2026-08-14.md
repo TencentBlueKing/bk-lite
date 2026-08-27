@@ -24,7 +24,7 @@
 - 只使用现有三个全局并发参数，在插件全面异步化前先降低并发；
 - 多个 Run 公平共享全局目标执行能力；
 - 结果发布有界、有背压、可批量 flush；
-- 四类超时职责清晰，正式采集超时由插件 YAML 决定；
+- 四类超时职责清晰，正式采集预算由任务表单 `timeout` 决定；
 - 通过 3000 台级别压测证明不会出现任务取消、无界排队和跨任务饥饿。
 
 ## 2. 已确认的产品与架构决策
@@ -37,7 +37,7 @@
 4. `capacity_group` 本阶段只用于分类、日志、指标和未来扩展，不参与独立限流。
 5. 调度器跨 Run 公平调度，任何 Run 都不得预占一批 worker。
 6. SNMP 底层全面异步化后，通过 YAML 把 `execution_mode` 改为 `async`，再根据压测逐步放大现有全局并发值。
-7. 正式采集超时从插件 YAML 的 executor `timeout` 读取，缺失时为 60 秒。
+7. 正式采集预算从任务表单 `timeout` 读取，缺失时为 60 秒；SNMP 小于 30 秒时兼容钳制为 30 秒。
 8. 发布采用内存有界队列和批量 flush，暂时不做磁盘持久队列。
 9. 单台设备发布失败只影响该设备，Run 汇总为 `completed_with_errors`，不得取消剩余设备。
 10. `PREFLIGHT_TIMEOUT` 和 `PROBE_TIMEOUT` 默认均为 15 秒。
@@ -55,7 +55,7 @@ HTTP 请求
   → 全局目标准入（MAX_ACTIVE_TARGETS）
   → 出站安全检查（始终执行）
   → 根据 request.params.ip_precheck 决定是否执行预检/探测
-  → 正式 collect（YAML timeout，缺省 60s）
+  → 正式 collect（任务表单 timeout，缺省 60s；SNMP 最小 30s）
   → 写入有界发布队列（容量复用 TARGET_TASK_WINDOW）
   → Publisher 批量 publish + flush
   → 记录目标采集状态与发布状态
@@ -66,7 +66,7 @@ HTTP 请求
 
 | 模块 | 对外 interface | 隐藏的实现复杂性 |
 | --- | --- | --- |
-| `ExecutionPlan` | 给定请求和插件配置，返回不可变执行计划 | 预检开关、四类超时、YAML 缺省值、执行模式与容量分类 |
+| `ExecutionPlan` | 给定请求和插件配置，返回不可变执行计划 | 四类超时、YAML 缺省值、执行模式与容量分类；不复制任务级开关 |
 | `CollectionScheduler` | 注册 Run、产出可执行目标、回收目标槽位 | 跨 Run 公平性、全局并发、窗口背压、取消与关闭 |
 | `ResultPublishQueue` / `ResultSink` | 入队回执与最终投递分别建模 | 有界队列、批量 flush、有限重试、失败隔离、结果不确定性 |
 
@@ -99,13 +99,16 @@ HTTP 请求
 - 凭据作用域校验；
 - 出站访问策略。
 
-当值为 `on` 时：
+当 `params.ip_precheck` 显式为真值时：
 
 ```text
 安全检查 → TargetPolicy 预检 → 插件 probe（若支持）→ collect
 ```
 
 禁止再通过“插件是否有 `probe()`”单独绕过总开关。
+
+`params.ip_precheck` 是唯一事实来源；不设置 `PREFLIGHT_REACHABILITY` 等全局回退。SNMP/UDP
+在无凭据层不发送裸 UDP 包，只做出站安全检查，随后由带凭据的最小协议 probe 判断。
 
 ### 4.2 单设备发布失败隔离
 
@@ -320,7 +323,7 @@ YAML executor.probe_timeout
 → 15s
 
 collection：
-YAML executor.timeout
+任务表单 timeout
 → COLLECTION_TIMEOUT
 → 兼容期 PLUGIN_TIMEOUT
 → 60s
@@ -337,25 +340,16 @@ PUBLISH_TIMEOUT
 - 使用旧变量时启动日志只打印一次废弃告警；
 - 完成部署迁移后再单独确认删除旧变量，不在本次直接破坏兼容。
 
-### 7.3 正式采集超时来自 YAML
-
-插件 YAML 示例：
-
-```yaml
-executors:
-  protocol:
-    type: protocol
-    timeout: 60
-```
+### 7.3 正式采集预算来自任务表单
 
 解析规则：
 
-1. YAML 写了合法正数：使用 YAML；
-2. YAML 未写：使用 `COLLECTION_TIMEOUT`，默认 60 秒；
-3. YAML 写了 0、负数、NaN 或非法类型：插件配置校验失败，不静默回退；
-4. 同一个插件有多个 executor 时，各 executor 分别读取自己的 `timeout`；
-5. 正式采集不再统一套用固定 `PLUGIN_TIMEOUT=60` 覆盖 YAML；
-6. SDK 内部网络超时应小于或等于外层 collection timeout，避免外层返回后后台线程仍长期阻塞。
+1. 表单传入合法正数：作为单目标正式 Collector 采集预算；
+2. 表单缺失、空值或 0：使用 `COLLECTION_TIMEOUT`，默认 60 秒；
+3. 通用任务钳制到 1～86400 秒，SNMP 任务额外保证最小 30 秒；
+4. 插件 YAML executor 的旧 `timeout` 字段不再覆盖任务表单预算；
+5. SNMP 内部 `timeout=10s`、`retries=1` 保持不变，外层 30 秒最小预算容纳其重试窗口；
+6. 其他 SDK 内部网络超时应小于或等于外层 collection timeout，避免外层返回后后台线程仍长期阻塞。
 
 ## 8. 状态、错误和可观测性
 
@@ -392,7 +386,7 @@ HTTP 已接受的 Run 不应因为一个目标异常改变为整轮取消。
 - 先写覆盖不同插件类型的失败测试；
 - `off` 时禁止调用 TargetPolicy 可达性探测和所有插件 `probe()`；
 - 验证出站安全拒绝仍然生效；
-- `on` 时保持预检与 probe 正常工作。
+- 请求显式开启时保持预检与 probe 正常工作。
 
 ### Slice B：发布失败隔离
 
@@ -403,10 +397,10 @@ HTTP 已接受的 Run 不应因为一个目标异常改变为整轮取消。
 
 ### Slice C：ExecutionPlan 与四类超时
 
-- 从环境变量和 YAML 一次解析不可变执行计划；
+- 从环境变量、任务表单和 YAML 元数据一次解析不可变执行计划；
 - 增加四类超时与旧变量兼容；
-- 正式采集读取 executor YAML `timeout`；
-- 补齐 YAML 的 `timeout`、`execution_mode`、`capacity_group`。
+- 正式采集读取任务表单 `timeout`；
+- 补齐 YAML 的 `execution_mode`、`capacity_group` 和目标策略。
 
 ### Slice D：公平调度与低并发默认值
 

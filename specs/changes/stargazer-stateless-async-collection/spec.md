@@ -457,7 +457,7 @@ Stargazer 与 CMDB 凭据命中事件字段对齐，以及 CMDB「查询 VM → 
 | `MAX_CREDENTIALS_PER_RUN` | 单个请求允许的候选凭据数量上限 |
 | `PREFLIGHT_TIMEOUT` | 协议预检超时，默认 15 秒；兼容期回退 `CONNECT_TIMEOUT` |
 | `PROBE_TIMEOUT` | 插件 AccessProbe 超时，默认 15 秒；兼容期回退 `CONNECT_TIMEOUT` |
-| `COLLECTION_TIMEOUT` | 正式采集缺省 60 秒；插件 YAML executor `timeout` 优先，兼容期回退 `PLUGIN_TIMEOUT` |
+| `COLLECTION_TIMEOUT` | 任务表单未提供有效 `timeout` 时的正式采集缺省值，默认 60 秒；兼容期回退 `PLUGIN_TIMEOUT`，SNMP 最小有效预算 30 秒 |
 | `PUBLISH_TIMEOUT` | 单目标发布阶段端到端超时，默认 30 秒 |
 | `RUN_DEADLINE` | 整个采集运行的可选截止时间 |
 
