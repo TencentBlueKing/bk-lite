@@ -41,6 +41,7 @@
 :root {
   --ant-dropdown-padding-block: 5px;
   --ant-popover-inner-padding: 12px;
+  --bk-webchat-dock-width: 0px;
 }
 
 body {
