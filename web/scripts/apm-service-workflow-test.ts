@@ -9,6 +9,8 @@ const readPage = (path: string) => readFileSync(join(webRoot, 'src/app/apm', pat
 const servicesPage = readPage('services');
 const topologyPage = readPage('services/topology');
 const topologyCanvas = readFileSync(join(webRoot, 'src/app/apm/services/topology/topology-canvas.tsx'), 'utf8');
+const serviceLanguageIcon = readFileSync(join(webRoot, 'src/app/apm/components/service-language-icon.tsx'), 'utf8');
+const topologyObjectIcon = readFileSync(join(webRoot, 'src/app/apm/components/topology-object-icon.ts'), 'utf8');
 const serviceCatalogTable = readFileSync(join(webRoot, 'src/app/apm/components/service-catalog-table.tsx'), 'utf8');
 const applicationObservability = readFileSync(join(webRoot, 'src/app/apm/components/application-observability.tsx'), 'utf8');
 const sloPage = readPage('services/slo');
@@ -60,7 +62,14 @@ assert.match(topologyCanvas, /viewBox=\{`0 0 \$\{TOPOLOGY_CANVAS_SIZE\.width\} \
 assert.match(topologyCanvas, /tabIndex=\{onSelect \|\| onNodeClick \? 0 : undefined\}/, '可点击拓扑节点必须支持键盘聚焦');
 assert.match(topologyCanvas, /event\.key === 'Enter' \|\| event\.key === ' '/, '拓扑节点必须支持 Enter 与 Space 下钻');
 assert.match(topologyCanvas, /sampled_spans/, '拓扑节点大小必须编码采样吞吐');
-assert.match(topologyCanvas, /ServiceLanguageIcon/, '拓扑节点圈内必须使用语言图标而不是文字缩写');
+assert.match(topologyCanvas, /TopologyServiceIcon/, '拓扑节点必须按语言或推断系统选择图标');
+assert.match(topologyCanvas, /truncateTopologyNodeLabel/, '拓扑节点长名称必须截断，避免和角标挤变形');
+assert.match(topologyObjectIcon, /cc-redis_REDIS/, '推断 redis 必须使用对象库 Redis 图标');
+assert.match(topologyObjectIcon, /cc-postgresql_PostgreSQL/, '推断 postgresql 必须使用对象库 PostgreSQL 图标');
+assert.match(topologyObjectIcon, /gateway\|kong\|apisix/, '名称含 gateway 的推断节点必须识别为网关图标');
+assert.match(serviceLanguageIcon, /data-service-icon=\{kind\}/, '未知语言必须可被识别为默认服务图标');
+assert.match(serviceLanguageIcon, /UnknownIcon[\s\S]*'default'/, '未知语言必须回退到默认服务图标');
+assert.doesNotMatch(serviceLanguageIcon, /ui-monospace/, '未知语言不得用空代码符号占位');
 assert.match(topologyCanvas, /formatTopologyEdgeMetrics/, '连线必须展示观测调用量');
 assert.match(topologyCanvas, /onWheel/, '拓扑必须支持滚轮缩放');
 assert.match(topologyPage, /onSelect/, '拓扑节点必须可点选并停在图上调查');

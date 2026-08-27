@@ -36,7 +36,42 @@ export const TOPOLOGY_NODE_CARD = {
   widthSpan: 28,
   height: 44,
   radius: 6,
+  nameOffsetX: 30,
+  healthGutter: 22,
+  inferredBadgeWidth: 28,
 } as const;
+
+const LATIN_CHAR_WIDTH_RATIO = 0.62;
+const ELLIPSIS = '…';
+
+const topologyCharWidth = (character: string, fontSize: number) => {
+  if (character === ELLIPSIS || character === '.') return fontSize * 0.45;
+  if (/[\u1100-\u115F\u3000-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/.test(character)) return fontSize;
+  return fontSize * LATIN_CHAR_WIDTH_RATIO;
+};
+
+export const topologyNodeNameWidth = (cardWidth: number, inferred: boolean) => {
+  const reserved = TOPOLOGY_NODE_CARD.nameOffsetX
+    + TOPOLOGY_NODE_CARD.healthGutter
+    + (inferred ? TOPOLOGY_NODE_CARD.inferredBadgeWidth : 0);
+  return Math.max(24, cardWidth - reserved);
+};
+
+export const truncateTopologyNodeLabel = (label: string, maxWidth: number, fontSize = 12) => {
+  const characters = [...label];
+  const fullWidth = characters.reduce((sum, character) => sum + topologyCharWidth(character, fontSize), 0);
+  if (fullWidth <= maxWidth) return label;
+  const ellipsisWidth = topologyCharWidth(ELLIPSIS, fontSize);
+  let used = 0;
+  const kept: string[] = [];
+  for (const character of characters) {
+    const next = used + topologyCharWidth(character, fontSize);
+    if (next + ellipsisWidth > maxWidth) break;
+    used = next;
+    kept.push(character);
+  }
+  return `${kept.join('')}${ELLIPSIS}`;
+};
 
 const CANVAS_PADDING = {
   top: 52,

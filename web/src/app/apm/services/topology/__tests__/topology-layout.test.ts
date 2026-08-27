@@ -7,6 +7,8 @@ import {
   isolateTopologyNeighborhood,
   layoutForceTopology,
   layoutLayeredTopology,
+  topologyNodeNameWidth,
+  truncateTopologyNodeLabel,
 } from '../topology-layout';
 
 const node = (id: string): ApmTopologyNode => ({
@@ -203,5 +205,19 @@ describe('APM 服务拓扑调查过滤', () => {
     const filtered = filterTopologyByKeyword(demoNodes, demoEdges, 'payment');
     expect(filtered.nodes.map((item) => item.id)).toEqual(['demo-payment']);
     expect(filtered.edges).toEqual([]);
+  });
+});
+
+describe('APM 服务拓扑节点标签', () => {
+  it('推断节点为角标和健康点预留名称宽度', () => {
+    expect(topologyNodeNameWidth(148, false)).toBeGreaterThan(topologyNodeNameWidth(148, true));
+    expect(topologyNodeNameWidth(148, true)).toBe(148 - 30 - 22 - 28);
+  });
+
+  it('超长服务名在可用宽度内截断并保留省略号', () => {
+    expect(truncateTopologyNodeLabel('redis', 70)).toBe('redis');
+    expect(truncateTopologyNodeLabel('demo-payment-gateway', 70)).toMatch(/^demo-.+…$/);
+    expect(truncateTopologyNodeLabel('demo-payment-gateway', 70).length).toBeLessThan('demo-payment-gateway'.length);
+    expect(truncateTopologyNodeLabel('demo-payment-gateway', 70)).not.toBe('demo-payment-gateway');
   });
 });
