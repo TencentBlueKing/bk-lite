@@ -264,6 +264,7 @@ class SnmpTopo:
         )
         self.auth = self.snmp_auth_obj.auth()
         self.transport_opts = self.snmp_auth_obj.get_transport_opts()
+        self.collection_task_id = kwargs.get("collection_task_id")
 
     def _transport_target(self):
         return UdpTransportTarget(
@@ -748,9 +749,13 @@ class SnmpTopo:
             model_data = {"network_topo": snmp_data}
             inst_data = {"result": model_data, "success": True}
         except Exception as err:
-            import traceback
-
-            logger.error(f"snmp_topo collect error! {traceback.format_exc()}")
+            logger.exception(
+                "event=snmp_topo_collect_failed host=%s task_id=%s failed_stage=%s error_type=%s",
+                self.host,
+                self.collection_task_id,
+                "list_all_resources",
+                type(err).__name__,
+            )
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 
         return inst_data
