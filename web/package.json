@@ -122,6 +122,7 @@
     "test:cmdb-views-hub-menu": "pnpm exec tsx scripts/cmdb-views-hub-menu-test.ts",
     "test:cmdb-views-hub-wiring": "pnpm exec tsx scripts/cmdb-views-hub-wiring-test.ts",
     "test:monitor-network-device-cloud-region-fill": "pnpm exec tsx scripts/monitor-network-device-cloud-region-fill-test.ts",
+    "test:monitor-docker-instance-id": "pnpm exec tsx scripts/monitor-docker-instance-id-test.ts",
     "test:opspilot-enterprise-wechat-aibot-node": "pnpm exec tsx scripts/opspilot-enterprise-wechat-aibot-node-test.ts",
     "test:opspilot-execution-preview-order": "pnpm exec tsx scripts/opspilot-execution-preview-order-test.ts",
     "test:opspilot-network-whitelist-error": "pnpm exec tsx scripts/opspilot-network-whitelist-error-test.ts",
