@@ -3,7 +3,8 @@
 
 锁定：
 - lo / 空 MAC 不入库；MAC 规范为小写冒号分隔，并作为 nic.inst_name
-- 同一台机器采集两次不产生重复 nic，且 contains 挂到父 physcial_server
+- 同一台机器采集两次不产生重复 nic
+- contains 图边 src=physcial_server、dst=nic（父 → 网卡），不是 nic → 父
 - 不走 IPMI/BMC 网卡清单；不改 physcial_server 拼写
 """
 import pandas as pd
@@ -270,12 +271,19 @@ def test_second_collect_does_not_duplicate_nics_and_keeps_contains(monkeypatch):
 
     def create_edge(*args, **kwargs):
         payload = args[5] if len(args) > 5 else kwargs.get("data") or {}
+        src_node = args[1] if len(args) > 1 else None
+        dst_node = args[3] if len(args) > 3 else None
         edge_key = (
             payload.get("model_asst_id"),
             payload.get("src_inst_id"),
             payload.get("dst_inst_id"),
+            payload.get("src_model_id"),
+            payload.get("dst_model_id"),
+            src_node,
+            dst_node,
         )
-        if edge_key in created_edges:
+        ident = edge_key[:3]
+        if any(item[:3] == ident for item in created_edges):
             raise Exception("edge already exists")
         created_edges.append(edge_key)
         return {}
@@ -306,7 +314,14 @@ def test_second_collect_does_not_duplicate_nics_and_keeps_contains(monkeypatch):
     assert len(existing_nics) == 2
     assert len(created_edges) == 2
     assert all(edge[0] == "physcial_server_contains_nic" for edge in created_edges)
-    assert all(edge[2] == 1 for edge in created_edges)
+    # src = 父 physcial_server(_id=1)，dst = nic（非父 id）
+    assert all(edge[1] == 1 for edge in created_edges)
+    assert all(edge[2] != 1 for edge in created_edges)
+    assert all(edge[3] == "physcial_server" for edge in created_edges)
+    assert all(edge[4] == "nic" for edge in created_edges)
+    assert all(edge[5] == 1 and edge[6] != 1 for edge in created_edges)
+    # 旧实现把 nic 当 src、父机当 dst；下列方向不得再被当成正确
+    assert not any(edge[1] != 1 and edge[2] == 1 for edge in created_edges)
 
     old_data = [
         {
