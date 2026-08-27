@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from math import ceil
 
-from apps.apm.adapters.span_aliases import CLIENT_SPAN_KINDS, ENTRY_SPAN_KINDS, infer_downstream
+from apps.apm.adapters.span_aliases import CLIENT_SPAN_KINDS, ENTRY_SPAN_KINDS, InferredDownstream, infer_downstream
 from apps.apm.services.contracts import (
     SpanDetail,
     TopologyEdge,
@@ -24,6 +24,7 @@ MAX_TOPOLOGY_WINDOW = timedelta(days=7)
 MAX_TOPOLOGY_TARGETS = 30
 MAX_TOPOLOGY_SAMPLE_TRACES = 200
 MAX_SAMPLE_TRACES = 5
+MAX_INFERRED_ATTR_VALUES = 5
 ERROR_RATE_CRITICAL = 0.05
 ERROR_RATE_WARNING = 0.01
 INSTRUMENTED = "instrumented"
@@ -107,13 +108,37 @@ def _trace_matches_slice(
     )
 
 
+class _InferredNodeMeta:
+    def __init__(self, fold_key: str, system: str, environment: str) -> None:
+        self.fold_key = fold_key
+        self.system = system
+        self.environment = environment
+        self.endpoints: list[str] = []
+        self.db_names: list[str] = []
+
+    def observe(self, inferred: InferredDownstream) -> None:
+        endpoint = inferred.peer_address
+        if endpoint and endpoint not in self.endpoints and len(self.endpoints) < MAX_INFERRED_ATTR_VALUES:
+            self.endpoints.append(endpoint)
+        if inferred.db_name and inferred.db_name not in self.db_names and len(self.db_names) < MAX_INFERRED_ATTR_VALUES:
+            self.db_names.append(inferred.db_name)
+
+    @property
+    def peer_address(self) -> str:
+        return ", ".join(self.endpoints)
+
+    @property
+    def db_name(self) -> str:
+        return ", ".join(self.db_names)
+
+
 class _MetricBucket:
     def __init__(self) -> None:
         self.durations: list[float] = []
         self.error_count = 0
         self.samples: list[TopologySampleTrace] = []
 
-    def add(self, span: SpanDetail, *, trace_id: str, caller_service_name: str) -> None:
+    def add(self, span: SpanDetail, *, trace_id: str, caller_service_name: str, inferred: InferredDownstream | None = None) -> None:
         self.durations.append(span.duration_ms)
         if span.status == "error":
             self.error_count += 1
@@ -130,6 +155,8 @@ class _MetricBucket:
                 duration_ms=span.duration_ms,
                 status=span.status,
                 caller_service_name=caller_service_name,
+                peer_address=inferred.peer_address if inferred else "",
+                db_name=inferred.db_name if inferred else "",
             )
         )
 
@@ -205,7 +232,7 @@ class DjangoApmTopologyService:
         node_metrics: dict[str, _MetricBucket] = defaultdict(_MetricBucket)
         edge_metrics: dict[tuple[str, str], _MetricBucket] = defaultdict(_MetricBucket)
         instrumented_nodes: dict[str, tuple[str, str, str]] = {}
-        inferred_nodes: dict[str, tuple[str, str, str, str]] = {}
+        inferred_nodes: dict[str, _InferredNodeMeta] = {}
         contributing_traces = 0
 
         for detail in traces:
@@ -272,7 +299,7 @@ class DjangoApmTopologyService:
         node_metrics: dict[str, _MetricBucket],
         edge_metrics: dict[tuple[str, str], _MetricBucket],
         instrumented_nodes: dict[str, tuple[str, str, str]],
-        inferred_nodes: dict[str, tuple[str, str, str, str]],
+        inferred_nodes: dict[str, _InferredNodeMeta],
     ) -> bool:
         spans_by_id = {span.span_id: span for span in detail.spans}
         children_by_parent: dict[str, list[SpanDetail]] = defaultdict(list)
@@ -324,19 +351,24 @@ class DjangoApmTopologyService:
                 source_id = _instrumented_node_id(caller_identity)
                 target_id = _inferred_node_id(inferred.fold_key, caller_identity[2])
                 instrumented_nodes[source_id] = caller_identity
-                inferred_nodes[target_id] = (
-                    inferred.fold_key,
-                    inferred.system,
-                    inferred.peer_address,
-                    caller_identity[2],
-                )
+                meta = inferred_nodes.get(target_id)
+                if meta is None:
+                    meta = _InferredNodeMeta(inferred.fold_key, inferred.system, caller_identity[2])
+                    inferred_nodes[target_id] = meta
+                meta.observe(inferred)
                 involved.add(caller_identity)
                 edge_metrics[(source_id, target_id)].add(
                     span,
                     trace_id=detail.trace_id,
                     caller_service_name=span.service_name,
+                    inferred=inferred,
                 )
-                node_metrics[target_id].add(span, trace_id=detail.trace_id, caller_service_name=span.service_name)
+                node_metrics[target_id].add(
+                    span,
+                    trace_id=detail.trace_id,
+                    caller_service_name=span.service_name,
+                    inferred=inferred,
+                )
                 contributed = True
 
         for span in detail.spans:
@@ -389,24 +421,24 @@ class DjangoApmTopologyService:
     @staticmethod
     def _inferred_node(
         node_id: str,
-        meta: tuple[str, str, str, str],
+        meta: _InferredNodeMeta,
         bucket: _MetricBucket,
     ) -> TopologyNode:
-        fold_key, system, peer_address, environment = meta
         error_rate = _error_rate(bucket.error_count, bucket.count)
         return TopologyNode(
             id=node_id,
             service_namespace="",
-            service_name=fold_key,
-            environment=environment,
+            service_name=meta.fold_key,
+            environment=meta.environment,
             health=health_from_error_rate(error_rate),
             sampled_spans=bucket.count,
             error_spans=bucket.error_count,
             language="",
             kind=INFERRED,
-            fold_key=fold_key,
-            inferred_system=system,
-            peer_address=peer_address,
+            fold_key=meta.fold_key,
+            inferred_system=meta.system,
+            peer_address=meta.peer_address,
+            db_name=meta.db_name,
             request_rate=None,
             error_rate=error_rate,
             p95_ms=_percentile(bucket.durations, 0.95),

@@ -131,7 +131,11 @@ export default function TopologyInspectPanel({
               <MetricRow label={t('apm.topology.observedCalls', '观测调用')} value={formatNumber(selectedNode.sampled_spans)} />
               {isInferredTopologyNode(selectedNode) && selectedNode.peer_address ? (
                 <MetricRow label={t('apm.topology.peerAddress', '地址')} value={selectedNode.peer_address} />
-              ) : (
+              ) : null}
+              {isInferredTopologyNode(selectedNode) && selectedNode.db_name ? (
+                <MetricRow label={t('apm.topology.dbName', '库名')} value={selectedNode.db_name} />
+              ) : null}
+              {isInferredTopologyNode(selectedNode) && (selectedNode.peer_address || selectedNode.db_name) ? null : (
                 <MetricRow label={t('apm.common.environment', '环境')} value={selectedNode.environment || t('apm.common.unset', '未设置')} />
               )}
             </dl>
@@ -193,6 +197,10 @@ export default function TopologyInspectPanel({
                     : 'root_span_name' in trace
                       ? (trace.root_span_name || trace.trace_id)
                       : trace.trace_id;
+                  const samplePeer = [
+                    'peer_address' in trace ? trace.peer_address : '',
+                    'db_name' in trace ? trace.db_name : '',
+                  ].filter(Boolean).join(' · ');
                   return (
                     <li key={`${trace.trace_id}:${spanId || ''}`}>
                       <Link
@@ -202,6 +210,7 @@ export default function TopologyInspectPanel({
                         <span className="block truncate text-sm">{label}</span>
                         <span className="text-xs text-[var(--color-text-3)]">
                           {formatLatency(trace.duration_ms, false, t)} · {formatDateTime(trace.started_at, false)}
+                          {samplePeer ? ` · ${samplePeer}` : ''}
                         </span>
                       </Link>
                     </li>

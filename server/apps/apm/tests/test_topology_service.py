@@ -6,7 +6,7 @@ import pytest
 from django.utils import timezone
 
 from apps.apm.adapters import InMemoryTraceStore, TelemetryStoreUnavailable
-from apps.apm.adapters.span_aliases import infer_downstream
+from apps.apm.adapters.span_aliases import format_peer_endpoint, infer_downstream
 from apps.apm.models import ApmService
 from apps.apm.services import DjangoApmTopologyService, DjangoTelemetryCatalogService
 from apps.apm.services.contracts import CatalogDiscovery, SpanDetail, TopologySampleQuery, TopologyTarget, TraceDetail
@@ -68,7 +68,8 @@ def _gateway_payment_trace(now, *, status="ok", trace_id="a" * 32):
     )
 
 
-def _mysql_client_trace(now, *, attr_key="db.system", trace_id="b" * 32, status="ok"):
+def _mysql_client_trace(now, *, attr_key="db.system", trace_id="b" * 32, status="ok", extra_attrs=None):
+    attrs = {attr_key: "mysql", **(extra_attrs or {})}
     return _trace(
         trace_id,
         (
@@ -82,7 +83,7 @@ def _mysql_client_trace(now, *, attr_key="db.system", trace_id="b" * 32, status=
                 kind="client",
                 duration=12,
                 status=status,
-                attrs={attr_key: "mysql"},
+                attrs=attrs,
             ),
         ),
     )
@@ -314,6 +315,165 @@ def test_infer_downstream_fold_key_prefers_peer_service_then_system_then_address
     assert infer_downstream({"rpc.system": "grpc", "rpc.service": "billing.Invoice"}).fold_key == "billing.Invoice"
     assert infer_downstream({"server.address": "10.0.0.8"}).fold_key == "10.0.0.8"
     assert infer_downstream({"http.method": "GET"}) is None
+
+
+def test_infer_downstream_keeps_host_port_and_db_name_separate():
+    net_peer = infer_downstream({"db.system": "mysql", "net.peer.name": "db.internal", "net.peer.port": 3306})
+    assert net_peer.fold_key == "mysql"
+    assert net_peer.host == "db.internal"
+    assert net_peer.port == "3306"
+    assert net_peer.peer_address == "db.internal:3306"
+    assert net_peer.db_name == ""
+
+    server = infer_downstream({"db.system": "mysql", "server.address": "mysql.demo.svc", "server.port": "3306"})
+    assert server.peer_address == "mysql.demo.svc:3306"
+    assert infer_downstream({"db.system": "mysql", "network.peer.address": "10.1.1.1", "network.peer.port": 3306}).peer_address == "10.1.1.1:3306"
+    assert infer_downstream({"db.system": "mysql", "net.peer.ip": "10.1.1.2"}).peer_address == "10.1.1.2"
+    assert infer_downstream({"db.system": "mysql", "server.address": "mysql.svc", "net.peer.name": "other"}).host == "mysql.svc"
+
+    host_only = infer_downstream({"db.system": "mysql", "server.address": "mysql.demo.svc", "db.name": "shop"})
+    assert host_only.peer_address == "mysql.demo.svc"
+    assert host_only.db_name == "shop"
+    assert host_only.host != "shop"
+
+    db_only = infer_downstream({"db.system": "mysql", "db.name": "shop"})
+    assert db_only.peer_address == ""
+    assert db_only.db_name == "shop"
+
+    secret = infer_downstream(
+        {
+            "db.system": "mysql",
+            "db.connection_string": "mysql://user:secret-pass@10.0.0.1:3306/shop",
+            "db.query.text": "SELECT password FROM users",
+        }
+    )
+    assert secret.peer_address == ""
+    assert secret.host == ""
+    assert "secret-pass" not in secret.peer_address
+    assert format_peer_endpoint("::1", "3306") == "[::1]:3306"
+
+
+def test_mysql_client_span_net_peer_name_and_port_surface_on_inferred_node():
+    now = timezone.now()
+    service = DjangoApmTopologyService(
+        InMemoryTraceStore(details=[_mysql_client_trace(now, extra_attrs={"net.peer.name": "db.internal", "net.peer.port": 3306})])
+    )
+
+    graph = service.build(
+        [TopologyTarget("shop", "gateway", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_inferred=True,
+    )
+
+    inferred = next(node for node in graph.nodes if node.kind == "inferred")
+    assert inferred.fold_key == "mysql"
+    assert inferred.peer_address == "db.internal:3306"
+    assert inferred.db_name == ""
+    assert graph.edges[0].sample_traces[0].peer_address == "db.internal:3306"
+
+
+def test_mysql_client_span_server_address_and_port_surface_on_inferred_node():
+    now = timezone.now()
+    service = DjangoApmTopologyService(
+        InMemoryTraceStore(
+            details=[_mysql_client_trace(now, extra_attrs={"server.address": "mysql.demo.svc", "server.port": "3306", "db.name": "shop"})]
+        )
+    )
+
+    graph = service.build(
+        [TopologyTarget("shop", "gateway", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_inferred=True,
+    )
+
+    inferred = next(node for node in graph.nodes if node.kind == "inferred")
+    assert inferred.peer_address == "mysql.demo.svc:3306"
+    assert inferred.db_name == "shop"
+
+
+def test_mysql_client_span_without_port_shows_host_only():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_mysql_client_trace(now, extra_attrs={"server.address": "mysql.demo.svc"})]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "gateway", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_inferred=True,
+    )
+
+    inferred = next(node for node in graph.nodes if node.kind == "inferred")
+    assert inferred.peer_address == "mysql.demo.svc"
+    assert ":3306" not in inferred.peer_address
+
+
+def test_db_name_does_not_become_peer_address_on_inferred_node():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_mysql_client_trace(now, extra_attrs={"db.name": "shop"})]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "gateway", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_inferred=True,
+    )
+
+    inferred = next(node for node in graph.nodes if node.kind == "inferred")
+    assert inferred.fold_key == "mysql"
+    assert inferred.peer_address == ""
+    assert inferred.db_name == "shop"
+
+
+def test_two_mysql_hosts_fold_to_one_node_and_keep_unique_addresses():
+    now = timezone.now()
+    first = _mysql_client_trace(now, extra_attrs={"server.address": "10.0.0.1", "server.port": 3306, "db.name": "shop"})
+    second = _mysql_client_trace(
+        now,
+        trace_id="c" * 32,
+        extra_attrs={"server.address": "10.0.0.2", "server.port": 3306, "db.name": "shop"},
+    )
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[first, second]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "gateway", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_inferred=True,
+    )
+
+    inferred = [node for node in graph.nodes if node.kind == "inferred"]
+    assert len(inferred) == 1
+    assert inferred[0].fold_key == "mysql"
+    assert set(inferred[0].peer_address.split(", ")) == {"10.0.0.1:3306", "10.0.0.2:3306"}
+    assert inferred[0].db_name == "shop"
+    sample_addresses = {item.peer_address for item in inferred[0].sample_traces}
+    assert sample_addresses == {"10.0.0.1:3306", "10.0.0.2:3306"}
+
+
+def test_span_attr_prefixed_net_peer_still_surfaces_host_port():
+    now = timezone.now()
+    service = DjangoApmTopologyService(
+        InMemoryTraceStore(
+            details=[
+                _mysql_client_trace(
+                    now,
+                    extra_attrs={"span_attr:net.peer.name": "orders-db", "span_attr:network.peer.port": "3306"},
+                )
+            ]
+        )
+    )
+
+    graph = service.build(
+        [TopologyTarget("shop", "gateway", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_inferred=True,
+    )
+
+    inferred = next(node for node in graph.nodes if node.kind == "inferred")
+    assert inferred.peer_address == "orders-db:3306"
 
 
 @pytest.mark.django_db

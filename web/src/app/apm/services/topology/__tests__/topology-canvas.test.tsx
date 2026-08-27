@@ -214,6 +214,8 @@ describe('APM 服务拓扑画布', () => {
           inferred_system: 'mysql',
           language: '',
           request_rate: null,
+          peer_address: 'db.internal:3306, 10.0.0.2:3306',
+          db_name: 'shop',
           sample_traces: [{
             trace_id: 'mysql-trace',
             span_id: 'span-1',
@@ -222,6 +224,18 @@ describe('APM 服务拓扑画布', () => {
             duration_ms: 12,
             status: 'ok',
             caller_service_name: 'catalog',
+            peer_address: 'db.internal:3306',
+            db_name: 'shop',
+          }, {
+            trace_id: 'mysql-trace-2',
+            span_id: 'span-2',
+            span_name: 'SELECT inventory',
+            started_at: '2026-08-26T00:00:01.000Z',
+            duration_ms: 9,
+            status: 'ok',
+            caller_service_name: 'catalog',
+            peer_address: '10.0.0.2:3306',
+            db_name: 'shop',
           }],
         }),
       ],
@@ -238,7 +252,11 @@ describe('APM 服务拓扑画布', () => {
     expect(screen.getAllByText('推断').length).toBeGreaterThan(0);
     fireEvent.click(result.container.querySelector('[data-node-id="mysql"]') as Element);
     expect(await screen.findByText('样本 Client Span')).not.toBeNull();
-    expect(screen.getByRole('link', { name: /SELECT orders/ })).not.toBeNull();
+    expect(result.container.querySelector('[data-peer-address="db.internal:3306, 10.0.0.2:3306"]')).not.toBeNull();
+    expect(screen.getByText('db.internal:3306, 10.0.0.2:3306')).not.toBeNull();
+    expect(screen.getAllByText('shop').length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: /SELECT orders/ }).textContent).toContain('db.internal:3306');
+    expect(screen.getByRole('link', { name: /SELECT inventory/ }).textContent).toContain('10.0.0.2:3306');
     expect(screen.queryByRole('link', { name: '服务详情' })).toBeNull();
     expect(screen.getByRole('button', { name: '隔离一跳' })).not.toBeNull();
   });

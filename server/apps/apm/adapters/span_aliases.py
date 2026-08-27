@@ -9,7 +9,8 @@ MESSAGING_SYSTEM_KEYS = ("messaging.system",)
 RPC_SYSTEM_KEYS = ("rpc.system",)
 RPC_SERVICE_KEYS = ("rpc.service",)
 PEER_SERVICE_KEYS = ("peer.service",)
-SERVER_ADDRESS_KEYS = ("server.address",)
+HOST_KEYS = ("server.address", "net.peer.name", "network.peer.address", "net.peer.ip")
+PORT_KEYS = ("server.port", "net.peer.port", "network.peer.port")
 CLIENT_SPAN_KINDS = frozenset({"client", "producer"})
 ENTRY_SPAN_KINDS = frozenset({"server", "consumer"})
 
@@ -28,12 +29,30 @@ def span_attribute_text(attributes: Mapping[str, object], keys: tuple[str, ...])
     return ""
 
 
+def format_peer_endpoint(host: str, port: str) -> str:
+    """只拼接 Span 里实际有的 host / port，缺端口时不加默认端口。"""
+
+    if not host:
+        return ""
+    if not port:
+        return host
+    if ":" in host and not host.startswith("["):
+        return f"[{host}]:{port}"
+    return f"{host}:{port}"
+
+
 @dataclass(frozen=True)
 class InferredDownstream:
     fold_key: str
     system: str
     category: str
-    peer_address: str
+    host: str = ""
+    port: str = ""
+    db_name: str = ""
+
+    @property
+    def peer_address(self) -> str:
+        return format_peer_endpoint(self.host, self.port)
 
 
 def infer_downstream(attributes: Mapping[str, object]) -> InferredDownstream | None:
@@ -44,17 +63,19 @@ def infer_downstream(attributes: Mapping[str, object]) -> InferredDownstream | N
     messaging_system = span_attribute_text(attributes, MESSAGING_SYSTEM_KEYS)
     rpc_system = span_attribute_text(attributes, RPC_SYSTEM_KEYS)
     rpc_service = span_attribute_text(attributes, RPC_SERVICE_KEYS)
-    server_address = span_attribute_text(attributes, SERVER_ADDRESS_KEYS)
+    host = span_attribute_text(attributes, HOST_KEYS)
+    port = span_attribute_text(attributes, PORT_KEYS)
     db_name = span_attribute_text(attributes, DB_NAME_KEYS)
+    extras = {"host": host, "port": port, "db_name": db_name}
     if peer_service:
-        return InferredDownstream(peer_service, peer_service, "peer", server_address)
+        return InferredDownstream(peer_service, peer_service, "peer", **extras)
     if db_system:
-        return InferredDownstream(db_system, db_system, "db", server_address or db_name)
+        return InferredDownstream(db_system, db_system, "db", **extras)
     if messaging_system:
-        return InferredDownstream(messaging_system, messaging_system, "messaging", server_address)
+        return InferredDownstream(messaging_system, messaging_system, "messaging", **extras)
     if rpc_system:
         fold_key = rpc_service or rpc_system
-        return InferredDownstream(fold_key, rpc_system, "rpc", server_address)
-    if server_address:
-        return InferredDownstream(server_address, server_address, "peer", server_address)
+        return InferredDownstream(fold_key, rpc_system, "rpc", **extras)
+    if host:
+        return InferredDownstream(host, host, "peer", **extras)
     return None

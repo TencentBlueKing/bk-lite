@@ -9,6 +9,7 @@ const readPage = (path: string) => readFileSync(join(webRoot, 'src/app/apm', pat
 const servicesPage = readPage('services');
 const topologyPage = readPage('services/topology');
 const topologyCanvas = readFileSync(join(webRoot, 'src/app/apm/services/topology/topology-canvas.tsx'), 'utf8');
+const topologyInspectPanel = readFileSync(join(webRoot, 'src/app/apm/services/topology/topology-inspect-panel.tsx'), 'utf8');
 const serviceLanguageIcon = readFileSync(join(webRoot, 'src/app/apm/components/service-language-icon.tsx'), 'utf8');
 const topologyObjectIcon = readFileSync(join(webRoot, 'src/app/apm/components/topology-object-icon.ts'), 'utf8');
 const serviceCatalogTable = readFileSync(join(webRoot, 'src/app/apm/components/service-catalog-table.tsx'), 'utf8');
@@ -83,6 +84,8 @@ assert.match(topologyPage, /anomalyOnly/, '拓扑必须保留按节点健康度�
 assert.match(topologyPage, /clearSlice/, '拓扑必须能清空请求切片并回到时间窗全图');
 assert.match(topologyCanvas, /inferredBadge/, '推断节点必须展示推断角标');
 assert.match(topologyCanvas, /data-node-kind/, '推断节点必须可被画布按 kind 识别');
+assert.match(topologyInspectPanel, /peerAddress/, '推断节点调查栏必须展示 Client Span 中的地址');
+assert.match(topologyInspectPanel, /dbName/, '推断节点调查栏必须单独展示库名而不是用库名冒充 host');
 assert.doesNotMatch(applicationObservability, /include_inferred:\s*true/, '应用详情子拓扑第一版不得请求推断下游');
 assert.doesNotMatch(serviceDetail, /include_inferred:\s*true/, '服务详情不得打开推断查询');
 assert.doesNotMatch(topologyPage, /min-w-\[960px\]|scroll=\{\{ x:/, '拓扑不得通过固定宽度撑开整页');

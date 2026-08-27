@@ -1,6 +1,6 @@
 # APM 推断下游产品决策记忆
 
-- 最近更新：2026-08-26
+- 最近更新：2026-08-27
 - 当前规格：`specs/changes/apm-inferred-downstream/spec.md`
 
 ## 产品定位
@@ -31,7 +31,9 @@ MVP 做成 **服务拓扑页上的推断节点 + 调用链可解释**，不扩�
   - 库名：`db.name` 与 `db.namespace`
   - 消息：`messaging.system`
   - RPC：`rpc.system`（可选 `rpc.service`）
-  - 兜底：`peer.service`，其次 `server.address`
+  - 兜底：`peer.service`，其次 host（`server.address` / `net.peer.name` / `network.peer.address` / `net.peer.ip`）
+  - 端口（仅展示）：`server.port` / `net.peer.port` / `network.peer.port`
+- 推断节点展示 Span 里实际有的 host、port、库名；缺字段不编造；折叠身份不按 IP。
 - VictoriaTraces 字段前缀 `span_attr:` 由存储加上，探针源码里没有这个前缀。
 - 语言探针对照表只服务文档、排障和验收夹具，不是发现能力的前置。
 - 分析源码与归档离线包使用同一组钉死版本（2026-08-26 建议，发布时以流水线归档为准）：
@@ -50,8 +52,8 @@ MVP 做成 **服务拓扑页上的推断节点 + 调用链可解释**，不扩�
 
 - **查询时推断，不物化目录。** 推断节点只存在于当前时间窗（及拓扑切片）的查询结果。静默/归档语义只属于插桩服务与实例。原因：库节点没有稳定实例身份；写入目录会与「未知 namespace 不自动建应用」冲突，也会让组织继承、告警、SLO 误绑到 mysql。
 - **构图走有界 Trace 样本，不依赖 Jaeger `dependencies` 的库边。** 当前拓扑切片已按父子 Span 聚跨服务边。推断边在同一批样本上识别：`span.kind=client`（或 producer），且带上表别名之一，且没有另一 `service.name` 的子 Span。原因：VT 库边只认 `db.system.name`，child 名是 `checkout:mysql`，和目录对不上；老探针默认发 `db.system`。样本路径与请求切片、边级 P95/错误一致。
-- **节点分两类。** `instrumented`：已在当前组织可见的 `ApmService`。`inferred`：未插桩下游。推断节点展示类型（mysql / redis / kafka）和可选地址，角标「推断」。点推断节点打开调查栏：调用方、样本 Client Span、下钻调用链；**不提供服务详情、策略、SLO、组织调整**。
-- **身份折叠规则（MVP）。** 优先 `peer.service`；否则库用 `db.system.name` 或 `db.system`，消息用 `messaging.system`；再否则 `server.address`。同一时间窗同一调用方下相同折叠键合成一个节点。不按调用方拆成 `checkout:mysql` 这种 VT 图专用名。两个真实库实例若属性只有 `db.system=mysql`，会合成一个节点；高基数地址后置。
+- **身份折叠规则（MVP）。** 优先 `peer.service`；否则库用 `db.system.name` 或 `db.system`，消息用 `messaging.system`；再否则 `server.address` / `net.peer.name`。同一时间窗同一调用方下相同折叠键合成一个节点。不按调用方拆成 `checkout:mysql` 这种 VT 图专用名。两个真实库实例若属性只有 `db.system=mysql`，会合成一个节点；**不按 IP 拆节点**。Client Span 上实际有的 host / port / 库名挂在节点和样本上展示（`host:port`，缺端口不加默认端口）；库名不覆盖 host。不把 `db.connection_string` / `db.query.text` / 凭据写进拓扑身份。高基数按地址拆分后置。
+- **节点分两类。** `instrumented`：已在当前组织可见的 `ApmService`。`inferred`：未插桩下游。推断节点展示类型（mysql / redis / kafka）和 Span 里实际有的地址 / 库名，角标「推断」。点推断节点打开调查栏：调用方、样本 Client Span（各样本可带自己的地址）、下钻调用链；**不提供服务详情、策略、SLO、组织调整**。
 - **RED 口径。** 推断节点没有独立吞吐。边的调用量 / 错误率 / P95 来自调用方 Client Span。节点健康度沿用拓扑错误率分档。截断时 `truncated=true`，文案不得说成全量拓扑。
 - **权限。** 推断节点只在调用方 `ApmService` 对当前组织可见时出现。不能靠推断节点枚举其他组织的库地址。
 - **Collector 保持 traces-only。** 不启用 `servicegraphconnector`、不恢复 spanmetrics、不增加 APM VictoriaMetrics。推断不经过 OTC 改写。
@@ -93,13 +95,14 @@ MVP 做成 **服务拓扑页上的推断节点 + 调用链可解释**，不扩�
 ## 已替代决策
 
 - 「装一个 Web 探针就会在应用列表发现 mysql」：2026-08-26 明确为不正确的产品说法；正确说法是拓扑上出现推断下游。
+- 「用 db.name 填推断节点地址」：2026-08-27 改为库名独立字段；地址只来自 host/port 别名。
 - 「fork OTC 用 Cloud 扫各语言探针标签」：2026-08-26 改为读各语言 instrumentation 的钉死 tag，查询走语义约定别名。
 - 「用 VT Jaeger dependencies 的 `service:mysql` 边当发现结果」：不作身份源；仅可作辅助对照。
 - 「MVP 同时改服务拓扑和应用详情子拓扑」：2026-08-26 改为第一版只做服务拓扑。
 
 ## 决策来源
 
-- 2026-08-26 用户确认：推断下游第一版只在服务拓扑上查询和展示；应用详情子拓扑后置。
+- 2026-08-27 用户确认：推断下游展示 Client Span 实际有的 host/port/库名；不按 IP 改折叠键；高基数拆分后置。
 - 2026-08-26 会话：服务发现身份、OTC+VT 能力边界、Span 属性可查询、探针制品文档无版本号、建议钉 2.31.1 / 0.65b0 / 0.79.0 / v1.46.0。
 - 仓库事实：`DjangoTelemetryCatalogService` 只认 Resource 身份；`docs/operations/apm-probe-artifact-release.md`；Collector `0.153.0` traces-only；拓扑切片改为有界 Trace 样本。
 - 对照而非目标架构：Datadog inferred services、OTel `servicegraphconnector` 虚拟节点、VictoriaTraces PR #117 / issue #121。

@@ -315,6 +315,8 @@ export default function TopologyCanvas({
               tabIndex={onSelect || onNodeClick ? 0 : undefined}
               data-node-id={node.id}
               data-node-kind={node.kind || 'instrumented'}
+              data-peer-address={node.peer_address || undefined}
+              data-db-name={node.db_name || undefined}
               data-selected={isSelected ? 'true' : undefined}
               className={onSelect || onNodeClick ? 'cursor-pointer' : undefined}
               transform={`translate(${node.x},${node.y})`}
