@@ -88,10 +88,6 @@ def test_unknown_extension_outbox_kind_is_rejected():
 
 
 def test_existing_outbox_kinds_keep_their_original_dispatch_contracts():
-    with mock.patch("apps.alerts.tasks.sync_notify") as notify:
-        _deliver_payload("notification", {"params": [{"channel_id": 1}]})
-    notify.assert_called_once_with([{"channel_id": 1}])
-
     with mock.patch("apps.alerts.tasks.action_tasks.process_alert_actions") as action:
         _deliver_payload("action", {"alert_id": "A1", "event_name": "created"})
     action.assert_called_once_with("A1", "created")
@@ -102,48 +98,65 @@ def test_existing_outbox_kinds_keep_their_original_dispatch_contracts():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_notification_outbox_retries_when_every_selected_channel_fails():
+def test_registered_notification_extension_keeps_original_delivery_contract():
+    handler = mock.Mock()
+    outbox_handlers.register("notification", handler)
+    record = AlertOutbox.objects.create(
+        kind="notification",
+        payload={"params": [{"channel_id": 1}]},
+        idempotency_key="notification-extension-contract",
+    )
+    try:
+        assert deliver_outbox_record(record.pk) is True
+    finally:
+        outbox_handlers._handlers.pop("notification", None)
+
+    handler.deliver.assert_called_once_with(
+        {"params": [{"channel_id": 1}]},
+        delivery_claim={"record_id": record.pk, "generation": 1},
+    )
+    assert not record.notification_deliveries.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_notification_outbox_materializes_every_selected_channel():
     record = AlertOutbox.objects.create(
         kind="notification",
         payload={"params": [{"channel_id": 1}, {"channel_id": 2}]},
         idempotency_key="notification-all-failed",
     )
 
-    results = [
-        {"result": False, "message": "email unavailable"},
-        {"errcode": 500, "errmsg": "sms unavailable"},
-    ]
-    with mock.patch("apps.alerts.tasks.sync_notify", return_value=results):
-        with pytest.raises(RuntimeError, match="all notification channels failed"):
-            deliver_outbox_record(record.pk)
+    with mock.patch("apps.alerts.tasks.tasks.deliver_alert_notification_channel.delay") as delay:
+        assert deliver_outbox_record(record.pk) is True
 
     record.refresh_from_db()
-    assert record.status == AlertOutbox.Status.PENDING
+    deliveries = list(record.notification_deliveries.order_by("position"))
+    assert record.status == AlertOutbox.Status.DELIVERED
     assert record.attempts == 1
-    assert record.delivered_at is None
-    assert record.next_retry_at is not None
+    assert record.delivered_at is not None
+    assert [delivery.channel_id for delivery in deliveries] == ["1", "2"]
+    assert {call.args[0] for call in delay.call_args_list} == {
+        delivery.pk for delivery in deliveries
+    }
 
 
 @pytest.mark.django_db(transaction=True)
-def test_notification_outbox_keeps_partial_success_compatibility_without_retrying_successful_channel():
+def test_notification_outbox_hands_partial_delivery_to_channel_state_machine():
     record = AlertOutbox.objects.create(
         kind="notification",
         payload={"params": [{"channel_id": 1}, {"channel_id": 2}]},
         idempotency_key="notification-partial-success",
     )
 
-    results = [
-        {"result": True},
-        {"code": 500, "message": "sms unavailable"},
-    ]
-    with mock.patch("apps.alerts.tasks.sync_notify", return_value=results) as notify:
+    with mock.patch("apps.alerts.tasks.tasks.deliver_alert_notification_channel.delay") as delay:
         assert deliver_outbox_record(record.pk) is True
 
-    notify.assert_called_once()
     record.refresh_from_db()
     assert record.status == AlertOutbox.Status.DELIVERED
     assert record.attempts == 1
     assert record.delivered_at is not None
+    assert record.notification_deliveries.count() == 2
+    assert delay.call_count == 2
 
 
 def test_unknown_non_incident_outbox_kind_is_rejected():
@@ -154,8 +167,8 @@ def test_unknown_non_incident_outbox_kind_is_rejected():
 @pytest.mark.django_db(transaction=True)
 def test_delivery_failure_is_retryable_then_marks_delivered():
     record = AlertOutbox.objects.create(
-        kind="notification",
-        payload={"params": [{"channel_id": 1}]},
+        kind="action",
+        payload={"alert_id": "A1", "event_name": "created"},
         idempotency_key="retry-key",
     )
 
