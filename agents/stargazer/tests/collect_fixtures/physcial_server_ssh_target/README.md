@@ -29,11 +29,14 @@ docker compose ps
 cd agents/stargazer/tests/collect_fixtures/physcial_server_ssh_target
 docker compose up -d --build
 docker compose ps
-# 等 sshd 起来（首次 apt 大约 30–90s）
-docker compose logs -f --tail=20
+# sshd 在镜像内已装好；容器起来后几乎立刻可连 12226
 ```
 
-若 `docker.m.daocloud.io/library/ubuntu:22.04` 拉不到，把 `docker-compose.yaml` 里的 `image` 改成 `ubuntu:22.04` 再 `up -d`。
+sshd / pciutils 在 **镜像构建** 时安装（compose `build.network: host`，避免 Docker bridge 访问 Ubuntu 源超时）。entrypoint 只配账户并种 QA 网卡。
+
+若 `docker.m.daocloud.io/library/ubuntu:22.04` 拉不到，把 `Dockerfile` 的 `FROM` 改成 `ubuntu:22.04` 再 `up -d --build`。
+
+无 systemd 的嵌套 overlay 环境若 `overlayfs: invalid argument`，把 Docker 存储驱动改成 `vfs` 后再 `up`（daemon.json 的 `storage-driver`，不是另起产品栈）。
 
 ### 让采集节点用容器名访问（推荐）
 
@@ -85,8 +88,16 @@ sshpass -p testpw ssh -o StrictHostKeyChecking=no -p 22 root@physcial-server-ssh
 
 ```bash
 # 目标侧先确认脚本能扫到可入库网卡（非 lo、非空 MAC）
-sshpass -p testpw ssh -o StrictHostKeyChecking=no -p 12226 root@127.0.0.1 \
-  'apt-get install -y -qq pciutils >/dev/null; lspci | grep -iE "ethernet|network" || true; ls -d /sys/bus/pci/devices/*/net/* 2>/dev/null || true'
+sshpass -p testpw ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 12226 root@127.0.0.1 \
+  'echo ok; PATH=/usr/local/sbin:$PATH lspci | grep -iE "ethernet|network" || true; cat /sys/class/net/ethqa/address 2>/dev/null || true'
+```
+
+无完整 BK-Lite 产品栈时，用本目录脚本对 **live SSH 输出** 跑两次 HostCollect / Management 入库路径（sqlite 即可）：
+
+```bash
+cd server
+DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABLE_CELERY=true \
+  uv run python ../agents/stargazer/tests/collect_fixtures/physcial_server_ssh_target/run_twice_collect.py
 ```
 
 在 CMDB 对该 `physcial_server` 实例执行采集 **一次**，记下：

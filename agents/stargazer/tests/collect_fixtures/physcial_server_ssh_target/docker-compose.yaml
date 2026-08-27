@@ -10,7 +10,10 @@
 
 services:
   physcial-server-ssh-target:
-    image: docker.m.daocloud.io/library/ubuntu:22.04
+    build:
+      context: .
+      network: host
+    image: physcial-server-ssh-target:qa
     container_name: physcial-server-ssh-target
     hostname: physcial-server-ssh-target
     privileged: true
