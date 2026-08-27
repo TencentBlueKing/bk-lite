@@ -129,6 +129,22 @@ def test_get_check_attr_map_classifies(monkeypatch):
 # --------------------------------------------------------------------------
 # format_data / contrast
 # --------------------------------------------------------------------------
+def test_coerce_collected_tag_turns_string_into_empty_list():
+    assert Management.coerce_collected_tag({"inst_name": "a"}) == {"inst_name": "a"}
+    assert Management.coerce_collected_tag({"tag": ["test:aaa"]})["tag"] == ["test:aaa"]
+    assert Management.coerce_collected_tag({"tag": ""})["tag"] == []
+    assert Management.coerce_collected_tag({"tag": "env:prod"})["tag"] == []
+
+
+def test_contrast_rewrites_string_tag_as_list_update(monkeypatch):
+    fake = FakeGraph()
+    old = [{"inst_name": "a", "tag": "", "_id": 1}]
+    new = [{"inst_name": "a", "tag": ""}]
+    m = _mgmt(monkeypatch, fake, old, new)
+    assert m.update_list[0]["tag"] == []
+    assert m.update_list[0]["_id"] == 1
+
+
 def test_contrast_classifies_add_and_update(monkeypatch):
     fake = FakeGraph()
     old = [{"inst_name": "a", "ip_addr": "10.0.0.1", "_id": 1}]
