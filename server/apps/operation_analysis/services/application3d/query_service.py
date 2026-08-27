@@ -29,6 +29,7 @@ from apps.operation_analysis.services.application3d.constants import (
     APPLICATION3D_SAFETY_MAX_APPLICATIONS,
     FILTER_SYSTEM_STATUS,
 )
+from apps.operation_analysis.services.application3d.detail_fields import present_alert_dimensions, present_policy_thresholds
 from apps.operation_analysis.services.application3d.errors import (
     Application3DCapacityExceeded,
     Application3DInvalidRequest,
@@ -36,6 +37,12 @@ from apps.operation_analysis.services.application3d.errors import (
     Application3DSourceFailure,
 )
 from apps.operation_analysis.services.application3d.health import aggregate_application_health, unavailable_health
+from apps.operation_analysis.services.application3d.metric_fields import (
+    collect_policy_metric_ids,
+    load_metrics_by_ids,
+    present_alarm_metric_fields,
+    resolve_policy_metric_display_name,
+)
 from apps.operation_analysis.services.application3d.notifications import summarize_notification
 from apps.operation_analysis.services.application3d.presenters import (
     alert_duration_seconds,
@@ -111,6 +118,8 @@ class Application3DQueryService:
                 app_id,
                 cursor=(getattr(request, "data", None) or {}).get("cursor"),
             )
+            page_policies = [scope.policies.get(alert.policy_id) for alert in page_items]
+            metrics_by_id = load_metrics_by_ids(collect_policy_metric_ids(page_policies))
             alarms = {
                 "state": "available",
                 "activeAlarmCount": health["activeAlarmCount"],
@@ -122,6 +131,7 @@ class Application3DQueryService:
                         alert,
                         host=cls._host_for_alert(scope, app_id, alert),
                         policy=scope.policies.get(alert.policy_id),
+                        metrics_by_id=metrics_by_id,
                     )
                     for alert in page_items
                 ],
@@ -161,6 +171,7 @@ class Application3DQueryService:
         policy = scope.policies.get(alert.policy_id)
         host = cls._host_for_alert(scope, app_id, alert)
         is_no_data = str(alert.alert_type).lower() == "no_data"
+        alert_type = "no_data" if is_no_data else "alert"
         monitor_object = getattr(policy, "monitor_object", None)
         return {
             "applicationId": app_id,
@@ -168,6 +179,7 @@ class Application3DQueryService:
                 "id": str(alert.id),
                 "content": alert.content or "",
                 "severity": severity_from_monitor_level(alert.level),
+                "alertType": alert_type,
                 "isNoData": is_no_data,
                 "occurredAt": iso_datetime(alert.start_event_time),
                 "status": "new",
@@ -176,12 +188,12 @@ class Application3DQueryService:
                     "id": str(host.get("inst_uuid") or ""),
                     "name": str(host.get("inst_name") or host.get("inst_uuid") or ""),
                 },
-                "metric": {
-                    "id": alert.metric_instance_id or None,
-                    "name": getattr(policy, "alert_name", None) or None,
-                    "value": None if alert.value is None else str(alert.value),
-                    "unit": cls._policy_chart_unit(policy) or None,
-                },
+                "dimensions": present_alert_dimensions(getattr(alert, "dimensions", None)),
+                "metric": present_alarm_metric_fields(
+                    alert,
+                    policy,
+                    unit=cls._policy_chart_unit(policy) or None,
+                ),
                 "monitorContext": {
                     "objectName": str(getattr(monitor_object, "name", "") or ""),
                     "instanceName": alert.monitor_instance_name or "",
@@ -234,12 +246,20 @@ class Application3DQueryService:
             "state": "available",
             "series": [
                 {
-                    "name": getattr(policy, "alert_name", "") or getattr(policy, "name", "") or "metric",
+                    "name": resolve_policy_metric_display_name(policy),
                     "unit": chart_unit or None,
                     "points": points,
                 }
             ],
-            "alarmMarker": ({"timestamp": alert.start_event_time.isoformat(), "label": alert.content or ""} if alert.start_event_time else None),
+            "thresholds": present_policy_thresholds(policy),
+            "alarmMarker": (
+                {
+                    "timestamp": alert.start_event_time.isoformat(),
+                    "label": alert.content or "",
+                }
+                if alert.start_event_time
+                else None
+            ),
         }
 
     @classmethod
@@ -729,6 +749,7 @@ class Application3DQueryService:
             "alarmId": str(alarm_id),
             "state": state,
             "series": None,
+            "thresholds": [],
             "alarmMarker": None,
         }
         if error_code:

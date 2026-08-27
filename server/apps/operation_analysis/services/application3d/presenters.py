@@ -8,6 +8,7 @@ from django.utils import timezone
 from apps.cmdb.services.application_resource_overview import ApplicationResourceOverviewService
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.services.application3d.constants import PROPERTY_ALLOWLIST
+from apps.operation_analysis.services.application3d.metric_fields import resolve_policy_metric_display_name
 from apps.operation_analysis.services.application3d.severity import severity_from_monitor_level
 
 _SENSITIVE_ATTR_TYPES = {"password", "secret"}
@@ -63,19 +64,27 @@ def alert_duration_seconds(alert: Any) -> int:
     return max(0, int((ended - started).total_seconds()))
 
 
-def present_alarm_list_item(alert: Any, *, host: dict[str, Any], policy: Any) -> dict[str, Any]:
+def present_alarm_list_item(
+    alert: Any,
+    *,
+    host: dict[str, Any],
+    policy: Any,
+    metrics_by_id: dict | None = None,
+) -> dict[str, Any]:
     is_no_data = str(getattr(alert, "alert_type", "")).lower() == "no_data"
+    alert_type = "no_data" if is_no_data else "alert"
     return {
         "id": str(alert.id),
         "content": alert.content or "",
         "severity": severity_from_monitor_level(alert.level),
+        "alertType": alert_type,
         "isNoData": is_no_data,
         "occurredAt": iso_datetime(alert.start_event_time),
         "resource": {
             "id": str(host.get("inst_uuid") or ""),
             "name": str(host.get("inst_name") or host.get("inst_uuid") or ""),
         },
-        "metricName": getattr(policy, "alert_name", None) or None,
+        "metricName": resolve_policy_metric_display_name(policy, metrics_by_id=metrics_by_id),
         "durationSeconds": alert_duration_seconds(alert),
         "policyName": getattr(policy, "name", "") or "",
     }

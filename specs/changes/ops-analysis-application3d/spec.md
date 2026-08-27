@@ -12,6 +12,8 @@ Status: implemented (pending review / Phase 7–8 benchmark)
 - Review fixes applied: per-app relation integrity；policy-incomplete → unavailable；same-card reselect no-op；AbortController on unmount。
 - 未完成/待校准：真实浏览器 20/50/100/200 WebGL benchmark、hard capacity 产品值、import/export/Report 完整 metadata 拒绝矩阵、CMDB 字段级 View 权限进 properties、Share 撤权/query-count 测试、silent refresh 增量 reconcile、E2E。
 
+application3D Alarm Detail 是 MonitorAlert 的场景化投影，不是 Monitor Alert Detail UI 的直接复用。它可以裁剪字段和增加 Application 场景派生信息，但共享领域概念必须与 Monitor 同源同义；不得用不同来源的数据冒充同一业务概念。
+
 ## Problem Statement
 
 运营分析 Screen 缺少一个以应用为业务中心、同时表达关联主机监控健康的 3D 场景。现有普通 DataSource Widget 适合消费通用数据并渲染图表，`networkStatusTopology` 则是网络领域专用的 self-fetch Scene Widget；两者都不能表达完整的 Application Wall → Focus → Application Detail 交互，也不能把 CMDB Application、`application_run_host`、Monitor 权限与 `MonitorAlert` 健康口径安全地收敛在一个后端查询接缝中。
@@ -528,6 +530,7 @@ interface ApplicationAlarmListItem {
   id: string;
   content: string;
   severity: Severity | null;
+  alertType: 'alert' | 'no_data';
   isNoData: boolean;
   occurredAt: string | null;
   resource: {
@@ -547,8 +550,9 @@ Semantics：
 - `alarms.state='unavailable'` 不携带内部 reason、count、statistics、items 或 cursor，避免把部分结果误解为完整结果或暴露隐藏资源存在性。
 - `alarms.items=[]` 且 `activeAlarmCount=0` 是合法 zero alarms，只能出现在 `available` 分支。
 - 列表分页只用于 Detail DOM alarm browser，不改变连续 Wall；cursor 必须 opaque、scope-bound，不能携带可篡改权限范围。
-- `metricName=null` 表示当前告警没有可展示指标名称；不是 metric request failure。
+- `metricName` 必须来自真实指标展示名：`query_condition.type='metric'` → `Metric.display_name`（fallback `Metric.name`）；`type='formula'` → `result_name`。**禁止**使用 `MonitorPolicy.alert_name`（告警名称/标题模板）冒充指标名；无法解析时为 `null`。
 - `isNoData` 与 `severity` 正交：no_data Alert 仍返回按 `MonitorAlert.level` 归一的 Severity；`severity=null` 只用于无法映射的 level，不得仅因 `isNoData` 清空。
+- `alertType` 来自 `MonitorAlert.alert_type`（归一为 `alert` | `no_data`），不得并入 severity。
 - Application properties 由 CMDB display conversion 生成，遵循字段权限并排除 sensitive/password fields。空 properties 合法。
 - Detail silent refresh 的普通网络失败可以在客户端暂留同 actor/scope 的上次完整数据并显式显示 stale；服务端新响应不使用 `unavailable` 表达 transient transport failure。权限/作用域变化必须清除暂留数据。
 
@@ -559,21 +563,27 @@ interface ApplicationAlarmDetailData {
   applicationId: string;
   alarm: {
     id: string;
-    content: string;
+    content: string; // MonitorAlert.content；前端不得重拼或 fallback 到 alert_name
     severity: Severity | null;
+    alertType: 'alert' | 'no_data';
     isNoData: boolean;
-    occurredAt: string | null;
+    occurredAt: string | null; // MonitorAlert.start_event_time；UI「首次告警时间」
     status: 'new';
-    durationSeconds: number;
+    durationSeconds: number; // end_event_time or now − start；UI「持续时间」仅格式化
     resource: {
       id: string; // Host.inst_uuid
-      name: string;
+      name: string; // Host.inst_name；UI 文案为「关联主机」
     };
+    dimensions: Array<{
+      key: string;
+      label: string;
+      displayValue: string;
+    }>; // MonitorAlert.dimensions 的安全展示；空数组时 UI 不展示
     metric: {
-      id: string | null;
-      name: string | null;
-      value: string | null;
-      unit: string | null;
+      id: string | null; // Metric 定义 id（query_condition.metric_id），不是 metric_instance_id
+      name: string | null; // Metric.display_name / formula result_name；禁止 alert_name / policy.name
+      value: string | null; // MonitorAlert.value
+      unit: string | null; // policy chart unit
     };
     monitorContext: {
       objectName: string;
@@ -581,7 +591,7 @@ interface ApplicationAlarmDetailData {
     };
     policy: {
       id: string;
-      name: string;
+      name: string; // MonitorPolicy.name，不是 alert_name
     };
     notification: NotificationSummary;
   };
@@ -635,16 +645,24 @@ type MetricSeriesState =
   | 'failure'
   | 'permission_denied';
 
+interface MetricThreshold {
+  level: 'critical' | 'error' | 'warning' | 'info';
+  value: number;
+  operator?: string | null;
+  label: string; // Monitor severity label，例如「严重」；UI 优先 i18n(level)
+}
+
 interface ApplicationMetricSeriesResult {
   applicationId: string;
   alarmId: string;
   state: MetricSeriesState;
   series: Array<{
-    name: string;
+    name: string | null; // Metric.display_name / formula result_name；禁止 policy.name / alert_name
     unit: string | null;
     points: Array<{ timestamp: string; value: number | null }>;
   }> | null;
-  alarmMarker: { timestamp: string; label: string } | null;
+  thresholds: MetricThreshold[]; // 来自 MonitorPolicy.threshold；保持策略原序，可多条
+  alarmMarker: { timestamp: string; label: string } | null; // start_event_time；竖线 ≠ 阈值水平线
   errorCode?: 'metric_unavailable' | 'metric_source_failure';
 }
 ```
@@ -655,6 +673,10 @@ interface ApplicationMetricSeriesResult {
 - `failure`：`series=null`，局部错误与重试，不影响其他 alarm detail。
 - `permission_denied`：fail closed，清除当前 metric visual；不得继续显示长期缓存。
 - 数据来自 `MonitorAlertMetricSnapshot`，后端完成 snapshot conversion、单位转换和 alarm marker 归一化，Widget 不消费 S3 raw snapshot schema。
+- `series[].name` 与 Detail `metric.name` / list `metricName` 使用同一展示名语义；解析失败必须为 `null`，**禁止** fallback 到 `MonitorPolicy.name`、`alert_name`、`content` 或 `metric_instance_id`。
+- `thresholds` 复用 `MonitorPolicy.threshold`（level/value/method），不重新发明阈值计算；UI 画水平参考线，与 `alarmMarker` 竖线正交。
+- Trend UI 必须用 `points[].timestamp` 作为 X、真实 value（含 threshold）作为 Y 域；不得用点序号冒充时间轴。
+- Legend 仅在 `series[].name != null` 时展示；禁止用策略名拼出虚假 legend。
 
 ### Error contract
 

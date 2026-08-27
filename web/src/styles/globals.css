@@ -60,6 +60,40 @@ html.dark {
   --color-application3d-alarm-panel-bg: linear-gradient(111.38deg, rgba(7, 27, 56, 0.8) 1.8%, rgba(1, 11, 24, 0.8) 98.54%);
   --color-application3d-alarm-panel-border: #233e67;
   --color-application3d-alarm-panel-shadow: 0 0 20px rgba(0, 0, 0, 0.76);
+  /* Detail expand layer: shared frosted glass (status is accent only). */
+  --color-application3d-detail-glass-bg: linear-gradient(
+    165deg,
+    rgba(22, 34, 52, 0.72) 0%,
+    rgba(12, 20, 34, 0.78) 48%,
+    rgba(8, 14, 26, 0.82) 100%
+  );
+  --color-application3d-detail-glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --color-application3d-detail-glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  --color-application3d-detail-right-border: rgba(96, 180, 220, 0.42);
+  --color-application3d-detail-right-shadow:
+    0 0 0 1px rgba(96, 180, 220, 0.18),
+    0 0 18px rgba(56, 140, 190, 0.22),
+    0 14px 40px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --color-application3d-detail-stat-bg: rgba(8, 16, 28, 0.55);
+  --color-application3d-detail-stat-border: rgba(148, 168, 192, 0.22);
+  --color-application3d-detail-row-bg: rgba(10, 18, 32, 0.58);
+  --color-application3d-detail-row-border: rgba(140, 164, 192, 0.24);
+  --color-application3d-detail-row-hover-bg: rgba(16, 26, 42, 0.68);
+  --color-application3d-detail-row-hover-border: rgba(168, 188, 212, 0.36);
+  --color-application3d-detail-separator: rgba(160, 180, 204, 0.16);
+  --color-application3d-severity-critical: #ff5a52;
+  --color-application3d-severity-error: #e8862a;
+  --color-application3d-severity-warning: #e8b04a;
+  --color-application3d-severity-info: #5eb0ff;
+  --color-application3d-severity-badge-critical-bg: rgba(220, 56, 48, 0.92);
+  --color-application3d-severity-badge-error-bg: rgba(200, 108, 28, 0.9);
+  --color-application3d-severity-badge-warning-bg: rgba(196, 126, 40, 0.9);
+  --color-application3d-severity-badge-info-bg: rgba(59, 112, 168, 0.9);
+  --color-application3d-severity-badge-critical-border: rgba(255, 110, 100, 0.85);
+  --color-application3d-severity-badge-error-border: rgba(232, 140, 60, 0.85);
+  --color-application3d-severity-badge-warning-border: rgba(236, 176, 80, 0.85);
+  --color-application3d-severity-badge-info-border: rgba(110, 180, 250, 0.8);
   --color-application3d-metric-stroke: #349eff;
   --color-application3d-metric-marker: #dea91f;
   --color-application3d-detail-cta-border: rgba(214, 226, 240, 0.32);

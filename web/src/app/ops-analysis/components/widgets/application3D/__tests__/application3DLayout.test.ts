@@ -77,7 +77,7 @@ describe('application3D layout', () => {
         state: 'alarming',
         reason: 'active_alarm',
         activeAlarmCount: 2,
-        highestSeverity: { id: 'critical', label: '致命', color: 'critical' },
+        highestSeverity: { id: 'critical', label: '严重', color: 'critical' },
       },
     });
     expect(critical.statusLabel).toBe('严重告警');
@@ -121,7 +121,7 @@ describe('application3D layout', () => {
         state: 'alarming',
         reason: 'active_alarm',
         activeAlarmCount: 1,
-        highestSeverity: { id: 'critical', label: '致命', color: 'critical' },
+        highestSeverity: { id: 'critical', label: '严重', color: 'critical' },
       },
     });
     expect(noData.statusLabel).toBe('严重告警');
@@ -198,7 +198,7 @@ describe('application3D layout', () => {
           state: 'alarming',
           reason: 'active_alarm',
           activeAlarmCount: 1,
-          highestSeverity: { id: 'critical', label: '致命', color: 'critical' },
+          highestSeverity: { id: 'critical', label: '严重', color: 'critical' },
         },
       },
       (id, fallback) => {
@@ -414,7 +414,7 @@ describe('application3D layout', () => {
         state: 'alarming',
         reason: 'active_alarm',
         activeAlarmCount: 2,
-        highestSeverity: { id: 'critical', label: '致命', rank: 3, color: 'critical' },
+        highestSeverity: { id: 'critical', label: '严重', rank: 3, color: 'critical' },
       },
     });
     paintApplication3DCard(makeCtx(), critical, 'billing', 'front');
@@ -451,7 +451,7 @@ describe('application3D layout', () => {
         state: 'alarming',
         reason: 'active_alarm',
         activeAlarmCount: 1,
-        highestSeverity: { id: 'critical', label: '致命', color: 'critical' },
+        highestSeverity: { id: 'critical', label: '严重', color: 'critical' },
       },
     });
     paintApplication3DCard(ctx, noDataCritical, 'mq', 'front');

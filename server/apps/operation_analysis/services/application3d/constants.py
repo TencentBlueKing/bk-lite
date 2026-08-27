@@ -25,7 +25,7 @@ PROPERTY_ALLOWLIST: tuple[str, ...] = (
 SEVERITY_TABLE: dict[str, dict] = {
     "critical": {
         "id": "critical",
-        "label": "致命",
+        "label": "严重",  # Align Monitor product: monitor.events.critical
         "rank": 400,
         "color": "critical",
     },

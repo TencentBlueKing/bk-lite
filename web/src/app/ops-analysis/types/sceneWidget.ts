@@ -66,6 +66,7 @@ export interface Application3DAlarmListItem {
   id: string;
   content: string;
   severity: Application3DSeverity | null;
+  alertType: 'alert' | 'no_data';
   isNoData: boolean;
   occurredAt: string | null;
   resource: { id: string; name: string };
@@ -105,19 +106,36 @@ export type Application3DNotificationState =
   | 'failed'
   | 'unknown';
 
+export interface Application3DDisplayDimension {
+  key: string;
+  label: string;
+  displayValue: string;
+}
+
+export interface Application3DMetricThreshold {
+  level: 'critical' | 'error' | 'warning' | 'info';
+  value: number;
+  operator?: string | null;
+  label: string;
+}
+
 export interface Application3DAlarmDetailData {
   applicationId: string;
   alarm: {
     id: string;
     content: string;
     severity: Application3DSeverity | null;
+    alertType: 'alert' | 'no_data';
     isNoData: boolean;
     occurredAt: string | null;
     status: 'new';
     durationSeconds: number;
     resource: { id: string; name: string };
+    dimensions: Application3DDisplayDimension[];
     metric: {
+      /** Metric definition id from MonitorPolicy.query_condition.metric_id */
       id: string | null;
+      /** Metric.display_name or formula result_name — never MonitorPolicy.alert_name / policy.name */
       name: string | null;
       value: string | null;
       unit: string | null;
@@ -141,10 +159,11 @@ export interface Application3DMetricSeriesResult {
   alarmId: string;
   state: 'available' | 'no_snapshot' | 'failure' | 'permission_denied';
   series: Array<{
-    name: string;
+    name: string | null;
     unit: string | null;
     points: Array<{ timestamp: string; value: number | null }>;
   }> | null;
+  thresholds: Application3DMetricThreshold[];
   alarmMarker: { timestamp: string; label: string } | null;
   errorCode?: 'metric_unavailable' | 'metric_source_failure';
 }

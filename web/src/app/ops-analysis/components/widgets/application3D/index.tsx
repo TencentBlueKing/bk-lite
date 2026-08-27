@@ -424,6 +424,7 @@ export default function Application3D({
           alarmId,
           state: 'permission_denied',
           series: null,
+          thresholds: [],
           alarmMarker: null,
         });
         return;
@@ -433,6 +434,7 @@ export default function Application3D({
         alarmId,
         state: 'failure',
         series: null,
+        thresholds: [],
         alarmMarker: null,
         errorCode: 'metric_source_failure',
       });

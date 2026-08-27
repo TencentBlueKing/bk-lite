@@ -198,7 +198,7 @@ def test_active_alert_aggregation(monkeypatch):
                     "activeAlarmCount": 1,
                     "severityCounts": {"critical": 1, "error": 0, "warning": 0, "info": 0},
                     "noDataAlarmCount": 0,
-                    "highestSeverity": {"id": "critical", "label": "致命", "rank": 400, "color": "critical"},
+                    "highestSeverity": {"id": "critical", "label": "严重", "rank": 400, "color": "critical"},
                     "stale": False,
                 }
             }
@@ -452,13 +452,14 @@ def test_alarm_detail_no_data_keeps_severity(monkeypatch):
     application = _application(APP_A, "app")
     policy = SimpleNamespace(
         id=1,
-        alert_name="cpu",
+        alert_name="告警名称模板-不得出现在指标",
         name="CPU",
         notice=False,
         monitor_object=SimpleNamespace(name="Host"),
         metric_unit="",
-        calculation_unit="",
+        calculation_unit="%",
         threshold_unit="",
+        query_condition={"type": "metric", "metric_id": 9},
     )
     alert = SimpleNamespace(
         id="7",
@@ -468,7 +469,7 @@ def test_alarm_detail_no_data_keeps_severity(monkeypatch):
         start_event_time=None,
         end_event_time=None,
         policy_id=1,
-        metric_instance_id=None,
+        metric_instance_id="instance-should-not-be-metric-id",
         monitor_instance_id="monitor-1",
         value=None,
         monitor_instance_name="host-1",
@@ -500,10 +501,278 @@ def test_alarm_detail_no_data_keeps_severity(monkeypatch):
         "_adjacent_scoped_alert_ids",
         classmethod(lambda cls, scope, app_id, current: (None, None)),
     )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.metric_fields.Metric.objects.filter",
+        lambda **kwargs: SimpleNamespace(
+            only=lambda *fields: SimpleNamespace(
+                first=lambda: SimpleNamespace(id=9, display_name="CPU 使用率", name="cpu_usage"),
+            )
+        ),
+    )
 
     result = Application3DQueryService.alarm_detail(_request(), APP_A, "7")
+    assert result["alarm"]["content"] == "主机无数据"
     assert result["alarm"]["isNoData"] is True
+    assert result["alarm"]["alertType"] == "no_data"
     assert result["alarm"]["severity"]["id"] == "critical"
+    assert result["alarm"]["metric"]["id"] == "9"
+    assert result["alarm"]["metric"]["name"] == "CPU 使用率"
+    assert result["alarm"]["metric"]["name"] != policy.alert_name
+    assert result["alarm"]["resource"]["id"] == "host-1"
+    assert result["alarm"]["policy"]["name"] == "CPU"
+    assert result["alarm"]["dimensions"] == []
+
+
+def test_alarm_detail_includes_dimensions_and_occurred_at(monkeypatch):
+    from datetime import datetime, timezone
+
+    application = _application(APP_A, "app")
+    started = datetime(2026, 8, 25, 17, 55, 17, tzinfo=timezone.utc)
+    policy = SimpleNamespace(
+        id=1,
+        alert_name="x",
+        name="CPU",
+        notice=False,
+        monitor_object=SimpleNamespace(name="Host"),
+        metric_unit="%",
+        calculation_unit="%",
+        threshold_unit="%",
+        query_condition={},
+        threshold=[],
+    )
+    alert = SimpleNamespace(
+        id="8",
+        content="disk",
+        alert_type="alert",
+        level="warning",
+        start_event_time=started,
+        end_event_time=None,
+        policy_id=1,
+        metric_instance_id="",
+        monitor_instance_id="monitor-1",
+        value=80,
+        monitor_instance_name="host-1",
+        notice_logs=[],
+        dimensions={"device": "sda1", "mount": "/data"},
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_application",
+        classmethod(lambda cls, request, application_id: application),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_build_scope",
+        classmethod(
+            lambda cls, request, apps: _scope(
+                apps,
+                policies={1: policy},
+                hosts_by_app={APP_A: [{"inst_uuid": "host-1", "inst_name": "host-1", "monitor_id": "monitor-1"}]},
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_scoped_alert_or_404",
+        classmethod(lambda cls, scope, app_id, alarm_id: alert),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_adjacent_scoped_alert_ids",
+        classmethod(lambda cls, scope, app_id, current: (None, None)),
+    )
+    result = Application3DQueryService.alarm_detail(_request(), APP_A, "8")
+    assert result["alarm"]["occurredAt"] == started.isoformat()
+    assert result["alarm"]["dimensions"] == [
+        {"key": "device", "label": "device", "displayValue": "sda1"},
+        {"key": "mount", "label": "mount", "displayValue": "/data"},
+    ]
+    assert result["alarm"]["metric"]["name"] is None
+
+
+def test_metric_series_uses_metric_display_name_positive_path(monkeypatch):
+    from datetime import datetime, timezone
+
+    policy = SimpleNamespace(
+        id=1,
+        name="application3D 本地演示策略",
+        alert_name="CPU 使用率过高",
+        query_condition={"type": "metric", "metric_id": 9},
+        metric_unit="%",
+        calculation_unit="%",
+        threshold_unit="%",
+        threshold=[
+            {"level": "warning", "value": 70, "method": ">"},
+            {"level": "critical", "value": 90, "method": ">="},
+        ],
+    )
+    alert = SimpleNamespace(
+        id="16",
+        content="[application3d-demo] CPU 持续超过 95%",
+        policy_id=1,
+        start_event_time=datetime(2026, 8, 25, 18, 0, tzinfo=timezone.utc),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_scope_and_alert",
+        classmethod(lambda cls, request, application_id, alarm_id: (alert, policy)),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.MonitorAlertMetricSnapshot.objects.filter",
+        lambda **kwargs: SimpleNamespace(first=lambda: SimpleNamespace(snapshots=[{"raw_data": {"values": []}}])),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.convert_snapshots_copy",
+        lambda raw, source, target: raw,
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_snapshot_points",
+        staticmethod(
+            lambda snapshots: [
+                {"timestamp": "2026-08-25T17:00:00+00:00", "value": 80.0},
+                {"timestamp": "2026-08-25T18:00:00+00:00", "value": 96.0},
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.metric_fields.Metric.objects.filter",
+        lambda **kwargs: SimpleNamespace(
+            only=lambda *fields: SimpleNamespace(
+                first=lambda: SimpleNamespace(id=9, display_name="CPU 使用率", name="cpu_usage"),
+            )
+        ),
+    )
+
+    result = Application3DQueryService.metric_series(_request(), APP_A, "16")
+    assert result["series"][0]["name"] == "CPU 使用率"
+    assert result["series"][0]["name"] != policy.name
+    assert result["series"][0]["name"] != policy.alert_name
+    assert [row["level"] for row in result["thresholds"]] == ["warning", "critical"]
+    assert result["thresholds"][1]["operator"] == ">="
+    assert result["thresholds"][1]["label"] == "严重"
+
+
+def test_metric_series_name_null_without_policy_name_fallback(monkeypatch):
+    from datetime import datetime, timezone
+
+    policy = SimpleNamespace(
+        id=1,
+        name="application3D 本地演示策略",
+        alert_name="CPU 使用率过高",
+        query_condition={},
+        metric_unit="%",
+        calculation_unit="%",
+        threshold_unit="%",
+        threshold=[{"level": "critical", "value": 90, "method": ">"}],
+    )
+    alert = SimpleNamespace(
+        id="15",
+        content="内存使用率异常",
+        policy_id=1,
+        start_event_time=datetime(2026, 8, 25, 18, 0, tzinfo=timezone.utc),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_scope_and_alert",
+        classmethod(lambda cls, request, application_id, alarm_id: (alert, policy)),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.MonitorAlertMetricSnapshot.objects.filter",
+        lambda **kwargs: SimpleNamespace(
+            first=lambda: SimpleNamespace(
+                snapshots=[{"raw_data": {"values": [[1724601600, 80.0], [1724601900, 91.0]]}}],
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_snapshot_points",
+        staticmethod(
+            lambda snapshots: [
+                {"timestamp": "2026-08-25T17:00:00+00:00", "value": 80.0},
+                {"timestamp": "2026-08-25T18:00:00+00:00", "value": 91.0},
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.convert_snapshots_copy",
+        lambda raw, source, target: raw,
+    )
+
+    result = Application3DQueryService.metric_series(_request(), APP_A, "15")
+    assert result["state"] == "available"
+    assert result["series"][0]["name"] is None
+    assert result["series"][0]["name"] != policy.name
+    assert result["thresholds"] == [
+        {"level": "critical", "value": 90.0, "operator": ">", "label": "严重"},
+    ]
+    assert result["alarmMarker"]["timestamp"] == alert.start_event_time.isoformat()
+
+
+def test_alarm_detail_notification_execution_states(monkeypatch):
+    application = _application(APP_A, "app")
+
+    def _detail(notice: bool, logs):
+        policy = SimpleNamespace(
+            id=1,
+            alert_name="x",
+            name="CPU",
+            notice=notice,
+            monitor_object=SimpleNamespace(name="Host"),
+            metric_unit="",
+            calculation_unit="",
+            threshold_unit="",
+            query_condition={},
+        )
+        alert = SimpleNamespace(
+            id="7",
+            content="c",
+            alert_type="alert",
+            level="warning",
+            start_event_time=None,
+            end_event_time=None,
+            policy_id=1,
+            metric_instance_id=None,
+            monitor_instance_id="monitor-1",
+            value=None,
+            monitor_instance_name="host-1",
+            notice_logs=logs,
+        )
+        monkeypatch.setattr(
+            Application3DQueryService,
+            "_visible_application",
+            classmethod(lambda cls, request, application_id: application),
+        )
+        monkeypatch.setattr(
+            Application3DQueryService,
+            "_build_scope",
+            classmethod(
+                lambda cls, request, apps: _scope(
+                    apps,
+                    policies={1: policy},
+                    hosts_by_app={APP_A: [{"inst_uuid": "host-1", "inst_name": "host-1", "monitor_id": "monitor-1"}]},
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            Application3DQueryService,
+            "_scoped_alert_or_404",
+            classmethod(lambda cls, scope, app_id, alarm_id: alert),
+        )
+        monkeypatch.setattr(
+            Application3DQueryService,
+            "_adjacent_scoped_alert_ids",
+            classmethod(lambda cls, scope, app_id, current: (None, None)),
+        )
+        return Application3DQueryService.alarm_detail(_request(), APP_A, "7")["alarm"]["notification"]
+
+    assert _detail(False, [{"success": True}]) == {"configured": False, "state": "not_configured"}
+    assert _detail(True, [{"success": True}, {"success": True}]) == {"configured": True, "state": "delivered"}
+    assert _detail(True, [{"success": True}, {"success": False}]) == {
+        "configured": True,
+        "state": "partially_delivered",
+    }
 
 
 def test_alarm_detail_cross_application_idor_fails_closed(monkeypatch):

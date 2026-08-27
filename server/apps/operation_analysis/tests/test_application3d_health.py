@@ -20,7 +20,7 @@ def test_severity_from_monitor_level_maps_known_levels():
     critical = severity_from_monitor_level("critical")
     assert critical == {
         "id": "critical",
-        "label": "致命",
+        "label": "严重",
         "rank": 400,
         "color": "critical",
     }
