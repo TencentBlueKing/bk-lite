@@ -20,7 +20,7 @@ class Migration(migrations.Migration):
                     "updated_by_domain",
                     models.CharField(default="domain.com", max_length=100, verbose_name="updated by domain"),
                 ),
-                ("name", models.CharField(max_length=128, verbose_name="场景名称")),
+                ("name", models.CharField(max_length=128, verbose_name="视图名称")),
                 (
                     "visibility",
                     models.CharField(
@@ -48,8 +48,8 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
-                "verbose_name": "场景视图",
-                "verbose_name_plural": "场景视图",
+                "verbose_name": "标签视图",
+                "verbose_name_plural": "标签视图",
                 "db_table": "cmdb_scene_view",
                 "ordering": ["-updated_at"],
             },
