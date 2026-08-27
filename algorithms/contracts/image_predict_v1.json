@@ -1,0 +1,211 @@
+{
+  "contract": "image-predict",
+  "version": 1,
+  "request_fields": [
+    "images",
+    "config"
+  ],
+  "images": {
+    "min_items": 1,
+    "max_items": 100
+  },
+  "budget_defaults": {
+    "mode": "observe",
+    "max_image_base64_bytes": 10485760,
+    "max_batch_base64_bytes": 100663296,
+    "max_batch_decoded_bytes": 67108864,
+    "max_batch_pixels": 67108864
+  },
+  "request_cases": [
+    {
+      "name": "plain_base64",
+      "valid": true,
+      "images": [
+        "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAE0lEQVR4nGPkUbJggAEmOAsvBwAUxABu6v+piAAAAABJRU5ErkJggg=="
+      ]
+    },
+    {
+      "name": "data_uri",
+      "valid": true,
+      "images": [
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAE0lEQVR4nGPkUbJggAEmOAsvBwAUxABu6v+piAAAAABJRU5ErkJggg=="
+      ]
+    },
+    {
+      "name": "empty_batch",
+      "valid": false,
+      "images": []
+    },
+    {
+      "name": "short_image",
+      "valid": false,
+      "images": [
+        "eHg="
+      ]
+    },
+    {
+      "name": "invalid_base64",
+      "valid": false,
+      "images": [
+        "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAE0lEQVR4nGPkUbJggAEmOAsvBwAUxABu6v+piAAAAABJRU5ErkJggg=!!"
+      ]
+    },
+    {
+      "name": "data_uri_without_base64_marker",
+      "valid": false,
+      "images": [
+        "data:image/png,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAE0lEQVR4nGPkUbJggAEmOAsvBwAUxABu6v+piAAAAABJRU5ErkJggg=="
+      ]
+    }
+  ],
+  "decoder_valid_inputs": [
+    "iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAE0lEQVR4nGPkUbJggAEmOAsvBwAUxABu6v+piAAAAABJRU5ErkJggg==",
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAIAAAAmkwkpAAAAE0lEQVR4nGPkUbJggAEmOAsvBwAUxABu6v+piAAAAABJRU5ErkJggg=="
+  ],
+  "decoded_image": {
+    "size": [
+      4,
+      4
+    ],
+    "mode": "RGB"
+  },
+  "error_fields": [
+    "code",
+    "message",
+    "details"
+  ],
+  "error_example": {
+    "code": "E1000",
+    "message": "invalid request",
+    "details": {
+      "stage": "request_validation"
+    }
+  },
+  "response_fields": [
+    "results",
+    "metadata",
+    "success",
+    "error"
+  ],
+  "result_common_fields": [
+    "success",
+    "error",
+    "decode_time_ms"
+  ],
+  "metadata_common_fields": [
+    "model_version",
+    "source",
+    "batch_size",
+    "total_time_ms",
+    "decode_time_ms",
+    "predict_time_ms",
+    "postprocess_time_ms",
+    "avg_time_per_image_ms",
+    "success_count",
+    "failure_count",
+    "success_rate"
+  ],
+  "services": {
+    "image_classification": {
+      "config_defaults": {
+        "top_k": 5
+      },
+      "result_payload_field": "predictions",
+      "metadata_extension_fields": [],
+      "response_example": {
+        "results": [
+          {
+            "predictions": [],
+            "success": false,
+            "error": "decode failed",
+            "decode_time_ms": null
+          },
+          {
+            "predictions": [
+              {
+                "class_id": 1,
+                "class_name": "normal",
+                "confidence": 0.9
+              }
+            ],
+            "success": true,
+            "error": null,
+            "decode_time_ms": 1.25
+          }
+        ],
+        "metadata": {
+          "model_version": "contract-v1",
+          "source": "fixture",
+          "batch_size": 2,
+          "total_time_ms": 3.0,
+          "decode_time_ms": 1.25,
+          "predict_time_ms": 1.5,
+          "postprocess_time_ms": 0.25,
+          "avg_time_per_image_ms": 3.0,
+          "success_count": 1,
+          "failure_count": 1,
+          "success_rate": 0.5
+        },
+        "success": true,
+        "error": null
+      }
+    },
+    "object_detection": {
+      "config_defaults": {
+        "conf_threshold": 0.25,
+        "iou_threshold": 0.45,
+        "max_detections": 300
+      },
+      "result_payload_field": "detections",
+      "metadata_extension_fields": [
+        "total_detections",
+        "avg_detections_per_image"
+      ],
+      "response_example": {
+        "results": [
+          {
+            "detections": [],
+            "success": false,
+            "error": "decode failed",
+            "decode_time_ms": null
+          },
+          {
+            "detections": [
+              {
+                "bbox": {
+                  "x1": 1.0,
+                  "y1": 2.0,
+                  "x2": 3.0,
+                  "y2": 4.0
+                },
+                "class_id": 1,
+                "class_name": "object",
+                "confidence": 0.9
+              }
+            ],
+            "success": true,
+            "error": null,
+            "decode_time_ms": 1.25
+          }
+        ],
+        "metadata": {
+          "model_version": "contract-v1",
+          "source": "fixture",
+          "batch_size": 2,
+          "total_time_ms": 3.0,
+          "decode_time_ms": 1.25,
+          "predict_time_ms": 1.5,
+          "postprocess_time_ms": 0.25,
+          "avg_time_per_image_ms": 3.0,
+          "success_count": 1,
+          "failure_count": 1,
+          "success_rate": 0.5,
+          "total_detections": 1,
+          "avg_detections_per_image": 1.0
+        },
+        "success": true,
+        "error": null
+      }
+    }
+  }
+}
