@@ -265,7 +265,11 @@ class RuntimeDependencyHealthProbe:
 
     def probe(self) -> dict[str, dict[str, object]]:
         checked_at = timezone.now().isoformat()
-        traces_endpoint = os.getenv("APM_VICTORIATRACES_QUERY_ENDPOINT", "http://127.0.0.1:10428")
+        traces_endpoint = (
+            os.getenv("VICTORIATRACES_HOST")
+            or os.getenv("APM_VICTORIATRACES_QUERY_ENDPOINT")
+            or "http://127.0.0.1:10428"
+        )
         trace_user = os.getenv("APM_VICTORIATRACES_USER", "")
         trace_password = os.getenv("APM_VICTORIATRACES_PASSWORD", "")
         result = {
