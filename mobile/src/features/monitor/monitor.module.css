@@ -1196,10 +1196,26 @@
 .metricSheetEmptyWrap :global(.resultCompact) {
   min-height: 0;
 }
-.metricRetry { min-width: 64px; min-height: 28px; padding: 0 10px; color: var(--color-primary); cursor: pointer; background: var(--color-primary-bg); border: 1px solid var(--color-primary-border); border-radius: 8px; font-size: var(--font-size-secondary); }
+.metricRetryIcon {
+  display: inline-grid;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: var(--color-text-3);
+  font-size: 18px;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  place-items: center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.metricRetryIcon:active { opacity: .76; }
+.metricRetryIcon:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .pluginSwitch[data-static='true']:active { opacity: 1; }
-.treeToggle:active, .objectButton:active, .instanceRow:active, .recentRow:active, .objectChip:active, .objectRailAll:active, .groupToggle:active, .pickerRow:active, .pluginSwitch:active, .pill:active, .rangeSegBtn:active, .retry:active, .metricRetry:active, .metricSheetNav:active, .columnFilter:active, .statusFilterOption:active, .statusFilterReset:active, .statusFilterConfirm:active { opacity: .76; }
-.treeToggle:focus-visible, .objectButton:focus-visible, .instanceRow:focus-visible, .recentRow:focus-visible, .objectChip:focus-visible, .groupToggle:focus-visible, .pickerRow:focus-visible, .pluginSwitch:focus-visible, .pill:focus-visible, .rangeSegBtn:focus-visible, .retry:focus-visible, .metricRetry:focus-visible, .metricSheetNav:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.treeToggle:active, .objectButton:active, .instanceRow:active, .recentRow:active, .objectChip:active, .objectRailAll:active, .groupToggle:active, .pickerRow:active, .pluginSwitch:active, .pill:active, .rangeSegBtn:active, .retry:active, .metricRetryIcon:active, .metricSheetNav:active, .columnFilter:active, .statusFilterOption:active, .statusFilterReset:active, .statusFilterConfirm:active { opacity: .76; }
+.treeToggle:focus-visible, .objectButton:focus-visible, .instanceRow:focus-visible, .recentRow:focus-visible, .objectChip:focus-visible, .groupToggle:focus-visible, .pickerRow:focus-visible, .pluginSwitch:focus-visible, .pill:focus-visible, .rangeSegBtn:focus-visible, .retry:focus-visible, .metricRetryIcon:focus-visible, .metricSheetNav:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
 @media (max-width: 340px) {
   .detailScroll { padding-right: 10px; padding-left: 10px; }
   .sectionHead, .treeToggle, .hero, .controls { padding-right: 12px; padding-left: 12px; }
