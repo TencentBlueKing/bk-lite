@@ -52,14 +52,14 @@ class PhysicalServerCollectionPlugin(BaseHostCollectionPlugin):
             "assos": HostCollectMetrics.set_asso_instances,
         },
         "nic": {
-            "inst_name": HostCollectMetrics.set_component_inst_name,
+            "inst_name": HostCollectMetrics.set_nic_inst_name,
             "self_device": "self_device",
             "nic_pci_addr": "nic_pci_addr",
             "nic_type": "nic_type",
             "nic_vendor": "nic_vendor",
             "nic_model": "nic_model",
             "nic_iface": "nic_iface",
-            "nic_mac": "nic_mac",
-            "assos": HostCollectMetrics.set_asso_instances,
+            "nic_mac": HostCollectMetrics.set_nic_mac,
+            "assos": HostCollectMetrics.set_nic_asso_instances,
         },
     }
