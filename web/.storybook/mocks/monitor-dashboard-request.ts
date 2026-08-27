@@ -52,6 +52,20 @@ const inferBaseValue = (query = '', unit = 'none') => {
   if (query.includes('net_response_string_found')) return 100;
   if (query.includes('net_response_response_time')) return 0.06;
   if (query.includes('net_response_result_code')) return 0;
+  if (query.includes('win_ad_LDAP_Successful_Binds')) return 128;
+  if (query.includes('win_ad_LDAP_Client_Sessions')) return 42;
+  if (query.includes('win_ad_LDAP_Bind_Time')) return 12;
+  if (query.includes('win_ad_DS_Threads_in_Use')) return 8;
+  if (query.includes('win_ad_LDAP_Searches')) return 96;
+  if (query.includes('win_ad_LDAP_Writes')) return 18;
+  if (query.includes('win_exchange_transport_queues_Poison')) return 0;
+  if (query.includes('win_exchange_transport_queues')) return 3;
+  if (query.includes('win_exchange_owa_Current_Unique_Users')) return 86;
+  if (query.includes('win_exchange_owa_Requests')) return 24;
+  if (query.includes('netflow_in_bytes') || query.includes('sflow_bytes')) return 420 * 1024;
+  if (query.includes('netflow_in_packets') || query.includes('sflow_packets')) return 860;
+  if (query.includes('sflow_frame_length')) return 512;
+  if (query.includes('effective_sampling_rate') || query.includes('sflow_sampling_rate')) return 1000;
   if (query.includes('cpu_usage_user')) return 18;
   if (query.includes('cpu_usage_system')) return 12;
   if (query.includes('cpu_usage_iowait')) return 2;
@@ -142,15 +156,87 @@ const parseLabels = (query = '') => {
 const buildMetricLabels = (query = '') => {
   const labels = parseLabels(query);
   const instanceId = labels.instance_id || 'orbstack';
-  return {
+  const node = labels.node || (instanceId === 'orbstack' ? 'orb-node-1' : instanceId);
+  const pod = labels.pod || (instanceId === 'orbstack' ? 'demo-pod-1' : instanceId);
+  const metricLabels: Record<string, string> = {
     instance_id: instanceId,
     host: labels.host || instanceId || 'mac',
-    node: labels.node || (instanceId === 'orbstack' ? 'orb-node-1' : instanceId),
-    pod: labels.pod || (instanceId === 'orbstack' ? 'demo-pod-1' : instanceId),
+    node,
+    pod,
     device: labels.device || '/dev/disk1',
     name: labels.name || 'disk0',
     interface: labels.interface || 'en0',
     container: labels.container || 'app'
+  };
+  if (query.includes('kube_pod_info')) {
+    metricLabels.pod_ip = '10.244.0.18';
+  }
+  if (query.includes('kube_node_info')) {
+    metricLabels.internal_ip = '10.10.100.11';
+  }
+  return metricLabels;
+};
+
+const instantSeries = (
+  metric: Record<string, string>,
+  base: number,
+) => ({
+  metric,
+  value: [nowSeconds(), base.toFixed(2)] as [number, string],
+});
+
+const buildFlowConversationInstant = (query = '', unit = 'byteps') => {
+  const baseLabels = buildMetricLabels(query);
+  const isSflow = query.includes('src_ip');
+  const rows = [
+    { src: '10.0.0.12', dst: '10.0.0.88', protocol: '6', dst_port: '443', rate: 1 },
+    { src: '10.0.0.15', dst: '10.0.0.20', protocol: '17', dst_port: '53', rate: 0.82 },
+    { src: '10.0.0.21', dst: '10.0.0.99', protocol: '6', dst_port: '8080', rate: 0.64 },
+    { src: '10.0.0.33', dst: '10.0.0.44', protocol: '1', dst_port: '0', rate: 0.41 },
+    { src: '10.0.0.55', dst: '10.0.0.66', protocol: '6', dst_port: '22', rate: 0.28 },
+  ];
+
+  return {
+    data: {
+      result: rows.map((row, index) =>
+        instantSeries(
+          isSflow
+            ? {
+              ...baseLabels,
+              src_ip: row.src,
+              dst_ip: row.dst,
+              header_protocol: row.protocol,
+              dst_port: row.dst_port,
+            }
+            : {
+              ...baseLabels,
+              src: row.src,
+              dst: row.dst,
+              protocol: row.protocol,
+              dst_port: row.dst_port,
+            },
+          inferBaseValue(query, unit) * row.rate * (1 - index * 0.03),
+        ),
+      ),
+    },
+  };
+};
+
+const queryInstant = (params: QueryRangeParams = {}) => {
+  const query = params.query || '';
+  const unit = params.source_unit || 'none';
+
+  if (query.includes('topk') && (query.includes('src, dst') || query.includes('src_ip'))) {
+    return buildFlowConversationInstant(query, unit);
+  }
+
+  const baseLabels = buildMetricLabels(query);
+  return {
+    data: {
+      result: [
+        instantSeries(baseLabels, inferBaseValue(query, unit)),
+      ],
+    },
   };
 };
 
@@ -227,9 +313,26 @@ const objectInstances: Record<string, Array<Record<string, unknown>>> = {
   rabbitmq: [{ instance_id: 'rabbitmq-main', instance_name: 'rabbitmq-main', host: '127.0.0.1', port: 15672, instance_id_values: ['rabbitmq-main'], interval: 60 }],
   tomcat: [{ instance_id: 'tomcat-app', instance_name: 'tomcat-app', host: '127.0.0.1', port: 8080, instance_id_values: ['tomcat-app'], interval: 60 }],
   zookeeper: [{ instance_id: 'zookeeper-main', instance_name: 'zookeeper-main', host: '127.0.0.1', port: 2181, instance_id_values: ['zookeeper-main'], interval: 60 }],
+  'active-directory': [{ instance_id: 'ad-dc-01', instance_name: 'ad-dc-01', host: '10.0.0.10', instance_id_values: ['ad-dc-01'], interval: 60 }],
+  exchange: [{ instance_id: 'exchange-mail-01', instance_name: 'exchange-mail-01', host: '10.0.0.20', instance_id_values: ['exchange-mail-01'], interval: 60 }],
   'k8s-cluster': [{ instance_id: 'orbstack', instance_name: 'orbstack', instance_id_values: ['orbstack'], interval: 60 }],
-  'k8s-node': [{ instance_id: 'orb-node-1', instance_name: 'orb-node-1', instance_id_values: ['orbstack', 'orb-node-1'], interval: 60 }],
-  'k8s-pod': [{ instance_id: 'demo-pod-1', instance_name: 'demo-pod-1', instance_id_values: ['orbstack', 'demo-pod-1'], interval: 60 }]
+  'k8s-node': [{
+    instance_id: 'orb-node-1',
+    instance_name: 'orb-node-1',
+    instance_id_values: ['orbstack', 'orb-node-1'],
+    interval: 60,
+    'field::K8S::node_info::internal_ip': '10.10.100.11'
+  }],
+  'k8s-pod': [{
+    instance_id: 'demo-pod-1',
+    instance_name: 'demo-pod-1',
+    instance_id_values: ['orbstack', 'demo-pod-1'],
+    interval: 60,
+    'field::K8S::pod_info::pod_ip': '10.244.0.18'
+  }],
+  netflow: [{ instance_id: 'flow-switch-1', instance_name: 'NetFlow-Switch-1', instance_id_values: ['flow-switch-1'], interval: 60 }],
+  sflow: [{ instance_id: 'flow-switch-1', instance_name: 'sFlow-Switch-1', instance_id_values: ['flow-switch-1'], interval: 60 }],
+  switch: [{ instance_id: 'flow-switch-1', instance_name: 'NetFlow-Switch-1', instance_id_values: ['flow-switch-1'], interval: 60 }],
 };
 
 const inferObjectKey = (url: string) => {
@@ -237,9 +340,24 @@ const inferObjectKey = (url: string) => {
   return matched?.[1] || '';
 };
 
+const monitorObjects = [
+  { id: 'switch', name: 'Switch', display_name: '交换机', type: 'Network Device', display_type: '网络设备', icon: 'mm-switch_交换机', instance_count: 1, instance_id_keys: ['instance_id'] },
+  { id: 'active-directory', name: 'Active Directory', display_name: 'Active Directory', type: 'Middleware', display_type: '中间件', icon: 'mm-active-directory_AD', instance_count: 1, instance_id_keys: ['instance_id'] },
+  { id: 'exchange', name: 'Exchange', display_name: 'Exchange', type: 'Middleware', display_type: '中间件', icon: 'mm-exchange_Exchange', instance_count: 1, instance_id_keys: ['instance_id'] },
+  { id: 'zookeeper', name: 'Zookeeper', display_name: 'Zookeeper', type: 'Middleware', display_type: '中间件', icon: 'mm-zookeeper_Zookeeper', instance_count: 1, instance_id_keys: ['instance_id'] }
+];
+
 const get = async (url: string, config?: AxiosRequestConfig) => {
+  if (url.includes('/monitor/api/metrics_instance/query/')) {
+    return queryInstant((config?.params || {}) as QueryRangeParams);
+  }
+
   if (url.includes('/monitor/api/metrics_instance/query_range/') || url.includes('/monitor/api/metrics_instance/query_by_instance/')) {
     return queryRange((config?.params || {}) as QueryRangeParams);
+  }
+
+  if (url.includes('/monitor/api/monitor_object/')) {
+    return monitorObjects;
   }
 
   if (url.includes('/monitor/api/monitor_instance/') && url.includes('/list/')) {

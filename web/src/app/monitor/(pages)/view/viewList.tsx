@@ -23,7 +23,7 @@ import TimeSelector from '@/components/time-selector';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ListItem } from '@/types';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
-import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
+import { resolveDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
 import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
 import {
@@ -745,11 +745,12 @@ const ViewList: React.FC<ViewListProps> = ({
       objectId: String(objectId || ''),
       objectName: String(monitorItem?.display_name || monitorItem?.name || '')
     });
-    const professionalDashboardUrl = getProfessionalDashboardUrl(
-      monitorItem?.name,
-      monitorItem?.display_name,
-      params.toString()
-    );
+    const professionalDashboardUrl = resolveDashboardUrl({
+      monitorObjectName: monitorItem?.name,
+      monitorObjectDisplayName: monitorItem?.display_name,
+      instancePlugins: Array.isArray(app.plugins) ? app.plugins : undefined,
+      queryString: params.toString(),
+    });
     const targetUrl =
       professionalDashboardUrl || `/monitor/view/detail?${params.toString()}`;
     router.push(targetUrl);

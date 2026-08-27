@@ -41,6 +41,8 @@ const COMMUNITY_DASHBOARD_COMPONENT_LOADERS: Record<string, DashboardComponentLo
   firewall: () => import('./objects/firewall'),
   loadbalance: () => import('./objects/loadbalance'),
   router: () => import('./objects/router'),
+  netflow: () => import('./objects/netflow'),
+  sflow: () => import('./objects/sflow'),
   wireless: () => import('./objects/wireless'),
   transmission: () => import('./objects/transmission'),
   access: () => import('./objects/access'),
