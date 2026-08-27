@@ -59,6 +59,23 @@ const createChartNode = () => {
 const getChrome = (container: HTMLElement) =>
   container.querySelector(`.${TOPOLOGY_CHART_NODE_CLASS}`) as HTMLElement;
 
+const expectSelectedChrome = (chrome: HTMLElement) => {
+  expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_SELECTED_CLASS)).toBe(
+    true,
+  );
+  expect(chrome.getAttribute('data-topology-selected')).toBe('true');
+  expect(chrome.style.border).toBe('2px solid rgb(24, 144, 255)');
+};
+
+const expectUnselectedChrome = (chrome: HTMLElement) => {
+  expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_SELECTED_CLASS)).toBe(
+    false,
+  );
+  expect(chrome.getAttribute('data-topology-selected')).toBe('false');
+  expect(chrome.style.border).toMatch(/^1px solid /);
+  expect(chrome.style.border).not.toContain('rgb(24, 144, 255)');
+};
+
 afterEach(cleanup);
 
 describe('ChartNode selection chrome', () => {
@@ -67,22 +84,13 @@ describe('ChartNode selection chrome', () => {
     const { container } = render(<ChartNode node={node} />);
     const chrome = getChrome(container);
 
-    expect(chrome).toBeTruthy();
-    expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_SELECTED_CLASS)).toBe(
-      false,
-    );
-    expect(chrome.getAttribute('data-topology-selected')).toBe('false');
-    expect(chrome.style.border).not.toContain('#1890FF');
+    expectUnselectedChrome(chrome);
 
     act(() => {
       highlightTopologyNode(node);
     });
 
-    expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_SELECTED_CLASS)).toBe(
-      true,
-    );
-    expect(chrome.getAttribute('data-topology-selected')).toBe('true');
-    expect(chrome.style.border).toBe('2px solid #1890FF');
+    expectSelectedChrome(chrome);
   });
 
   it('shows selected chrome when highlight attrs are already present', () => {
@@ -91,11 +99,7 @@ describe('ChartNode selection chrome', () => {
     const { container } = render(<ChartNode node={node} />);
     const chrome = getChrome(container);
 
-    expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_SELECTED_CLASS)).toBe(
-      true,
-    );
-    expect(chrome.getAttribute('data-topology-selected')).toBe('true');
-    expect(chrome.style.border).toBe('2px solid #1890FF');
+    expectSelectedChrome(chrome);
   });
 
   it('does not keep selected chrome on an unselected chart', () => {
@@ -110,11 +114,6 @@ describe('ChartNode selection chrome', () => {
       resetTopologyNodeChrome(node);
     });
 
-    expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_SELECTED_CLASS)).toBe(
-      false,
-    );
-    expect(chrome.getAttribute('data-topology-selected')).toBe('false');
-    expect(chrome.style.border).not.toContain('#1890FF');
-    expect(chrome.style.border).toMatch(/^1px solid /);
+    expectUnselectedChrome(chrome);
   });
 });
