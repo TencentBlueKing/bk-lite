@@ -1,0 +1,27 @@
+# QA 用：物理服务器 SSH 采集目标（不是一套并行 BK-Lite 栈）。
+#
+# 产品栈仍用现场已有 compose：
+#   /opt/bk-lite/deploy/docker-compose       # 单机
+#   /opt/bk-lite/deploy/docker-compose-ha    # HA
+# 本文件只提供一个可 SSH 的 ubuntu 目标，凭据/端口与
+# agents/stargazer/tests/collect_fixtures 的 SSH fixture 一致。
+#
+# 用法见同目录 README.md。
+
+services:
+  physcial-server-ssh-target:
+    build:
+      context: .
+      network: host
+    image: physcial-server-ssh-target:qa
+    container_name: physcial-server-ssh-target
+    hostname: physcial-server-ssh-target
+    privileged: true
+    ports:
+      - "12226:22"
+    environment:
+      SSH_PASSWORD: testpw
+    volumes:
+      - ./entrypoint.sh:/entrypoint.sh:ro
+    command: ["bash", "/entrypoint.sh"]
+    restart: unless-stopped
