@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import subprocess
@@ -18,7 +19,7 @@ def _poll_body(chunk: bytes, status: str) -> str:
 
 
 @pytest.mark.asyncio
-async def test_remote_shell_stream_publishes_each_poll_before_command_finishes():
+async def test_remote_shell_stream_decouples_polling_and_batches_in_order():
     events: list[str] = []
     responses = iter(
         [
@@ -58,15 +59,49 @@ async def test_remote_shell_stream_publishes_each_poll_before_command_finishes()
     assert code == 0
     assert "first\nsecond" in output
     assert output_meta["truncated"] is False
-    assert events == [
-        "command-returned",
-        "command-returned",
-        "publish:job.stream.23.ansible:first",
-        "sleep",
-        "command-returned",
-        "publish:job.stream.23.ansible:second",
-        "command-returned",
-    ]
+    assert events.count("command-returned") == 4
+    assert events.index("sleep") < next(index for index, event in enumerate(events) if event.startswith("publish:"))
+    published = [event.rsplit(":", 1)[-1] for event in events if event.startswith("publish:")]
+    assert "\n".join(published).splitlines() == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_remote_shell_stream_slow_publisher_does_not_consume_command_budget():
+    lines = "".join(f"line{i}\n" for i in range(100)).encode()
+    responses = iter(
+        [
+            (0, _ansible_result("192.0.2.10", "__BKLITE_STREAM_STARTED__"), {}),
+            (0, _ansible_result("192.0.2.10", _poll_body(lines, "0")), {}),
+            (0, _ansible_result("192.0.2.10", "cleaned"), {}),
+        ]
+    )
+
+    async def command_runner(_command, _timeout, **_kwargs):
+        return next(responses)
+
+    async def slow_publisher(_subject, _payload):
+        await asyncio.sleep(0.05)
+
+    started = time.monotonic()
+    code, output, meta = await run_remote_shell_stream(
+        ["ansible", "all", "-i", "inventory", "-m", "shell", "-a", "ignored"],
+        script_content="echo ignored",
+        shell_executable="/bin/bash",
+        timeout=1,
+        stream_publish=slow_publisher,
+        stream_log_topic="job.stream.25.ansible",
+        execution_id="25",
+        poll_interval=0,
+        command_runner=command_runner,
+        stream_queue_size=4,
+        stream_batch_size=2,
+        stream_flush_timeout=0.05,
+    )
+
+    assert code == 0
+    assert "line99" in output
+    assert time.monotonic() - started < 0.5
+    assert meta["stream_lines_dropped"] > 0
 
 
 @pytest.mark.asyncio
