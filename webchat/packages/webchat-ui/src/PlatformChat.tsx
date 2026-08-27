@@ -10,6 +10,7 @@ import {
   isPersistedPlatformSession,
   isPlatformMode,
   lastSessionStorageKey,
+  mergePlatformCurrentApp,
   PLATFORM_DOCK_CHAT_WIDTH,
   PLATFORM_HISTORY_RAIL_DOCK,
   platformDockInsetWidth,
@@ -27,6 +28,7 @@ import {
   shouldFetchPlatformMessages,
   shouldRefreshPlatformSessions,
   shouldShowPlatformLauncher,
+  WEBCHAT_APPS_CHANGED_EVENT,
   WEBCHAT_DOCK_INSET_VAR,
   writeLastSelection,
   type Message,
@@ -490,6 +492,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const chatStateRef = useRef<ChatState>('idle');
   const menuRef = useRef<HTMLDivElement>(null);
   const loadedSessionIdRef = useRef<string | null>(null);
+  const appsLoadGenerationRef = useRef(0);
   const onAccessDeniedRef = useRef(onAccessDenied);
   onAccessDeniedRef.current = onAccessDenied;
 
@@ -500,35 +503,59 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     [storage, storageKey]
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadApps() {
-      setLoading(true);
+  const reloadApps = useCallback(
+    async (options?: { showLoading?: boolean }) => {
+      const generation = ++appsLoadGenerationRef.current;
+      if (options?.showLoading) {
+        setLoading(true);
+      }
       try {
         const nextApps = await fetchPlatformApplications(platform, requestInit);
-        if (cancelled) return;
+        if (generation !== appsLoadGenerationRef.current) return;
         setApps(nextApps);
         const stored = readLastSelection(storage, storageKey);
-        const resolved = resolvePlatformSelection(nextApps, [], stored);
-        setCurrentApp((prev) => (prev?.id === resolved.app?.id ? prev : resolved.app));
+        setCurrentApp((prev) => mergePlatformCurrentApp(nextApps, prev, stored));
+        setForbidden(false);
       } catch (error) {
-        if (cancelled) return;
+        if (generation !== appsLoadGenerationRef.current) return;
         if (error instanceof PlatformAccessDeniedError) {
           setForbidden(true);
           onAccessDeniedRef.current?.();
-        } else {
+        } else if (options?.showLoading) {
           setApps([]);
           setCurrentApp(null);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (generation === appsLoadGenerationRef.current) {
+          setLoading(false);
+        }
       }
-    }
-    void loadApps();
-    return () => {
-      cancelled = true;
+    },
+    [platform, requestInit, storage, storageKey]
+  );
+  const reloadAppsRef = useRef(reloadApps);
+  reloadAppsRef.current = reloadApps;
+
+  useEffect(() => {
+    void reloadApps({ showLoading: true });
+  }, [reloadApps]);
+
+  useEffect(() => {
+    const refresh = () => {
+      void reloadAppsRef.current({ showLoading: false });
     };
-  }, [platform, requestInit, storage, storageKey]);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        refresh();
+      }
+    };
+    window.addEventListener(WEBCHAT_APPS_CHANGED_EVENT, refresh);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener(WEBCHAT_APPS_CHANGED_EVENT, refresh);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
   const currentAppId = currentApp?.id;
   const currentChannelId = currentApp?.channelId;
@@ -771,7 +798,8 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const handleOpen = useCallback(() => {
     setHasOpened(true);
     setCollapsed(false);
-  }, []);
+    void reloadApps({ showLoading: false });
+  }, [reloadApps]);
 
   useEffect(() => {
     if (collapsed || !isFullscreen) return undefined;

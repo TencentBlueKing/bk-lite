@@ -327,6 +327,25 @@ export function resolvePlatformSelection(
   return { app, sessionId };
 }
 
+/**
+ * After a published-app refetch: keep the current app if it is still listed
+ * (using the fresh row so names stay current). Otherwise fall back to the
+ * stored selection or the first remaining app.
+ */
+export function mergePlatformCurrentApp(
+  nextApps: PlatformApplication[],
+  currentApp: PlatformApplication | null,
+  stored: PlatformSelection | null
+): PlatformApplication | null {
+  if (currentApp) {
+    const stillThere = nextApps.find((app) => app.id === currentApp.id);
+    if (stillThere) {
+      return stillThere;
+    }
+  }
+  return resolvePlatformSelection(nextApps, [], stored).app;
+}
+
 export function createPlatformSessionId(): string {
   return `session_${Date.now()}`;
 }
@@ -397,6 +416,13 @@ export function isRequiredPlatformContract(
 ): platform is PlatformContract {
   return isPlatformMode({ platform });
 }
+
+/**
+ * Host fires this after publish / disable / platform-channel changes so the
+ * dock can refetch without a full page reload. Keep the string in sync with
+ * `web/src/app/(core)/components/global-webchat/apps-changed.ts`.
+ */
+export const WEBCHAT_APPS_CHANGED_EVENT = 'bk-webchat:apps-changed';
 
 /** Host shell reads this to inset page content while the dock is open. */
 export const WEBCHAT_DOCK_INSET_VAR = '--bk-webchat-dock-width';

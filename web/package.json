@@ -18,7 +18,7 @@
     "clean": "rm -rf .next",
     "test:custom-table-height": "pnpm exec tsx scripts/custom-table-height-test.ts",
     "test:theme-module": "pnpm exec tsx scripts/theme-module-test.tsx",
-    "test:global-webchat": "pnpm exec vitest run src/app/\\(core\\)/components/global-webchat/__tests__/visibility.test.ts src/app/\\(core\\)/components/global-webchat/__tests__/global-webchat.test.tsx",
+    "test:global-webchat": "pnpm exec vitest run src/app/\\(core\\)/components/global-webchat/__tests__/visibility.test.ts src/app/\\(core\\)/components/global-webchat/__tests__/global-webchat.test.tsx src/app/\\(core\\)/components/global-webchat/__tests__/apps-changed.test.ts",
     "type-check:theme": "tsc -p tsconfig.theme.json --noEmit",
     "test:patch-manager-metadata-only": "pnpm exec tsx scripts/patch-manager-metadata-only-test.ts",
     "test:patch-manager-cancellation": "pnpm exec tsx scripts/patch-manager-cancellation-test.ts",

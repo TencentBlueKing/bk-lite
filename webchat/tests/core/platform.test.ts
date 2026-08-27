@@ -10,6 +10,7 @@ import {
   isPlatformMode,
   lastSessionStorageKey,
   mapPlatformApplications,
+  mergePlatformCurrentApp,
   PLATFORM_DOCK_CHAT_WIDTH,
   PLATFORM_HISTORY_RAIL_DOCK,
   platformDockInsetWidth,
@@ -31,6 +32,7 @@ import {
   shouldFetchPlatformMessages,
   shouldRefreshPlatformSessions,
   unwrapPlatformPayload,
+  WEBCHAT_APPS_CHANGED_EVENT,
   writeDockCollapsed,
 } from '../../packages/webchat-core/src/platform';
 import { isSilentCustomEvent } from '../../packages/webchat-core/src/aguiHistoryText';
@@ -154,6 +156,46 @@ test('maps published platform skill channels and restores last selection', () =>
     resolvePlatformSelection([apps[0]], sessions, { appId: '1', sessionId: 's-old' }),
     { app: apps[0], sessionId: 's-new' }
   );
+});
+
+test('published-app refetch keeps the current app, or falls back when it was disabled', () => {
+  const remaining = {
+    id: '2',
+    name: '配置检查',
+    channelId: '2',
+    skillId: '20',
+    skillName: 'cfg-skill',
+  };
+  const current = {
+    id: '1',
+    name: 'K8s RCA',
+    channelId: '1',
+    skillId: '10',
+    skillName: 'K8s RCA',
+  };
+  const renamed = { ...current, name: '值班助手（已改名）' };
+  assert.deepEqual(
+    mergePlatformCurrentApp([remaining, renamed], current, {
+      appId: current.id,
+      sessionId: 's-old',
+    }),
+    renamed
+  );
+  assert.deepEqual(
+    mergePlatformCurrentApp([remaining], current, {
+      appId: current.id,
+      sessionId: 's-old',
+    }),
+    remaining
+  );
+  assert.equal(
+    mergePlatformCurrentApp([], current, { appId: current.id, sessionId: 's-old' }),
+    null
+  );
+});
+
+test('host and webchat share the published-app refresh event name', () => {
+  assert.equal(WEBCHAT_APPS_CHANGED_EVENT, 'bk-webchat:apps-changed');
 });
 
 test('draft sessions do not refetch history; clicking the current session does not either', () => {
