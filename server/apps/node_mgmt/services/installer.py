@@ -13,6 +13,7 @@ from apps.node_mgmt.models import Node, PackageVersion, SidecarEnv
 from apps.node_mgmt.models.installer import CollectorTask, CollectorTaskNode, ControllerTask, ControllerTaskNode
 from apps.node_mgmt.services.install_token import InstallTokenService
 from apps.node_mgmt.services.installer_session import InstallerSessionService
+from apps.node_mgmt.services.node_identity import assert_cloud_ips_available
 from apps.node_mgmt.services.package import PackageService
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 from apps.node_mgmt.utils.permission import normalize_orgs
@@ -204,6 +205,7 @@ class InstallerService:
         if len(node_operating_systems) != 1:
             raise BaseAppException("A controller installation batch must use one operating system")
         InstallerService.validate_controller_package_os(package_version_id, node_operating_systems.pop())
+        assert_cloud_ips_available(cloud_region_id, nodes)
         task_obj = ControllerTask.objects.create(
             cloud_region_id=cloud_region_id,
             work_node=work_node,
