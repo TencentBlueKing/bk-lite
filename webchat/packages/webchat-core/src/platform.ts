@@ -397,3 +397,34 @@ export function isRequiredPlatformContract(
 ): platform is PlatformContract {
   return isPlatformMode({ platform });
 }
+
+/** Host shell reads this to inset page content while the dock is open. */
+export const WEBCHAT_DOCK_INSET_VAR = '--bk-webchat-dock-width';
+export const PLATFORM_DOCK_CHAT_WIDTH = 380;
+export const PLATFORM_HISTORY_RAIL_DOCK = 176;
+
+/**
+ * Empty published-app list: hide the launcher unless the host says this user
+ * can publish/enable agents (`canManageAgents: true`). `undefined` keeps the
+ * legacy empty-state launcher for embeds that do not pass the flag.
+ */
+export function shouldShowPlatformLauncher(input: {
+  appCount: number;
+  canManageAgents?: boolean;
+}): boolean {
+  return input.appCount > 0 || input.canManageAgents !== false;
+}
+
+/** Width the host should reserve. Fullscreen covers the page, so inset is 0. */
+export function platformDockInsetWidth(input: {
+  visible: boolean;
+  fullscreen?: boolean;
+  historyOpen?: boolean;
+}): number {
+  if (!input.visible || input.fullscreen) {
+    return 0;
+  }
+  return input.historyOpen
+    ? PLATFORM_DOCK_CHAT_WIDTH + PLATFORM_HISTORY_RAIL_DOCK
+    : PLATFORM_DOCK_CHAT_WIDTH;
+}

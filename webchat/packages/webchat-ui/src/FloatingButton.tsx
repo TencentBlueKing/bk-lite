@@ -31,6 +31,8 @@ export interface FloatingButtonProps extends ChatProps {
   userId?: string;
   teamId?: string;
   onAccessDenied?: () => void;
+  canManageAgents?: boolean;
+  manageAgentsUrl?: string;
 }
 
 export const FloatingButton = React.memo(React.forwardRef<HTMLDivElement, FloatingButtonProps>((props, _ref) => {
@@ -50,6 +52,8 @@ export const FloatingButton = React.memo(React.forwardRef<HTMLDivElement, Floati
     userId,
     teamId,
     onAccessDenied,
+    canManageAgents,
+    manageAgentsUrl,
     ...chatProps
   } = props;
 
@@ -166,6 +170,8 @@ export const FloatingButton = React.memo(React.forwardRef<HTMLDivElement, Floati
           platform={chatProps.platform}
           userId={userId}
           teamId={teamId}
+          canManageAgents={canManageAgents}
+          manageAgentsUrl={manageAgentsUrl}
           onAccessDenied={handleAccessDenied}
           {...chatCallbacks}
         />

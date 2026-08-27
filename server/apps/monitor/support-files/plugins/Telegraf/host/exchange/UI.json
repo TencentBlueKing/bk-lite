@@ -1,0 +1,200 @@
+{
+  "object_name": "Exchange",
+  "instance_type": "exchange",
+  "collect_type": "host",
+  "config_type": [
+    "win_perf_counters",
+    "http_response"
+  ],
+  "collector": "Telegraf",
+  "config_type_field": "metric_type",
+  "instance_id": "{{cloud_region}}_{{instance_type}}_{{ip}}",
+  "form_fields": [
+    {
+      "name": "metric_type",
+      "label": "指标类型",
+      "type": "checkbox_group",
+      "required": true,
+      "editable": false,
+      "default_value": [
+        "win_perf_counters",
+        "http_response"
+      ],
+      "options": [
+        {
+          "label": "Exchange 性能计数器",
+          "value": "win_perf_counters",
+          "description": "在 Exchange 服务器本机通过 telegraf_windows 的 win_perf_counters 采集 MSExchange 队列/OWA 等计数器，不能远程无代理采集。",
+          "description_en": "Collect MSExchange queue/OWA counters with local telegraf_windows win_perf_counters on the Exchange host. Agentless remote collection is not supported.",
+          "label_en": "Exchange Performance Counters"
+        },
+        {
+          "label": "OWA/EWS 探测",
+          "value": "http_response",
+          "description": "在 Exchange 本机用 Telegraf http_response 探测 OWA 与 EWS URL。",
+          "description_en": "Probe OWA and EWS URLs locally with Telegraf http_response.",
+          "label_en": "OWA/EWS Probe"
+        }
+      ],
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.tags.config_type",
+        "to_form": {
+          "array": true
+        }
+      },
+      "label_en": "Metric Type"
+    },
+    {
+      "name": "host",
+      "label": "主机名",
+      "type": "input",
+      "required": false,
+      "description": "用于默认 OWA/EWS URL 的主机名或 FQDN。留空则探测本机 https://127.0.0.1/owa 与 https://127.0.0.1/EWS/Exchange.asmx。采集器必须安装在 Exchange Windows 主机上。",
+      "guide_short": "HTTPS 证书按主机名校验时请填 FQDN；留空探测 127.0.0.1。telegraf_windows 必须装在 Exchange 本机。",
+      "guide_short_en": "Use the Exchange FQDN when TLS hostname checks matter. Leave empty to probe 127.0.0.1. telegraf_windows must still run on the Exchange host.",
+      "widget_props": {
+        "placeholder": "mail.example.com"
+      },
+      "label_en": "Host",
+      "description_en": "Hostname or FQDN used in default OWA/EWS URLs. Leave empty to probe https://127.0.0.1/owa and https://127.0.0.1/EWS/Exchange.asmx on this host. telegraf_windows must run on the Exchange Windows host."
+    },
+    {
+      "name": "owa_url",
+      "label": "OWA URL",
+      "type": "input",
+      "required": false,
+      "default_value": "",
+      "description": "OWA 探测地址。留空则使用 https://<host>/owa；host 也为空时使用 https://127.0.0.1/owa。",
+      "guide_short": "默认 https://<host>/owa，host 为空则为 https://127.0.0.1/owa。telegraf_windows 必须装在 Exchange 本机。",
+      "guide_short_en": "Defaults to https://<host>/owa, or https://127.0.0.1/owa when host is empty. Install telegraf_windows on the Exchange host.",
+      "widget_props": {
+        "placeholder": "https://mail.example.com/owa"
+      },
+      "label_en": "OWA URL",
+      "description_en": "OWA probe URL. Leave empty to use https://<host>/owa, or https://127.0.0.1/owa when host is empty."
+    },
+    {
+      "name": "ews_url",
+      "label": "EWS URL",
+      "type": "input",
+      "required": false,
+      "default_value": "",
+      "description": "EWS 探测地址。留空则使用 https://<host>/EWS/Exchange.asmx；host 也为空时使用 https://127.0.0.1/EWS/Exchange.asmx。",
+      "guide_short": "默认 https://<host>/EWS/Exchange.asmx，host 为空则为 https://127.0.0.1/EWS/Exchange.asmx。telegraf_windows 必须装在 Exchange 本机。",
+      "guide_short_en": "Defaults to https://<host>/EWS/Exchange.asmx, or https://127.0.0.1/EWS/Exchange.asmx when host is empty. Install telegraf_windows on the Exchange host.",
+      "widget_props": {
+        "placeholder": "https://mail.example.com/EWS/Exchange.asmx"
+      },
+      "label_en": "EWS URL",
+      "description_en": "EWS probe URL. Leave empty to use https://<host>/EWS/Exchange.asmx, or https://127.0.0.1/EWS/Exchange.asmx when host is empty."
+    },
+    {
+      "name": "insecure_skip_verify",
+      "advanced": true,
+      "section": "tls",
+      "label": "跳过证书校验",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "guide_short": "仅 HTTPS 自签或证书链不完整时开启。",
+      "guide_short_en": "Enable only for self-signed or incomplete HTTPS certificate chains.",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.insecure_skip_verify"
+      },
+      "label_en": "Skip Certificate Verification"
+    },
+    {
+      "name": "response_timeout",
+      "label": "HTTP 超时",
+      "type": "inputNumber",
+      "required": false,
+      "default_value": 5,
+      "description": "OWA/EWS HTTP 探测超时（秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.response_timeout",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      },
+      "label_en": "HTTP Timeout"
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 60,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s",
+        "placeholder_en": "Interval"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      },
+      "label_en": "Interval",
+      "description_en": "Collection time interval (unit: seconds)"
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择 Windows 节点（已安装 telegraf_windows）",
+        "placeholder_en": "Select the Windows node with telegraf_windows"
+      },
+      "change_handler": {
+        "type": "option_field",
+        "source_field": "name",
+        "target_field": "instance_name"
+      },
+      "enable_row_filter": true,
+      "label_en": "Node"
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "is_only": true,
+      "widget_props": {
+        "placeholder": "实例名称",
+        "placeholder_en": "Instance Name"
+      },
+      "label_en": "Instance Name"
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "widget_props": {
+        "placeholder": "请选择组",
+        "placeholder_en": "Please select group"
+      },
+      "label_en": "Group"
+    }
+  ]
+}

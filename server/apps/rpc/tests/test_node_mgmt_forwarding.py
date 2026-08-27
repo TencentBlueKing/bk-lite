@@ -197,3 +197,13 @@ def test_env_变量强制本地模式(monkeypatch):
     monkeypatch.setenv("IS_LOCAL_RPC", "1")
     n = NodeMgmt(is_local_client=False)
     assert n.client.path == "apps.node_mgmt.nats.node"
+
+
+def test_compare_and_swap_非本地调用返回稳定错误码(node):
+    with pytest.raises(RuntimeError) as exc_info:
+        node.compare_and_swap_child_config_content_local(1, "old", "new")
+
+    assert str(exc_info.value) == "rpc.local_client_required"
+    assert exc_info.value.code == "rpc.local_client_required"
+    assert exc_info.value.params == {}
+    assert exc_info.value.operation == "compare_and_swap_child_config_content"

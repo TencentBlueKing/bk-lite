@@ -44,6 +44,15 @@ describe('global webchat visibility', () => {
       shouldMountGlobalWebchat({
         authenticated: true,
         clientLoading: false,
+        userInfoLoading: true,
+        hasOpsPilotAccess: true,
+        pathname: '/cmdb',
+      }),
+    ).toBe(false);
+    expect(
+      shouldMountGlobalWebchat({
+        authenticated: true,
+        clientLoading: false,
         hasOpsPilotAccess: true,
         pathname: '/cmdb',
       }),
@@ -78,6 +87,26 @@ describe('global webchat visibility', () => {
         alreadyMounted: true,
       }),
     ).toBe(false);
+    expect(
+      shouldKeepGlobalWebchat({
+        authenticated: true,
+        clientLoading: false,
+        userInfoLoading: true,
+        hasOpsPilotAccess: true,
+        pathname: '/opspilot/skill',
+        alreadyMounted: false,
+      }),
+    ).toBe(false);
+    expect(
+      shouldKeepGlobalWebchat({
+        authenticated: true,
+        clientLoading: false,
+        userInfoLoading: true,
+        hasOpsPilotAccess: true,
+        pathname: '/opspilot/skill',
+        alreadyMounted: true,
+      }),
+    ).toBe(true);
   });
 
   it('falls back to the first app when the stored id is gone after a team switch', () => {

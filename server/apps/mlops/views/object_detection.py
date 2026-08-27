@@ -30,6 +30,7 @@ from apps.mlops.models.object_detection import (
     ObjectDetectionTrainData,
     ObjectDetectionTrainJob,
 )
+from apps.mlops.predict_response import map_predict_upstream_status
 from apps.mlops.predict_url_builder import build_predict_url
 from apps.mlops.serializers.algorithm_config import AlgorithmConfigListSerializer, AlgorithmConfigSerializer
 from apps.mlops.serializers.object_detection import (
@@ -1476,6 +1477,18 @@ class ObjectDetectionServingViewSet(TeamModelViewSet):
 
             # 调用推理服务
             response = requests.post(predict_url, json=payload, timeout=60)
+            mapped_status = map_predict_upstream_status(response.status_code)
+            if mapped_status != status.HTTP_500_INTERNAL_SERVER_ERROR:
+                return Response(
+                    {
+                        "error": mlops_message(
+                            request,
+                            "error.serving_inference_service_error",
+                            detail=response.text,
+                        )
+                    },
+                    status=mapped_status,
+                )
             response.raise_for_status()
 
             result = response.json()

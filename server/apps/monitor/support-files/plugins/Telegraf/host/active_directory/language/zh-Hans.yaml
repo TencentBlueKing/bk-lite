@@ -1,0 +1,117 @@
+"Active Directory":
+  desc: >-
+    必须在域控制器本机安装 telegraf_windows，通过 win_perf_counters 采集 NTDS/DirectoryServices 计数器，并用 net_response 探测 LDAP/LDAPS。不使用 inputs.ldap、Get-HealthReport、复制 cmdlet 或无代理远程 WMI。
+  name: Active Directory（Telegraf）
+monitor_object:
+  "Active Directory": Active Directory
+monitor_object_type:
+  Middleware: 中间件
+monitor_object_metric:
+  "Active Directory":
+    ad_ldap_successful_binds_persec:
+      name: LDAP 成功绑定速率
+      desc: >-
+        NTDS DirectoryServices 每秒成功的 LDAP 绑定次数。
+    ad_ldap_client_sessions:
+      name: LDAP 客户端会话数
+      desc: >-
+        域控制器当前 LDAP 客户端会话数。
+    ad_ldap_bind_time:
+      name: LDAP 绑定耗时
+      desc: >-
+        最近一次 LDAP 绑定耗时（毫秒）。
+    ad_ldap_searches_persec:
+      name: LDAP 搜索速率
+      desc: >-
+        每秒 LDAP 搜索次数。
+    ad_ldap_writes_persec:
+      name: LDAP 写入速率
+      desc: >-
+        每秒 LDAP 写入次数。
+    ad_ldap_new_connections_persec:
+      name: LDAP 新建连接速率
+      desc: >-
+        每秒新建 LDAP 连接数。
+    ad_ldap_new_ssl_connections_persec:
+      name: LDAP SSL 新建连接速率
+      desc: >-
+        每秒新建 LDAPS 连接数。
+    ad_ldap_active_threads:
+      name: LDAP 活动线程
+      desc: >-
+        NTDS 当前活动的 LDAP 线程数。
+    ad_ds_threads_in_use:
+      name: 目录服务占用线程
+      desc: >-
+        目录服务当前占用的线程数。
+    ad_ds_notify_queue_size:
+      name: 目录服务通知队列
+      desc: >-
+        目录服务 notify 队列长度。
+    ad_ds_directory_reads_persec:
+      name: 目录读取速率
+      desc: >-
+        每秒目录读取次数。
+    ad_ds_directory_searches_persec:
+      name: 目录搜索速率
+      desc: >-
+        每秒目录搜索次数。
+    ad_ds_directory_writes_persec:
+      name: 目录写入速率
+      desc: >-
+        每秒目录写入次数。
+    ad_ds_client_binds_persec:
+      name: 目录客户端绑定速率
+      desc: >-
+        每秒目录服务客户端绑定次数。
+    ad_dra_pending_replication_operations:
+      name: 待处理复制操作
+      desc: >-
+        该域控制器尚未完成的复制操作数。
+    ad_dra_pending_replication_synchronizations:
+      name: 待处理复制同步
+      desc: >-
+        该域控制器尚未完成的复制同步数。
+    ad_dra_inbound_bytes_total_persec:
+      name: 入站复制流量
+      desc: >-
+        入站复制字节速率。
+    ad_dra_outbound_bytes_total_persec:
+      name: 出站复制流量
+      desc: >-
+        出站复制字节速率。
+    ad_dra_inbound_full_sync_objects_remaining:
+      name: 全量同步剩余对象
+      desc: >-
+        入站全量同步仍剩余的对象数。
+    ad_atq_outstanding_queued_requests:
+      name: ATQ 排队请求
+      desc: >-
+        域控制器 ATQ 队列中未完成的请求数。
+    ad_atq_estimated_queue_delay:
+      name: ATQ 预估排队时延
+      desc: >-
+        ATQ 预估排队时延（毫秒）。
+    ad_ldap_probe_result_code:
+      name: LDAP 探测结果
+      desc: >-
+        域控制器本机 LDAP TCP 探测结果，0 表示端口可连接。
+    ad_ldaps_probe_result_code:
+      name: LDAPS 探测结果
+      desc: >-
+        域控制器本机 LDAPS TCP 探测结果，0 表示端口可连接。
+    ad_ldap_probe_response_time:
+      name: LDAP 探测耗时
+      desc: >-
+        本机 LDAP TCP 探测往返时延（毫秒）。
+    ad_ldaps_probe_response_time:
+      name: LDAPS 探测耗时
+      desc: >-
+        本机 LDAPS TCP 探测往返时延（毫秒）。
+monitor_object_metric_group:
+  "Active Directory":
+    LDAP: LDAP
+    NTDS: NTDS
+    Replication: 复制
+    ATQ: ATQ
+    Probe: 探测

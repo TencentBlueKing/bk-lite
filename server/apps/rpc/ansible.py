@@ -1,6 +1,7 @@
 import uuid
 
 from apps.rpc.base import RpcClient
+from apps.rpc.exceptions import RpcPlaybookSourceError, RpcTargetSourceError
 
 
 class AnsibleRpcClient(RpcClient):
@@ -100,7 +101,7 @@ class AnsibleExecutor(object):
         """
         if not inventory and not inventory_content:
             if not host_credentials:
-                raise ValueError("inventory or inventory_content or host_credentials is required")
+                raise RpcTargetSourceError
 
         request_data = {
             "inventory": inventory,
@@ -182,10 +183,10 @@ class AnsibleExecutor(object):
         )
         """
         if not playbook_path and not playbook_content and not file_distribution:
-            raise ValueError("playbook_path or playbook_content is required")
+            raise RpcPlaybookSourceError
         if not inventory and not inventory_content:
             if not host_credentials:
-                raise ValueError("inventory or inventory_content or host_credentials is required")
+                raise RpcTargetSourceError
 
         request_data = {
             "playbook_path": playbook_path,

@@ -1,0 +1,117 @@
+"Active Directory":
+  desc: >-
+    Collect NTDS/DirectoryServices counters with local telegraf_windows win_perf_counters on the domain controller, and probe LDAP/LDAPS TCP ports. Not inputs.ldap, Get-HealthReport, replication cmdlets, or agentless WMI.
+  name: Active Directory (Telegraf)
+monitor_object:
+  "Active Directory": Active Directory
+monitor_object_type:
+  Middleware: Middleware
+monitor_object_metric:
+  "Active Directory":
+    ad_ldap_successful_binds_persec:
+      name: LDAP Successful Binds
+      desc: >-
+        NTDS DirectoryServices LDAP successful binds per second.
+    ad_ldap_client_sessions:
+      name: LDAP Client Sessions
+      desc: >-
+        Current LDAP client sessions on the domain controller.
+    ad_ldap_bind_time:
+      name: LDAP Bind Time
+      desc: >-
+        Time taken for the last LDAP bind, in milliseconds.
+    ad_ldap_searches_persec:
+      name: LDAP Searches
+      desc: >-
+        LDAP searches per second.
+    ad_ldap_writes_persec:
+      name: LDAP Writes
+      desc: >-
+        LDAP writes per second.
+    ad_ldap_new_connections_persec:
+      name: LDAP New Connections
+      desc: >-
+        New LDAP connections per second.
+    ad_ldap_new_ssl_connections_persec:
+      name: LDAP New SSL Connections
+      desc: >-
+        New LDAPS connections per second.
+    ad_ldap_active_threads:
+      name: LDAP Active Threads
+      desc: >-
+        LDAP threads currently active on NTDS.
+    ad_ds_threads_in_use:
+      name: DS Threads in Use
+      desc: >-
+        Directory service threads currently in use.
+    ad_ds_notify_queue_size:
+      name: DS Notify Queue Size
+      desc: >-
+        Directory service notify queue length.
+    ad_ds_directory_reads_persec:
+      name: DS Directory Reads
+      desc: >-
+        Directory reads per second.
+    ad_ds_directory_searches_persec:
+      name: DS Directory Searches
+      desc: >-
+        Directory searches per second.
+    ad_ds_directory_writes_persec:
+      name: DS Directory Writes
+      desc: >-
+        Directory writes per second.
+    ad_ds_client_binds_persec:
+      name: DS Client Binds
+      desc: >-
+        Directory service client binds per second.
+    ad_dra_pending_replication_operations:
+      name: DRA Pending Replication Operations
+      desc: >-
+        Pending AD replication operations remaining on this DC.
+    ad_dra_pending_replication_synchronizations:
+      name: DRA Pending Replication Synchronizations
+      desc: >-
+        Pending AD replication synchronizations remaining on this DC.
+    ad_dra_inbound_bytes_total_persec:
+      name: DRA Inbound Bytes
+      desc: >-
+        Inbound AD replication bytes per second.
+    ad_dra_outbound_bytes_total_persec:
+      name: DRA Outbound Bytes
+      desc: >-
+        Outbound AD replication bytes per second.
+    ad_dra_inbound_full_sync_objects_remaining:
+      name: DRA Full Sync Objects Remaining
+      desc: >-
+        Objects remaining in an inbound full sync.
+    ad_atq_outstanding_queued_requests:
+      name: ATQ Outstanding Queued Requests
+      desc: >-
+        Outstanding ATQ queued requests on the DC.
+    ad_atq_estimated_queue_delay:
+      name: ATQ Estimated Queue Delay
+      desc: >-
+        Estimated ATQ queue delay in milliseconds.
+    ad_ldap_probe_result_code:
+      name: LDAP Probe Result
+      desc: >-
+        Local TCP probe of LDAP (default 389) on the DC. 0 means the port accepted a connection.
+    ad_ldaps_probe_result_code:
+      name: LDAPS Probe Result
+      desc: >-
+        Local TCP probe of LDAPS (default 636) on the DC. 0 means the port accepted a connection.
+    ad_ldap_probe_response_time:
+      name: LDAP Probe Response Time
+      desc: >-
+        Round-trip time of the local LDAP TCP probe, displayed in milliseconds.
+    ad_ldaps_probe_response_time:
+      name: LDAPS Probe Response Time
+      desc: >-
+        Round-trip time of the local LDAPS TCP probe, displayed in milliseconds.
+monitor_object_metric_group:
+  "Active Directory":
+    LDAP: LDAP
+    NTDS: NTDS
+    Replication: Replication
+    ATQ: ATQ
+    Probe: Probe
