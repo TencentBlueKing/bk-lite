@@ -1610,6 +1610,10 @@
     },
     "ViewsHub": {
         "selectInstance": "选择实例",
+        "selectInstanceMultiple": "选择机柜（可多选对比）",
+        "selectInstanceGrouped": "按机房选择机柜（可搜索）",
+        "unassociatedRoom": "未关联机房",
+        "rackWithRoom": "{room} / {rack}",
         "emptyHint": "请选择一条实例",
         "recent": "最近访问",
         "viewDetail": "查看详情",
