@@ -13,6 +13,7 @@ import { ClientData, AppConfigItem } from '@/types/index';
 import OperateModal from '@/components/operate-modal'
 import { useUserInfoContext } from '@/context/userInfo';
 import { usePortalBranding } from '@/hooks/usePortalBranding';
+import { resolveAppDescription, resolveAppDisplayName, resolveAppTag } from '@/utils/appDisplayName';
 import styles from './index.module.scss';
 
 const ControlPage = () => {
@@ -328,13 +329,13 @@ const ControlPage = () => {
                 <div className="flex flex-col items-start mb-2">
                   <div className="flex items-center mb-2">
                     <Icon type={cardData.icon || cardData.name} className="text-6xl mb-2 mr-2" />
-                    <h2 className="text-xl font-bold mb-2">{cardData.display_name}</h2>
+                    <h2 className="text-xl font-bold mb-2">{resolveAppDisplayName(cardData, t)}</h2>
                   </div>
                   <div className="flex items-center flex-wrap">
                     {
                       cardData.tags?.map((tag: string) => (
                         <Tag key={tag} color={getRandomColor()} className="mb-1 mr-1 font-mini">
-                          {tag}
+                          {resolveAppTag(tag, t)}
                         </Tag>
                       ))
                     }
@@ -344,7 +345,7 @@ const ControlPage = () => {
                   className="text-[var(--color-text-3)] overflow-hidden text-ellipsis line-clamp-2 text-sm leading-5"
                   style={{ height: "2.5rem" }}
                 >
-                  {cardData.description}
+                  {resolveAppDescription(cardData, t)}
                 </p>
               </div>
             ))
@@ -418,7 +419,7 @@ const ControlPage = () => {
                   >
                     <HolderOutlined className="text-[var(--color-primary)] cursor-grab" />
                     <Icon type={app.icon || app.name} className="text-lg text-[var(--color-primary)]" />
-                    <span className="text-[var(--color-primary)]">{app.display_name}</span>
+                    <span className="text-[var(--color-primary)]">{resolveAppDisplayName(app, t)}</span>
                     {app.name !== "ops-console" && <CloseOutlined
                       className="text-[var(--color-primary)] hover:text-gray-400 cursor-pointer text-xs"
                       onClick={(e) => {
@@ -441,7 +442,7 @@ const ControlPage = () => {
                   className="flex items-center gap-2 px-3 py-1.5 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-1)] hover:border-[var(--color-primary)] transition-colors"
                 >
                   <Icon type={app.icon || app.name} className="text-lg text-[var(--color-primary)]" />
-                  <span className="text-[var(--color-text-1)]">{app.display_name}</span>
+                  <span className="text-[var(--color-text-1)]">{resolveAppDisplayName(app, t)}</span>
                   <PlusOutlined
                     className="text-[var(--color-text-3)] hover:text-[var(--color-primary)] cursor-pointer"
                     onClick={() => handleAddApp(app)}

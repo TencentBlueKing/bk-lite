@@ -9,6 +9,7 @@ from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone as django_timezone
 
+from apps.core.utils.builtin_app_i18n import localized_app_display_name
 from apps.core.utils.loader import LanguageLoader
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import Group, Role, User
@@ -232,7 +233,9 @@ def validate_email_code(request):
 
         if stored_code is None:
             # 验证码不存在：已过期或从未发送
-            return JsonResponse({"result": False, "message": loader.get("error.verification_code_expired", "Verification code has expired or does not exist")})
+            return JsonResponse(
+                {"result": False, "message": loader.get("error.verification_code_expired", "Verification code has expired or does not exist")}
+            )
 
         if secrets.compare_digest(str(stored_code), str(input_code)):
             # 验证通过：立即删除（一次性使用）
@@ -340,7 +343,11 @@ def get_user_info(request):
 
         # 一次性获取所有app数据并构建映射
         all_apps = App.objects.all()
-        app_map = {app.name: app.display_name for app in all_apps}
+        core_loader = LanguageLoader(app="core", default_lang=locale)
+        app_map = {
+            app.name: (localized_app_display_name(app.name, core_loader, app.display_name) if app.is_build_in else app.display_name)
+            for app in all_apps
+        }
 
         # 收集用户角色ID：包含用户直接角色和所属组的角色（去重）
         role_ids = set(user.role_list) if user.role_list else set()
