@@ -370,6 +370,7 @@
           "phaseCompletedAt": "完成于 {{time}}",
           "phaseFailedAt": "失败于 {{time}}",
           "processed": "已处理 {{current}} / {{total}}",
+          "conflictUsers": "冲突用户：{{usernames}}",
           "syncedUsers": "用户 {{count}}",
           "syncedGroups": "组织 {{count}}",
           "empty": "暂无同步进度"
@@ -389,15 +390,22 @@
           "skipped": "已跳过"
         },
         "phaseCounter": {
+          "ledger": "{{total}}：{{parts}}",
+          "syncUsersTotal": "共 {{n}} 名用户",
           "syncUsersNew": "已新建 {{n}} 名用户",
           "syncUsersUpdated": "已更新 {{n}} 名用户",
+          "syncUsersUnchanged": "无变化 {{n}} 名用户",
           "syncUsersConflict": "发现 {{n}} 名冲突用户",
+          "syncUsersSkipped": "跳过无效 {{n}} 名用户",
           "reconcileDisabled": "禁用 {{n}}",
           "reconcileDeletedUsers": "删除 {{n}} 名用户",
           "reconcileDeleted": "删除 {{n}} 组",
           "syncGroupsSynced": "已同步 {{n}} 个组织",
+          "syncGroupsTotal": "共 {{n}} 个组织",
           "syncGroupsCreated": "已新建 {{n}} 个组织",
-          "syncGroupsUpdated": "已更新 {{n}} 个组织"
+          "syncGroupsUpdated": "已更新 {{n}} 个组织",
+          "syncGroupsUnchanged": "无变化 {{n}} 个组织",
+          "syncGroupsSkipped": "跳过无效 {{n}} 个组织"
         },
         "phaseResult": {
           "fetchDirectory": "已获取 {{users}} 名用户 · {{groups}} 个组织",
@@ -425,10 +433,18 @@
         },
         "runSummary": {
           "success": "同步成功：{{external}}；已同步 {{users}} 个用户、{{groups}} 个组织",
+          "successWithLedger": "同步成功：{{external}}；{{users}}；{{groups}}",
           "partial": "部分成功：{{external}}；已同步 {{users}} 个用户、{{groups}} 个组织，{{conflicts}} 个冲突",
           "partialWithUsers": "部分成功：{{external}}；已同步 {{users}} 个用户、{{groups}} 个组织，{{conflicts}} 个冲突（冲突用户：{{usernames}}）",
+          "partialWithLedger": "部分成功：{{external}}；{{users}}；{{groups}}",
+          "partialWithLedgerAndUsers": "部分成功：{{external}}；{{users}}；{{groups}}（冲突用户：{{usernames}}）",
           "failed": "同步失败：{{external}}；{{reason}}",
           "failedConflict": "同步失败：{{external}}；已同步 {{users}} 个用户、{{groups}} 个组织，{{conflicts}} 个冲突用户（冲突用户：{{usernames}}）",
+          "failedWithLedger": "同步失败：{{external}}；{{users}}；{{groups}}",
+          "failedWithLedgerAndUsers": "同步失败：{{external}}；{{users}}；{{groups}}（冲突用户：{{usernames}}）",
+          "withReason": "{{summary}}；{{reason}}",
+          "userLedger": "用户：{{parts}}",
+          "groupLedger": "组织：{{parts}}",
           "externalCounts": "外部用户共 {{users}} 人，外部组织共 {{groups}} 个",
           "result": "同步结果：{{external}}；{{summary}}",
           "withEmailStatus": "{{summary}}；{{email}}",

@@ -370,6 +370,7 @@
           "phaseCompletedAt": "Completed {{time}}",
           "phaseFailedAt": "Failed {{time}}",
           "processed": "Processed {{current}} / {{total}}",
+          "conflictUsers": "Conflict users: {{usernames}}",
           "syncedUsers": "{{count}} users",
           "syncedGroups": "{{count}} groups",
           "empty": "No sync progress available"
@@ -389,15 +390,22 @@
           "skipped": "Skipped"
         },
         "phaseCounter": {
+          "ledger": "{{total}}: {{parts}}",
+          "syncUsersTotal": "{{n}} users in total",
           "syncUsersNew": "Created {{n}} users",
           "syncUsersUpdated": "Updated {{n}} users",
+          "syncUsersUnchanged": "{{n}} users unchanged",
           "syncUsersConflict": "Found {{n}} conflicting users",
+          "syncUsersSkipped": "Skipped {{n}} invalid users",
           "reconcileDisabled": "Disabled {{n}}",
           "reconcileDeletedUsers": "Deleted {{n}} users",
           "reconcileDeleted": "Deleted {{n}} groups",
           "syncGroupsSynced": "Synced {{n}} groups",
+          "syncGroupsTotal": "{{n}} groups in total",
           "syncGroupsCreated": "Created {{n}} groups",
-          "syncGroupsUpdated": "Updated {{n}} groups"
+          "syncGroupsUpdated": "Updated {{n}} groups",
+          "syncGroupsUnchanged": "{{n}} groups unchanged",
+          "syncGroupsSkipped": "Skipped {{n}} invalid groups"
         },
         "phaseResult": {
           "fetchDirectory": "Retrieved {{users}} users · {{groups}} groups",
@@ -425,10 +433,18 @@
         },
         "runSummary": {
           "success": "Sync succeeded: {{external}}; synced {{users}} users, {{groups}} groups",
+          "successWithLedger": "Sync succeeded: {{external}}; {{users}}; {{groups}}",
           "partial": "Partial success: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicts",
           "partialWithUsers": "Partial success: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicts (conflict users: {{usernames}})",
+          "partialWithLedger": "Partial success: {{external}}; {{users}}; {{groups}}",
+          "partialWithLedgerAndUsers": "Partial success: {{external}}; {{users}}; {{groups}} (conflict users: {{usernames}})",
           "failed": "Sync failed: {{external}}; {{reason}}",
           "failedConflict": "Sync failed: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicting users (conflict users: {{usernames}})",
+          "failedWithLedger": "Sync failed: {{external}}; {{users}}; {{groups}}",
+          "failedWithLedgerAndUsers": "Sync failed: {{external}}; {{users}}; {{groups}} (conflict users: {{usernames}})",
+          "withReason": "{{summary}}; {{reason}}",
+          "userLedger": "Users: {{parts}}",
+          "groupLedger": "Groups: {{parts}}",
           "externalCounts": "External users: {{users}}, external groups: {{groups}}",
           "result": "Sync result: {{external}}; {{summary}}",
           "withEmailStatus": "{{summary}}; {{email}}",
