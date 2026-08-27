@@ -40,7 +40,10 @@
 - 非 NATS 预览【已实现】：`services/datasource_preview/` + `services/transform/`（独立 Runner）+ `services/excel_materialize/`（Celery 候选物化）。
 - 内置数据源保护【已实现】：内置标记和稳定身份键仅由系统维护；普通更新、删除接口均拒绝内置项。
 - `directory` 的 `tree`（GET）：返回目录树（`views/view.py:148`）。
-- `scene_widgets/network_status_topology`（POST）：按 `model_id`、`inst_id`、`depth` 构建网络状态拓扑场景数据，是网络状态拓扑组件的专用后端入口；复用 CMDB network_topology/实例权限并汇总 Alerts 活跃告警，权限动作 `view`（证据：`urls.py:23`、`views/scene_widget_view.py:10-23,10,12`、`services/network_status_topology.py:5,65,87`）。
+- `scene_widgets/network_status_topology`（POST）：按设备闭集构建网络状态拓扑场景数据。
+- `scene_widgets/application3d/{wall,application_detail,alarm_detail,metric}`（POST）【WIP】：3D 应用墙 self-fetch 领域查询；与 Share session 下同名 operation 共用 `Application3DQueryService`。
+- Share：`session/{id}/application3d/{wall,application_detail,alarm_detail,metric}`（POST）【WIP】：sharer 重建后走同一 QueryService。
+
 - `screen` / `report`【已实现/已存在】：通过 `CanvasModelViewSet` 复用画布类 CRUD、权限与内置对象保护逻辑，新增 `directory.screen` 与 `directory.report` 两类权限域（`views/view.py:347-423`）。
 - `dashboard_subscription`【已实现】：当前用户画布报告订阅 GET/POST/PATCH/DELETE。owner scope 使用 `(username, domain)`；创建与更新要求当前用户仍可查看目标画布（Dashboard、Screen 或 Report）；写入支持 `dashboard` 或 `resource_type`+`resource_id`（`dashboard` 双写旧 FK；`screen`/`report` 无 dashboard FK）；响应返回 `resource_type`/`resource_id`；列表支持 `?dashboard_id=` 与 `?resource_type=&resource_id=`；PATCH/DELETE 使用 `revision` 原子 CAS；删除允许创建者在画布查看权限丢失后清理；`terminated` 不可由 API 直接写入（证据：`views/subscription_view.py`、`services/subscription_service.py`、`services/canvas_report/binding.py`、`serializers/subscription_serializers.py`）。
 - `dashboard_subscription/{id}/execute` 与 `dashboard_execution/{id}`【已实现】：前者为已保存订阅创建 manual Execution、冻结 Input Snapshot，支持 `request_id` 幂等与在途串行，立即返回 Execution；请求线程不调用 Orchestrator。后者只读返回当前用户自己的执行及双 Snapshot。异步 Render Worker Claim 后经 Orchestrator 完成 Render + Email Delivery，两端均明确完成后才进入 `succeeded`；主链路无 `not_ready` placeholder（证据：`views/{subscription_view,execution_view}.py`、`services/{execution_service,execution_orchestrator,delivery_service}.py`）。

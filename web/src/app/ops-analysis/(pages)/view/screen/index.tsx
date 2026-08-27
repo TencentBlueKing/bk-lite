@@ -81,6 +81,7 @@ import {
   type CanvasDraftPayload,
 } from "@/app/ops-analysis/api/canvasDraft";
 import { bindCanvasDraftControls } from "@/app/ops-analysis/components/canvasDraftControls";
+import { isSceneWidgetType } from "@/app/ops-analysis/types/sceneWidgetCapability";
 
 export interface ScreenRef {
   hasUnsavedChanges: () => boolean;
@@ -620,10 +621,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const handleConfirmWidgetConfig = useCallback(
     (values: WidgetConfig) => {
       if (!currentConfigItem) return;
-      const nextChartType =
-        values.sceneWidgetType === "networkStatusTopology"
-          ? "networkStatusTopology"
-          : values.chartType || currentConfigItem.chartType;
+      const nextChartType = isSceneWidgetType(values.sceneWidgetType)
+        ? values.sceneWidgetType
+        : values.chartType || currentConfigItem.chartType;
 
       if (!isScreenWidgetChartType(nextChartType)) {
         message.error(t("opsAnalysis.screen.unsupportedWidgetType"));
