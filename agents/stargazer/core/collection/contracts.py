@@ -1,6 +1,6 @@
 """采集运行时共享契约：DTO 与 Protocol。
 
-枚举见 collection_enums；常量见 collection_constants。
+枚举见 ``core.collection.enums``；常量见 ``core.collection.constants``。
 """
 
 from __future__ import annotations
@@ -10,15 +10,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping, Protocol
 
-from core.collection.constants import (
-    DEFAULT_MAX_ACTIVE_TARGETS,
-    DEFAULT_TARGET_TASK_WINDOW,
-)
-from core.collection.enums import (
-    AccessProbeStatus,
-    CollectOutcomeStatus,
-    PreflightStatus,
-)
+from core.collection.constants import DEFAULT_MAX_ACTIVE_TARGETS, DEFAULT_TARGET_TASK_WINDOW
+from core.collection.enums import AccessProbeStatus, CollectOutcomeStatus, FailureStage, PreflightStatus
 from core.collection.runtime import CollectionRequest, RunLease
 
 # 兼容：历史调用方从 contracts 导入枚举
@@ -53,6 +46,7 @@ class PreflightResult:
     error_code: str = ""
     detail: str = ""
     connect_host: str = ""
+    failed_stage: FailureStage | None = None
 
 
 @dataclass(frozen=True)
@@ -106,6 +100,7 @@ class TargetCollectionResult:
     credential_failures: tuple[CredentialFailureResult, ...] = ()
     publish_timestamp_ms: int = 0
     detail: str = ""
+    failed_stage: FailureStage | None = None
 
 
 class PublishStatus(str, Enum):
@@ -173,7 +168,6 @@ class TargetExecutorSettings:
     publish_guard_seconds: float = 30.0
     publish_queue_timeout_seconds: float = 60.0
     publish_total_timeout_seconds: float = 120.0
-    access_probe_enabled: bool = True
     # 0 = 不限制；默认 3 = 连续 protocol_no_response 最多尝试次数
     max_no_response_attempts: int = 3
     publish_max_attempts: int = 2
@@ -284,7 +278,5 @@ def build_collection_result_id(
     attempt_id: str = "",
 ) -> str:
     """单次运行内稳定的目标结果幂等 ID。"""
-    identity = "\0".join(
-        (task_id, plugin_ref, target, str(fence), str(attempt_id or ""))
-    )
+    identity = "\0".join((task_id, plugin_ref, target, str(fence), str(attempt_id or "")))
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()

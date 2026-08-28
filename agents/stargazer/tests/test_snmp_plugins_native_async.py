@@ -8,6 +8,7 @@ import inspect
 
 import pytest
 from core.collection.contracts import AccessProbeStatus
+from core.collection.metrics import CollectionMetrics
 from plugins.inputs.network.snmp_facts import SnmpFacts
 from plugins.inputs.network_topo.snmp_topo import SnmpTopo
 
@@ -66,6 +67,9 @@ async def test_snmp_facts_probe_does_not_stall(monkeypatch):
 @pytest.mark.asyncio
 async def test_snmp_facts_collect_does_not_stall(monkeypatch):
     closed = []
+    engines = []
+    io_engines = []
+    metrics = CollectionMetrics()
 
     class FakeDispatcher:
         def closeDispatcher(self):
@@ -74,6 +78,7 @@ async def test_snmp_facts_collect_does_not_stall(monkeypatch):
     class FakeEngine:
         def __init__(self):
             self.transportDispatcher = FakeDispatcher()
+            engines.append(self)
 
     facts = SnmpFacts(
         {
@@ -81,6 +86,7 @@ async def test_snmp_facts_collect_does_not_stall(monkeypatch):
             "version": "v2",
             "community": "public",
             "snmp_port": 161,
+            "_runtime_metrics": metrics,
         }
     )
 
@@ -99,7 +105,8 @@ async def test_snmp_facts_collect_does_not_stall(monkeypatch):
         def prettyPrint(self):
             return self._text
 
-    async def fake_get(*_args, **_kwargs):
+    async def fake_get(engine, *_args, **_kwargs):
+        io_engines.append(engine)
         await asyncio.sleep(0.05)
         return (
             None,
@@ -114,33 +121,59 @@ async def test_snmp_facts_collect_does_not_stall(monkeypatch):
             ],
         )
 
-    async def fake_next(*_args, **_kwargs):
+    async def fake_next(engine, *_args, **_kwargs):
+        io_engines.append(engine)
         await asyncio.sleep(0.05)
-        return (
-            None,
-            0,
-            0,
-            [
-                [
-                    (FakeOid("1.3.6.1.2.1.2.2.1.1.1"), FakeVal("1")),
-                    (FakeOid("1.3.6.1.2.1.2.2.1.2.1"), FakeVal("eth0")),
-                    (FakeOid("1.3.6.1.2.1.2.2.1.4.1"), FakeVal("1500")),
-                    (FakeOid("1.3.6.1.2.1.2.2.1.5.1"), FakeVal("1000")),
-                    (FakeOid("1.3.6.1.2.1.2.2.1.6.1"), FakeVal("aa:bb")),
-                    (FakeOid("1.3.6.1.2.1.2.2.1.7.1"), FakeVal("1")),
-                    (FakeOid("1.3.6.1.2.1.2.2.1.8.1"), FakeVal("1")),
-                    (FakeOid("1.3.6.1.2.1.31.1.1.1.18.1"), FakeVal("uplink")),
-                ]
-            ],
-        )
+        return (None, 0, 0, [])
 
     monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.nextCmd", fake_next)
     monkeypatch.setattr("plugins.inputs.network.snmp_facts.SnmpEngine", FakeEngine)
-    monkeypatch.setattr(facts, "_next_walk", fake_next)
     result = await _heartbeat_during(facts.list_all_resources())
     assert result["success"] is True
     assert result["result"]["network_system"][0]["sysname"] == "sw"
-    assert result["result"]["network_interfaces"][0]["description"] == "eth0"
+    assert result["result"]["network_interfaces"] == []
+    assert len(engines) == 1
+    assert io_engines == [engines[0], engines[0]]
+    assert closed == [True]
+    assert metrics.snapshot()["snmp_collect_to_first_io_seconds_p99"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_snmp_facts_walk_failure_closes_shared_engine_once(monkeypatch):
+    engines = []
+    closed = []
+
+    class FakeDispatcher:
+        def closeDispatcher(self):
+            closed.append(True)
+
+    class FakeEngine:
+        def __init__(self):
+            engines.append(self)
+            self.transportDispatcher = FakeDispatcher()
+
+    async def fake_get(*_args, **_kwargs):
+        return (None, 0, 0, [])
+
+    async def broken_next(*_args, **_kwargs):
+        raise RuntimeError("walk failed")
+
+    facts = SnmpFacts(
+        {
+            "host": "127.0.0.1",
+            "version": "v2",
+            "community": "public",
+        }
+    )
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.SnmpEngine", FakeEngine)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.getCmd", fake_get)
+    monkeypatch.setattr("plugins.inputs.network.snmp_facts.nextCmd", broken_next)
+
+    with pytest.raises(RuntimeError, match="SNMP interface information collection"):
+        await facts.collect()
+
+    assert len(engines) == 1
     assert closed == [True]
 
 
@@ -197,3 +230,36 @@ def test_snmp_modules_have_no_to_thread():
 
     assert "asyncio.to_thread" not in inspect.getsource(facts_mod)
     assert "asyncio.to_thread" not in inspect.getsource(topo_mod)
+
+
+@pytest.mark.asyncio
+async def test_real_pysnmp_dispatchers_close_cleanly_after_concurrent_cancellation():
+    """不替换 getCmd，锁定真实 pysnmp Future 取消后的 callback 边界。"""
+
+    loop = asyncio.get_running_loop()
+    callback_errors = []
+    previous_handler = loop.get_exception_handler()
+    loop.set_exception_handler(lambda _loop, context: callback_errors.append(context))
+
+    async def cancel_one(index):
+        facts = SnmpFacts(
+            {
+                "host": "127.0.0.1",
+                "version": "v2c",
+                "community": "public",
+                "snmp_port": 65000 + index,
+            }
+        )
+        try:
+            async with asyncio.timeout(0.05):
+                await facts.collect()
+        except (TimeoutError, RuntimeError):
+            pass
+
+    try:
+        await asyncio.gather(*(cancel_one(index) for index in range(32)))
+        await asyncio.sleep(0.1)
+    finally:
+        loop.set_exception_handler(previous_handler)
+
+    assert callback_errors == []

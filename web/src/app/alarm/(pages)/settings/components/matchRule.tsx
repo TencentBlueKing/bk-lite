@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './match.module.scss';
-import { SourceItem } from '@/app/alarm/types/integration';
+import { AlertSourceOption } from '@/app/alarm/types/integration';
 import { useSourceApi } from '@/app/alarm/api/integration';
 import { useTranslation } from '@/utils/i18n';
 import { Select, Button, Input } from 'antd';
@@ -44,10 +44,10 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
   levelType = 'event',
   enableLevelMultiSelect = false,
 }) => {
-  const { getAlertSources } = useSourceApi();
+  const { getAlertSourceOptions } = useSourceApi();
   const { levelMeta } = useCommon();
   const { t } = useTranslation();
-  const [sourceList, setSourceList] = useState<SourceItem[]>([]);
+  const [sourceList, setSourceList] = useState<AlertSourceOption[]>([]);
   const [sourceLoading, setSourceLoading] = useState<boolean>(false);
   const [policyList, setPolicyList] = useState<PolicyItem[][]>(
     value || [
@@ -129,7 +129,7 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
   const fetchAlarmSource = async () => {
     setSourceLoading(true);
     try {
-      const data: any = await getAlertSources();
+      const data: AlertSourceOption[] = await getAlertSourceOptions();
       if (data) setSourceList(data);
       else console.error('获取告警源列表失败');
     } finally {

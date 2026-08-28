@@ -133,48 +133,73 @@ class CollectionScheduler:
 
     async def _dispatch_loop(self) -> None:
         while True:
+            tasks_created = 0
             async with self._condition:
                 await self._condition.wait_for(lambda: self._closing or self._has_dispatchable_run())
                 if self._closing:
                     return
-                while self._has_dispatchable_run():
-                    run_id = self._take_next_dispatchable_run()
-                    if run_id is None:
-                        break
-                    state = self._runs.get(run_id)
-                    if state is None or state.exhausted:
-                        continue
-                    try:
-                        item = next(state.items)
-                    except StopIteration:
-                        state.exhausted = True
-                        if state.completed == len(state.results) and not state.done.done():
-                            state.done.set_result(tuple(state.results))
-                            self._runs.pop(run_id, None)
-                        continue
-                    index = len(state.results)
-                    state.pending = max(0, state.pending - 1)
-                    state.results.append(None)
-                    if not state.first_dispatched:
-                        state.first_dispatched = True
-                        if self._metrics is not None:
-                            self._metrics.observe(
-                                "run_first_schedule_wait_seconds",
-                                time.monotonic() - state.enqueued_at,
-                            )
-                    self._order.append(run_id)
-                    self.active += 1
-                    if state.workload == "network_topology":
-                        self.topology_active += 1
-                    self.peak = max(self.peak, self.active)
-                    task = asyncio.create_task(
-                        self._run_item(run_id, state, index, item),
-                        name=f"collection-target:{run_id}:{index}",
+                run_id = self._take_next_dispatchable_run()
+                if run_id is None:
+                    continue
+                state = self._runs.get(run_id)
+                if state is None or state.exhausted:
+                    continue
+                try:
+                    item = next(state.items)
+                except StopIteration:
+                    state.exhausted = True
+                    if state.completed == len(state.results) and not state.done.done():
+                        state.done.set_result(tuple(state.results))
+                        self._runs.pop(run_id, None)
+                    continue
+                index = len(state.results)
+                state.pending = max(0, state.pending - 1)
+                state.results.append(None)
+                dispatched_at = time.monotonic()
+                if not state.first_dispatched:
+                    state.first_dispatched = True
+                    if self._metrics is not None:
+                        self._metrics.observe(
+                            "run_first_schedule_wait_seconds",
+                            dispatched_at - state.enqueued_at,
+                        )
+                if self._metrics is not None:
+                    self._metrics.increment("scheduler_dispatch_total")
+                    self._metrics.observe(
+                        "target_schedule_wait_seconds",
+                        dispatched_at - state.enqueued_at,
                     )
-                    state.tasks.add(task)
+                self._order.append(run_id)
+                self.active += 1
+                if state.workload == "network_topology":
+                    self.topology_active += 1
+                self.peak = max(self.peak, self.active)
+                task = asyncio.create_task(
+                    self._run_item(run_id, state, index, item, dispatched_at),
+                    name=f"collection-target:{run_id}:{index}",
+                )
+                state.tasks.add(task)
+                tasks_created = 1
+            if tasks_created:
+                # quantum 固定为 1：每创建一个目标 Task 都让定时器和 I/O 获得运行机会。
+                if self._metrics is not None:
+                    self._metrics.increment("scheduler_yield_total")
+                await asyncio.sleep(0)
 
-    async def _run_item(self, run_id: str, state: _RunState[T, R], index: int, item: T) -> None:
+    async def _run_item(
+        self,
+        run_id: str,
+        state: _RunState[T, R],
+        index: int,
+        item: T,
+        dispatched_at: float,
+    ) -> None:
         current = asyncio.current_task()
+        if self._metrics is not None:
+            self._metrics.observe(
+                "target_dispatch_to_started_seconds",
+                time.monotonic() - dispatched_at,
+            )
         try:
             result = await state.handler(item)
         except asyncio.CancelledError:

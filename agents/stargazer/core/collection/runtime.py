@@ -12,7 +12,7 @@ from typing import Any, Awaitable, Callable, Mapping, Protocol, Sequence
 
 from core.collection.constants import SECRET_KEYS
 from core.collection.enums import LeaseAcquireStatus, RunStatus, SubmissionStatus
-from core.logger import logger
+from core.logger import logger, safe_log_value
 
 # 兼容：历史调用方从 runtime 导入枚举
 __all__ = [
@@ -279,7 +279,7 @@ class CollectionRuntime:
             fence = lease.fence if lease else 0
             logger.warning(
                 "event=collection_run_duplicate_skipped task_id=%s status=duplicate_active fence=%s",
-                request.task_id,
+                safe_log_value(request.task_id),
                 fence,
             )
             return Submission(
@@ -302,7 +302,7 @@ class CollectionRuntime:
         try:
             task = self._schedule(
                 self._run(request, lease),
-                name=f"collection-run:{request.task_id}:{lease.fence}",
+                name=f"collection-run:{safe_log_value(request.task_id)}:{lease.fence}",
             )
         except Exception:
             await self._release_admission()
@@ -346,7 +346,7 @@ class CollectionRuntime:
         run_task = asyncio.current_task()
         heartbeat_task = asyncio.create_task(
             self._heartbeat_loop(lease, run_task),
-            name=f"collection-heartbeat:{request.task_id}:{lease.fence}",
+            name=f"collection-heartbeat:{safe_log_value(request.task_id)}:{lease.fence}",
         )
         try:
             if self._settings.run_deadline_seconds:

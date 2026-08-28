@@ -10,7 +10,7 @@ import types
 import pytest
 from django.utils import timezone
 
-from apps.alerts.common.source_adapter.base import AlertSourceAdapter, AlertSourceAdapterFactory
+from apps.alerts.common.source_adapter.base import INTEGRATION_SECRET_PLACEHOLDER, AlertSourceAdapter, AlertSourceAdapterFactory
 from apps.alerts.common.source_adapter.restful import RestFulAdapter
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Event, Level
@@ -158,8 +158,9 @@ def test_timestamp_to_datetime_always_utc():
     模拟 OS 时区非 UTC 的场景：即使进程时区被 activate 为 Asia/Shanghai，
     转换结果仍应与 UTC 时刻一致。
     """
-    from django.utils import timezone as dj_timezone
     import zoneinfo
+
+    from django.utils import timezone as dj_timezone
 
     ts = "1753321474"  # 2025-07-24 01:44:34 UTC
     expected = datetime.datetime(2025, 7, 24, 1, 44, 34, tzinfo=datetime.timezone.utc)
@@ -172,9 +173,7 @@ def test_timestamp_to_datetime_always_utc():
     finally:
         dj_timezone.deactivate()
 
-    assert result == expected, (
-        f"timestamp_to_datetime 应输出 UTC 时刻，实际: {result} (期望 {expected})"
-    )
+    assert result == expected, f"timestamp_to_datetime 应输出 UTC 时刻，实际: {result} (期望 {expected})"
 
 
 def test_add_start_time_defaults():
@@ -204,7 +203,6 @@ def test_trusted_lifecycle_generation_is_the_ingress_identity(event_levels, rest
 
 
 def test_normalize_payload_valid():
-    src = AlertSource(source_type="restful", config={})
     adapter = RestFulAdapter.__new__(RestFulAdapter)
     events = AlertSourceAdapter.normalize_payload(adapter, {"events": [{"a": 1}]})
     assert events == [{"a": 1}]
@@ -243,7 +241,8 @@ def test_get_integration_guide(event_levels, restful_source):
     adapter = RestFulAdapter(alert_source=restful_source)
     guide = adapter.get_integration_guide("http://host")
     assert guide["source_id"] == "restful"
-    assert guide["headers"]["SECRET"] == "src-secret"
+    assert guide["headers"]["SECRET"] == INTEGRATION_SECRET_PLACEHOLDER
+    assert restful_source.secret not in str(guide)
     assert guide["webhook_url"].startswith("http://host")
 
 
@@ -361,12 +360,8 @@ def test_trusted_lifecycle_action_separates_created_and_upgraded_identity(event_
         "start_time": "1700000000",
         "push_source_id": "lite-monitor",
     }
-    created = adapter.create_events(
-        [{**base, "lifecycle_action": "created", "lifecycle_generation": "created-1"}]
-    )
-    upgraded = adapter.create_events(
-        [{**base, "lifecycle_action": "upgraded", "lifecycle_generation": "upgraded-1"}]
-    )
+    created = adapter.create_events([{**base, "lifecycle_action": "created", "lifecycle_generation": "created-1"}])
+    upgraded = adapter.create_events([{**base, "lifecycle_action": "upgraded", "lifecycle_generation": "upgraded-1"}])
     assert sum(len(batch) for batch in created) == 1
     assert sum(len(batch) for batch in upgraded) == 1
 
@@ -388,10 +383,28 @@ def test_bulk_save_events_dedups_in_batch(event_levels, restful_source):
     adapter = RestFulAdapter(alert_source=restful_source)
     # 两个相同 ingest_key 的事件（同 external_id/action/start_time）→ 批内去重
     start = timezone.now()
-    e1 = Event(source=restful_source, raw_data={}, title="t", level="0", start_time=start,
-               event_id="E1", external_id="ext", action="created", push_source_id="default")
-    e2 = Event(source=restful_source, raw_data={}, title="t", level="0", start_time=start,
-               event_id="E2", external_id="ext", action="created", push_source_id="default")
+    e1 = Event(
+        source=restful_source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=start,
+        event_id="E1",
+        external_id="ext",
+        action="created",
+        push_source_id="default",
+    )
+    e2 = Event(
+        source=restful_source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=start,
+        event_id="E2",
+        external_id="ext",
+        action="created",
+        push_source_id="default",
+    )
     result = adapter.bulk_save_events([e1, e2])
     flat = [e for batch in result for e in batch]
     # 仅一条入库
@@ -408,8 +421,7 @@ def test_resolve_recovery_external_id_non_recovery_returns_none(event_levels, re
     from django.utils import timezone
 
     adapter = RestFulAdapter(alert_source=restful_source)
-    event = Event(source=restful_source, raw_data={}, title="t", level="0",
-                  start_time=timezone.now(), event_id="E1", action="created")
+    event = Event(source=restful_source, raw_data={}, title="t", level="0", start_time=timezone.now(), event_id="E1", action="created")
     assert adapter.resolve_recovery_external_id(event) is None
 
 
@@ -419,9 +431,18 @@ def test_resolve_recovery_external_id_with_resource_id_returns_none(event_levels
 
     adapter = RestFulAdapter(alert_source=restful_source)
     # resource_id 非空 → 该兜底路径返回 None
-    event = Event(source=restful_source, raw_data={}, title="t", level="0",
-                  start_time=timezone.now(), event_id="E1", action="recovery",
-                  item="cpu", resource_name="host1", resource_id="1")
+    event = Event(
+        source=restful_source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=timezone.now(),
+        event_id="E1",
+        action="recovery",
+        item="cpu",
+        resource_name="host1",
+        resource_id="1",
+    )
     assert adapter.resolve_recovery_external_id(event) is None
 
 
@@ -433,15 +454,31 @@ def test_resolve_recovery_external_id_matches_single_active_alert(event_levels, 
     adapter = RestFulAdapter(alert_source=restful_source)
     # 一个活跃告警，含一个 CREATED 事件（同 item/resource_name，无 resource_id/type）
     created = Event.objects.create(
-        source=restful_source, raw_data={}, title="t", level="0", start_time=timezone.now(),
-        event_id="E1", action=EventAction.CREATED, item="cpu", resource_name="host1", external_id="ext-created",
+        source=restful_source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=timezone.now(),
+        event_id="E1",
+        action=EventAction.CREATED,
+        item="cpu",
+        resource_name="host1",
+        external_id="ext-created",
     )
     alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", status=AlertStatus.PENDING)
     alert.events.add(created)
 
-    recovery = Event(source=restful_source, raw_data={}, title="t", level="0",
-                     start_time=timezone.now(), event_id="E2", action=EventAction.RECOVERY,
-                     item="cpu", resource_name="host1")
+    recovery = Event(
+        source=restful_source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=timezone.now(),
+        event_id="E2",
+        action=EventAction.RECOVERY,
+        item="cpu",
+        resource_name="host1",
+    )
     resolved = adapter.resolve_recovery_external_id(recovery)
     assert resolved == "ext-created"
 
@@ -456,8 +493,7 @@ def test_add_base_fields_generates_external_id(event_levels, restful_source):
     from django.utils import timezone as tz
 
     adapter = RestFulAdapter(alert_source=restful_source)
-    event = Event(level="0", title="t", start_time=tz.now(), item="cpu",
-                  resource_id="1", resource_name="host1", resource_type="host")
+    event = Event(level="0", title="t", start_time=tz.now(), item="cpu", resource_id="1", resource_name="host1", resource_type="host")
     adapter.add_base_fields(event, {"source_id": "restful"})
     assert event.source == restful_source
     assert event.event_id.startswith("EVENT-")
@@ -468,9 +504,17 @@ def test_add_base_fields_generates_external_id(event_levels, restful_source):
 def test_build_ingress_dedup_key(event_levels, restful_source):
     from django.utils import timezone as tz
 
-    event = Event(source=restful_source, raw_data={}, level="0", title="t",
-                  start_time=tz.now(), event_id="E1", external_id="ext", action="created",
-                  push_source_id="default")
+    event = Event(
+        source=restful_source,
+        raw_data={},
+        level="0",
+        title="t",
+        start_time=tz.now(),
+        event_id="E1",
+        external_id="ext",
+        action="created",
+        push_source_id="default",
+    )
     key1 = AlertSourceAdapter.build_ingress_dedup_key(event)
     # 已设置后再次取应一致
     key2 = AlertSourceAdapter.build_ingress_dedup_key(event)
@@ -494,8 +538,7 @@ def test_event_team_uses_organizations_when_trusted_internal(event_levels, db):
         config={},
     )
     adapter = RestFulAdapter(alert_source=source, trusted_internal=True)
-    event = Event(level="0", title="t", item="cpu", resource_id="1",
-                  resource_name="host1", resource_type="host")
+    event = Event(level="0", title="t", item="cpu", resource_id="1", resource_name="host1", resource_type="host")
     adapter.add_base_fields(event, {"source_id": "restful-with-secrets", "organizations": [3, 5]})
     assert sorted(event.team) == [3, 5]
 
@@ -505,8 +548,7 @@ def test_event_team_trusted_internal_empty_orgs_stays_empty(event_levels, restfu
     """可信内部推送但 organizations 为空 → 忠实落空，不回落 secret 解析。"""
     adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=True)
     adapter.resolved_team = [99]  # 即使 secret 解析有值也不应被采用
-    event = Event(level="0", title="t", item="cpu", resource_id="1",
-                  resource_name="host1", resource_type="host")
+    event = Event(level="0", title="t", item="cpu", resource_id="1", resource_name="host1", resource_type="host")
     adapter.add_base_fields(event, {"source_id": "restful", "organizations": []})
     assert event.team == []
 
@@ -515,8 +557,7 @@ def test_event_team_trusted_internal_empty_orgs_stays_empty(event_levels, restfu
 def test_event_team_trusted_internal_invalid_orgs_sanitized(event_levels, restful_source):
     """非法 organizations（非整数）→ 归一化为空，不让脏数据入库。"""
     adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=True)
-    event = Event(level="0", title="t", item="cpu", resource_id="1",
-                  resource_name="host1", resource_type="host")
+    event = Event(level="0", title="t", item="cpu", resource_id="1", resource_name="host1", resource_type="host")
     adapter.add_base_fields(event, {"source_id": "restful", "organizations": ["x"]})
     assert event.team == []
 
@@ -526,8 +567,7 @@ def test_event_team_external_source_ignores_organizations(event_levels, restful_
     """非可信内部推送 → 即使 event 带 organizations 也不采信，沿用 secret 解析结果。"""
     adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=False)
     adapter.resolved_team = [7]
-    event = Event(level="0", title="t", item="cpu", resource_id="1",
-                  resource_name="host1", resource_type="host")
+    event = Event(level="0", title="t", item="cpu", resource_id="1", resource_name="host1", resource_type="host")
     adapter.add_base_fields(event, {"source_id": "restful", "organizations": [3, 5]})
     assert event.team == [7]
 
@@ -550,8 +590,12 @@ def test_trusted_internal_accepts_event_organizations_without_source_registratio
     )
     adapter = RestFulAdapter(alert_source=source, trusted_internal=True)
     event = Event(
-        level="0", title="t", item="cpu",
-        resource_id="1", resource_name="host1", resource_type="host",
+        level="0",
+        title="t",
+        item="cpu",
+        resource_id="1",
+        resource_name="host1",
+        resource_type="host",
     )
     adapter.add_base_fields(event, {"source_id": "nats-monitor", "organizations": [3, 99]})
     assert event.team == [3, 99]
@@ -570,8 +614,12 @@ def test_trusted_internal_accepts_all_event_organizations(event_levels, db):
     )
     adapter = RestFulAdapter(alert_source=source, trusted_internal=True)
     event = Event(
-        level="0", title="t", item="cpu",
-        resource_id="1", resource_name="host1", resource_type="host",
+        level="0",
+        title="t",
+        item="cpu",
+        resource_id="1",
+        resource_name="host1",
+        resource_type="host",
     )
     adapter.add_base_fields(event, {"source_id": "nats-monitor-2", "organizations": [99, 100]})
     assert event.team == [99, 100]
@@ -590,8 +638,12 @@ def test_trusted_internal_authorized_orgs_pass_through(event_levels, db):
     )
     adapter = RestFulAdapter(alert_source=source, trusted_internal=True)
     event = Event(
-        level="0", title="t", item="cpu",
-        resource_id="1", resource_name="host1", resource_type="host",
+        level="0",
+        title="t",
+        item="cpu",
+        resource_id="1",
+        resource_name="host1",
+        resource_type="host",
     )
     adapter.add_base_fields(event, {"source_id": "nats-monitor-3", "organizations": [3, 5]})
     assert sorted(event.team) == [3, 5], "已注册组织应全部保留"
@@ -610,8 +662,12 @@ def test_trusted_internal_empty_team_secrets_accepts_event_organizations(event_l
     )
     adapter = RestFulAdapter(alert_source=source, trusted_internal=True)
     event = Event(
-        level="0", title="t", item="cpu",
-        resource_id="1", resource_name="host1", resource_type="host",
+        level="0",
+        title="t",
+        item="cpu",
+        resource_id="1",
+        resource_name="host1",
+        resource_type="host",
     )
     adapter.add_base_fields(event, {"source_id": "nats-no-secrets", "organizations": [3, 5]})
     assert event.team == [3, 5]
@@ -684,28 +740,50 @@ def test_resolve_recovery_external_id_prefetch_filters_non_created_events(event_
 
     # 建两条事件：一条 CREATED（目标），一条 RECOVERY（噪声，旧逻辑会混入 events.all()）
     created_evt = Event.objects.create(
-        source=restful_source, raw_data={}, title="t", level="0",
-        start_time=timezone.now(), event_id="E-CREATED",
-        action=EventAction.CREATED, item="mem", resource_name="host2",
+        source=restful_source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=timezone.now(),
+        event_id="E-CREATED",
+        action=EventAction.CREATED,
+        item="mem",
+        resource_name="host2",
         external_id="ext-3701",
     )
     noise_evt = Event.objects.create(
-        source=restful_source, raw_data={}, title="t", level="0",
-        start_time=timezone.now(), event_id="E-RECOVERY-NOISE",
-        action=EventAction.RECOVERY, item="mem", resource_name="host2",
+        source=restful_source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=timezone.now(),
+        event_id="E-RECOVERY-NOISE",
+        action=EventAction.RECOVERY,
+        item="mem",
+        resource_name="host2",
         external_id="",
     )
 
     alert = Alert.objects.create(
-        alert_id="A-3701", level="0", title="t", content="c",
-        fingerprint="fp-3701", status=AlertStatus.PENDING,
+        alert_id="A-3701",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-3701",
+        status=AlertStatus.PENDING,
     )
     alert.events.add(created_evt, noise_evt)
 
     recovery = Event(
-        source=restful_source, raw_data={}, title="t", level="0",
-        start_time=timezone.now(), event_id="E-REC", action=EventAction.RECOVERY,
-        item="mem", resource_name="host2",
+        source=restful_source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=timezone.now(),
+        event_id="E-REC",
+        action=EventAction.RECOVERY,
+        item="mem",
+        resource_name="host2",
     )
 
     result = adapter.resolve_recovery_external_id(recovery)
@@ -715,9 +793,10 @@ def test_resolve_recovery_external_id_prefetch_filters_non_created_events(event_
 
     # 核心断言：candidate_alerts 必须带 _created_events 属性（Prefetch to_attr），
     # 且只含 CREATED 事件（不含噪声的 RECOVERY 事件）
+    from django.db.models import Prefetch
+
     from apps.alerts.constants.constants import EventAction as EA
     from apps.alerts.models.models import Alert as AlertModel
-    from django.db.models import Prefetch
 
     prefetch_qs = Event.objects.filter(
         action=EA.CREATED,
@@ -726,9 +805,7 @@ def test_resolve_recovery_external_id_prefetch_filters_non_created_events(event_
         resource_name="host2",
     ).only("external_id", "item", "resource_name", "source_id", "action")
 
-    qs = AlertModel.objects.filter(pk=alert.pk).prefetch_related(
-        Prefetch("events", queryset=prefetch_qs, to_attr="_created_events")
-    )
+    qs = AlertModel.objects.filter(pk=alert.pk).prefetch_related(Prefetch("events", queryset=prefetch_qs, to_attr="_created_events"))
     fetched = qs.first()
     assert hasattr(fetched, "_created_events"), "_created_events 属性不存在，Prefetch(to_attr=) 未生效"
     assert len(fetched._created_events) == 1, "DB 侧过滤应只保留 1 条 CREATED 事件"
@@ -747,8 +824,12 @@ def test_authenticate_with_valid_team_secret(event_levels):
 
     secret = encode_team_secret("src-secret", "5")
     source = AlertSource.objects.create(
-        name="s", source_id="s-auth", source_type="restful", secret="src-secret",
-        team_secrets={"5": secret}, config={"event_fields_mapping": {}},
+        name="s",
+        source_id="s-auth",
+        source_type="restful",
+        secret="src-secret",
+        team_secrets={"5": secret},
+        config={"event_fields_mapping": {}},
     )
     adapter = RestFulAdapter(alert_source=source, secret=secret)
     assert adapter.authenticate() is True
@@ -769,8 +850,8 @@ def test_resolve_team_from_secret_no_secret(event_levels, restful_source):
 @pytest.mark.django_db
 def test_snmp_trap_authenticates_with_source_secret_and_routes_to_default_team(event_levels):
     """SNMP Trap 源使用源级 secret 接入即可通过，事件统一归 Default 组（id=1）。"""
-    from apps.alerts.error import AuthenticationSourceError
     from apps.alerts.constants.constants import DEFAULT_GROUP_ID
+    from apps.alerts.error import AuthenticationSourceError
 
     source = AlertSource.objects.create(
         name="SNMP Trap",
@@ -818,8 +899,12 @@ def test_resolve_team_from_secret_mismatch(event_levels):
     # 用不同的 source_secret 编码
     foreign = encode_team_secret("other-source-secret", "5")
     source = AlertSource.objects.create(
-        name="s", source_id="s-mismatch", source_type="restful", secret="src-secret",
-        team_secrets={"5": foreign}, config={"event_fields_mapping": {}},
+        name="s",
+        source_id="s-mismatch",
+        source_type="restful",
+        secret="src-secret",
+        team_secrets={"5": foreign},
+        config={"event_fields_mapping": {}},
     )
     adapter = RestFulAdapter(alert_source=source, secret=foreign)
     # decode 成功但 source_secret 不等于 alert_source.secret → 跳过 → []
@@ -830,7 +915,6 @@ def test_resolve_team_from_secret_mismatch(event_levels):
 def test_get_event_level_no_levels():
     # 没有 event 级别配置时 get_event_level 会抛错（max of empty）；用 restful 源但无 level fixture
     from apps.alerts.common.source_adapter.base import AlertSourceAdapter
-
     from apps.alerts.models.models import Level
 
     Level.objects.filter(level_type="event").delete()
@@ -886,15 +970,31 @@ def test_resolve_recovery_external_id_ambiguous_returns_none(event_levels, restf
     # 两个活跃告警都含相同 item/resource_name 的 CREATED 事件，但不同 external_id → 歧义 → None
     for i in (1, 2):
         created = Event.objects.create(
-            source=restful_source, raw_data={}, title="t", level="0", start_time=timezone.now(),
-            event_id=f"E{i}", action=EventAction.CREATED, item="cpu", resource_name="host1", external_id=f"ext{i}",
+            source=restful_source,
+            raw_data={},
+            title="t",
+            level="0",
+            start_time=timezone.now(),
+            event_id=f"E{i}",
+            action=EventAction.CREATED,
+            item="cpu",
+            resource_name="host1",
+            external_id=f"ext{i}",
         )
         alert = Alert.objects.create(alert_id=f"A{i}", level="0", title="t", content="c", fingerprint=f"fp{i}", status=AlertStatus.PENDING)
         alert.events.add(created)
 
-    recovery = Event(source=restful_source, raw_data={}, title="t", level="0",
-                     start_time=timezone.now(), event_id="REC", action=EventAction.RECOVERY,
-                     item="cpu", resource_name="host1")
+    recovery = Event(
+        source=restful_source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=timezone.now(),
+        event_id="REC",
+        action=EventAction.RECOVERY,
+        item="cpu",
+        resource_name="host1",
+    )
     assert adapter.resolve_recovery_external_id(recovery) is None
 
 
@@ -903,8 +1003,9 @@ def test_add_base_fields_keeps_explicit_push_source_id(event_levels, restful_sou
     from django.utils import timezone as tz
 
     adapter = RestFulAdapter(alert_source=restful_source)
-    event = Event(level="0", title="t", start_time=tz.now(), item="cpu",
-                  resource_id="1", resource_name="host1", resource_type="host", external_id="myext")
+    event = Event(
+        level="0", title="t", start_time=tz.now(), item="cpu", resource_id="1", resource_name="host1", resource_type="host", external_id="myext"
+    )
     adapter.add_base_fields(event, {"push_source_id": "custom-pusher"})
     assert event.push_source_id == "custom-pusher"
     # 已有 external_id 时保留

@@ -32,6 +32,10 @@ class CollectionMetrics:
             "publish_timeout_total": 0,
             "publish_lines_total": 0,
             "publish_bytes_total": 0,
+            "snmp_timeout_clamped_total": 0,
+            "scheduler_dispatch_total": 0,
+            "scheduler_yield_total": 0,
+            "run_preparation_fallback_total": 0,
         }
         self._sample_capacity = int(sample_capacity)
         self._samples: dict[str, deque[float]] = {}

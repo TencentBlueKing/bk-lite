@@ -2,6 +2,16 @@
 
 Status: approved for implementation (COMPLETE-PLAN-2026-08-06.md); code converging from superseding digest/fencing/AccessProbe workspace
 
+2026-08-28 结果发布方案 B 补充锁定：结果消息使用 JetStream 异步 `PubAck`、稳定
+`Nats-Msg-Id`、消息数/字节数双窗口和结果间公平轮转，实施、灰度、回滚与 5000 设备/深信服
+压测口径以同目录 `jetstream-async-publish-window-plan-2026-08-28.md` 为准。该文档在
+`NATS_METRICS_JETSTREAM_ENABLED=true` 时替代 2026-08-17 文档中的 Core NATS 单 writer 发布路径；
+关闭开关时旧路径只作为灰度回退保留。
+生产部署和回滚操作以同目录
+`jetstream-production-deployment-guide-2026-08-28.md` 为准。
+2026-08-28 实施范围进一步锁定：本阶段只保证 Stargazer 到 JetStream 的生产端 PubAck，不修改
+Telegraf ACK 语义、不新增 Metric Ingester，也不得把 PubAck 表述为 VictoriaMetrics 同步完成。
+
 2026-08-14 补充锁定：以同目录
 `collection-failure-remediation-plan-2026-08-14.md` 为准。请求未开启 `params.ip_precheck` 时跳过
 全部采集前探测但保留出站安全检查；全局容量默认
@@ -457,7 +467,7 @@ Stargazer 与 CMDB 凭据命中事件字段对齐，以及 CMDB「查询 VM → 
 | `MAX_CREDENTIALS_PER_RUN` | 单个请求允许的候选凭据数量上限 |
 | `PREFLIGHT_TIMEOUT` | 协议预检超时，默认 15 秒；兼容期回退 `CONNECT_TIMEOUT` |
 | `PROBE_TIMEOUT` | 插件 AccessProbe 超时，默认 15 秒；兼容期回退 `CONNECT_TIMEOUT` |
-| `COLLECTION_TIMEOUT` | 正式采集缺省 60 秒；插件 YAML executor `timeout` 优先，兼容期回退 `PLUGIN_TIMEOUT` |
+| `COLLECTION_TIMEOUT` | 任务表单未提供有效 `timeout` 时的正式采集缺省值，默认 60 秒；兼容期回退 `PLUGIN_TIMEOUT`，SNMP 最小有效预算 30 秒 |
 | `PUBLISH_TIMEOUT` | 单目标发布阶段端到端超时，默认 30 秒 |
 | `RUN_DEADLINE` | 整个采集运行的可选截止时间 |
 

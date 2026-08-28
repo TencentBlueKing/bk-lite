@@ -12,14 +12,20 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
-from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
-from apps.alerts.constants.constants import SNMP_TRAP_SOURCE_ID
+from apps.alerts.common.source_adapter.base import INTEGRATION_SECRET_PLACEHOLDER, AlertSourceAdapterFactory
 from apps.alerts.filters import AlertSourceModelFilter
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Event
-from apps.alerts.serializers import AlertSourceModelSerializer
+from apps.alerts.serializers import (
+    AlertSourceDetailSerializer,
+    AlertSourceOptionSerializer,
+    AlertSourceOverviewSerializer,
+    K8sRenderRequestSerializer,
+    TeamSecretRequestSerializer,
+)
+from apps.alerts.serializers.alert_source import build_public_alert_source_config
+from apps.alerts.service.alert_source_credential import AlertSourceCredentialService
 from apps.alerts.service.k8s_install import K8sInstallService
-from apps.alerts.utils.util import encode_team_secret
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.team_utils import get_current_team
@@ -28,6 +34,9 @@ from apps.rpc.node_mgmt import NodeMgmt
 from config.drf.pagination import CustomPageNumberPagination
 
 K8S_SOURCE_ID = "k8s"
+ALERT_SOURCE_OPTION_PERMISSIONS = (
+    "Integration-View,Alarms-View,alert_assign-View,shield_strategy-View," "alert_enrichment-View,correlation_rules-View,action_rules-View"
+)
 K8S_IMAGE_REFERENCE = "ghcr.io/resmoio/kubernetes-event-exporter:latest"
 K8S_SUPPORT_DIR = Path(__file__).resolve().parents[1] / "support-files" / "kubernetes-event-exporter"
 K8S_DOWNLOAD_FILES = {
@@ -61,11 +70,18 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
     """
 
     queryset = AlertSource.objects.all()
-    serializer_class = AlertSourceModelSerializer
+    serializer_class = AlertSourceOverviewSerializer
     ordering_fields = ["id"]
     ordering = ["id"]
     filterset_class = AlertSourceModelFilter
     pagination_class = CustomPageNumberPagination
+
+    def get_serializer_class(self):
+        if self.action == "options":
+            return AlertSourceOptionSerializer
+        if self.action == "retrieve":
+            return AlertSourceDetailSerializer
+        return AlertSourceOverviewSerializer
 
     @HasPermission("Integration-View")
     def list(self, request, *args, **kwargs):
@@ -75,6 +91,11 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
+    @HasPermission(ALERT_SOURCE_OPTION_PERMISSIONS)
+    @action(detail=False, methods=["get"], url_path="options")
+    def options(self, request):
+        return super().list(request)
+
     @HasPermission("Integration-Detail")
     @action(detail=True, methods=["get"], url_path="integration-guide")
     def integration_guide(self, request, pk=None):
@@ -83,7 +104,30 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
         adapter = adapter_class(alert_source=alert_source)
         base_url = request.build_absolute_uri("/").rstrip("/")
         language = getattr(request, "LANGUAGE_CODE", None) or get_language() or "zh-hans"
-        return Response(adapter.get_integration_guide(base_url, language=language))
+        return Response(
+            adapter.get_integration_guide(
+                base_url,
+                language=language,
+                credential=INTEGRATION_SECRET_PLACEHOLDER,
+            )
+        )
+
+    @HasPermission("Integration-Detail")
+    @action(detail=True, methods=["post"], url_path="integration-material")
+    def integration_material(self, request, pk=None):
+        request_serializer = TeamSecretRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        source = self.get_object()
+        credential = AlertSourceCredentialService.deployment_credential(
+            request.user,
+            source,
+            request_serializer.validated_data["team_id"],
+        )
+        adapter_class = AlertSourceAdapterFactory.get_adapter(source)
+        adapter = adapter_class(alert_source=source)
+        base_url = request.build_absolute_uri("/").rstrip("/")
+        language = getattr(request, "LANGUAGE_CODE", None) or get_language() or "zh-hans"
+        return Response(adapter.get_integration_guide(base_url, language=language, credential=credential))
 
     @staticmethod
     def _get_k8s_source():
@@ -147,33 +191,24 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
         return temp_file
 
     @classmethod
-    def _resolve_k8s_team_secret(cls, request, source: AlertSource) -> str:
-        """K8s 接入强制走"组织密钥"路径：必须传 team_secret 且确实在 source.team_secrets 中。
-
-        bridge / exporter 一旦部署就长期运行，不能让任意字符串混入 deploy.yaml，
-        否则 exporter 拿着无效 secret 上报会一直 403，且排查成本高。
-        """
-        team_secret = (request.data.get("team_secret") or "").strip()
-        if not team_secret:
-            raise BaseAppException("team_secret is required for K8s integration; please select an organization first.")
-        configured = set((source.team_secrets or {}).values())
-        if team_secret not in configured:
-            raise BaseAppException("Invalid team_secret: must belong to the current K8s alert source.")
-        return team_secret
-
-    @classmethod
     def _build_k8s_render_payload(cls, request, source: AlertSource):
-        team_secret = cls._resolve_k8s_team_secret(request, source)
+        request_serializer = K8sRenderRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        data = request_serializer.validated_data
+        team_secret = AlertSourceCredentialService.deployment_credential(
+            request.user,
+            source,
+            data["team_id"],
+        )
         payload = K8sInstallService.build_render_payload(
             source_id=source.source_id,
             source_secret=team_secret,
             receiver_path=source.config.get("url", ""),
-            server_url=request.data.get("server_url", ""),
-            cluster_name=request.data.get("cluster_name", ""),
-            push_source_id=request.data.get("push_source_id"),
+            server_url=data["server_url"],
+            cluster_name=data["cluster_name"],
+            push_source_id=data.get("push_source_id"),
         )
-        # 视图层补一个开关字段，避免改动 K8sInstallService 通用签名。
-        payload["insecure_skip_verify"] = bool(request.data.get("insecure_skip_verify"))
+        payload["insecure_skip_verify"] = data["insecure_skip_verify"]
         return payload
 
     @HasPermission("Integration-Detail")
@@ -186,13 +221,14 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
                 status_code=status.HTTP_404_NOT_FOUND,
             )
 
+        public_config = build_public_alert_source_config(source)
         data = {
             "source_id": source.source_id,
             "name": source.name,
             "description": source.description,
-            "receiver_url": source.config.get("url", ""),
-            "method": source.config.get("method", "POST"),
-            "headers": source.config.get("headers", {}),
+            "receiver_url": public_config.get("url", ""),
+            "method": public_config.get("method", "POST"),
+            "headers": public_config.get("headers", {}),
             "push_source_id_default": "k8s",
             "push_source_id_configurable": True,
             "image_reference": K8S_IMAGE_REFERENCE,
@@ -306,69 +342,59 @@ class AlertSourceModelViewSet(ReadOnlyModelViewSet):
     @action(methods=["get"], detail=True, url_path="team_secrets")
     def list_team_secrets(self, request, pk=None):
         source = self.get_object()
-        team_secrets = source.team_secrets or {}
-        result = [{"team_id": tid, "secret": sec} for tid, sec in team_secrets.items()]
+        return WebUtils.response_success(AlertSourceCredentialService.list_metadata(request.user, source))
+
+    @HasPermission("Integration-Detail")
+    @action(methods=["post"], detail=True, url_path="team_secrets/reveal")
+    def reveal_team_secret(self, request, pk=None):
+        request_serializer = TeamSecretRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        source = self.get_object()
+        result = AlertSourceCredentialService.reveal(
+            request.user,
+            source,
+            request_serializer.validated_data["team_id"],
+        )
         return WebUtils.response_success(result)
 
     @HasPermission("Integration-Detail")
     @action(methods=["post"], detail=True, url_path="team_secrets/add")
     def add_team_secret(self, request, pk=None):
         source = self.get_object()
-        if source.source_id == SNMP_TRAP_SOURCE_ID:
-            return Response(
-                {"detail": "SNMP Trap source does not support team secrets; events are always attributed to the default organization."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        team_id = request.data.get("team_id")
-        if team_id is None:
-            return Response({"detail": "team_id is required."}, status=status.HTTP_400_BAD_REQUEST)
-        team_id_str = str(team_id)
-        team_secrets = source.team_secrets or {}
-        if team_id_str in team_secrets:
-            return Response({"detail": f"Team {team_id} already has a secret."}, status=status.HTTP_400_BAD_REQUEST)
-        source_secret = encode_team_secret(source.secret, team_id_str)
-        team_secrets[team_id_str] = source_secret
-        source.team_secrets = team_secrets
-        source.save(update_fields=["team_secrets"])
-        return WebUtils.response_success({"team_id": team_id_str, "secret": source_secret})
+        request_serializer = TeamSecretRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        result = AlertSourceCredentialService.add(
+            request.user,
+            source.pk,
+            request_serializer.validated_data["team_id"],
+        )
+        return WebUtils.response_success(result)
 
     @HasPermission("Integration-Detail")
     @action(methods=["post"], detail=True, url_path="team_secrets/regenerate")
     def regenerate_team_secret(self, request, pk=None):
         source = self.get_object()
-        if source.source_id == SNMP_TRAP_SOURCE_ID:
-            return Response(
-                {"detail": "SNMP Trap source does not support team secrets."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        team_id = request.data.get("team_id")
-        if team_id is None:
-            return Response({"detail": "team_id is required."}, status=status.HTTP_400_BAD_REQUEST)
-        team_id_str = str(team_id)
-        team_secrets = source.team_secrets or {}
-        if team_id_str not in team_secrets:
-            return Response({"detail": f"Team {team_id} does not have a secret."}, status=status.HTTP_404_NOT_FOUND)
-        source_secret = encode_team_secret(source.secret, team_id_str)
-        team_secrets[team_id_str] = source_secret
-        source.team_secrets = team_secrets
-        source.save(update_fields=["team_secrets"])
-        return WebUtils.response_success({"team_id": team_id_str, "secret": source_secret})
+        request_serializer = TeamSecretRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        result = AlertSourceCredentialService.regenerate(
+            request.user,
+            source.pk,
+            request_serializer.validated_data["team_id"],
+        )
+        return WebUtils.response_success(result)
 
     @HasPermission("Integration-Detail")
     @action(methods=["post"], detail=True, url_path="team_secrets/remove")
     def remove_team_secret(self, request, pk=None):
         source = self.get_object()
-        team_id = request.data.get("team_id")
-        if team_id is None:
-            return Response({"detail": "team_id is required."}, status=status.HTTP_400_BAD_REQUEST)
-        team_id_str = str(team_id)
-        team_secrets = source.team_secrets or {}
-        if team_id_str not in team_secrets:
-            return Response({"detail": f"Team {team_id} does not have a secret."}, status=status.HTTP_404_NOT_FOUND)
-        del team_secrets[team_id_str]
-        source.team_secrets = team_secrets
-        source.save(update_fields=["team_secrets"])
-        return WebUtils.response_success({"removed_team_id": team_id_str})
+        request_serializer = TeamSecretRequestSerializer(data=request.data)
+        request_serializer.is_valid(raise_exception=True)
+        result = AlertSourceCredentialService.remove(
+            request.user,
+            source.pk,
+            request_serializer.validated_data["team_id"],
+        )
+        return WebUtils.response_success(result)
 
     @HasPermission("Integration-View")
     @action(methods=["get"], detail=False, url_path="daily_event_stats")

@@ -4,10 +4,198 @@ from pathlib import Path
 
 import pytest
 import service.collection_service as collection_service_module
+from core.collection.application import CollectionApplication, CollectionApplicationSettings
 from core.collection.contracts import AccessProbeStatus, StructuredMetricsPayload
+from core.collection.plugins import ConfigurationCollectionPlugin
+from core.collection.runtime import CollectionRequest, RunLease
 from core.plugin.source_resolver import PluginResolution
 from core.plugin.yaml_reader import ExecutorConfig, ResolvedExecutorConfig
 from service.collection_service import CollectionService
+
+
+@pytest.mark.asyncio
+async def test_enterprise_load_fallback_drives_final_application_policy_and_plan(monkeypatch):
+    enterprise_config = ExecutorConfig(
+        executor_type="protocol",
+        config={
+            "collector": {"module": "enterprise.missing", "class": "EnterpriseCollector"},
+            "execution_mode": "sync",
+            "capacity_group": "default",
+            "target_policy": {"mode": "tls", "port": 443},
+        },
+        plugin_config={"metadata": {}},
+    )
+    fallback_config = ExecutorConfig(
+        executor_type="protocol",
+        config={
+            "collector": {"module": "plugins.inputs.oss", "class": "OssCollector"},
+            "execution_mode": "async",
+            "capacity_group": "snmp",
+            "probe_timeout": 25,
+            "target_policy": {"mode": "snmp", "port": 161, "timeout": 15},
+        },
+        plugin_config={"metadata": {}},
+    )
+    resolution = PluginResolution(
+        model_id="network",
+        source="enterprise",
+        plugin_path=Path("enterprise/plugins/inputs/network/plugin.yml"),
+        plugin_root=Path("enterprise/plugins/inputs/network"),
+        has_oss_fallback=True,
+        fallback_plugin_path=Path("plugins/inputs/network/plugin.yml"),
+    )
+
+    class ConfigProvider:
+        @staticmethod
+        async def get_executor_config_with_resolution_async(*_args, **_kwargs):
+            return ResolvedExecutorConfig(
+                executor_config=enterprise_config,
+                plugin_resolution=resolution,
+                fallback_executor_config=fallback_config,
+            )
+
+    class Collector:
+        async def list_all_resources(self):
+            return {"success": True, "result": {}}
+
+    def load_collector(module_name, _class_name):
+        if module_name == "enterprise.missing":
+            raise ImportError("token=enterprise-loader-secret")
+        return Collector
+
+    class Service(CollectionService):
+        @classmethod
+        async def prepare(cls, params):
+            return await CollectionService.prepare(params, config_provider=ConfigProvider())
+
+    class PluginFactory:
+        def __init__(self, plugin):
+            self.plugin = plugin
+
+        def resolve(self, _request):
+            return self.plugin
+
+    captured = {}
+
+    class CapturingTargetExecutor:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        async def execute(self, request, lease):
+            captured["request"] = request
+            captured["lease"] = lease
+            return "completed"
+
+    monkeypatch.setattr("core.plugin.executor.PluginExecutor._load_collector", staticmethod(load_collector))
+    monkeypatch.setattr("core.collection.application.TargetCollectionExecutor", CapturingTargetExecutor)
+    plugin = ConfigurationCollectionPlugin(service_factory=Service)
+    application = CollectionApplication(
+        redis_client=object(),
+        schedule=lambda coroutine, **_kwargs: asyncio.create_task(coroutine),
+        owner_id="fallback-test",
+        settings=CollectionApplicationSettings(
+            max_active_targets=10,
+            network_topology_max_active_targets=1,
+            target_task_window=10,
+        ),
+        plugin_factory=PluginFactory(plugin),
+        publisher=object(),
+    )
+    request = CollectionRequest(
+        task_id="enterprise-fallback",
+        plugin_ref="network.config",
+        targets=("10.0.0.1",),
+        params={"model_id": "network", "executor_type": "protocol", "timeout": 45},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    result = await application._execute(request, lease)
+
+    assert result == "completed"
+    assert plugin.prepared_executor_config is fallback_config
+    assert captured["request"].params["preflight_kind"] == "snmp"
+    assert captured["request"].params["port"] == 161
+    assert captured["plan"].preflight_timeout_seconds == 15
+    assert captured["plan"].probe_timeout_seconds == 25
+    assert captured["plan"].collection_timeout_seconds == 45
+    assert captured["plan"].execution_mode == "async"
+    assert captured["plan"].capacity_group == "snmp"
+
+
+@pytest.mark.asyncio
+async def test_run_preparation_resolves_config_and_collector_class_once(monkeypatch):
+    resolution_calls = 0
+    collector_load_calls = 0
+    constructed_hosts = []
+    executor_config = ExecutorConfig(
+        executor_type="protocol",
+        config={
+            "collector": {
+                "module": "plugins.inputs.demo.demo_info",
+                "class": "DemoInfo",
+            }
+        },
+        plugin_config={"metadata": {}},
+    )
+    resolution = PluginResolution(
+        model_id="demo",
+        source="oss",
+        plugin_path=Path("plugins/inputs/demo/plugin.yml"),
+        plugin_root=Path("plugins/inputs/demo"),
+    )
+
+    class ConfigProvider:
+        @staticmethod
+        async def get_executor_config_with_resolution_async(*_args, **_kwargs):
+            nonlocal resolution_calls
+            resolution_calls += 1
+            return ResolvedExecutorConfig(
+                executor_config=executor_config,
+                plugin_resolution=resolution,
+                fallback_executor_config=None,
+            )
+
+    class Collector:
+        def __init__(self, params):
+            constructed_hosts.append(params["host"])
+
+        async def list_all_resources(self):
+            return {"success": True, "result": {"demo": [{"name": "ok"}]}}
+
+    def load_collector(_module_name, _class_name):
+        nonlocal collector_load_calls
+        collector_load_calls += 1
+        return Collector
+
+    monkeypatch.setattr("core.plugin.executor.PluginExecutor._load_collector", staticmethod(load_collector))
+
+    prepared_factory = await CollectionService.prepare(
+        {
+            "plugin_name": "demo_info",
+            "model_id": "demo",
+            "executor_type": "protocol",
+        },
+        config_provider=ConfigProvider(),
+    )
+    services = [
+        prepared_factory(
+            {
+                "plugin_name": "demo_info",
+                "model_id": "demo",
+                "executor_type": "protocol",
+                "host": host,
+                "_runtime_structured_metrics": True,
+            }
+        )
+        for host in ("10.0.0.1", "10.0.0.2")
+    ]
+
+    results = await asyncio.gather(*(service.collect() for service in services))
+
+    assert all(isinstance(result, StructuredMetricsPayload) for result in results)
+    assert resolution_calls == 1
+    assert collector_load_calls == 1
+    assert constructed_hosts == ["10.0.0.1", "10.0.0.2"]
 
 
 @pytest.mark.asyncio

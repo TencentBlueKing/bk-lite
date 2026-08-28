@@ -189,27 +189,22 @@ def test_alert_source_get_last_event_time_respects_activated_timezone():
         timezone.deactivate()
 
     # UTC 01:44:34 在 Asia/Shanghai 下应为 09:44:34
-    assert result == "2026-07-24 09:44:34", (
-        f"get_last_event_time 应输出用户时区钟面，实际: {result}"
-    )
+    assert result == "2026-07-24 09:44:34", f"get_last_event_time 应输出用户时区钟面，实际: {result}"
 
 
 @pytest.mark.django_db
-def test_alert_source_serializer_team_secrets_write_only():
-    """team_secrets 必须为 write_only，GET 响应不得返回组织密钥。
-
-    验证点：revert write_only 后此测试失败（字段出现在 data 中）。
-    """
+def test_alert_source_serializer_excludes_credentials():
+    """通用告警源序列化结果不得包含源密钥或组织密钥。"""
     source = AlertSource.objects.create(
         name="源3",
         source_id="s3",
         source_type="restful",
         secret="base-secret",
+        config={"auth": {"token": "config-secret-token"}},
         team_secrets={1: "team-secret-abc"},
     )
     ser = AlertSourceModelSerializer(source)
     data = ser.data
-    # team_secrets 不得出现在序列化输出中（write_only=True）
     assert "team_secrets" not in data, "team_secrets 以明文出现在 GET 响应中，存在组织密钥泄露风险"
-    # secret 同理
     assert "secret" not in data, "secret 以明文出现在 GET 响应中"
+    assert "config" not in data, "可能包含凭据的原始 config 出现在通用序列化结果中"

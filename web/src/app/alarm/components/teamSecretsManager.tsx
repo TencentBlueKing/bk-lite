@@ -18,13 +18,15 @@ interface TeamSecretsManagerProps {
 const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => {
   const { t } = useTranslation();
   const { flatGroups } = useUserInfoContext();
-  const { listTeamSecrets, addTeamSecret, regenerateTeamSecret, removeTeamSecret } = useSourceApi();
+  const { listTeamSecrets, addTeamSecret, revealTeamSecret, regenerateTeamSecret, removeTeamSecret } = useSourceApi();
 
   const [loading, setLoading] = useState(false);
   const [teamSecrets, setTeamSecrets] = useState<TeamSecretItem[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<number | undefined>();
   const [addingSecret, setAddingSecret] = useState(false);
   const [regeneratingTeamId, setRegeneratingTeamId] = useState<string | null>(null);
+  const [revealingTeamId, setRevealingTeamId] = useState<string | null>(null);
+  const [revealedSecrets, setRevealedSecrets] = useState<Record<string, string>>({});
 
   const fetchTeamSecrets = useCallback(async () => {
     setLoading(true);
@@ -39,6 +41,8 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
   }, [sourceId]);
 
   useEffect(() => {
+    setSelectedTeamId(undefined);
+    setRevealedSecrets({});
     fetchTeamSecrets();
   }, [fetchTeamSecrets]);
 
@@ -50,7 +54,8 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
 
     setAddingSecret(true);
     try {
-      await addTeamSecret(sourceId, String(selectedTeamId));
+      const result = await addTeamSecret(sourceId, String(selectedTeamId));
+      setRevealedSecrets((current) => ({ ...current, [result.team_id]: result.secret }));
       message.success(t('integration.teamSecretAdded'));
       setSelectedTeamId(undefined);
       fetchTeamSecrets();
@@ -64,7 +69,8 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
   const handleRegenerateSecret = async (teamId: string) => {
     setRegeneratingTeamId(teamId);
     try {
-      await regenerateTeamSecret(sourceId, teamId);
+      const result = await regenerateTeamSecret(sourceId, teamId);
+      setRevealedSecrets((current) => ({ ...current, [result.team_id]: result.secret }));
       message.success(t('integration.teamSecretRegenerated'));
       fetchTeamSecrets();
     } catch (error) {
@@ -74,9 +80,26 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
     }
   };
 
+  const handleRevealSecret = async (teamId: string) => {
+    setRevealingTeamId(teamId);
+    try {
+      const result = await revealTeamSecret(sourceId, teamId);
+      setRevealedSecrets((current) => ({ ...current, [result.team_id]: result.secret }));
+    } catch (error) {
+      console.error('Failed to reveal team secret:', error);
+    } finally {
+      setRevealingTeamId(null);
+    }
+  };
+
   const handleRemoveTeamSecret = async (teamId: string) => {
     try {
       await removeTeamSecret(sourceId, teamId);
+      setRevealedSecrets((current) => {
+        const next = { ...current };
+        delete next[teamId];
+        return next;
+      });
       message.success(t('integration.teamSecretRemoved'));
       fetchTeamSecrets();
     } catch (error) {
@@ -104,7 +127,20 @@ const TeamSecretsManager: React.FC<TeamSecretsManagerProps> = ({ sourceId }) => 
       title: t('integration.secret'),
       dataIndex: 'secret',
       key: 'secret',
-      render: (secret: string) => <SecretValueDisplay value={secret} />,
+      render: (_: unknown, record: TeamSecretItem) => {
+        const secret = revealedSecrets[record.team_id];
+        if (secret) return <SecretValueDisplay value={secret} />;
+        return (
+          <Button
+            type="link"
+            className="h-auto p-0"
+            loading={revealingTeamId === record.team_id}
+            onClick={() => handleRevealSecret(record.team_id)}
+          >
+            {t('common.view')}
+          </Button>
+        );
+      },
     },
     {
       title: t('common.actions'),
