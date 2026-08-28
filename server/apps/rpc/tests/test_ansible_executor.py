@@ -46,8 +46,12 @@ def test_rpc_client_subclass_namespace():
 
 
 def test_adhoc_缺少所有目标源抛错(ex):
-    with pytest.raises(ValueError, match="inventory or inventory_content or host_credentials is required"):
+    with pytest.raises(ValueError) as exc_info:
         ex.adhoc()
+
+    assert str(exc_info.value) == "rpc.invalid_target_source"
+    assert exc_info.value.code == "rpc.invalid_target_source"
+    assert exc_info.value.params == {}
 
 
 def test_adhoc_仅host_credentials也可执行(ex):
@@ -101,13 +105,20 @@ def test_adhoc_可选字段仅在传入时加入(ex):
 
 
 def test_playbook_缺少playbook源抛错(ex):
-    with pytest.raises(ValueError, match="playbook_path or playbook_content is required"):
+    with pytest.raises(ValueError) as exc_info:
         ex.playbook(inventory="localhost,")
+
+    assert str(exc_info.value) == "rpc.invalid_playbook_source"
+    assert exc_info.value.code == "rpc.invalid_playbook_source"
+    assert exc_info.value.params == {}
 
 
 def test_playbook_缺少目标源抛错(ex):
-    with pytest.raises(ValueError, match="inventory or inventory_content or host_credentials is required"):
+    with pytest.raises(ValueError) as exc_info:
         ex.playbook(playbook_content="- hosts: all")
+
+    assert str(exc_info.value) == "rpc.invalid_target_source"
+    assert exc_info.value.code == "rpc.invalid_target_source"
 
 
 def test_playbook_file_distribution满足playbook源校验(ex):

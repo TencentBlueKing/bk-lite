@@ -4,9 +4,9 @@ from collections.abc import Iterable
 
 from apps.apm.services.contracts import (
     DeploymentReleaseQuery,
+    InferredDeploymentRelease,
     InstanceActivity,
     InstanceActivityQuery,
-    InferredDeploymentRelease,
     NotificationDelivery,
     NotificationDeliveryResult,
     ServiceDependency,
@@ -18,6 +18,8 @@ from apps.apm.services.contracts import (
     SpanSearchQuery,
     SpanSummary,
     TopologyDependencyQuery,
+    TopologySampleQuery,
+    TopologyTraceSample,
     TraceDetail,
     TracePage,
     TraceSearchQuery,
@@ -99,6 +101,24 @@ class InMemoryTraceStore:
     def get_trace(self, trace_id: str) -> TraceDetail | None:
         return self._details.get(trace_id)
 
+    def sample_traces(self, query: TopologySampleQuery) -> TopologyTraceSample:
+        names = {normalize_identity(name) for name in query.service_names}
+        items: list[TraceDetail] = []
+        for detail in self._details.values():
+            if not detail.spans:
+                continue
+            started_at = min(span.started_at for span in detail.spans)
+            if not query.started_at <= started_at <= query.ended_at:
+                continue
+            if names and not any(normalize_identity(span.service_name) in names for span in detail.spans):
+                continue
+            if query.environment is not None and not any(span.environment == query.environment for span in detail.spans):
+                continue
+            items.append(detail)
+        items.sort(key=lambda item: (min(span.started_at for span in item.spans), item.trace_id), reverse=True)
+        truncated = len(items) > query.limit
+        return TopologyTraceSample(traces=tuple(items[: query.limit]), truncated=truncated)
+
     def service_dependencies(self, query: TopologyDependencyQuery) -> tuple[ServiceDependency, ...]:
         return self._dependencies
 
@@ -138,11 +158,7 @@ class InMemoryMetricStore:
         return [item for item in self._activities if query.started_at <= item.last_seen_at <= query.ended_at]
 
     def deployment_releases(self, query: DeploymentReleaseQuery) -> list[InferredDeploymentRelease]:
-        return [
-            item
-            for item in self._deployment_releases
-            if query.started_at <= item.first_seen_at <= query.ended_at
-        ]
+        return [item for item in self._deployment_releases if query.started_at <= item.first_seen_at <= query.ended_at]
 
 
 class InMemoryNotificationDispatcher:

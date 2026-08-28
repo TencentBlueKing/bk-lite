@@ -25,6 +25,7 @@ import { useSkillApi } from '@/app/opspilot/api/skill';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 import { useSkill } from '@/app/opspilot/context/skillContext';
+import { notifyWebchatAppsChanged } from '@/app/(core)/components/global-webchat/apps-changed';
 import { getModelOptionText, renderModelOptionLabel } from '@/app/opspilot/utils/modelOption';
 import {
   buildSkillSaveTools,
@@ -228,6 +229,7 @@ const SkillSettingsPage: React.FC = () => {
         message.success(t('common.saveSuccess'));
       }
       refreshSkillInfo();
+      notifyWebchatAppsChanged();
     } catch (error) {
       console.error(t('common.saveFailed'), error);
     } finally {

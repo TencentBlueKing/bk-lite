@@ -41,6 +41,7 @@ LEGACY_NODE_LIST_CALLSITES = frozenset(
         "stargazer.node_info",
     }
 )
+PUBLIC_CLOUD_REGION_CONFIG_KEYS = (NodeConstants.SERVER_URL_KEY,)
 _observed_legacy_node_list_callsites: set[str] = set()
 _legacy_node_list_observation_lock = threading.Lock()
 
@@ -765,6 +766,15 @@ def get_cloud_region_envconfig(cloud_region_id: str):
             variables[obj.key] = obj.value
 
     return variables
+
+
+@nats_client.register
+def get_cloud_region_public_config(cloud_region_id: str):
+    """只返回允许跨业务模块读取的非敏感云区域配置。"""
+    return RegionService.get_cloud_region_envconfig(
+        cloud_region_id,
+        keys=PUBLIC_CLOUD_REGION_CONFIG_KEYS,
+    )
 
 
 @nats_client.register

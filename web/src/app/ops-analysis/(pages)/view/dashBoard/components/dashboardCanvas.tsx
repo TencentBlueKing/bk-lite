@@ -63,6 +63,7 @@ const DASHBOARD_GRID_ROW_HEIGHT = 60;
 const DASHBOARD_GRID_MARGIN: [number, number] = [4, 4];
 const DASHBOARD_GRID_CONTAINER_PADDING: [number, number] = [6, 2];
 const DASHBOARD_WIDGET_RESIZE_HANDLES = 'se,sw,ne,nw';
+const DASHBOARD_WIDGET_RESIZE_HANDLE_SIZE = 14;
 
 const acceptOnlyWidgetNodes = (element: Element) =>
   element instanceof HTMLElement && element.dataset.nodeKind === 'widget';
@@ -632,6 +633,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
                 <WidgetWrapper
                   dashboardId={dashboardId}
                   widgetId={item.i}
+                  surface="dashboard"
                   key={`${dashboardId ?? 'dashboard'}:${item.i}`}
                   chartType={item.valueConfig?.chartType}
                   config={item.valueConfig}
@@ -1058,14 +1060,20 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
         }
 
         .grid-stack-item > .ui-resizable-handle {
-          width: 24px;
-          height: 24px;
+          width: ${DASHBOARD_WIDGET_RESIZE_HANDLE_SIZE}px;
+          height: ${DASHBOARD_WIDGET_RESIZE_HANDLE_SIZE}px;
+          z-index: 1;
           background-repeat: no-repeat;
           background-origin: content-box;
           box-sizing: border-box;
           background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiMwMDAwMDAiLz48L2c+PC9zdmc+');
           background-position: bottom right;
-          padding: 3px;
+          padding: 1px;
+        }
+
+        .grid-stack-item .widget-header .no-drag {
+          position: relative;
+          z-index: 2;
         }
 
         .grid-stack-item > .ui-resizable-se {

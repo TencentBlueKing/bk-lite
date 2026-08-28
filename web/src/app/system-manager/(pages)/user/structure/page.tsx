@@ -2,6 +2,7 @@
 
 import React, { useRef, useCallback, useMemo, useState } from 'react';
 import { Input, Button, Spin, Form, Dropdown, Menu } from 'antd';
+import { useSecurityApi } from '@/app/system-manager/api/security';
 import TopSection from '@/components/top-section';
 import UserModal, { ModalRef } from './userModal';
 import UserImportModal, { UserImportModalRef } from './userImportModal';
@@ -41,6 +42,9 @@ const User: React.FC = () => {
   const passwordModalRef = useRef<PasswordModalRef>(null);
   const groupEditModalRef = useRef<GroupModalRef>(null);
   const [archivedDrawerOpen, setArchivedDrawerOpen] = useState(false);
+  const [otpEnabled, setOtpEnabled] = useState(false);
+  const { getSystemSettings } = useSecurityApi();
+  React.useEffect(() => { getSystemSettings().then((settings) => setOtpEnabled(settings.enable_otp === '1')).catch(() => setOtpEnabled(false)); }, [getSystemSettings]);
 
   const {
     treeData,
@@ -113,7 +117,8 @@ const User: React.FC = () => {
     },
     onDeleteUser: handleDeleteUser,
     onChangeUserStatus: handleChangeUserStatus,
-  }), [t, appIconMap, convertToLocalizedTime, handleDeleteUser, handleChangeUserStatus]);
+    otpEnabled,
+  }), [t, appIconMap, convertToLocalizedTime, handleDeleteUser, handleChangeUserStatus, otpEnabled]);
 
   const rowSelection: TableRowSelection<any> = useMemo(() => ({
     selectedRowKeys,
@@ -173,6 +178,7 @@ const User: React.FC = () => {
   const canEditUser = hasPermission(['Edit User']);
   const canDeleteUser = hasPermission(['Delete User']);
   const hasBatchActions = canEditUser || canDeleteUser;
+  const canBatchUnbindOtp = otpEnabled && tableData.some((user) => selectedRowKeys.some((rowKey) => String(rowKey) === String(user.key)) && user.has_otp);
 
   return (
     <>
@@ -243,6 +249,15 @@ const User: React.FC = () => {
                           <PermissionWrapper requiredPermissions={['Edit User']}>
                             <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('unlock')}>
                               {t('system.user.status.unlock') || 'Unlock'}
+                            </Button>
+                          </PermissionWrapper>
+                        </Menu.Item>
+                      )}
+                      {canEditUser && canBatchUnbindOtp && (
+                        <Menu.Item key="unbind_otp">
+                          <PermissionWrapper requiredPermissions={['Edit User']}>
+                            <Button type="text" className="w-full" onClick={() => handleBatchUserStatus('unbind_otp')}>
+                              {t('system.user.status.unbindOtp')}
                             </Button>
                           </PermissionWrapper>
                         </Menu.Item>

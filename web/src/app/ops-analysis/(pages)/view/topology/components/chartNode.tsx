@@ -180,6 +180,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
             <ConfigProvider getPopupContainer={() => document.body}>
               <ScreenWidgetThemeProvider mode={valueConfig?.chartThemeMode}>
                 <WidgetRenderer
+                  surface="dashboard"
                   chartType={chartType}
                   {...widgetProps}
                   fallback={

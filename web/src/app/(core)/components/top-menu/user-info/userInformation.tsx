@@ -28,6 +28,7 @@ import useApiClient from '@/utils/request';
 import { useLocale } from '@/context/locale';
 import { useSession } from 'next-auth/react';
 import { normalizeLocale, normalizeTimezone, persistTimezone } from '@/utils/userPreferences';
+import { resolveAppDisplayName } from '@/utils/appDisplayName';
 import ContentFormDrawer from '@/components/content-form-drawer';
 import OperateFormModal from '@/components/operate-form-modal';
 import PasswordModal from './passwordModal';
@@ -88,7 +89,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
   const appIconMap = new Map(
     clientData
       .filter(item => item.icon)
-      .map((item) => [item.display_name, item.icon as string])
+      .map((item) => [item.name, item.icon as string])
   );
   const fetchUserInfo = async () => {
     try {
@@ -445,11 +446,11 @@ const UserInformation: React.FC<UserInformationProps> = ({
                       // 过滤掉超级管理员，其他角色按应用分组
                       const normalRoles = userInfo.role_list.filter((role: any) => !((!role.app) && role.name === 'admin'));
                       const groupedRoles = normalRoles.reduce((acc: any, role: any) => {
-                        const appName = role.app_display_name || 'other';
-                        if (!acc[appName]) {
-                          acc[appName] = [];
+                        const appKey = role.app || 'other';
+                        if (!acc[appKey]) {
+                          acc[appKey] = [];
                         }
-                        acc[appName].push(role);
+                        acc[appKey].push(role);
                         return acc;
                       }, {});
 
@@ -491,6 +492,10 @@ const UserInformation: React.FC<UserInformationProps> = ({
                               purple: 'bg-purple-50 text-purple-600',
                               cyan: 'bg-cyan-50 text-cyan-600'
                             }[color] || 'bg-gray-50 text-gray-600';
+                            const appLabel = resolveAppDisplayName(
+                              { name: app, display_name: roles[0]?.app_display_name || app },
+                              t
+                            );
 
                             return (
                               <div
@@ -504,7 +509,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
                                   {appIconMap.get(app) && (
                                     <Icon type={appIconMap.get(app) || app} className="text-base" />
                                   )}
-                                  <span className="font-medium text-sm">{app}</span>
+                                  <span className="font-medium text-sm">{appLabel}</span>
                                 </div>
                                 <hr className='mt-1 mb-2 border-t border-[var(--color-border)]' />
                                 <div className="flex flex-wrap gap-2">

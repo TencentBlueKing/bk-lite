@@ -2571,6 +2571,14 @@ class AlertPermissionScopeTestCase(TestCase):
         self.factory = APIRequestFactory()
         self._ensure_groups(1, 2)
 
+    def _grant_current_team_alert_rules(self, team_id=1):
+        patcher = patch(
+            "apps.core.utils.viewset_utils.get_permission_rules",
+            return_value={"instance": [], "team": [team_id]},
+        )
+        self.addCleanup(patcher.stop)
+        patcher.start()
+
     @staticmethod
     def _ensure_groups(*group_ids):
         for group_id in group_ids:
@@ -2650,7 +2658,8 @@ class AlertPermissionScopeTestCase(TestCase):
         return alert
 
     def test_alert_list_is_scoped_by_operator_and_authorized_team(self):
-        user = self._build_user("alert-owner", [1], ["Alarms-View"])
+        self._grant_current_team_alert_rules()
+        user = self._build_user("alert-owner", [{"id": 1}], ["Alarms-View"])
         team_alert = self._build_alert([1], [], "team")
         assigned_alert = self._build_alert([2], ["alert-owner"], "assigned")
         hidden_alert = self._build_alert([2], ["someone-else"], "hidden")
@@ -2666,6 +2675,15 @@ class AlertPermissionScopeTestCase(TestCase):
         self.assertIn(team_alert.alert_id, returned_alert_ids)
         self.assertIn(assigned_alert.alert_id, returned_alert_ids)
         self.assertNotIn(hidden_alert.alert_id, returned_alert_ids)
+
+        mine_request = self.factory.get("/api/alert?my_alert=1")
+        mine_request.COOKIES["current_team"] = "1"
+        force_authenticate(mine_request, user=user)
+        mine_response = AlertModelViewSet.as_view({"get": "list"})(mine_request)
+        mine_ids = {item["alert_id"] for item in json.loads(mine_response.content)["data"]}
+        self.assertNotIn(team_alert.alert_id, mine_ids)
+        self.assertIn(assigned_alert.alert_id, mine_ids)
+        self.assertNotIn(hidden_alert.alert_id, mine_ids)
 
     def test_incident_retrieve_rejects_cross_team_access(self):
         user = self._build_user("incident-reader", [1], ["Incidents-View"])
@@ -2782,7 +2800,8 @@ class AlertPermissionScopeTestCase(TestCase):
         self.assertEqual(response.data["detail"], "alert must be a list of ids.")
 
     def test_alert_operator_rejects_unscoped_alert_ids(self):
-        user = self._build_user("alert-editor", [1], ["Alarms-Edit"])
+        self._grant_current_team_alert_rules()
+        user = self._build_user("alert-editor", [{"id": 1}], ["Alarms-Edit"])
         hidden_alert = self._build_alert([2], ["someone-else"], "hidden-operator")
 
         request = self.factory.post(
@@ -2805,8 +2824,10 @@ class AlertPermissionScopeTestCase(TestCase):
         )
         self.assertEqual(hidden_alert.status, AlertStatus.UNASSIGNED)
 
-    def test_alert_operator_rejects_assignee_outside_alert_team_scope(self):
-        user = self._build_user("alert-editor-scope", [1], ["Alarms-Edit"])
+    @patch("apps.alerts.service.alter_operator.AlertOperator.format_notify_data", return_value={})
+    def test_alert_operator_accepts_assignee_outside_alert_team_scope(self, _format_notify_data):
+        self._grant_current_team_alert_rules()
+        user = self._build_user("alert-editor-scope", [{"id": 1}], ["Alarms-Edit"])
         self._build_user("foreign-alert-operator", [2], [])
         visible_alert = self._build_alert([1], [], "visible-operator-scope")
 
@@ -2822,21 +2843,15 @@ class AlertPermissionScopeTestCase(TestCase):
         force_authenticate(request, user=user)
 
         response = AlertModelViewSet.as_view({"post": "operator"})(request, operator_action="assign")
-        payload = json.loads(response.content)
+        self.assertEqual(response.status_code, 200)
         visible_alert.refresh_from_db()
-
-        self.assertEqual(response.status_code, 500)
-        self.assertFalse(payload["result"])
-        self.assertEqual(
-            payload["data"][visible_alert.alert_id]["message"],
-            "以下处理人不在告警所属组织范围内: foreign-alert-operator",
-        )
-        self.assertEqual(visible_alert.status, AlertStatus.UNASSIGNED)
-        self.assertEqual(visible_alert.operator, [])
+        self.assertEqual(visible_alert.status, AlertStatus.PENDING)
+        self.assertEqual(visible_alert.operator, ["foreign-alert-operator"])
 
     @patch("apps.alerts.service.alter_operator.AlertOperator.format_notify_data", return_value={})
     def test_alert_operator_accepts_assignee_within_alert_team_scope(self, _format_notify_data):
-        user = self._build_user("alert-editor-valid", [1], ["Alarms-Edit"])
+        self._grant_current_team_alert_rules()
+        user = self._build_user("alert-editor-valid", [{"id": 1}], ["Alarms-Edit"])
         self._build_user("team-alert-operator", [1], [])
         visible_alert = self._build_alert([1], [], "visible-operator-valid")
 
@@ -2932,7 +2947,8 @@ class AlertPermissionScopeTestCase(TestCase):
         self.assertEqual(incident.operator, ["incident-editor-scope-patch"])
 
     def test_alert_operator_rejects_nonexistent_assignee(self):
-        user = self._build_user("alert-editor-missing", [1], ["Alarms-Edit"])
+        self._grant_current_team_alert_rules()
+        user = self._build_user("alert-editor-missing", [{"id": 1}], ["Alarms-Edit"])
         visible_alert = self._build_alert([1], [], "visible-operator-missing")
 
         request = self.factory.post(

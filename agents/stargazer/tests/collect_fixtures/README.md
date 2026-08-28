@@ -160,3 +160,16 @@ cd agents/stargazer
 3. **tomcat9 路径特殊**:ubuntu 22.04 jammy 包把 `server.xml` 放在 `/etc/tomcat9/`,不是 `/usr/share/tomcat9/conf/`。catalog 的 install_commands 里 `cp -r /etc/tomcat9/. /usr/share/tomcat9/conf/` 已处理
 4. **每个 ssh 对象独立 SSH 端口**(避免 catalog validate 端口冲突):nginx=12222, mongodb=12223, rabbitmq=12224, tomcat=12225
 5. **每个对象首次安装耗时**:ubuntu + apt install 大约 30-120 秒
+
+## 物理服务器 SSH 采集（CMDB JOB 幂等 nic）
+
+产品 BK-Lite 栈仍用现场 `/opt/bk-lite/deploy/docker-compose`（或 `docker-compose-ha`）。本目录的 catalog CLI **不会**长期挂着 SSH 目标给 CMDB 采集用。
+
+QA 若要 Docker 模拟真实 SSH 采集两次、核对 nic 数量不变，用：
+
+`agents/stargazer/tests/collect_fixtures/physcial_server_ssh_target/README.md`
+
+- compose：`physcial_server_ssh_target/docker-compose.yaml`
+- 服务：`physcial-server-ssh-target`
+- 用户 / 密码：`root` / `testpw`（与本 README 的 SSH fixture 相同）
+- 宿主机端口：`12226`；接到产品栈网络后容器内端口：`22`

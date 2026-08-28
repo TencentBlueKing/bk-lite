@@ -1,7 +1,8 @@
 Router 6WIND VSR SNMP:
   name: 6WIND VSR (Telegraf)
   desc: SNMP monitoring template for 6WIND VSR router. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime
+    traffic rate, per-port outbound traffic rate, per-core CPU utilization (HOST-RESOURCES),
+    and system uptime
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -36,9 +37,9 @@ monitor_object_metric:
         memory consumption and pressure.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the average CPU utilization across the operating entities
-        of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id).
-        Sustained high usage indicates heavy forwarding or control-plane load.
+      desc: This metric reports per-core CPU load on the 6WIND VSR router as a percentage
+        (HOST-RESOURCES-MIB hrProcessorLoad, per index dimension). Sustained high values
+        indicate control-plane or forwarding load.
     device_memory_usage:
       name: Memory Usage
       desc: This metric reports the average memory utilization across the operating

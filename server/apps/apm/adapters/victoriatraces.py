@@ -12,9 +12,9 @@ import requests
 from apps.apm.adapters.errors import TelemetryStoreUnavailable
 from apps.apm.services.contracts import (
     DeploymentReleaseQuery,
+    InferredDeploymentRelease,
     InstanceActivity,
     InstanceActivityQuery,
-    InferredDeploymentRelease,
     MetricDataState,
     ServiceDependency,
     ServiceEndpointRed,
@@ -28,12 +28,15 @@ from apps.apm.services.contracts import (
     SpanSearchQuery,
     SpanSummary,
     TopologyDependencyQuery,
+    TopologySampleQuery,
+    TopologyTraceSample,
     TraceDetail,
     TracePage,
     TraceSearchQuery,
     TraceSummary,
 )
 from apps.apm.services.identity import normalize_identity
+from apps.core.logger import apm_logger as logger
 
 MAX_QUERY_WINDOW = timedelta(days=35)
 MAX_TOPOLOGY_WINDOW = timedelta(days=7)
@@ -43,6 +46,8 @@ MAX_UNIQUE_SPANS = 1_000_000
 MAX_ACTIVITY_DIMENSIONS = 10_000
 MAX_DEPLOYMENT_RELEASES = 10_000
 MAX_DEPENDENCIES = 10_000
+MAX_TOPOLOGY_SAMPLE_TRACES = 200
+MAX_TOPOLOGY_SAMPLE_SPANS = 20_000
 MAX_RED_POINTS = 120
 MAX_TOP_ENDPOINTS = 10
 MAX_ENDPOINT_NAME_LENGTH = 256
@@ -152,7 +157,12 @@ class VictoriaTracesTelemetryStore:
         *,
         session: requests.Session | None = None,
     ):
-        self.endpoint = (endpoint or os.getenv("APM_VICTORIATRACES_QUERY_ENDPOINT") or "http://127.0.0.1:10428").rstrip("/")
+        self.endpoint = (
+            endpoint
+            or os.getenv("VICTORIATRACES_HOST")
+            or os.getenv("APM_VICTORIATRACES_QUERY_ENDPOINT")
+            or "http://127.0.0.1:10428"
+        ).rstrip("/")
         self.session = session or requests.Session()
         self.timeout = (3, int(os.getenv("APM_VICTORIATRACES_QUERY_TIMEOUT", "15")))
         self.verify = os.getenv("APM_VICTORIATRACES_VERIFY_TLS", "true").casefold() != "false"
@@ -446,7 +456,7 @@ class VictoriaTracesTelemetryStore:
             f"{_SERVICE_FIELD}:* | stats by ({_NAMESPACE_FIELD}, {_SERVICE_FIELD}, "
             f"{_ENVIRONMENT_FIELD}, {_VERSION_FIELD}) "
             "min(start_time_unix_nano) as first_seen, max(end_time_unix_nano) as last_seen "
-            f"| filter {_VERSION_FIELD}:!=\"\" "
+            f'| filter {_VERSION_FIELD}:!="" '
             f"| sort by (first_seen) desc | limit {MAX_DEPLOYMENT_RELEASES + 1}"
         )
         rows = self._query_rows(logs_query, query.started_at, query.ended_at)
@@ -478,6 +488,156 @@ class VictoriaTracesTelemetryStore:
                 )
             )
         return releases
+
+    def sample_traces(self, query: TopologySampleQuery) -> TopologyTraceSample:
+        _validate_window(query.started_at, query.ended_at, maximum=MAX_TOPOLOGY_WINDOW)
+        if query.limit < 1 or query.limit > MAX_TOPOLOGY_SAMPLE_TRACES:
+            raise ValueError(f"拓扑样本 limit 必须在 1 到 {MAX_TOPOLOGY_SAMPLE_TRACES} 之间")
+        if query.status is not None and query.status not in _STATUS_TO_CODE:
+            raise ValueError("status 仅支持 ok 或 error")
+        if query.min_duration_ms is not None and query.min_duration_ms < 0:
+            raise ValueError("min_duration_ms 不能为负数")
+        if not query.service_names:
+            return TopologyTraceSample((), False)
+
+        filters = ["*", self._service_name_filter(query.service_names)]
+        if query.environment is not None:
+            filters.append(f"{_ENVIRONMENT_FIELD}:={_logsql_string(query.environment)}")
+        if query.span_name:
+            filters.append(f"name:={_logsql_string(query.span_name)}")
+        if query.status == "error":
+            filters.append(f"status_code:={_logsql_string(_STATUS_TO_CODE[query.status])}")
+        if query.min_duration_ms is not None:
+            filters.append(f"duration:>={int(query.min_duration_ms * 1_000_000)}")
+        logs_query = (
+            f"{' '.join(filters)} | stats by (trace_id) max(start_time_unix_nano) as matched_at "
+            f"| sort by (matched_at) desc | limit {query.limit + 1}"
+        )
+        rows = self._query_rows(logs_query, query.started_at, query.ended_at, limit=query.limit + 1)
+        trace_ids: list[str] = []
+        seen: set[str] = set()
+        for row in rows:
+            trace_id = str(row.get("trace_id", "")).strip()
+            if not trace_id or trace_id in seen:
+                continue
+            seen.add(trace_id)
+            trace_ids.append(trace_id)
+        truncated = len(trace_ids) > query.limit
+        selected_ids = trace_ids[: query.limit]
+        traces, omitted = self._fetch_topology_traces(
+            selected_ids,
+            started_at=query.started_at,
+            ended_at=query.ended_at,
+        )
+        return TopologyTraceSample(traces=tuple(traces), truncated=truncated, omitted_trace_fetches=omitted)
+
+    def _fetch_topology_traces(
+        self,
+        trace_ids: list[str],
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+    ) -> tuple[list[TraceDetail], int]:
+        """一次 LogsQL 拉回样本 Trace 的 Span，避免逐条打 Jaeger get_trace。"""
+
+        if not trace_ids:
+            return [], 0
+        quoted = ",".join(_logsql_string(trace_id) for trace_id in trace_ids)
+        logs_query = f"trace_id:in({quoted}) | limit {MAX_TOPOLOGY_SAMPLE_SPANS}"
+        try:
+            rows = self._query_rows(logs_query, started_at, ended_at, limit=MAX_TOPOLOGY_SAMPLE_SPANS)
+        except TelemetryStoreUnavailable as exc:
+            logger.warning(
+                "event=apm_topology_trace_fetch_failed failed_stage=sample_spans error_type=%s",
+                type(exc).__name__,
+            )
+            return [], len(trace_ids)
+        traces_by_id = self._traces_from_span_rows(rows)
+        traces: list[TraceDetail] = []
+        omitted = 0
+        for trace_id in trace_ids:
+            detail = traces_by_id.get(trace_id)
+            if detail is None:
+                omitted += 1
+                continue
+            traces.append(detail)
+        return traces, omitted
+
+    @classmethod
+    def _traces_from_span_rows(cls, rows: list[dict[str, Any]]) -> dict[str, TraceDetail]:
+        grouped: dict[str, list[SpanDetail]] = {}
+        truncated_ids: set[str] = set()
+        for row in rows:
+            trace_id = str(row.get("trace_id", "")).strip()
+            if not trace_id:
+                continue
+            spans = grouped.setdefault(trace_id, [])
+            if len(spans) >= _RAW_SPAN_PARSE_LIMIT:
+                truncated_ids.add(trace_id)
+                continue
+            span = cls._span_detail_from_row(row)
+            if span is None:
+                continue
+            if any(item.span_id == span.span_id for item in spans):
+                continue
+            spans.append(span)
+        traces: dict[str, TraceDetail] = {}
+        for trace_id, spans in grouped.items():
+            if not spans:
+                continue
+            spans.sort(key=lambda item: (item.started_at, item.span_id))
+            root = next((item for item in spans if item.parent_span_id is None), spans[0])
+            traces[trace_id] = TraceDetail(
+                trace_id=trace_id,
+                spans=tuple(spans),
+                service_namespace=root.service_namespace,
+                service_name=root.service_name,
+                environment=root.environment,
+                instance_id=root.instance_id,
+                truncated=trace_id in truncated_ids,
+            )
+        return traces
+
+    @staticmethod
+    def _span_detail_from_row(row: dict[str, Any]) -> SpanDetail | None:
+        span_id = str(row.get("span_id", "")).strip()
+        service_name = str(row.get("resource_attr:service.name", "")).strip()
+        if not span_id or not service_name:
+            return None
+        started_raw = _number(row.get("start_time_unix_nano"))
+        if started_raw is None:
+            return None
+        try:
+            started_at = datetime.fromtimestamp(started_raw / 1_000_000_000, tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+        parent_span_id = str(row.get("parent_span_id", "")).strip()
+        if not parent_span_id or set(parent_span_id) <= {"0"}:
+            parent_span_id = None
+        attributes = {
+            key: value
+            for key, value in row.items()
+            if isinstance(key, str) and key.startswith(("span_attr:", "resource_attr:"))
+        }
+        return SpanDetail(
+            span_id=span_id,
+            parent_span_id=parent_span_id,
+            name=str(row.get("name", "")),
+            started_at=started_at,
+            duration_ms=(_number(row.get("duration")) or 0.0) / 1_000_000,
+            status="error" if str(row.get("status_code", "")).strip() == "2" else "ok",
+            attributes=attributes,
+            service_namespace=str(row.get("resource_attr:service.namespace", "")),
+            service_name=service_name,
+            environment=str(row.get("resource_attr:deployment.environment", "")),
+            instance_id=str(row.get("resource_attr:service.instance.id", "")).strip() or None,
+            kind=_CODE_TO_KIND.get(str(row.get("kind", "")).strip(), "unspecified"),
+        )
+
+    @staticmethod
+    def _service_name_filter(service_names: tuple[str, ...]) -> str:
+        quoted = ",".join(_logsql_string(name) for name in service_names if name)
+        return f"{_SERVICE_FIELD}:in({quoted})"
 
     def service_dependencies(self, query: TopologyDependencyQuery) -> tuple[ServiceDependency, ...]:
         _validate_window(query.started_at, query.ended_at, maximum=MAX_TOPOLOGY_WINDOW)

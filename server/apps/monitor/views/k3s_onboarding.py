@@ -49,7 +49,7 @@ class K3SOnboardingViewSet(viewsets.ViewSet):
             data["organizations"],
             actor_context,
         )
-        result = K3SOnboardingService.create_instance(**data)
+        result = K3SOnboardingService.create_instance(**data, actor_context=actor_context)
         return WebUtils.response_success(result)
 
     @action(methods=["post"], detail=False, url_path="install_command")

@@ -3,7 +3,6 @@ import { Button, Tooltip } from 'antd';
 import {
   DownloadOutlined,
   EditOutlined,
-  FilterOutlined,
   FullscreenOutlined,
   MailOutlined,
   PlusOutlined,
@@ -12,6 +11,7 @@ import {
 } from '@ant-design/icons';
 
 import type { DirItem } from '@/app/ops-analysis/types';
+import Icon from '@/components/icon';
 import PermissionWrapper from '@/components/permission';
 import TimeSelector from '@/components/time-selector';
 import { useTranslation } from '@/utils/i18n';
@@ -104,7 +104,7 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
             <Tooltip title={t('dashboard.configUnifiedFilterFields')}>
               <Button
                 type="text"
-                icon={<FilterOutlined style={{ fontSize: 16 }} />}
+                icon={<Icon type="shaixuantiaojian" style={{ fontSize: 20 }} />}
                 aria-label={t('dashboard.configUnifiedFilterFields')}
                 onClick={onOpenFilterConfig}
                 className={iconButtonClassName}

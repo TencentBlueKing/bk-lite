@@ -1,0 +1,42 @@
+{
+  "object": "LlamaServer",
+  "plugin": "LlamaServer",
+  "templates": [
+    {
+      "name": "llama-server 延迟请求积压",
+      "alert_name": "llama-server ${resource_name} 延迟请求积压",
+      "description": "检测 deferred 请求数量，持续偏高通常意味着并发或上下文容量不足。",
+      "metric_name": "llamacpp:requests_deferred_gauge",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {"level": "critical", "value": 20, "method": ">="},
+        {"level": "warning", "value": 5, "method": ">="}
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "llama-server KV 缓存占用过高",
+      "alert_name": "llama-server ${resource_name} KV缓存占用过高",
+      "description": "检测 KV cache 占用比例，长期偏高会影响并发与吞吐。",
+      "metric_name": "llamacpp:kv_cache_usage_ratio_gauge",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {"level": "critical", "value": 0.9, "method": ">="},
+        {"level": "warning", "value": 0.8, "method": ">="}
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "llama-server 生成吞吐过低",
+      "alert_name": "llama-server ${resource_name} 生成吞吐过低",
+      "description": "监控平均生成吞吐，持续偏低可能表示资源争用或模型过载。",
+      "metric_name": "llamacpp:predicted_tokens_seconds_gauge",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {"level": "critical", "value": 1, "method": "<="},
+        {"level": "warning", "value": 5, "method": "<="}
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

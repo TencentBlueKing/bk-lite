@@ -11,7 +11,7 @@ import MonitorView from './monitorView';
 import MonitorAlarm from './monitorAlarm';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
-import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
+import { resolveDashboardUrl } from '@/app/monitor/dashboards/registry';
 import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
 import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
 import { findByMonitorId } from '@/app/monitor/utils/monitorIds';
@@ -86,7 +86,15 @@ const ViewModal = forwardRef<ModalRef, ViewModalProps>(
         objectId: String(monitorObject || ''),
         objectName: String(monitorItem?.display_name || monitorItem?.name || '')
       });
-      const professionalDashboardUrl = getProfessionalDashboardUrl(monitorName, monitorItem?.display_name, params.toString());
+      const instancePlugins = Array.isArray(viewConfig.plugins)
+        ? viewConfig.plugins
+        : undefined;
+      const professionalDashboardUrl = resolveDashboardUrl({
+        monitorObjectName: monitorName,
+        monitorObjectDisplayName: monitorItem?.display_name,
+        instancePlugins,
+        queryString: params.toString(),
+      });
       const targetUrl = professionalDashboardUrl || `/monitor/view/detail?${params.toString()}`;
       router.push(targetUrl);
     };

@@ -50,6 +50,7 @@ const sampleAlert = {
   last_event_time: '2026-06-25T10:10:00Z',
   operator_user: 'alice',
   operator: ['alice'],
+  team: [1],
   notification_status: 'success',
   resource_type: 'host',
   resource_name: 'vm-01',

@@ -248,7 +248,7 @@ export const useWindowsEventDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 176 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 176 },
             { title: '主机', dataIndex: 'winlog.computer_name', key: 'winlog.computer_name', width: 120 },
             { title: '用户', dataIndex: 'winlog.user.name', key: 'winlog.user.name', width: 92 },
             { title: '事件 ID', dataIndex: 'winlog.event_id', key: 'winlog.event_id', width: 80 },
@@ -274,7 +274,7 @@ export const useWindowsEventDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 176 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 176 },
             { title: '主机', dataIndex: 'winlog.computer_name', key: 'winlog.computer_name', width: 120 },
             { title: '通道', dataIndex: 'winlog.channel', key: 'winlog.channel', width: 90 },
             { title: '级别', dataIndex: 'log.level', key: 'log.level', width: 80, render: renderEventLevel },

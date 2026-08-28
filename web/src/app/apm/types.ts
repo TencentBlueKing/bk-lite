@@ -214,6 +214,20 @@ export interface ApmDashboard {
   releases: ApmDashboardSection<{ items: ApmDashboardReleaseRow[] }>;
 }
 
+export type ApmTopologyNodeKind = 'instrumented' | 'inferred' | 'user_request';
+
+export interface ApmTopologySampleTrace {
+  trace_id: string;
+  span_id: string;
+  span_name: string;
+  started_at: string;
+  duration_ms: number;
+  status: 'ok' | 'error';
+  caller_service_name?: string;
+  peer_address?: string;
+  db_name?: string;
+}
+
 export interface ApmTopologyNode {
   id: string;
   service_namespace: string;
@@ -223,6 +237,15 @@ export interface ApmTopologyNode {
   sampled_spans: number;
   error_spans: number;
   language?: string;
+  kind?: ApmTopologyNodeKind;
+  fold_key?: string;
+  inferred_system?: string;
+  peer_address?: string;
+  db_name?: string;
+  request_rate?: number | null;
+  error_rate?: number | null;
+  p95_ms?: number | null;
+  sample_traces?: ApmTopologySampleTrace[];
 }
 
 export interface ApmTopologyEdge {
@@ -232,6 +255,9 @@ export interface ApmTopologyEdge {
   sampled_calls: number;
   error_calls: number;
   average_duration_ms: number;
+  p95_ms?: number | null;
+  error_rate?: number | null;
+  sample_traces?: ApmTopologySampleTrace[];
 }
 
 export interface ApmTopologyGraph {
@@ -240,6 +266,7 @@ export interface ApmTopologyGraph {
   sampled_traces: number;
   truncated: boolean;
   data_state: 'available' | 'no_data';
+  diagnostics?: string[];
 }
 
 export interface ApmApplication {

@@ -249,9 +249,7 @@ class PolicyService:
         if not ref_map:
             return expression
         pattern = re.compile(
-            r"\b(?:"
-            + "|".join(re.escape(ref) for ref in sorted(ref_map, key=len, reverse=True))
-            + r")\b",
+            r"\b(?:" + "|".join(re.escape(ref) for ref in sorted(ref_map, key=len, reverse=True)) + r")\b",
             re.IGNORECASE,
         )
 
@@ -313,8 +311,13 @@ class PolicyService:
         }
 
     @staticmethod
-    def get_policy_templates(monitor_object_name, organization=None):
+    def get_policy_templates(monitor_object_name, organization=None, plugin_id=None):
         query = PolicyTemplate.objects.select_related("monitor_object", "plugin").filter(monitor_object__name=monitor_object_name)
+        if plugin_id not in (None, ""):
+            try:
+                query = query.filter(plugin_id=int(plugin_id))
+            except (TypeError, ValueError):
+                return []
         if organization is None:
             query = query.filter(template_type=PolicyTemplate.TYPE_BUILTIN)
         else:

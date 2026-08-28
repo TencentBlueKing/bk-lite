@@ -206,8 +206,16 @@ const useApmApi = () => {
   );
 
   const getTopology = useCallback(
-    (params: { started_at: string; ended_at: string; environment?: string }) =>
-      get<ApmTopologyGraph>('/apm/topology/', { params }),
+    (params: {
+      started_at: string;
+      ended_at: string;
+      environment?: string;
+      status?: 'ok' | 'error';
+      span_name?: string;
+      min_duration_ms?: number;
+      include_inferred?: boolean;
+      include_user_request?: boolean;
+    }) => get<ApmTopologyGraph>('/apm/topology/', { params }),
     [get]
   );
 

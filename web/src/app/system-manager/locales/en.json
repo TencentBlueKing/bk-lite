@@ -148,7 +148,9 @@
         "unlock": "Unlock",
         "unlockConfirm": "Are you sure you want to unlock this user?",
         "enableConfirm": "Are you sure you want to enable this user?",
-        "disableConfirm": "Are you sure you want to disable this user?"
+        "disableConfirm": "Are you sure you want to disable this user?",
+        "unbindOtp": "Unbind OTP",
+        "unbindOtpConfirm": "Are you sure you want to unbind OTP for this user?"
       },
       "table": {
         "status": "STATUS",
@@ -368,6 +370,7 @@
           "phaseCompletedAt": "Completed {{time}}",
           "phaseFailedAt": "Failed {{time}}",
           "processed": "Processed {{current}} / {{total}}",
+          "conflictUsers": "Conflict users: {{usernames}}",
           "syncedUsers": "{{count}} users",
           "syncedGroups": "{{count}} groups",
           "empty": "No sync progress available"
@@ -387,15 +390,22 @@
           "skipped": "Skipped"
         },
         "phaseCounter": {
+          "ledger": "{{total}}: {{parts}}",
+          "syncUsersTotal": "{{n}} users in total",
           "syncUsersNew": "Created {{n}} users",
           "syncUsersUpdated": "Updated {{n}} users",
+          "syncUsersUnchanged": "{{n}} users unchanged",
           "syncUsersConflict": "Found {{n}} conflicting users",
+          "syncUsersSkipped": "Skipped {{n}} invalid users",
           "reconcileDisabled": "Disabled {{n}}",
           "reconcileDeletedUsers": "Deleted {{n}} users",
           "reconcileDeleted": "Deleted {{n}} groups",
           "syncGroupsSynced": "Synced {{n}} groups",
+          "syncGroupsTotal": "{{n}} groups in total",
           "syncGroupsCreated": "Created {{n}} groups",
-          "syncGroupsUpdated": "Updated {{n}} groups"
+          "syncGroupsUpdated": "Updated {{n}} groups",
+          "syncGroupsUnchanged": "{{n}} groups unchanged",
+          "syncGroupsSkipped": "Skipped {{n}} invalid groups"
         },
         "phaseResult": {
           "fetchDirectory": "Retrieved {{users}} users · {{groups}} groups",
@@ -423,10 +433,18 @@
         },
         "runSummary": {
           "success": "Sync succeeded: {{external}}; synced {{users}} users, {{groups}} groups",
+          "successWithLedger": "Sync succeeded: {{external}}; {{users}}; {{groups}}",
           "partial": "Partial success: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicts",
           "partialWithUsers": "Partial success: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicts (conflict users: {{usernames}})",
+          "partialWithLedger": "Partial success: {{external}}; {{users}}; {{groups}}",
+          "partialWithLedgerAndUsers": "Partial success: {{external}}; {{users}}; {{groups}} (conflict users: {{usernames}})",
           "failed": "Sync failed: {{external}}; {{reason}}",
           "failedConflict": "Sync failed: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicting users (conflict users: {{usernames}})",
+          "failedWithLedger": "Sync failed: {{external}}; {{users}}; {{groups}}",
+          "failedWithLedgerAndUsers": "Sync failed: {{external}}; {{users}}; {{groups}} (conflict users: {{usernames}})",
+          "withReason": "{{summary}}; {{reason}}",
+          "userLedger": "Users: {{parts}}",
+          "groupLedger": "Groups: {{parts}}",
           "externalCounts": "External users: {{users}}, external groups: {{groups}}",
           "result": "Sync result: {{external}}; {{summary}}",
           "withEmailStatus": "{{summary}}; {{email}}",
@@ -565,6 +583,20 @@
       "operationTypePlaceholder": "Please select operation type",
       "sixMonths": "6 Months",
       "otpSetting": "Enable OTP Authentication",
+      "otpSectionTitle": "OTP authentication",
+      "otpEnableHint": "When on, users who are not on the whitelist must bind or verify OTP at next login. When off, everyone signs in with a password only. Existing sessions stay valid until they expire.",
+      "otpWhitelist": "OTP whitelist",
+      "otpWhitelistHint": "Whitelisted users skip OTP and sign in with a password only. Add only accounts that must be exempt.",
+      "otpWhitelistCount": "{count} user(s) currently exempt",
+      "otpWhitelistCountZero": "No one is exempt. Every user will need OTP when it is enabled.",
+      "otpWhitelistPlaceholder": "Search and select users",
+      "otpRecommendedApps": "Recommended authenticator apps",
+      "otpRecommendedAppsHint": "These names appear on the first-time OTP binding screen so users know which app to install. Pick from the list or type a custom name and press Enter.",
+      "otpRecommendedAppsPlaceholder": "Select or type an authenticator name",
+      "otpRecommendedAppsRequired": "Configure at least one recommended authenticator app",
+      "otpAppsPreviewSingle": "Login page will say: Install the following authenticator app on your device",
+      "otpAppsPreviewMultiple": "Login page will say: Install any of the following authenticator apps on your device",
+      "otpAppsEmptyPreview": "The login page will have no app names. Add at least one before saving.",
       "errorSummary": "Error Summary",
       "selectTime": "Select Time",
       "auditLogs": "Audit Logs",
@@ -1167,12 +1199,15 @@
       "permanentlyDelete": "Permanently Delete",
       "permanentlyDeleteConfirm": "Are you sure you want to permanently delete this archived organization?",
       "permanentlyDeleteConfirmCxt": "Permanent deletion cannot be undone. Please handle related data in application modules (Monitor, Log, CMDB, etc.) yourself before continuing.",
+      "permanentlyDeleteConfirmCxtSynced": "Permanent deletion cannot be undone, and the original organization ID is not kept. If the directory brings this organization back, sync will create a new one. Please handle related data in application modules (Monitor, Log, CMDB, etc.) yourself before continuing.",
       "permanentlyDeleteSuccess": "Organization permanently deleted",
       "permanentlyDeleteFailed": "Failed to permanently delete organization",
       "archivedKind": {
         "local": "Local organization",
         "synced": "Synced organization"
       },
+      "syncReconcileArchived": "Archived by sync reconcile",
+      "syncReconcileArchivedHint": "This organization is still bound to an active sync source. If it remains in the directory, the next sync will restore it to the active tree with the same ID. If it has left the directory, it stays archived. Handle it from the corresponding user sync source; do not restore or delete it here.",
       "childrenTruncated": "This archived subtree is too large; only some child organizations are shown."
     },
     "role": {

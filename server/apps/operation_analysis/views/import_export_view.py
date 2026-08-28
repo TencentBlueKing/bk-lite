@@ -1,9 +1,11 @@
 # -- coding: utf-8 --
+from django.db import transaction
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
+from apps.core.utils.team_utils import get_current_team
 from apps.operation_analysis.common.audit_log import log_ops_analysis_import_results
 from apps.operation_analysis.serializers.import_export_serializers import (
     ExportRequestSerializer,
@@ -14,7 +16,6 @@ from apps.operation_analysis.services.import_export.authorization_service import
 from apps.operation_analysis.services.import_export.export_service import ExportService
 from apps.operation_analysis.services.import_export.import_service import ImportService
 from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
-from apps.core.utils.team_utils import get_current_team
 
 
 class ImportExportViewSet(ViewSet):
@@ -31,19 +32,29 @@ class ImportExportViewSet(ViewSet):
         organization_id = getattr(request, "organization_id", 0)
         current_team = self._get_current_team(request)
 
-        filtered_ids = ImportExportAuthorizationService.filter_export_object_ids(
-            request,
-            object_type,
-            object_ids,
-            current_team=current_team,
-        )
+        with transaction.atomic():
+            filtered_ids = ImportExportAuthorizationService.filter_export_object_ids(
+                request,
+                object_type,
+                object_ids,
+                current_team=current_team,
+                allow_partial=ImportExportAuthorizationService.is_legacy_export_dependency_permission_mode(),
+            )
+            authorized_dependencies = ImportExportAuthorizationService.validate_export_dependencies(
+                request,
+                scope,
+                object_type,
+                filtered_ids,
+                current_team=current_team,
+            )
 
-        result = ExportService.export_objects(
-            scope_type=scope,
-            object_type=object_type,
-            object_ids=filtered_ids,
-            organization_id=organization_id,
-        )
+            result = ExportService.export_objects(
+                scope_type=scope,
+                object_type=object_type,
+                object_ids=filtered_ids,
+                organization_id=organization_id,
+                authorized_dependencies=authorized_dependencies,
+            )
 
         return Response(result, status=status.HTTP_200_OK)
 

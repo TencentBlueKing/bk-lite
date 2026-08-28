@@ -270,7 +270,7 @@ export const useMongodbDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 168 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 168 },
             { title: '实例', dataIndex: 'instance_id', key: 'instance_id', width: 160 },
             { title: '级别', dataIndex: 'mongodb.log.severity', key: 'mongodb.log.severity', width: 90, render: renderMongoSeverity },
             { title: '组件', dataIndex: 'mongodb.log.component', key: 'mongodb.log.component', width: 140 },
@@ -295,7 +295,7 @@ export const useMongodbDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 168 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 168 },
             { title: '实例', dataIndex: 'instance_id', key: 'instance_id', width: 160 },
             { title: '级别', dataIndex: 'mongodb.log.severity', key: 'mongodb.log.severity', width: 90, render: renderMongoSeverity },
             { title: '组件', dataIndex: 'mongodb.log.component', key: 'mongodb.log.component', width: 140 },

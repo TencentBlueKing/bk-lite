@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Alert, Button, Select, Space, Tag, Typography } from 'antd';
+import { Alert, Button, Select, Tag, Typography } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
@@ -44,12 +44,12 @@ function IssueDetails({ issue }: { issue: ApmIssue }) {
         ) : (
           <p className="m-0 text-xs text-[var(--color-text-3)]">{t('apm.errors.noStacktrace', '遥测中未携带异常堆栈')}</p>
         )}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap gap-x-10 gap-y-4">
+          <div className="flex min-w-[200px] flex-col gap-1.5">
             <div className="text-xs text-[var(--color-text-3)]">{t('apm.errors.versionDistribution', '版本分布')}</div>
             <Distribution items={issue.version_distribution} />
           </div>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex min-w-[200px] flex-col gap-1.5">
             <div className="text-xs text-[var(--color-text-3)]">{t('apm.errors.endpointDistribution', '端点分布')}</div>
             <Distribution items={issue.endpoint_distribution} />
           </div>
@@ -61,9 +61,10 @@ function IssueDetails({ issue }: { issue: ApmIssue }) {
               <Link
                 key={`${sample.trace_id}:${sample.span_id}`}
                 href={`/apm/explore/traces/${sample.trace_id}`}
-                className="flex flex-wrap items-center justify-between gap-2 text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
+                className="inline-flex max-w-full flex-wrap items-baseline gap-x-2 text-[var(--color-text-1)] hover:text-[var(--color-primary)]"
               >
                 <span className="font-mono text-xs">{sample.endpoint}</span>
+                {' '}
                 <span className="text-xs text-[var(--color-text-3)]">
                   {formatLatency(sample.duration_ms, false, t)} · {formatDateTime(sample.started_at)}
                 </span>
@@ -124,17 +125,15 @@ export default function ApmErrorsPage() {
               <div className="divide-y divide-[var(--color-border)]">
                 {items.map((issue) => (
                   <article key={issue.fingerprint} className="flex flex-col gap-3 py-4 first:pt-0 last:pb-0">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <Typography.Text strong className="block !text-base">{issue.exception_type}</Typography.Text>
-                        <Typography.Paragraph className="!mb-0 break-words !text-sm">{issue.message}</Typography.Paragraph>
-                        <Typography.Text type="secondary" className="!text-xs">{issue.service_namespace} / {issue.service_name} · {issue.environment || t('apm.common.unset', '未设置')}</Typography.Text>
-                      </div>
-                      <Space wrap>
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Typography.Text strong className="!text-base">{issue.exception_type}</Typography.Text>
                         <Tag color="error">{t('apm.errors.occurrences', '{count} 次', { count: issue.occurrences })}</Tag>
                         <Tag>{t('apm.errors.affectedTraces', '{count} 条 Trace', { count: issue.affected_traces })}</Tag>
                         <Typography.Text type="secondary" className="!text-xs">{formatRelativeTime(issue.last_seen_at, t)}</Typography.Text>
-                      </Space>
+                      </div>
+                      <Typography.Paragraph className="!mb-0 break-words !text-sm">{issue.message}</Typography.Paragraph>
+                      <Typography.Text type="secondary" className="!text-xs">{issue.service_namespace} / {issue.service_name} · {issue.environment || t('apm.common.unset', '未设置')}</Typography.Text>
                     </div>
                     <IssueDetails issue={issue} />
                   </article>

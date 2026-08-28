@@ -1,0 +1,277 @@
+{
+  "plugin": "SGLang",
+  "plugin_desc": "由 Telegraf Pull 采集器通过 Prometheus 指标端点采集 SGLang 推理服务关键监控指标，覆盖运行/排队请求、Token 吞吐、缓存命中与时延等核心运维场景。",
+  "status_query": "any({instance_type='sglang', collect_type='bkpull'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "asset.ip",
+      "value_type": "ip",
+      "resolver": "input",
+      "options": {
+        "field": "server_url"
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "asset.ip",
+      "title": "monitor.views.assetIp",
+      "order": 10
+    }
+  ],
+  "name": "SGLang",
+  "icon": "mm-sglang_SGLang",
+  "type": "LLM Inference",
+  "description": "",
+  "default_metric": "any({instance_type='sglang'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "sglang:num_running_reqs_gauge",
+    "sglang:num_queue_reqs_gauge",
+    "sglang:cache_hit_rate_gauge",
+    "sglang:gen_throughput_gauge",
+    "sglang:time_to_first_token_seconds_p90",
+    "sglang:e2e_request_latency_seconds_p90"
+  ],
+  "display_fields": [
+    {
+      "name": "运行中请求数",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "SGLang",
+          "metric": "sglang:num_running_reqs_gauge"
+        }
+      ]
+    },
+    {
+      "name": "排队请求数",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "SGLang",
+          "metric": "sglang:num_queue_reqs_gauge"
+        }
+      ]
+    },
+    {
+      "name": "Token用量",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "SGLang",
+          "metric": "sglang:token_usage_gauge"
+        }
+      ]
+    },
+    {
+      "name": "生成Token速率",
+      "sort_order": 3,
+      "metrics": [
+        {
+          "plugin": "SGLang",
+          "metric": "sglang:generation_tokens_total_counter_rate"
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_group": "请求队列",
+      "name": "sglang:num_running_reqs_gauge",
+      "display_name": "运行中请求数",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "当前正在处理的请求数量。",
+      "query": "sglang:num_running_reqs_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "请求队列",
+      "name": "sglang:num_queue_reqs_gauge",
+      "display_name": "排队请求数",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "当前等待队列中的请求数量。",
+      "query": "sglang:num_queue_reqs_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "缓存",
+      "name": "sglang:token_usage_gauge",
+      "display_name": "Token 用量比例",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "percentunit",
+      "dimensions": [],
+      "description": "KV/token 用量比例（官方文档示例为 0–1）。",
+      "query": "sglang:token_usage_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "缓存",
+      "name": "sglang:cache_hit_rate_gauge",
+      "display_name": "缓存命中率",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "percentunit",
+      "dimensions": [],
+      "description": "Prefix cache 命中率（0–1）。",
+      "query": "sglang:cache_hit_rate_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Token吞吐",
+      "name": "sglang:prompt_tokens_total_counter_rate",
+      "display_name": "Prefill Token 速率",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "最近 5 分钟 prefill token 处理速率。",
+      "query": "sum(rate(sglang:prompt_tokens_total_counter{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Token吞吐",
+      "name": "sglang:generation_tokens_total_counter_rate",
+      "display_name": "生成 Token 速率",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "最近 5 分钟生成 token 速率。",
+      "query": "sum(rate(sglang:generation_tokens_total_counter{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Token吞吐",
+      "name": "sglang:gen_throughput_gauge",
+      "display_name": "生成吞吐",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "当前生成吞吐（token/s）。",
+      "query": "sglang:gen_throughput_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "时延",
+      "name": "sglang:time_to_first_token_seconds_p99",
+      "display_name": "首 Token 时延 P99",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟 TTFT P99。",
+      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(sglang:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "sglang:e2e_request_latency_seconds_p99",
+      "display_name": "端到端请求时延 P99",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟端到端请求时延 P99。",
+      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "sglang:time_to_first_token_seconds_p50",
+      "display_name": "首 Token 时延 P50",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟 TTFT P50。",
+      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(sglang:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "sglang:time_to_first_token_seconds_p90",
+      "display_name": "首 Token 时延 P90",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟 TTFT P90。",
+      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"sglang:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"sglang:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(sglang:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "sglang:time_to_first_token_seconds_avg",
+      "display_name": "首 Token 时延均值",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟 TTFT 均值。",
+      "query": "sum(rate(sglang:time_to_first_token_seconds_sum{__$labels__}[5m])) by (instance_id) / sum(rate(sglang:time_to_first_token_seconds_count{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "时延",
+      "name": "sglang:e2e_request_latency_seconds_p50",
+      "display_name": "端到端请求时延 P50",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟端到端请求时延 P50。",
+      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "sglang:e2e_request_latency_seconds_p90",
+      "display_name": "端到端请求时延 P90",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟端到端请求时延 P90。",
+      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"sglang:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"sglang:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "sglang:e2e_request_latency_seconds_avg",
+      "display_name": "端到端请求时延均值",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟端到端请求时延均值。",
+      "query": "sum(rate(sglang:e2e_request_latency_seconds_sum{__$labels__}[5m])) by (instance_id) / sum(rate(sglang:e2e_request_latency_seconds_count{__$labels__}[5m])) by (instance_id)"
+    }
+  ]
+}

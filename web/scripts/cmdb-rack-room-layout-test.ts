@@ -197,6 +197,8 @@ assert.equal(elevation.includes('overflow-y: auto'), false);
 assert.equal(elevation.includes('max-height: calc(100vh'), false);
 assert.equal(elevation.includes('MIN_U = 9'), false);
 assert.equal(elevation.includes('window.innerHeight'), false);
+assert.match(elevation, /svgId\(/);
+assert.match(elevation, /compare \? alerts/);
 assert.match(placeModal, /openInstanceDetail/);
 assert.match(placeModal, /CANDIDATE_OCCUPIED/);
 assert.match(placeModal, /lockedAttrIds/);

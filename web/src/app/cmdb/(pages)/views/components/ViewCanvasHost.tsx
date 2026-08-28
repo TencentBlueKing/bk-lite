@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { Button, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { RelationshipsProvider } from '@/app/cmdb/context/relationships';
 import NetworkTopo from '@/app/cmdb/(pages)/assetData/detail/relationships/networkTopo';
@@ -22,11 +23,11 @@ import {
   hasInstanceOperate,
 } from '@/app/cmdb/(pages)/assetData/detail/relationships/rackRoomEdit';
 import { resolveCmdbInstUuid } from '@/app/cmdb/utils/instUuid';
-import { message } from 'antd';
 
 export interface ViewCanvasHostProps {
   viewType: ViewType;
   focus: ViewFocus;
+  focuses?: ViewFocus[];
   /** Shell focus updater — wired to NetworkTopo onRequestFocus when viewType is network. */
   onFocusChange?: (focus: ViewFocus) => void;
   /**
@@ -53,6 +54,7 @@ export interface ViewCanvasHostProps {
 const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
   viewType,
   focus,
+  focuses,
   onFocusChange,
   onRoomRackDrill,
   highlightRackId,
@@ -61,7 +63,10 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
   onNetworkCenterHopChange,
 }) => {
   const { t } = useTranslation();
+  const rackFocuses = focuses?.length ? focuses : [focus];
+  const rackFocusKey = rackFocuses.map((item) => item.inst_uuid).join(',');
   const [device, setDevice] = useState<RackDevice | null>(null);
+  const [deviceRackUuid, setDeviceRackUuid] = useState<string | null>(null);
   const [devOpen, setDevOpen] = useState(false);
   const [rackNonce, setRackNonce] = useState(0);
   const { hasPermission } = usePermissions(RACK_ROOM_ASSET_PERMISSION_PATH);
@@ -70,8 +75,9 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
   // Close hub device drawer when switching rack / mode / view.
   useEffect(() => {
     setDevice(null);
+    setDeviceRackUuid(null);
     setDevOpen(false);
-  }, [viewType, focus.model_id, focus.inst_uuid, focus.mode]);
+  }, [viewType, focus.model_id, focus.mode, rackFocusKey]);
 
   const handleNetworkRequestFocus = useCallback(
     (payload: { modelId: string; instUuid: string; instName?: string }) => {
@@ -184,22 +190,61 @@ const ViewCanvasHost: React.FC<ViewCanvasHostProps> = ({
       resolveRackRoomMode(focus.model_id, focus.mode) ?? focus.mode ?? 'room';
 
     if (rackMode === 'rack') {
+      const compare = rackFocuses.length > 1;
+      const openDevice = (d: RackDevice, rackUuid: string) => {
+        setDevice(d);
+        setDeviceRackUuid(rackUuid);
+        setDevOpen(true);
+      };
       return (
-        <div className="h-full min-h-0 overflow-auto">
-          <RackElevation
-            key={`${focus.inst_uuid}-${rackNonce}`}
-            modelId={focus.model_id}
-            instUuid={focus.inst_uuid}
-            onDeviceClick={(d) => {
-              setDevice(d);
-              setDevOpen(true);
-            }}
-          />
+        <div className="h-full min-h-0 overflow-x-auto overflow-y-auto">
+          <div
+            className={
+              compare
+                ? 'flex items-end gap-6 min-h-full w-max px-2 pb-2'
+                : undefined
+            }
+          >
+            {rackFocuses.map((item) => (
+              <div
+                key={item.inst_uuid}
+                className={compare ? 'shrink-0 flex flex-col justify-end' : undefined}
+              >
+                {compare && (
+                  <div className="mb-2 flex items-center justify-center gap-2 px-1">
+                    <span className="max-w-[280px] truncate text-sm font-medium text-[var(--color-text-1)]">
+                      {item.inst_name || item.inst_uuid}
+                    </span>
+                    <Button
+                      type="link"
+                      size="small"
+                      className="px-0"
+                      onClick={() => window.open(
+                        buildBaseInfoPath(item),
+                        '_blank',
+                        'noopener,noreferrer'
+                      )}
+                    >
+                      {t('ViewsHub.viewDetail')}
+                    </Button>
+                  </div>
+                )}
+                <RackElevation
+                  key={`${item.inst_uuid}-${rackNonce}`}
+                  modelId={item.model_id}
+                  instUuid={item.inst_uuid}
+                  embedded={compare}
+                  compare={compare}
+                  onDeviceClick={(d) => openDevice(d, item.inst_uuid)}
+                />
+              </div>
+            ))}
+          </div>
           <DeviceDetailDrawer
             device={device}
             open={devOpen}
             onClose={() => setDevOpen(false)}
-            containerInstUuid={focus.inst_uuid}
+            containerInstUuid={deviceRackUuid || focus.inst_uuid}
             canUnplace={canUnplaceFromLayout({
               hasEdit,
               instOperate: hasInstanceOperate(device?.permission),

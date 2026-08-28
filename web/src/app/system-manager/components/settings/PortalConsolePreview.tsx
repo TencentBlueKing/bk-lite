@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import Icon from '@/components/icon';
 import { useTranslation } from '@/utils/i18n';
+import { resolveAppDescription, resolveAppDisplayName, resolveAppTag } from '@/utils/appDisplayName';
 import { useClientData } from '@/context/client';
 import { useThemeMode } from '@/theme';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -188,7 +189,7 @@ const PortalConsolePreview: React.FC<PortalConsolePreviewProps> = ({
                     <div>
                       <div className="mb-2 flex items-center gap-2">
                         <Icon type={realApp.icon || realApp.name} className="text-[38px] text-(--color-primary)" />
-                        <div className="truncate text-[13px] font-bold text-(--color-text-1)">{realApp.display_name}</div>
+                        <div className="truncate text-[13px] font-bold text-(--color-text-1)">{resolveAppDisplayName(realApp, t)}</div>
                       </div>
 
                       <div className="mb-3 flex flex-wrap gap-1.5">
@@ -198,13 +199,13 @@ const PortalConsolePreview: React.FC<PortalConsolePreviewProps> = ({
                             className="rounded-md px-1.5 py-0.5 text-[9px] font-medium"
                             style={TAG_STYLES[tagIndex % TAG_STYLES.length]}
                           >
-                            {tag}
+                            {resolveAppTag(tag, t)}
                           </span>
                         ))}
                       </div>
                     </div>
 
-                    <p className="line-clamp-2 text-[10px] leading-4 text-(--color-text-2)">{realApp.description}</p>
+                    <p className="line-clamp-2 text-[10px] leading-4 text-(--color-text-2)">{resolveAppDescription(realApp, t)}</p>
                   </div>
                 );
               })}

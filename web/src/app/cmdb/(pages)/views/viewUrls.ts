@@ -3,6 +3,7 @@ import type { RackRoomMode, ViewFocus, ViewType } from './viewTypes';
 export interface ParsedViewsSearch {
   model_id: string | undefined;
   inst_uuid: string | undefined;
+  inst_uuids: string[];
   mode: RackRoomMode | undefined;
   inst_name: string | undefined;
   model_name: string | undefined;
@@ -19,13 +20,35 @@ export const FOCUS_QUERY_KEYS = [
   'mode',
 ] as const;
 
-const appendFocusParams = (params: URLSearchParams, focus: ViewFocus): void => {
-  params.set('model_id', focus.model_id);
-  params.set('inst_uuid', focus.inst_uuid);
-  if (focus.inst_name) params.set('inst_name', focus.inst_name);
-  if (focus.model_name) params.set('model_name', focus.model_name);
-  if (focus.icn) params.set('icn', focus.icn);
-  if (focus.mode) params.set('mode', focus.mode);
+export const parseInstUuids = (raw: string | null | undefined): string[] => {
+  if (!raw) return [];
+  const seen = new Set<string>();
+  const uuids: string[] = [];
+  for (const part of raw.split(',')) {
+    const uuid = part.trim();
+    if (!uuid || seen.has(uuid)) continue;
+    seen.add(uuid);
+    uuids.push(uuid);
+  }
+  return uuids;
+};
+
+const asFocusList = (focus: ViewFocus | ViewFocus[]): ViewFocus[] =>
+  Array.isArray(focus) ? focus.filter((item) => item?.inst_uuid) : (focus?.inst_uuid ? [focus] : []);
+
+const appendFocusParams = (
+  params: URLSearchParams,
+  focus: ViewFocus | ViewFocus[],
+): void => {
+  const focuses = asFocusList(focus);
+  const primary = focuses[0];
+  if (!primary) return;
+  params.set('model_id', primary.model_id);
+  params.set('inst_uuid', focuses.map((item) => item.inst_uuid).join(','));
+  if (primary.inst_name) params.set('inst_name', primary.inst_name);
+  if (primary.model_name) params.set('model_name', primary.model_name);
+  if (primary.icn) params.set('icn', primary.icn);
+  if (primary.mode) params.set('mode', primary.mode);
 };
 
 const clearFocusParams = (params: URLSearchParams): void => {
@@ -34,7 +57,10 @@ const clearFocusParams = (params: URLSearchParams): void => {
   }
 };
 
-export const buildViewsPath = (viewType: ViewType, focus: ViewFocus): string => {
+export const buildViewsPath = (
+  viewType: ViewType,
+  focus: ViewFocus | ViewFocus[],
+): string => {
   const params = new URLSearchParams();
   appendFocusParams(params, focus);
   return `/cmdb/views/${viewType}?${params.toString()}`;
@@ -46,7 +72,7 @@ export const buildViewsPath = (viewType: ViewType, focus: ViewFocus): string => 
  */
 export const buildViewsPathPreserving = (
   viewType: ViewType,
-  focus: ViewFocus,
+  focus: ViewFocus | ViewFocus[],
   currentSearchParams: URLSearchParams
 ): string => {
   const params = new URLSearchParams(currentSearchParams.toString());
@@ -69,11 +95,15 @@ const parseMode = (value: string | null): RackRoomMode | undefined => {
   return undefined;
 };
 
-export const parseViewsSearch = (searchParams: URLSearchParams): ParsedViewsSearch => ({
-  model_id: searchParams.get('model_id') ?? undefined,
-  inst_uuid: searchParams.get('inst_uuid') ?? undefined,
-  mode: parseMode(searchParams.get('mode')),
-  inst_name: searchParams.get('inst_name') ?? undefined,
-  model_name: searchParams.get('model_name') ?? undefined,
-  icn: searchParams.get('icn') ?? undefined,
-});
+export const parseViewsSearch = (searchParams: URLSearchParams): ParsedViewsSearch => {
+  const inst_uuids = parseInstUuids(searchParams.get('inst_uuid'));
+  return {
+    model_id: searchParams.get('model_id') ?? undefined,
+    inst_uuid: inst_uuids[0],
+    inst_uuids,
+    mode: parseMode(searchParams.get('mode')),
+    inst_name: searchParams.get('inst_name') ?? undefined,
+    model_name: searchParams.get('model_name') ?? undefined,
+    icn: searchParams.get('icn') ?? undefined,
+  };
+};

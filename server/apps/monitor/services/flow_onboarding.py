@@ -3,6 +3,7 @@ from django.db.models import Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.logger import monitor_logger as logger
+from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.monitor.models import CollectConfig, MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
 from apps.monitor.services.flow_sampling import FlowSamplingService
 from apps.monitor.services.manual_collect import ManualCollectService
@@ -32,6 +33,7 @@ class FlowOnboardingService:
         allow_deleted_instance_reuse=False,
         fallback_sampling_rate=None,
         conflict_permission_checker=None,
+        actor_context=None,
     ):
         cls._validate_protocol(protocol)
         organizations_provided = organizations is not cls.ORGANIZATIONS_UNSET
@@ -51,6 +53,7 @@ class FlowOnboardingService:
                 instance_id=instance_id,
                 allow_deleted_instance_reuse=allow_deleted_instance_reuse,
                 conflict_permission_checker=conflict_permission_checker,
+                actor_context=actor_context,
             )
             previous_cloud_region_id = instance.cloud_region_id
             restoring_deleted = instance.is_deleted
@@ -89,6 +92,9 @@ class FlowOnboardingService:
                 "is_deleted",
                 "name",
             ]
+            for key, value in maintainer_kwargs(actor_context, include_created=False).items():
+                setattr(instance, key, value)
+                update_fields.append(key)
             instance.save(update_fields=update_fields)
             if organizations_provided:
                 MonitorObjectService.set_instances_organizations([instance.id], organizations)
@@ -119,6 +125,7 @@ class FlowOnboardingService:
         ip=None,
         fallback_sampling_rate=None,
         conflict_permission_checker=None,
+        actor_context=None,
     ):
         with transaction.atomic():
             instance = cls._get_instance(instance_id=instance_id)
@@ -146,6 +153,7 @@ class FlowOnboardingService:
                 ip=ip,
                 fallback_sampling_rate=fallback_sampling_rate,
                 auto=False,
+                actor_context=actor_context,
             )
             if organizations is not None:
                 cls._restore_organization_rules(
@@ -173,6 +181,7 @@ class FlowOnboardingService:
         instance_id=None,
         allow_deleted_instance_reuse=False,
         conflict_permission_checker=None,
+        actor_context=None,
     ):
         if instance_id:
             return cls._get_instance(
@@ -211,6 +220,7 @@ class FlowOnboardingService:
                 "organizations": organizations or [],
             },
             allow_flow_fields=True,
+            actor_context=actor_context,
         )
         return MonitorInstance.objects.get(id=result["instance_id"]), True
 

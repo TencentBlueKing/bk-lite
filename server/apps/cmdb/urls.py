@@ -15,6 +15,7 @@ from apps.cmdb.views.model import ModelViewSet
 from apps.cmdb.views.node_mgmt_sync import NodeMgmtSyncViewSet
 from apps.cmdb.views.public_enum_library import PublicEnumLibraryViewSet
 from apps.cmdb.views.scan import ScanTaskViewSet
+from apps.cmdb.views.scene_view import SceneViewViewSet
 from apps.cmdb.views.subscription import SubscriptionViewSet
 from apps.cmdb.views.user_personal_config import UserPersonalConfigViewSet
 
@@ -25,6 +26,7 @@ router.register(r"api/instance", InstanceViewSet, basename="instance")
 router.register(r"api/change_record", ChangeRecordViewSet, basename="change_record")
 router.register(r"api/collect", CollectModelViewSet, basename="collect")
 router.register(r"api/scan", ScanTaskViewSet, basename="scan")
+router.register(r"api/scene_views", SceneViewViewSet, basename="scene_views")
 router.register(r"api/config_file_versions", ConfigFileVersionViewSet, basename="config_file_versions")
 router.register(r"api/oid", OidModelViewSet, basename="oid")
 router.register(r"api/field_groups", FieldGroupViewSet, basename="field_groups")

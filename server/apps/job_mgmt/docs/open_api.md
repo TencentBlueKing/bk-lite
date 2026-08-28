@@ -13,8 +13,11 @@
 | 作业列表 | REST `GET /api/v1/job_mgmt/api/open/job_list` | Api-Authorization | 同步，执行前获取作业背景信息 |
 | 脚本执行 | NATS `bklite.job_script_execute` | 无 | 异步，返回 task_id |
 | 脚本执行 | REST `POST /api/v1/job_mgmt/api/open/script_execute` | Api-Authorization | 异步，返回 task_id |
+| 脚本执行（推荐） | OpenAPI `POST /openapi/v1/job-mgmt/script-execute` | Authorization Bearer | 异步，团队由 Secret 绑定 |
 | 批量查询状态 | REST `POST /api/v1/job_mgmt/api/open/job_status` | Api-Authorization | 同步，按 task_ids 查询状态 |
+| 批量查询状态（推荐） | OpenAPI `POST /openapi/v1/job-mgmt/job-status` | Authorization Bearer | 同步，跨组织按不存在返回 |
 | 查询作业详情 | REST `GET /api/v1/job_mgmt/api/open/job_detail/{task_id}` | Api-Authorization | 同步，返回执行详情与状态 |
+| 查询作业详情（推荐） | OpenAPI `GET /openapi/v1/job-mgmt/job-detail` | Authorization Bearer | 同步，task_id 走 query；跨组织按不存在返回 |
 | 文件上传 | REST `POST /api/v1/job_mgmt/api/open/upload_file` | Api-Authorization | 同步，返回 file_id + file_key |
 | 文件删除 | REST `DELETE /api/v1/job_mgmt/api/open/delete_file` | Api-Authorization | 同步，删除文件 |
 | 文件分发（推荐） | OpenAPI `POST /openapi/v1/job-mgmt/file-distribute` | Authorization Bearer | 异步，团队由 Secret 绑定 |

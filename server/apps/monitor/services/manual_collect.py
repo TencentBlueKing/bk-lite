@@ -1,4 +1,5 @@
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.core.utils.k8s_image_registry import build_kubectl_install_command
 from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.services.infra import InfraService
@@ -70,12 +71,13 @@ class ManualCollectService:
         )
 
     @staticmethod
-    def create_manual_collect_instance(data: dict, *, allow_flow_fields=False):
+    def create_manual_collect_instance(data: dict, *, allow_flow_fields=False, actor_context=None):
         """
         创建手动采集实例
         """
         ManualCollectService._validate_create_fields(data, allow_flow_fields=allow_flow_fields)
         data, organizations = ManualCollectService._build_manual_collect_instance_data(data)
+        data.update(maintainer_kwargs(actor_context))
         MonitorObjectService.validate_new_instance_name_unique(data.get("monitor_object_id"), data.get("name"))
         # 建实例
         instance_obj = MonitorInstance.objects.create(**data)
@@ -90,12 +92,13 @@ class ManualCollectService:
         return {"instance_id": instance_obj.id}
 
     @staticmethod
-    def update_manual_collect_instance(instance_id: str, name=None, organizations=None, **extra_fields):
+    def update_manual_collect_instance(instance_id: str, name=None, organizations=None, actor_context=None, **extra_fields):
         extra_fields.pop("enabled_protocols", None)
         MonitorObjectService.update_instance(
             instance_id=instance_id,
             name=name,
             organizations=organizations,
+            actor_context=actor_context,
             **extra_fields,
         )
         return {"instance_id": instance_id}
@@ -120,7 +123,7 @@ class ManualCollectService:
         from apps.rpc.node_mgmt import NodeMgmt
 
         node_mgmt_rpc = NodeMgmt()
-        env_vars = node_mgmt_rpc.get_cloud_region_envconfig(cloud_region_id)
+        env_vars = node_mgmt_rpc.get_cloud_region_public_config(cloud_region_id)
 
         # 从云区域环境变量中获取服务器地址
         server_url = env_vars.get("NODE_SERVER_URL")

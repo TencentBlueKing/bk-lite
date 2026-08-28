@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import { getProfessionalDashboardKey, getProfessionalDashboardUrl, getProfessionalObjectDisplayName } from '../registry';
+import { isFlowCollectType } from '../shared/utils/flow-dashboard-route';
 import { normalizeDashboardKey } from '../shared/utils';
 import { preserveDashboardDisplayMode } from '../shared/utils/display-mode-route';
 import { preserveDashboardReturnContext } from '../shared/utils';
@@ -74,16 +75,23 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
     loadObjects();
   }, [isLoading]);
 
+  // 以当前仪表盘路由对象为准选中左侧树；NetFlow/sFlow 路由则高亮 URL 中的网络设备。
   const selectedObjectId = useMemo(() => {
-    const monitorObjId = searchParams.get('monitorObjId');
-    if (monitorObjId) return monitorObjId;
-
-    const matched = objects.find(
+    if (isFlowCollectType(normalizedCurrent)) {
+      const fromUrl = searchParams.get('monitorObjId');
+      if (fromUrl && objects.some((item) => String(item.id) === String(fromUrl))) {
+        return fromUrl;
+      }
+    }
+    const matchedByRoute = objects.find(
       (item) =>
         getProfessionalDashboardKey(item.name, item.display_name) ===
         normalizedCurrent
     );
-    return matched?.id;
+    if (matchedByRoute) {
+      return matchedByRoute.id;
+    }
+    return searchParams.get('monitorObjId') || undefined;
   }, [normalizedCurrent, objects, searchParams]);
 
   const handleSelect = (key: string) => {

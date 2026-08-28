@@ -1,5 +1,9 @@
-import type { RunStatus, UserSyncRun, UserSyncSource } from '@/app/system-manager/types/user-sync';
-import { formatUserSyncErrorMessage } from '@/app/system-manager/utils/userSyncProgress';
+import type { PhaseProgressEntry, RunStatus, UserSyncRun, UserSyncSource } from '@/app/system-manager/types/user-sync';
+import {
+  formatSyncGroupsChangeParts,
+  formatSyncUsersChangeParts,
+  formatUserSyncErrorMessage,
+} from '@/app/system-manager/utils/userSyncProgress';
 
 export const RUN_STATUS_TEXT_STYLE: Record<RunStatus, string> = {
   running: 'processing',
@@ -147,6 +151,10 @@ export function getUserSyncRunSummary(
       fetched_group_count?: number;
     };
     email_status?: EmailStatus;
+    phase_progress?: {
+      sync_users?: { total?: number; counters?: PhaseProgressEntry['counters'] };
+      sync_groups?: { total?: number; counters?: PhaseProgressEntry['counters'] };
+    };
   };
   const conflictUsernames = Array.isArray(payload.conflict_usernames) ? payload.conflict_usernames : [];
   const conflictCount = Number(payload.conflict_user_count ?? conflictUsernames.length ?? 0);
@@ -155,16 +163,61 @@ export function getUserSyncRunSummary(
     users: payload.input_summary?.fetched_user_count ?? '--',
     groups: payload.input_summary?.fetched_group_count ?? '--',
   });
+  const userEntry = payload.phase_progress?.sync_users;
+  const groupEntry = payload.phase_progress?.sync_groups;
+  const hasPhaseLedger = Boolean(userEntry?.counters || groupEntry?.counters);
+  const usersLedger = hasPhaseLedger
+    ? formatTemplate(t('system.user.userSyncPage.runSummary.userLedger'), {
+      parts: formatSyncUsersChangeParts(
+        userEntry?.counters,
+        Number(userEntry?.total ?? payload.input_summary?.fetched_user_count ?? record.synced_user_count ?? 0),
+        t,
+        'summary',
+      ).join(' · ') || String(record.synced_user_count),
+    })
+    : '';
+  const groupsLedger = hasPhaseLedger
+    ? formatTemplate(t('system.user.userSyncPage.runSummary.groupLedger'), {
+      parts: formatSyncGroupsChangeParts(
+        groupEntry?.counters,
+        Number(groupEntry?.total ?? payload.input_summary?.fetched_group_count ?? record.synced_group_count ?? 0),
+        t,
+        'summary',
+      ).join(' · ') || String(record.synced_group_count),
+    })
+    : '';
 
   let summary: string;
   if (record.status === 'success') {
-    summary = formatTemplate(t('system.user.userSyncPage.runSummary.success'), {
-      external: externalSummary,
-      users: record.synced_user_count,
-      groups: record.synced_group_count,
-    });
+    if (hasPhaseLedger) {
+      summary = formatTemplate(t('system.user.userSyncPage.runSummary.successWithLedger'), {
+        external: externalSummary,
+        users: usersLedger,
+        groups: groupsLedger,
+      });
+    } else {
+      summary = formatTemplate(t('system.user.userSyncPage.runSummary.success'), {
+        external: externalSummary,
+        users: record.synced_user_count,
+        groups: record.synced_group_count,
+      });
+    }
   } else if (record.status === 'partial') {
-    if (conflictUsernames.length > 0) {
+    if (hasPhaseLedger) {
+      summary = formatTemplate(
+        t(
+          conflictUsernames.length > 0
+            ? 'system.user.userSyncPage.runSummary.partialWithLedgerAndUsers'
+            : 'system.user.userSyncPage.runSummary.partialWithLedger',
+        ),
+        {
+          external: externalSummary,
+          users: usersLedger,
+          groups: groupsLedger,
+          usernames: conflictUsernames.join(t('system.user.userSyncPage.runSummary.usernameListSeparator')),
+        },
+      );
+    } else if (conflictUsernames.length > 0) {
       summary = formatTemplate(t('system.user.userSyncPage.runSummary.partialWithUsers'), {
         external: externalSummary,
         users: record.synced_user_count,
@@ -181,7 +234,27 @@ export function getUserSyncRunSummary(
       });
     }
   } else if (record.status === 'failed') {
-    if (firstErrorMessage) {
+    if (hasPhaseLedger) {
+      summary = formatTemplate(
+        t(
+          conflictUsernames.length > 0
+            ? 'system.user.userSyncPage.runSummary.failedWithLedgerAndUsers'
+            : 'system.user.userSyncPage.runSummary.failedWithLedger',
+        ),
+        {
+          external: externalSummary,
+          users: usersLedger,
+          groups: groupsLedger,
+          usernames: conflictUsernames.join(t('system.user.userSyncPage.runSummary.usernameListSeparator')),
+        },
+      );
+      if (firstErrorMessage) {
+        summary = formatTemplate(t('system.user.userSyncPage.runSummary.withReason'), {
+          summary,
+          reason: firstErrorMessage,
+        });
+      }
+    } else if (firstErrorMessage) {
       summary = formatTemplate(t('system.user.userSyncPage.runSummary.failed'), {
         external: externalSummary,
         reason: firstErrorMessage,

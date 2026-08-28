@@ -7,18 +7,13 @@
 - BaseOperationAnaRpc 按 server/namespace 构造内部 client。
 不触达真实 NATS。
 """
-import pydantic.root_model  # noqa
-
 import asyncio
 from unittest import mock
 
+import pydantic.root_model  # noqa
 import pytest
 
-from apps.rpc.base import (
-    BaseOperationAnaRpc,
-    OperationAnalysisRpc,
-    RpcClient,
-)
+from apps.rpc.base import AppClient, BaseOperationAnaRpc, OperationAnalysisRpc, RpcClient
 
 pytestmark = pytest.mark.unit
 
@@ -26,6 +21,7 @@ pytestmark = pytest.mark.unit
 def _coro(return_value):
     async def _c(*args, **kwargs):
         return return_value
+
     return _c
 
 
@@ -46,9 +42,7 @@ class TestRpcClientRun:
 
     def test_run_尊重显式_timeout(self):
         client = RpcClient(namespace="ns")
-        with mock.patch("apps.rpc.base.nats_client") as m, mock.patch(
-            "apps.rpc.base.asyncio.wait_for", wraps=asyncio.wait_for
-        ) as wait_for:
+        with mock.patch("apps.rpc.base.nats_client") as m, mock.patch("apps.rpc.base.asyncio.wait_for", wraps=asyncio.wait_for) as wait_for:
             m.request.side_effect = _coro({"ok": 1})
             client.run("do", _timeout=12)
         assert wait_for.call_args.kwargs.get("timeout") == 12 or wait_for.call_args.args[1] == 12
@@ -61,8 +55,29 @@ class TestRpcClientRun:
 
         with mock.patch("apps.rpc.base.nats_client") as m:
             m.request.side_effect = _slow
-            with pytest.raises(TimeoutError, match="RPC request timeout"):
+            with pytest.raises(TimeoutError) as exc_info:
                 client.run("do", _timeout=0.01)
+
+        assert str(exc_info.value) == "rpc.request_timeout"
+        assert exc_info.value.code == "rpc.request_timeout"
+        assert exc_info.value.params == {}
+        assert exc_info.value.namespace == "ns"
+        assert exc_info.value.method_name == "do"
+        assert exc_info.value.timeout == 0.01
+
+    def test_request_超时不暴露英文内部细节(self):
+        client = RpcClient(namespace="ns")
+
+        async def _slow(*a, **k):
+            await asyncio.sleep(5)
+
+        with mock.patch("apps.rpc.base.nats_client") as m:
+            m.nat_request.side_effect = _slow
+            with pytest.raises(TimeoutError) as exc_info:
+                client.request("query", _timeout=0.01)
+
+        assert str(exc_info.value) == "rpc.request_timeout"
+        assert exc_info.value.code == "rpc.request_timeout"
 
 
 class TestOperationAnalysisRpc:
@@ -122,3 +137,17 @@ class TestBaseOperationAnaRpc:
         base = BaseOperationAnaRpc()
         assert isinstance(base.client, OperationAnalysisRpc)
         assert base.client.server == ""
+
+
+class TestAppClient:
+    def test_方法不存在时只返回稳定错误码(self):
+        client = AppClient("apps.rpc.base")
+
+        with pytest.raises(ValueError) as exc_info:
+            client.run("missing_method")
+
+        assert str(exc_info.value) == "rpc.method_not_found"
+        assert exc_info.value.code == "rpc.method_not_found"
+        assert exc_info.value.params == {}
+        assert exc_info.value.method_name == "missing_method"
+        assert exc_info.value.path == "apps.rpc.base"

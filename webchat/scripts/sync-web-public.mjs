@@ -15,12 +15,12 @@ const targetDir = path.resolve(rootDir, '../web/public/webchat');
 const files = ['webchat.js', 'style.css'];
 const staticFiles = [
   {
-    source: path.join(rootDir, 'packages/webchat-ui/src/assets/fab-dolphin.gif'),
-    name: 'fab-dolphin.gif',
+    source: path.join(rootDir, 'packages/webchat-ui/src/assets/fab-whaledou.webp'),
+    name: 'fab-whaledou.webp',
   },
   {
-    source: path.join(rootDir, 'packages/webchat-ui/src/assets/fab-dolphin.png'),
-    name: 'fab-dolphin.png',
+    source: path.join(rootDir, 'packages/webchat-ui/src/assets/fab-whaledou.png'),
+    name: 'fab-whaledou.png',
   },
 ];
 

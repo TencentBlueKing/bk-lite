@@ -104,9 +104,7 @@ class TestParseRequestData:
 class TestSafeGetUserIdByUsername:
     def test_returns_matching_user_id(self):
         client = MagicMock()
-        client.search_users.return_value = {
-            "data": {"users": [{"username": "alice", "id": 7}, {"username": "bob", "id": 8}]}
-        }
+        client.search_users.return_value = {"data": {"users": [{"username": "alice", "id": 7}, {"username": "bob", "id": 8}]}}
         assert index_view._safe_get_user_id_by_username(client, "bob") == 8
 
     def test_returns_none_when_no_users(self):
@@ -142,6 +140,7 @@ class TestPortalBrandingAndCookie:
 
     def test_set_auth_cookie_uses_login_expired_time_setting(self):
         from django.http import JsonResponse
+
         from apps.system_mgmt.models.system_settings import SystemSettings
 
         SystemSettings.objects.update_or_create(key="login_expired_time", defaults={"value": "2"})  # 2 hours
@@ -223,9 +222,7 @@ class TestLoginView:
             patch.object(index_view, "log_user_login_from_request"),
         ):
             MockSM.return_value.login.return_value = {"result": True, "data": {"token": "T"}}
-            resp = index_view.login(
-                _post({"username": "a", "password": "p", "domain": "domain.com", "redirect_url": "/home"})
-            )
+            resp = index_view.login(_post({"username": "a", "password": "p", "domain": "domain.com", "redirect_url": "/home"}))
         assert _json(resp)["data"]["redirect_url"] == "/home"
 
 
@@ -341,9 +338,7 @@ class TestResetPwdView:
             mock_client.return_value.reset_pwd.return_value = {"result": True}
             resp = index_view.reset_pwd(req)
         assert _json(resp)["result"] is True
-        mock_client.return_value.reset_pwd.assert_called_once_with(
-            "u", "domain.com", "new", caller_token="ct"
-        )
+        mock_client.return_value.reset_pwd.assert_called_once_with("u", "domain.com", "new", caller_token="ct")
 
 
 class TestOtpViews:
@@ -495,9 +490,11 @@ class TestGetClientView:
                 {"is_build_in": False, "description": "app.custom"},
             ],
         }
-        with patch.object(index_view, "_create_system_mgmt_client") as mock_client:
+        with patch.dict(
+            "sys.modules",
+            {"apps.core.enterprise.license_filter": MagicMock(filter_clients_by_license=lambda data: data)},
+        ), patch.object(index_view, "_create_system_mgmt_client") as mock_client:
             mock_client.return_value.get_client.return_value = return_data
-            # 不 patch license_filter 模块 -> ImportError 分支被静默兜底
             resp = index_view.get_client(req)
         data = _json(resp)
         assert data["result"] is True
@@ -525,6 +522,24 @@ class TestGetClientView:
         assert data["result"] is True
         # description 经 loader.get 处理后非空（找不到翻译则回退原 key）
         assert data["data"]["description"]
+
+    def test_get_client_detail_translates_display_name(self):
+        factory = RequestFactory()
+        req = factory.get("/api/client_detail/?name=monitor")
+        req.user = MagicMock(locale="zh-Hans")
+        with patch.object(index_view, "_create_system_mgmt_client") as mock_client:
+            mock_client.return_value.get_client_detail.return_value = {
+                "result": True,
+                "data": {
+                    "name": "monitor",
+                    "display_name": "Monitor",
+                    "description": "app.monitor",
+                    "is_build_in": True,
+                },
+            }
+            resp = index_view.get_client_detail(req)
+        data = _json(resp)
+        assert data["data"]["display_name"] == "监控中心"
 
 
 class TestViewExceptionPaths:
