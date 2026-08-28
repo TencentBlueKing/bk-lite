@@ -17,7 +17,7 @@ const menu = (item: Partial<MenuItem> & Pick<MenuItem, 'name' | 'url'>): MenuIte
 
 /** Target APM directoryized menu tree. */
 const apmMenus: MenuItem[] = [
-  menu({ title: '首页', url: '/apm/home', name: 'home', icon: 'shouye' }),
+  menu({ title: '首页', url: '/apm/home', name: 'home', icon: 'home' }),
   menu({
     title: '服务',
     url: '/apm/services',

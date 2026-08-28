@@ -2,7 +2,7 @@
   "zh": [
     {
       "title": "首页",
-      "icon": "daohang-yunyingfenxishi",
+      "icon": "home",
       "url": "/patch-manager/home",
       "name": "patch_dashboard"
     },
@@ -48,7 +48,7 @@
   "en": [
     {
       "title": "Home",
-      "icon": "daohang-yunyingfenxishi",
+      "icon": "home",
       "url": "/patch-manager/home",
       "name": "patch_dashboard"
     },
