@@ -188,13 +188,9 @@ const runSeededForce = (
   const seedY = seeded.map((node) => node.y);
   const minSeedY = Math.min(...seedY);
   const maxSeedY = Math.max(...seedY);
-  const incoming = new Set(edges.map((edge) => edge.target));
-  const outgoing = new Set(edges.map((edge) => edge.source));
   const targetY = seeded.map((node) => {
     if (isUserRequestTopologyNode(node)) return Math.min(node.y, minSeedY);
     if (isInferredTopologyNode(node)) return Math.max(node.y, maxSeedY);
-    if (!incoming.has(node.id)) return Math.min(node.y, minSeedY);
-    if (!outgoing.has(node.id)) return Math.max(node.y, maxSeedY);
     return node.y;
   });
   const links = edges.flatMap((edge) => {
@@ -248,6 +244,8 @@ const runSeededForce = (
       }
       px[index] += vx[index];
       py[index] += vy[index];
+      px[index] = Math.min(TOPOLOGY_CANVAS_SIZE.width - CANVAS_PADDING.right, Math.max(CANVAS_PADDING.left, px[index]));
+      py[index] = Math.min(maxSeedY, Math.max(minSeedY, py[index]));
     });
   }
 
@@ -261,8 +259,13 @@ export const layoutForceTopology = async (
   if (nodes.length === 0) return [];
   const stable = stabilizeTopologyGraph(nodes, edges);
   const seeded = await layoutLayeredTopology(stable.nodes, stable.edges);
-  if (seeded.length <= 1) return mapLayoutPositions(nodes, new Map(seeded.map((item) => [item.id, { x: item.x, y: item.y }])));
-  return mapLayoutPositions(nodes, runSeededForce(seeded, stable.edges));
+  const positioned = seeded.length <= 1
+    ? new Map(seeded.map((item) => [item.id, { x: item.x, y: item.y }]))
+    : runSeededForce(seeded, stable.edges);
+  return nodes.map((item) => {
+    const raw = positioned.get(item.id) ?? { x: CANVAS_PADDING.left, y: CANVAS_PADDING.top };
+    return { ...item, x: roundCoordinate(raw.x), y: roundCoordinate(raw.y) };
+  });
 };
 
 const unitVector = (fromX: number, fromY: number, toX: number, toY: number) => {
