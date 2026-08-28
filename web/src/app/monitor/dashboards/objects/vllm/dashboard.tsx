@@ -26,7 +26,7 @@ const CHART_TITLES = [
   '时延拆解',
   'KV 缓存占用',
   'ITL / E2E',
-  'Input / Output TPM',
+  '输入 / 输出 TPM',
   '输入 Token 长度',
   '输出 Token 长度'
 ];
@@ -67,7 +67,7 @@ export default function VllmDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>队列</div>
+          <div className={styles.sectionLabel}>总览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
           <FlexiblePanelSection styles={styles}>
             {renderChart(queueTrend, styles.span8)}
@@ -87,17 +87,17 @@ export default function VllmDashboardPage() {
             ) : null}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>TTFT</div>
+          <div className={styles.sectionLabel}>时延拆解</div>
           <FlexiblePanelSection styles={styles}>
             {renderChart(latencyBreakdown, styles.span12)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>KV</div>
+          <div className={styles.sectionLabel}>KV 缓存</div>
           <FlexiblePanelSection styles={styles}>
             {renderChart(kvTrend, styles.span12)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>TPOT</div>
+          <div className={styles.sectionLabel}>吞吐</div>
           <FlexiblePanelSection styles={styles}>
             {renderChart(tpotTrend, styles.span6)}
             {renderChart(tpmTrend, styles.span6)}
