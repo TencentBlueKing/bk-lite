@@ -6,7 +6,9 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
+  type SetStateAction,
 } from "react";
 import { message, Select } from "antd";
 import { useTranslation } from "@/utils/i18n";
@@ -66,6 +68,7 @@ import {
   syncScreenFilterBindings,
   updateScreenItemConfig,
 } from "./utils/layoutUtils";
+import { createScreenCopyItemHandler } from "./utils/copyScreenItem";
 import {
   buildDefaultScreenViewSets,
   normalizeScreenViewSets,
@@ -128,9 +131,19 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const [savedViewSets, setSavedViewSets] = useState<ScreenViewSets>(
     buildDefaultScreenViewSets,
   );
-  const [draftViewSets, setDraftViewSets] = useState<ScreenViewSets>(
+  const [draftViewSets, setDraftViewSetsState] = useState<ScreenViewSets>(
     buildDefaultScreenViewSets,
   );
+  const draftViewSetsRef = useRef(draftViewSets);
+  draftViewSetsRef.current = draftViewSets;
+  const setDraftViewSets = useCallback((updater: SetStateAction<ScreenViewSets>) => {
+    const next =
+      typeof updater === "function"
+        ? updater(draftViewSetsRef.current)
+        : updater;
+    draftViewSetsRef.current = next;
+    setDraftViewSetsState(next);
+  }, []);
   const [editQuerySnapshot, setEditQuerySnapshot] =
     useState<ScreenQuerySnapshot | null>(null);
   const { isFullscreen, enterFullscreen, exitFullscreen } =
@@ -511,6 +524,16 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     [rebuildDraftFilters],
   );
 
+  const handleCopyItem = useCallback(
+    createScreenCopyItemHandler({
+      getDraftViewSets: () => draftViewSetsRef.current,
+      setDraftViewSets,
+      setSelectedItemId,
+      rebuildFilters: rebuildDraftFilters,
+    }),
+    [rebuildDraftFilters],
+  );
+
   const handleOpenItemConfig = useCallback((itemId: string) => {
     setSelectedItemId(itemId);
     setConfigItemId(itemId);
@@ -690,6 +713,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         fullscreen={isFullscreen}
         editMode={editMode}
         shareMode={shareMode}
+        isBuiltIn={Boolean(selectedScreen?.is_build_in)}
         selectedItemId={selectedItemId}
         refreshVersion={refreshVersion}
         refreshCause={refreshCause}
@@ -704,6 +728,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         onMoveItem={handleMoveItem}
         onResizeItem={handleResizeItem}
         onEditItem={handleOpenItemConfig}
+        onCopyItem={handleCopyItem}
         onDeleteItem={handleDeleteItem}
         onTopologyLayoutChange={
           editMode && !shareMode ? handleTopologyLayoutChange : undefined
@@ -715,6 +740,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       dataSourceResolver,
       editMode,
       handleDeleteItem,
+      handleCopyItem,
       handleOpenItemConfig,
       handleMoveItem,
       handleResizeItem,
@@ -729,6 +755,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       isFullscreen,
       selectedItemId,
       selectedScreen?.data_id,
+      selectedScreen?.is_build_in,
       shareMode,
     ],
   );

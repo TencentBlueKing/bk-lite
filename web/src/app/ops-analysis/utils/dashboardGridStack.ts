@@ -203,15 +203,19 @@ export const buildDashboardGridStackStructureKey = (
     .map((node) => node.id)
     .sort()
     .join(',');
-  const widgetIds = [
-    ...layout.ungroupedNodes,
-    ...layout.groupNodes.flatMap((node) => node.children),
+  // Include group membership so drag-into-group (groupId change without new
+  // widget ids) still rebuilds GridStack from React state instead of leaving
+  // DOM-only membership that disappears on the next delete/copy rebuild.
+  const membership = [
+    ...layout.ungroupedNodes.map((node) => node.id),
+    ...layout.groupNodes.flatMap((node) =>
+      node.children.map((child) => `${child.id}@${node.id}`),
+    ),
   ]
-    .map((node) => node.id)
     .sort()
     .join(',');
 
-  return `groups:${groupIds}||widgets:${widgetIds}`;
+  return `groups:${groupIds}||membership:${membership}`;
 };
 
 export const flattenDashboardGridStackLayout = (

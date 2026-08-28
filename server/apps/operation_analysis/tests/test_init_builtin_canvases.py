@@ -41,18 +41,52 @@ def _count_nested_key(value, target_key):
     return 0
 
 
-def test_builtin_yaml_contains_alert_and_room3d_screens():
+def test_builtin_yaml_contains_alert_room3d_and_application3d_screens():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
 
-    assert payload["meta"]["object_counts"]["screens"] == 2
+    assert payload["meta"]["object_counts"]["screens"] == 3
     assert payload["meta"]["object_counts"]["topologies"] == 0
     assert [screen["key"] for screen in payload["screens"]] == [
         "screen::告警运营大屏_内置",
         "screen::3D机房大屏_内置",
+        "screen::3D应用大屏_内置",
     ]
-    assert [screen["name"] for screen in payload["screens"]] == ["告警运营大屏_内置", "3D机房大屏_内置"]
+    assert [screen["name"] for screen in payload["screens"]] == ["告警运营大屏", "3D机房大屏", "3D应用大屏"]
     assert "基础资源态势大屏_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
     assert "运营健康拓扑_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
+
+
+def test_builtin_application3d_screen_yaml_contains_only_the_self_fetch_scene_widget():
+    payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
+    screen = next(screen for screen in payload["screens"] if screen["key"] == "screen::3D应用大屏_内置")
+
+    assert screen["view_sets"]["viewport"] == {
+        "theme": "screen-dark",
+        "width": 1920,
+        "height": 1080,
+        "background": {"key": "tech-grid", "type": "builtIn"},
+    }
+    assert screen["view_sets"]["decorations"] == {"title": "3D应用", "showClock": False, "showTitle": False}
+    assert screen["refs"] == {"datasource_keys": [], "namespace_keys": []}
+
+    assert screen["view_sets"]["items"] == [
+        {
+            "h": 1080,
+            "w": 1920,
+            "x": 0,
+            "y": 0,
+            "id": "builtin-application3d-main",
+            "type": "widget",
+            "title": "3D应用",
+            "zIndex": 1,
+            "chartType": "application3D",
+            "valueConfig": {
+                "chartType": "application3D",
+                "sceneWidgetType": "application3D",
+                "appearance": {"frame": "bare"},
+            },
+        }
+    ]
 
 
 def test_builtin_room3d_screen_yaml_uses_dynamic_room_switch():
@@ -903,7 +937,7 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     call_command("init_builtin_canvases")
 
     assert not Screen.objects.filter(name__startswith="基础资源态势大屏", is_build_in=True).exists()
-    screen = Screen.objects.get(name="告警运营大屏_内置", is_build_in=True)
+    screen = Screen.objects.get(name="告警运营大屏", is_build_in=True)
     nodes = screen.view_sets["items"]
     datasource_names = [node.get("valueConfig", {}).get("dataSource") for node in nodes if node.get("valueConfig", {}).get("dataSource")]
     datasource_ids = set(datasource_names)
@@ -962,7 +996,7 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     assert source_top_fields["source_name"] == "告警源"
     assert source_top_fields["count"] == "告警关联事件数"
 
-    room3d_screen = Screen.objects.get(name="3D机房大屏_内置", is_build_in=True)
+    room3d_screen = Screen.objects.get(name="3D机房大屏", is_build_in=True)
     assert room3d_screen.build_in_key == "screen::3D机房大屏_内置"
     assert room3d_screen.directory.build_in_key == "__builtin__"
     assert room3d_screen.view_sets["decorations"] == {"title": "3D机房大屏", "showClock": False, "showTitle": False}
@@ -973,6 +1007,29 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     assert room3d_widget["valueConfig"]["appearance"] == {"frame": "bare"}
     room_param = room3d_datasource.params[0]
     assert room_param["inputConfig"]["componentSwitch"] is True
+
+    application3d_screen = Screen.objects.get(name="3D应用大屏", is_build_in=True)
+    assert application3d_screen.build_in_key == "screen::3D应用大屏_内置"
+    assert application3d_screen.directory.build_in_key == "__builtin__"
+    assert application3d_screen.view_sets["decorations"] == {"title": "3D应用", "showClock": False, "showTitle": False}
+    assert application3d_screen.view_sets["items"] == [
+        {
+            "h": 1080,
+            "w": 1920,
+            "x": 0,
+            "y": 0,
+            "id": "builtin-application3d-main",
+            "type": "widget",
+            "title": "3D应用",
+            "zIndex": 1,
+            "chartType": "application3D",
+            "valueConfig": {
+                "chartType": "application3D",
+                "sceneWidgetType": "application3D",
+                "appearance": {"frame": "bare"},
+            },
+        }
+    ]
 
     alert_dashboard = Dashboard.objects.get(name="统一告警中心仪表盘", is_build_in=True)
     dashboard_widget_by_id = {widget["id"]: widget for widget in alert_dashboard.view_sets}

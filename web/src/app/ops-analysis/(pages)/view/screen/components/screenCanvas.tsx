@@ -30,6 +30,7 @@ interface ScreenCanvasProps {
   fullscreen?: boolean;
   editMode?: boolean;
   shareMode?: boolean;
+  isBuiltIn?: boolean;
   selectedItemId?: string | null;
   refreshVersion?: number;
   refreshCause?: CanvasRuntimeRefreshCause;
@@ -47,6 +48,7 @@ interface ScreenCanvasProps {
   onMoveItem?: (itemId: string, position: { x: number; y: number }) => void;
   onResizeItem?: (itemId: string, size: { w: number; h: number }) => void;
   onEditItem?: (itemId: string) => void;
+  onCopyItem?: (itemId: string) => void;
   onDeleteItem?: (itemId: string) => void;
   onTopologyLayoutChange?: (
     itemId: string,
@@ -416,6 +418,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   fullscreen = false,
   editMode = false,
   shareMode = false,
+  isBuiltIn = false,
   selectedItemId = null,
   refreshVersion = 0,
   refreshCause = "manual",
@@ -431,6 +434,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   onMoveItem,
   onResizeItem,
   onEditItem,
+  onCopyItem,
   onDeleteItem,
   onTopologyLayoutChange,
 }) => {
@@ -505,6 +509,8 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         item={item}
         selected={editable && selected}
         editMode={editable}
+        shareMode={shareMode}
+        isBuiltIn={isBuiltIn}
         refreshVersion={refreshVersion}
         refreshCause={refreshCause}
         screenId={screenId}
@@ -520,6 +526,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         builtinNamespaceId={builtinNamespaceId}
         onRenderStatus={onWidgetRenderStatus}
         onEditConfig={() => onEditItem?.(item.id)}
+        onCopy={() => onCopyItem?.(item.id)}
         onDelete={onDeleteItem}
         layoutEditable={editMode && !shareMode}
         onTopologyLayoutChange={
