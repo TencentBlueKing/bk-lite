@@ -66,7 +66,7 @@ import {
   syncScreenFilterBindings,
   updateScreenItemConfig,
 } from "./utils/layoutUtils";
-import { copyScreenWidget } from "@/app/ops-analysis/utils/widgetCopy";
+import { createScreenCopyItemHandler } from "./utils/copyScreenItem";
 import {
   buildDefaultScreenViewSets,
   normalizeScreenViewSets,
@@ -513,20 +513,11 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   );
 
   const handleCopyItem = useCallback(
-    (itemId: string) => {
-      let selectedId: string | null = null;
-      setDraftViewSets((current) => {
-        const copied = copyScreenWidget(current, itemId);
-        if (!copied) {
-          return current;
-        }
-        selectedId = copied.selectedItemId;
-        return rebuildDraftFilters(copied.viewSets);
-      });
-      if (selectedId) {
-        setSelectedItemId(selectedId);
-      }
-    },
+    createScreenCopyItemHandler({
+      setDraftViewSets,
+      setSelectedItemId,
+      rebuildFilters: rebuildDraftFilters,
+    }),
     [rebuildDraftFilters],
   );
 
