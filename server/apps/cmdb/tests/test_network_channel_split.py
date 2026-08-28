@@ -1,0 +1,327 @@
+"""Network 双通道对账与拓扑重放判定测试。"""
+
+from unittest import mock
+
+import pytest
+
+from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusType
+from apps.cmdb.models.collect_model import (
+    COLLECTION_ROLE_DEVICE,
+    COLLECTION_ROLE_TOPOLOGY,
+    normalize_topology_contract,
+    recommended_topology_interval_minutes,
+)
+from apps.cmdb.node_configs.network.network import NetworkNodeParams, NetworkTopoNodeParams
+from apps.cmdb.services.topology_replay_service import LAST_SYNCED_TOPOLOGY_ROUND_KEY, get_last_synced_topology_round
+
+pytestmark = pytest.mark.unit
+
+
+def test_recommended_topology_interval_is_five_times_device():
+    assert recommended_topology_interval_minutes(30) == 150
+    assert recommended_topology_interval_minutes("10") == 50
+
+
+def test_normalize_topology_contract_includes_interval_and_versions():
+    contract = normalize_topology_contract(
+        {
+            "has_network_topo": True,
+            "topology_interval_minutes": 120,
+            "topology_interval_mode": "custom",
+            "topology_timeout": 600,
+        },
+        device_cycle_minutes=30,
+    )
+    assert contract["topology_interval_minutes"] == 120
+    assert contract["topology_interval_mode"] == "custom"
+    assert contract["topology_timeout"] == 600
+    assert contract["device_channel_config_version"] == 1
+    assert contract["topology_channel_config_version"] == 1
+
+
+def test_normalize_topology_contract_defaults_topology_timeout():
+    contract = normalize_topology_contract({"has_network_topo": True})
+    assert contract["topology_timeout"] == 600
+
+
+def _network_instance(**overrides):
+    base = {
+        "id": 42,
+        "model_id": "network",
+        "driver_type": "snmp",
+        "task_type": CollectPluginTypes.SNMP,
+        "timeout": 300,
+        "cycle_value_type": "cycle",
+        "cycle_value": "30",
+        "instances": [{"ip_addr": "10.0.0.1"}],
+        "ip_range": "",
+        "access_point": [{"id": "node-1"}],
+        "decrypt_credentials": {
+            "version": "v2",
+            "snmp_port": 161,
+            "community": "public",
+        },
+        "params": {
+            "has_network_topo": True,
+            "topology_protocols": ["lldp", "cdp"],
+            "topology_interval_minutes": 150,
+            "topology_interval_mode": "recommended",
+            "device_channel_config_version": 2,
+            "topology_channel_config_version": 3,
+        },
+    }
+    base.update(overrides)
+    return mock.Mock(**base)
+
+
+def test_device_and_topology_config_ids_differ_metric_scope_same():
+    instance = _network_instance()
+    device = NetworkNodeParams(instance)
+    topo = NetworkTopoNodeParams(instance)
+
+    assert device.config_id == "cmdb_42"
+    assert topo.config_id == "cmdb_42_topology"
+    assert device.metric_scope_id == topo.metric_scope_id == "cmdb_42"
+    assert device.tags["instance_id"] == "cmdb_42"
+    assert topo.tags["instance_id"] == "cmdb_42"
+    assert device.collection_role == COLLECTION_ROLE_DEVICE
+    assert topo.collection_role == COLLECTION_ROLE_TOPOLOGY
+    assert device.channel_config_version == 2
+    assert topo.channel_config_version == 3
+
+
+def test_device_credentials_do_not_enable_inline_topo():
+    instance = _network_instance()
+    device = NetworkNodeParams(instance)
+    credential = device.set_credential()
+    assert credential["has_network_topo"] is False
+    assert "topology_protocols" not in credential
+
+
+def test_topology_credentials_carry_protocols_and_interval():
+    instance = _network_instance()
+    topo = NetworkTopoNodeParams(instance)
+    credential = topo.set_credential()
+    assert credential["has_network_topo"] is True
+    assert credential["topology_protocols"] == "lldp,cdp"
+    assert topo.resolved_interval == 150 * 60
+
+
+def test_expected_network_node_configs_returns_two_when_enabled(monkeypatch):
+    from apps.cmdb.services import network_collection_reconcile as reconcile
+
+    instance = _network_instance()
+    monkeypatch.setattr(
+        NetworkNodeParams,
+        "render_template",
+        lambda self, context: "device-content",
+    )
+    monkeypatch.setattr(
+        NetworkTopoNodeParams,
+        "render_template",
+        lambda self, context: "topo-content",
+    )
+    nodes = reconcile.expected_network_node_configs(instance)
+    assert [n["id"] for n in nodes] == ["cmdb_42", "cmdb_42_topology"]
+    assert nodes[0]["type"] == "network"
+    assert nodes[1]["type"] == "network_topo"
+
+
+def test_reconcile_delete_clears_both_configs(monkeypatch):
+    from apps.cmdb.services import network_collection_reconcile as reconcile
+
+    deleted = []
+
+    class FakeNodeMgmt:
+        def delete_child_configs(self, payload):
+            deleted.extend(payload)
+
+        def batch_add_node_child_config(self, nodes):
+            raise AssertionError("delete path must not push")
+
+    monkeypatch.setattr(reconcile, "NodeMgmt", FakeNodeMgmt)
+    result = reconcile.reconcile_network_collection_configs(_network_instance(), delete=True)
+    assert result["deleted"] == ["cmdb_42", "cmdb_42_topology"]
+    assert deleted == [{"id": "cmdb_42"}, {"id": "cmdb_42_topology"}]
+
+
+def test_get_last_synced_topology_round():
+    assert get_last_synced_topology_round(None) is None
+    assert get_last_synced_topology_round({LAST_SYNCED_TOPOLOGY_ROUND_KEY: "9"}) == 9
+
+
+def test_replay_stale_when_version_mismatch(monkeypatch):
+    from apps.cmdb.services import topology_replay_service as replay
+
+    task = mock.Mock(
+        id=7,
+        model_id="network",
+        task_type=CollectPluginTypes.SNMP,
+        params={
+            "has_network_topo": True,
+            "topology_channel_config_version": 5,
+        },
+        collect_digest={},
+        format_data={"__raw_data__": [{"__name__": "network_interfaces_info_gauge"}]},
+        team=[1],
+        data_cleanup_strategy="no_cleanup",
+    )
+    monkeypatch.setattr(
+        replay.CollectModels._default_manager,
+        "filter",
+        lambda **kwargs: mock.Mock(first=lambda: task),
+    )
+    status = replay.replay_topology_for_task(
+        7,
+        marker={"round_ts": 100, "channel_config_version": "4", "run_attempt_id": "a"},
+    )
+    assert status == "stale"
+
+
+def test_replay_pending_when_interfaces_missing(monkeypatch):
+    from apps.cmdb.services import topology_replay_service as replay
+
+    updates = []
+    task = mock.Mock(
+        id=8,
+        model_id="network",
+        task_type=CollectPluginTypes.SNMP,
+        params={"has_network_topo": True, "topology_channel_config_version": 1},
+        collect_digest={},
+        format_data={},
+        team=[1],
+        data_cleanup_strategy="no_cleanup",
+    )
+
+    class QS:
+        def filter(self, *args, **kwargs):
+            return self
+
+        def first(self):
+            return task
+
+        def only(self, *args):
+            return self
+
+        def update(self, **kwargs):
+            updates.append(kwargs)
+            return 1
+
+        def values_list(self, *args, **kwargs):
+            return self
+
+    monkeypatch.setattr(replay.CollectModels._default_manager, "filter", lambda *a, **k: QS())
+    status = replay.replay_topology_for_task(
+        8,
+        marker={"round_ts": 200, "channel_config_version": "1", "run_attempt_id": "b"},
+    )
+    assert status == "pending"
+    assert any(PENDING_TOPOLOGY_REPLAY_KEY in (u.get("params") or {}) for u in updates)
+
+
+# import after defining usage
+from apps.cmdb.services.topology_replay_service import PENDING_TOPOLOGY_REPLAY_KEY  # noqa: E402
+
+
+def test_replay_idempotent_same_round(monkeypatch):
+    from apps.cmdb.services import topology_replay_service as replay
+
+    task = mock.Mock(
+        id=9,
+        model_id="network",
+        task_type=CollectPluginTypes.SNMP,
+        params={"has_network_topo": True, "topology_channel_config_version": 1},
+        collect_digest={LAST_SYNCED_TOPOLOGY_ROUND_KEY: 300},
+        format_data={"__raw_data__": [{"__name__": "network_interfaces_info_gauge"}]},
+        team=[1],
+        data_cleanup_strategy="no_cleanup",
+    )
+    monkeypatch.setattr(
+        replay.CollectModels._default_manager,
+        "filter",
+        lambda *a, **k: mock.Mock(first=lambda: task),
+    )
+    status = replay.replay_topology_for_task(
+        9,
+        marker={"round_ts": 300, "channel_config_version": "1", "run_attempt_id": "c"},
+    )
+    assert status == "skipped"
+
+
+def test_replay_missing_when_task_deleted(monkeypatch):
+    from apps.cmdb.services import topology_replay_service as replay
+
+    monkeypatch.setattr(
+        replay.CollectModels._default_manager,
+        "filter",
+        lambda *a, **k: mock.Mock(first=lambda: None),
+    )
+    assert replay.replay_topology_for_task(404, marker={"round_ts": 1}) == "missing"
+
+
+def test_gate_triggers_topology_replay_for_network(monkeypatch):
+    from apps.cmdb.tasks import celery_tasks as ct
+
+    rows = [
+        {
+            "id": 31,
+            "exec_status": CollectRunStatusType.SUCCESS,
+            "collect_digest": {"last_synced_round": 100},
+            "params": {"has_network_topo": True},
+            "model_id": "network",
+            "task_type": CollectPluginTypes.SNMP,
+        },
+    ]
+
+    class _QS:
+        _pages = 0
+
+        def __init__(self, data):
+            self._data = data
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def exclude(self, *args, **kwargs):
+            return self
+
+        def order_by(self, *args, **kwargs):
+            return self
+
+        def values(self, *args, **kwargs):
+            return self
+
+        def __getitem__(self, item):
+            if isinstance(item, slice):
+                _QS._pages += 1
+                if _QS._pages > 1:
+                    return []
+                return list(self._data)
+            raise TypeError(item)
+
+    _QS._pages = 0
+    monkeypatch.setattr(ct.CollectModels._default_manager, "filter", lambda *a, **k: _QS(rows))
+    monkeypatch.setattr(ct, "_purge_legacy_vm_sync_beats", lambda: 0)
+    monkeypatch.setattr(ct, "query_latest_round_ts", lambda *_a, **_k: 100)
+    monkeypatch.setattr(ct, "has_instance_vm_data", lambda *_a, **_k: False)
+
+    class _Delay:
+        @staticmethod
+        def delay(*args, **kwargs):
+            return None
+
+    monkeypatch.setattr(ct, "sync_collect_task", _Delay)
+    called = []
+
+    def fake_replay(task_id, params, digest):
+        called.append((task_id, params.get("has_network_topo"), digest.get("last_synced_round")))
+        return "played"
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.topology_replay_service.maybe_replay_topology_from_gate",
+        fake_replay,
+    )
+    result = ct.sync_collect_tasks_gate()
+    assert called == [(31, True, 100)]
+    assert result["topo_replayed"] == 1
+    assert result["skipped"] == 1

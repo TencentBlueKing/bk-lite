@@ -74,16 +74,17 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
     loadObjects();
   }, [isLoading]);
 
+  // 以当前仪表盘路由对象为准选中左侧树，避免 URL 残留 monitorObjId 高亮错节点。
   const selectedObjectId = useMemo(() => {
-    const monitorObjId = searchParams.get('monitorObjId');
-    if (monitorObjId) return monitorObjId;
-
-    const matched = objects.find(
+    const matchedByRoute = objects.find(
       (item) =>
         getProfessionalDashboardKey(item.name, item.display_name) ===
         normalizedCurrent
     );
-    return matched?.id;
+    if (matchedByRoute) {
+      return matchedByRoute.id;
+    }
+    return searchParams.get('monitorObjId') || undefined;
   }, [normalizedCurrent, objects, searchParams]);
 
   const handleSelect = (key: string) => {

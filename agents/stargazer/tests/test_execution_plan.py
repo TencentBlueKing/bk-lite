@@ -12,7 +12,7 @@ def _write_plugin(root: Path, body: str) -> None:
     (plugin_dir / "plugin.yml").write_text(body, encoding="utf-8")
 
 
-def test_execution_plan_uses_independent_yaml_timeouts_and_metadata(tmp_path):
+def test_execution_plan_uses_yaml_metadata_and_task_collection_budget(tmp_path):
     _write_plugin(
         tmp_path,
         """
@@ -22,7 +22,6 @@ default_executor: protocol
 executors:
   protocol:
     type: protocol
-    timeout: 90
     probe_timeout: 14
     execution_mode: async
     capacity_group: snmp
@@ -39,7 +38,6 @@ executors:
             collection_seconds=60,
             publish_seconds=30,
         ),
-        preflight_enabled=True,
     )
 
     plan = resolver.resolve(
@@ -47,7 +45,7 @@ executors:
             task_id="plan-yaml",
             plugin_ref="network.config",
             targets=("10.10.24.1",),
-            params={"executor_type": "protocol"},
+            params={"executor_type": "protocol", "timeout": "90"},
         )
     )
 
@@ -59,7 +57,7 @@ executors:
     assert plan.capacity_group == "snmp"
 
 
-def test_execution_plan_missing_collection_timeout_defaults_to_60(tmp_path):
+def test_execution_plan_missing_task_timeout_defaults_to_collection_timeout(tmp_path):
     _write_plugin(
         tmp_path,
         """
@@ -77,7 +75,6 @@ executors:
     resolver = ExecutionPlanResolver(
         reader=PluginYamlReader(plugins_base_dir=str(tmp_path)),
         defaults=TimeoutDefaults(),
-        preflight_enabled=False,
     )
 
     plan = resolver.resolve(
@@ -97,7 +94,7 @@ executors:
     assert plan.capacity_group == "default"
 
 
-def test_execution_plan_rejects_non_positive_yaml_timeout(tmp_path):
+def test_execution_plan_preflight_switch_comes_from_each_request(tmp_path):
     _write_plugin(
         tmp_path,
         """
@@ -106,20 +103,130 @@ metadata:
 executors:
   protocol:
     type: protocol
-    timeout: 0
 """,
     )
     resolver = ExecutionPlanResolver(
         reader=PluginYamlReader(plugins_base_dir=str(tmp_path)),
         defaults=TimeoutDefaults(),
-        preflight_enabled=True,
     )
 
-    with pytest.raises(ValueError, match="collection_timeout_seconds"):
-        resolver.resolve(
-            CollectionRequest(
-                task_id="plan-invalid",
-                plugin_ref="network.config",
-                targets=("10.10.24.1",),
-            )
+    enabled = resolver.resolve(
+        CollectionRequest(
+            task_id="precheck-on",
+            plugin_ref="network.config",
+            targets=("10.10.24.1",),
+            params={"ip_precheck": "true"},
         )
+    )
+    disabled = resolver.resolve(
+        CollectionRequest(
+            task_id="precheck-off",
+            plugin_ref="network.config",
+            targets=("10.10.24.2",),
+            params={"ip_precheck": False},
+        )
+    )
+
+    assert enabled.preflight_enabled is True
+    assert disabled.preflight_enabled is False
+
+
+def test_execution_plan_accepts_network_topology_capacity_group(tmp_path):
+    _write_plugin(
+        tmp_path,
+        """
+metadata:
+  type: network
+default_executor: protocol
+executors:
+  protocol:
+    type: protocol
+    capacity_group: network_topology
+""",
+    )
+    resolver = ExecutionPlanResolver(
+        reader=PluginYamlReader(plugins_base_dir=str(tmp_path)),
+        defaults=TimeoutDefaults(),
+    )
+
+    plan = resolver.resolve(
+        CollectionRequest(
+            task_id="topology-plan",
+            plugin_ref="network.config",
+            targets=("10.10.24.1",),
+        )
+    )
+
+    assert plan.capacity_group == "network_topology"
+
+
+@pytest.mark.parametrize(
+    ("raw_timeout", "expected"),
+    (
+        ("1", 1.0),
+        ("86400", 86400.0),
+        ("0", 60.0),
+        ("", 60.0),
+        (None, 60.0),
+        ("0.5", 1.0),
+        ("90000", 86400.0),
+    ),
+)
+def test_execution_plan_clamps_task_collection_budget(tmp_path, raw_timeout, expected):
+    _write_plugin(
+        tmp_path,
+        """
+metadata:
+  type: network
+executors:
+  protocol:
+    type: protocol
+""",
+    )
+    resolver = ExecutionPlanResolver(
+        reader=PluginYamlReader(plugins_base_dir=str(tmp_path)),
+        defaults=TimeoutDefaults(collection_seconds=60),
+    )
+    params = {"executor_type": "protocol"}
+    if raw_timeout is not None:
+        params["timeout"] = raw_timeout
+
+    plan = resolver.resolve(
+        CollectionRequest(
+            task_id="plan-clamp",
+            plugin_ref="network.config",
+            targets=("10.10.24.1",),
+            params=params,
+        )
+    )
+
+    assert plan.collection_timeout_seconds == expected
+
+
+def test_execution_plan_ignores_yaml_executor_timeout(tmp_path):
+    _write_plugin(
+        tmp_path,
+        """
+metadata:
+  type: network
+executors:
+  protocol:
+    type: protocol
+    timeout: 300
+""",
+    )
+    resolver = ExecutionPlanResolver(
+        reader=PluginYamlReader(plugins_base_dir=str(tmp_path)),
+        defaults=TimeoutDefaults(collection_seconds=60),
+    )
+
+    plan = resolver.resolve(
+        CollectionRequest(
+            task_id="plan-ignore-yaml-timeout",
+            plugin_ref="network.config",
+            targets=("10.10.24.1",),
+            params={"timeout": "120"},
+        )
+    )
+
+    assert plan.collection_timeout_seconds == 120

@@ -47,71 +47,93 @@ export function useResolveObjectId(objectKey: string) {
 
     if (resolving.current || !objectKey) return;
 
-    if (!monitorObjId) {
-      const registryItem = findProfessionalDashboardMetaByKey(objectKey);
-      if (!registryItem) return;
-      const registryCandidates = getDashboardObjectMatchKeys(registryItem);
+    const registryItem = findProfessionalDashboardMetaByKey(objectKey);
+    if (!registryItem) return;
 
-      resolving.current = true;
+    const registryCandidates = getDashboardObjectMatchKeys(registryItem);
 
-      const resolve = async () => {
-        try {
-          const objects = await getMonitorObject({ include_invisible: true });
-          if (!Array.isArray(objects)) return;
+    const matchesRouteObject = (obj: {
+      name?: string;
+      display_name?: string;
+    }) => {
+      const objName = normalizeDashboardKey(obj.name);
+      const objDisplay = normalizeDashboardKey(obj.display_name);
+      return (
+        registryCandidates.includes(objName) ||
+        registryCandidates.includes(objDisplay)
+      );
+    };
 
-          const matched = objects.find((obj: any) => {
-            const objName = normalizeDashboardKey(obj.name);
-            const objDisplay = normalizeDashboardKey(obj.display_name);
-            return registryCandidates.includes(objName) || registryCandidates.includes(objDisplay);
-          });
+    resolving.current = true;
 
-          if (!matched) return;
+    const resolve = async () => {
+      try {
+        const objects = await getMonitorObject({ include_invisible: true });
+        if (!Array.isArray(objects)) return;
 
+        const matchedByRoute = objects.find((obj: any) => matchesRouteObject(obj));
+        if (!matchedByRoute) return;
+
+        const currentById = monitorObjId
+          ? objects.find((obj: any) => String(obj.id) === String(monitorObjId))
+          : null;
+        const monitorObjMatchesRoute = !!(
+          currentById && matchesRouteObject(currentById)
+        );
+
+        // 无 monitorObjId，或 URL 残留了其他仪表盘对象的 id 时，纠正到当前路由对象。
+        if (!monitorObjMatchesRoute) {
           const params = new URLSearchParams(searchParams.toString());
-          params.set('monitorObjId', String(matched.id));
-          params.set('name', matched.name || registryItem.objectName);
-          params.set('monitorObjDisplayName', matched.display_name || registryItem.objectDisplayName || registryItem.objectName);
+          params.set('monitorObjId', String(matchedByRoute.id));
+          params.set('name', matchedByRoute.name || registryItem.objectName);
+          params.set(
+            'monitorObjDisplayName',
+            matchedByRoute.display_name ||
+              registryItem.objectDisplayName ||
+              registryItem.objectName
+          );
           if (!params.get('instance_id_keys')) {
-            const keys = Array.isArray(matched.instance_id_keys)
-              ? matched.instance_id_keys.join(',')
+            const keys = Array.isArray(matchedByRoute.instance_id_keys)
+              ? matchedByRoute.instance_id_keys.join(',')
               : 'instance_id';
             params.set('instance_id_keys', keys);
           }
 
+          // 已有 instance 时保留；仅在缺失时补选当前对象首个实例。
           if (!instanceId) {
-            const first = await resolveFirstInstance(getInstanceList, matched.id);
+            const first = await resolveFirstInstance(
+              getInstanceList,
+              matchedByRoute.id
+            );
             if (first) {
               applyInstanceParams(params, first);
             }
           }
 
-          router.replace(`/monitor/view/dashboard/${objectKey}?${params.toString()}`);
-        } finally {
-          resolving.current = false;
+          router.replace(
+            `/monitor/view/dashboard/${objectKey}?${params.toString()}`
+          );
+          return;
         }
-      };
 
-      resolve();
-      return;
-    }
-
-    if (monitorObjId && !instanceId) {
-      resolving.current = true;
-
-      const autoSelect = async () => {
-        try {
-          const first = await resolveFirstInstance(getInstanceList, monitorObjId);
+        if (!instanceId) {
+          const first = await resolveFirstInstance(
+            getInstanceList,
+            matchedByRoute.id
+          );
           if (!first) return;
 
           const params = new URLSearchParams(searchParams.toString());
           applyInstanceParams(params, first);
-          router.replace(`/monitor/view/dashboard/${objectKey}?${params.toString()}`);
-        } finally {
-          resolving.current = false;
+          router.replace(
+            `/monitor/view/dashboard/${objectKey}?${params.toString()}`
+          );
         }
-      };
+      } finally {
+        resolving.current = false;
+      }
+    };
 
-      autoSelect();
-    }
+    resolve();
   }, [objectKey, searchParams]);
 }

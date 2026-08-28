@@ -6,6 +6,7 @@ import { DownOutlined } from '@ant-design/icons';
 import PermissionWrapper from '@/components/permission';
 import AlarmAssignModal from './assign-modal';
 import { useTranslation } from '@/utils/i18n';
+import { showOperatorFailureMessages } from '@/app/alarm/utils/operatorResult';
 import { type ActionType, type AlarmActionProps } from './types';
 
 const AlarmAction: React.FC<AlarmActionProps> = ({
@@ -101,21 +102,21 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
       cancelText: t('common.cancel'),
       centered: true,
       onOk: async () => {
+        const fallback = `${t(`alarms.${type}`)}${t('alarms.alert')}${t('alarmCommon.partialFailure')}`;
         try {
           const data = await operateAction(type, {
             [idKeyMap[from]]: idList,
             assignee: [],
           });
           if (Object.values(data).some((res: any) => !res.result)) {
-            message.error(
-              `${t(`alarms.${type}`)}${t('alarms.alert')}${t('alarmCommon.partialFailure')}`
-            );
+            showOperatorFailureMessages(data, fallback);
           } else {
             message.success(t(`alarms.${type}`) + t('alarmCommon.success'));
             onAction();
           }
         } catch (err) {
           console.error(err);
+          showOperatorFailureMessages(null, fallback, err);
         }
       },
     });

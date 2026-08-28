@@ -24,6 +24,7 @@ const virtualModules = new Map([
     export class StateMachine { on() { return () => {}; } transition() {} transitionToChatting() {} destroy() {} }
     export class SSEStreamParser { push() { return []; } }
     export const normalizeWebChatConfig = (config) => config;
+    export const isSilentCustomEvent = () => false;
     let nextId = 0;
     export const generateId = () => 'message-' + ++nextId;`,
   ],
@@ -55,6 +56,15 @@ const virtualModules = new Map([
   [
     './components/ConfirmDialog',
     `import React from 'react'; export const ConfirmDialog = ({ isOpen, onConfirm }) => isOpen ? React.createElement('button', { 'data-test': 'confirm-clear', onClick: onConfirm }, 'confirm') : null;`,
+  ],
+  [
+    './components/PillComposer',
+    `import React from 'react'; export const PillComposer = (props) => React.createElement(
+      React.Fragment,
+      null,
+      React.createElement('button', { 'data-test': 'stop', onClick: props.onCancel }, 'stop'),
+      React.createElement('button', { 'data-test': 'submit', onClick: () => props.onSubmit('hi') }, 'submit')
+    );`,
   ],
   [
     './hooks/useMessageHandlers',

@@ -30,9 +30,7 @@ def test_pyproject_directly_pins_tracerite() -> None:
 
 def test_lock_contains_the_approved_tracerite_version() -> None:
     packages = _read_toml(LOCK_PATH)["package"]
-    tracerite_packages = [
-        package for package in packages if package["name"] == "tracerite"
-    ]
+    tracerite_packages = [package for package in packages if package["name"] == "tracerite"]
 
     assert [package["version"] for package in tracerite_packages] == ["1.1.3"]
 
@@ -40,10 +38,7 @@ def test_lock_contains_the_approved_tracerite_version() -> None:
 def test_dockerfile_installs_pinned_dependencies_via_pip() -> None:
     dockerfile = _logical_dockerfile()
 
-    assert (
-        'pip3 install -e ".[dev,aliyun,qcloud,huawei,vmware,openstack,qingyun,snmp]"'
-        in dockerfile
-    )
+    assert 'pip3 install -e ".[dev,aliyun,qcloud,huawei,vmware,openstack,qingyun,snmp]"' in dockerfile
     assert 'pip3 config set global.index-url "$NEXUS_PYTHON_REPOSITY"' in dockerfile
     # uv sync --locked 会把 index 地址纳入锁校验，与 Nexus 私有源冲突，
     # 不得回到镜像构建路径（TencentBlueKing/bk-lite#4287）
@@ -72,7 +67,8 @@ def test_runbook_documents_stateless_runtime_limits() -> None:
     assert "PROBE_TIMEOUT" in readme
     assert "COLLECTION_TIMEOUT" in readme
     assert "PUBLISH_TIMEOUT" in readme
-    assert "PREFLIGHT_REACHABILITY" in readme
+    assert "PREFLIGHT_REACHABILITY" not in readme
+    assert "params.ip_precheck" in readme
     assert "MAX_ACTIVE_TARGETS=0" in readme
 
 

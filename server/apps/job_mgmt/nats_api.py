@@ -199,9 +199,14 @@ def ansible_task_callback(data: dict):
 
 
 @nats_client.register
-def job_script_execute(data: dict):
+def job_script_execute(data: dict, **_ignored):
+    """脚本执行（NATS 开放接口）。忽略调用方 kwargs，身份固定为 api。"""
+    return _run_script_execute(data)
+
+
+def _run_script_execute(data: dict, *, trusted_actor=None):
     """
-    脚本执行（NATS 开放接口）
+    脚本执行实现。
 
     Args:
         data: 请求数据，包含：
@@ -216,6 +221,7 @@ def job_script_execute(data: dict):
             - callback_type: 回调通道 web|nats|both（可选，默认 web）
             - callback_url: web 通道回调地址（callback_type 含 web 时使用）
             - callback_subject: nats 通道回调主题，如 bklite.alert_job_result（callback_type 含 nats 时必填）
+        trusted_actor: 仅网关封装传入的可信身份；NATS 入口不得传入。
 
     Returns:
         {"result": True, "data": {"task_id": <int>}} 或 {"result": False, "message": "..."}
@@ -233,6 +239,9 @@ def job_script_execute(data: dict):
     callback_type = data.get("callback_type", CallbackType.WEB)
     callback_url = data.get("callback_url")
     callback_subject = data.get("callback_subject")
+    actor = trusted_actor if isinstance(trusted_actor, dict) else {}
+    actor_name = actor.get("user") or "api"
+    actor_domain = actor.get("domain") or "domain.com"
 
     if not name:
         return {"result": False, "message": "name 不能为空"}
@@ -283,8 +292,11 @@ def job_script_execute(data: dict):
         callback_type=callback_type,
         callback_url=callback_url,
         callback_subject=callback_subject,
-        created_by="api",
-        updated_by="api",
+        executor_user=actor_name,
+        created_by=actor_name[:32],
+        updated_by=actor_name[:32],
+        domain=actor_domain,
+        updated_by_domain=actor_domain,
     )
 
     # 触发异步执行（Celery Worker）
@@ -416,12 +428,8 @@ def _run_file_distribute(data: dict, *, trusted_actor=None):
     return {"result": True, "data": {"task_id": execution.id}}
 
 
-def _validate_openapi_distribute_scope(file_keys, target_source, target_list, authorized_team_ids):
-    """校验网关文件与目标均属于可信身份绑定组织。"""
-    files = list(DistributionFile.objects.filter(file_key__in=file_keys))
-    if len({item.file_key for item in files}) != len(set(file_keys)) or any(not is_team_authorized(item.team, authorized_team_ids) for item in files):
-        return "部分文件不存在、已过期或无权访问该组织的文件"
-
+def _validate_openapi_target_scope(target_source, target_list, authorized_team_ids):
+    """校验网关目标均属于可信身份绑定组织。"""
     id_field = "target_id" if target_source == "manual" else "node_id"
     target_ids = [item.get(id_field) for item in target_list]
     if any(not target_id for target_id in target_ids) or len(set(target_ids)) != len(target_ids):
@@ -438,6 +446,14 @@ def _validate_openapi_distribute_scope(file_keys, target_source, target_list, au
     if not authorized:
         return "部分目标不存在或无权访问该组织的目标"
     return None
+
+
+def _validate_openapi_distribute_scope(file_keys, target_source, target_list, authorized_team_ids):
+    """校验网关文件与目标均属于可信身份绑定组织。"""
+    files = list(DistributionFile.objects.filter(file_key__in=file_keys))
+    if len({item.file_key for item in files}) != len(set(file_keys)) or any(not is_team_authorized(item.team, authorized_team_ids) for item in files):
+        return "部分文件不存在、已过期或无权访问该组织的文件"
+    return _validate_openapi_target_scope(target_source, target_list, authorized_team_ids)
 
 
 @openapi_expose(

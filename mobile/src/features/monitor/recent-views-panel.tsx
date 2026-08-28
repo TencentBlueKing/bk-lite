@@ -34,6 +34,7 @@ export default function MonitorRecentViewsPanel() {
   const { t } = useTranslation();
   const { userInfo, organizationScope } = useAuth();
   const { entries, status, reload } = useRecentViews();
+  const canSnapshot = status === 'ready' || status === 'partial' || status === 'refresh-error';
   const cacheScope = organizationScope;
   const initialSnapshot = useRef(readMobileViewSnapshot<MonitorRecentViewsViewState>(cacheScope, 'monitor-recent'));
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -50,14 +51,14 @@ export default function MonitorRecentViewsPanel() {
   }, []);
 
   useEffect(() => {
-    if (status !== 'ready') return;
+    if (!canSnapshot) return;
     writeMobileViewSnapshot<MonitorRecentViewsViewState>(
       cacheScope,
       'monitor-recent',
       { entryKeys: entries.map((entry) => entryKey(entry.object.id, entry.instance.id)) },
       scrollRef.current?.scrollTop || 0,
     );
-  }, [cacheScope, entries, status]);
+  }, [cacheScope, canSnapshot, entries]);
 
   return (
     <div className={styles.recentPanel}>
@@ -65,7 +66,7 @@ export default function MonitorRecentViewsPanel() {
         className={styles.scroll}
         ref={scrollRef}
         onScroll={(event) => {
-          if (status !== 'ready') return;
+          if (!canSnapshot) return;
           writeMobileViewSnapshot<MonitorRecentViewsViewState>(
             cacheScope,
             'monitor-recent',
@@ -89,7 +90,15 @@ export default function MonitorRecentViewsPanel() {
                 actionLabel={t('common.retry')}
                 onAction={() => void reload().catch(() => undefined)}
               />
-            ) : entries.length === 0 ? (
+            ) : status === 'unavailable' ? (
+              <MobileResult
+                kind="error"
+                title={t('monitor.recentRestoreFailed')}
+                description={t('monitor.retryHint')}
+                actionLabel={t('common.retry')}
+                onAction={() => void reload().catch(() => undefined)}
+              />
+            ) : status === 'empty' ? (
               <MobileResult
                 kind="empty"
                 title={t('monitor.noRecentViews')}
@@ -97,6 +106,18 @@ export default function MonitorRecentViewsPanel() {
               />
             ) : (
               <div className={styles.recentList}>
+                {status === 'partial' || status === 'refresh-error' ? (
+                  <div role="status" className={styles.recentPartialNotice}>
+                    <span>{t(status === 'refresh-error' ? 'monitor.recentRefreshFailed' : 'monitor.recentPartialRestore')}</span>
+                    <button
+                      type="button"
+                      className={styles.recentNoticeAction}
+                      onClick={() => void reload(undefined, true).catch(() => undefined)}
+                    >
+                      {t('common.retry')}
+                    </button>
+                  </div>
+                ) : null}
                 {entries.map(({ item, object, instance, metricUnits }) => {
                   const reportingStatus = resolveMonitorReportingStatus(instance.status);
                   const summaryEntries = instanceSummaryEntries(

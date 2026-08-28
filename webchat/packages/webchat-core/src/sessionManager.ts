@@ -10,7 +10,11 @@ export class SessionManager {
 
   constructor(config: WebChatConfig = {}) {
     this.config = config;
-    this.storageKey = config.storageKey || '@webchat/session';
+    const baseStorageKey = config.storageKey || '@webchat/session';
+    const storageScope = config.storageScope?.trim();
+    this.storageKey = storageScope
+      ? `${baseStorageKey}:v2:${encodeURIComponent(storageScope)}`
+      : baseStorageKey;
   }
 
   /**
@@ -117,7 +121,10 @@ export class SessionManager {
     try {
       const stored = localStorage.getItem(this.storageKey);
       if (stored) {
-        const session = JSON.parse(stored) as ChatSession;
+        const session: unknown = JSON.parse(stored);
+        if (!this.isRestorableSession(session)) {
+          return null;
+        }
         // Only restore if session is recent (less than 24 hours old)
         if (Date.now() - session.lastActivityTime < 24 * 60 * 60 * 1000) {
           return session;
@@ -127,6 +134,22 @@ export class SessionManager {
       console.warn('Failed to restore session from storage:', e);
     }
     return null;
+  }
+
+  private isRestorableSession(value: unknown): value is ChatSession {
+    if (!value || typeof value !== 'object') {
+      return false;
+    }
+    const session = value as Partial<ChatSession>;
+    return (
+      typeof session.sessionId === 'string'
+      && session.sessionId.length > 0
+      && Array.isArray(session.messages)
+      && typeof session.startTime === 'number'
+      && Number.isFinite(session.startTime)
+      && typeof session.lastActivityTime === 'number'
+      && Number.isFinite(session.lastActivityTime)
+    );
   }
 
   /**

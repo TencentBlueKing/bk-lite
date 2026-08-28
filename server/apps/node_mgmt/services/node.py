@@ -18,6 +18,7 @@ from apps.node_mgmt.models.sidecar import Action, ChildConfig, Collector, Collec
 from apps.node_mgmt.serializers.node import NodeSerializer
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.tasks.action_task import ACTION_TASK_TIMEOUT_SECONDS, timeout_collector_action_task
+from apps.node_mgmt.utils.region_display_ip import load_region_display_ips
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import User
 
@@ -648,7 +649,10 @@ class NodeService:
         if not normalized_node_ids:
             return []
 
-        nodes = Node.objects.filter(id__in=normalized_node_ids).select_related("cloud_region").prefetch_related("nodeorganization_set")
+        nodes = list(Node.objects.filter(id__in=normalized_node_ids).select_related("cloud_region").prefetch_related("nodeorganization_set"))
+        region_display_ips = load_region_display_ips(
+            {node.cloud_region_id for node in nodes if node.node_type == ControllerConstants.NODE_TYPE_CONTAINER}
+        )
         return [
             {
                 "id": node.id,
@@ -659,6 +663,7 @@ class NodeService:
                 "node_type": node.node_type,
                 "operating_system": node.operating_system,
                 "organization_ids": [rel.organization for rel in node.nodeorganization_set.all()],
+                "region_display_ip": region_display_ips.get(node.cloud_region_id, ""),
             }
             for node in nodes
         ]

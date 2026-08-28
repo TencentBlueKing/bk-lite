@@ -1,5 +1,7 @@
 """脚本库视图测试（CRUD + 高危命令拦截 + 批量删除）"""
 
+from unittest.mock import patch
+
 import pytest
 
 from apps.job_mgmt.constants import DangerousLevel
@@ -28,6 +30,42 @@ class TestScriptCrud:
         resp = su_client.get(f"{URL}{s.id}/")
         assert resp.status_code == 200
         assert resp.data["name"] == "s1"
+
+    def test_normal_user_list_does_not_include_instance_rule_from_other_current_team(self, api_client, authenticated_user):
+        current = Script.objects.create(name="巡检模板", content="echo current", script_type="shell", team=[1])
+        foreign = Script.objects.create(name="巡检模板", content="echo foreign", script_type="shell", team=[2])
+        authenticated_user.is_superuser = False
+        authenticated_user.group_list = [{"id": 1, "name": "Current"}, {"id": 2, "name": "Foreign"}]
+        authenticated_user.permission = {"job": {"script_library-View"}}
+        api_client.cookies["current_team"] = "1"
+        rules = {
+            "team": [1],
+            "instance": [{"id": foreign.id, "permission": ["View"]}],
+        }
+
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules):
+            response = api_client.get(URL)
+
+        assert response.status_code == 200
+        assert [item["id"] for item in response.data] == [current.id]
+
+    def test_normal_user_foreign_instance_rule_returns_permission_error_on_retrieve(self, api_client, authenticated_user):
+        foreign = Script.objects.create(name="外部模板", content="echo foreign", script_type="shell", team=[2])
+        authenticated_user.is_superuser = False
+        authenticated_user.group_list = [{"id": 1, "name": "Current"}, {"id": 2, "name": "Foreign"}]
+        authenticated_user.permission = {"job": {"script_library-View"}}
+        api_client.cookies["current_team"] = "1"
+        rules = {
+            "team": [],
+            "instance": [{"id": foreign.id, "permission": ["View"]}],
+        }
+
+        with patch("apps.core.utils.viewset_utils.get_permission_rules", return_value=rules):
+            response = api_client.get(f"{URL}{foreign.id}/")
+
+        assert response.status_code == 200
+        assert response.json()["result"] is False
+        assert "id" not in response.json()
 
     def test_update_script(self, su_client):
         s = Script.objects.create(name="s1", content="echo", script_type="shell", team=[1])

@@ -34,7 +34,7 @@ export const getPCCredentialShape = (osType: PCOSType): PCCredentialShape =>
 
 export const getPCDefaults = (osType: PCOSType) => ({
   osType,
-  timeout: 120,
+  timeout: 180,
   cleanupStrategy: 'immediately',
   credentialPool: [
     osType === 'windows'
@@ -163,5 +163,6 @@ export const buildPCFormValues = (detail: any, isCopy: boolean) => {
     taskName: isCopy ? '' : detail?.name,
     organization: detail?.team || [],
     accessPointId: detail?.access_point?.[0]?.id,
+    ip_precheck: Boolean(params.ip_precheck),
   };
 };

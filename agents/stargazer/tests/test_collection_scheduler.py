@@ -144,3 +144,226 @@ async def test_scheduler_reports_waiting_running_and_completed_target_counts():
     assert scheduler.completed == 0
     assert scheduler.completed_total == 2
     await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_network_topology_borrows_half_general_capacity_when_general_is_idle():
+    scheduler = CollectionScheduler(max_in_flight=10, topology_max_in_flight=3)
+    release = asyncio.Event()
+
+    async def handle(item):
+        await release.wait()
+        return item
+
+    run = asyncio.create_task(
+        scheduler.execute(
+            "topology",
+            range(20),
+            handle,
+            workload="network_topology",
+        )
+    )
+    await asyncio.sleep(0.01)
+
+    # 基础拓扑配额为 3；普通池 7 个槽位空闲时可借一半（向下取整），
+    # 因此拓扑空闲态上限为 3 + floor(7 / 2) = 6。
+    assert scheduler.active == 6
+    assert scheduler.topology_active == 6
+
+    release.set()
+    assert await run == tuple(range(20))
+    await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_network_topology_idle_borrow_can_be_disabled():
+    scheduler = CollectionScheduler(
+        max_in_flight=10,
+        topology_max_in_flight=3,
+        allow_topology_idle_borrow=False,
+    )
+    release = asyncio.Event()
+
+    async def handle(item):
+        await release.wait()
+        return item
+
+    run = asyncio.create_task(
+        scheduler.execute(
+            "topology",
+            tuple(range(20)),
+            handle,
+            workload="network_topology",
+        )
+    )
+    await asyncio.sleep(0.01)
+
+    assert scheduler.active == 3
+    assert scheduler.topology_active == 3
+
+    release.set()
+    assert await run == tuple(range(20))
+    await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_general_arrival_stops_new_topology_borrowing_without_preemption():
+    scheduler = CollectionScheduler(max_in_flight=10, topology_max_in_flight=3)
+    topology_releases = [asyncio.Event() for _ in range(20)]
+    general_release = asyncio.Event()
+    started = []
+
+    async def handle(item):
+        started.append(item)
+        if str(item).startswith("t"):
+            await topology_releases[int(str(item)[1:])].wait()
+        else:
+            await general_release.wait()
+        return item
+
+    topology = asyncio.create_task(
+        scheduler.execute(
+            "topology",
+            tuple(f"t{index}" for index in range(20)),
+            handle,
+            workload="network_topology",
+        )
+    )
+    await asyncio.sleep(0.01)
+    assert sum(item.startswith("t") for item in started) == 6
+
+    general = asyncio.create_task(
+        scheduler.execute(
+            "general",
+            tuple(f"g{index}" for index in range(20)),
+            handle,
+        )
+    )
+    await asyncio.sleep(0.01)
+
+    # 已借用的拓扑目标不被抢占；普通目标使用剩余的全局槽位。
+    assert scheduler.active == 10
+    assert scheduler.topology_active == 6
+    assert sum(item.startswith("g") for item in started) == 4
+
+    topology_releases[0].set()
+    await asyncio.sleep(0.01)
+
+    # 普通任务存在后，拓扑动态上限恢复为基础配额 3；释放出的槽位给普通任务，
+    # 不再启动新的拓扑目标。
+    assert sum(item.startswith("t") for item in started) == 6
+    assert sum(item.startswith("g") for item in started) == 5
+
+    for release in topology_releases:
+        release.set()
+    general_release.set()
+    await asyncio.gather(topology, general)
+    await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_general_capacity_is_reserved_while_topology_waits():
+    scheduler = CollectionScheduler(max_in_flight=10, topology_max_in_flight=3)
+    release = asyncio.Event()
+    started = []
+
+    async def handle(item):
+        started.append(item)
+        await release.wait()
+        return item
+
+    topology = asyncio.create_task(
+        scheduler.execute(
+            "topology",
+            tuple(f"t{index}" for index in range(10)),
+            handle,
+            workload="network_topology",
+        )
+    )
+    general = asyncio.create_task(
+        scheduler.execute(
+            "general",
+            tuple(f"g{index}" for index in range(20)),
+            handle,
+        )
+    )
+    await asyncio.sleep(0.01)
+
+    assert scheduler.active == 10
+    assert scheduler.topology_active == 3
+    assert sum(item.startswith("g") for item in started) == 7
+
+    release.set()
+    await asyncio.gather(topology, general)
+    await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_general_workload_borrows_all_capacity_while_topology_is_idle():
+    scheduler = CollectionScheduler(max_in_flight=10, topology_max_in_flight=3)
+    release = asyncio.Event()
+    started = []
+
+    async def handle(item):
+        started.append(item)
+        await release.wait()
+        return item
+
+    run = asyncio.create_task(scheduler.execute("general", range(20), handle))
+    await asyncio.sleep(0.01)
+
+    assert scheduler.active == 10
+    assert scheduler.topology_active == 0
+    assert len(started) == 10
+
+    release.set()
+    await run
+    await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_topology_arrival_does_not_preempt_running_general_targets():
+    scheduler = CollectionScheduler(max_in_flight=10, topology_max_in_flight=3)
+    general_releases = [asyncio.Event() for _ in range(10)]
+    topology_release = asyncio.Event()
+    started = []
+
+    async def handle(item):
+        started.append(item)
+        if str(item).startswith("g"):
+            await general_releases[int(str(item)[1:])].wait()
+        else:
+            await topology_release.wait()
+        return item
+
+    general = asyncio.create_task(
+        scheduler.execute(
+            "general",
+            tuple(f"g{index}" for index in range(10)),
+            handle,
+        )
+    )
+    await asyncio.sleep(0.01)
+    topology = asyncio.create_task(
+        scheduler.execute(
+            "topology",
+            tuple(f"t{index}" for index in range(4)),
+            handle,
+            workload="network_topology",
+        )
+    )
+    await asyncio.sleep(0.01)
+
+    assert started == [f"g{index}" for index in range(10)]
+    assert scheduler.topology_active == 0
+
+    general_releases[0].set()
+    await asyncio.sleep(0.01)
+    assert started[-1] == "t0"
+    assert scheduler.topology_active == 1
+
+    for release in general_releases[1:]:
+        release.set()
+    topology_release.set()
+    await asyncio.gather(general, topology)
+    await scheduler.shutdown()

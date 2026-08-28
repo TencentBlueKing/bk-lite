@@ -81,6 +81,13 @@ import {
   type DashboardRenderSignal,
 } from '@/app/ops-analysis/renderContract';
 import { prepareDashboardPrintLayout } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
+import { useCanvasDraft } from '@/app/ops-analysis/hooks/useCanvasDraft';
+import {
+  restoreDraftRefreshInterval,
+  toCanvasDraftResourceId,
+  type CanvasDraftPayload,
+} from '@/app/ops-analysis/api/canvasDraft';
+import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
 import { normalizeStoredFilterState, buildFilterConfigConfirmSnapshot } from '@/app/ops-analysis/utils/unifiedFilterState';
 import {
   migrateFilterBindings,
@@ -246,6 +253,69 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       applyQueryState,
       setDefinitions,
       setFilterValues,
+    });
+
+    const dashboardDraftResourceId = toCanvasDraftResourceId(
+      selectedDashboard?.data_id,
+    );
+    const getDashboardDraftPayload = useCallback(
+      (): CanvasDraftPayload => ({
+        name: selectedDashboard?.name,
+        desc: selectedDashboard?.desc || '',
+        view_sets: serializeDashboardGridStackLayout(layout),
+        filters: definitions,
+        other: otherConfig,
+        refresh_interval: savedRefreshInterval,
+      }),
+      [
+        definitions,
+        layout,
+        otherConfig,
+        savedRefreshInterval,
+        selectedDashboard?.desc,
+        selectedDashboard?.name,
+      ],
+    );
+    const applyDashboardDraftPayload = useCallback(
+      (payload: CanvasDraftPayload) => {
+        const nextLayout = deserializeDashboardGridStackLayout(payload.view_sets);
+        const loadedDefinitions: UnifiedFilterDefinition[] = Array.isArray(
+          payload.filters,
+        )
+          ? payload.filters
+          : [];
+        const nextValues = syncFilterValuesWithDefinitions(loadedDefinitions, {});
+
+        restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
+        setLayout(nextLayout);
+        setOtherConfig((payload.other as OtherConfig) || {});
+        setDefinitions(loadedDefinitions);
+        setFilterValues(nextValues);
+        applyQueryState(loadedDefinitions, nextValues, appliedNamespaceId);
+        void syncDashboardCanvasResources(nextLayout);
+      },
+      [
+        appliedNamespaceId,
+        applyQueryState,
+        setDefinitions,
+        setFilterValues,
+        setSavedRefreshInterval,
+        syncDashboardCanvasResources,
+        syncFilterValuesWithDefinitions,
+      ],
+    );
+    const dashboardDraft = useCanvasDraft({
+      resourceType: 'dashboard',
+      resourceId: dashboardDraftResourceId,
+      enabled: Boolean(
+        isEditMode &&
+          !shareMode &&
+          !renderMode &&
+          dashboardDraftResourceId &&
+          !selectedDashboard?.is_build_in,
+      ),
+      getPayload: getDashboardDraftPayload,
+      applyPayload: applyDashboardDraftPayload,
     });
 
     const widgetLayoutItems = useMemo(
@@ -686,7 +756,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         canvasId: selectedDashboard?.data_id,
         savedInterval: savedRefreshInterval,
         canPersist: canPersistRefreshInterval,
-        enabled: !renderMode,
+        enabled: !renderMode && !isEditMode,
         patchRefreshInterval: async (interval) => {
           if (!selectedDashboard?.data_id) {
             return;
@@ -899,6 +969,15 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setIsEditMode(true);
     }, [isFullscreen]);
 
+    // 全屏切换只改 chrome 可见性，不 remount canvas；通知 GridStack/图表按新容器尺寸重算
+    useEffect(() => {
+      if (renderMode) return;
+      const frameId = window.requestAnimationFrame(() => {
+        window.dispatchEvent(new Event('resize'));
+      });
+      return () => window.cancelAnimationFrame(frameId);
+    }, [isFullscreen, renderMode]);
+
     const handleFullscreenToggle = useCallback(() => {
       if (isFullscreen) {
         exitFullscreen();
@@ -919,7 +998,6 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       );
 
       setLayout([...originalLayout]);
-      void syncDashboardCanvasResources([...originalLayout]);
       setOtherConfig({ ...originalOtherConfig });
       setDefinitions([...originalDefinitions]);
       setFilterValues(revertedFilterValues);
@@ -929,7 +1007,6 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         appliedNamespaceId,
       );
       setIsEditMode(false);
-      setDashboardReloadVersion((prev) => prev + 1);
       closeGroupNameModal();
     };
 
@@ -1302,6 +1379,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         onToggleEditMode={toggleEditMode}
         onCancelEdit={handleCancelEdit}
         onSave={handleSave}
+        editExtra={bindCanvasDraftControls(dashboardDraft)}
         shareMode={shareMode}
         shareLoading={shareLoading}
         onOpenShare={!shareMode && selectedDashboard?.data_id ? handleShare : undefined}
@@ -1392,30 +1470,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           >
             {dashboardCanvas}
           </div>
-        ) : isFullscreen ? (
-          <div
-            ref={exportRef}
-            className="flex-1 min-h-0 flex flex-col"
-            data-export-expand="true"
-          >
-            {dashboardFilterBar && (
-              <div className="shrink-0 bg-[var(--color-bg-1)] px-2.5 pb-2 pt-1">
-                {dashboardFilterBar}
-              </div>
-            )}
-            <div
-              className="min-h-0 flex-1 overflow-hidden pt-1"
-              data-export-expand="true"
-            >
-              {dashboardCanvas}
-            </div>
-          </div>
         ) : (
           <ViewWorkspace
             selectedItem={selectedDashboard}
             loading={loading}
             titleFallback="仪表盘"
             emptyDescription={t('dashboard.selectDashboardFirst')}
+            headerVisible={!isFullscreen}
+            filterBarVisible
             toolbar={dashboardToolbar}
             filterBar={dashboardFilterBar}
             contentRef={exportRef}

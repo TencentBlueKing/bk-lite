@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  buildInstanceExtractorPath,
+  buildTypeExtractorPath,
+  extractorCreateSampleKey,
   extractorTypeLabelKey,
   flattenExtractorPaths,
   moveExtractorItem,
   normalizeExtractorSamples,
   reorderExtractorItem,
+  resolveExtractorCreateTarget,
   shouldShowExtractorHeaderAdd,
   shouldShowExtractorPublicationAlert
 } from '../src/app/log/(pages)/integration/receive/logExtractorLogic';
@@ -65,6 +69,73 @@ for (const status of ['pending', 'generating', 'failed'] as const) {
     `${status} 状态应保留可见反馈`
   );
 }
+
+assert.deepEqual(
+  resolveExtractorCreateTarget({
+    collect_type: 'syslog',
+    instance_id: 'base'
+  }),
+  { kind: 'type', collectType: 'syslog' },
+  'syslog 即使带有 instance_id=base 也走类型级提取器'
+);
+assert.deepEqual(
+  resolveExtractorCreateTarget({
+    collect_type: 'snmp_trap',
+    instance_id: 'base'
+  }),
+  { kind: 'type', collectType: 'snmp_trap' },
+  'snmp_trap 忽略采集侧写死的 base 实例'
+);
+assert.deepEqual(
+  resolveExtractorCreateTarget({ collect_type: 'file' }),
+  { kind: 'unavailable', reason: 'missing_instance' },
+  '非被动接收类型缺少 instance_id 时不能创建'
+);
+assert.deepEqual(
+  resolveExtractorCreateTarget({
+    collect_type: 'file',
+    instance_id: 'base'
+  }),
+  { kind: 'unavailable', reason: 'missing_instance' },
+  '采集侧写死的 base 不能当作其余类型的业务实例'
+);
+assert.equal(
+  extractorCreateSampleKey({ kind: 'type', id: 'syslog' }),
+  'bk-lite.log-extractor.create-sample:type:syslog',
+  '类型级创建样本应按采集类型隔离'
+);
+assert.equal(
+  extractorCreateSampleKey({ kind: 'instance', id: 'nginx-1' }),
+  'bk-lite.log-extractor.create-sample:instance:nginx-1',
+  '实例级创建样本应按实例隔离'
+);
+assert.deepEqual(
+  resolveExtractorCreateTarget({
+    collect_type: 'file',
+    instance_id: 'nginx-1'
+  }),
+  { kind: 'instance', instanceId: 'nginx-1' },
+  '其余采集类型使用事件上的 instance_id'
+);
+assert.match(
+  buildTypeExtractorPath(
+    {
+      id: 3,
+      name: 'syslog',
+      collector: 'Vector',
+      icon: 'syslog',
+      display_name: 'Syslog'
+    },
+    { create: true }
+  ),
+  /\/log\/integration\/list\/detail\/extractor\?.*name=syslog.*create=1/,
+  '类型级创建应落到接入详情提取器页'
+);
+assert.equal(
+  buildInstanceExtractorPath('nginx-1', { create: true }),
+  '/log/integration/receive?extractor=nginx-1&create=1',
+  '实例级创建应打开日志接收页现有抽屉'
+);
 
 const drawerSource = readFileSync(
   new URL(
@@ -169,6 +240,43 @@ assert.match(
   drawerSource,
   /action=\{[\s\S]{0,320}publication\.status === 'failed'[\s\S]{0,320}void retry\(\)/,
   '发布失败提示应直接提供重试入口'
+);
+
+const searchPageSource = readFileSync(
+  new URL('../src/app/log/(pages)/search/page.tsx', import.meta.url),
+  'utf8'
+);
+const typeExtractorPageSource = readFileSync(
+  new URL(
+    '../src/app/log/(pages)/integration/list/detail/extractor/page.tsx',
+    import.meta.url
+  ),
+  'utf8'
+);
+const receivePageSource = readFileSync(
+  new URL('../src/app/log/(pages)/integration/receive/page.tsx', import.meta.url),
+  'utf8'
+);
+
+assert.match(
+  searchPageSource,
+  /list\.can_operate !== true/,
+  '搜索页创建实例提取器必须确认当前团队对该实例有编辑权限'
+);
+assert.match(
+  typeExtractorPageSource,
+  /consumeExtractorCreateSample\(\{\s*kind: 'type'/,
+  '类型级创建页应按采集类型读取搜索页写入的样本'
+);
+assert.match(
+  receivePageSource,
+  /list\.can_operate === true/,
+  '日志接收页不能在实例不在当前表格页时默认放开编辑'
+);
+assert.match(
+  receivePageSource,
+  /consumeExtractorCreateSample\(\{\s*kind: 'instance'/,
+  '实例级创建抽屉应按实例读取搜索页写入的样本'
 );
 
 console.log('log-extractor-interaction tests passed');

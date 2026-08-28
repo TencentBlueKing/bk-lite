@@ -2,17 +2,19 @@
 
 import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Popover, Typography } from 'antd';
+import ServiceLanguage from '@/app/apm/components/service-language';
 import { useTranslation } from '@/utils/i18n';
 
 export interface ServiceTagItem {
   name: string;
   silent: boolean;
+  language?: string;
 }
 
 const TAG_GAP = 6;
 
 const chipClassName = (silent: boolean) => (
-  `inline-flex max-w-full shrink-0 items-center rounded border px-2 py-0.5 text-xs whitespace-nowrap ${
+  `inline-flex max-w-full shrink-0 items-center gap-1 rounded border px-2 py-0.5 text-xs whitespace-nowrap ${
     silent
       ? 'border-[var(--color-border)] bg-[var(--color-fill-1)] text-[var(--color-text-3)]'
       : 'border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text-1)]'
@@ -53,10 +55,11 @@ export function computeVisibleServiceTagCount(
   return count;
 }
 
-function ServiceChip({ name, silent }: ServiceTagItem) {
+function ServiceChip({ name, silent, language }: ServiceTagItem) {
   const { t } = useTranslation();
   return (
     <span className={chipClassName(silent)} title={silent ? t('apm.tags.silentName', '{name}（静默）', { name }) : name}>
+      <ServiceLanguage language={language} size={12} />
       {name}
     </span>
   );
@@ -74,9 +77,12 @@ function OverflowList({ services }: { services: ServiceTagItem[] }) {
             service.silent ? 'text-[var(--color-text-3)]' : 'text-[var(--color-text-1)]'
           }`}
         >
-          <Typography.Text ellipsis className="!mb-0 !text-xs !text-inherit" title={service.name}>
-            {service.name}
-          </Typography.Text>
+          <span className="flex min-w-0 items-center gap-1">
+            <ServiceLanguage language={service.language} size={12} />
+            <Typography.Text ellipsis className="!mb-0 !text-xs !text-inherit" title={service.name}>
+              {service.name}
+            </Typography.Text>
+          </span>
           {service.silent ? (
             <span className="shrink-0 text-[10px] text-[var(--color-text-4)]">{t('apm.tags.silent', '静默')}</span>
           ) : null}
@@ -102,7 +108,7 @@ export default function ServiceTagOverflow({
   const [open, setOpen] = useState(false);
 
   const serviceKey = useMemo(
-    () => services.map((service) => `${service.name}:${service.silent ? 1 : 0}`).join('|'),
+    () => services.map((service) => `${service.name}:${service.language ?? ''}:${service.silent ? 1 : 0}`).join('|'),
     [services],
   );
 

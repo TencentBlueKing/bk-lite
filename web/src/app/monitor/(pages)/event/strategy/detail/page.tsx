@@ -1344,14 +1344,14 @@ const StrategyOperation = () => {
           </Button>
             {isCreateFlow && templateSavedOnce ? (
             <Button onClick={goBack}>{t('common.back')}</Button>
-          ) : (
+            ) : (
             <>
               <Button loading={templateSaving} onClick={() => void saveTemplate()}>
                 {t('monitor.events.saveTemplate', '保存模版')}
               </Button>
               <Button onClick={goBack}>{t('common.cancel')}</Button>
             </>
-          )}
+            )}
         </div>
       </div>
       <SelectAssets

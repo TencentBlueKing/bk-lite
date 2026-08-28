@@ -25,10 +25,16 @@ const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {
     import('./objects/middleware/zookeeper').then((m) => m.useZookeeperConfig),
   ActiveMQ: () => import('./objects/middleware/activeMQ').then((m) => m.useActiveMQConfig),
   Nginx: () => import('./objects/middleware/nginx').then((m) => m.useNginxConfig),
+  'Active Directory': () =>
+    import('./objects/middleware/activeDirectory').then((m) => m.useActiveDirectoryConfig),
+  Exchange: () => import('./objects/middleware/exchange').then((m) => m.useExchangeConfig),
   Apache: () => import('./objects/middleware/apache').then((m) => m.useApacheConfig),
   Haproxy: () => import('./objects/middleware/haproxy').then((m) => m.useHaproxyConfig),
   Consul: () => import('./objects/middleware/consul').then((m) => m.useConsulConfig),
   Etcd: () => import('./objects/middleware/etcd').then((m) => m.useEtcdBkpullConfig),
+  VLLM: () => import('./objects/llm/vllm').then((m) => m.useVllmBkpullConfig),
+  SGLang: () => import('./objects/llm/sglang').then((m) => m.useSglangBkpullConfig),
+  LlamaServer: () => import('./objects/llm/llamaserver').then((m) => m.useLlamaServerBkpullConfig),
   ClickHouse: () =>
     import('./objects/database/clickHouse').then((m) => m.useClickHouseConfig),
   Tomcat: () => import('./objects/middleware/tomcat').then((m) => m.useTomcatConfig),

@@ -17,4 +17,6 @@ curl http://127.0.0.1:18081/api/products
 curl -X POST 'http://127.0.0.1:18081/api/checkout?scenario=payment-failure'
 ```
 
+`/api/products` 会让 catalog 发出模拟 **mysql** Client Span（`db.system=mysql`、`server.address`、`server.port`、`db.name`），storefront 的 `/api/profile` 发出 redis Client Span。这些下游不会进入服务目录，只应出现在服务拓扑的推断节点上；调查栏展示 Span 里实际有的地址和库名。
+
 停止演示容器不会删除 VictoriaTraces 或控制面中的历史数据。`make demo-up` 可安全重复执行；仅需重新对账/播种控制面时运行 `make demo-seed`。

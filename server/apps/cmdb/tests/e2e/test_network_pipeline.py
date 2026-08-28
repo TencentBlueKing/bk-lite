@@ -15,7 +15,6 @@ import pytest
 from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
 from apps.cmdb.tests.e2e import pipeline
 
-
 NETWORK_SYSTEM_METRIC = "network_system_info_gauge"
 NETWORK_INTERFACE_METRIC = "network_interfaces_info_gauge"
 NETWORK_TOPOLOGY_METRIC = "network_topo_info_gauge"
@@ -120,7 +119,7 @@ def _arp_pair_rows():
 
 
 def _run_network_pipeline(monkeypatch, vm_resp, *, topo_enabled, sql_calls=None, min_confidence=0.0):
-    def fake_query(self, sql, timeout=60):
+    def fake_query(self, sql, timeout=60, retries=3, retry_interval=1, min_timestamp=None):
         if sql_calls is not None:
             sql_calls.append(sql)
         # 模拟真实 VM 行为：只返回 sql 实际请求的指标
@@ -160,8 +159,12 @@ def _run_network_pipeline(monkeypatch, vm_resp, *, topo_enabled, sql_calls=None,
     # e2e 不落库：拓扑快照写入直接旁路
     monkeypatch.setattr(CollectNetworkMetrics, "save_topology_snapshot", lambda self, snapshot: None)
 
+    # 拓扑拆分后：设备对账默认不解析拓扑；拓扑路径显式 force_topology_replay。
     runner = CollectNetworkMetrics(
-        inst_name="snmp-task-01", inst_id=70001, task_id=7001,
+        inst_name="snmp-task-01",
+        inst_id=70001,
+        task_id=7001,
+        force_topology_replay=topo_enabled,
     )
     runner.run()
     return runner
@@ -196,11 +199,7 @@ def test_vm_response_includes_topology_fact_metric(load_fixture, load_schema):
 
     jsonschema.validate(vm_resp, schema)
 
-    topology_facts = [
-        item["metric"]
-        for item in vm_resp["data"]["result"]
-        if item["metric"]["__name__"] == NETWORK_TOPOLOGY_FACTS_METRIC
-    ]
+    topology_facts = [item["metric"] for item in vm_resp["data"]["result"] if item["metric"]["__name__"] == NETWORK_TOPOLOGY_FACTS_METRIC]
 
     assert topology_facts
     assert topology_facts[0]["instance_id"].startswith("snmp-task-")
@@ -231,10 +230,12 @@ def test_drift_detection_unknown_metric(load_schema):
         "status": "success",
         "data": {
             "resultType": "vector",
-            "result": [{
-                "metric": {"__name__": "some_other_metric", "instance_id": "x", "ip_addr": "1.1.1.1"},
-                "value": [1, "1"],
-            }],
+            "result": [
+                {
+                    "metric": {"__name__": "some_other_metric", "instance_id": "x", "ip_addr": "1.1.1.1"},
+                    "value": [1, "1"],
+                }
+            ],
         },
     }
     schema = load_schema("network/03_vm_metrics.schema.json")
@@ -285,12 +286,14 @@ SHARED_IID = "cmdb_777"
 
 def _shared_iid_arp_pair_rows():
     def sys(host, ip, sysname):
-        return _build_metric(NETWORK_SYSTEM_METRIC, SHARED_IID, host=host, ip_addr=ip,
-                             sysname=sysname, sysobjectid="1.3.6.1.4.1.9.1.1208", port="161")
+        return _build_metric(
+            NETWORK_SYSTEM_METRIC, SHARED_IID, host=host, ip_addr=ip, sysname=sysname, sysobjectid="1.3.6.1.4.1.9.1.1208", port="161"
+        )
 
     def iface(host, idx, descr, alias, mac):
-        return _build_metric(NETWORK_INTERFACE_METRIC, SHARED_IID, host=host, index=idx,
-                             description=descr, alias=alias, mac_address=mac, oper_status="1")
+        return _build_metric(
+            NETWORK_INTERFACE_METRIC, SHARED_IID, host=host, index=idx, description=descr, alias=alias, mac_address=mac, oper_status="1"
+        )
 
     def topo(host, tag, ifindex, val, group):
         metric = {"host": host, "tag": tag, "val": val, "group": group}
@@ -389,6 +392,8 @@ def test_network_topology_disabled_keeps_existing_inventory_behavior(monkeypatch
         "network_interfaces_info_gauge{instance_id='cmdb_7001'} or "
         "network_info_gauge{instance_id='cmdb_7001'}"
     ]
+    assert runner.is_topo is False
+    assert NETWORK_TOPOLOGY_METRIC not in "".join(sql_calls)
     assert interface["assos"] == [
         {
             "model_id": "switch",
@@ -397,6 +402,19 @@ def test_network_topology_disabled_keeps_existing_inventory_behavior(monkeypatch
             "model_asst_id": "interface_belong_switch",
         }
     ]
+
+
+@pytest.mark.django_db
+def test_network_device_path_ignores_topo_flag_without_force_replay(monkeypatch):
+    """L4：设备对账即使任务开启拓扑，也不查询/解析 topo 指标（除非 force_topology_replay）。"""
+    vm_resp = _build_network_vm_response(*_arp_pair_rows())
+    sql_calls = []
+    runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=False, sql_calls=sql_calls)
+    # 即使 VM 里有 topo 行，设备路径 SQL 不含 network_topo
+    assert all(NETWORK_TOPOLOGY_METRIC not in sql for sql in sql_calls)
+    assert runner.is_topo is False
+    for interface in runner.result["interface"]:
+        assert _connect_assos(interface) == []
 
 
 # ============================================================================
@@ -413,7 +431,6 @@ def test_network_a_b_alignment(load_fixture, load_schema, monkeypatch):
     from apps.cmdb.tests.e2e.utils.model_reflection import get_model_field_def
 
     raw = load_fixture("network/01_stargazer_raw.json")
-    expected = load_fixture("network/04_expected_cmdb_result.json")
 
     # A 端:01 → 02 → 03
     p2 = pipeline.step1_stargazer_normalize_generic([raw], model_id="network")
@@ -430,21 +447,22 @@ def test_network_a_b_alignment(load_fixture, load_schema, monkeypatch):
             model_fields = get_model_field_def("network")
             required = {f.name for f in model_fields.values() if f.is_required}
             labels = set(result_item["metric"].keys())
-            exclude = {"__name__", "instance_id", "collect_status", "inst_name",
-                       "model_id", "id", "create_time", "update_time", "assos"}
+            exclude = {"__name__", "instance_id", "collect_status", "inst_name", "model_id", "id", "create_time", "update_time", "assos"}
             missing = required - labels - exclude
             assert not missing, f"A 端 03 metric 缺 model 必填字段: {missing}"
     assert found_main, f"主 metric {main_metric} 在 03 fixture 中不存在"
 
     # B 端:03 → 04
     from apps.cmdb.collection.collect_plugin.network import CollectNetworkMetrics
+
     vm_resp = load_fixture("network/03_vm_metrics_response.json")
 
     # Mock VM 走 sql filter
-    def fake_query(self, sql, timeout=60):
+    def fake_query(self, sql, timeout=60, retries=3, retry_interval=1, min_timestamp=None):
         requested = {part.split("{")[0].strip() for part in sql.split(" or ")}
         filtered = [item for item in vm_resp["data"]["result"] if item["metric"]["__name__"] in requested]
         return {**vm_resp, "data": {**vm_resp["data"], "result": filtered}}
+
     monkeypatch.setattr("apps.cmdb.collection.query_vm.Collection.query", fake_query)
 
     # OID map for Cisco
@@ -460,13 +478,17 @@ def test_network_a_b_alignment(load_fixture, load_schema, monkeypatch):
     monkeypatch.setattr(CollectNetworkMetrics, "get_oid_map", staticmethod(lambda: oid_map))
 
     from types import SimpleNamespace
+
     fake_task = SimpleNamespace(
         id=77777,
         is_network_topo=False,
         instances=[],
-        topology_contract={"has_network_topo": False, "topology_protocols": [],
-                          "topology_fallback_strategy": "prefer_neighbors_then_fdb_then_arp",
-                          "min_confidence": 0.0},
+        topology_contract={
+            "has_network_topo": False,
+            "topology_protocols": [],
+            "topology_fallback_strategy": "prefer_neighbors_then_fdb_then_arp",
+            "min_confidence": 0.0,
+        },
         topology_snapshot={},
     )
     monkeypatch.setattr(CollectNetworkMetrics, "get_collect_inst", lambda self: fake_task)
@@ -474,7 +496,9 @@ def test_network_a_b_alignment(load_fixture, load_schema, monkeypatch):
     monkeypatch.setattr(CollectNetworkMetrics, "save_topology_snapshot", lambda self, snapshot: None)
 
     runner = CollectNetworkMetrics(
-        inst_name="snmp-task-01", inst_id=77777, task_id=77777,
+        inst_name="snmp-task-01",
+        inst_id=77777,
+        task_id=77777,
     )
     runner.run()
 
@@ -487,8 +511,14 @@ def test_network_a_b_alignment(load_fixture, load_schema, monkeypatch):
     # B 端:实例字段 ⊆ model 字段定义
     model_fields = get_model_field_def("network")
     system_fields = {
-        "inst_name", "model_id", "id", "create_time", "update_time",
-        "_placeholder_reason", "license_status", "assos",
+        "inst_name",
+        "model_id",
+        "id",
+        "create_time",
+        "update_time",
+        "_placeholder_reason",
+        "license_status",
+        "assos",
     }
     model_field_names = set(model_fields.keys()) - system_fields
     inst_fields = set(inst.keys())

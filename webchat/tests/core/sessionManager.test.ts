@@ -97,3 +97,67 @@ test('expires a persisted session at the exact 24-hour boundary', () => {
     restoreStorage();
   }
 });
+
+test('restores only the session stored under the same owner and endpoint scope', () => {
+  const storage = new MemoryStorage();
+  const restoreStorage = installLocalStorage(storage);
+
+  try {
+    const alice = new SessionManager({
+      enableStorage: true,
+      storageScope: 'alice|https://chat.example.com/sse',
+    });
+    const aliceSession = alice.initSession('alice');
+    alice.addMessage({
+      id: 'secret-message',
+      type: 'text',
+      content: 'alice only',
+      sender: 'user',
+      timestamp: Date.now(),
+    });
+
+    const restoredAlice = new SessionManager({
+      enableStorage: true,
+      storageScope: 'alice|https://chat.example.com/sse',
+    }).initSession('alice');
+    assert.equal(restoredAlice.sessionId, aliceSession.sessionId);
+    assert.equal(restoredAlice.messages[0]?.id, 'secret-message');
+
+    const bob = new SessionManager({
+      enableStorage: true,
+      storageScope: 'bob|https://chat.example.com/sse',
+    }).initSession('bob');
+    assert.notEqual(bob.sessionId, aliceSession.sessionId);
+    assert.deepEqual(bob.messages, []);
+
+    const otherEndpoint = new SessionManager({
+      enableStorage: true,
+      storageScope: 'alice|https://other.example.com/sse',
+    }).initSession('alice');
+    assert.notEqual(otherEndpoint.sessionId, aliceSession.sessionId);
+    assert.deepEqual(otherEndpoint.messages, []);
+  } finally {
+    restoreStorage();
+  }
+});
+
+test('scoped storage rejects malformed recent JSON instead of restoring it as a session', () => {
+  const storage = new MemoryStorage();
+  storage.setItem(
+    '@webchat/session:v2:alice%7Chttps%3A%2F%2Fchat.example.com%2Fsse',
+    JSON.stringify({ lastActivityTime: Date.now(), messages: 'not-an-array' }),
+  );
+  const restoreStorage = installLocalStorage(storage);
+
+  try {
+    const session = new SessionManager({
+      enableStorage: true,
+      storageScope: 'alice|https://chat.example.com/sse',
+    }).initSession('alice');
+    assert.equal(session.userId, 'alice');
+    assert.deepEqual(session.messages, []);
+    assert.notEqual(session.sessionId, undefined);
+  } finally {
+    restoreStorage();
+  }
+});

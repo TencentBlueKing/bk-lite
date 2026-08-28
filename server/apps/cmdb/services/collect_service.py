@@ -10,6 +10,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils.timezone import now
 
+from apps.cmdb.collection.round_sync import uses_vm_reconciliation
 from apps.cmdb.constants.constants import OPERATOR_COLLECT_TASK, CollectPluginTypes, CollectRunStatusType, DataCleanupStrategy
 from apps.cmdb.models import CREATE_INST, DELETE_INST, EXECUTE, UPDATE_INST
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
@@ -93,6 +94,11 @@ class CollectModelService(object):
     @staticmethod
     def should_sync_node_params(instance):
         return not instance.is_k8s
+
+    @classmethod
+    def should_register_sync_beat(cls, instance):
+        """VM 对账任务改由全局守门调度；仅非 VM 链路（如 config_file）保留按任务 beat。"""
+        return not uses_vm_reconciliation(instance)
 
     @staticmethod
     def has_permission(request, instance, view_self):
@@ -460,10 +466,21 @@ class CollectModelService(object):
         )
 
     @staticmethod
-    def push_butch_node_params(instance):
+    def _is_network_collect_task(instance) -> bool:
+        return getattr(instance, "model_id", None) == "network" or getattr(instance, "task_type", None) == CollectPluginTypes.SNMP
+
+    @classmethod
+    def push_butch_node_params(cls, instance):
         """
         格式化调用node的参数 并推送
         """
+        if cls._is_network_collect_task(instance):
+            from apps.cmdb.services.network_collection_reconcile import reconcile_network_collection_configs
+
+            logger.debug("[CollectTask] Network 双通道对账推送 task_id=%s", instance.id)
+            reconcile_network_collection_configs(instance, delete=False)
+            logger.debug("[CollectTask] Network 双通道对账完成 task_id=%s", instance.id)
+            return
         node = NodeParamsFactory.get_node_params(instance)
         node_params = node.main()
         logger.debug("[CollectTask] 推送节点参数 task_id=%s", instance.id)
@@ -471,11 +488,18 @@ class CollectModelService(object):
         node_mgmt.batch_add_node_child_config(node_params)
         logger.debug("[CollectTask] 推送节点参数完成 task_id=%s", instance.id)
 
-    @staticmethod
-    def delete_butch_node_params(instance):
+    @classmethod
+    def delete_butch_node_params(cls, instance):
         """
         格式化调用node的参数 并删除
         """
+        if cls._is_network_collect_task(instance):
+            from apps.cmdb.services.network_collection_reconcile import reconcile_network_collection_configs
+
+            logger.debug("[CollectTask] Network 双通道对账删除 task_id=%s", instance.id)
+            reconcile_network_collection_configs(instance, delete=True)
+            logger.debug("[CollectTask] Network 双通道删除完成 task_id=%s", instance.id)
+            return
         node = NodeParamsFactory.get_node_params(instance)
         node_params = node.main(operator="delete")
         logger.debug("[CollectTask] 删除节点参数 task_id=%s", instance.id)
@@ -507,8 +531,8 @@ class CollectModelService(object):
             def sync_external_resources():
                 task_name = f"{cls.NAME}_{instance.id}"
                 try:
-                    # 更新定时任务
-                    if is_interval:
+                    # 更新定时任务：VM 对账改由全局守门；仅清理遗留 beat。
+                    if is_interval and cls.should_register_sync_beat(instance):
                         CeleryUtils.create_or_update_periodic_task(
                             name=task_name,
                             crontab=scan_cycle,
@@ -517,6 +541,8 @@ class CollectModelService(object):
                         )
                         # create 场景满足阈值则注册一次延迟补跑
                         cls.schedule_delayed_sync_if_needed(instance=instance, is_interval=is_interval)
+                    else:
+                        CeleryUtils.delete_periodic_task(task_name)
 
                     # RPC 调用：推送节点参数
                     if cls.should_sync_node_params(instance):
@@ -543,11 +569,50 @@ class CollectModelService(object):
                 after_data=cls._snapshot_task(instance),
             )
             cls.schedule_first_collection_if_needed(instance=instance, reason="create")
-            if is_interval or cls.should_sync_node_params(instance):
+            if (is_interval and cls.should_register_sync_beat(instance)) or cls.should_sync_node_params(instance) or uses_vm_reconciliation(instance):
                 # DB 事务提交后再同步外部系统，避免回滚后留下幽灵周期任务或节点配置。
+                # VM 对账任务也需要 on_commit 以幂等清理遗留 beat。
                 transaction.on_commit(sync_external_resources)
 
         return instance.id
+
+    @classmethod
+    def _bump_network_channel_versions(cls, old_instance, update_data):
+        """共享字段变更升双通道版本；仅拓扑字段变更只升拓扑版本。"""
+        if not cls._is_network_collect_task(old_instance):
+            return
+        params = dict(update_data.get("params") or old_instance.params or {})
+        old_params = dict(old_instance.params or {})
+        shared_changed = any(
+            [
+                update_data.get("credential") is not None,
+                update_data.get("instances") is not None,
+                update_data.get("ip_range") is not None,
+                update_data.get("access_point") is not None,
+                update_data.get("timeout") is not None,
+            ]
+        )
+        topo_keys = (
+            "has_network_topo",
+            "topology_protocols",
+            "topology_fallback_strategy",
+            "min_confidence",
+            "topology_interval_minutes",
+            "topology_interval_mode",
+        )
+        topo_changed = any(old_params.get(k) != params.get(k) for k in topo_keys)
+        if shared_changed:
+            params["device_channel_config_version"] = int(old_params.get("device_channel_config_version") or 1) + 1
+            params["topology_channel_config_version"] = int(old_params.get("topology_channel_config_version") or 1) + 1
+        elif topo_changed:
+            params["topology_channel_config_version"] = int(old_params.get("topology_channel_config_version") or 1) + 1
+            params.setdefault(
+                "device_channel_config_version",
+                int(old_params.get("device_channel_config_version") or 1),
+            )
+        else:
+            return
+        update_data["params"] = params
 
     @classmethod
     def update(cls, request, view_self, payload=None):
@@ -568,6 +633,7 @@ class CollectModelService(object):
         else:
             credential_pool_diff = ([], [], [])
         cls.enrich_host_cloud_snapshot_payload(update_data)
+        cls._bump_network_channel_versions(old_instance, update_data)
         # 使用数据库事务保证原子性
         with transaction.atomic():
             serializer = view_self.get_serializer(instance, data=update_data, partial=True)
@@ -577,8 +643,8 @@ class CollectModelService(object):
             def sync_external_resources():
                 task_name = f"{cls.NAME}_{instance.id}"
                 try:
-                    # 更新定时任务
-                    if is_interval:
+                    # 更新定时任务：VM 对账改由全局守门；关闭周期或 VM 类型时清理遗留 beat。
+                    if is_interval and cls.should_register_sync_beat(instance):
                         CeleryUtils.create_or_update_periodic_task(
                             name=task_name,
                             crontab=scan_cycle,

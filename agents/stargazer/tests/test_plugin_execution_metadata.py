@@ -73,6 +73,12 @@ def test_thread_backed_mssql_executor_is_not_declared_native_async():
     assert protocol["capacity_group"] == "sync_sdk"
 
 
+def test_network_topology_uses_dedicated_capacity_group():
+    config = yaml.safe_load((PLUGIN_ROOT / "network_topo" / "plugin.yml").read_text(encoding="utf-8"))
+
+    assert config["executors"]["protocol"]["capacity_group"] == "network_topology"
+
+
 @pytest.mark.parametrize(
     "model",
     (
@@ -116,14 +122,14 @@ def test_async_matrix_document_lists_every_registered_plugin():
 
 
 @pytest.mark.parametrize("model", CLOUD_AND_VMWARE_COLLECTION_PLUGINS)
-def test_cloud_and_vmware_collection_timeout_is_300_seconds(model):
+def test_cloud_and_vmware_plugins_have_no_executor_timeout(model):
     config = yaml.safe_load((PLUGIN_ROOT / model / "plugin.yml").read_text(encoding="utf-8"))
 
-    assert config["executors"]["protocol"]["timeout"] == 300
+    assert "timeout" not in config["executors"]["protocol"]
 
 
 @pytest.mark.parametrize("model", ("network", "network_topo"))
-def test_snmp_collection_timeout_is_300_seconds(model):
+def test_snmp_plugins_have_no_executor_timeout(model):
     config = yaml.safe_load((PLUGIN_ROOT / model / "plugin.yml").read_text(encoding="utf-8"))
 
-    assert config["executors"]["protocol"]["timeout"] == 300
+    assert "timeout" not in config["executors"]["protocol"]

@@ -19,6 +19,12 @@
 - SOID 特征库：sysObjectID 映射维护。
 - 采集工具：协议采集的独立联调诊断。
 - 插件说明：采集插件文档查看。
+- 网段扫描：按允许的对象家族对网段做发现，查看执行与命中，并可回写采集任务。
+
+网段扫描边界：仅 `network` / `host` / `physcial_server` / `mysql` / `postgresql` / `mssql` / `influxdb`；网段前缀不得宽于 /21。
+
+相关架构：[[legacy-ard-modules-cmdb.md#3. 接口]]；对应功能清单：[[legacy-fuctionlist-01-cmdb配置管理-功能清单.md#5. 自动发现（采集）]]
+> 证据来源：server/apps/cmdb/models/scan_model.py:10-22，server/apps/cmdb/urls.py:27　|　同步基线：61bace9f　|　【已实现】
 
 ## 3. 关键能力
 

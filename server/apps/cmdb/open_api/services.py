@@ -90,8 +90,7 @@ class CMDBOpenAPIService:
         )
         return [row for row in rows if row.get("classification_id") in visible_ids]
 
-    def get_model(self, model_id):
-        self.context.require_feature("model_management-View")
+    def _visible_model(self, model_id):
         model = ModelManage.search_model_info(model_id)
         if not BusinessModelVisibility.is_visible(model):
             raise CMDBOpenAPIError("cmdb.model.not_found", "模型不存在", 404)
@@ -106,9 +105,20 @@ class CMDBOpenAPIService:
             raise CMDBOpenAPIError("cmdb.model.not_found", "模型不存在", 404)
         return model
 
+    def get_model(self, model_id):
+        self.context.require_feature("model_management-View")
+        return self._visible_model(model_id)
+
+    def _serialize_model_attrs(self, model_id):
+        return [serialize_model_attr(attr) for attr in ModelManage.search_model_attr(model_id)]
+
     def get_model_attrs(self, model_id):
         self.get_model(model_id)
-        return [serialize_model_attr(attr) for attr in ModelManage.search_model_attr(model_id)]
+        return self._serialize_model_attrs(model_id)
+
+    def _visible_model_attrs(self, model_id):
+        self._visible_model(model_id)
+        return self._serialize_model_attrs(model_id)
 
     def get_model_associations(self, model_id):
         self.get_model(model_id)
@@ -143,7 +153,7 @@ class CMDBOpenAPIService:
 
     def list_instances(self, model_id, query):
         self.context.require_feature("asset_info-View")
-        attrs = self.get_model_attrs(model_id)
+        attrs = self._visible_model_attrs(model_id)
         serializer = InstanceListQuerySerializer(data=query, context={"attrs": attrs})
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data

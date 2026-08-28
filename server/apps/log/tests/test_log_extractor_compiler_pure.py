@@ -104,3 +104,53 @@ def test_user_strings_cannot_trigger_vector_environment_interpolation():
 
     assert "instance-$${HOME}" in content
     assert 'contains(string!(.message), "$${HOME}")' in content
+
+
+@pytest.mark.unit
+def test_type_scoped_rules_match_collect_type_not_instance_id():
+    rules = [
+        SimpleNamespace(
+            id=1,
+            collect_instance_id=None,
+            collect_type=SimpleNamespace(name="syslog"),
+            extractor_type="copy",
+            source_field="message",
+            target_field="parsed.message",
+            condition={},
+            config={},
+            delete_source=False,
+            sort_order=0,
+        ),
+        SimpleNamespace(
+            id=2,
+            collect_instance_id="nginx-1",
+            collect_type=None,
+            extractor_type="copy",
+            source_field="message",
+            target_field="parsed.message",
+            condition={},
+            config={},
+            delete_source=False,
+            sort_order=0,
+        ),
+        SimpleNamespace(
+            id=3,
+            collect_instance_id=None,
+            collect_type=SimpleNamespace(name="snmp_trap"),
+            extractor_type="copy",
+            source_field="message",
+            target_field="parsed.trap",
+            condition={},
+            config={},
+            delete_source=False,
+            sort_order=0,
+        ),
+    ]
+
+    content = compile_system_vector_config(rules)
+
+    assert '.collect_type == "syslog"' in content
+    assert '.collect_type == "snmp_trap"' in content
+    assert 'instance_id == "nginx-1"' in content
+    assert "instance_id == \"None\"" not in content
+    assert ".instance_id == \"base\"" not in content

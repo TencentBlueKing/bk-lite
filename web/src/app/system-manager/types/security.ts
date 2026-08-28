@@ -47,4 +47,6 @@ export interface SystemSettings {
   user_create_initial_password_configured?: string;
   user_create_initial_password_mode?: 'fixed' | 'random' | 'none' | string;
   user_create_initial_password_random_email_channel_id?: string;
+  otp_whitelist?: string | number[];
+  otp_recommended_apps?: string;
 }

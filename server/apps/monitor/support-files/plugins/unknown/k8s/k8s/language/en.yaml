@@ -42,6 +42,9 @@ monitor_object_metric:
       name: Disk Utilization
       desc: Overall disk utilization of the Kubernetes cluster.
   Pod:
+    pod_info:
+      name: Pod Info
+      desc: Pod metadata from kube_pod_info, used as the carrier metric for the IP display column.
     pod_status_phase:
       name: Pod Phase
       desc: Current lifecycle phase of the Pod.
@@ -67,6 +70,9 @@ monitor_object_metric:
       name: Network Outbound Traffic
       desc: Outbound network traffic rate sent by the Pod.
   Node:
+    node_info:
+      name: Node Info
+      desc: Node metadata from kube_node_info, used as the carrier metric for the IP display column.
     node_status_condition:
       name: Node Status
       desc: Current operational condition of the node.

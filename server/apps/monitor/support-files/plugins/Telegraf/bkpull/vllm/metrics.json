@@ -1,0 +1,433 @@
+{
+  "plugin": "VLLM",
+  "plugin_desc": "由 Telegraf Pull 采集器通过 Prometheus 指标端点采集 vLLM 推理服务关键监控指标，覆盖请求队列、KV 缓存占用、Token 吞吐与时延等核心运维场景。",
+  "status_query": "any({instance_type='vllm', collect_type='bkpull'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "asset.ip",
+      "value_type": "ip",
+      "resolver": "input",
+      "options": {
+        "field": "server_url"
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "asset.ip",
+      "title": "monitor.views.assetIp",
+      "order": 10
+    }
+  ],
+  "name": "VLLM",
+  "icon": "mm-vllm_VLLM",
+  "type": "LLM Inference",
+  "description": "",
+  "default_metric": "any({instance_type='vllm'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "vllm:num_requests_running_gauge",
+    "vllm:num_requests_waiting_gauge",
+    "vllm:kv_cache_usage_perc_gauge",
+    "vllm:generation_tokens_total_counter_rate",
+    "vllm:inter_token_latency_seconds_p99",
+    "vllm:e2e_request_latency_seconds_p90"
+  ],
+  "display_fields": [
+    {
+      "name": "运行中请求数",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "VLLM",
+          "metric": "vllm:num_requests_running_gauge"
+        }
+      ]
+    },
+    {
+      "name": "排队请求数",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "VLLM",
+          "metric": "vllm:num_requests_waiting_gauge"
+        }
+      ]
+    },
+    {
+      "name": "KV缓存占用",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "VLLM",
+          "metric": "vllm:kv_cache_usage_perc_gauge"
+        }
+      ]
+    },
+    {
+      "name": "生成Token速率",
+      "sort_order": 3,
+      "metrics": [
+        {
+          "plugin": "VLLM",
+          "metric": "vllm:generation_tokens_total_counter_rate"
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_group": "请求队列",
+      "name": "vllm:num_requests_running_gauge",
+      "display_name": "运行中请求数",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "当前正在模型执行批次中的请求数量。",
+      "query": "vllm:num_requests_running_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "请求队列",
+      "name": "vllm:num_requests_waiting_gauge",
+      "display_name": "排队请求数",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "当前等待调度容量的请求数量。",
+      "query": "vllm:num_requests_waiting_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "缓存",
+      "name": "vllm:kv_cache_usage_perc_gauge",
+      "display_name": "KV缓存占用比例",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "percentunit",
+      "dimensions": [],
+      "description": "已使用 KV cache 块占比（0–1）。",
+      "query": "vllm:kv_cache_usage_perc_gauge{__$labels__}"
+    },
+    {
+      "metric_group": "Token吞吐",
+      "name": "vllm:prompt_tokens_total_counter_rate",
+      "display_name": "Prefill Token 速率",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "最近 5 分钟 prompt（prefill）token 处理速率。",
+      "query": "sum(rate(vllm:prompt_tokens_total_counter{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Token吞吐",
+      "name": "vllm:generation_tokens_total_counter_rate",
+      "display_name": "生成 Token 速率",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "最近 5 分钟生成 token 速率。",
+      "query": "sum(rate(vllm:generation_tokens_total_counter{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "时延",
+      "name": "vllm:time_to_first_token_seconds_p99",
+      "display_name": "首 Token 时延 P99",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟 Time-to-First-Token（TTFT）P99。",
+      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "vllm:e2e_request_latency_seconds_p99",
+      "display_name": "端到端请求时延 P99",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟端到端请求时延 P99。",
+      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "请求结果",
+      "name": "vllm:request_success_total_counter_rate",
+      "display_name": "成功请求速率",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "最近 5 分钟成功完成请求速率（按 finish reason 汇总）。",
+      "query": "sum(rate(vllm:request_success_total_counter{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "时延",
+      "name": "vllm:time_to_first_token_seconds_p50",
+      "display_name": "首 Token 时延 P50",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟 TTFT P50。",
+      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "vllm:time_to_first_token_seconds_p90",
+      "display_name": "首 Token 时延 P90",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟 TTFT P90。",
+      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:time_to_first_token_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:time_to_first_token_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:time_to_first_token_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "vllm:time_to_first_token_seconds_avg",
+      "display_name": "首 Token 时延均值",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟 TTFT 均值。",
+      "query": "sum(rate(vllm:time_to_first_token_seconds_sum{__$labels__}[5m])) by (instance_id) / sum(rate(vllm:time_to_first_token_seconds_count{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "时延",
+      "name": "vllm:e2e_request_latency_seconds_p50",
+      "display_name": "端到端请求时延 P50",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟端到端请求时延 P50。",
+      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "vllm:e2e_request_latency_seconds_p90",
+      "display_name": "端到端请求时延 P90",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟端到端请求时延 P90。",
+      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:e2e_request_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:e2e_request_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:e2e_request_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "vllm:e2e_request_latency_seconds_avg",
+      "display_name": "端到端请求时延均值",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟端到端请求时延均值。",
+      "query": "sum(rate(vllm:e2e_request_latency_seconds_sum{__$labels__}[5m])) by (instance_id) / sum(rate(vllm:e2e_request_latency_seconds_count{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "时延",
+      "name": "vllm:inter_token_latency_seconds_p50",
+      "display_name": "逐 Token 时延 P50",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟 Inter-Token Latency（ITL）P50。",
+      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:inter_token_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "vllm:inter_token_latency_seconds_p90",
+      "display_name": "逐 Token 时延 P90",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟 Inter-Token Latency（ITL）P90。",
+      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:inter_token_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "vllm:inter_token_latency_seconds_p99",
+      "display_name": "逐 Token 时延 P99",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟 Inter-Token Latency（ITL）P99。",
+      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:inter_token_latency_seconds_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:inter_token_latency_seconds_(.+)\"))[5m:]) or label_replace(rate(vllm:inter_token_latency_seconds_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "时延",
+      "name": "vllm:inter_token_latency_seconds_avg",
+      "display_name": "逐 Token 时延均值",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "最近 5 分钟 Inter-Token Latency（ITL）均值。",
+      "query": "sum(rate(vllm:inter_token_latency_seconds_sum{__$labels__}[5m])) by (instance_id) / sum(rate(vllm:inter_token_latency_seconds_count{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Token吞吐",
+      "name": "vllm:iteration_tokens_total_count_rate",
+      "display_name": "迭代 Token 速率",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "description": "最近 5 分钟单次模型迭代处理的 token 数速率。",
+      "query": "sum(rate(vllm:iteration_tokens_total_count{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Token分布",
+      "name": "vllm:request_prompt_tokens_p50",
+      "display_name": "输入 Token 长度 P50",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "最近 5 分钟请求 prompt token 数 P50。",
+      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\"))[5m:]) or label_replace(rate(vllm:request_prompt_tokens_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "Token分布",
+      "name": "vllm:request_prompt_tokens_p90",
+      "display_name": "输入 Token 长度 P90",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "最近 5 分钟请求 prompt token 数 P90。",
+      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\"))[5m:]) or label_replace(rate(vllm:request_prompt_tokens_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "Token分布",
+      "name": "vllm:request_prompt_tokens_p99",
+      "display_name": "输入 Token 长度 P99",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "最近 5 分钟请求 prompt token 数 P99。",
+      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:request_prompt_tokens_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_prompt_tokens_(.+)\"))[5m:]) or label_replace(rate(vllm:request_prompt_tokens_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "Token分布",
+      "name": "vllm:request_prompt_tokens_avg",
+      "display_name": "输入 Token 长度均值",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "最近 5 分钟请求 prompt token 数均值。",
+      "query": "sum(rate(vllm:request_prompt_tokens_sum{__$labels__}[5m])) by (instance_id) / sum(rate(vllm:request_prompt_tokens_count{__$labels__}[5m])) by (instance_id)"
+    },
+    {
+      "metric_group": "Token分布",
+      "name": "vllm:request_generation_tokens_p50",
+      "display_name": "输出 Token 长度 P50",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "最近 5 分钟请求生成 token 数 P50。",
+      "query": "histogram_quantile(0.50, sum(rate((label_replace({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\"))[5m:]) or label_replace(rate(vllm:request_generation_tokens_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "Token分布",
+      "name": "vllm:request_generation_tokens_p90",
+      "display_name": "输出 Token 长度 P90",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "最近 5 分钟请求生成 token 数 P90。",
+      "query": "histogram_quantile(0.90, sum(rate((label_replace({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\"))[5m:]) or label_replace(rate(vllm:request_generation_tokens_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "Token分布",
+      "name": "vllm:request_generation_tokens_p99",
+      "display_name": "输出 Token 长度 P99",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "最近 5 分钟请求生成 token 数 P99。",
+      "query": "histogram_quantile(0.99, sum(rate((label_replace({__name__=~\"vllm:request_generation_tokens_[0-9.]+\", __$labels__}, \"le\", \"$1\", \"__name__\", \"vllm:request_generation_tokens_(.+)\"))[5m:]) or label_replace(rate(vllm:request_generation_tokens_count{__$labels__}[5m]), \"le\", \"+Inf\", \"__name__\", \".*\")) by (instance_id, le))"
+    },
+    {
+      "metric_group": "Token分布",
+      "name": "vllm:request_generation_tokens_avg",
+      "display_name": "输出 Token 长度均值",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "最近 5 分钟请求生成 token 数均值。",
+      "query": "sum(rate(vllm:request_generation_tokens_sum{__$labels__}[5m])) by (instance_id) / sum(rate(vllm:request_generation_tokens_count{__$labels__}[5m])) by (instance_id)"
+    }
+  ]
+}

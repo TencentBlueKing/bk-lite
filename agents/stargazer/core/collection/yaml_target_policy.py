@@ -14,8 +14,11 @@ _MODE_TO_KIND = {
     "outbound_only": "outbound_only",
     "tcp": "tcp",
     "tls": "https",
+    "snmp": "snmp",
+    "udp": "snmp",
     "cloud_endpoint": "cloud",
     "skip": "skip",
+    "none": "none",
 }
 
 
@@ -34,9 +37,7 @@ def apply_yaml_target_policy(
     """
     if str(request.params.get("plugin_family") or "") == "monitor":
         return request
-    if str(request.params.get("preflight_kind") or "").strip() and request.params.get(
-        "preflight_kind_explicit"
-    ):
+    if str(request.params.get("preflight_kind") or "").strip() and request.params.get("preflight_kind_explicit"):
         return request
     plugin_name = _plugin_name(request)
     executor_type = str(request.params.get("executor_type") or "").strip()
@@ -89,6 +90,8 @@ def apply_yaml_target_policy(
     if not params.get("executor_type"):
         params["executor_type"] = executor_type
 
+    _refine_pc_preflight(params, plugin_name)
+
     return CollectionRequest(
         task_id=request.task_id,
         plugin_ref=request.plugin_ref,
@@ -96,6 +99,22 @@ def apply_yaml_target_policy(
         credentials=request.credentials,
         params=params,
     )
+
+
+def _refine_pc_preflight(params: dict[str, Any], plugin_name: str) -> None:
+    """PC：Windows 拨 WinRM；macOS/其它拨 SSH remote。"""
+    if plugin_name != "pc":
+        return
+    os_type = str(params.get("os_type") or params.get("osType") or "").strip().lower()
+    if os_type in {"windows", "win", "winrm"}:
+        scheme = str(params.get("winrm_scheme") or "https").strip().lower()
+        params["preflight_kind"] = "tcp"
+        params["port"] = 5985 if scheme == "http" else 5986
+        params["ssl"] = False
+        return
+    params["preflight_kind"] = "remote"
+    if params.get("port") in (None, ""):
+        params["port"] = 22
 
 
 def _plugin_name(request: CollectionRequest) -> str:

@@ -218,7 +218,7 @@ Status: implemented
 
 ### 15. 前端交互
 
-- 入口位于日志集成的采集实例行操作中，对所有采集类型一致显示，打开“`<实例名称> · 日志提取器`”抽屉。不得从日志搜索页反向新建。
+- 入口位于日志集成的采集实例行操作中，对所有采集类型一致显示，打开“`<实例名称> · 日志提取器`”抽屉。syslog / snmptrap 类型级入口与搜索页从当前日志跳转创建见 `specs/changes/log-extractor-passive-collect/spec.md`。
 - 抽屉使用现有 Ant Design、表格/空状态/权限组件和日志模块局部组件。它展示按顺序的规则、名称、条件摘要、类型、源字段、目标摘要和操作；无规则时展示说明与“新建提取器”，不自动生成默认规则。
 - 新增与编辑使用自适应视口的弹窗，包含可见 label、结构化条件编辑、类型专属字段、删除源字段与历史样本预览。较长内容在弹窗主体内滚动，保存/取消始终可见；错误紧邻字段并聚焦首个错误。
 - 调序采用明确拖拽手柄并提交完整 ID 序列；键盘用户可以用上移/下移完成同一操作。删除有后果确认；所有写按钮有 loading/disabled 防重复提交。
@@ -287,9 +287,9 @@ Status: implemented
 
 ## Out of Scope
 
-- 无日志采集实例的规则创建、API 或 UI。
+- 无日志采集实例的规则创建、API 或 UI（syslog / snmptrap 类型级规则见 `specs/changes/log-extractor-passive-collect/spec.md`）。
 - 内置、默认、初始化预置或按采集类型推荐的提取器。
-- 单规则启停、批量导入导出、搜索页选中文本反向新建、历史日志重新提取、AI/Grok 规则生成。
+- 单规则启停、批量导入导出、搜索页选中文本反向新建、历史日志重新提取、AI/Grok 规则生成。搜索页从当前这条日志跳转创建见被动接收提取器规格。
 - 用户直接编辑 VRL 或完整 Vector YAML。
 - 按云区域配置、状态、Token、generation 或下发；`CollectInstance.cloud_region_id`、提取器区域字段与区域回填。
 - webhookd、新增云区域部署、fusion-collector/采集侧 Vector、NodeMgmt 配置推送和 `NodeMgmt.update_system_vector_config`。

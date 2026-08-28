@@ -296,6 +296,8 @@
       "title": "OTP 验证",
       "description": "请输入验证码以完成登录。",
       "installAppsStep": "1. 在设备上安装以下任一认证器应用：",
+      "installAppsSingle": "1. 在设备上安装以下认证器应用：",
+      "installAppsMultiple": "1. 在设备上安装以下任一认证器应用：",
       "scanQrStep": "2. 使用认证器应用扫描二维码：",
       "qrAlt": "二维码",
       "verificationCode": "验证码",

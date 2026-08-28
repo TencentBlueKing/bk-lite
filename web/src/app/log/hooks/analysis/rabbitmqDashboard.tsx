@@ -284,7 +284,7 @@ export const useRabbitmqDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 176 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 176 },
             { title: '级别', dataIndex: 'rabbitmq.log.level', key: 'rabbitmq.log.level', width: 84, render: renderRabbitLevel },
             { title: 'PID', dataIndex: 'rabbitmq.log.pid', key: 'rabbitmq.log.pid', width: 86 },
             { title: '关键词分类', dataIndex: 'keyword_type', key: 'keyword_type', width: 108, render: renderRabbitKeyword },
@@ -309,7 +309,7 @@ export const useRabbitmqDashboard = () => {
           dataSource: 1,
           showIndex: false,
           columns: [
-            { title: '时间', dataIndex: '@timestamp', key: '@timestamp', width: 176 },
+            { title: '时间', dataIndex: '_time', key: '_time', width: 176 },
             { title: '级别', dataIndex: 'rabbitmq.log.level', key: 'rabbitmq.log.level', width: 84, render: renderRabbitLevel },
             { title: 'PID', dataIndex: 'rabbitmq.log.pid', key: 'rabbitmq.log.pid', width: 86 },
             { title: '关键词分类', dataIndex: 'keyword_type', key: 'keyword_type', width: 108, render: renderRabbitKeyword },

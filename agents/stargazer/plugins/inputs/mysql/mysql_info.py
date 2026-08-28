@@ -10,14 +10,10 @@ A standalone script to gather information about MySQL servers.
 from decimal import Decimal
 
 import aiomysql
+from core.collection.contracts import AccessProbeResult, AccessProbeStatus
+from core.decorator import timer
 from pymysql.constants import CLIENT
 from pymysql.err import OperationalError
-
-from core.decorator import timer
-from core.collection.contracts import (
-    AccessProbeResult,
-    AccessProbeStatus,
-)
 from sanic.log import logger
 
 
@@ -25,24 +21,24 @@ class MysqlInfo:
     """Class for collecting MySQL instance information."""
 
     def __init__(self, kwargs):
-        self.host = kwargs.get('host', 'localhost')
-        self.port = int(kwargs.get('port', 3306))
-        self.user = kwargs.get('user')
-        self.password = kwargs.get('password', '')
-        self.database = kwargs.get('database', '')
-        self.timeout = int(kwargs.get('timeout', 10))
+        self.host = kwargs.get("host", "localhost")
+        self.port = int(kwargs.get("port", 3306))
+        self.user = kwargs.get("user")
+        self.password = kwargs.get("password", "")
+        self.database = kwargs.get("database", "")
+        self.timeout = 10  # 连接超时硬编码；表单 timeout 由框架作单对象预算
         self.client_flag = CLIENT.MULTI_STATEMENTS
         self.info = {
-            'version': {},
-            'databases': {},
-            'settings': {},
-            'global_status': {},
-            'engines': {},
-            'users': {},
-            'master_status': {},
-            'slave_hosts': {},
-            'slave_status': {},
-            'replication_errors': {},
+            "version": {},
+            "databases": {},
+            "settings": {},
+            "global_status": {},
+            "engines": {},
+            "users": {},
+            "master_status": {},
+            "slave_hosts": {},
+            "slave_status": {},
+            "replication_errors": {},
         }
         self.connection = None
         self.cursor = None
@@ -75,16 +71,8 @@ class MysqlInfo:
             )
         except RuntimeError as error:
             cause = error.__cause__
-            error_number = (
-                cause.args[0]
-                if cause is not None and cause.args
-                else None
-            )
-            if error_number == 1045 or (
-                isinstance(cause, OperationalError)
-                and cause.args
-                and cause.args[0] == 1045
-            ):
+            error_number = cause.args[0] if cause is not None and cause.args else None
+            if error_number == 1045 or (isinstance(cause, OperationalError) and cause.args and cause.args[0] == 1045):
                 return AccessProbeResult(
                     status=AccessProbeStatus.AUTH_FAILED,
                     error_code="authentication_failed",
@@ -141,91 +129,99 @@ class MysqlInfo:
             await func()
         except Exception as err:
             logger.warning("mysql_info collect %s failed: %s", name, str(err))
-            self.info['replication_errors'][name] = str(err)
+            self.info["replication_errors"][name] = str(err)
 
     async def _get_databases(self):
         """Get info about databases."""
-        query = ('SELECT table_schema AS "name", '
-                 'SUM(data_length + index_length) AS "size" '
-                 'FROM information_schema.TABLES GROUP BY table_schema')
+        query = 'SELECT table_schema AS "name", ' 'SUM(data_length + index_length) AS "size" ' "FROM information_schema.TABLES GROUP BY table_schema"
         res = await self._exec_sql(query)
         if res:
             for db in res:
-                self.info['databases'][db['name']] = {'size': int(db['size'])}
+                self.info["databases"][db["name"]] = {"size": int(db["size"])}
 
     async def _get_global_variables(self):
         """Get global variables (instance settings)."""
-        res = await self._exec_sql('SHOW GLOBAL VARIABLES')
+        res = await self._exec_sql("SHOW GLOBAL VARIABLES")
         if res:
             for var in res:
-                self.info['settings'][var['Variable_name']] = self._convert(var['Value'])
+                self.info["settings"][var["Variable_name"]] = self._convert(var["Value"])
 
-            full = self.info['settings']['version']
-            self.info['version'] = {"version": full}
+            full = self.info["settings"]["version"]
+            self.info["version"] = {"version": full}
             await self._ensure_server_uuid()
 
     async def _ensure_server_uuid(self):
         """Ensure server_uuid is populated for old versions."""
-        if self.info['settings'].get("server_uuid"):
+        if self.info["settings"].get("server_uuid"):
             return
         try:
-            res = await self._exec_sql('SELECT @@server_uuid AS server_uuid')
+            res = await self._exec_sql("SELECT @@server_uuid AS server_uuid")
             if res:
-                self.info['settings']['server_uuid'] = res[0].get('server_uuid')
+                self.info["settings"]["server_uuid"] = res[0].get("server_uuid")
         except Exception as err:
             logger.warning("mysql_info get server_uuid failed: %s", str(err))
 
     async def _get_master_status(self):
         """Get master status if the instance is a master."""
-        res = await self._exec_first_query([
-            'SHOW MASTER STATUS',
-            'SHOW BINARY LOG STATUS',
-        ])
+        res = await self._exec_first_query(
+            [
+                "SHOW MASTER STATUS",
+                "SHOW BINARY LOG STATUS",
+            ]
+        )
         if res:
             for line in res:
                 for vname, val in line.items():
-                    self.info['master_status'][vname] = self._convert(val)
+                    self.info["master_status"][vname] = self._convert(val)
 
     async def _get_slave_status(self):
         """Get slave status if the instance is a slave."""
-        res = await self._exec_first_query([
-            'SHOW SLAVE STATUS',
-            'SHOW REPLICA STATUS',
-        ])
+        res = await self._exec_first_query(
+            [
+                "SHOW SLAVE STATUS",
+                "SHOW REPLICA STATUS",
+            ]
+        )
         if res and len(res) > 0:
             line = res[0]
             host = self._get_first_key(line, ["Master_Host", "Source_Host"])
             port = self._get_first_key(line, ["Master_Port", "Source_Port"])
             user = self._get_first_key(line, ["Master_User", "Source_User"])
 
-            if host not in self.info['slave_status']:
-                self.info['slave_status'][host] = {}
-            if port not in self.info['slave_status'][host]:
-                self.info['slave_status'][host][port] = {}
-            if user not in self.info['slave_status'][host][port]:
-                self.info['slave_status'][host][port][user] = {}
+            if host not in self.info["slave_status"]:
+                self.info["slave_status"][host] = {}
+            if port not in self.info["slave_status"][host]:
+                self.info["slave_status"][host][port] = {}
+            if user not in self.info["slave_status"][host][port]:
+                self.info["slave_status"][host][port][user] = {}
 
             for vname, val in line.items():
                 if vname not in (
-                    'Master_Host', 'Master_Port', 'Master_User',
-                    'Source_Host', 'Source_Port', 'Source_User',
+                    "Master_Host",
+                    "Master_Port",
+                    "Master_User",
+                    "Source_Host",
+                    "Source_Port",
+                    "Source_User",
                 ):
-                    self.info['slave_status'][host][port][user][vname] = self._convert(val)
+                    self.info["slave_status"][host][port][user][vname] = self._convert(val)
 
     async def _get_slaves(self):
         """Get slave hosts info if the instance is a master."""
-        res = await self._exec_first_query([
-            'SHOW SLAVE HOSTS',
-            'SHOW REPLICA HOSTS',
-        ])
+        res = await self._exec_first_query(
+            [
+                "SHOW SLAVE HOSTS",
+                "SHOW REPLICA HOSTS",
+            ]
+        )
         if res:
             for line in res:
-                srv_id = line['Server_id']
-                if srv_id not in self.info['slave_hosts']:
-                    self.info['slave_hosts'][srv_id] = {}
+                srv_id = line["Server_id"]
+                if srv_id not in self.info["slave_hosts"]:
+                    self.info["slave_hosts"][srv_id] = {}
                 for vname, val in line.items():
-                    if vname != 'Server_id':
-                        self.info['slave_hosts'][srv_id][vname] = self._convert(val)
+                    if vname != "Server_id":
+                        self.info["slave_hosts"][srv_id][vname] = self._convert(val)
 
     def _get_replication_info(self):
         """Get replication role and cluster hints."""
@@ -234,13 +230,13 @@ class MysqlInfo:
         master_port = None
         master_user = None
         master_uuid = None
-        server_uuid = self.info['settings'].get("server_uuid")
+        server_uuid = self.info["settings"].get("server_uuid")
         slave_io_running = None
         slave_sql_running = None
 
-        if self.info['slave_status']:
+        if self.info["slave_status"]:
             role = "slave"
-            for host, ports in self.info['slave_status'].items():
+            for host, ports in self.info["slave_status"].items():
                 for port, users in ports.items():
                     for user, status in users.items():
                         master_host = host
@@ -252,10 +248,10 @@ class MysqlInfo:
                         break
                     break
                 break
-        elif self.info['master_status'] or self.info['slave_hosts']:
+        elif self.info["master_status"] or self.info["slave_hosts"]:
             role = "master"
 
-        has_slaves = bool(self.info['slave_hosts'])
+        has_slaves = bool(self.info["slave_hosts"])
         if role == "slave" and master_uuid:
             cluster_id = master_uuid
         elif role == "master" and server_uuid:
@@ -289,7 +285,7 @@ class MysqlInfo:
             model_data = {
                 "ip_addr": self.host,
                 "port": self.port,
-                "version": self.info['version']['version'],
+                "version": self.info["version"]["version"],
                 "enable_binlog": self.info["settings"].get("log_bin"),
                 "sync_binlog": self.info["settings"].get("sync_binlog"),
                 "max_conn": self.info["settings"].get("max_connections"),
@@ -307,6 +303,7 @@ class MysqlInfo:
             inst_data = {"result": {"mysql": [model_data]}, "success": True}
         except Exception as err:  # noqa
             import traceback
+
             logger.error(f"mysql_info main error! {traceback.format_exc()}")
             inst_data = {"result": {"cmdb_collect_error": str(err)}, "success": False}
 

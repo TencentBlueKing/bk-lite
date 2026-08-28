@@ -7,6 +7,7 @@ import {
   FullscreenOutlined,
   FullscreenExitOutlined,
   EditOutlined,
+  ReloadOutlined,
   ShareAltOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -33,6 +34,7 @@ export interface NetworkToolbarProps {
   onEnterEdit: () => void;
   onCancelEdit: () => void;
   onSave: () => void;
+  editExtra?: React.ReactNode;
 }
 
 /**
@@ -69,6 +71,7 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
   onEnterEdit,
   onCancelEdit,
   onSave,
+  editExtra,
 }) => {
   const { t } = useTranslation();
   const iconButtonClassName =
@@ -76,6 +79,16 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
 
   return (
     <div className="flex items-center gap-1.5" data-testid="network-toolbar">
+      {editMode ? null : (
+        <TimeSelector
+          onlyRefresh
+          frequenceValue={frequenceValue}
+          onRefresh={onRefresh}
+          onFrequenceChange={onFrequencyChange}
+          className="network-topology-refresh"
+        />
+      )}
+
       <div className="flex items-center gap-0.5">
         {onZoomIn && (
           <Tooltip title={t('opsAnalysis.networkTopology.toolbar.zoomIn')}>
@@ -129,64 +142,65 @@ const NetworkToolbar: React.FC<NetworkToolbarProps> = ({
             />
           </Tooltip>
         )}
+        {!shareMode && !editMode && onOpenShare && (
+          <Tooltip title={t('dashboard.share')}>
+            <Button
+              type="text"
+              icon={<ShareAltOutlined style={{ fontSize: 16 }} />}
+              loading={shareLoading}
+              disabled={shareLoading}
+              aria-label={t('dashboard.share')}
+              onClick={onOpenShare}
+              className={iconButtonClassName}
+              data-testid="network-toolbar-share"
+            />
+          </Tooltip>
+        )}
+        {!shareMode && !editMode && (
+          <Tooltip title={t('opsAnalysis.networkTopology.toolbar.edit')}>
+            <Button
+              type="text"
+              icon={<EditOutlined style={{ fontSize: 16 }} />}
+              onClick={onEnterEdit}
+              className={iconButtonClassName}
+              data-testid="network-toolbar-enter-edit"
+            />
+          </Tooltip>
+        )}
       </div>
 
-      <TimeSelector
-        onlyRefresh
-        frequenceValue={frequenceValue}
-        onRefresh={onRefresh}
-        onFrequenceChange={onFrequencyChange}
-        className="network-topology-refresh"
-      />
-
-      {!shareMode && !editMode && onOpenShare && (
-        <Tooltip title={t('dashboard.share')}>
+      {editMode ? (
+        <Tooltip title={t('common.refresh')}>
           <Button
             type="text"
-            icon={<ShareAltOutlined style={{ fontSize: 16 }} />}
-            loading={shareLoading}
-            disabled={shareLoading}
-            aria-label={t('dashboard.share')}
-            onClick={onOpenShare}
+            icon={<ReloadOutlined style={{ fontSize: 16 }} />}
+            aria-label={t('common.refresh')}
+            onClick={onRefresh}
             className={iconButtonClassName}
-            data-testid="network-toolbar-share"
+            data-testid="network-toolbar-refresh"
           />
         </Tooltip>
-      )}
+      ) : null}
 
-      {!shareMode && (
-        <div className="ml-2">
-          {editMode ? (
-            <div className="flex items-center gap-2">
-              <Button
-                onClick={onCancelEdit}
-                className="rounded-full!"
-                data-testid="network-toolbar-cancel-edit"
-              >
-                {t('opsAnalysis.networkTopology.actions.cancel')}
-              </Button>
-              <Button
-                type="primary"
-                onClick={onSave}
-                loading={saving}
-                disabled={!dirty}
-                className="rounded-full!"
-                data-testid="network-toolbar-save"
-              >
-                {t('opsAnalysis.networkTopology.actions.save')}
-              </Button>
-            </div>
-          ) : (
-            <Tooltip title={t('opsAnalysis.networkTopology.toolbar.edit')}>
-              <Button
-                type="text"
-                icon={<EditOutlined style={{ fontSize: 16 }} />}
-                onClick={onEnterEdit}
-                className="rounded-full!"
-                data-testid="network-toolbar-enter-edit"
-              />
-            </Tooltip>
-          )}
+      {!shareMode && editMode && (
+        <div className="ml-2 flex items-center gap-2">
+          {editExtra}
+          <Button
+            type="default"
+            onClick={onCancelEdit}
+            data-testid="network-toolbar-cancel-edit"
+          >
+            {t('opsAnalysis.networkTopology.actions.cancel')}
+          </Button>
+          <Button
+            type="primary"
+            onClick={onSave}
+            loading={saving}
+            disabled={!dirty}
+            data-testid="network-toolbar-save"
+          >
+            {t('opsAnalysis.networkTopology.actions.save')}
+          </Button>
         </div>
       )}
     </div>

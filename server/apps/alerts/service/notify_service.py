@@ -33,22 +33,21 @@ class NotifyResultService(object):
         self.notify_action_object = notify_action_object
         self.notify_object = notify_object
 
-    def format_notify_result(self):
-        """
-        格式化通知结果
-        """
+    @classmethod
+    def classify_notify_result(cls, notify_result):
+        """按现有兼容契约分类单个渠道结果。"""
         try:
-            if not isinstance(self.notify_result, dict):
+            if not isinstance(notify_result, dict):
                 return NotifyResultStatus.FAILED
 
-            result = self.notify_result.get("result")
+            result = notify_result.get("result")
             if isinstance(result, bool):
                 return NotifyResultStatus.SUCCESS if result else NotifyResultStatus.FAILED
 
             for code_field in ("errcode", "code"):
-                if code_field not in self.notify_result:
+                if code_field not in notify_result:
                     continue
-                code = self.notify_result[code_field]
+                code = notify_result[code_field]
                 is_success = str(code).strip() == "0"
                 return NotifyResultStatus.SUCCESS if is_success else NotifyResultStatus.FAILED
 
@@ -57,9 +56,15 @@ class NotifyResultService(object):
         except Exception as e:
             logger.warning(
                 "[AlertNotify] NotifyResultService format_notify_result 解析失败, result=%s, error=%s",
-                self.notify_result, e,
+                notify_result, e,
             )
             return NotifyResultStatus.FAILED
+
+    def format_notify_result(self):
+        """
+        格式化通知结果
+        """
+        return self.classify_notify_result(self.notify_result)
 
     def format_failure_reason(self):
         """提取可向前端展示的安全失败原因。"""

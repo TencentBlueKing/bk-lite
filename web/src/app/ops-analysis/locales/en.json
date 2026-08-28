@@ -402,6 +402,27 @@
     }
   },
   "opsAnalysis": {
+    "canvasDraft": {
+      "menu": "Snapshots",
+      "history": "Snapshot history",
+      "historyEmpty": "No snapshots yet. Use Save version to keep the current layout.",
+      "historyVersion": "#",
+      "historyName": "Note",
+      "historyTime": "Time",
+      "historyActions": "Actions",
+      "namePlaceholder": "Add a note to describe this snapshot",
+      "nameEditHint": "Click to add a note",
+      "saveFrame": "Save version",
+      "saveFrameSuccess": "Version saved",
+      "validationFailed": "Draft validation failed",
+      "updateLabelFailed": "Failed to save note",
+      "frameYamlTitle": "{name}",
+      "viewYaml": "YAML",
+      "restore": "Restore",
+      "restoreFrame": "Restore this snapshot",
+      "restoreFailed": "Restore failed",
+      "restoreSuccess": "Snapshot restored"
+    },
     "architecture": {
       "loadFailed": "Failed to load"
     },
@@ -427,6 +448,7 @@
       "canvasEmpty": "No widgets yet",
       "builderPending": "Screen editing will be completed in a later iteration",
       "addWidget": "Add Widget",
+      "widgetShort": "Widget",
       "addThisWidget": "Add widget",
       "screenSettings": "Screen Settings",
       "screenTitle": "Screen Title",
@@ -477,6 +499,7 @@
       "title": "Report",
       "selectFirst": "Please select a report",
       "addComponent": "Add component",
+      "componentShort": "Component",
       "emptyDescription": "No components yet. Enter edit mode to add a table or event table.",
       "unnamedComponent": "Unnamed component",
       "dragComponent": "Drag to reorder component",
@@ -710,6 +733,8 @@
       "normal": "Normal"
     },
     "addView": "Add View",
+    "viewShort": "View",
+    "groupShort": "Group",
     "filterType": "Filter Type",
     "startTime": "Start Time",
     "dataCannotRenderAsChart": "Data cannot be rendered as chart",

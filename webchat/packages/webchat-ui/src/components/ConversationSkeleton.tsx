@@ -1,4 +1,3 @@
-import React from 'react';
 import { WC } from '../chrome';
 
 const bars = [

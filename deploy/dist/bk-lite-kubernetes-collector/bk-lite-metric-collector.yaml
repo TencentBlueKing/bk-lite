@@ -704,7 +704,8 @@ data:
         # 监控链路只按 instance_id/node/pod/namespace/container/phase/reason/
         # condition/status/resource 及工作负载名聚合，其余维度未被任何查询消费，
         # 抓取时丢弃以削减传输与存储
-        - regex: uid|unit|created_by_kind|created_by_name|host_ip|pod_ip|host_network|priority_class|internal_ip|os_image|kernel_version|kubelet_version|container_runtime_version|kubeproxy_version|pod_cidr|system_uuid|provider_id
+        # pod_ip/internal_ip 保留供 Pod/Node 列表 IP 展示列读取；host_ip 为 Pod 宿主机 IP，仍丢弃
+        - regex: uid|unit|created_by_kind|created_by_name|host_ip|host_network|priority_class|os_image|kernel_version|kubelet_version|container_runtime_version|kubeproxy_version|pod_cidr|system_uuid|provider_id
           action: labeldrop
 
 ---

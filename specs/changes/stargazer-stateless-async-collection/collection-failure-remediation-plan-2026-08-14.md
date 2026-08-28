@@ -11,7 +11,7 @@
 
 客户约有 3000 台网络设备，同时下发十多个采集任务。采集日志显示大量设备未完成采集，主要风险集中在：
 
-1. `PREFLIGHT_REACHABILITY=off` 只跳过部分网络短探测，插件 `probe()` 仍然执行；
+1. 请求 `params.ip_precheck=false` 时只跳过部分网络短探测，插件 `probe()` 仍然执行；
 2. 预检/探测、正式采集和结果发布的超时语义混杂；
 3. 单个 Run 可以长时间持有大量 worker，造成跨任务饥饿；
 4. 单台设备 NATS 发布失败会抛出到 `gather()`，进而取消同 Run 剩余设备；
@@ -54,7 +54,7 @@ HTTP 请求
   → 调度器按 Run 轮询选择目标
   → 全局目标准入（MAX_ACTIVE_TARGETS）
   → 出站安全检查（始终执行）
-  → 根据 PREFLIGHT_REACHABILITY 决定是否执行预检/探测
+  → 根据 request.params.ip_precheck 决定是否执行预检/探测
   → 正式 collect（YAML timeout，缺省 60s）
   → 写入有界发布队列（容量复用 TARGET_TASK_WINDOW）
   → Publisher 批量 publish + flush
@@ -76,13 +76,9 @@ HTTP 请求
 
 ### 4.1 关闭预检时跳过全部采集前探测
 
-统一开关：
+统一使用单次请求参数 `params.ip_precheck`，不设全局环境开关。
 
-```env
-PREFLIGHT_REACHABILITY=off
-```
-
-当值为 `off` 时，必须跳过：
+当请求参数未开启时，必须跳过：
 
 - TargetPolicy 中的 TCP/TLS/端口可达性检查；
 - SNMP `probe()`；
@@ -304,7 +300,7 @@ capacity_group: snmp
 
 - 调度器等待全局目标槽位的时间不计入上述阶段超时；
 - 每个阶段独立计时，一个阶段的剩余时间不得传递给下一阶段；
-- `PREFLIGHT_REACHABILITY=off` 时完全不执行 preflight 和 probe，因此前两项不计时；
+- `params.ip_precheck` 未开启时不执行可选连通性 preflight 和 probe，因此前两项不计时；
 - `RUN_DEADLINE` 仍是可选 Run 总截止时间，包含调度等待；`0` 表示关闭；
 - 所有超时必须为大于 0 的有限数值，非法配置在启动/插件加载时失败并给出明确字段名。
 

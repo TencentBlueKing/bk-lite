@@ -131,19 +131,19 @@ export const buildReportingStatusColumn = ({
   onCell: () => ({ style: { minWidth: 100 } }),
   ...(includeFilters
     ? {
-        filterMultiple: true,
-        filterParam: 'status',
-        filters: [
-          {
-            text: t('monitor.integrations.normal'),
-            value: 'normal'
-          },
-          {
-            text: t('monitor.integrations.unavailable'),
-            value: 'unavailable'
-          }
-        ]
-      }
+      filterMultiple: true,
+      filterParam: 'status',
+      filters: [
+        {
+          text: t('monitor.integrations.normal'),
+          value: 'normal'
+        },
+        {
+          text: t('monitor.integrations.unavailable'),
+          value: 'unavailable'
+        }
+      ]
+    }
     : {}),
   render: (_, record) => {
     if (!record?.status) return <>--</>;
@@ -295,15 +295,15 @@ export const buildDisplayFieldColumns = ({
       primaryMeta?.name &&
       isStringArray(primaryMeta?.unit || '')
         ? {
-            filterMultiple: true,
-            filterParam: primaryMeta.name,
-            filters: (JSON.parse(primaryMeta.unit || '[]') as ListItem[]).map(
-              (item) => ({
-                text: String(item.name ?? item.id ?? ''),
-                value: String(item.id ?? '')
-              })
-            )
-          }
+          filterMultiple: true,
+          filterParam: primaryMeta.name,
+          filters: (JSON.parse(primaryMeta.unit || '[]') as ListItem[]).map(
+            (item) => ({
+              text: String(item.name ?? item.id ?? ''),
+              value: String(item.id ?? '')
+            })
+          )
+        }
         : {}),
       render: (_: unknown, record: TableDataItem) => {
         const cell = resolveDisplayCell(record, col);

@@ -5,12 +5,8 @@
 1.x：GET /ping 响应头取版本；配置类字段 API 不暴露，留空。
 """
 import httpx
+from core.collection.contracts import AccessProbeResult, AccessProbeStatus
 from sanic.log import logger
-
-from core.collection.contracts import (
-    AccessProbeResult,
-    AccessProbeStatus,
-)
 
 
 class InfluxdbInfo:
@@ -23,7 +19,7 @@ class InfluxdbInfo:
         self.token = kwargs.get("token") or kwargs.get("password", "")
         self.ssl = str(kwargs.get("ssl", "")).lower() in ("1", "true", "yes")
         self.verify_tls = self._as_bool(kwargs.get("verify_tls"), default=True)
-        self.timeout = int(kwargs.get("timeout", 10))
+        self.timeout = 10  # 请求超时硬编码；表单 timeout 由框架作单对象预算
         scheme = "https" if self.ssl else "http"
         self.base_url = f"{scheme}://{self.host}:{self.port}"
 
@@ -48,9 +44,7 @@ class InfluxdbInfo:
                     version = str(body["version"])
                 else:
                     response = await self._get(client, "/ping")
-                    version = str(
-                        response.headers.get("X-Influxdb-Version") or ""
-                    )
+                    version = str(response.headers.get("X-Influxdb-Version") or "")
                     if response.status_code not in {200, 204} or not version:
                         return AccessProbeResult(
                             status=AccessProbeStatus.PROTOCOL_MISMATCH,
@@ -136,9 +130,7 @@ class InfluxdbInfo:
             )
             if resp.status_code != 200:
                 warning = (
-                    "Operator Token 无效或权限不足，无法读取 InfluxDB 运行配置"
-                    if resp.status_code in (401, 403)
-                    else f"InfluxDB 运行配置接口返回 HTTP {resp.status_code}"
+                    "Operator Token 无效或权限不足，无法读取 InfluxDB 运行配置" if resp.status_code in (401, 403) else f"InfluxDB 运行配置接口返回 HTTP {resp.status_code}"
                 )
                 return model, warning
 
@@ -193,5 +185,6 @@ class InfluxdbInfo:
                 return {"result": {"influxdb": rows}, "success": True}
         except Exception as err:  # noqa
             import traceback
+
             logger.error(f"influxdb_info main error! {traceback.format_exc()}")
             return {"result": {"cmdb_collect_error": str(err)}, "success": False}

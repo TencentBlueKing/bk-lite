@@ -1,0 +1,32 @@
+# OWA / EWS HTTP probes. telegraf_windows must be installed on the Exchange host.
+[[inputs.http_response]]
+    startup_error_behavior = "retry"
+    urls = ["{{ owa_url | default('https://' ~ (host or '127.0.0.1') ~ '/owa', true) }}"]
+    interval = "{{ interval }}s"
+    method = "GET"
+    insecure_skip_verify = {{ insecure_skip_verify | default(false, true) | lower }}
+    {% if response_timeout %}
+    response_timeout = "{{ response_timeout }}s"
+    {% endif %}
+    [inputs.http_response.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "host"
+        config_type = "http_response"
+        endpoint = "owa"
+
+[[inputs.http_response]]
+    startup_error_behavior = "retry"
+    urls = ["{{ ews_url | default('https://' ~ (host or '127.0.0.1') ~ '/EWS/Exchange.asmx', true) }}"]
+    interval = "{{ interval }}s"
+    method = "GET"
+    insecure_skip_verify = {{ insecure_skip_verify | default(false, true) | lower }}
+    {% if response_timeout %}
+    response_timeout = "{{ response_timeout }}s"
+    {% endif %}
+    [inputs.http_response.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "host"
+        config_type = "http_response"
+        endpoint = "ews"
