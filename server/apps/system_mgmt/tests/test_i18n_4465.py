@@ -86,7 +86,51 @@ def test_import_users_boundary_messages_use_request_locale(locale, users, expect
     assert response_payload(response) == {"result": False, "message": expected}
 
 
-@pytest.mark.django_db
+def _stub_import_users_group_lookup(monkeypatch):
+    monkeypatch.setattr("apps.system_mgmt.viewset.user_viewset._validate_selected_groups", lambda groups, loader: None)
+    monkeypatch.setattr("apps.system_mgmt.viewset.user_viewset._normalize_group_ids", lambda groups: ([1], []))
+    monkeypatch.setattr(UserViewSet, "_validate_group_scope_for_request", lambda self, request, groups, loader: None)
+    monkeypatch.setattr(
+        "apps.system_mgmt.viewset.user_viewset.GroupUtils.active_queryset",
+        lambda: SimpleNamespace(filter=lambda **kwargs: SimpleNamespace(first=lambda: SimpleNamespace(id=1, name="org"))),
+    )
+    monkeypatch.setattr(
+        "apps.system_mgmt.viewset.user_viewset.SystemSettings.objects.filter",
+        lambda **kwargs: SimpleNamespace(values_list=lambda *args, **kw: []),
+    )
+    monkeypatch.setattr("apps.system_mgmt.viewset.user_viewset.log_operation", lambda *args, **kwargs: None)
+
+
+@pytest.mark.parametrize(
+    ("locale", "users", "expected"),
+    [
+        ("en", ["not-a-row"], "Invalid data format"),
+        ("zh-Hans", ["not-a-row"], "数据格式不正确"),
+        ("en", [{"username": "", "lastName": "A", "email": "a@example.com"}], "Required fields are missing"),
+        ("zh-Hans", [{"username": "", "lastName": "A", "email": "a@example.com"}], "缺少必填字段"),
+        ("en", [{"username": "bad-phone", "lastName": "A", "email": "a@example.com", "phone": "abc"}], "Invalid phone number format"),
+        ("zh-Hans", [{"username": "bad-phone", "lastName": "A", "email": "a@example.com", "phone": "abc"}], "手机号格式不正确"),
+        ("en", [{"username": "bad-email", "lastName": "A", "email": "not-an-email"}], "Invalid email format"),
+        ("zh-Hans", [{"username": "bad-email", "lastName": "A", "email": "not-an-email"}], "邮箱格式不正确"),
+        ("en", [{"username": "existing", "lastName": "A", "email": "a@example.com"}], "Username already exists"),
+        ("zh-Hans", [{"username": "existing", "lastName": "A", "email": "a@example.com"}], "用户名已存在"),
+    ],
+)
+def test_import_users_row_messages_use_request_locale(monkeypatch, locale, users, expected):
+    _stub_import_users_group_lookup(monkeypatch)
+    monkeypatch.setattr(
+        "apps.system_mgmt.viewset.user_viewset.User.objects.filter",
+        lambda **kwargs: SimpleNamespace(exists=lambda: kwargs.get("username") == "existing"),
+    )
+    request = request_with_locale(locale)
+    request.data = {"group_id": 1, "users": users, "file_name": "users.xlsx"}
+    response = UserViewSet.import_users.__wrapped__(UserViewSet(), request)
+    payload = response_payload(response)
+    assert response.status_code == 200
+    assert payload["result"] is True
+    assert payload["data"]["failures"][0]["message"] == expected
+
+
 @pytest.mark.parametrize(
     ("locale", "expected"),
     [
@@ -94,10 +138,23 @@ def test_import_users_boundary_messages_use_request_locale(locale, users, expect
         ("zh-Hans", "密码策略要求："),
     ],
 )
-def test_password_policy_description_uses_requested_locale(locale, expected):
+def test_password_policy_description_uses_requested_locale(monkeypatch, locale, expected):
+    monkeypatch.setattr(
+        PasswordValidator,
+        "get_password_settings",
+        staticmethod(lambda: {
+            "min_length": 8,
+            "max_length": 20,
+            "required_char_types": ["uppercase", "lowercase", "digit", "special"],
+        }),
+    )
     description = PasswordValidator.get_password_policy_description(locale=locale)
     assert expected in description
     assert "8-20" in description
+    if locale == "zh-Hans":
+        assert "必须包含：大写字母, 小写字母, 数字, 特殊符号" in description
+    else:
+        assert "Must contain: uppercase letter, lowercase letter, number, special character" in description
 
 
 @pytest.mark.parametrize(
@@ -121,6 +178,37 @@ def test_nats_config_validation_uses_requested_locale(locale, config, path, expe
     for key in path:
         detail = detail[key]
     assert str(detail) == expected
+
+
+@pytest.mark.parametrize(
+    ("locale", "expected"),
+    [
+        ("en", "notification topic identifier is already in use"),
+        ("zh-Hans", "通知主题标识已被使用"),
+    ],
+)
+def test_nats_subject_key_unique_uses_requested_locale(monkeypatch, locale, expected):
+    class DuplicateSubjectQuerySet:
+        def exclude(self, **kwargs):
+            return self
+
+        def exists(self):
+            return True
+
+    monkeypatch.setattr(
+        "apps.system_mgmt.serializers.channel_serializer.nats_notifications",
+        SimpleNamespace(handles_config=lambda config: True),
+    )
+    monkeypatch.setattr(
+        "apps.system_mgmt.serializers.channel_serializer.Channel.objects.filter",
+        lambda **kwargs: DuplicateSubjectQuerySet(),
+    )
+    serializer = object.__new__(ChannelSerializer)
+    serializer.parent = None
+    serializer._context = {"request": request_with_locale(locale)}
+    with pytest.raises(ValidationError) as exc_info:
+        serializer.validate_nats_subject_key_unique({"subject_key": "customer-alerts"})
+    assert str(exc_info.value.detail["config"]["subject_key"]) == expected
 
 
 @pytest.mark.parametrize(
