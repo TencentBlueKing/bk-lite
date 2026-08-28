@@ -134,6 +134,7 @@ const RelatedAlertsPanel = ({ alert, onRefresh }: Props) => {
     operator: [],
     created_at: item.first_event_time || '',
     updated_at: item.last_event_time || '',
+    closed_at: null,
     item: '',
     resource_id: '',
     resource_name: '',
