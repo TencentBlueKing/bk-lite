@@ -10,6 +10,7 @@ import TopologyCanvas, {
   TopologyLegendDot,
   topologyHealthColors,
   type TopologyCanvasSelection,
+  type TopologyLayoutMode,
 } from '@/app/apm/services/topology/topology-canvas';
 import TopologyInspectPanel from '@/app/apm/services/topology/topology-inspect-panel';
 import { filterTopologyByKeyword, isolateTopologyNeighborhood } from '@/app/apm/services/topology/topology-layout';
@@ -40,6 +41,7 @@ export default function ApmTopologyPage() {
   const [environment, setEnvironment] = useState<string>();
   const [environmentOptions, setEnvironmentOptions] = useState<{ value: string; label: string }[]>([]);
   const [serviceIds, setServiceIds] = useState<Map<string, string>>(new Map());
+  const [layout, setLayout] = useState<TopologyLayoutMode>('layered');
   const [anomalyOnly, setAnomalyOnly] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [requestStatus, setRequestStatus] = useState<RequestStatus>('all');
@@ -184,6 +186,16 @@ export default function ApmTopologyPage() {
               </div>
               <Segmented<TimeWindow> aria-label={t('apm.topology.window', '拓扑时间窗口')} options={['15m', '1h', '4h', '1d', '7d']} value={timeWindow} onChange={setTimeWindow} />
               <Select allowClear aria-label={t('apm.topology.filterEnvironment', '按环境筛选拓扑')} className="w-36" placeholder={t('apm.common.allEnvironments', '全部环境')} options={environmentOptions} value={environment} onChange={setEnvironment} />
+              <Segmented<TopologyLayoutMode>
+                aria-label={t('apm.topology.layout', '拓扑布局')}
+                className="shrink-0"
+                options={[
+                  { value: 'layered', label: t('apm.topology.layered', '层次') },
+                  { value: 'force', label: t('apm.topology.force', '力导向') },
+                ]}
+                value={layout}
+                onChange={setLayout}
+              />
               <Select
                 allowClear
                 aria-label={t('apm.topology.requestStatus', '按请求状态切片')}
@@ -226,6 +238,7 @@ export default function ApmTopologyPage() {
               <div className="relative min-w-0 flex-1">
                 <TopologyCanvas
                   edges={visibleGraph.edges}
+                  layout={layout}
                   nodes={visibleGraph.nodes}
                   selected={selection}
                   toolbar={(

@@ -51,16 +51,19 @@ vi.mock('@/app/apm/services/topology/topology-canvas', () => ({
     nodes,
     edges,
     focusNamespace,
+    layout,
   }: {
     nodes: Array<{ id: string }>;
     edges: Array<{ source: string; target: string }>;
     focusNamespace?: string;
+    layout?: string;
   }) => (
     <div
       data-testid="application-topology"
       data-nodes={nodes.map((node) => node.id).join(',')}
       data-edges={edges.map((edge) => `${edge.source}>${edge.target}`).join(',')}
       data-focus={focusNamespace ?? ''}
+      data-layout={layout ?? 'layered'}
     />
   ),
 }));
@@ -130,9 +133,9 @@ describe('APM 应用观测详情', () => {
     expect(await screen.findByText('应用服务拓扑')).not.toBeNull();
     expect(screen.queryByRole('link', { name: '返回服务' })).toBeNull();
     expect(screen.getByRole('radiogroup', { name: '服务指标时间窗口' })).not.toBeNull();
-    expect(screen.queryByRole('radiogroup', { name: '拓扑布局' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: '层次' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: '力导向' })).toBeNull();
+    expect(screen.getByRole('radiogroup', { name: '拓扑布局' })).not.toBeNull();
+    expect(screen.getByRole('radio', { name: '层次' })).not.toBeNull();
+    expect(screen.getByRole('radio', { name: '力导向' })).not.toBeNull();
     expect(screen.getByText('关键信息')).not.toBeNull();
     expect(screen.getByText('服务数')).not.toBeNull();
     expect(screen.getByText('告警数')).not.toBeNull();
@@ -153,7 +156,12 @@ describe('APM 应用观测详情', () => {
         'user_request:prod>shop-node',
       ]);
       expect(topology.getAttribute('data-focus')).toBe('shop');
+      expect(topology.getAttribute('data-layout')).toBe('layered');
     });
+    await userEvent.click(screen.getByRole('radio', { name: '力导向' }).closest('label')!);
+    await waitFor(() => expect(topology.getAttribute('data-layout')).toBe('force'));
+    await userEvent.click(screen.getByRole('radio', { name: '层次' }).closest('label')!);
+    await waitFor(() => expect(topology.getAttribute('data-layout')).toBe('layered'));
     expect(api.getTopology).toHaveBeenCalledWith(expect.objectContaining({
       include_inferred: true,
       include_user_request: true,

@@ -5,6 +5,7 @@ import {
   filterTopologyByKeyword,
   focusApplicationTopology,
   isolateTopologyNeighborhood,
+  layoutForceTopology,
   layoutLayeredTopology,
   topologyNodeNameWidth,
   truncateTopologyNodeLabel,
@@ -60,6 +61,59 @@ describe('APM 服务拓扑布局', () => {
   it('分层布局始终落在画布安全区域内', async () => {
     const result = await layoutLayeredTopology(demoNodes, demoEdges);
 
+    result.forEach((item) => {
+      expect(item.x).toBeGreaterThanOrEqual(90);
+      expect(item.x).toBeLessThanOrEqual(950);
+      expect(item.y).toBeGreaterThanOrEqual(90);
+      expect(item.y).toBeLessThanOrEqual(540);
+    });
+  });
+});
+
+describe('APM 服务拓扑力导向布局', () => {
+  const directedNodes: ApmTopologyNode[] = [
+    node('storefront'),
+    node('catalog'),
+    node('inventory'),
+    { ...node('user_request'), id: 'user_request:local', service_name: 'user_request', service_namespace: '', kind: 'user_request', health: 'unknown' },
+    { ...node('mysql'), id: 'inferred:local:mysql', kind: 'inferred', fold_key: 'mysql' },
+  ];
+  const directedEdges: ApmTopologyEdge[] = [
+    edge('user_request:local', 'storefront'),
+    edge('storefront', 'catalog'),
+    edge('catalog', 'inventory'),
+    edge('inventory', 'inferred:local:mysql'),
+  ];
+
+  it('同一张图两次计算得到相同坐标', async () => {
+    const first = await layoutForceTopology(directedNodes, directedEdges);
+    const second = await layoutForceTopology(directedNodes, directedEdges);
+    expect(first.map((item) => ({ id: item.id, x: item.x, y: item.y }))).toEqual(
+      second.map((item) => ({ id: item.id, x: item.x, y: item.y })),
+    );
+  });
+
+  it('输入顺序变化仍得到相同坐标', async () => {
+    const reversed = await layoutForceTopology([...directedNodes].reverse(), [...directedEdges].reverse());
+    const canonical = await layoutForceTopology(directedNodes, directedEdges);
+    const byId = (items: typeof canonical) => Object.fromEntries(items.map((item) => [item.id, { x: item.x, y: item.y }]));
+    expect(byId(reversed)).toEqual(byId(canonical));
+  });
+
+  it('用户请求入口在调用链上方，推断下游在汇点一侧', async () => {
+    const result = await layoutForceTopology(directedNodes, directedEdges);
+    const byId = new Map(result.map((item) => [item.id, item]));
+
+    expect(byId.get('user_request:local')?.y).toBeLessThan(byId.get('storefront')?.y ?? 0);
+    expect(byId.get('storefront')?.y).toBeLessThan(byId.get('catalog')?.y ?? 0);
+    expect(byId.get('catalog')?.y).toBeLessThan(byId.get('inventory')?.y ?? 0);
+    expect(byId.get('inventory')?.y).toBeLessThan(byId.get('inferred:local:mysql')?.y ?? 0);
+    expect(new Set(result.map((item) => `${item.x}:${item.y}`)).size).toBe(result.length);
+  });
+
+  it('力导向坐标落在画布安全区域内', async () => {
+    const result = await layoutForceTopology(demoNodes, demoEdges);
+    expect(result).toHaveLength(demoNodes.length);
     result.forEach((item) => {
       expect(item.x).toBeGreaterThanOrEqual(90);
       expect(item.x).toBeLessThanOrEqual(950);

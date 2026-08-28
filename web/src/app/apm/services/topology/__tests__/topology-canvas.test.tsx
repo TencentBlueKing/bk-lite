@@ -98,6 +98,19 @@ afterEach(() => {
 });
 
 describe('APM 服务拓扑画布', () => {
+  it('力导向模式使用曲线连线且可渲染', async () => {
+    const result = renderWithApmIntl(
+      <TopologyCanvas edges={edges} keyword="" layout="force" nodes={nodes} zoom={1} />,
+    );
+
+    await waitFor(() => expect(edgePairs(result.container)).toEqual(['catalog>inventory', 'storefront>catalog']));
+    expect(result.container.querySelector('svg[data-layout="force"]')).not.toBeNull();
+    result.container.querySelectorAll<SVGPathElement>('g[data-source] > path').forEach((path) => {
+      expect(path.getAttribute('d')).toContain(' Q ');
+      expect(path.getAttribute('marker-end')).toBe('url(#apm-arrow)');
+    });
+  });
+
   it('自动分层布局保持依赖方向和箭头端点', async () => {
     const result = renderWithApmIntl(
       <TopologyCanvas edges={edges} keyword="" nodes={nodes} zoom={1} />,
@@ -179,15 +192,27 @@ describe('APM 服务拓扑画布', () => {
     expect(api.getTopology.mock.calls[0][0].include_user_request).toBeUndefined();
   });
 
-  it('页面只提供层次布局，并以总调用数替代观测 Trace', async () => {
-    renderWithApmIntl(<ApmTopologyPage />);
+  it('页面默认层次布局，并可切换到力导向后再切回层次', async () => {
+    const result = renderWithApmIntl(<ApmTopologyPage />);
 
     await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
-    expect(screen.queryByRole('radiogroup', { name: '拓扑布局' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: '层次' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: '力导向' })).toBeNull();
+    expect(screen.getByRole('radiogroup', { name: '拓扑布局' })).not.toBeNull();
+    expect(screen.getByRole('radio', { name: '层次' })).not.toBeNull();
+    expect(screen.getByRole('radio', { name: '力导向' })).not.toBeNull();
     expect(screen.queryByRole('radio', { name: '图形' })).toBeNull();
     expect(screen.queryByRole('radio', { name: '列表' })).toBeNull();
+    expect(result.container.querySelector('svg[data-layout="layered"]')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: '力导向' }).closest('label')!);
+    await waitFor(() => {
+      expect(result.container.querySelector('svg[data-layout="force"]')).not.toBeNull();
+    });
+    expect(result.container.querySelector('svg[data-layout="layered"]')).toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: '层次' }).closest('label')!);
+    await waitFor(() => {
+      expect(result.container.querySelector('svg[data-layout="layered"]')).not.toBeNull();
+    });
     expect(screen.getByText('总调用数')).not.toBeNull();
     expect(screen.queryByText('观测 Trace')).toBeNull();
     expect(screen.getByRole('list', { name: '节点健康图例' })).not.toBeNull();
