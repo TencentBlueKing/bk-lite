@@ -168,7 +168,7 @@ export default function ApmTopologyPage() {
   return (
     <ApmRouteShell dependency="telemetry" description={t('apm.topology.description', '按时间窗内观测到的 Trace 聚合服务依赖；数字为总数 / P95 / 错误数，节点宽度表示观测调用量，颜色表示健康。点选节点或边可在右侧查看样本 Trace。未插桩下游以推断节点出现在本页。')} title={t('apm.topology.title', '服务拓扑')}>
       <div className="flex flex-col gap-3">
-        {graph.truncated ? <Alert showIcon type="warning" message={t('apm.topology.truncated', '图上数字来自最多 200 条 Trace 样本，不是时间窗全量。')} /> : null}
+        {graph.truncated ? <Alert showIcon type="warning" message={t('apm.topology.truncated', '当前拓扑按最多 200 条 Trace 抽样聚合，指标不代表所选时间窗的全量流量。')} /> : null}
         {isolatedNodeId ? <Alert showIcon type="info" message={t('apm.topology.isolateBanner', '正在隔离查看一个服务及其直接依赖。')} action={<Button type="link" onClick={() => setIsolatedNodeId(null)}>{t('apm.topology.showFullMap', '显示全图')}</Button>} /> : null}
         <ApmSurface className="overflow-hidden" padding="none">
           <div className="border-b border-[var(--color-border)] p-4">
@@ -180,7 +180,7 @@ export default function ApmTopologyPage() {
                 <span className="text-[var(--color-border)]">·</span>
                 <strong className="tabular-nums text-sm text-[var(--color-fail)]">{anomalyCount}</strong><span className="text-[var(--color-text-3)]">{t('apm.health.abnormal', '异常')}</span>
                 <span className="text-[var(--color-border)]">·</span>
-                <strong className="tabular-nums text-sm">{totalCalls}</strong><span className="text-[var(--color-text-3)]">{t('apm.topology.totalCalls', '样本调用')}</span>
+                <strong className="tabular-nums text-sm">{totalCalls}</strong><span className="text-[var(--color-text-3)]">{t('apm.topology.totalCalls', '服务调用')}</span>
               </div>
               <Segmented<TimeWindow> aria-label={t('apm.topology.window', '拓扑时间窗口')} options={['15m', '1h', '4h', '1d', '7d']} value={timeWindow} onChange={setTimeWindow} />
               <Select allowClear aria-label={t('apm.topology.filterEnvironment', '按环境筛选拓扑')} className="w-36" placeholder={t('apm.common.allEnvironments', '全部环境')} options={environmentOptions} value={environment} onChange={setEnvironment} />

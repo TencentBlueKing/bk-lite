@@ -200,7 +200,7 @@ describe('APM 服务拓扑画布', () => {
     await waitFor(() => {
       expect(result.container.querySelector('svg[data-layout="layered"]')).not.toBeNull();
     });
-    expect(screen.getByText('样本调用')).not.toBeNull();
+    expect(screen.getByText('服务调用')).not.toBeNull();
     expect(screen.queryByText('总调用数')).toBeNull();
     expect(screen.queryByText('观测 Trace')).toBeNull();
     expect(screen.queryByRole('button', { name: '收起拓扑图例' })).toBeNull();
@@ -208,7 +208,7 @@ describe('APM 服务拓扑画布', () => {
     expect(screen.getByRole('complementary', { name: '拓扑调查栏' })).not.toBeNull();
   });
 
-  it('截断时说明图上数字来自 Trace 样本而不是全量', async () => {
+  it('截断时说明拓扑按 Trace 抽样聚合而不是全量流量', async () => {
     api.getTopology.mockResolvedValue({
       nodes,
       edges,
@@ -218,8 +218,9 @@ describe('APM 服务拓扑画布', () => {
     });
     renderWithApmIntl(<ApmTopologyPage />);
 
-    expect(await screen.findByText('图上数字来自最多 200 条 Trace 样本，不是时间窗全量。')).not.toBeNull();
-    expect(screen.getByText('样本调用')).not.toBeNull();
+    expect(await screen.findByText('当前拓扑按最多 200 条 Trace 抽样聚合，指标不代表所选时间窗的全量流量。')).not.toBeNull();
+    expect(screen.getByText('服务调用')).not.toBeNull();
+    expect(screen.queryByText('图上数字来自最多 200 条 Trace 样本，不是时间窗全量。')).toBeNull();
     expect(screen.queryByText('当前拓扑仅聚合查询上限内的最近 Trace，调用量不代表全量流量。')).toBeNull();
   });
 
