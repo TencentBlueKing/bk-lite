@@ -43,17 +43,18 @@ def generate_host_remote_state_metric(
     monitor_type: str = "host",
     extra_labels: Dict[str, Any] | None = None,
 ) -> str:
+    # task_id 保留在调用契约中用于 callback/发布关联，但不得进入指标标签。
+    _ = task_id
     current_timestamp = int(time.time() * 1000)
     labels = {
         "monitor_type": monitor_type,
         "event": event,
-        "task_id": str(task_id or ""),
         "status": status,
     }
     if isinstance(extra_labels, dict):
-        for key, label_value in extra_labels.items():
-            if label_value is not None:
-                labels[key] = label_value
+        reason = extra_labels.get("reason")
+        if reason is not None:
+            labels["reason"] = reason
 
     def escape_label(label_value: Any) -> str:
         return str(label_value).replace("\\", "\\\\").replace('"', '\\"')

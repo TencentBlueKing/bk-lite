@@ -11,6 +11,42 @@ from plugins.base_utils import convert_to_prometheus_format
 from tasks.utils import nats_helper
 
 
+def _series_key(line: str) -> str:
+    return line.partition(" ")[0]
+
+
+def test_collection_run_identity_does_not_change_business_metric_series():
+    metrics = 'cpu_ratio_gauge{resource_id="vm-1"} 42 1700000000123'
+    base_params = {
+        "host": "10.0.0.1",
+        "model_id": "sangfor",
+        "collection_task_id": "task-1",
+        "collection_target": "vm-1",
+        "collection_plugin_ref": "sangfor.info",
+    }
+
+    first = nats_helper.convert_prometheus_to_influx(
+        metrics,
+        {
+            **base_params,
+            "collection_result_id": "result-attempt-a",
+            "collection_fence": 1,
+        },
+    )[0]
+    second = nats_helper.convert_prometheus_to_influx(
+        metrics,
+        {
+            **base_params,
+            "collection_result_id": "result-attempt-b",
+            "collection_fence": 2,
+        },
+    )[0]
+
+    assert _series_key(first) == _series_key(second)
+    assert "collection_result_id=" not in first
+    assert "collection_fence=" not in first
+
+
 def test_structured_metrics_encoder_matches_legacy_prometheus_round_trip(monkeypatch):
     monkeypatch.setattr("plugins.base_utils.time.time", lambda: 1700000000.123)
     monkeypatch.setattr(nats_helper.time, "time", lambda: 1700000000.123)

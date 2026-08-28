@@ -411,16 +411,9 @@ class TargetCollectionExecutor:
             and summary.publish_permanent_failed == 0
         )
         if publish_clean:
-            from core.collection.round_complete import build_round_complete_labels, publish_round_complete_marker
+            from core.collection.round_complete import publish_round_complete_marker
 
-            await publish_round_complete_marker(
-                request,
-                round_ts,
-                extra_labels=build_round_complete_labels(
-                    request.params,
-                    run_attempt_id=lease.attempt_id,
-                ),
-            )
+            await publish_round_complete_marker(request, round_ts)
         else:
             logger.info(
                 "event=round_complete_marker_skipped %s reason=publish_incomplete "

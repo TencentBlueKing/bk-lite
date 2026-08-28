@@ -863,10 +863,8 @@ def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
     }
     for identity_key in (
         "collection_task_id",
-        "collection_fence",
         "collection_target",
         "collection_plugin_ref",
-        "collection_result_id",
         "collect_status",
     ):
         if params.get(identity_key) not in (None, ""):
