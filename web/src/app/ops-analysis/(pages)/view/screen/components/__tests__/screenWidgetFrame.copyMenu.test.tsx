@@ -95,4 +95,24 @@ describe('ScreenWidgetFrame copy menu', () => {
     expect(screen.queryByRole('button', { name: 'common.more' })).toBeNull();
     expect(screen.queryByText('common.copy')).toBeNull();
   });
+
+  it('omits 复制 in share mode', () => {
+    render(
+      <ScreenWidgetFrame item={dataWidget} editMode={false} onConfigure={vi.fn()} onDelete={vi.fn()} onCopy={vi.fn()}>
+        <div />
+      </ScreenWidgetFrame>,
+    );
+
+    expect(screen.queryByText('common.copy')).toBeNull();
+  });
+
+  it('omits 复制 on a builtin canvas', () => {
+    render(
+      <ScreenWidgetFrame item={dataWidget} editMode={false} onConfigure={vi.fn()} onDelete={vi.fn()} onCopy={vi.fn()}>
+        <div />
+      </ScreenWidgetFrame>,
+    );
+
+    expect(screen.queryByText('common.copy')).toBeNull();
+  });
 });

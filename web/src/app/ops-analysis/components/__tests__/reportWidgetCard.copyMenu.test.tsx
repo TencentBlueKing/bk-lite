@@ -34,6 +34,15 @@ const section = {
   },
 };
 
+const sceneSection = {
+  id: 'section-topo',
+  valueConfig: {
+    name: '网络状态拓扑',
+    chartType: 'networkStatusTopology',
+    sceneWidgetType: 'networkStatusTopology',
+  },
+};
+
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -91,6 +100,64 @@ describe('ReportWidgetCard copy menu', () => {
     );
 
     expect(screen.queryByRole('button', { name: 'common.more' })).toBeNull();
+    expect(screen.queryByText('common.copy')).toBeNull();
+  });
+
+  it('omits 复制 entirely for a networkStatusTopology scene widget', async () => {
+    const user = userEvent.setup();
+    render(
+      <ReportWidgetCard
+        section={sceneSection as never}
+        index={0}
+        unifiedFilterValues={{}}
+        filterDefinitions={[]}
+        filterSearchVersion={0}
+        editing
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCopy={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'common.more' }));
+    expect(await screen.findByText('common.edit')).toBeTruthy();
+    expect(screen.queryByText('common.copy')).toBeNull();
+    expect(screen.getByText('common.delete')).toBeTruthy();
+  });
+
+  it('omits 复制 in share mode', () => {
+    render(
+      <ReportWidgetCard
+        section={section as never}
+        index={0}
+        unifiedFilterValues={{}}
+        filterDefinitions={[]}
+        filterSearchVersion={0}
+        editing={false}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCopy={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText('common.copy')).toBeNull();
+  });
+
+  it('omits 复制 on a builtin report', () => {
+    render(
+      <ReportWidgetCard
+        section={section as never}
+        index={0}
+        unifiedFilterValues={{}}
+        filterDefinitions={[]}
+        filterSearchVersion={0}
+        editing={false}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onCopy={vi.fn()}
+      />,
+    );
+
     expect(screen.queryByText('common.copy')).toBeNull();
   });
 });

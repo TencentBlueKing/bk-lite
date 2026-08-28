@@ -1,6 +1,6 @@
 # 运营分析画布数据组件复制
 
-Status: implemented
+Status: done
 
 ## Problem Statement
 
