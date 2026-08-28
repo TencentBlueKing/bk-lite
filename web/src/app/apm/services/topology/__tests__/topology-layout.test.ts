@@ -11,6 +11,7 @@ import {
   layoutForceTopology,
   layoutLayeredTopology,
   TOPOLOGY_CANVAS_SIZE,
+  topologyEntryPillWidth,
   topologyNodeNameWidth,
   truncateTopologyNodeLabel,
 } from '../topology-layout';
@@ -309,5 +310,14 @@ describe('APM 服务拓扑节点标签', () => {
     expect(truncateTopologyNodeLabel('demo-payment-gateway', 70)).toMatch(/^demo-.+…$/);
     expect(truncateTopologyNodeLabel('demo-payment-gateway', 70).length).toBeLessThan('demo-payment-gateway'.length);
     expect(truncateTopologyNodeLabel('demo-payment-gateway', 70)).not.toBe('demo-payment-gateway');
+  });
+
+  it('用户请求入口按内容收缩为胶囊宽度，不超过服务卡片下限', () => {
+    const zhWidth = topologyEntryPillWidth('用户请求', '12');
+    const enWidth = topologyEntryPillWidth('User requests', '155');
+    expect(zhWidth).toBeGreaterThanOrEqual(128);
+    expect(zhWidth).toBeLessThan(176);
+    expect(enWidth).toBeGreaterThan(zhWidth);
+    expect(enWidth).toBeLessThanOrEqual(176);
   });
 });

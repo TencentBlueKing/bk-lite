@@ -786,7 +786,7 @@
     },
     "topology": {
       "title": "服务拓扑",
-      "description": "按时间窗内观测到的 Trace 聚合服务依赖；数字为错误数 / 总数，节点宽度表示观测调用量，颜色表示健康。点选节点或边可在右侧查看样本 Trace。未插桩下游以推断节点出现在本页。",
+      "description": "按时间窗内观测到的 Trace 聚合服务依赖；数字为总数 / P95 / 错误数，节点宽度表示观测调用量，颜色表示健康。点选节点或边可在右侧查看样本 Trace。未插桩下游以推断节点出现在本页。",
       "chartAria": "APM 服务调用拓扑",
       "nodeAria": "{name}，{health}，错误 {errors} 次，共 {spans} 次调用，P95 {latency}",
       "nodeTitle": "{name}\n{language} · {namespace} · {environment}\n错误 {errors} 次 / 共 {spans} 次 · P95 {latency}",
@@ -795,7 +795,7 @@
       "health": "健康",
       "observedCalls": "观测调用",
       "avgDuration": "平均耗时",
-      "truncated": "当前拓扑仅聚合查询上限内的最近 Trace，调用量不代表全量流量。",
+      "truncated": "图上数字来自最多 200 条 Trace 样本，不是时间窗全量。",
       "window": "拓扑时间窗口",
       "filterEnvironment": "按环境筛选拓扑",
       "view": "拓扑视图",
@@ -811,7 +811,7 @@
       "empty": "当前范围内没有观测到可用于构建拓扑的调用链。",
       "dependency": "依赖",
       "observedTraces": "观测 Trace",
-      "totalCalls": "总调用数",
+      "totalCalls": "样本调用",
       "layout": "拓扑布局",
       "layered": "层次",
       "force": "力导向",
@@ -851,8 +851,8 @@
       "clearSlice": "清空切片",
       "userRequestNode": "用户请求",
       "userRequestMetric": "观测请求 {count} 次",
-      "userRequestAria": "{name}，时间窗内错误 {errors} 次，共 {spans} 次请求",
-      "userRequestTitle": "{name}\n{environment}\n错误 {errors} 次 / 共 {spans} 次"
+      "userRequestAria": "{name}，时间窗内 {spans} 次请求",
+      "userRequestTitle": "{name}\n{environment}\n{spans} 次请求"
     },
     "instances": {
       "defaultActiveHelp": "默认显示活跃实例；切换状态或时间范围可查看静默与历史实例。",

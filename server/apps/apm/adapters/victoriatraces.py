@@ -48,9 +48,14 @@ MAX_DEPLOYMENT_RELEASES = 10_000
 MAX_DEPENDENCIES = 10_000
 MAX_TOPOLOGY_SAMPLE_TRACES = 200
 MAX_TOPOLOGY_SAMPLE_SPANS = 20_000
-# 全窗按 trace_id/span_id 分组的内存与分组数成正比，超过一天先按天切片或改用流式聚合，
-# 避免长时间窗触发 VT 单次查询内存上限。
-SAMPLE_SLICE_WINDOW = timedelta(days=1)
+# 全窗按 trace_id 分组的内存与分组数成正比；按窗口分层切片分别取样再轮转合并，
+# 既避开 VT 单次查询内存上限，也让 15m/1h/1d/7d 覆盖不同时段而不是一律取最新 200 条。
+SAMPLE_SLICE_QUARTER_HOUR = timedelta(minutes=15)
+SAMPLE_SLICE_HOUR = timedelta(hours=1)
+SAMPLE_SLICE_DAY = timedelta(days=1)
+# 天级切片里 newest 201 条 Trace 落在最近几千条 Span 里；先 first 再 stats，
+# 避免对切片内全部 Span 做 stats by (trace_id)（本机 1d 约 150 万行）。
+SAMPLE_TRACE_ID_PROBE_SPANS = 5000
 RED_EXACT_DEDUP_WINDOW = timedelta(days=1)
 MAX_RED_POINTS = 120
 MAX_TOP_ENDPOINTS = 10
@@ -144,16 +149,44 @@ def _validate_window(started_at: datetime, ended_at: datetime, *, maximum: timed
     return max(1, int(window.total_seconds()))
 
 
-def _sample_slices(started_at: datetime, ended_at: datetime) -> list[tuple[datetime, datetime]]:
-    """把取样窗口按 SAMPLE_SLICE_WINDOW 从新到旧切片；VT 的 end 为开区间，切片间无重叠无缝隙。"""
+def _sample_slice_width(window: timedelta) -> timedelta:
+    """短窗单片取最近；1h 按 15 分钟、1d 按小时、更长按天。"""
 
+    if window <= SAMPLE_SLICE_QUARTER_HOUR:
+        return window
+    if window <= SAMPLE_SLICE_HOUR:
+        return SAMPLE_SLICE_QUARTER_HOUR
+    if window <= SAMPLE_SLICE_DAY:
+        return SAMPLE_SLICE_HOUR
+    return SAMPLE_SLICE_DAY
+
+
+def _sample_slices(started_at: datetime, ended_at: datetime) -> list[tuple[datetime, datetime]]:
+    """把取样窗口按分层宽度从新到旧切片；VT 的 end 为开区间，切片间无重叠无缝隙。"""
+
+    width = _sample_slice_width(ended_at - started_at)
     slices: list[tuple[datetime, datetime]] = []
     cursor = ended_at
     while cursor > started_at:
-        slice_started_at = max(started_at, cursor - SAMPLE_SLICE_WINDOW)
+        slice_started_at = max(started_at, cursor - width)
         slices.append((slice_started_at, cursor))
         cursor = slice_started_at
     return slices
+
+
+def _topology_trace_id_query(filters: list[str], limit: int, *, slice_width: timedelta) -> str:
+    """短切片全量按 trace_id 聚合；天级切片先取最近 Span 再聚合，语义仍是切片内最新 Trace。"""
+
+    if slice_width >= SAMPLE_SLICE_DAY:
+        return (
+            f"{' '.join(filters)} | first {SAMPLE_TRACE_ID_PROBE_SPANS} by (_time desc) "
+            f"| stats by (trace_id) max(_time) as matched_at "
+            f"| sort by (matched_at) desc | limit {limit + 1}"
+        )
+    return (
+        f"{' '.join(filters)} | stats by (trace_id) max(start_time_unix_nano) as matched_at "
+        f"| sort by (matched_at) desc | limit {limit + 1}"
+    )
 
 
 def _number(value: object) -> float | None:
@@ -571,14 +604,14 @@ class VictoriaTracesTelemetryStore:
             filters.append(f"status_code:={_logsql_string(_STATUS_TO_CODE[query.status])}")
         if query.min_duration_ms is not None:
             filters.append(f"duration:>={int(query.min_duration_ms * 1_000_000)}")
-        logs_query = (
-            f"{' '.join(filters)} | stats by (trace_id) max(start_time_unix_nano) as matched_at "
-            f"| sort by (matched_at) desc | limit {query.limit + 1}"
-        )
-        # 按 trace_id 分组的内存与全窗 trace 数成正比，长时间窗按天切片分别取样，
-        # 再跨片轮转合并，既避开 VT 单次查询内存上限，也让样本覆盖整个时间窗。
+        # 分层切片分别取样，再跨片轮转合并到 limit，避免一律取最新 Trace。
         per_slice_ids: list[list[str]] = []
         for slice_started_at, slice_ended_at in _sample_slices(query.started_at, query.ended_at):
+            logs_query = _topology_trace_id_query(
+                filters,
+                query.limit,
+                slice_width=slice_ended_at - slice_started_at,
+            )
             rows = self._query_rows(logs_query, slice_started_at, slice_ended_at, limit=query.limit + 1)
             slice_ids: list[str] = []
             slice_seen: set[str] = set()

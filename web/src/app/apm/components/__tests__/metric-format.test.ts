@@ -123,18 +123,18 @@ describe('APM metric-format', () => {
     });
   });
 
-  it('拓扑连线展示错误数 / 总数', () => {
+  it('拓扑连线展示 总数 / P95 / 错误数', () => {
     expect(formatTopologyEdgeMetrics({
       sampled_calls: 153,
       error_calls: 0,
-    })).toBe('0/153');
+    })).toBe('153 / — / 0');
   });
 
-  it('有边级 P95 时附加在错误数 / 总数后面，不展示错误率', () => {
+  it('有边级 P95 时放在总数和错误数中间，错误数大于 0 仍拼进同一行', () => {
     expect(formatTopologyEdgeMetrics({
       sampled_calls: 153,
       error_calls: 12,
       p95_ms: 40,
-    })).toBe('12/153 · 40ms');
+    })).toBe('153 / 40ms / 12');
   });
 });

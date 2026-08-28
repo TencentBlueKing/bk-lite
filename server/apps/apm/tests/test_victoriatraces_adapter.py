@@ -394,7 +394,7 @@ def test_sample_traces_uses_templated_logsql_and_fetches_trace_details():
 
     sample = store.sample_traces(
         TopologySampleQuery(
-            started_at=now - timedelta(hours=1),
+            started_at=now - timedelta(minutes=15),
             ended_at=now,
             service_names=("gateway", 'pay"ment'),
             environment="prod",
@@ -404,6 +404,7 @@ def test_sample_traces_uses_templated_logsql_and_fetches_trace_details():
         )
     )
 
+    assert session.get.call_count == 2
     assert len(sample.traces) == 1
     assert sample.traces[0].trace_id == "a" * 32
     assert sample.traces[0].spans[0].kind == "server"
@@ -415,6 +416,7 @@ def test_sample_traces_uses_templated_logsql_and_fetches_trace_details():
     assert '`resource_attr:deployment.environment`:="prod"' in query
     assert 'name:="POST /checkout"' in query
     assert 'status_code:="2"' in query
+    assert "first 5000 by (_time desc)" not in query
     span_query = session.get.call_args_list[1].kwargs["params"]["query"]
     assert span_query.startswith('trace_id:in("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")')
     assert session.get.call_args_list[1].args[0].endswith("/select/logsql/query")
@@ -513,6 +515,85 @@ def _sample_id_row(trace_id, now):
     return json.dumps({"trace_id": trace_id, "matched_at": str(int(now.timestamp() * 1_000_000_000))})
 
 
+def test_sample_traces_slices_one_hour_by_fifteen_minutes():
+    now = timezone.now()
+    trace_a, trace_b = "a" * 32, "b" * 32
+    span_rows = "\n".join(
+        json.dumps(_span_row(trace_id, span_id, now))
+        for trace_id, span_id in ((trace_a, "1" * 16), (trace_b, "2" * 16))
+    )
+    session = Mock()
+    session.get.side_effect = [
+        _response({}, raw=_sample_id_row(trace_a, now).encode()),
+        _response({}, raw=_sample_id_row(trace_b, now).encode()),
+        _response({}, raw=b""),
+        _response({}, raw=b""),
+        _response({}, raw=span_rows.encode()),
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    sample = store.sample_traces(
+        TopologySampleQuery(
+            started_at=now - timedelta(hours=1),
+            ended_at=now,
+            service_names=("checkout",),
+            limit=50,
+        )
+    )
+
+    assert session.get.call_count == 5
+    first_slice = session.get.call_args_list[0].kwargs["params"]
+    assert first_slice["start"] == (now - timedelta(minutes=15)).isoformat()
+    assert first_slice["end"] == now.isoformat()
+    last_slice = session.get.call_args_list[3].kwargs["params"]
+    assert last_slice["start"] == (now - timedelta(hours=1)).isoformat()
+    assert last_slice["end"] == (now - timedelta(minutes=45)).isoformat()
+    for call in session.get.call_args_list[:4]:
+        query = call.kwargs["params"]["query"]
+        assert "stats by (trace_id)" in query
+        assert "first 5000 by (_time desc)" not in query
+    assert {trace.trace_id for trace in sample.traces} == {trace_a, trace_b}
+
+
+def test_sample_traces_slices_one_day_by_hour():
+    now = timezone.now()
+    trace_a, trace_b = "a" * 32, "b" * 32
+    span_rows = "\n".join(
+        json.dumps(_span_row(trace_id, span_id, now))
+        for trace_id, span_id in ((trace_a, "1" * 16), (trace_b, "2" * 16))
+    )
+    session = Mock()
+    session.get.side_effect = [
+        _response({}, raw=_sample_id_row(trace_a, now).encode()),
+        *[_response({}, raw=b"") for _ in range(22)],
+        _response({}, raw=_sample_id_row(trace_b, now).encode()),
+        _response({}, raw=span_rows.encode()),
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    sample = store.sample_traces(
+        TopologySampleQuery(
+            started_at=now - timedelta(days=1),
+            ended_at=now,
+            service_names=("checkout",),
+            limit=50,
+        )
+    )
+
+    assert session.get.call_count == 25
+    first_slice = session.get.call_args_list[0].kwargs["params"]
+    assert first_slice["start"] == (now - timedelta(hours=1)).isoformat()
+    assert first_slice["end"] == now.isoformat()
+    last_slice = session.get.call_args_list[23].kwargs["params"]
+    assert last_slice["start"] == (now - timedelta(days=1)).isoformat()
+    assert last_slice["end"] == (now - timedelta(hours=23)).isoformat()
+    for call in session.get.call_args_list[:24]:
+        query = call.kwargs["params"]["query"]
+        assert "stats by (trace_id)" in query
+        assert "first 5000 by (_time desc)" not in query
+    assert {trace.trace_id for trace in sample.traces} == {trace_a, trace_b}
+
+
 def test_sample_traces_slices_long_windows_and_round_robins_across_days():
     now = timezone.now()
     trace_a, trace_b = "a" * 32, "b" * 32
@@ -546,7 +627,9 @@ def test_sample_traces_slices_long_windows_and_round_robins_across_days():
     assert last_slice["start"] == (now - timedelta(days=7)).isoformat()
     assert last_slice["end"] == (now - timedelta(days=6)).isoformat()
     for call in session.get.call_args_list[:7]:
-        assert "stats by (trace_id)" in call.kwargs["params"]["query"]
+        query = call.kwargs["params"]["query"]
+        assert "first 5000 by (_time desc)" in query
+        assert "stats by (trace_id)" in query
     span_query = session.get.call_args_list[7].kwargs["params"]["query"]
     assert f'trace_id:in("{trace_a}","{trace_b}")' in span_query
     assert {trace.trace_id for trace in sample.traces} == {trace_a, trace_b}

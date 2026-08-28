@@ -786,7 +786,7 @@
     },
     "topology": {
       "title": "Service topology",
-      "description": "Service dependencies are aggregated from Traces observed in the time window. Numbers are errors / total; node width represents observed call volume; color represents health. Uninstrumented downstreams appear on this page as inferred nodes.",
+      "description": "Service dependencies are aggregated from Traces observed in the time window. Numbers are total / P95 / errors; node width represents observed call volume; color represents health. Uninstrumented downstreams appear on this page as inferred nodes.",
       "chartAria": "APM service call topology",
       "nodeAria": "{name}, {health}, {errors} errors, {spans} total calls, P95 {latency}",
       "nodeTitle": "{name}\n{language} · {namespace} · {environment}\n{errors} errors / {spans} total · P95 {latency}",
@@ -795,7 +795,7 @@
       "health": "Health",
       "observedCalls": "Observed calls",
       "avgDuration": "Avg. duration",
-      "truncated": "The current topology only aggregates the most recent Traces within the query limit. Call volume does not represent full traffic.",
+      "truncated": "Graph numbers come from at most 200 Trace samples, not full-window traffic.",
       "window": "Topology time window",
       "filterEnvironment": "Filter topology by environment",
       "view": "Topology view",
@@ -811,7 +811,7 @@
       "empty": "No traces were observed in the current scope that can be used to build a topology.",
       "dependency": "Dependencies",
       "observedTraces": "Observed Traces",
-      "totalCalls": "Total calls",
+      "totalCalls": "Sampled calls",
       "layout": "Topology layout",
       "layered": "Hierarchical",
       "force": "Force-directed",
@@ -851,8 +851,8 @@
       "clearSlice": "Clear slice",
       "userRequestNode": "User requests",
       "userRequestMetric": "{count} observed requests",
-      "userRequestAria": "{name}, {errors} errors, {spans} total requests in the time window",
-      "userRequestTitle": "{name}\n{environment}\n{errors} errors / {spans} total"
+      "userRequestAria": "{name}, {spans} requests in the time window",
+      "userRequestTitle": "{name}\n{environment}\n{spans} requests"
     },
     "instances": {
       "defaultActiveHelp": "Active instances are shown by default. Change the status or time range to view silent and historical instances.",

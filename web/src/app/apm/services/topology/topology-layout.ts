@@ -32,13 +32,26 @@ export const TOPOLOGY_CANVAS_SIZE = {
 } as const;
 
 export const TOPOLOGY_NODE_CARD = {
-  minWidth: 148,
+  minWidth: 176,
   widthSpan: 28,
   height: 44,
   radius: 6,
   nameOffsetX: 30,
   healthGutter: 22,
   inferredBadgeWidth: 28,
+} as const;
+
+export const TOPOLOGY_ENTRY_PILL = {
+  minWidth: 128,
+  maxWidth: 176,
+  height: 32,
+  radius: 16,
+  paddingX: 12,
+  iconSize: 14,
+  iconGap: 8,
+  countGap: 8,
+  nameFontSize: 12,
+  countFontSize: 11,
 } as const;
 
 const LATIN_CHAR_WIDTH_RATIO = 0.62;
@@ -48,6 +61,32 @@ const topologyCharWidth = (character: string, fontSize: number) => {
   if (character === ELLIPSIS || character === '.') return fontSize * 0.45;
   if (/[\u1100-\u115F\u3000-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]/.test(character)) return fontSize;
   return fontSize * LATIN_CHAR_WIDTH_RATIO;
+};
+
+const topologyTextWidth = (text: string, fontSize: number) => (
+  [...text].reduce((sum, character) => sum + topologyCharWidth(character, fontSize), 0)
+);
+
+export const topologyEntryPillWidth = (label: string, countLabel: string) => {
+  const content = TOPOLOGY_ENTRY_PILL.iconSize
+    + TOPOLOGY_ENTRY_PILL.iconGap
+    + topologyTextWidth(label, TOPOLOGY_ENTRY_PILL.nameFontSize)
+    + TOPOLOGY_ENTRY_PILL.countGap
+    + topologyTextWidth(countLabel, TOPOLOGY_ENTRY_PILL.countFontSize);
+  return Math.round(Math.min(
+    TOPOLOGY_ENTRY_PILL.maxWidth,
+    Math.max(TOPOLOGY_ENTRY_PILL.minWidth, TOPOLOGY_ENTRY_PILL.paddingX * 2 + content),
+  ));
+};
+
+export const topologyEntryNameWidth = (pillWidth: number, countLabel: string) => {
+  const reserved = TOPOLOGY_ENTRY_PILL.paddingX
+    + TOPOLOGY_ENTRY_PILL.iconSize
+    + TOPOLOGY_ENTRY_PILL.iconGap
+    + TOPOLOGY_ENTRY_PILL.countGap
+    + topologyTextWidth(countLabel, TOPOLOGY_ENTRY_PILL.countFontSize)
+    + TOPOLOGY_ENTRY_PILL.paddingX;
+  return Math.max(24, pillWidth - reserved);
 };
 
 export const topologyNodeNameWidth = (cardWidth: number, inferred: boolean) => {

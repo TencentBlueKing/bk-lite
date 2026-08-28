@@ -89,8 +89,24 @@ export function formatCompactLatency(ms: number): string {
   return `${Math.round(ms)}ms`;
 }
 
-export function formatTopologyCountPair(errorCount: number, total: number): string {
-  return `${formatNumber(errorCount)}/${formatNumber(total)}`;
+export type TopologyMetricParts = {
+  total: string;
+  latency: string;
+  errors: string;
+  hasErrors: boolean;
+};
+
+export function topologyMetricParts(input: {
+  errorCount: number;
+  total: number;
+  p95_ms?: number | null;
+}): TopologyMetricParts {
+  return {
+    total: formatNumber(input.total),
+    latency: input.p95_ms == null ? '—' : formatCompactLatency(input.p95_ms),
+    errors: formatNumber(input.errorCount),
+    hasErrors: input.errorCount > 0,
+  };
 }
 
 export function formatTopologyMetricLine(input: {
@@ -98,8 +114,8 @@ export function formatTopologyMetricLine(input: {
   total: number;
   p95_ms?: number | null;
 }): string {
-  const counts = formatTopologyCountPair(input.errorCount, input.total);
-  return input.p95_ms == null ? counts : `${counts} · ${formatCompactLatency(input.p95_ms)}`;
+  const parts = topologyMetricParts(input);
+  return `${parts.total} / ${parts.latency} / ${parts.errors}`;
 }
 
 export function formatTopologyEdgeMetrics(edge: {

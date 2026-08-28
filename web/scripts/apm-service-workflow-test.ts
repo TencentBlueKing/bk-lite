@@ -79,8 +79,9 @@ assert.match(topologyObjectIcon, /gateway\|kong\|apisix/, '名称含 gateway 的
 assert.match(serviceLanguageIcon, /data-service-icon=\{kind\}/, '未知语言必须可被识别为默认服务图标');
 assert.match(serviceLanguageIcon, /UnknownIcon[\s\S]*'default'/, '未知语言必须回退到默认服务图标');
 assert.doesNotMatch(serviceLanguageIcon, /ui-monospace/, '未知语言不得用空代码符号占位');
-assert.match(topologyCanvas, /formatTopologyEdgeMetrics/, '连线必须展示错误数与总数');
+assert.match(topologyCanvas, /TopologyMetricLabel/, '连线与节点必须展示总数 / P95 / 错误数');
 assert.match(topologyCanvas, /error_spans/, '拓扑节点数字必须展示错误数');
+assert.match(topologyCanvas, /data-error-count/, '错误数必须单独着色：0 为绿，大于 0 为红加粗');
 assert.doesNotMatch(topologyCanvas, /encodingLegend|TopologyEncodingLegend/, '拓扑画布不得再叠一层编码图例');
 assert.match(topologyCanvas, /startNodeDrag/, '拓扑节点必须可拖动整理布局');
 assert.match(topologyCanvas, /nodePositions/, '拖动整理必须覆盖层次与力导向算出的节点坐标');
@@ -89,7 +90,8 @@ assert.match(topologyPage, /onSelect/, '拓扑节点必须可点选并停在图�
 assert.match(topologyPage, /TopologyInspectPanel/, '拓扑必须提供右侧调查栏');
 assert.match(topologyPage, /getTraces/, '调查栏样本 Trace 必须来自真实调用链查询');
 assert.match(topologyPage, /isolateTopologyNeighborhood/, '拓扑必须支持一跳隔离');
-assert.match(topologyPage, /totalCalls/, '拓扑摘要必须展示总调用数而不是观测 Trace');
+assert.match(topologyPage, /totalCalls/, '拓扑摘要必须展示样本调用而不是观测 Trace');
+assert.match(topologyPage, /最多 200 条 Trace 样本/, '截断提示必须说明图上数字来自 Trace 样本而不是全量');
 assert.match(topologyPage, /include_inferred: true/, '服务拓扑必须请求推断下游');
 assert.doesNotMatch(topologyPage, /include_user_request/, '全局拓扑不得打开用户请求入口');
 assert.doesNotMatch(servicesPage, /getTopology/, '服务目录 KPI 不得走拓扑图，推断与用户请求入口不属于目录');
