@@ -1,9 +1,12 @@
 """日志聚类训练的数据加载器"""
 
+import warnings
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from loguru import logger
+
+from .evaluation_contract import LEGACY_GROUND_TRUTH_WARNING
 
 
 class LogDataLoader:
@@ -46,7 +49,9 @@ class LogDataLoader:
         return logs
 
     def load_ground_truth(self, file_path: str) -> List[int]:
-        """从文件加载真实标签
+        """从文件加载实验性真实标签。
+
+        该 helper 仅为历史兼容保留，正式 Trainer 不消费其输出。
 
         每一行包含一个聚类 ID（整数）。
 
@@ -56,6 +61,11 @@ class LogDataLoader:
         Returns:
             聚类 ID 列表
         """
+        warnings.warn(
+            LEGACY_GROUND_TRUTH_WARNING,
+            FutureWarning,
+            stacklevel=2,
+        )
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(f"Ground truth file not found: {file_path}")
@@ -137,12 +147,19 @@ class LogDataLoader:
         logger.info(f"Saved {len(logs)} logs to {output_path}")
 
     def save_ground_truth(self, labels: List[int], output_path: str):
-        """保存真实标签到文件
+        """保存实验性真实标签到文件。
+
+        该 helper 仅为历史兼容保留，正式 Trainer 不消费其输出。
 
         Args:
             labels: 聚类 ID 列表
             output_path: 输出文件路径
         """
+        warnings.warn(
+            LEGACY_GROUND_TRUTH_WARNING,
+            FutureWarning,
+            stacklevel=2,
+        )
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
