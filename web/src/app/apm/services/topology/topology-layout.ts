@@ -1,4 +1,4 @@
-import { DagreLayout, ForceLayout } from '@antv/layout';
+import { DagreLayout } from '@antv/layout';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyNode } from '@/app/apm/types';
 
 export interface PositionedApmTopologyNode extends ApmTopologyNode {
@@ -216,43 +216,6 @@ export const hasReciprocalTopologyEdge = (
   edgePairs: ReadonlySet<string>,
 ) => edgePairs.has(`${edge.target}\u0000${edge.source}`);
 
-export const layoutForceTopology = async (
-  nodes: ApmTopologyNode[],
-  edges: ApmTopologyEdge[],
-): Promise<PositionedApmTopologyNode[]> => {
-  if (nodes.length === 0) return [];
-
-  const layout = new ForceLayout({
-    dimensions: 2,
-    width: TOPOLOGY_CANVAS_SIZE.width,
-    height: TOPOLOGY_CANVAS_SIZE.height,
-    linkDistance: 196,
-    nodeStrength: 900,
-    preventOverlap: true,
-    nodeSize: TOPOLOGY_NODE_CARD.minWidth,
-    nodeSpacing: 36,
-  });
-
-  try {
-    await layout.execute({
-      nodes: nodes.map((item) => ({ id: item.id })),
-      edges: edges.map((item, index) => ({
-        id: `apm-topology-force-edge-${index}`,
-        source: item.source,
-        target: item.target,
-      })),
-    });
-
-    const rawPositions = new Map<string, { x: number; y: number }>();
-    layout.forEachNode((item) => {
-      rawPositions.set(String(item.id), { x: item.x, y: item.y });
-    });
-    return mapLayoutPositions(nodes, rawPositions);
-  } finally {
-    layout.stop();
-  }
-};
-
 export const isInferredTopologyNode = (node: ApmTopologyNode | undefined): boolean => node?.kind === 'inferred';
 
 export const isUserRequestTopologyNode = (node: ApmTopologyNode | undefined): boolean => node?.kind === 'user_request';
@@ -270,7 +233,6 @@ export const focusApplicationTopology = (
   const visibleIds = new Set(focusNodeIds);
   graph.edges.forEach((edge) => {
     const source = nodeMap.get(edge.source);
-    const target = nodeMap.get(edge.target);
     if (focusNodeIds.has(edge.source)) visibleIds.add(edge.target);
     if (focusNodeIds.has(edge.target) && !isInferredTopologyNode(source)) visibleIds.add(edge.source);
   });

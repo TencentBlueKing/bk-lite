@@ -5,7 +5,6 @@ import {
   filterTopologyByKeyword,
   focusApplicationTopology,
   isolateTopologyNeighborhood,
-  layoutForceTopology,
   layoutLayeredTopology,
   topologyNodeNameWidth,
   truncateTopologyNodeLabel,
@@ -105,7 +104,7 @@ describe('APM 服务拓扑连线', () => {
     expect(forward.controlY).not.toBe(reverse.controlY);
   });
 
-  it('力导向连线使用分离曲线', () => {
+  it('互为反向的曲线连线分离', () => {
     const forward = buildTopologyEdgeGeometry(
       { x: 100, y: 100, radius: 28 },
       { x: 300, y: 100, radius: 28 },
@@ -201,20 +200,6 @@ describe('APM 应用拓扑聚焦', () => {
     const focused = focusApplicationTopology(graph, 'shop');
     expect(focused.graph.nodes.map((item) => item.id).sort()).toEqual(['checkout', 'user_request:prod']);
     expect(focused.graph.edges.map((item) => `${item.source}>${item.target}`)).toEqual(['user_request:prod>checkout']);
-  });
-});
-
-describe('APM 服务拓扑力导向布局', () => {
-  it('为每个节点生成画布内坐标', async () => {
-    const result = await layoutForceTopology(demoNodes, demoEdges);
-    expect(result).toHaveLength(demoNodes.length);
-    expect(new Set(result.map((item) => item.id)).size).toBe(demoNodes.length);
-    result.forEach((item) => {
-      expect(item.x).toBeGreaterThanOrEqual(90);
-      expect(item.x).toBeLessThanOrEqual(950);
-      expect(item.y).toBeGreaterThanOrEqual(90);
-      expect(item.y).toBeLessThanOrEqual(540);
-    });
   });
 });
 

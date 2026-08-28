@@ -18,6 +18,23 @@ from apps.apm.services.contracts import (
 )
 
 
+def _span_row(trace_id, span_id, now, *, name="POST /checkout", service="checkout"):
+    return {
+        "trace_id": trace_id,
+        "span_id": span_id,
+        "parent_span_id": "0" * 16,
+        "name": name,
+        "kind": "2",
+        "status_code": "2",
+        "duration": "120000000",
+        "start_time_unix_nano": str(int(now.timestamp() * 1_000_000_000)),
+        "resource_attr:service.name": service,
+        "resource_attr:service.namespace": "shop",
+        "resource_attr:deployment.environment": "production",
+        "resource_attr:service.instance.id": "pod-a",
+    }
+
+
 def _response(payload, status_code=200, *, raw=None):
     response = Mock()
     response.status_code = status_code
@@ -105,20 +122,27 @@ def test_search_builds_controlled_resource_filters_and_maps_jaeger_trace():
 
 def test_empty_trace_search_uses_bounded_trace_id_aggregation_and_cursor():
     now = timezone.now()
-    first = _jaeger_trace(now)
-    second = _jaeger_trace(now - timedelta(seconds=1))
-    second["traceID"] = "b" * 32
-    rows = "\n".join(
-        json.dumps({"trace_id": trace_id, "matched_at": str(int(at.timestamp() * 1_000_000_000))})
-        for trace_id, at in (("a" * 32, now), ("b" * 32, now - timedelta(seconds=1)))
+    start_ns = str(int(now.timestamp() * 1_000_000_000))
+    older_ns = str(int((now - timedelta(seconds=1)).timestamp() * 1_000_000_000))
+    id_rows = "\n".join(
+        [
+            json.dumps({"trace_id": "a" * 32, "matched_at": start_ns}),
+            json.dumps({"trace_id": "b" * 32, "matched_at": older_ns}),
+        ]
+    )
+    span_rows = "\n".join(
+        [
+            json.dumps(_span_row("a" * 32, "1" * 16, now, name="POST /checkout")),
+            json.dumps(_span_row("b" * 32, "2" * 16, now - timedelta(seconds=1), name="POST /checkout")),
+        ]
     )
     session = Mock()
     session.get.side_effect = [
-        _response({}, raw=rows.encode()),
-        _response({"data": [first]}),
-        _response({"data": [second]}),
+        _response({}, raw=id_rows.encode()),
+        _response({}, raw=span_rows.encode()),
     ]
     store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+    store.get_trace = Mock(wraps=store.get_trace)
 
     page = store.search(
         TraceSearchQuery(
@@ -132,11 +156,16 @@ def test_empty_trace_search_uses_bounded_trace_id_aggregation_and_cursor():
 
     assert [item.trace_id for item in page.items] == ["a" * 32]
     assert page.next_cursor is not None
+    store.get_trace.assert_not_called()
     params = session.get.call_args_list[0].kwargs["params"]
     assert "stats by (trace_id) max(start_time_unix_nano) as matched_at" in params["query"]
     assert "resource_attr:service.name" not in params["query"]
     assert "resource_attr:deployment.environment" not in params["query"]
     assert params["limit"] == 2
+    span_path = session.get.call_args_list[1].args[0]
+    assert span_path.endswith("/select/logsql/query")
+    assert "/select/jaeger/api/traces/" not in span_path
+    assert session.get.call_count == 2
 
 
 def test_detail_preserves_waterfall_identity_for_server_side_authorization():
@@ -339,21 +368,23 @@ def test_sample_traces_uses_templated_logsql_and_fetches_trace_details():
     now = timezone.now()
     start_ns = str(int(now.timestamp() * 1_000_000_000))
     id_row = json.dumps({"trace_id": "a" * 32, "matched_at": start_ns})
-    span_row = json.dumps({
-        "trace_id": "a" * 32,
-        "span_id": "1" * 16,
-        "parent_span_id": "0" * 16,
-        "name": "POST /checkout",
-        "kind": "2",
-        "status_code": "2",
-        "duration": "120000000",
-        "start_time_unix_nano": start_ns,
-        "resource_attr:service.name": "checkout",
-        "resource_attr:service.namespace": "shop",
-        "resource_attr:deployment.environment": "prod",
-        "span_attr:http.route": "/checkout",
-        "span_attr:db.system": "mysql",
-    })
+    span_row = json.dumps(
+        {
+            "trace_id": "a" * 32,
+            "span_id": "1" * 16,
+            "parent_span_id": "0" * 16,
+            "name": "POST /checkout",
+            "kind": "2",
+            "status_code": "2",
+            "duration": "120000000",
+            "start_time_unix_nano": start_ns,
+            "resource_attr:service.name": "checkout",
+            "resource_attr:service.namespace": "shop",
+            "resource_attr:deployment.environment": "prod",
+            "span_attr:http.route": "/checkout",
+            "span_attr:db.system": "mysql",
+        }
+    )
     session = Mock()
     session.get.side_effect = [
         _response({}, raw=id_row.encode()),

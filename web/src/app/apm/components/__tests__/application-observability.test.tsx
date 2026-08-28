@@ -1,9 +1,11 @@
 import React from 'react';
 import { cleanup, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApplicationObservability from '../application-observability';
+import { HandledRequestError } from '@/utils/request';
 
 const api = {
   getApplication: vi.fn(),
@@ -100,10 +102,12 @@ beforeEach(() => {
       { id: 'shop-node', service_namespace: 'shop', service_name: 'checkout', environment: 'prod', health: 'healthy', sampled_spans: 2, error_spans: 0 },
       { id: 'billing-node', service_namespace: 'billing', service_name: 'invoice', environment: 'prod', health: 'healthy', sampled_spans: 1, error_spans: 0 },
       { id: 'inferred:prod:mysql', service_namespace: '', service_name: 'mysql', environment: 'prod', health: 'healthy', sampled_spans: 1, error_spans: 0, kind: 'inferred', fold_key: 'mysql' },
+      { id: 'user_request:prod', service_namespace: '', service_name: 'user_request', environment: 'prod', health: 'unknown', sampled_spans: 1, error_spans: 0, kind: 'user_request' },
     ],
     edges: [
       { source: 'shop-node', target: 'billing-node', health: 'healthy', sampled_calls: 1, error_calls: 0, average_duration_ms: 5 },
       { source: 'shop-node', target: 'inferred:prod:mysql', health: 'healthy', sampled_calls: 1, error_calls: 0, average_duration_ms: 4 },
+      { source: 'user_request:prod', target: 'shop-node', health: 'unknown', sampled_calls: 1, error_calls: 0, average_duration_ms: 8 },
     ],
     sampled_traces: 2, truncated: false, data_state: 'available',
   });
@@ -126,9 +130,9 @@ describe('APM 应用观测详情', () => {
     expect(await screen.findByText('应用服务拓扑')).not.toBeNull();
     expect(screen.queryByRole('link', { name: '返回服务' })).toBeNull();
     expect(screen.getByRole('radiogroup', { name: '服务指标时间窗口' })).not.toBeNull();
-    expect(screen.getByRole('radiogroup', { name: '拓扑布局' })).not.toBeNull();
-    expect(screen.getByRole('radio', { name: '层次' })).not.toBeNull();
-    expect(screen.getByRole('radio', { name: '力导向' })).not.toBeNull();
+    expect(screen.queryByRole('radiogroup', { name: '拓扑布局' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '层次' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '力导向' })).toBeNull();
     expect(screen.getByText('关键信息')).not.toBeNull();
     expect(screen.getByText('服务数')).not.toBeNull();
     expect(screen.getByText('告警数')).not.toBeNull();
@@ -137,18 +141,29 @@ describe('APM 应用观测详情', () => {
 
     const topology = await screen.findByTestId('application-topology');
     await waitFor(() => {
-      expect(topology.getAttribute('data-nodes')?.split(',').sort()).toEqual(['billing-node', 'inferred:prod:mysql', 'shop-node']);
-      expect(topology.getAttribute('data-edges')?.split(',').sort()).toEqual(['shop-node>billing-node', 'shop-node>inferred:prod:mysql']);
+      expect(topology.getAttribute('data-nodes')?.split(',').sort()).toEqual([
+        'billing-node',
+        'inferred:prod:mysql',
+        'shop-node',
+        'user_request:prod',
+      ]);
+      expect(topology.getAttribute('data-edges')?.split(',').sort()).toEqual([
+        'shop-node>billing-node',
+        'shop-node>inferred:prod:mysql',
+        'user_request:prod>shop-node',
+      ]);
       expect(topology.getAttribute('data-focus')).toBe('shop');
     });
     expect(api.getTopology).toHaveBeenCalledWith(expect.objectContaining({
       include_inferred: true,
       include_user_request: true,
     }));
+    expect(api.getTopology.mock.calls[0][0].include_user_request).toBe(true);
 
     expect(await screen.findByText('checkout')).not.toBeNull();
     expect(screen.queryByText('invoice')).toBeNull();
     expect(screen.queryByRole('link', { name: 'mysql' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'user_request' })).toBeNull();
     expect(screen.getByRole('columnheader', { name: /服务/ })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '活跃告警' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '吞吐量（请求/秒）' })).not.toBeNull();
@@ -180,5 +195,34 @@ describe('APM 应用观测详情', () => {
 
     await waitFor(() => expect(screen.getByTestId('application-topology')).not.toBeNull());
     expect(screen.queryByText('当前时间窗暂无应用内调用关系。')).toBeNull();
+  });
+
+  it('遥测 503 展示不可用而不是暂无调用关系', async () => {
+    api.getTopology.mockRejectedValue(new HandledRequestError('VictoriaTraces 查询不可用', {
+      status: 503,
+      code: 'telemetry_unavailable',
+    }));
+
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+
+    expect(await screen.findByText('应用服务拓扑')).not.toBeNull();
+    expect(await screen.findByText('遥测存储暂不可用')).not.toBeNull();
+    expect(screen.queryByText('当前时间窗暂无应用内调用关系。')).toBeNull();
+    expect(screen.queryByTestId('application-topology')).toBeNull();
+  });
+
+  it('选择 7d 窗口仍查询 RED 指标', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalled());
+    api.getServiceRed.mockClear();
+
+    await user.click(screen.getByRole('radio', { name: '7d' }).closest('label')!);
+
+    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalled());
+    const startedAt = api.getServiceRed.mock.calls[0][2] as string;
+    const endedAt = api.getServiceRed.mock.calls[0][3] as string;
+    expect(new Date(endedAt).getTime() - new Date(startedAt).getTime()).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
+    expect(screen.queryByText('RED 指标查询失败')).toBeNull();
   });
 });

@@ -46,7 +46,13 @@ def test_span_search_filters_by_instance_org(apm_api_client, mocker):
         ),
         next_cursor="next",
     )
-    mocker.patch("apps.apm.views.spans.DjangoTelemetryQueryService.search_spans", return_value=page)
+
+    def search_spans(query):
+        if query.cursor:
+            return SpanPage((), None)
+        return page
+
+    mocker.patch("apps.apm.views.spans.DjangoTelemetryQueryService.search_spans", side_effect=search_spans)
 
     response = apm_api_client.get(
         "/api/v1/apm/spans/",
@@ -56,7 +62,7 @@ def test_span_search_filters_by_instance_org(apm_api_client, mocker):
     assert response.status_code == 200
     assert [item["span_id"] for item in response.data["items"]] == ["1" * 16, "3" * 16]
     assert response.data["items"][0]["http_method"] == "POST"
-    assert response.data["next_cursor"] == "next"
+    assert response.data["next_cursor"] is None
 
 
 def test_span_query_rejects_unknown_params_and_maps_degradation(apm_api_client, mocker):

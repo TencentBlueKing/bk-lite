@@ -4,16 +4,9 @@ from decimal import Decimal, InvalidOperation
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.apm.models import (
-    ApmApplication,
-    ApmDeploymentEvent,
-    ApmPolicy,
-    ApmPolicyTargetState,
-    ApmService,
-    ApmServiceInstance,
-    ApmSlo,
-)
+from apps.apm.models import ApmApplication, ApmDeploymentEvent, ApmPolicy, ApmPolicyTargetState, ApmService, ApmServiceInstance, ApmSlo
 from apps.apm.services.identity import normalize_identity
+from apps.apm.services.query import MAX_METRIC_WINDOW
 from apps.apm.services.status import catalog_status
 
 
@@ -277,6 +270,10 @@ class ServiceMetricQuerySerializer(serializers.Serializer):
             raise serializers.ValidationError(f"不支持的 RED 查询参数: {', '.join(unsupported)}")
         ended_at = attrs.get("ended_at") or timezone.now()
         started_at = attrs.get("started_at") or ended_at - timedelta(hours=1)
+        if ended_at <= started_at:
+            raise serializers.ValidationError("查询结束时间必须晚于开始时间")
+        if ended_at - started_at > MAX_METRIC_WINDOW:
+            raise serializers.ValidationError("RED 查询时间窗不能超过 7 天")
         attrs["started_at"] = started_at
         attrs["ended_at"] = ended_at
         return attrs
