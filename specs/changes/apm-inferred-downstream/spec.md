@@ -7,7 +7,7 @@ Status: implemented
 - 别名集中在 `server/apps/apm/adapters/span_aliases.py`：`db.system` 或 `db.system.name` 单独出现都能折叠成 mysql 推断节点；`span_attr:` 前缀同样生效。host 认 `server.address` / `net.peer.name` / `network.peer.address` / `net.peer.ip`，port 认 `server.port` / `net.peer.port` / `network.peer.port`；库名独立，不覆盖 host。
 - 推断节点和样本 Client Span 展示 Span 里实际有的 `host:port` 与库名；缺端口不加默认值。两个不同 IP 且 `db.system=mysql` 仍折叠为一个 mysql 节点，节点上保留小集合地址。
 - `DjangoApmTopologyService` 在有界 Trace 样本上识别 client/producer、无另一 `service.name` 子 Span 的调用；不 import / 不写入 `ApmService`。无组织可见调用方时不出现推断节点。
-- 仅服务拓扑页传 `include_inferred=true`。画布展示「推断」角标与虚线描边；调查栏列出调用方和样本 Client Span，隐藏服务详情。应用详情 `focusApplicationTopology` 丢弃推断邻居。
+- 仅服务拓扑页传 `include_inferred=true`。画布展示「推断」角标与虚线描边；调查栏列出调用方和样本 Client Span，隐藏服务详情。应用详情 `focusApplicationTopology` 在 2026-08-28 改为保留本应用已插桩服务的直接推断下游。
 - demo catalog `/products` 发出模拟 mysql Client Span；探针手册钉死 Java 2.31.1、Python 0.65b0（SDK 1.44.0）、Node 0.79.0、Go v1.46.0。
 - 测试：`apps/apm/tests/test_topology_service.py` 中别名 / host:port / 双 IP 折叠 / 可见性 / 不写目录用例；`topology-canvas.test.tsx`、`topology-layout.test.ts`；`apm-service-workflow-test.ts`、`apm-i18n-coverage-test.ts` 通过。sqlite 下 `@pytest.mark.django_db` 拓扑 API 仍因无关迁移 `NewSessionEventRelation.event` 无法建库。
 
@@ -42,17 +42,17 @@ Status: implemented
 - `db.name` 是独立字段，不写进 `peer_address`。不把 `db.connection_string` / `db.query.text` 写进身份。
 - 拓扑构图不创建 `ApmService(name=mysql)`；服务目录 / 应用列表 API 仍无 mysql 行。
 - 无组织可见调用方时不出现推断节点。
-- 服务拓扑画布展示「推断」角标；调查栏对推断节点隐藏服务详情；应用详情聚焦辅助函数丢弃推断邻居。
+- 服务拓扑画布展示「推断」角标；调查栏对推断节点隐藏服务详情。应用详情聚焦在后续切片改为保留本应用的直接推断下游（见 2026-08-28 决策）。
 
 先验：`test_topology_service.py`、`topology-canvas.test.tsx`、`apm-service-workflow-test.ts`。
 
 ## Out of Scope
 
-- 应用详情子拓扑、应用列表、服务目录展示推断下游。
+- 应用列表、服务目录、下属服务表展示推断下游。
 - 推断对象持久化、CMDB / Monitor 关联、按 `server.address` 拆分多个 mysql 实例。
 - 给推断节点配策略 / SLO / 告警。
 - OTC 虚拟节点 metrics。
 
 ## Further Notes
 
-产品决策：`docs/design/product-decisions/apm-inferred-downstream.md`。本切片接在 `apm-topology-request-slice` 的有界样本构图之上。
+产品决策：`docs/design/product-decisions/apm-inferred-downstream.md`。本切片接在 `apm-topology-request-slice` 的有界样本构图之上。2026-08-28 应用详情画布补本应用已插桩服务的直接推断下游，不进 KPI / 下属服务表；一跳邻居的推断下游仍不进入本应用图。
