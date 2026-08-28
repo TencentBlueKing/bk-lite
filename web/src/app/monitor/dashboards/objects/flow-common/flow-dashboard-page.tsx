@@ -131,11 +131,21 @@ export function FlowDashboardPage({ protocol }: FlowDashboardPageProps) {
     [objectName],
   );
 
-  const missingFlowContext =
-    objectsLoaded && !monitorObjId && !resolveFlowHostMonitorObject(objects);
+  const flowHost = useMemo(
+    () => (objectsLoaded ? resolveFlowHostMonitorObject(objects, monitorObjId) : undefined),
+    [monitorObjId, objects, objectsLoaded],
+  );
+
+  const missingFlowContext = objectsLoaded && !monitorObjId && !flowHost;
   const unsupportedObject =
     objectsLoaded && Boolean(objectName) && !isFlowSupportedObjectName(objectName);
+  const awaitingFlowResolution =
+    !missingFlowContext &&
+    !unsupportedObject &&
+    Boolean(flowHost) &&
+    (!monitorObjId || !instanceType);
   const readyForMetrics =
+    Boolean(monitorObjId) &&
     Boolean(instanceType) &&
     isFlowSupportedObjectName(objectName) &&
     !missingFlowContext &&
@@ -163,7 +173,7 @@ export function FlowDashboardPage({ protocol }: FlowDashboardPageProps) {
   }
 
   if (!readyForMetrics) {
-    if (!objectsLoaded) {
+    if (!objectsLoaded || awaitingFlowResolution) {
       return (
         <FlowDashboardPlaceholder>
           <Spin />
