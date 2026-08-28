@@ -119,6 +119,7 @@ export const formatMetricValue = (value: number, unit: MetricUnit): { value: str
   if (normalizedUnit === 'percent') return { value: value.toFixed(1), unit: '%' };
   if (normalizedUnit === 'msps') return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: 'ms/s' };
   if (normalizedUnit === 'cps' || normalizedUnit === 'pps') return formatCountRate(value);
+  if (normalizedUnit === 'tpm') return { value: formatScaledValue(value), unit: 'tpm' };
   if (COUNT_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, COUNT_UNITS, COUNT_LABELS, 1000);
   if (DATA_BITS_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, DATA_BITS_UNITS, DATA_BITS_LABELS, 1000);
   if (DATA_BYTES_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, DATA_BYTES_UNITS, DATA_BYTES_LABELS, 1024);

@@ -32,7 +32,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'vllm_kv_cache_usage',
       display_name: 'KV 缓存占用',
-      description: '已使用 KV cache 块占比（0–100%）。多实例取 max。',
+      description: '已使用 KV cache 块占比（0–100%）。',
       unit: 'percent',
       query:
         'clamp_max(100 * max by (instance_id) (vllm:kv_cache_usage_perc_gauge{__$labels__}), 100)',
@@ -113,9 +113,9 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       name: 'vllm_input_tpm',
-      display_name: 'Input TPM',
-      description: '最近 5 分钟 prompt token 速率 × 60（tokens/min）。',
-      unit: 'counts',
+      display_name: '输入 TPM',
+      description: '最近 5 分钟 prompt token 吞吐。',
+      unit: 'tpm',
       // tokens/min = rate * 60；不要套用 Grafana Output TPM *6。
       query:
         'sum by (instance_id) (rate(vllm:prompt_tokens_total_counter{__$labels__}[5m])) * 60',
@@ -123,9 +123,9 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       name: 'vllm_output_tpm',
-      display_name: 'Output TPM',
-      description: '最近 5 分钟 generation token 速率 × 60（tokens/min）。',
-      unit: 'counts',
+      display_name: '输出 TPM',
+      description: '最近 5 分钟 generation token 吞吐。',
+      unit: 'tpm',
       // tokens/min = rate * 60；不要套用 Grafana Output TPM *6。
       query:
         'sum by (instance_id) (rate(vllm:generation_tokens_total_counter{__$labels__}[5m])) * 60',
@@ -210,7 +210,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: '排队请求',
-          detail: '等待调度容量的请求数，持续非零说明吞吐已接近上限。'
+          detail: '等待调度的请求数。'
         }
       ],
       footer: [
@@ -229,7 +229,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: 'TTFT P95',
-          detail: '首 token 时延 P95，抬升通常与排队、prefill 或 KV 压力相关。'
+          detail: '首 Token 时延 P95。'
         }
       ],
       footer: [
@@ -248,7 +248,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: 'KV 缓存',
-          detail: 'KV cache 块占用取 max，接近 100% 时新请求更容易排队或抢占。'
+          detail: 'KV cache 最高占用。'
         }
       ],
       footer: [{ label: '排队请求', metric: 'vllm_requests_waiting', unit: 'counts' }]
@@ -264,7 +264,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: 'TPOT P95',
-          detail: '逐 token 时延（ITL）P95，decode 阶段变慢时抬升。'
+          detail: '逐 Token 时延 P95。'
         }
       ],
       footer: [
@@ -283,12 +283,12 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: 'QPS',
-          detail: '成功完成请求速率。Input/Output TPM 为 token/s × 60，不是 Grafana 的 ×6。'
+          detail: '成功完成请求速率。'
         }
       ],
       footer: [
-        { label: 'Input TPM', metric: 'vllm_input_tpm', unit: 'counts' },
-        { label: 'Output TPM', metric: 'vllm_output_tpm', unit: 'counts' }
+        { label: '输入 TPM', metric: 'vllm_input_tpm', unit: 'tpm' },
+        { label: '输出 TPM', metric: 'vllm_output_tpm', unit: 'tpm' }
       ]
     }
   ],
@@ -300,7 +300,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: '队列趋势',
-          detail: '运行中与排队请求随时间变化，排队曲线抬升即需扩容或限流。'
+          detail: '运行中与排队请求趋势。'
         }
       ],
       series: [
@@ -325,7 +325,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: '时延拆解',
-          detail: '排队、prefill、decode 与 TTFT 的 P95，用于定位首 token 变慢发生在哪一段。'
+          detail: '排队、Prefill、Decode 与 TTFT 的 P95。'
         }
       ],
       series: [
@@ -337,12 +337,12 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     },
     {
       title: 'KV 缓存占用',
-      subtitle: 'max 占用比例',
+      subtitle: '最高占用',
       metric: 'vllm_kv_cache_usage',
       guide: [
         {
           label: 'KV 缓存',
-          detail: '按 instance_id 取 max，避免 avg 掩盖单实例打满。'
+          detail: '按实例取最高 KV 占用。'
         }
       ],
       series: [
@@ -361,7 +361,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: 'ITL / E2E',
-          detail: 'ITL（TPOT）与端到端时延同图对比，decode 变慢时 ITL 先抬升。'
+          detail: '逐 Token 与端到端时延。'
         }
       ],
       series: [
@@ -372,27 +372,27 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     },
     {
-      title: 'Input / Output TPM',
-      subtitle: 'token/s × 60',
+      title: '输入 / 输出 TPM',
+      subtitle: 'tpm',
       metric: 'vllm_output_tpm',
       guide: [
         {
           label: 'TPM',
-          detail: 'Input 与 Output 均为 sum(rate(...[5m])) * 60，不要使用 Grafana Output TPM 的 *6。'
+          detail: '输入与输出 tokens per minute。'
         }
       ],
       series: [
         {
           metric: 'vllm_input_tpm',
-          label: 'Input TPM',
+          label: '输入 TPM',
           color: '#13c2c2',
-          unit: 'counts'
+          unit: 'tpm'
         },
         {
           metric: 'vllm_output_tpm',
-          label: 'Output TPM',
+          label: '输出 TPM',
           color: '#27c274',
-          unit: 'counts'
+          unit: 'tpm'
         }
       ]
     },
@@ -403,7 +403,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: '输入长度',
-          detail: '请求 prompt token 数分布，异常抬升可能带来 prefill 压力。'
+          detail: '请求 prompt token 数分布。'
         }
       ],
       series: [
@@ -483,7 +483,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: '队列分布',
-          detail: '运行中与排队请求占比，排队段扩大表示调度压力升高。'
+          detail: '运行中与排队请求占比。'
         }
       ],
       segments: [
