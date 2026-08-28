@@ -265,6 +265,48 @@ class TestModelMigrateParsing:
         assert m._merge_existing_attr_config(existing, incoming) is False
         assert existing["attr_name"] == "same"
 
+    def test_merge_existing_attr_config_does_not_replace_tag_options(self, monkeypatch):
+        m = self._make(monkeypatch)
+        user_options = [{"key": "env", "value": "prod"}, {"key": "app", "value": "shop"}]
+        existing = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "free", "options": user_options},
+        }
+        incoming = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "Tag",
+            "option": {"mode": "free", "options": []},
+        }
+
+        changed = m._merge_existing_attr_config(existing, incoming)
+
+        assert changed is True
+        assert existing["attr_name"] == "Tag"
+        assert existing["option"]["mode"] == "free"
+        assert existing["option"]["options"] == user_options
+
+    def test_merge_existing_attr_config_tag_option_only_is_no_change(self, monkeypatch):
+        m = self._make(monkeypatch)
+        user_options = [{"key": "env", "value": "prod"}]
+        existing = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "free", "options": user_options},
+        }
+        incoming = {
+            "attr_id": "tag",
+            "attr_type": "tag",
+            "attr_name": "标签",
+            "option": {"mode": "strict", "options": []},
+        }
+
+        assert m._merge_existing_attr_config(existing, incoming) is False
+        assert existing["option"] == {"mode": "free", "options": user_options}
+
 
 # ===========================================================================
 # ModelMigrate.get_model_config —— 真实 Excel 字节流喂入 pandas
@@ -496,6 +538,72 @@ class TestModelMigrateWithDB:
         res = m._sync_added_attrs_to_existing_models(ag, attrs_by_model, existing_model_map)
         assert res["updated_attr_count"] == 1
         assert res["added_attr_count"] == 0
+
+    def test_sync_added_attrs_does_not_replace_existing_tag_options(self, monkeypatch):
+        m, mod = self._make(monkeypatch, {})
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+
+        user_tag_options = [{"key": "env", "value": "prod"}, {"key": "app", "value": "shop"}]
+        existing_attrs = [
+            {
+                "attr_id": "tag",
+                "attr_type": "tag",
+                "attr_name": "标签",
+                "option": {"mode": "free", "options": user_tag_options},
+            }
+        ]
+        existing_model_map = {"host": {"_id": "n1", "model_id": "host", "attrs": json.dumps(existing_attrs)}}
+        attrs_by_model = {
+            "host": [
+                {
+                    "attr_id": "tag",
+                    "attr_type": "tag",
+                    "attr_name": "标签",
+                    "option": {"mode": "free", "options": []},
+                }
+            ]
+        }
+        ag = FakeGraph()
+        res = m._sync_added_attrs_to_existing_models(ag, attrs_by_model, existing_model_map)
+
+        assert res["updated_attr_count"] == 0
+        assert res["added_attr_count"] == 0
+        assert not any(call[0] == "set_entity_properties" for call in ag.calls)
+
+    def test_sync_added_attrs_keeps_user_tag_options_when_name_updates(self, monkeypatch):
+        m, mod = self._make(monkeypatch, {})
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+
+        user_tag_options = [{"key": "env", "value": "prod"}]
+        existing_attrs = [
+            {
+                "attr_id": "tag",
+                "attr_type": "tag",
+                "attr_name": "标签",
+                "option": {"mode": "free", "options": user_tag_options},
+            }
+        ]
+        existing_model_map = {"host": {"_id": "n1", "model_id": "host", "attrs": json.dumps(existing_attrs)}}
+        attrs_by_model = {
+            "host": [
+                {
+                    "attr_id": "tag",
+                    "attr_type": "tag",
+                    "attr_name": "Tag",
+                    "option": {"mode": "free", "options": []},
+                }
+            ]
+        }
+        ag = FakeGraph()
+        res = m._sync_added_attrs_to_existing_models(ag, attrs_by_model, existing_model_map)
+
+        assert res["updated_attr_count"] == 1
+        write_calls = [call for call in ag.calls if call[0] == "set_entity_properties"]
+        assert len(write_calls) == 1
+        written_attrs = json.loads(write_calls[0][1][2]["attrs"])
+        tag_attr = next(attr for attr in written_attrs if attr["attr_id"] == "tag")
+        assert tag_attr["attr_name"] == "Tag"
+        assert tag_attr["option"]["options"] == user_tag_options
 
     def test_sync_added_attrs_no_targets(self, monkeypatch):
         m, _ = self._make(monkeypatch, {})

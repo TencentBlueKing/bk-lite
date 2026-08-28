@@ -594,7 +594,9 @@ class ModelMigrate:
                 existing_attr["user_prompt"] = user_prompt
                 changed = True
 
-        if "option" in incoming_attr and existing_attr.get("option") != incoming_attr.get("option"):
+        # 标签候选项由用户在页面/实例写入中自行积累，model_init 不得用种子 option 覆盖。
+        skip_option_overwrite = existing_attr.get("attr_type") == "tag"
+        if "option" in incoming_attr and not skip_option_overwrite and existing_attr.get("option") != incoming_attr.get("option"):
             existing_attr["option"] = incoming_attr.get("option")
             changed = True
 
