@@ -99,8 +99,12 @@ beforeEach(() => {
     nodes: [
       { id: 'shop-node', service_namespace: 'shop', service_name: 'checkout', environment: 'prod', health: 'healthy', sampled_spans: 2, error_spans: 0 },
       { id: 'billing-node', service_namespace: 'billing', service_name: 'invoice', environment: 'prod', health: 'healthy', sampled_spans: 1, error_spans: 0 },
+      { id: 'inferred:prod:mysql', service_namespace: '', service_name: 'mysql', environment: 'prod', health: 'healthy', sampled_spans: 1, error_spans: 0, kind: 'inferred', fold_key: 'mysql' },
     ],
-    edges: [{ source: 'shop-node', target: 'billing-node', health: 'healthy', sampled_calls: 1, error_calls: 0, average_duration_ms: 5 }],
+    edges: [
+      { source: 'shop-node', target: 'billing-node', health: 'healthy', sampled_calls: 1, error_calls: 0, average_duration_ms: 5 },
+      { source: 'shop-node', target: 'inferred:prod:mysql', health: 'healthy', sampled_calls: 1, error_calls: 0, average_duration_ms: 4 },
+    ],
     sampled_traces: 2, truncated: false, data_state: 'available',
   });
   api.getServiceRed.mockResolvedValue({ request_rate: 3, error_rate: 0.1, p95_ms: 25, p99_ms: 40, data_state: 'available', timeseries: [], top_endpoints: [] });
@@ -133,16 +137,48 @@ describe('APM 应用观测详情', () => {
 
     const topology = await screen.findByTestId('application-topology');
     await waitFor(() => {
-      expect(topology.getAttribute('data-nodes')?.split(',').sort()).toEqual(['billing-node', 'shop-node']);
-      expect(topology.getAttribute('data-edges')).toBe('shop-node>billing-node');
+      expect(topology.getAttribute('data-nodes')?.split(',').sort()).toEqual(['billing-node', 'inferred:prod:mysql', 'shop-node']);
+      expect(topology.getAttribute('data-edges')?.split(',').sort()).toEqual(['shop-node>billing-node', 'shop-node>inferred:prod:mysql']);
       expect(topology.getAttribute('data-focus')).toBe('shop');
     });
+    expect(api.getTopology).toHaveBeenCalledWith(expect.objectContaining({
+      include_inferred: true,
+      include_user_request: true,
+    }));
 
     expect(await screen.findByText('checkout')).not.toBeNull();
     expect(screen.queryByText('invoice')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'mysql' })).toBeNull();
     expect(screen.getByRole('columnheader', { name: /服务/ })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '活跃告警' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '吞吐量（请求/秒）' })).not.toBeNull();
     await waitFor(() => expect(api.getServiceRed).toHaveBeenCalled());
+  });
+
+  it('拓扑取数完成前展示加载而不是空状态', async () => {
+    let resolveTopology: (value: unknown) => void = () => undefined;
+    api.getTopology.mockImplementation(() => new Promise((resolve) => {
+      resolveTopology = resolve;
+    }));
+
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+
+    expect(await screen.findByText('应用服务拓扑')).not.toBeNull();
+    expect(screen.getByLabelText('加载 APM 数据')).not.toBeNull();
+    expect(screen.queryByText('当前时间窗暂无应用内调用关系。')).toBeNull();
+    expect(screen.queryByTestId('application-topology')).toBeNull();
+
+    resolveTopology({
+      nodes: [
+        { id: 'shop-node', service_namespace: 'shop', service_name: 'checkout', environment: 'prod', health: 'healthy', sampled_spans: 2, error_spans: 0 },
+      ],
+      edges: [],
+      sampled_traces: 1,
+      truncated: false,
+      data_state: 'available',
+    });
+
+    await waitFor(() => expect(screen.getByTestId('application-topology')).not.toBeNull());
+    expect(screen.queryByText('当前时间窗暂无应用内调用关系。')).toBeNull();
   });
 });

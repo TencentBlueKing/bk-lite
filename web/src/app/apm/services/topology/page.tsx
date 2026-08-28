@@ -65,7 +65,7 @@ export default function ApmTopologyPage() {
   }, [getServices]);
 
   const load = useCallback(async () => {
-    setState('loading');
+    setState((current) => (current === 'ready' || current === 'empty' ? current : 'loading'));
     const endedAt = new Date();
     const startedAt = new Date(endedAt.getTime() - windowMs[timeWindow]);
     const nextRange = { startedAt: startedAt.toISOString(), endedAt: endedAt.toISOString() };
@@ -287,7 +287,11 @@ export default function ApmTopologyPage() {
                 onRetry={() => void load()}
               />
             </div>
-          ) : <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />}
+          ) : (
+            <div className="min-h-[640px]">
+              <CatalogState kind={state} onRetry={state === 'forbidden' ? undefined : () => void load()} />
+            </div>
+          )}
         </ApmSurface>
       </div>
     </ApmRouteShell>

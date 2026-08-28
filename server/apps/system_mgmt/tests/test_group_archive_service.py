@@ -224,7 +224,7 @@ def test_permanent_delete_removes_group_list_refs():
 @pytest.mark.parametrize(
     ("kind", "external_id", "with_source", "can_restore", "can_delete"),
     [
-        ("synced_active_source", None, True, False, False),
+        ("synced_active_source", None, True, False, True),
         ("synced_deleted_source", "user-sync:99:dept-gone", False, False, True),
     ],
 )

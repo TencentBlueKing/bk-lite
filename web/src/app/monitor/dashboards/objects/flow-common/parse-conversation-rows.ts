@@ -1,4 +1,5 @@
 import type { FlowProtocol } from './constants';
+import { formatProtocolLabel } from './protocol-labels';
 
 interface RawSeries {
   metric?: Record<string, string>;
@@ -20,22 +21,6 @@ export interface FlowConversationRow {
   rowKey: string;
 }
 
-const PROTOCOL_NAMES: Record<string, string> = {
-  '1': 'ICMP',
-  '6': 'TCP',
-  '17': 'UDP',
-  '47': 'GRE',
-  '50': 'ESP',
-  '58': 'ICMPv6',
-};
-
-export const formatProtocolLabel = (value: string): string => {
-  const normalized = String(value || '').trim();
-  if (!normalized) return '--';
-  const mapped = PROTOCOL_NAMES[normalized];
-  return mapped ? `${mapped} (${normalized})` : normalized;
-};
-
 const latestValue = (series: RawSeries): number | null => {
   const points: Array<[number, string | number | null | undefined]> = series.value
     ? [series.value]
@@ -56,6 +41,7 @@ const buildRowKey = (
   if (protocol === 'netflow') {
     return [
       metric.src || '',
+      metric.src_port || '',
       metric.dst || '',
       metric.protocol || '',
       metric.dst_port || '',
@@ -63,10 +49,16 @@ const buildRowKey = (
   }
   return [
     metric.src_ip || '',
+    metric.src_port || '',
     metric.dst_ip || '',
     metric.header_protocol || '',
     metric.dst_port || '',
   ].join('\u0000');
+};
+
+const normalizePort = (value?: string | null) => {
+  const normalized = String(value || '').trim();
+  return normalized || '--';
 };
 
 export const parseConversationRows = (
@@ -86,9 +78,9 @@ export const parseConversationRows = (
     if (protocol === 'netflow') {
       rows.push({
         srcIp: metric.src || '--',
-        srcPort: '--',
+        srcPort: normalizePort(metric.src_port),
         dstIp: metric.dst || '--',
-        dstPort: metric.dst_port || '--',
+        dstPort: normalizePort(metric.dst_port),
         protocol: formatProtocolLabel(metric.protocol || ''),
         bytesRate,
         rowKey,
@@ -98,9 +90,9 @@ export const parseConversationRows = (
 
     rows.push({
       srcIp: metric.src_ip || '--',
-      srcPort: '--',
+      srcPort: normalizePort(metric.src_port),
       dstIp: metric.dst_ip || '--',
-      dstPort: metric.dst_port || '--',
+      dstPort: normalizePort(metric.dst_port),
       protocol: formatProtocolLabel(metric.header_protocol || ''),
       bytesRate,
       rowKey,

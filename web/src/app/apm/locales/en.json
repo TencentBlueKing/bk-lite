@@ -847,7 +847,11 @@
       "filterOperation": "Slice by operation name",
       "minDuration": "Minimum duration",
       "minDurationPlaceholder": "Min duration ms",
-      "clearSlice": "Clear slice"
+      "clearSlice": "Clear slice",
+      "userRequestNode": "User requests",
+      "userRequestMetric": "{count} observed requests",
+      "userRequestAria": "{name}, {spans} requests observed in the time window",
+      "userRequestTitle": "{name}\n{environment}\n{spans} observed requests"
     },
     "instances": {
       "defaultActiveHelp": "Active instances are shown by default. Change the status or time range to view silent and historical instances.",

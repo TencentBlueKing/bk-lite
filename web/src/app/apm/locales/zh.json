@@ -847,7 +847,11 @@
       "filterOperation": "按操作名切片",
       "minDuration": "耗时下限",
       "minDurationPlaceholder": "耗时下限 ms",
-      "clearSlice": "清空切片"
+      "clearSlice": "清空切片",
+      "userRequestNode": "用户请求",
+      "userRequestMetric": "观测请求 {count} 次",
+      "userRequestAria": "{name}，时间窗内观测 {spans} 次请求",
+      "userRequestTitle": "{name}\n{environment}\n观测请求 {spans} 次"
     },
     "instances": {
       "defaultActiveHelp": "默认显示活跃实例；切换状态或时间范围可查看静默与历史实例。",

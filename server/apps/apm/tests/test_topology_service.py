@@ -476,6 +476,186 @@ def test_span_attr_prefixed_net_peer_still_surfaces_host_port():
     assert inferred.peer_address == "orders-db:3306"
 
 
+def _user_entry_trace(now, *, trace_id="d" * 32, attrs=None, kind="server", parent=None, status="ok"):
+    """根 Span 由外部请求触发的单服务 Trace；attrs/kind/parent 可调以覆盖判定边界。"""
+
+    return _trace(
+        trace_id,
+        (
+            _span(
+                "6" * 16,
+                parent,
+                "GET /checkout",
+                now,
+                service="storefront",
+                kind=kind,
+                duration=30,
+                status=status,
+                attrs=attrs if attrs is not None else {"http.route": "/checkout"},
+            ),
+        ),
+    )
+
+
+def test_user_request_node_and_edge_appear_for_root_server_span_with_http_attrs():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_user_entry_trace(now)]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    node = next(node for node in graph.nodes if node.kind == "user_request")
+    assert node.id == "user_request:prod"
+    assert node.service_name == "user_request"
+    assert node.health == "unknown"
+    assert node.request_rate is None
+    assert node.error_rate is None
+    assert node.p95_ms is None
+    edge = next(edge for edge in graph.edges if edge.source == "user_request:prod")
+    assert edge.target == "shop:storefront:prod"
+    assert edge.sampled_calls == 1
+    assert edge.p95_ms == 30
+    assert edge.error_rate == 0.0
+    assert graph.data_state == "available"
+
+
+def test_user_request_node_is_omitted_without_include_user_request_flag():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_user_entry_trace(now)]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_inferred=True,
+    )
+
+    assert all(node.kind != "user_request" for node in graph.nodes)
+    assert all(not edge.source.startswith("user_request:") for edge in graph.edges)
+
+
+def test_consumer_root_span_does_not_create_user_request_node():
+    now = timezone.now()
+    trace = _user_entry_trace(now, kind="consumer", attrs={"messaging.system": "kafka"})
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[trace]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert all(node.kind != "user_request" for node in graph.nodes)
+
+
+def test_root_server_span_without_http_or_rpc_attrs_does_not_create_user_request_node():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_user_entry_trace(now, attrs={})]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert all(node.kind != "user_request" for node in graph.nodes)
+
+
+def test_server_span_with_parent_outside_trace_still_counts_as_user_request_entry():
+    now = timezone.now()
+    trace = _user_entry_trace(now, parent="f" * 16, attrs={"span_attr:http.request.method": "GET"})
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[trace]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert any(node.kind == "user_request" for node in graph.nodes)
+
+
+def test_rpc_system_root_server_span_counts_as_user_request_entry():
+    now = timezone.now()
+    trace = _user_entry_trace(now, attrs={"rpc.system": "grpc"})
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[trace]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert any(node.kind == "user_request" for node in graph.nodes)
+
+
+def test_service_called_by_instrumented_upstream_gets_no_user_request_edge():
+    now = timezone.now()
+    trace = _trace(
+        "b" * 32,
+        (
+            _span("1" * 16, None, "GET /checkout", now, service="gateway", attrs={"http.route": "/checkout"}),
+            _span("2" * 16, "1" * 16, "POST /pay", now, service="gateway", kind="client", duration=20),
+            _span("3" * 16, "2" * 16, "POST /pay", now, service="payment", duration=18, attrs={"http.route": "/pay"}),
+        ),
+    )
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[trace]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "gateway", "prod"), TopologyTarget("shop", "payment", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    entry_edges = [edge for edge in graph.edges if edge.source.startswith("user_request:")]
+    assert {edge.target for edge in entry_edges} == {"shop:gateway:prod"}
+
+
+def test_user_request_entries_fold_into_one_node_per_environment():
+    now = timezone.now()
+    first = _user_entry_trace(now, trace_id="1" * 32)
+    second = _user_entry_trace(now - timedelta(seconds=1), trace_id="2" * 32, status="error")
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[first, second]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    nodes = [node for node in graph.nodes if node.kind == "user_request"]
+    assert len(nodes) == 1
+    edge = next(edge for edge in graph.edges if edge.source == "user_request:prod")
+    assert edge.sampled_calls == 2
+    assert edge.error_calls == 1
+    assert edge.error_rate == 0.5
+
+
+def test_user_request_node_is_omitted_when_entry_service_is_not_visible():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_user_entry_trace(now)]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "payment", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert graph.nodes == ()
+    assert graph.edges == ()
+
+
 @pytest.mark.django_db
 def test_topology_api_only_queries_targets_visible_to_current_organization(apm_api_client, mocker):
     now = timezone.now()
@@ -560,19 +740,24 @@ def test_sample_traces_omitted_fetch_logs_template_without_leaking_payload(caplo
         def sample_traces(self, query: TopologySampleQuery):
             raise AssertionError("not used")
 
-        def get_trace(self, trace_id: str):
+        def _query_rows(self, query, started_at, ended_at, *, limit=None):
             raise TelemetryStoreUnavailable("VictoriaTraces 查询不可用")
 
     store = _Store()
     caplog.set_level("WARNING", logger="apm")
-    traces, omitted = store._fetch_topology_traces(["secret-token-should-not-appear", "a" * 32])
+    now = timezone.now()
+    traces, omitted = store._fetch_topology_traces(
+        ["secret-token-should-not-appear", "a" * 32],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+    )
 
     assert traces == []
     assert omitted == 2
     records = [
         record
         for record in caplog.records
-        if getattr(record, "msg", "") == "event=apm_topology_trace_fetch_failed failed_stage=get_trace error_type=%s"
+        if getattr(record, "msg", "") == "event=apm_topology_trace_fetch_failed failed_stage=sample_spans error_type=%s"
     ]
     assert records
     record: LogRecord = records[0]

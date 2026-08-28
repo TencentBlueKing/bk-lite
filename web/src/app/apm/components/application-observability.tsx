@@ -63,6 +63,7 @@ export default function ApplicationObservability({
   const [services, setServices] = useState<ApmService[]>([]);
   const [state, setState] = useState<PageState>('loading');
   const [graph, setGraph] = useState<ApmTopologyGraph>({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
+  const [topologyLoading, setTopologyLoading] = useState(true);
   const [redMetrics, setRedMetrics] = useState<Record<string, ApmServiceRed>>({});
   const [metricFailureKeys, setMetricFailureKeys] = useState<string[]>([]);
   const [events, setEvents] = useState<ApmEvent[]>([]);
@@ -104,13 +105,20 @@ export default function ApplicationObservability({
   useEffect(() => {
     if (!application) return;
     const { startedAt, endedAt } = timeWindowRange(timeWindow);
-    getTopology({ started_at: startedAt.toISOString(), ended_at: endedAt.toISOString() })
+    setTopologyLoading(true);
+    getTopology({
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString(),
+      include_inferred: true,
+      include_user_request: true,
+    })
       .then((topology) => {
         setGraph(focusApplicationTopology(topology, application.application_id).graph);
       })
       .catch(() => {
         setGraph({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
-      });
+      })
+      .finally(() => setTopologyLoading(false));
   }, [application, getTopology, timeWindow]);
 
   const rows = useMemo(() => expandServiceRows(services), [services]);
@@ -239,7 +247,11 @@ export default function ApplicationObservability({
                   ) : null}
                 </div>
               </div>
-              {graph.nodes.length ? (
+              {topologyLoading && !graph.nodes.length ? (
+                <div className="min-h-[640px]">
+                  <CatalogState kind="loading" />
+                </div>
+              ) : graph.nodes.length ? (
                 <TopologyCanvas
                   edges={graph.edges}
                   focusNamespace={application.application_id}

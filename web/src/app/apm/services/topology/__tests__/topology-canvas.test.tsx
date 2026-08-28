@@ -102,10 +102,13 @@ describe('APM 服务拓扑画布', () => {
     const result = renderWithApmIntl(
       <TopologyCanvas edges={edges} keyword="" nodes={nodes} zoom={1} />,
     );
+    expect(result.container.querySelector('[data-topology-layout-pending="true"]')).not.toBeNull();
+    expect(result.container.querySelector('[aria-busy="true"]')).not.toBeNull();
 
     await waitFor(() => {
       expect(edgePairs(result.container)).toEqual(['catalog>inventory', 'storefront>catalog']);
     });
+    expect(result.container.querySelector('[data-topology-layout-pending="true"]')).toBeNull();
     result.container.querySelectorAll<SVGPathElement>('g[data-source] > path').forEach((path) => {
       expect(path.getAttribute('marker-end')).toBe('url(#apm-arrow)');
       expect(path.getAttribute('marker-start')).toBeNull();
@@ -289,6 +292,42 @@ describe('APM 服务拓扑画布', () => {
     expect(label?.textContent).toMatch(/…$/);
     expect(label?.textContent).not.toBe('demo-payment-gateway');
     expect(screen.getAllByText('推断').length).toBeGreaterThan(0);
+  });
+
+  it('用户请求入口节点使用用户图标、本地化标签与虚线入口边', async () => {
+    const result = renderWithApmIntl(
+      <TopologyCanvas
+        edges={[edge('user_request:local', 'storefront'), edge('storefront', 'catalog')]}
+        keyword=""
+        nodes={[
+          node('storefront'),
+          node('catalog'),
+          node('user_request:local', {
+            service_name: 'user_request',
+            service_namespace: '',
+            kind: 'user_request',
+            health: 'unknown',
+            language: '',
+            request_rate: null,
+            error_rate: null,
+            p95_ms: null,
+            sampled_spans: 12,
+          }),
+        ]}
+        zoom={1}
+      />,
+    );
+
+    await waitFor(() => expect(result.container.querySelector('[data-node-kind="user_request"]')).not.toBeNull());
+    const entry = result.container.querySelector('[data-node-kind="user_request"]') as SVGGElement;
+    expect(entry.querySelector('[data-service-icon="user-request"]')).not.toBeNull();
+    expect(entry.querySelector('[data-node-label]')?.textContent).toBe('用户请求');
+    expect(entry.textContent).toContain('观测请求 12 次');
+    expect(entry.textContent).not.toContain('无数据');
+    const entryEdge = result.container.querySelector('g[data-source="user_request:local"] > path');
+    expect(entryEdge?.getAttribute('stroke-dasharray')).toBe('5 4');
+    const serviceEdge = result.container.querySelector('g[data-source="storefront"] > path');
+    expect(serviceEdge?.getAttribute('stroke-dasharray')).toBeNull();
   });
 
   it('仅错误请求与只看异常可同时存在且语义不同', async () => {

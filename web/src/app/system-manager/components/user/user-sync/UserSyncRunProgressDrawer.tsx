@@ -13,6 +13,7 @@ import type { UserSyncRun, UserSyncRunProgressPayload } from '@/app/system-manag
 import { RUN_STATUS_TEXT_STYLE } from '@/app/system-manager/utils/userSyncPageUtils';
 import {
   calcPercent,
+  formatConflictUsernamesLine,
   formatEmailNotificationResult,
   formatElapsed,
   formatPhaseErrorMessage,
@@ -122,6 +123,7 @@ const UserSyncRunProgressDrawer: React.FC<UserSyncRunProgressDrawerProps> = ({
               ? formatPhaseErrorMessage(payload, t)
               : '';
             const counterLine = formatPhaseCounterLine(phase, payload, t);
+            const conflictLine = phase === 'sync_users' ? formatConflictUsernamesLine(payload, t) : '';
             const phaseResult = phase === 'finalize'
               ? formatEmailNotificationResult(payload, t)
               : formatPhaseBusinessResult(phase, payload, t);
@@ -156,6 +158,9 @@ const UserSyncRunProgressDrawer: React.FC<UserSyncRunProgressDrawerProps> = ({
                     <div className={styles.phaseResult}>
                       {progressEntry.status === 'process' ? progressMeta : phaseResult}
                     </div>
+                  )}
+                  {conflictLine && progressEntry.status !== 'process' && (
+                    <div className={styles.conflictUsers}>{conflictLine}</div>
                   )}
                   {progressEntry.status === 'process' && progressEntry.total > 0 && (
                     <Progress

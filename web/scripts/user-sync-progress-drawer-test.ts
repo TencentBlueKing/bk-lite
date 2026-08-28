@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import type { UserSyncRunProgressPayload } from '../src/app/system-manager/types/user-sync';
 import {
   calcPercent,
+  formatConflictUsernamesLine,
   formatPhaseProgressMeta,
   formatPhaseErrorMessage,
   formatUserSyncErrorMessage,
@@ -32,16 +33,25 @@ const messages: Record<string, string> = {
   'system.user.userSyncPage.phaseStatus.finish': '已完成',
   'system.user.userSyncPage.phaseStatus.error': '失败',
   'system.user.userSyncPage.phaseStatus.skipped': '已跳过',
+  'system.user.userSyncPage.phaseCounter.ledger': '{{total}}：{{parts}}',
+  'system.user.userSyncPage.phaseCounter.syncUsersTotal': '共 {{n}} 名用户',
   'system.user.userSyncPage.phaseCounter.syncUsersNew': '已新建 {{n}} 名用户',
   'system.user.userSyncPage.phaseCounter.syncUsersUpdated': '已更新 {{n}} 名用户',
+  'system.user.userSyncPage.phaseCounter.syncUsersUnchanged': '无变化 {{n}} 名用户',
   'system.user.userSyncPage.phaseCounter.syncUsersConflict': '发现 {{n}} 名冲突用户',
+  'system.user.userSyncPage.phaseCounter.syncUsersSkipped': '跳过无效 {{n}} 名用户',
   'system.user.userSyncPage.phaseCounter.reconcileDisabled': '禁用 {{n}}',
   'system.user.userSyncPage.phaseCounter.reconcileDeletedUsers': '删除 {{n}} 名用户',
   'system.user.userSyncPage.phaseCounter.reconcileDeleted': '删除 {{n}} 组',
   'system.user.userSyncPage.phaseCounter.syncGroupsCreated': '已新建 {{n}} 个组织',
   'system.user.userSyncPage.phaseCounter.syncGroupsUpdated': '已更新 {{n}} 个组织',
+  'system.user.userSyncPage.phaseCounter.syncGroupsTotal': '共 {{n}} 个组织',
+  'system.user.userSyncPage.phaseCounter.syncGroupsUnchanged': '无变化 {{n}} 个组织',
+  'system.user.userSyncPage.phaseCounter.syncGroupsSkipped': '跳过无效 {{n}} 个组织',
   'system.user.userSyncPage.progressDrawer.elapsed': '耗时 {{duration}}',
   'system.user.userSyncPage.progressDrawer.processed': '已处理 {{current}} / {{total}}',
+  'system.user.userSyncPage.progressDrawer.conflictUsers': '冲突用户：{{usernames}}',
+  'system.user.userSyncPage.runSummary.usernameListSeparator': '、',
   'system.user.userSyncPage.phaseResult.fetchDirectory': '已获取 {{users}} 名用户 · {{groups}} 个组织',
   'system.user.userSyncPage.phaseResult.syncGroupsUnchanged': '已核验 {{groups}} 个组织，未发现变更',
   'system.user.userSyncPage.phaseResult.syncUsersUnchanged': '已核验 {{users}} 名用户，未发现变更',
@@ -162,6 +172,10 @@ function testDrawerVisualHierarchy() {
   assert.match(component, /<Tag bordered=\{false\} color=\{config\.tagColor\} className=\{styles\.phaseStatus\}>/);
   assert.match(styles, /\.phaseResult\s*\{[\s\S]*?color: var\(--color-text-1\)/);
   assert.match(styles, /\.phaseTimestamp\s*\{[\s\S]*?color: var\(--color-text-3\)/);
+  // 冲突用户名单:仅 sync_users 阶段渲染,进行中不显示(名单是终态字段)
+  assert.match(component, /phase === 'sync_users' \? formatConflictUsernamesLine\(payload, t\) : ''/);
+  assert.match(component, /\{conflictLine && progressEntry\.status !== 'process' && \(/);
+  assert.match(styles, /\.conflictUsers\s*\{[\s\S]*?color: var\(--color-warning\)/);
   console.log('  ✓ drawer visual hierarchy');
 }
 
@@ -179,7 +193,7 @@ function testFormatPhaseCounterLine() {
   };
   assert.equal(
     formatPhaseCounterLine('sync_users', syncPayload, t),
-    '已新建 5 名用户 · 已更新 3 名用户 · 发现 1 名冲突用户',
+    '共 9 名用户：已新建 5 名用户 · 已更新 3 名用户 · 发现 1 名冲突用户',
   );
 
   // sync_users 全 0 → 空串(不显示多余行)
@@ -220,7 +234,89 @@ function testFormatPhaseCounterLine() {
       sync_groups: { current: 3, total: 3, status: 'finish', counters: { created_groups: 3, updated_groups: 0 } },
     },
   };
-  assert.equal(formatPhaseCounterLine('sync_groups', groupsPayload, t), '已新建 3 个组织');
+  assert.equal(formatPhaseCounterLine('sync_groups', groupsPayload, t), '共 3 个组织：已新建 3 个组织');
+
+  // 旧记录无 unchanged 字段:用 total 推导无变化
+  const legacyConflictPayload: UserSyncRunProgressPayload = {
+    phase_progress: {
+      sync_users: {
+        current: 15, total: 15, status: 'finish',
+        counters: { new_users: 0, updated_users: 0, conflict_users: 12 },
+      },
+      sync_groups: {
+        current: 10, total: 10, status: 'finish',
+        counters: { created_groups: 6, updated_groups: 0 },
+      },
+    },
+  };
+  assert.equal(
+    formatPhaseCounterLine('sync_users', legacyConflictPayload, t),
+    '共 15 名用户：无变化 3 名用户 · 发现 12 名冲突用户',
+  );
+  assert.equal(
+    formatPhaseCounterLine('sync_groups', legacyConflictPayload, t),
+    '共 10 个组织：已新建 6 个组织 · 无变化 4 个组织',
+  );
+  const skippedGroupsPayload: UserSyncRunProgressPayload = {
+    phase_progress: {
+      sync_groups: {
+        current: 3, total: 3, status: 'finish',
+        counters: { created_groups: 2, updated_groups: 0, unchanged_groups: 0, skipped_invalid_groups: 1 },
+      },
+    },
+  };
+  assert.equal(
+    formatPhaseCounterLine('sync_groups', skippedGroupsPayload, t),
+    '共 3 个组织：已新建 2 个组织 · 跳过无效 1 个组织',
+  );
+  // error 不当成终态账本,不拼无变化/跳过
+  const errorUsersPayload: UserSyncRunProgressPayload = {
+    phase_progress: {
+      sync_users: {
+        current: 4, total: 15, status: 'error',
+        counters: { new_users: 3, updated_users: 0, conflict_users: 1, skipped_invalid_users: 2 },
+      },
+    },
+  };
+  assert.equal(
+    formatPhaseCounterLine('sync_users', errorUsersPayload, t),
+    '已新建 3 名用户 · 发现 1 名冲突用户',
+  );
+  assert.equal(
+    formatPhaseBusinessResult('sync_users', legacyConflictPayload, t),
+    '共 15 名用户：无变化 3 名用户 · 发现 12 名冲突用户',
+  );
+
+  // 进行中不展示无变化/跳过,避免半截账目
+  const runningPayload: UserSyncRunProgressPayload = {
+    phase_progress: {
+      sync_users: {
+        current: 4, total: 15, status: 'process',
+        counters: { new_users: 3, updated_users: 0, conflict_users: 1, skipped_invalid_users: 2 },
+      },
+    },
+  };
+  assert.equal(
+    formatPhaseCounterLine('sync_users', runningPayload, t),
+    '已新建 3 名用户 · 发现 1 名冲突用户',
+  );
+
+  // 显式跳过无效
+  const skippedPayload: UserSyncRunProgressPayload = {
+    phase_progress: {
+      sync_users: {
+        current: 4, total: 4, status: 'finish',
+        counters: {
+          new_users: 1, updated_users: 0, unchanged_users: 2,
+          skipped_invalid_users: 1, conflict_users: 0,
+        },
+      },
+    },
+  };
+  assert.equal(
+    formatPhaseCounterLine('sync_users', skippedPayload, t),
+    '共 4 名用户：已新建 1 名用户 · 无变化 2 名用户 · 跳过无效 1 名用户',
+  );
 
   // fetch_directory: 无 counters
   const fetchPayload: UserSyncRunProgressPayload = {
@@ -288,6 +384,41 @@ function testFormatPhaseBusinessResult() {
     '已核验 1 名用户，未发现变更',
   );
   console.log('  ✓ formatPhaseBusinessResult');
+}
+
+// --- formatConflictUsernamesLine ---
+
+function testFormatConflictUsernamesLine() {
+  // 终态有冲突名单 → 按当前语言分隔符拼接
+  assert.equal(
+    formatConflictUsernamesLine({ conflict_usernames: ['leviathan', 'alice'] }, t),
+    '冲突用户：leviathan、alice',
+  );
+  // 无冲突 / 缺字段 / 空 payload → 空串,不占行
+  assert.equal(formatConflictUsernamesLine({ conflict_usernames: [] }, t), '');
+  assert.equal(formatConflictUsernamesLine({}, t), '');
+  assert.equal(formatConflictUsernamesLine(null, t), '');
+  assert.equal(formatConflictUsernamesLine(undefined, t), '');
+  // 进行中即使 payload 已有名单也不展示
+  assert.equal(
+    formatConflictUsernamesLine(
+      {
+        conflict_usernames: ['leviathan'],
+        phase_progress: { sync_users: { current: 1, total: 4, status: 'process', counters: { conflict_users: 1 } } },
+      },
+      t,
+    ),
+    '',
+  );
+  // 脏数据(非字符串/空串)被过滤
+  assert.equal(
+    formatConflictUsernamesLine(
+      { conflict_usernames: ['bob', '', 1 as unknown as string] },
+      t,
+    ),
+    '冲突用户：bob',
+  );
+  console.log('  ✓ formatConflictUsernamesLine');
 }
 
 // --- formatEmailNotificationResult ---
@@ -552,6 +683,7 @@ function main() {
   testDrawerVisualHierarchy();
   testFormatPhaseCounterLine();
   testFormatPhaseBusinessResult();
+  testFormatConflictUsernamesLine();
   testFormatEmailNotificationResult();
   testFormatPhaseErrorMessage();
   testFormatPhaseProgressMeta();

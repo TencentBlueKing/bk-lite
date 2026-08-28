@@ -154,7 +154,7 @@ describe('APM 应用拓扑聚焦', () => {
     ]);
   });
 
-  it('应用聚焦不把推断下游算进一跳邻居', () => {
+  it('应用聚焦保留本应用已插桩服务的直接推断下游', () => {
     const graph: ApmTopologyGraph = {
       nodes: [
         { ...node('checkout'), id: 'checkout', service_namespace: 'shop' },
@@ -166,8 +166,41 @@ describe('APM 应用拓扑聚焦', () => {
       data_state: 'available',
     };
     const focused = focusApplicationTopology(graph, 'shop');
-    expect(focused.graph.nodes.map((item) => item.id)).toEqual(['checkout']);
-    expect(focused.graph.edges).toEqual([]);
+    expect(focused.graph.nodes.map((item) => item.id).sort()).toEqual(['checkout', 'inferred:prod:mysql']);
+    expect(focused.graph.edges.map((item) => `${item.source}>${item.target}`)).toEqual(['checkout>inferred:prod:mysql']);
+  });
+
+  it('应用聚焦不把一跳邻居的推断下游算进本应用图', () => {
+    const graph: ApmTopologyGraph = {
+      nodes: [
+        { ...node('checkout'), id: 'checkout', service_namespace: 'shop' },
+        { ...node('invoice'), id: 'invoice', service_namespace: 'billing' },
+        { ...node('mysql'), id: 'inferred:prod:mysql', kind: 'inferred', fold_key: 'mysql' },
+      ],
+      edges: [edge('checkout', 'invoice'), edge('invoice', 'inferred:prod:mysql')],
+      sampled_traces: 1,
+      truncated: false,
+      data_state: 'available',
+    };
+    const focused = focusApplicationTopology(graph, 'shop');
+    expect(focused.graph.nodes.map((item) => item.id).sort()).toEqual(['checkout', 'invoice']);
+    expect(focused.graph.edges.map((item) => `${item.source}>${item.target}`)).toEqual(['checkout>invoice']);
+  });
+
+  it('应用聚焦保留连入焦点服务的用户请求入口节点', () => {
+    const graph: ApmTopologyGraph = {
+      nodes: [
+        { ...node('checkout'), id: 'checkout', service_namespace: 'shop' },
+        { ...node('user_request'), id: 'user_request:prod', service_namespace: '', kind: 'user_request', health: 'unknown' },
+      ],
+      edges: [edge('user_request:prod', 'checkout')],
+      sampled_traces: 1,
+      truncated: false,
+      data_state: 'available',
+    };
+    const focused = focusApplicationTopology(graph, 'shop');
+    expect(focused.graph.nodes.map((item) => item.id).sort()).toEqual(['checkout', 'user_request:prod']);
+    expect(focused.graph.edges.map((item) => `${item.source}>${item.target}`)).toEqual(['user_request:prod>checkout']);
   });
 });
 

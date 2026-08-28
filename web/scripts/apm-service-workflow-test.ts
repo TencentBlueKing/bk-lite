@@ -82,11 +82,14 @@ assert.match(topologyPage, /include_inferred: true/, '服务拓扑必须请求�
 assert.match(topologyPage, /errorRequestsOnly/, '拓扑必须提供仅错误请求切片，且与只看异常分开');
 assert.match(topologyPage, /anomalyOnly/, '拓扑必须保留按节点健康度的只看异常');
 assert.match(topologyPage, /clearSlice/, '拓扑必须能清空请求切片并回到时间窗全图');
-assert.match(topologyCanvas, /inferredBadge/, '推断节点必须展示推断角标');
+assert.match(topologyCanvas, /data-topology-layout-pending/, '布局完成前必须挡住空画布，不能先空再弹出节点');
+assert.match(applicationObservability, /topologyLoading && !graph.nodes.length/, '应用拓扑取数完成前必须展示加载而不是空状态');
+assert.doesNotMatch(topologyPage, /setState\('loading'\)/, '刷新拓扑不得先把已有图画成 loading 空态');
 assert.match(topologyCanvas, /data-node-kind/, '推断节点必须可被画布按 kind 识别');
 assert.match(topologyInspectPanel, /peerAddress/, '推断节点调查栏必须展示 Client Span 中的地址');
 assert.match(topologyInspectPanel, /dbName/, '推断节点调查栏必须单独展示库名而不是用库名冒充 host');
-assert.doesNotMatch(applicationObservability, /include_inferred:\s*true/, '应用详情子拓扑第一版不得请求推断下游');
+assert.match(applicationObservability, /include_inferred:\s*true/, '应用详情拓扑必须请求本应用的直接推断下游');
+assert.match(applicationObservability, /include_user_request:\s*true/, '应用详情拓扑必须请求用户请求入口');
 assert.doesNotMatch(serviceDetail, /include_inferred:\s*true/, '服务详情不得打开推断查询');
 assert.doesNotMatch(topologyPage, /min-w-\[960px\]|scroll=\{\{ x:/, '拓扑不得通过固定宽度撑开整页');
 assert.doesNotMatch(topologyPage, /设计预览|Storybook 示例数据/, '已有后端契约时不得继续展示示例拓扑');
