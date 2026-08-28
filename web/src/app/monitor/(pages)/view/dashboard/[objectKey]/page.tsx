@@ -46,7 +46,7 @@ export default function ProfessionalDashboardPage() {
     };
   }, [objectKey]);
 
-  if (DashboardComponent && loadedObjectKey) {
+  if (DashboardComponent && loadedObjectKey === objectKey) {
     return <DashboardComponent key={loadedObjectKey} />;
   }
 

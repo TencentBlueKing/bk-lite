@@ -5,8 +5,6 @@ import { Segmented } from 'antd';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
-import { resolveFlowViewSwitchPlugins } from '@/app/monitor/mocks/monitor-flow-mock';
-import { isMonitorViewDemoEnabled } from '@/app/monitor/mocks/monitor-view-demo-data';
 import type { FlowDashboardPlugin } from '../utils/flow-dashboard-route';
 import { getDashboardDisplayModeFromParams } from '../utils/display-mode-route';
 import {
@@ -120,20 +118,13 @@ export function CollectProtocolBar({
       active = false;
     };
   }, [
-    getEffectivePlugins,
     isLoading,
     pluginCacheKey,
     resolvedInstanceId,
     resolvedMonitorObjectId,
   ]);
 
-  const resolvedPlugins = useMemo(
-    () => resolveFlowViewSwitchPlugins(plugins, {
-      routeKey: activeRouteKey,
-      monitorObjectName: resolvedObjectName,
-    }),
-    [activeRouteKey, plugins, resolvedObjectName],
-  );
+  const resolvedPlugins = useMemo(() => plugins ?? [], [plugins]);
 
   const availableViews = useMemo(
     () => getAvailableFlowViews(resolvedPlugins),
@@ -159,7 +150,6 @@ export function CollectProtocolBar({
 
   const awaitingPlugins =
     Boolean(pluginCacheKey)
-    && !isMonitorViewDemoEnabled()
     && (plugins === null || pluginsLoading);
   const shouldRenderBar =
     isDashboardMode &&
