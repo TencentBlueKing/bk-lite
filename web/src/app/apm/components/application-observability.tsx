@@ -107,6 +107,7 @@ export default function ApplicationObservability({
     getTopology({
       started_at: startedAt.toISOString(),
       ended_at: endedAt.toISOString(),
+      include_inferred: true,
       include_user_request: true,
     })
       .then((topology) => {

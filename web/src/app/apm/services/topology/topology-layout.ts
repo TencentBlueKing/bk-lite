@@ -271,7 +271,7 @@ export const focusApplicationTopology = (
   graph.edges.forEach((edge) => {
     const source = nodeMap.get(edge.source);
     const target = nodeMap.get(edge.target);
-    if (focusNodeIds.has(edge.source) && !isInferredTopologyNode(target)) visibleIds.add(edge.target);
+    if (focusNodeIds.has(edge.source)) visibleIds.add(edge.target);
     if (focusNodeIds.has(edge.target) && !isInferredTopologyNode(source)) visibleIds.add(edge.source);
   });
   return {
