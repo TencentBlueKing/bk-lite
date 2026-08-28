@@ -31,6 +31,7 @@ def patch_graph(monkeypatch):
             "apps.cmdb.services.model.GraphClient",
             lambda *a, **k: FakeGraph(entities),
         )
+
     return _patch
 
 
@@ -43,10 +44,12 @@ def patch_graph(monkeypatch):
 def test_search_model_postprocess(patch_graph):
     from apps.cmdb.services.model import ModelManage
 
-    patch_graph([
-        {"model_id": "host", "model_name": "主机", "_id": 1},
-        {"model_id": "switch", "model_name": "交换机", "_id": 2},
-    ])
+    patch_graph(
+        [
+            {"model_id": "host", "model_name": "主机", "_id": 1},
+            {"model_id": "switch", "model_name": "交换机", "_id": 2},
+        ]
+    )
     models = ModelManage.search_model()
     assert len(models) == 2
     # 后处理补充 order_id
@@ -123,14 +126,18 @@ def test_create_model_attr(fake_graph, monkeypatch):
     from apps.cmdb.services.model import ModelManage
 
     new_attr = {"attr_id": "ip", "attr_name": "IP", "attr_type": "str"}
-    updated_attrs = json.dumps([
-        {"attr_id": "name", "attr_name": "名称", "attr_type": "str"},
-        new_attr,
-    ])
+    updated_attrs = json.dumps(
+        [
+            {"attr_id": "name", "attr_name": "名称", "attr_type": "str"},
+            new_attr,
+        ]
+    )
     fake_graph(
         "apps.cmdb.services.model",
-        query_entity=([{"model_id": "host", "model_name": "主机", "_id": 1,
-                        "attrs": json.dumps([{"attr_id": "name", "attr_name": "名称", "attr_type": "str"}])}], 1),
+        query_entity=(
+            [{"model_id": "host", "model_name": "主机", "_id": 1, "attrs": json.dumps([{"attr_id": "name", "attr_name": "名称", "attr_type": "str"}])}],
+            1,
+        ),
         set_entity_properties=[{"_id": 1, "attrs": updated_attrs}],
     )
     # 屏蔽缓存刷新与变更记录（避免图/DB 依赖）
@@ -155,18 +162,31 @@ def test_create_model_attr_audit_log_uses_correct_attr(fake_graph, monkeypatch):
     target_attr = {"attr_id": "ip", "attr_name": "IP", "attr_type": "str"}
     decoy_attr = {"attr_id": "zzz_last", "attr_name": "末位属性", "attr_type": "str"}
     # 保存后 attrs 中 target 在中间，decoy 在末尾
-    updated_attrs = json.dumps([
-        {"attr_id": "name", "attr_name": "名称", "attr_type": "str"},
-        target_attr,
-        decoy_attr,
-    ])
+    updated_attrs = json.dumps(
+        [
+            {"attr_id": "name", "attr_name": "名称", "attr_type": "str"},
+            target_attr,
+            decoy_attr,
+        ]
+    )
     fake_graph(
         "apps.cmdb.services.model",
-        query_entity=([{"model_id": "host", "model_name": "主机", "_id": 1,
-                        "attrs": json.dumps([
+        query_entity=(
+            [
+                {
+                    "model_id": "host",
+                    "model_name": "主机",
+                    "_id": 1,
+                    "attrs": json.dumps(
+                        [
                             {"attr_id": "name", "attr_name": "名称", "attr_type": "str"},
                             decoy_attr,
-                        ])}], 1),
+                        ]
+                    ),
+                }
+            ],
+            1,
+        ),
         set_entity_properties=[{"_id": 1, "attrs": updated_attrs}],
     )
     monkeypatch.setattr("apps.cmdb.display_field.ExcludeFieldsCache.update_on_model_change", lambda model_id: None)
@@ -188,9 +208,7 @@ def test_create_model_attr_audit_log_uses_correct_attr(fake_graph, monkeypatch):
 
     # 修复前（无 break）：attr 总是 decoy_attr（列表最后一项），captured["attr_id"] == "zzz_last"
     # 修复后（有 break）：attr 是 target_attr，captured["attr_id"] == "ip"
-    assert captured.get("attr_id") == "ip", (
-        f"变更日志应使用目标属性 ip，实际使用了 {captured.get('attr_id')!r}（#3663 回归）"
-    )
+    assert captured.get("attr_id") == "ip", f"变更日志应使用目标属性 ip，实际使用了 {captured.get('attr_id')!r}（#3663 回归）"
 
 
 @pytest.mark.django_db
@@ -272,9 +290,7 @@ def test_create_model_uses_targeted_conflict_query(fake_graph, monkeypatch):
 
     # 修复后第一个 query_entity 调用（唯一性校验）传入的 params 不应为空列表
     first_params = qe_calls[0][0][1] if len(qe_calls[0][0]) > 1 else qe_calls[0][1].get("params", [])
-    assert first_params != [], (
-        "create_model 仍在用全量查询（params=[]）；应改为定点过滤 model_id/model_name"
-    )
+    assert first_params != [], "create_model 仍在用全量查询（params=[]）；应改为定点过滤 model_id/model_name"
     # 确认过滤条件包含 model_id 和 model_name 字段
     filtered_fields = {f["field"] for f in first_params}
     assert "model_id" in filtered_fields, "唯一性查询必须包含 model_id 过滤条件"
@@ -347,3 +363,136 @@ def test_create_model_raises_on_duplicate_model_name(fake_graph, monkeypatch):
     }
     with pytest.raises(BaseAppException):
         ModelManage.create_model(data)
+
+
+def _create_entity_echo(label, properties, check_attr_map, exist_items, *a, **k):
+    return {**properties, "_id": 10}
+
+
+@pytest.mark.django_db
+def test_create_model_defaults_app_topo_layer_to_none(fake_graph, monkeypatch):
+    from apps.cmdb.services.model import ModelManage
+
+    _patch_create_model_side_effects(monkeypatch)
+    fake = fake_graph(
+        "apps.cmdb.services.model",
+        create_entity=_create_entity_echo,
+        create_edge={},
+    )
+
+    ModelManage.create_model({"model_id": "custom_biz", "model_name": "业务", "classification_id": "infra"})
+
+    create_calls = [call for call in fake.calls if call[0] == "create_entity"]
+    assert create_calls[0][1][1]["app_topo_layer"] == "none"
+
+
+@pytest.mark.django_db
+def test_create_model_persists_explicit_app_topo_layer(fake_graph, monkeypatch):
+    from apps.cmdb.services.model import ModelManage
+
+    _patch_create_model_side_effects(monkeypatch)
+    fake = fake_graph(
+        "apps.cmdb.services.model",
+        create_entity=_create_entity_echo,
+        create_edge={},
+    )
+
+    ModelManage.create_model(
+        {
+            "model_id": "custom_app",
+            "model_name": "业务应用",
+            "classification_id": "infra",
+            "app_topo_layer": "应用",
+        }
+    )
+
+    create_calls = [call for call in fake.calls if call[0] == "create_entity"]
+    assert create_calls[0][1][1]["app_topo_layer"] == "service"
+
+
+@pytest.mark.django_db
+def test_create_model_rejects_invalid_app_topo_layer(fake_graph, monkeypatch):
+    from apps.cmdb.services.model import ModelManage
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    _patch_create_model_side_effects(monkeypatch)
+    fake_graph(
+        "apps.cmdb.services.model",
+        create_entity=_create_entity_echo,
+        create_edge={},
+    )
+
+    with pytest.raises(BaseAppException):
+        ModelManage.create_model(
+            {
+                "model_id": "custom_bad",
+                "model_name": "非法层",
+                "classification_id": "infra",
+                "app_topo_layer": "root",
+            }
+        )
+
+
+@pytest.mark.django_db
+def test_update_model_can_set_app_topo_layer(fake_graph):
+    from apps.cmdb.services.model import ModelManage
+
+    fake = fake_graph(
+        "apps.cmdb.services.model",
+        query_entity=([], 0),
+        set_entity_properties=[{"_id": 5, "app_topo_layer": "host"}],
+    )
+
+    ModelManage.update_model(
+        5,
+        {"model_id": "custom_biz", "model_name": "业务", "app_topo_layer": "host"},
+    )
+
+    update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+    assert update_calls[0][1][2]["app_topo_layer"] == "host"
+
+
+@pytest.mark.django_db
+def test_update_builtin_model_can_set_app_topo_layer_only(fake_graph):
+    from apps.cmdb.services.model import ModelManage
+
+    fake = fake_graph(
+        "apps.cmdb.services.model",
+        query_entity=(
+            [{"_id": 5, "model_id": "host", "model_name": "主机", "is_pre": True}],
+            1,
+        ),
+        set_entity_properties=[{"_id": 5, "app_topo_layer": "service"}],
+    )
+
+    ModelManage.update_model(
+        5,
+        {"model_id": "host", "app_topo_layer": "应用"},
+    )
+
+    update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+    assert update_calls[0][1][2] == {"app_topo_layer": "service"}
+
+
+@pytest.mark.django_db
+def test_update_builtin_model_rejects_non_layer_fields(fake_graph):
+    from apps.cmdb.services.model import ModelManage
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    fake_graph(
+        "apps.cmdb.services.model",
+        query_entity=(
+            [{"_id": 5, "model_id": "host", "model_name": "主机", "is_pre": True}],
+            1,
+        ),
+    )
+
+    with pytest.raises(BaseAppException, match="内置模型仅允许修改应用拓扑层级"):
+        ModelManage.update_model(
+            5,
+            {
+                "model_id": "host",
+                "model_name": "改名",
+                "app_topo_layer": "host",
+            },
+        )

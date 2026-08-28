@@ -387,17 +387,54 @@ class TestPrepareAttr:
         assert out["option"] == [{"id": "1", "name": "运行中"}]
 
 
+class TestBuildModelPayloadAppTopoLayer:
+    def _make(self, monkeypatch, model_config):
+        from apps.cmdb.model_migrate import migrete_service
+
+        monkeypatch.setattr(migrete_service.ModelMigrate, "get_model_config", lambda self: model_config)
+        monkeypatch.setattr(migrete_service, "get_default_group_id", lambda: [1])
+        return migrete_service.ModelMigrate(file_source=None, is_pre=True)
+
+    def test_empty_layer_becomes_none(self, monkeypatch):
+        m = self._make(monkeypatch, {"models": [{"model_id": "custom_biz", "classification_id": "infra"}]})
+        models, _ = m._build_model_payload()
+        assert models[0]["app_topo_layer"] == "none"
+
+    def test_chinese_layer_is_normalized(self, monkeypatch):
+        m = self._make(
+            monkeypatch,
+            {"models": [{"model_id": "custom_app", "classification_id": "infra", "app_topo_layer": "应用"}]},
+        )
+        models, _ = m._build_model_payload()
+        assert models[0]["app_topo_layer"] == "service"
+
+    def test_invalid_layer_is_rejected(self, monkeypatch):
+        m = self._make(
+            monkeypatch,
+            {"models": [{"model_id": "custom_bad", "classification_id": "infra", "app_topo_layer": "root"}]},
+        )
+        with pytest.raises(BaseAppException):
+            m._build_model_payload()
+
+
 # ===========================================================================
 # ModelMigrate —— 需要真实 DB（FieldGroup / PublicEnumLibrary）+ mock GraphClient
 # ===========================================================================
 @pytest.mark.django_db
 class TestModelMigrateWithDB:
-    def _make(self, monkeypatch, model_config, is_pre=True):
+    def _make(self, monkeypatch, model_config, is_pre=True, sync_app_topo_layer=False):
         from apps.cmdb.model_migrate import migrete_service
 
         monkeypatch.setattr(migrete_service.ModelMigrate, "get_model_config", lambda self: model_config)
         monkeypatch.setattr(migrete_service, "get_default_group_id", lambda: [99])
-        return migrete_service.ModelMigrate(file_source=None, is_pre=is_pre), migrete_service
+        return (
+            migrete_service.ModelMigrate(
+                file_source=None,
+                is_pre=is_pre,
+                sync_app_topo_layer=sync_app_topo_layer,
+            ),
+            migrete_service,
+        )
 
     def test_migrate_public_enum_libraries_create_and_skip(self, monkeypatch):
         cfg = {
@@ -776,7 +813,214 @@ class TestModelMigrateWithDB:
 
         update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
         assert len(update_calls) == 1
-        assert update_calls[0][1][2] == {"model_name": "SCP云平台"}
+        assert update_calls[0][1][2] == {
+            "model_name": "SCP云平台",
+            "app_topo_layer": "infrastructure",
+        }
+        assert "icn" not in update_calls[0][1][2]
+
+    def test_migrate_models_fills_missing_app_topo_layer_on_builtin(self, monkeypatch):
+        from apps.cmdb.constants.constants import CLASSIFICATION, MODEL
+
+        cfg = {
+            "models": [
+                {
+                    "model_id": "host",
+                    "model_name": "主机",
+                    "classification_id": "infra",
+                    "app_topo_layer": "host",
+                }
+            ]
+        }
+        m, mod = self._make(monkeypatch, cfg, is_pre=True)
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+        existing = {
+            "_id": "model-1",
+            "model_id": "host",
+            "model_name": "主机",
+            "classification_id": "infra",
+            "attrs": "[]",
+        }
+        fake = _patch_graph(
+            monkeypatch,
+            "apps.cmdb.model_migrate.migrete_service",
+            query_entity=lambda label, *args, **kwargs: (
+                ([existing], 1)
+                if label == MODEL
+                else ([{"_id": "classification-1", "classification_id": "infra"}], 1)
+                if label == CLASSIFICATION
+                else ([], 0)
+            ),
+            set_entity_properties=[{**existing, "app_topo_layer": "host"}],
+        )
+
+        m.migrate_models()
+
+        update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+        assert len(update_calls) == 1
+        assert update_calls[0][1][2] == {"app_topo_layer": "host"}
+
+    def test_migrate_models_keeps_existing_app_topo_layer_on_builtin(self, monkeypatch):
+        from apps.cmdb.constants.constants import CLASSIFICATION, MODEL
+
+        cfg = {
+            "models": [
+                {
+                    "model_id": "host",
+                    "model_name": "主机",
+                    "classification_id": "infra",
+                    "app_topo_layer": "host",
+                }
+            ]
+        }
+        m, mod = self._make(monkeypatch, cfg, is_pre=True)
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+        existing = {
+            "_id": "model-1",
+            "model_id": "host",
+            "model_name": "主机",
+            "classification_id": "infra",
+            "app_topo_layer": "service",
+            "attrs": "[]",
+        }
+        fake = _patch_graph(
+            monkeypatch,
+            "apps.cmdb.model_migrate.migrete_service",
+            query_entity=lambda label, *args, **kwargs: (
+                ([existing], 1)
+                if label == MODEL
+                else ([{"_id": "classification-1", "classification_id": "infra"}], 1)
+                if label == CLASSIFICATION
+                else ([], 0)
+            ),
+        )
+
+        m.migrate_models()
+
+        update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+        assert update_calls == []
+
+    def test_migrate_models_sync_app_topo_layer_overwrites_existing_on_builtin(self, monkeypatch):
+        from apps.cmdb.constants.constants import CLASSIFICATION, MODEL
+
+        cfg = {
+            "models": [
+                {
+                    "model_id": "host",
+                    "model_name": "主机",
+                    "classification_id": "infra",
+                    "app_topo_layer": "host",
+                }
+            ]
+        }
+        m, mod = self._make(monkeypatch, cfg, is_pre=True, sync_app_topo_layer=True)
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+        existing = {
+            "_id": "model-1",
+            "model_id": "host",
+            "model_name": "主机",
+            "classification_id": "infra",
+            "app_topo_layer": "infrastructure",
+            "attrs": "[]",
+        }
+        fake = _patch_graph(
+            monkeypatch,
+            "apps.cmdb.model_migrate.migrete_service",
+            query_entity=lambda label, *args, **kwargs: (
+                ([existing], 1)
+                if label == MODEL
+                else ([{"_id": "classification-1", "classification_id": "infra"}], 1)
+                if label == CLASSIFICATION
+                else ([], 0)
+            ),
+            set_entity_properties=[{**existing, "app_topo_layer": "host"}],
+        )
+
+        m.migrate_models()
+
+        update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+        assert len(update_calls) == 1
+        assert update_calls[0][1][2] == {"app_topo_layer": "host"}
+
+    def test_migrate_models_user_import_updates_explicit_app_topo_layer(self, monkeypatch):
+        from apps.cmdb.constants.constants import CLASSIFICATION, MODEL
+
+        cfg = {
+            "models": [
+                {
+                    "model_id": "custom_biz",
+                    "model_name": "业务",
+                    "classification_id": "infra",
+                    "app_topo_layer": "应用",
+                }
+            ]
+        }
+        m, mod = self._make(monkeypatch, cfg, is_pre=False)
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+        existing = {
+            "_id": "model-1",
+            "model_id": "custom_biz",
+            "model_name": "业务",
+            "classification_id": "infra",
+            "app_topo_layer": "infrastructure",
+            "attrs": "[]",
+        }
+        fake = _patch_graph(
+            monkeypatch,
+            "apps.cmdb.model_migrate.migrete_service",
+            query_entity=lambda label, *args, **kwargs: (
+                ([existing], 1)
+                if label == MODEL
+                else ([{"_id": "classification-1", "classification_id": "infra"}], 1)
+                if label == CLASSIFICATION
+                else ([], 0)
+            ),
+            set_entity_properties=[{**existing, "app_topo_layer": "service"}],
+        )
+
+        m.migrate_models()
+
+        update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+        assert len(update_calls) == 1
+        assert update_calls[0][1][2] == {"app_topo_layer": "service"}
+
+    def test_migrate_models_user_import_skips_empty_layer_on_existing(self, monkeypatch):
+        from apps.cmdb.constants.constants import CLASSIFICATION, MODEL
+
+        cfg = {
+            "models": [
+                {
+                    "model_id": "custom_biz",
+                    "model_name": "业务",
+                    "classification_id": "infra",
+                }
+            ]
+        }
+        m, mod = self._make(monkeypatch, cfg, is_pre=False)
+        monkeypatch.setattr(mod.ExcludeFieldsCache, "refresh_cache", classmethod(lambda cls: True))
+        existing = {
+            "_id": "model-1",
+            "model_id": "custom_biz",
+            "model_name": "业务",
+            "classification_id": "infra",
+            "attrs": "[]",
+        }
+        fake = _patch_graph(
+            monkeypatch,
+            "apps.cmdb.model_migrate.migrete_service",
+            query_entity=lambda label, *args, **kwargs: (
+                ([existing], 1)
+                if label == MODEL
+                else ([{"_id": "classification-1", "classification_id": "infra"}], 1)
+                if label == CLASSIFICATION
+                else ([], 0)
+            ),
+        )
+
+        m.migrate_models()
+
+        update_calls = [call for call in fake.calls if call[0] == "set_entity_properties"]
+        assert update_calls == []
 
     def test_migrate_models_skips_existing_model_when_name_is_current(self, monkeypatch):
         from apps.cmdb.constants.constants import CLASSIFICATION, MODEL

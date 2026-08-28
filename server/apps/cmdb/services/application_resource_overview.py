@@ -144,16 +144,30 @@ class ApplicationResourceOverviewService:
         return str(inst_uuid)
 
     @staticmethod
-    def _normalize_node(instance: dict, hop: int = 0) -> dict | None:
+    def _app_topo_layer_for_model(model_id: str, cache: dict | None = None) -> str:
+        from apps.cmdb.services.app_topo_layer import resolve_app_topo_layer
+
+        if cache is not None and model_id in cache:
+            return cache[model_id]
+        model = ModelManage.search_model_info(model_id) or {}
+        layer = resolve_app_topo_layer(model_id, model.get("app_topo_layer"))
+        if cache is not None:
+            cache[model_id] = layer
+        return layer
+
+    @staticmethod
+    def _normalize_node(instance: dict, hop: int = 0, layer_cache: dict | None = None) -> dict | None:
         external_id = ApplicationResourceOverviewService._external_id(instance)
         if not external_id:
             return None
+        model_id = instance.get("model_id", "")
         return {
             "id": external_id,
             "name": instance.get("inst_name") or external_id,
-            "model_id": instance.get("model_id", ""),
+            "model_id": model_id,
             "hop": hop,
-            "category": ApplicationResourceOverviewService._category_for_model(instance.get("model_id", "")),
+            "category": ApplicationResourceOverviewService._category_for_model(model_id),
+            "app_topo_layer": ApplicationResourceOverviewService._app_topo_layer_for_model(model_id, layer_cache),
         }
 
     @staticmethod
@@ -221,7 +235,8 @@ class ApplicationResourceOverviewService:
         user=None,
     ) -> dict:
         center = InstanceManage.query_entity_by_id(int(inst_id)) or {}
-        center_node = ApplicationResourceOverviewService._normalize_node(center, hop=0)
+        layer_cache: dict[str, str] = {}
+        center_node = ApplicationResourceOverviewService._normalize_node(center, hop=0, layer_cache=layer_cache)
         if not center_node:
             return {"center": {}, "nodes": [], "links": [], "truncated": False}
 
@@ -250,7 +265,7 @@ class ApplicationResourceOverviewService:
                         other_inst_id = int(instance.get("_id"))
                     except (TypeError, ValueError):
                         continue
-                    other_node = ApplicationResourceOverviewService._normalize_node(instance, hop=hop + 1)
+                    other_node = ApplicationResourceOverviewService._normalize_node(instance, hop=hop + 1, layer_cache=layer_cache)
                     if not other_node:
                         continue
                     other_model_id = instance.get("model_id", "")
