@@ -25,6 +25,8 @@ export interface DashboardPageHeaderProps {
   onRefresh: () => void;
   /** 是否在标题行内渲染时间选择器；置 false 时由调用方自行放置（默认 true，保持原行为）。 */
   showTimeSelector?: boolean;
+  /** SNMP / NetFlow / sFlow 跨路由切换（与展示模式 Segmented 并列）。 */
+  viewSwitchSlot?: React.ReactNode;
   styles: DashboardPageHeaderStyles;
 }
 
@@ -43,6 +45,7 @@ export function DashboardPageHeader({
   onFrequenceChange,
   onRefresh,
   showTimeSelector = true,
+  viewSwitchSlot,
   styles
 }: DashboardPageHeaderProps) {
   const router = useRouter();
@@ -71,6 +74,7 @@ export function DashboardPageHeader({
         <h1 className={styles.title}>{title}</h1>
       </div>
       <div className={styles.controlsWrap}>
+        {viewSwitchSlot}
         <Segmented
           size="middle"
           className={styles.modeSegmented}

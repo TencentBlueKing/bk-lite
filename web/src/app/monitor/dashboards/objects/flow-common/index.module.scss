@@ -1,0 +1,42 @@
+@use '../common/simple-dashboard.module.scss';
+
+.sectionLabel {
+  margin: 2px 2px 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eceff4;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8c95a8;
+}
+
+.dashboardSection + .sectionLabel {
+  margin-top: 8px;
+}
+
+.flowTablePanel {
+  min-height: 280px;
+}
+
+.flowTableWrap {
+  :global(.ant-table) {
+    background: transparent;
+    table-layout: fixed;
+  }
+
+  :global(.ant-table-thead > tr > th),
+  :global(.ant-table-tbody > tr > td) {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :global(.ant-table-tbody > tr > td:nth-child(2)),
+  :global(.ant-table-tbody > tr > td:nth-child(4)) {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+  }
+}
+
+:global(html.dark) .sectionLabel {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
