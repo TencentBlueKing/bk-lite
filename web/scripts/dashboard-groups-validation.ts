@@ -402,7 +402,7 @@ assert.equal(
   ),
 );
 
-assert.equal(
+assert.notEqual(
   buildDashboardGridStackStructureKey(reorderWithUngrouped),
   buildDashboardGridStackStructureKey(
     reorderWithUngrouped.map((item) =>

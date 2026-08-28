@@ -1,4 +1,6 @@
 #!/bin/sh
+# 仓库唯一 pre-commit 入口（web/mobile 的 prepare 均指向根目录 .husky）。
+# web 变更：变更文件 eslint + 全仓 pnpm type-check；mobile 同理。
 
 CHANGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
 

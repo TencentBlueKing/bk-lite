@@ -11,7 +11,7 @@
 3. 社区版模块日志：`web/src/app/<module>/public/versions/<module>/<zh|en>/YYYY-MM-DD.md`
 4. 商业版模块日志：`enterprise/web/src/app/<module>/public/versions/<module>/<zh|en>/<商业月版本>.md`，例如 2025年9月为 `6.0.md`，2025年10月为 `6.1.md`
 
-涉及 12 个模块：`ops-console`、`system-manager`、`monitor`、`log`、`node-manager`、`cmdb`、`alarm`、`job`、`ops-analysis`、`opspilot`、`mlops`、`patch-manager`。
+涉及 13 个模块：`ops-console`、`system-manager`、`monitor`、`log`、`node-manager`、`cmdb`、`alarm`、`job`、`ops-analysis`、`opspilot`、`mlops`、`patch-manager`、`apm`。
 
 ## 总原则
 
@@ -220,6 +220,8 @@ Release Month: September 2025
 - `web/src/app/mlops/public/versions/mlops/en`
 - `web/src/app/patch-manager/public/versions/patch-manager/zh`
 - `web/src/app/patch-manager/public/versions/patch-manager/en`
+- `web/src/app/apm/public/versions/apm/zh`
+- `web/src/app/apm/public/versions/apm/en`
 
 商业版输出目录：
 
@@ -247,11 +249,13 @@ Release Month: September 2025
 - `enterprise/web/src/app/mlops/public/versions/mlops/en`
 - `enterprise/web/src/app/patch-manager/public/versions/patch-manager/zh`
 - `enterprise/web/src/app/patch-manager/public/versions/patch-manager/en`
+- `enterprise/web/src/app/apm/public/versions/apm/zh`
+- `enterprise/web/src/app/apm/public/versions/apm/en`
 
 ## Enterprise 目录策略
 
 - `enterprise/web` 使用与社区版 `web` 相同的同构覆盖路径。
-- 即使 `enterprise/web` 当前没有对应模块目录，也要创建 12 个模块的 `public/versions/<module>/<zh|en>` 目录。
+- 即使 `enterprise/web` 当前没有对应模块目录，也要创建 13 个模块的 `public/versions/<module>/<zh|en>` 目录。
 - 企业出包会用 enterprise overlay 覆盖根目录，AI 只负责在 `enterprise/web` 写入同构覆盖路径下的商业版日志。
 
 ## 模块映射规则
@@ -271,6 +275,7 @@ Release Month: September 2025
 - `opspilot`：模块名为 `OpsPilot`、`OpsPilot 模块`。
 - `mlops`：模块名为 `MLOps`。
 - `patch-manager`：模块名为 `补丁管理`。
+- `apm`：模块名为 `APM`。
 
 ## 执行顺序
 
@@ -280,8 +285,8 @@ Release Month: September 2025
 4. 首次迁移时，将旧标准文件归档到 `docs/changelog/release/legacy/`，并清理社区版 Web 目录下旧的 `3.1.x.md` 文件。
 5. 从默认日期块生成缺失的社区版标准文件，输出到 `docs/changelog/release/community/YYYY-MM-DD.md`。
 6. 从默认日期块和 `[商业版]` 日期块按自然月生成或更新商业版标准文件，输出到 `docs/changelog/release/enterprise/<月版本>.md`。
-7. 从社区版标准文件同步到 `web/src/app` 下 12 个模块的 `zh` 和 `en` 目录。
-8. 从商业版标准文件同步到 `enterprise/web/src/app` 下 12 个模块的 `zh` 和 `en` 目录。
+7. 从社区版标准文件同步到 `web/src/app` 下 13 个模块的 `zh` 和 `en` 目录。
+8. 从商业版标准文件同步到 `enterprise/web/src/app` 下 13 个模块的 `zh` 和 `en` 目录。
 9. 运行校验，确认命名、日期、月版本映射、模块过滤、商业专属内容排除、英文输出和旧文件归档都符合规则。
 
 ## 校验规则
@@ -295,13 +300,13 @@ Release Month: September 2025
 5. 商业版标准文件和商业版模块文件名是否全部为 `大版本.小版本.md`，例如 `6.1.md`。
 6. 商业版月份映射是否正确：`2025年9月 -> 6.0`、`2025年10月 -> 6.1`、`2026年5月 -> 6.8`、`2026年6月 -> 6.9`。
 7. `ops-console` 是否包含全量模块内容。
-8. `system-manager`、`monitor`、`log`、`node-manager`、`cmdb`、`alarm`、`job`、`ops-analysis`、`opspilot`、`mlops`、`patch-manager` 是否只包含本模块命中的内容。
+8. `system-manager`、`monitor`、`log`、`node-manager`、`cmdb`、`alarm`、`job`、`ops-analysis`、`opspilot`、`mlops`、`patch-manager`、`apm` 是否只包含本模块命中的内容。
 9. 所有英文模块文件是否不包含中文字符，且不是“英文标题 + 中文正文”的混合内容。
 10. 商业版标准文件和商业版模块文件是否不包含“了解更多产品能力...”以及官方文档和 Demo 环境文案。
 11. 旧 `3.1.x.md` 标准文件是否只存在于 `docs/changelog/release/legacy/`。
 12. 社区版 Web 版本目录是否不再包含旧 `3.1.x.md` 文件。
 13. 社区版和商业版模块目录是否没有生成无命中内容的空版本文件。
-14. `enterprise/web` 是否按同构覆盖路径创建 12 个模块的 `public/versions/<module>/<zh|en>` 目录。
+14. `enterprise/web` 是否按同构覆盖路径创建 13 个模块的 `public/versions/<module>/<zh|en>` 目录。
 15. 日期归一化是否正确，文件名是否使用补零的 `YYYY-MM-DD.md`，中文展示是否使用不补零日期。
 16. 商业版去重是否只按“模块名 + 分类 + 去除首尾空白后的条目正文”完全一致去重。
 
