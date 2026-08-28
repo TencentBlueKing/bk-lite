@@ -385,7 +385,7 @@ def test_import_users_creates_valid_rows_and_reports_conflicts():
         "total_count": 2,
         "success_count": 1,
         "failed_count": 1,
-        "failures": [{"row_number": 3, "username": "existing-import-user", "message": "用户名已存在"}],
+        "failures": [{"row_number": 3, "username": "existing-import-user", "message": "Username already exists"}],
     }
     user = User.objects.get(username="new-import-user")
     assert user.group_list == [group.id]

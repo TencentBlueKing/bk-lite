@@ -70,6 +70,60 @@ def test_password_validator_uses_requested_locale(locale, expected):
 
 
 @pytest.mark.parametrize(
+    ("locale", "users", "expected"),
+    [
+        ("en", [], "No users available to import"),
+        ("zh-Hans", [], "没有可导入的用户数据"),
+        ("en", [{}] * 501, "You can import at most 500 users at a time"),
+        ("zh-Hans", [{}] * 501, "单次最多导入 500 名用户"),
+    ],
+)
+def test_import_users_boundary_messages_use_request_locale(locale, users, expected):
+    request = request_with_locale(locale)
+    request.data = {"group_id": 1, "users": users, "file_name": "users.xlsx"}
+    response = UserViewSet.import_users.__wrapped__(UserViewSet(), request)
+    assert response.status_code == 400
+    assert response_payload(response) == {"result": False, "message": expected}
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("locale", "expected"),
+    [
+        ("en", "Password policy:"),
+        ("zh-Hans", "密码策略要求："),
+    ],
+)
+def test_password_policy_description_uses_requested_locale(locale, expected):
+    description = PasswordValidator.get_password_policy_description(locale=locale)
+    assert expected in description
+    assert "8-20" in description
+
+
+@pytest.mark.parametrize(
+    ("locale", "config", "path", "expected"),
+    [
+        ("en", "not-an-object", ("config",), "NATS config must be an object"),
+        ("zh-Hans", "not-an-object", ("config",), "NATS 配置必须是对象"),
+        ("en", {"supports_notify_person": "true"}, ("config", "supports_notify_person"), "must be a boolean"),
+        ("zh-Hans", {"supports_notify_person": "true"}, ("config", "supports_notify_person"), "必须是布尔值"),
+        ("en", {"nats_mode": "unknown-mode"}, ("config", "nats_mode"), "unsupported NATS extension mode"),
+        ("zh-Hans", {"nats_mode": "unknown-mode"}, ("config", "nats_mode"), "不支持的 NATS 扩展模式"),
+    ],
+)
+def test_nats_config_validation_uses_requested_locale(locale, config, path, expected):
+    serializer = object.__new__(ChannelSerializer)
+    serializer.parent = None
+    serializer._context = {"request": request_with_locale(locale)}
+    with pytest.raises(ValidationError) as exc_info:
+        serializer.validate_nats_config(config)
+    detail = exc_info.value.detail
+    for key in path:
+        detail = detail[key]
+    assert str(detail) == expected
+
+
+@pytest.mark.parametrize(
     ("serializer_class", "input_value", "expected"),
     [
         (ChannelSerializer, None, "Please select the channel organization"),
