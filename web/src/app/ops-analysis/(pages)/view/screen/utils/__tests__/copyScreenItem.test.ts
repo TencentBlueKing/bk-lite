@@ -21,11 +21,44 @@ const viewSets: ScreenViewSets = {
   ],
 };
 
+const sceneViewSets: ScreenViewSets = {
+  ...viewSets,
+  items: [
+    {
+      id: 'topo-1',
+      type: 'widget',
+      chartType: 'networkStatusTopology',
+      title: '网络拓扑',
+      x: 100,
+      y: 80,
+      w: 400,
+      h: 240,
+      zIndex: 2,
+      valueConfig: {
+        chartType: 'networkStatusTopology',
+        sceneWidgetType: 'networkStatusTopology',
+      },
+    },
+  ],
+};
+
+const applyDraft = (
+  draft: { current: ScreenViewSets },
+): ((
+  updater: ScreenViewSets | ((current: ScreenViewSets) => ScreenViewSets),
+) => void) => {
+  return (updater) => {
+    draft.current =
+      typeof updater === 'function' ? updater(draft.current) : updater;
+  };
+};
+
 describe('createScreenCopyItemHandler', () => {
   it('selects the new widget even when the draft updater has not run yet', () => {
     const setDraftViewSets = vi.fn();
     const setSelectedItemId = vi.fn();
     const handleCopyItem = createScreenCopyItemHandler({
+      getDraftViewSets: () => viewSets,
       setDraftViewSets,
       setSelectedItemId,
       rebuildFilters: (next) => next,
@@ -48,6 +81,7 @@ describe('createScreenCopyItemHandler', () => {
     };
     let selectedItemId: string | null = 'line-1';
     const handleCopyItem = createScreenCopyItemHandler({
+      getDraftViewSets: () => draft,
       setDraftViewSets,
       setSelectedItemId: (next) => {
         selectedItemId = typeof next === 'function' ? next(selectedItemId) : next;
@@ -65,5 +99,56 @@ describe('createScreenCopyItemHandler', () => {
     expect(selectedItemId).toBe('line-copy');
     expect(draft.decorations.title).toBe('queued');
     expect(draft.items.map((item) => item.id)).toEqual(['line-1', 'line-copy']);
+  });
+
+  it('does not select or insert when the source is a scene widget', () => {
+    const draft = { current: sceneViewSets };
+    const setSelectedItemId = vi.fn();
+    const handleCopyItem = createScreenCopyItemHandler({
+      getDraftViewSets: () => draft.current,
+      setDraftViewSets: applyDraft(draft),
+      setSelectedItemId,
+      rebuildFilters: (next) => next,
+      createId: () => 'topo-copy',
+    });
+
+    handleCopyItem('topo-1');
+
+    expect(setSelectedItemId).not.toHaveBeenCalled();
+    expect(draft.current.items.map((item) => item.id)).toEqual(['topo-1']);
+  });
+
+  it('does not select or insert when the source id is missing', () => {
+    const draft = { current: viewSets };
+    const setSelectedItemId = vi.fn();
+    const handleCopyItem = createScreenCopyItemHandler({
+      getDraftViewSets: () => draft.current,
+      setDraftViewSets: applyDraft(draft),
+      setSelectedItemId,
+      rebuildFilters: (next) => next,
+      createId: () => 'ghost-copy',
+    });
+
+    handleCopyItem('missing');
+
+    expect(setSelectedItemId).not.toHaveBeenCalled();
+    expect(draft.current.items.map((item) => item.id)).toEqual(['line-1']);
+  });
+
+  it('does not select a scene widget even when the draft updater has not run yet', () => {
+    const setDraftViewSets = vi.fn();
+    const setSelectedItemId = vi.fn();
+    const handleCopyItem = createScreenCopyItemHandler({
+      getDraftViewSets: () => sceneViewSets,
+      setDraftViewSets,
+      setSelectedItemId,
+      rebuildFilters: (next) => next,
+      createId: () => 'topo-copy',
+    });
+
+    handleCopyItem('topo-1');
+
+    expect(setSelectedItemId).not.toHaveBeenCalled();
+    expect(setDraftViewSets).not.toHaveBeenCalled();
   });
 });

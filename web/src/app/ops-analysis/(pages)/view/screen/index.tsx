@@ -6,6 +6,7 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { message, Select } from "antd";
@@ -132,6 +133,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const [draftViewSets, setDraftViewSets] = useState<ScreenViewSets>(
     buildDefaultScreenViewSets,
   );
+  const draftViewSetsRef = useRef(draftViewSets);
+  draftViewSetsRef.current = draftViewSets;
   const [editQuerySnapshot, setEditQuerySnapshot] =
     useState<ScreenQuerySnapshot | null>(null);
   const { isFullscreen, enterFullscreen, exitFullscreen } =
@@ -514,6 +517,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
 
   const handleCopyItem = useCallback(
     createScreenCopyItemHandler({
+      getDraftViewSets: () => draftViewSetsRef.current,
       setDraftViewSets,
       setSelectedItemId,
       rebuildFilters: rebuildDraftFilters,
