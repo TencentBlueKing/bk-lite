@@ -14,6 +14,7 @@ const api = {
   getServiceRed: vi.fn(),
   getServices: vi.fn(),
   getSlos: vi.fn(),
+  getTopology: vi.fn(),
   setServiceArchived: vi.fn(),
   setServiceOrganizations: vi.fn(),
   isLoading: false,
@@ -232,6 +233,7 @@ describe('APM 服务目录应用视角', () => {
     const endedAt = api.getServiceRed.mock.calls[0][3] as string;
     expect(new Date(endedAt).getTime() - new Date(startedAt).getTime()).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
     expect(screen.queryByText('RED 指标查询失败')).toBeNull();
+    expect(api.getTopology).not.toHaveBeenCalled();
   });
 });
 

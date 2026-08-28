@@ -102,10 +102,12 @@ beforeEach(() => {
       { id: 'shop-node', service_namespace: 'shop', service_name: 'checkout', environment: 'prod', health: 'healthy', sampled_spans: 2, error_spans: 0 },
       { id: 'billing-node', service_namespace: 'billing', service_name: 'invoice', environment: 'prod', health: 'healthy', sampled_spans: 1, error_spans: 0 },
       { id: 'inferred:prod:mysql', service_namespace: '', service_name: 'mysql', environment: 'prod', health: 'healthy', sampled_spans: 1, error_spans: 0, kind: 'inferred', fold_key: 'mysql' },
+      { id: 'user_request:prod', service_namespace: '', service_name: 'user_request', environment: 'prod', health: 'unknown', sampled_spans: 1, error_spans: 0, kind: 'user_request' },
     ],
     edges: [
       { source: 'shop-node', target: 'billing-node', health: 'healthy', sampled_calls: 1, error_calls: 0, average_duration_ms: 5 },
       { source: 'shop-node', target: 'inferred:prod:mysql', health: 'healthy', sampled_calls: 1, error_calls: 0, average_duration_ms: 4 },
+      { source: 'user_request:prod', target: 'shop-node', health: 'unknown', sampled_calls: 1, error_calls: 0, average_duration_ms: 8 },
     ],
     sampled_traces: 2, truncated: false, data_state: 'available',
   });
@@ -139,18 +141,29 @@ describe('APM 应用观测详情', () => {
 
     const topology = await screen.findByTestId('application-topology');
     await waitFor(() => {
-      expect(topology.getAttribute('data-nodes')?.split(',').sort()).toEqual(['billing-node', 'inferred:prod:mysql', 'shop-node']);
-      expect(topology.getAttribute('data-edges')?.split(',').sort()).toEqual(['shop-node>billing-node', 'shop-node>inferred:prod:mysql']);
+      expect(topology.getAttribute('data-nodes')?.split(',').sort()).toEqual([
+        'billing-node',
+        'inferred:prod:mysql',
+        'shop-node',
+        'user_request:prod',
+      ]);
+      expect(topology.getAttribute('data-edges')?.split(',').sort()).toEqual([
+        'shop-node>billing-node',
+        'shop-node>inferred:prod:mysql',
+        'user_request:prod>shop-node',
+      ]);
       expect(topology.getAttribute('data-focus')).toBe('shop');
     });
     expect(api.getTopology).toHaveBeenCalledWith(expect.objectContaining({
       include_inferred: true,
       include_user_request: true,
     }));
+    expect(api.getTopology.mock.calls[0][0].include_user_request).toBe(true);
 
     expect(await screen.findByText('checkout')).not.toBeNull();
     expect(screen.queryByText('invoice')).toBeNull();
     expect(screen.queryByRole('link', { name: 'mysql' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'user_request' })).toBeNull();
     expect(screen.getByRole('columnheader', { name: /服务/ })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '活跃告警' })).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: '吞吐量（请求/秒）' })).not.toBeNull();

@@ -80,6 +80,8 @@ assert.match(topologyPage, /getTraces/, '调查栏样本 Trace 必须来自真�
 assert.match(topologyPage, /isolateTopologyNeighborhood/, '拓扑必须支持一跳隔离');
 assert.match(topologyPage, /totalCalls/, '拓扑摘要必须展示总调用数而不是观测 Trace');
 assert.match(topologyPage, /include_inferred: true/, '服务拓扑必须请求推断下游');
+assert.doesNotMatch(topologyPage, /include_user_request/, '全局拓扑不得打开用户请求入口');
+assert.doesNotMatch(servicesPage, /getTopology/, '服务目录 KPI 不得走拓扑图，推断与用户请求入口不属于目录');
 assert.match(topologyPage, /errorRequestsOnly/, '拓扑必须提供仅错误请求切片，且与只看异常分开');
 assert.match(topologyPage, /anomalyOnly/, '拓扑必须保留按节点健康度的只看异常');
 assert.match(topologyPage, /clearSlice/, '拓扑必须能清空请求切片并回到时间窗全图');

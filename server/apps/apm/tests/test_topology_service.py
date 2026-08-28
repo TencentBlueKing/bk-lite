@@ -289,6 +289,52 @@ def test_inferred_mysql_node_exists_only_in_topology_result():
     assert {node.service_name for node in graph.nodes if node.kind == "instrumented"} == {"gateway"}
 
 
+def test_user_request_node_exists_only_in_topology_result():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_user_entry_trace(now)]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert {node.service_name for node in graph.nodes if node.kind == "user_request"} == {"user_request"}
+    assert {node.service_name for node in graph.nodes if node.kind == "instrumented"} == {"storefront"}
+    assert all(node.service_namespace == "" for node in graph.nodes if node.kind == "user_request")
+
+
+def test_catalog_and_red_do_not_surface_topology_synthetic_nodes():
+    from apps.apm.services import catalog as catalog_module
+    from apps.apm.services import query as query_module
+
+    for module in (catalog_module, query_module):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        assert "include_inferred" not in source
+        assert "include_user_request" not in source
+        assert "user_request" not in source
+
+
+def test_topology_query_flag_defaults_match_global_and_app_detail_shapes():
+    from apps.apm.views.topology import TopologyQuerySerializer
+
+    defaults = TopologyQuerySerializer(data={})
+    assert defaults.is_valid(), defaults.errors
+    assert defaults.validated_data["include_inferred"] is False
+    assert defaults.validated_data["include_user_request"] is False
+
+    global_shape = TopologyQuerySerializer(data={"include_inferred": True})
+    assert global_shape.is_valid(), global_shape.errors
+    assert global_shape.validated_data["include_inferred"] is True
+    assert global_shape.validated_data["include_user_request"] is False
+
+    app_detail = TopologyQuerySerializer(data={"include_inferred": True, "include_user_request": True})
+    assert app_detail.is_valid(), app_detail.errors
+    assert app_detail.validated_data["include_inferred"] is True
+    assert app_detail.validated_data["include_user_request"] is True
+
+
 def test_inferred_node_requires_org_visible_caller():
     now = timezone.now()
     service = DjangoApmTopologyService(InMemoryTraceStore(details=[_mysql_client_trace(now)]))

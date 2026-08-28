@@ -83,3 +83,27 @@ def test_service_red_accepts_seven_day_window_and_rejects_beyond():
         assert "7 天" in str(exc)
     else:
         raise AssertionError("expected 8d RED window to be rejected")
+
+
+def test_service_metric_query_serializer_accepts_seven_day_window_and_rejects_beyond():
+    from apps.apm.serializers.control_plane import ServiceMetricQuerySerializer
+
+    now = timezone.now()
+    accepted = ServiceMetricQuerySerializer(
+        data={
+            "environment": "prod",
+            "started_at": (now - MAX_METRIC_WINDOW).isoformat(),
+            "ended_at": now.isoformat(),
+        }
+    )
+    assert accepted.is_valid(), accepted.errors
+
+    rejected = ServiceMetricQuerySerializer(
+        data={
+            "environment": "prod",
+            "started_at": (now - timedelta(days=8)).isoformat(),
+            "ended_at": now.isoformat(),
+        }
+    )
+    assert not rejected.is_valid()
+    assert "7 天" in str(rejected.errors)
