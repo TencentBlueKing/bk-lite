@@ -11,6 +11,13 @@ import {
 import WidgetRenderer from '@/app/ops-analysis/components/widgetRenderer';
 import ScreenWidgetThemeProvider from '@/app/ops-analysis/components/screenWidgetThemeProvider';
 import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
+import {
+  isTopologyNodeSelectionChrome,
+  TOPOLOGY_CHART_NODE_CLASS,
+  TOPOLOGY_CHART_NODE_SELECTED_CLASS,
+  TOPOLOGY_SELECTED_STROKE,
+  TOPOLOGY_SELECTED_STROKE_WIDTH,
+} from '../utils/topologySelectionChrome';
 
 interface ChartNodeProps {
   node: Node;
@@ -19,6 +26,9 @@ interface ChartNodeProps {
 const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
   const { t } = useTranslation();
   const [nodeData, setNodeData] = useState(() => node.getData() || {});
+  const [selectionChrome, setSelectionChrome] = useState(() =>
+    isTopologyNodeSelectionChrome(node),
+  );
 
   useEffect(() => {
     const handleDataChange = () => {
@@ -27,6 +37,17 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
     node.on('change:data', handleDataChange);
     return () => {
       node.off('change:data', handleDataChange);
+    };
+  }, [node]);
+
+  useEffect(() => {
+    const syncSelectionChrome = () => {
+      setSelectionChrome(isTopologyNodeSelectionChrome(node));
+    };
+    syncSelectionChrome();
+    node.on('change:attrs', syncSelectionChrome);
+    return () => {
+      node.off('change:attrs', syncSelectionChrome);
     };
   }, [node]);
   const {
@@ -75,11 +96,16 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
 
   return (
     <div
-      className="ops-topology-chart-node"
+      className={`${TOPOLOGY_CHART_NODE_CLASS}${
+        selectionChrome ? ` ${TOPOLOGY_CHART_NODE_SELECTED_CLASS}` : ''
+      }`}
+      data-topology-selected={selectionChrome ? 'true' : 'false'}
       style={{
         width: `${width}px`,
         height: `${height}px`,
-        border: `1px solid ${panelChromeBorderColor}`,
+        border: selectionChrome
+          ? `${TOPOLOGY_SELECTED_STROKE_WIDTH}px solid ${TOPOLOGY_SELECTED_STROKE}`
+          : `1px solid ${panelChromeBorderColor}`,
         borderRadius: '13px',
         background: panelChromeBg,
         boxShadow: panelChromeShadow,
