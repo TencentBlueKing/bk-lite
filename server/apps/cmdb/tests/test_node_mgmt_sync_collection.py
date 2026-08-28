@@ -341,6 +341,11 @@ def test_parent_finishes_from_child_terminal_states(config, child_statuses, expe
     assert refreshed.finished_at is not None
     assert refreshed.active_scope is None
     assert not refreshed.region_states.filter(status=NodeMgmtSyncRun.STATUS_SUBMITTED).exists()
+    if expected == NodeMgmtSyncRun.STATUS_FAILED:
+        assert refreshed.reason_code == "COLLECT_CHILD_FAILED"
+        assert NodeMgmtSyncService.serialize_run(refreshed)["reason_code"] == "COLLECT_CHILD_FAILED"
+    elif expected == NodeMgmtSyncRun.STATUS_SUCCESS:
+        assert refreshed.reason_code == ""
 
 
 def test_terminal_child_is_captured_into_immutable_parent_batch(config):
@@ -738,6 +743,8 @@ def test_submission_binds_in_memory_execution_id_not_concurrently_overwritten_db
     assert state.child_execution_id == "execution-this-run"
     refreshed = NodeMgmtSyncService.refresh_collect_run(run.pk)
     assert refreshed.status == NodeMgmtSyncRun.STATUS_FAILED
+    assert refreshed.reason_code == "COLLECT_EXECUTION_SUPERSEDED"
+    assert NodeMgmtSyncService.serialize_run(refreshed)["reason_code"] == "COLLECT_EXECUTION_SUPERSEDED"
     state.refresh_from_db()
     assert state.reason_code == "COLLECT_EXECUTION_SUPERSEDED"
 
