@@ -21,7 +21,10 @@ import type {
 } from '@/app/ops-analysis/renderContract';
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { useTranslation } from '@/utils/i18n';
-import { shouldShowAnalysisWidgetCopyAction } from '@/app/ops-analysis/utils/widgetCopy';
+import {
+  resolveAnalysisCanvasInteraction,
+  shouldShowAnalysisWidgetCopyAction,
+} from '@/app/ops-analysis/utils/widgetCopy';
 
 // Canvas and subscription PDF share this height. Do not mark the card
 // `data-export-expand`: that unlocks 420px in print while the table body
@@ -39,6 +42,8 @@ interface ReportWidgetCardProps {
   refreshCause?: CanvasRuntimeRefreshCause;
   dataSource?: DatasourceItem;
   editing: boolean;
+  shareMode?: boolean;
+  isBuiltIn?: boolean;
   eagerRuntime?: boolean;
   onEdit: (sectionId: string) => void;
   onCopy?: (sectionId: string) => void;
@@ -57,6 +62,8 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
   refreshCause = 'manual',
   dataSource,
   editing,
+  shareMode = false,
+  isBuiltIn = false,
   eagerRuntime = false,
   onEdit,
   onCopy,
@@ -164,7 +171,11 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                       onClick: () => onEdit(section.id),
                     },
                     ...(shouldShowAnalysisWidgetCopyAction({
-                      interaction: 'edit',
+                      interaction: resolveAnalysisCanvasInteraction({
+                        editMode: editing,
+                        shareMode,
+                        isBuiltIn,
+                      }),
                       sceneWidgetType: section.valueConfig.sceneWidgetType,
                       chartType: section.valueConfig.chartType,
                     })

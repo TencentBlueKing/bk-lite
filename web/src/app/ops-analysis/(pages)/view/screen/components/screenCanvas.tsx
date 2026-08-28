@@ -30,6 +30,7 @@ interface ScreenCanvasProps {
   fullscreen?: boolean;
   editMode?: boolean;
   shareMode?: boolean;
+  isBuiltIn?: boolean;
   selectedItemId?: string | null;
   refreshVersion?: number;
   refreshCause?: CanvasRuntimeRefreshCause;
@@ -417,6 +418,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   fullscreen = false,
   editMode = false,
   shareMode = false,
+  isBuiltIn = false,
   selectedItemId = null,
   refreshVersion = 0,
   refreshCause = "manual",
@@ -507,6 +509,8 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         item={item}
         selected={editable && selected}
         editMode={editable}
+        shareMode={shareMode}
+        isBuiltIn={isBuiltIn}
         refreshVersion={refreshVersion}
         refreshCause={refreshCause}
         screenId={screenId}

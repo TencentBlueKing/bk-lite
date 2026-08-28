@@ -11,7 +11,10 @@ import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 import { normalizeScreenWidgetAppearance } from '../utils/layoutUtils';
-import { shouldShowAnalysisWidgetCopyAction } from '@/app/ops-analysis/utils/widgetCopy';
+import {
+  resolveAnalysisCanvasInteraction,
+  shouldShowAnalysisWidgetCopyAction,
+} from '@/app/ops-analysis/utils/widgetCopy';
 
 interface ScreenWidgetFrameOptions {
   selected?: boolean;
@@ -23,6 +26,8 @@ interface ScreenWidgetFrameProps extends ScreenWidgetFrameOptions {
   item: ScreenWidgetItem;
   screenDensity?: number;
   screenUiScale?: number;
+  shareMode?: boolean;
+  isBuiltIn?: boolean;
   onConfigure?: () => void;
   onCopy?: () => void;
   onDelete?: () => void;
@@ -61,6 +66,8 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   editMode = false,
   screenDensity = 1,
   screenUiScale = 1,
+  shareMode = false,
+  isBuiltIn = false,
   onConfigure,
   onCopy,
   onDelete,
@@ -70,7 +77,11 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   const frame = normalizeScreenWidgetAppearance(item.valueConfig?.appearance).frame;
   const isBare = frame === 'bare';
   const showCopy = shouldShowAnalysisWidgetCopyAction({
-    interaction: editMode ? 'edit' : 'view',
+    interaction: resolveAnalysisCanvasInteraction({
+      editMode,
+      shareMode,
+      isBuiltIn,
+    }),
     sceneWidgetType: item.valueConfig?.sceneWidgetType,
     chartType: item.chartType,
   });

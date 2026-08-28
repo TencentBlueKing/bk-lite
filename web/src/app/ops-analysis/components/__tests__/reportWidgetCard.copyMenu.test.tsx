@@ -125,7 +125,8 @@ describe('ReportWidgetCard copy menu', () => {
     expect(screen.getByText('common.delete')).toBeTruthy();
   });
 
-  it('omits 复制 in share mode', () => {
+  it('omits 复制 in share mode', async () => {
+    const user = userEvent.setup();
     render(
       <ReportWidgetCard
         section={section as never}
@@ -133,17 +134,22 @@ describe('ReportWidgetCard copy menu', () => {
         unifiedFilterValues={{}}
         filterDefinitions={[]}
         filterSearchVersion={0}
-        editing={false}
+        editing
+        shareMode
         onEdit={vi.fn()}
         onDelete={vi.fn()}
         onCopy={vi.fn()}
       />,
     );
 
+    await user.click(screen.getByRole('button', { name: 'common.more' }));
+    expect(await screen.findByText('common.edit')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
+    expect(screen.getByText('common.delete')).toBeTruthy();
   });
 
-  it('omits 复制 on a builtin report', () => {
+  it('omits 复制 on a builtin report', async () => {
+    const user = userEvent.setup();
     render(
       <ReportWidgetCard
         section={section as never}
@@ -151,13 +157,17 @@ describe('ReportWidgetCard copy menu', () => {
         unifiedFilterValues={{}}
         filterDefinitions={[]}
         filterSearchVersion={0}
-        editing={false}
+        editing
+        isBuiltIn
         onEdit={vi.fn()}
         onDelete={vi.fn()}
         onCopy={vi.fn()}
       />,
     );
 
+    await user.click(screen.getByRole('button', { name: 'common.more' }));
+    expect(await screen.findByText('common.edit')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
+    expect(screen.getByText('common.delete')).toBeTruthy();
   });
 });

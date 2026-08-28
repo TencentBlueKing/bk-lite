@@ -58,6 +58,24 @@ export const isCopyableAnalysisWidget = (input?: {
 }): boolean =>
   !isSceneWidgetType(input?.sceneWidgetType) && !isSceneWidgetType(input?.chartType);
 
+export const resolveAnalysisCanvasInteraction = ({
+  editMode = false,
+  shareMode = false,
+  isBuiltIn = false,
+}: {
+  editMode?: boolean;
+  shareMode?: boolean;
+  isBuiltIn?: boolean;
+}): AnalysisCanvasInteraction => {
+  if (shareMode) {
+    return 'share';
+  }
+  if (isBuiltIn) {
+    return 'builtin';
+  }
+  return editMode ? 'edit' : 'view';
+};
+
 export const shouldShowAnalysisWidgetCopyAction = (input: {
   interaction: AnalysisCanvasInteraction;
   sceneWidgetType?: string;

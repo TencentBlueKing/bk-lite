@@ -11,6 +11,7 @@ import {
   copyDashboardWidget,
   copyReportSection,
   copyScreenWidget,
+  resolveAnalysisCanvasInteraction,
   shouldShowAnalysisWidgetCopyAction,
 } from '../widgetCopy';
 
@@ -168,6 +169,19 @@ describe('shouldShowAnalysisWidgetCopyAction', () => {
         chartType: 'line',
       }),
     ).toBe(false);
+  });
+});
+
+describe('resolveAnalysisCanvasInteraction', () => {
+  it('maps parent flags to share and builtin instead of collapsing them into view', () => {
+    expect(
+      resolveAnalysisCanvasInteraction({ editMode: true, shareMode: true }),
+    ).toBe('share');
+    expect(
+      resolveAnalysisCanvasInteraction({ editMode: true, isBuiltIn: true }),
+    ).toBe('builtin');
+    expect(resolveAnalysisCanvasInteraction({ editMode: true })).toBe('edit');
+    expect(resolveAnalysisCanvasInteraction({})).toBe('view');
   });
 });
 

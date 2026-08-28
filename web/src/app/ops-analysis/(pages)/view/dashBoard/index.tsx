@@ -1460,6 +1460,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           appliedFilterDefinitions={appliedFilterDefinitions}
           appliedNamespaceId={appliedNamespaceId}
           selectedDashboardLocked={selectedDashboard?.is_build_in}
+          shareMode={shareMode}
           onOpenAddModal={openAddModal}
           onLayoutChange={handleLayoutCommit}
           onToggleCollapsedGroup={toggleCollapsedGroup}

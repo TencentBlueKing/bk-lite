@@ -704,6 +704,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         fullscreen={isFullscreen}
         editMode={editMode}
         shareMode={shareMode}
+        isBuiltIn={Boolean(selectedScreen?.is_build_in)}
         selectedItemId={selectedItemId}
         refreshVersion={refreshVersion}
         refreshCause={refreshCause}
@@ -745,6 +746,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       isFullscreen,
       selectedItemId,
       selectedScreen?.data_id,
+      selectedScreen?.is_build_in,
       shareMode,
     ],
   );

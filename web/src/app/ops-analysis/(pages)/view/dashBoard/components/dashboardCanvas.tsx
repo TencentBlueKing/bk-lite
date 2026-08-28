@@ -57,7 +57,10 @@ import type { RuntimeRequestPriority } from '@/app/ops-analysis/utils/dashboardR
 
 import 'gridstack/dist/gridstack.min.css';
 import type { DashboardWidgetRenderResult } from '@/app/ops-analysis/renderContract';
-import { shouldShowAnalysisWidgetCopyAction } from '@/app/ops-analysis/utils/widgetCopy';
+import {
+  resolveAnalysisCanvasInteraction,
+  shouldShowAnalysisWidgetCopyAction,
+} from '@/app/ops-analysis/utils/widgetCopy';
 
 const DASHBOARD_GRID_COLS = 12;
 const DASHBOARD_GRID_ROW_HEIGHT = 60;
@@ -104,6 +107,7 @@ interface DashboardCanvasProps {
   appliedFilterDefinitions: UnifiedFilterDefinition[];
   appliedNamespaceId: number | undefined;
   selectedDashboardLocked?: boolean;
+  shareMode?: boolean;
   onLayoutChange: (newLayout: DashboardLayoutItem[]) => void;
   onOpenAddModal: (groupId?: string) => void;
   onToggleCollapsedGroup: (groupId: string) => void;
@@ -142,6 +146,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   appliedFilterDefinitions,
   appliedNamespaceId,
   selectedDashboardLocked,
+  shareMode = false,
   onOpenAddModal,
   onLayoutChange,
   onToggleCollapsedGroup,
@@ -590,11 +595,11 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   const renderWidgetCard = useCallback(
     (item: DashboardWidgetLayoutItem) => {
       const copyMenuItem = shouldShowAnalysisWidgetCopyAction({
-        interaction: !isEditMode
-          ? 'view'
-          : selectedDashboardLocked
-            ? 'builtin'
-            : 'edit',
+        interaction: resolveAnalysisCanvasInteraction({
+          editMode: isEditMode,
+          shareMode,
+          isBuiltIn: selectedDashboardLocked,
+        }),
         sceneWidgetType: item.valueConfig?.sceneWidgetType,
         chartType: item.valueConfig?.chartType,
       })
@@ -692,6 +697,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       filterSearchVersion,
       isEditMode,
       selectedDashboardLocked,
+      shareMode,
       namespaceSearchVersion,
       onDeleteWidget,
       onCopyWidget,

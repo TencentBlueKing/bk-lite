@@ -75,7 +75,11 @@ afterEach(() => {
 
 const renderCanvas = (
   layout: DashboardLayoutItem[],
-  options: { isEditMode?: boolean; selectedDashboardLocked?: boolean } = {},
+  options: {
+    isEditMode?: boolean;
+    selectedDashboardLocked?: boolean;
+    shareMode?: boolean;
+  } = {},
 ) => {
   const scrollRootRef = createRef<HTMLDivElement | null>();
   scrollRootRef.current = document.createElement('div');
@@ -97,6 +101,7 @@ const renderCanvas = (
       appliedFilterDefinitions={[]}
       appliedNamespaceId={undefined}
       selectedDashboardLocked={options.selectedDashboardLocked}
+      shareMode={options.shareMode}
       onLayoutChange={vi.fn()}
       onOpenAddModal={vi.fn()}
       onToggleCollapsedGroup={vi.fn()}
@@ -149,11 +154,11 @@ describe('DashboardCanvas copy menu', () => {
   });
 
   it('omits 复制 in share mode', async () => {
-    renderCanvas([dataWidget], { isEditMode: false });
-    await waitFor(() => {
-      expect(screen.getByText('CPU')).toBeTruthy();
-    });
+    renderCanvas([dataWidget], { isEditMode: true, shareMode: true });
+    await openMoreMenu();
+    expect(await screen.findByText('common.edit')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
+    expect(screen.getByText('common.delete')).toBeTruthy();
   });
 
   it('omits 复制 on a builtin dashboard even if the ⋯ menu is open', async () => {

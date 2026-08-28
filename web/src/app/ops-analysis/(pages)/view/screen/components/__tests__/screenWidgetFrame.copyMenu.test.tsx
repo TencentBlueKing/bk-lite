@@ -96,23 +96,43 @@ describe('ScreenWidgetFrame copy menu', () => {
     expect(screen.queryByText('common.copy')).toBeNull();
   });
 
-  it('omits 复制 in share mode', () => {
+  it('omits 复制 in share mode', async () => {
     render(
-      <ScreenWidgetFrame item={dataWidget} editMode={false} onConfigure={vi.fn()} onDelete={vi.fn()} onCopy={vi.fn()}>
+      <ScreenWidgetFrame
+        item={dataWidget}
+        editMode
+        shareMode
+        onConfigure={vi.fn()}
+        onDelete={vi.fn()}
+        onCopy={vi.fn()}
+      >
         <div />
       </ScreenWidgetFrame>,
     );
 
+    await openMoreMenu();
+    expect(await screen.findByText('opsAnalysis.screen.editWidget')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
+    expect(screen.getByText('opsAnalysis.screen.deleteWidget')).toBeTruthy();
   });
 
-  it('omits 复制 on a builtin canvas', () => {
+  it('omits 复制 on a builtin canvas', async () => {
     render(
-      <ScreenWidgetFrame item={dataWidget} editMode={false} onConfigure={vi.fn()} onDelete={vi.fn()} onCopy={vi.fn()}>
+      <ScreenWidgetFrame
+        item={dataWidget}
+        editMode
+        isBuiltIn
+        onConfigure={vi.fn()}
+        onDelete={vi.fn()}
+        onCopy={vi.fn()}
+      >
         <div />
       </ScreenWidgetFrame>,
     );
 
+    await openMoreMenu();
+    expect(await screen.findByText('opsAnalysis.screen.editWidget')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
+    expect(screen.getByText('opsAnalysis.screen.deleteWidget')).toBeTruthy();
   });
 });
