@@ -72,7 +72,7 @@ await window.publish(
 | `NATS_JS_PUBLISH_MAX_PENDING_BYTES` | `134217728` | 最大在途负载，128 MiB |
 | `NATS_JS_PUBACK_TIMEOUT` | `30` 秒 | 单轮确认上限 |
 | `NATS_JS_PUBLISH_MAX_ATTEMPTS` | `2` | 同一消息、同一 Msg-Id 的有限重试 |
-| `NATS_JS_STREAM_NAME` | `CMDB_METRICS` | 每次发布显式声明期望流，拒绝重叠流误路由 |
+| `NATS_JS_STREAM_NAME` | `CMDB_METRICS` | 填写现有 `metrics.*` 所属 Stream；默认值仅用于无现有 Stream 时的新建兜底流 |
 | `MAX_NATS_LINES_PER_FLUSH` | `1000` | 每次交给窗口的最大行数 |
 | `MAX_NATS_BYTES_PER_FLUSH` | `900000` | 每次交给窗口的最大字节数 |
 
@@ -108,11 +108,13 @@ Stargazer 最大目标发布总预算与一次重连恢复时间之和，建议�
 
 ## 4. JetStream 与消费端配置
 
-必须预先声明专用流，不能在 Stargazer 启动阶段动态创建：
+继续使用现有 `metrics.*` Subject 和数据格式。上线前先查找当前覆盖该 Subject 的 JetStream
+Stream；存在则直接复用并将其名称配置到 `NATS_JS_STREAM_NAME`，不得再创建重叠 Stream。只有
+当前 `metrics.*` 没有任何 Stream 时，才创建以下兜底流。不能在 Stargazer 启动阶段动态创建：
 
 ```text
 stream: CMDB_METRICS
-subjects: metrics.>
+subjects: metrics.*
 storage: file
 retention: limits
 discard: old
@@ -128,7 +130,7 @@ replicas: 生产集群 3；单节点验证 1
 
 ## 5. 上线顺序与回滚
 
-1. 在测试环境建立 `CMDB_METRICS`，核对容量、存储和消费者积压监控；
+1. 查询并复用现有 `metrics.*` 所属 Stream，核对容量、存储和消费者积压；不存在时才建立 `CMDB_METRICS`；
 2. 用本方案的 5000 网络设备和深信服压测脚本建立基线；
 3. 先在一个 Stargazer Pod 开启 `NATS_METRICS_JETSTREAM_ENABLED=true`；
 4. 同时观察 PubAck p95/p99、在途消息/字节峰值、重试数、超时数、stream bytes、consumer pending；
