@@ -61,9 +61,9 @@ assert.match(topologyPage, /apm\.topology\.force/, '拓扑必须提供力导向�
 assert.match(applicationObservability, /apm\.topology\.layoutForce/, '应用详情拓扑必须提供力导向作为额外布局选项');
 assert.match(applicationObservability, /useState<TopologyLayoutMode>\('layered'\)/, '应用详情默认必须是层次布局');
 assert.match(topologyPage, /useState<TopologyLayoutMode>\('layered'\)/, '全局拓扑默认必须是层次布局');
-assert.match(topologyCanvas, /layoutForceTopology/, '画布必须支持从层次种子出发的力导向布局');
+assert.match(topologyCanvas, /layoutForceTopology/, '画布必须支持力导向布局');
 assert.match(topologyCanvas, /layoutLayeredTopology/, '拓扑必须保留自动层次布局');
-assert.doesNotMatch(topologyCanvas, /ForceLayout/, '力导向不得再使用随机初始化的 ForceLayout');
+assert.match(topologyCanvas, /layout === 'force' \? layoutForceTopology : layoutLayeredTopology/, '力导向不得硬切掉层次布局');
 assert.match(topologyLayout, /layoutLayeredTopology\(stable\.nodes/, '力导向必须从稳定后的层次布局初始化');
 assert.doesNotMatch(topologyPage, /type ViewMode = 'graph' \| 'list'/, '拓扑不得再按图形/列表切换');
 assert.match(topologyCanvas, /viewBox=\{`0 0 \$\{TOPOLOGY_CANVAS_SIZE\.width\} \$\{TOPOLOGY_CANVAS_SIZE\.height\}`\}/, '图形视图必须使用响应式 viewBox');

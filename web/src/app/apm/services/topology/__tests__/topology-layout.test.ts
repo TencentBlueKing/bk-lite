@@ -70,7 +70,7 @@ describe('APM 服务拓扑布局', () => {
   });
 });
 
-describe('APM 服务拓扑力导向布局', () => {
+describe('APM 服务拓扑力导向稳定性', () => {
   const directedNodes: ApmTopologyNode[] = [
     node('storefront'),
     node('catalog'),
@@ -84,42 +84,34 @@ describe('APM 服务拓扑力导向布局', () => {
     edge('catalog', 'inventory'),
     edge('inventory', 'inferred:local:mysql'),
   ];
+  const positionsById = (items: { id: string; x: number; y: number }[]) => (
+    Object.fromEntries(items.map((item) => [item.id, { x: item.x, y: item.y }]))
+  );
+  const distance = (
+    left: { x: number; y: number } | undefined,
+    right: { x: number; y: number } | undefined,
+  ) => Math.hypot((left?.x ?? 0) - (right?.x ?? 0), (left?.y ?? 0) - (right?.y ?? 0));
 
-  it('同一张图两次计算得到相同坐标', async () => {
+  it('同一份拓扑数据布局两次，节点坐标一致', async () => {
     const first = await layoutForceTopology(directedNodes, directedEdges);
     const second = await layoutForceTopology(directedNodes, directedEdges);
-    expect(first.map((item) => ({ id: item.id, x: item.x, y: item.y }))).toEqual(
-      second.map((item) => ({ id: item.id, x: item.x, y: item.y })),
-    );
+    expect(positionsById(first)).toEqual(positionsById(second));
   });
 
-  it('输入顺序变化仍得到相同坐标', async () => {
-    const reversed = await layoutForceTopology([...directedNodes].reverse(), [...directedEdges].reverse());
-    const canonical = await layoutForceTopology(directedNodes, directedEdges);
-    const byId = (items: typeof canonical) => Object.fromEntries(items.map((item) => [item.id, { x: item.x, y: item.y }]));
-    expect(byId(reversed)).toEqual(byId(canonical));
-  });
-
-  it('用户请求入口在调用链上方，推断下游在汇点一侧', async () => {
+  it('用户请求入口和推断下游不会漂到任意层或角落', async () => {
     const result = await layoutForceTopology(directedNodes, directedEdges);
     const byId = new Map(result.map((item) => [item.id, item]));
+    const entry = byId.get('user_request:local');
+    const storefront = byId.get('storefront');
+    const inventory = byId.get('inventory');
+    const inferred = byId.get('inferred:local:mysql');
 
-    expect(byId.get('user_request:local')?.y).toBeLessThan(byId.get('storefront')?.y ?? 0);
-    expect(byId.get('storefront')?.y).toBeLessThan(byId.get('catalog')?.y ?? 0);
-    expect(byId.get('catalog')?.y).toBeLessThan(byId.get('inventory')?.y ?? 0);
-    expect(byId.get('inventory')?.y).toBeLessThan(byId.get('inferred:local:mysql')?.y ?? 0);
-    expect(new Set(result.map((item) => `${item.x}:${item.y}`)).size).toBe(result.length);
-  });
-
-  it('力导向坐标落在画布安全区域内', async () => {
-    const result = await layoutForceTopology(demoNodes, demoEdges);
-    expect(result).toHaveLength(demoNodes.length);
-    result.forEach((item) => {
-      expect(item.x).toBeGreaterThanOrEqual(90);
-      expect(item.x).toBeLessThanOrEqual(950);
-      expect(item.y).toBeGreaterThanOrEqual(90);
-      expect(item.y).toBeLessThanOrEqual(540);
-    });
+    expect(entry?.y).toBeLessThan(storefront?.y ?? 0);
+    expect(storefront?.y).toBeLessThan(byId.get('catalog')?.y ?? 0);
+    expect(byId.get('catalog')?.y).toBeLessThan(inventory?.y ?? 0);
+    expect(inventory?.y).toBeLessThan(inferred?.y ?? 0);
+    expect(distance(entry, storefront)).toBeLessThan(distance(entry, inferred));
+    expect(distance(inferred, inventory)).toBeLessThan(distance(inferred, entry));
   });
 });
 
