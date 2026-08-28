@@ -2522,6 +2522,7 @@ function ServiceShell({
  * 独立故事:服务 → 服务拓扑
  * ============================================================ */
 function ServiceTopologyMock() {
+  const [layout, setLayout] = useState<'layered' | 'force'>('layered');
   const [anomalyOnly, setAnomalyOnly] = useState(false);
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('7d');
 
@@ -2590,7 +2591,7 @@ function ServiceTopologyMock() {
       <TopMenuBar />
       <TopSecondaryNav active="topology" />
       <Content style={{ padding: '20px 24px 32px' }}>
-        {/* 顶部工具栏:摘要 + 时间窗 + 环境 + 只看异常 */}
+        {/* 顶部工具栏:摘要 + 时间窗 + 环境 + 布局 + 只看异常 */}
         <div
           style={{
             display: 'flex',
@@ -2633,6 +2634,16 @@ function ServiceTopologyMock() {
               { value: 'all', label: '全部环境' },
               { value: 'prod', label: '生产' },
               { value: 'staging', label: '预发' },
+            ]}
+          />
+
+          {/* 布局切换：默认层次，力导向为额外选项 */}
+          <Segmented
+            value={layout}
+            onChange={(v) => setLayout(v as 'layered' | 'force')}
+            options={[
+              { value: 'layered', label: '层次' },
+              { value: 'force', label: '力导向' },
             ]}
           />
 

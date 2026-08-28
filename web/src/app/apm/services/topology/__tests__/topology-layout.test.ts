@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyNode } from '@/app/apm/types';
 import {
@@ -5,10 +8,17 @@ import {
   filterTopologyByKeyword,
   focusApplicationTopology,
   isolateTopologyNeighborhood,
+  layoutForceTopology,
   layoutLayeredTopology,
+  TOPOLOGY_CANVAS_SIZE,
   topologyNodeNameWidth,
   truncateTopologyNodeLabel,
 } from '../topology-layout';
+
+const topologyLayoutSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../topology-layout.ts'),
+  'utf8',
+);
 
 const node = (id: string): ApmTopologyNode => ({
   id,
@@ -66,6 +76,68 @@ describe('APM 服务拓扑布局', () => {
       expect(item.y).toBeGreaterThanOrEqual(90);
       expect(item.y).toBeLessThanOrEqual(540);
     });
+  });
+});
+
+describe('APM 服务拓扑力导向稳定性', () => {
+  const directedNodes: ApmTopologyNode[] = [
+    node('storefront'),
+    node('catalog'),
+    node('inventory'),
+    { ...node('user_request'), id: 'user_request:local', service_name: 'user_request', service_namespace: '', kind: 'user_request', health: 'unknown' },
+    { ...node('mysql'), id: 'inferred:local:mysql', kind: 'inferred', fold_key: 'mysql' },
+  ];
+  const directedEdges: ApmTopologyEdge[] = [
+    edge('user_request:local', 'storefront'),
+    edge('storefront', 'catalog'),
+    edge('catalog', 'inventory'),
+    edge('inventory', 'inferred:local:mysql'),
+  ];
+  const positionsById = (items: { id: string; x: number; y: number }[]) => (
+    Object.fromEntries(items.map((item) => [item.id, { x: item.x, y: item.y }]))
+  );
+  const distance = (
+    left: { x: number; y: number } | undefined,
+    right: { x: number; y: number } | undefined,
+  ) => Math.hypot((left?.x ?? 0) - (right?.x ?? 0), (left?.y ?? 0) - (right?.y ?? 0));
+
+  it('同一份拓扑数据布局两次，节点坐标一致', async () => {
+    const first = await layoutForceTopology(directedNodes, directedEdges);
+    const second = await layoutForceTopology(directedNodes, directedEdges);
+    expect(first).toHaveLength(directedNodes.length);
+    expect(Object.keys(positionsById(first)).sort()).toEqual(directedNodes.map((item) => item.id).sort());
+    expect(positionsById(first)).toEqual(positionsById(second));
+  });
+
+  it('layoutForceTopology 不得使用 Math.random', () => {
+    expect(topologyLayoutSource).not.toMatch(/Math\.random/);
+  });
+
+  it('用户请求入口和推断下游不会漂到任意层或角落', async () => {
+    const result = await layoutForceTopology(directedNodes, directedEdges);
+    const byId = new Map(result.map((item) => [item.id, item]));
+    const entry = byId.get('user_request:local');
+    const storefront = byId.get('storefront');
+    const inventory = byId.get('inventory');
+    const inferred = byId.get('inferred:local:mysql');
+    const ys = result.map((item) => item.y);
+
+    expect(entry?.y).toBe(Math.min(...ys));
+    expect(inferred?.y).toBe(Math.max(...ys));
+    expect(entry?.y).toBeLessThan(storefront?.y ?? 0);
+    expect(storefront?.y).toBeLessThan(byId.get('catalog')?.y ?? 0);
+    expect(byId.get('catalog')?.y).toBeLessThan(inventory?.y ?? 0);
+    expect(inventory?.y).toBeLessThan(inferred?.y ?? 0);
+    expect(distance(entry, storefront)).toBeLessThan(distance(entry, inferred));
+    expect(distance(inferred, inventory)).toBeLessThan(distance(inferred, entry));
+    result.forEach((item) => {
+      expect(item.x).toBeGreaterThanOrEqual(96);
+      expect(item.x).toBeLessThanOrEqual(TOPOLOGY_CANVAS_SIZE.width - 96);
+      expect(item.y).toBeGreaterThanOrEqual(52);
+      expect(item.y).toBeLessThanOrEqual(TOPOLOGY_CANVAS_SIZE.height - 52);
+    });
+    expect(Math.abs((entry?.x ?? 0) - (storefront?.x ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.width / 2);
+    expect(Math.abs((inferred?.x ?? 0) - (inventory?.x ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.width / 2);
   });
 });
 

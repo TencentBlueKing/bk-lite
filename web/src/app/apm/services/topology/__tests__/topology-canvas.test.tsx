@@ -179,15 +179,24 @@ describe('APM 服务拓扑画布', () => {
     expect(api.getTopology.mock.calls[0][0].include_user_request).toBeUndefined();
   });
 
-  it('页面只提供层次布局，并以总调用数替代观测 Trace', async () => {
-    renderWithApmIntl(<ApmTopologyPage />);
+  it('层次布局仍在，力导向不是互斥硬切', async () => {
+    const result = renderWithApmIntl(<ApmTopologyPage />);
 
     await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
-    expect(screen.queryByRole('radiogroup', { name: '拓扑布局' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: '层次' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: '力导向' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: '图形' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: '列表' })).toBeNull();
+    expect(screen.getByRole('radiogroup', { name: '拓扑布局' })).not.toBeNull();
+    expect(screen.getByRole('radio', { name: '层次' })).not.toBeNull();
+    expect(screen.getByRole('radio', { name: '力导向' })).not.toBeNull();
+    expect(result.container.querySelector('svg[data-layout="layered"]')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: '力导向' }).closest('label')!);
+    await waitFor(() => {
+      expect(result.container.querySelector('svg[data-layout="force"]')).not.toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole('radio', { name: '层次' }).closest('label')!);
+    await waitFor(() => {
+      expect(result.container.querySelector('svg[data-layout="layered"]')).not.toBeNull();
+    });
     expect(screen.getByText('总调用数')).not.toBeNull();
     expect(screen.queryByText('观测 Trace')).toBeNull();
     expect(screen.getByRole('list', { name: '节点健康图例' })).not.toBeNull();
