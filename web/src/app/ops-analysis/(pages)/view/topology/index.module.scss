@@ -36,13 +36,6 @@
       fill 0.18s ease;
   }
 
-  :global(.x6-node[data-shape='icon-node']:hover:not(.x6-node-selected):not(.selected) rect[selector='body']) {
-    stroke: #8dbcf2;
-    filter:
-      drop-shadow(0 15px 28px rgba(42, 97, 160, 0.13))
-      drop-shadow(0 2px 5px rgba(15, 23, 42, 0.07));
-  }
-
   :global(.x6-node-selected[data-shape='icon-node'] rect[selector='body']),
   :global(.x6-node[data-shape='icon-node'].selected rect[selector='body']),
   :global(.x6-node-selected[data-shape='icon-node']:hover rect[selector='body']),
@@ -109,6 +102,39 @@
       ) !important;
       background-size: 100% 100% !important;
     }
+  }
+}
+
+.topologyContainer[data-topology-mode='edit'] {
+  :global(.x6-node[data-shape='icon-node']:hover:not(.x6-node-selected):not(.selected) rect[selector='body']) {
+    stroke: #8dbcf2;
+    filter:
+      drop-shadow(0 15px 28px rgba(42, 97, 160, 0.13))
+      drop-shadow(0 2px 5px rgba(15, 23, 42, 0.07));
+  }
+}
+
+.topologyContainer[data-topology-mode='view'] {
+  :global(.x6-node:hover) {
+    cursor: pointer;
+  }
+
+  :global(.x6-node[data-shape='icon-node']:hover:not(.x6-node-selected):not(.selected) rect[selector='body']),
+  :global(.x6-node[data-shape='single-value-node']:hover:not(.x6-node-selected):not(.selected) rect[selector='body']),
+  :global(.x6-node[data-shape='chart-node']:hover:not(.x6-node-selected):not(.selected) rect[selector='body']) {
+    stroke: var(--color-border-2);
+    stroke-width: 1px;
+    outline: none;
+    filter: none;
+  }
+
+  :global(.ops-topology-chart-node:hover:not(.ops-topology-chart-node--selected)),
+  :global(.ops-topology-chart-node.ops-topology-chart-node--hover) {
+    border-color: var(--color-border-2) !important;
+    border-width: 1px !important;
+    border-style: solid !important;
+    outline: none !important;
+    cursor: pointer;
   }
 }
 

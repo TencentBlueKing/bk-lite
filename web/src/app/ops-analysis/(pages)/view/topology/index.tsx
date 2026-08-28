@@ -592,6 +592,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
             ? 'fixed inset-0 h-screen w-screen overflow-hidden'
             : 'h-full flex-1 overflow-hidden'
         }`}
+        data-topology-mode={state.isEditMode ? 'edit' : 'view'}
         style={topologyContainerStyle}
       >
         <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />

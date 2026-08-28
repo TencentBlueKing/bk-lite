@@ -417,7 +417,9 @@ export const useGraphInitializer = ({
     graph.on('node:mouseenter', ({ node, e }) => {
       hideAllPorts(graph);
       hideAllEdgeTools(graph);
-      showPorts(graph, node);
+      if (isEditModeRef.current) {
+        showPorts(graph, node);
+      }
       const nodeData = node.getData();
       if (
         nodeData?.type === 'single-value'
@@ -431,14 +433,20 @@ export const useGraphInitializer = ({
           y: e.clientY,
         });
       }
-      applyTopologyNodeHoverChrome(node, graph.isSelected(node));
+      applyTopologyNodeHoverChrome(
+        node,
+        graph.isSelected(node),
+        isEditModeRef.current,
+      );
     });
 
     graph.on('edge:mouseenter', ({ edge }) => {
       hideAllPorts(graph);
       hideAllEdgeTools(graph);
-      showPorts(graph, edge);
-      showEdgeTools(edge);
+      if (isEditModeRef.current) {
+        showPorts(graph, edge);
+        showEdgeTools(edge);
+      }
     });
 
     graph.on('node:mouseleave', ({ node }) => {
