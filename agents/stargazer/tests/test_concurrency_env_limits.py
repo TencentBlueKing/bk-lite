@@ -111,6 +111,19 @@ def test_application_settings_split_timeouts_and_keep_legacy_fallback(monkeypatc
     assert current.plugin_timeout_seconds == 80
 
 
+def test_jetstream_publish_mode_defaults_to_four_publish_workers(monkeypatch):
+    monkeypatch.setenv("NATS_METRICS_JETSTREAM_ENABLED", "true")
+    monkeypatch.delenv("PUBLISH_WORKERS", raising=False)
+
+    assert CollectionApplicationSettings.from_env().publish_worker_count == 4
+
+    monkeypatch.setenv("PUBLISH_WORKERS", "8")
+    assert CollectionApplicationSettings.from_env().publish_worker_count == 8
+
+    monkeypatch.setenv("NATS_METRICS_JETSTREAM_ENABLED", "false")
+    assert CollectionApplicationSettings.from_env().publish_worker_count == 1
+
+
 def test_env_example_uses_split_timeout_contract():
     example = (Path(__file__).parents[1] / ".env.example").read_text(encoding="utf-8")
     keys = {line.split("=", 1)[0] for line in example.splitlines() if "=" in line and not line.lstrip().startswith("#")}
@@ -121,6 +134,11 @@ def test_env_example_uses_split_timeout_contract():
     assert "PUBLISH_QUEUE_TIMEOUT=60" in example
     assert "PUBLISH_DELIVERY_TIMEOUT=30" in example
     assert "PUBLISH_TOTAL_TIMEOUT=120" in example
+    assert "NATS_METRICS_JETSTREAM_ENABLED=false" in example
+    assert "PUBLISH_WORKERS=4" in example
+    assert "NATS_JS_PUBLISH_MAX_PENDING=1024" in example
+    assert "NATS_JS_PUBLISH_MAX_PENDING_BYTES=134217728" in example
+    assert "NATS_JS_STREAM_NAME=CMDB_METRICS" in example
     assert "CAPACITY_LOG_INTERVAL=180" in example
     assert "MAX_ACTIVE_TARGETS=250" in example
     assert "NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS=50" in example

@@ -355,6 +355,52 @@ def test_factory_routes_configuration_and_monitor_to_one_contract():
 
 
 @pytest.mark.asyncio
+async def test_run_preparation_failure_preserves_target_level_service_contract(monkeypatch):
+    warning_logs = []
+    monkeypatch.setattr(
+        "core.collection.plugins.logger.warning",
+        lambda message, *args: warning_logs.append(message % args if args else message),
+    )
+
+    class Service:
+        @classmethod
+        async def prepare(cls, _params):
+            raise RuntimeError("token=must-not-be-logged")
+
+        def __init__(self, _params):
+            pass
+
+        async def collect(self):
+            return 'network{collect_status="success"} 1'
+
+    request = CollectionRequest(
+        task_id="prepare-fallback",
+        plugin_ref="network.config",
+        targets=("10.0.0.1",),
+        params={"model_id": "network", "executor_type": "protocol"},
+    )
+    plugin = ConfigurationCollectionPlugin(service_factory=Service)
+
+    await plugin.prepare(request)
+    outcome = await plugin.collect(
+        "10.0.0.1",
+        {"credential_id": "one"},
+        TargetCollectionContext(
+            task_id=request.task_id,
+            plugin_ref=request.plugin_ref,
+            fence=1,
+            params=request.params,
+        ),
+    )
+
+    assert outcome.status == CollectOutcomeStatus.SUCCESS
+    assert len(warning_logs) == 1
+    assert "event=collection_run_preparation_fallback" in warning_logs[0]
+    assert "error_type=RuntimeError" in warning_logs[0]
+    assert "must-not-be-logged" not in warning_logs[0]
+
+
+@pytest.mark.asyncio
 async def test_factory_scopes_one_node_info_batch_to_one_job_run():
     targets = tuple(f"10.20.0.{index}" for index in range(1, 101))
     load_calls = []

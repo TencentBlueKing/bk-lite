@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 from core.collection.request_builder import build_collection_request
-from core.collection.yaml_target_policy import apply_yaml_target_policy
-from core.plugin.yaml_reader import PluginYamlReader
+from core.collection.yaml_target_policy import apply_executor_target_policy, apply_yaml_target_policy, apply_yaml_target_policy_async
+from core.plugin.yaml_reader import ExecutorConfig, PluginYamlReader
 
 
 @pytest.fixture
@@ -39,6 +39,46 @@ def test_network_yaml_policy_is_snmp(reader):
         },
     )
     enriched = apply_yaml_target_policy(request, reader=reader)
+    assert enriched.params["preflight_kind"] == "snmp"
+    assert enriched.params["target_policy_mode"] == "snmp"
+    assert int(enriched.params["port"]) == 161
+
+
+def test_final_fallback_executor_policy_overrides_initial_enterprise_policy():
+    request = build_collection_request(
+        task_id="yaml-fallback",
+        params={
+            "model_id": "network",
+            "host": "10.10.69.245",
+            "preflight_kind": "https",
+        },
+    )
+    fallback = ExecutorConfig(
+        executor_type="protocol",
+        config={"target_policy": {"mode": "snmp", "port": 161}},
+        plugin_config={"metadata": {"type": "network"}},
+    )
+
+    enriched = apply_executor_target_policy(request, fallback)
+
+    assert enriched.params["preflight_kind"] == "snmp"
+    assert enriched.params["target_policy_mode"] == "snmp"
+    assert enriched.params["port"] == 161
+
+
+@pytest.mark.asyncio
+async def test_async_network_yaml_policy_uses_same_contract(reader):
+    request = build_collection_request(
+        task_id="yaml-snmp-async",
+        params={
+            "model_id": "network",
+            "executor_type": "protocol",
+            "host": "10.10.69.245",
+        },
+    )
+
+    enriched = await apply_yaml_target_policy_async(request, reader=reader)
+
     assert enriched.params["preflight_kind"] == "snmp"
     assert enriched.params["target_policy_mode"] == "snmp"
     assert int(enriched.params["port"]) == 161

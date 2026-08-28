@@ -1,7 +1,92 @@
 import asyncio
+import time
 
 import pytest
+from core.collection.metrics import CollectionMetrics
 from core.collection.scheduler import CollectionScheduler
+
+
+@pytest.mark.asyncio
+async def test_scheduler_yields_between_blocking_target_starts():
+    scheduler = CollectionScheduler(max_in_flight=20)
+    release = asyncio.Event()
+    stop_heartbeat = asyncio.Event()
+    heartbeat_gaps = []
+
+    async def handle(item):
+        # 模拟 Collector 在第一次真正 await 前的同步初始化切片。
+        time.sleep(0.01)
+        await release.wait()
+        return item
+
+    async def heartbeat():
+        previous = time.monotonic()
+        while not stop_heartbeat.is_set():
+            await asyncio.sleep(0)
+            current = time.monotonic()
+            heartbeat_gaps.append(current - previous)
+            previous = current
+
+    heartbeat_task = asyncio.create_task(heartbeat())
+    run = asyncio.create_task(scheduler.execute("responsive", range(20), handle))
+    try:
+        deadline = time.monotonic() + 2
+        while scheduler.active < 20 and time.monotonic() < deadline:
+            await asyncio.sleep(0.001)
+
+        assert scheduler.active == 20
+        assert heartbeat_gaps
+        assert max(heartbeat_gaps) < 0.08
+    finally:
+        release.set()
+        await run
+        stop_heartbeat.set()
+        await heartbeat_task
+        await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_exposes_target_wait_and_dispatch_yield_metrics():
+    metrics = CollectionMetrics()
+    scheduler = CollectionScheduler(max_in_flight=1, metrics=metrics)
+
+    async def handler(item):
+        await asyncio.sleep(0.01)
+        return item
+
+    assert await scheduler.execute("metrics-run", (1, 2), handler) == (1, 2)
+    snapshot = metrics.snapshot()
+
+    assert snapshot["scheduler_dispatch_total"] == 2
+    assert snapshot["scheduler_yield_total"] == 2
+    assert snapshot["target_schedule_wait_seconds_p99"] >= 0
+    assert snapshot["target_dispatch_to_started_seconds_p99"] >= 0
+
+    await scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_scheduler_dispatch_quantum_is_fixed_to_one():
+    metrics = CollectionMetrics()
+    scheduler = CollectionScheduler(max_in_flight=4, metrics=metrics)
+    release = asyncio.Event()
+
+    async def handler(item):
+        await release.wait()
+        return item
+
+    run = asyncio.create_task(scheduler.execute("quantum-two", range(4), handler))
+    deadline = time.monotonic() + 1
+    while scheduler.active < 4 and time.monotonic() < deadline:
+        await asyncio.sleep(0)
+
+    assert scheduler.active == 4
+    assert metrics.snapshot()["scheduler_dispatch_total"] == 4
+    assert metrics.snapshot()["scheduler_yield_total"] == 4
+
+    release.set()
+    assert await run == (0, 1, 2, 3)
+    await scheduler.shutdown()
 
 
 @pytest.mark.asyncio
