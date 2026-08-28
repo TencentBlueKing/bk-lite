@@ -23,7 +23,7 @@
 | 告警源专属 webhook | 按告警源 ID 暴露独立 webhook 接入地址 | `POST /alerts/api/source/{source_id}/webhook` | GA |
 | NATS 接入 | 通过 NATS 消息通道接收事件并进入同一处理主流程 | 记录 `pusher/source_id` 等来源信息 | GA |
 | K8s 接入 YAML | K8s 告警源生成部署 YAML 便于集群侧接入 | `/alerts/open_api/k8s/render` | GA |
-| 告警开放接口 | 按开放契约查询告警并执行动作 | `api/open/alerts` 列表/详情/事件/动作/批量动作 | GA |
+| 告警开放接口 | 按开放契约查询告警并执行动作 | 统一网关 `/openapi/v1/alerts/*`（list/detail/events/assign/acknowledge/reassign/close/batch-action，锚点为业务告警 ID）；存量 `api/open/alerts` 仍保留。接口关闭允许待响应/处理中且不校验处理人 | GA |
 | 字段标准化 | 经 source adapter 按告警源字段映射标准化为 Event 模型 | 默认 mapping，`title` 必填（缺失丢弃）；`external_id` 缺失按 `item+resource_name+source_id` 生成；`level` 缺失/非法回落最低级别；`start_time` 缺失用当前时间 | GA |
 | 时间戳兼容 | 兼容 10 位秒级与 13 位毫秒级时间戳 | — | GA |
 | 事件动作 | 事件 action 取值 | `created`（产生，默认）/ `closed`（关闭）/ `recovery`（恢复） | GA |

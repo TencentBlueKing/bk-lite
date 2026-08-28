@@ -42,21 +42,20 @@ const FieldBindingTable: React.FC<FieldBindingTableProps> = ({
   // 同一 EditModal 内的"可选 Key"集合一致。本组件进一步：
   //   - 过滤 source_id（只剩 source_name，按"用 name 不用 ID"）
   //   - 把 source_name 的 verbose_name 简化为"告警源"
-  const valueOptions = ruleList
-    // 与 actionRules/components/matchRule 同口径：
-    //   - 去掉 source_id（保留 source_name，按"用 name 不用 ID"）
-    //   - 去掉 location / service（这两个字段只在 Event 模型上，Alert 模型上没有，
-    //     是 event-only 的 ghost key，下拉里出现会导致 payload[key] 永远为 None）
-    .filter(
-      (item) =>
-        item.name !== 'source_id' &&
-        item.name !== 'location' &&
-        item.name !== 'service'
-    )
-    .map((item) => ({
-      label: item.name === 'source_name' ? '告警源' : item.verbose_name,
-      value: item.name,
-    }));
+  const valueOptions = [
+    { label: '告警ID', value: 'alert_id' },
+    ...ruleList
+      .filter(
+        (item) =>
+          item.name !== 'source_id' &&
+          item.name !== 'location' &&
+          item.name !== 'service'
+      )
+      .map((item) => ({
+        label: item.name === 'source_name' ? '告警源' : item.verbose_name,
+        value: item.name,
+      })),
+  ];
 
   const getBinding = useCallback(
     (name: string): ParamBinding =>

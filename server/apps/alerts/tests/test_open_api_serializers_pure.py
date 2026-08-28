@@ -1,4 +1,5 @@
-from datetime import datetime, timezone as dt_tz
+from datetime import datetime
+from datetime import timezone as dt_tz
 from types import SimpleNamespace
 
 import pytest
@@ -18,6 +19,11 @@ def test_parse_pagination_defaults_and_cap():
     assert parse_pagination({}) == (1, 20)
     assert parse_pagination({"page": "2", "page_size": "50"}) == (2, 50)
     assert parse_pagination({"page_size": "999"}) == (1, 100)
+
+
+def test_parse_pagination_gateway_cap():
+    assert parse_pagination({"page_size": "500"}, max_page_size=500) == (1, 500)
+    assert parse_pagination({"page_size": "999"}, max_page_size=500) == (1, 500)
 
 
 def test_parse_pagination_rejects_invalid():
