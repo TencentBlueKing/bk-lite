@@ -858,3 +858,60 @@ async def test_callback_result_includes_fence_and_is_not_sent_as_metrics():
 
     assert callbacks[0][0]["collection_fence"] == 4
     assert callbacks[0][0]["collection_target"] == "10.10.24.2"
+
+
+@pytest.mark.asyncio
+async def test_buffered_publisher_can_run_multiple_publish_batches_concurrently():
+    release = asyncio.Event()
+
+    class ConcurrentDelegate:
+        def __init__(self):
+            self.active = 0
+            self.peak_active = 0
+
+        async def publish_batch(self, _items):
+            self.active += 1
+            self.peak_active = max(self.peak_active, self.active)
+            try:
+                await release.wait()
+            finally:
+                self.active -= 1
+
+    delegate = ConcurrentDelegate()
+    publisher = BufferedResultPublisher(
+        delegate,
+        capacity=8,
+        batch_size=1,
+        flush_interval_seconds=0.01,
+        worker_count=4,
+    )
+    request = CollectionRequest(
+        task_id="run-concurrent",
+        plugin_ref="network",
+        targets=tuple(f"10.0.0.{index}" for index in range(4)),
+        params={},
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+    receipts = [
+        await publisher.enqueue(
+            request,
+            TargetCollectionResult(
+                target=f"10.0.0.{index}",
+                status="success",
+                attempts=1,
+                value="metric 1",
+            ),
+            lease,
+        )
+        for index in range(4)
+    ]
+
+    for _ in range(100):
+        if delegate.peak_active == 4:
+            break
+        await asyncio.sleep(0.001)
+
+    assert delegate.peak_active == 4
+    release.set()
+    await asyncio.gather(*(receipt.wait() for receipt in receipts))
+    await publisher.shutdown()

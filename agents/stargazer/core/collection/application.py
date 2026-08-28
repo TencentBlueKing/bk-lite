@@ -73,6 +73,7 @@ class CollectionApplicationSettings:
     run_deadline_seconds: float = 0.0
     max_no_response_attempts: int = 3
     publish_max_attempts: int = 2
+    publish_worker_count: int = 1
     capacity_log_interval_seconds: float = 180.0
 
     def __post_init__(self) -> None:
@@ -98,10 +99,13 @@ class CollectionApplicationSettings:
             raise ValueError("publish_total_timeout_seconds must be greater than zero")
         if self.capacity_log_interval_seconds <= 0:
             raise ValueError("capacity_log_interval_seconds must be greater than zero")
+        if self.publish_worker_count <= 0:
+            raise ValueError("publish_worker_count must be greater than zero")
 
     @classmethod
     def from_env(cls) -> CollectionApplicationSettings:
         max_active_targets = concurrency_limit_from_env("MAX_ACTIVE_TARGETS", DEFAULT_MAX_ACTIVE_TARGETS)
+        jetstream_publish_enabled = str(os.getenv("NATS_METRICS_JETSTREAM_ENABLED", "false")).strip().lower() in {"1", "true", "yes", "on"}
         topology_raw = os.getenv("NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS")
         if topology_raw is None or not str(topology_raw).strip():
             network_topology_max_active_targets = DEFAULT_NETWORK_TOPOLOGY_MAX_ACTIVE_TARGETS
@@ -127,6 +131,7 @@ class CollectionApplicationSettings:
             run_deadline_seconds=float(os.getenv("RUN_DEADLINE", "0")),
             max_no_response_attempts=int(os.getenv("MAX_NO_RESPONSE_ATTEMPTS", "3")),
             publish_max_attempts=int(os.getenv("PUBLISH_MAX_ATTEMPTS", "2")),
+            publish_worker_count=int(os.getenv("PUBLISH_WORKERS", "4") if jetstream_publish_enabled else "1"),
             capacity_log_interval_seconds=float(os.getenv("CAPACITY_LOG_INTERVAL", "180")),
         )
 
@@ -171,7 +176,12 @@ class CollectionApplication:
         self._publisher = (
             publisher
             if isinstance(publisher, BufferedResultPublisher)
-            else BufferedResultPublisher(publisher, capacity=publish_capacity, metrics=self._metrics)
+            else BufferedResultPublisher(
+                publisher,
+                capacity=publish_capacity,
+                worker_count=self.settings.publish_worker_count,
+                metrics=self._metrics,
+            )
         )
         self._execution_plan_resolver = execution_plan_resolver or ExecutionPlanResolver(
             defaults=TimeoutDefaults(
