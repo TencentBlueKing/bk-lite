@@ -39,7 +39,7 @@ export const createFlowDashboardConfig = ({
         name: 'device_flow_packets_rate',
         display_name: '总包速率',
         description: `${protocolLabel} 设备总包速率。`,
-        unit: 'cps',
+        unit: 'pps',
         query: queries.device_flow_packets_rate,
         color: '#13c2c2',
       },
@@ -73,7 +73,7 @@ export const createFlowDashboardConfig = ({
       {
         title: '总包速率',
         metric: 'device_flow_packets_rate',
-        unit: 'cps',
+        unit: 'pps',
         color: '#13c2c2',
         icon: 'thunder',
         compare: true,

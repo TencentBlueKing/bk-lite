@@ -136,7 +136,7 @@ export function FlowConversationTable({
   return (
     <DashboardPanel
       title="Top 会话"
-      subtitle="当前时间窗流量最高的 10 组会话，按源/目的 IP、目的端口与协议聚合"
+      subtitle="所选时间窗内平均流量速率最高的 10 组会话，按源/目的 IP、目的端口与协议聚合"
       className={`${styles.span12} ${styles.flowTablePanel}`}
       bodyClassName={styles.flowTableWrap}
       styles={styles}
@@ -148,7 +148,7 @@ export function FlowConversationTable({
         columns={columns}
         dataSource={rows}
         pagination={false}
-        locale={{ emptyText: '当前时间窗无 Flow 会话数据' }}
+        locale={{ emptyText: '所选时间窗内无 Flow 会话数据' }}
       />
     </DashboardPanel>
   );

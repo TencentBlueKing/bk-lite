@@ -26,3 +26,24 @@ export const resolveInstanceTypeFromObjectName = (objectName?: string | null): s
 
 export const isFlowSupportedObjectName = (objectName?: string | null): boolean =>
   FLOW_SUPPORTED_OBJECT_NAMES.includes(String(objectName || '').trim() as FlowSupportedObjectName);
+
+/** NetFlow/sFlow 盘绑定 Switch/Router 等网络设备，而非名为 NetFlow/sFlow 的监控对象。 */
+export function resolveFlowHostMonitorObject<
+  T extends { id?: unknown; name?: string; display_name?: string; instance_count?: number },
+>(objects: T[], preferredId?: string | null): T | undefined {
+  const byId = preferredId
+    ? objects.find((obj) => String(obj.id) === String(preferredId))
+    : undefined;
+  if (byId && isFlowSupportedObjectName(byId.name)) {
+    return byId;
+  }
+
+  const withInstances = objects.find(
+    (obj) =>
+      isFlowSupportedObjectName(obj.name) &&
+      (obj.instance_count == null || obj.instance_count > 0),
+  );
+  if (withInstances) return withInstances;
+
+  return objects.find((obj) => isFlowSupportedObjectName(obj.name));
+}

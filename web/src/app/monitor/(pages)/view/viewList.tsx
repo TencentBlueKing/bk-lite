@@ -400,7 +400,6 @@ const ViewList: React.FC<ViewListProps> = ({
       getColoumnAndData();
     }
     // searchParams host 过滤变更时也要重载（同对象再次跳转）
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     objectId,
     objects,
@@ -604,13 +603,15 @@ const ViewList: React.FC<ViewListProps> = ({
         } else {
           setColony([]);
           colonyRef.current = [];
+          onRefresh();
         }
       }
     } finally {
-      if (
-        currentRequestId === columnRequestIdRef.current &&
-        colonyRef.current.length
-      ) {
+      if (currentRequestId !== columnRequestIdRef.current) {
+        return;
+      }
+      // 无效 objectId 或未触发实例列表刷新时，避免 loading 永久遮罩主内容区。
+      if (!objName) {
         setTableLoading(false);
       }
     }

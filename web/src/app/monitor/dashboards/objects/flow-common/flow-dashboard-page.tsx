@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert } from 'antd';
+import { Alert, Empty } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -16,6 +16,7 @@ import {
 import type { FlowProtocol } from './constants';
 import {
   isFlowSupportedObjectName,
+  resolveFlowHostMonitorObject,
   resolveInstanceTypeFromObjectName,
 } from './constants';
 import { createFlowDashboardConfig } from './create-flow-config';
@@ -91,6 +92,8 @@ export function FlowDashboardPage({ protocol }: FlowDashboardPageProps) {
   const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
   const unsupportedObject =
     objectsLoaded && Boolean(objectName) && !isFlowSupportedObjectName(objectName);
+  const missingFlowContext =
+    objectsLoaded && !monitorObjId && !resolveFlowHostMonitorObject(objects);
 
   return (
     <DashboardShell
@@ -98,6 +101,12 @@ export function FlowDashboardPage({ protocol }: FlowDashboardPageProps) {
       styles={styles}
       dashboardContent={
         <>
+          {missingFlowContext ? (
+            <Empty
+              className="py-12"
+              description="当前环境暂无支持 Flow 分析的网络设备（Switch/Router/Firewall/Loadbalance），请先在集成中接入后再进入。"
+            />
+          ) : null}
           {unsupportedObject ? (
             <Alert
               type="warning"
@@ -107,7 +116,7 @@ export function FlowDashboardPage({ protocol }: FlowDashboardPageProps) {
               description="请从 Switch、Router、Firewall 或 Loadbalance 的 Flow 实例进入此仪表盘。"
             />
           ) : null}
-          {!instanceType && objectsLoaded ? (
+          {!missingFlowContext && !instanceType && objectsLoaded ? (
             <Alert
               type="info"
               showIcon
@@ -117,17 +126,21 @@ export function FlowDashboardPage({ protocol }: FlowDashboardPageProps) {
             />
           ) : null}
 
-          <div className={styles.sectionLabel}>流量概览</div>
-          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
+          {!missingFlowContext ? (
+            <>
+              <div className={styles.sectionLabel}>流量概览</div>
+              <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
-          <div className={styles.sectionLabel}>Top 会话</div>
-          {instanceType ? (
-            <FlowConversationTable
-              dashboard={dashboard}
-              protocol={protocol}
-              instanceType={instanceType}
-              styles={styles}
-            />
+              <div className={styles.sectionLabel}>Top 会话</div>
+              {instanceType ? (
+                <FlowConversationTable
+                  dashboard={dashboard}
+                  protocol={protocol}
+                  instanceType={instanceType}
+                  styles={styles}
+                />
+              ) : null}
+            </>
           ) : null}
         </>
       }
