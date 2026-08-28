@@ -78,6 +78,7 @@ def serialize_alert(alert, *, detail: bool = False) -> dict:
         "dimensions": alert.dimensions or {},
         "first_event_time": _format_datetime(alert.first_event_time),
         "last_event_time": _format_datetime(alert.last_event_time),
+        "closed_at": _format_datetime(getattr(alert, "closed_at", None)),
         "created_at": _format_datetime(alert.created_at),
         "updated_at": _format_datetime(alert.updated_at),
         "event_count": _get_event_count(alert),

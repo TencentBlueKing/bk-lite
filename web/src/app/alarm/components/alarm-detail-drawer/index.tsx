@@ -67,8 +67,9 @@ export interface AlarmDetailDrawerData extends AlarmActionRowData {
   duration?: string;
   enrichment?: Record<string, unknown>;
   first_event_time?: string | null;
-  incident_name?: string;
   last_event_time?: string | null;
+  closed_at?: string | null;
+  incident_name?: string;
   level?: string;
   notification_status?: string;
   notify_status?: string;

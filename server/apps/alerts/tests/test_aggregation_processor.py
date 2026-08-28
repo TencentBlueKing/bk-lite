@@ -634,6 +634,7 @@ def test_process_missing_detection_recovers_active_alert(source):
     AggregationProcessor().process_aggregation()
     active.refresh_from_db()
     assert active.status == AlertStatus.AUTO_RECOVERY
+    assert active.closed_at is not None
 
 
 # --------------------------------------------------------------------------

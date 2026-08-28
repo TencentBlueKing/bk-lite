@@ -78,8 +78,19 @@ def test_validate_incident_operators_aggregates_alert_teams():
 
 
 def test_alert_get_duration_inactive_status():
-    obj = SimpleNamespace(created_at=timezone.now(), status="closed")
-    assert AlertModelSerializer.get_duration(obj) == "--"
+    from datetime import datetime, timedelta
+    from datetime import timezone as dt_timezone
+
+    first_event_time = datetime(2026, 8, 28, 10, 0, 0, tzinfo=dt_timezone.utc)
+    obj = SimpleNamespace(
+        created_at=first_event_time,
+        first_event_time=first_event_time,
+        status="closed",
+        last_event_time=first_event_time,
+        updated_at=first_event_time + timedelta(minutes=8),
+        closed_at=first_event_time + timedelta(minutes=8),
+    )
+    assert AlertModelSerializer.get_duration(obj) == "8m "
 
 
 @pytest.mark.django_db
@@ -189,9 +200,7 @@ def test_alert_source_get_last_event_time_respects_activated_timezone():
         timezone.deactivate()
 
     # UTC 01:44:34 在 Asia/Shanghai 下应为 09:44:34
-    assert result == "2026-07-24 09:44:34", (
-        f"get_last_event_time 应输出用户时区钟面，实际: {result}"
-    )
+    assert result == "2026-07-24 09:44:34", f"get_last_event_time 应输出用户时区钟面，实际: {result}"
 
 
 @pytest.mark.django_db

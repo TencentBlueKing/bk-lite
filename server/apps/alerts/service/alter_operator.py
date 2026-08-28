@@ -514,6 +514,7 @@ class AlertOperator(object):
             alert.status = AlertStatus.CLOSED
             alert.operate = AlertOperate.CLOSE
             alert.updated_at = timezone.now()
+            Alert.stamp_closed_at(alert, alert.updated_at)
             alert.save()
 
             from apps.alerts.action.engine import ActionEngine

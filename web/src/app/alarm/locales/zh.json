@@ -251,6 +251,7 @@
         "changes": "变更记录",
         "firstEventTime": "首次事件时间",
         "lastEventTime": "最新事件时间",
+        "closeTime": "关闭时间",
         "eventTitle": "标题",
         "eventCount": "事件数量",
         "notificationStatus": "通知情况",

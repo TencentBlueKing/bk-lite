@@ -62,6 +62,7 @@ def test_serialize_alert_hides_db_id_and_events():
         dimensions={},
         first_event_time=datetime(2026, 8, 1, 12, 0, tzinfo=dt_tz.utc),
         last_event_time=datetime(2026, 8, 1, 12, 5, tzinfo=dt_tz.utc),
+        closed_at=None,
         created_at=datetime(2026, 8, 1, 12, 0, tzinfo=dt_tz.utc),
         updated_at=datetime(2026, 8, 1, 12, 5, tzinfo=dt_tz.utc),
         labels={"k": "v"},
@@ -72,6 +73,7 @@ def test_serialize_alert_hides_db_id_and_events():
     listed = serialize_alert(alert, detail=False)
     assert listed["alert_id"] == "ALERT-1"
     assert listed["event_count"] == 3
+    assert listed["closed_at"] is None
     assert "id" not in listed
     assert "events" not in listed
     assert "labels" not in listed

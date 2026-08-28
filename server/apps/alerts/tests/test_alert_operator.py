@@ -69,6 +69,7 @@ def test_assign_success(sys_user):
     alert = Alert.objects.get(alert_id="A1")
     assert alert.status == AlertStatus.PENDING
     assert alert.operator == ["op1"]
+    assert alert.closed_at is None
     assert OperatorLog.objects.filter(operator_object="告警处理-分派").exists()
 
 
@@ -152,7 +153,9 @@ def test_close_success():
     op = AlertOperator(user="op1")
     result = op.operate("close", "A1", {"reason": "已修复"})
     assert result["result"] is True
-    assert Alert.objects.get(alert_id="A1").status == AlertStatus.CLOSED
+    alert = Alert.objects.get(alert_id="A1")
+    assert alert.status == AlertStatus.CLOSED
+    assert alert.closed_at is not None
     assert result["data"]["close_reason"] == "已修复"
 
 
@@ -179,7 +182,9 @@ def test_api_close_pending_without_assignee():
     op = AlertOperator(user="api-user", api_close=True)
     result = op.operate("close", "A1", {"reason": "自动化关闭"})
     assert result["result"] is True
-    assert Alert.objects.get(alert_id="A1").status == AlertStatus.CLOSED
+    alert = Alert.objects.get(alert_id="A1")
+    assert alert.status == AlertStatus.CLOSED
+    assert alert.closed_at is not None
     assert result["data"]["close_reason"] == "自动化关闭"
 
 
@@ -189,7 +194,9 @@ def test_api_close_processing_without_assignee():
     op = AlertOperator(user="api-user", api_close=True)
     result = op.operate("close", "A1", {})
     assert result["result"] is True
-    assert Alert.objects.get(alert_id="A1").status == AlertStatus.CLOSED
+    alert = Alert.objects.get(alert_id="A1")
+    assert alert.status == AlertStatus.CLOSED
+    assert alert.closed_at is not None
 
 
 @pytest.mark.parametrize(
