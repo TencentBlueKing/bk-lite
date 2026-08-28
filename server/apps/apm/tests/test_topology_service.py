@@ -305,6 +305,36 @@ def test_user_request_node_exists_only_in_topology_result():
     assert all(node.service_namespace == "" for node in graph.nodes if node.kind == "user_request")
 
 
+@pytest.mark.django_db
+def test_catalog_http_does_not_materialize_inferred_or_user_request_nodes(apm_api_client):
+    now = timezone.now()
+    create_application("shop", (10,))
+    catalog = DjangoTelemetryCatalogService()
+    catalog.discover(CatalogDiscovery("shop", "storefront", "storefront-1", "prod", seen_at=now))
+    catalog.discover(CatalogDiscovery("shop", "gateway", "gateway-1", "prod", seen_at=now))
+    graph = DjangoApmTopologyService(
+        InMemoryTraceStore(details=[_user_entry_trace(now), _mysql_client_trace(now)]),
+    ).build(
+        [TopologyTarget("shop", "storefront", "prod"), TopologyTarget("shop", "gateway", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_inferred=True,
+        include_user_request=True,
+    )
+
+    response = apm_api_client.get("/api/v1/apm/services/")
+    names = {item["name"] for item in response.data} if isinstance(response.data, list) else {item["name"] for item in response.data["items"]}
+
+    assert {node.service_name for node in graph.nodes if node.kind == "inferred"} == {"mysql"}
+    assert {node.service_name for node in graph.nodes if node.kind == "user_request"} == {"user_request"}
+    assert all(node.service_namespace == "" for node in graph.nodes if node.kind in {"inferred", "user_request"})
+    assert response.status_code == 200
+    assert names == {"storefront", "gateway"}
+    assert "mysql" not in names
+    assert "user_request" not in names
+    assert not ApmService.objects.filter(name__in=["mysql", "user_request"]).exists()
+
+
 def test_catalog_and_red_do_not_surface_topology_synthetic_nodes():
     from apps.apm.services import catalog as catalog_module
     from apps.apm.services import query as query_module

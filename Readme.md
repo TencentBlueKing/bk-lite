@@ -26,7 +26,7 @@ Blueking Lite 是一个 **AI First** 的**轻量版**运维产品，具有部署
 
 ![coverage](https://img.shields.io/badge/coverage-82.7%25-green)
 ![tests](https://img.shields.io/badge/tests-passing-brightgreen)
-![modules≥80%](https://img.shields.io/badge/modules%20%E2%89%A580%25-15%2F15-blue)
+![modules≥80%](https://img.shields.io/badge/modules%20%E2%89%A580%25-16%2F16-blue)
 ![new tests](https://img.shields.io/badge/new%20tests-339-brightgreen)
 ![infra](https://img.shields.io/badge/tested%20with-local%20containers-informational)
 
@@ -41,7 +41,7 @@ Blueking Lite 是一个 **AI First** 的**轻量版**运维产品，具有部署
 | alerts | 85.80% | system_mgmt | 82.40% |
 | monitor | 80.17% | node_mgmt | 80.21% |
 | cmdb | 82.54% | opspilot | 80.74% |
-| patch_mgmt | 81.13% | | |
+| patch_mgmt | 81.13% | apm | 88.74% |
 
 ## 🛣️ 路线图
 
