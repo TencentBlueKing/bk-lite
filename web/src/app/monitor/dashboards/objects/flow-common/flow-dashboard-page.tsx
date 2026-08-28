@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Empty } from 'antd';
+import { Alert, Empty, Spin } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -27,6 +27,66 @@ const SUMMARY_TITLES = ['总流量速率', '总包速率', '平均包大小', '�
 
 interface FlowDashboardPageProps {
   protocol: FlowProtocol;
+}
+
+interface FlowDashboardMetricsViewProps {
+  protocol: FlowProtocol;
+  instanceType: string;
+  objectName: string;
+  objectDisplayName: string;
+}
+
+/** 仅在设备类型已识别时挂载，避免用 Switch 兜底配置误拉 PromQL。 */
+function FlowDashboardMetricsView({
+  protocol,
+  instanceType,
+  objectName,
+  objectDisplayName,
+}: FlowDashboardMetricsViewProps) {
+  const config = useMemo(
+    () =>
+      createFlowDashboardConfig({
+        protocol,
+        instanceType,
+        objectFallbackName: objectName,
+        objectDisplayName,
+      }),
+    [instanceType, objectDisplayName, objectName, protocol],
+  );
+
+  const dashboard = useSimpleDashboardData(config);
+  const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
+
+  return (
+    <DashboardShell
+      dashboard={dashboard}
+      styles={styles}
+      dashboardContent={
+        <>
+          <div className={styles.sectionLabel}>流量概览</div>
+          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
+
+          <div className={styles.sectionLabel}>Top 会话</div>
+          <FlowConversationTable
+            dashboard={dashboard}
+            protocol={protocol}
+            instanceType={instanceType}
+            styles={styles}
+          />
+        </>
+      }
+    />
+  );
+}
+
+function FlowDashboardPlaceholder({ children }: { children: React.ReactNode }) {
+  return (
+    <div className={styles.page}>
+      <div className={styles.shell}>
+        <div className="flex min-h-[240px] items-center justify-center py-12">{children}</div>
+      </div>
+    </div>
+  );
 }
 
 export function FlowDashboardPage({ protocol }: FlowDashboardPageProps) {
@@ -71,79 +131,64 @@ export function FlowDashboardPage({ protocol }: FlowDashboardPageProps) {
     [objectName],
   );
 
-  const config = useMemo(() => {
-    if (!instanceType) {
-      return createFlowDashboardConfig({
-        protocol,
-        instanceType: 'switch',
-        objectFallbackName: objectName || 'Switch',
-        objectDisplayName,
-      });
-    }
-    return createFlowDashboardConfig({
-      protocol,
-      instanceType,
-      objectFallbackName: objectName,
-      objectDisplayName,
-    });
-  }, [instanceType, objectDisplayName, objectName, protocol]);
-
-  const dashboard = useSimpleDashboardData(config);
-  const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, SUMMARY_TITLES);
-  const unsupportedObject =
-    objectsLoaded && Boolean(objectName) && !isFlowSupportedObjectName(objectName);
   const missingFlowContext =
     objectsLoaded && !monitorObjId && !resolveFlowHostMonitorObject(objects);
+  const unsupportedObject =
+    objectsLoaded && Boolean(objectName) && !isFlowSupportedObjectName(objectName);
+  const readyForMetrics =
+    Boolean(instanceType) &&
+    isFlowSupportedObjectName(objectName) &&
+    !missingFlowContext &&
+    !unsupportedObject;
+
+  if (missingFlowContext) {
+    return (
+      <FlowDashboardPlaceholder>
+        <Empty description="当前环境暂无支持 Flow 分析的网络设备（Switch/Router/Firewall/Loadbalance），请先在集成中接入后再进入。" />
+      </FlowDashboardPlaceholder>
+    );
+  }
+
+  if (unsupportedObject) {
+    return (
+      <FlowDashboardPlaceholder>
+        <Alert
+          type="warning"
+          showIcon
+          message="当前监控对象不支持 Flow 分析"
+          description="请从 Switch、Router、Firewall 或 Loadbalance 的 Flow 实例进入此仪表盘。"
+        />
+      </FlowDashboardPlaceholder>
+    );
+  }
+
+  if (!readyForMetrics) {
+    if (!objectsLoaded) {
+      return (
+        <FlowDashboardPlaceholder>
+          <Spin />
+        </FlowDashboardPlaceholder>
+      );
+    }
+
+    return (
+      <FlowDashboardPlaceholder>
+        <Alert
+          type="info"
+          showIcon
+          message="无法识别设备类型"
+          description="URL 中缺少有效的 monitorObjId，请从监控视图选择网络设备 Flow 实例进入。"
+        />
+      </FlowDashboardPlaceholder>
+    );
+  }
 
   return (
-    <DashboardShell
-      dashboard={dashboard}
-      styles={styles}
-      dashboardContent={
-        <>
-          {missingFlowContext ? (
-            <Empty
-              className="py-12"
-              description="当前环境暂无支持 Flow 分析的网络设备（Switch/Router/Firewall/Loadbalance），请先在集成中接入后再进入。"
-            />
-          ) : null}
-          {unsupportedObject ? (
-            <Alert
-              type="warning"
-              showIcon
-              className="mb-3"
-              message="当前监控对象不支持 Flow 分析"
-              description="请从 Switch、Router、Firewall 或 Loadbalance 的 Flow 实例进入此仪表盘。"
-            />
-          ) : null}
-          {!missingFlowContext && !instanceType && objectsLoaded ? (
-            <Alert
-              type="info"
-              showIcon
-              className="mb-3"
-              message="无法识别设备类型"
-              description="URL 中缺少有效的 monitorObjId，请从监控视图选择网络设备 Flow 实例进入。"
-            />
-          ) : null}
-
-          {!missingFlowContext ? (
-            <>
-              <div className={styles.sectionLabel}>流量概览</div>
-              <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
-
-              <div className={styles.sectionLabel}>Top 会话</div>
-              {instanceType ? (
-                <FlowConversationTable
-                  dashboard={dashboard}
-                  protocol={protocol}
-                  instanceType={instanceType}
-                  styles={styles}
-                />
-              ) : null}
-            </>
-          ) : null}
-        </>
-      }
+    <FlowDashboardMetricsView
+      protocol={protocol}
+      instanceType={instanceType!}
+      objectName={objectName}
+      objectDisplayName={objectDisplayName}
     />
   );
 }
