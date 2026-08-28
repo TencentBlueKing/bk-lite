@@ -12,9 +12,7 @@ from .registry import capability_adapter_registry, provider_registry
 from .schemas import ProviderManifest
 
 BUILTIN_PROVIDER_ROOT = Path(__file__).resolve().parent / "builtin"
-CUSTOM_PROVIDER_ROOT = Path(__file__).resolve().parent / "custom"
 BUILTIN_IMPORT_PREFIX = "apps.system_mgmt.providers.builtin"
-CUSTOM_IMPORT_PREFIX = "apps.system_mgmt.providers.custom"
 _SKIP_DIR_NAMES = {"__pycache__"}
 _REQUIRED_PACK_FILES = ("__init__.py", "adapters/client.py", "adapters/base_connection.py")
 
@@ -56,8 +54,22 @@ def discover_builtin_provider_packs(root: Path | None = None) -> list[tuple[str,
     return discover_provider_packs(root or BUILTIN_PROVIDER_ROOT, BUILTIN_IMPORT_PREFIX, required=True)
 
 
-def discover_custom_provider_packs(root: Path | None = None) -> list[tuple[str, Path]]:
-    return discover_provider_packs(root or CUSTOM_PROVIDER_ROOT, CUSTOM_IMPORT_PREFIX, required=False)
+def _require_adapter_key_prefix(manifest_key: str, adapter_key: str) -> None:
+    required_prefix = f"{manifest_key}."
+    if not adapter_key.startswith(required_prefix):
+        raise ValueError(
+            f"Adapter key '{adapter_key}' must start with '{required_prefix}'"
+        )
+
+
+def _resolve_adapter_import_path(module_path: str, adapter_path: str, pack_dir: Path | None) -> str:
+    if pack_dir is None:
+        return adapter_path
+    if adapter_path == module_path or adapter_path.startswith(f"{module_path}."):
+        raise ValueError(
+            f"Provider pack '{pack_dir.name}' must use a pack-relative adapter path, not '{adapter_path}'"
+        )
+    return f"{module_path}.{adapter_path}"
 
 
 @contextmanager
@@ -78,8 +90,6 @@ def _already_registered_adapter(adapter_key: str) -> bool:
 def _register_provider_module(
     module_path: str,
     pack_dir: Path | None = None,
-    *,
-    reserved_keys: frozenset[str] = frozenset(),
 ):
     if pack_dir is not None:
         validate_pack_layout(pack_dir)
@@ -96,7 +106,7 @@ def _register_provider_module(
         raise ValueError(
             f"Provider pack directory '{pack_dir.name}' must match manifest key '{manifest.key}'"
         )
-    if manifest.key in reserved_keys or _already_registered_provider(manifest.key):
+    if _already_registered_provider(manifest.key):
         raise ValueError(f"Provider '{manifest.key}' is already registered")
 
     if pack_dir is not None:
@@ -105,16 +115,30 @@ def _register_provider_module(
     adapter_pairs: list[tuple[str, type]] = []
     seen_adapter_keys: set[str] = set()
     for capability in manifest.capabilities:
+        _require_adapter_key_prefix(manifest.key, capability.adapter_key)
         if capability.adapter_key in seen_adapter_keys or _already_registered_adapter(capability.adapter_key):
             raise ValueError(f"Adapter '{capability.adapter_key}' is already registered")
         seen_adapter_keys.add(capability.adapter_key)
-        adapter_pairs.append((capability.adapter_key, import_string(capability.adapter_path)))
+        adapter_pairs.append(
+            (
+                capability.adapter_key,
+                import_string(_resolve_adapter_import_path(module_path, capability.adapter_path, pack_dir)),
+            )
+        )
 
     if manifest.base_connection_adapter_key and manifest.base_connection_adapter_path:
         base_key = manifest.base_connection_adapter_key
+        _require_adapter_key_prefix(manifest.key, base_key)
         if base_key in seen_adapter_keys or _already_registered_adapter(base_key):
             raise ValueError(f"Adapter '{base_key}' is already registered")
-        adapter_pairs.append((base_key, import_string(manifest.base_connection_adapter_path)))
+        adapter_pairs.append(
+            (
+                base_key,
+                import_string(
+                    _resolve_adapter_import_path(module_path, manifest.base_connection_adapter_path, pack_dir)
+                ),
+            )
+        )
 
     provider_registry.register(manifest)
     try:
@@ -134,12 +158,10 @@ def _register_provider_module(
 def _try_load_pack(
     module_path: str,
     pack_dir: Path | None,
-    *,
-    reserved_keys: frozenset[str],
 ) -> None:
     pack_name = pack_dir.name if pack_dir is not None else module_path
     try:
-        _register_provider_module(module_path, pack_dir, reserved_keys=reserved_keys)
+        _register_provider_module(module_path, pack_dir)
     except Exception:
         logger.exception("Failed to load provider pack '%s'; skipping", pack_name)
 
@@ -159,13 +181,9 @@ def load_builtin_providers(force: bool = False):
         _providers_loaded = False
 
         builtin_packs = discover_builtin_provider_packs()
-        reserved_builtin_keys = frozenset(pack_dir.name for _, pack_dir in builtin_packs if pack_dir is not None)
 
         for module_path, pack_dir in builtin_packs:
-            _try_load_pack(module_path, pack_dir, reserved_keys=frozenset())
-
-        for module_path, pack_dir in discover_custom_provider_packs():
-            _try_load_pack(module_path, pack_dir, reserved_keys=reserved_builtin_keys)
+            _try_load_pack(module_path, pack_dir)
 
         _providers_loaded = True
 

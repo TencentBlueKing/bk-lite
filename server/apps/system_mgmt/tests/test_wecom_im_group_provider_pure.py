@@ -612,6 +612,4 @@ def test_wecom_manifest_registers_im_group_capability():
     capability = manifest.get_capability("im_group")
 
     assert capability.adapter_key == "wecom.im_group"
-    assert capability.adapter_path == (
-        "apps.system_mgmt.providers.builtin.wecom.adapters.im_group.WeComIMGroupAdapter"
-    )
+    assert capability.adapter_path == "adapters.im_group.WeComIMGroupAdapter"
