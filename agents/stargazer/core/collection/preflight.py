@@ -4,7 +4,7 @@
 按插件协议做无凭据连接性探测：
 
 - TCP/TLS/SSH：拨端口；
-- SNMP/UDP：方案 B——明确网络层失败判不可达，纯超时放行进凭据探测。
+- SNMP/UDP：无凭据层只做出站安全检查，可选探测交给带凭据的插件 probe。
 
 ICMP 不作为采集准入条件。
 """
@@ -12,16 +12,16 @@ ICMP 不作为采集准入条件。
 from __future__ import annotations
 
 import asyncio
-import errno
 import ipaddress
 import socket
 import ssl
 from urllib.parse import urlsplit
 
 from core.collection.contracts import PreflightResult, PreflightStatus
+from core.collection.enums import FailureStage
 from core.collection.runtime import CollectionRequest
 from core.infra.outbound_policy import OutboundTargetPolicy, OutboundTargetRejected
-from core.logger import logger
+from core.logger import logger, safe_log_value
 
 
 def _is_ip_literal(host: str) -> bool:
@@ -48,10 +48,6 @@ class AsyncProtocolPreflight:
         self._policy = policy or OutboundTargetPolicy()
         self._remote_probe = remote_probe
 
-    @staticmethod
-    def _reachability_enabled_for(request: CollectionRequest) -> bool:
-        return request.ip_precheck_enabled
-
     async def check(  # noqa: C901
         self,
         target: str,
@@ -63,11 +59,10 @@ class AsyncProtocolPreflight:
             return await self._check_inner(target, request, timeout_seconds=timeout_seconds)
         except Exception as error:  # noqa: BLE001 - 预检组件故障不得阻断采集
             logger.warning(
-                "event=preflight_component_failed task_id=%s target=%s " "error_type=%s detail=%s action=pass",
-                request.task_id,
-                target,
+                "event=preflight_component_failed task_id=%s target=%s " "failed_stage=preflight_component error_type=%s action=pass",
+                safe_log_value(request.task_id),
+                safe_log_value(target, max_length=255),
                 type(error).__name__,
-                str(error).strip() or "-",
             )
             return PreflightResult(
                 status=PreflightStatus.UNKNOWN,
@@ -95,6 +90,7 @@ class AsyncProtocolPreflight:
                 status=PreflightStatus.UNREACHABLE,
                 error_code="network_target_missing",
                 detail="logical target is not a network endpoint",
+                failed_stage=FailureStage.OUTBOUND_POLICY,
             )
         host, port, use_tls = self._endpoint(target, request, kind)
         connect_host = host
@@ -109,6 +105,7 @@ class AsyncProtocolPreflight:
                 return PreflightResult(
                     status=PreflightStatus.UNREACHABLE,
                     error_code="outbound_target_rejected",
+                    failed_stage=FailureStage.OUTBOUND_POLICY,
                 )
         elif kind != "skip" or _is_ip_literal(host):
             try:
@@ -118,6 +115,7 @@ class AsyncProtocolPreflight:
                 return PreflightResult(
                     status=PreflightStatus.UNREACHABLE,
                     error_code="outbound_target_rejected",
+                    failed_stage=FailureStage.OUTBOUND_POLICY,
                 )
         if kind == "cloud":
             return PreflightResult(
@@ -154,23 +152,17 @@ class AsyncProtocolPreflight:
                 connect_host=connect_host if not use_tls else "",
             )
         if kind in {"udp", "snmp"}:
-            if not self._reachability_enabled_for(request):
+            if not request.ip_precheck_enabled:
                 logger.debug(
                     "event=preflight_reachability_skipped task_id=%s target=%s kind=%s",
-                    request.task_id,
-                    target,
+                    safe_log_value(request.task_id),
+                    safe_log_value(target, max_length=255),
                     kind,
                 )
-                return PreflightResult(
-                    status=PreflightStatus.UNKNOWN,
-                    detail="outbound allowed; udp reachability disabled",
-                    connect_host=connect_host,
-                )
-            udp_port = port if port is not None else 161
-            return await self._udp_dial(
+            return PreflightResult(
+                status=PreflightStatus.UNKNOWN,
+                detail="outbound allowed; deferred to credential-aware probe",
                 connect_host=connect_host,
-                port=udp_port,
-                timeout_seconds=timeout_seconds,
             )
 
         if port is None:
@@ -179,11 +171,11 @@ class AsyncProtocolPreflight:
                 connect_host=connect_host if not use_tls else "",
             )
 
-        if not self._reachability_enabled_for(request):
+        if not request.ip_precheck_enabled:
             logger.debug(
                 "event=preflight_reachability_skipped task_id=%s target=%s kind=%s",
-                request.task_id,
-                target,
+                safe_log_value(request.task_id),
+                safe_log_value(target, max_length=255),
                 kind,
             )
             return PreflightResult(
@@ -210,11 +202,11 @@ class AsyncProtocolPreflight:
         use_tls: bool,
         timeout_seconds: float,
     ) -> PreflightResult:
-        if not self._reachability_enabled_for(request):
+        if not request.ip_precheck_enabled:
             logger.debug(
                 "event=preflight_reachability_skipped task_id=%s target=%s kind=remote",
-                request.task_id,
-                target,
+                safe_log_value(request.task_id),
+                safe_log_value(target, max_length=255),
             )
             return PreflightResult(
                 status=PreflightStatus.UNKNOWN,
@@ -274,18 +266,21 @@ class AsyncProtocolPreflight:
                 status=PreflightStatus.UNREACHABLE,
                 error_code="tcp_connect_timeout",
                 detail="TimeoutError",
+                failed_stage=FailureStage.IP_PRECHECK,
             )
         except ConnectionRefusedError as error:
             return PreflightResult(
                 status=PreflightStatus.UNREACHABLE,
                 error_code="tcp_connection_refused",
                 detail=type(error).__name__,
+                failed_stage=FailureStage.IP_PRECHECK,
             )
         except socket.gaierror as error:
             return PreflightResult(
                 status=PreflightStatus.UNREACHABLE,
                 error_code="dns_resolution_failed",
                 detail=type(error).__name__,
+                failed_stage=FailureStage.IP_PRECHECK,
             )
         except OutboundTargetRejected as error:
             self._log_outbound_skip(request, target, error)
@@ -293,6 +288,7 @@ class AsyncProtocolPreflight:
                 status=PreflightStatus.UNREACHABLE,
                 error_code="outbound_target_rejected",
                 detail=type(error).__name__,
+                failed_stage=FailureStage.OUTBOUND_POLICY,
             )
         except ssl.SSLCertVerificationError as error:
             # 证书校验失败仍算可达：交给凭据/业务阶段处理。
@@ -306,101 +302,20 @@ class AsyncProtocolPreflight:
                 status=PreflightStatus.UNREACHABLE,
                 error_code="tcp_connect_failed",
                 detail=type(error).__name__,
+                failed_stage=FailureStage.IP_PRECHECK,
             )
         finally:
             if writer is not None:
                 writer.close()
                 await writer.wait_closed()
 
-    async def _udp_dial(
-        self,
-        *,
-        connect_host: str,
-        port: int,
-        timeout_seconds: float,
-    ) -> PreflightResult:
-        """方案 B：UDP 短探测。
-
-        - 明确网络层失败（无路由、主机不可达、ICMP Port Unreachable 等）→ unreachable
-        - 纯超时（无回应）→ UNKNOWN，放行进入凭据探测（与「community 错误」不可区分）
-        """
-        loop = asyncio.get_running_loop()
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setblocking(False)
-        try:
-            try:
-                sock.connect((connect_host, port))
-            except OSError as error:
-                return self._udp_oserror_result(error)
-
-            # 发一字节探测；合法 SNMP PDU 非必需，ICMP 错误同样会回灌到已 connect 的 UDP socket。
-            try:
-                await loop.sock_sendall(sock, b"\x00")
-            except OSError as error:
-                return self._udp_oserror_result(error)
-
-            # 略短于外层 preflight timeout，避免被 executor 统一收成 preflight_timeout。
-            wait_seconds = max(0.05, min(float(timeout_seconds), float(timeout_seconds) * 0.9))
-            try:
-                async with asyncio.timeout(wait_seconds):
-                    await loop.sock_recv(sock, 64)
-            except TimeoutError:
-                return PreflightResult(
-                    status=PreflightStatus.UNKNOWN,
-                    detail="udp probe timeout; deferred to credential-aware probe",
-                    connect_host=connect_host,
-                )
-            except ConnectionRefusedError:
-                return PreflightResult(
-                    status=PreflightStatus.UNREACHABLE,
-                    error_code="udp_port_unreachable",
-                    detail="ConnectionRefusedError",
-                )
-            except OSError as error:
-                return self._udp_oserror_result(error)
-
-            return PreflightResult(
-                status=PreflightStatus.REACHABLE,
-                connect_host=connect_host,
-            )
-        finally:
-            sock.close()
-
-    @staticmethod
-    def _udp_oserror_result(error: OSError) -> PreflightResult:
-        code = getattr(error, "errno", None)
-        if code in {
-            errno.ENETUNREACH,
-            errno.EHOSTUNREACH,
-            errno.ENETDOWN,
-            errno.EHOSTDOWN,
-            getattr(errno, "EAFNOSUPPORT", -1),
-        }:
-            return PreflightResult(
-                status=PreflightStatus.UNREACHABLE,
-                error_code="udp_network_unreachable",
-                detail=type(error).__name__,
-            )
-        if code in {errno.ECONNREFUSED, getattr(errno, "ECONNRESET", -1)}:
-            return PreflightResult(
-                status=PreflightStatus.UNREACHABLE,
-                error_code="udp_port_unreachable",
-                detail=type(error).__name__,
-            )
-        return PreflightResult(
-            status=PreflightStatus.UNREACHABLE,
-            error_code="udp_connect_failed",
-            detail=type(error).__name__,
-        )
-
     @staticmethod
     def _log_outbound_skip(request: CollectionRequest, target: str, error: BaseException) -> None:
-        reason = str(error).strip() or type(error).__name__
         logger.info(
-            "event=outbound_target_skipped task_id=%s target=%s reason=%s",
-            request.task_id,
-            target,
-            reason,
+            "event=outbound_target_skipped task_id=%s target=%s " "failed_stage=outbound_policy error_type=%s",
+            safe_log_value(request.task_id),
+            safe_log_value(target, max_length=255),
+            type(error).__name__,
         )
 
     @staticmethod

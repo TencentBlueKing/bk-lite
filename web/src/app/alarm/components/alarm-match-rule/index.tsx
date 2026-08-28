@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import styles from './match.module.scss';
-import type { SourceItem } from '@/app/alarm/types/integration-guide';
+import type { AlertSourceOption } from '@/app/alarm/types/integration';
 import { useTranslation } from '@/utils/i18n';
 import { Select, Input } from 'antd';
 import { PlusCircleOutlined, MinusCircleOutlined } from '@ant-design/icons';
@@ -25,8 +25,8 @@ export interface AlarmMatchRuleProps {
   ruleOptions?: { name: string; verbose_name: string }[];
   conditionOptions?: Record<string, { name: string; desc: string }[]>;
   levelType?: 'alert' | 'event' | 'incident';
-  sourceOptions?: SourceItem[];
-  loadSourceOptions?: () => Promise<SourceItem[]>;
+  sourceOptions?: AlertSourceOption[];
+  loadSourceOptions?: () => Promise<AlertSourceOption[]>;
   levelOptionsOverride?: Array<{
     level_id: string | number;
     level_display_name: string;
@@ -43,7 +43,7 @@ const AlarmMatchRule: React.FC<AlarmMatchRuleProps> = ({
   levelOptionsOverride,
 }) => {
   const { t } = useTranslation();
-  const [sourceList, setSourceList] = useState<SourceItem[]>(sourceOptions || []);
+  const [sourceList, setSourceList] = useState<AlertSourceOption[]>(sourceOptions || []);
   const [sourceLoading, setSourceLoading] = useState<boolean>(false);
   const [policyList, setPolicyList] = useState<PolicyItem[][]>(
     value || [[{ key: undefined, operator: undefined, value: undefined }]],

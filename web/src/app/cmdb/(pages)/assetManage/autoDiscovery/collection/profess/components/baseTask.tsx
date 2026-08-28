@@ -149,7 +149,6 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       submitLoading,
       modelItem,
       timeoutProps = {
-        min: 1,
         max: 86400,
         defaultValue: 600,
         addonAfter: '',
@@ -170,6 +169,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const instanceModelId = targetModelId || modelId;
     const previousInstanceModelIdRef = useRef(instanceModelId);
     const normalizedTaskType = taskType || nodeId || '';
+    const timeoutMin = timeoutProps.min ?? (normalizedTaskType === 'snmp' ? 30 : 1);
     const { t } = useTranslation();
     const guardClose = useUnsavedConfirm();
     const instanceApi = useInstanceApi();
@@ -1040,7 +1040,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                 >
                   <InputNumber
                     className="w-40"
-                    min={timeoutProps.min ?? 1}
+                    min={timeoutMin}
                     max={timeoutProps.max ?? 86400}
                     addonAfter={timeoutProps.addonAfter}
                   />

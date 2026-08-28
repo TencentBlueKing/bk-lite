@@ -23,9 +23,10 @@ Status: done
 超时体系从三层收敛为两层，并为采集任务建立"凭据前连接预检"的任务级开关链路：
 
 1. **插件内部超时全部硬编码写死**（连接建立、脚本执行上限等），用户不可配；
-2. **用户唯一可配的超时 = 单对象（单 IP）采集完整流程预算**：表单 timeout 下发后由
-   框架 `asyncio.timeout` 强制，每个 IP 独立计时；删除 `plugin.yml` executor `timeout`
-   参数，消灭双轨；
+2. **用户唯一可配的超时 = 单对象（单 IP）正式 Collector 采集预算**：表单 timeout
+   下发后只在 `plugin.collect()` 外由框架 `asyncio.timeout` 强制，每个 IP 独立计时；
+   调度排队、preflight、access probe、publish 使用各自预算，删除 `plugin.yml`
+   executor `timeout` 参数，消灭双轨；
 3. **任务级 IP 预检开关**（本期只建链路）：开启后每个目标在进入凭据尝试前先做
    无凭据连接性探测，探不通直接出局，不消耗凭据与预算。
 
@@ -73,22 +74,26 @@ Status: done
 | hwcloud / manageone | CMP 驱动内部 10s | 不动 |
 | 存储/设备 stub 插件 | 无网络连接 | 不涉及 |
 
-### 二、用户唯一可配：单对象（单 IP）采集完整流程预算
+### 二、用户唯一可配：单对象（单 IP）正式 Collector 采集预算
 
-- 表单「超时时间」= 一个 IP/实例从进入采集到出结果的完整流程硬截止；IP 段拆开后
-  **每个 IP 独立计时**，某个超时跳过不影响其余。
+- 表单「超时时间」= 一个 IP/实例进入正式 `plugin.collect()` 后的硬截止；IP 段拆开后
+  **每个 IP 独立计时**，某个正式采集超时不影响其余。
 - 生效机制：框架层（`ExecutionPlanResolver` / executor）使用任务下发的 `timeout`，
-  由 `asyncio.timeout` 强制。
+  在 `plugin.collect()` 外由 `asyncio.timeout` 强制。等待 Scheduler 槽位的时间不计入；
+  preflight、access probe 和 publish 继续使用各自独立预算。
 - **删除 `plugin.yml` executor `timeout` 参数**（各插件 yml 的 `executors.*.timeout`
   字段与解析一并移除）；回落链 = 任务下发 timeout → 环境默认 `COLLECTION_TIMEOUT`。
-- 钳制边界：最小 1s，最大 86400s（1 天）；空/0 视为未设置走回落链。
+- 一般插件钳制边界：最小 1s，最大 86400s（1 天）；空/0 视为未设置走回落链。
+  `target_policy.mode=snmp` 的正式采集最小值为 30s，以容纳内部固定
+  `timeout=10s`、`retries=1` 的完整重试周期；存量 1～29s 值运行时钳到 30s。
 - 配套修正：`NetworkNodeParams` 停止用凭据 timeout（默认 10s）覆盖表单值，凭据
   timeout 不再下发——否则表单接管预算后 SNMP 单 IP 预算会塌成 10 秒。
-- job 类说明：该预算掐的是 stargazer 侧完整等待；目标主机上脚本自身的运行上限由
+- job 类说明：该预算掐的是 stargazer 侧正式 Collector 调用；目标主机上脚本自身的运行上限由
   写死的 `execute_timeout=60s`（pc 为 120s）约束。
 - `TASK_JOB_TIMEOUT`（默认 600s）保留为 server 内部状态兜底（把僵死 RUNNING 收敛为
   TIME_OUT），与用户超时体系无关，不暴露、不改动。
-- 前端 tooltip 文案不动（本变更后文案与实际行为一致）。
+- 前端 tooltip 应明确为“单个对象正式采集超时时间”，避免再次被理解为调度至发布的
+  完整流程预算。
 
 ### 三、任务级 IP 预检
 
@@ -102,8 +107,8 @@ Status: done
 - **链路**：前端采集任务表单「高级」区 Switch（默认关；K8s 等逻辑目标 UI 可隐藏）
   → `formatTaskValues` → server `params` → `node_configs` 下发 `cmdbip_precheck` header
   → agent 侧 header 去前缀后落入 `params["ip_precheck"]`。
-- 全局环境变量 `PREFLIGHT_REACHABILITY` 保留，管未带开关的旧任务；任务级开关
-  等效于对该任务启用对应协议的探测。
+- 不保留全局开关；agent 只读取当前请求的 `params["ip_precheck"]`。未下发、空值或显式
+  关闭均不执行可达性探测，避免部署级配置覆盖任务语义。
 - **同步修订** `specs/changes/stargazer-stateless-async-collection/spec.md` 中
   「ICMP 不得作为硬过滤」「预检默认不拨测」等锁定条款为「默认不做；任务显式开启
   `ip_precheck` 时按协议探测作为准入」。
@@ -117,7 +122,7 @@ Status: done
 | 1 | TCP 端口 | 直连 DB、多数 protocol、BMC/Redfish 管理口等 | 拨业务端口；超时/拒绝 → unreachable |
 | 2 | HTTPS/TLS | vCenter、OceanStor、Nacos、私有云 API 等 | 拨 TLS 端口；**证书校验失败仍算可达**，交给凭据/业务阶段 |
 | 3 | SSH remote | 全部 job/SSH；`network_config_file` | 拨 SSH 端口（默认 22）；**仅目标 IP == 接入点管理 IP（executor_node_ip）时跳过**；其它已注册节点仍拨 22 |
-| 4 | SNMP/UDP-B | network、network_topo、**security_device** | 明确网络层失败 → unreachable；纯超时放行进凭据 |
+| 4 | SNMP/UDP | network、network_topo、**security_device** | 无凭据层不发送裸 UDP；出站策略通过后交给带凭据的最小协议探测 |
 | 5 | Cloud / 逻辑 | 公有云账号、K8s 等 | 不做 IP 拨测；UI 可隐藏或忽略开关 |
 | 6 | 不适用 / none | IP 发现、无固定端口存根、缺 `target_policy.port` 的插件 | 开关开启也不拨测 |
 
@@ -128,7 +133,8 @@ Status: done
 2. **network_config_file**：归 **remote（SSH）**，不走 snmp。
 3. **HTTPS 证书错误**：**算可达**（不标 unreachable）。
 4. **无固定端口 / 存根**：无可靠端口声明 → **none**；有 yml `target_policy.port` 才拨测。
-5. **security_device**：由 `outbound_only` 改为 **snmp 方案 B**（与 network 一致）。
+5. **security_device**：与 network 一致，无凭据层只做出站安全检查，协议可达性由带凭据
+   的 SNMP probe 判定。
 6. **PC**：Windows 拨 **WinRM** 端口（5986/HTTPS 或 5985/HTTP，跟 `winrm_scheme`）；
    macOS 拨 SSH 22。IIS 等仍走 SSHPlugin 的 Job 拨 22，不误用 WinRM。
 7. **Job 本地执行与预检跳过**：真正本地执行看节点管理 `get_nodes_by_ips` 命中；
@@ -138,8 +144,11 @@ Status: done
 
 - 只断言外部行为，不断言内部方法调用。
 - **超时**：
-  - 执行计划契约：任务下发 timeout 生效为单对象预算；钳制 1s/86400s 边界；空/0
-    回落 `COLLECTION_TIMEOUT`；yml `timeout` 字段删除后解析不再读取。
+  - 执行计划契约：任务下发 timeout 生效为正式 Collector 预算；一般插件钳制
+    1s/86400s，SNMP 钳制 30s/86400s；空/0 回落 `COLLECTION_TIMEOUT`；yml
+    `timeout` 字段删除后解析不再读取。
+  - 分阶段契约：Scheduler 排队不计入表单 timeout；preflight、access probe、正式
+    collect、publish 分别计时；整轮墙钟上限由独立 Run deadline 管理。
   - 插件契约：连接超时不随任务 `timeout` 变化（抽样断言建连参数为写死值）。
   - server 下发契约：`NetworkNodeParams` 下发的 `cmdbtimeout` 为表单值而非凭据值；
     `ssh/base.py` 不再下发 `execute_timeout`。先例：`test_node_params_multicred`。
@@ -167,7 +176,8 @@ Status: done
 ## Further Notes
 
 - 表单 timeout 语义变更属于**行为变更**：存量任务里填过极大/极小值的，本变更后会
-  真正生效为单 IP 预算，需写入发布说明。
+  真正生效为单 IP 正式 Collector 预算；SNMP 小于 30s 的存量值会被兼容钳制，需写入
+  发布说明。
 - 分类方案锁定后，落地工作是：按 `executor_type` / `plugin.yml target_policy` /
   特例表（PC、security_device、network_config_file）对齐
   `request_builder` 与 `preflight`，并补契约测试；不改变「用户只有开/关」产品面。

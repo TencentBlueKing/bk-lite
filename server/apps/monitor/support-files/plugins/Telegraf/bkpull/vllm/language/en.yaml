@@ -37,6 +37,9 @@ monitor_object_metric:
     vllm:time_to_first_token_seconds_p90:
       name: TTFT P90
       desc: Time-to-First-Token P90 over the last 5 minutes.
+    vllm:time_to_first_token_seconds_p95:
+      name: TTFT P95
+      desc: Time-to-First-Token P95 over the last 5 minutes.
     vllm:time_to_first_token_seconds_avg:
       name: TTFT Average
       desc: Average Time-to-First-Token over the last 5 minutes.
@@ -46,6 +49,9 @@ monitor_object_metric:
     vllm:e2e_request_latency_seconds_p90:
       name: E2E Latency P90
       desc: End-to-end request latency P90 over the last 5 minutes.
+    vllm:e2e_request_latency_seconds_p95:
+      name: E2E Latency P95
+      desc: End-to-end request latency P95 over the last 5 minutes.
     vllm:e2e_request_latency_seconds_avg:
       name: E2E Latency Average
       desc: Average end-to-end request latency over the last 5 minutes.
@@ -55,12 +61,60 @@ monitor_object_metric:
     vllm:inter_token_latency_seconds_p90:
       name: ITL P90
       desc: Inter-Token Latency P90 over the last 5 minutes.
+    vllm:inter_token_latency_seconds_p95:
+      name: ITL P95
+      desc: Inter-Token Latency P95 over the last 5 minutes.
     vllm:inter_token_latency_seconds_p99:
       name: ITL P99
       desc: Inter-Token Latency P99 over the last 5 minutes.
     vllm:inter_token_latency_seconds_avg:
       name: ITL Average
       desc: Average Inter-Token Latency over the last 5 minutes.
+    vllm:request_queue_time_seconds_p50:
+      name: Queue Time P50
+      desc: Request queue time P50 over the last 5 minutes.
+    vllm:request_queue_time_seconds_p90:
+      name: Queue Time P90
+      desc: Request queue time P90 over the last 5 minutes.
+    vllm:request_queue_time_seconds_p95:
+      name: Queue Time P95
+      desc: Request queue time P95 over the last 5 minutes.
+    vllm:request_queue_time_seconds_p99:
+      name: Queue Time P99
+      desc: Request queue time P99 over the last 5 minutes.
+    vllm:request_queue_time_seconds_avg:
+      name: Queue Time Average
+      desc: Average request queue time over the last 5 minutes.
+    vllm:request_prefill_time_seconds_p50:
+      name: Prefill Time P50
+      desc: Prefill time P50 over the last 5 minutes.
+    vllm:request_prefill_time_seconds_p90:
+      name: Prefill Time P90
+      desc: Prefill time P90 over the last 5 minutes.
+    vllm:request_prefill_time_seconds_p95:
+      name: Prefill Time P95
+      desc: Prefill time P95 over the last 5 minutes.
+    vllm:request_prefill_time_seconds_p99:
+      name: Prefill Time P99
+      desc: Prefill time P99 over the last 5 minutes.
+    vllm:request_prefill_time_seconds_avg:
+      name: Prefill Time Average
+      desc: Average prefill time over the last 5 minutes.
+    vllm:request_decode_time_seconds_p50:
+      name: Decode Time P50
+      desc: Decode time P50 over the last 5 minutes.
+    vllm:request_decode_time_seconds_p90:
+      name: Decode Time P90
+      desc: Decode time P90 over the last 5 minutes.
+    vllm:request_decode_time_seconds_p95:
+      name: Decode Time P95
+      desc: Decode time P95 over the last 5 minutes.
+    vllm:request_decode_time_seconds_p99:
+      name: Decode Time P99
+      desc: Decode time P99 over the last 5 minutes.
+    vllm:request_decode_time_seconds_avg:
+      name: Decode Time Average
+      desc: Average decode time over the last 5 minutes.
     vllm:iteration_tokens_total_count_rate:
       name: Iteration Token Rate
       desc: Token count rate per model iteration over the last 5 minutes.

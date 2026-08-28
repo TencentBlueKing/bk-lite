@@ -4,6 +4,7 @@
 # @Author: windyzhao
 
 import socket
+import time
 
 from core.plugin.error_logging import log_plugin_exception
 from pysnmp.hlapi.asyncio import (
@@ -95,6 +96,7 @@ class SnmpFacts:
         self.timeout = 10
         self.retries = 1
         self.snmp_port = int(kwargs.get("snmp_port", 161))  # 默认 SNMP 端口为 161
+        self._runtime_metrics = kwargs.get("_runtime_metrics")
 
         # 校验参数
         self._validate_params()
@@ -171,12 +173,11 @@ class SnmpFacts:
             retries=self.retries if retries is None else retries,
         )
 
-    async def _next_walk(self, oids, *, timeout=None, retries=None, lexicographic_mode=False):
+    async def _next_walk(self, engine, oids, *, timeout=None, retries=None, lexicographic_mode=False):
         """
         原生异步 GETNEXT 遍历，行为对齐 oneliner CommandGenerator.nextCmd
         （默认 lexicographicMode=False）。
         """
-        engine = SnmpEngine()
         auth = self._get_snmp_auth()
         target = self._transport_target(timeout=timeout, retries=retries)
         context = ContextData()
@@ -184,56 +185,54 @@ class SnmpFacts:
         initial_roots = [str(oid).lstrip(".") for oid in oids]
         var_bind_table = []
 
-        try:
-            while var_binds:
-                previous_var_binds = var_binds
-                (
-                    error_indication,
-                    error_status,
-                    error_index,
-                    response_table,
-                ) = await nextCmd(
-                    engine,
-                    auth,
-                    target,
-                    context,
-                    *var_binds,
-                    lookupMib=False,
-                )
-                if error_indication:
-                    return error_indication, error_status, error_index, var_bind_table
-                if error_status:
-                    return error_indication, error_status, error_index, var_bind_table
+        while var_binds:
+            previous_var_binds = var_binds
+            (
+                error_indication,
+                error_status,
+                error_index,
+                response_table,
+            ) = await nextCmd(
+                engine,
+                auth,
+                target,
+                context,
+                *var_binds,
+                lookupMib=False,
+            )
+            if error_indication:
+                return error_indication, error_status, error_index, var_bind_table
+            if error_status:
+                return error_indication, error_status, error_index, var_bind_table
 
-                row = list(response_table[0]) if response_table else []
-                if not row:
-                    break
+            row = list(response_table[0]) if response_table else []
+            if not row:
+                break
 
-                stop_flag = True
-                for col, var_bind in enumerate(row):
-                    name, val = var_bind
-                    if isinstance(val, Null):
-                        row[col] = (previous_var_binds[col][0], endOfMibView)
-                    elif not lexicographic_mode and not _is_prefix_of(initial_roots[col], name):
-                        row[col] = (previous_var_binds[col][0], endOfMibView)
-                    cell_val = row[col][1]
-                    if cell_val is not endOfMibView and not isinstance(cell_val, EndOfMibView):
-                        stop_flag = False
+            stop_flag = True
+            for col, var_bind in enumerate(row):
+                name, val = var_bind
+                if isinstance(val, Null):
+                    row[col] = (previous_var_binds[col][0], endOfMibView)
+                elif not lexicographic_mode and not _is_prefix_of(initial_roots[col], name):
+                    row[col] = (previous_var_binds[col][0], endOfMibView)
+                cell_val = row[col][1]
+                if cell_val is not endOfMibView and not isinstance(cell_val, EndOfMibView):
+                    stop_flag = False
 
-                if stop_flag:
-                    break
+            if stop_flag:
+                break
 
-                var_bind_table.append(row)
-                var_binds = row
+            var_bind_table.append(row)
+            var_binds = row
 
-            return None, 0, 0, var_bind_table
-        finally:
-            _close_snmp_engine(engine)
+        return None, 0, 0, var_bind_table
 
     async def collect(self):  # noqa: C901
         """
         采集 SNMP 数据，包括系统信息、接口信息和 IP 信息。
         """
+        collect_started_at = time.monotonic()
         probe_timeout = min(self.timeout, 10)
         snmp_auth = self._get_snmp_auth()
         engine = SnmpEngine()
@@ -249,95 +248,102 @@ class SnmpFacts:
             "interfaces": [],  # 确保 interfaces 是一个列表
         }
 
-        # 采集系统信息
         try:
-            errorIndication, errorStatus, errorIndex, varBinds = await getCmd(
-                engine,
-                snmp_auth,
-                self._transport_target(timeout=probe_timeout, retries=self.retries),
-                context,
-                ObjectType(ObjectIdentity(p.sysDescr.lstrip("."))),
-                ObjectType(ObjectIdentity(p.sysObjectId.lstrip("."))),
-                ObjectType(ObjectIdentity(p.sysContact.lstrip("."))),
-                ObjectType(ObjectIdentity(p.sysName.lstrip("."))),
-                ObjectType(ObjectIdentity(p.sysLocation.lstrip("."))),
-                lookupMib=False,
-            )
-            if errorIndication:
-                raise RuntimeError(f"SNMP getCmd failed: {errorIndication}")
+            # 系统 GET 与接口 WALK 共用目标级 Engine，避免重复初始化。
+            try:
+                observe = getattr(self._runtime_metrics, "observe", None)
+                if callable(observe):
+                    observe(
+                        "snmp_collect_to_first_io_seconds",
+                        time.monotonic() - collect_started_at,
+                    )
+                errorIndication, errorStatus, errorIndex, varBinds = await getCmd(
+                    engine,
+                    snmp_auth,
+                    self._transport_target(timeout=probe_timeout, retries=self.retries),
+                    context,
+                    ObjectType(ObjectIdentity(p.sysDescr.lstrip("."))),
+                    ObjectType(ObjectIdentity(p.sysObjectId.lstrip("."))),
+                    ObjectType(ObjectIdentity(p.sysContact.lstrip("."))),
+                    ObjectType(ObjectIdentity(p.sysName.lstrip("."))),
+                    ObjectType(ObjectIdentity(p.sysLocation.lstrip("."))),
+                    lookupMib=False,
+                )
+                if errorIndication:
+                    raise RuntimeError(f"SNMP getCmd failed: {errorIndication}")
 
-            for oid, val in varBinds:
-                current_oid = oid.prettyPrint()
-                current_val = val.prettyPrint()
-                if current_oid == v.sysDescr:
-                    try:
-                        current_val = val._value.decode()
-                    except Exception:
-                        current_val = str(current_val)
-                    results["system"]["sysdescr"] = current_val
-                elif current_oid == v.sysObjectId:
-                    results["system"]["sysobjectid"] = current_val
-                elif current_oid == v.sysContact:
-                    results["system"]["syscontact"] = current_val
-                elif current_oid == v.sysName:
-                    results["system"]["sysname"] = current_val
-                elif current_oid == v.sysLocation:
-                    results["system"]["syslocation"] = current_val
-
-            results["system"]["ip_addr"] = self.host
-            results["system"]["port"] = self.snmp_port
-        except Exception as e:
-            raise RuntimeError(f"Error during SNMP system information collection: {str(e)}")
-        finally:
-            _close_snmp_engine(engine)
-
-        # 采集接口和 IP 信息
-        try:
-            errorIndication, errorStatus, errorIndex, varTable = await self._next_walk(
-                [
-                    p.ifIndex,
-                    p.ifDescr,
-                    p.ifMtu,
-                    p.ifSpeed,
-                    p.ifPhysAddress,
-                    p.ifAdminStatus,
-                    p.ifOperStatus,
-                    p.ifAlias,
-                ],
-                timeout=self.timeout,
-                retries=self.retries,
-                lexicographic_mode=False,
-            )
-            if errorIndication:
-                raise RuntimeError(f"SNMP nextCmd failed: {errorIndication}")
-
-            for varBinds in varTable:
-                interface = {}
                 for oid, val in varBinds:
                     current_oid = oid.prettyPrint()
                     current_val = val.prettyPrint()
-                    if current_oid.startswith(v.ifIndex):
-                        interface["index"] = current_val
-                    elif current_oid.startswith(v.ifDescr):
-                        interface["description"] = current_val
-                    elif current_oid.startswith(v.ifMtu):
-                        interface["mtu"] = current_val
-                    elif current_oid.startswith(v.ifSpeed):
-                        interface["speed"] = current_val
-                    elif current_oid.startswith(v.ifPhysAddress):
-                        interface["mac_address"] = current_val
-                    elif current_oid.startswith(v.ifAdminStatus):
-                        interface["admin_status"] = current_val
-                    elif current_oid.startswith(v.ifOperStatus):
-                        interface["oper_status"] = current_val
-                    elif current_oid.startswith(v.ifAlias):
-                        interface["alias"] = current_val
-                if interface:
-                    results["interfaces"].append(interface)
-        except Exception as e:
-            raise RuntimeError(f"Error during SNMP interface information collection: {str(e)}")
+                    if current_oid == v.sysDescr:
+                        try:
+                            current_val = val._value.decode()
+                        except Exception:
+                            current_val = str(current_val)
+                        results["system"]["sysdescr"] = current_val
+                    elif current_oid == v.sysObjectId:
+                        results["system"]["sysobjectid"] = current_val
+                    elif current_oid == v.sysContact:
+                        results["system"]["syscontact"] = current_val
+                    elif current_oid == v.sysName:
+                        results["system"]["sysname"] = current_val
+                    elif current_oid == v.sysLocation:
+                        results["system"]["syslocation"] = current_val
 
-        return results
+                results["system"]["ip_addr"] = self.host
+                results["system"]["port"] = self.snmp_port
+            except Exception as e:
+                raise RuntimeError(f"Error during SNMP system information collection: {str(e)}")
+
+            try:
+                errorIndication, errorStatus, errorIndex, varTable = await self._next_walk(
+                    engine,
+                    [
+                        p.ifIndex,
+                        p.ifDescr,
+                        p.ifMtu,
+                        p.ifSpeed,
+                        p.ifPhysAddress,
+                        p.ifAdminStatus,
+                        p.ifOperStatus,
+                        p.ifAlias,
+                    ],
+                    timeout=self.timeout,
+                    retries=self.retries,
+                    lexicographic_mode=False,
+                )
+                if errorIndication:
+                    raise RuntimeError(f"SNMP nextCmd failed: {errorIndication}")
+
+                for varBinds in varTable:
+                    interface = {}
+                    for oid, val in varBinds:
+                        current_oid = oid.prettyPrint()
+                        current_val = val.prettyPrint()
+                        if current_oid.startswith(v.ifIndex):
+                            interface["index"] = current_val
+                        elif current_oid.startswith(v.ifDescr):
+                            interface["description"] = current_val
+                        elif current_oid.startswith(v.ifMtu):
+                            interface["mtu"] = current_val
+                        elif current_oid.startswith(v.ifSpeed):
+                            interface["speed"] = current_val
+                        elif current_oid.startswith(v.ifPhysAddress):
+                            interface["mac_address"] = current_val
+                        elif current_oid.startswith(v.ifAdminStatus):
+                            interface["admin_status"] = current_val
+                        elif current_oid.startswith(v.ifOperStatus):
+                            interface["oper_status"] = current_val
+                        elif current_oid.startswith(v.ifAlias):
+                            interface["alias"] = current_val
+                    if interface:
+                        results["interfaces"].append(interface)
+            except Exception as e:
+                raise RuntimeError(f"Error during SNMP interface information collection: {str(e)}")
+
+            return results
+        finally:
+            _close_snmp_engine(engine)
 
     async def probe(self):
         """最小只读 SNMP GET（sysName），用于 CredentialAttempt。"""

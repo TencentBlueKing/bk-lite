@@ -8,6 +8,7 @@ NATS 推送辅助工具
 """
 
 import asyncio
+import hashlib
 import json
 import os
 import time
@@ -38,6 +39,7 @@ class MetricsPublishError(RuntimeError):
         reason: str,
         attempted_count: int | None = None,
         attempted_indices: tuple[int, ...] = (),
+        confirmed_indices: tuple[int, ...] = (),
     ):
         self.task_id = task_id
         self.subject = subject
@@ -48,6 +50,7 @@ class MetricsPublishError(RuntimeError):
         self.reason = reason
         self.attempted_count = success_count if attempted_count is None else int(attempted_count)
         self.attempted_indices = attempted_indices
+        self.confirmed_indices = confirmed_indices
         super().__init__(
             f"metrics publish incomplete: task_id={task_id}, subject={subject}, "
             f"success={success_count}/{total_lines}, delivery_detected={delivery_detected}, "
@@ -59,25 +62,35 @@ def _has_confirmed_delivery(delivered_count: int) -> bool:
     return delivered_count > 0
 
 
-async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_id: str, *, before_publish=None) -> int:
+async def _publish_lines_with_retry(
+    subject: str,
+    influx_lines: list[str],
+    task_id: str,
+    *,
+    before_publish=None,
+    message_ids=None,
+) -> int:
     """执行一次 NATS 发布；重试由目标执行器统一管理。"""
     total_lines = len(influx_lines)
     try:
-        if before_publish is None:
-            success_count = await nats_publish_lines(subject, influx_lines)
-        else:
-            success_count = await nats_publish_lines(subject, influx_lines, before_publish=before_publish)
+        publish_kwargs = {}
+        if before_publish is not None:
+            publish_kwargs["before_publish"] = before_publish
+        if message_ids is not None:
+            publish_kwargs["message_ids"] = message_ids
+        success_count = await nats_publish_lines(subject, influx_lines, **publish_kwargs)
     except NatsLinesPublishError as error:
         raise MetricsPublishError(
             task_id=task_id,
             subject=subject,
             total_lines=total_lines,
-            success_count=0,
+            success_count=len(error.confirmed_indices),
             delivery_detected=bool(error.delivery_detected),
             attempts=1,
             reason=type(error.error).__name__,
             attempted_count=error.attempted_count_before_failure,
             attempted_indices=tuple(getattr(error, "attempted_indices", ())),
+            confirmed_indices=tuple(getattr(error, "confirmed_indices", ())),
         ) from error
     except Exception as error:
         # 普通异常无法证明服务端未收到，按不确定投递处理，避免重复数据。
@@ -129,6 +142,10 @@ class MetricResultTooLargeError(ValueError):
     error_code = "result_too_large"
 
 
+class MetricFormatError(ValueError):
+    error_code = "metric_format_invalid"
+
+
 class _DeliveryAttemptFilter:
     def __init__(self, line_result_ids, attempt_states) -> None:
         self._line_result_ids = line_result_ids
@@ -166,8 +183,7 @@ async def publish_callback_to_nats(result: Dict[str, Any], params: Dict[str, Any
         logger.debug(f"[NATS Helper] Published callback to {subject} for task {task_id}")
     except Exception as err:
         logger.exception(
-            "event=callback_publish_failed task_id=%s subject=%s "
-            "failed_stage=callback_publish error_type=%s",
+            "event=callback_publish_failed task_id=%s subject=%s " "failed_stage=callback_publish error_type=%s",
             task_id,
             subject,
             type(err).__name__,
@@ -188,8 +204,7 @@ async def publish_credential_result_to_nats(result: Dict[str, Any], params: Dict
         logger.debug(f"[NATS Helper] Published credential result to {subject} for task {task_id}")
     except Exception as err:
         logger.exception(
-            "event=credential_result_publish_failed task_id=%s subject=%s "
-            "failed_stage=credential_result_publish error_type=%s",
+            "event=credential_result_publish_failed task_id=%s subject=%s " "failed_stage=credential_result_publish error_type=%s",
             task_id,
             subject,
             type(err).__name__,
@@ -220,11 +235,24 @@ async def publish_metrics_to_nats(ctx: Dict, metrics_data: str, params: Dict[str
     # 例如: metrics.vmware, metrics.mysql, metrics.host 等
     subject = f"{metric_topic_prefix}.{task_type}"
 
+    # 直接回调路径也先完整校验，避免后续非法行导致单目标部分投递。
+    await asyncio.to_thread(_validate_metric_result, metrics_data, params)
+
     # 将 Prometheus 格式转换为 InfluxDB Line Protocol 格式
     success_count = 0
+    line_ordinal = 0
+    result_id = str(params.get("collection_result_id") or task_id)
     chunks = iter(_iter_line_chunks(_iter_metrics_to_influx(metrics_data, params)))
     while chunk := await asyncio.to_thread(next, chunks, None):
-        success_count += await _publish_lines_with_retry(subject, chunk, task_id)
+        message_ids = tuple(_metric_message_id(result_id, line_ordinal + index, line) for index, line in enumerate(chunk))
+        publish_kwargs = {"message_ids": message_ids} if _metrics_jetstream_enabled() else {}
+        success_count += await _publish_lines_with_retry(
+            subject,
+            chunk,
+            task_id,
+            **publish_kwargs,
+        )
+        line_ordinal += len(chunk)
     logger.info(f"[NATS Helper] Successfully published {success_count} metrics " f"to '{subject}' for task {task_id}")
     return success_count
 
@@ -292,23 +320,29 @@ class _SubjectPublishLane:
         selected = [self.states.popleft() for _ in range(min(50, len(self.states)))]
         buffered_lines: list[str] = []
         buffered_result_ids: list[str] = []
+        buffered_message_ids: list[str] = []
         buffered_bytes = 0
         buffered_task_id = ""
         continuing_states = []
 
         async def flush_buffer() -> None:
-            nonlocal buffered_lines, buffered_result_ids, buffered_bytes, buffered_task_id
+            nonlocal buffered_lines, buffered_result_ids, buffered_message_ids, buffered_bytes, buffered_task_id
             if not buffered_lines:
                 return
             lines = buffered_lines
             line_result_ids = tuple(buffered_result_ids)
+            message_ids = tuple(buffered_message_ids)
             result_ids = tuple(dict.fromkeys(line_result_ids))
             task_id = buffered_task_id
             buffered_lines = []
             buffered_result_ids = []
+            buffered_message_ids = []
             buffered_bytes = 0
             buffered_task_id = ""
             attempt_filter = _DeliveryAttemptFilter(line_result_ids, self.attempt_states)
+            publish_kwargs = {}
+            if _metrics_jetstream_enabled():
+                publish_kwargs["message_ids"] = message_ids
             try:
                 if self.attempt_states:
                     await _publish_lines_with_retry(
@@ -316,11 +350,18 @@ class _SubjectPublishLane:
                         lines,
                         task_id,
                         before_publish=attempt_filter,
+                        **publish_kwargs,
                     )
                 else:
-                    await _publish_lines_with_retry(self.subject, lines, task_id)
+                    await _publish_lines_with_retry(
+                        self.subject,
+                        lines,
+                        task_id,
+                        **publish_kwargs,
+                    )
             except Exception as error:  # noqa: BLE001 - 仅归因当前有界 chunk
                 attempted_indices = tuple(getattr(error, "attempted_indices", ()))
+                confirmed_indices = tuple(getattr(error, "confirmed_indices", ()))
                 attempted_count = max(0, min(len(lines), int(getattr(error, "attempted_count", 0))))
                 if self.metrics is not None:
                     metric_name = "publish_flush_failure_total" if attempted_count else "publish_connect_failure_total"
@@ -328,27 +369,43 @@ class _SubjectPublishLane:
                     reason = str(getattr(error, "reason", type(error).__name__)).lower()
                     if "timeout" in reason:
                         self.metrics.increment("publish_delivery_timeout_total")
-                if attempted_indices:
-                    touched_result_ids = {line_result_ids[index] for index in attempted_indices}
-                else:
-                    touched_result_ids = set(line_result_ids[:attempted_count]) if attempted_count else set()
+                attempted_index_set = set(attempted_indices)
+                confirmed_index_set = set(confirmed_indices)
+                if not attempted_index_set and attempted_count:
+                    attempted_index_set.update(range(attempted_count))
+                if self.metrics is not None and confirmed_index_set:
+                    confirmed_bytes = sum(len(lines[index].encode("utf-8")) for index in confirmed_index_set)
+                    confirmed_result_ids = {line_result_ids[index] for index in confirmed_index_set}
+                    self.metrics.increment("publish_lines_total", len(confirmed_index_set))
+                    self.metrics.increment("publish_bytes_total", confirmed_bytes)
+                    self.metrics.observe("publish_chunk_lines", len(confirmed_index_set))
+                    self.metrics.observe("publish_chunk_bytes", confirmed_bytes)
+                    self.metrics.observe("publish_targets_per_chunk", len(confirmed_result_ids))
                 for result_id in result_ids:
                     if result_id in attempt_filter.cancelled_result_ids:
                         self.outcomes[result_id] = PublishCancelledBeforeDeliveryError("publish cancelled before NATS delivery")
+                        self.failed_result_ids.add(result_id)
                         continue
-                    delivery_detected = result_id in self.delivered_result_ids or result_id in touched_result_ids
+                    result_line_indices = tuple(index for index, owner in enumerate(line_result_ids) if owner == result_id)
+                    result_confirmed_indices = tuple(index for index in result_line_indices if index in confirmed_index_set)
+                    if result_line_indices and len(result_confirmed_indices) == len(result_line_indices):
+                        self.delivered_result_ids.add(result_id)
+                        continue
+                    result_attempted_indices = tuple(index for index in result_line_indices if index in attempted_index_set)
+                    delivery_detected = result_id in self.delivered_result_ids or bool(result_attempted_indices)
                     self.outcomes[result_id] = MetricsPublishError(
                         task_id=task_id,
                         subject=self.subject,
-                        total_lines=len(lines),
-                        success_count=0,
+                        total_lines=len(result_line_indices),
+                        success_count=len(result_confirmed_indices),
                         delivery_detected=delivery_detected,
                         attempts=1,
                         reason=type(error).__name__,
-                        attempted_count=attempted_count if delivery_detected else 0,
-                        attempted_indices=attempted_indices,
+                        attempted_count=len(result_attempted_indices),
+                        attempted_indices=result_attempted_indices,
+                        confirmed_indices=result_confirmed_indices,
                     )
-                self.failed_result_ids.update(result_ids)
+                    self.failed_result_ids.add(result_id)
                 return
             for result_id in attempt_filter.cancelled_result_ids:
                 self.outcomes[result_id] = PublishCancelledBeforeDeliveryError("publish cancelled before NATS delivery")
@@ -384,6 +441,7 @@ class _SubjectPublishLane:
                 if chunk is None:
                     continue
                 chunk_bytes = sum(len(line.encode("utf-8")) for line in chunk)
+                first_line_ordinal = state["line_count"]
                 state["line_count"] += len(chunk)
                 state["byte_count"] += chunk_bytes
                 if buffered_lines and (
@@ -396,6 +454,7 @@ class _SubjectPublishLane:
                     buffered_task_id = task_id
                 buffered_lines.extend(chunk)
                 buffered_result_ids.extend([result_id] * len(chunk))
+                buffered_message_ids.extend(_metric_message_id(result_id, first_line_ordinal + index, line) for index, line in enumerate(chunk))
                 buffered_bytes += chunk_bytes
                 if len(buffered_lines) >= MAX_NATS_LINES_PER_FLUSH or buffered_bytes >= MAX_NATS_BYTES_PER_FLUSH:
                     await flush_buffer()
@@ -403,6 +462,25 @@ class _SubjectPublishLane:
         await flush_buffer()
         self.states.extend(state for state in continuing_states if state["result_id"] not in self.failed_result_ids)
         return bool(self.states)
+
+
+def _metrics_jetstream_enabled() -> bool:
+    return str(os.getenv("NATS_METRICS_JETSTREAM_ENABLED", "false")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _metric_message_id(result_id: str, line_ordinal: int, line: str) -> str:
+    digest = hashlib.sha256()
+    digest.update(result_id.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(str(line_ordinal).encode("ascii"))
+    digest.update(b"\0")
+    digest.update(hashlib.sha256(line.encode("utf-8")).digest())
+    return digest.hexdigest()
 
 
 def _iter_line_chunks(
@@ -542,10 +620,12 @@ def _iter_prometheus_to_influx(prometheus_data: str, params: Dict[str, Any]) -> 
 
         try:
             converted = _prometheus_line_to_influx(line, common_tags, metric_types, current_type)
-            if converted is not None:
-                yield converted
-        except Exception as e:
-            logger.debug(f"[NATS Helper] Failed to parse line: {line[:100]}, error: {e}")
+        except MetricFormatError:
+            raise
+        except Exception as error:
+            raise MetricFormatError(f"invalid Prometheus metric line: error_type={type(error).__name__}") from error
+        if converted is not None:
+            yield converted
 
 
 def _iter_prometheus_logical_lines(prometheus_data: str) -> Iterator[str]:
@@ -593,14 +673,17 @@ def _prometheus_line_to_influx(
     else:
         parts = line.split()
         if len(parts) < 2:
-            return None
+            raise MetricFormatError("metric line must contain a name and value")
         metric_name = parts[0]
         labels_part = ""
         value_part = " ".join(parts[1:])
 
+    if not metric_name.strip():
+        raise MetricFormatError("metric name must not be empty")
+
     value_parts = value_part.split()
     if not value_parts:
-        return None
+        raise MetricFormatError("metric line must contain a value")
     value_str = value_parts[0]
     timestamp_str = value_parts[1] if len(value_parts) > 1 else ""
     if value_str in ["NaN", "Inf", "+Inf", "-Inf"]:
@@ -641,8 +724,8 @@ def _prometheus_line_to_influx(
             else:
                 ts_ns = ts * 1000000
             point.time(ts_ns, WritePrecision.NS)
-        except ValueError:
-            logger.warning(f"[NATS Helper] Invalid timestamp: {timestamp_str}")
+        except ValueError as error:
+            raise MetricFormatError("metric timestamp must be an integer") from error
     return point.to_line_protocol()
 
 
@@ -676,8 +759,7 @@ def _parse_prometheus_labels(label_str: str) -> Dict[str, str]:
             idx += 1
 
         if idx >= length or label_str[idx] != "=":
-            logger.debug(f"[NATS Helper] Incomplete label segment near key '{key}' in '{label_str}'")
-            break
+            raise MetricFormatError("metric label must contain '='")
 
         idx += 1  # skip '='
 
@@ -686,11 +768,11 @@ def _parse_prometheus_labels(label_str: str) -> Dict[str, str]:
             idx += 1
 
         if idx >= length or label_str[idx] != '"':
-            logger.debug(f"[NATS Helper] Missing opening quote for key '{key}' in '{label_str}'")
-            break
+            raise MetricFormatError("metric label value must be quoted")
 
         idx += 1  # skip opening quote
         value_chars = []
+        closing_quote_found = False
 
         while idx < length:
             ch = label_str[idx]
@@ -706,10 +788,13 @@ def _parse_prometheus_labels(label_str: str) -> Dict[str, str]:
                 break
             if ch == '"':
                 idx += 1
+                closing_quote_found = True
                 break
             value_chars.append(ch)
             idx += 1
 
+        if not closing_quote_found:
+            raise MetricFormatError("metric label value is missing a closing quote")
         labels[key] = "".join(value_chars)
 
         # Skip trailing whitespaces after value and optional comma
@@ -717,6 +802,8 @@ def _parse_prometheus_labels(label_str: str) -> Dict[str, str]:
             idx += 1
         if idx < length and label_str[idx] == ",":
             idx += 1
+        elif idx < length:
+            raise MetricFormatError("metric labels must be comma-separated")
 
     return labels
 

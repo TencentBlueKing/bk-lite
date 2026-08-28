@@ -144,8 +144,9 @@ async def test_same_task_id_and_request_only_schedule_one_collection_run(monkeyp
         settings=CollectionRuntimeSettings(max_active_runs=2),
         owner_id="pod-a",
     )
+    task_id = "collect-001\r\nforged=true"
     request = CollectionRequest(
-        task_id="collect-001",
+        task_id=task_id,
         plugin_ref="mysql.config",
         targets=("10.10.24.1",),
         credentials=({"credential_id": "credential-1", "password": "duplicate-secret-sentinel"},),
@@ -164,11 +165,12 @@ async def test_same_task_id_and_request_only_schedule_one_collection_run(monkeyp
     assert warning_calls == [
         (
             "event=collection_run_duplicate_skipped task_id=%s status=duplicate_active fence=%s",
-            ("collect-001", first.fence),
+            ("collect-001\\r\\nforged=true", first.fence),
         )
     ]
     rendered = warning_calls[0][0] % warning_calls[0][1]
-    assert rendered == "event=collection_run_duplicate_skipped task_id=collect-001 status=duplicate_active fence=1"
+    assert rendered == ("event=collection_run_duplicate_skipped " "task_id=collect-001\\r\\nforged=true status=duplicate_active fence=1")
+    assert duplicate.task_id == task_id
     assert "duplicate-secret-sentinel" not in rendered
 
     release.set()

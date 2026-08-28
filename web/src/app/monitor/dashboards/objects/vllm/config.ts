@@ -1,5 +1,9 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 
+/** Telegraf histogram bucket query; group by instance_id only (one scrape URL = one instance). */
+const histQuantile = (base: string, quantile: string) =>
+  `histogram_quantile(${quantile}, sum(rate((label_replace({__name__=~"${base}_[0-9.]+", __$labels__}, "le", "$1", "__name__", "${base}_(.+)"))[5m:]) or label_replace(rate(${base}_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (instance_id, le))`;
+
 export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'vllm',
   pageTitle: 'vLLM 监控仪表盘',
@@ -14,7 +18,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '运行中请求数',
       description: '当前正在模型执行批次中的请求数量。',
       unit: 'counts',
-      query: "sum(vllm:num_requests_running_gauge{__$labels__})",
+      query: 'sum by (instance_id) (vllm:num_requests_running_gauge{__$labels__})',
       color: '#2f6bff'
     },
     {
@@ -22,130 +26,65 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '排队请求数',
       description: '当前等待调度容量的请求数量。',
       unit: 'counts',
-      query: "sum(vllm:num_requests_waiting_gauge{__$labels__})",
+      query: 'sum by (instance_id) (vllm:num_requests_waiting_gauge{__$labels__})',
       color: '#faad14'
     },
     {
       name: 'vllm_kv_cache_usage',
       display_name: 'KV 缓存占用',
-      description: '已使用 KV cache 块占比（0–100%）。',
+      description: '已使用 KV cache 块占比（0–100%）。多实例取 max。',
       unit: 'percent',
       query:
-        "clamp_max(100 * avg(vllm:kv_cache_usage_perc_gauge{__$labels__}), 100)",
+        'clamp_max(100 * max by (instance_id) (vllm:kv_cache_usage_perc_gauge{__$labels__}), 100)',
       color: '#ff8a1f'
     },
     {
-      name: 'vllm_prompt_tokens_rate',
-      display_name: 'Prefill Token 速率',
-      description: '最近 5 分钟 prompt（prefill）token 处理速率。',
-      unit: 'cps',
-      query: "sum(rate(vllm:prompt_tokens_total_counter{__$labels__}[5m]))",
-      color: '#13c2c2'
-    },
-    {
-      name: 'vllm_generation_tokens_rate',
-      display_name: '生成 Token 速率',
-      description: '最近 5 分钟生成 token 速率。',
-      unit: 'cps',
-      query: "sum(rate(vllm:generation_tokens_total_counter{__$labels__}[5m]))",
-      color: '#27c274'
-    },
-    {
-      name: 'vllm_ttft_p99',
-      display_name: '首 Token 时延 P99',
-      description: '最近 5 分钟 Time-to-First-Token（TTFT）P99。',
+      name: 'vllm_ttft_p95',
+      display_name: '首 Token 时延 P95',
+      description: '最近 5 分钟 Time-to-First-Token（TTFT）P95。',
       unit: 's',
-      query:
-        'histogram_quantile(0.99, sum(rate((label_replace({__name__=~"vllm:time_to_first_token_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:time_to_first_token_seconds_(.+)"))[5m:]) or label_replace(rate(vllm:time_to_first_token_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+      query: histQuantile('vllm:time_to_first_token_seconds', '0.95'),
       color: '#597ef7'
     },
     {
-      name: 'vllm_e2e_p99',
-      display_name: '端到端时延 P99',
-      description: '最近 5 分钟端到端请求时延 P99。',
+      name: 'vllm_tpot_p95',
+      display_name: 'TPOT P95',
+      description: '最近 5 分钟 ITL / TPOT P95（逐 Token 时延）。',
       unit: 's',
-      query:
-        'histogram_quantile(0.99, sum(rate((label_replace({__name__=~"vllm:e2e_request_latency_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:e2e_request_latency_seconds_(.+)"))[5m:]) or label_replace(rate(vllm:e2e_request_latency_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
-      color: '#ff4d4f'
+      query: histQuantile('vllm:inter_token_latency_seconds', '0.95'),
+      color: '#722ed1'
     },
     {
-      name: 'vllm_success_rate',
-      display_name: '成功请求速率',
+      name: 'vllm_qps',
+      display_name: 'QPS',
       description: '最近 5 分钟成功完成请求速率。',
       unit: 'cps',
-      query: "sum(rate(vllm:request_success_total_counter{__$labels__}[5m]))",
+      query:
+        'sum by (instance_id) (rate(vllm:request_success_total_counter{__$labels__}[5m]))',
       color: '#27c274'
     },
     {
-      name: 'vllm_ttft_p50',
-      display_name: '首 Token 时延 P50',
-      description: '最近 5 分钟 TTFT P50。',
+      name: 'vllm_queue_p95',
+      display_name: '排队时延 P95',
+      description: '最近 5 分钟请求排队时延 P95。',
       unit: 's',
-      query:
-        'histogram_quantile(0.50, sum(rate((label_replace({__name__=~"vllm:time_to_first_token_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:time_to_first_token_seconds_(.+)"))[5m:]) or label_replace(rate(vllm:time_to_first_token_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
-      color: '#91caff'
+      query: histQuantile('vllm:request_queue_time_seconds', '0.95'),
+      color: '#faad14'
     },
     {
-      name: 'vllm_ttft_p90',
-      display_name: '首 Token 时延 P90',
-      description: '最近 5 分钟 TTFT P90。',
+      name: 'vllm_prefill_p95',
+      display_name: 'Prefill 时延 P95',
+      description: '最近 5 分钟 Prefill 时延 P95。',
       unit: 's',
-      query:
-        'histogram_quantile(0.90, sum(rate((label_replace({__name__=~"vllm:time_to_first_token_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:time_to_first_token_seconds_(.+)"))[5m:]) or label_replace(rate(vllm:time_to_first_token_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
-      color: '#4096ff'
+      query: histQuantile('vllm:request_prefill_time_seconds', '0.95'),
+      color: '#13c2c2'
     },
     {
-      name: 'vllm_ttft_avg',
-      display_name: '首 Token 时延均值',
-      description: '最近 5 分钟 TTFT 均值。',
+      name: 'vllm_decode_p95',
+      display_name: 'Decode 时延 P95',
+      description: '最近 5 分钟 Decode 时延 P95。',
       unit: 's',
-      query:
-        'sum(rate(vllm:time_to_first_token_seconds_sum{__$labels__}[5m])) / sum(rate(vllm:time_to_first_token_seconds_count{__$labels__}[5m]))',
-      color: '#69b1ff'
-    },
-    {
-      name: 'vllm_e2e_p50',
-      display_name: '端到端时延 P50',
-      description: '最近 5 分钟端到端请求时延 P50。',
-      unit: 's',
-      query:
-        'histogram_quantile(0.50, sum(rate((label_replace({__name__=~"vllm:e2e_request_latency_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:e2e_request_latency_seconds_(.+)"))[5m:]) or label_replace(rate(vllm:e2e_request_latency_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
-      color: '#ffa39e'
-    },
-    {
-      name: 'vllm_e2e_p90',
-      display_name: '端到端时延 P90',
-      description: '最近 5 分钟端到端请求时延 P90。',
-      unit: 's',
-      query:
-        'histogram_quantile(0.90, sum(rate((label_replace({__name__=~"vllm:e2e_request_latency_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:e2e_request_latency_seconds_(.+)"))[5m:]) or label_replace(rate(vllm:e2e_request_latency_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
-      color: '#ff7875'
-    },
-    {
-      name: 'vllm_e2e_avg',
-      display_name: '端到端时延均值',
-      description: '最近 5 分钟端到端请求时延均值。',
-      unit: 's',
-      query:
-        'sum(rate(vllm:e2e_request_latency_seconds_sum{__$labels__}[5m])) / sum(rate(vllm:e2e_request_latency_seconds_count{__$labels__}[5m]))',
-      color: '#ff9c6e'
-    },
-    {
-      name: 'vllm_itl_p50',
-      display_name: '逐 Token 时延 P50',
-      description: '最近 5 分钟 ITL P50。',
-      unit: 's',
-      query:
-        'histogram_quantile(0.50, sum(rate((label_replace({__name__=~"vllm:inter_token_latency_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:inter_token_latency_seconds_(.+)"))[5m:]) or label_replace(rate(vllm:inter_token_latency_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
-      color: '#b37feb'
-    },
-    {
-      name: 'vllm_itl_p90',
-      display_name: '逐 Token 时延 P90',
-      description: '最近 5 分钟 ITL P90。',
-      unit: 's',
-      query:
-        'histogram_quantile(0.90, sum(rate((label_replace({__name__=~"vllm:inter_token_latency_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:inter_token_latency_seconds_(.+)"))[5m:]) or label_replace(rate(vllm:inter_token_latency_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+      query: histQuantile('vllm:request_decode_time_seconds', '0.95'),
       color: '#9254de'
     },
     {
@@ -153,34 +92,51 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '逐 Token 时延 P99',
       description: '最近 5 分钟 ITL P99。',
       unit: 's',
-      query:
-        'histogram_quantile(0.99, sum(rate((label_replace({__name__=~"vllm:inter_token_latency_seconds_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:inter_token_latency_seconds_(.+)"))[5m:]) or label_replace(rate(vllm:inter_token_latency_seconds_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
-      color: '#722ed1'
-    },
-    {
-      name: 'vllm_itl_avg',
-      display_name: '逐 Token 时延均值',
-      description: '最近 5 分钟 ITL 均值。',
-      unit: 's',
-      query:
-        'sum(rate(vllm:inter_token_latency_seconds_sum{__$labels__}[5m])) / sum(rate(vllm:inter_token_latency_seconds_count{__$labels__}[5m]))',
+      query: histQuantile('vllm:inter_token_latency_seconds', '0.99'),
       color: '#531dab'
     },
     {
-      name: 'vllm_iteration_tokens_rate',
-      display_name: '迭代 Token 速率',
-      description: '最近 5 分钟单次模型迭代处理的 token 数速率。',
-      unit: 'cps',
-      query: 'sum(rate(vllm:iteration_tokens_total_count{__$labels__}[5m]))',
-      color: '#36cfc9'
+      name: 'vllm_e2e_p95',
+      display_name: '端到端时延 P95',
+      description: '最近 5 分钟端到端请求时延 P95。',
+      unit: 's',
+      query: histQuantile('vllm:e2e_request_latency_seconds', '0.95'),
+      color: '#ff7875'
+    },
+    {
+      name: 'vllm_e2e_p99',
+      display_name: '端到端时延 P99',
+      description: '最近 5 分钟端到端请求时延 P99。',
+      unit: 's',
+      query: histQuantile('vllm:e2e_request_latency_seconds', '0.99'),
+      color: '#ff4d4f'
+    },
+    {
+      name: 'vllm_input_tpm',
+      display_name: 'Input TPM',
+      description: '最近 5 分钟 prompt token 速率 × 60（tokens/min）。',
+      unit: 'counts',
+      // tokens/min = rate * 60；不要套用 Grafana Output TPM *6。
+      query:
+        'sum by (instance_id) (rate(vllm:prompt_tokens_total_counter{__$labels__}[5m])) * 60',
+      color: '#13c2c2'
+    },
+    {
+      name: 'vllm_output_tpm',
+      display_name: 'Output TPM',
+      description: '最近 5 分钟 generation token 速率 × 60（tokens/min）。',
+      unit: 'counts',
+      // tokens/min = rate * 60；不要套用 Grafana Output TPM *6。
+      query:
+        'sum by (instance_id) (rate(vllm:generation_tokens_total_counter{__$labels__}[5m])) * 60',
+      color: '#27c274'
     },
     {
       name: 'vllm_prompt_tokens_p50',
       display_name: '输入 Token 长度 P50',
       description: '最近 5 分钟请求 prompt token 数 P50。',
       unit: 'counts',
-      query:
-        'histogram_quantile(0.50, sum(rate((label_replace({__name__=~"vllm:request_prompt_tokens_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:request_prompt_tokens_(.+)"))[5m:]) or label_replace(rate(vllm:request_prompt_tokens_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+      query: histQuantile('vllm:request_prompt_tokens', '0.50'),
       color: '#5cdbd3'
     },
     {
@@ -188,8 +144,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '输入 Token 长度 P90',
       description: '最近 5 分钟请求 prompt token 数 P90。',
       unit: 'counts',
-      query:
-        'histogram_quantile(0.90, sum(rate((label_replace({__name__=~"vllm:request_prompt_tokens_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:request_prompt_tokens_(.+)"))[5m:]) or label_replace(rate(vllm:request_prompt_tokens_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+      query: histQuantile('vllm:request_prompt_tokens', '0.90'),
       color: '#13c2c2'
     },
     {
@@ -197,8 +152,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '输入 Token 长度 P99',
       description: '最近 5 分钟请求 prompt token 数 P99。',
       unit: 'counts',
-      query:
-        'histogram_quantile(0.99, sum(rate((label_replace({__name__=~"vllm:request_prompt_tokens_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:request_prompt_tokens_(.+)"))[5m:]) or label_replace(rate(vllm:request_prompt_tokens_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+      query: histQuantile('vllm:request_prompt_tokens', '0.99'),
       color: '#08979c'
     },
     {
@@ -207,7 +161,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '最近 5 分钟请求 prompt token 数均值。',
       unit: 'counts',
       query:
-        'sum(rate(vllm:request_prompt_tokens_sum{__$labels__}[5m])) / sum(rate(vllm:request_prompt_tokens_count{__$labels__}[5m]))',
+        'sum by (instance_id) (rate(vllm:request_prompt_tokens_sum{__$labels__}[5m])) / sum by (instance_id) (rate(vllm:request_prompt_tokens_count{__$labels__}[5m]))',
       color: '#006d75'
     },
     {
@@ -215,8 +169,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '输出 Token 长度 P50',
       description: '最近 5 分钟请求生成 token 数 P50。',
       unit: 'counts',
-      query:
-        'histogram_quantile(0.50, sum(rate((label_replace({__name__=~"vllm:request_generation_tokens_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:request_generation_tokens_(.+)"))[5m:]) or label_replace(rate(vllm:request_generation_tokens_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+      query: histQuantile('vllm:request_generation_tokens', '0.50'),
       color: '#95de64'
     },
     {
@@ -224,8 +177,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '输出 Token 长度 P90',
       description: '最近 5 分钟请求生成 token 数 P90。',
       unit: 'counts',
-      query:
-        'histogram_quantile(0.90, sum(rate((label_replace({__name__=~"vllm:request_generation_tokens_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:request_generation_tokens_(.+)"))[5m:]) or label_replace(rate(vllm:request_generation_tokens_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+      query: histQuantile('vllm:request_generation_tokens', '0.90'),
       color: '#73d13d'
     },
     {
@@ -233,8 +185,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '输出 Token 长度 P99',
       description: '最近 5 分钟请求生成 token 数 P99。',
       unit: 'counts',
-      query:
-        'histogram_quantile(0.99, sum(rate((label_replace({__name__=~"vllm:request_generation_tokens_[0-9.]+", __$labels__}, "le", "$1", "__name__", "vllm:request_generation_tokens_(.+)"))[5m:]) or label_replace(rate(vllm:request_generation_tokens_count{__$labels__}[5m]), "le", "+Inf", "__name__", ".*")) by (le))',
+      query: histQuantile('vllm:request_generation_tokens', '0.99'),
       color: '#52c41a'
     },
     {
@@ -243,27 +194,11 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description: '最近 5 分钟请求生成 token 数均值。',
       unit: 'counts',
       query:
-        'sum(rate(vllm:request_generation_tokens_sum{__$labels__}[5m])) / sum(rate(vllm:request_generation_tokens_count{__$labels__}[5m]))',
+        'sum by (instance_id) (rate(vllm:request_generation_tokens_sum{__$labels__}[5m])) / sum by (instance_id) (rate(vllm:request_generation_tokens_count{__$labels__}[5m]))',
       color: '#389e0d'
     }
   ],
   summaryCards: [
-    {
-      title: '运行中请求数',
-      metric: 'vllm_requests_running',
-      unit: 'counts',
-      color: '#2f6bff',
-      icon: 'api',
-      compare: true,
-      compareFavorableDirection: 'down',
-      guide: [
-        {
-          label: '运行中请求',
-          detail: '正在执行批次中的请求数，持续抬升且排队同步增加时需关注算力瓶颈。'
-        }
-      ],
-      footer: [{ label: '排队请求', metric: 'vllm_requests_waiting', unit: 'counts' }]
-    },
     {
       title: '排队请求数',
       metric: 'vllm_requests_waiting',
@@ -278,27 +213,68 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
           detail: '等待调度容量的请求数，持续非零说明吞吐已接近上限。'
         }
       ],
-      footer: [{ label: '运行中', metric: 'vllm_requests_running', unit: 'counts' }]
+      footer: [
+        { label: '运行中', metric: 'vllm_requests_running', unit: 'counts' },
+        { label: '排队时延 P95', metric: 'vllm_queue_p95', unit: 's' }
+      ]
+    },
+    {
+      title: '首 Token 时延 P95',
+      metric: 'vllm_ttft_p95',
+      unit: 's',
+      color: '#597ef7',
+      icon: 'clock',
+      compare: true,
+      compareFavorableDirection: 'down',
+      guide: [
+        {
+          label: 'TTFT P95',
+          detail: '首 token 时延 P95，抬升通常与排队、prefill 或 KV 压力相关。'
+        }
+      ],
+      footer: [
+        { label: 'Queue P95', metric: 'vllm_queue_p95', unit: 's' },
+        { label: 'Prefill P95', metric: 'vllm_prefill_p95', unit: 's' }
+      ]
     },
     {
       title: 'KV 缓存占用',
       metric: 'vllm_kv_cache_usage',
       unit: 'percent',
       color: '#ff8a1f',
-      icon: 'node',
+      icon: 'memory',
       compare: true,
       compareFavorableDirection: 'down',
       guide: [
         {
           label: 'KV 缓存',
-          detail: 'KV cache 块占用比例，接近 100% 时新请求更容易排队或抢占。'
+          detail: 'KV cache 块占用取 max，接近 100% 时新请求更容易排队或抢占。'
         }
       ],
       footer: [{ label: '排队请求', metric: 'vllm_requests_waiting', unit: 'counts' }]
     },
     {
-      title: '生成 Token 速率',
-      metric: 'vllm_generation_tokens_rate',
+      title: 'TPOT P95',
+      metric: 'vllm_tpot_p95',
+      unit: 's',
+      color: '#722ed1',
+      icon: 'thunder',
+      compare: true,
+      compareFavorableDirection: 'down',
+      guide: [
+        {
+          label: 'TPOT P95',
+          detail: '逐 token 时延（ITL）P95，decode 阶段变慢时抬升。'
+        }
+      ],
+      footer: [
+        { label: 'E2E P95', metric: 'vllm_e2e_p95', unit: 's' },
+        { label: 'Decode P95', metric: 'vllm_decode_p95', unit: 's' }
+      ]
+    },
+    {
+      title: 'QPS',
+      metric: 'vllm_qps',
       unit: 'cps',
       color: '#27c274',
       icon: 'node',
@@ -306,32 +282,13 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       compareFavorableDirection: 'up',
       guide: [
         {
-          label: '生成吞吐',
-          detail: '生成 token 速率，反映 decode 阶段有效吞吐。'
+          label: 'QPS',
+          detail: '成功完成请求速率。Input/Output TPM 为 token/s × 60，不是 Grafana 的 ×6。'
         }
       ],
       footer: [
-        { label: 'Prefill 速率', metric: 'vllm_prompt_tokens_rate', unit: 'cps' },
-        { label: '成功请求', metric: 'vllm_success_rate', unit: 'cps' }
-      ]
-    },
-    {
-      title: '首 Token 时延 P99',
-      metric: 'vllm_ttft_p99',
-      unit: 's',
-      color: '#597ef7',
-      icon: 'api',
-      compare: true,
-      compareFavorableDirection: 'down',
-      guide: [
-        {
-          label: 'TTFT P99',
-          detail: '首 token 时延 P99，抬升通常与 prefill 排队或 KV 压力相关。'
-        }
-      ],
-      footer: [
-        { label: 'E2E P99', metric: 'vllm_e2e_p99', unit: 's' },
-        { label: 'ITL P99', metric: 'vllm_itl_p99', unit: 's' }
+        { label: 'Input TPM', metric: 'vllm_input_tpm', unit: 'counts' },
+        { label: 'Output TPM', metric: 'vllm_output_tpm', unit: 'counts' }
       ]
     }
   ],
@@ -362,91 +319,81 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     },
     {
-      title: 'Token 吞吐趋势',
-      subtitle: 'Prefill / Generation / 迭代',
-      metric: 'vllm_generation_tokens_rate',
+      title: '时延拆解',
+      subtitle: 'Queue / Prefill / Decode / TTFT P95',
+      metric: 'vllm_ttft_p95',
       guide: [
         {
-          label: 'Token 吞吐',
-          detail: 'Prefill、生成 token 速率与单次迭代 token 速率对比。'
+          label: '时延拆解',
+          detail: '排队、prefill、decode 与 TTFT 的 P95，用于定位首 token 变慢发生在哪一段。'
+        }
+      ],
+      series: [
+        { metric: 'vllm_queue_p95', label: 'Queue P95', color: '#faad14', unit: 's' },
+        { metric: 'vllm_prefill_p95', label: 'Prefill P95', color: '#13c2c2', unit: 's' },
+        { metric: 'vllm_decode_p95', label: 'Decode P95', color: '#9254de', unit: 's' },
+        { metric: 'vllm_ttft_p95', label: 'TTFT P95', color: '#597ef7', unit: 's' }
+      ]
+    },
+    {
+      title: 'KV 缓存占用',
+      subtitle: 'max 占用比例',
+      metric: 'vllm_kv_cache_usage',
+      guide: [
+        {
+          label: 'KV 缓存',
+          detail: '按 instance_id 取 max，避免 avg 掩盖单实例打满。'
         }
       ],
       series: [
         {
-          metric: 'vllm_prompt_tokens_rate',
-          label: 'Prefill',
+          metric: 'vllm_kv_cache_usage',
+          label: 'KV max',
+          color: '#ff8a1f',
+          unit: 'percent'
+        }
+      ]
+    },
+    {
+      title: 'ITL / E2E',
+      subtitle: 'TPOT 与端到端 P95 / P99',
+      metric: 'vllm_tpot_p95',
+      guide: [
+        {
+          label: 'ITL / E2E',
+          detail: 'ITL（TPOT）与端到端时延同图对比，decode 变慢时 ITL 先抬升。'
+        }
+      ],
+      series: [
+        { metric: 'vllm_tpot_p95', label: 'ITL P95', color: '#722ed1', unit: 's' },
+        { metric: 'vllm_itl_p99', label: 'ITL P99', color: '#531dab', unit: 's' },
+        { metric: 'vllm_e2e_p95', label: 'E2E P95', color: '#ff7875', unit: 's' },
+        { metric: 'vllm_e2e_p99', label: 'E2E P99', color: '#ff4d4f', unit: 's' }
+      ]
+    },
+    {
+      title: 'Input / Output TPM',
+      subtitle: 'token/s × 60',
+      metric: 'vllm_output_tpm',
+      guide: [
+        {
+          label: 'TPM',
+          detail: 'Input 与 Output 均为 sum(rate(...[5m])) * 60，不要使用 Grafana Output TPM 的 *6。'
+        }
+      ],
+      series: [
+        {
+          metric: 'vllm_input_tpm',
+          label: 'Input TPM',
           color: '#13c2c2',
-          unit: 'cps'
+          unit: 'counts'
         },
         {
-          metric: 'vllm_generation_tokens_rate',
-          label: 'Generation',
+          metric: 'vllm_output_tpm',
+          label: 'Output TPM',
           color: '#27c274',
-          unit: 'cps'
-        },
-        {
-          metric: 'vllm_iteration_tokens_rate',
-          label: '迭代',
-          color: '#36cfc9',
-          unit: 'cps'
-        },
-        {
-          metric: 'vllm_success_rate',
-          label: '成功请求',
-          color: '#389e0d',
-          unit: 'cps'
+          unit: 'counts'
         }
-      ]
-    },
-    {
-      title: 'TTFT 多分位',
-      subtitle: 'P50 / P90 / P99 / 均值',
-      metric: 'vllm_ttft_p99',
-      guide: [
-        {
-          label: 'TTFT',
-          detail: '首 token 时延多分位，对比尾部与典型用户体验。'
-        }
-      ],
-      series: [
-        { metric: 'vllm_ttft_p50', label: 'P50', color: '#91caff', unit: 's' },
-        { metric: 'vllm_ttft_p90', label: 'P90', color: '#4096ff', unit: 's' },
-        { metric: 'vllm_ttft_p99', label: 'P99', color: '#597ef7', unit: 's' },
-        { metric: 'vllm_ttft_avg', label: '均值', color: '#69b1ff', unit: 's' }
-      ]
-    },
-    {
-      title: 'E2E 多分位',
-      subtitle: 'P50 / P90 / P99 / 均值',
-      metric: 'vllm_e2e_p99',
-      guide: [
-        {
-          label: 'E2E',
-          detail: '端到端请求时延多分位，反映完整请求体验。'
-        }
-      ],
-      series: [
-        { metric: 'vllm_e2e_p50', label: 'P50', color: '#ffa39e', unit: 's' },
-        { metric: 'vllm_e2e_p90', label: 'P90', color: '#ff7875', unit: 's' },
-        { metric: 'vllm_e2e_p99', label: 'P99', color: '#ff4d4f', unit: 's' },
-        { metric: 'vllm_e2e_avg', label: '均值', color: '#ff9c6e', unit: 's' }
-      ]
-    },
-    {
-      title: 'ITL 多分位',
-      subtitle: 'P50 / P90 / P99 / 均值',
-      metric: 'vllm_itl_p99',
-      guide: [
-        {
-          label: 'ITL',
-          detail: '逐 token 生成时延（Inter-Token Latency），decode 阶段核心指标。'
-        }
-      ],
-      series: [
-        { metric: 'vllm_itl_p50', label: 'P50', color: '#b37feb', unit: 's' },
-        { metric: 'vllm_itl_p90', label: 'P90', color: '#9254de', unit: 's' },
-        { metric: 'vllm_itl_p99', label: 'P99', color: '#722ed1', unit: 's' },
-        { metric: 'vllm_itl_avg', label: '均值', color: '#531dab', unit: 's' }
       ]
     },
     {
@@ -493,7 +440,7 @@ export const VLLM_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [
         {
           label: '输出长度',
-          detail: '请求生成 token 数分布，对齐官方 Query Statistics 输出侧指标。'
+          detail: '请求生成 token 数分布。'
         }
       ],
       series: [

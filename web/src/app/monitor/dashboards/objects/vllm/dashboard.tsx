@@ -15,18 +15,18 @@ import { VLLM_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
 const SUMMARY_TITLES = [
-  '运行中请求数',
   '排队请求数',
+  '首 Token 时延 P95',
   'KV 缓存占用',
-  '生成 Token 速率',
-  '首 Token 时延 P99'
+  'TPOT P95',
+  'QPS'
 ];
 const CHART_TITLES = [
   '请求队列趋势',
-  'Token 吞吐趋势',
-  'TTFT 多分位',
-  'E2E 多分位',
-  'ITL 多分位',
+  '时延拆解',
+  'KV 缓存占用',
+  'ITL / E2E',
+  'Input / Output TPM',
   '输入 Token 长度',
   '输出 Token 长度'
 ];
@@ -57,7 +57,8 @@ export default function VllmDashboardPage() {
       />
     ) : null;
 
-  const [queueTrend, tokenTrend, ttftTrend, e2eTrend, itlTrend, promptLenTrend, genLenTrend] = charts;
+  const [queueTrend, latencyBreakdown, kvTrend, tpotTrend, tpmTrend, promptLenTrend, genLenTrend] =
+    charts;
   const [queueRing] = rings;
 
   return (
@@ -66,10 +67,8 @@ export default function VllmDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <div className={styles.sectionLabel}>推理概览</div>
+          <div className={styles.sectionLabel}>队列</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
-
-          <div className={styles.sectionLabel}>队列与吞吐</div>
           <FlexiblePanelSection styles={styles}>
             {renderChart(queueTrend, styles.span8)}
             {queueRing ? (
@@ -86,17 +85,25 @@ export default function VllmDashboardPage() {
                 styles={styles}
               />
             ) : null}
-            {renderChart(tokenTrend, styles.span12)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>时延多分位</div>
+          <div className={styles.sectionLabel}>TTFT</div>
           <FlexiblePanelSection styles={styles}>
-            {renderChart(ttftTrend, styles.span4)}
-            {renderChart(e2eTrend, styles.span4)}
-            {renderChart(itlTrend, styles.span4)}
+            {renderChart(latencyBreakdown, styles.span12)}
           </FlexiblePanelSection>
 
-          <div className={styles.sectionLabel}>Token 长度分布</div>
+          <div className={styles.sectionLabel}>KV</div>
+          <FlexiblePanelSection styles={styles}>
+            {renderChart(kvTrend, styles.span12)}
+          </FlexiblePanelSection>
+
+          <div className={styles.sectionLabel}>TPOT</div>
+          <FlexiblePanelSection styles={styles}>
+            {renderChart(tpotTrend, styles.span6)}
+            {renderChart(tpmTrend, styles.span6)}
+          </FlexiblePanelSection>
+
+          <div className={styles.sectionLabel}>单实例</div>
           <FlexiblePanelSection styles={styles}>
             {renderChart(promptLenTrend, styles.span6)}
             {renderChart(genLenTrend, styles.span6)}
