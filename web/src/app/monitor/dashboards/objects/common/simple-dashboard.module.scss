@@ -35,6 +35,8 @@
   gap: 10px;
   margin: 8px 0 16px;
   padding: 0 2px;
+  // 切换路由/刷新插件时保留高度，避免采集视图条消失导致内容区跳动。
+  min-height: 32px;
 }
 
 .protocolBarLabel {

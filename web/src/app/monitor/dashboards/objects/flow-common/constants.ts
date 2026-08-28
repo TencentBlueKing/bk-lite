@@ -17,6 +17,7 @@ export const MONITOR_OBJECT_TO_INSTANCE_TYPE: Record<FlowSupportedObjectName, st
 export type FlowProtocol = 'netflow' | 'sflow';
 
 export const CONVERSATION_TOP_N = 10;
+export const PROTOCOL_TOP_N = 10;
 
 export const resolveInstanceTypeFromObjectName = (objectName?: string | null): string | null => {
   const normalized = String(objectName || '').trim();

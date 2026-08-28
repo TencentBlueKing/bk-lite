@@ -1,16 +1,18 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Table, Tooltip } from 'antd';
-import type { TableColumnsType } from 'antd';
+import { Spin } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import useViewApi from '@/app/monitor/api/view';
+import ChartEmptyState from '@/components/chart-empty-state';
 import { DashboardPanel } from '../../shared/widgets';
 import { buildSearchParams, formatMetricValue } from '../../shared/utils';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import type { FlowProtocol } from './constants';
 import { buildConversationTopQuery } from './queries';
 import { parseConversationRows, type FlowConversationRow } from './parse-conversation-rows';
+import { formatProtocolShortName } from './protocol-labels';
+import { resolveFlowRankClass } from './rank-class';
 
 interface FlowConversationTableProps {
   dashboard: ReturnType<typeof useSimpleDashboardData>;
@@ -19,10 +21,29 @@ interface FlowConversationTableProps {
   styles: Record<string, string>;
 }
 
+const CONVERSATION_GUIDE = [{
+  label: 'Top 会话',
+  detail: '所选时间窗内平均流量速率最高的 10 组会话，按源/目的地址、端口与协议聚合展示。',
+}];
+
 const formatBytesRate = (value: number | null) => {
   if (value == null) return '--';
   const formatted = formatMetricValue(value, 'byteps');
   return `${formatted.value}${formatted.unit || ''}`;
+};
+
+const resolveProtocolClass = (label: string, styles: Record<string, string>) => {
+  const normalized = formatProtocolShortName(label).toUpperCase();
+  if (normalized === 'TCP') return styles.flowProtocolTcp;
+  if (normalized === 'UDP') return styles.flowProtocolUdp;
+  if (normalized === 'ICMP' || normalized === 'ICMPV6') return styles.flowProtocolIcmp;
+  return styles.flowProtocolOther;
+};
+
+const formatPort = (port: string) => {
+  const normalized = String(port || '').trim();
+  if (!normalized || normalized === '--' || normalized === '0') return '*';
+  return normalized;
 };
 
 export function FlowConversationTable({
@@ -71,7 +92,7 @@ export function FlowConversationTable({
       setLoading(false);
     };
 
-    load();
+    void load();
 
     return () => {
       active = false;
@@ -89,67 +110,92 @@ export function FlowConversationTable({
     protocol,
   ]);
 
-  const columns: TableColumnsType<FlowConversationRow> = [
-    {
-      title: '#',
-      key: 'rank',
-      width: 48,
-      render: (_value, _row, index) => index + 1,
-    },
-    {
-      title: '源 IP',
-      dataIndex: 'srcIp',
-      key: 'srcIp',
-      width: 132,
-      ellipsis: true,
-    },
-    {
-      title: (
-        <Tooltip title="会话聚合维度不含源端口，当前版本显示为 --">
-          <span>源端口</span>
-        </Tooltip>
-      ),
-      dataIndex: 'srcPort',
-      key: 'srcPort',
-      width: 72,
-      align: 'center',
-    },
-    {
-      title: '目的 IP',
-      dataIndex: 'dstIp',
-      key: 'dstIp',
-      width: 132,
-      ellipsis: true,
-    },
-    { title: '目的端口', dataIndex: 'dstPort', key: 'dstPort', width: 88, align: 'center' },
-    { title: '协议', dataIndex: 'protocol', key: 'protocol', width: 108, ellipsis: true },
-    {
-      title: '流量速率',
-      dataIndex: 'bytesRate',
-      key: 'bytesRate',
-      align: 'right',
-      width: 112,
-      render: (value: number) => formatBytesRate(value),
-    },
-  ];
+  const peakRate = useMemo(
+    () => (rows.length ? Math.max(...rows.map((row) => row.bytesRate)) : 0),
+    [rows],
+  );
 
   return (
     <DashboardPanel
       title="Top 会话"
-      subtitle="所选时间窗内平均流量速率最高的 10 组会话，按源/目的 IP、目的端口与协议聚合"
-      className={`${styles.span12} ${styles.flowTablePanel}`}
-      bodyClassName={styles.flowTableWrap}
+      subtitle="Top 10 会话 · 按源/目的地址、端口与协议聚合"
+      guide={CONVERSATION_GUIDE}
+      className={`${styles.span8} ${styles.flowConversationPanel}`}
+      bodyClassName={styles.flowConversationBody}
       styles={styles}
     >
-      <Table<FlowConversationRow>
-        rowKey="rowKey"
-        size="small"
-        loading={loading}
-        columns={columns}
-        dataSource={rows}
-        pagination={false}
-        locale={{ emptyText: '所选时间窗内无 Flow 会话数据' }}
-      />
+      <Spin spinning={loading}>
+        {!loading && rows.length === 0 ? (
+          <div className={styles.flowConversationEmpty}>
+            <ChartEmptyState description="所选时间窗内无 Flow 会话数据" compact />
+          </div>
+        ) : (
+          <div
+            className={[
+              styles.flowConversationTableWrap,
+              protocol === 'netflow' ? styles.flowConversationNetflow : styles.flowConversationSflow,
+            ].join(' ')}
+          >
+            <table className={styles.flowConversationTable}>
+              <colgroup>
+                <col className={styles.flowColRank} />
+                <col className={styles.flowColIp} />
+                <col className={styles.flowColIp} />
+                <col className={styles.flowColPort} />
+                <col className={styles.flowColPort} />
+                <col className={styles.flowColProtocol} />
+                <col className={styles.flowColTraffic} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th scope="col" className={styles.flowColRank}>#</th>
+                  <th scope="col" className={styles.flowColIp}>源地址</th>
+                  <th scope="col" className={styles.flowColIp}>目的地址</th>
+                  <th scope="col" className={styles.flowColPort}>源端口</th>
+                  <th scope="col" className={styles.flowColPort}>目的端口</th>
+                  <th scope="col" className={styles.flowColProtocol}>协议</th>
+                  <th scope="col" className={styles.flowColTraffic}>流量</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, index) => {
+                  const share = peakRate > 0 ? (row.bytesRate / peakRate) * 100 : 0;
+                  return (
+                    <tr key={row.rowKey} className={resolveFlowRankClass(index, styles)}>
+                      <td className={styles.flowCellRank}>
+                        <span className={styles.flowProtocolRankMark}>{index + 1}</span>
+                      </td>
+                      <td className={styles.flowCellIp} title={row.srcIp}>{row.srcIp}</td>
+                      <td className={styles.flowCellIp} title={row.dstIp}>{row.dstIp}</td>
+                      <td className={styles.flowCellPort}>{formatPort(row.srcPort)}</td>
+                      <td className={styles.flowCellPort}>{formatPort(row.dstPort)}</td>
+                      <td className={styles.flowCellProtocol}>
+                        <span
+                          className={[
+                            styles.flowProtocolBadge,
+                            resolveProtocolClass(row.protocol, styles),
+                          ].join(' ')}
+                        >
+                          {formatProtocolShortName(row.protocol)}
+                        </span>
+                      </td>
+                      <td className={styles.flowCellTraffic}>
+                        <span className={styles.flowTrafficValue}>{formatBytesRate(row.bytesRate)}</span>
+                        <span className={styles.flowTrafficTrack}>
+                          <span
+                            className={styles.flowTrafficFill}
+                            style={{ width: `${Math.max(share, 4)}%` }}
+                          />
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Spin>
     </DashboardPanel>
   );
 }

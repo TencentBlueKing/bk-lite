@@ -29,7 +29,6 @@ import {
   CollectionStatusCard,
   DashboardInstanceCard,
   DashboardPageHeader,
-  CollectProtocolBar,
   HorizontalBarPanel,
   MiniTrendChart,
   RingChartPanel,
@@ -37,6 +36,7 @@ import {
   TitleWithGuide,
   TrendChartPanel
 } from '../../shared/widgets';
+import { DashboardProtocolBarSlot } from '../../shared/widgets/dashboard-protocol-bar-slot';
 import { GuideItem } from '../../shared/types';
 import { FLOW_VIEW_SWITCH_ROUTE_KEYS, resolvePreferredCollectTypeFromRoute } from '../../shared/utils/flow-view-navigation';
 import { isFlowSupportedObjectName } from '../flow-common/constants';
@@ -751,15 +751,7 @@ export const DashboardShell = ({
         />
       </div>
 
-      {showProtocolBar && dashboard.isDashboardMode ? (
-        <CollectProtocolBar
-          routeKey={dashboard.routeKey}
-          monitorObjectName={dashboard.monitorObjectName}
-          monitorObjectId={dashboard.monitorObjectId}
-          instanceId={dashboard.instanceId}
-          styles={styles}
-        />
-      ) : null}
+      {showProtocolBar && dashboard.isDashboardMode ? <DashboardProtocolBarSlot /> : null}
 
       {dashboard.displayMode === 'dashboard' ? (
         <>{dashboardContent}</>
