@@ -21,6 +21,7 @@ import type {
 } from '@/app/ops-analysis/renderContract';
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import { useTranslation } from '@/utils/i18n';
+import { shouldShowAnalysisWidgetCopyAction } from '@/app/ops-analysis/utils/widgetCopy';
 
 // Canvas and subscription PDF share this height. Do not mark the card
 // `data-export-expand`: that unlocks 420px in print while the table body
@@ -40,6 +41,7 @@ interface ReportWidgetCardProps {
   editing: boolean;
   eagerRuntime?: boolean;
   onEdit: (sectionId: string) => void;
+  onCopy?: (sectionId: string) => void;
   onDelete: (sectionId: string) => void;
   onWidgetRenderStatus?: (result: DashboardWidgetRenderResult) => void;
 }
@@ -57,6 +59,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
   editing,
   eagerRuntime = false,
   onEdit,
+  onCopy,
   onDelete,
   onWidgetRenderStatus,
 }) => {
@@ -160,6 +163,17 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
                       label: t('common.edit'),
                       onClick: () => onEdit(section.id),
                     },
+                    ...(shouldShowAnalysisWidgetCopyAction({
+                      interaction: 'edit',
+                      sceneWidgetType: section.valueConfig.sceneWidgetType,
+                      chartType: section.valueConfig.chartType,
+                    })
+                      ? [{
+                        key: 'copy',
+                        label: t('common.copy'),
+                        onClick: () => onCopy?.(section.id),
+                      }]
+                      : []),
                     {
                       key: 'delete',
                       label: t('common.delete'),

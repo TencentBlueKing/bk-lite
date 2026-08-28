@@ -66,6 +66,7 @@ import {
   syncScreenFilterBindings,
   updateScreenItemConfig,
 } from "./utils/layoutUtils";
+import { copyScreenWidget } from "@/app/ops-analysis/utils/widgetCopy";
 import {
   buildDefaultScreenViewSets,
   normalizeScreenViewSets,
@@ -511,6 +512,24 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     [rebuildDraftFilters],
   );
 
+  const handleCopyItem = useCallback(
+    (itemId: string) => {
+      let selectedId: string | null = null;
+      setDraftViewSets((current) => {
+        const copied = copyScreenWidget(current, itemId);
+        if (!copied) {
+          return current;
+        }
+        selectedId = copied.selectedItemId;
+        return rebuildDraftFilters(copied.viewSets);
+      });
+      if (selectedId) {
+        setSelectedItemId(selectedId);
+      }
+    },
+    [rebuildDraftFilters],
+  );
+
   const handleOpenItemConfig = useCallback((itemId: string) => {
     setSelectedItemId(itemId);
     setConfigItemId(itemId);
@@ -704,6 +723,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         onMoveItem={handleMoveItem}
         onResizeItem={handleResizeItem}
         onEditItem={handleOpenItemConfig}
+        onCopyItem={handleCopyItem}
         onDeleteItem={handleDeleteItem}
         onTopologyLayoutChange={
           editMode && !shareMode ? handleTopologyLayoutChange : undefined
@@ -715,6 +735,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       dataSourceResolver,
       editMode,
       handleDeleteItem,
+      handleCopyItem,
       handleOpenItemConfig,
       handleMoveItem,
       handleResizeItem,

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import {
+  CopyOutlined,
   DeleteOutlined,
   SettingOutlined,
 } from '@ant-design/icons';
@@ -10,6 +11,7 @@ import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 import { normalizeScreenWidgetAppearance } from '../utils/layoutUtils';
+import { shouldShowAnalysisWidgetCopyAction } from '@/app/ops-analysis/utils/widgetCopy';
 
 interface ScreenWidgetFrameOptions {
   selected?: boolean;
@@ -22,6 +24,7 @@ interface ScreenWidgetFrameProps extends ScreenWidgetFrameOptions {
   screenDensity?: number;
   screenUiScale?: number;
   onConfigure?: () => void;
+  onCopy?: () => void;
   onDelete?: () => void;
   children: React.ReactNode;
 }
@@ -59,12 +62,26 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   screenDensity = 1,
   screenUiScale = 1,
   onConfigure,
+  onCopy,
   onDelete,
   children,
 }) => {
   const { t } = useTranslation();
   const frame = normalizeScreenWidgetAppearance(item.valueConfig?.appearance).frame;
   const isBare = frame === 'bare';
+  const showCopy = shouldShowAnalysisWidgetCopyAction({
+    interaction: editMode ? 'edit' : 'view',
+    sceneWidgetType: item.valueConfig?.sceneWidgetType,
+    chartType: item.chartType,
+  });
+  const copyMenuItem: MoreActionsDropdownItem | null = showCopy
+    ? {
+      key: 'copy',
+      icon: <CopyOutlined />,
+      label: t('common.copy'),
+      onClick: () => onCopy?.(),
+    }
+    : null;
   const menuItems: MoreActionsDropdownItem[] = [
     {
       key: 'configure',
@@ -72,6 +89,7 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
       label: t('opsAnalysis.screen.editWidget'),
       onClick: () => onConfigure?.(),
     },
+    ...(copyMenuItem ? [copyMenuItem] : []),
     {
       key: 'delete',
       danger: true,

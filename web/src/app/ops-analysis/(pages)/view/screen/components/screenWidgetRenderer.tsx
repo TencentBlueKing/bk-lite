@@ -33,6 +33,7 @@ interface ScreenWidgetRendererProps {
   ) => DatasourceItem | undefined;
   onRenderStatus?: (result: DashboardWidgetRenderResult) => void;
   onEditConfig?: (item: ScreenWidgetItem) => void;
+  onCopy?: (itemId: string) => void;
   onDelete?: (itemId: string) => void;
   layoutEditable?: boolean;
   onTopologyLayoutChange?: (
@@ -61,6 +62,7 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
   dataSourceResolver,
   onRenderStatus,
   onEditConfig,
+  onCopy,
   onDelete,
   layoutEditable,
   onTopologyLayoutChange,
@@ -91,6 +93,7 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
         screenDensity={screenDensity}
         screenUiScale={screenUiScale}
         onConfigure={() => onEditConfig?.(item)}
+        onCopy={() => onCopy?.(item.id)}
         onDelete={() => onDelete?.(item.id)}
       >
         <WidgetWrapper
