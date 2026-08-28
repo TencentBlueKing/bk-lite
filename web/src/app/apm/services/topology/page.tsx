@@ -7,8 +7,6 @@ import useApmApi from '@/app/apm/api';
 import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell';
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import TopologyCanvas, {
-  TopologyLegendDot,
-  topologyHealthColors,
   type TopologyCanvasSelection,
   type TopologyLayoutMode,
 } from '@/app/apm/services/topology/topology-canvas';
@@ -168,7 +166,7 @@ export default function ApmTopologyPage() {
   }, [getTraces, range.endedAt, range.startedAt, sampleNode, selectedSamples.length, slice.min_duration_ms, slice.span_name, slice.status]);
 
   return (
-    <ApmRouteShell dependency="telemetry" description={t('apm.topology.description', '按时间窗内观测到的 Trace 聚合服务依赖；节点大小表示观测调用量，颜色表示错误率，标签展示 P95。点选节点或边可在右侧查看样本 Trace。未插桩下游以推断节点出现在本页。')} title={t('apm.topology.title', '服务拓扑')}>
+    <ApmRouteShell dependency="telemetry" description={t('apm.topology.description', '按时间窗内观测到的 Trace 聚合服务依赖；数字为错误数 / 总数，节点宽度表示观测调用量，颜色表示健康。点选节点或边可在右侧查看样本 Trace。未插桩下游以推断节点出现在本页。')} title={t('apm.topology.title', '服务拓扑')}>
       <div className="flex flex-col gap-3">
         {graph.truncated ? <Alert showIcon type="warning" message={t('apm.topology.truncated', '当前拓扑仅聚合查询上限内的最近 Trace，调用量不代表全量流量。')} /> : null}
         {isolatedNodeId ? <Alert showIcon type="info" message={t('apm.topology.isolateBanner', '正在隔离查看一个服务及其直接依赖。')} action={<Button type="link" onClick={() => setIsolatedNodeId(null)}>{t('apm.topology.showFullMap', '显示全图')}</Button>} /> : null}
@@ -253,15 +251,6 @@ export default function ApmTopologyPage() {
                   )}
                   onSelect={setSelection}
                 />
-                <div
-                  aria-label={t('apm.topology.healthLegend', '节点健康图例')}
-                  className="pointer-events-none absolute bottom-3 left-3 z-10 flex items-center gap-x-4 text-xs text-[var(--color-text-3)]"
-                  role="list"
-                >
-                  <TopologyLegendDot color={topologyHealthColors.healthy} label={t('apm.severity.normal', '正常')} />
-                  <TopologyLegendDot color={topologyHealthColors.warning} label={t('apm.severity.warning', '警告')} />
-                  <TopologyLegendDot color={topologyHealthColors.critical} label={t('apm.severity.critical', '严重')} />
-                </div>
               </div>
               <TopologyInspectPanel
                 edges={visibleGraph.edges}

@@ -68,7 +68,7 @@ assert.match(topologyLayout, /layoutLayeredTopology\(stable\.nodes/, '力导向�
 assert.doesNotMatch(topologyLayout, /Math\.random/, 'layoutForceTopology 不得使用 Math.random');
 assert.doesNotMatch(topologyPage, /type ViewMode = 'graph' \| 'list'/, '拓扑不得再按图形/列表切换');
 assert.match(topologyCanvas, /viewBox=\{`0 0 \$\{TOPOLOGY_CANVAS_SIZE\.width\} \$\{TOPOLOGY_CANVAS_SIZE\.height\}`\}/, '图形视图必须使用响应式 viewBox');
-assert.match(topologyCanvas, /tabIndex=\{onSelect \|\| onNodeClick \? 0 : undefined\}/, '可点击拓扑节点必须支持键盘聚焦');
+assert.match(topologyCanvas, /tabIndex=\{0\}/, '拓扑节点必须支持键盘聚焦');
 assert.match(topologyCanvas, /event\.key === 'Enter' \|\| event\.key === ' '/, '拓扑节点必须支持 Enter 与 Space 下钻');
 assert.match(topologyCanvas, /sampled_spans/, '拓扑节点大小必须编码采样吞吐');
 assert.match(topologyCanvas, /TopologyServiceIcon/, '拓扑节点必须按语言或推断系统选择图标');
@@ -79,7 +79,11 @@ assert.match(topologyObjectIcon, /gateway\|kong\|apisix/, '名称含 gateway 的
 assert.match(serviceLanguageIcon, /data-service-icon=\{kind\}/, '未知语言必须可被识别为默认服务图标');
 assert.match(serviceLanguageIcon, /UnknownIcon[\s\S]*'default'/, '未知语言必须回退到默认服务图标');
 assert.doesNotMatch(serviceLanguageIcon, /ui-monospace/, '未知语言不得用空代码符号占位');
-assert.match(topologyCanvas, /formatTopologyEdgeMetrics/, '连线必须展示观测调用量');
+assert.match(topologyCanvas, /formatTopologyEdgeMetrics/, '连线必须展示错误数与总数');
+assert.match(topologyCanvas, /error_spans/, '拓扑节点数字必须展示错误数');
+assert.doesNotMatch(topologyCanvas, /encodingLegend|TopologyEncodingLegend/, '拓扑画布不得再叠一层编码图例');
+assert.match(topologyCanvas, /startNodeDrag/, '拓扑节点必须可拖动整理布局');
+assert.match(topologyCanvas, /nodePositions/, '拖动整理必须覆盖层次与力导向算出的节点坐标');
 assert.match(topologyCanvas, /onWheel/, '拓扑必须支持滚轮缩放');
 assert.match(topologyPage, /onSelect/, '拓扑节点必须可点选并停在图上调查');
 assert.match(topologyPage, /TopologyInspectPanel/, '拓扑必须提供右侧调查栏');

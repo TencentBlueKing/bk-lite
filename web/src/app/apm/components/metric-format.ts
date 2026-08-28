@@ -89,15 +89,29 @@ export function formatCompactLatency(ms: number): string {
   return `${Math.round(ms)}ms`;
 }
 
+export function formatTopologyCountPair(errorCount: number, total: number): string {
+  return `${formatNumber(errorCount)}/${formatNumber(total)}`;
+}
+
+export function formatTopologyMetricLine(input: {
+  errorCount: number;
+  total: number;
+  p95_ms?: number | null;
+}): string {
+  const counts = formatTopologyCountPair(input.errorCount, input.total);
+  return input.p95_ms == null ? counts : `${counts} · ${formatCompactLatency(input.p95_ms)}`;
+}
+
 export function formatTopologyEdgeMetrics(edge: {
   sampled_calls: number;
+  error_calls: number;
   p95_ms?: number | null;
-  error_rate?: number | null;
 }): string {
-  const parts = [formatNumber(edge.sampled_calls)];
-  if (edge.p95_ms != null) parts.push(formatCompactLatency(edge.p95_ms));
-  if (edge.error_rate != null) parts.push(formatErrorRate(edge.error_rate));
-  return parts.join(' · ');
+  return formatTopologyMetricLine({
+    errorCount: edge.error_calls,
+    total: edge.sampled_calls,
+    p95_ms: edge.p95_ms,
+  });
 }
 
 export function formatPerSecond(value: string, t?: Translate): string {

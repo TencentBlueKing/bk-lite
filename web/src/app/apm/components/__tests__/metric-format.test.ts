@@ -123,17 +123,18 @@ describe('APM metric-format', () => {
     });
   });
 
-  it('拓扑连线只展示观测调用量', () => {
+  it('拓扑连线展示错误数 / 总数', () => {
     expect(formatTopologyEdgeMetrics({
       sampled_calls: 153,
-    })).toBe('153');
+      error_calls: 0,
+    })).toBe('0/153');
   });
 
-  it('有边级 P95 和错误率时附加在调用量后面', () => {
+  it('有边级 P95 时附加在错误数 / 总数后面，不展示错误率', () => {
     expect(formatTopologyEdgeMetrics({
       sampled_calls: 153,
+      error_calls: 12,
       p95_ms: 40,
-      error_rate: 0.02,
-    })).toContain('153');
+    })).toBe('12/153 · 40ms');
   });
 });
