@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from django.http import Http404
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 
 from apps.apm.adapters import TelemetryStoreUnavailable, VictoriaTracesTelemetryStore
+from apps.apm.adapters.victoriatraces import _encode_cursor
 from apps.apm.renderers import ApmRenderer
 from apps.apm.serializers import TraceSearchSerializer
 from apps.apm.services import DjangoTelemetryQueryService
 from apps.apm.services.access import current_organization_id
 from apps.apm.services.contracts import SpanDetail, TraceDetail, TraceSearchQuery, TraceSummary
-from apps.apm.services.trace_access import TraceAccessResolver
+from apps.apm.services.trace_access import TraceAccessResolver, collect_visible_page
 from apps.core.decorators.api_permission import HasPermission
 
 _TRACE_ID_RE = re.compile(r"^[0-9a-fA-F]{16}(?:[0-9a-fA-F]{16})?$")
@@ -96,8 +98,20 @@ class ApmTraceViewSet(viewsets.ViewSet):
             cursor=data.get("cursor"),
             limit=data["limit"],
         )
+        query_service = self._query_service()
+
+        def fetch_page(cursor: str | None):
+            page = query_service.search_traces(replace(query, cursor=cursor))
+            return page.items, page.next_cursor
+
         try:
-            page = self._query_service().search_traces(query)
+            visible, next_cursor = collect_visible_page(
+                fetch_page=fetch_page,
+                filter_items=lambda items: self.access.filter_summaries(items, organization_id),
+                cursor=query.cursor,
+                limit=query.limit,
+                encode_cursor=lambda item: _encode_cursor(item.started_at),
+            )
         except ValueError as exc:
             return Response(
                 {"code": "invalid_query", "detail": str(exc)},
@@ -108,8 +122,7 @@ class ApmTraceViewSet(viewsets.ViewSet):
                 {"detail": str(exc), "code": "telemetry_unavailable"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
-        visible = self.access.filter_summaries(page.items, organization_id)
-        return Response({"items": [_summary_data(item) for item in visible], "next_cursor": page.next_cursor})
+        return Response({"items": [_summary_data(item) for item in visible], "next_cursor": next_cursor})
 
     @HasPermission("traces-View")
     def retrieve(self, request, pk=None):

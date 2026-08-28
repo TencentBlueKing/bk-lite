@@ -5,23 +5,15 @@ from django.utils import timezone
 
 from apps.apm.adapters import TelemetryStoreUnavailable
 from apps.apm.services import DjangoTelemetryCatalogService
-from apps.apm.services.contracts import (
-    CatalogDiscovery,
-    ServiceEndpointRed,
-    ServiceRed,
-    ServiceRedPoint,
-)
+from apps.apm.services.contracts import CatalogDiscovery, ServiceEndpointRed, ServiceRed, ServiceRedPoint
 from apps.apm.tests.helpers import create_application
-
 
 pytestmark = pytest.mark.django_db
 
 
 def _service():
     create_application("shop", (10,))
-    return DjangoTelemetryCatalogService().discover(
-        CatalogDiscovery("shop", "checkout", "pod-a", "production")
-    ).service
+    return DjangoTelemetryCatalogService().discover(CatalogDiscovery("shop", "checkout", "pod-a", "production")).service
 
 
 def test_red_endpoint_requires_one_environment_and_does_not_mix_views(apm_api_client, mocker):
@@ -55,9 +47,7 @@ def test_red_endpoint_requires_one_environment_and_does_not_mix_views(apm_api_cl
     )
 
     missing = apm_api_client.get(f"/api/v1/apm/services/{service.id}/metrics/")
-    response = apm_api_client.get(
-        f"/api/v1/apm/services/{service.id}/metrics/?environment=production"
-    )
+    response = apm_api_client.get(f"/api/v1/apm/services/{service.id}/metrics/?environment=production")
 
     assert missing.status_code == 400
     assert missing.data["code"] == "invalid_query"
@@ -110,19 +100,36 @@ def test_red_endpoint_treats_explicit_empty_environment_as_its_own_view(apm_api_
     assert metric_query.call_args.args[0].environment == ""
 
 
-def test_red_endpoint_rejects_unbounded_windows(apm_api_client):
+def test_red_endpoint_accepts_seven_day_window_and_rejects_beyond(apm_api_client, mocker):
     service = _service()
+    metric_query = mocker.patch(
+        "apps.apm.views.control_plane.DjangoTelemetryQueryService.service_red",
+        return_value=ServiceRed(request_rate=1, error_rate=0, p95_ms=10, p99_ms=20),
+    )
     ended_at = timezone.now()
-    started_at = ended_at - timedelta(days=2)
 
-    response = apm_api_client.get(
+    accepted = apm_api_client.get(
         f"/api/v1/apm/services/{service.id}/metrics/",
-        {"environment": "production", "started_at": started_at.isoformat(), "ended_at": ended_at.isoformat()},
+        {
+            "environment": "production",
+            "started_at": (ended_at - timedelta(days=7)).isoformat(),
+            "ended_at": ended_at.isoformat(),
+        },
+    )
+    too_wide = apm_api_client.get(
+        f"/api/v1/apm/services/{service.id}/metrics/",
+        {
+            "environment": "production",
+            "started_at": (ended_at - timedelta(days=8)).isoformat(),
+            "ended_at": ended_at.isoformat(),
+        },
     )
 
-    assert response.status_code == 400
-    assert "24" in response.data["detail"]
-    assert response.data["code"] == "invalid_query"
+    assert accepted.status_code == 200
+    assert metric_query.call_args.args[0].ended_at - metric_query.call_args.args[0].started_at == timedelta(days=7)
+    assert too_wide.status_code == 400
+    assert "7" in str(too_wide.data["detail"])
+    assert too_wide.data["code"] == "invalid_query"
 
 
 def test_red_endpoint_rejects_arbitrary_promql_parameters(apm_api_client, mocker):
@@ -146,14 +153,10 @@ def test_storage_failure_is_distinct_from_legal_empty_metrics(apm_api_client, mo
     metric_query = mocker.patch("apps.apm.views.control_plane.DjangoTelemetryQueryService.service_red")
     metric_query.side_effect = TelemetryStoreUnavailable("VictoriaMetrics 查询不可用")
 
-    degraded = apm_api_client.get(
-        f"/api/v1/apm/services/{service.id}/metrics/?environment=production"
-    )
+    degraded = apm_api_client.get(f"/api/v1/apm/services/{service.id}/metrics/?environment=production")
     metric_query.side_effect = None
     metric_query.return_value = ServiceRed(request_rate=None, error_rate=None, p95_ms=None, p99_ms=None)
-    empty = apm_api_client.get(
-        f"/api/v1/apm/services/{service.id}/metrics/?environment=production"
-    )
+    empty = apm_api_client.get(f"/api/v1/apm/services/{service.id}/metrics/?environment=production")
 
     assert degraded.status_code == 503
     assert degraded.data["code"] == "telemetry_unavailable"

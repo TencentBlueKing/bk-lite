@@ -4,7 +4,7 @@ import { AimOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react';
 import CatalogState from '@/app/apm/components/catalog-state';
-import { formatCompactLatency, formatErrorRate, formatNumber, formatTopologyEdgeMetrics } from '@/app/apm/components/metric-format';
+import { formatCompactLatency, formatNumber, topologyMetricParts } from '@/app/apm/components/metric-format';
 import { serviceLanguageLabel } from '@/app/apm/components/service-language-icon';
 import TopologyServiceIcon from '@/app/apm/components/topology-service-icon';
 import {
@@ -12,10 +12,13 @@ import {
   hasReciprocalTopologyEdge,
   layoutForceTopology,
   layoutLayeredTopology,
+  topologyEntryNameWidth,
+  topologyEntryPillWidth,
   topologyNeighborIds,
   topologyNodeNameWidth,
   truncateTopologyNodeLabel,
   TOPOLOGY_CANVAS_SIZE,
+  TOPOLOGY_ENTRY_PILL,
   TOPOLOGY_NODE_CARD,
   type PositionedApmTopologyNode,
 } from '@/app/apm/services/topology/topology-layout';
@@ -48,6 +51,55 @@ export const topologyHealthI18n: Record<ApmTopologyHealth, { id: string; fallbac
 const EDGE_STROKE = 'color-mix(in srgb, var(--color-text-3) 42%, var(--color-border))';
 const EDGE_STROKE_ACTIVE = 'var(--color-primary)';
 const NODE_IDLE_OPACITY = 0.5;
+const NODE_DRAG_THRESHOLD_PX = 4;
+
+type CanvasDrag =
+  | { kind: 'pan'; startX: number; startY: number; panX: number; panY: number }
+  | { kind: 'node'; id: string; startX: number; startY: number; nodeX: number; nodeY: number; k: number; moved: boolean };
+
+const topologyErrorFill = (hasErrors: boolean) => (hasErrors ? topologyHealthColors.critical : topologyHealthColors.healthy);
+
+function TopologyMetricLabel({
+  errorCount,
+  total,
+  p95Ms,
+  x,
+  y,
+  fontSize,
+  textAnchor = 'start',
+  clipPath,
+}: {
+  errorCount: number;
+  total: number;
+  p95Ms?: number | null;
+  x: number;
+  y: number;
+  fontSize: number;
+  textAnchor?: 'start' | 'middle';
+  clipPath?: string;
+}) {
+  const parts = topologyMetricParts({ errorCount, total, p95_ms: p95Ms });
+  return (
+    <text
+      clipPath={clipPath}
+      data-topology-metrics="true"
+      data-has-errors={!parts.hasErrors ? 'false' : 'true'}
+      fontSize={fontSize}
+      paintOrder="stroke"
+      stroke="var(--color-fill-1)"
+      strokeLinejoin="round"
+      strokeWidth="4"
+      textAnchor={textAnchor}
+      x={x}
+      y={y}
+    >
+      <tspan fill="var(--color-text-3)">{`${parts.total} / ${parts.latency} / `}</tspan>
+      <tspan data-error-count="true" fill={topologyErrorFill(parts.hasErrors)} fontWeight={parts.hasErrors ? 700 : undefined}>
+        {parts.errors}
+      </tspan>
+    </text>
+  );
+}
 
 const clampZoom = (value: number) => Math.min(MAX_TOPOLOGY_ZOOM, Math.max(MIN_TOPOLOGY_ZOOM, value));
 
@@ -77,7 +129,8 @@ export default function TopologyCanvas({
 }) {
   const { t } = useTranslation();
   const svgRef = useRef<SVGSVGElement>(null);
-  const dragRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
+  const dragRef = useRef<CanvasDrag | null>(null);
+  const skipNodeClickRef = useRef(false);
   const layoutKey = useMemo(
     () => `${layout}:${nodes.map((node) => node.id).join('|')}:${edges.map((edge) => `${edge.source}>${edge.target}`).join('|')}`,
     [edges, layout, nodes],
@@ -88,6 +141,8 @@ export default function TopologyCanvas({
   });
   const [view, setView] = useState({ x: 0, y: 0, k: zoom });
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -109,8 +164,17 @@ export default function TopologyCanvas({
     setView({ x: 0, y: 0, k: zoom });
   }, [layoutKey, zoom]);
 
+  useEffect(() => {
+    setNodePositions({});
+    setDraggingNodeId(null);
+    dragRef.current = null;
+  }, [layoutKey]);
+
   const layoutPending = layoutResult.key !== layoutKey;
-  const positionedNodes = layoutPending ? [] : layoutResult.nodes;
+  const positionedNodes = (layoutPending ? [] : layoutResult.nodes).map((node) => {
+    const override = nodePositions[node.id];
+    return override ? { ...node, x: override.x, y: override.y } : node;
+  });
   const nodeMap = new Map(positionedNodes.map((node) => [node.id, node]));
   const maxSpans = Math.max(...nodes.map((node) => node.sampled_spans), 1);
   const maxCalls = Math.max(...edges.map((edge) => edge.sampled_calls), 1);
@@ -120,7 +184,9 @@ export default function TopologyCanvas({
     ? new Set(positionedNodes.filter((node) => node.service_namespace === focusNamespace).map((node) => node.id))
     : null;
   const nodeCardWidth = (sampledSpans: number) => TOPOLOGY_NODE_CARD.minWidth + (sampledSpans / maxSpans) * TOPOLOGY_NODE_CARD.widthSpan;
-  const nodeRadius = () => TOPOLOGY_NODE_CARD.height / 2;
+  const nodeVisualRadius = (node: ApmTopologyNode) => (
+    node.kind === 'user_request' ? TOPOLOGY_ENTRY_PILL.height / 2 : TOPOLOGY_NODE_CARD.height / 2
+  );
   const highlightNodeId = hoveredNodeId;
   const highlightedIds = highlightNodeId ? topologyNeighborIds(edges, highlightNodeId) : null;
   const selectedEdgeKey = selected?.kind === 'edge' ? edgeKey(selected.source, selected.target) : null;
@@ -153,38 +219,102 @@ export default function TopologyCanvas({
     adjustZoom(view.k * (event.deltaY > 0 ? 0.9 : 1.1), origin);
   };
 
-  const onMouseDown = (event: ReactMouseEvent<SVGSVGElement>) => {
-    if (event.button !== 0) return;
-    dragRef.current = { x: event.clientX, y: event.clientY, panX: view.x, panY: view.y };
-  };
-
-  const onMouseMove = (event: ReactMouseEvent<SVGSVGElement>) => {
-    const drag = dragRef.current;
-    const svg = svgRef.current;
-    if (!drag || !svg) return;
-    const width = svg.clientWidth || TOPOLOGY_CANVAS_SIZE.width;
-    const height = svg.clientHeight || TOPOLOGY_CANVAS_SIZE.height;
-    const dx = (event.clientX - drag.x) * (TOPOLOGY_CANVAS_SIZE.width / width);
-    const dy = (event.clientY - drag.y) * (TOPOLOGY_CANVAS_SIZE.height / height);
-    setView((current) => ({ ...current, x: drag.panX + dx, y: drag.panY + dy }));
-  };
-
-  const endDrag = () => {
-    dragRef.current = null;
-  };
-
   const selectNode = (node: ApmTopologyNode) => {
     onSelect?.({ kind: 'node', id: node.id });
     onNodeClick?.(node);
   };
 
-  const nodeMetricLine = (node: ApmTopologyNode) => {
-    if (node.kind === 'user_request') {
-      return t('apm.topology.userRequestMetric', '观测请求 {count} 次', { count: formatNumber(node.sampled_spans) });
+  const viewBoxDelta = (clientX: number, clientY: number, originX: number, originY: number) => {
+    const svg = svgRef.current;
+    const width = svg?.clientWidth || TOPOLOGY_CANVAS_SIZE.width;
+    const height = svg?.clientHeight || TOPOLOGY_CANVAS_SIZE.height;
+    return {
+      dx: (clientX - originX) * (TOPOLOGY_CANVAS_SIZE.width / width),
+      dy: (clientY - originY) * (TOPOLOGY_CANVAS_SIZE.height / height),
+    };
+  };
+
+  const applyDragMove = (event: { clientX: number; clientY: number }) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    if (drag.kind === 'pan') {
+      const delta = viewBoxDelta(event.clientX, event.clientY, drag.startX, drag.startY);
+      setView((current) => ({ ...current, x: drag.panX + delta.dx, y: drag.panY + delta.dy }));
+      return;
     }
-    const latency = node.p95_ms == null ? t('apm.common.noData', '无数据') : formatCompactLatency(node.p95_ms);
-    const errorRate = node.error_rate == null ? null : formatErrorRate(node.error_rate);
-    return errorRate ? `${latency} · ${errorRate}` : latency;
+    const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+    if (!drag.moved && distance < NODE_DRAG_THRESHOLD_PX) return;
+    drag.moved = true;
+    skipNodeClickRef.current = true;
+    const delta = viewBoxDelta(event.clientX, event.clientY, drag.startX, drag.startY);
+    setNodePositions((current) => ({
+      ...current,
+      [drag.id]: { x: drag.nodeX + delta.dx / drag.k, y: drag.nodeY + delta.dy / drag.k },
+    }));
+  };
+
+  const endDrag = () => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    setDraggingNodeId(null);
+    if (drag?.kind === 'node') {
+      skipNodeClickRef.current = true;
+      const node = nodeMap.get(drag.id);
+      if (node) selectNode(node);
+    }
+  };
+
+  const applyDragMoveRef = useRef(applyDragMove);
+  const endDragRef = useRef(endDrag);
+  applyDragMoveRef.current = applyDragMove;
+  endDragRef.current = endDrag;
+  const windowListenersRef = useRef<{ move: (event: MouseEvent) => void; up: () => void } | null>(null);
+
+  const beginWindowDrag = () => {
+    if (windowListenersRef.current) return;
+    const move = (event: MouseEvent) => applyDragMoveRef.current(event);
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+      windowListenersRef.current = null;
+      endDragRef.current();
+    };
+    windowListenersRef.current = { move, up };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  useEffect(() => () => {
+    const listeners = windowListenersRef.current;
+    if (!listeners) return;
+    window.removeEventListener('mousemove', listeners.move);
+    window.removeEventListener('mouseup', listeners.up);
+    windowListenersRef.current = null;
+  }, []);
+
+  const onCanvasMouseDown = (event: ReactMouseEvent<SVGSVGElement>) => {
+    if (event.button !== 0) return;
+    dragRef.current = { kind: 'pan', startX: event.clientX, startY: event.clientY, panX: view.x, panY: view.y };
+    beginWindowDrag();
+  };
+
+  const startNodeDrag = (event: ReactMouseEvent<SVGGElement>, node: PositionedApmTopologyNode) => {
+    event.stopPropagation();
+    if (event.button !== 0) return;
+    event.preventDefault();
+    skipNodeClickRef.current = false;
+    dragRef.current = {
+      kind: 'node',
+      id: node.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      nodeX: node.x,
+      nodeY: node.y,
+      k: view.k,
+      moved: false,
+    };
+    setDraggingNodeId(node.id);
+    beginWindowDrag();
   };
 
   const nodeDisplayName = (node: ApmTopologyNode) =>
@@ -200,10 +330,12 @@ export default function TopologyCanvas({
         </div>
       ) : null}
       {toolbar ? <div className="absolute left-3 top-3 z-10 w-52 max-w-[calc(100%-24px)]">{toolbar}</div> : null}
-      <div className={`absolute left-3 z-10 inline-flex w-fit flex-col overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] ${toolbar ? 'top-14' : 'top-3'}`}>
-        <Button aria-label={t('apm.topology.zoomIn', '放大拓扑')} type="text" size="small" icon={<PlusOutlined aria-hidden="true" />} onClick={() => adjustZoom(view.k + 0.15)} />
-        <Button aria-label={t('apm.topology.zoomOut', '缩小拓扑')} type="text" size="small" icon={<MinusOutlined aria-hidden="true" />} onClick={() => adjustZoom(view.k - 0.15)} />
-        <Button aria-label={t('apm.topology.resetZoom', '重置拓扑缩放')} type="text" size="small" icon={<AimOutlined aria-hidden="true" />} onClick={() => setView({ x: 0, y: 0, k: 1 })} />
+      <div className={`absolute left-3 z-10 flex flex-col gap-2 ${toolbar ? 'top-14' : 'top-3'}`}>
+        <div className="inline-flex w-fit flex-col overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
+          <Button aria-label={t('apm.topology.zoomIn', '放大拓扑')} type="text" size="small" icon={<PlusOutlined aria-hidden="true" />} onClick={() => adjustZoom(view.k + 0.15)} />
+          <Button aria-label={t('apm.topology.zoomOut', '缩小拓扑')} type="text" size="small" icon={<MinusOutlined aria-hidden="true" />} onClick={() => adjustZoom(view.k - 0.15)} />
+          <Button aria-label={t('apm.topology.resetZoom', '重置拓扑缩放')} type="text" size="small" icon={<AimOutlined aria-hidden="true" />} onClick={() => setView({ x: 0, y: 0, k: 1 })} />
+        </div>
       </div>
       <svg
         ref={svgRef}
@@ -214,10 +346,7 @@ export default function TopologyCanvas({
         role="img"
         viewBox={`0 0 ${TOPOLOGY_CANVAS_SIZE.width} ${TOPOLOGY_CANVAS_SIZE.height}`}
         onWheel={onWheel}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={endDrag}
-        onMouseLeave={endDrag}
+        onMouseDown={onCanvasMouseDown}
         onClick={(event) => {
           if (event.target === event.currentTarget) onSelect?.(null);
         }}
@@ -233,8 +362,8 @@ export default function TopologyCanvas({
           const target = nodeMap.get(edge.target);
           if (!source || !target) return null;
           const geometry = buildTopologyEdgeGeometry(
-            { x: source.x, y: source.y, radius: nodeRadius() },
-            { x: target.x, y: target.y, radius: nodeRadius() },
+            { x: source.x, y: source.y, radius: nodeVisualRadius(source) },
+            { x: target.x, y: target.y, radius: nodeVisualRadius(target) },
             hasReciprocalTopologyEdge(edge, edgePairs),
             routing,
           );
@@ -274,9 +403,10 @@ export default function TopologyCanvas({
                 }
               }}
             >
-              <title>{t('apm.topology.edgeTitle', '{source} 调用 {target}，观测调用 {calls} 次', {
+              <title>{t('apm.topology.edgeTitle', '{source} 调用 {target}，错误 {errors} 次，共 {calls} 次', {
                 source: nodeDisplayName(source),
                 target: nodeDisplayName(target),
+                errors: formatNumber(edge.error_calls),
                 calls: formatNumber(edge.sampled_calls),
               })}</title>
               <path
@@ -289,66 +419,77 @@ export default function TopologyCanvas({
                 strokeLinejoin="round"
                 strokeWidth={isSelected ? strokeWidth + 0.6 : strokeWidth}
               />
-              <text
-                fill="var(--color-text-3)"
-                fontSize="10"
-                paintOrder="stroke"
-                stroke="var(--color-fill-1)"
-                strokeLinejoin="round"
-                strokeWidth="4"
+              <TopologyMetricLabel
+                errorCount={edge.error_calls}
+                fontSize={10}
+                p95Ms={edge.p95_ms}
                 textAnchor="middle"
+                total={edge.sampled_calls}
                 x={geometry.labelX}
                 y={geometry.labelY - 6}
-              >
-                {formatTopologyEdgeMetrics(edge)}
-              </text>
+              />
             </g>
           );
         })}
         {positionedNodes.map((node, index) => {
-          const cardWidth = nodeCardWidth(node.sampled_spans);
-          const cardHeight = TOPOLOGY_NODE_CARD.height;
+          const inferred = node.kind === 'inferred';
+          const userRequest = node.kind === 'user_request';
+          const nodeName = nodeDisplayName(node);
+          const countLabel = formatNumber(node.sampled_spans);
+          const cardWidth = userRequest
+            ? topologyEntryPillWidth(nodeName, countLabel)
+            : nodeCardWidth(node.sampled_spans);
+          const cardHeight = userRequest ? TOPOLOGY_ENTRY_PILL.height : TOPOLOGY_NODE_CARD.height;
+          const cardRadius = userRequest ? TOPOLOGY_ENTRY_PILL.radius : TOPOLOGY_NODE_CARD.radius;
           const cardX = -cardWidth / 2;
           const cardY = -cardHeight / 2;
+          const nameOffsetX = userRequest
+            ? TOPOLOGY_ENTRY_PILL.paddingX + TOPOLOGY_ENTRY_PILL.iconSize + TOPOLOGY_ENTRY_PILL.iconGap
+            : TOPOLOGY_NODE_CARD.nameOffsetX;
           const inFocus = !focusNodeIds || focusNodeIds.has(node.id);
           const isHighlighted = !highlightedIds || highlightedIds.has(node.id);
           const isSelected = selected?.kind === 'node' && selected.id === node.id;
           const languageTitle = serviceLanguageLabel(node.language, t('apm.language.unknown', '未知'));
-          const inferred = node.kind === 'inferred';
-          const userRequest = node.kind === 'user_request';
-          const nodeName = nodeDisplayName(node);
-          const labelWidth = topologyNodeNameWidth(cardWidth, inferred);
+          const labelWidth = userRequest
+            ? topologyEntryNameWidth(cardWidth, countLabel)
+            : topologyNodeNameWidth(cardWidth, inferred);
           const displayName = truncateTopologyNodeLabel(nodeName, labelWidth);
           const inferredBadgeX = cardX + cardWidth - TOPOLOGY_NODE_CARD.healthGutter;
           return (
             <g
               key={node.id}
               aria-label={userRequest
-                ? t('apm.topology.userRequestAria', '{name}，时间窗内观测 {spans} 次请求', {
+                ? t('apm.topology.userRequestAria', '{name}，时间窗内 {spans} 次请求', {
                   name: nodeName,
                   spans: node.sampled_spans,
                 })
-                : t('apm.topology.nodeAria', '{name}，{health}，P95 {latency}，时间窗内观测 {spans} 次调用', {
+                : t('apm.topology.nodeAria', '{name}，{health}，错误 {errors} 次，共 {spans} 次调用，P95 {latency}', {
                   name: nodeName,
                   health: t(topologyHealthI18n[node.health].id, topologyHealthI18n[node.health].fallback),
-                  latency: node.p95_ms == null ? t('apm.common.noData', '无数据') : formatCompactLatency(node.p95_ms),
+                  errors: node.error_spans,
                   spans: node.sampled_spans,
+                  latency: node.p95_ms == null ? t('apm.common.noData', '无数据') : formatCompactLatency(node.p95_ms),
                 })}
               opacity={isHighlighted ? (inFocus ? 1 : 0.62) : NODE_IDLE_OPACITY}
-              role={onSelect || onNodeClick ? 'button' : undefined}
-              tabIndex={onSelect || onNodeClick ? 0 : undefined}
+              role="button"
+              tabIndex={0}
               data-node-id={node.id}
               data-node-kind={node.kind || 'instrumented'}
               data-peer-address={node.peer_address || undefined}
               data-db-name={node.db_name || undefined}
               data-selected={isSelected ? 'true' : undefined}
-              className={onSelect || onNodeClick ? 'cursor-pointer' : undefined}
+              data-node-dragging={draggingNodeId === node.id ? 'true' : undefined}
+              className={draggingNodeId === node.id ? 'cursor-grabbing select-none' : 'cursor-grab select-none'}
               transform={`translate(${node.x},${node.y})`}
               onMouseEnter={() => setHoveredNodeId(node.id)}
               onMouseLeave={() => setHoveredNodeId((value) => (value === node.id ? null : value))}
-              onMouseDown={(event) => event.stopPropagation()}
+              onMouseDown={(event) => startNodeDrag(event, node)}
               onClick={(event) => {
                 event.stopPropagation();
+                if (skipNodeClickRef.current) {
+                  skipNodeClickRef.current = false;
+                  return;
+                }
                 selectNode(node);
               }}
               onKeyDown={(event) => {
@@ -359,24 +500,27 @@ export default function TopologyCanvas({
               }}
             >
               <title>{userRequest
-                ? t('apm.topology.userRequestTitle', '{name}\n{environment}\n观测请求 {spans} 次', {
+                ? t('apm.topology.userRequestTitle', '{name}\n{environment}\n{spans} 次请求', {
                   name: nodeName,
                   environment: node.environment,
                   spans: node.sampled_spans,
                 })
-                : t('apm.topology.nodeTitle', '{name}\n{language} · {namespace} · {environment}\nP95 {latency} · 错误率 {errors} · 观测调用 {spans}', {
+                : t('apm.topology.nodeTitle', '{name}\n{language} · {namespace} · {environment}\n错误 {errors} 次 / 共 {spans} 次 · P95 {latency}', {
                   name: nodeName,
                   language: languageTitle,
                   namespace: node.service_namespace || t('apm.common.unsetNamespace', '未设置 namespace'),
                   environment: node.environment,
-                  latency: node.p95_ms == null ? t('apm.common.noData', '无数据') : formatCompactLatency(node.p95_ms),
-                  errors: node.error_rate == null ? t('apm.common.noData', '无数据') : formatErrorRate(node.error_rate),
+                  errors: node.error_spans,
                   spans: node.sampled_spans,
+                  latency: node.p95_ms == null ? t('apm.common.noData', '无数据') : formatCompactLatency(node.p95_ms),
                 })}</title>
               <rect
-                fill={isSelected ? 'var(--color-primary-bg-active)' : 'var(--color-bg)'}
+                data-node-shape={userRequest ? 'entry-pill' : 'service-card'}
+                fill={isSelected
+                  ? 'var(--color-primary-bg-active)'
+                  : userRequest ? 'var(--color-fill-2)' : 'var(--color-bg)'}
                 height={cardHeight}
-                rx={TOPOLOGY_NODE_CARD.radius}
+                rx={cardRadius}
                 stroke={isSelected ? 'var(--color-primary)' : 'var(--color-border)'}
                 strokeDasharray={inferred ? '4 3' : undefined}
                 strokeWidth={isSelected ? 1.5 : 1}
@@ -389,12 +533,12 @@ export default function TopologyCanvas({
                 kind={node.kind}
                 language={node.language}
                 serviceName={node.service_name}
-                size={14}
-                x={cardX + 10}
-                y={-7}
+                size={userRequest ? TOPOLOGY_ENTRY_PILL.iconSize : 14}
+                x={cardX + (userRequest ? TOPOLOGY_ENTRY_PILL.paddingX : 10)}
+                y={userRequest ? -TOPOLOGY_ENTRY_PILL.iconSize / 2 : -7}
               />
               <clipPath id={`apm-node-label-${index}`}>
-                <rect height={cardHeight} width={labelWidth} x={cardX + TOPOLOGY_NODE_CARD.nameOffsetX} y={cardY} />
+                <rect height={cardHeight} width={labelWidth} x={cardX + nameOffsetX} y={cardY} />
               </clipPath>
               <text
                 clipPath={`url(#apm-node-label-${index})`}
@@ -403,8 +547,8 @@ export default function TopologyCanvas({
                 fontSize="12"
                 fontWeight="600"
                 textAnchor="start"
-                x={cardX + TOPOLOGY_NODE_CARD.nameOffsetX}
-                y={-3}
+                x={cardX + nameOffsetX}
+                y={userRequest ? 4 : -3}
               >
                 {displayName}
               </text>
@@ -419,23 +563,38 @@ export default function TopologyCanvas({
                   {t('apm.topology.inferredBadge', '推断')}
                 </text>
               ) : null}
-              <text
-                clipPath={`url(#apm-node-label-${index})`}
-                fill="var(--color-text-3)"
-                fontSize="11"
-                textAnchor="start"
-                x={cardX + TOPOLOGY_NODE_CARD.nameOffsetX}
-                y={12}
-              >
-                {nodeMetricLine(node)}
-              </text>
-              <circle
-                aria-hidden="true"
-                cx={cardX + cardWidth - 12}
-                cy={0}
-                fill={topologyHealthColors[node.health]}
-                r={3.5}
-              />
+              {userRequest ? (
+                <text
+                  className="tabular-nums"
+                  data-topology-metrics="true"
+                  fill="var(--color-text-3)"
+                  fontSize={TOPOLOGY_ENTRY_PILL.countFontSize}
+                  textAnchor="end"
+                  x={cardX + cardWidth - TOPOLOGY_ENTRY_PILL.paddingX}
+                  y={4}
+                >
+                  {countLabel}
+                </text>
+              ) : (
+                <TopologyMetricLabel
+                  clipPath={`url(#apm-node-label-${index})`}
+                  errorCount={node.error_spans}
+                  fontSize={11}
+                  p95Ms={node.p95_ms}
+                  total={node.sampled_spans}
+                  x={cardX + TOPOLOGY_NODE_CARD.nameOffsetX}
+                  y={12}
+                />
+              )}
+              {userRequest ? null : (
+                <circle
+                  aria-hidden="true"
+                  cx={cardX + cardWidth - 12}
+                  cy={0}
+                  fill={topologyHealthColors[node.health]}
+                  r={3.5}
+                />
+              )}
             </g>
           );
         })}
@@ -443,8 +602,4 @@ export default function TopologyCanvas({
       </svg>
     </div>
   );
-}
-
-export function TopologyLegendDot({ color, label }: { color: string; label: string }) {
-  return <span className="inline-flex items-center gap-1.5"><span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={{ background: color }} /><span>{label}</span></span>;
 }
