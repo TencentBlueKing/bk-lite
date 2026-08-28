@@ -578,7 +578,8 @@ HTTP 分片；本变更不提前实现。
 `target_id`/目标哈希、`plugin_ref`、`credential_id` 和稳定错误码，严禁输出凭据
 明文或认证请求头。
 
-生产 INFO 日志保留 Run 开始、聚合结果和终态；每个失败目标必须输出可检索的
+生产 INFO 日志保留 Run 开始、聚合结果和终态；存在失败时每个 Run 只输出一条可检索的
+`collection_failure_samples`，最多包含 3 个 `target|failed_stage|error_code` 样本，不输出逐目标
 `target_collection_failed`。插件加载步骤、预检跳过和发布成功降为 DEBUG。日志统一写 stdout，
 由日志平台按结构化字段建立视图，不再创建 SNMP 专用日志文件；NATS、Redis、租约、发布不确定等
 基础设施异常继续保留 WARNING/ERROR。
@@ -587,9 +588,9 @@ HTTP 分片；本变更不提前实现。
 源码行；禁止记录运行时局部变量、请求头或凭据字段。
 Run 开始、进度、汇总和终态日志必须携带 `instance_id`。生产 INFO 以约 10% 完成度输出有界
 `collection_progress`；SNMP 正式采集仅由插件输出 `snmp_facts_collection_started`，执行器不得重复输出
-通用目标开始日志。协议探测无响应使用
-`target_collection_failed stage=access_probe reason=timeout` 为每个失败目标提供终态日志，并在 Run 汇总保留
-`protocol_no_response` 计数，不得降级为含混的 `credentials_exhausted`。发布失败逐 Run 最多输出
+通用目标开始日志。协议探测无响应在有界样本中使用
+`access_probe|protocol_no_response`，并在 Run 汇总保留 `protocol_no_response` 计数，不得降级为含混的
+`credentials_exhausted`。失败类型只保留 Top 8，其余合并为 `other`。发布失败逐 Run 最多输出
 3 条 `result_publish_failed`，完整计数与样本在 Run 汇总聚合；成功发布不输出逐目标终态日志。
 `collection_capacity` 保留稳定英文 `event`，正文使用中文分区、单位、状态和阈值提示；底层不可用的
 资源采样显示为“不可用”，机器指标继续由健康接口和 Prometheus 字段提供。

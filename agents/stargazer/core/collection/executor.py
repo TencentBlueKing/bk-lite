@@ -35,6 +35,7 @@ from core.collection.target_attempt import TargetAttemptRunner, request_instance
 from core.logger import logger, safe_exception_info, safe_log_value
 
 _FAILURE_SUMMARY_SAMPLE_LIMIT = 3
+_FAILURE_SUMMARY_CODE_LIMIT = 8
 
 # 兼容旧 import：执行器专属符号仍由此导出；领域类型请优先 from core.collection.contracts
 __all__ = [
@@ -331,23 +332,27 @@ class TargetCollectionExecutor:
         )
         failures = tuple(result for result in completed if result.status in {"failed", "unreachable"})
         failure_counts = Counter(result.error_code or result.status for result in failures)
-        failure_codes = (
-            ",".join(
-                f"{safe_log_value(code)}:{count}"
-                for code, count in sorted(failure_counts.items())
-            )
-            or "-"
-        )
+        failure_codes = _bounded_failure_counts(failure_counts)
         failure_samples = ",".join(
-            "%s|%s|%s|%s"
+            "%s|%s|%s"
             % (
                 safe_log_value(result.target, max_length=255),
-                safe_log_value(result.credential_id or "-"),
+                safe_log_value(_failure_stage_name(result)),
                 safe_log_value(result.error_code or result.status),
-                safe_log_value(result.detail or "-"),
             )
             for result in failures[:_FAILURE_SUMMARY_SAMPLE_LIMIT]
         ) or "-"
+        if failures:
+            logger.info(
+                "event=collection_failure_samples %s plugin_ref=%s model_id=%s "
+                "sample_count=%s total_failures=%s samples=%s",
+                _request_log_identity(request, instance_id),
+                safe_log_value(request.plugin_ref),
+                safe_log_value(request.params.get("model_id") or "-"),
+                min(len(failures), _FAILURE_SUMMARY_SAMPLE_LIMIT),
+                len(failures),
+                failure_samples,
+            )
         publish_failures = tuple(
             (index, status, publish_error_codes.get(index) or status)
             for index, status in publish_statuses.items()
@@ -406,16 +411,9 @@ class TargetCollectionExecutor:
             and summary.publish_permanent_failed == 0
         )
         if publish_clean:
-            from core.collection.round_complete import build_round_complete_labels, publish_round_complete_marker
+            from core.collection.round_complete import publish_round_complete_marker
 
-            await publish_round_complete_marker(
-                request,
-                round_ts,
-                extra_labels=build_round_complete_labels(
-                    request.params,
-                    run_attempt_id=lease.attempt_id,
-                ),
-            )
+            await publish_round_complete_marker(request, round_ts)
         else:
             logger.info(
                 "event=round_complete_marker_skipped %s reason=publish_incomplete "
@@ -435,6 +433,42 @@ def _request_log_identity(request: CollectionRequest, instance_id: str) -> str:
     if instance_id != "-":
         return f"instance_id={safe_log_value(instance_id)}"
     return f"task_id={safe_log_value(request.task_id)}"
+
+
+def _bounded_failure_counts(failure_counts: Counter) -> str:
+    ordered = sorted(
+        failure_counts.items(),
+        key=lambda item: (-item[1], str(item[0])),
+    )
+    visible = ordered[:_FAILURE_SUMMARY_CODE_LIMIT]
+    rendered = [f"{safe_log_value(code)}:{count}" for code, count in visible]
+    other_count = sum(count for _code, count in ordered[_FAILURE_SUMMARY_CODE_LIMIT:])
+    if other_count:
+        rendered.append(f"other:{other_count}")
+    return ",".join(rendered) or "-"
+
+
+def _failure_stage_name(result: TargetCollectionResult) -> str:
+    if result.failed_stage is not None:
+        return result.failed_stage.value
+    error_code = result.error_code or result.status
+    if result.status == "unreachable" and result.attempts == 0:
+        return "preflight"
+    if error_code.startswith("access_probe_") or error_code in {
+        "protocol_no_response",
+        "no_response_attempt_limit",
+        "target_unreachable",
+    }:
+        return "access_probe"
+    if error_code in {
+        "authentication_failed",
+        "credential_state_unavailable",
+        "credentials_exhausted",
+        "no_matching_credential",
+        "no_valid_credential",
+    }:
+        return "credential"
+    return "collection"
 
 
 def _target_status_zh(status: str) -> str:

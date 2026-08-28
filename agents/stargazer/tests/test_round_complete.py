@@ -16,33 +16,37 @@ def test_build_round_complete_prometheus_uses_stable_labels_and_round_ts():
         round_ts=1_700_000_000,
         instance_id="cmdb_12",
         model_id="vmware_vc",
-        extra_labels={"collection_role": "topology"},
+        extra_labels={
+            "collection_role": "topology",
+            "run_attempt_id": "attempt-1",
+            "collection_run_attempt_id": "attempt-1",
+        },
     )
 
     assert f"# TYPE {ROUND_COMPLETE_METRIC} gauge" in payload
     assert 'instance_id="cmdb_12"' in payload
     assert 'model_id="vmware_vc"' in payload
     assert 'collection_role="topology"' in payload
+    assert "run_attempt_id" not in payload
+    assert "collection_run_attempt_id" not in payload
     assert payload.strip().endswith("1700000000")
 
 
-def test_build_round_complete_labels_includes_channel_fencing_identity():
+def test_build_round_complete_labels_excludes_per_run_attempt_identity():
     labels = build_round_complete_labels(
         {
             "collection_role": "topology",
             "channel_config_version": 7,
             "collect_task_id": 42,
-            "run_attempt_id": "stale-request-attempt",
-        },
-        run_attempt_id="attempt-9",
+            "run_attempt_id": "attempt-9",
+            "collection_run_attempt_id": "attempt-9",
+        }
     )
 
     assert labels == {
         "collection_role": "topology",
         "channel_config_version": 7,
         "collect_task_id": 42,
-        "run_attempt_id": "attempt-9",
-        "collection_run_attempt_id": "attempt-9",
     }
 
 

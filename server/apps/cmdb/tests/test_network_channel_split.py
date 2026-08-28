@@ -260,6 +260,39 @@ def test_get_last_synced_topology_round():
     assert get_last_synced_topology_round({LAST_SYNCED_TOPOLOGY_ROUND_KEY: "9"}) == 9
 
 
+def test_query_role_round_marker_ignores_legacy_attempt_labels():
+    from apps.cmdb.services.topology_replay_service import query_role_round_marker
+
+    class FakeCollection:
+        def query(self, _sql):
+            return {
+                "data": {
+                    "result": [
+                        {
+                            "metric": {
+                                "channel_config_version": "1",
+                                "run_attempt_id": "legacy-attempt",
+                                "collection_run_attempt_id": "legacy-attempt",
+                            },
+                            "value": [100, "100"],
+                        },
+                        {
+                            "metric": {"channel_config_version": "2"},
+                            "value": [200, "200"],
+                        },
+                    ]
+                }
+            }
+
+    marker = query_role_round_marker(
+        "cmdb_42",
+        collection_role=COLLECTION_ROLE_TOPOLOGY,
+        collection=FakeCollection(),
+    )
+
+    assert marker == {"round_ts": 200, "channel_config_version": "2"}
+
+
 def test_replay_stale_when_version_mismatch(monkeypatch):
     from apps.cmdb.services import topology_replay_service as replay
 
@@ -283,7 +316,7 @@ def test_replay_stale_when_version_mismatch(monkeypatch):
     )
     status = replay.replay_topology_for_task(
         7,
-        marker={"round_ts": 100, "channel_config_version": "4", "run_attempt_id": "a"},
+        marker={"round_ts": 100, "channel_config_version": "4"},
     )
     assert status == "stale"
 
@@ -326,7 +359,10 @@ def test_replay_pending_when_interfaces_missing(monkeypatch):
         marker={"round_ts": 200, "channel_config_version": "1", "run_attempt_id": "b"},
     )
     assert status == "pending"
-    assert any(PENDING_TOPOLOGY_REPLAY_KEY in (u.get("params") or {}) for u in updates)
+    pending_updates = [
+        (u.get("params") or {})[PENDING_TOPOLOGY_REPLAY_KEY] for u in updates if PENDING_TOPOLOGY_REPLAY_KEY in (u.get("params") or {})
+    ]
+    assert pending_updates == [{"round_ts": 200, "channel_config_version": "1"}]
 
 
 # import after defining usage
@@ -353,7 +389,7 @@ def test_replay_idempotent_same_round(monkeypatch):
     )
     status = replay.replay_topology_for_task(
         9,
-        marker={"round_ts": 300, "channel_config_version": "1", "run_attempt_id": "c"},
+        marker={"round_ts": 300, "channel_config_version": "1"},
     )
     assert status == "skipped"
 
