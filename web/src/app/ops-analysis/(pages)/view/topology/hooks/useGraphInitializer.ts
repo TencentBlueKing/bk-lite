@@ -9,6 +9,10 @@ import { COLORS, SPACING } from '../constants/nodeDefaults';
 import { registerEdges } from '../utils/registerEdge';
 import { registerNodes, updateNodeAttributes } from '../utils/registerNode';
 import {
+  applyTopologyNodeHoverChrome,
+  clearTopologyNodeHoverChrome,
+} from '../utils/topologySelectionChrome';
+import {
   addEdgeTools,
   createPortConfig,
   getEdgeStyleWithConfig,
@@ -37,7 +41,6 @@ interface UseGraphInitializerParams {
   minimapContainerRef?: React.RefObject<HTMLDivElement | null>;
   state: ReturnType<typeof useTopologyState>;
   history: ReturnType<typeof useGraphHistory>;
-  selectedCells: string[];
   onNodeRemoved?: () => void;
   isZoomLockedRef: MutableRefObject<boolean>;
   setSingleValueFetchErrorTooltip?: (
@@ -50,7 +53,6 @@ export const useGraphInitializer = ({
   minimapContainerRef,
   state,
   history,
-  selectedCells,
   onNodeRemoved,
   isZoomLockedRef,
   setSingleValueFetchErrorTooltip,
@@ -71,8 +73,6 @@ export const useGraphInitializer = ({
   const {
     resetAllStyles,
     highlightCell,
-    highlightNode,
-    resetNodeStyle,
     recordOperation,
   } = history;
 
@@ -431,10 +431,7 @@ export const useGraphInitializer = ({
           y: e.clientY,
         });
       }
-      const isSelected = selectedCells.includes(node.id);
-      if (!isSelected) {
-        highlightNode(node);
-      }
+      applyTopologyNodeHoverChrome(node, graph.isSelected(node));
     });
 
     graph.on('edge:mouseenter', ({ edge }) => {
@@ -451,10 +448,7 @@ export const useGraphInitializer = ({
       if (nodeData?.type === 'single-value' && nodeData.fetchError) {
         setSingleValueFetchErrorTooltip?.(null);
       }
-      const isSelected = selectedCells.includes(node.id);
-      if (!isSelected) {
-        resetNodeStyle(node);
-      }
+      clearTopologyNodeHoverChrome(node, graph.isSelected(node));
     });
 
     graph.on('edge:mouseleave', () => {
