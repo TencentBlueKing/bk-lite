@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyNode } from '@/app/apm/types';
 import {
@@ -7,9 +10,15 @@ import {
   isolateTopologyNeighborhood,
   layoutForceTopology,
   layoutLayeredTopology,
+  TOPOLOGY_CANVAS_SIZE,
   topologyNodeNameWidth,
   truncateTopologyNodeLabel,
 } from '../topology-layout';
+
+const topologyLayoutSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../topology-layout.ts'),
+  'utf8',
+);
 
 const node = (id: string): ApmTopologyNode => ({
   id,
@@ -95,7 +104,13 @@ describe('APM 服务拓扑力导向稳定性', () => {
   it('同一份拓扑数据布局两次，节点坐标一致', async () => {
     const first = await layoutForceTopology(directedNodes, directedEdges);
     const second = await layoutForceTopology(directedNodes, directedEdges);
+    expect(first).toHaveLength(directedNodes.length);
+    expect(Object.keys(positionsById(first)).sort()).toEqual(directedNodes.map((item) => item.id).sort());
     expect(positionsById(first)).toEqual(positionsById(second));
+  });
+
+  it('layoutForceTopology 不得使用 Math.random', () => {
+    expect(topologyLayoutSource).not.toMatch(/Math\.random/);
   });
 
   it('用户请求入口和推断下游不会漂到任意层或角落', async () => {
@@ -105,13 +120,24 @@ describe('APM 服务拓扑力导向稳定性', () => {
     const storefront = byId.get('storefront');
     const inventory = byId.get('inventory');
     const inferred = byId.get('inferred:local:mysql');
+    const ys = result.map((item) => item.y);
 
+    expect(entry?.y).toBe(Math.min(...ys));
+    expect(inferred?.y).toBe(Math.max(...ys));
     expect(entry?.y).toBeLessThan(storefront?.y ?? 0);
     expect(storefront?.y).toBeLessThan(byId.get('catalog')?.y ?? 0);
     expect(byId.get('catalog')?.y).toBeLessThan(inventory?.y ?? 0);
     expect(inventory?.y).toBeLessThan(inferred?.y ?? 0);
     expect(distance(entry, storefront)).toBeLessThan(distance(entry, inferred));
     expect(distance(inferred, inventory)).toBeLessThan(distance(inferred, entry));
+    result.forEach((item) => {
+      expect(item.x).toBeGreaterThanOrEqual(96);
+      expect(item.x).toBeLessThanOrEqual(TOPOLOGY_CANVAS_SIZE.width - 96);
+      expect(item.y).toBeGreaterThanOrEqual(52);
+      expect(item.y).toBeLessThanOrEqual(TOPOLOGY_CANVAS_SIZE.height - 52);
+    });
+    expect(Math.abs((entry?.x ?? 0) - (storefront?.x ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.width / 2);
+    expect(Math.abs((inferred?.x ?? 0) - (inventory?.x ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.width / 2);
   });
 });
 
