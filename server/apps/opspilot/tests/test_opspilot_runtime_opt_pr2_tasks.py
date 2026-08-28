@@ -90,16 +90,31 @@ class TestTasksPackageExports:
         assert callable(reloaded._build_memory_write_client)
         assert callable(reloaded._material_pipeline_fingerprints)
 
-    def test_celery_beat_schedule_task_paths(self):
+    def test_wiki_process_kb_material_builds_task_acks_late(self):
+        task = tasks.wiki_process_kb_material_builds_task
+        assert task.acks_late is True
+        assert task.reject_on_worker_lost is True
         from apps.opspilot import config as ops_config
 
         schedule = ops_config.CELERY_BEAT_SCHEDULE
-        assert schedule["cleanup-expired-workflow-attachments"]["task"] == (
-            "apps.opspilot.tasks.cleanup_expired_workflow_attachments_task"
+        assert schedule["cleanup-expired-workflow-attachments"]["task"] == ("apps.opspilot.tasks.cleanup_expired_workflow_attachments_task")
+        assert schedule["wiki-refresh-web-materials"]["task"] == ("apps.opspilot.tasks.wiki_refresh_web_materials_task")
+
+    def test_wiki_process_kb_material_builds_task_ignores_redelivered(self, monkeypatch):
+        captured = {}
+
+        def fake_process(kb_id, operator=""):
+            captured["kb_id"] = kb_id
+            captured["operator"] = operator
+            return {"skipped": "runner_active", "processed": 0, "failed": 0}
+
+        monkeypatch.setattr(
+            "apps.opspilot.services.wiki.material_build_queue_service.process_kb_material_builds",
+            fake_process,
         )
-        assert schedule["wiki-refresh-web-materials"]["task"] == (
-            "apps.opspilot.tasks.wiki_refresh_web_materials_task"
-        )
+        result = tasks.wiki_process_kb_material_builds_task.run(7, "ops")
+        assert captured == {"kb_id": 7, "operator": "ops"}
+        assert result["skipped"] == "runner_active"
 
 
 class TestViewsPackageExports:

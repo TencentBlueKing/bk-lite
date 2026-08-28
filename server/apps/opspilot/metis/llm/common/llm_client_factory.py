@@ -22,10 +22,17 @@ def _build_openai_thinking_extra_body(model: str, show_think: bool) -> dict:
     DeepSeek V4（含 ``deepseek-v4-flash``）默认开启 thinking。官方 API 用
     ``thinking.type``，DashScope 等兼容网关用 ``enable_thinking``；两边都写，
     避免 ``show_think=false`` 时仍默认思考并把旁白打进正文。
+
+    Qwen3 同类：DashScope 认顶层 ``enable_thinking``，vLLM / 本地 OpenAI 兼容
+    服务只认 ``chat_template_kwargs.enable_thinking``。只写顶层字段会被静默忽略，
+    思考占满 ``max_tokens`` 后 ``content`` 为空。
     """
     model_lower = (model or "").lower()
     if "qwen" in model_lower:
-        return {"enable_thinking": show_think}
+        return {
+            "enable_thinking": show_think,
+            "chat_template_kwargs": {"enable_thinking": show_think},
+        }
     if "deepseek" in model_lower:
         return {
             "thinking": {"type": "enabled" if show_think else "disabled"},
@@ -34,6 +41,97 @@ def _build_openai_thinking_extra_body(model: str, show_think: bool) -> dict:
     if "gemma" in model_lower:
         return {"chat_template_kwargs": {"enable_thinking": show_think}}
     return {}
+
+
+def _coerce_optional_int(value):
+    try:
+        if value is None:
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_reasoning_tokens(usage):
+    """Read provider reasoning-token counts without dumping usage objects."""
+    if usage is None:
+        return None
+    details = usage.get("completion_tokens_details") if isinstance(usage, dict) else getattr(usage, "completion_tokens_details", None)
+    if isinstance(details, dict):
+        reasoning = _coerce_optional_int(details.get("reasoning_tokens"))
+        if reasoning is not None:
+            return reasoning
+    elif details is not None:
+        reasoning = _coerce_optional_int(getattr(details, "reasoning_tokens", None))
+        if reasoning is not None:
+            return reasoning
+    if isinstance(usage, dict):
+        return _coerce_optional_int(usage.get("reasoning_tokens"))
+    return _coerce_optional_int(getattr(usage, "reasoning_tokens", None))
+
+
+def _isolated_usage_dict(usage) -> dict:
+    if usage is None:
+        return {}
+    if isinstance(usage, dict):
+        prompt_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+        completion_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
+    else:
+        prompt_tokens = getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None) or 0
+        completion_tokens = getattr(usage, "completion_tokens", None) or getattr(usage, "output_tokens", None) or 0
+    data = {
+        "prompt_tokens": int(prompt_tokens or 0),
+        "completion_tokens": int(completion_tokens or 0),
+    }
+    reasoning_tokens = _extract_reasoning_tokens(usage)
+    if reasoning_tokens is not None:
+        data["reasoning_tokens"] = reasoning_tokens
+    return data
+
+
+def _message_has_reasoning_content(message) -> bool:
+    if message is None:
+        return False
+    for attr in ("reasoning_content", "reasoning"):
+        raw = getattr(message, attr, None)
+        if isinstance(raw, str) and raw.strip():
+            return True
+    extra = getattr(message, "model_extra", None)
+    if isinstance(extra, dict):
+        for key in ("reasoning_content", "reasoning"):
+            raw = extra.get(key)
+            if isinstance(raw, str) and raw.strip():
+                return True
+    return False
+
+
+def _thinking_extra_body_flags(thinking_body):
+    body = thinking_body or {}
+    enable = body.get("enable_thinking") if "enable_thinking" in body else None
+    if enable is not None:
+        enable = bool(enable)
+    template = body.get("chat_template_kwargs")
+    template_enable = None
+    if isinstance(template, dict) and "enable_thinking" in template:
+        template_enable = bool(template.get("enable_thinking"))
+    return enable, template_enable
+
+
+def _attach_isolated_openai_result(request, *, thinking_body, finish_reason, usage, message, text):
+    thinking_enable, thinking_template_enable = _thinking_extra_body_flags(thinking_body)
+    extra = {
+        **(request.extra_config or {}),
+        "_isolated_finish_reason": finish_reason,
+        "_isolated_output_truncated": str(finish_reason or "").casefold() in {"length", "max_tokens", "max_output_tokens", "token_limit"},
+        "_isolated_thinking_enable": thinking_enable,
+        "_isolated_thinking_template_enable": thinking_template_enable,
+        "_isolated_has_reasoning_content": _message_has_reasoning_content(message),
+        "_isolated_content_chars": len(text or ""),
+    }
+    usage_dict = _isolated_usage_dict(usage)
+    if usage_dict:
+        extra["_isolated_usage"] = usage_dict
+    request.extra_config = extra
 
 
 def _normalize_message_content(content) -> str:
@@ -344,29 +442,21 @@ class LLMClientFactory:
             response = client.chat.completions.create(**call_kwargs)
         usage = getattr(response, "usage", None)
         finish_reason = str(getattr(response.choices[0], "finish_reason", "") or "")
-        request.extra_config = {
-            **(request.extra_config or {}),
-            "_isolated_finish_reason": finish_reason,
-            "_isolated_output_truncated": finish_reason.casefold() in {"length", "max_tokens", "max_output_tokens", "token_limit"},
-        }
-        if usage is not None:
-            request.extra_config = {
-                **(request.extra_config or {}),
-                "_isolated_usage": {
-                    "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
-                    "completion_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
-                },
-            }
         message = response.choices[0].message
         text = _normalize_message_content(getattr(message, "content", None))
         if not text:
             refusal = getattr(message, "refusal", None)
             if refusal:
                 text = _normalize_message_content(refusal)
-                request.extra_config = {
-                    **(request.extra_config or {}),
-                    "_isolated_finish_reason": finish_reason or "refusal",
-                }
+                finish_reason = finish_reason or "refusal"
+        _attach_isolated_openai_result(
+            request,
+            thinking_body=thinking_body,
+            finish_reason=finish_reason,
+            usage=usage,
+            message=message,
+            text=text,
+        )
         return text
 
     @staticmethod

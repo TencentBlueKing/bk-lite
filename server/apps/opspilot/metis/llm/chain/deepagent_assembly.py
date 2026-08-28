@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional
 
 from langchain_core.messages import AIMessage
 
@@ -11,7 +10,7 @@ from langchain_core.messages import AIMessage
 class DeepAgentAssemblyMixin:
     """Mixin for ToolsNodes; extracted without behavior change."""
 
-    def _build_interrupt_on(self, graph_request, tools) -> Optional[dict]:
+    def _build_interrupt_on(self, graph_request, tools) -> dict | None:
         """approval_config -> deepagents interrupt_on（人工审批 HITL）。
 
         approval_config.tools 为空且启用 = 对所有业务工具审批（排除 deepagents 内置工具）。
@@ -125,6 +124,8 @@ class DeepAgentAssemblyMixin:
             "【工具执行】只调用本步骤计划/可见工具。"
             "未计划工具会被拒绝，不要改调其他工具，也不要当作步骤失败去重规划。"
             "工具已返回结构化结果（含空列表）即终态，不要把空当失败反复换参。"
+            "resolve_k8s_target_from_alert 对同一参数只调用一次；返回 resolved=false、"
+            "lookup_exhausted 或 namespace 为空时不要重试，直接结束本步。"
             "401、kubeconfig 无效、连接参数缺失或解密失败时不要改参重试，把错误原样告诉用户并结束本步。"
             "工具抛出 AttributeError/TypeError 等实现异常时不要重试，把错误告诉用户。"
             "403 仅在可换 namespace 或实例时最多改参 1 次，否则把权限错误告诉用户。"

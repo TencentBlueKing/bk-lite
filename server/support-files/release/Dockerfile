@@ -10,6 +10,7 @@ ADD ./support-files/release/supervisor/beat.conf  /etc/supervisor/conf.d/beat.co
 ADD ./support-files/release/supervisor/celery.conf  /etc/supervisor/conf.d/celery.conf
 ADD ./support-files/release/supervisor/patch_maintenance.conf  /etc/supervisor/conf.d/patch_maintenance.conf
 ADD ./support-files/release/supervisor/dashboard_report_render_worker.conf  /etc/supervisor/conf.d/dashboard_report_render_worker.conf
+ADD ./support-files/release/supervisor/opspilot_celery.conf  /etc/supervisor/conf.d/opspilot_celery.conf
 # 默认 release 容器启动时也要带上 SNMP Trap bridge，
 # 否则即使仓库里存在 conf 文件，supervisor 也不会实际加载它。
 ADD ./support-files/release/supervisor/snmp_trap_bridge.conf  /etc/supervisor/conf.d/snmp_trap_bridge.conf

@@ -1,11 +1,8 @@
 import asyncio
 import hashlib
 import json
-import re
-import time
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
@@ -23,6 +20,24 @@ from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.metis.llm.chain.approval_tools import ApprovalToolsMixin, _build_approval_tool, _build_choice_tool  # noqa: E402,F401
+from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F401
+    DeepAgentAssemblyMixin,
+    _append_planned_execution_step_prompt,
+    _build_deep_agent_kwargs,
+    _build_interrupt_on,
+    _build_legacy_deep_agent_middleware,
+    _build_lightweight_system_prompt,
+    _build_planned_execution_runtime_middleware,
+    _build_planned_execution_tool_visibility,
+    _plan_is_skills_only,
+    _planned_step_already_answered,
+    _planned_tool_step_guidance,
+    _should_use_lightweight_after_empty_plan,
+    _should_use_lightweight_direct_reply,
+    _skill_only_step_guidance,
+    _skill_package_script_lines,
+)
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, DoneToolConfig, ExtraConfig
 
 # ---------------------------------------------------------------------------
@@ -55,6 +70,11 @@ from apps.opspilot.metis.llm.chain.k8s_report_tools import (  # noqa: E402,F401
     should_emit_config_analysis_report,
 )
 from apps.opspilot.metis.llm.chain.k8s_tool_gate import is_k8s_agent  # noqa: E402,F401
+from apps.opspilot.metis.llm.chain.knowledge_tools import (  # noqa: E402,F401
+    KnowledgeToolsMixin,
+    _build_knowledge_retrieve_tool,
+    _normalize_kb_results,
+)
 from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
     _REASONING_FIELD_NAMES,
     _patched_convert_delta_to_message_chunk,
@@ -63,34 +83,6 @@ from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
     _patched_create_chat_result,
     _patched_get_request_payload,
     merge_openai_payload_system_messages,
-)
-
-from apps.opspilot.metis.llm.chain.approval_tools import (  # noqa: E402,F401
-    ApprovalToolsMixin,
-    _build_approval_tool,
-    _build_choice_tool,
-)
-from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F401
-    DeepAgentAssemblyMixin,
-    _append_planned_execution_step_prompt,
-    _build_deep_agent_kwargs,
-    _build_interrupt_on,
-    _build_legacy_deep_agent_middleware,
-    _build_lightweight_system_prompt,
-    _build_planned_execution_runtime_middleware,
-    _build_planned_execution_tool_visibility,
-    _plan_is_skills_only,
-    _planned_step_already_answered,
-    _planned_tool_step_guidance,
-    _should_use_lightweight_after_empty_plan,
-    _should_use_lightweight_direct_reply,
-    _skill_only_step_guidance,
-    _skill_package_script_lines,
-)
-from apps.opspilot.metis.llm.chain.knowledge_tools import (  # noqa: E402,F401
-    KnowledgeToolsMixin,
-    _build_knowledge_retrieve_tool,
-    _normalize_kb_results,
 )
 from apps.opspilot.metis.llm.chain.skill_sandbox import (  # noqa: E402,F401
     SkillSandboxMixin,
@@ -108,23 +100,11 @@ from apps.opspilot.metis.llm.chain.skill_sandbox import (  # noqa: E402,F401
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
-from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
-    PlannedExecutionLimitMiddleware,
-    ask_limit_continue,
-    detect_limit_kind,
-    get_planned_execution_run_model_call_limit,
-    resolve_planned_execution_soft_budget_ratio,
-    resolve_planned_execution_token_budget,
-)
-from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
+from apps.opspilot.metis.llm.middleware.planned_execution_limits import ask_limit_continue, detect_limit_kind
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
     PLANNED_EXECUTION_ALWAYS_ON_BUSINESS_TOOLS,
     PLANNED_EXECUTION_ALWAYS_VISIBLE_FS_TOOLS,
     PLANNED_EXECUTION_HIDDEN_DEEPAGENT_TOOLS,
-    SkillExecutionGuardMiddleware,
-    ToolExceptionAsResultMiddleware,
-    ToolResultCompactionMiddleware,
-    ToolVisibilityMiddleware,
     is_progressive_tools_enabled,
 )
 
@@ -977,8 +957,6 @@ class ToolsNodes(
                 return None
         else:
             try:
-                from langchain_core.callbacks import dispatch_custom_event
-
                 dispatch_custom_event(capability, payload, config=config)
             except Exception as e:
                 logger.warning(f"dispatch {capability} failed: {e}")
@@ -1234,8 +1212,6 @@ class ToolsNodes(
             args_schema=DoneToolInput,
         )
         return done_tool
-
-
 
     def _build_diff_report_tool(self):
         """构建 report_config_diff 工具，供 LLM 将配置对比结果结构化输出给前端"""
@@ -2177,12 +2153,12 @@ class ToolsNodes(
             await self._aemit_report_event("repair_diff_report", parsed_repair, config=config)
         return True
 
+    @staticmethod
     def _is_unsupported_stream_usage_error(exc: BaseException) -> bool:
         text = str(exc).casefold()
         return "stream_options" in text or "include_usage" in text
 
     @staticmethod
-
     def _lightweight_chunk_text(chunk) -> str:
         piece = getattr(chunk, "content", None)
         if isinstance(piece, str):
@@ -2198,7 +2174,6 @@ class ToolsNodes(
         return ""
 
     @staticmethod
-
     def _merge_lightweight_stream_response(merged: AIMessage | None, content_parts: list[str]) -> AIMessage:
         if merged is None:
             return AIMessage(content="".join(content_parts))
@@ -2340,10 +2315,12 @@ class ToolsNodes(
                 ToolExecutionPlanner,
                 ToolPlanningError,
                 classify_tool_failure_kind,
+                drop_k8s_followup_steps_after_unresolved_target,
                 is_context_size_error,
                 is_non_replanable_tool_failure,
                 is_tool_result_failure,
             )
+            from apps.opspilot.metis.llm.tools.kubernetes.data_collection import k8s_target_lookup_exhausted_from_messages
 
             graph_request = config["configurable"]["graph_request"]
 
@@ -2921,6 +2898,34 @@ class ToolsNodes(
 
                         failure = _step_failure(step_messages)
                         agent_state = step_result
+                        if k8s_target_lookup_exhausted_from_messages(step_messages):
+                            _collect_output_messages(step_messages)
+                            remaining_steps = drop_k8s_followup_steps_after_unresolved_target(pending_steps)
+                            logger.info(
+                                "DeepAgent k8s 目标反查已收口，跳过后续需 namespace 步骤 dropped=%s",
+                                len(pending_steps) - len(remaining_steps),
+                            )
+                            completed_steps.append(
+                                CompletedExecutionStep(
+                                    objective=step.objective,
+                                    result=_step_summary(step_messages) or "当前集群无法定位该告警对象。",
+                                )
+                            )
+                            pending_steps = remaining_steps
+                            agent_state = _compact_agent_state_with_summaries(overflow=False)
+                            await _emit_step_boundary(
+                                "planned_execution_step",
+                                {
+                                    "phase": "end",
+                                    "step_index": step_index,
+                                    "total_steps": total_steps,
+                                    "objective": step.objective,
+                                    "tools": list(step.tools),
+                                    "status": "target_unresolved",
+                                },
+                            )
+                            step_finished = True
+                            break
                         if failure:
                             _collect_output_messages(step_messages)
                             if is_context_size_error(failure):

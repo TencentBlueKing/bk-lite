@@ -529,7 +529,13 @@ def test_batch_delete_pages_validates_payload(api_client):
 def test_build_record_endpoint_list_detail_retry_and_cancel(monkeypatch, api_client):
     kb = _kb()
     other_kb = _kb()
-    material = Material.objects.create(knowledge_base=kb, name="source.md", material_type="text", text_content="body")
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name="source.md",
+        material_type="text",
+        text_content="body",
+        status="building",
+    )
     running = BuildRecord.objects.create(
         knowledge_base=kb,
         trigger="material",
@@ -537,18 +543,30 @@ def test_build_record_endpoint_list_detail_retry_and_cancel(monkeypatch, api_cli
         stage="generating",
         inputs={"material_id": material.id},
     )
+    ghost_runner = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material_queue",
+        status="running",
+        stage="running",
+        inputs={"kind": "material_build_queue"},
+    )
     BuildRecord.objects.create(knowledge_base=kb, trigger="rebuild", status="success", stage="done")
     BuildRecord.objects.create(knowledge_base=other_kb, trigger="material", status="running", stage="generating")
     delayed = []
 
-    def fake_delay(material_id, llm_model_id, operator):
-        delayed.append((material_id, llm_model_id, operator))
+    def fake_delay(*args):
+        delayed.append(args)
 
+    kicks = []
     monkeypatch.setattr("apps.opspilot.tasks.wiki_build_material_task.delay", fake_delay)
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.wiki_process_kb_material_builds_task.delay",
+        lambda *args, **kwargs: kicks.append(args),
+    )
 
     listed = api_client.get(f"/api/v1/opspilot/wiki_mgmt/build_record/?knowledge_base={kb.id}&status=running&trigger=material&page=bad&page_size=bad")
     detail = api_client.get(f"/api/v1/opspilot/wiki_mgmt/build_record/{running.id}/")
-    retry = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{running.id}/retry/")
+    retry_while_running = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{running.id}/retry/")
     cancel = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{running.id}/cancel/")
 
     assert listed.status_code == 200, listed.content
@@ -557,14 +575,241 @@ def test_build_record_endpoint_list_detail_retry_and_cancel(monkeypatch, api_cli
     assert [item["id"] for item in data["items"]] == [running.id]
     assert detail.status_code == 200, detail.content
     assert detail.json()["data"]["id"] == running.id
-    assert retry.status_code == 200, retry.content
-    assert delayed == [(material.id, None, "testuser")]
-    material.refresh_from_db()
-    assert material.status == "building"
+    assert retry_while_running.status_code == 409, retry_while_running.content
+    assert delayed == []
     assert cancel.status_code == 200, cancel.content
     running.refresh_from_db()
+    material.refresh_from_db()
+    ghost_runner.refresh_from_db()
     assert running.status == "cancelled"
     assert running.stage == "cancelled"
+    assert material.status == "parse_failed"
+    assert material.error_message == "构建已取消"
+    assert ghost_runner.status == "failed"
+
+    retry = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{running.id}/retry/")
+    assert retry.status_code == 200, retry.content
+    assert delayed == []
+    material.refresh_from_db()
+    assert material.status == "queued"
+    assert kicks
+
+
+@pytest.mark.django_db
+def test_build_record_retry_ignores_hidden_queue_lease_after_cancel(monkeypatch, api_client):
+    kb = _kb()
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name="stuck.pptx",
+        material_type="text",
+        text_content="body",
+        status="building",
+    )
+    cancelled = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material",
+        status="cancelled",
+        stage="cancelled",
+        inputs={"material_id": material.id},
+    )
+    BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material_queue",
+        status="running",
+        stage="running",
+        inputs={"kind": "material_build_queue"},
+    )
+    delayed = []
+    kicks = []
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.wiki_build_material_task.delay",
+        lambda *args: delayed.append(args),
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.wiki_process_kb_material_builds_task.delay",
+        lambda *args, **kwargs: kicks.append(args),
+    )
+
+    response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{cancelled.id}/retry/")
+
+    assert response.status_code == 200, response.content
+    assert delayed == []
+    material.refresh_from_db()
+    assert material.status == "queued"
+    assert kicks
+
+
+@pytest.mark.django_db
+def test_build_record_retry_enqueues_behind_running_build(monkeypatch, api_client):
+    kb = _kb()
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name="stuck.pptx",
+        material_type="text",
+        text_content="body",
+        status="parse_failed",
+    )
+    cancelled = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material",
+        status="cancelled",
+        stage="cancelled",
+        inputs={"material_id": material.id},
+    )
+    sibling = Material.objects.create(
+        knowledge_base=kb,
+        name="queued.docx",
+        material_type="text",
+        text_content="body",
+        status="queued",
+    )
+    other = Material.objects.create(
+        knowledge_base=kb,
+        name="live.md",
+        material_type="text",
+        text_content="body",
+        status="building",
+    )
+    BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material",
+        status="running",
+        stage="generating",
+        inputs={"material_id": other.id},
+    )
+    BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material_queue",
+        status="running",
+        stage="running",
+        inputs={"kind": "material_build_queue"},
+    )
+    BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material_queue_item",
+        status="running",
+        stage="queued",
+        inputs={"material_id": sibling.id},
+    )
+    delayed = []
+    kicks = []
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.wiki_build_material_task.delay",
+        lambda *args: delayed.append(args),
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.wiki_process_kb_material_builds_task.delay",
+        lambda *args, **kwargs: kicks.append(args),
+    )
+
+    response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{cancelled.id}/retry/")
+
+    assert response.status_code == 200, response.content
+    assert delayed == []
+    assert kicks == []
+    material.refresh_from_db()
+    other.refresh_from_db()
+    sibling.refresh_from_db()
+    assert material.status == "queued"
+    assert other.status == "building"
+    assert sibling.status == "queued"
+    payload = response.json()["data"]["queue"]
+    assert payload["queued"] == [material.id]
+
+
+@pytest.mark.django_db
+def test_build_record_retry_rejects_when_rebuild_running(monkeypatch, api_client):
+    kb = _kb()
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name="stuck.pptx",
+        material_type="text",
+        text_content="body",
+        status="parse_failed",
+    )
+    cancelled = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material",
+        status="cancelled",
+        stage="cancelled",
+        inputs={"material_id": material.id},
+    )
+    BuildRecord.objects.create(knowledge_base=kb, trigger="rebuild", status="running", stage="generating")
+    delayed = []
+    kicks = []
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.wiki_build_material_task.delay",
+        lambda *args: delayed.append(args),
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.wiki_process_kb_material_builds_task.delay",
+        lambda *args, **kwargs: kicks.append(args),
+    )
+
+    response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{cancelled.id}/retry/")
+
+    assert response.status_code == 409, response.content
+    assert response.json()["code"] == "knowledge_base_build_in_progress"
+    material.refresh_from_db()
+    assert material.status == "parse_failed"
+    assert delayed == []
+    assert kicks == []
+
+
+@pytest.mark.django_db
+def test_build_record_retry_rejects_when_material_update_running(monkeypatch, api_client):
+    kb = _kb()
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name="stuck.pptx",
+        material_type="text",
+        text_content="body",
+        status="parse_failed",
+    )
+    cancelled = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material",
+        status="cancelled",
+        stage="cancelled",
+        inputs={"material_id": material.id},
+    )
+    BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material_update",
+        status="running",
+        stage="generating",
+        inputs={"material_id": material.id},
+    )
+    delayed = []
+    kicks = []
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.wiki_build_material_task.delay",
+        lambda *args: delayed.append(args),
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.tasks.wiki_process_kb_material_builds_task.delay",
+        lambda *args, **kwargs: kicks.append(args),
+    )
+
+    response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/build_record/{cancelled.id}/retry/")
+
+    assert response.status_code == 409, response.content
+    assert response.json()["code"] == "knowledge_base_build_in_progress"
+    material.refresh_from_db()
+    assert material.status == "parse_failed"
+    assert delayed == []
+    assert kicks == []
+
+
+@pytest.mark.django_db
+def test_resume_builds_endpoint_is_removed(api_client):
+    kb = _kb()
+    response = api_client.post(
+        "/api/v1/opspilot/wiki_mgmt/material/resume_builds/",
+        {"knowledge_base": kb.id},
+        format="json",
+    )
+    assert response.status_code in {404, 405}
 
 
 @pytest.mark.django_db

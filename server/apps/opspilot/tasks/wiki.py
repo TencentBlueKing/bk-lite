@@ -16,6 +16,17 @@ _WIKI_TASK_IDENTITY_FIELDS = (
 )
 
 
+def _material_build_is_cancelled(build) -> bool:
+    return bool(build is not None and getattr(build, "status", None) == "cancelled")
+
+
+def _discard_cancelled_material_build(build, material_id) -> bool:
+    if not _material_build_is_cancelled(build):
+        return False
+    logger.info("wiki material build discarded cancelled record=%s material=%s", build.pk, material_id)
+    return True
+
+
 def _lock_wiki_generation_task(knowledge_base_id):
     """Lock the knowledge base used by a generation-aware task."""
 
@@ -314,7 +325,7 @@ def wiki_build_material_task(
     """统一执行资料解析与 generation 构建，并持久化阶段性失败 key。"""
 
     from apps.opspilot.models import BuildRecord, Material
-    from apps.opspilot.services.wiki.material_build_queue_service import ensure_running_material_build_record
+    from apps.opspilot.services.wiki.material_build_queue_service import MaterialBuildCancelled, ensure_running_material_build_record
     from apps.opspilot.services.wiki.material_service import ingest_material
 
     material = (
@@ -334,12 +345,15 @@ def wiki_build_material_task(
     # 尽早落/复用 running BuildRecord,避免状态已是构建中但列表无开始时间
     build = None
     if build_record_id:
-        build = BuildRecord.objects.filter(
+        existing = BuildRecord.objects.filter(
             pk=build_record_id,
             knowledge_base_id=material.knowledge_base_id,
             trigger="material",
-            status="running",
         ).first()
+        if _discard_cancelled_material_build(existing, material.pk):
+            return None
+        if existing is not None and existing.status == "running":
+            build = existing
     if build is None:
         build = ensure_running_material_build_record(
             knowledge_base_id=material.knowledge_base_id,
@@ -370,6 +384,9 @@ def wiki_build_material_task(
                 previous,
             )
         ):
+            build.refresh_from_db()
+            if _discard_cancelled_material_build(build, material.pk):
+                return None
             build.inputs = {
                 **(build.inputs or {}),
                 "material_id": material.pk,
@@ -405,6 +422,9 @@ def wiki_build_material_task(
             or (previous_inputs.get("parse_fingerprint") and previous_inputs.get("parse_fingerprint") != parse_fingerprint)
         )
         if must_parse:
+            build.refresh_from_db()
+            if _discard_cancelled_material_build(build, material.pk):
+                return None
             Material.objects.filter(pk=material.pk).update(
                 status="parsing",
                 error_message="",
@@ -414,6 +434,9 @@ def wiki_build_material_task(
             material.refresh_from_db()
             material = ingest_material(material, llm_model_id=llm_model_id)
             if material.status != "done":
+                build.refresh_from_db()
+                if _discard_cancelled_material_build(build, material.pk):
+                    return None
                 material.status = "parse_failed"
                 material.save(update_fields=["status", "updated_at"])
                 build.inputs = {
@@ -449,6 +472,9 @@ def wiki_build_material_task(
 
     with transaction.atomic():
         locked_kb = _lock_wiki_generation_task(material.knowledge_base_id)
+        build = BuildRecord.objects.select_for_update().get(pk=build.pk)
+        if _discard_cancelled_material_build(build, material.pk):
+            return None
         material = Material.objects.select_for_update().get(pk=material.pk)
         material.knowledge_base = locked_kb
         root_id = classification_root_id if classification_root_id is not None else material.classification_root_id
@@ -472,7 +498,6 @@ def wiki_build_material_task(
         material.status = "building"
         material.error_message = ""
         material.save(update_fields=["status", "error_message", "updated_at"])
-        build = BuildRecord.objects.select_for_update().get(pk=build.pk)
         build.operator = operator or build.operator
         build.inputs = {
             **(build.inputs or {}),
@@ -497,6 +522,9 @@ def wiki_build_material_task(
             classification_root_id=root_id,
             frozen_identity=identity,
         ).id
+    except MaterialBuildCancelled:
+        logger.info("wiki material build discarded cancelled record=%s material=%s", build.pk, material.pk)
+        return None
     except WikiBudgetExceeded as exc:
         logger.warning(
             "wiki 构建任务受预算限制停止 material=%s build=%s code=%s",
@@ -504,6 +532,9 @@ def wiki_build_material_task(
             build.pk,
             exc.code,
         )
+        build.refresh_from_db()
+        if _discard_cancelled_material_build(build, material.pk):
+            return None
         Material.objects.filter(pk=material.pk).update(
             status="build_failed",
             error_message=str(exc)[:2000],
@@ -516,6 +547,8 @@ def wiki_build_material_task(
             build.pk,
         )
         build.refresh_from_db()
+        if _discard_cancelled_material_build(build, material.pk):
+            return None
         if build.status == "running":
             build.stage = "failed"
             build.status = "failed"
@@ -692,11 +725,18 @@ def wiki_rebuild_kb_task(
         raise
 
 
-@shared_task(name="apps.opspilot.tasks.wiki_process_kb_material_builds_task", queue="opspilot_wiki")
+@shared_task(
+    name="apps.opspilot.tasks.wiki_process_kb_material_builds_task",
+    queue="opspilot_wiki",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
 def wiki_process_kb_material_builds_task(kb_id, operator=""):
     """按知识库串行消费资料构建队列。
 
     同 KB 至多一个活跃 runner；入队侧只 kick 本任务，避免每条资料各投一个长任务。
+    acks_late 只保证 worker 死后消息可重投；不得凭 redelivered 抢仍新鲜的租约。
+    进程中断后用 resume_wiki_material_builds；仅 stale 租约可被新任务接管。
     """
     from apps.opspilot.services.wiki.material_build_queue_service import process_kb_material_builds
 
@@ -746,8 +786,6 @@ def wiki_retry_markdown_import_task(
     preflight_token=None,
 ):
     """Retry a Markdown import through the generation-aware preflight contract."""
-    import base64
-
     from apps.opspilot.models import BuildRecord, WikiKnowledgeBase
     from apps.opspilot.services.wiki.markdown_import_governance_service import execute_markdown_import
 

@@ -466,11 +466,62 @@ def test_wiki_llm_invocation_uses_wiki_timeout(monkeypatch):
     assert build_service._invoke_llm(1, "prompt") == "ok"
     assert captured["request"].extra_config["timeout"] == 240.0
     assert captured["request"].protocol_type == "openai"
-    assert captured["request"].temperature == build_service._WIKI_LLM_TEMPERATURE
+    assert captured["request"].temperature == 0.0
     assert "response_format" not in (captured["request"].extra_config or {})
 
     assert build_service._invoke_llm(1, "prompt", force_json=True) == "ok"
     assert captured["request"].extra_config["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.parametrize(
+    "model_name,expected",
+    [
+        ("wiki-model", 0.0),
+        ("gpt-4o", 0.0),
+        ("qwen-plus", 0.0),
+        ("o10", 0.0),
+        ("gpt-5", 1.0),
+        ("gpt-5.1", 1.0),
+        ("gpt-5-mini", 1.0),
+        ("openai/gpt-5-nano", 1.0),
+        ("o1", 1.0),
+        ("o1-mini", 1.0),
+        ("o3", 1.0),
+        ("o3-mini", 1.0),
+        ("o4-mini", 1.0),
+        ("kimi-for-coding", 1.0),
+        ("moonshot/kimi-for-coding", 1.0),
+    ],
+)
+def test_wiki_llm_temperature_by_model(model_name, expected):
+    from apps.opspilot.services.wiki import build_service
+
+    assert build_service._wiki_llm_temperature(model_name) == expected
+
+
+def test_wiki_llm_invocation_uses_unit_temperature_for_gpt5(monkeypatch):
+    from apps.opspilot.services.wiki import build_service
+
+    class FakeModel:
+        openai_api_base = "https://api.openai.com"
+        openai_api_key = "sk-key"
+        model_name = "gpt-5-mini"
+        protocol_type = "openai"
+        vendor_id = None
+
+    captured = {}
+
+    monkeypatch.setattr(build_service.LLMModel.objects, "select_related", lambda *args: build_service.LLMModel.objects)
+    monkeypatch.setattr(build_service.LLMModel.objects, "get", lambda id: FakeModel())
+
+    def fake_invoke(request, messages):
+        captured["request"] = request
+        return "ok"
+
+    monkeypatch.setattr(build_service.LLMClientFactory, "invoke_isolated", fake_invoke)
+
+    assert build_service._invoke_llm(1, "prompt") == "ok"
+    assert captured["request"].temperature == 1.0
 
 
 def test_finalize_coerces_missing_page_type_and_promotes_source_only_output():
@@ -772,6 +823,83 @@ def test_budgeted_wiki_llm_raises_on_empty_output(monkeypatch):
 
     assert "build_output_empty_llm" in str(exc.value)
     assert "material_generate" in str(exc.value)
+
+
+def test_wiki_llm_invoke_logs_thinking_flags_without_payload(monkeypatch, caplog):
+    import logging
+
+    from apps.opspilot.services.wiki import build_service
+    from apps.opspilot.services.wiki.wiki_budget_service import LLMCallBudget
+
+    secret = "sk-wiki-llm-PROMPT-SENTINEL"
+
+    class FakeModel:
+        openai_api_base = "https://api.openai.com"
+        openai_api_key = secret
+        model_name = "qwen3.8-27b"
+        protocol_type = "openai"
+        vendor_id = None
+
+    monkeypatch.setattr(build_service.LLMModel.objects, "select_related", lambda *args: build_service.LLMModel.objects)
+    monkeypatch.setattr(build_service.LLMModel.objects, "get", lambda id: FakeModel())
+
+    def fake_invoke(request, messages):
+        request.extra_config = {
+            **(request.extra_config or {}),
+            "_isolated_finish_reason": "length",
+            "_isolated_output_truncated": True,
+            "_isolated_thinking_enable": False,
+            "_isolated_thinking_template_enable": False,
+            "_isolated_has_reasoning_content": True,
+            "_isolated_content_chars": 0,
+            "_isolated_usage": {
+                "prompt_tokens": 3849,
+                "completion_tokens": 2000,
+                "reasoning_tokens": 1990,
+            },
+        }
+        return ""
+
+    monkeypatch.setattr(build_service.LLMClientFactory, "invoke_isolated", fake_invoke)
+    caplog.set_level(logging.INFO, logger="opspilot")
+    budget = LLMCallBudget(max_calls=2, max_total_tokens=60000, scope="wiki_material:log")
+
+    with pytest.raises(build_service.BuildOutputInvalid) as exc:
+        build_service._invoke_llm(
+            1,
+            secret,
+            budget=budget,
+            stage="material_conflict_batch",
+            output_reserve=2000,
+        )
+
+    records = [record for record in caplog.records if str(record.msg).startswith("wiki_llm_invoke ")]
+    assert len(records) == 1
+    record = records[0]
+    assert record.msg == (
+        "wiki_llm_invoke stage=%s model=%s max_output=%s finish_reason=%s truncated=%s "
+        "content_chars=%s prompt_tokens=%s completion_tokens=%s reasoning_tokens=%s "
+        "has_reasoning=%s thinking_enable=%s thinking_template_enable=%s"
+    )
+    assert record.args == (
+        "material_conflict_batch",
+        "qwen3.8-27b",
+        2000,
+        "length",
+        "true",
+        0,
+        3849,
+        2000,
+        1990,
+        "true",
+        "false",
+        "false",
+    )
+    rendered = record.getMessage()
+    assert secret not in rendered
+    assert secret not in "".join(str(part) for part in record.args)
+    assert "build_output_empty_llm" in str(exc.value)
+    assert "material_conflict_batch" in str(exc.value)
 
 
 def test_budgeted_wiki_llm_raises_on_provider_error(monkeypatch):

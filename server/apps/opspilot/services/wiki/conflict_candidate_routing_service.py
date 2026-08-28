@@ -6,15 +6,18 @@ import json
 import re
 from dataclasses import dataclass
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import PageVersion, WikiGeneration, WikiGenerationIndexEntry
+from apps.opspilot.services.wiki.build_service import BuildOutputInvalid
 from apps.opspilot.services.wiki.title_service import title_identity_key
-from apps.opspilot.services.wiki.wiki_budget_service import estimate_tokens
+from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, estimate_tokens
 
 _MAX_COMPACT_CANDIDATES = 20
 _MAX_EVIDENCE_PAGES = 5
 _MAX_OLD_EVIDENCE_TOKENS = 8000
-_CONFLICT_OUTPUT_RESERVE = 2000
+_CONFLICT_OUTPUT_RESERVE = 4000
 _CONFLICT_INPUT_TOKEN_LIMIT = 12000
+_CONFLICT_LLM_MAX_ATTEMPTS = 2
 _MIN_BODY_EVIDENCE_TOKENS = 256
 _TOKEN_RE = re.compile(r"[\w\-]{2,}", re.UNICODE)
 
@@ -281,6 +284,63 @@ def _fill_unresolved_incoming(comparisons, compact, *, reason):
     return comparisons
 
 
+def _invoke_conflict_comparison(invoke_llm, llm_model_id, prompt, budget, *, candidate_generation_id):
+    """Retry once on empty/invalid comparison output, then fail closed as unresolved."""
+
+    raw = ""
+    last_error_type = "empty_output"
+    for attempt in range(1, _CONFLICT_LLM_MAX_ATTEMPTS + 1):
+        if budget.remaining_calls <= 0:
+            break
+        stage = "material_conflict_batch" if attempt == 1 else f"material_conflict_batch_retry_{attempt}"
+        try:
+            raw = invoke_llm(
+                llm_model_id,
+                prompt,
+                budget=budget,
+                stage=stage,
+                output_reserve=_CONFLICT_OUTPUT_RESERVE,
+            )
+        except WikiBudgetExceeded:
+            if attempt == 1:
+                raise
+            last_error_type = "WikiBudgetExceeded"
+            raw = ""
+            break
+        except BuildOutputInvalid as exc:
+            last_error_type = type(exc).__name__
+            raw = ""
+            if attempt < _CONFLICT_LLM_MAX_ATTEMPTS and budget.remaining_calls > 0:
+                logger.warning(
+                    "wiki_conflict_comparison_retry candidate_generation_id=%s stage=%s attempt=%s/%s error_type=%s",
+                    candidate_generation_id,
+                    stage,
+                    attempt,
+                    _CONFLICT_LLM_MAX_ATTEMPTS,
+                    last_error_type,
+                )
+            continue
+        if str(raw or "").strip():
+            return raw
+        last_error_type = "empty_output"
+        raw = ""
+        if attempt < _CONFLICT_LLM_MAX_ATTEMPTS and budget.remaining_calls > 0:
+            logger.warning(
+                "wiki_conflict_comparison_retry candidate_generation_id=%s stage=%s attempt=%s/%s error_type=%s",
+                candidate_generation_id,
+                stage,
+                attempt,
+                _CONFLICT_LLM_MAX_ATTEMPTS,
+                last_error_type,
+            )
+    logger.warning(
+        "wiki conflict comparison LLM 失败，降级为 unresolved candidate_generation_id=%s error_type=%s",
+        candidate_generation_id,
+        last_error_type,
+    )
+    return raw
+
+
 def route_material_conflicts(
     candidate_generation_id,
     pages_data,
@@ -379,23 +439,24 @@ def route_material_conflicts(
             unresolved,
         )
     allowed_pairs = {(item["incoming_index"], item["old_page_id"]) for item in prompt_items}
-    raw = invoke_llm(
+    raw = _invoke_conflict_comparison(
+        invoke_llm,
         llm_model_id,
         prompt,
-        budget=budget,
-        stage="material_conflict_batch",
-        output_reserve=_CONFLICT_OUTPUT_RESERVE,
+        budget,
+        candidate_generation_id=candidate_generation_id,
     )
     comparisons = {**deterministic, **_parse_comparisons(raw, allowed_pairs)}
     resolved_pairs = set(comparisons)
     unresolved_pairs = allowed_pairs - resolved_pairs
     unresolved_incoming = {incoming_index for incoming_index, _old_page_id in unresolved_pairs}
+    missing_reason = "conflict_comparison_llm_empty" if not str(raw or "").strip() else "conflict_comparison_incomplete"
     comparisons.update(
         {
             pair: {
                 "same_subject": None,
                 "relation": "unresolved",
-                "reason": "conflict_comparison_incomplete",
+                "reason": missing_reason,
             }
             for pair in unresolved_pairs
         }
