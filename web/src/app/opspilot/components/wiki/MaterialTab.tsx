@@ -1198,49 +1198,41 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                 </Form.Item>
               )}
               <Form.Item label={t("wiki.materialFile")} required>
-                <div
-                  className={
-                    fileList.length > 0
-                      ? "max-h-[280px] overflow-y-auto pr-1"
-                      : undefined
-                  }
-                >
-                  <Upload.Dragger
-                    multiple
-                    directory={folderImport}
-                    fileList={fileList}
-                    beforeUpload={() => false}
-                    onChange={({ fileList: nextList }) => {
-                      setFileList((prev) => {
-                        const unchanged =
-                          prev.length === nextList.length &&
-                          prev.every((file, index) => file.uid === nextList[index]?.uid);
-                        return unchanged ? prev : nextList;
-                      });
-                      // 单文件自动填名称;多文件清空名称字段。仅在值变化时写 Form,避免 Upload 受控循环。
-                      if (nextList.length === 1) {
-                        const fname = nextList[0]?.name || "";
-                        if (fname && form.getFieldValue("name") !== fname) {
-                          form.setFieldsValue({ name: fname });
-                        }
-                      } else if (form.getFieldValue("name")) {
-                        form.setFieldsValue({ name: "" });
+                <Upload.Dragger
+                  multiple
+                  directory={folderImport}
+                  fileList={fileList}
+                  beforeUpload={() => false}
+                  onChange={({ fileList: nextList }) => {
+                    setFileList((prev) => {
+                      const unchanged =
+                        prev.length === nextList.length &&
+                        prev.every((file, index) => file.uid === nextList[index]?.uid);
+                      return unchanged ? prev : nextList;
+                    });
+                    // 单文件自动填名称;多文件清空名称字段。仅在值变化时写 Form,避免 Upload 受控循环。
+                    if (nextList.length === 1) {
+                      const fname = nextList[0]?.name || "";
+                      if (fname && form.getFieldValue("name") !== fname) {
+                        form.setFieldsValue({ name: fname });
                       }
-                    }}
-                    accept={FILE_ACCEPT}
-                  >
-                    <p className="ant-upload-drag-icon !mb-2">
-                      <UploadOutlined />
-                    </p>
-                    <p className="ant-upload-text !text-sm">{t("wiki.uploadHint")}</p>
-                    <p className="ant-upload-hint !text-xs text-gray-400">
-                      {t("wiki.supportedFileHint")}
-                    </p>
-                    <p className="ant-upload-hint !mb-0 !text-xs text-amber-600">
-                      {t("wiki.largeFileUploadHint")}
-                    </p>
-                  </Upload.Dragger>
-                </div>
+                    } else if (form.getFieldValue("name")) {
+                      form.setFieldsValue({ name: "" });
+                    }
+                  }}
+                  accept={FILE_ACCEPT}
+                >
+                  <p className="ant-upload-drag-icon !mb-2">
+                    <UploadOutlined />
+                  </p>
+                  <p className="ant-upload-text !text-sm">{t("wiki.uploadHint")}</p>
+                  <p className="ant-upload-hint !text-xs text-gray-400">
+                    {t("wiki.supportedFileHint")}
+                  </p>
+                  <p className="ant-upload-hint !mb-0 !text-xs text-amber-600">
+                    {t("wiki.largeFileUploadHint")}
+                  </p>
+                </Upload.Dragger>
                 {fileList.length > 1 && (
                   <p className="mt-2 text-xs text-gray-400">
                     {t("wiki.selectedFiles")}: {fileList.length}

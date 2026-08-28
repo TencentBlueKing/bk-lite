@@ -3,8 +3,8 @@ import importlib
 import inspect
 
 from langchain_core.tools import StructuredTool
-from loguru import logger
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 
 

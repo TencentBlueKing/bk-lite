@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Descriptions,
@@ -232,9 +232,13 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [statusFilter, setStatusFilter] = useState("");
   const [materialNameInput, setMaterialNameInput] = useState("");
   const [materialNameFilter, setMaterialNameFilter] = useState("");
+  const pollingInFlightRef = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = Boolean(options?.silent);
+    if (!silent) {
+      setLoading(true);
+    }
     try {
       const res = await fetchBuildRecords(kbId, {
         page,
@@ -245,20 +249,40 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       setData(res.items);
       setTotal(res.count);
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [kbId, page, pageSize, statusFilter, materialNameFilter]);
 
   useEffect(() => {
-    load();
-  }, [kbId, page, pageSize, statusFilter, materialNameFilter]);
+    void load();
+  }, [load]);
 
-  // 有 running 记录时每 3s 轮询刷新进度,全部结束自动停止
+  // 有 running 记录时每 3s 静默刷新进度，不刷表格 loading；全部结束自动停止
   useEffect(() => {
     if (!data.some((b) => b.status === "running")) return;
-    const timer = setInterval(() => load(), 3000);
-    return () => clearInterval(timer);
-  }, [data]);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      if (!pollingInFlightRef.current) {
+        pollingInFlightRef.current = true;
+        try {
+          await load({ silent: true });
+        } catch {
+          // 后台刷新失败时保留当前数据，下一轮继续重试。
+        } finally {
+          pollingInFlightRef.current = false;
+        }
+      }
+      if (!cancelled) timer = setTimeout(poll, 3000);
+    };
+    timer = setTimeout(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [data, load]);
 
   const openDetail = async (id: number) =>
     setDetail(await fetchBuildRecord(id));

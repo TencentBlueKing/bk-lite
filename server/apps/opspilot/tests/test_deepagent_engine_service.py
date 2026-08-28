@@ -903,6 +903,69 @@ class TestBuildDeepagentNodes:
         joined = "\n".join(str(getattr(message, "content", "") or "") for message in result["messages"])
         assert "401" in joined or "鉴权" in joined or "Unauthorized" in joined
 
+    def test_unresolved_k8s_target_skips_namespace_required_followup_without_replan(self):
+        node = ToolsNodes()
+        node.all_tools = [
+            _tool("resolve_k8s_target_from_alert"),
+            _tool("diagnose_kubernetes_pod_issues"),
+            _tool("generate_attachment_file"),
+        ]
+        req = _request(user_message="告警：Unhealthy server-69bf94649c-b8szc")
+        captured = {}
+        unresolved = json.dumps(
+            {
+                "cluster": "bk-lite-k3s",
+                "namespace": None,
+                "resource_type": "pod",
+                "resource_name": "server-69bf94649c-b8szc",
+                "resolved": False,
+                "lookup_exhausted": True,
+                "conclusive": True,
+                "missing_data": ["namespace"],
+                "reason": "Namespace not found for resource server-69bf94649c-b8szc via pods/events lookup",
+            },
+            ensure_ascii=False,
+        )
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={
+                    "goal": "定位 Pod 告警",
+                    "steps": [
+                        {
+                            "objective": "反查命名空间",
+                            "tools": ["resolve_k8s_target_from_alert"],
+                        },
+                        {
+                            "objective": "诊断 Pod",
+                            "tools": ["diagnose_kubernetes_pod_issues"],
+                        },
+                        {
+                            "objective": "写报告",
+                            "tools": ["generate_attachment_file"],
+                        },
+                    ],
+                },
+                failing_agent_calls={
+                    1: {
+                        "content": unresolved,
+                        "status": "success",
+                        "name": "resolve_k8s_target_from_alert",
+                    }
+                },
+                agent_reply="当前集群无法定位该对象。",
+            )
+
+        assert captured["visible_tool_calls"] == [
+            ["resolve_k8s_target_from_alert"],
+            ["generate_attachment_file"],
+            [],
+        ]
+        assert len(captured["planner_calls"]) == 1
+
     def test_permission_tool_error_aborts_without_replan(self):
         node = ToolsNodes()
         node.all_tools = [

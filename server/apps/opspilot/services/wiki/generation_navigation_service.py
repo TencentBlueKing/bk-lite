@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from django.db import transaction
 
+from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import WikiDirectory, WikiGeneration, WikiGenerationIndexEntry, WikiGenerationOverview
 from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment, title_identity_key
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, estimate_tokens
@@ -325,6 +326,19 @@ def enhance_generation_overviews(
     except WikiBudgetExceeded:
         generation.overviews.update(semantic_status="skipped", semantic_text="")
         return {"status": "budget_unavailable", "updated": 0, "llm_called": False}
+    except Exception as exc:
+        # 顶层导入 build_service.BuildOutputInvalid 会与 generation_service 形成 import cycle。
+        from apps.opspilot.services.wiki.build_service import BuildOutputInvalid
+
+        if not isinstance(exc, BuildOutputInvalid):
+            raise
+        generation.overviews.update(semantic_status="skipped", semantic_text="")
+        logger.warning(
+            "wiki semantic overview LLM 失败，降级为确定性概览 generation_id=%s error_type=%s",
+            generation_id,
+            type(exc).__name__,
+        )
+        return {"status": "llm_failed", "updated": 0, "llm_called": True}
 
     allowed_scopes = {row["scope_key"] for row in rows}
     allowed_page_ids_by_scope = {row["scope_key"]: set(row["allowed_page_ids"]) for row in rows}

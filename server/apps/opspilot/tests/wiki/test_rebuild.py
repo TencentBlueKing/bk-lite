@@ -220,10 +220,16 @@ def test_rebuild_traces_pending_review_and_skips_titleless_page_data(wiki_factor
 @pytest.mark.django_db
 class TestRebuildView:
     def test_rebuild_endpoint_enqueues_task_and_returns_running_record(self, wiki_factory, api_client, monkeypatch):
+        from django.db import transaction
+
         from apps.opspilot import tasks
         from apps.opspilot.models import BuildRecord
+        from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
 
         kb = _kb(wiki_factory)
+        with transaction.atomic():
+            bootstrap_knowledge_base(kb, operator="admin")
+        kb.refresh_from_db()
         calls = []
 
         class Task:
@@ -240,7 +246,18 @@ class TestRebuildView:
         assert data["status"] == "running"
         assert data["stage"] == "queued"
         assert BuildRecord.objects.filter(id=data["id"], knowledge_base=kb, status="running").exists()
-        assert calls == [(kb.id, kb.llm_model_id, data["operator"], data["id"], None, None)]
+        assert len(calls) == 1
+        kb_id, llm_model_id, operator, build_record_id, retry_count, task_identity = calls[0]
+        assert (kb_id, llm_model_id, operator, build_record_id, retry_count) == (
+            kb.id,
+            kb.llm_model_id,
+            data["operator"],
+            data["id"],
+            None,
+        )
+        assert task_identity["base_generation_id"] == kb.active_generation_id
+        assert task_identity["structure_revision_id"] == kb.active_structure_revision_id
+        assert task_identity["source_fingerprints"] == []
 
     def test_rebuild_endpoint_rejects_when_build_running(self, wiki_factory, api_client, monkeypatch):
         from apps.opspilot import tasks
@@ -260,6 +277,98 @@ class TestRebuildView:
         assert r.status_code == 400
         assert "运行中" in r.json()["message"]
         assert BuildRecord.objects.filter(knowledge_base=kb, status="running").count() == 1
+
+    def test_rebuild_endpoint_rejects_when_material_running(self, wiki_factory, api_client, monkeypatch):
+        from apps.opspilot import tasks
+        from apps.opspilot.models import BuildRecord, Material
+
+        kb = _kb(wiki_factory)
+        material = Material.objects.create(knowledge_base=kb, name="live.md", material_type="text", status="building")
+        BuildRecord.objects.create(
+            knowledge_base=kb,
+            trigger="material",
+            status="running",
+            stage="generating",
+            inputs={"material_id": material.id},
+        )
+
+        class Task:
+            @staticmethod
+            def delay(*args, **kwargs):
+                pytest.fail("running material should not enqueue rebuild")
+
+        monkeypatch.setattr(tasks, "wiki_rebuild_kb_task", Task)
+
+        r = api_client.post(f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{kb.id}/rebuild/", {}, format="json")
+        assert r.status_code == 400
+        assert r.json()["code"] == "knowledge_base_build_in_progress"
+        assert BuildRecord.objects.filter(knowledge_base=kb, trigger="rebuild").count() == 0
+
+    def test_rebuild_endpoint_rejects_when_fresh_runner_lease(self, wiki_factory, api_client, monkeypatch):
+        from apps.opspilot import tasks
+        from apps.opspilot.models import BuildRecord
+        from apps.opspilot.services.wiki import material_build_queue_service as queue
+
+        kb = _kb(wiki_factory)
+        BuildRecord.objects.create(
+            knowledge_base=kb,
+            trigger=queue.RUNNER_TRIGGER,
+            status="running",
+            stage="running",
+            inputs={"kind": "material_build_queue"},
+        )
+
+        class Task:
+            @staticmethod
+            def delay(*args, **kwargs):
+                pytest.fail("fresh runner lease should not enqueue rebuild")
+
+        monkeypatch.setattr(tasks, "wiki_rebuild_kb_task", Task)
+
+        r = api_client.post(f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{kb.id}/rebuild/", {}, format="json")
+        assert r.status_code == 400
+        assert r.json()["code"] == "knowledge_base_build_in_progress"
+        assert BuildRecord.objects.filter(knowledge_base=kb, trigger="rebuild").count() == 0
+
+    def test_rebuild_endpoint_allows_stale_runner_lease(self, wiki_factory, api_client, monkeypatch):
+        from datetime import timedelta
+
+        from django.db import transaction
+        from django.utils import timezone
+
+        from apps.opspilot import tasks
+        from apps.opspilot.models import BuildRecord
+        from apps.opspilot.services.wiki import material_build_queue_service as queue
+        from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+        kb = _kb(wiki_factory)
+        with transaction.atomic():
+            bootstrap_knowledge_base(kb, operator="admin")
+        kb.refresh_from_db()
+        lease = BuildRecord.objects.create(
+            knowledge_base=kb,
+            trigger=queue.RUNNER_TRIGGER,
+            status="running",
+            stage="running",
+            inputs={"kind": "material_build_queue"},
+        )
+        BuildRecord.objects.filter(pk=lease.pk).update(updated_at=timezone.now() - timedelta(hours=3))
+        calls = []
+
+        class Task:
+            @staticmethod
+            def delay(kb_id, llm_model_id, operator, build_record_id, retry_count=None, task_identity=None):
+                calls.append(build_record_id)
+
+        monkeypatch.setattr(tasks, "wiki_rebuild_kb_task", Task)
+
+        r = api_client.post(f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{kb.id}/rebuild/", {}, format="json")
+        assert r.status_code == 200, r.content
+        assert calls
+        assert BuildRecord.objects.filter(knowledge_base=kb, trigger="rebuild", status="running").count() == 1
+        lease.refresh_from_db()
+        assert lease.status == "failed"
+        assert not queue.has_active_runner(kb.pk)
 
     def test_delete_endpoint_rejects_when_build_running(self, wiki_factory, api_client):
         from apps.opspilot.models import BuildRecord, WikiKnowledgeBase

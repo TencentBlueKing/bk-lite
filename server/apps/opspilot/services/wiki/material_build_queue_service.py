@@ -13,12 +13,16 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_exception_call_chain, safe_exception_info
 from apps.opspilot.models import BuildRecord, Material, WikiKnowledgeBase
 
 QUEUE_ITEM_TRIGGER = "material_queue_item"
 RUNNER_TRIGGER = "material_queue"
 QUEUED_STATUS = "queued"
+QUEUE_RESUME_INPUT_KEY = "resume_interrupted"
 _ACTIVE_BUILD_STATUSES = frozenset({"parsing", "building"})
+USER_BUILD_TRIGGERS = frozenset({"material", "material_update", "rebuild"})
+CROSS_PIPELINE_TRIGGERS = frozenset({"rebuild", "material_update"})
 _MAX_BATCH_SIZE = 200
 _RUNNER_STALE_SECONDS = int(os.environ.get("WIKI_MATERIAL_BUILD_RUNNER_STALE_SECONDS", str(2 * 3600)))
 
@@ -30,6 +34,23 @@ class MaterialBuildQueueError(Exception):
         self.message = message
         self.status_code = status_code
         self.details = details or {}
+
+
+def _log_runner_dispatch_failure(kb_id: int, lease_id: int, exc: BaseException) -> None:
+    """投递失败只在 kick 边界打一条 traceback；异常正文可能含 broker 地址，用类型名代替。"""
+    logger.error(
+        "wiki material build runner 投递失败 kb=%s lease_id=%s failed_stage=%s error_type=%s call_chain=%s",
+        kb_id,
+        lease_id,
+        "task_dispatch",
+        type(exc).__name__,
+        safe_exception_call_chain(exc),
+        exc_info=safe_exception_info(exc),
+    )
+
+
+class MaterialBuildCancelled(Exception):
+    """In-flight 资料构建发现 BuildRecord 已取消，调用方应丢弃写入。"""
 
 
 def _dedupe_ids(material_ids) -> list[int]:
@@ -73,6 +94,79 @@ def has_active_runner(kb_id: int) -> bool:
     return not _is_stale_runner(lease)
 
 
+def kb_has_user_build_in_progress(kb_id, *, exclude_build_id=None) -> bool:
+    """是否有用户可见的资料/重建任务在跑。队列租约和排队项不算。"""
+    qs = BuildRecord.objects.filter(
+        knowledge_base_id=kb_id,
+        status="running",
+        trigger__in=USER_BUILD_TRIGGERS,
+    )
+    if exclude_build_id is not None:
+        qs = qs.exclude(pk=exclude_build_id)
+    return qs.exists()
+
+
+def kb_has_cross_pipeline_build_in_progress(kb_id) -> bool:
+    """rebuild / material_update 与资料队列互斥；不含兄弟 material 和队列租约。"""
+    return BuildRecord.objects.filter(
+        knowledge_base_id=kb_id,
+        status="running",
+        trigger__in=CROSS_PIPELINE_TRIGGERS,
+    ).exists()
+
+
+def unstick_material_for_cancelled_build(record) -> bool:
+    """取消构建后解开资料的 parsing/building/queued，避免资料页卡在构建中。"""
+    if getattr(record, "trigger", "") not in {"material", "material_update"}:
+        return False
+    material_id = (record.inputs or {}).get("material_id")
+    if not material_id:
+        return False
+    material = Material.objects.filter(pk=material_id, knowledge_base_id=record.knowledge_base_id).first()
+    if material is None:
+        return False
+    BuildRecord.objects.filter(
+        knowledge_base_id=record.knowledge_base_id,
+        trigger=QUEUE_ITEM_TRIGGER,
+        status="running",
+        stage="queued",
+        inputs__material_id=material.pk,
+    ).update(
+        stage="cancelled",
+        status="failed",
+        progress=100,
+        updated_at=timezone.now(),
+    )
+    if material.status not in (_ACTIVE_BUILD_STATUSES | {QUEUED_STATUS}):
+        return False
+    material.status = "build_failed" if material.current_version_id else "parse_failed"
+    material.error_message = "构建已取消"
+    material.save(update_fields=["status", "error_message", "updated_at"])
+    return True
+
+
+def release_idle_runner_lease(kb_id: int, *, operator: str = "", kick_if_queued: bool = True) -> bool:
+    """没有用户构建在跑时释放队列 runner，避免 Celery 死后租约挡住重试和入队。
+
+    kick_if_queued=False：只拆租约，不续跑队列。重试会自己投递当前资料，
+    若这里再 kick，会把排队里的其它资料一并拉起，出现两条并行「进行中」。
+    """
+    if kb_has_user_build_in_progress(kb_id):
+        return False
+    lease = _active_runner_lease(kb_id)
+    if lease is None:
+        return False
+    queued = kb_has_queued_materials(kb_id)
+    lease.stage = "cancelled"
+    lease.status = "failed"
+    lease.progress = 100
+    lease.errors = [{"code": "runner_released", "message": "无进行中的资料构建，释放队列租约"}]
+    lease.save(update_fields=["stage", "status", "progress", "errors", "updated_at"])
+    if queued and kick_if_queued:
+        kick_kb_material_build_runner(kb_id, operator=operator)
+    return True
+
+
 def enqueue_material_builds(*, knowledge_base_id: int, material_ids, operator: str = "") -> dict:
     """将资料加入 KB 构建队列并必要时 kick runner。
 
@@ -107,6 +201,12 @@ def enqueue_material_builds(*, knowledge_base_id: int, material_ids, operator: s
 
     with transaction.atomic():
         WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base_id)
+        if kb_has_cross_pipeline_build_in_progress(knowledge_base_id):
+            raise MaterialBuildQueueError(
+                "knowledge_base_build_in_progress",
+                "知识库存在运行中的构建任务，请等待完成后再操作",
+                status_code=409,
+            )
         materials = {m.pk: m for m in Material.objects.select_for_update().filter(knowledge_base_id=knowledge_base_id, id__in=ids).order_by("id")}
         for mid in ids:
             material = materials.get(mid)
@@ -153,10 +253,16 @@ def enqueue_material_builds(*, knowledge_base_id: int, material_ids, operator: s
     }
 
 
-def try_acquire_kb_build_runner(kb_id: int, operator: str = "") -> BuildRecord | None:
-    """领取已 scheduled 的 runner 租约；重复 Celery 投递或他人持有时返回 None。"""
+def try_acquire_kb_build_runner(kb_id: int, operator: str = "", *, reclaim_running: bool = False) -> BuildRecord | None:
+    """领取已 scheduled 的 runner 租约；他人仍持有新鲜租约时返回 None。
+
+    reclaim_running 已废弃，调用方传入也不再抢新鲜 running 租约。
+    仅 stale 租约可接管；进程死后的续跑走 resume_wiki_material_builds。
+    """
     with transaction.atomic():
         WikiKnowledgeBase.objects.select_for_update().get(pk=kb_id)
+        if kb_has_cross_pipeline_build_in_progress(kb_id):
+            return None
         lease = (
             BuildRecord.objects.select_for_update()
             .filter(
@@ -176,13 +282,13 @@ def try_acquire_kb_build_runner(kb_id: int, operator: str = "") -> BuildRecord |
             lease.save(update_fields=["stage", "operator", "updated_at"])
             return lease
         if lease.stage == "running":
-            if _is_stale_runner(lease):
-                lease.stage = "running"
-                lease.operator = operator or lease.operator
-                lease.errors = []
-                lease.save(update_fields=["stage", "operator", "errors", "updated_at"])
-                return lease
-            return None
+            if not _is_stale_runner(lease):
+                return None
+            lease.stage = "running"
+            lease.operator = operator or lease.operator
+            lease.errors = []
+            lease.save(update_fields=["stage", "operator", "errors", "updated_at"])
+            return lease
         return None
 
 
@@ -190,6 +296,8 @@ def _ensure_scheduled_runner_lease(kb_id: int, operator: str = "") -> BuildRecor
     """若无活跃租约则创建 stage=scheduled 的租约，供随后唯一一次 Celery kick。"""
     with transaction.atomic():
         WikiKnowledgeBase.objects.select_for_update().get(pk=kb_id)
+        if kb_has_cross_pipeline_build_in_progress(kb_id):
+            return None
         lease = (
             BuildRecord.objects.select_for_update()
             .filter(
@@ -269,6 +377,19 @@ def _touch_runner(lease: BuildRecord) -> None:
     BuildRecord.objects.filter(pk=lease.pk, status="running").update(updated_at=timezone.now())
 
 
+def _runner_still_owns(lease: BuildRecord) -> bool:
+    current = (
+        BuildRecord.objects.filter(
+            pk=lease.pk,
+            trigger=RUNNER_TRIGGER,
+            status="running",
+        )
+        .only("stage")
+        .first()
+    )
+    return current is not None and current.stage in {"scheduled", "running"}
+
+
 def ensure_running_material_build_record(
     *,
     knowledge_base_id: int,
@@ -328,10 +449,23 @@ def claim_next_queued_material(kb_id: int, *, operator: str = "") -> dict | None
                 trigger=QUEUE_ITEM_TRIGGER,
                 stage="queued",
                 status="running",
+                inputs__resume_interrupted=True,
             )
             .order_by("id")
             .first()
         )
+        if item is None:
+            item = (
+                BuildRecord.objects.select_for_update()
+                .filter(
+                    knowledge_base_id=kb_id,
+                    trigger=QUEUE_ITEM_TRIGGER,
+                    stage="queued",
+                    status="running",
+                )
+                .order_by("id")
+                .first()
+            )
         if item is not None:
             inputs = item.inputs or {}
             material_id = int(inputs.get("material_id") or 0)
@@ -413,8 +547,8 @@ def kick_kb_material_build_runner(kb_id: int, operator: str = "") -> bool:
     try:
         opspilot_tasks.wiki_process_kb_material_builds_task.delay(kb_id, operator or "")
         return True
-    except Exception:
-        logger.exception("wiki material build runner 投递失败 kb=%s", kb_id)
+    except Exception as exc:
+        _log_runner_dispatch_failure(kb_id, lease.pk, exc)
         BuildRecord.objects.filter(pk=lease.pk, status="running").update(
             stage="dispatch_failed",
             status="failed",
@@ -422,6 +556,135 @@ def kick_kb_material_build_runner(kb_id: int, operator: str = "") -> bool:
             updated_at=timezone.now(),
         )
         raise
+
+
+def _force_release_runner_lease(kb_id: int) -> bool:
+    """结束当前 runner 租约，供进程中断后的继续构建使用。
+
+    旧循环必须在下次 claim 前看到 status!=running 后退出；不凭 redelivered 抢活租约。
+    """
+    with transaction.atomic():
+        WikiKnowledgeBase.objects.select_for_update().get(pk=kb_id)
+        lease = (
+            BuildRecord.objects.select_for_update()
+            .filter(
+                knowledge_base_id=kb_id,
+                trigger=RUNNER_TRIGGER,
+                status="running",
+            )
+            .order_by("-id")
+            .first()
+        )
+        if lease is None:
+            return False
+        lease.stage = "cancelled"
+        lease.status = "failed"
+        lease.progress = 100
+        lease.errors = [{"code": "runner_released", "message": "进程中断后释放队列租约"}]
+        lease.save(update_fields=["stage", "status", "progress", "errors", "updated_at"])
+        return True
+
+
+def release_stale_runner_lease(kb_id: int) -> bool:
+    """仅拆 stale 的 runner 租约，供 rebuild 启动；新鲜租约不动。"""
+    lease = _active_runner_lease(kb_id)
+    if lease is None or not _is_stale_runner(lease):
+        return False
+    return _force_release_runner_lease(kb_id)
+
+
+def requeue_interrupted_materials(kb_id: int, *, operator: str = "") -> list[int]:
+    """把 parsing/building 的资料收回排队，并优先于原有排队项领取。"""
+    requeued: list[int] = []
+    with transaction.atomic():
+        WikiKnowledgeBase.objects.select_for_update().get(pk=kb_id)
+        materials = list(Material.objects.select_for_update().filter(knowledge_base_id=kb_id, status__in=_ACTIVE_BUILD_STATUSES).order_by("id"))
+        for material in materials:
+            source_status = material.status
+            running = BuildRecord.objects.filter(
+                knowledge_base_id=kb_id,
+                trigger="material",
+                status="running",
+                inputs__material_id=material.pk,
+            )
+            for build in running:
+                fail_material_build_record(
+                    build.pk,
+                    knowledge_base_id=kb_id,
+                    code="material_build_interrupted",
+                    message="构建因进程中断已重新排队",
+                )
+            existing_items = list(
+                BuildRecord.objects.select_for_update()
+                .filter(
+                    knowledge_base_id=kb_id,
+                    trigger=QUEUE_ITEM_TRIGGER,
+                    stage="queued",
+                    status="running",
+                    inputs__material_id=material.pk,
+                )
+                .order_by("id")
+            )
+            material.status = QUEUED_STATUS
+            material.error_message = ""
+            material.save(update_fields=["status", "error_message", "updated_at"])
+            if existing_items:
+                for item in existing_items:
+                    inputs = dict(item.inputs or {})
+                    inputs[QUEUE_RESUME_INPUT_KEY] = True
+                    inputs["source_status"] = source_status
+                    item.inputs = inputs
+                    update_fields = ["inputs", "updated_at"]
+                    if operator and not item.operator:
+                        item.operator = operator
+                        update_fields.append("operator")
+                    item.save(update_fields=update_fields)
+            else:
+                BuildRecord.objects.create(
+                    knowledge_base_id=kb_id,
+                    trigger=QUEUE_ITEM_TRIGGER,
+                    operator=operator or "",
+                    stage="queued",
+                    status="running",
+                    inputs={
+                        "material_id": material.pk,
+                        "material_name": material.name,
+                        "source_status": source_status,
+                        "classification_root_id": material.classification_root_id,
+                        QUEUE_RESUME_INPUT_KEY: True,
+                    },
+                )
+            requeued.append(material.pk)
+    return requeued
+
+
+def resume_kb_material_builds(kb_id: int, *, operator: str = "") -> dict:
+    """升级/Celery 中断后继续串行构建：中断项排到队首，其余排队项保持原顺序。"""
+    kb = WikiKnowledgeBase.objects.filter(pk=kb_id).first()
+    if kb is None:
+        raise MaterialBuildQueueError("knowledge_base_not_found", "知识库不存在", status_code=404)
+    if kb_has_cross_pipeline_build_in_progress(kb_id):
+        raise MaterialBuildQueueError(
+            "knowledge_base_build_in_progress",
+            "知识库存在运行中的构建任务，请等待完成后再操作",
+            status_code=409,
+        )
+    requeued = requeue_interrupted_materials(kb_id, operator=operator)
+    released = _force_release_runner_lease(kb_id)
+    kicked = kick_kb_material_build_runner(kb_id, operator=operator)
+    logger.info(
+        "wiki material builds resumed kb=%s requeued=%s released=%s kicked=%s",
+        kb_id,
+        len(requeued),
+        released,
+        kicked,
+    )
+    return {
+        "knowledge_base_id": kb_id,
+        "requeued": requeued,
+        "released": released,
+        "kicked": kicked,
+    }
 
 
 def fail_material_build_record(
@@ -499,20 +762,45 @@ def reconcile_orphaned_material_builds(kb_id: int) -> int:
     return closed
 
 
-def process_kb_material_builds(kb_id: int, operator: str = "") -> dict:
-    """串行消费某 KB 的构建队列（供 Celery runner 调用）。"""
+def process_kb_material_builds(kb_id: int, operator: str = "", *, reclaim_running: bool = False) -> dict:
+    """串行消费某 KB 的构建队列（供 Celery runner 调用）。
+
+    reclaim_running 已废弃，保留参数以免旧调用方报错；新鲜租约不会被接管。
+    """
     from apps.opspilot.tasks import wiki_build_material_task
 
     reconcile_orphaned_material_builds(kb_id)
 
+    if kb_has_cross_pipeline_build_in_progress(kb_id):
+        logger.info("wiki material build runner skipped kb=%s reason=%s", kb_id, "cross_pipeline")
+        return {"skipped": "cross_pipeline", "processed": 0, "failed": 0}
+
     lease = try_acquire_kb_build_runner(kb_id, operator=operator)
     if lease is None:
-        return {"skipped": "runner_active", "processed": 0, "failed": 0}
+        reason = "cross_pipeline" if kb_has_cross_pipeline_build_in_progress(kb_id) else "runner_active"
+        logger.info("wiki material build runner skipped kb=%s reason=%s", kb_id, reason)
+        return {"skipped": reason, "processed": 0, "failed": 0}
+
+    requeue_interrupted_materials(kb_id, operator=operator)
 
     processed = 0
     failed = 0
+    stop_reason = None
     try:
         while True:
+            if not _runner_still_owns(lease):
+                stop_reason = "lease_lost"
+                logger.info("wiki material build runner lost lease kb=%s lease_id=%s", kb_id, lease.pk)
+                break
+            if kb_has_cross_pipeline_build_in_progress(kb_id):
+                stop_reason = "cross_pipeline"
+                logger.info(
+                    "wiki material build runner stopped kb=%s reason=%s lease_id=%s",
+                    kb_id,
+                    "cross_pipeline",
+                    lease.pk,
+                )
+                break
             claimed = claim_next_queued_material(kb_id, operator=operator)
             if claimed is None:
                 break
@@ -540,12 +828,18 @@ def process_kb_material_builds(kb_id: int, operator: str = "") -> dict:
                     build_record_id=build_record_id,
                 )
                 processed += 1
-            except Exception:  # noqa: BLE001 - 单条失败不阻断队列
+            except Exception as exc:  # noqa: BLE001 - 单条失败不阻断队列
                 failed += 1
-                logger.exception(
-                    "wiki KB 串行构建单条失败 kb=%s material=%s",
+                logger.error(
+                    "wiki KB 串行构建单条失败 kb=%s lease_id=%s material=%s build_record_id=%s " "failed_stage=%s error_type=%s call_chain=%s",
                     kb_id,
+                    lease.pk,
                     material_id,
+                    build_record_id,
+                    "material_build",
+                    type(exc).__name__,
+                    safe_exception_call_chain(exc),
+                    exc_info=safe_exception_info(exc),
                 )
                 Material.objects.filter(pk=material_id, status__in=("parsing", "building", QUEUED_STATUS)).update(
                     status="build_failed",
@@ -561,13 +855,19 @@ def process_kb_material_builds(kb_id: int, operator: str = "") -> dict:
     finally:
         release_kb_build_runner(lease, processed=processed, failed=failed)
         # 释放租约后若仍有排队（入队竞态），再 kick 一次；仍保证至多一个活跃 runner
-        if kb_has_queued_materials(kb_id):
+        if kb_has_queued_materials(kb_id) and not kb_has_cross_pipeline_build_in_progress(kb_id):
             try:
                 kick_kb_material_build_runner(kb_id, operator=operator)
-            except Exception:  # noqa: BLE001
-                logger.exception("wiki material build runner 续跑投递失败 kb=%s", kb_id)
+            except Exception as exc:  # noqa: BLE001 - traceback 已由 kick 持有
+                logger.warning(
+                    "wiki material build runner 续跑投递失败 kb=%s lease_id=%s failed_stage=%s error_type=%s",
+                    kb_id,
+                    lease.pk,
+                    "task_dispatch_resume",
+                    type(exc).__name__,
+                )
 
-    return {"processed": processed, "failed": failed, "skipped": None}
+    return {"processed": processed, "failed": failed, "skipped": stop_reason}
 
 
 def cancel_stale_queue_items_for_missing_materials(kb_id: int) -> int:

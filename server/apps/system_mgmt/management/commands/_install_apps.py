@@ -8,10 +8,15 @@ import os
 
 from apps.core.utils.enterprise_footprint import EnterpriseFootprintError, detect_enterprise_footprint
 
+# 显式 INSTALL_APPS 裁剪时仍须装入的 always-on 业务 app（与 app.py / extra.py 保持一致）
+_ALWAYS_ON_SCAN_APPS = frozenset({"system_mgmt", "console_mgmt"})
+
 
 def get_install_apps() -> set[str]:
     """Return the set of app names to install, gated on enterprise footprint status."""
     apps = {item.strip() for item in os.getenv("INSTALL_APPS", "").split(",") if item.strip()}
+    if apps:
+        apps |= _ALWAYS_ON_SCAN_APPS
     status = detect_enterprise_footprint()
     if status.has_enterprise_footprint and not status.license_mgmt_present:
         raise EnterpriseFootprintError(
