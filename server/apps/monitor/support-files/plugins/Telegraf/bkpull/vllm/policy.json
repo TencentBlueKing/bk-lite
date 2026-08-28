@@ -23,6 +23,26 @@
       "group_algorithm": "avg"
     },
     {
+      "name": "vLLM 排队时延过高",
+      "alert_name": "vLLM ${resource_name} 排队时延 P95 过高",
+      "description": "监控最近窗口内请求排队时延 P95，持续升高通常意味着调度积压。",
+      "metric_name": "vllm:request_queue_time_seconds_p95",
+      "algorithm": "avg_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
       "name": "vLLM KV 缓存占用过高",
       "alert_name": "vLLM ${resource_name} KV缓存占用过高",
       "description": "检测 KV cache 占用比例，长期偏高会导致排队增加与吞吐下降。",

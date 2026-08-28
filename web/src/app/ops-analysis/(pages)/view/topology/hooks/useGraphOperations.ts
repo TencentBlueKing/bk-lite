@@ -76,7 +76,6 @@ export const useGraphOperations = (
     minimapContainerRef,
     state,
     history,
-    selectedCells,
     onNodeRemoved,
     isZoomLockedRef,
     setSingleValueFetchErrorTooltip,
