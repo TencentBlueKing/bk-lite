@@ -2,21 +2,24 @@
 
 Date: 2026-08-28
 
-适用范围：将 Stargazer 的指标发布从 Core NATS 灰度切换到方案 B 的 JetStream 异步
-`PubAck` 发布窗口。本文面向实施人员，不涉及 Telegraf ACK 改造或 Metric Ingester。
+适用范围：保留现有 `metrics.*` Subject 和数据格式，将 Stargazer 的发布方式从 Core NATS
+灰度切换到方案 B 的 JetStream 异步 `PubAck` 发布窗口。本文面向实施人员，不涉及 Telegraf
+ACK 改造或 Metric Ingester。
 
 ## 1. 上线结论
 
 线上按以下顺序实施：
 
 1. 检查 NATS 已启用 JetStream；
-2. 在 NATS 中预先创建 `CMDB_METRICS` Stream；
+2. 查找当前覆盖 `metrics.*` 的 JetStream Stream，存在则直接复用；
 3. 给一个 Stargazer 实例配置 JetStream 开关并滚动重启；
 4. 完成一个真实采集周期的验证；
 5. 再逐个放开剩余 Stargazer 实例。
 
-Stargazer 不会自动创建或修改 Stream。这样可以避免采集进程持有 NATS 管理权限，也避免多个
-实例并发修改生产 Stream 的副本数、容量和保留策略。
+本次不新增 Subject，Stargazer 仍发布 `metrics.network`、`metrics.sangforscp`、
+`metrics.vmware` 等现有 Subject。优化来自 `publish_async + PubAck`，与 Subject 改名无关。
+只有查不到任何覆盖 `metrics.*` 的 Stream 时才创建 `CMDB_METRICS`。Stargazer 不会自动创建或
+修改 Stream，避免采集进程持有 NATS 管理权限。
 
 > `PubAck` 只表示消息已被 JetStream 持久接纳，不代表 Telegraf 已经写入
 > VictoriaMetrics。实施验收需要分别检查 JetStream 发布和最终实例数据。
@@ -27,13 +30,14 @@ Stargazer 必须配置：
 
 ```env
 NATS_METRICS_JETSTREAM_ENABLED=true
-NATS_JS_STREAM_NAME=CMDB_METRICS
+NATS_JS_STREAM_NAME=<当前覆盖 metrics.* 的 Stream 名称>
 PUBLISH_WORKERS=4
 ```
 
 注意，正确的开关名是 `NATS_METRICS_JETSTREAM_ENABLED`，不是
 `NATS_JS_PUBLISH_ENABLED`。未配置或配置为 `false` 时，Stargazer 继续使用旧 Core NATS
-发布路径。
+发布路径。`NATS_JS_STREAM_NAME` 必须使用现场查询到的现有 Stream 名称；只有新建兜底 Stream
+时才填写 `CMDB_METRICS`。
 
 以下参数已有代码默认值，首期建议保持默认：
 
@@ -84,29 +88,64 @@ nats stream ls
 
 任何一项不满足都应停止上线，不要先开启 Stargazer 开关。
 
-## 4. 创建或核对 Stream
+## 4. 查找并复用现有 Metrics Stream
 
-### 4.1 先检查是否已存在
+### 4.1 查找当前归属
+
+使用两个真实 Subject 样例查询，避免只根据 Stream 名称猜测：
 
 ```bash
-nats stream info CMDB_METRICS
-nats stream find metrics.stargazer_preflight
+nats stream find metrics.network
+nats stream find metrics.sangforscp
+nats stream ls
 ```
 
 分支处理：
 
-- `CMDB_METRICS` 不存在：进入 4.2 创建；
-- 已存在且配置符合 4.3：不要重复创建，直接进入第 5 节；
-- 已存在但配置不一致：停止操作，评估存量消息和消费者后再变更；
-- `metrics.stargazer_preflight` 被其他 Stream 匹配：先解决 subject 重叠，不要强行创建。
+- 两个 Subject 都命中同一个 Stream：记录该 Stream 名称，进入 4.2；
+- 只命中部分 `metrics.*` Subject：先补齐现有 Stream 的 subject 覆盖范围，再上线；
+- 没有命中任何 Stream：进入 4.3，创建兜底的 `CMDB_METRICS`；
+- 命中结果不唯一或存在重叠：停止操作，先解决 subject 归属，不能再创建重叠 Stream。
 
-### 4.2 创建命令
+### 4.2 核对并复用现有 Stream
 
-下面是基准命令。`<副本数>` 和 `<容量上限>` 必须按现场 NATS 拓扑和磁盘规划替换：
+以下命令中的 `<现有 Stream 名称>` 必须替换为 4.1 的查询结果：
+
+```bash
+nats stream info <现有 Stream 名称>
+nats stream info <现有 Stream 名称> --json
+nats consumer ls <现有 Stream 名称>
+```
+
+复用条件：
+
+| 配置 | 要求 |
+|---|---|
+| Subjects | 覆盖现有 `metrics.*` |
+| Storage | `File` |
+| Retention/Discard | 满足现场既有可靠性策略 |
+| Duplicate Window | 建议不低于 10 分钟 |
+| Replicas | 与现场节点数和容量规划一致 |
+| Max Age/Max Bytes | 能覆盖峰值采集与允许的消费中断 |
+| Consumers | 现有 Telegraf consumer 正常，无持续积压 |
+
+满足上述条件时不要新建 `CMDB_METRICS`，后续直接配置：
+
+```env
+NATS_JS_STREAM_NAME=<现有 Stream 名称>
+```
+
+如果现有 Stream 的 duplicate window、容量或副本不满足要求，应由 NATS 管理员评估存量消费者后
+调整原 Stream；不要由 Stargazer 自动修改，也不要创建第二个覆盖 `metrics.*` 的 Stream。
+
+### 4.3 仅在不存在现有 Stream 时创建
+
+只有 4.1 确认 `metrics.*` 没有被任何 Stream 覆盖时，才执行以下兜底命令。`<副本数>` 和
+`<容量上限>` 必须按现场 NATS 拓扑和磁盘规划替换：
 
 ```bash
 nats stream add CMDB_METRICS \
-  --subjects='metrics.>' \
+  --subjects='metrics.*' \
   --storage=file \
   --retention=limits \
   --discard=old \
@@ -125,33 +164,14 @@ nats stream add CMDB_METRICS \
 - `max-age=24h` 是首期建议，可按实际磁盘和允许中断时长调整；
 - `duplicate_window` 不得小于 Stargazer 一次发布总预算和典型重连恢复时间，首期使用 10 分钟。
 
-如果现场 NATS CLI 版本不支持某个命令行选项，应使用该版本的交互式 `nats stream add`，按上面
-相同的配置值回答，不能改变 Stream 名称或 subject。
+创建后再次执行 `nats stream find metrics.network` 和 `nats stream info CMDB_METRICS`，确认唯一
+命中且配置正确。此时 `NATS_JS_STREAM_NAME` 才填写 `CMDB_METRICS`。
 
-### 4.3 创建后核对
+### 4.4 发布权限
 
-```bash
-nats stream info CMDB_METRICS
-nats stream info CMDB_METRICS --json
-nats stream find metrics.stargazer_preflight
-```
+无论复用还是新建，Stargazer 使用的 NATS 账号都需要：
 
-必须核对：
-
-| 配置 | 要求 |
-|---|---|
-| Stream | `CMDB_METRICS` |
-| Subjects | 包含 `metrics.>` |
-| Storage | `File` |
-| Retention | `Limits` |
-| Discard | `Old` |
-| Duplicate Window | `10m` |
-| Replicas | 与现场节点数和容量规划一致 |
-| Max Age/Max Bytes | 与现场批准值一致 |
-
-还要确认 Stargazer 使用的 NATS 账号允许：
-
-- 发布 `metrics.>`；
+- 发布 `metrics.*`；
 - 接收发布请求的 `_INBOX.>` 响应；
 - 使用 JetStream publish API 获得 PubAck。
 
@@ -166,7 +186,7 @@ services:
   stargazer:
     environment:
       NATS_METRICS_JETSTREAM_ENABLED: "true"
-      NATS_JS_STREAM_NAME: "CMDB_METRICS"
+      NATS_JS_STREAM_NAME: "<现有 Stream 名称>"
       PUBLISH_WORKERS: "4"
 ```
 
@@ -180,7 +200,7 @@ env:
   - name: NATS_METRICS_JETSTREAM_ENABLED
     value: "true"
   - name: NATS_JS_STREAM_NAME
-    value: "CMDB_METRICS"
+    value: "<现有 Stream 名称>"
   - name: PUBLISH_WORKERS
     value: "4"
 ```
@@ -208,8 +228,8 @@ curl -fsS http://<Stargazer地址>:8083/health/metrics
 采集过程中观察：
 
 ```bash
-nats stream info CMDB_METRICS
-nats consumer ls CMDB_METRICS
+nats stream info <现有 Stream 名称>
+nats consumer ls <现有 Stream 名称>
 ```
 
 同时从 `/health/metrics` 检查下列 Prometheus 指标；在 `/health/stats` JSON 中，对应字段没有
@@ -258,7 +278,7 @@ NATS_METRICS_JETSTREAM_ENABLED=false
 
 滚动重启对应 Stargazer 后，确认恢复到 Core NATS 发布。回滚时：
 
-- 不删除 `CMDB_METRICS`；
+- 不删除或修改复用的现有 Metrics Stream；
 - 不清空 Stream 消息；
 - 不删除 Telegraf consumer；
 - 不重启整个 NATS 集群；
@@ -268,8 +288,8 @@ NATS_METRICS_JETSTREAM_ENABLED=false
 
 | 现象 | 优先检查 | 处理 |
 |---|---|---|
-| `stream not found` | Stream 名称、`metrics.>` subject | 创建/修正 Stream 后再开启，不要增加超时 |
-| expected stream 不匹配 | 是否有其他 Stream 覆盖 `metrics.*` | 消除 subject 重叠，保持 `CMDB_METRICS` 唯一归属 |
+| `stream not found` | `NATS_JS_STREAM_NAME`、现有 `metrics.*` 归属 | 填写查询到的 Stream 名称，不要增加超时 |
+| expected stream 不匹配 | 配置名称是否等于实际命中的 Stream | 修正名称或 subject 归属，不要创建重叠 Stream |
 | PubAck timeout 增加 | NATS 磁盘、replica lag、RTT、CPU | 先处理 NATS 瓶颈，不要无限重试 |
 | rejected 增加 | 权限、Stream 限额、消息大小 | 核对 NATS 账号权限和 Stream limits |
 | PubAck 成功但实例无数据 | Telegraf consumer pending、格式解析、VM 写入 | 转查消费与入库链路 |
@@ -286,7 +306,8 @@ NATS_METRICS_JETSTREAM_ENABLED=false
 Stargazer 版本/镜像：
 灰度实例：
 NATS 版本和节点数：
-CMDB_METRICS replicas/max_age/max_bytes：
+复用的 Metrics Stream 名称：
+Stream subjects/replicas/max_age/max_bytes：
 灰度采集任务 ID：
 采集目标数：
 PubAck confirmed/timeout/retry/rejected：
