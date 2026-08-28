@@ -14,9 +14,9 @@
 ## 接入步骤
 
 1. 从实际采集节点验证 Management API 地址和监控账号。
-2. 填写 URL、用户名、密码和采集间隔（默认 `60` 秒，不要低于 `30` 秒）。
+2. 填写 URL、用户名、密码和采集间隔（默认 `60` 秒，不要低于 `30` 秒）。URL 填 Management 根地址，例如 `http://127.0.0.1:15672`，不要带 `/api/queues`。
 3. 「采集队列」默认关闭，只采集 overview 与 node，不请求 `/api/queues`。
-4. 需要队列指标时再打开「采集队列」，并填写必填的队列包含 glob；超时默认 `20` 秒。
+4. 需要队列指标时再打开「采集队列」，并填写必填的队列包含规则（不填不能保存，避免全量拉取 `/api/queues`）；超时默认 `20` 秒。
 5. 在监控对象表格中选择节点，填写 URL、实例名称和可选分组。
 6. 保存后等待至少一个采集周期。
 
@@ -34,19 +34,19 @@ curl --fail --silent --show-error --user monitor "https://rabbitmq.example.com:1
 
 | 页面字段 | 是否必填 | 说明 |
 | --- | --- | --- |
-| URL | 是 | RabbitMQ Management HTTP(S) API 基地址。 |
+| URL | 是 | RabbitMQ Management HTTP(S) 根地址，例如 `http://127.0.0.1:15672`，不要带 `/api/queues` 等路径。保存时去掉末尾斜杠并折叠重复斜杠。 |
 | 用户名 | 是 | 可读取 Management API 的账号。 |
 | 密码 | 是 | 对应账号密码。 |
 | 间隔 | 是 | 采集周期，单位秒，默认 `60`，不要低于 `30`。 |
-| 采集队列 | 否 | 默认关闭。开启后才会请求 `/api/queues`。 |
-| 队列包含 | 开启采集队列时必填 | Telegraf `queue_name_include` glob，多个用逗号分隔。 |
+| 采集队列 | 否 | 默认关闭。开启后才会请求 `/api/queues`。关闭是停止 Management 全表拉取压力的唯一办法。 |
+| 队列包含 | 开启采集队列时必填 | 开启后必须填包含规则，不填不能保存，避免全量拉取 `/api/queues`。名称过滤仍会先拉全表，只减少入库。 |
 | 队列排除 | 否 | Telegraf `queue_name_exclude` glob，可选。 |
 | 超时 | 开启采集队列时建议填写 | Telegraf `client_timeout`，默认 `20` 秒，范围 `15–30`。 |
 | 节点 | 是 | 能够访问 Management API 的采集节点。 |
 | 实例名称 | 是 | 平台内展示的实例名称。 |
 | 组 | 否 | 实例所属分组。 |
 
-名称过滤仍会先拉取完整 `/api/queues` 表，只减少入库；要减轻 Management API 压力请关闭「采集队列」。Telegraf 1.29 没有 vhost 包含/排除字段；队列序列已带 `queue` 与 `vhost` 标签，可在看板按标签过滤。
+名称过滤仍会先拉取完整 `/api/queues` 表，只减少入库；include glob 不能减轻 Management 拉取压力。要停止该压力，只能关闭「采集队列」。Telegraf 1.29 没有 vhost 包含/排除字段；队列序列已带 `queue` 与 `vhost` 标签，可在看板按标签过滤。
 
 ## 接入后验证
 
@@ -73,4 +73,4 @@ curl --fail --silent --show-error --user monitor "https://rabbitmq.example.com:1
 
 ### 队列采集超时或拖慢节点
 
-- 名称过滤不能避免全表 `/api/queues` 拉取。关闭「采集队列」，或收紧 include glob 并提高超时到 `15–30` 秒。
+- 名称过滤仍会拉取完整 `/api/queues` 表；include glob 只减少入库序列，不能减轻 Management 拉取压力。停止该压力的唯一办法是关闭「采集队列」。若请求较慢，可将超时调到 `15–30` 秒，但这不会减少全表拉取。

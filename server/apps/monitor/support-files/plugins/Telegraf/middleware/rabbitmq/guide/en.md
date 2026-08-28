@@ -14,9 +14,9 @@ This capability uses Telegraf `inputs.rabbitmq` to access the RabbitMQ Managemen
 ## Setup Steps
 
 1. From the actual collector node, validate the Management API address and monitoring account.
-2. Enter the URL, username, password, and interval (default `60` seconds; do not go below `30`).
+2. Enter the URL, username, password, and interval (default `60` seconds; do not go below `30`). Fill the Management root, for example `http://127.0.0.1:15672`, and do not include `/api/queues`.
 3. Leave Collect Queues off to collect overview and node only, without calling `/api/queues`.
-4. To collect queue metrics, turn Collect Queues on, fill the required queue-include glob, and keep the timeout at the default `20` seconds.
+4. To collect queue metrics, turn Collect Queues on and fill the required queue-include rules (empty include cannot be saved, to avoid fetching all of `/api/queues`). Keep the timeout at the default `20` seconds.
 5. In the monitored objects table, select the node and enter the URL, instance name, and optional group.
 6. Save the configuration and wait for at least one collection interval.
 
@@ -34,19 +34,19 @@ The request must return `200` and JSON. Validate the same full base address that
 
 | Field | Required | Description |
 | --- | --- | --- |
-| URL | Yes | RabbitMQ Management HTTP(S) API base address. |
+| URL | Yes | RabbitMQ Management HTTP(S) root, for example `http://127.0.0.1:15672`. Do not include `/api/queues` or another path. On save, trailing slashes are stripped and duplicate slashes are collapsed. |
 | Username | Yes | Account that can read the Management API. |
 | Password | Yes | Password for the account. |
 | Interval | Yes | Collection interval in seconds; default `60`, not below `30`. |
-| Collect Queues | No | Off by default. Only then does collection call `/api/queues`. |
-| Queue Include | Required when Collect Queues is on | Telegraf `queue_name_include` glob; comma-separated for multiple. |
+| Collect Queues | No | Off by default. Only then does collection call `/api/queues`. Turning this off is the only way to stop the full Management table fetch. |
+| Queue Include | Required when Collect Queues is on | When Collect Queues is on, include rules are required. Empty values cannot be saved, to avoid fetching all of `/api/queues`. Name filters still fetch the full table and only reduce stored series. |
 | Queue Exclude | No | Optional Telegraf `queue_name_exclude` glob. |
 | Timeout | Recommended when Collect Queues is on | Telegraf `client_timeout`; default `20` seconds, range `15–30`. |
 | Node | Yes | Collector node that can reach the Management API. |
 | Instance Name | Yes | Display name in the platform. |
 | Group | No | Optional instance group. |
 
-Name filters still fetch the full `/api/queues` table first and only reduce storage. Turn Collect Queues off to stop Management API pressure. Telegraf 1.29 has no vhost include/exclude; queue series already carry `queue` and `vhost` labels for dashboard filtering.
+Name filters still fetch the full `/api/queues` table first and only reduce stored series. Tightening the include glob does not reduce Management fetch pressure. Turn Collect Queues off to stop that pressure. Telegraf 1.29 has no vhost include/exclude; queue series already carry `queue` and `vhost` labels for dashboard filtering.
 
 ## Post-setup Verification
 
@@ -73,4 +73,4 @@ After enabling Collect Queues, also confirm `rabbitmq_queue_messages`.
 
 ### Queue collection times out or slows the node
 
-- Name filters do not avoid the full `/api/queues` fetch. Turn Collect Queues off, or tighten the include glob and raise timeout to `15–30` seconds.
+- Name filters still fetch the full `/api/queues` table. The include glob only reduces stored series and does not reduce Management fetch pressure. The only way to stop that pressure is to turn Collect Queues off. If the request is slow, raise the timeout to `15–30` seconds; that does not avoid the full-table fetch.

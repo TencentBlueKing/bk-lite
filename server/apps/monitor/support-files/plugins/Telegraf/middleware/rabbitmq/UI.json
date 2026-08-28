@@ -15,12 +15,23 @@
       "required": true,
       "visible_in": "edit",
       "editable": false,
-      "description": "监控的目标网址链接，以检测其可用性和性能",
-      "guide_short": "RabbitMQ Management API 根地址（默认 15672），与 AMQP 5672 端口不同；需先 rabbitmq-plugins enable rabbitmq_management。",
-      "guide_short_en": "RabbitMQ Management API base address, commonly on port 15672 rather than AMQP port 5672. The rabbitmq_management plugin must be enabled.",
+      "description": "填写 Management 根地址，例如 http://127.0.0.1:15672，不要带 /api/queues。",
+      "description_en": "Enter the Management root, for example http://127.0.0.1:15672. Do not include /api/queues.",
+      "guide_short": "填写 Management 根地址，例如 http://127.0.0.1:15672，不要带 /api/queues。与 AMQP 5672 不同，默认 15672；需先 rabbitmq-plugins enable rabbitmq_management。保存时去掉末尾斜杠并折叠重复斜杠。若填写了 host:port 之后的路径会提示警告。",
+      "guide_short_en": "Enter the Management root, for example http://127.0.0.1:15672. Do not include /api/queues. This is port 15672 by default, not AMQP 5672; enable rabbitmq_management first. On save, trailing slashes are stripped and duplicate slashes are collapsed. A path after host:port shows a warning.",
       "widget_props": {
-        "placeholder": "http://example.com:8000"
+        "placeholder": "http://127.0.0.1:15672",
+        "placeholder_en": "http://127.0.0.1:15672"
       },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^https?://[^/?#]+/?$",
+          "warningOnly": true,
+          "message": "请填写 Management 根地址（例如 http://127.0.0.1:15672），不要带路径，尤其不要写 /api/queues。",
+          "message_en": "Enter the Management root (for example http://127.0.0.1:15672) with no path. Do not include /api/queues."
+        }
+      ],
       "transform_on_edit": {
         "origin_path": "child.content.config.url"
       },
@@ -99,8 +110,8 @@
       "required": false,
       "default_value": false,
       "description": "是否采集队列级指标。默认关闭，不请求 /api/queues。",
-      "guide_short": "默认只采集 overview 与 node。开启后才会请求 /api/queues。名称过滤仍会先拉取完整队列表，只减少入库；要减轻 Management API 压力请保持关闭。",
-      "guide_short_en": "Default collection is overview and node only. Enabling this hits /api/queues. Name filters still fetch the full queue table first and only reduce storage; turn this off to stop Management API pressure.",
+      "guide_short": "默认只采集 overview 与 node。开启后才会请求 /api/queues。名称过滤仍会先拉全表，只减少入库，不能减轻 Management 拉取压力；停止该压力的唯一办法是关闭本开关。",
+      "guide_short_en": "Default collection is overview and node only. Enabling this hits /api/queues. Name filters still fetch the full queue table and only reduce stored series; they do not reduce Management fetch pressure. Turning this off is the only way to stop that pressure.",
       "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.collect_queues"
@@ -113,9 +124,9 @@
       "label": "队列包含",
       "type": "input",
       "required": true,
-      "description": "队列名 glob，开启采集队列时必填。多个用逗号分隔。",
-      "guide_short": "Telegraf queue_name_include，支持 glob，例如 orders* 或 prod_*,events.#。名称过滤仍会先拉取完整 /api/queues 表，只减少入库。",
-      "guide_short_en": "Telegraf queue_name_include glob, for example orders* or prod_*,events.#. Name filters still fetch the full /api/queues table first and only reduce storage.",
+      "description": "开启后必须填包含规则，不填不能保存，避免全量拉取 /api/queues",
+      "guide_short": "开启后必须填包含规则，不填不能保存，避免全量拉取 /api/queues。名称过滤仍会先拉全表 /api/queues，只减少入库；要减轻 Management API 压力请关闭「采集队列」。",
+      "guide_short_en": "When Collect Queues is on, include rules are required. Empty values cannot be saved, to avoid fetching all of /api/queues. Name filters still fetch the full /api/queues table and only reduce stored series; turn Collect Queues off to stop Management API pressure.",
       "dependency": {
         "field": "collect_queues",
         "value": true
@@ -124,11 +135,19 @@
         "placeholder": "例如 orders* 或 prod_*,events.*",
         "placeholder_en": "e.g. orders* or prod_*,events.*"
       },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "\\S",
+          "message": "开启后必须填包含规则，不填不能保存，避免全量拉取 /api/queues",
+          "message_en": "When Collect Queues is on, include rules are required. Empty values cannot be saved, to avoid fetching all of /api/queues."
+        }
+      ],
       "transform_on_edit": {
         "origin_path": "child.content.config.queue_name_include"
       },
       "label_en": "Queue Include",
-      "description_en": "Queue-name glob required when queue collection is on. Separate multiple globs with commas."
+      "description_en": "When Collect Queues is on, include rules are required. Empty values cannot be saved, to avoid fetching all of /api/queues."
     },
     {
       "name": "queue_name_exclude",
@@ -205,8 +224,13 @@
       "label": "URL",
       "type": "input",
       "required": true,
+      "description": "填写 Management 根地址，例如 http://127.0.0.1:15672，不要带 /api/queues。",
+      "description_en": "Enter the Management root, for example http://127.0.0.1:15672. Do not include /api/queues.",
+      "guide_short": "填写 Management 根地址，例如 http://127.0.0.1:15672，不要带 /api/queues。保存时去掉末尾斜杠并折叠重复斜杠。若填写了 host:port 之后的路径会提示警告。",
+      "guide_short_en": "Enter the Management root, for example http://127.0.0.1:15672. Do not include /api/queues. On save, trailing slashes are stripped and duplicate slashes are collapsed. A path after host:port shows a warning.",
       "widget_props": {
-        "placeholder": "http://example.com:8000"
+        "placeholder": "http://127.0.0.1:15672",
+        "placeholder_en": "http://127.0.0.1:15672"
       },
       "rules": [
         {
@@ -214,6 +238,13 @@
           "pattern": "^(http|https)://.*",
           "message": "URL必须以http://或https://开头",
           "excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"
+        },
+        {
+          "type": "pattern",
+          "pattern": "^https?://[^/?#]+/?$",
+          "warningOnly": true,
+          "message": "请填写 Management 根地址（例如 http://127.0.0.1:15672），不要带路径，尤其不要写 /api/queues。",
+          "message_en": "Enter the Management root (for example http://127.0.0.1:15672) with no path. Do not include /api/queues."
         }
       ],
       "change_handler": {
