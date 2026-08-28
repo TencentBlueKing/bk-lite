@@ -17,13 +17,12 @@ import {
   showEdgeTools,
   showPorts,
 } from '../utils/topologyUtils';
+import { bindGraphOperationHistory } from './graphOperationHistory';
 import type { useGraphHistory } from './useGraphHistory';
 import type { useTopologyState } from './useTopologyState';
 import type { TopologyNodeData } from '@/app/ops-analysis/types/topology';
 import type { SingleValueFetchErrorTooltipState } from '../components/singleValueFetchErrorTooltip';
 
-type NodePositionSnapshot = ReturnType<Node['getPosition']>;
-type EdgeVerticesSnapshot = ReturnType<Edge['getVertices']>;
 type NodeSizeSnapshot = ReturnType<Node['getSize']>;
 
 interface NodeResizeSnapshot {
@@ -74,6 +73,8 @@ export const useGraphInitializer = ({
     highlightNode,
     resetNodeStyle,
     recordOperation,
+    startBatch,
+    stopBatch,
   } = history;
 
   const initMiniMap = useCallback(
@@ -108,125 +109,13 @@ export const useGraphInitializer = ({
   useEffect(() => {
     if (!graphInstance) return;
 
-    const handleNodeAdded = ({ node }: { node: Node }) => {
-      recordOperation({
-        action: 'add',
-        cellType: 'node',
-        cellId: node.id,
-        data: {
-          after: node.toJSON(),
-        },
-      });
-    };
-
-    const handleNodeRemoved = ({ node }: { node: Node }) => {
-      recordOperation({
-        action: 'delete',
-        cellType: 'node',
-        cellId: node.id,
-        data: {
-          before: node.toJSON(),
-        },
-      });
-      onNodeRemoved?.();
-    };
-
-    const handleEdgeAdded = ({ edge }: { edge: Edge }) => {
-      recordOperation({
-        action: 'add',
-        cellType: 'edge',
-        cellId: edge.id,
-        data: {
-          after: edge.toJSON(),
-        },
-      });
-    };
-
-    const handleEdgeRemoved = ({ edge }: { edge: Edge }) => {
-      recordOperation({
-        action: 'delete',
-        cellType: 'edge',
-        cellId: edge.id,
-        data: {
-          before: edge.toJSON(),
-        },
-      });
-    };
-
-    const nodePositions = new Map<string, NodePositionSnapshot>();
-    const edgeVertices = new Map<string, EdgeVerticesSnapshot>();
-
-    const handleNodeMoveStart = ({ node }: { node: Node }) => {
-      nodePositions.set(node.id, node.getPosition());
-    };
-
-    const handleNodeMoved = ({ node }: { node: Node }) => {
-      const oldPosition = nodePositions.get(node.id);
-      if (oldPosition) {
-        const newPosition = node.getPosition();
-        if (
-          oldPosition.x !== newPosition.x ||
-          oldPosition.y !== newPosition.y
-        ) {
-          recordOperation({
-            action: 'move',
-            cellType: 'node',
-            cellId: node.id,
-            data: {
-              before: { position: oldPosition },
-              after: { position: newPosition },
-            },
-          });
-        }
-        nodePositions.delete(node.id);
-      }
-    };
-
-    const handleEdgeVerticesStart = ({ edge }: { edge: Edge }) => {
-      edgeVertices.set(edge.id, edge.getVertices());
-    };
-
-    const handleEdgeVerticesChanged = ({ edge }: { edge: Edge }) => {
-      const oldVertices = edgeVertices.get(edge.id);
-      if (oldVertices) {
-        const newVertices = edge.getVertices();
-        recordOperation({
-          action: 'move',
-          cellType: 'edge',
-          cellId: edge.id,
-          data: {
-            before: { vertices: oldVertices },
-            after: { vertices: newVertices },
-          },
-        });
-        edgeVertices.delete(edge.id);
-      }
-    };
-
-    graphInstance.on('node:added', handleNodeAdded);
-    graphInstance.on('node:removed', handleNodeRemoved);
-    graphInstance.on('edge:added', handleEdgeAdded);
-    graphInstance.on('edge:removed', handleEdgeRemoved);
-
-    graphInstance.on('node:move', handleNodeMoveStart);
-    graphInstance.on('node:moved', handleNodeMoved);
-    graphInstance.on('edge:change:vertices', handleEdgeVerticesStart);
-    graphInstance.on('edge:change:vertices', handleEdgeVerticesChanged);
-
-    return () => {
-      graphInstance.off('node:added', handleNodeAdded);
-      graphInstance.off('node:removed', handleNodeRemoved);
-      graphInstance.off('edge:added', handleEdgeAdded);
-      graphInstance.off('edge:removed', handleEdgeRemoved);
-      graphInstance.off('node:move', handleNodeMoveStart);
-      graphInstance.off('node:moved', handleNodeMoved);
-      graphInstance.off('edge:change:vertices', handleEdgeVerticesStart);
-      graphInstance.off('edge:change:vertices', handleEdgeVerticesChanged);
-
-      nodePositions.clear();
-      edgeVertices.clear();
-    };
-  }, [graphInstance, recordOperation, onNodeRemoved]);
+    return bindGraphOperationHistory(graphInstance, {
+      recordOperation,
+      startBatch,
+      stopBatch,
+      onNodeRemoved,
+    });
+  }, [graphInstance, recordOperation, startBatch, stopBatch, onNodeRemoved]);
 
   const bindGraphEvents = (graph: X6Graph) => {
     const hideCtx = () => setContextMenuVisible(false);

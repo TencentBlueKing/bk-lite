@@ -4,40 +4,31 @@
  */
 import { useCallback, useState, useRef } from 'react';
 import type { Graph as X6Graph, Node, Edge, Cell } from '@antv/x6';
-import type { Attr } from '@antv/x6/es/registry/attr';
 import { COLORS } from '../constants/nodeDefaults';
 import { addEdgeTools } from '../utils/topologyUtils';
 import {
   highlightTopologyNode,
   resetTopologyNodeChrome,
 } from '../utils/topologySelectionChrome';
+import type { CellOperation, HistoryEntry } from './graphOperationHistory';
+import {
+  redoHistoryEntry,
+  undoHistoryEntry,
+} from './graphOperationHistory';
 
 const OPERATION_HISTORY_LIMIT = 50; // 操作历史记录最大数量
 const UNDO_REDO_DEBOUNCE = 50; // 撤销/重做防抖时间（ms）
 
-interface OperationSnapshot extends Record<string, unknown> {
-  attrs?: Attr.CellAttrs;
-  data?: unknown;
-  size?: { width: number; height: number };
-  position?: { x: number; y: number };
-  vertices?: Array<{ x: number; y: number }>;
-}
-
-interface OperationRecord {
-  action: 'add' | 'delete' | 'update' | 'move';
-  data: {
-    before?: OperationSnapshot;
-    after?: OperationSnapshot;
-  };
-  cellType: 'node' | 'edge';
-  cellId: string;
-}
+export type { CellOperation as OperationRecord, HistoryEntry };
 
 export const useGraphHistory = (graphInstance: X6Graph | null) => {
   const isPerformingUndoRedo = useRef(false);
   const isInitializing = useRef(true);
+  const operationIndexRef = useRef(-1);
+  const batchDepthRef = useRef(0);
+  const pendingBatchRef = useRef<CellOperation[]>([]);
 
-  const [operationHistory, setOperationHistory] = useState<OperationRecord[]>([]);
+  const [operationHistory, setOperationHistory] = useState<HistoryEntry[]>([]);
   const [operationIndex, setOperationIndex] = useState(-1);
 
   const resetAllStyles = useCallback((graph: X6Graph) => {
@@ -81,81 +72,63 @@ export const useGraphHistory = (graphInstance: X6Graph | null) => {
     resetTopologyNodeChrome(node);
   }, []);
 
-  const recordOperation = useCallback((operation: OperationRecord) => {
-    if (isPerformingUndoRedo.current || isInitializing.current) return;
+  const commitEntry = useCallback((operations: CellOperation[]) => {
+    if (operations.length === 0) return;
 
     setOperationHistory(prev => {
-      const newHistory = [...prev.slice(0, operationIndex + 1), operation];
-      if (newHistory.length > OPERATION_HISTORY_LIMIT) {
-        const trimmedHistory = newHistory.slice(-OPERATION_HISTORY_LIMIT);
-        setOperationIndex(trimmedHistory.length - 1);
-        return trimmedHistory;
-      }
-      setOperationIndex(newHistory.length - 1);
-      return newHistory;
+      const newHistory = [
+        ...prev.slice(0, operationIndexRef.current + 1),
+        { operations },
+      ];
+      const trimmedHistory =
+        newHistory.length > OPERATION_HISTORY_LIMIT
+          ? newHistory.slice(-OPERATION_HISTORY_LIMIT)
+          : newHistory;
+      const nextIndex = trimmedHistory.length - 1;
+      operationIndexRef.current = nextIndex;
+      setOperationIndex(nextIndex);
+      return trimmedHistory;
     });
-  }, [operationIndex]);
+  }, []);
 
+  const startBatch = useCallback(() => {
+    batchDepthRef.current += 1;
+  }, []);
+
+  const stopBatch = useCallback(() => {
+    if (batchDepthRef.current === 0) return;
+    batchDepthRef.current -= 1;
+    if (batchDepthRef.current === 0) {
+      const operations = pendingBatchRef.current;
+      pendingBatchRef.current = [];
+      commitEntry(operations);
+    }
+  }, [commitEntry]);
+
+  const recordOperation = useCallback((operation: CellOperation) => {
+    if (isPerformingUndoRedo.current || isInitializing.current) return;
+
+    if (batchDepthRef.current > 0) {
+      pendingBatchRef.current.push(operation);
+      return;
+    }
+
+    commitEntry([operation]);
+  }, [commitEntry]);
 
   const undo = useCallback(() => {
     if (!graphInstance || operationIndex < 0 || isPerformingUndoRedo.current) return;
 
-    const operation = operationHistory[operationIndex];
-    if (!operation) return;
+    const entry = operationHistory[operationIndex];
+    if (!entry) return;
 
     try {
       isPerformingUndoRedo.current = true;
+      undoHistoryEntry(graphInstance, entry);
 
-      switch (operation.action) {
-        case 'add':
-          // 撤销添加：删除节点/边
-          const addedCell = graphInstance.getCellById(operation.cellId);
-          if (addedCell) {
-            graphInstance.removeCell(addedCell);
-          }
-          break;
-
-        case 'delete':
-          // 撤销删除：重新添加节点/边
-          if (operation.data.before) {
-            if (operation.cellType === 'node') {
-              graphInstance.addNode(operation.data.before);
-            } else {
-              graphInstance.addEdge(operation.data.before);
-            }
-          }
-          break;
-
-        case 'move':
-          // 撤销移动：恢复到之前的位置
-          const movedCell = graphInstance.getCellById(operation.cellId);
-          if (movedCell && operation.data.before) {
-            if (operation.cellType === 'node' && movedCell.isNode()) {
-              (movedCell as Node).setPosition(operation.data.before.position as { x: number; y: number });
-            } else if (operation.cellType === 'edge' && movedCell.isEdge() && operation.data.before.vertices) {
-              (movedCell as Edge).setVertices(operation.data.before.vertices as { x: number; y: number }[]);
-            }
-          }
-          break;
-
-        case 'update':
-          // 撤销更新：恢复到之前的状态
-          const updatedCell = graphInstance.getCellById(operation.cellId);
-          if (updatedCell && operation.data.before) {
-            if (operation.data.before.attrs) {
-              updatedCell.setAttrs(operation.data.before.attrs);
-            }
-            if (operation.data.before.data) {
-              updatedCell.setData(operation.data.before.data);
-            }
-            if (operation.data.before.size && operation.cellType === 'node' && updatedCell.isNode()) {
-              (updatedCell as Node).setSize(operation.data.before.size as { width: number; height: number });
-            }
-          }
-          break;
-      }
-
-      setOperationIndex(prev => prev - 1);
+      const nextIndex = operationIndex - 1;
+      operationIndexRef.current = nextIndex;
+      setOperationIndex(nextIndex);
       setTimeout(() => {
         isPerformingUndoRedo.current = false;
       }, UNDO_REDO_DEBOUNCE);
@@ -168,62 +141,16 @@ export const useGraphHistory = (graphInstance: X6Graph | null) => {
   const redo = useCallback(() => {
     if (!graphInstance || operationIndex >= operationHistory.length - 1 || isPerformingUndoRedo.current) return;
 
-    const operation = operationHistory[operationIndex + 1];
-    if (!operation) return;
+    const entry = operationHistory[operationIndex + 1];
+    if (!entry) return;
 
     try {
       isPerformingUndoRedo.current = true;
+      redoHistoryEntry(graphInstance, entry);
 
-      switch (operation.action) {
-        case 'add':
-          // 重做添加：添加节点/边
-          if (operation.data.after) {
-            if (operation.cellType === 'node') {
-              graphInstance.addNode(operation.data.after);
-            } else {
-              graphInstance.addEdge(operation.data.after);
-            }
-          }
-          break;
-
-        case 'delete':
-          // 重做删除：删除节点/边
-          const cellToDelete = graphInstance.getCellById(operation.cellId);
-          if (cellToDelete) {
-            graphInstance.removeCell(cellToDelete);
-          }
-          break;
-
-        case 'move':
-          // 重做移动：移动到新位置
-          const cellToMove = graphInstance.getCellById(operation.cellId);
-          if (cellToMove && operation.data.after) {
-            if (operation.cellType === 'node' && cellToMove.isNode()) {
-              (cellToMove as Node).setPosition(operation.data.after.position as { x: number; y: number });
-            } else if (operation.cellType === 'edge' && cellToMove.isEdge() && operation.data.after.vertices) {
-              (cellToMove as Edge).setVertices(operation.data.after.vertices as { x: number; y: number }[]);
-            }
-          }
-          break;
-
-        case 'update':
-          // 重做更新：应用新的状态
-          const cellToUpdate = graphInstance.getCellById(operation.cellId);
-          if (cellToUpdate && operation.data.after) {
-            if (operation.data.after.attrs) {
-              cellToUpdate.setAttrs(operation.data.after.attrs);
-            }
-            if (operation.data.after.data) {
-              cellToUpdate.setData(operation.data.after.data);
-            }
-            if (operation.data.after.size && operation.cellType === 'node' && cellToUpdate.isNode()) {
-              (cellToUpdate as Node).setSize(operation.data.after.size as { width: number; height: number });
-            }
-          }
-          break;
-      }
-
-      setOperationIndex(prev => prev + 1);
+      const nextIndex = operationIndex + 1;
+      operationIndexRef.current = nextIndex;
+      setOperationIndex(nextIndex);
       setTimeout(() => {
         isPerformingUndoRedo.current = false;
       }, UNDO_REDO_DEBOUNCE);
@@ -234,6 +161,9 @@ export const useGraphHistory = (graphInstance: X6Graph | null) => {
   }, [graphInstance, operationHistory, operationIndex]);
 
   const clearOperationHistory = useCallback(() => {
+    pendingBatchRef.current = [];
+    batchDepthRef.current = 0;
+    operationIndexRef.current = -1;
     setOperationHistory([]);
     setOperationIndex(-1);
   }, []);
@@ -258,6 +188,8 @@ export const useGraphHistory = (graphInstance: X6Graph | null) => {
 
     // 操作记录
     recordOperation,
+    startBatch,
+    stopBatch,
 
     // 撤销/重做
     undo,
