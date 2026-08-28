@@ -134,6 +134,47 @@ def test_import_users_row_messages_use_request_locale(monkeypatch, locale, users
 @pytest.mark.parametrize(
     ("locale", "expected"),
     [
+        ("en", "Failed to create user"),
+        ("zh-Hans", "创建用户失败"),
+    ],
+)
+def test_import_users_create_failed_uses_request_locale(monkeypatch, locale, expected):
+    class Atomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    _stub_import_users_group_lookup(monkeypatch)
+    monkeypatch.setattr(
+        "apps.system_mgmt.viewset.user_viewset.User.objects.filter",
+        lambda **kwargs: SimpleNamespace(exists=lambda: False),
+    )
+    monkeypatch.setattr("apps.system_mgmt.viewset.user_viewset.transaction.atomic", Atomic)
+    monkeypatch.setattr("apps.system_mgmt.viewset.user_viewset.logger.exception", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "apps.system_mgmt.viewset.user_viewset.User.objects.create",
+        lambda **kwargs: (_ for _ in ()).throw(RuntimeError("create failed")),
+    )
+    request = request_with_locale(locale)
+    request.data = {
+        "group_id": 1,
+        "file_name": "users.xlsx",
+        "users": [{"username": "new-import-user", "lastName": "A", "email": "a@example.com"}],
+    }
+    response = UserViewSet.import_users.__wrapped__(UserViewSet(), request)
+    payload = response_payload(response)
+    assert response.status_code == 200
+    assert payload["result"] is True
+    assert payload["data"]["failures"] == [
+        {"row_number": 2, "username": "new-import-user", "message": expected},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("locale", "expected"),
+    [
         ("en", "Password policy:"),
         ("zh-Hans", "密码策略要求："),
     ],
