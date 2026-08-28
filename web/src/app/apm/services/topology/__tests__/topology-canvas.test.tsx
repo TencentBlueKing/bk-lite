@@ -102,10 +102,13 @@ describe('APM 服务拓扑画布', () => {
     const result = renderWithApmIntl(
       <TopologyCanvas edges={edges} keyword="" nodes={nodes} zoom={1} />,
     );
+    expect(result.container.querySelector('[data-topology-layout-pending="true"]')).not.toBeNull();
+    expect(result.container.querySelector('[aria-busy="true"]')).not.toBeNull();
 
     await waitFor(() => {
       expect(edgePairs(result.container)).toEqual(['catalog>inventory', 'storefront>catalog']);
     });
+    expect(result.container.querySelector('[data-topology-layout-pending="true"]')).toBeNull();
     result.container.querySelectorAll<SVGPathElement>('g[data-source] > path').forEach((path) => {
       expect(path.getAttribute('marker-end')).toBe('url(#apm-arrow)');
       expect(path.getAttribute('marker-start')).toBeNull();

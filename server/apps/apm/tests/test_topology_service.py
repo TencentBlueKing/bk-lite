@@ -740,19 +740,24 @@ def test_sample_traces_omitted_fetch_logs_template_without_leaking_payload(caplo
         def sample_traces(self, query: TopologySampleQuery):
             raise AssertionError("not used")
 
-        def get_trace(self, trace_id: str):
+        def _query_rows(self, query, started_at, ended_at, *, limit=None):
             raise TelemetryStoreUnavailable("VictoriaTraces 查询不可用")
 
     store = _Store()
     caplog.set_level("WARNING", logger="apm")
-    traces, omitted = store._fetch_topology_traces(["secret-token-should-not-appear", "a" * 32])
+    now = timezone.now()
+    traces, omitted = store._fetch_topology_traces(
+        ["secret-token-should-not-appear", "a" * 32],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+    )
 
     assert traces == []
     assert omitted == 2
     records = [
         record
         for record in caplog.records
-        if getattr(record, "msg", "") == "event=apm_topology_trace_fetch_failed failed_stage=get_trace error_type=%s"
+        if getattr(record, "msg", "") == "event=apm_topology_trace_fetch_failed failed_stage=sample_spans error_type=%s"
     ]
     assert records
     record: LogRecord = records[0]

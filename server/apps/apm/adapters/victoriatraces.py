@@ -4,7 +4,6 @@ import base64
 import json
 import math
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -48,6 +47,7 @@ MAX_ACTIVITY_DIMENSIONS = 10_000
 MAX_DEPLOYMENT_RELEASES = 10_000
 MAX_DEPENDENCIES = 10_000
 MAX_TOPOLOGY_SAMPLE_TRACES = 200
+MAX_TOPOLOGY_SAMPLE_SPANS = 20_000
 MAX_RED_POINTS = 120
 MAX_TOP_ENDPOINTS = 10
 MAX_ENDPOINT_NAME_LENGTH = 256
@@ -524,43 +524,115 @@ class VictoriaTracesTelemetryStore:
             trace_ids.append(trace_id)
         truncated = len(trace_ids) > query.limit
         selected_ids = trace_ids[: query.limit]
-        traces, omitted = self._fetch_topology_traces(selected_ids)
+        traces, omitted = self._fetch_topology_traces(
+            selected_ids,
+            started_at=query.started_at,
+            ended_at=query.ended_at,
+        )
         return TopologyTraceSample(traces=tuple(traces), truncated=truncated, omitted_trace_fetches=omitted)
 
-    def _fetch_topology_traces(self, trace_ids: list[str]) -> tuple[list[TraceDetail], int]:
+    def _fetch_topology_traces(
+        self,
+        trace_ids: list[str],
+        *,
+        started_at: datetime,
+        ended_at: datetime,
+    ) -> tuple[list[TraceDetail], int]:
+        """一次 LogsQL 拉回样本 Trace 的 Span，避免逐条打 Jaeger get_trace。"""
+
         if not trace_ids:
             return [], 0
+        quoted = ",".join(_logsql_string(trace_id) for trace_id in trace_ids)
+        logs_query = f"trace_id:in({quoted}) | limit {MAX_TOPOLOGY_SAMPLE_SPANS}"
+        try:
+            rows = self._query_rows(logs_query, started_at, ended_at, limit=MAX_TOPOLOGY_SAMPLE_SPANS)
+        except TelemetryStoreUnavailable as exc:
+            logger.warning(
+                "event=apm_topology_trace_fetch_failed failed_stage=sample_spans error_type=%s",
+                type(exc).__name__,
+            )
+            return [], len(trace_ids)
+        traces_by_id = self._traces_from_span_rows(rows)
         traces: list[TraceDetail] = []
         omitted = 0
-
-        def _load(trace_id: str) -> TraceDetail | None:
-            try:
-                return self.get_trace(trace_id)
-            except TelemetryStoreUnavailable as exc:
-                logger.warning(
-                    "event=apm_topology_trace_fetch_failed failed_stage=get_trace error_type=%s",
-                    type(exc).__name__,
-                )
-                return None
-
-        if len(trace_ids) == 1:
-            detail = _load(trace_ids[0])
-            if detail is None:
-                return [], 1
-            return [detail], 0
-
-        loaded: dict[str, TraceDetail | None] = {}
-        with ThreadPoolExecutor(max_workers=min(8, len(trace_ids))) as pool:
-            futures = {pool.submit(_load, trace_id): trace_id for trace_id in trace_ids}
-            for future in as_completed(futures):
-                loaded[futures[future]] = future.result()
         for trace_id in trace_ids:
-            detail = loaded.get(trace_id)
+            detail = traces_by_id.get(trace_id)
             if detail is None:
                 omitted += 1
                 continue
             traces.append(detail)
         return traces, omitted
+
+    @classmethod
+    def _traces_from_span_rows(cls, rows: list[dict[str, Any]]) -> dict[str, TraceDetail]:
+        grouped: dict[str, list[SpanDetail]] = {}
+        truncated_ids: set[str] = set()
+        for row in rows:
+            trace_id = str(row.get("trace_id", "")).strip()
+            if not trace_id:
+                continue
+            spans = grouped.setdefault(trace_id, [])
+            if len(spans) >= _RAW_SPAN_PARSE_LIMIT:
+                truncated_ids.add(trace_id)
+                continue
+            span = cls._span_detail_from_row(row)
+            if span is None:
+                continue
+            if any(item.span_id == span.span_id for item in spans):
+                continue
+            spans.append(span)
+        traces: dict[str, TraceDetail] = {}
+        for trace_id, spans in grouped.items():
+            if not spans:
+                continue
+            spans.sort(key=lambda item: (item.started_at, item.span_id))
+            root = next((item for item in spans if item.parent_span_id is None), spans[0])
+            traces[trace_id] = TraceDetail(
+                trace_id=trace_id,
+                spans=tuple(spans),
+                service_namespace=root.service_namespace,
+                service_name=root.service_name,
+                environment=root.environment,
+                instance_id=root.instance_id,
+                truncated=trace_id in truncated_ids,
+            )
+        return traces
+
+    @staticmethod
+    def _span_detail_from_row(row: dict[str, Any]) -> SpanDetail | None:
+        span_id = str(row.get("span_id", "")).strip()
+        service_name = str(row.get("resource_attr:service.name", "")).strip()
+        if not span_id or not service_name:
+            return None
+        started_raw = _number(row.get("start_time_unix_nano"))
+        if started_raw is None:
+            return None
+        try:
+            started_at = datetime.fromtimestamp(started_raw / 1_000_000_000, tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            return None
+        parent_span_id = str(row.get("parent_span_id", "")).strip()
+        if not parent_span_id or set(parent_span_id) <= {"0"}:
+            parent_span_id = None
+        attributes = {
+            key: value
+            for key, value in row.items()
+            if isinstance(key, str) and key.startswith(("span_attr:", "resource_attr:"))
+        }
+        return SpanDetail(
+            span_id=span_id,
+            parent_span_id=parent_span_id,
+            name=str(row.get("name", "")),
+            started_at=started_at,
+            duration_ms=(_number(row.get("duration")) or 0.0) / 1_000_000,
+            status="error" if str(row.get("status_code", "")).strip() == "2" else "ok",
+            attributes=attributes,
+            service_namespace=str(row.get("resource_attr:service.namespace", "")),
+            service_name=service_name,
+            environment=str(row.get("resource_attr:deployment.environment", "")),
+            instance_id=str(row.get("resource_attr:service.instance.id", "")).strip() or None,
+            kind=_CODE_TO_KIND.get(str(row.get("kind", "")).strip(), "unspecified"),
+        )
 
     @staticmethod
     def _service_name_filter(service_names: tuple[str, ...]) -> str:

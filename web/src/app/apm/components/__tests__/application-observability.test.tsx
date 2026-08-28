@@ -154,4 +154,31 @@ describe('APM 应用观测详情', () => {
     expect(screen.getByRole('columnheader', { name: '吞吐量（请求/秒）' })).not.toBeNull();
     await waitFor(() => expect(api.getServiceRed).toHaveBeenCalled());
   });
+
+  it('拓扑取数完成前展示加载而不是空状态', async () => {
+    let resolveTopology: (value: unknown) => void = () => undefined;
+    api.getTopology.mockImplementation(() => new Promise((resolve) => {
+      resolveTopology = resolve;
+    }));
+
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+
+    expect(await screen.findByText('应用服务拓扑')).not.toBeNull();
+    expect(screen.getByLabelText('加载 APM 数据')).not.toBeNull();
+    expect(screen.queryByText('当前时间窗暂无应用内调用关系。')).toBeNull();
+    expect(screen.queryByTestId('application-topology')).toBeNull();
+
+    resolveTopology({
+      nodes: [
+        { id: 'shop-node', service_namespace: 'shop', service_name: 'checkout', environment: 'prod', health: 'healthy', sampled_spans: 2, error_spans: 0 },
+      ],
+      edges: [],
+      sampled_traces: 1,
+      truncated: false,
+      data_state: 'available',
+    });
+
+    await waitFor(() => expect(screen.getByTestId('application-topology')).not.toBeNull());
+    expect(screen.queryByText('当前时间窗暂无应用内调用关系。')).toBeNull();
+  });
 });

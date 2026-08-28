@@ -3,6 +3,7 @@
 import { AimOutlined, MinusOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button } from 'antd';
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from 'react';
+import CatalogState from '@/app/apm/components/catalog-state';
 import { formatCompactLatency, formatErrorRate, formatNumber, formatTopologyEdgeMetrics } from '@/app/apm/components/metric-format';
 import { serviceLanguageLabel } from '@/app/apm/components/service-language-icon';
 import TopologyServiceIcon from '@/app/apm/components/topology-service-icon';
@@ -108,7 +109,8 @@ export default function TopologyCanvas({
     setView({ x: 0, y: 0, k: zoom });
   }, [layoutKey, zoom]);
 
-  const positionedNodes = layoutResult.key === layoutKey ? layoutResult.nodes : [];
+  const layoutPending = layoutResult.key !== layoutKey;
+  const positionedNodes = layoutPending ? [] : layoutResult.nodes;
   const nodeMap = new Map(positionedNodes.map((node) => [node.id, node]));
   const maxSpans = Math.max(...nodes.map((node) => node.sampled_spans), 1);
   const maxCalls = Math.max(...edges.map((edge) => edge.sampled_calls), 1);
@@ -189,7 +191,14 @@ export default function TopologyCanvas({
     node.kind === 'user_request' ? t('apm.topology.userRequestNode', '用户请求') : node.service_name;
 
   return (
-    <div className="relative h-[640px] w-full overflow-hidden bg-[var(--color-fill-1)]" data-topology-surface="true">
+    <div className="relative h-[640px] w-full overflow-hidden bg-[var(--color-fill-1)]" data-topology-layout-pending={layoutPending ? 'true' : 'false'} data-topology-surface="true">
+      {layoutPending ? (
+        <div className="absolute inset-0 z-20 flex items-center bg-[var(--color-fill-1)]">
+          <div className="w-full">
+            <CatalogState kind="loading" />
+          </div>
+        </div>
+      ) : null}
       {toolbar ? <div className="absolute left-3 top-3 z-10 w-52 max-w-[calc(100%-24px)]">{toolbar}</div> : null}
       <div className={`absolute left-3 z-10 inline-flex w-fit flex-col overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] ${toolbar ? 'top-14' : 'top-3'}`}>
         <Button aria-label={t('apm.topology.zoomIn', '放大拓扑')} type="text" size="small" icon={<PlusOutlined aria-hidden="true" />} onClick={() => adjustZoom(view.k + 0.15)} />
