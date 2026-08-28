@@ -21,6 +21,7 @@ import {
 } from './constants';
 import { createFlowDashboardConfig } from './create-flow-config';
 import { FlowConversationTable } from './conversation-table';
+import { FlowProtocolBreakdown } from './protocol-breakdown';
 import styles from './index.module.scss';
 
 const SUMMARY_TITLES = ['总流量速率', '总包速率', '平均包大小', '有效采样率'];
@@ -66,13 +67,23 @@ function FlowDashboardMetricsView({
           <div className={styles.sectionLabel}>流量概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={5} styles={styles} />
 
-          <div className={styles.sectionLabel}>Top 会话</div>
-          <FlowConversationTable
-            dashboard={dashboard}
-            protocol={protocol}
-            instanceType={instanceType}
-            styles={styles}
-          />
+          <div className={styles.sectionLabel}>流量分析</div>
+          <section className={styles.dashboardSection}>
+            <div className={`${styles.sectionGrid} ${styles.flowAnalysisGrid}`}>
+              <FlowConversationTable
+                dashboard={dashboard}
+                protocol={protocol}
+                instanceType={instanceType}
+                styles={styles}
+              />
+              <FlowProtocolBreakdown
+                dashboard={dashboard}
+                protocol={protocol}
+                instanceType={instanceType}
+                styles={styles}
+              />
+            </div>
+          </section>
         </>
       }
     />

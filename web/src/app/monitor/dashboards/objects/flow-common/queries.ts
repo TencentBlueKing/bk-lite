@@ -1,4 +1,4 @@
-import { CONVERSATION_TOP_N, type FlowProtocol } from './constants';
+import { CONVERSATION_TOP_N, PROTOCOL_TOP_N, type FlowProtocol } from './constants';
 
 const netflowBytesSeries = (instanceType: string) =>
   `netflow_in_bytes{instance_type='${instanceType}', collect_type='netflow', __$labels__}`;
@@ -22,10 +22,18 @@ const avgOverWindow = (expr: string) => `avg_over_time((${expr})[__$window__])`;
 
 export const buildConversationTopQuery = (instanceType: string, protocol: FlowProtocol) => {
   if (protocol === 'netflow') {
-    return `topk(${CONVERSATION_TOP_N}, ${avgOverWindow(normalizedNetflowBytesByLabels(instanceType, 'src, dst, protocol, dst_port'))})`;
+    return `topk(${CONVERSATION_TOP_N}, ${avgOverWindow(normalizedNetflowBytesByLabels(instanceType, 'src, src_port, dst, protocol, dst_port'))})`;
   }
-  const sflowByConversation = `sum(sflow_bytes{instance_type='${instanceType}', collect_type='sflow', __$labels__}) by (instance_id, src_ip, dst_ip, header_protocol, dst_port)`;
+  const sflowByConversation = `sum(sflow_bytes{instance_type='${instanceType}', collect_type='sflow', __$labels__}) by (instance_id, src_ip, src_port, dst_ip, header_protocol, dst_port)`;
   return `topk(${CONVERSATION_TOP_N}, ${avgOverWindow(sflowByConversation)})`;
+};
+
+export const buildProtocolTopQuery = (instanceType: string, protocol: FlowProtocol, limit = PROTOCOL_TOP_N) => {
+  if (protocol === 'netflow') {
+    return `topk(${limit}, ${avgOverWindow(normalizedNetflowBytesByLabels(instanceType, 'protocol'))})`;
+  }
+  const sflowByProtocol = `sum(sflow_bytes{instance_type='${instanceType}', collect_type='sflow', __$labels__}) by (instance_id, header_protocol)`;
+  return `topk(${limit}, ${avgOverWindow(sflowByProtocol)})`;
 };
 
 export const buildFlowMetricQueries = (instanceType: string, protocol: FlowProtocol) => {
