@@ -1,5 +1,6 @@
 import hashlib
 import json
+from collections import Counter
 from dataclasses import replace
 
 import pytest
@@ -34,15 +35,98 @@ DOMESTIC_REQUIRED_FAMILIES = {
 
 DOMESTIC_VERIFIED_OIDS = {
     "1.3.6.1.4.1.25506.1.763": ("H3C", "MSR2630", "router"),
+    "1.3.6.1.4.1.25506.1.764": ("H3C", "MSR3610AC", "router"),
+    "1.3.6.1.4.1.25506.1.765": ("H3C", "MSR3610DC", "router"),
+    "1.3.6.1.4.1.25506.1.766": ("H3C", "MSR3620AC", "router"),
+    "1.3.6.1.4.1.25506.1.767": ("H3C", "MSR3620DC", "router"),
+    "1.3.6.1.4.1.25506.1.768": ("H3C", "MSR3620POE", "router"),
+    "1.3.6.1.4.1.25506.1.769": ("H3C", "MSR3640", "router"),
+    "1.3.6.1.4.1.25506.1.770": ("H3C", "MSR3660", "router"),
+    "1.3.6.1.4.1.25506.1.771": ("H3C", "MSR5660", "router"),
+    "1.3.6.1.4.1.25506.1.937": ("H3C", "VSR1000", "router"),
+    "1.3.6.1.4.1.25506.1.1260": ("H3C", "MSR810", "router"),
+    "1.3.6.1.4.1.25506.1.1472": ("H3C", "MSR3610-X1", "router"),
+    "1.3.6.1.4.1.25506.1.2369": ("H3C", "S5590-28T8XC-HI", "switch"),
+    "1.3.6.1.4.1.25506.1.2370": ("H3C", "S5590-28S8XC-HI", "switch"),
+    "1.3.6.1.4.1.25506.1.2371": ("H3C", "S5590-48T4XC-HI", "switch"),
+    "1.3.6.1.4.1.25506.1.2372": ("H3C", "S5590-48S4XC-HI", "switch"),
+    "1.3.6.1.4.1.25506.1.2431": ("H3C", "S5590-48T4XC-EI", "switch"),
+    "1.3.6.1.4.1.25506.1.2432": ("H3C", "S5590-28T8XC-EI", "switch"),
+    "1.3.6.1.4.1.25506.1.2433": ("H3C", "S5590-48S4XC-EI", "switch"),
+    "1.3.6.1.4.1.25506.1.2434": ("H3C", "S5590-28S8XC-EI", "switch"),
+    "1.3.6.1.4.1.25506.1.2450": ("H3C", "S5500V3-28T8XC-HI", "switch"),
+    "1.3.6.1.4.1.25506.1.2451": ("H3C", "S5500V3-28S8XC-HI", "switch"),
+    "1.3.6.1.4.1.25506.1.2452": ("H3C", "S5500V3-48T4XC-HI", "switch"),
+    "1.3.6.1.4.1.25506.1.2881": ("H3C", "S5538F-EI-D", "switch"),
+    "1.3.6.1.4.1.25506.1.2882": ("H3C", "S5554C-EI-D-AC", "switch"),
+    "1.3.6.1.4.1.25506.1.2915": ("H3C", "S5590-28P8XC-EI", "switch"),
+    "1.3.6.1.4.1.25506.1.2916": ("H3C", "S5590-48P6XC-EI", "switch"),
+    "1.3.6.1.4.1.25506.1.3259": ("H3C", "S6530X-48Y8C", "switch"),
+    "1.3.6.1.4.1.25506.1.3260": ("H3C", "S6530X-48X8C", "switch"),
+    "1.3.6.1.4.1.25506.1.3261": ("H3C", "S6530X-24Y8C", "switch"),
+    "1.3.6.1.4.1.25506.1.3262": ("H3C", "S6530X-24X8C", "switch"),
     "1.3.6.1.4.1.4881.250.160": ("Ruijie", "RG-WALL 160E", "firewall"),
     "1.3.6.1.4.1.4881.250.161": ("Ruijie", "RG-WALL 160S", "firewall"),
     "1.3.6.1.4.1.4881.250.1600": ("Ruijie", "RG-WALL 1600E", "firewall"),
     "1.3.6.1.4.1.4881.250.1601": ("Ruijie", "RG-WALL 1600S", "firewall"),
+    "1.3.6.1.4.1.28557.1.9": ("Hillstone", "SA2003", "firewall"),
+    "1.3.6.1.4.1.28557.1.10": ("Hillstone", "SA2001", "firewall"),
+    "1.3.6.1.4.1.28557.1.11": ("Hillstone", "SR320", "firewall"),
+    "1.3.6.1.4.1.28557.1.13": ("Hillstone", "SR520", "firewall"),
+    "1.3.6.1.4.1.28557.1.17": ("Hillstone", "SA5180", "firewall"),
+    "1.3.6.1.4.1.28557.1.18": ("Hillstone", "SA5160", "firewall"),
+    "1.3.6.1.4.1.28557.1.22": ("Hillstone", "SG-6000-G6100", "firewall"),
+    "1.3.6.1.4.1.28557.1.23": ("Hillstone", "SG-6000-G3100", "firewall"),
+    "1.3.6.1.4.1.28557.1.25": ("Hillstone", "SG-6000-M2100", "firewall"),
+    "1.3.6.1.4.1.28557.1.31": ("Hillstone", "SG-6000-G2120", "firewall"),
+    "1.3.6.1.4.1.28557.1.32": ("Hillstone", "VR5600T", "firewall"),
+    "1.3.6.1.4.1.28557.1.33": ("Hillstone", "SG-6000-NAV10", "firewall"),
+    "1.3.6.1.4.1.28557.1.35": ("Hillstone", "SG-6000-NAV30", "firewall"),
+    "1.3.6.1.4.1.28557.1.36": ("Hillstone", "SG-6000-G2110", "firewall"),
+    "1.3.6.1.4.1.28557.1.37": ("Hillstone", "SG-6000-NAV50", "firewall"),
+    "1.3.6.1.4.1.28557.1.38": ("Hillstone", "SG-6000-NAV200", "firewall"),
+    "1.3.6.1.4.1.28557.1.39": ("Hillstone", "SG-6000-NAV300", "firewall"),
+    "1.3.6.1.4.1.28557.1.40": ("Hillstone", "SG-6000-NAV500", "firewall"),
+    "1.3.6.1.4.1.28557.1.45": ("Hillstone", "SG-6000-M2105", "firewall"),
+    "1.3.6.1.4.1.28557.1.47": ("Hillstone", "SR-320", "firewall"),
+    "1.3.6.1.4.1.28557.1.48": ("Hillstone", "SR-520", "firewall"),
+    "1.3.6.1.4.1.28557.1.51": ("Hillstone", "SG-6000-M3105", "firewall"),
+    "1.3.6.1.4.1.28557.1.52": ("Hillstone", "SC-1000-M3108", "firewall"),
+    "1.3.6.1.4.1.28557.1.54": ("Hillstone", "SG-6000-BANFF", "firewall"),
+    "1.3.6.1.4.1.28557.1.96": ("Hillstone", "E5660-B", "firewall"),
 }
 
 DOMESTIC_TASK_SOURCE_IDS = {
     "h3c-msr-router-rfc1213-r6749",
+    "h3c-vsr-router-rfc1213",
+    "h3c-s5590-s6530x-mib-6w101",
     "ruijie-rg-wall-vpn-snmp",
+    "hillstone-products-mib-v3",
+    "hillstone-kb-sysobjectid-viewing",
+}
+
+FOREIGN_CATALOG_BRAND_COUNTS = {
+    "Cisco": 577,
+    "HPE": 82,
+    "SynOptics": 64,
+    "Enterasys Networks": 1,
+    "Nokia": 8,
+    "D-Link": 4,
+    "Brocade": 66,
+    "Alteon": 54,
+    "Extreme": 5,
+    "Rapid": 26,
+    "Giganet": 1,
+    "Juniper": 70,
+    "F5": 22,
+    "Riverstone": 6,
+    "Dell": 17,
+    "Alcatel-Lucent": 1,
+    "Piolink": 1,
+    "Fortinet": 5,
+    "Aruba": 2,
+    "Arista": 3,
+    "Palo Alto Networks": 2,
 }
 
 INTERNATIONAL_REQUIRED_FAMILIES = {
@@ -64,12 +148,28 @@ INTERNATIONAL_VERIFIED_OIDS = {
     "1.3.6.1.4.1.9.1.1935": ("Cisco", "ISR 4431", "router"),
     "1.3.6.1.4.1.9.1.3075": ("Cisco", "ASR 9903", "router"),
     "1.3.6.1.4.1.9.1.3053": ("Cisco", "Firepower 3110", "firewall"),
-    "1.3.6.1.4.1.30065.1.3011.7050.2966.4.32.3282": ("Arista", "DCS-7050DX4-32S", "switch",),
-    "1.3.6.1.4.1.30065.1.2546.720.2974.48.3282": ("Arista", "CCS-720DP-48S", "switch",),
+    "1.3.6.1.4.1.30065.1.3011.7050.2966.4.32.3282": (
+        "Arista",
+        "DCS-7050DX4-32S",
+        "switch",
+    ),
+    "1.3.6.1.4.1.30065.1.2546.720.2974.48.3282": (
+        "Arista",
+        "CCS-720DP-48S",
+        "switch",
+    ),
     "1.3.6.1.4.1.30065.1.3011.7304": ("Arista", "DCS-7304", "switch"),
     "1.3.6.1.4.1.12356.101.1.1000": ("Fortinet", "FortiGate 100F", "firewall"),
-    "1.3.6.1.4.1.25461.2.3.54": ("Palo Alto Networks", "PA-440", "firewall",),
-    "1.3.6.1.4.1.25461.2.3.29": ("Palo Alto Networks", "VM-Series", "firewall",),
+    "1.3.6.1.4.1.25461.2.3.54": (
+        "Palo Alto Networks",
+        "PA-440",
+        "firewall",
+    ),
+    "1.3.6.1.4.1.25461.2.3.29": (
+        "Palo Alto Networks",
+        "VM-Series",
+        "firewall",
+    ),
     "1.3.6.1.4.1.12276.1.3.1.1": ("F5", "BIG-IP rSeries R5x00", "loadbalance"),
 }
 
@@ -123,13 +223,24 @@ def _entry(oid="1.3.6.1.4.1.2011.2.23.968"):
 
 
 def _catalog_entry(oid, *, model="S5735", brand="Huawei", device_type="switch"):
-    return OidCatalogEntry(oid=oid, model=model, brand=brand, device_type=device_type, source_id="test-source", verification="verified",)
+    return OidCatalogEntry(
+        oid=oid,
+        model=model,
+        brand=brand,
+        device_type=device_type,
+        source_id="test-source",
+        verification="verified",
+    )
 
 
 @pytest.mark.django_db
 def test_sync_adds_missing_entry_when_builtin_rows_already_exist():
     OidMapping.objects.create(
-        oid="1.3.6.1.4.1.9.1.1208", model="old", brand="Cisco", device_type="switch", built_in=True,
+        oid="1.3.6.1.4.1.9.1.1208",
+        model="old",
+        brand="Cisco",
+        device_type="switch",
+        built_in=True,
     )
     new_oid = "1.3.6.1.4.1.2011.2.23.968"
 
@@ -141,8 +252,23 @@ def test_sync_adds_missing_entry_when_builtin_rows_already_exist():
 
 @pytest.mark.django_db
 def test_sync_updates_builtin_in_place_but_preserves_custom_override():
-    builtin = OidMapping.objects.create(oid="1.3.6.1.4.1.9.1.1", model="old", brand="old", device_type="router", built_in=True,)
-    custom = OidMapping.objects.create(oid="1.3.6.1.4.1.9.1.2", model="custom", brand="custom", device_type="router", built_in=False,)
+    """batch_init/init_oid 每次启动重置 built_in=True；用户覆盖只能 UPDATE 设 built_in=False。
+    同一 OID 的 POST 会被 API 拒绝，同步不得改写自定义行。
+    """
+    builtin = OidMapping.objects.create(
+        oid="1.3.6.1.4.1.9.1.1",
+        model="old",
+        brand="old",
+        device_type="router",
+        built_in=True,
+    )
+    custom = OidMapping.objects.create(
+        oid="1.3.6.1.4.1.9.1.2",
+        model="custom",
+        brand="custom",
+        device_type="router",
+        built_in=False,
+    )
     entries = {
         builtin.oid: _catalog_entry(builtin.oid, model="new", brand="Cisco", device_type="switch"),
         custom.oid: _catalog_entry(custom.oid, model="catalog", brand="Cisco", device_type="switch"),
@@ -152,8 +278,17 @@ def test_sync_updates_builtin_in_place_but_preserves_custom_override():
 
     builtin.refresh_from_db()
     custom.refresh_from_db()
-    assert (builtin.model, builtin.brand, builtin.device_type, builtin.id) == ("new", "Cisco", "switch", builtin.id,)
-    assert (custom.model, custom.brand, custom.device_type) == ("custom", "custom", "router",)
+    assert (builtin.model, builtin.brand, builtin.device_type, builtin.id) == (
+        "new",
+        "Cisco",
+        "switch",
+        builtin.id,
+    )
+    assert (custom.model, custom.brand, custom.device_type) == (
+        "custom",
+        "custom",
+        "router",
+    )
     assert result.custom_override_oids == (custom.oid,)
 
 
@@ -161,7 +296,13 @@ def test_sync_updates_builtin_in_place_but_preserves_custom_override():
 def test_sync_dry_run_reports_changes_without_writing_database():
     existing_oid = "1.3.6.1.4.1.9.1.1"
     missing_oid = "1.3.6.1.4.1.2011.2.23.968"
-    existing = OidMapping.objects.create(oid=existing_oid, model="old", brand="old", device_type="router", built_in=True,)
+    existing = OidMapping.objects.create(
+        oid=existing_oid,
+        model="old",
+        brand="old",
+        device_type="router",
+        built_in=True,
+    )
     entries = {
         existing_oid: _catalog_entry(existing_oid, model="new"),
         missing_oid: _catalog_entry(missing_oid),
@@ -171,7 +312,11 @@ def test_sync_dry_run_reports_changes_without_writing_database():
 
     existing.refresh_from_db()
     assert (result.created, result.updated) == (1, 1)
-    assert (existing.model, existing.brand, existing.device_type) == ("old", "old", "router",)
+    assert (existing.model, existing.brand, existing.device_type) == (
+        "old",
+        "old",
+        "router",
+    )
     assert not OidMapping.objects.filter(oid=missing_oid).exists()
 
 
@@ -181,7 +326,11 @@ def test_sync_result_exposes_complete_create_and_update_diffs_in_numeric_order()
     create_oids = ("1.3.6.1.4.1.9.1.3", "1.3.6.1.4.1.9.1.10")
     for oid in reversed(update_oids):
         OidMapping.objects.create(
-            oid=oid, model=f"old-{oid.rsplit('.', 1)[-1]}", brand="old-brand", device_type="router", built_in=True,
+            oid=oid,
+            model=f"old-{oid.rsplit('.', 1)[-1]}",
+            brand="old-brand",
+            device_type="router",
+            built_in=True,
         )
 
     result = sync_oid_catalog(
@@ -200,7 +349,12 @@ def test_sync_result_exposes_complete_create_and_update_diffs_in_numeric_order()
     assert [entry.oid for entry in result.created_entries] == list(create_oids)
     assert [entry.oid for entry in result.updated_entries] == list(update_oids)
     assert result.created_entries[0] == (
-        oid_catalog_service.OidSyncCreate(oid="1.3.6.1.4.1.9.1.3", model="new-3", brand="Cisco", device_type="switch",)
+        oid_catalog_service.OidSyncCreate(
+            oid="1.3.6.1.4.1.9.1.3",
+            model="new-3",
+            brand="Cisco",
+            device_type="switch",
+        )
     )
     assert result.updated_entries[0] == (
         oid_catalog_service.OidSyncUpdate(
@@ -221,10 +375,18 @@ def test_sync_is_idempotent_and_counts_non_custom_entries_as_unchanged():
     custom_oid = "1.3.6.1.4.1.9.1.2"
     missing_oid = "1.3.6.1.4.1.2011.2.23.968"
     OidMapping.objects.create(
-        oid=unchanged_oid, model="S5735", brand="Huawei", device_type="switch", built_in=True,
+        oid=unchanged_oid,
+        model="S5735",
+        brand="Huawei",
+        device_type="switch",
+        built_in=True,
     )
     OidMapping.objects.create(
-        oid=custom_oid, model="custom", brand="custom", device_type="router", built_in=False,
+        oid=custom_oid,
+        model="custom",
+        brand="custom",
+        device_type="router",
+        built_in=False,
     )
     entries = {
         unchanged_oid: _catalog_entry(unchanged_oid),
@@ -243,7 +405,13 @@ def test_sync_is_idempotent_and_counts_non_custom_entries_as_unchanged():
 @pytest.mark.django_db
 def test_sync_does_not_refresh_unchanged_builtin_updated_at():
     oid = "1.3.6.1.4.1.9.1.1"
-    row = OidMapping.objects.create(oid=oid, model="S5735", brand="Huawei", device_type="switch", built_in=True,)
+    row = OidMapping.objects.create(
+        oid=oid,
+        model="S5735",
+        brand="Huawei",
+        device_type="switch",
+        built_in=True,
+    )
     original_updated_at = timezone.now().replace(year=2020)
     OidMapping.objects.filter(pk=row.pk).update(updated_at=original_updated_at)
 
@@ -259,7 +427,11 @@ def test_sync_reports_but_preserves_stale_builtin_rows():
     stale_oid = "1.3.6.1.4.1.9.1.1"
     current_oid = "1.3.6.1.4.1.9.1.2"
     OidMapping.objects.create(
-        oid=stale_oid, model="legacy", brand="Cisco", device_type="switch", built_in=True,
+        oid=stale_oid,
+        model="legacy",
+        brand="Cisco",
+        device_type="switch",
+        built_in=True,
     )
 
     result = sync_oid_catalog({current_oid: _catalog_entry(current_oid)})
@@ -272,7 +444,13 @@ def test_sync_reports_but_preserves_stale_builtin_rows():
 def test_sync_rolls_back_creates_when_bulk_update_fails(monkeypatch):
     existing_oid = "1.3.6.1.4.1.9.1.1"
     missing_oid = "1.3.6.1.4.1.2011.2.23.968"
-    existing = OidMapping.objects.create(oid=existing_oid, model="old", brand="old", device_type="router", built_in=True,)
+    existing = OidMapping.objects.create(
+        oid=existing_oid,
+        model="old",
+        brand="old",
+        device_type="router",
+        built_in=True,
+    )
 
     def fail_bulk_update(*args, **kwargs):
         raise RuntimeError("bulk update failed")
@@ -288,7 +466,9 @@ def test_sync_rolls_back_creates_when_bulk_update_fails(monkeypatch):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_sync_retries_whole_transaction_and_preserves_concurrent_custom_winner(monkeypatch,):
+def test_sync_retries_whole_transaction_and_preserves_concurrent_custom_winner(
+    monkeypatch,
+):
     catalog_oid = "1.3.6.1.4.1.9.1.1"
     rolled_back_oid = "1.3.6.1.4.1.9.1.2"
     original_sync = oid_catalog_service._sync_oid_catalog
@@ -298,11 +478,19 @@ def test_sync_retries_whole_transaction_and_preserves_concurrent_custom_winner(m
         attempts.append(write)
         if len(attempts) == 1:
             OidMapping.objects.create(
-                oid=rolled_back_oid, model="must rollback", brand="test", device_type="router", built_in=True,
+                oid=rolled_back_oid,
+                model="must rollback",
+                brand="test",
+                device_type="router",
+                built_in=True,
             )
             raise IntegrityError("simulated unique OID race")
         OidMapping.objects.create(
-            oid=catalog_oid, model="custom", brand="custom", device_type="router", built_in=False,
+            oid=catalog_oid,
+            model="custom",
+            brand="custom",
+            device_type="router",
+            built_in=False,
         )
         return original_sync(entries, write=write)
 
@@ -312,8 +500,17 @@ def test_sync_retries_whole_transaction_and_preserves_concurrent_custom_winner(m
 
     winner = OidMapping.objects.get(oid=catalog_oid)
     assert attempts == [True, True]
-    assert (winner.model, winner.brand, winner.device_type, winner.built_in) == ("custom", "custom", "router", False,)
-    assert (result.created, result.updated, result.custom_override_oids) == (0, 0, (catalog_oid,),)
+    assert (winner.model, winner.brand, winner.device_type, winner.built_in) == (
+        "custom",
+        "custom",
+        "router",
+        False,
+    )
+    assert (result.created, result.updated, result.custom_override_oids) == (
+        0,
+        0,
+        (catalog_oid,),
+    )
     assert not OidMapping.objects.filter(oid=rolled_back_oid).exists()
 
 
@@ -340,11 +537,19 @@ def test_sync_result_oids_use_numeric_segment_sorting():
     stale_oids = ["1.3.6.1.4.1.2011.10", "1.3.6.1.4.1.2011.2"]
     for oid in custom_oids:
         OidMapping.objects.create(
-            oid=oid, model="custom", brand="custom", device_type="router", built_in=False,
+            oid=oid,
+            model="custom",
+            brand="custom",
+            device_type="router",
+            built_in=False,
         )
     for oid in stale_oids:
         OidMapping.objects.create(
-            oid=oid, model="legacy", brand="legacy", device_type="router", built_in=True,
+            oid=oid,
+            model="legacy",
+            brand="legacy",
+            device_type="router",
+            built_in=True,
         )
 
     result = sync_oid_catalog({oid: _catalog_entry(oid) for oid in reversed(custom_oids)})
@@ -354,10 +559,16 @@ def test_sync_result_oids_use_numeric_segment_sorting():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_sync_write_locks_existing_rows_inside_atomic_but_dry_run_does_not(monkeypatch,):
+def test_sync_write_locks_existing_rows_inside_atomic_but_dry_run_does_not(
+    monkeypatch,
+):
     oid = "1.3.6.1.4.1.9.1.1"
     OidMapping.objects.create(
-        oid=oid, model="S5735", brand="Huawei", device_type="switch", built_in=True,
+        oid=oid,
+        model="S5735",
+        brand="Huawei",
+        device_type="switch",
+        built_in=True,
     )
     original_select_for_update = QuerySet.select_for_update
     lock_calls = []
@@ -380,14 +591,42 @@ def test_sync_write_locks_existing_rows_inside_atomic_but_dry_run_does_not(monke
     "entries",
     [
         {},
-        {"1.3.6.1.4.1.9.1.1": replace(_catalog_entry("1.3.6.1.4.1.9.1.1"), oid="1.3.6.1.4.1.9.1.2",)},
+        {
+            "1.3.6.1.4.1.9.1.1": replace(
+                _catalog_entry("1.3.6.1.4.1.9.1.1"),
+                oid="1.3.6.1.4.1.9.1.2",
+            )
+        },
         {"not-an-oid": _catalog_entry("not-an-oid")},
-        {"1.3.6.1.4.1.9.1.1": replace(_catalog_entry("1.3.6.1.4.1.9.1.1"), device_type=["switch"],)},
+        {
+            "1.3.6.1.4.1.9.1.1": replace(
+                _catalog_entry("1.3.6.1.4.1.9.1.1"),
+                device_type=["switch"],
+            )
+        },
         {".".join(["1"] * 33): _catalog_entry(".".join(["1"] * 33))},
-        {"1.3.6.1.4.1.9.1.1": replace(_catalog_entry("1.3.6.1.4.1.9.1.1"), model="m" * 129,)},
-        {"1.3.6.1.4.1.9.1.1": replace(_catalog_entry("1.3.6.1.4.1.9.1.1"), brand="b" * 65,)},
+        {
+            "1.3.6.1.4.1.9.1.1": replace(
+                _catalog_entry("1.3.6.1.4.1.9.1.1"),
+                model="m" * 129,
+            )
+        },
+        {
+            "1.3.6.1.4.1.9.1.1": replace(
+                _catalog_entry("1.3.6.1.4.1.9.1.1"),
+                brand="b" * 65,
+            )
+        },
     ],
-    ids=["empty", "key-mismatch", "malformed-oid", "non-string-device-type", "oid-too-long", "model-too-long", "brand-too-long",],
+    ids=[
+        "empty",
+        "key-mismatch",
+        "malformed-oid",
+        "non-string-device-type",
+        "oid-too-long",
+        "model-too-long",
+        "brand-too-long",
+    ],
 )
 def test_sync_rejects_invalid_entries_before_reading_database(monkeypatch, entries):
     def fail_database_read(*args, **kwargs):
@@ -415,7 +654,11 @@ def test_load_oid_catalog_returns_normalized_entry(tmp_path):
 
 @pytest.mark.parametrize(
     ("key", "stored_oid"),
-    [(".1.3.6.1.4.1.2011.1", ".1.3.6.1.4.1.2011.1"), ("1.3.6.1.4.1.2011.1 ", "1.3.6.1.4.1.2011.1 "), ("1.3.6.1.4.1.2011.1", "1.3.6.1.4.1.2011.2"),],
+    [
+        (".1.3.6.1.4.1.2011.1", ".1.3.6.1.4.1.2011.1"),
+        ("1.3.6.1.4.1.2011.1 ", "1.3.6.1.4.1.2011.1 "),
+        ("1.3.6.1.4.1.2011.1", "1.3.6.1.4.1.2011.2"),
+    ],
 )
 def test_load_oid_catalog_rejects_noncanonical_oid(tmp_path, key, stored_oid):
     catalog = tmp_path / "systemoid.json"
@@ -434,9 +677,18 @@ def test_load_oid_catalog_rejects_noncanonical_oid(tmp_path, key, stored_oid):
         (lambda entry, oid: entry.update(model=oid), lambda metadata: None),
         (lambda entry, oid: entry.update(FirstTypeId="AP"), lambda metadata: None),
         (lambda entry, oid: entry.update(brand="华为"), lambda metadata: None),
-        (lambda entry, oid: entry.update(source_id="missing-source"), lambda metadata: None,),
-        (lambda entry, oid: None, lambda metadata: metadata["sources"]["huawei-product-mib"].update(official=False),),
-        (lambda entry, oid: None, lambda metadata: metadata["sources"]["huawei-product-mib"].update(scope="legacy-catalog"),),
+        (
+            lambda entry, oid: entry.update(source_id="missing-source"),
+            lambda metadata: None,
+        ),
+        (
+            lambda entry, oid: None,
+            lambda metadata: metadata["sources"]["huawei-product-mib"].update(official=False),
+        ),
+        (
+            lambda entry, oid: None,
+            lambda metadata: metadata["sources"]["huawei-product-mib"].update(scope="legacy-catalog"),
+        ),
         (lambda entry, oid: None, lambda metadata: metadata.update(schema_version=2)),
     ],
 )
@@ -463,7 +715,12 @@ def test_load_oid_catalog_rejects_invalid_catalog_boundaries(tmp_path, update_ca
         ["switch", ["router"], "firewall", "loadbalance"],
         ["switch", {"router": "router"}, "firewall", "loadbalance"],
     ],
-    ids=["rejects-extra-device-type", "rejects-missing-device-type", "rejects-array-device-type", "rejects-object-device-type",],
+    ids=[
+        "rejects-extra-device-type",
+        "rejects-missing-device-type",
+        "rejects-array-device-type",
+        "rejects-object-device-type",
+    ],
 )
 def test_load_oid_catalog_requires_exact_allowed_device_types(tmp_path, allowed_device_types):
     catalog = tmp_path / "systemoid.json"
@@ -662,7 +919,9 @@ def test_load_oid_catalog_rejects_malformed_coverage_gap_metadata(tmp_path, case
         load_oid_catalog(catalog, metadata)
 
 
-def test_load_oid_catalog_rejects_verified_type_also_declared_as_coverage_gap(tmp_path,):
+def test_load_oid_catalog_rejects_verified_type_also_declared_as_coverage_gap(
+    tmp_path,
+):
     catalog = tmp_path / "systemoid.json"
     metadata = tmp_path / "systemoid.meta.json"
     oid = "1.3.6.1.4.1.2011.2.23.968"
@@ -716,8 +975,16 @@ def test_load_oid_catalog_allows_legacy_type_declared_as_coverage_gap(tmp_path):
 
 @pytest.mark.parametrize(
     ("field", "value"),
-    [("schema_version", True), ("catalog_version", 20260722), ("catalog_version", "   "),],
-    ids=["rejects-boolean-schema-version", "rejects-number-catalog-version", "rejects-blank-catalog-version",],
+    [
+        ("schema_version", True),
+        ("catalog_version", 20260722),
+        ("catalog_version", "   "),
+    ],
+    ids=[
+        "rejects-boolean-schema-version",
+        "rejects-number-catalog-version",
+        "rejects-blank-catalog-version",
+    ],
 )
 def test_load_oid_catalog_rejects_malformed_metadata_versions(tmp_path, field, value):
     catalog = tmp_path / "systemoid.json"
@@ -754,17 +1021,29 @@ def test_production_catalog_is_valid_and_preserves_exact_legacy_oid_set():
     ordered_oids = sorted(legacy_raw, key=lambda oid: tuple(int(part) for part in oid.split(".")))
     oid_sequence_digest = hashlib.sha256("\n".join(ordered_oids).encode("ascii")).hexdigest()
     legacy_content_digest = hashlib.sha256(
-        json.dumps(legacy_raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"),).encode("utf-8")
+        json.dumps(
+            legacy_raw,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
     ).hexdigest()
+    foreign_counts = Counter(entry["brand"] for entry in raw.values() if entry["brand"] in FOREIGN_CATALOG_BRAND_COUNTS)
 
-    assert len(legacy_raw) == 1966, "Task 2 的 1,966 个历史 SOID 不得删改"
-    assert oid_sequence_digest == "0b3de86672a357d2e64fe192f66325af8dce1bbcdd9e419072ec7570976864e3", "历史 SOID 数值排序序列已变化（ASCII 编码、LF 分隔、无末尾换行）"
-    assert legacy_content_digest == ("0223b25cc4ed03c0f90c98e22983f70946d4d6d47bf4924dc483a07c6a5d3659"), "Task 2 历史 SOID 的字段语义已变化"
+    assert len(legacy_raw) == 1998, "信创目录的 legacy-compatible 条目数已变化"
+    assert oid_sequence_digest == "4fdc993a31ac2742508c14e7bb756700993a2066b11dbb355c55dc23dc9314e2", "历史 SOID 数值排序序列已变化（ASCII 编码、LF 分隔、无末尾换行）"
+    assert legacy_content_digest == ("8857e4af97adce57402e08966c056bd6e5cb78fbed760e0d2a0921e5e69a9138"), "legacy-compatible SOID 的字段语义已变化"
+    assert foreign_counts == FOREIGN_CATALOG_BRAND_COUNTS, "国际厂商目录条目不得增加"
+    assert "1.3.6.1.4.1.8072.3.2.10" not in raw
     assert len(entries) == len(raw)
-    assert len(raw) > 1966, "国内厂商 verified 条目必须在历史目录之外新增"
+    assert len(raw) > 1998, "verified 与信创前缀必须在历史目录之外新增"
     assert "1.3.6.1.4.1.9.1.1208" in entries
     assert "1.3.6.1.4.1.2011.2.23.968" in entries
     assert "1.3.6.1.4.1.25506.1.2609" in entries
+    assert entries["1.3.6.1.4.1.8886"].brand == "Raisecom"
+    assert entries["1.3.6.1.4.1.47646"].brand == "Qi-Anxin"
+    assert entries["1.3.6.1.4.1.3807"].brand == "FiberHome"
+    assert entries["1.3.6.1.4.1.32328"].brand == "LegendSec"
 
 
 def test_domestic_catalog_covers_or_declares_required_families():
@@ -798,7 +1077,7 @@ def test_domestic_coverage_gaps_have_matching_official_audit_details():
         assert detail["reason"].strip()
         assert detail["url"].startswith("https://")
         assert "checked_at" not in detail
-        assert detail["verified_at"] == "2026-07-22"
+        assert detail["verified_at"] in {"2026-07-22", "2026-08-28"}
 
 
 def test_domestic_verified_entries_use_exact_official_product_identity_sources():
@@ -813,7 +1092,11 @@ def test_domestic_verified_entries_use_exact_official_product_identity_sources()
 
     for oid, (brand, model, device_type) in DOMESTIC_VERIFIED_OIDS.items():
         entry = entries[oid]
-        assert (entry.brand, entry.model, entry.device_type) == (brand, model, device_type,)
+        assert (entry.brand, entry.model, entry.device_type) == (
+            brand,
+            model,
+            device_type,
+        )
         assert entry.verification == "verified"
 
 
@@ -848,7 +1131,7 @@ def test_international_coverage_gaps_have_matching_official_audit_details():
         assert detail["reason"].strip()
         assert detail["url"].startswith("https://")
         assert "checked_at" not in detail
-        assert detail["verified_at"] == "2026-07-22"
+        assert detail["verified_at"] in {"2026-07-22", "2026-08-28"}
 
 
 def test_international_verified_entries_use_exact_official_product_identity_sources():
@@ -863,7 +1146,11 @@ def test_international_verified_entries_use_exact_official_product_identity_sour
 
     for oid, (brand, model, device_type) in INTERNATIONAL_VERIFIED_OIDS.items():
         entry = entries[oid]
-        assert (entry.brand, entry.model, entry.device_type) == (brand, model, device_type,)
+        assert (entry.brand, entry.model, entry.device_type) == (
+            brand,
+            model,
+            device_type,
+        )
         assert entry.source_id in INTERNATIONAL_TASK_SOURCE_IDS
         assert entry.verification == "verified"
 
@@ -882,16 +1169,15 @@ def test_all_verified_entries_use_auditable_official_product_identity_sources():
         assert source["url"].startswith("https://")
         assert source["document"].strip()
         assert source["version"].strip()
-        assert source["verified_at"] == "2026-07-22"
+        assert source["verified_at"] in {"2026-07-22", "2026-08-28"}
 
 
-@pytest.mark.parametrize(
-    "brand_alias", ["华为", "HuaWei", "Hewlett-Packard", "Netscreen", "Force10", "NortelAlteon", "Venus",],
-)
-def test_production_catalog_contains_no_noncanonical_brand_aliases(brand_alias):
+def test_production_catalog_contains_no_noncanonical_brand_aliases():
     raw = json.loads(SYSTEMOID_PATH.read_text(encoding="utf-8"))
+    metadata = json.loads(SYSTEMOID_METADATA_PATH.read_text(encoding="utf-8"))
 
-    assert all(entry["brand"] != brand_alias for entry in raw.values())
+    for brand_alias in metadata["brand_aliases"]:
+        assert all(entry["brand"] != brand_alias for entry in raw.values()), brand_alias
 
 
 def test_production_catalog_locks_legacy_entry_shapes():
@@ -911,3 +1197,27 @@ def test_production_catalog_locks_legacy_entry_shapes():
         "firewall",
         "loadbalance",
     }
+
+
+def test_production_catalog_version_and_xinchuang_prefix_rows():
+    raw = json.loads(SYSTEMOID_PATH.read_text(encoding="utf-8"))
+    metadata = json.loads(SYSTEMOID_METADATA_PATH.read_text(encoding="utf-8"))
+    entries = load_oid_catalog(SYSTEMOID_PATH, SYSTEMOID_METADATA_PATH)
+
+    assert metadata["catalog_version"] == "2026.08.28"
+    assert all(len(oid) <= 64 for oid in raw)
+    assert "Hillstone" not in metadata["coverage_gaps"]
+    assert metadata["coverage_gaps"]["H3C"] == ["firewall"]
+    assert "switch" not in metadata["coverage_gaps"]["H3C"]
+    for brand in ("NSFOCUS", "Qi-Anxin"):
+        assert metadata["coverage_gap_details"][brand]["reason"] == "已用 IANA 企业前缀识别厂商，官网仍无产品级 sysObjectID"
+    assert entries["1.3.6.1.4.1.61878"].brand == "H3C"
+    assert all(not oid.startswith("1.3.6.1.4.1.61878.") for oid in raw)
+    assert entries["1.3.6.1.4.1.32328"].brand == "LegendSec"
+    assert entries["1.3.6.1.4.1.47646"].brand == "Qi-Anxin"
+    assert raw["1.3.6.1.4.1.8886"]["model"] == "未知"
+    assert raw["1.3.6.1.4.1.8886"]["verification"] == "legacy-compatible"
+    assert raw["1.3.6.1.4.1.28557.1.12"]["FirstTypeId"] == "Switch"
+    assert "1.3.6.1.4.1.28557.1.70" not in raw
+    assert "1.3.6.1.4.1.25506.1.772" in raw
+    assert raw["1.3.6.1.4.1.25506.1.772"]["verification"] == "legacy-compatible"
