@@ -74,6 +74,35 @@ def test_alert_filter_activate_excludes_closed():
 
 
 @pytest.mark.django_db
+def test_alert_filter_resource_type_and_id_exact():
+    Alert.objects.create(
+        alert_id="A1",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-host",
+        resource_type="host",
+        resource_id="host-1",
+    )
+    Alert.objects.create(
+        alert_id="A2",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-pod",
+        resource_type="pod",
+        resource_id="pod-1",
+    )
+    queryset = Alert.objects.all()
+
+    by_type = AlertModelFilter(data={"resource_type": "host"}, queryset=queryset).qs
+    by_id = AlertModelFilter(data={"resource_id": "pod-1"}, queryset=queryset).qs
+
+    assert set(by_type.values_list("alert_id", flat=True)) == {"A1"}
+    assert set(by_id.values_list("alert_id", flat=True)) == {"A2"}
+
+
+@pytest.mark.django_db
 def test_alert_filter_has_incident():
     alert = Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp")
     Alert.objects.create(alert_id="A2", level="0", title="t", content="c", fingerprint="fp")

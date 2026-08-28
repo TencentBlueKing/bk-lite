@@ -1,6 +1,23 @@
 # 告警 OpenAPI 接口说明
 
-本文说明告警中心对外开放的查询与操作接口。接口以 API Secret 对调用方进行认证，并继续使用该 Secret 所绑定用户及团队的告警权限。
+本文说明告警中心对外开放的查询与操作接口。推荐入口为统一网关 `/openapi/v1/alerts/*`（业务锚点为 `alert_id`）。存量路径 `{BK_LITE_BASE_URL}/api/v1/alerts/api/open` 本轮仍保留，关闭与筛选行为与网关对齐。
+
+## 0. 统一网关（推荐）
+
+基础地址：`{BK_LITE_BASE_URL}/openapi/v1`。认证走平台网关（`Authorization: Bearer <API_TOKEN>`），组织取令牌绑定团队，精确匹配、不级联。客户端不得传 `team` 或数据库主键 `id`，未知字段返回 `SCHEMA_INVALID`。分页 `page` 从 1 起，`page_size` 默认 20、上限 500、越限钳制。筛选字段与第 3 章列表参数一致（含 `resource_type` / `resource_id`）。
+
+| 方法 | path | 锚点 |
+|---|---|---|
+| GET | `alerts/list` | 筛选字段 |
+| GET | `alerts/detail` | query `alert_id` |
+| GET | `alerts/events` | query `alert_id` |
+| POST | `alerts/assign` | body `alert_id`、`assignee` |
+| POST | `alerts/acknowledge` | body `alert_id` |
+| POST | `alerts/reassign` | body `alert_id`、`assignee` |
+| POST | `alerts/close` | body `alert_id`；待响应/处理中可关，不校验是否处理人 |
+| POST | `alerts/batch-action` | body `action`、`alert_ids`（1 至 100） |
+
+以下第 1 章起为存量 `/api/v1/alerts/api/open` 路径说明；该路径分页上限仍为 100，`alert_id` 可放在 URL 中。
 
 ## 1. 基础约定
 
@@ -129,6 +146,8 @@ Query 参数：
 | `incident_id` | string | 否 | 空 | 关联事故 ID，精确匹配 |
 | `has_incident` | string | 否 | 空 | 是否有关联事故；`true` 或 `false` |
 | `rule_id` | string | 否 | 空 | 规则 ID，精确匹配 |
+| `resource_type` | string | 否 | 空 | 资源类型，精确匹配 |
+| `resource_id` | string | 否 | 空 | 资源 ID，精确匹配 |
 
 `data` 返回字段：
 
@@ -261,6 +280,8 @@ Query 参数：
 
 #### close
 
+接口关闭不校验当前用户是否为处理人；告警处于「待响应」或「处理中」即可关闭。页面关闭逻辑不变。
+
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
 | `reason` | string | 否 | 关闭原因 |
@@ -320,7 +341,7 @@ Query 参数：
 | 403 | `alerts.auth.api_secret_required` | 未通过 API Secret 认证 |
 | 403 | `alerts.auth.invalid_team` | API Secret 未绑定唯一团队 |
 | 403 | `alerts.permission.denied` | 用户缺少 `Alarms-View` 或 `Alarms-Edit` 等功能权限 |
-| 403 | `alerts.operator.not_assignee` | 当前用户不是告警处理人，无法认领、转派或关闭 |
+| 403 | `alerts.operator.not_assignee` | 当前用户不是告警处理人，无法认领或转派 |
 | 404 | `alerts.alert.not_found` | 告警不存在、跨团队或不可见 |
 | 409 | `alerts.operator.invalid_state` | 告警当前状态不允许执行该操作 |
 | 500 | `alerts.request.failed` | 未归类的请求处理失败 |

@@ -240,3 +240,32 @@ def test_tag_attribute_positioned_in_basic_info_group_end():
             misplaced.append((model_id, f"tag 所在分组为 {groups[idx]}"))
 
     assert not misplaced, f"新增 tag 不在「基本信息」组: {misplaced}"
+
+
+@pytest.mark.unit
+def test_models_sheet_seeds_app_topo_layer():
+    sheets = _load_sheets()
+    df = sheets["models"]
+    assert "app_topo_layer" in df.columns
+    by_id = {str(model_id): str(layer) for model_id, layer in zip(df["model_id"], df["app_topo_layer"])}
+    assert by_id["application"] == "service"
+    assert by_id["system"] == "system"
+    assert by_id["host"] == "host"
+    assert by_id["mysql"] == "appService"
+    assert by_id["nginx"] == "appService"
+    assert by_id["oceanbase"] == "appService"
+    assert by_id["nacos"] == "appService"
+    assert by_id["vmware_vm"] == "host"
+    assert by_id["aliyun_ecs"] == "host"
+    assert by_id["physcial_server"] == "infrastructure"
+    assert by_id["rack"] == "infrastructure"
+    assert by_id["k8s_cluster"] == "none"
+    assert set(by_id.values()) <= {"system", "service", "host", "appService", "infrastructure", "none"}
+
+    rows = list(zip(df["model_id"].astype(str), df["classification_id"].astype(str), df["app_topo_layer"].astype(str)))
+    assert {layer for _, cid, layer in rows if cid == "database"} == {"appService"}
+    assert {layer for _, cid, layer in rows if cid == "middleware"} == {"appService"}
+    assert {layer for _, cid, layer in rows if cid in {"harware", "hardware_components", "network_device", "idc"}} == {"infrastructure"}
+    host_ids = {model_id for model_id, layer in by_id.items() if layer == "host"}
+    assert "host" in host_ids
+    assert all(mid.endswith(("_vm", "_ecs", "_cvm", "_ec2")) or mid in {"host", "manageone_server"} for mid in host_ids)

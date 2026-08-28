@@ -115,6 +115,46 @@ def test_application_resource_topology_ok(superuser, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_application_resource_topology_accepts_depth_five(superuser, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+        lambda uuid: _entity(uuid, model_id="application", inst_id=11, inst_name="app-a"),
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.ApplicationResourceOverviewService.build_application_topology",
+        staticmethod(
+            lambda inst_id, model_id, depth=1, permission_map=None, user=None: captured.update(depth=depth)
+            or {
+                "center": {"id": APP_UUID},
+                "nodes": [],
+                "links": [],
+                "truncated": False,
+            }
+        ),
+    )
+    request = _req("get", superuser)
+    request.GET._mutable = True
+    request.GET["depth"] = "5"
+    response = InstanceViewSet.as_view({"get": "application_resource_topology"})(request, model_id="application", inst_uuid=APP_UUID)
+    assert response.status_code == status.HTTP_200_OK
+    assert captured["depth"] == 5
+
+
+@pytest.mark.django_db
+def test_application_resource_topology_rejects_depth_six(superuser, monkeypatch):
+    monkeypatch.setattr(
+        f"{VIEWS}.InstanceManage.query_entity_by_uuid",
+        lambda uuid: _entity(uuid, model_id="application", inst_id=11, inst_name="app-a"),
+    )
+    request = _req("get", superuser)
+    request.GET._mutable = True
+    request.GET["depth"] = "6"
+    response = InstanceViewSet.as_view({"get": "application_resource_topology"})(request, model_id="application", inst_uuid=APP_UUID)
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
 def test_application_resource_resources_ok(superuser, monkeypatch):
     monkeypatch.setattr(
         f"{VIEWS}.InstanceManage.query_entity_by_uuid",

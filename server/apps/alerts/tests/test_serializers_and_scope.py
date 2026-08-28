@@ -78,8 +78,19 @@ def test_validate_incident_operators_aggregates_alert_teams():
 
 
 def test_alert_get_duration_inactive_status():
-    obj = SimpleNamespace(created_at=timezone.now(), status="closed")
-    assert AlertModelSerializer.get_duration(obj) == "--"
+    from datetime import datetime, timedelta
+    from datetime import timezone as dt_timezone
+
+    first_event_time = datetime(2026, 8, 28, 10, 0, 0, tzinfo=dt_timezone.utc)
+    obj = SimpleNamespace(
+        created_at=first_event_time,
+        first_event_time=first_event_time,
+        status="closed",
+        last_event_time=first_event_time,
+        updated_at=first_event_time + timedelta(minutes=8),
+        closed_at=first_event_time + timedelta(minutes=8),
+    )
+    assert AlertModelSerializer.get_duration(obj) == "8m "
 
 
 @pytest.mark.django_db

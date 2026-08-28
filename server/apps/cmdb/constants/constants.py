@@ -153,6 +153,7 @@ UPDATE_MODEL_CHECK_ATTR_MAP = dict(
         "classification_id": "模型分类ID",
         "icn": "图标",
         "group": "组织",
+        "app_topo_layer": "应用拓扑层级",
     },
 )
 

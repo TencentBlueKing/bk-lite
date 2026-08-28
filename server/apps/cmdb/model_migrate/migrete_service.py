@@ -33,6 +33,7 @@ from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.model_ops.extensions import get_model_enterprise_extension
 from apps.cmdb.models.field_group import FieldGroup
 from apps.cmdb.models.public_enum_library import PublicEnumLibrary
+from apps.cmdb.services.app_topo_layer import default_app_topo_layer, normalize_app_topo_layer
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.public_enum_library import enqueue_library_snapshot_refresh
 from apps.cmdb.utils.base import get_default_group_id
@@ -69,9 +70,10 @@ class ModelMigrate:
     DEFAULT_FILE_PATH = "apps/cmdb/support-files/model_config.xlsx"
     PUBLIC_ENUM_LIBRARY_SHEET = "public_enum_libraries"
 
-    def __init__(self, file_source=None, is_pre=True):
+    def __init__(self, file_source=None, is_pre=True, sync_app_topo_layer=False):
         self.file_source = file_source
         self.is_pre = is_pre
+        self.sync_app_topo_layer = bool(sync_app_topo_layer)
         self.model_config = self.get_model_config()
         self.default_group_id = get_default_group_id()
 
@@ -536,6 +538,12 @@ class ModelMigrate:
 
             model_data = dict(model)
             model_data.update(is_pre=self.is_pre)
+
+            raw_layer = model_data.get("app_topo_layer")
+            if str(raw_layer or "").strip():
+                model_data["app_topo_layer"] = normalize_app_topo_layer(raw_layer)
+            else:
+                model_data["app_topo_layer"] = default_app_topo_layer(model_id, str(model_data.get("classification_id") or ""))
             self.model_add_organization(model_data)
 
             attr_key = f"attr-{model_id}"
@@ -594,7 +602,9 @@ class ModelMigrate:
                 existing_attr["user_prompt"] = user_prompt
                 changed = True
 
-        if "option" in incoming_attr and existing_attr.get("option") != incoming_attr.get("option"):
+        # 标签候选项由用户在页面/实例写入中自行积累，model_init 不得用种子 option 覆盖。
+        skip_option_overwrite = existing_attr.get("attr_type") == "tag"
+        if "option" in incoming_attr and not skip_option_overwrite and existing_attr.get("option") != incoming_attr.get("option"):
             existing_attr["option"] = incoming_attr.get("option")
             changed = True
 
@@ -862,6 +872,23 @@ class ModelMigrate:
             )
         return {"deleted": deleted, "skipped_with_instances": skipped}
 
+    def _app_topo_layer_updates(self, model: dict, existing_model: dict) -> dict:
+        incoming = model.get("app_topo_layer")
+        existing_layer = existing_model.get("app_topo_layer")
+        existing_empty = existing_layer in (None, "")
+        original = next(
+            (row for row in self.model_config.get("models", []) if row.get("model_id") == model.get("model_id")),
+            {},
+        )
+        has_excel_value = str(original.get("app_topo_layer") or "").strip() != ""
+        if self.sync_app_topo_layer and incoming and incoming != existing_layer:
+            return {"app_topo_layer": incoming}
+        if existing_empty and incoming and (self.is_pre or has_excel_value):
+            return {"app_topo_layer": incoming}
+        if has_excel_value and not self.is_pre and incoming != existing_layer:
+            return {"app_topo_layer": incoming}
+        return {}
+
     def migrate_models(self):
         """初始化模型"""
         models, attrs_by_model_id = self._build_model_payload()
@@ -876,18 +903,24 @@ class ModelMigrate:
             models = [i for i in models if i.get("classification_id") in classification_map]
             for model in models:
                 existing_model = exist_model_map.get(model.get("model_id"))
+                if not existing_model:
+                    continue
+                updates = {}
                 incoming_name = str(model.get("model_name") or "").strip()
-                if not existing_model or not incoming_name or existing_model.get("model_name") == incoming_name:
+                if incoming_name and existing_model.get("model_name") != incoming_name:
+                    updates["model_name"] = incoming_name
+                updates.update(self._app_topo_layer_updates(model, existing_model))
+                if not updates:
                     continue
                 other_models = [item for item in exist_items if item.get("_id") != existing_model.get("_id")]
                 ag.set_entity_properties(
                     MODEL,
                     [existing_model["_id"]],
-                    {"model_name": incoming_name},
+                    updates,
                     UPDATE_MODEL_CHECK_ATTR_MAP,
                     other_models,
                 )
-                existing_model["model_name"] = incoming_name
+                existing_model.update(updates)
             new_models = [i for i in models if i.get("model_id") not in exist_model_map]
             result = ag.batch_create_entity(MODEL, new_models, CREATE_MODEL_CHECK_ATTR, exist_items) if new_models else []
 

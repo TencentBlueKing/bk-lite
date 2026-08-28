@@ -25,6 +25,7 @@ from unittest.mock import MagicMock, patch
 from django.test import SimpleTestCase
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
+
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 # 检查是否在Django环境中
@@ -43,8 +44,8 @@ if __name__ == "__main__":
 
 from apps.cmdb.constants.constants import PERMISSION_INSTANCES, VIEW
 from apps.cmdb.graph.drivers.graph_client import GraphClient
-from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.collect_tool_service import CollectToolService
+from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.utils.permission_util import DENY_PERMISSION_PLACEHOLDER, CmdbRulesFormatUtil
 from apps.core.logger import cmdb_logger as logger
 
@@ -140,7 +141,7 @@ def test_model_init_reuses_shared_post_import_extras():
 
         call_command("model_init")
 
-        mock_migrator_cls.assert_called_once_with()
+        mock_migrator_cls.assert_called_once_with(sync_app_topo_layer=False)
         mock_migrator.main.assert_called_once_with()
         mock_apply_extras.assert_called_once_with(
             mock_migrator.model_config,
@@ -1360,11 +1361,13 @@ def test_node_mgmt_sync_service_fetch_non_container_nodes_uses_rpc_payload():
             "_error": "",
         }
     ]
-    node_mgmt.node_list.assert_called_once_with({
-        "page": 1,
-        "page_size": NodeMgmtSyncService.NODE_MGMT_SYNC_PAGE_SIZE,
-        "is_container": False,
-    })
+    node_mgmt.node_list.assert_called_once_with(
+        {
+            "page": 1,
+            "page_size": NodeMgmtSyncService.NODE_MGMT_SYNC_PAGE_SIZE,
+            "is_container": False,
+        }
+    )
 
 
 def test_node_mgmt_sync_service_pick_access_point_uses_rpc_payload():
@@ -1384,12 +1387,14 @@ def test_node_mgmt_sync_service_pick_access_point_uses_rpc_payload():
         result = NodeMgmtSyncService._pick_access_point(1)
 
     assert result == {"id": "container-new", "name": "new", "cloud": 1, "cloud_name": "default"}
-    node_mgmt.node_list.assert_called_once_with({
-        "page": 1,
-        "page_size": NodeMgmtSyncService.NODE_MGMT_SYNC_PAGE_SIZE,
-        "cloud_region_id": 1,
-        "is_container": True,
-    })
+    node_mgmt.node_list.assert_called_once_with(
+        {
+            "page": 1,
+            "page_size": NodeMgmtSyncService.NODE_MGMT_SYNC_PAGE_SIZE,
+            "cloud_region_id": 1,
+            "is_container": True,
+        }
+    )
 
 
 def test_node_mgmt_sync_service_serialize_config_returns_defaults():
@@ -2931,9 +2936,7 @@ class CmdbPermissionScopeRegressionTests(SimpleTestCase):
             1: {"permission_instances_map": {}, "inst_names": []},
             2: {"permission_instances_map": {deny_inst_name: []}, "inst_names": [deny_inst_name]},
         }
-        graph_client, full_text_stats_mock = self._build_graph_client_context_with_driver_methods(
-            "full_text_stats", {"total": 0, "model_stats": []}
-        )
+        graph_client, full_text_stats_mock = self._build_graph_client_context_with_driver_methods("full_text_stats", {"total": 0, "model_stats": []})
 
         with (
             patch.object(GraphClient, "_get_driver_type", return_value=GraphClient.DRIVER_FALKORDB),
@@ -3018,6 +3021,8 @@ class CmdbPermissionScopeRegressionTests(SimpleTestCase):
 
         mock_build.assert_called_once_with(user_teams=[1, 2], permission_rules={"team": [1], "instance": []}, fallback_team_id=1)
         self.assertEqual(result[2]["inst_names"], [DENY_PERMISSION_PLACEHOLDER])
+
+
 def test_config_file_collect_triggers_stargazer_and_returns_pending_result():
     from apps.cmdb.collection.collect_tasks.config_file_collect import ConfigFileCollect
 
@@ -3046,7 +3051,9 @@ def test_config_file_collect_triggers_stargazer_and_returns_pending_result():
         patch("apps.cmdb.collection.collect_tasks.config_file_collect.CollectModels.objects.get", return_value=task),
         patch("apps.cmdb.collection.collect_tasks.config_file_collect.NodeParamsFactory.get_node_params", return_value=node_params),
         patch("apps.cmdb.collection.collect_tasks.config_file_collect.requests.get", return_value=response) as mock_get,
-        patch("apps.cmdb.collection.collect_tasks.config_file_collect.ConfigFileService.build_pending_result", return_value=pending_result) as mock_pending,
+        patch(
+            "apps.cmdb.collection.collect_tasks.config_file_collect.ConfigFileService.build_pending_result", return_value=pending_result
+        ) as mock_pending,
     ):
         result = ConfigFileCollect(task.id)()
 

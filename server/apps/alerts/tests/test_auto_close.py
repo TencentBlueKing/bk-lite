@@ -13,7 +13,6 @@ from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Alert
 
-
 # --------------------------------------------------------------------------
 # WindowCalculator.parse_time_str
 # --------------------------------------------------------------------------
@@ -34,16 +33,24 @@ def test_parse_time_str_variants():
 
 def _make_strategy(close_minutes=60, auto_close=True, is_active=True):
     return AlarmStrategy.objects.create(
-        name="策略", strategy_type="smart_denoise", is_active=is_active,
-        auto_close=auto_close, close_minutes=close_minutes,
+        name="策略",
+        strategy_type="smart_denoise",
+        is_active=is_active,
+        auto_close=auto_close,
+        close_minutes=close_minutes,
     )
 
 
 def _make_alert(strategy, last_event_minutes_ago=120, status=AlertStatus.PROCESSING):
     now = timezone.now()
     return Alert.objects.create(
-        alert_id="A1", level="0", title="t", content="c", fingerprint="fp",
-        status=status, rule_id=str(strategy.id),
+        alert_id="A1",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp",
+        status=status,
+        rule_id=str(strategy.id),
         first_event_time=now - timedelta(minutes=last_event_minutes_ago),
         last_event_time=now - timedelta(minutes=last_event_minutes_ago),
     )
@@ -99,6 +106,7 @@ def test_auto_close_alert_sets_status():
     assert closer.auto_close_alert(alert, strategy) is True
     alert.refresh_from_db()
     assert alert.status == AlertStatus.AUTO_CLOSE
+    assert alert.closed_at is not None
 
 
 @pytest.mark.django_db

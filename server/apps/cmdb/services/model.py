@@ -375,6 +375,30 @@ class ModelManage(object):
         return attrs
 
     @staticmethod
+    def _resolve_app_topo_layer(model_id: str, stored_value=None) -> str:
+        from apps.cmdb.services.app_topo_layer import resolve_app_topo_layer
+
+        return resolve_app_topo_layer(model_id, stored_value)
+
+    @staticmethod
+    def _apply_app_topo_layer(data: dict, *, missing: str) -> dict:
+        from apps.cmdb.services.app_topo_layer import normalize_app_topo_layer
+
+        if missing == "skip" and "app_topo_layer" not in data:
+            return data
+        raw = data.get("app_topo_layer")
+        if raw in (None, "") and missing == "default":
+            from apps.cmdb.services.app_topo_layer import default_app_topo_layer
+
+            data["app_topo_layer"] = default_app_topo_layer(
+                str(data.get("model_id") or ""),
+                str(data.get("classification_id") or ""),
+            )
+            return data
+        data["app_topo_layer"] = normalize_app_topo_layer(raw)
+        return data
+
+    @staticmethod
     def create_model(data: dict, username="admin"):
         """
         创建模型
@@ -388,6 +412,7 @@ class ModelManage(object):
             ModelManage._add_display_field_to_attrs(attrs, attr, model_id, is_pre=True)
 
         data.update(attrs=json.dumps(attrs), unique_rules="[]")
+        ModelManage._apply_app_topo_layer(data, missing="default")
 
         with GraphClient() as ag:
             # 仅查询与新模型存在唯一性冲突可能的节点（model_id 或 model_name 匹配），
@@ -552,6 +577,10 @@ class ModelManage(object):
             "icn": icn if icn is not None else src_model_info.get("icn", ""),
             "attrs": json.dumps(attrs),
             "unique_rules": "[]",
+            "app_topo_layer": ModelManage._resolve_app_topo_layer(
+                src_model_id,
+                src_model_info.get("app_topo_layer"),
+            ),
         }
 
         # 一次性创建模型（包含所有属性）
@@ -680,16 +709,41 @@ class ModelManage(object):
             ag.batch_delete_entity(MODEL, [id])
 
     @staticmethod
+    def _is_builtin_model(model: dict | None) -> bool:
+        if not model:
+            return False
+        value = model.get("is_pre")
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "1", "yes"}
+        return value is True or value == 1
+
+    @staticmethod
+    def _restrict_builtin_model_update(current: dict | None, data: dict) -> dict:
+        if not ModelManage._is_builtin_model(current):
+            return data
+        extra = [key for key in data if key != "app_topo_layer"]
+        if extra or "app_topo_layer" not in data:
+            raise BaseAppException("内置模型仅允许修改应用拓扑层级")
+        return {"app_topo_layer": data["app_topo_layer"]}
+
+    @staticmethod
     def update_model(id: int, data: dict):
         """
         更新模型
         TODO 不能单独更新一个字段，如只更新icon，传递全部字段会导致其他字段校验不通过 model_name 后续考虑优化
         """
         model_id = data.pop("model_id", "")  # 不能更新model_id
+        data = dict(data)
+        ModelManage._apply_app_topo_layer(data, missing="skip")
         with GraphClient() as ag:
             exist_items, _ = ag.query_entity(MODEL, [{"field": "model_id", "type": "str<>", "value": model_id}])
             # 排除当前正在更新的模型，避免自己和自己比较
-            exist_items = [i for i in exist_items if i["_id"] != id]
+            current = next((item for item in exist_items if item.get("_id") == id), None)
+            if current is None and model_id:
+                current_items, _ = ag.query_entity(MODEL, [{"field": "model_id", "type": "str=", "value": model_id}])
+                current = next((item for item in current_items if item.get("_id") == id), None)
+            exist_items = [item for item in exist_items if item.get("_id") != id]
+            data = ModelManage._restrict_builtin_model_update(current, data)
             model = ag.set_entity_properties(MODEL, [id], data, UPDATE_MODEL_CHECK_ATTR_MAP, exist_items)
         return model[0]
 
@@ -1075,8 +1129,7 @@ class ModelManage(object):
 
                 if updated_count > 0:
                     logger.info(
-                        f"[update_enum_instances_display] 枚举选项变更，已更新 {updated_count} 个实例的 {display_field_id} 字段, "
-                        f"模型: {model_id}, 字段: {attr_id}"
+                        f"[update_enum_instances_display] 枚举选项变更，已更新 {updated_count} 个实例的 {display_field_id} 字段, " f"模型: {model_id}, 字段: {attr_id}"
                     )
 
         except Exception as e:
@@ -1161,10 +1214,7 @@ class ModelManage(object):
                     updated_count += len(property_values)
 
                 if updated_count > 0:
-                    logger.info(
-                        f"[rebuild_file_instances_display] 已回填 {updated_count} 个实例的 {display_field_id} 字段, "
-                        f"模型: {model_id}, 字段: {attr_id}"
-                    )
+                    logger.info(f"[rebuild_file_instances_display] 已回填 {updated_count} 个实例的 {display_field_id} 字段, " f"模型: {model_id}, 字段: {attr_id}")
 
         except Exception as e:
             logger.error(
@@ -1904,8 +1954,8 @@ class ModelManage(object):
         CLASSIFICATION_HEADERS_CN = ["模型分类ID", "模型分类名称"]
         CLASSIFICATION_HEADERS_EN = ["classification_id", "classification_name"]
 
-        MODEL_HEADERS_CN = ["模型ID", "模型名称", "模型图标", "模型分类ID"]
-        MODEL_HEADERS_EN = ["model_id", "model_name", "icn", "classification_id"]
+        MODEL_HEADERS_CN = ["模型ID", "模型名称", "模型图标", "模型分类ID", "应用拓扑层级"]
+        MODEL_HEADERS_EN = ["model_id", "model_name", "icn", "classification_id", "app_topo_layer"]
 
         ATTR_HEADERS_CN = [
             "英文名",
@@ -2002,6 +2052,8 @@ class ModelManage(object):
             )
 
         # 快速模型（自定义上报）不参与模型管理的导入导出，避免污染正式模型的跨环境流转
+        from apps.cmdb.services.app_topo_layer import resolve_app_topo_layer
+
         models = [m for m in models if not m.get("is_custom_reporting")]
         for model in models:
             ws_models.append(
@@ -2010,6 +2062,7 @@ class ModelManage(object):
                     model.get("model_name", ""),
                     model.get("icn", ""),
                     model.get("classification_id", ""),
+                    resolve_app_topo_layer(model.get("model_id", ""), model.get("app_topo_layer")),
                 ]
             )
 
@@ -2128,8 +2181,7 @@ class ModelManage(object):
                     if conflicts:
                         if keep_existing_unique_rules_on_conflict:
                             logger.warning(
-                                "[UniqueRule] 存量实例与待应用规则冲突，保留原唯一规则并继续初始化 "
-                                "model_id=%s sheet_name=%s conflict_count=%s reason=%s",
+                                "[UniqueRule] 存量实例与待应用规则冲突，保留原唯一规则并继续初始化 " "model_id=%s sheet_name=%s conflict_count=%s reason=%s",
                                 model_id,
                                 sheet_name,
                                 len(conflicts),

@@ -21,6 +21,26 @@ def test_model_init_enables_existing_unique_rule_conflict_tolerance():
 
         call_command("model_init")
 
+    mock_migrator_cls.assert_called_once_with(sync_app_topo_layer=False)
+    mock_apply_extras.assert_called_once_with(
+        mock_migrator.model_config,
+        keep_existing_unique_rules_on_conflict=True,
+    )
+
+
+def test_model_init_passes_sync_app_topo_layer_flag():
+    with (
+        patch("apps.cmdb.management.commands.model_init.ModelMigrate") as mock_migrator_cls,
+        patch("apps.cmdb.management.commands.model_init.ModelManage._apply_model_config_post_import_extras") as mock_apply_extras,
+    ):
+        mock_migrator = MagicMock()
+        mock_migrator.model_config = {"attr-host": []}
+        mock_migrator.main.return_value = {"ok": True}
+        mock_migrator_cls.return_value = mock_migrator
+
+        call_command("model_init", "--sync-app-topo-layer")
+
+    mock_migrator_cls.assert_called_once_with(sync_app_topo_layer=True)
     mock_apply_extras.assert_called_once_with(
         mock_migrator.model_config,
         keep_existing_unique_rules_on_conflict=True,

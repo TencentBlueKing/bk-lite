@@ -500,7 +500,8 @@ class AggregationProcessor:
 
         active_alert.status = AlertStatus.AUTO_RECOVERY
         active_alert.last_event_time = now
-        active_alert.save(update_fields=["status", "last_event_time", "updated_at"])
+        Alert.stamp_closed_at(active_alert, now)
+        active_alert.save(update_fields=["status", "last_event_time", "updated_at", "closed_at"])
 
         from apps.alerts.service.recovery_notify import notify_alert_recovered
         from apps.alerts.service.reminder_service import ReminderService

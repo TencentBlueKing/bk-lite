@@ -774,6 +774,7 @@ def _purge_legacy_vm_sync_beats(limit: int = ORPHAN_BEAT_PURGE_LIMIT) -> int:
 def sync_collect_tasks_gate():
     """全局 5 分钟守门：仅在出现新完整轮次时触发对账。"""
     from apps.cmdb.models.collect_model import COLLECTION_ROLE_DEVICE
+    from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
     from apps.cmdb.services.topology_replay_service import maybe_replay_topology_from_gate
 
     logger.info("[RoundGate] 开始扫描采集对账守门")
@@ -787,6 +788,10 @@ def sync_collect_tasks_gate():
         page = list(
             CollectModels._default_manager.filter(id__gt=after_id)
             .exclude(task_type=CollectPluginTypes.CONFIG_FILE)
+            .exclude(
+                is_system=True,
+                system_code__startswith=NodeMgmtSyncService.SYSTEM_TASK_PREFIX,
+            )  # NodeMgmtSync 认领 child execution；守门重派会冲掉 task_id
             .order_by("id")
             .values("id", "exec_status", "collect_digest", "params", "model_id", "task_type")[:GATE_PAGE_SIZE]
         )
