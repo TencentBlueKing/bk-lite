@@ -45,18 +45,21 @@ export const buildDashboardSections = (items: DashboardLayoutItem[]): DashboardS
   const ordered = sortDashboardLayoutItems(items);
   const sections: DashboardSections = { ungrouped: [], groups: [] };
   const groupMap = new Map<string, DashboardGroupSection>();
-  let currentGroup: DashboardGroupSection | null = null;
+
+  // Register groups first so membership is keyed by groupId, not y-order.
+  // Dragged-in widgets may still carry an absolute y above the group header;
+  // they must not be ejected during normalize/rebuild.
+  ordered.forEach((item) => {
+    if (!isDashboardGroupItem(item)) {
+      return;
+    }
+    const section: DashboardGroupSection = { group: item, widgets: [] };
+    sections.groups.push(section);
+    groupMap.set(item.i, section);
+  });
 
   ordered.forEach((item) => {
     if (isDashboardGroupItem(item)) {
-      currentGroup = { group: item, widgets: [] };
-      sections.groups.push(currentGroup);
-      groupMap.set(item.i, currentGroup);
-      return;
-    }
-
-    if (item.groupId === null) {
-      sections.ungrouped.push(item);
       return;
     }
 
