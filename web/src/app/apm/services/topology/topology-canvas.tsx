@@ -10,7 +10,6 @@ import TopologyServiceIcon from '@/app/apm/components/topology-service-icon';
 import {
   buildTopologyEdgeGeometry,
   hasReciprocalTopologyEdge,
-  layoutForceTopology,
   layoutLayeredTopology,
   topologyNeighborIds,
   topologyNodeNameWidth,
@@ -21,8 +20,6 @@ import {
 } from '@/app/apm/services/topology/topology-layout';
 import type { ApmTopologyEdge, ApmTopologyHealth, ApmTopologyNode } from '@/app/apm/types';
 import { useTranslation } from '@/utils/i18n';
-
-export type TopologyLayoutMode = 'layered' | 'force';
 
 export type TopologyCanvasSelection =
   | { kind: 'node'; id: string }
@@ -57,7 +54,6 @@ export default function TopologyCanvas({
   nodes,
   edges,
   zoom = 1,
-  layout = 'layered',
   focusNamespace,
   selected = null,
   toolbar,
@@ -68,7 +64,6 @@ export default function TopologyCanvas({
   edges: ApmTopologyEdge[];
   keyword?: string;
   zoom?: number;
-  layout?: TopologyLayoutMode;
   focusNamespace?: string;
   selected?: TopologyCanvasSelection | null;
   toolbar?: ReactNode;
@@ -79,8 +74,8 @@ export default function TopologyCanvas({
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const layoutKey = useMemo(
-    () => `${layout}:${nodes.map((node) => node.id).join('|')}:${edges.map((edge) => `${edge.source}>${edge.target}`).join('|')}`,
-    [edges, layout, nodes],
+    () => `${nodes.map((node) => node.id).join('|')}:${edges.map((edge) => `${edge.source}>${edge.target}`).join('|')}`,
+    [edges, nodes],
   );
   const [layoutResult, setLayoutResult] = useState<{ key: string; nodes: PositionedApmTopologyNode[] }>({
     key: '',
@@ -91,8 +86,7 @@ export default function TopologyCanvas({
 
   useEffect(() => {
     let active = true;
-    const runner = layout === 'force' ? layoutForceTopology : layoutLayeredTopology;
-    void runner(nodes, edges)
+    void layoutLayeredTopology(nodes, edges)
       .then((result) => {
         if (active) setLayoutResult({ key: layoutKey, nodes: result });
       })
@@ -103,7 +97,7 @@ export default function TopologyCanvas({
     return () => {
       active = false;
     };
-  }, [edges, layout, layoutKey, nodes]);
+  }, [edges, layoutKey, nodes]);
 
   useEffect(() => {
     setView({ x: 0, y: 0, k: zoom });
@@ -115,7 +109,7 @@ export default function TopologyCanvas({
   const maxSpans = Math.max(...nodes.map((node) => node.sampled_spans), 1);
   const maxCalls = Math.max(...edges.map((edge) => edge.sampled_calls), 1);
   const edgePairs = new Set(edges.map((edge) => edgeKey(edge.source, edge.target)));
-  const routing = layout === 'layered' ? 'polyline' : 'curve';
+  const routing = 'polyline';
   const focusNodeIds = focusNamespace
     ? new Set(positionedNodes.filter((node) => node.service_namespace === focusNamespace).map((node) => node.id))
     : null;
@@ -209,7 +203,7 @@ export default function TopologyCanvas({
         ref={svgRef}
         aria-label={t('apm.topology.chartAria', 'APM 服务调用拓扑')}
         className="absolute inset-0 block h-full w-full cursor-grab active:cursor-grabbing"
-        data-layout={layout}
+        data-layout="layered"
         data-topology-scale={view.k.toFixed(2)}
         role="img"
         viewBox={`0 0 ${TOPOLOGY_CANVAS_SIZE.width} ${TOPOLOGY_CANVAS_SIZE.height}`}

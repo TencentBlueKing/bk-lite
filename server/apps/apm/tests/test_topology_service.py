@@ -9,7 +9,7 @@ from apps.apm.adapters import InMemoryTraceStore, TelemetryStoreUnavailable
 from apps.apm.adapters.span_aliases import format_peer_endpoint, infer_downstream
 from apps.apm.models import ApmService
 from apps.apm.services import DjangoApmTopologyService, DjangoTelemetryCatalogService
-from apps.apm.services.contracts import CatalogDiscovery, SpanDetail, TopologySampleQuery, TopologyTarget, TraceDetail
+from apps.apm.services.contracts import CatalogDiscovery, SpanDetail, TopologyTarget, TraceDetail
 from apps.apm.tests.helpers import create_application
 
 
@@ -87,6 +87,21 @@ def _mysql_client_trace(now, *, attr_key="db.system", trace_id="b" * 32, status=
             ),
         ),
     )
+
+
+def test_topology_build_propagates_telemetry_unavailable_instead_of_no_data():
+    now = timezone.now()
+
+    class _UnavailableStore:
+        def sample_traces(self, query):
+            raise TelemetryStoreUnavailable("VictoriaTraces 查询不可用")
+
+    with pytest.raises(TelemetryStoreUnavailable, match="查询不可用"):
+        DjangoApmTopologyService(_UnavailableStore()).build(
+            [TopologyTarget("shop", "gateway", "prod", "go")],
+            started_at=now - timedelta(hours=1),
+            ended_at=now,
+        )
 
 
 def test_topology_builds_cross_service_edges_and_edge_red_from_the_same_sample():
@@ -730,15 +745,12 @@ def test_topology_api_inferred_mysql_does_not_appear_in_service_catalog(apm_api_
     assert not ApmService.objects.filter(name="mysql").exists()
 
 
-def test_sample_traces_omitted_fetch_logs_template_without_leaking_payload(caplog):
+def test_sample_traces_span_fetch_failure_is_unavailable_not_empty(caplog):
     from apps.apm.adapters.victoriatraces import VictoriaTracesTelemetryStore
 
     class _Store(VictoriaTracesTelemetryStore):
         def __init__(self):
             super().__init__(endpoint="http://traces.test")
-
-        def sample_traces(self, query: TopologySampleQuery):
-            raise AssertionError("not used")
 
         def _query_rows(self, query, started_at, ended_at, *, limit=None):
             raise TelemetryStoreUnavailable("VictoriaTraces 查询不可用")
@@ -746,14 +758,14 @@ def test_sample_traces_omitted_fetch_logs_template_without_leaking_payload(caplo
     store = _Store()
     caplog.set_level("WARNING", logger="apm")
     now = timezone.now()
-    traces, omitted = store._fetch_topology_traces(
-        ["secret-token-should-not-appear", "a" * 32],
-        started_at=now - timedelta(hours=1),
-        ended_at=now,
-    )
 
-    assert traces == []
-    assert omitted == 2
+    with pytest.raises(TelemetryStoreUnavailable, match="查询不可用"):
+        store._fetch_topology_traces(
+            ["secret-token-should-not-appear", "a" * 32],
+            started_at=now - timedelta(hours=1),
+            ended_at=now,
+        )
+
     records = [
         record
         for record in caplog.records

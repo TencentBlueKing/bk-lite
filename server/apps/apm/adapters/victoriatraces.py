@@ -158,10 +158,7 @@ class VictoriaTracesTelemetryStore:
         session: requests.Session | None = None,
     ):
         self.endpoint = (
-            endpoint
-            or os.getenv("VICTORIATRACES_HOST")
-            or os.getenv("APM_VICTORIATRACES_QUERY_ENDPOINT")
-            or "http://127.0.0.1:10428"
+            endpoint or os.getenv("VICTORIATRACES_HOST") or os.getenv("APM_VICTORIATRACES_QUERY_ENDPOINT") or "http://127.0.0.1:10428"
         ).rstrip("/")
         self.session = session or requests.Session()
         self.timeout = (3, int(os.getenv("APM_VICTORIATRACES_QUERY_TIMEOUT", "15")))
@@ -222,7 +219,7 @@ class VictoriaTracesTelemetryStore:
         return TracePage(items=page_items, next_cursor=next_cursor)
 
     def _search_unscoped_traces(self, query: TraceSearchQuery) -> TracePage:
-        """空服务检索先按 trace_id 有界聚合，避免同一 Trace 跨页重复。"""
+        """空服务检索先按 trace_id 有界聚合，再一次 LogsQL 拉回 Span，避免逐条 Jaeger get_trace。"""
 
         ended_at = min(query.ended_at, _decode_cursor(query.cursor)) if query.cursor else query.ended_at
         filters = ["*"]
@@ -245,22 +242,34 @@ class VictoriaTracesTelemetryStore:
             f"| sort by (matched_at) desc | limit {query.limit + 1}"
         )
         rows = self._query_rows(logs_query, query.started_at, ended_at, limit=query.limit + 1)
-        summaries: list[tuple[datetime, TraceSummary]] = []
+        ordered_ids: list[str] = []
+        matched_at_by_id: dict[str, datetime] = {}
         for row in rows:
             trace_id = str(row.get("trace_id", "")).strip()
             matched_at_ns = _number(row.get("matched_at"))
-            if not trace_id or matched_at_ns is None:
+            if not trace_id or matched_at_ns is None or trace_id in matched_at_by_id:
                 continue
             try:
                 matched_at = datetime.fromtimestamp(matched_at_ns / 1_000_000_000, tz=UTC)
             except (OverflowError, OSError, ValueError):
                 continue
-            detail = self.get_trace(trace_id)
+            ordered_ids.append(trace_id)
+            matched_at_by_id[trace_id] = matched_at
+        traces, _omitted = self._fetch_topology_traces(
+            ordered_ids,
+            started_at=query.started_at,
+            ended_at=ended_at,
+        )
+        traces_by_id = {detail.trace_id: detail for detail in traces}
+        summaries: list[tuple[datetime, TraceSummary]] = []
+        for trace_id in ordered_ids:
+            detail = traces_by_id.get(trace_id)
             if detail is None:
                 continue
             matching_span = self._matching_span(detail, query)
-            if matching_span is not None:
-                summaries.append((matched_at, self._summary(detail, matching_span)))
+            if matching_span is None:
+                continue
+            summaries.append((matched_at_by_id[trace_id], self._summary(detail, matching_span)))
         summaries.sort(key=lambda item: (item[0], item[1].trace_id), reverse=True)
         page_pairs = summaries[: query.limit]
         page_items = tuple(summary for _, summary in page_pairs)
@@ -551,7 +560,7 @@ class VictoriaTracesTelemetryStore:
                 "event=apm_topology_trace_fetch_failed failed_stage=sample_spans error_type=%s",
                 type(exc).__name__,
             )
-            return [], len(trace_ids)
+            raise
         traces_by_id = self._traces_from_span_rows(rows)
         traces: list[TraceDetail] = []
         omitted = 0
@@ -614,11 +623,7 @@ class VictoriaTracesTelemetryStore:
         parent_span_id = str(row.get("parent_span_id", "")).strip()
         if not parent_span_id or set(parent_span_id) <= {"0"}:
             parent_span_id = None
-        attributes = {
-            key: value
-            for key, value in row.items()
-            if isinstance(key, str) and key.startswith(("span_attr:", "resource_attr:"))
-        }
+        attributes = {key: value for key, value in row.items() if isinstance(key, str) and key.startswith(("span_attr:", "resource_attr:"))}
         return SpanDetail(
             span_id=span_id,
             parent_span_id=parent_span_id,

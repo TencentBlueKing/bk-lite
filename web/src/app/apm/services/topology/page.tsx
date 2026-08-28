@@ -10,7 +10,6 @@ import TopologyCanvas, {
   TopologyLegendDot,
   topologyHealthColors,
   type TopologyCanvasSelection,
-  type TopologyLayoutMode,
 } from '@/app/apm/services/topology/topology-canvas';
 import TopologyInspectPanel from '@/app/apm/services/topology/topology-inspect-panel';
 import { filterTopologyByKeyword, isolateTopologyNeighborhood } from '@/app/apm/services/topology/topology-layout';
@@ -37,7 +36,6 @@ export default function ApmTopologyPage() {
   const { getServices, getTopology, getTraces } = useApmApi();
   const [graph, setGraph] = useState<ApmTopologyGraph>({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
   const [state, setState] = useState<PageState>('loading');
-  const [layout, setLayout] = useState<TopologyLayoutMode>('layered');
   const [timeWindow, setTimeWindow] = useState<TimeWindow>('1h');
   const [environment, setEnvironment] = useState<string>();
   const [environmentOptions, setEnvironmentOptions] = useState<{ value: string; label: string }[]>([]);
@@ -219,16 +217,6 @@ export default function ApmTopologyPage() {
                   {t('apm.topology.clearSlice', '清空切片')}
                 </Button>
               ) : null}
-              <Segmented<TopologyLayoutMode>
-                aria-label={t('apm.topology.layout', '拓扑布局')}
-                className="shrink-0"
-                options={[
-                  { value: 'layered', label: t('apm.topology.layered', '层次') },
-                  { value: 'force', label: t('apm.topology.force', '力导向') },
-                ]}
-                value={layout}
-                onChange={setLayout}
-              />
               <Button danger={anomalyOnly} icon={<WarningOutlined aria-hidden="true" />} type={anomalyOnly ? 'primary' : 'default'} onClick={() => setAnomalyOnly((value) => !value)}>{t('apm.topology.anomalyOnly', '只看异常')}</Button>
               <Button aria-label={t('apm.topology.refresh', '刷新拓扑')} icon={<ReloadOutlined aria-hidden="true" />} loading={state === 'loading'} onClick={() => void load()} />
             </FilterToolbar>
@@ -238,7 +226,6 @@ export default function ApmTopologyPage() {
               <div className="relative min-w-0 flex-1">
                 <TopologyCanvas
                   edges={visibleGraph.edges}
-                  layout={layout}
                   nodes={visibleGraph.nodes}
                   selected={selection}
                   toolbar={(

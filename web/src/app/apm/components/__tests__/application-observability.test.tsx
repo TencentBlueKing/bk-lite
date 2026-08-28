@@ -1,9 +1,11 @@
 import React from 'react';
 import { cleanup, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { renderWithApmIntl } from '@/app/apm/__tests__/intl';
 import ApplicationObservability from '../application-observability';
+import { HandledRequestError } from '@/utils/request';
 
 const api = {
   getApplication: vi.fn(),
@@ -126,9 +128,9 @@ describe('APM 应用观测详情', () => {
     expect(await screen.findByText('应用服务拓扑')).not.toBeNull();
     expect(screen.queryByRole('link', { name: '返回服务' })).toBeNull();
     expect(screen.getByRole('radiogroup', { name: '服务指标时间窗口' })).not.toBeNull();
-    expect(screen.getByRole('radiogroup', { name: '拓扑布局' })).not.toBeNull();
-    expect(screen.getByRole('radio', { name: '层次' })).not.toBeNull();
-    expect(screen.getByRole('radio', { name: '力导向' })).not.toBeNull();
+    expect(screen.queryByRole('radiogroup', { name: '拓扑布局' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '层次' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: '力导向' })).toBeNull();
     expect(screen.getByText('关键信息')).not.toBeNull();
     expect(screen.getByText('服务数')).not.toBeNull();
     expect(screen.getByText('告警数')).not.toBeNull();
@@ -180,5 +182,34 @@ describe('APM 应用观测详情', () => {
 
     await waitFor(() => expect(screen.getByTestId('application-topology')).not.toBeNull());
     expect(screen.queryByText('当前时间窗暂无应用内调用关系。')).toBeNull();
+  });
+
+  it('遥测 503 展示不可用而不是暂无调用关系', async () => {
+    api.getTopology.mockRejectedValue(new HandledRequestError('VictoriaTraces 查询不可用', {
+      status: 503,
+      code: 'telemetry_unavailable',
+    }));
+
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+
+    expect(await screen.findByText('应用服务拓扑')).not.toBeNull();
+    expect(await screen.findByText('遥测存储暂不可用')).not.toBeNull();
+    expect(screen.queryByText('当前时间窗暂无应用内调用关系。')).toBeNull();
+    expect(screen.queryByTestId('application-topology')).toBeNull();
+  });
+
+  it('选择 7d 窗口仍查询 RED 指标', async () => {
+    const user = userEvent.setup();
+    renderWithApmIntl(<ApplicationObservability applicationId="app-row-1" />);
+    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalled());
+    api.getServiceRed.mockClear();
+
+    await user.click(screen.getByRole('radio', { name: '7d' }).closest('label')!);
+
+    await waitFor(() => expect(api.getServiceRed).toHaveBeenCalled());
+    const startedAt = api.getServiceRed.mock.calls[0][2] as string;
+    const endedAt = api.getServiceRed.mock.calls[0][3] as string;
+    expect(new Date(endedAt).getTime() - new Date(startedAt).getTime()).toBeGreaterThan(6 * 24 * 60 * 60 * 1000);
+    expect(screen.queryByText('RED 指标查询失败')).toBeNull();
   });
 });
