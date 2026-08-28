@@ -1,7 +1,7 @@
 # APM 服务拓扑产品决策记忆
 
-- 最近更新：2026-08-26
-- 当前规格：`specs/changes/apm-topology-request-slice/spec.md`
+- 最近更新：2026-08-28
+- 当前规格：`specs/changes/apm-topology-request-slice/spec.md`、`specs/changes/apm-user-request-entry/spec.md`
 
 ## 产品定位
 
@@ -25,11 +25,13 @@
 - 「只看异常」按节点健康度过滤；「仅错误请求」按 Trace 状态切片。二者不是同一操作。
 - 请求切片只复用调用链探索已有字段（status / span_name / min_duration_ms / environment），不开放任意属性或用户粘贴 TraceQL。
 - 图、节点指标、边指标和样本 Trace 共用同一有界 Trace 样本；有切片时不再叠未过滤的服务级 RED。
+- 用户请求入口（2026-08-28）：应用详情拓扑查询时合成 `kind=user_request` 虚拟节点，表达「外部 HTTP/RPC 请求打进本应用」；判定为根 `server` Span、父 Span 不在本条 Trace、带 HTTP/RPC 语义属性；每环境折叠一个节点，边指标来自命中的根 SERVER Span。只挂应用详情拓扑，全局服务拓扑不展示——入口相对应用边界才有意义，全局挂总入口会把多个应用流量拧成假根。不改探针 / Collector，不进服务目录。它与「推断下游」方向相反（上游触发源 vs 未插桩下游），不共用 `kind`。见 `specs/changes/apm-user-request-entry/spec.md`。
 
 ## 明确后置
 
 - 任意 span 属性、用户、高基数字段过滤。
-- Gateway/Sidecar 折叠、Entry Service。
+- Gateway/Sidecar 折叠、Entry Service（全局服务拓扑上的入口服务标记；应用详情的用户请求节点已另行确认，见上）。
+- 全局服务拓扑展示用户请求节点；消息消费 / 定时任务等非用户触发源入口；应用详情拓扑调查栏与用户请求节点点选下钻；按路由 / 客户端拆分入口节点。
 - 自定义时间范围、60 天窗口、提高 30 个目标上限。
 
 ## 仍待确认
@@ -47,4 +49,5 @@
 
 - 2026-08-26 用户确认走调查闭环（方案 A），后置按请求切片与边级时延。
 - 2026-08-26 方案 A 在本机 demo Trace 上走通后，用户确认继续下一刀：按请求切片重画拓扑，并一并给出边级 P95/错误。
+- 2026-08-28 用户对照竞品「入口」节点提出用户请求触发源诉求，确认：只做用户 HTTP/RPC 请求（消息/定时后置）；只挂应用详情拓扑，全局服务拓扑不加；与推断下游是两个功能（上游触发源 vs 下游依赖发现），复用「查询时合成虚拟节点」模式但判定与 `kind` 独立。
 - Honeycomb Service Map 作为能力对照，不是目标架构。`apm-mvp` 禁止用户透传 TraceQL。

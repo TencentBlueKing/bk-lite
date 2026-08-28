@@ -177,10 +177,16 @@ export default function TopologyCanvas({
   };
 
   const nodeMetricLine = (node: ApmTopologyNode) => {
+    if (node.kind === 'user_request') {
+      return t('apm.topology.userRequestMetric', '观测请求 {count} 次', { count: formatNumber(node.sampled_spans) });
+    }
     const latency = node.p95_ms == null ? t('apm.common.noData', '无数据') : formatCompactLatency(node.p95_ms);
     const errorRate = node.error_rate == null ? null : formatErrorRate(node.error_rate);
     return errorRate ? `${latency} · ${errorRate}` : latency;
   };
+
+  const nodeDisplayName = (node: ApmTopologyNode) =>
+    node.kind === 'user_request' ? t('apm.topology.userRequestNode', '用户请求') : node.service_name;
 
   return (
     <div className="relative h-[640px] w-full overflow-hidden bg-[var(--color-fill-1)]" data-topology-surface="true">
@@ -224,6 +230,7 @@ export default function TopologyCanvas({
             routing,
           );
           const key = edgeKey(edge.source, edge.target);
+          const entryEdge = source.kind === 'user_request';
           const isSelected = selectedEdgeKey === key;
           const isHighlighted = highlightedIds
             ? highlightedIds.has(edge.source) && highlightedIds.has(edge.target) && (edge.source === highlightNodeId || edge.target === highlightNodeId)
@@ -259,8 +266,8 @@ export default function TopologyCanvas({
               }}
             >
               <title>{t('apm.topology.edgeTitle', '{source} 调用 {target}，观测调用 {calls} 次', {
-                source: source.service_name,
-                target: target.service_name,
+                source: nodeDisplayName(source),
+                target: nodeDisplayName(target),
                 calls: formatNumber(edge.sampled_calls),
               })}</title>
               <path
@@ -268,6 +275,7 @@ export default function TopologyCanvas({
                 fill="none"
                 markerEnd="url(#apm-arrow)"
                 stroke={color}
+                strokeDasharray={entryEdge ? '5 4' : undefined}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 strokeWidth={isSelected ? strokeWidth + 0.6 : strokeWidth}
@@ -298,18 +306,25 @@ export default function TopologyCanvas({
           const isSelected = selected?.kind === 'node' && selected.id === node.id;
           const languageTitle = serviceLanguageLabel(node.language, t('apm.language.unknown', '未知'));
           const inferred = node.kind === 'inferred';
+          const userRequest = node.kind === 'user_request';
+          const nodeName = nodeDisplayName(node);
           const labelWidth = topologyNodeNameWidth(cardWidth, inferred);
-          const displayName = truncateTopologyNodeLabel(node.service_name, labelWidth);
+          const displayName = truncateTopologyNodeLabel(nodeName, labelWidth);
           const inferredBadgeX = cardX + cardWidth - TOPOLOGY_NODE_CARD.healthGutter;
           return (
             <g
               key={node.id}
-              aria-label={t('apm.topology.nodeAria', '{name}，{health}，P95 {latency}，时间窗内观测 {spans} 次调用', {
-                name: node.service_name,
-                health: t(topologyHealthI18n[node.health].id, topologyHealthI18n[node.health].fallback),
-                latency: node.p95_ms == null ? t('apm.common.noData', '无数据') : formatCompactLatency(node.p95_ms),
-                spans: node.sampled_spans,
-              })}
+              aria-label={userRequest
+                ? t('apm.topology.userRequestAria', '{name}，时间窗内观测 {spans} 次请求', {
+                  name: nodeName,
+                  spans: node.sampled_spans,
+                })
+                : t('apm.topology.nodeAria', '{name}，{health}，P95 {latency}，时间窗内观测 {spans} 次调用', {
+                  name: nodeName,
+                  health: t(topologyHealthI18n[node.health].id, topologyHealthI18n[node.health].fallback),
+                  latency: node.p95_ms == null ? t('apm.common.noData', '无数据') : formatCompactLatency(node.p95_ms),
+                  spans: node.sampled_spans,
+                })}
               opacity={isHighlighted ? (inFocus ? 1 : 0.62) : NODE_IDLE_OPACITY}
               role={onSelect || onNodeClick ? 'button' : undefined}
               tabIndex={onSelect || onNodeClick ? 0 : undefined}
@@ -334,15 +349,21 @@ export default function TopologyCanvas({
                 }
               }}
             >
-              <title>{t('apm.topology.nodeTitle', '{name}\n{language} · {namespace} · {environment}\nP95 {latency} · 错误率 {errors} · 观测调用 {spans}', {
-                name: node.service_name,
-                language: languageTitle,
-                namespace: node.service_namespace || t('apm.common.unsetNamespace', '未设置 namespace'),
-                environment: node.environment,
-                latency: node.p95_ms == null ? t('apm.common.noData', '无数据') : formatCompactLatency(node.p95_ms),
-                errors: node.error_rate == null ? t('apm.common.noData', '无数据') : formatErrorRate(node.error_rate),
-                spans: node.sampled_spans,
-              })}</title>
+              <title>{userRequest
+                ? t('apm.topology.userRequestTitle', '{name}\n{environment}\n观测请求 {spans} 次', {
+                  name: nodeName,
+                  environment: node.environment,
+                  spans: node.sampled_spans,
+                })
+                : t('apm.topology.nodeTitle', '{name}\n{language} · {namespace} · {environment}\nP95 {latency} · 错误率 {errors} · 观测调用 {spans}', {
+                  name: nodeName,
+                  language: languageTitle,
+                  namespace: node.service_namespace || t('apm.common.unsetNamespace', '未设置 namespace'),
+                  environment: node.environment,
+                  latency: node.p95_ms == null ? t('apm.common.noData', '无数据') : formatCompactLatency(node.p95_ms),
+                  errors: node.error_rate == null ? t('apm.common.noData', '无数据') : formatErrorRate(node.error_rate),
+                  spans: node.sampled_spans,
+                })}</title>
               <rect
                 fill={isSelected ? 'var(--color-primary-bg-active)' : 'var(--color-bg)'}
                 height={cardHeight}

@@ -255,6 +255,8 @@ export const layoutForceTopology = async (
 
 export const isInferredTopologyNode = (node: ApmTopologyNode | undefined): boolean => node?.kind === 'inferred';
 
+export const isUserRequestTopologyNode = (node: ApmTopologyNode | undefined): boolean => node?.kind === 'user_request';
+
 export const focusApplicationTopology = (
   graph: ApmTopologyGraph,
   applicationId: string,

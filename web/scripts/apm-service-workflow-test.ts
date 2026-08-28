@@ -87,6 +87,7 @@ assert.match(topologyCanvas, /data-node-kind/, '推断节点必须可被画布�
 assert.match(topologyInspectPanel, /peerAddress/, '推断节点调查栏必须展示 Client Span 中的地址');
 assert.match(topologyInspectPanel, /dbName/, '推断节点调查栏必须单独展示库名而不是用库名冒充 host');
 assert.doesNotMatch(applicationObservability, /include_inferred:\s*true/, '应用详情子拓扑第一版不得请求推断下游');
+assert.match(applicationObservability, /include_user_request:\s*true/, '应用详情拓扑必须请求用户请求入口');
 assert.doesNotMatch(serviceDetail, /include_inferred:\s*true/, '服务详情不得打开推断查询');
 assert.doesNotMatch(topologyPage, /min-w-\[960px\]|scroll=\{\{ x:/, '拓扑不得通过固定宽度撑开整页');
 assert.doesNotMatch(topologyPage, /设计预览|Storybook 示例数据/, '已有后端契约时不得继续展示示例拓扑');

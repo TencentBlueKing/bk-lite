@@ -5,7 +5,13 @@ from collections.abc import Sequence
 from datetime import datetime, timedelta
 from math import ceil
 
-from apps.apm.adapters.span_aliases import CLIENT_SPAN_KINDS, ENTRY_SPAN_KINDS, InferredDownstream, infer_downstream
+from apps.apm.adapters.span_aliases import (
+    CLIENT_SPAN_KINDS,
+    ENTRY_SPAN_KINDS,
+    InferredDownstream,
+    infer_downstream,
+    is_user_request_entry,
+)
 from apps.apm.services.contracts import (
     SpanDetail,
     TopologyEdge,
@@ -29,6 +35,7 @@ ERROR_RATE_CRITICAL = 0.05
 ERROR_RATE_WARNING = 0.01
 INSTRUMENTED = "instrumented"
 INFERRED = "inferred"
+USER_REQUEST = "user_request"
 
 
 def _identity(namespace: str, name: str, environment: str) -> tuple[str, str, str]:
@@ -41,6 +48,10 @@ def _instrumented_node_id(identity: tuple[str, str, str]) -> str:
 
 def _inferred_node_id(fold_key: str, environment: str) -> str:
     return f"inferred:{environment}:{fold_key}"
+
+
+def _user_request_node_id(environment: str) -> str:
+    return f"user_request:{environment}"
 
 
 def health_from_error_rate(error_rate: float | None) -> str:
@@ -182,6 +193,7 @@ class DjangoApmTopologyService:
         span_name: str | None = None,
         min_duration_ms: float | None = None,
         include_inferred: bool = False,
+        include_user_request: bool = False,
     ) -> TopologyGraph:
         if ended_at <= started_at:
             raise ValueError("查询结束时间必须晚于开始时间")
@@ -233,6 +245,7 @@ class DjangoApmTopologyService:
         edge_metrics: dict[tuple[str, str], _MetricBucket] = defaultdict(_MetricBucket)
         instrumented_nodes: dict[str, tuple[str, str, str]] = {}
         inferred_nodes: dict[str, _InferredNodeMeta] = {}
+        user_request_nodes: dict[str, str] = {}
         contributing_traces = 0
 
         for detail in traces:
@@ -240,10 +253,12 @@ class DjangoApmTopologyService:
                 detail,
                 visible=visible,
                 include_inferred=include_inferred,
+                include_user_request=include_user_request,
                 node_metrics=node_metrics,
                 edge_metrics=edge_metrics,
                 instrumented_nodes=instrumented_nodes,
                 inferred_nodes=inferred_nodes,
+                user_request_nodes=user_request_nodes,
             )
             if contributed:
                 contributing_traces += 1
@@ -262,6 +277,10 @@ class DjangoApmTopologyService:
                         for node_id, identity in instrumented_nodes.items()
                     ),
                     *(self._inferred_node(node_id, meta, node_metrics[node_id]) for node_id, meta in inferred_nodes.items()),
+                    *(
+                        self._user_request_node(node_id, environment, node_metrics[node_id])
+                        for node_id, environment in user_request_nodes.items()
+                    ),
                 ),
                 key=lambda node: (node.kind, node.service_name, node.id),
             )
@@ -296,10 +315,12 @@ class DjangoApmTopologyService:
         *,
         visible: dict[tuple[str, str, str], TopologyTarget],
         include_inferred: bool,
+        include_user_request: bool,
         node_metrics: dict[str, _MetricBucket],
         edge_metrics: dict[tuple[str, str], _MetricBucket],
         instrumented_nodes: dict[str, tuple[str, str, str]],
         inferred_nodes: dict[str, _InferredNodeMeta],
+        user_request_nodes: dict[str, str],
     ) -> bool:
         spans_by_id = {span.span_id: span for span in detail.spans}
         children_by_parent: dict[str, list[SpanDetail]] = defaultdict(list)
@@ -369,6 +390,24 @@ class DjangoApmTopologyService:
                     caller_service_name=span.service_name,
                     inferred=inferred,
                 )
+                contributed = True
+
+        if include_user_request:
+            for span in detail.spans:
+                if span.parent_span_id and span.parent_span_id in spans_by_id:
+                    continue
+                if not is_user_request_entry(span.kind, span.attributes):
+                    continue
+                identity = _identity(span.service_namespace, span.service_name, span.environment)
+                if identity not in visible:
+                    continue
+                source_id = _user_request_node_id(identity[2])
+                target_id = _instrumented_node_id(identity)
+                instrumented_nodes[target_id] = identity
+                involved.add(identity)
+                user_request_nodes[source_id] = identity[2]
+                edge_metrics[(source_id, target_id)].add(span, trace_id=detail.trace_id, caller_service_name="")
+                node_metrics[source_id].add(span, trace_id=detail.trace_id, caller_service_name="")
                 contributed = True
 
         for span in detail.spans:
@@ -442,6 +481,26 @@ class DjangoApmTopologyService:
             request_rate=None,
             error_rate=error_rate,
             p95_ms=_percentile(bucket.durations, 0.95),
+            sample_traces=tuple(bucket.samples),
+        )
+
+    @staticmethod
+    def _user_request_node(node_id: str, environment: str, bucket: _MetricBucket) -> TopologyNode:
+        """用户请求入口虚拟节点：不带 RED、健康度中性，指标只挂在出边上。"""
+
+        return TopologyNode(
+            id=node_id,
+            service_namespace="",
+            service_name=USER_REQUEST,
+            environment=environment,
+            health="unknown",
+            sampled_spans=bucket.count,
+            error_spans=0,
+            language="",
+            kind=USER_REQUEST,
+            request_rate=None,
+            error_rate=None,
+            p95_ms=None,
             sample_traces=tuple(bucket.samples),
         )
 

@@ -214,7 +214,7 @@ export interface ApmDashboard {
   releases: ApmDashboardSection<{ items: ApmDashboardReleaseRow[] }>;
 }
 
-export type ApmTopologyNodeKind = 'instrumented' | 'inferred';
+export type ApmTopologyNodeKind = 'instrumented' | 'inferred' | 'user_request';
 
 export interface ApmTopologySampleTrace {
   trace_id: string;

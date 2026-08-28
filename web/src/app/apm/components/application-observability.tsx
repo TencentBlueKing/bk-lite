@@ -104,7 +104,11 @@ export default function ApplicationObservability({
   useEffect(() => {
     if (!application) return;
     const { startedAt, endedAt } = timeWindowRange(timeWindow);
-    getTopology({ started_at: startedAt.toISOString(), ended_at: endedAt.toISOString() })
+    getTopology({
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString(),
+      include_user_request: true,
+    })
       .then((topology) => {
         setGraph(focusApplicationTopology(topology, application.application_id).graph);
       })

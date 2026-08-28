@@ -137,6 +137,9 @@ describe('APM 应用观测详情', () => {
       expect(topology.getAttribute('data-edges')).toBe('shop-node>billing-node');
       expect(topology.getAttribute('data-focus')).toBe('shop');
     });
+    expect(api.getTopology).toHaveBeenCalledWith(expect.objectContaining({
+      include_user_request: true,
+    }));
 
     expect(await screen.findByText('checkout')).not.toBeNull();
     expect(screen.queryByText('invoice')).toBeNull();
