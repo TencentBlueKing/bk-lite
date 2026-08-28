@@ -5,7 +5,6 @@ import importlib
 import json
 import ntpath
 import posixpath
-import time
 from typing import Any, Dict, Optional
 
 from core.collection.contracts import AccessProbeResult, StructuredMetricsPayload
@@ -367,6 +366,8 @@ class CollectionService:
                 )
 
     def _generate_error_response(self, error_message: str):
+        if self.params.get("_runtime_structured_metrics"):
+            return StructuredMetricsPayload(data={}, error=error_message)
         if self.model_id == "winsphere":
             processed = self._process_result(
                 {
@@ -377,25 +378,7 @@ class CollectionService:
                 }
             )
             return convert_to_prometheus_format(processed)
-        return self._generate_error_metrics(Exception(error_message), self.model_id)
-
-    def _generate_error_metrics(self, error: Exception, model: str) -> str:
-        """生成错误指标（Prometheus 格式）"""
-        current_timestamp = int(time.time() * 1000)
-        error_type = type(error).__name__
-        error_message = str(error).replace('"', '\\"')  # 转义双引号
-        plugin_label = f'plugin="{self.plugin_name}",' if self.plugin_name else ""
-        prometheus_lines = [
-            "# HELP collection_status Collection status indicator",
-            "# TYPE collection_status gauge",
-            f'collection_status{{{plugin_label}model="{model}",status="error",error_type="{error_type}"}} 1 {current_timestamp}',
-            "",
-            "# HELP collection_error Collection error details",
-            "# TYPE collection_error gauge",
-            f'collection_error{{{plugin_label}model="{model}",message="{error_message}"}} 1 {current_timestamp}',
-        ]
-
-        return "\n".join(prometheus_lines) + "\n"
+        return {"status": "failed", "error": error_message}
 
     async def list_regions(self):
         """异步边界：云 SDK 的区域查询整体在线程中执行。"""

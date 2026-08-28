@@ -308,11 +308,12 @@ async def test_collection_service_logs_sanitized_call_chain_for_sampled_exceptio
             "collection_task_id": "task-401",
             "collection_plugin_ref": "network.config",
             "_log_plugin_call_chain": True,
+            "_runtime_structured_metrics": True,
         },
         config_provider=BrokenConfigProvider(),
     )
 
-    await service.collect()
+    result = await service.collect()
 
     assert len(error_logs) == 1
     assert "event=plugin_exception" in error_logs[0]
@@ -323,6 +324,10 @@ async def test_collection_service_logs_sanitized_call_chain_for_sampled_exceptio
     assert "error_type=RuntimeError" in error_logs[0]
     assert "get_executor_config_with_resolution_async" in error_logs[0]
     assert "must-not-be-logged" not in error_logs[0]
+    assert isinstance(result, StructuredMetricsPayload)
+    assert result.data == {}
+    assert result.error == "token=must-not-be-logged"
+    assert "collection_status" not in str(result.data)
 
 
 @pytest.mark.asyncio

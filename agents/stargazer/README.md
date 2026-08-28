@@ -156,8 +156,7 @@ cgroup 内存利用率持续超过 80%、发布队列长期超过 80%，或 thro
 
 ### 配置采集日志约定
 
-配置采集在生产 INFO 级别保留 Run 生命周期；每个失败目标额外保留可检索的终态和安全异常上下文，
-不记录凭据正文：
+配置采集在生产 INFO 级别保留 Run 生命周期和有界失败样本，不记录凭据正文：
 
 - `collection_run_started`：中文“任务开始”，优先记录 `instance_id`，缺失时才回退记录 `task_id`；
   同时包含 `plugin_ref`、`plugin_name`、`model_id`、目标数、凭据数和租约；
@@ -165,10 +164,11 @@ cgroup 内存利用率持续超过 80%、发布队列长期超过 80%，或 thro
   最近完成目标、中文结果和最多 5 个活动目标样本；
 - `target_collection_succeeded`：仅网络设备 SNMP 采集成功时，每个 IP 输出一条 INFO，包含凭据标识和
   单目标采集耗时（不记录凭据内容）；
-- `target_collection_failed`：每个失败目标输出一条；协议无响应会明确记录
-  `stage=access_probe reason=timeout timeout_seconds=10`，不伪装成插件代码异常；
+- `collection_failure_samples`：存在失败时每个 Run 只输出一条 INFO，最多包含 3 个
+  `target|failed_stage|error_code` 样本；协议无响应使用 `access_probe|protocol_no_response`，
+  不伪装成插件代码异常，也不记录错误正文或凭据标识；
 - `collection_run_summary`：中文“任务汇总”，包含总目标、采集成功/失败、不可达、延后处理、跳过、
-  发布统计、总耗时、聚合后的失败类型，以及最多 3 个脱敏失败样本；
+  发布统计、总耗时、Top 8 聚合失败类型（其余合并为 `other`），以及最多 3 个脱敏失败样本；
 - `plugin_exception`：插件执行、协议预检或插件内部捕获到的每个异常均记录，包含 `task_id`、
   `plugin_ref`、`model_id`、`plugin_name`、`target`、`error_type`、脱敏且有长度上限的
   `error_message`，以及有界 `call_chain` / `source_context`；不记录局部变量、请求头或凭据；
@@ -192,7 +192,7 @@ cgroup 内存利用率持续超过 80%、发布队列长期超过 80%，或 thro
 ```bash
 rg 'task_id=<task-id>' stargazer.log
 rg 'event=collection_run_(started|summary|terminal)' stargazer.log
-rg 'event=collection_progress|event=target_collection_failed' stargazer.log
+rg 'event=collection_progress|event=collection_failure_samples' stargazer.log
 rg 'event=plugin_exception' stargazer.log
 rg 'event=snmp_facts_collection_started|target=<ip>' stargazer.log
 rg 'event=collection_capacity' stargazer.log

@@ -414,7 +414,11 @@ class NatsResultPublisher:
         for item in items:
             request, result, lease = item[:3]
             attempt_state = item[3] if len(item) > 3 else None
-            if result.status == "deferred" or request.params.get("callback_subject"):
+            if (
+                result.status == "deferred"
+                or request.params.get("callback_subject")
+                or self._is_configuration_failure(request, result)
+            ):
                 non_metrics.append((request, result, lease, attempt_state))
                 continue
             result_id = build_collection_result_id(
@@ -429,7 +433,7 @@ class NatsResultPublisher:
             )
             metrics = result.value
             if not metrics or result.status not in {"success", "deferred"}:
-                metrics = self._error_metrics(request, result, params)
+                metrics = self._monitor_error_metrics(result, params)
             metrics_entries.append(({}, metrics, params, request.task_id))
             metric_events.append((request, result, lease, result_id))
             outcomes[result_id] = None
@@ -532,11 +536,21 @@ class NatsResultPublisher:
                     fence=lease.fence,
                     attempt_id=lease.attempt_id,
                 )
-                outcomes[result_id] = (
-                    outcome
-                    if isinstance(outcome, (BaseException, PublishOutcome))
-                    else None
-                )
+                if (
+                    isinstance(outcome, Exception)
+                    and self._is_configuration_failure(request, result)
+                    and not request.params.get("callback_subject")
+                ):
+                    outcomes[result_id] = PublishOutcome(
+                        status=PublishStatus.EVENT_FAILED,
+                        error_code="result_event_record_failed",
+                    )
+                else:
+                    outcomes[result_id] = (
+                        outcome
+                        if isinstance(outcome, (BaseException, PublishOutcome))
+                        else None
+                    )
         return outcomes
 
     async def publish(
@@ -575,6 +589,9 @@ class NatsResultPublisher:
             await callback_publish(payload, params, request.task_id)
             await self._record_event_with_retry(request, result, lease, result_id)
             return
+        if self._is_configuration_failure(request, result):
+            await self._record_event_with_retry(request, result, lease, result_id)
+            return
 
         metrics_publish = self._metrics_publish
         if metrics_publish is None:
@@ -583,7 +600,7 @@ class NatsResultPublisher:
             metrics_publish = publish_metrics_to_nats
         metrics = result.value
         if not metrics or result.status not in {"success", "deferred"}:
-            metrics = self._error_metrics(request, result, params)
+            metrics = self._monitor_error_metrics(result, params)
         await metrics_publish({}, metrics, params, request.task_id)
         await self._record_event_with_retry(request, result, lease, result_id)
 
@@ -739,16 +756,19 @@ class NatsResultPublisher:
         }
 
     @staticmethod
-    def _error_metrics(
-        request: CollectionRequest,
+    def _monitor_error_metrics(
         result: TargetCollectionResult,
         params: dict,
     ) -> str:
         error = RuntimeError(result.error_code or result.status)
-        if str(request.params.get("plugin_family")) == "monitor":
-            from tasks.utils.metrics_helper import generate_monitor_error_metrics
+        from tasks.utils.metrics_helper import generate_monitor_error_metrics
 
-            return generate_monitor_error_metrics(params, error)
-        from tasks.utils.metrics_helper import generate_plugin_error_metrics
+        return generate_monitor_error_metrics(params, error)
 
-        return generate_plugin_error_metrics(params, error)
+    @staticmethod
+    def _is_configuration_failure(
+        request: CollectionRequest,
+        result: TargetCollectionResult,
+    ) -> bool:
+        family = str(request.params.get("plugin_family") or "configuration")
+        return family == "configuration" and result.status in {"failed", "unreachable"}

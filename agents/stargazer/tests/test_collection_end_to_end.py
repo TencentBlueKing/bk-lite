@@ -671,11 +671,11 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
     community = os.getenv("STARGAZER_SNMP_TEST_COMMUNITY", "mock-snmp-community")
     targets = tuple(f"{target_prefix}.{index}" for index in range(256))
     plugin = TimeoutSnmpPlugin(community)
-    published = 0
+    metrics_published = 0
 
     async def publish_metrics(_ctx, _value, _params, _task_id):
-        nonlocal published
-        published += 1
+        nonlocal metrics_published
+        metrics_published += 1
 
     app = Sanic("e2e-snmp-load-app")
     app.config.AUTO_EXTEND = False
@@ -750,7 +750,7 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
             deadline = time.monotonic() + 20
             while time.monotonic() < deadline:
                 stats = await application.stats()
-                if stats["active_runs"] == 0 and published == 256:
+                if stats["active_runs"] == 0:
                     finished = True
                     break
                 await asyncio.sleep(0.25)
@@ -770,7 +770,7 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
     assert plugin.calls == 256
     assert plugin.credential_mismatches == 0
     assert plugin.peak == 200
-    assert published == 256
+    assert metrics_published == 0
     assert 9.5 <= wall_seconds < 20
     assert max(lag_samples, default=0) < 0.2
 
@@ -803,7 +803,7 @@ async def test_snmp_256_target_timeout_load_through_http_redis_runtime_and_nats(
         "peak_plugin_io": plugin.peak,
         "event_loop_lag_max_seconds": round(max(lag_samples, default=0), 6),
         "event_loop_lag_samples": len(lag_samples),
-        "published_results": published,
+        "published_metric_rows": metrics_published,
         "plugin_timeout_total": int(stats["plugin_timeout_total"]),
         "active_runs_after_completion": stats["active_runs"],
         "active_targets_after_completion": stats["active_targets"],
@@ -823,11 +823,11 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
     target_count = int(os.getenv("STARGAZER_HOST_TEST_COUNT", "150"))
     targets = tuple(f"{target_prefix}.{index}" for index in range(target_count))
     plugin = TimeoutHostPlugin(expected_username=username, expected_password=password)
-    published = 0
+    metrics_published = 0
 
     async def publish_metrics(_ctx, _value, _params, _task_id):
-        nonlocal published
-        published += 1
+        nonlocal metrics_published
+        metrics_published += 1
 
     app = Sanic("e2e-host-load-app")
     app.config.AUTO_EXTEND = False
@@ -904,7 +904,7 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
             deadline = time.monotonic() + 20
             while time.monotonic() < deadline:
                 stats = await application.stats()
-                if stats["active_runs"] == 0 and published == target_count:
+                if stats["active_runs"] == 0:
                     finished = True
                     break
                 await asyncio.sleep(0.25)
@@ -924,7 +924,7 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
     assert plugin.calls == target_count
     assert plugin.credential_mismatches == 0
     assert plugin.peak == min(target_count, 200)
-    assert published == target_count
+    assert metrics_published == 0
     assert 4.5 <= wall_seconds < 15
     assert max(lag_samples, default=0) < 0.2
 
@@ -969,7 +969,7 @@ async def test_host_150_target_timeout_load_through_http_redis_runtime_and_nats(
         "event_loop_lag_p95_seconds": round(lag_percentile(0.95), 6),
         "event_loop_lag_p99_seconds": round(lag_percentile(0.99), 6),
         "event_loop_lag_samples": len(lag_samples),
-        "published_results": published,
+        "published_metric_rows": metrics_published,
         "plugin_timeout_total": int(stats["plugin_timeout_total"]),
         "credential_mismatch_attempts": plugin.credential_mismatches,
         "active_runs_after_completion": stats["active_runs"],

@@ -37,7 +37,7 @@ Celery 只负责触发和短收口。`CELERY_WORKER_CONCURRENCY=2`，禁止一�
 
 Stargazer 薄租约结束后删除 Redis，不能回读 completed。进度分母来自接纳时的 `X-Target-Count`。分子来自凭据结果 NATS：**每个目标主机首次收到任意凭据事件（含 failed / unreachable）即计入进度**；清单只落库 `success`，失败类不进命中清单（大网段 × 多凭据时量级过大）。收口条件：各家族回传数达到目标数，或到达该次执行的墙钟上限。收口后再按现有方式查 VictoriaMetrics、走 mapping、写 CI，并把主机 OS / 网络 SOID·品牌·型号等基础事实回填到命中 `snapshot`。
 
-失败目标今天会发布弱 `collection_status` 指标；采集 mapping 会跳过 `collect_status=failed`。扫描进度以 NATS 凭据事件为准（含失败仅计进度），不以失败 VM 行是否能建成 CI 为准。本章不改 Stargazer，除非验收证明某类目标完全没有凭据事件。
+配置采集失败目标不再发布弱 `collection_status` 指标；扫描进度始终以 NATS 凭据结果事件为准（含失败仅计进度），不依赖 VM 失败行。若验收证明某类目标完全没有凭据结果事件，再单独修复结果事件协议，不恢复失败占位指标。
 
 ### 写 CI：复用 mapping + Management，扫描只做后处理
 
@@ -71,7 +71,9 @@ Prior art：`test_first_collection_task.py`、`test_collect_credential_event_nat
 
 ## Out of Scope
 
-- 改 Stargazer 调度、容量、identity profile、失败指标形状（除非失败目标完全不发凭据事件）。
+- 改 Stargazer 调度、容量、identity profile；配置失败指标删除由
+  `stargazer-stateless-async-collection/configuration-failure-delivery-and-logging-plan-2026-08-28.md`
+  独立负责。
 - 改采集「未知当 switch」、3 把上限、IP/实例互斥、手动只更新语义。
 - 把扫描存成 CollectModels 或生成 Telegraf 常驻配置。
 - Celery 干等整轮扫描。

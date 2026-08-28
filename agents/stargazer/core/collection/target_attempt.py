@@ -59,19 +59,12 @@ class TargetAttemptRunner:
         lease: RunLease,
     ) -> TargetCollectionResult:
         started_at = time.monotonic()
-        result = await self._execute_target(
+        return await self._execute_target(
             request,
             target,
             lease,
             target_started_at=started_at,
         )
-        if result.status in {"failed", "unreachable"}:
-            self._log_target_collection_failure(
-                request,
-                result,
-                duration_ms=(time.monotonic() - started_at) * 1000,
-            )
-        return result
 
     async def _execute_target(
         self,
@@ -125,88 +118,6 @@ class TargetAttemptRunner:
             target_started_at=target_started_at,
         )
 
-    def _log_target_collection_failure(
-        self,
-        request: CollectionRequest,
-        result: TargetCollectionResult,
-        *,
-        duration_ms: float,
-    ) -> None:
-        error_code = result.error_code or result.status
-        failed_stage = result.failed_stage
-        is_preflight_failure = (
-            failed_stage
-            in {
-                FailureStage.OUTBOUND_POLICY,
-                FailureStage.IP_PRECHECK,
-            }
-            or error_code.startswith("preflight_")
-            or (result.status == "unreachable" and result.attempts == 0)
-        )
-        is_ip_precheck_failure = failed_stage == FailureStage.IP_PRECHECK or (failed_stage is None and is_preflight_failure)
-        if request.ip_precheck_enabled and is_ip_precheck_failure:
-            logger.warning(
-                "event=ip_precheck_failed task_id=%s target=%s " "failed_stage=ip_precheck error_type=%s",
-                safe_log_value(request.task_id),
-                safe_log_value(result.target, max_length=255),
-                error_code,
-            )
-            return
-        if failed_stage is not None:
-            stage = failed_stage.value
-            timeout_seconds = {
-                FailureStage.OUTBOUND_POLICY: self._plan.preflight_timeout_seconds,
-                FailureStage.IP_PRECHECK: self._plan.preflight_timeout_seconds,
-                FailureStage.ACCESS_PROBE: self._plan.probe_timeout_seconds,
-                FailureStage.CREDENTIAL: "-",
-                FailureStage.COLLECTION: self._plan.collection_timeout_seconds,
-                FailureStage.FRAMEWORK: "-",
-            }[failed_stage]
-        elif is_preflight_failure:
-            stage = "preflight"
-            timeout_seconds = self._plan.preflight_timeout_seconds
-        elif error_code.startswith("access_probe_") or error_code in {
-            "protocol_no_response",
-            "no_response_attempt_limit",
-            "target_unreachable",
-        }:
-            stage = "access_probe"
-            timeout_seconds = self._plan.probe_timeout_seconds
-        elif error_code in {
-            "authentication_failed",
-            "credential_state_unavailable",
-            "credentials_exhausted",
-            "no_matching_credential",
-            "no_valid_credential",
-        }:
-            stage = "credential"
-            timeout_seconds = "-"
-        else:
-            stage = "plugin"
-            timeout_seconds = self._plan.collection_timeout_seconds
-        timeout_codes = {"protocol_no_response", "no_response_attempt_limit"}
-        reason = "timeout" if "timeout" in error_code or error_code in timeout_codes else error_code
-        logger.warning(
-            "event=target_collection_failed instance_id=%s "
-            "plugin_ref=%s plugin_name=%s model_id=%s target=%s "
-            "stage=%s reason=%s error_code=%s attempts=%s "
-            "credential_id=%s timeout_seconds=%s duration_ms=%.2f "
-            "failed_stage=%s error_type=TargetCollectionFailure",
-            safe_log_value(request_instance_id(request)),
-            safe_log_value(request.plugin_ref),
-            safe_log_value(request.params.get("plugin_name") or "-"),
-            safe_log_value(request.params.get("model_id") or "-"),
-            safe_log_value(result.target, max_length=255),
-            stage,
-            safe_log_value(reason),
-            safe_log_value(error_code),
-            result.attempts,
-            safe_log_value(result.credential_id or "-"),
-            timeout_seconds,
-            duration_ms,
-            stage,
-        )
-
     async def _load_eligible_credentials(self, request: CollectionRequest, target: str):
         try:
             return await self._credential_policy.eligible_credentials(request, target)
@@ -214,12 +125,6 @@ class TargetAttemptRunner:
             if not is_credential_state_redis_error(exc):
                 raise
             self._metrics.increment("credential_state_redis_error_total")
-            logger.warning(
-                "event=credential_state_unavailable task_id=%s target=%s " "failed_stage=credential error_type=%s",
-                safe_log_value(request.task_id),
-                safe_log_value(target, max_length=255),
-                type(exc).__name__,
-            )
             return None
 
     async def _run_preflight(self, request: CollectionRequest, target: str) -> PreflightResult:
