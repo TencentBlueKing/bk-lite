@@ -57,6 +57,10 @@ import type { RuntimeRequestPriority } from '@/app/ops-analysis/utils/dashboardR
 
 import 'gridstack/dist/gridstack.min.css';
 import type { DashboardWidgetRenderResult } from '@/app/ops-analysis/renderContract';
+import {
+  resolveAnalysisCanvasInteraction,
+  shouldShowAnalysisWidgetCopyAction,
+} from '@/app/ops-analysis/utils/widgetCopy';
 
 const DASHBOARD_GRID_COLS = 12;
 const DASHBOARD_GRID_ROW_HEIGHT = 60;
@@ -103,6 +107,7 @@ interface DashboardCanvasProps {
   appliedFilterDefinitions: UnifiedFilterDefinition[];
   appliedNamespaceId: number | undefined;
   selectedDashboardLocked?: boolean;
+  shareMode?: boolean;
   onLayoutChange: (newLayout: DashboardLayoutItem[]) => void;
   onOpenAddModal: (groupId?: string) => void;
   onToggleCollapsedGroup: (groupId: string) => void;
@@ -110,6 +115,7 @@ interface DashboardCanvasProps {
   onRemoveGroup: (groupId: string) => void;
   onDeleteEntireGroup: (groupId: string) => void;
   onEditWidget: (id: string) => void;
+  onCopyWidget?: (id: string) => void;
   onDeleteWidget: (id: string) => void;
   onTopologyLayoutChange?: (
     widgetId: string,
@@ -140,6 +146,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   appliedFilterDefinitions,
   appliedNamespaceId,
   selectedDashboardLocked,
+  shareMode = false,
   onOpenAddModal,
   onLayoutChange,
   onToggleCollapsedGroup,
@@ -147,6 +154,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   onRemoveGroup,
   onDeleteEntireGroup,
   onEditWidget,
+  onCopyWidget,
   onDeleteWidget,
   onTopologyLayoutChange,
   renderMode = false,
@@ -586,8 +594,24 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
 
   const renderWidgetCard = useCallback(
     (item: DashboardWidgetLayoutItem) => {
+      const copyMenuItem = shouldShowAnalysisWidgetCopyAction({
+        interaction: resolveAnalysisCanvasInteraction({
+          editMode: isEditMode,
+          shareMode,
+          isBuiltIn: selectedDashboardLocked,
+        }),
+        sceneWidgetType: item.valueConfig?.sceneWidgetType,
+        chartType: item.valueConfig?.chartType,
+      })
+        ? {
+          key: 'copy',
+          label: t('common.copy'),
+          onClick: () => onCopyWidget?.(item.i),
+        }
+        : null;
       const menuItems = [
         { key: 'edit', label: t('common.edit'), onClick: () => onEditWidget(item.i) },
+        ...(copyMenuItem ? [copyMenuItem] : []),
         { key: 'delete', label: t('common.delete'), danger: true, onClick: () => onDeleteWidget(item.i) },
       ];
 
@@ -672,8 +696,11 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       dataSourceResolver,
       filterSearchVersion,
       isEditMode,
+      selectedDashboardLocked,
+      shareMode,
       namespaceSearchVersion,
       onDeleteWidget,
+      onCopyWidget,
       onEditWidget,
       onTopologyLayoutChange,
       t,
