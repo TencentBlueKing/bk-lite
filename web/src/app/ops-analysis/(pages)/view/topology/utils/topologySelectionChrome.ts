@@ -45,3 +45,43 @@ export const resetTopologyNodeChrome = (
   node.setAttrByPath('body/stroke', getTopologyNodeResetStroke(node.getData()));
   node.setAttrByPath('body/strokeWidth', SPACING.STROKE_WIDTH.THIN);
 };
+
+/**
+ * Unselected hover probe. Shares the selected stroke so hover is visible,
+ * but must only be applied when the node is not selected.
+ */
+const applyUnselectedHoverStroke = (
+  node: Pick<Node, 'setAttrByPath'>,
+): void => {
+  highlightTopologyNode(node);
+};
+
+/**
+ * Hover is a pass-over probe. Selected chrome is persistent and always wins:
+ * hovering a selected node re-asserts the selected stroke instead of swapping
+ * it for a hover-only style.
+ */
+export const applyTopologyNodeHoverChrome = (
+  node: Pick<Node, 'setAttrByPath'>,
+  isSelected: boolean,
+): void => {
+  if (isSelected) {
+    highlightTopologyNode(node);
+    return;
+  }
+  applyUnselectedHoverStroke(node);
+};
+
+/**
+ * Leaving a node must not clear selected chrome. Only unselected nodes reset.
+ */
+export const clearTopologyNodeHoverChrome = (
+  node: Pick<Node, 'getData' | 'setAttrByPath'>,
+  isSelected: boolean,
+): void => {
+  if (isSelected) {
+    highlightTopologyNode(node);
+    return;
+  }
+  resetTopologyNodeChrome(node);
+};

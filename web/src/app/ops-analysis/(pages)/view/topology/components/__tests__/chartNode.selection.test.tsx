@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Node } from '@antv/x6';
 import ChartNode from '../chartNode';
 import {
+  applyTopologyNodeHoverChrome,
+  clearTopologyNodeHoverChrome,
   highlightTopologyNode,
   resetTopologyNodeChrome,
   TOPOLOGY_CHART_NODE_CLASS,
@@ -114,6 +116,43 @@ describe('ChartNode selection chrome', () => {
       resetTopologyNodeChrome(node);
     });
 
+    expectUnselectedChrome(chrome);
+  });
+
+  it('keeps selected chrome while hovered and after mouse leave', () => {
+    const node = createChartNode();
+    highlightTopologyNode(node);
+    const { container } = render(<ChartNode node={node} />);
+    const chrome = getChrome(container);
+
+    expectSelectedChrome(chrome);
+
+    act(() => {
+      applyTopologyNodeHoverChrome(node, true);
+    });
+    expectSelectedChrome(chrome);
+
+    act(() => {
+      clearTopologyNodeHoverChrome(node, true);
+    });
+    expectSelectedChrome(chrome);
+  });
+
+  it('shows hover chrome only while an unselected chart is hovered', () => {
+    const node = createChartNode();
+    const { container } = render(<ChartNode node={node} />);
+    const chrome = getChrome(container);
+
+    expectUnselectedChrome(chrome);
+
+    act(() => {
+      applyTopologyNodeHoverChrome(node, false);
+    });
+    expectSelectedChrome(chrome);
+
+    act(() => {
+      clearTopologyNodeHoverChrome(node, false);
+    });
     expectUnselectedChrome(chrome);
   });
 });

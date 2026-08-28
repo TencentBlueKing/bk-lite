@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  applyTopologyNodeHoverChrome,
+  clearTopologyNodeHoverChrome,
   getTopologyNodeResetStroke,
   highlightTopologyNode,
   isTopologyNodeSelectionChrome,
@@ -77,5 +81,79 @@ describe('topologySelectionChrome', () => {
         styleConfig: { borderColor: '#e0ddddff' },
       }),
     ).toBe('#e0ddddff');
+  });
+
+  it.each(['icon', 'single-value', 'chart'] as const)(
+    'keeps selected chrome on %s nodes while hovered and after mouse leave',
+    (type) => {
+      const node = createNode({ type });
+      highlightTopologyNode(node);
+
+      applyTopologyNodeHoverChrome(node, true);
+      expect(isTopologyNodeSelectionChrome(node)).toBe(true);
+      expect(node.getAttrByPath('body/stroke')).toBe('#1890FF');
+      expect(node.getAttrByPath('body/strokeWidth')).toBe(2);
+
+      clearTopologyNodeHoverChrome(node, true);
+      expect(isTopologyNodeSelectionChrome(node)).toBe(true);
+      expect(node.getAttrByPath('body/stroke')).toBe('#1890FF');
+      expect(node.getAttrByPath('body/strokeWidth')).toBe(2);
+    },
+  );
+
+  it.each(['icon', 'single-value', 'chart'] as const)(
+    'applies hover chrome only to unselected %s nodes and resets on leave',
+    (type) => {
+      const node = createNode({
+        type,
+        styleConfig: { borderColor: type === 'icon' ? '#e0ddddff' : 'transparent' },
+      });
+
+      expect(isTopologyNodeSelectionChrome(node)).toBe(false);
+
+      applyTopologyNodeHoverChrome(node, false);
+      expect(isTopologyNodeSelectionChrome(node)).toBe(true);
+
+      clearTopologyNodeHoverChrome(node, false);
+      expect(isTopologyNodeSelectionChrome(node)).toBe(false);
+      if (type === 'icon') {
+        expect(node.getAttrByPath('body/stroke')).toBe('#e0ddddff');
+      } else {
+        expect(node.getAttrByPath('body/stroke')).not.toBe('#1890FF');
+      }
+    },
+  );
+
+  it('wires hover chrome to live graph selection instead of a stale selectedCells snapshot', () => {
+    const source = readFileSync(
+      path.join(__dirname, '../../hooks/useGraphInitializer.ts'),
+      'utf8',
+    );
+    expect(source).toContain(
+      'applyTopologyNodeHoverChrome(node, graph.isSelected(node))',
+    );
+    expect(source).toContain(
+      'clearTopologyNodeHoverChrome(node, graph.isSelected(node))',
+    );
+    expect(source).not.toContain('selectedCells.includes(node.id)');
+  });
+
+  it('keeps selected outline CSS above icon/chart hover chrome', () => {
+    const source = readFileSync(
+      path.join(__dirname, '../../index.module.scss'),
+      'utf8',
+    );
+    expect(source).toContain(
+      ".x6-node[data-shape='icon-node']:hover:not(.x6-node-selected):not(.selected)",
+    );
+    expect(source).toContain(
+      ".x6-node-selected[data-shape='icon-node']:hover rect[selector='body']",
+    );
+    expect(source).toContain(
+      ".x6-node-selected[data-shape='single-value-node']:hover rect[selector='body']",
+    );
+    expect(source).toContain(
+      '.ops-topology-chart-node.ops-topology-chart-node--selected:hover',
+    );
   });
 });

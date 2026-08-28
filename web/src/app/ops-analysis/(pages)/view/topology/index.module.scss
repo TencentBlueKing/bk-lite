@@ -36,7 +36,7 @@
       fill 0.18s ease;
   }
 
-  :global(.x6-node[data-shape='icon-node']:hover rect[selector='body']) {
+  :global(.x6-node[data-shape='icon-node']:hover:not(.x6-node-selected):not(.selected) rect[selector='body']) {
     stroke: #8dbcf2;
     filter:
       drop-shadow(0 15px 28px rgba(42, 97, 160, 0.13))
@@ -44,12 +44,29 @@
   }
 
   :global(.x6-node-selected[data-shape='icon-node'] rect[selector='body']),
-  :global(.x6-node[data-shape='icon-node'].selected rect[selector='body']) {
+  :global(.x6-node[data-shape='icon-node'].selected rect[selector='body']),
+  :global(.x6-node-selected[data-shape='icon-node']:hover rect[selector='body']),
+  :global(.x6-node[data-shape='icon-node'].selected:hover rect[selector='body']) {
     stroke: #2d7df0 !important;
     stroke-width: 2 !important;
     filter:
       drop-shadow(0 0 0 rgba(45, 125, 240, 0.1))
       drop-shadow(0 16px 30px rgba(45, 125, 240, 0.18)) !important;
+  }
+
+  :global(.x6-node-selected[data-shape='single-value-node'] rect[selector='body']),
+  :global(.x6-node[data-shape='single-value-node'].selected rect[selector='body']),
+  :global(.x6-node-selected[data-shape='single-value-node']:hover rect[selector='body']),
+  :global(.x6-node[data-shape='single-value-node'].selected:hover rect[selector='body']) {
+    stroke: #2d7df0 !important;
+    stroke-width: 2 !important;
+  }
+
+  :global(.ops-topology-chart-node.ops-topology-chart-node--selected),
+  :global(.ops-topology-chart-node.ops-topology-chart-node--selected:hover) {
+    border-color: #1890ff !important;
+    border-width: 2px !important;
+    border-style: solid !important;
   }
 
   :global(.x6-node[data-shape='icon-node'] text[selector='label']) {
