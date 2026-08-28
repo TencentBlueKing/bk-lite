@@ -37,6 +37,9 @@ monitor_object_metric:
     vllm:time_to_first_token_seconds_p90:
       name: 首 Token 时延 P90
       desc: 最近5分钟 TTFT P90。
+    vllm:time_to_first_token_seconds_p95:
+      name: 首 Token 时延 P95
+      desc: 最近5分钟 TTFT P95。
     vllm:time_to_first_token_seconds_avg:
       name: 首 Token 时延均值
       desc: 最近5分钟 TTFT 均值。
@@ -46,6 +49,9 @@ monitor_object_metric:
     vllm:e2e_request_latency_seconds_p90:
       name: 端到端请求时延 P90
       desc: 最近5分钟端到端请求时延 P90。
+    vllm:e2e_request_latency_seconds_p95:
+      name: 端到端请求时延 P95
+      desc: 最近5分钟端到端请求时延 P95。
     vllm:e2e_request_latency_seconds_avg:
       name: 端到端请求时延均值
       desc: 最近5分钟端到端请求时延均值。
@@ -55,12 +61,60 @@ monitor_object_metric:
     vllm:inter_token_latency_seconds_p90:
       name: 逐 Token 时延 P90
       desc: 最近5分钟 ITL P90。
+    vllm:inter_token_latency_seconds_p95:
+      name: 逐 Token 时延 P95
+      desc: 最近5分钟 ITL P95。
     vllm:inter_token_latency_seconds_p99:
       name: 逐 Token 时延 P99
       desc: 最近5分钟 ITL P99。
     vllm:inter_token_latency_seconds_avg:
       name: 逐 Token 时延均值
       desc: 最近5分钟 ITL 均值。
+    vllm:request_queue_time_seconds_p50:
+      name: 排队时延 P50
+      desc: 最近5分钟请求排队时延 P50。
+    vllm:request_queue_time_seconds_p90:
+      name: 排队时延 P90
+      desc: 最近5分钟请求排队时延 P90。
+    vllm:request_queue_time_seconds_p95:
+      name: 排队时延 P95
+      desc: 最近5分钟请求排队时延 P95。
+    vllm:request_queue_time_seconds_p99:
+      name: 排队时延 P99
+      desc: 最近5分钟请求排队时延 P99。
+    vllm:request_queue_time_seconds_avg:
+      name: 排队时延均值
+      desc: 最近5分钟请求排队时延均值。
+    vllm:request_prefill_time_seconds_p50:
+      name: Prefill 时延 P50
+      desc: 最近5分钟 Prefill 时延 P50。
+    vllm:request_prefill_time_seconds_p90:
+      name: Prefill 时延 P90
+      desc: 最近5分钟 Prefill 时延 P90。
+    vllm:request_prefill_time_seconds_p95:
+      name: Prefill 时延 P95
+      desc: 最近5分钟 Prefill 时延 P95。
+    vllm:request_prefill_time_seconds_p99:
+      name: Prefill 时延 P99
+      desc: 最近5分钟 Prefill 时延 P99。
+    vllm:request_prefill_time_seconds_avg:
+      name: Prefill 时延均值
+      desc: 最近5分钟 Prefill 时延均值。
+    vllm:request_decode_time_seconds_p50:
+      name: Decode 时延 P50
+      desc: 最近5分钟 Decode 时延 P50。
+    vllm:request_decode_time_seconds_p90:
+      name: Decode 时延 P90
+      desc: 最近5分钟 Decode 时延 P90。
+    vllm:request_decode_time_seconds_p95:
+      name: Decode 时延 P95
+      desc: 最近5分钟 Decode 时延 P95。
+    vllm:request_decode_time_seconds_p99:
+      name: Decode 时延 P99
+      desc: 最近5分钟 Decode 时延 P99。
+    vllm:request_decode_time_seconds_avg:
+      name: Decode 时延均值
+      desc: 最近5分钟 Decode 时延均值。
     vllm:iteration_tokens_total_count_rate:
       name: 迭代 Token 速率
       desc: 最近5分钟单次模型迭代处理的 token 数速率。
