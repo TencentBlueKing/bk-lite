@@ -11,6 +11,7 @@ import {
   highlightTopologyNode,
   resetTopologyNodeChrome,
   TOPOLOGY_CHART_NODE_CLASS,
+  TOPOLOGY_CHART_NODE_HOVER_CLASS,
   TOPOLOGY_CHART_NODE_SELECTED_CLASS,
 } from '../../utils/topologySelectionChrome';
 
@@ -65,7 +66,11 @@ const expectSelectedChrome = (chrome: HTMLElement) => {
   expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_SELECTED_CLASS)).toBe(
     true,
   );
+  expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_HOVER_CLASS)).toBe(
+    false,
+  );
   expect(chrome.getAttribute('data-topology-selected')).toBe('true');
+  expect(chrome.getAttribute('data-topology-hover')).toBe('false');
   expect(chrome.style.border).toBe('2px solid var(--color-primary)');
 };
 
@@ -73,10 +78,28 @@ const expectUnselectedChrome = (chrome: HTMLElement) => {
   expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_SELECTED_CLASS)).toBe(
     false,
   );
+  expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_HOVER_CLASS)).toBe(
+    false,
+  );
   expect(chrome.getAttribute('data-topology-selected')).toBe('false');
+  expect(chrome.getAttribute('data-topology-hover')).toBe('false');
   expect(chrome.style.border).toMatch(/^1px solid /);
   expect(chrome.style.border).not.toContain('var(--color-primary)');
   expect(chrome.style.border).not.toContain('rgb(24, 144, 255)');
+  expect(chrome.style.cursor).not.toBe('pointer');
+};
+
+const expectViewHoverChrome = (chrome: HTMLElement) => {
+  expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_SELECTED_CLASS)).toBe(
+    false,
+  );
+  expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_HOVER_CLASS)).toBe(true);
+  expect(chrome.getAttribute('data-topology-selected')).toBe('false');
+  expect(chrome.getAttribute('data-topology-hover')).toBe('true');
+  expect(chrome.style.border).toBe('1px solid var(--color-border-2)');
+  expect(chrome.style.cursor).toBe('pointer');
+  expect(chrome.style.outline).toBe('none');
+  expect(chrome.style.border).not.toContain('var(--color-primary)');
 };
 
 afterEach(cleanup);
@@ -130,7 +153,7 @@ describe('ChartNode selection chrome', () => {
     const selectedBorder = chrome.style.border;
 
     act(() => {
-      applyTopologyNodeHoverChrome(node, true);
+      applyTopologyNodeHoverChrome(node, true, true);
     });
     expectSelectedChrome(chrome);
     expect(chrome.style.border).toBe(selectedBorder);
@@ -142,7 +165,7 @@ describe('ChartNode selection chrome', () => {
     expect(chrome.style.border).toBe(selectedBorder);
   });
 
-  it('shows hover chrome only while an unselected chart is hovered', () => {
+  it('shows edit-mode hover chrome only while an unselected chart is hovered', () => {
     const node = createChartNode();
     const { container } = render(<ChartNode node={node} />);
     const chrome = getChrome(container);
@@ -150,7 +173,7 @@ describe('ChartNode selection chrome', () => {
     expectUnselectedChrome(chrome);
 
     act(() => {
-      applyTopologyNodeHoverChrome(node, false);
+      applyTopologyNodeHoverChrome(node, false, true);
     });
     expectSelectedChrome(chrome);
 
@@ -158,5 +181,41 @@ describe('ChartNode selection chrome', () => {
       clearTopologyNodeHoverChrome(node, false);
     });
     expectUnselectedChrome(chrome);
+  });
+
+  it('shows view-mode hover chrome without selected blue', () => {
+    const node = createChartNode();
+    const { container } = render(<ChartNode node={node} />);
+    const chrome = getChrome(container);
+
+    expectUnselectedChrome(chrome);
+
+    act(() => {
+      applyTopologyNodeHoverChrome(node, false, false);
+    });
+    expectViewHoverChrome(chrome);
+
+    act(() => {
+      clearTopologyNodeHoverChrome(node, false);
+    });
+    expectUnselectedChrome(chrome);
+  });
+
+  it('keeps selected chrome in view mode while hovered', () => {
+    const node = createChartNode();
+    highlightTopologyNode(node);
+    const { container } = render(<ChartNode node={node} />);
+    const chrome = getChrome(container);
+
+    expectSelectedChrome(chrome);
+
+    act(() => {
+      applyTopologyNodeHoverChrome(node, true, false);
+    });
+    expectSelectedChrome(chrome);
+    expect(chrome.classList.contains(TOPOLOGY_CHART_NODE_HOVER_CLASS)).toBe(
+      false,
+    );
+    expect(chrome.style.border).toBe('2px solid var(--color-primary)');
   });
 });
