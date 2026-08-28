@@ -43,11 +43,14 @@ def test_create_instance_only_accepts_k3s_cluster(k3s_objects):
         instance_id="edge-1",
         name="边缘 K3S",
         organizations=[10, 20],
+        actor_context={"username": "admin", "domain": "domain.com"},
     )
 
     instance = MonitorInstance.objects.get(id=created["instance_id"])
     assert instance.monitor_object == cluster
     assert instance.auto is False
+    assert instance.created_by == "admin"
+    assert instance.updated_by == "admin"
     assert set(instance.monitorinstanceorganization_set.values_list("organization", flat=True)) == {10, 20}
 
     with pytest.raises(BaseAppException, match="K3SCluster"):
@@ -73,7 +76,7 @@ def test_generate_commands_are_bounded_and_match_private_ca_install_convention(
     )
     mocker.patch(
         "apps.monitor.services.k3s_onboarding.NodeMgmt"
-    ).return_value.get_cloud_region_envconfig.return_value = {
+    ).return_value.get_cloud_region_public_config.return_value = {
         "NODE_SERVER_URL": "https://bk-lite.example/base",
     }
 

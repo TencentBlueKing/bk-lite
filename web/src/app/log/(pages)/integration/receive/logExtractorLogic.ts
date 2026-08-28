@@ -1,5 +1,106 @@
 import type { ExtractorType } from '@/app/log/types/extractor';
 
+export const TYPE_SCOPED_COLLECT_TYPES = ['syslog', 'snmp_trap'] as const;
+export const EXTRACTOR_CREATE_SAMPLE_STORAGE_KEY =
+  'bk-lite.log-extractor.create-sample';
+
+export type TypeScopedCollectType = (typeof TYPE_SCOPED_COLLECT_TYPES)[number];
+
+export type ExtractorCreateTarget =
+  | { kind: 'type'; collectType: TypeScopedCollectType }
+  | { kind: 'instance'; instanceId: string }
+  | { kind: 'unavailable'; reason: 'missing_instance' };
+
+export type CollectTypeLinkFields = {
+  id?: unknown;
+  name: string;
+  collector?: unknown;
+  icon?: unknown;
+  display_name?: unknown;
+  description?: unknown;
+  display_description?: unknown;
+};
+
+export const isTypeScopedCollectType = (
+  value: unknown
+): value is TypeScopedCollectType =>
+  TYPE_SCOPED_COLLECT_TYPES.includes(value as TypeScopedCollectType);
+
+export const resolveExtractorCreateTarget = (event: {
+  collect_type?: unknown;
+  instance_id?: unknown;
+}): ExtractorCreateTarget => {
+  const collectType = String(event.collect_type ?? '').trim();
+  if (isTypeScopedCollectType(collectType)) {
+    return { kind: 'type', collectType };
+  }
+  const instanceId = String(event.instance_id ?? '').trim();
+  if (!instanceId || instanceId === 'base') {
+    return { kind: 'unavailable', reason: 'missing_instance' };
+  }
+  return { kind: 'instance', instanceId };
+};
+
+export const buildTypeExtractorPath = (
+  collectType: CollectTypeLinkFields,
+  options?: { create?: boolean }
+): string => {
+  const params = new URLSearchParams({
+    icon: String(collectType.icon || ''),
+    name: collectType.name,
+    collector: String(collectType.collector || ''),
+    id: String(collectType.id ?? ''),
+    display_name: String(collectType.display_name || collectType.name),
+    description: String(
+      collectType.display_description || collectType.description || '--'
+    )
+  });
+  if (options?.create) params.set('create', '1');
+  return `/log/integration/list/detail/extractor?${params.toString()}`;
+};
+
+export const buildInstanceExtractorPath = (
+  instanceId: string,
+  options?: { create?: boolean }
+): string => {
+  const params = new URLSearchParams({ extractor: instanceId });
+  if (options?.create) params.set('create', '1');
+  return `/log/integration/receive?${params.toString()}`;
+};
+
+export const extractorCreateSampleKey = (scope: {
+  kind: 'type' | 'instance';
+  id: string;
+}): string => `${EXTRACTOR_CREATE_SAMPLE_STORAGE_KEY}:${scope.kind}:${scope.id}`;
+
+export const storeExtractorCreateSample = (
+  event: object,
+  scope: { kind: 'type' | 'instance'; id: string }
+): void => {
+  if (typeof window === 'undefined') return;
+  sessionStorage.setItem(extractorCreateSampleKey(scope), JSON.stringify(event));
+};
+
+export const readExtractorCreateSample = (scope: {
+  kind: 'type' | 'instance';
+  id: string;
+}): Record<string, unknown> | null => {
+  if (typeof window === 'undefined') return null;
+  const raw = sessionStorage.getItem(extractorCreateSampleKey(scope));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+export const consumeExtractorCreateSample = readExtractorCreateSample;
+
 const EXTRACTOR_TYPE_LABEL_KEYS: Record<ExtractorType, string> = {
   copy: 'log.extractor.typeCopy',
   split: 'log.extractor.typeSplit',

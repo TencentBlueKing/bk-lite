@@ -12,7 +12,8 @@ import {
   LogExtractorDraft,
   LogExtractorListResponse,
   LogExtractorPreviewResult,
-  LogExtractorRule
+  LogExtractorRule,
+  LogExtractorScopeQuery
 } from '@/app/log/types/extractor';
 interface NodeConfigParam {
   configs?: any;
@@ -249,9 +250,9 @@ const useIntegrationApi = () => {
     return await del(`/log/log_group/${String(id)}/`);
   };
 
-  const getLogExtractors = async (collectInstance: string) => {
+  const getLogExtractors = async (scope: LogExtractorScopeQuery) => {
     return await get<LogExtractorListResponse>('/log/log_extractors/', {
-      params: { collect_instance: collectInstance }
+      params: scope
     });
   };
 
@@ -282,50 +283,50 @@ const useIntegrationApi = () => {
   };
 
   const reorderLogExtractors = async (
-    collectInstance: string,
+    scope: LogExtractorScopeQuery,
     ids: number[]
   ) => {
     return await post<{
       generation: number;
       publication: ExtractorPublicationStatus;
-    }>(
-      '/log/log_extractors/reorder/',
-      { collect_instance: collectInstance, ids }
-    );
+    }>('/log/log_extractors/reorder/', { ...scope, ids });
   };
 
-  const previewLogExtractor = async (data: {
-    collect_instance: string;
-    event: Record<string, unknown>;
-    draft: LogExtractorDraft;
-    rule_id?: number;
-  }) => {
+  const previewLogExtractor = async (
+    data: LogExtractorScopeQuery & {
+      event: Record<string, unknown>;
+      draft: LogExtractorDraft;
+      rule_id?: number;
+    }
+  ) => {
     return await post<LogExtractorPreviewResult>(
       '/log/log_extractors/preview/',
       data
     );
   };
 
-  const getLogExtractorSamples = async (collectInstance: string) => {
+  const getLogExtractorSamples = async (scope: LogExtractorScopeQuery) => {
     return await get<unknown>('/log/log_extractors/samples/', {
-      params: { collect_instance: collectInstance }
+      params: scope
     });
   };
 
   const getLogExtractorPublicationStatus = async (
-    collectInstance: string
+    scope: LogExtractorScopeQuery
   ) => {
     return await get<ExtractorPublicationStatus>(
       '/log/log_extractors/publication_status/',
-      { params: { collect_instance: collectInstance } }
+      { params: scope }
     );
   };
 
-  const retryLogExtractorPublication = async (collectInstance: string) => {
+  const retryLogExtractorPublication = async (
+    scope: LogExtractorScopeQuery
+  ) => {
     return await post<{
       generation: number;
       publication: ExtractorPublicationStatus;
-    }>('/log/log_extractors/retry/', { collect_instance: collectInstance });
+    }>('/log/log_extractors/retry/', scope);
   };
 
   return {

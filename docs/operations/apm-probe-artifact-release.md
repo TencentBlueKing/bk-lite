@@ -51,10 +51,19 @@
 四份制品都必须固定版本，记录字节数和 SHA-256，不提交 Git，并至少保留上一版本
 供回滚。内网无法访问公网时，由构建环境一次性拉取后作为流水线制品传递。
 
+本版本钉死的探针号（与 Collector `0.153.0` 无关；发布时若流水线归档不同，以归档为准）：
+
+| 语言 | 制品 | 钉死版本 |
+|---|---|---|
+| Java | `opentelemetry-javaagent.jar` | `opentelemetry-java-instrumentation` **v2.31.1** |
+| Python | `opentelemetry-python-wheels.tar.gz` | `opentelemetry-distro[otlp]==0.65b0`，配套 SDK **1.44.0** |
+| Node.js | `opentelemetry-js-auto.tgz` | `@opentelemetry/auto-instrumentations-node@0.79.0` |
+| Go | `opentelemetry-go-sdk.zip` | `go.opentelemetry.io/otel` **v1.46.0**（contrib 取同期模块） |
+
 ### Java
 
 ```text
-https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v<VERSION>/opentelemetry-javaagent.jar
+https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.31.1/opentelemetry-javaagent.jar
 ```
 
 文件名必须是 `opentelemetry-javaagent.jar`。
@@ -69,8 +78,11 @@ https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/do
 
 ```bash
 mkdir -p wheels
-python -m pip download -d wheels "opentelemetry-distro[otlp]"
-# 按产品支持的框架继续 pip download 对应 opentelemetry-instrumentation-*
+python -m pip download -d wheels \
+  "opentelemetry-distro[otlp]==0.65b0" \
+  "opentelemetry-sdk==1.44.0"
+# 按产品支持的框架继续 pip download 对应已钉版本的 opentelemetry-instrumentation-*
+# 禁止不带版本号的 pip download，避免构建漂移。
 tar -czf opentelemetry-python-wheels.tar.gz -C wheels .
 ```
 
@@ -84,7 +96,8 @@ tar -czf opentelemetry-python-wheels.tar.gz -C wheels .
 `bundledDependencies` / 完整 `node_modules` 离线包。
 
 归档文件名必须是 `opentelemetry-js-auto.tgz`。接入脚本执行
-`npm install --offline --save ./opentelemetry-js-auto.tgz`。
+`npm install --offline --save ./opentelemetry-js-auto.tgz`。构建必须钉
+`@opentelemetry/auto-instrumentations-node@0.79.0`，禁止打包 `latest`。
 
 ### Go
 
@@ -97,7 +110,8 @@ go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
 ```
 
 及其传递依赖。接入脚本会 `export GOSUMDB=off` 并从该目录 `go mod download`，
-不再执行 `go get`。归档文件名必须是 `opentelemetry-go-sdk.zip`。
+不再执行 `go get`。归档文件名必须是 `opentelemetry-go-sdk.zip`。模块版本钉
+`go.opentelemetry.io/otel@v1.46.0` 及同期 `opentelemetry-go-contrib`，禁止不钉版本的 `go get`。
 
 ## 4. 初始化对象存储
 

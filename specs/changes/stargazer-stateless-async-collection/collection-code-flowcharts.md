@@ -11,6 +11,7 @@ core/
   logger.py / config.py / decorator.py   # 共享入口
   collection/                            # 统一异步采集运行时
     application.py · runtime.py · executor.py
+    target_attempt.py · credential_attempt.py · result_delivery.py
     contracts.py · enums.py · constants.py
     plugins.py · request_builder.py · result_publisher.py
     preflight.py · credential_policy.py · metrics.py · redis_state.py
@@ -62,17 +63,19 @@ flowchart TD
   E1 --> E2["UnifiedPluginFactory.resolve<br/>→ ConfigurationCollectionPlugin"]
   E2 --> E3["TargetCollectionExecutor.execute"]
 
-  E3 --> W1["worker 循环取 target"]
-  W1 --> T1["_execute_target"]
-  T1 --> T2["_run_preflight<br/>AsyncProtocolPreflight.check"]
+  E3 --> W1["Scheduler / worker<br/>公平、有界地取 target"]
+  W1 --> T1["TargetAttemptRunner.run"]
+  T1 --> T2["AsyncProtocolPreflight.check<br/>出站策略始终执行；按任务开关可选拨测"]
   T2 --> T3{"UNREACHABLE?"}
   T3 -->|是| T4["TargetCollectionResult<br/>unreachable"]
   T3 -->|否| T5["CredentialPolicy<br/>.eligible_credentials"]
   T5 --> T6{"有可用凭据?"}
   T6 -->|否| T7["failed<br/>no_matching/no_valid"]
-  T6 -->|是| T8["_run_credential_attempts<br/>串行 for credential"]
+  T6 -->|是| T8["CredentialAttemptRunner.run<br/>串行 for credential"]
 
-  T8 --> A1["_run_access_probe<br/>plugin.probe"]
+  T8 --> A0{"ip_precheck 已开启<br/>且支持 AccessProbe?"}
+  A0 -->|否| A6
+  A0 -->|是| A1["plugin.probe"]
   A1 --> A2["ConfigurationCollectionPlugin.probe<br/>→ CollectionService.probe<br/>→ PluginExecutor.probe"]
   A2 --> A3{"AccessProbeStatus"}
   A3 -->|AUTH / CAPABILITY| A4["record_auth_failure · continue"]
@@ -82,16 +85,16 @@ flowchart TD
   A6 --> C1["ConfigurationCollectionPlugin.collect"]
   C1 --> C2["CollectionService.collect"]
   C2 --> C3["PluginExecutor.execute<br/>_prepare_collector"]
-  C3 --> C4["collector.list_all_resources<br/>插件内 to_thread"]
+  C3 --> C4["collector.list_all_resources<br/>按插件声明执行 async / sync 适配"]
   C4 --> C5["Prometheus / 结构化结果"]
   C5 --> C6{"CollectOutcome"}
   C6 -->|SUCCESS| C7["record_success<br/>status=success"]
   C6 -->|AUTH_FAILED| A4
   C6 -->|其他| C8["failed / unreachable / …"]
 
-  C7 --> P1["NatsResultPublisher.publish<br/>build_collection_result_id"]
-  P1 --> P2["publish_metrics_to_nats<br/>失败再试 1 次"]
-  P2 --> P3["CredentialStateCache<br/>.append_result_event"]
+  C7 --> P1["ResultDeliveryCoordinator.enqueue<br/>释放目标执行槽位"]
+  P1 --> P2["ResultPublishQueue / Receipt<br/>有界队列与最终确认"]
+  P2 --> P3["ResultDeliveryCoordinator.finish<br/>复用绝对 deadline，有限重试"]
 
   T4 --> P1
   T7 --> P1
@@ -99,7 +102,8 @@ flowchart TD
   C8 --> P1
 
   W1 -->|下一目标| W1
-  W1 -->|全部完成| F1["RunSummary<br/>Runtime.finish DEL 租约"]
+  P3 --> W1
+  W1 -->|全部完成| F1["RunSummary<br/>发布完整才推动 round-complete<br/>Runtime.finish DEL 租约"]
 ```
 
 HTTP 与后台采集的时序：
@@ -112,9 +116,12 @@ sequenceDiagram
   participant RT as CollectionRuntime
   participant Redis as RedisRunStateStore
   participant EX as TargetCollectionExecutor
+  participant TA as TargetAttemptRunner
+  participant CA as CredentialAttemptRunner
   participant Plug as ConfigurationCollectionPlugin
   participant Svc as CollectionService/PluginExecutor
-  participant NATS as NatsResultPublisher
+  participant Delivery as ResultDeliveryCoordinator
+  participant NATS as ResultPublishQueue/NATS
 
   Client->>HTTP: GET /collect/collect_info
   HTTP->>App: submit(CollectionRequest)
@@ -127,12 +134,18 @@ sequenceDiagram
   RT->>App: _execute(request, lease)
   App->>EX: execute
   loop 每个 target（有界并发）
-    EX->>EX: preflight → credentials
-    EX->>Plug: probe / collect
+    EX->>TA: run(request, target, lease)
+    TA->>TA: outbound policy → 可选 IP 预检 → credentials
+    TA->>CA: run(credentials)
+    CA->>Plug: 可选 probe / collect
     Plug->>Svc: probe/collect
     Svc-->>Plug: metrics / AccessProbe
-    EX->>NATS: publish(result)
+    CA-->>EX: TargetCollectionResult + failed_stage
+    EX->>Delivery: enqueue(result)
+    Delivery->>NATS: enqueue → Receipt
   end
+  EX->>Delivery: finish(receipts)
+  Delivery->>NATS: wait / 有限重试
   EX-->>RT: RunSummary
   RT->>Redis: finish → DEL lease
 ```
@@ -153,18 +166,19 @@ server.py
             └─ schedule → _run → CollectionApplication._execute
                ├─ UnifiedPluginFactory.resolve → ConfigurationCollectionPlugin
                └─ TargetCollectionExecutor.execute
-                  └─ _execute_target
-                     ├─ _run_preflight → AsyncProtocolPreflight.check
-                     ├─ CredentialPolicy.eligible_credentials
-                     └─ _run_credential_attempts
-                        ├─ _run_access_probe → plugin.probe
-                        │     → CollectionService.probe → PluginExecutor.probe
-                        ├─ _run_collect → plugin.collect
-                        │     → CollectionService.collect → PluginExecutor.execute
-                        │           → collector.list_all_resources()
-                        └─ NatsResultPublisher.publish
-                              → build_collection_result_id
-                              → publish_metrics_to_nats
+                  ├─ TargetAttemptRunner.run
+                  │  ├─ AsyncProtocolPreflight.check
+                  │  ├─ CredentialPolicy.eligible_credentials
+                  │  └─ CredentialAttemptRunner.run
+                  │     ├─ plugin.probe（仅 params.ip_precheck 开启）
+                  │     │  → CollectionService.probe → PluginExecutor.probe
+                  │     └─ plugin.collect
+                  │        → CollectionService.collect → PluginExecutor.execute
+                  │           → collector.list_all_resources()
+                  └─ ResultDeliveryCoordinator
+                     ├─ enqueue → ResultPublishQueue → Receipt
+                     └─ finish → Receipt.wait → 有界重试
+                           → NatsResultPublisher → publish_metrics_to_nats
 ```
 
 ---

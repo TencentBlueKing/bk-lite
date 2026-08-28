@@ -11,6 +11,16 @@ import {
 import WidgetRenderer from '@/app/ops-analysis/components/widgetRenderer';
 import ScreenWidgetThemeProvider from '@/app/ops-analysis/components/screenWidgetThemeProvider';
 import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
+import {
+  getTopologyNodeChromeKind,
+  TOPOLOGY_CHART_NODE_CLASS,
+  TOPOLOGY_CHART_NODE_HOVER_CLASS,
+  TOPOLOGY_CHART_NODE_SELECTED_CLASS,
+  TOPOLOGY_SELECTED_STROKE,
+  TOPOLOGY_SELECTED_STROKE_WIDTH,
+  TOPOLOGY_VIEW_HOVER_STROKE,
+  TOPOLOGY_VIEW_HOVER_STROKE_WIDTH,
+} from '../utils/topologySelectionChrome';
 
 interface ChartNodeProps {
   node: Node;
@@ -19,6 +29,9 @@ interface ChartNodeProps {
 const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
   const { t } = useTranslation();
   const [nodeData, setNodeData] = useState(() => node.getData() || {});
+  const [chartChrome, setChartChrome] = useState(() =>
+    getTopologyNodeChromeKind(node),
+  );
 
   useEffect(() => {
     const handleDataChange = () => {
@@ -27,6 +40,17 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
     node.on('change:data', handleDataChange);
     return () => {
       node.off('change:data', handleDataChange);
+    };
+  }, [node]);
+
+  useEffect(() => {
+    const syncChartChrome = () => {
+      setChartChrome(getTopologyNodeChromeKind(node));
+    };
+    syncChartChrome();
+    node.on('change:attrs', syncChartChrome);
+    return () => {
+      node.off('change:attrs', syncChartChrome);
     };
   }, [node]);
   const {
@@ -73,13 +97,32 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
     chartTheme.panelChromeBorderColor || chartTheme.panelBorderColor;
   const panelChromeShadow = chartTheme.panelChromeShadow || 'none';
 
+  const isSelectedChrome = chartChrome === 'selected';
+  const isViewHoverChrome = chartChrome === 'view-hover';
+  const chartChromeClassName = [
+    TOPOLOGY_CHART_NODE_CLASS,
+    isSelectedChrome ? TOPOLOGY_CHART_NODE_SELECTED_CLASS : '',
+    isViewHoverChrome ? TOPOLOGY_CHART_NODE_HOVER_CLASS : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const chartBorder = isSelectedChrome
+    ? `${TOPOLOGY_SELECTED_STROKE_WIDTH}px solid ${TOPOLOGY_SELECTED_STROKE}`
+    : isViewHoverChrome
+      ? `${TOPOLOGY_VIEW_HOVER_STROKE_WIDTH}px solid ${TOPOLOGY_VIEW_HOVER_STROKE}`
+      : `1px solid ${panelChromeBorderColor}`;
+
   return (
     <div
-      className="ops-topology-chart-node"
+      className={chartChromeClassName}
+      data-topology-selected={isSelectedChrome ? 'true' : 'false'}
+      data-topology-hover={isViewHoverChrome ? 'true' : 'false'}
       style={{
         width: `${width}px`,
         height: `${height}px`,
-        border: `1px solid ${panelChromeBorderColor}`,
+        border: chartBorder,
+        outline: isViewHoverChrome ? 'none' : undefined,
+        cursor: isViewHoverChrome ? 'pointer' : undefined,
         borderRadius: '13px',
         background: panelChromeBg,
         boxShadow: panelChromeShadow,
@@ -180,6 +223,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
             <ConfigProvider getPopupContainer={() => document.body}>
               <ScreenWidgetThemeProvider mode={valueConfig?.chartThemeMode}>
                 <WidgetRenderer
+                  surface="dashboard"
                   chartType={chartType}
                   {...widgetProps}
                   fallback={

@@ -35,7 +35,15 @@ import { HandledRequestError } from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready' | 'not-found';
-type ViewMode = 'waterfall' | 'list';
+type ViewMode = 'waterfall' | 'flame' | 'list';
+type SpanLayoutItem = {
+  span: ApmSpanDetail;
+  depth: number;
+  left: number;
+  width: number;
+};
+
+const FLAME_ROW_HEIGHT = 24;
 
 const SERVICE_PALETTE = [
   'var(--theme-color-chart-primary)',
@@ -59,6 +67,57 @@ function spanDepth(span: ApmSpanDetail, byId: Map<string, ApmSpanDetail>, seen =
 function serviceColor(serviceName: string, services: string[]): string {
   const index = Math.max(0, services.indexOf(serviceName));
   return SERVICE_PALETTE[index % SERVICE_PALETTE.length];
+}
+
+function TraceFlameChart({
+  layout,
+  services,
+  selectedSpanId,
+  onSelect,
+}: {
+  layout: SpanLayoutItem[];
+  services: string[];
+  selectedSpanId?: string;
+  onSelect: (spanId: string) => void;
+}) {
+  const maxDepth = layout.reduce((max, item) => Math.max(max, item.depth), 0);
+  return (
+    <div className="w-full overflow-x-auto">
+      <div
+        className="relative min-h-[72px] min-w-[640px] w-full"
+        style={{ height: (maxDepth + 1) * FLAME_ROW_HEIGHT }}
+      >
+        {layout.map(({ span, depth, left, width }) => {
+          const selected = selectedSpanId === span.span_id;
+          const color = span.status === 'error'
+            ? 'var(--color-fail)'
+            : serviceColor(span.service_name, services);
+          return (
+            <button
+              type="button"
+              key={span.span_id}
+              aria-pressed={selected}
+              aria-label={`${span.service_name} · ${span.name}`}
+              title={`${span.service_name} · ${span.name}`}
+              onClick={() => onSelect(span.span_id)}
+              className={`absolute overflow-hidden truncate rounded-sm px-1.5 text-left font-mono text-[11px] leading-[22px] text-white ${
+                selected ? 'z-10 ring-2 ring-[var(--color-primary)] ring-offset-1' : ''
+              }`}
+              style={{
+                left: `${left}%`,
+                top: depth * FLAME_ROW_HEIGHT,
+                width: `${Math.max(width, 0.8)}%`,
+                height: FLAME_ROW_HEIGHT - 2,
+                background: color,
+              }}
+            >
+              {width > 6 ? span.name : ''}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function KpiStat({
@@ -190,7 +249,7 @@ export default function ApmTraceDetailPage() {
   return (
     <ApmRouteShell
       title={t('apm.trace.title', 'Trace 详情')}
-      description={t('apm.trace.description', '查看 Span 瀑布、服务身份和经过服务端脱敏、截断的属性。')}
+      description={t('apm.trace.description', '查看 Span 瀑布、火焰图、服务身份和经过服务端脱敏、截断的属性。')}
       dependency="telemetry"
     >
       {state === 'not-found' ? (
@@ -263,6 +322,7 @@ export default function ApmTraceDetailPage() {
                   onChange={setViewMode}
                   options={[
                     { value: 'waterfall', label: t('apm.trace.waterfall', '瀑布'), disabled: screens.md === false },
+                    { value: 'flame', label: t('apm.trace.flame', '火焰图'), disabled: screens.md === false },
                     { value: 'list', label: t('apm.trace.spanList', '跨度列表') },
                   ]}
                 />
@@ -324,6 +384,21 @@ export default function ApmTraceDetailPage() {
                         );
                       })}
                     </div>
+                  </>
+                ) : viewMode === 'flame' ? (
+                  <>
+                    <div className="mb-3 flex items-center justify-between">
+                      <Typography.Text strong>{t('apm.trace.spanFlame', 'Span 火焰图')}</Typography.Text>
+                      <Typography.Text type="secondary" className="text-xs tabular-nums">
+                        {trace.spans.length} spans
+                      </Typography.Text>
+                    </div>
+                    <TraceFlameChart
+                      layout={layout}
+                      services={services}
+                      selectedSpanId={selectedSpanId}
+                      onSelect={setSelectedSpanId}
+                    />
                   </>
                 ) : (
                   <>

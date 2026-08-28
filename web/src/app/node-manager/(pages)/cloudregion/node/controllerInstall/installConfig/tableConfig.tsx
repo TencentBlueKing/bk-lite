@@ -13,6 +13,7 @@ export const useTableConfig = (installMethod: string, os: string) => {
       label: t('node-manager.cloudregion.node.ipAdrress'),
       type: 'input',
       required: true,
+      is_only: true,
       widget_props: {
         placeholder: t('common.inputTip'),
       },
@@ -149,6 +150,7 @@ export const useTableConfig = (installMethod: string, os: string) => {
       label: t('node-manager.cloudregion.node.ipAdrress'),
       type: 'input',
       required: true,
+      is_only: true,
       widget_props: {
         placeholder: t('common.inputTip'),
       },

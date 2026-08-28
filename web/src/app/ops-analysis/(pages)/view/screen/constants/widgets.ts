@@ -114,6 +114,13 @@ export const SCREEN_WIDGET_DEFINITIONS: ScreenWidgetDefinition[] = [
     defaultWidth: 620,
     defaultHeight: 420,
   },
+  {
+    chartType: 'application3D',
+    titleKey: 'opsAnalysis.screen.widgets.application3D',
+    descriptionKey: 'opsAnalysis.screen.widgetDescriptions.application3D',
+    defaultWidth: 720,
+    defaultHeight: 460,
+  },
 ];
 
 export const getScreenWidgetDefinition = (chartType: ScreenWidgetChartType) =>

@@ -36,7 +36,10 @@ import {
   TitleWithGuide,
   TrendChartPanel
 } from '../../shared/widgets';
+import { DashboardProtocolBarSlot } from '../../shared/widgets/dashboard-protocol-bar-slot';
 import { GuideItem } from '../../shared/types';
+import { FLOW_VIEW_SWITCH_ROUTE_KEYS, resolvePreferredCollectTypeFromRoute } from '../../shared/utils/flow-view-navigation';
+import { isFlowSupportedObjectName } from '../flow-common/constants';
 import {
   PreparedSummaryCard,
   PreparedChartPanel,
@@ -46,6 +49,7 @@ import {
   PreparedDetailPanel,
   DetailRowViz,
   SummaryCardConfig,
+  isDetailTilesLayout,
   useSimpleDashboardData
 } from './simple-dashboard-core';
 import { ChartData } from '@/app/monitor/types';
@@ -432,6 +436,8 @@ export interface DetailMetricRowProps {
   color?: string;
   /** 提供时在标签后渲染 (i) 帮助,悬停显示口径说明(术语行如「用户断言」「游标超时数」)。 */
   guide?: GuideItem[];
+  /** 紧凑模式：不渲染缩略图列。 */
+  compact?: boolean;
   styles: DashboardStyles;
 }
 
@@ -449,6 +455,7 @@ export const DetailMetricRow = ({
   statusColor,
   color,
   guide,
+  compact = false,
   styles
 }: DetailMetricRowProps) => {
   const toneColor = DETAIL_TONE_COLORS[tone];
@@ -456,22 +463,26 @@ export const DetailMetricRow = ({
   const vizColor = color ?? toneColor;
   // 数值文字颜色:枚举状态色优先,其次手动 tone(error/warning),否则默认。
   const valueColor = statusColor ?? (tone === 'normal' ? undefined : toneColor);
+  const rowClassName = compact
+    ? `${styles.detailMetricRow} ${styles.detailMetricRowCompact}`
+    : styles.detailMetricRow;
   return (
-    <div className={styles.detailMetricRow}>
+    <div className={rowClassName}>
       {guide && guide.length > 0 ? (
         <TitleWithGuide title={label} items={guide} className={styles.detailMetricLabel} styles={styles} />
       ) : (
         <span className={styles.detailMetricLabel}>{label}</span>
       )}
-      {/* 缩略图列始终渲染(空行也占位),保证三列网格对齐:标签 · 缩略图 · 数值。 */}
-      <span className={styles.detailRowViz}>
-        {viz === 'spark' && <MiniTrendChart data={trend} color={vizColor} styles={styles} />}
-        {viz === 'bar' && (
-          <span className={styles.detailBar}>
-            <span className={styles.detailBarFill} style={{ width: `${barValue}%`, background: vizColor }} />
-          </span>
-        )}
-      </span>
+      {!compact && (
+        <span className={styles.detailRowViz}>
+          {viz === 'spark' && <MiniTrendChart data={trend} color={vizColor} styles={styles} />}
+          {viz === 'bar' && (
+            <span className={styles.detailBar}>
+              <span className={styles.detailBarFill} style={{ width: `${barValue}%`, background: vizColor }} />
+            </span>
+          )}
+        </span>
+      )}
       <span className={styles.detailMetricValue} style={valueColor ? { color: valueColor } : undefined}>
         {statusColor && <span className={styles.detailStatusDot} style={{ background: statusColor }} />}
         {value}
@@ -488,6 +499,42 @@ export interface DetailPanelCardProps {
 
 export const DetailPanelCard = ({ detailPanel, className, styles }: DetailPanelCardProps) => {
   const { panel, rows, hasData } = detailPanel;
+  const useTiles = isDetailTilesLayout(panel);
+
+  if (useTiles) {
+    return (
+      <div className={[styles.panel, styles.snapshotTilesPanel, className].filter(Boolean).join(' ')}>
+        <div className={styles.snapshotTilesHeader}>
+          <h3 className={styles.snapshotTilesTitle}>{panel.title}</h3>
+          {panel.subtitle ? <div className={styles.snapshotTilesSubTitle}>{panel.subtitle}</div> : null}
+        </div>
+        {hasData ? (
+          <div className={styles.snapshotTilesGrid}>
+            {rows.map((row) => {
+              const toneColor = DETAIL_TONE_COLORS[row.tone];
+              const valueColor = row.statusColor ?? (row.tone === 'normal' ? undefined : toneColor);
+              return (
+                <div key={row.label} className={styles.snapshotTile}>
+                  <div className={styles.snapshotTileLabel}>{row.label}</div>
+                  <div
+                    className={styles.snapshotTileValue}
+                    style={valueColor ? { color: valueColor } : undefined}
+                  >
+                    {row.statusColor ? (
+                      <span className={styles.detailStatusDot} style={{ background: row.statusColor }} />
+                    ) : null}
+                    {row.value}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className={styles.detailEmpty}>当前时间范围内暂无可展示详情</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={[styles.panel, className].filter(Boolean).join(' ')}>
@@ -561,6 +608,10 @@ export interface MetricsSectionProps {
 
 export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
   const isHost = String(dashboard.monitorObjectName || '').toLowerCase() === 'host';
+  const isFlowMetrics = isFlowSupportedObjectName(dashboard.monitorObjectName)
+    || FLOW_VIEW_SWITCH_ROUTE_KEYS.has(dashboard.routeKey);
+  const preferredCollectType = resolvePreferredCollectTypeFromRoute(dashboard.routeKey);
+
   return (
   <div className={styles.metricsMode}>
     <div className={`${styles.panel} ${styles.fullPanel}`}>
@@ -581,13 +632,24 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
                         '在同一插件页签中切换「进程 (Telegraf)」，按主机 instance_id 查看该主机下进程历史折线。'
                   }
                 ]
-                : [
-                  {
-                    label: '监控指标全景',
-                    detail:
-                        '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。'
-                  }
-                ]
+                : isFlowMetrics
+                  ? [
+                    {
+                      label: '插件页签',
+                      detail: '通过下方插件页签切换 SNMP、NetFlow、sFlow 等不同采集来源，查看完整原始指标曲线。'
+                    },
+                    {
+                      label: '监控指标全景',
+                      detail: '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。'
+                    }
+                  ]
+                  : [
+                    {
+                      label: '监控指标全景',
+                      detail:
+                          '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。'
+                    }
+                  ]
             }
             styles={styles}
           />
@@ -604,6 +666,7 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
         externalFrequence={dashboard.frequence}
         externalRefreshSignal={dashboard.metricsRefreshSignal}
         collectionInterval={dashboard.currentInstanceInterval}
+        preferredCollectType={preferredCollectType}
         hideTimeSelector
         onExternalXRangeChange={dashboard.onXRangeChange}
       />
@@ -635,7 +698,10 @@ export const DashboardShell = ({
   metricsContent,
   brandLabel,
   styles
-}: DashboardShellProps) => (
+}: DashboardShellProps) => {
+  const showProtocolBar = FLOW_VIEW_SWITCH_ROUTE_KEYS.has(dashboard.routeKey);
+
+  return (
   <div className={styles.page}>
     <div className={styles.shell}>
       <div className={styles.pageHeader}>
@@ -685,6 +751,8 @@ export const DashboardShell = ({
         />
       </div>
 
+      {showProtocolBar && dashboard.isDashboardMode ? <DashboardProtocolBarSlot /> : null}
+
       {dashboard.displayMode === 'dashboard' ? (
         <>{dashboardContent}</>
       ) : (
@@ -692,4 +760,5 @@ export const DashboardShell = ({
       )}
     </div>
   </div>
-);
+  );
+};

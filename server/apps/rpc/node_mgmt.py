@@ -1,6 +1,8 @@
 import os
 
+from apps.core.logger import logger
 from apps.rpc.base import AppClient, RpcClient
+from apps.rpc.exceptions import RpcLocalClientRequiredError
 
 
 class NodeMgmt(object):
@@ -163,7 +165,8 @@ class NodeMgmt(object):
     def compare_and_swap_child_config_content_local(self, id, expected_content, content):
         """同进程运维专用：仅当子配置内容仍等于读取快照时更新。"""
         if not self.is_local_client:
-            raise RuntimeError("compare-and-swap child config requires local AppClient")
+            logger.warning("RPC local client required: operation=compare_and_swap_child_config_content")
+            raise RpcLocalClientRequiredError("compare_and_swap_child_config_content")
         return self.client.run(
             "compare_and_swap_child_config_content",
             {"id": id, "expected_content": expected_content, "content": content},
@@ -218,6 +221,10 @@ class NodeMgmt(object):
         """
         return_data = self.client.run("get_cloud_region_envconfig", cloud_region_id)
         return return_data
+
+    def get_cloud_region_public_config(self, cloud_region_id):
+        """获取允许跨业务模块读取的非敏感云区域配置。"""
+        return self.client.run("get_cloud_region_public_config", cloud_region_id)
 
     def install_collector(self, collector_package: int, nodes: list[str]):
         """通过 NATS 触发采集器安装"""

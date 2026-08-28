@@ -19,6 +19,9 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(search),
 }));
+vi.mock('next/link', () => ({
+  default: ({ children, href }: { children: React.ReactNode; href: string }) => <a href={href}>{children}</a>,
+}));
 vi.mock('@/app/apm/api', () => ({ default: () => api }));
 vi.mock('@/app/apm/components/apm-route-shell', () => ({
   default: ({ children }: { children: React.ReactNode }) => <main>{children}</main>,
@@ -202,6 +205,32 @@ describe('APM 调用链探索', () => {
     expect(api.getTraces).not.toHaveBeenCalledWith(expect.objectContaining({
       max_duration_ms: 200,
     }));
+  });
+
+  it('Traces 通过右侧详情进入详情页', async () => {
+    renderWithApmIntl(<ApmTracesPage />);
+
+    expect((await screen.findAllByText('POST /pay')).length).toBeGreaterThan(0);
+    const detailLinks = screen.getAllByRole('link', { name: '详情' });
+    expect(detailLinks).toHaveLength(2);
+    expect(detailLinks.map((link) => link.getAttribute('href'))).toEqual([
+      '/apm/explore/traces/trace-1',
+      '/apm/explore/traces/trace-2',
+    ]);
+  });
+
+  it('Spans 明细行不可点击进入详情', async () => {
+    search = '';
+    api.getSpans.mockResolvedValue({
+      items: [spanItem({ span_id: 's1', service_name: 'checkout', name: 'GET /products', kind: 'server' })],
+      next_cursor: null,
+    });
+    renderWithApmIntl(<ApmTracesPage />);
+
+    expect(await screen.findByText('GET /products')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '详情' })).toBeNull();
+    expect(screen.queryByRole('link', { name: '详情' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /查看 Span/ })).toBeNull();
   });
 
   it('快速筛选按当前命中收窄，不会重新填满查询窗口', async () => {

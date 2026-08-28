@@ -1,4 +1,5 @@
 from apps.core.logger import celery_logger as logger
+from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models.monitor_object import MonitorObject, MonitorInstance, MonitorInstanceOrganization
@@ -152,6 +153,7 @@ class SyncInstance:
                 MonitorInstance(
                     **{key: value for key, value in metrics_instance_map[instance_id].items() if key != "organization_id"},
                     last_seen_at=timezone.now(),
+                    **maintainer_kwargs(),
                 )
                 for instance_id in add_set
             ]
@@ -172,6 +174,7 @@ class SyncInstance:
                 is_active=True,
                 last_seen_at=timezone.now(),
                 missing_duration_seconds=0,
+                **maintainer_kwargs(include_created=False),
             )
             organization_relations = self.build_organization_relations(update_set, metrics_instance_map)
             if organization_relations:

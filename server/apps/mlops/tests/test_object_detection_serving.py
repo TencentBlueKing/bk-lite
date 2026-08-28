@@ -2,8 +2,8 @@ import pytest
 from rest_framework import status
 
 from apps.mlops.models.object_detection import ObjectDetectionTrainJob
-from .conftest import create_object_detection_serving, create_train_job
 
+from .conftest import create_object_detection_serving, create_train_job
 
 pytestmark = [pytest.mark.django_db, pytest.mark.integration]
 
@@ -32,6 +32,8 @@ def test_object_detection_predict_uses_container_info_even_when_serving_status_i
         return "http://fake-service/predict"
 
     class FakeResponse:
+        status_code = status.HTTP_200_OK
+
         def raise_for_status(self):
             return None
 

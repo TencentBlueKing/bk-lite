@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { SearchOutlined } from '@ant-design/icons';
 import { Button, Checkbox, Input, InputNumber, Segmented, Select, Space, Tag, Typography } from 'antd';
@@ -531,6 +532,21 @@ export default function ApmTracesPage() {
         </span>
       ),
     },
+    {
+      title: t('apm.common.operation', '操作'),
+      key: 'actions',
+      width: APM_TABLE_COLUMN_WIDTHS.singleAction,
+      align: 'right',
+      fixed: 'right',
+      render: (_, item) => (
+        <Link
+          href={`/apm/explore/traces/${item.trace_id}`}
+          className="text-sm text-[var(--color-primary)] hover:text-[var(--color-primary-hover)]"
+        >
+          {t('apm.explore.traceDetail', '详情')}
+        </Link>
+      ),
+    },
   ], [statusError, statusOk, t]);
 
   const spanColumns = useMemo<TableProps<ApmSpanSummary>['columns']>(() => [
@@ -1031,19 +1047,6 @@ export default function ApmTracesPage() {
                         columns={spanColumns}
                         dataSource={visibleSpans}
                         pagination={listPagination}
-                        onRow={(item) => ({
-                          onClick: () => router.push(`/apm/explore/traces/${item.trace_id}?span_id=${item.span_id}`),
-                          onKeyDown: (event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              router.push(`/apm/explore/traces/${item.trace_id}?span_id=${item.span_id}`);
-                            }
-                          },
-                          role: 'link',
-                          'aria-label': t('apm.explore.viewSpan', '查看 Span {id}', { id: item.span_id }),
-                          tabIndex: 0,
-                          className: 'cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] focus-visible:outline-offset-[-2px]',
-                        })}
                       />
                     ) : (
                       <ApmDataTable
@@ -1051,19 +1054,6 @@ export default function ApmTracesPage() {
                         columns={traceColumns}
                         dataSource={visibleTraces}
                         pagination={listPagination}
-                        onRow={(item) => ({
-                          onClick: () => router.push(`/apm/explore/traces/${item.trace_id}`),
-                          onKeyDown: (event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              router.push(`/apm/explore/traces/${item.trace_id}`);
-                            }
-                          },
-                          role: 'link',
-                          'aria-label': t('apm.explore.viewTrace', '查看 Trace {id}', { id: item.trace_id }),
-                          tabIndex: 0,
-                          className: 'cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--color-primary)] focus-visible:outline-offset-[-2px]',
-                        })}
                       />
                     )}
                 </>

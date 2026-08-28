@@ -62,6 +62,7 @@ import type {
   ApmTopologyNode,
   ApmTraceSummary,
 } from '@/app/apm/types';
+import { isInferredTopologyNode } from '@/app/apm/services/topology/topology-layout';
 import SummaryMetricCard from '@/components/summary-metric-card';
 import Permission from '@/components/permission';
 import TimeSeriesComposedChart from '@/components/time-series-composed-chart';
@@ -218,13 +219,13 @@ export default function ApmServiceDetailPage() {
             (node) => node.service_namespace === service.namespace && node.service_name === service.name
           );
           if (self) {
-            const nodeMap = new Map(topology.nodes.map((node) => [node.id, node]));
+            const nodeMap = new Map<string, ApmTopologyNode>(topology.nodes.map((node) => [node.id, node]));
             setUpstream(
               topology.edges
                 .filter((edge) => edge.target === self.id)
                 .flatMap((edge) => {
                   const node = nodeMap.get(edge.source);
-                  return node ? [{ node, edge }] : [];
+                  return node && !isInferredTopologyNode(node) ? [{ node, edge }] : [];
                 })
             );
             setDownstream(
@@ -232,7 +233,7 @@ export default function ApmServiceDetailPage() {
                 .filter((edge) => edge.source === self.id)
                 .flatMap((edge) => {
                   const node = nodeMap.get(edge.target);
-                  return node ? [{ node, edge }] : [];
+                  return node && !isInferredTopologyNode(node) ? [{ node, edge }] : [];
                 })
             );
           } else {

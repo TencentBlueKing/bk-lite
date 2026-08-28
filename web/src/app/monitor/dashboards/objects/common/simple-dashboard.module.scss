@@ -28,6 +28,59 @@
   margin-bottom: 12px;
 }
 
+.protocolBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 16px;
+  padding: 0 2px;
+  // 切换路由/刷新插件时保留高度，避免采集视图条消失导致内容区跳动。
+  min-height: 32px;
+}
+
+.protocolBarLabel {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-3);
+  white-space: nowrap;
+}
+
+// 采集视图 Segmented：容器贴近页面渐变底，选中项白色高亮 + 主题色文字，弱化边框。
+.protocolSegmented {
+  height: 32px;
+  padding: 2px !important;
+  border-radius: 8px !important;
+  border: 1px solid var(--color-border);
+  background: var(--color-fill-1) !important;
+}
+
+.protocolSegmented :global(.ant-segmented-item) {
+  min-height: 26px;
+  line-height: 26px;
+  border-radius: 6px !important;
+  color: var(--color-text-3);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.protocolSegmented :global(.ant-segmented-item-selected) {
+  color: var(--color-primary) !important;
+  background: var(--color-bg) !important;
+  box-shadow: none;
+}
+
+.protocolSegmented :global(.ant-segmented-thumb) {
+  border-radius: 6px !important;
+  background: var(--color-bg) !important;
+  box-shadow: none;
+}
+
+.protocolSegmented :global(.ant-segmented-item:hover:not(.ant-segmented-item-selected)) {
+  color: var(--color-text-1);
+}
+
 .pageTitleRow {
   display: flex;
   align-items: center;
@@ -1214,6 +1267,73 @@
   font-weight: 700;
 }
 
+.snapshotTilesPanel {
+  padding: 12px 14px;
+}
+
+.snapshotTilesHeader {
+  margin-bottom: 10px;
+}
+
+.snapshotTilesTitle {
+  margin: 0;
+  color: #1d2f47;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.snapshotTilesSubTitle {
+  margin-top: 2px;
+  color: #92a2b5;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.snapshotTilesGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+  gap: 8px;
+}
+
+.snapshotTile {
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid #e8edf3;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.snapshotTileLabel {
+  margin-bottom: 4px;
+  overflow: hidden;
+  color: #8c95a8;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snapshotTileValue {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: #1f3047;
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+@media (max-width: 768px) {
+  .snapshotTilesGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .detailMetricValue {
   color: #1f3047;
   font-size: 16px;
@@ -1650,6 +1770,24 @@
 :global(html.dark) .statusRowAlarm {
   background: rgba(255, 77, 79, 0.12);
   border-color: rgba(255, 77, 79, 0.28);
+}
+
+:global(html.dark) .snapshotTilesTitle {
+  color: #e8eef8;
+}
+
+:global(html.dark) .snapshotTilesSubTitle,
+:global(html.dark) .snapshotTileLabel {
+  color: #9eb0c8;
+}
+
+:global(html.dark) .snapshotTile {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .snapshotTileValue {
+  color: #e8eef8;
 }
 
 :global(html.dark) .statusLabel {

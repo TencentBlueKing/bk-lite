@@ -348,6 +348,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             int(monitor_object_id),
             request.data["monitor_instance_name"],
             request.data["interval"],
+            actor_context=_build_actor_context(request),
         )
         return WebUtils.response_success(result)
 
@@ -397,6 +398,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             request.data.get("instance_id"),
             request.data.get("name"),
             organizations,
+            actor_context=actor_context,
         )
         return WebUtils.response_success()
 

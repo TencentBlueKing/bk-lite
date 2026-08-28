@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 
 import pytest
 from core.collection.contracts import (
@@ -11,6 +12,8 @@ from core.collection.contracts import (
     TargetExecutorSettings,
 )
 from core.collection.credential_policy import CredentialPolicy, InMemoryCredentialStateStore
+from core.collection.enums import FailureStage
+from core.collection.execution_plan import ExecutionPlan
 from core.collection.executor import TargetCollectionExecutor, TargetWorkerBudget
 from core.collection.metrics import CollectionMetrics
 from core.collection.plugins import UnifiedPluginFactory
@@ -24,6 +27,15 @@ class UnreachablePreflight:
         return PreflightResult(
             status=PreflightStatus.UNREACHABLE,
             error_code="tcp_connect_failed",
+        )
+
+
+class OutboundRejectedPreflight:
+    async def check(self, target, request, *, timeout_seconds, plan=None):
+        return PreflightResult(
+            status=PreflightStatus.UNREACHABLE,
+            error_code="outbound_target_rejected",
+            failed_stage=FailureStage.OUTBOUND_POLICY,
         )
 
 
@@ -88,9 +100,17 @@ class PinnedReachablePreflight:
 
 
 class FirstTargetBrokenPreflight:
+    def __init__(self):
+        self.error = None
+
     async def check(self, target, request, *, timeout_seconds, plan=None):
         if target == "10.10.24.1":
-            raise RuntimeError("unexpected target failure")
+            secret = "target-" + "framework-secret-sentinel"
+            try:
+                raise RuntimeError("password=" + secret)
+            except RuntimeError as error:
+                self.error = error
+                raise
         return PreflightResult(status=PreflightStatus.REACHABLE)
 
 
@@ -133,6 +153,7 @@ async def test_job_node_info_loads_after_preflight_before_probe_and_collect_serv
             "model_id": "host",
             "executor_type": "job",
             "collect_task_id": 91,
+            "ip_precheck": True,
         },
     )
     plugin = UnifiedPluginFactory(
@@ -232,6 +253,8 @@ async def test_preflight_failure_detail_logs_include_every_failed_target(monkeyp
     assert all("plugin_ref=network.config" in item for item in target_details)
     assert all("model_id=network" in item for item in target_details)
     assert all("stage=preflight" in item for item in target_details)
+    assert all("failed_stage=preflight" in item for item in target_details)
+    assert all("error_type=TargetCollectionFailure" in item for item in target_details)
     assert len(run_summaries) == 1
     assert "任务汇总" in run_summaries[0]
     assert "不可达=25" in run_summaries[0]
@@ -254,7 +277,7 @@ async def test_ip_precheck_failure_logs_each_ip_with_stable_safe_template(monkey
     request = CollectionRequest(
         task_id="ip-precheck-log",
         plugin_ref="network.config",
-        targets=("10.10.69.21", "10.10.69.22"),
+        targets=("10.10.69.21\r\nforged=true", "10.10.69.22"),
         credentials=(
             {
                 "credential_id": "credential-1",
@@ -272,7 +295,10 @@ async def test_ip_precheck_failure_logs_each_ip_with_stable_safe_template(monkey
     precheck_calls = [item for item in warning_calls if item[0].startswith("event=ip_precheck_failed")]
     expected_template = "event=ip_precheck_failed task_id=%s target=%s " "failed_stage=ip_precheck error_type=%s"
     assert precheck_calls == [
-        (expected_template, ("ip-precheck-log", "10.10.69.21", "tcp_connect_failed")),
+        (
+            expected_template,
+            ("ip-precheck-log", "10.10.69.21\\r\\nforged=true", "tcp_connect_failed"),
+        ),
         (expected_template, ("ip-precheck-log", "10.10.69.22", "tcp_connect_failed")),
     ]
     rendered = [template % args for template, args in precheck_calls]
@@ -284,6 +310,38 @@ async def test_ip_precheck_failure_logs_each_ip_with_stable_safe_template(monkey
         "tcp_connect_failed",
         "tcp_connect_failed",
     ]
+    assert publisher.results[0][1].target == "10.10.69.21\r\nforged=true"
+
+
+@pytest.mark.asyncio
+async def test_outbound_policy_rejection_is_not_logged_as_ip_precheck_failure(monkeypatch):
+    warning_calls = []
+    monkeypatch.setattr(
+        "core.collection.executor.logger.warning",
+        lambda message, *args: warning_calls.append((message, args)),
+    )
+    executor = TargetCollectionExecutor(
+        preflight=OutboundRejectedPreflight(),
+        plugin=RecordingPlugin(),
+        publisher=RecordingPublisher(),
+    )
+    request = CollectionRequest(
+        task_id="outbound-policy-log",
+        plugin_ref="network.config",
+        targets=("127.0.0.1",),
+        credentials=({"credential_id": "credential-1"},),
+        params={"model_id": "network", "ip_precheck": True},
+    )
+
+    summary = await executor.execute(
+        request,
+        RunLease(request.task_id, request.digest, "pod-a", 1, 999999),
+    )
+
+    rendered = [template % args for template, args in warning_calls]
+    assert summary.unreachable == 1
+    assert not any("event=ip_precheck_failed" in message for message in rendered)
+    assert any("stage=outbound_policy" in message for message in rendered)
 
 
 @pytest.mark.asyncio
@@ -472,17 +530,14 @@ async def test_disabled_reachability_keeps_security_preflight_but_skips_all_acce
         access_probe=access_probe,
         plugin=plugin,
         publisher=publisher,
-        settings=TargetExecutorSettings(
-            max_active_targets=1,
-            target_task_window=1,
-            access_probe_enabled=False,
-        ),
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
     )
     request = CollectionRequest(
         task_id="preflight-disabled",
         plugin_ref="network.config",
         targets=("10.10.24.1",),
         credentials=({"credential_id": "credential-1"},),
+        params={"ip_precheck": False},
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -542,10 +597,16 @@ async def test_one_target_publish_failure_does_not_cancel_remaining_targets():
 
 
 @pytest.mark.asyncio
-async def test_unexpected_target_failure_is_reported_without_cancelling_run():
+async def test_unexpected_target_failure_owns_safe_traceback_without_cancelling_run(monkeypatch):
+    error_calls = []
+    monkeypatch.setattr(
+        "core.collection.executor.logger.error",
+        lambda message, *args, **kwargs: error_calls.append((message, args, kwargs)),
+    )
     publisher = RecordingPublisher()
+    preflight = FirstTargetBrokenPreflight()
     executor = TargetCollectionExecutor(
-        preflight=FirstTargetBrokenPreflight(),
+        preflight=preflight,
         plugin=RecordingPlugin(),
         publisher=publisher,
         settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
@@ -567,6 +628,17 @@ async def test_unexpected_target_failure_is_reported_without_cancelling_run():
         "10.10.24.2",
     ]
     assert publisher.results[0][1].error_code == "target_execution_error"
+    assert len(error_calls) == 1
+    template, args, kwargs = error_calls[0]
+    assert template.startswith("event=target_execution_failed")
+    assert "failed_stage=framework" in template
+    assert args[-1] == "RuntimeError"
+    assert kwargs["exc_info"][2] is preflight.error.__traceback__
+    formatted = "".join(traceback.format_exception(*kwargs["exc_info"]))
+    assert "test_target_collection_executor.py" in formatted
+    assert "in check" in formatted
+    assert "target-framework-secret-sentinel" not in formatted
+    assert str(preflight.error) == "password=target-framework-secret-sentinel"
 
 
 @pytest.mark.asyncio
@@ -715,7 +787,7 @@ async def test_unreachable_target_is_filtered_before_any_credential_attempt():
             {"credential_id": "credential-1"},
             {"credential_id": "credential-2"},
         ),
-        params={"model_id": "mysql", "port": 3306},
+        params={"model_id": "mysql", "port": 3306, "ip_precheck": True},
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -795,7 +867,11 @@ async def test_credentials_rotate_inside_target_and_success_gets_affinity():
             {"credential_id": "credential-2"},
             {"credential_id": "credential-3"},
         ),
-        params={"scope_id": "tenant-a", "credential_set_version": "v1"},
+        params={
+            "scope_id": "tenant-a",
+            "credential_set_version": "v1",
+            "ip_precheck": True,
+        },
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -848,6 +924,7 @@ async def test_credential_protocol_probe_runs_before_formal_collection():
             {"credential_id": "credential-1"},
             {"credential_id": "credential-2"},
         ),
+        params={"ip_precheck": True},
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -884,7 +961,11 @@ async def test_protocol_no_response_rotates_without_freezing_credential():
             {"credential_id": "credential-1"},
             {"credential_id": "credential-2"},
         ),
-        params={"scope_id": "tenant-a", "credential_set_version": "v1"},
+        params={
+            "scope_id": "tenant-a",
+            "credential_set_version": "v1",
+            "ip_precheck": True,
+        },
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -925,6 +1006,7 @@ async def test_protocol_no_response_stops_after_default_attempt_limit():
         plugin_ref="snmp.config",
         targets=("10.10.24.1",),
         credentials=tuple({"credential_id": f"credential-{index}"} for index in range(1, 6)),
+        params={"ip_precheck": True},
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -972,7 +1054,11 @@ async def test_single_snmp_no_response_is_visible_as_timeout_without_plugin_trac
         plugin_ref="network.config",
         targets=("10.10.69.245",),
         credentials=({"credential_id": "credential-1"},),
-        params={"model_id": "network", "plugin_name": "snmp_facts"},
+        params={
+            "model_id": "network",
+            "plugin_name": "snmp_facts",
+            "ip_precheck": True,
+        },
     )
     lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
 
@@ -1122,6 +1208,7 @@ async def test_access_probe_target_unreachable_stops_credential_rotation():
             {"credential_id": "credential-1"},
             {"credential_id": "credential-2"},
         ),
+        params={"ip_precheck": True},
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -1138,6 +1225,7 @@ async def test_access_probe_target_unreachable_stops_credential_rotation():
     assert publisher.results[0][1].attempts == 1
     assert publisher.results[0][1].credential_id == "credential-1"
     assert publisher.results[0][1].error_code == "target_unreachable"
+    assert publisher.results[0][1].failed_stage == FailureStage.ACCESS_PROBE
 
 
 @pytest.mark.asyncio
@@ -1174,6 +1262,7 @@ async def test_collect_unreachable_keeps_selected_credential_identity():
 
     assert summary.unreachable == 1
     assert publisher.results[0][1].credential_id == "credential-1"
+    assert publisher.results[0][1].failed_stage == FailureStage.COLLECTION
 
 
 @pytest.mark.asyncio
@@ -1197,6 +1286,7 @@ async def test_access_probe_failure_logs_target_and_credential_id(monkeypatch):
         plugin_ref="network.config",
         targets=("10.10.69.240",),
         credentials=({"credential_id": "cred-snmp-1", "community": "secret-community"},),
+        params={"ip_precheck": True},
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -1235,7 +1325,11 @@ async def test_access_probe_exception_fails_only_current_target(monkeypatch):
         plugin_ref="mysql.config",
         targets=("10.10.24.1",),
         credentials=({"credential_id": "credential-1"},),
-        params={"model_id": "mysql", "plugin_name": "mysql_info"},
+        params={
+            "model_id": "mysql",
+            "plugin_name": "mysql_info",
+            "ip_precheck": True,
+        },
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -1281,6 +1375,7 @@ async def test_access_probe_timeout_rotates_to_next_credential():
             {"credential_id": "credential-1"},
             {"credential_id": "credential-2"},
         ),
+        params={"ip_precheck": True},
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -1328,6 +1423,7 @@ async def test_target_scoped_access_probe_result_stops_credential_rotation(probe
             {"credential_id": "credential-1"},
             {"credential_id": "credential-2"},
         ),
+        params={"ip_precheck": True},
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -1368,6 +1464,7 @@ async def test_capability_denied_probe_cools_credential_without_collecting():
         plugin_ref="postgresql.config",
         targets=("10.10.24.1",),
         credentials=({"credential_id": "credential-1"},),
+        params={"ip_precheck": True},
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -1403,6 +1500,7 @@ async def test_access_probe_metrics_are_exposed_by_collection_metrics():
         plugin_ref="mysql.config",
         targets=("10.10.24.1",),
         credentials=({"credential_id": "credential-2"},),
+        params={"ip_precheck": True},
     )
     lease = RunLease(
         task_id=request.task_id,
@@ -1417,6 +1515,47 @@ async def test_access_probe_metrics_are_exposed_by_collection_metrics():
     snapshot = metrics.snapshot()
     assert snapshot["access_probe_total"] == 1
     assert snapshot["access_probe_duration_seconds_total"] >= 0
+    assert snapshot["target_started_to_probe_seconds_p99"] >= 0
+    assert snapshot["target_started_to_collect_seconds_p99"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_collection_timeout_records_bounded_overshoot():
+    class NeverCompletesPlugin:
+        async def collect(self, target, credential, context):
+            await asyncio.sleep(60)
+
+    metrics = CollectionMetrics()
+    publisher = RecordingPublisher()
+    plan = ExecutionPlan(
+        preflight_timeout_seconds=1,
+        probe_timeout_seconds=1,
+        collection_timeout_seconds=0.02,
+        publish_timeout_seconds=1,
+        execution_mode="async",
+        capacity_group="snmp",
+    )
+    executor = TargetCollectionExecutor(
+        preflight=ReachablePreflight(),
+        plugin=NeverCompletesPlugin(),
+        publisher=publisher,
+        metrics=metrics,
+        plan=plan,
+        settings=TargetExecutorSettings(max_active_targets=1, target_task_window=1),
+    )
+    request = CollectionRequest(
+        task_id="collect-timeout-overshoot",
+        plugin_ref="network.config",
+        targets=("10.10.24.1",),
+        credentials=({"credential_id": "credential-1"},),
+    )
+    lease = RunLease(request.task_id, request.digest, "pod-a", 1, 999999)
+
+    await executor.execute(request, lease)
+
+    snapshot = metrics.snapshot()
+    assert publisher.results[0][1].error_code == "plugin_timeout"
+    assert 0 <= snapshot["timeout_overshoot_seconds_p99"] < 0.1
 
 
 @pytest.mark.asyncio
@@ -1778,7 +1917,7 @@ async def test_total_timeout_cancels_queued_result_without_false_unknown_or_late
 async def test_safe_publish_retry_reuses_identical_encoded_error_payload(monkeypatch):
     payloads = []
     clock = iter((1000.0, 2000.0, 3000.0))
-    monkeypatch.setattr(metrics_helper.time, "time", lambda: next(clock))
+    monkeypatch.setattr(metrics_helper.time, "time", lambda: next(clock, 3000.0))
 
     async def publish_metrics_batch(entries):
         payloads.append(entries[0][1])

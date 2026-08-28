@@ -6,6 +6,7 @@ import WithSideMenuLayout from '@/components/sub-layout';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import { MenuItem } from '@/types/index';
+import { isTypeScopedCollectType } from '@/app/log/(pages)/integration/receive/logExtractorLogic';
 
 const IntegrationDetailLayout = ({
   children
@@ -20,6 +21,10 @@ const IntegrationDetailLayout = ({
   const icon = searchParams.get('icon');
   const pluginName = searchParams.get('name');
   const isK8s = useMemo(() => pluginName === 'kubernetes', [pluginName]);
+  const isPassiveCollect = useMemo(
+    () => isTypeScopedCollectType(pluginName),
+    [pluginName]
+  );
 
   const handleBackButtonClick = () => {
     // const params = new URLSearchParams({ id });
@@ -48,7 +53,18 @@ const IntegrationDetailLayout = ({
   );
 
   const customMenuItems: MenuItem[] | undefined = useMemo(() => {
-    if (!isK8s) return undefined;
+    if (isK8s) {
+      return [
+        {
+          title: t('log.integration.configuration'),
+          icon: 'settings-fill',
+          url: '/log/integration/list/detail/configure',
+          name: 'integration_configure',
+          operation: []
+        }
+      ];
+    }
+    if (!isPassiveCollect) return undefined;
     return [
       {
         title: t('log.integration.configuration'),
@@ -56,9 +72,23 @@ const IntegrationDetailLayout = ({
         url: '/log/integration/list/detail/configure',
         name: 'integration_configure',
         operation: []
+      },
+      {
+        title: t('log.extractor.menuTitle'),
+        icon: 'shujumoxingguanli',
+        url: '/log/integration/list/detail/extractor',
+        name: 'integration_extractor',
+        operation: []
+      },
+      {
+        title: t('log.integration.introduction'),
+        icon: 'mulu',
+        url: '/log/integration/list/detail/output',
+        name: 'integration_output',
+        operation: []
       }
     ];
-  }, [isK8s, t]);
+  }, [isK8s, isPassiveCollect, t]);
 
   return (
     <WithSideMenuLayout

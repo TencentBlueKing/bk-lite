@@ -370,6 +370,7 @@
           "phaseCompletedAt": "Completed {{time}}",
           "phaseFailedAt": "Failed {{time}}",
           "processed": "Processed {{current}} / {{total}}",
+          "conflictUsers": "Conflict users: {{usernames}}",
           "syncedUsers": "{{count}} users",
           "syncedGroups": "{{count}} groups",
           "empty": "No sync progress available"
@@ -389,15 +390,22 @@
           "skipped": "Skipped"
         },
         "phaseCounter": {
+          "ledger": "{{total}}: {{parts}}",
+          "syncUsersTotal": "{{n}} users in total",
           "syncUsersNew": "Created {{n}} users",
           "syncUsersUpdated": "Updated {{n}} users",
+          "syncUsersUnchanged": "{{n}} users unchanged",
           "syncUsersConflict": "Found {{n}} conflicting users",
+          "syncUsersSkipped": "Skipped {{n}} invalid users",
           "reconcileDisabled": "Disabled {{n}}",
           "reconcileDeletedUsers": "Deleted {{n}} users",
           "reconcileDeleted": "Deleted {{n}} groups",
           "syncGroupsSynced": "Synced {{n}} groups",
+          "syncGroupsTotal": "{{n}} groups in total",
           "syncGroupsCreated": "Created {{n}} groups",
-          "syncGroupsUpdated": "Updated {{n}} groups"
+          "syncGroupsUpdated": "Updated {{n}} groups",
+          "syncGroupsUnchanged": "{{n}} groups unchanged",
+          "syncGroupsSkipped": "Skipped {{n}} invalid groups"
         },
         "phaseResult": {
           "fetchDirectory": "Retrieved {{users}} users · {{groups}} groups",
@@ -425,10 +433,18 @@
         },
         "runSummary": {
           "success": "Sync succeeded: {{external}}; synced {{users}} users, {{groups}} groups",
+          "successWithLedger": "Sync succeeded: {{external}}; {{users}}; {{groups}}",
           "partial": "Partial success: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicts",
           "partialWithUsers": "Partial success: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicts (conflict users: {{usernames}})",
+          "partialWithLedger": "Partial success: {{external}}; {{users}}; {{groups}}",
+          "partialWithLedgerAndUsers": "Partial success: {{external}}; {{users}}; {{groups}} (conflict users: {{usernames}})",
           "failed": "Sync failed: {{external}}; {{reason}}",
           "failedConflict": "Sync failed: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicting users (conflict users: {{usernames}})",
+          "failedWithLedger": "Sync failed: {{external}}; {{users}}; {{groups}}",
+          "failedWithLedgerAndUsers": "Sync failed: {{external}}; {{users}}; {{groups}} (conflict users: {{usernames}})",
+          "withReason": "{{summary}}; {{reason}}",
+          "userLedger": "Users: {{parts}}",
+          "groupLedger": "Groups: {{parts}}",
           "externalCounts": "External users: {{users}}, external groups: {{groups}}",
           "result": "Sync result: {{external}}; {{summary}}",
           "withEmailStatus": "{{summary}}; {{email}}",
@@ -1183,12 +1199,15 @@
       "permanentlyDelete": "Permanently Delete",
       "permanentlyDeleteConfirm": "Are you sure you want to permanently delete this archived organization?",
       "permanentlyDeleteConfirmCxt": "Permanent deletion cannot be undone. Please handle related data in application modules (Monitor, Log, CMDB, etc.) yourself before continuing.",
+      "permanentlyDeleteConfirmCxtSynced": "Permanent deletion cannot be undone, and the original organization ID is not kept. If the directory brings this organization back, sync will create a new one. Please handle related data in application modules (Monitor, Log, CMDB, etc.) yourself before continuing.",
       "permanentlyDeleteSuccess": "Organization permanently deleted",
       "permanentlyDeleteFailed": "Failed to permanently delete organization",
       "archivedKind": {
         "local": "Local organization",
         "synced": "Synced organization"
       },
+      "syncReconcileArchived": "Archived by sync reconcile",
+      "syncReconcileArchivedHint": "This organization is still bound to an active sync source. If it remains in the directory, the next sync will restore it to the active tree with the same ID. If it has left the directory, it stays archived. Handle it from the corresponding user sync source; do not restore or delete it here.",
       "childrenTruncated": "This archived subtree is too large; only some child organizations are shown."
     },
     "role": {

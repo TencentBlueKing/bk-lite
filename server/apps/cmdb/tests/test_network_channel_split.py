@@ -130,11 +130,11 @@ def test_expected_network_node_configs_returns_two_when_enabled(monkeypatch):
 def test_reconcile_delete_clears_both_configs(monkeypatch):
     from apps.cmdb.services import network_collection_reconcile as reconcile
 
-    deleted = []
+    delete_calls = []
 
     class FakeNodeMgmt:
         def delete_child_configs(self, payload):
-            deleted.extend(payload)
+            delete_calls.append(list(payload))
 
         def batch_add_node_child_config(self, nodes):
             raise AssertionError("delete path must not push")
@@ -142,7 +142,117 @@ def test_reconcile_delete_clears_both_configs(monkeypatch):
     monkeypatch.setattr(reconcile, "NodeMgmt", FakeNodeMgmt)
     result = reconcile.reconcile_network_collection_configs(_network_instance(), delete=True)
     assert result["deleted"] == ["cmdb_42", "cmdb_42_topology"]
-    assert deleted == [{"id": "cmdb_42"}, {"id": "cmdb_42_topology"}]
+    assert delete_calls == [["cmdb_42", "cmdb_42_topology"]]
+
+
+def test_reconcile_edit_deletes_existing_configs_before_recreate(monkeypatch):
+    from apps.cmdb.services import network_collection_reconcile as reconcile
+
+    existing_ids = {"cmdb_42", "cmdb_42_topology"}
+
+    class FakeNodeMgmt:
+        def delete_child_configs(self, config_ids):
+            existing_ids.difference_update(config_id for config_id in config_ids if isinstance(config_id, str))
+
+        def batch_add_node_child_config(self, nodes):
+            pushed_ids = {node["id"] for node in nodes}
+            duplicate_ids = sorted(existing_ids & pushed_ids)
+            if duplicate_ids:
+                raise RuntimeError(f"duplicate child config ids: {duplicate_ids}")
+            existing_ids.update(pushed_ids)
+
+    monkeypatch.setattr(reconcile, "NodeMgmt", FakeNodeMgmt)
+    monkeypatch.setattr(NetworkNodeParams, "render_template", lambda self, context: "device-content")
+    monkeypatch.setattr(NetworkTopoNodeParams, "render_template", lambda self, context: "topo-content")
+
+    instance = _network_instance()
+    reconcile.reconcile_network_collection_configs(instance, delete=True)
+    reconcile.reconcile_network_collection_configs(instance, delete=False)
+
+    assert existing_ids == {"cmdb_42", "cmdb_42_topology"}
+
+
+def test_reconcile_delete_propagates_node_mgmt_failure_without_leaking_error(monkeypatch, caplog):
+    from apps.cmdb.services import network_collection_reconcile as reconcile
+
+    sensitive_sentinel = "SECRET_NETWORK_DELETE_PAYLOAD"
+    original_error = RuntimeError(sensitive_sentinel)
+
+    class FailingNodeMgmt:
+        def delete_child_configs(self, config_ids):
+            raise original_error
+
+    monkeypatch.setattr(reconcile, "NodeMgmt", FailingNodeMgmt)
+
+    with pytest.raises(RuntimeError) as exc_info:
+        reconcile.reconcile_network_collection_configs(_network_instance(), delete=True)
+
+    assert exc_info.value is original_error
+    warning_records = [record for record in caplog.records if record.msg.startswith("[NetworkReconcile] 删除节点配置失败")]
+    assert len(warning_records) == 1
+    warning_record = warning_records[0]
+    assert warning_record.msg == "[NetworkReconcile] 删除节点配置失败 task_id=%s config_ids=%s error_type=%s"
+    assert warning_record.args == (42, ["cmdb_42", "cmdb_42_topology"], "RuntimeError")
+    assert warning_record.getMessage() == (
+        "[NetworkReconcile] 删除节点配置失败 task_id=42 " "config_ids=['cmdb_42', 'cmdb_42_topology'] error_type=RuntimeError"
+    )
+    assert sensitive_sentinel not in warning_record.getMessage()
+    assert warning_record.exc_info is None
+
+
+def test_reconcile_without_topology_deletes_only_topology_config(monkeypatch):
+    from apps.cmdb.services import network_collection_reconcile as reconcile
+
+    delete_calls = []
+    pushed_ids = []
+
+    class FakeNodeMgmt:
+        def delete_child_configs(self, config_ids):
+            delete_calls.append(list(config_ids))
+
+        def batch_add_node_child_config(self, nodes):
+            pushed_ids.extend(node["id"] for node in nodes)
+
+    monkeypatch.setattr(reconcile, "NodeMgmt", FakeNodeMgmt)
+    monkeypatch.setattr(NetworkNodeParams, "render_template", lambda self, context: "device-content")
+
+    instance = _network_instance(params={"has_network_topo": False})
+    result = reconcile.reconcile_network_collection_configs(instance, delete=False)
+
+    assert delete_calls == [["cmdb_42_topology"]]
+    assert result["deleted"] == ["cmdb_42_topology"]
+    assert pushed_ids == ["cmdb_42"]
+
+
+def test_reconcile_without_topology_propagates_cleanup_failure_without_push(monkeypatch, caplog):
+    from apps.cmdb.services import network_collection_reconcile as reconcile
+
+    sensitive_sentinel = "SECRET_TOPOLOGY_DELETE_PAYLOAD"
+    original_error = RuntimeError(sensitive_sentinel)
+
+    class FailingNodeMgmt:
+        def delete_child_configs(self, config_ids):
+            assert config_ids == ["cmdb_42_topology"]
+            raise original_error
+
+        def batch_add_node_child_config(self, nodes):
+            raise AssertionError("cleanup failure must stop config push")
+
+    monkeypatch.setattr(reconcile, "NodeMgmt", FailingNodeMgmt)
+
+    instance = _network_instance(params={"has_network_topo": False})
+    with pytest.raises(RuntimeError) as exc_info:
+        reconcile.reconcile_network_collection_configs(instance, delete=False)
+
+    assert exc_info.value is original_error
+    warning_records = [record for record in caplog.records if record.msg.startswith("[NetworkReconcile] 清理拓扑配置失败")]
+    assert len(warning_records) == 1
+    warning_record = warning_records[0]
+    assert warning_record.msg == "[NetworkReconcile] 清理拓扑配置失败 task_id=%s config_id=%s error_type=%s"
+    assert warning_record.args == (42, "cmdb_42_topology", "RuntimeError")
+    assert warning_record.getMessage() == ("[NetworkReconcile] 清理拓扑配置失败 task_id=42 config_id=cmdb_42_topology error_type=RuntimeError")
+    assert sensitive_sentinel not in warning_record.getMessage()
+    assert warning_record.exc_info is None
 
 
 def test_get_last_synced_topology_round():

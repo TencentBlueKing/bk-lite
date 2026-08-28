@@ -7,6 +7,7 @@ from django.core.cache import cache
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.monitor.constants.k3s_onboarding import (
     CLUSTER_OBJECT_NAME,
@@ -74,6 +75,7 @@ class K3SOnboardingService:
         instance_id,
         name,
         organizations,
+        actor_context=None,
     ):
         monitor_object = cls._get_cluster_object(monitor_object_id)
         MonitorObjectService.validate_new_instance_name_unique(
@@ -86,6 +88,7 @@ class K3SOnboardingService:
             name=name,
             monitor_object=monitor_object,
             auto=False,
+            **maintainer_kwargs(actor_context),
         )
         MonitorInstanceOrganization.objects.bulk_create(
             [
@@ -168,7 +171,7 @@ class K3SOnboardingService:
     @classmethod
     def generate_install_commands(cls, *, instance_id, cloud_region_id):
         instance = cls._get_cluster_instance(instance_id)
-        env = NodeMgmt().get_cloud_region_envconfig(cloud_region_id)
+        env = NodeMgmt().get_cloud_region_public_config(cloud_region_id)
         server_url = env.get("NODE_SERVER_URL")
         if not server_url:
             raise BaseAppException(

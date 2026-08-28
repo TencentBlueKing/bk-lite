@@ -24,13 +24,15 @@ NATS 通用工具方法
 """
 
 import asyncio
+import hashlib
 import json
 import os
 import time
 from collections import deque
 from collections.abc import Callable
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Sequence
 
+from core.infra.jetstream_publish_window import JetStreamMessage, JetStreamPublishWindow, JetStreamPublishWindowSettings, JetStreamWindowPublishError
 from core.infra.nats import NATSConfig
 from core.logger import logger
 from nats.aio.client import Client as NATS
@@ -40,6 +42,9 @@ _shared_nc: Optional[NATS] = None
 _metrics_nc: Optional[NATS] = None
 _connect_lock: Optional[asyncio.Lock] = None
 _metrics_connect_lock: Optional[asyncio.Lock] = None
+_metrics_js_window: Optional[JetStreamPublishWindow] = None
+_metrics_js_context = None
+_metrics_js_connection: Optional[NATS] = None
 _metrics_reconnect_total = 0
 _metrics_reconnect_started_at: float | None = None
 _metrics_reconnect_duration_seconds = 0.0
@@ -54,12 +59,14 @@ class NatsLinesPublishError(RuntimeError):
         delivery_detected: bool,
         error: Exception,
         attempted_indices: tuple[int, ...] = (),
+        confirmed_indices: tuple[int, ...] = (),
     ):
         self.subject = subject
         self.attempted_count_before_failure = attempted_count_before_failure
         self.delivery_detected = delivery_detected
         self.error = error
         self.attempted_indices = attempted_indices
+        self.confirmed_indices = confirmed_indices
         super().__init__(
             f"NATS publish lines failed [{subject}] after writing "
             f"{attempted_count_before_failure} lines before confirmation "
@@ -103,9 +110,7 @@ async def _on_metrics_reconnected() -> None:
     global _metrics_reconnect_total, _metrics_reconnect_started_at, _metrics_reconnect_duration_seconds
     _metrics_reconnect_total += 1
     if _metrics_reconnect_started_at is not None:
-        _metrics_reconnect_duration_seconds = max(
-            0.0, time.monotonic() - _metrics_reconnect_started_at
-        )
+        _metrics_reconnect_duration_seconds = max(0.0, time.monotonic() - _metrics_reconnect_started_at)
         _metrics_reconnect_durations.append(_metrics_reconnect_duration_seconds)
         _metrics_reconnect_started_at = None
     await _on_reconnected()
@@ -127,19 +132,13 @@ async def get_shared_nats(channel: str = "control") -> NATS:
         raise ValueError(f"unsupported NATS channel: {channel}")
 
     nc = _metrics_nc if channel == "metrics" else _shared_nc
-    if nc is not None and (
-        nc.is_connected
-        or (not nc.is_closed and bool(getattr(nc, "is_reconnecting", False)))
-    ):
+    if nc is not None and (nc.is_connected or (not nc.is_closed and bool(getattr(nc, "is_reconnecting", False)))):
         return nc
 
     async with _get_lock(channel):
         # 拿到锁后二次确认，避免并发重复建连
         nc = _metrics_nc if channel == "metrics" else _shared_nc
-        if nc is not None and (
-            nc.is_connected
-            or (not nc.is_closed and bool(getattr(nc, "is_reconnecting", False)))
-        ):
+        if nc is not None and (nc.is_connected or (not nc.is_closed and bool(getattr(nc, "is_reconnecting", False)))):
             return nc
 
         # 清理可能存在的半死连接
@@ -184,12 +183,13 @@ async def get_shared_nats(channel: str = "control") -> NATS:
 
 async def close_shared_nats() -> None:
     """优雅关闭共享连接（供进程退出时调用，可选）。"""
-    global _shared_nc, _metrics_nc
-    clients = tuple(
-        client for client in (_shared_nc, _metrics_nc) if client is not None
-    )
+    global _shared_nc, _metrics_nc, _metrics_js_window, _metrics_js_context, _metrics_js_connection
+    clients = tuple(client for client in (_shared_nc, _metrics_nc) if client is not None)
     _shared_nc = None
     _metrics_nc = None
+    _metrics_js_window = None
+    _metrics_js_context = None
+    _metrics_js_connection = None
     for nc in clients:
         try:
             if not nc.is_closed:
@@ -213,20 +213,25 @@ def nats_metrics_connection_stats() -> dict[str, float | int]:
         except (TypeError, ValueError):
             pending_bytes = 0
     ordered_durations = sorted(_metrics_reconnect_durations)
-    p99_duration = (
-        ordered_durations[int((len(ordered_durations) - 1) * 0.99)]
-        if ordered_durations
-        else 0.0
-    )
+    p99_duration = ordered_durations[int((len(ordered_durations) - 1) * 0.99)] if ordered_durations else 0.0
+    window = _metrics_js_window.snapshot() if _metrics_js_window is not None else None
     return {
         "nats_metrics_connected": int(bool(nc is not None and nc.is_connected)),
-        "nats_metrics_reconnecting": int(
-            bool(nc is not None and getattr(nc, "is_reconnecting", False))
-        ),
+        "nats_metrics_reconnecting": int(bool(nc is not None and getattr(nc, "is_reconnecting", False))),
         "nats_metrics_reconnect_total": _metrics_reconnect_total,
         "nats_metrics_reconnect_duration_seconds": _metrics_reconnect_duration_seconds,
         "nats_metrics_reconnect_duration_seconds_p99": p99_duration,
         "nats_metrics_pending_bytes": pending_bytes,
+        "nats_js_publish_pending_messages": window.pending_messages if window else 0,
+        "nats_js_publish_pending_bytes": window.pending_bytes if window else 0,
+        "nats_js_publish_pending_messages_peak": window.peak_pending_messages if window else 0,
+        "nats_js_publish_pending_bytes_peak": window.peak_pending_bytes if window else 0,
+        "nats_js_publish_confirmed_total": window.confirmed_total if window else 0,
+        "nats_js_puback_duration_seconds_p95": window.puback_duration_seconds_p95 if window else 0.0,
+        "nats_js_puback_duration_seconds_p99": window.puback_duration_seconds_p99 if window else 0.0,
+        "nats_js_puback_timeout_total": window.puback_timeout_total if window else 0,
+        "nats_js_publish_retry_total": window.retry_total if window else 0,
+        "nats_js_publish_rejected_total": window.rejected_total if window else 0,
     }
 
 
@@ -290,6 +295,7 @@ async def nats_publish_lines(
     lines: List[str],
     *,
     before_publish: Callable[[int], bool] | None = None,
+    message_ids: Sequence[str] | None = None,
 ) -> int:
     """
     批量发布多行文本到指定主题（复用共享长连接）。
@@ -307,10 +313,18 @@ async def nats_publish_lines(
     if not lines:
         return 0
 
+    if message_ids is not None and len(message_ids) != len(lines):
+        raise ValueError("message_ids length must match lines length")
+    if _read_bool_env("NATS_METRICS_JETSTREAM_ENABLED", False):
+        return await _nats_publish_lines_jetstream(
+            subject,
+            lines,
+            before_publish=before_publish,
+            message_ids=message_ids,
+        )
+
     attempted_indices: list[int] = []
-    delivery_timeout = float(
-        os.getenv("PUBLISH_DELIVERY_TIMEOUT", os.getenv("PUBLISH_TIMEOUT", "30"))
-    )
+    delivery_timeout = float(os.getenv("PUBLISH_DELIVERY_TIMEOUT", os.getenv("PUBLISH_TIMEOUT", "30")))
     try:
         async with asyncio.timeout(delivery_timeout):
             nc = await get_shared_nats("metrics")
@@ -330,3 +344,82 @@ async def nats_publish_lines(
             attempted_indices=tuple(attempted_indices),
         ) from e
     return len(attempted_indices)
+
+
+def _read_bool_env(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _jetstream_message_id(subject: str, index: int, payload: bytes) -> str:
+    digest = hashlib.sha256()
+    digest.update(subject.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(str(index).encode("ascii"))
+    digest.update(b"\0")
+    digest.update(payload)
+    return digest.hexdigest()
+
+
+async def _get_metrics_jetstream():
+    global _metrics_js_context, _metrics_js_connection
+    nc = await get_shared_nats("metrics")
+    if _metrics_js_context is None or _metrics_js_connection is not nc:
+        _metrics_js_context = nc.jetstream(publish_async_max_pending=int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING", "1024")))
+        _metrics_js_connection = nc
+    return _metrics_js_context
+
+
+def _get_metrics_js_window() -> JetStreamPublishWindow:
+    global _metrics_js_window
+    if _metrics_js_window is None:
+        _metrics_js_window = JetStreamPublishWindow(
+            _get_metrics_jetstream,
+            settings=JetStreamPublishWindowSettings(
+                max_pending_messages=int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING", "1024")),
+                max_pending_bytes=int(os.getenv("NATS_JS_PUBLISH_MAX_PENDING_BYTES", str(128 * 1024 * 1024))),
+                puback_timeout_seconds=float(
+                    os.getenv(
+                        "NATS_JS_PUBACK_TIMEOUT",
+                        os.getenv("PUBLISH_DELIVERY_TIMEOUT", os.getenv("PUBLISH_TIMEOUT", "30")),
+                    )
+                ),
+                max_attempts=int(os.getenv("NATS_JS_PUBLISH_MAX_ATTEMPTS", "2")),
+                expected_stream=os.getenv("NATS_JS_STREAM_NAME", "CMDB_METRICS"),
+            ),
+        )
+    return _metrics_js_window
+
+
+async def _nats_publish_lines_jetstream(
+    subject: str,
+    lines: List[str],
+    *,
+    before_publish: Callable[[int], bool] | None,
+    message_ids: Sequence[str] | None,
+) -> int:
+    payloads = tuple(line.encode("utf-8") for line in lines)
+    messages = tuple(
+        JetStreamMessage(
+            payload=payload,
+            message_id=(str(message_ids[index]) if message_ids is not None else _jetstream_message_id(subject, index, payload)),
+        )
+        for index, payload in enumerate(payloads)
+    )
+    try:
+        return await _get_metrics_js_window().publish(
+            subject,
+            messages,
+            before_publish=before_publish,
+        )
+    except JetStreamWindowPublishError as error:
+        raise NatsLinesPublishError(
+            subject=subject,
+            attempted_count_before_failure=len(error.attempted_indices),
+            delivery_detected=bool(error.attempted_indices),
+            error=error.error if isinstance(error.error, Exception) else RuntimeError(type(error.error).__name__),
+            attempted_indices=error.attempted_indices,
+            confirmed_indices=error.confirmed_indices,
+        ) from error

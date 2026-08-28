@@ -450,6 +450,69 @@ def test_execute_user_sync_reports_conflicting_root_group_name(ready_integration
     assert "error_message" not in run.payload["phase_error"]
 
 
+def test_archived_same_name_blocks_until_permanent_delete_then_creates_new(
+    ready_integration_instance,
+):
+    from types import SimpleNamespace
+
+    from apps.system_mgmt.services.group_archive_service import GroupArchiveService
+
+    source = _source(ready_integration_instance, "archived-name-free", "Free Name Root")
+    root = Group.objects.create(
+        name="Free Name Root",
+        parent_id=0,
+        sync_source=source,
+        external_id=f"user-sync:{source.id}:0",
+    )
+    archived = Group.objects.create(
+        name="Finance",
+        parent_id=root.id,
+        sync_source=source,
+        external_id=f"user-sync:{source.id}:old-finance",
+        is_delete=True,
+    )
+    archived_id = archived.id
+    other = Group.objects.create(name="finance-user-home", parent_id=0)
+    User.objects.create(
+        username="finance-archive-user",
+        password=make_password("x"),
+        display_name="finance-archive-user",
+        email="finance-archive-user@example.com",
+        domain="domain.com",
+        group_list=[archived.id, other.id],
+    )
+
+    with pytest.raises(user_sync_service_module.UserSyncGroupNameConflict, match="Finance"):
+        _sync_groups(
+            source,
+            [{"id": "new-finance", "parent_id": "0", "name": "Finance"}],
+            root,
+            "0",
+        )
+
+    actor = SimpleNamespace(
+        is_superuser=True,
+        group_list=[],
+        locale="en",
+        username="archive-admin",
+        domain="domain.com",
+    )
+    deleted = GroupArchiveService.permanently_delete_archived_root(actor=actor, group_id=archived_id)
+    assert deleted["result"] is True
+
+    mapping, _ = _sync_groups(
+        source,
+        [{"id": "old-finance", "parent_id": "0", "name": "Finance"}],
+        root,
+        "0",
+    )
+    created = Group.objects.get(id=mapping["old-finance"])
+    assert created.id != archived_id
+    assert created.name == "Finance"
+    assert created.is_delete is False
+    assert created.external_id == f"user-sync:{source.id}:old-finance"
+
+
 def test_sync_groups_reports_conflicting_child_group_name(ready_integration_instance):
     source = _source(ready_integration_instance, "child-name-conflict", "Conflict Root")
     root = Group.objects.create(

@@ -242,10 +242,42 @@ class TopologyDependencyQuery:
 
 
 @dataclass(frozen=True)
+class TopologySampleQuery:
+    started_at: datetime
+    ended_at: datetime
+    service_names: tuple[str, ...] = ()
+    environment: str | None = None
+    status: str | None = None
+    span_name: str | None = None
+    min_duration_ms: float | None = None
+    limit: int = 200
+
+
+@dataclass(frozen=True)
+class TopologyTraceSample:
+    traces: tuple[TraceDetail, ...]
+    truncated: bool
+    omitted_trace_fetches: int = 0
+
+
+@dataclass(frozen=True)
 class ServiceDependency:
     parent_service_name: str
     child_service_name: str
     call_count: int
+
+
+@dataclass(frozen=True)
+class TopologySampleTrace:
+    trace_id: str
+    span_id: str
+    span_name: str
+    started_at: datetime
+    duration_ms: float
+    status: str
+    caller_service_name: str = ""
+    peer_address: str = ""
+    db_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -258,6 +290,15 @@ class TopologyNode:
     sampled_spans: int
     error_spans: int
     language: str = ""
+    kind: str = "instrumented"
+    fold_key: str = ""
+    inferred_system: str = ""
+    peer_address: str = ""
+    db_name: str = ""
+    request_rate: float | None = None
+    error_rate: float | None = None
+    p95_ms: float | None = None
+    sample_traces: tuple[TopologySampleTrace, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -268,6 +309,9 @@ class TopologyEdge:
     sampled_calls: int
     error_calls: int
     average_duration_ms: float
+    p95_ms: float | None = None
+    error_rate: float | None = None
+    sample_traces: tuple[TopologySampleTrace, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -468,6 +512,9 @@ class MetricStore(Protocol):
 
 
 class TopologyStore(Protocol):
+    def sample_traces(self, query: TopologySampleQuery) -> TopologyTraceSample:
+        ...
+
     def service_dependencies(
         self,
         query: TopologyDependencyQuery,

@@ -3,21 +3,25 @@
   height: 100%;
   min-height: 0;
   flex-direction: column;
-  padding-top: var(--safe-area-inset-top);
   color: var(--color-text-1);
   background: var(--color-background-body);
 }
 
+.pageHeader {
+  display: grid;
+  padding: 0 16px;
+  place-items: center;
+}
+
 .pageTitle {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
+  margin: 0;
   overflow: hidden;
+  font-size: var(--mobile-page-title-font-size);
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--color-text-1);
+  text-overflow: ellipsis;
   white-space: nowrap;
-  border: 0;
-  clip-path: inset(50%);
 }
 
 .scroll {
@@ -32,10 +36,12 @@
   display: grid;
   grid-template-columns: 52px minmax(0, 1fr);
   gap: 14px;
-  /* 微信式：安全区下再留一段呼吸距，身份不上顶贴死 */
-  padding: 28px 16px 20px;
+  margin: 12px 12px 0;
+  padding: 16px;
   align-items: start;
   background: var(--color-bg);
+  border: 1px solid var(--color-border-1);
+  border-radius: 12px;
 }
 
 .avatar {
@@ -48,13 +54,14 @@
   color: var(--color-primary);
   background: var(--color-primary-bg);
   border: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   place-items: center;
 }
 
 .identityCopy { min-width: 0; }
 
 .identityCopy h2 {
+  min-width: 0;
   margin: 0;
   overflow: hidden;
   font-size: var(--font-size-title);
@@ -65,8 +72,30 @@
   white-space: nowrap;
 }
 
-.identitySubtitle,
+.identityTitleRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .identityDomain {
+  flex: 0 0 auto;
+  max-width: 46%;
+  overflow: hidden;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.2;
+  color: var(--color-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--color-fill-2);
+  border-radius: 7px;
+}
+
+.identitySubtitle {
   margin: 4px 0 0;
   overflow: hidden;
   font-size: var(--font-size-secondary);
@@ -77,22 +106,18 @@
   white-space: nowrap;
 }
 
-.identitySubtitle + .identityDomain {
-  margin-top: 2px;
-}
-
 .identityFacts {
   display: grid;
-  gap: 8px;
-  margin: 14px 0 0;
+  gap: 7px;
+  margin: 10px 0 0;
   padding: 0;
 }
 
 .identityFactRow {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 10px;
-  align-items: baseline;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
   min-width: 0;
 }
 
@@ -100,7 +125,7 @@
   margin: 0;
   font-size: var(--font-size-secondary);
   font-weight: 400;
-  line-height: 1.4;
+  line-height: 1.35;
   color: var(--color-text-3);
 }
 
@@ -109,8 +134,8 @@
   margin: 0;
   overflow: hidden;
   font-size: var(--font-size-secondary);
-  font-weight: 400;
-  line-height: 1.4;
+  font-weight: 600;
+  line-height: 1.35;
   color: var(--color-text-1);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -124,13 +149,12 @@
   white-space: normal;
 }
 
-.identityFactSkeleton {
-  display: block;
-  width: 64%;
-  height: 14px;
-  margin-top: 2px;
-  background: var(--color-fill-2);
-  border-radius: 4px;
+.identityOrgValue :global(button) {
+  min-height: 28px;
+}
+
+.identityOrgValue :global(button span:first-child) {
+  font-weight: 600;
 }
 
 .identityError {
@@ -190,7 +214,7 @@
 }
 
 .body {
-  padding: 8px 0 20px;
+  padding: 8px 12px 20px;
 }
 
 .menuSection {
@@ -198,7 +222,7 @@
   overflow: hidden;
   background: var(--color-bg);
   border: 0;
-  border-radius: 0;
+  border-radius: 12px;
 }
 
 .menuSection:first-child {
@@ -238,7 +262,7 @@
   cursor: pointer;
   background: var(--color-bg);
   border: 0;
-  border-radius: 0;
+  border-radius: 12px;
   touch-action: manipulation;
 }
 
@@ -252,10 +276,14 @@
 .logoutButton:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 
 @media (max-width: 340px) {
+  .pageHeader { padding-right: 12px; padding-left: 12px; }
   .identity {
     grid-template-columns: 48px minmax(0, 1fr);
-    padding: 24px 12px 16px;
+    margin-right: 10px;
+    margin-left: 10px;
+    padding: 14px 12px;
   }
+  .body { padding-right: 10px; padding-left: 10px; }
   .avatar {
     width: 48px;
     height: 48px;

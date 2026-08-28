@@ -235,6 +235,14 @@ def _compile_assignments(rule: NormalizedRule) -> list[str]:
     return lines
 
 
+def _scope_sort_key(record: Any) -> tuple:
+    if getattr(record, "collect_instance_id", None):
+        return ("instance", str(record.collect_instance_id), record.sort_order, record.id)
+    collect_type = getattr(record, "collect_type", None)
+    name = getattr(collect_type, "name", None) or getattr(record, "collect_type_name", "")
+    return ("type", str(name), record.sort_order, record.id)
+
+
 def _compile_rule(record: Any) -> list[str]:
     normalized = normalize_rule(
         {
@@ -246,8 +254,13 @@ def _compile_rule(record: Any) -> list[str]:
             "delete_source": record.delete_source,
         }
     )
-    instance = _vrl_string(str(record.collect_instance_id))
-    predicate = f".instance_id == {instance} && {_compile_condition(normalized.condition)} && exists({_vrl_path(normalized.source_path)})"
+    if getattr(record, "collect_instance_id", None):
+        head = f".instance_id == {_vrl_string(str(record.collect_instance_id))}"
+    else:
+        collect_type = getattr(record, "collect_type", None)
+        name = getattr(collect_type, "name", None) or getattr(record, "collect_type_name", "")
+        head = f".collect_type == {_vrl_string(str(name))}"
+    predicate = f"{head} && {_compile_condition(normalized.condition)} && exists({_vrl_path(normalized.source_path)})"
     lines = [f"if {predicate} {{"]
     lines.extend(f"  {line}" for line in _compile_assignments(normalized))
     lines.append("}")
@@ -255,7 +268,7 @@ def _compile_rule(record: Any) -> list[str]:
 
 
 def compile_system_vector_config(records: Iterable[Any]) -> str:
-    ordered = sorted(records, key=lambda item: (str(item.collect_instance_id), item.sort_order, item.id))
+    ordered = sorted(records, key=_scope_sort_key)
     source_lines: list[str] = []
     for record in ordered:
         source_lines.extend(_compile_rule(record))

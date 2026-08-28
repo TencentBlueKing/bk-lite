@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Mapping
 
 from core.collection.runtime import CollectionRequest
-from core.logger import logger
+from core.logger import logger, safe_log_value
 from core.plugin.yaml_reader import PluginYamlReader, yaml_reader
 
 # yaml mode → AsyncProtocolPreflight.preflight_kind
@@ -53,15 +54,83 @@ def apply_yaml_target_policy(
         )
     except Exception as exc:  # noqa: BLE001 - 保留 request_builder 兜底
         logger.warning(
-            "event=yaml_target_policy_unavailable task_id=%s plugin=%s " "executor=%s error_type=%s",
-            request.task_id,
-            plugin_name,
-            executor_type,
+            "event=yaml_target_policy_unavailable task_id=%s plugin=%s " "executor=%s failed_stage=run_preparation error_type=%s",
+            safe_log_value(request.task_id),
+            safe_log_value(plugin_name),
+            safe_log_value(executor_type),
             type(exc).__name__,
         )
         return request
 
-    policy = (resolved.executor_config.config or {}).get("target_policy")
+    return apply_executor_target_policy(
+        request,
+        resolved.executor_config,
+        plugin_name=plugin_name,
+        executor_type=executor_type,
+    )
+
+
+async def apply_yaml_target_policy_async(
+    request: CollectionRequest,
+    *,
+    reader: PluginYamlReader | None = None,
+) -> CollectionRequest:
+    """异步 Run 入口；通过 reader 自身的锁避免并行首次读取同一 YAML。"""
+    if str(request.params.get("plugin_family") or "") == "monitor":
+        return request
+    if str(request.params.get("preflight_kind") or "").strip() and request.params.get("preflight_kind_explicit"):
+        return request
+    selected_reader = reader or yaml_reader
+    plugin_name = _plugin_name(request)
+    executor_type = str(request.params.get("executor_type") or "").strip()
+    if not executor_type:
+        executor_type = await asyncio.to_thread(
+            _default_executor_type,
+            plugin_name,
+            selected_reader,
+        )
+
+    prefer_enterprise = _as_bool(request.params.get("prefer_enterprise"), True)
+    try:
+        resolved = await selected_reader.get_executor_config_with_resolution_async(
+            plugin_name,
+            executor_type,
+            prefer_enterprise=prefer_enterprise,
+        )
+    except Exception as exc:  # noqa: BLE001 - 保留 request_builder 兜底
+        logger.warning(
+            "event=yaml_target_policy_unavailable task_id=%s plugin=%s " "executor=%s failed_stage=run_preparation error_type=%s",
+            safe_log_value(request.task_id),
+            safe_log_value(plugin_name),
+            safe_log_value(executor_type),
+            type(exc).__name__,
+        )
+        return request
+
+    return apply_executor_target_policy(
+        request,
+        resolved.executor_config,
+        plugin_name=plugin_name,
+        executor_type=executor_type,
+    )
+
+
+def apply_executor_target_policy(
+    request: CollectionRequest,
+    executor_config,
+    *,
+    plugin_name: str | None = None,
+    executor_type: str | None = None,
+) -> CollectionRequest:
+    """使用 fallback 后的最终执行器配置覆盖目标策略。"""
+
+    if str(request.params.get("plugin_family") or "") == "monitor":
+        return request
+    if str(request.params.get("preflight_kind") or "").strip() and request.params.get("preflight_kind_explicit"):
+        return request
+    plugin_name = plugin_name or _plugin_name(request)
+    executor_type = executor_type or str(request.params.get("executor_type") or "").strip()
+    policy = (executor_config.config or {}).get("target_policy")
     if not isinstance(policy, Mapping) or not policy:
         return request
 
@@ -69,9 +138,9 @@ def apply_yaml_target_policy(
     kind = _MODE_TO_KIND.get(mode)
     if not kind:
         logger.warning(
-            "event=yaml_target_policy_unknown_mode task_id=%s mode=%s",
-            request.task_id,
-            mode,
+            "event=yaml_target_policy_unknown_mode task_id=%s mode=%s " "failed_stage=run_preparation error_type=UnsupportedTargetPolicyMode",
+            safe_log_value(request.task_id),
+            safe_log_value(mode),
         )
         return request
 

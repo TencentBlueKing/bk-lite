@@ -2,6 +2,7 @@ from django.db import IntegrityError, models, transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.logger import monitor_logger as logger
+from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.core.utils.current_team_scope import scope_permission_queryset
 from apps.core.utils.database import bulk_create_with_primary_keys
 from apps.core.utils.permission_utils import get_permission_rules
@@ -245,7 +246,7 @@ class InstanceConfigService:
         return Metric.objects.filter(monitor_object_id=child_obj.id).first()
 
     @staticmethod
-    def _sync_existing_instance_attrs(existing_instances):
+    def _sync_existing_instance_attrs(existing_instances, actor_context=None):
         """同步复用实例的可变属性（除主键外）
 
         通过页面接入链路复用的实例应视为手动接入实例，
@@ -256,6 +257,7 @@ class InstanceConfigService:
 
         instances_to_update = []
         existing_map = {obj.id: obj for obj in MonitorInstance.objects.filter(id__in=[item["instance_id"] for item in existing_instances])}
+        maintainer = maintainer_kwargs(actor_context, include_created=False)
         for instance in existing_instances:
             current = existing_map[instance["instance_id"]]
             summary_facts = InstanceFactResolver.merge(
@@ -271,12 +273,13 @@ class InstanceConfigService:
                     auto=False,
                     is_deleted=False,
                     is_active=True,
+                    **maintainer,
                 )
             )
 
         MonitorInstance.objects.bulk_update(
             instances_to_update,
-            ["name", "summary_facts", "auto", "is_active"],
+            ["name", "summary_facts", "auto", "is_active", "updated_by", "updated_by_domain"],
             batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE,
         )
         return len(instances_to_update)
@@ -610,7 +613,7 @@ class InstanceConfigService:
         return new_instances, existing_instances, reclaimable_id_list
 
     @staticmethod
-    def _create_instances_in_db(new_instances, existing_instances, monitor_object_id):
+    def _create_instances_in_db(new_instances, existing_instances, monitor_object_id, actor_context=None):
         """在数据库事务中创建实例、更新已存在实例、规则和关联关系
 
         Returns:
@@ -620,7 +623,10 @@ class InstanceConfigService:
         created_rule_ids = []
 
         if existing_instances:
-            updated_count = InstanceConfigService._sync_existing_instance_attrs(existing_instances)
+            updated_count = InstanceConfigService._sync_existing_instance_attrs(
+                existing_instances,
+                actor_context=actor_context,
+            )
             logger.info(f"复用已存在实例数量: {len(existing_instances)}, 同步属性并激活: {updated_count}")
 
             # 清除所有复用实例的历史组织关联，以当前 group_ids 为唯一真值，避免跨组织纳管漂移
@@ -644,7 +650,11 @@ class InstanceConfigService:
                 created_rule_ids.extend(rule_ids)
 
         # 构建并批量创建新实例及关联关系
-        instance_objs, association_objs, created_instance_ids = InstanceConfigService._build_instance_objects(new_instances, monitor_object_id)
+        instance_objs, association_objs, created_instance_ids = InstanceConfigService._build_instance_objects(
+            new_instances,
+            monitor_object_id,
+            actor_context=actor_context,
+        )
 
         if instance_objs:
             MonitorInstance.objects.bulk_create(instance_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
@@ -655,11 +665,12 @@ class InstanceConfigService:
         return created_instance_ids, created_rule_ids
 
     @staticmethod
-    def _build_instance_objects(new_instances, monitor_object_id):
+    def _build_instance_objects(new_instances, monitor_object_id, actor_context=None):
         """构建实例对象和关联关系,返回(实例列表, 关联列表, ID列表)"""
         instance_objs = []
         association_objs = []
         instance_ids = []
+        maintainer = maintainer_kwargs(actor_context)
 
         for instance in new_instances:
             instance_id = instance["instance_id"]
@@ -676,6 +687,7 @@ class InstanceConfigService:
                         instance.get("summary_facts", {}),
                         instance.get("_summary_fact_source"),
                     ),
+                    **maintainer,
                 )
             )
 
@@ -945,6 +957,7 @@ class InstanceConfigService:
                     new_instances,
                     existing_instances,
                     monitor_object_id,
+                    actor_context=actor_context,
                 )
                 logger.info(f"创建实例和规则成功,实例数: {len(created_instance_ids)}")
 

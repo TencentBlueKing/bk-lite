@@ -28,6 +28,7 @@ from apps.mlops.models.anomaly_detection import (
     AnomalyDetectionTrainData,
     AnomalyDetectionTrainJob,
 )
+from apps.mlops.predict_response import map_predict_upstream_status
 from apps.mlops.predict_url_builder import build_predict_url
 from apps.mlops.serializers.algorithm_config import AlgorithmConfigListSerializer, AlgorithmConfigSerializer
 from apps.mlops.serializers.anomaly_detection import (
@@ -1305,7 +1306,7 @@ class AnomalyDetectionServingViewSet(TeamModelViewSet):
                 logger.error(f"{error_msg}, serving_id={serving.id}")
                 return Response(
                     {"error": error_msg, "detail": response.text},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    status=map_predict_upstream_status(response.status_code),
                 )
 
         except requests.exceptions.Timeout:

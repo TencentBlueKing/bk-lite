@@ -80,6 +80,7 @@ import {
   hasRenderableChartData,
   validateTopologyMapWidgetData,
 } from "@/app/ops-analysis/utils/topologyMapWidgetContract";
+import { isSelfFetchSceneWidget } from "@/app/ops-analysis/types/sceneWidgetCapability";
 
 const validateTopNData = (
   data: unknown,
@@ -284,6 +285,7 @@ export interface WidgetWrapperProps {
   layoutEditable?: boolean;
   runtimeActive?: boolean;
   runtimePriority?: RuntimeRequestPriority;
+  surface?: import('@/app/ops-analysis/utils/chartTypeSurface').OpsAnalysisWidgetSurface;
   onTopologyLayoutChange?: (
     next: NonNullable<ValueConfig['networkStatusTopology']>,
   ) => void;
@@ -308,6 +310,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   layoutEditable,
   runtimeActive = true,
   runtimePriority = DEFAULT_RUNTIME_PRIORITY,
+  surface = 'dashboard',
   onTopologyLayoutChange,
 }) => {
   const { t } = useTranslation();
@@ -334,7 +337,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     () => withRuntimeSourceDataErrorSuppression(getSourceDataByApiId),
     [getSourceDataByApiId],
   );
-  const isSceneWidget = config?.sceneWidgetType === "networkStatusTopology";
+  const isSceneWidget = isSelfFetchSceneWidget(config?.sceneWidgetType);
   const effectiveComponentParams = useMemo(() => {
     const overrides = config?.dataSourceParams || [];
     if (!dataSource?.params?.length) return overrides;
@@ -1240,6 +1243,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           runtimeOwnerId={widgetId}
           runtimeActive={runtimeActive}
           runtimePriority={runtimePriority}
+          surface={surface}
           fallback={renderError(
             `${t("dashboard.unknownComponentType")}: ${chartType}`,
           )}
@@ -1296,6 +1300,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           runtimeOwnerId={widgetId}
           runtimeActive={runtimeActive}
           runtimePriority={runtimePriority}
+          surface={surface}
           fallback={renderError(
             `${t("dashboard.unknownComponentType")}: ${chartType}`,
           )}

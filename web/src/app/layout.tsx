@@ -315,7 +315,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   }
 
   const layoutContent = (
-    <div className={`flex flex-col ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute ? 'min-w-[1280px]' : ''}`}>
+    <div className={`flex flex-col pr-[var(--bk-webchat-dock-width)] transition-[padding-right] duration-200 ease-out ${isDashboardShareRoute ? 'h-screen overflow-hidden' : 'min-h-screen'} ${!isAuthRoute && !isResponsiveAppRoute ? 'min-w-[1280px]' : ''}`}>
       {isAuthenticated && hasResolvedPathname && !isAuthRoute && (
         <header
           className={`sticky top-0 left-0 right-0 flex justify-between items-center header-bg ${isHeaderScrolled ? 'header-bg-scrolled' : ''}`}

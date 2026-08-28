@@ -1,0 +1,448 @@
+{
+  "plugin": "Active Directory",
+  "plugin_desc": "Collects Active Directory NTDS/DirectoryServices performance counters with local Telegraf win_perf_counters, plus TCP probes of LDAP (389) and LDAPS (636). Install telegraf_windows on the domain controller; this plugin does not use inputs.ldap (OpenLDAP), Get-HealthReport, AD replication cmdlets, or agentless remote WMI.",
+  "collector": "Telegraf",
+  "collect_type": "host",
+  "support_collect_detect": false,
+  "status_query": "any({instance_type='active_directory', collect_type='host'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "asset.ip",
+      "value_type": "ip",
+      "resolver": "selected_node",
+      "options": {
+        "selection_field": "node_ids",
+        "node_field": "ip",
+        "required": true
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "asset.ip",
+      "title": "monitor.views.assetIp",
+      "order": 10
+    }
+  ],
+  "name": "Active Directory",
+  "icon": "mm-active-directory_AD",
+  "type": "Middleware",
+  "description": "Active Directory domain controller monitoring via local telegraf_windows",
+  "default_metric": "any({instance_type='active_directory'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "ad_ldap_successful_binds_persec",
+    "ad_ldap_client_sessions",
+    "ad_ds_threads_in_use",
+    "ad_ldap_probe_result_code"
+  ],
+  "display_fields": [
+    {
+      "name": "LDAP Successful Binds",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "Active Directory",
+          "metric": "ad_ldap_successful_binds_persec"
+        }
+      ]
+    },
+    {
+      "name": "LDAP Client Sessions",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "Active Directory",
+          "metric": "ad_ldap_client_sessions"
+        }
+      ]
+    },
+    {
+      "name": "LDAP Bind Time",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "Active Directory",
+          "metric": "ad_ldap_bind_time"
+        }
+      ]
+    },
+    {
+      "name": "DS Threads in Use",
+      "sort_order": 3,
+      "metrics": [
+        {
+          "plugin": "Active Directory",
+          "metric": "ad_ds_threads_in_use"
+        }
+      ]
+    },
+    {
+      "name": "LDAP Probe",
+      "sort_order": 4,
+      "metrics": [
+        {
+          "plugin": "Active Directory",
+          "metric": "ad_ldap_probe_result_code"
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_group": "LDAP",
+      "name": "ad_ldap_successful_binds_persec",
+      "query": "win_ad_LDAP_Successful_Binds_persec{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "LDAP Successful Binds",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "NTDS DirectoryServices LDAP successful binds per second."
+    },
+    {
+      "metric_group": "LDAP",
+      "name": "ad_ldap_client_sessions",
+      "query": "win_ad_LDAP_Client_Sessions{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "LDAP Client Sessions",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current LDAP client sessions on the domain controller."
+    },
+    {
+      "metric_group": "LDAP",
+      "name": "ad_ldap_bind_time",
+      "query": "win_ad_LDAP_Bind_Time{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "LDAP Bind Time",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Time taken for the last LDAP bind, in milliseconds."
+    },
+    {
+      "metric_group": "LDAP",
+      "name": "ad_ldap_searches_persec",
+      "query": "win_ad_LDAP_Searches_persec{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "LDAP Searches",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "LDAP searches per second."
+    },
+    {
+      "metric_group": "LDAP",
+      "name": "ad_ldap_writes_persec",
+      "query": "win_ad_LDAP_Writes_persec{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "LDAP Writes",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "LDAP writes per second."
+    },
+    {
+      "metric_group": "LDAP",
+      "name": "ad_ldap_new_connections_persec",
+      "query": "win_ad_LDAP_New_Connections_persec{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "LDAP New Connections",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "New LDAP connections per second."
+    },
+    {
+      "metric_group": "LDAP",
+      "name": "ad_ldap_new_ssl_connections_persec",
+      "query": "win_ad_LDAP_New_SSL_Connections_persec{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "LDAP New SSL Connections",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "New LDAPS connections per second."
+    },
+    {
+      "metric_group": "LDAP",
+      "name": "ad_ldap_active_threads",
+      "query": "win_ad_LDAP_Active_Threads{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "LDAP Active Threads",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "LDAP threads currently active on NTDS."
+    },
+    {
+      "metric_group": "NTDS",
+      "name": "ad_ds_threads_in_use",
+      "query": "win_ad_DS_Threads_in_Use{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DS Threads in Use",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Directory service threads currently in use."
+    },
+    {
+      "metric_group": "NTDS",
+      "name": "ad_ds_notify_queue_size",
+      "query": "win_ad_DS_Notify_Queue_Size{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DS Notify Queue Size",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Directory service notify queue length."
+    },
+    {
+      "metric_group": "NTDS",
+      "name": "ad_ds_directory_reads_persec",
+      "query": "win_ad_DS_Directory_Reads_persec{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DS Directory Reads",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Directory reads per second."
+    },
+    {
+      "metric_group": "NTDS",
+      "name": "ad_ds_directory_searches_persec",
+      "query": "win_ad_DS_Directory_Searches_persec{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DS Directory Searches",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Directory searches per second."
+    },
+    {
+      "metric_group": "NTDS",
+      "name": "ad_ds_directory_writes_persec",
+      "query": "win_ad_DS_Directory_Writes_persec{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DS Directory Writes",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Directory writes per second."
+    },
+    {
+      "metric_group": "NTDS",
+      "name": "ad_ds_client_binds_persec",
+      "query": "win_ad_DS_Client_Binds_persec{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DS Client Binds",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Directory service client binds per second."
+    },
+    {
+      "metric_group": "Replication",
+      "name": "ad_dra_pending_replication_operations",
+      "query": "win_ad_DRA_Pending_Replication_Operations{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DRA Pending Replication Operations",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Pending AD replication operations remaining on this DC."
+    },
+    {
+      "metric_group": "Replication",
+      "name": "ad_dra_pending_replication_synchronizations",
+      "query": "win_ad_DRA_Pending_Replication_Synchronizations{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DRA Pending Replication Synchronizations",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Pending AD replication synchronizations remaining on this DC."
+    },
+    {
+      "metric_group": "Replication",
+      "name": "ad_dra_inbound_bytes_total_persec",
+      "query": "win_ad_DRA_Inbound_Bytes_Total_persec{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DRA Inbound Bytes",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Inbound AD replication bytes per second."
+    },
+    {
+      "metric_group": "Replication",
+      "name": "ad_dra_outbound_bytes_total_persec",
+      "query": "win_ad_DRA_Outbound_Bytes_Total_persec{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DRA Outbound Bytes",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Outbound AD replication bytes per second."
+    },
+    {
+      "metric_group": "Replication",
+      "name": "ad_dra_inbound_full_sync_objects_remaining",
+      "query": "win_ad_DRA_Inbound_Full_Sync_Objects_Remaining{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "DRA Full Sync Objects Remaining",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Objects remaining in an inbound full sync."
+    },
+    {
+      "metric_group": "ATQ",
+      "name": "ad_atq_outstanding_queued_requests",
+      "query": "win_ad_ATQ_Outstanding_Queued_Requests{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "ATQ Outstanding Queued Requests",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Outstanding ATQ queued requests on the DC."
+    },
+    {
+      "metric_group": "ATQ",
+      "name": "ad_atq_estimated_queue_delay",
+      "query": "win_ad_ATQ_Estimated_Queue_Delay{instance_type=\"active_directory\", __$labels__}",
+      "display_name": "ATQ Estimated Queue Delay",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Estimated ATQ queue delay in milliseconds."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "ad_ldap_probe_result_code",
+      "query": "net_response_result_code{instance_type=\"active_directory\", endpoint=\"ldap\", __$labels__}",
+      "display_name": "LDAP Probe Result",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"超时\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"连接失败\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"读取失败\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"返回不匹配\",\"id\":4,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        },
+        {
+          "name": "port",
+          "description": "port"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Local TCP probe of LDAP (default 389) on the DC. 0 means the port accepted a connection."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "ad_ldaps_probe_result_code",
+      "query": "net_response_result_code{instance_type=\"active_directory\", endpoint=\"ldaps\", __$labels__}",
+      "display_name": "LDAPS Probe Result",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"超时\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"连接失败\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"读取失败\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"返回不匹配\",\"id\":4,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        },
+        {
+          "name": "port",
+          "description": "port"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Local TCP probe of LDAPS (default 636) on the DC. 0 means the port accepted a connection."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "ad_ldap_probe_response_time",
+      "query": "net_response_response_time{instance_type=\"active_directory\", endpoint=\"ldap\", __$labels__} * 1000",
+      "display_name": "LDAP Probe Response Time",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Round-trip time of the local LDAP TCP probe, displayed in milliseconds."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "ad_ldaps_probe_response_time",
+      "query": "net_response_response_time{instance_type=\"active_directory\", endpoint=\"ldaps\", __$labels__} * 1000",
+      "display_name": "LDAPS Probe Response Time",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Round-trip time of the local LDAPS TCP probe, displayed in milliseconds."
+    }
+  ]
+}
