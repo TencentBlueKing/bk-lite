@@ -18,21 +18,30 @@ export const createScreenCopyItemHandler = ({
 }) => {
   return (itemId: string) => {
     const copiedItemId = createId();
-    const preview = copyScreenWidget(getDraftViewSets(), itemId, {
-      createId: () => copiedItemId,
-    });
-    if (!preview) {
-      return;
-    }
-    setDraftViewSets((current) => {
+    const tryCopy = (current: ScreenViewSets) => {
       const copied = copyScreenWidget(current, itemId, {
         createId: () => copiedItemId,
       });
       if (!copied) {
-        return current;
+        return null;
       }
       return rebuildFilters(copied.viewSets);
+    };
+
+    const preview = tryCopy(getDraftViewSets());
+    if (!preview) {
+      return;
+    }
+
+    let applied: ScreenViewSets | null | undefined;
+    setDraftViewSets((current) => {
+      applied = tryCopy(current);
+      return applied ?? current;
     });
-    setSelectedItemId(copiedItemId);
+
+    const landed = applied === undefined ? preview : applied;
+    if (landed) {
+      setSelectedItemId(copiedItemId);
+    }
   };
 };

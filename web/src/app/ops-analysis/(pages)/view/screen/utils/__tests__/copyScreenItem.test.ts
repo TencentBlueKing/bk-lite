@@ -151,4 +151,25 @@ describe('createScreenCopyItemHandler', () => {
     expect(setSelectedItemId).not.toHaveBeenCalled();
     expect(setDraftViewSets).not.toHaveBeenCalled();
   });
+
+  it('does not select when a pending draft update already removed the source', () => {
+    const lastRender = viewSets;
+    const pending = { ...viewSets, items: [] as ScreenViewSets['items'] };
+    let draft = pending;
+    const setSelectedItemId = vi.fn();
+    const handleCopyItem = createScreenCopyItemHandler({
+      getDraftViewSets: () => lastRender,
+      setDraftViewSets: (updater) => {
+        draft = typeof updater === 'function' ? updater(draft) : updater;
+      },
+      setSelectedItemId,
+      rebuildFilters: (next) => next,
+      createId: () => 'line-copy',
+    });
+
+    handleCopyItem('line-1');
+
+    expect(setSelectedItemId).not.toHaveBeenCalled();
+    expect(draft.items.map((item) => item.id)).toEqual([]);
+  });
 });

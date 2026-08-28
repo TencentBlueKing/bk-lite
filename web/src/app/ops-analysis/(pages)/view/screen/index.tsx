@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type SetStateAction,
 } from "react";
 import { message, Select } from "antd";
 import { useTranslation } from "@/utils/i18n";
@@ -130,11 +131,19 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const [savedViewSets, setSavedViewSets] = useState<ScreenViewSets>(
     buildDefaultScreenViewSets,
   );
-  const [draftViewSets, setDraftViewSets] = useState<ScreenViewSets>(
+  const [draftViewSets, setDraftViewSetsState] = useState<ScreenViewSets>(
     buildDefaultScreenViewSets,
   );
   const draftViewSetsRef = useRef(draftViewSets);
   draftViewSetsRef.current = draftViewSets;
+  const setDraftViewSets = useCallback((updater: SetStateAction<ScreenViewSets>) => {
+    const next =
+      typeof updater === "function"
+        ? updater(draftViewSetsRef.current)
+        : updater;
+    draftViewSetsRef.current = next;
+    setDraftViewSetsState(next);
+  }, []);
   const [editQuerySnapshot, setEditQuerySnapshot] =
     useState<ScreenQuerySnapshot | null>(null);
   const { isFullscreen, enterFullscreen, exitFullscreen } =
