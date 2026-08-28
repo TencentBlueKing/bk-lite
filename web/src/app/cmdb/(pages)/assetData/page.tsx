@@ -1239,6 +1239,7 @@ const AssetDataContent = () => {
                   proxyOptions={proxyOptions}
                   userList={userList}
                   modelId={modelId}
+                  displayFieldKeys={displayFieldKeys}
                   attrList={propertyList.filter(
                     (item) => item.attr_type !== 'organization'
                   )}
