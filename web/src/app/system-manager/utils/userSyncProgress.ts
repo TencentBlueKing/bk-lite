@@ -118,10 +118,126 @@ export function getPhaseLabel(phase: PhaseKey, t: (key: string, fallback?: strin
   return map[phase];
 }
 
+function asCount(value: unknown): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+export function resolveUnchangedUsers(
+  counters: NonNullable<PhaseProgressEntry['counters']> | undefined,
+  total: number,
+): number {
+  if (counters?.unchanged_users != null) return asCount(counters.unchanged_users);
+  return Math.max(
+    0,
+    asCount(total)
+      - asCount(counters?.new_users)
+      - asCount(counters?.updated_users)
+      - asCount(counters?.conflict_users)
+      - asCount(counters?.skipped_invalid_users),
+  );
+}
+
+export function resolveUnchangedGroups(
+  counters: NonNullable<PhaseProgressEntry['counters']> | undefined,
+  total: number,
+): number {
+  if (counters?.unchanged_groups != null) return asCount(counters.unchanged_groups);
+  return Math.max(
+    0,
+    asCount(total)
+      - asCount(counters?.created_groups)
+      - asCount(counters?.updated_groups)
+      - asCount(counters?.skipped_invalid_groups),
+  );
+}
+
+export type SyncLedgerMode = 'running' | 'finish' | 'summary';
+
+/** 同步用户账目分项;零值省略。finish 仅在存在新建/更新/冲突/跳过时附带无变化。 */
+export function formatSyncUsersChangeParts(
+  counters: NonNullable<PhaseProgressEntry['counters']> | undefined,
+  total: number,
+  t: (key: string, fallback?: string) => string,
+  mode: SyncLedgerMode,
+): string[] {
+  const parts: string[] = [];
+  const newUsers = asCount(counters?.new_users);
+  const updatedUsers = asCount(counters?.updated_users);
+  const conflictUsers = asCount(counters?.conflict_users);
+  const skippedUsers = asCount(counters?.skipped_invalid_users);
+  const materialChange = newUsers + updatedUsers + conflictUsers + skippedUsers > 0;
+  const includeUnchanged = mode === 'summary' || (mode === 'finish' && materialChange);
+
+  if (newUsers > 0) {
+    parts.push(t(`${P}.phaseCounter.syncUsersNew`).replace('{{n}}', String(newUsers)));
+  }
+  if (updatedUsers > 0) {
+    parts.push(t(`${P}.phaseCounter.syncUsersUpdated`).replace('{{n}}', String(updatedUsers)));
+  }
+  if (includeUnchanged) {
+    const unchangedUsers = resolveUnchangedUsers(counters, total);
+    if (unchangedUsers > 0) {
+      parts.push(t(`${P}.phaseCounter.syncUsersUnchanged`).replace('{{n}}', String(unchangedUsers)));
+    }
+  }
+  if (conflictUsers > 0) {
+    parts.push(t(`${P}.phaseCounter.syncUsersConflict`).replace('{{n}}', String(conflictUsers)));
+  }
+  if (mode !== 'running' && skippedUsers > 0) {
+    parts.push(t(`${P}.phaseCounter.syncUsersSkipped`).replace('{{n}}', String(skippedUsers)));
+  }
+  if (mode === 'summary' && parts.length === 0 && asCount(total) > 0) {
+    parts.push(t(`${P}.phaseCounter.syncUsersUnchanged`).replace('{{n}}', String(asCount(total))));
+  }
+  return parts;
+}
+
+export function formatSyncGroupsChangeParts(
+  counters: NonNullable<PhaseProgressEntry['counters']> | undefined,
+  total: number,
+  t: (key: string, fallback?: string) => string,
+  mode: SyncLedgerMode,
+): string[] {
+  const parts: string[] = [];
+  const createdGroups = asCount(counters?.created_groups);
+  const updatedGroups = asCount(counters?.updated_groups);
+  const skippedGroups = asCount(counters?.skipped_invalid_groups);
+  const materialChange = createdGroups + updatedGroups + skippedGroups > 0;
+  const includeUnchanged = mode === 'summary' || (mode === 'finish' && materialChange);
+
+  if (createdGroups > 0) {
+    parts.push(t(`${P}.phaseCounter.syncGroupsCreated`).replace('{{n}}', String(createdGroups)));
+  }
+  if (updatedGroups > 0) {
+    parts.push(t(`${P}.phaseCounter.syncGroupsUpdated`).replace('{{n}}', String(updatedGroups)));
+  }
+  if (includeUnchanged) {
+    const unchangedGroups = resolveUnchangedGroups(counters, total);
+    if (unchangedGroups > 0) {
+      parts.push(t(`${P}.phaseCounter.syncGroupsUnchanged`).replace('{{n}}', String(unchangedGroups)));
+    }
+  }
+  if (mode !== 'running' && skippedGroups > 0) {
+    parts.push(t(`${P}.phaseCounter.syncGroupsSkipped`).replace('{{n}}', String(skippedGroups)));
+  }
+  if (mode === 'summary' && parts.length === 0 && asCount(total) > 0) {
+    parts.push(t(`${P}.phaseCounter.syncGroupsUnchanged`).replace('{{n}}', String(asCount(total))));
+  }
+  return parts;
+}
+
+function joinLedger(totalLabel: string, parts: string[], t: (key: string, fallback?: string) => string): string {
+  if (parts.length === 0) return '';
+  return t(`${P}.phaseCounter.ledger`)
+    .replace('{{total}}', totalLabel)
+    .replace('{{parts}}', parts.join(' · '));
+}
+
 /** per-phase counter 行(每个阶段只显示本阶段关心的数字)。
 
-- 拉取目录 / 同步组织:无 counters(空)
-- 同步用户:新建 / 更新 / 冲突(零值字段不显示)
+- 拉取目录:无 counters(空)
+- 同步组织 / 同步用户:终态为「共 N：分项」账目;进行中只显示已发生的新建/更新/冲突
 - 全量对账:删除用户 / 删除组织(零值字段不显示)
 - 收尾邮件:已入队(由 caller 单独从 email_status 拼,本 helper 不管)
 - 计数全 0 时返回空串,不显示多余行
@@ -131,23 +247,17 @@ export function formatPhaseCounterLine(
   payload: UserSyncRunProgressPayload | null | undefined,
   t: (key: string, fallback?: string) => string,
 ): string {
-  const counters = payload?.phase_progress?.[phase]?.counters;
+  const entry = payload?.phase_progress?.[phase];
+  const counters = entry?.counters;
   if (!counters) return '';
+  const mode: SyncLedgerMode = entry?.status === 'finish' ? 'finish' : 'running';
 
   switch (phase) {
     case 'sync_users': {
-      // 只显示 > 0 的字段,避免「新建 1 · 更新 0 · 冲突 0」这种零值噪音
-      const parts: string[] = [];
-      if ((counters.new_users ?? 0) > 0) {
-        parts.push(t(`${P}.phaseCounter.syncUsersNew`).replace('{{n}}', String(counters.new_users)));
-      }
-      if ((counters.updated_users ?? 0) > 0) {
-        parts.push(t(`${P}.phaseCounter.syncUsersUpdated`).replace('{{n}}', String(counters.updated_users)));
-      }
-      if ((counters.conflict_users ?? 0) > 0) {
-        parts.push(t(`${P}.phaseCounter.syncUsersConflict`).replace('{{n}}', String(counters.conflict_users)));
-      }
-      return parts.join(' · ');
+      const parts = formatSyncUsersChangeParts(counters, asCount(entry?.total), t, mode);
+      if (mode === 'running') return parts.join(' · ');
+      const totalLabel = t(`${P}.phaseCounter.syncUsersTotal`).replace('{{n}}', String(asCount(entry?.total)));
+      return joinLedger(totalLabel, parts, t);
     }
     case 'reconcile': {
       const parts: string[] = [];
@@ -166,14 +276,10 @@ export function formatPhaseCounterLine(
       return parts.join(' · ');
     }
     case 'sync_groups': {
-      const parts: string[] = [];
-      if ((counters.created_groups ?? 0) > 0) {
-        parts.push(t(`${P}.phaseCounter.syncGroupsCreated`).replace('{{n}}', String(counters.created_groups)));
-      }
-      if ((counters.updated_groups ?? 0) > 0) {
-        parts.push(t(`${P}.phaseCounter.syncGroupsUpdated`).replace('{{n}}', String(counters.updated_groups)));
-      }
-      return parts.join(' · ');
+      const parts = formatSyncGroupsChangeParts(counters, asCount(entry?.total), t, mode);
+      if (mode === 'running') return parts.join(' · ');
+      const totalLabel = t(`${P}.phaseCounter.syncGroupsTotal`).replace('{{n}}', String(asCount(entry?.total)));
+      return joinLedger(totalLabel, parts, t);
     }
     case 'finalize': {
       // finalize 阶段 counter 由 email_status 决定,这里返回空
@@ -213,27 +319,44 @@ export function formatPhaseBusinessResult(
     if (entry?.status === 'error') {
       return '';
     }
-    const counters = entry?.counters;
-    const createdGroups = Number(counters?.created_groups ?? 0);
-    const updatedGroups = Number(counters?.updated_groups ?? 0);
-    if (createdGroups === 0 && updatedGroups === 0) {
+    const ledger = formatPhaseCounterLine(phase, payload, t);
+    if (ledger) return ledger;
+    if (entry?.status === 'finish') {
       return t(`${P}.phaseResult.syncGroupsUnchanged`)
         .replace('{{groups}}', String(entry?.total ?? entry?.current ?? 0));
     }
-    return formatPhaseCounterLine(phase, payload, t);
+    return '';
   }
   if (phase === 'sync_users') {
     const entry = payload?.phase_progress?.sync_users;
     const counters = entry?.counters;
-    const hasChanges = (counters?.new_users ?? 0) > 0
-      || (counters?.updated_users ?? 0) > 0
-      || (counters?.conflict_users ?? 0) > 0;
+    const ledger = formatPhaseCounterLine(phase, payload, t);
+    if (ledger) return ledger;
+    const skipped = asCount(counters?.skipped_invalid_users);
+    const hasChanges = asCount(counters?.new_users) > 0
+      || asCount(counters?.updated_users) > 0
+      || asCount(counters?.conflict_users) > 0
+      || skipped > 0;
     if (!hasChanges && entry?.status === 'finish') {
       return t(`${P}.phaseResult.syncUsersUnchanged`)
         .replace('{{users}}', String(entry.total ?? entry.current ?? 0));
     }
   }
   return formatPhaseCounterLine(phase, payload, t);
+}
+
+/** sync_users 阶段的冲突用户名单行。进行中或名单为空时不占行。 */
+export function formatConflictUsernamesLine(
+  payload: UserSyncRunProgressPayload | null | undefined,
+  t: (key: string, fallback?: string) => string,
+): string {
+  if (payload?.phase_progress?.sync_users?.status === 'process') return '';
+  const usernames = (payload?.conflict_usernames ?? []).filter(
+    (name): name is string => typeof name === 'string' && name.length > 0,
+  );
+  if (usernames.length === 0) return '';
+  return t(`${P}.progressDrawer.conflictUsers`)
+    .replace('{{usernames}}', usernames.join(t(`${P}.runSummary.usernameListSeparator`)));
 }
 
 /** 初始密码通知的异步投递状态。 */

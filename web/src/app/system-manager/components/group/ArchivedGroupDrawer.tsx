@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Button, Drawer, Modal, Tag, message } from 'antd';
+import { Alert, Button, Drawer, Modal, Tag, Tooltip, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from '@/utils/i18n';
 import { isSilentRequestError } from '@/utils/request';
 import { useGroupApi } from '@/app/system-manager/api/group';
+import { getArchivedActionPresentation } from '@/app/system-manager/utils/archivedGroupActions';
 import PermissionWrapper from '@/components/permission';
 import CustomTable from '@/components/custom-table';
 import styles from './ArchivedGroupDrawer.module.scss';
@@ -183,7 +184,9 @@ const ArchivedGroupDrawer: React.FC<ArchivedGroupDrawerProps> = ({
   const handlePermanentlyDelete = useCallback((root: ArchivedTableRow) => {
     confirm({
       title: t('system.group.permanentlyDeleteConfirm'),
-      content: t('system.group.permanentlyDeleteConfirmCxt'),
+      content: root.kind && root.kind !== 'local'
+        ? t('system.group.permanentlyDeleteConfirmCxtSynced')
+        : t('system.group.permanentlyDeleteConfirmCxt'),
       centered: true,
       okText: t('common.confirm'),
       okButtonProps: { danger: true },
@@ -242,12 +245,22 @@ const ArchivedGroupDrawer: React.FC<ArchivedGroupDrawerProps> = ({
       key: 'actions',
       width: 180,
       render: (_: unknown, root: ArchivedTableRow) => {
-        if (!root.can_restore && !root.can_permanently_delete) {
-          return '--';
+        const presentation = getArchivedActionPresentation(root);
+        if (presentation.type === 'empty') {
+          return null;
+        }
+        if (presentation.type === 'sync_reconcile_reason') {
+          return (
+            <Tooltip title={t('system.group.syncReconcileArchivedHint')}>
+              <span className="cursor-help text-[var(--color-text-3)]">
+                {t('system.group.syncReconcileArchived')}
+              </span>
+            </Tooltip>
+          );
         }
         return (
           <>
-            {root.can_restore ? (
+            {presentation.can_restore ? (
               <PermissionWrapper requiredPermissions={['Delete Group']}>
                 <Button
                   type="link"
@@ -259,7 +272,7 @@ const ArchivedGroupDrawer: React.FC<ArchivedGroupDrawerProps> = ({
                 </Button>
               </PermissionWrapper>
             ) : null}
-            {root.can_permanently_delete ? (
+            {presentation.can_permanently_delete ? (
               <PermissionWrapper requiredPermissions={['Delete Group']}>
                 <Button
                   type="link"

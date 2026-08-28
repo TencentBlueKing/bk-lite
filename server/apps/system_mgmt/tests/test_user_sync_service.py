@@ -2404,10 +2404,10 @@ def test_reconcile_deletes_missing_user_and_recreates_user_when_external_directo
 
 @pytest.mark.django_db
 def test_per_phase_counters_split_between_sync_users_and_reconcile(ready_integration_instance):
-    """per-phase counters 拆分:同步用户只含 new/updated/conflict,对账只含 deleted_users + deleted_group_count。
+    """per-phase counters 拆分:同步用户只含本阶段账目字段,对账只含 deleted_users + deleted_group_count。
 
     场景:3 个用户已存在(将被 reconcile 删除),5 个新用户(将被 sync_users 新建)
-    → 终态 phase_progress.sync_users.counters 应只有 new/updated/conflict 三个字段
+    → 终态 phase_progress.sync_users.counters 应只有 new/updated/unchanged/skipped_invalid/conflict 五个字段
     → phase_progress.reconcile.counters 应只有 deleted_users + deleted_group_count
     """
     source = UserSyncSource.objects.create(
@@ -2454,10 +2454,14 @@ def test_per_phase_counters_split_between_sync_users_and_reconcile(ready_integra
     assert set(sync_users_counters.keys()) == {
         "new_users",
         "updated_users",
+        "unchanged_users",
+        "skipped_invalid_users",
         "conflict_users",
-    }, f"sync_users phase counters 应只含这 3 个字段,实际: {sync_users_counters.keys()}"
+    }, f"sync_users phase counters 应只含这 5 个字段,实际: {sync_users_counters.keys()}"
     assert sync_users_counters["new_users"] == 5
     assert sync_users_counters["updated_users"] == 0
+    assert sync_users_counters["unchanged_users"] == 0
+    assert sync_users_counters["skipped_invalid_users"] == 0
     assert sync_users_counters["conflict_users"] == 0
     # 关键断言:sync_users 阶段不能有 deleted_users
     assert "deleted_users" not in sync_users_counters, "deleted_users 是对账阶段指标,不应在 sync_users 阶段出现"
@@ -2473,6 +2477,107 @@ def test_per_phase_counters_split_between_sync_users_and_reconcile(ready_integra
     # 关键断言:reconcile 阶段不能有 new_users/updated_users
     assert "new_users" not in reconcile_counters
     assert "updated_users" not in reconcile_counters
+
+
+@pytest.mark.django_db
+def test_phase_counters_include_unchanged_and_skipped_invalid(ready_integration_instance):
+    """账目计数:无变化与跳过无效显式落库,新建/更新/冲突互斥。"""
+    source = UserSyncSource.objects.create(
+        name="ledger-source",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Ledger Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={"mode": "disabled"},
+    )
+    other = UserSyncSource.objects.create(
+        name="ledger-other",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Ledger Other",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={"mode": "disabled"},
+    )
+    User.objects.create(
+        user_id=str(uuid.uuid4()),
+        username="taken",
+        display_name="Taken",
+        email="taken@x.com",
+        password=make_password(""),
+        domain="domain.com",
+        disabled=False,
+        group_list=[],
+        sync_source=other,
+    )
+
+    first_payload = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={
+            "group_list": [
+                {"id": "g1", "parent_id": "0", "name": "G1"},
+                {"id": "g2", "parent_id": "0", "name": "G2"},
+                {"parent_id": "0", "name": "missing-id"},
+            ],
+            "user_list": [
+                {"user_id": "alice", "name": "Alice", "email": "alice@x.com", "department_ids": ["g1"]},
+                {"user_id": "bob", "name": "Bob", "email": "bob@x.com", "department_ids": ["g2"]},
+                {"user_id": "", "name": "Empty Id", "email": "empty@x.com", "department_ids": ["g1"]},
+                {"name": "No Username", "email": "nouser@x.com", "department_ids": ["g1"]},
+            ],
+        },
+    )
+    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=first_payload):
+        assert execute_user_sync(source.id)["result"] is True
+
+    first_run = UserSyncRun.objects.filter(source=source).latest("id")
+    first_groups = first_run.payload["phase_progress"]["sync_groups"]["counters"]
+    assert first_groups["created_groups"] == 2
+    assert first_groups["updated_groups"] == 0
+    assert first_groups["unchanged_groups"] == 0
+    assert first_groups["skipped_invalid_groups"] == 1
+    assert first_run.payload["phase_progress"]["sync_groups"]["total"] == 3
+    first_users = first_run.payload["phase_progress"]["sync_users"]["counters"]
+    assert first_users["new_users"] == 2
+    assert first_users["updated_users"] == 0
+    assert first_users["unchanged_users"] == 0
+    assert first_users["skipped_invalid_users"] == 2
+    assert first_users["conflict_users"] == 0
+
+    second_payload = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={
+            "group_list": [
+                {"id": "g1", "parent_id": "0", "name": "G1"},
+                {"id": "g2", "parent_id": "0", "name": "G2"},
+            ],
+            "user_list": [
+                {"user_id": "alice", "name": "Alice", "email": "alice@x.com", "department_ids": ["g1"]},
+                {"user_id": "bob", "name": "Bob", "email": "bob-updated@x.com", "department_ids": ["g2"]},
+                {"user_id": "taken", "name": "Taken", "email": "taken@x.com", "department_ids": ["g1"]},
+                {"user_id": "", "name": "Empty Id", "email": "empty@x.com", "department_ids": ["g1"]},
+            ],
+        },
+    )
+    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=second_payload):
+        result = execute_user_sync(source.id)
+
+    assert result["result"] is True
+    second_run = UserSyncRun.objects.filter(source=source).latest("id")
+    assert second_run.status == UserSyncRunStatusChoices.PARTIAL
+    second_groups = second_run.payload["phase_progress"]["sync_groups"]["counters"]
+    assert second_groups["created_groups"] == 0
+    assert second_groups["updated_groups"] == 0
+    assert second_groups["unchanged_groups"] == 2
+    assert second_groups["skipped_invalid_groups"] == 0
+    second_users = second_run.payload["phase_progress"]["sync_users"]["counters"]
+    assert second_users["new_users"] == 0
+    assert second_users["updated_users"] == 1
+    assert second_users["unchanged_users"] == 1
+    assert second_users["skipped_invalid_users"] == 1
+    assert second_users["conflict_users"] == 1
+    assert second_run.payload["conflict_usernames"] == ["taken"]
 
 
 @pytest.mark.django_db
