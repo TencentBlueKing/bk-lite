@@ -17,8 +17,8 @@ import {
 } from './visibility';
 import './global-webchat.css';
 
-const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20260827-3';
-const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20260827-3';
+const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20260827-5';
+const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20260827-5';
 const WEBCHAT_ROOT_ID = 'webchat-root';
 const MANAGE_AGENTS_URL = '/opspilot/studio';
 

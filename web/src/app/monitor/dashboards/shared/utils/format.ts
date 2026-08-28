@@ -98,6 +98,17 @@ const formatCountRate = (value: number): { value: string; unit: string } => {
   return { value: `${scaled.value}${scaled.unit}`, unit: '/s' };
 };
 
+export const formatSamplingRate = (value: number): { value: string; unit: string } => {
+  if (!Number.isFinite(value) || value <= 0) {
+    return { value: '--', unit: '' };
+  }
+  const rounded = Math.round(value);
+  return {
+    value: `1:${rounded.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+    unit: '',
+  };
+};
+
 export const formatMetricValue = (value: number, unit: MetricUnit): { value: string; unit: string } => {
   if (!Number.isFinite(value)) {
     return { value: '--', unit: '' };
@@ -107,7 +118,7 @@ export const formatMetricValue = (value: number, unit: MetricUnit): { value: str
 
   if (normalizedUnit === 'percent') return { value: value.toFixed(1), unit: '%' };
   if (normalizedUnit === 'msps') return { value: value >= 100 ? value.toFixed(0) : value.toFixed(1), unit: 'ms/s' };
-  if (normalizedUnit === 'cps') return formatCountRate(value);
+  if (normalizedUnit === 'cps' || normalizedUnit === 'pps') return formatCountRate(value);
   if (COUNT_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, COUNT_UNITS, COUNT_LABELS, 1000);
   if (DATA_BITS_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, DATA_BITS_UNITS, DATA_BITS_LABELS, 1000);
   if (DATA_BYTES_UNITS.includes(normalizedUnit)) return formatAutoScaled(value, normalizedUnit, DATA_BYTES_UNITS, DATA_BYTES_LABELS, 1024);

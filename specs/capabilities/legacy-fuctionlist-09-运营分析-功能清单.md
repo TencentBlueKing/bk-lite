@@ -46,7 +46,11 @@
 | 功能项 | 功能说明 | 规格 / 约束 | 状态 |
 |---|---|---|---|
 | 组件化画布 | 仪表盘内容由组件化画布编排，组件支持新增、编辑、复制、删除 | — | GA |
-| 组件类型 | 支持的图表组件类型 | 16 种，以 `components/widgetRegistry.ts` 注册为准 | GA |
+| 组件类型 | 支持的图表组件类型 | 17 种，以 `components/widgetRegistry.ts` 注册为准（含 Screen-only Scene Widget `application3D`） | GA |
+| 3D 应用场景组件 | application3D 在 Screen / Share 上以 self-fetch 方式展示 Application Wall→Focus→Detail；健康经 `application_run_host`×MonitorAlert 聚合；成员可经父 System.`status` ephemeral 过滤 | 后端 `Application3DQueryService` + scene/share 四类 operation；前端 Three.js Wall；编辑态无场景交互 | WIP |
+
+> 证据来源：`specs/changes/ops-analysis-application3d/spec.md`、`server/apps/operation_analysis/services/application3d/`、`web/src/app/ops-analysis/types/sceneWidgetCapability.ts`、`web/src/app/ops-analysis/components/widgets/application3D/`
+
 | 数据源绑定 | 组件绑定数据源后按数据源可用图表类型展示 | 展示形态受数据源配置的图表类型限定 | GA |
 | 表格组件 | 展示记录级明细，支持组件级搜索、列配置与后端分页 | 后端分页返回当前页数据、总条数、当前页码、每页条数 | GA |
 | 表格列生成 | 首次查询按返回字段自动成列；存在数据源默认列定义时优先采用其展示名与列顺序 | 列配置仅作用于当前组件，不反写数据源默认列定义 | GA |

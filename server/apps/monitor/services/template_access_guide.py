@@ -28,7 +28,7 @@ class TemplateAccessGuideService:
 
     @staticmethod
     def get_telegraf_listener_endpoint(cloud_region_id: int) -> str:
-        env_config = NodeMgmt().get_cloud_region_envconfig(cloud_region_id)
+        env_config = NodeMgmt().get_cloud_region_public_config(cloud_region_id)
         if not isinstance(env_config, dict):
             raise BaseAppException("获取云区域环境变量失败")
 

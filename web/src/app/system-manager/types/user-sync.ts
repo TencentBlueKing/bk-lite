@@ -160,6 +160,8 @@ export interface PhaseProgressEntry {
     // sync_users
     new_users?: number;
     updated_users?: number;
+    unchanged_users?: number;
+    skipped_invalid_users?: number;
     conflict_users?: number;
     // reconcile
     deleted_users?: number;
@@ -169,6 +171,8 @@ export interface PhaseProgressEntry {
     // sync_groups
     created_groups?: number;
     updated_groups?: number;
+    unchanged_groups?: number;
+    skipped_invalid_groups?: number;
   };
 }
 

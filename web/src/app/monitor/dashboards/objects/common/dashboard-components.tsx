@@ -36,7 +36,10 @@ import {
   TitleWithGuide,
   TrendChartPanel
 } from '../../shared/widgets';
+import { DashboardProtocolBarSlot } from '../../shared/widgets/dashboard-protocol-bar-slot';
 import { GuideItem } from '../../shared/types';
+import { FLOW_VIEW_SWITCH_ROUTE_KEYS, resolvePreferredCollectTypeFromRoute } from '../../shared/utils/flow-view-navigation';
+import { isFlowSupportedObjectName } from '../flow-common/constants';
 import {
   PreparedSummaryCard,
   PreparedChartPanel,
@@ -605,6 +608,10 @@ export interface MetricsSectionProps {
 
 export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
   const isHost = String(dashboard.monitorObjectName || '').toLowerCase() === 'host';
+  const isFlowMetrics = isFlowSupportedObjectName(dashboard.monitorObjectName)
+    || FLOW_VIEW_SWITCH_ROUTE_KEYS.has(dashboard.routeKey);
+  const preferredCollectType = resolvePreferredCollectTypeFromRoute(dashboard.routeKey);
+
   return (
   <div className={styles.metricsMode}>
     <div className={`${styles.panel} ${styles.fullPanel}`}>
@@ -625,13 +632,24 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
                         '在同一插件页签中切换「进程 (Telegraf)」，按主机 instance_id 查看该主机下进程历史折线。'
                   }
                 ]
-                : [
-                  {
-                    label: '监控指标全景',
-                    detail:
-                        '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。'
-                  }
-                ]
+                : isFlowMetrics
+                  ? [
+                    {
+                      label: '插件页签',
+                      detail: '通过下方插件页签切换 SNMP、NetFlow、sFlow 等不同采集来源，查看完整原始指标曲线。'
+                    },
+                    {
+                      label: '监控指标全景',
+                      detail: '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。'
+                    }
+                  ]
+                  : [
+                    {
+                      label: '监控指标全景',
+                      detail:
+                          '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。'
+                    }
+                  ]
             }
             styles={styles}
           />
@@ -648,6 +666,7 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
         externalFrequence={dashboard.frequence}
         externalRefreshSignal={dashboard.metricsRefreshSignal}
         collectionInterval={dashboard.currentInstanceInterval}
+        preferredCollectType={preferredCollectType}
         hideTimeSelector
         onExternalXRangeChange={dashboard.onXRangeChange}
       />
@@ -679,7 +698,10 @@ export const DashboardShell = ({
   metricsContent,
   brandLabel,
   styles
-}: DashboardShellProps) => (
+}: DashboardShellProps) => {
+  const showProtocolBar = FLOW_VIEW_SWITCH_ROUTE_KEYS.has(dashboard.routeKey);
+
+  return (
   <div className={styles.page}>
     <div className={styles.shell}>
       <div className={styles.pageHeader}>
@@ -729,6 +751,8 @@ export const DashboardShell = ({
         />
       </div>
 
+      {showProtocolBar && dashboard.isDashboardMode ? <DashboardProtocolBarSlot /> : null}
+
       {dashboard.displayMode === 'dashboard' ? (
         <>{dashboardContent}</>
       ) : (
@@ -736,4 +760,5 @@ export const DashboardShell = ({
       )}
     </div>
   </div>
-);
+  );
+};

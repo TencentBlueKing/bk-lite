@@ -134,19 +134,19 @@ class TestTemplateAccessGuide:
 
     def test_telegraf_endpoint_builds_url(self, mocker):
         node = mocker.patch("apps.monitor.services.template_access_guide.NodeMgmt")
-        node.return_value.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "https://node.example.com:8080/foo"}
+        node.return_value.get_cloud_region_public_config.return_value = {"NODE_SERVER_URL": "https://node.example.com:8080/foo"}
         url = TemplateAccessGuideService.get_telegraf_listener_endpoint(1)
         assert url == "https://node.example.com:8080/telegraf/api"
 
     def test_telegraf_endpoint_missing_url_raises(self, mocker):
         node = mocker.patch("apps.monitor.services.template_access_guide.NodeMgmt")
-        node.return_value.get_cloud_region_envconfig.return_value = {}
+        node.return_value.get_cloud_region_public_config.return_value = {}
         with pytest.raises(BaseAppException):
             TemplateAccessGuideService.get_telegraf_listener_endpoint(1)
 
     def test_telegraf_endpoint_bad_url_raises(self, mocker):
         node = mocker.patch("apps.monitor.services.template_access_guide.NodeMgmt")
-        node.return_value.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "not-a-url"}
+        node.return_value.get_cloud_region_public_config.return_value = {"NODE_SERVER_URL": "not-a-url"}
         with pytest.raises(BaseAppException):
             TemplateAccessGuideService.get_telegraf_listener_endpoint(1)
 

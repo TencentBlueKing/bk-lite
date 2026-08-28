@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from apps.cmdb.collect.extensions import get_collect_enterprise_extension
 from apps.cmdb.collection.change_records import write_collect_instance_change_records
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, DataCleanupStrategy
+from apps.cmdb.constants.field_constraints import TAG_ATTR_ID
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.instance_identity import prepare_new_instance_identity
 from apps.cmdb.services.model import ModelManage
@@ -62,6 +63,18 @@ class Management:
 
         return check_attr_map
 
+    @staticmethod
+    def coerce_collected_tag(instance_info: dict) -> dict:
+        """采集写入的 tag 必须是列表。空串/字符串会让图查询 Type mismatch。"""
+        if not isinstance(instance_info, dict) or TAG_ATTR_ID not in instance_info:
+            return instance_info
+        value = instance_info[TAG_ATTR_ID]
+        if isinstance(value, list):
+            return instance_info
+        cleaned = dict(instance_info)
+        cleaned[TAG_ATTR_ID] = []
+        return cleaned
+
     def format_data(self):
         """数据格式化"""
         old_map, new_map = {}, {}
@@ -70,7 +83,7 @@ class Management:
             old_map[key] = info
         for info in self.new_data:
             key = tuple(info[key] for key in self.unique_keys)
-            new_map[key] = info
+            new_map[key] = self.coerce_collected_tag(info)
         return old_map, new_map
 
     @classmethod
@@ -171,6 +184,7 @@ class Management:
         with GraphClient() as ag:
             exist_items = self._query_existing_unique_candidates(ag, inst_list)
             for instance_info in inst_list:
+                instance_info = self.coerce_collected_tag(instance_info)
                 assos = instance_info.pop("assos", [])
                 try:
                     instance_info.update(
@@ -204,6 +218,7 @@ class Management:
         with GraphClient() as ag:
             exist_items = self._query_existing_unique_candidates(ag, inst_list)
             for instance_info in inst_list:
+                instance_info = self.coerce_collected_tag(instance_info)
                 try:
                     instance_info.update(
                         model_id=self.model_id,
@@ -301,39 +316,86 @@ class Management:
         )
         return asso_info
 
+    @staticmethod
+    def _association_endpoints(current_info, listed_info, listed_id):
+        """按 model_asst_id 决定图边 src/dst。
+
+        assos 挂在当前落库实体上，listed 是对端。model_asst_id 编码为
+        ``{src_model}_{asst}_{dst_model}``，与机柜布局 contains
+        （rack_contains_switch：src=容器 dst=设备）以及 belong/run
+        （vm_run_host：src=当前 dst=对端）一致。
+
+        contains 如 physcial_server_contains_nic：listed(parent) → current(nic)。
+        belong/run 如 vm_run_host：current → listed。无法从 model_asst_id
+        判向时保持 current → listed，兼容历史自定义 asst id。
+        """
+        model_asst_id = listed_info.get("model_asst_id") or ""
+        asst_id = listed_info.get("asst_id") or ""
+        current_model = current_info.get("model_id") or ""
+        listed_model = listed_info.get("model_id") or ""
+        listed_as_src_key = f"{listed_model}_{asst_id}_{current_model}"
+
+        if asst_id and model_asst_id == listed_as_src_key:
+            src_info = {
+                "model_id": listed_model,
+                "_id": listed_id,
+                "inst_name": listed_info.get("inst_name"),
+            }
+            dst_info = {
+                "model_id": current_model,
+                "model_asst_id": model_asst_id,
+                "asst_id": asst_id,
+                "inst_name": current_info.get("inst_name"),
+            }
+            return src_info, current_info["_id"], dst_info
+
+        return current_info, listed_id, listed_info
+
     def setting_assos(self, src_info, dst_list):
-        """设置关联关系"""
+        """设置关联关系。src_info 是当前落库实体，dst_list 是其对端 assos。"""
+        current_info = src_info
         assos_result = {"success": [], "failed": []}
-        for dst_info in dst_list:
-            dst_id = None
+        for listed_info in dst_list:
+            edge_src = current_info
+            edge_dst_id = None
+            edge_dst_info = listed_info
             try:
                 with GraphClient() as ag:
-                    dst_entity, _ = ag.query_entity(
+                    listed_entity, _ = ag.query_entity(
                         INSTANCE,
                         [
-                            {"field": "model_id", "type": "str=", "value": dst_info["model_id"]},
-                            {"field": "inst_name", "type": "str=", "value": dst_info["inst_name"]},
+                            {"field": "model_id", "type": "str=", "value": listed_info["model_id"]},
+                            {"field": "inst_name", "type": "str=", "value": listed_info["inst_name"]},
                         ],
                     )
-                    if not dst_entity:
-                        raise BaseAppException(f"target instance {dst_info['model_id']}:{dst_info['inst_name']} not found")
+                    if not listed_entity:
+                        raise BaseAppException(f"target instance {listed_info['model_id']}:{listed_info['inst_name']} not found")
 
-                    dst_id = dst_entity[0]["_id"]
-                    asso_info = self.set_asso_info(dst_id, src_info, dst_info)
-                    ag.create_edge(INSTANCE_ASSOCIATION, src_info["_id"], INSTANCE, dst_id, INSTANCE, asso_info, "model_asst_id")
-                    asso_info["src_inst_name"] = src_info["inst_name"]
-                    asso_info["dst_inst_name"] = dst_info["inst_name"]
+                    listed_id = listed_entity[0]["_id"]
+                    edge_src, edge_dst_id, edge_dst_info = self._association_endpoints(current_info, listed_info, listed_id)
+                    asso_info = self.set_asso_info(edge_dst_id, edge_src, edge_dst_info)
+                    ag.create_edge(
+                        INSTANCE_ASSOCIATION,
+                        edge_src["_id"],
+                        INSTANCE,
+                        edge_dst_id,
+                        INSTANCE,
+                        asso_info,
+                        "model_asst_id",
+                    )
+                    asso_info["src_inst_name"] = edge_src["inst_name"]
+                    asso_info["dst_inst_name"] = edge_dst_info["inst_name"]
                     assos_result["success"].append(asso_info)
             except Exception as e:
                 error_message = str(getattr(e, "message", e))
-                asso_info = self.set_asso_info(dst_id, src_info, dst_info)
-                asso_info["src_inst_name"] = src_info["inst_name"]
-                asso_info["dst_inst_name"] = dst_info["inst_name"]
+                asso_info = self.set_asso_info(edge_dst_id, edge_src, edge_dst_info)
+                asso_info["src_inst_name"] = edge_src.get("inst_name")
+                asso_info["dst_inst_name"] = edge_dst_info.get("inst_name")
                 # 关联边已存在即为目标状态，幂等视为成功，避免重复采集把"已存在的关联"误报为失败
                 if error_message == "edge already exists":
                     assos_result["success"].append(asso_info)
                     continue
-                asso_info.update({"src_info": src_info, "dst_info": dst_info, "error": error_message})
+                asso_info.update({"src_info": current_info, "dst_info": listed_info, "error": error_message})
                 assos_result["failed"].append(asso_info)
         return assos_result
 

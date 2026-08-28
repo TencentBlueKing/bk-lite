@@ -69,6 +69,8 @@ export interface ViewDetailProps {
   collectionInterval?: number;
   hideTimeSelector?: boolean;
   onExternalXRangeChange?: (range: [Dayjs, Dayjs]) => void;
+  /** 与 Flow 专业盘 routeKey 对齐，进入全量指标时预选对应插件页签。 */
+  preferredCollectType?: 'snmp' | 'netflow' | 'sflow' | null;
 }
 
 export interface ViewInstanceSearchProps {

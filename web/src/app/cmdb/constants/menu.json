@@ -20,6 +20,13 @@
           "withParentPermission": true
         },
         {
+          "title": "标签视图",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/scene",
+          "name": "asset_views_scene",
+          "withParentPermission": true
+        },
+        {
           "title": "应用拓扑",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/views/application",
@@ -215,6 +222,13 @@
           "icon": "mulu",
           "url": "/cmdb/assetOverview",
           "name": "asset_views_overview",
+          "withParentPermission": true
+        },
+        {
+          "title": "Tag View",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/scene",
+          "name": "asset_views_scene",
           "withParentPermission": true
         },
         {

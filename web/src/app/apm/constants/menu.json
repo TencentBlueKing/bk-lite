@@ -2,7 +2,7 @@
   "zh": [
     {
       "title": "首页",
-      "icon": "shouye",
+      "icon": "home",
       "url": "/apm/home",
       "name": "home"
     },
@@ -140,7 +140,7 @@
   "en": [
     {
       "title": "Home",
-      "icon": "shouye",
+      "icon": "home",
       "url": "/apm/home",
       "name": "home"
     },

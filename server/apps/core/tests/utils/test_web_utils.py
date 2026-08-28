@@ -41,6 +41,21 @@ class TestResponseError:
         resp = WebUtils.response_error(status_code=status.HTTP_409_CONFLICT)
         assert resp.status_code == status.HTTP_409_CONFLICT
 
+    def test_首位字符串视为错误文案而不是_data(self):
+        """历史调用 response_error(\"实例不存在\", status_code=404) 把文案塞进 data、message 为空。"""
+        resp = WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+        assert resp.status_code == status.HTTP_404_NOT_FOUND
+        body = _body(resp)
+        assert body["result"] is False
+        assert body["message"] == "实例不存在"
+        assert body["data"] == {}
+
+    def test_两位位置参数仍是_data_加_message(self):
+        resp = WebUtils.response_error({"code": "gone"}, "实例已删除")
+        body = _body(resp)
+        assert body["data"] == {"code": "gone"}
+        assert body["message"] == "实例已删除"
+
 
 class TestAuthResponses:
     def test_401(self):

@@ -138,6 +138,21 @@ login:
   account_locked: Account is locked. Please try again after {minutes} minutes.
   account_locked_too_many_attempts: Account locked due to too many failed attempts.
     Please try again after {minutes} minutes.
+app_name:
+  monitor: Monitor Center
+  log: Log Center
+  cmdb: CMDB
+  alarm: Alert Center
+  job: Job Management
+  ops-analysis: Ops Analysis
+  ops-console: Console
+  system-manager: System Management
+  node: Node Management
+  opspilot: OpsPilot
+  mlops: MLOps
+  patch: Patch Management
+  apm: APM
+  playground: Playground
 app:
   ops-analysis: Integrate operation and maintenance data, analyze potential risks
     and optimization space from multiple dimensions through dashboards and canvases,

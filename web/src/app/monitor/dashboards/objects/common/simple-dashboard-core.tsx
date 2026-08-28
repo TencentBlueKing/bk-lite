@@ -14,6 +14,7 @@ import {
   buildInstanceSearchTokens,
   formatEnumValue,
   formatMetricValue,
+  formatSamplingRate,
   buildSearchParams,
   getLatestChartValue,
   mergeChartSeries,
@@ -71,7 +72,7 @@ export interface SummaryFieldConfig {
   label: string;
   metric: string;
   unit?: SimpleMetricUnit;
-  formatter?: 'duration' | 'enumHealth' | 'startedAt';
+  formatter?: 'duration' | 'enumHealth' | 'startedAt' | 'samplingRate';
   enumMap?: MetricEnumMap;
   /** 详情行语义色：error→红 / warning→琥珀 / 缺省→中性蓝。仅影响缩略图与数值配色。 */
   tone?: 'error' | 'warning' | 'normal';
@@ -90,7 +91,7 @@ export interface SummaryCardConfig {
   compareFavorableDirection?: CompareFavorableDirection;
   footer?: SummaryFieldConfig[];
   hideTrend?: boolean;
-  formatter?: 'duration' | 'enumHealth' | 'startedAt';
+  formatter?: 'duration' | 'enumHealth' | 'startedAt' | 'samplingRate';
   enumMap?: MetricEnumMap;
   /** 标记为运行时长卡片，启用 relaxed 布局 + 运行状态指示器 */
   isUptimeCard?: boolean;
@@ -734,11 +735,13 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           ? { value: card.emptyValue || '--', unit: '' }
           : card.formatter === 'duration'
             ? { value: formatDuration(getLatest(card.metric)), unit: '' }
-            : healthResult
-              ? { value: healthResult.value, unit: healthResult.unit }
-              : enumResult
-                ? { value: enumResult.value, unit: enumResult.unit }
-                : formatMetricValue(getLatest(card.metric), card.unit || metricMap[card.metric]?.unit || 'none');
+            : card.formatter === 'samplingRate'
+              ? formatSamplingRate(getLatest(card.metric))
+              : healthResult
+                ? { value: healthResult.value, unit: healthResult.unit }
+                : enumResult
+                  ? { value: enumResult.value, unit: enumResult.unit }
+                  : formatMetricValue(getLatest(card.metric), card.unit || metricMap[card.metric]?.unit || 'none');
 
         const uptimeState = card.isUptimeCard
           ? !hasData
@@ -1005,6 +1008,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     onRefresh,
     onXRangeChange,
     onInstanceChange,
-    onClusterFilterChange
+    onClusterFilterChange,
+    routeKey: config.routeKey,
   };
 }

@@ -15,6 +15,7 @@ import ChatflowSettings from '@/app/opspilot/components/studio/chatflowSettings'
 import {useUnsavedChanges} from '@/app/opspilot/hooks/useUnsavedChanges';
 import {useStudio} from '@/app/opspilot/context/studioContext';
 import { useThemeMode } from '@/theme';
+import { notifyWebchatAppsChanged } from '@/app/(core)/components/global-webchat/apps-changed';
 
 const actionButtonClassName = 'inline-flex h-7 items-center rounded-md px-2.5 text-[11px] font-medium leading-none';
 const actionTagClassName = 'mb-0 mr-0 inline-flex h-7 items-center rounded-md px-2 text-[11px] font-medium leading-none';
@@ -106,6 +107,7 @@ const StudioSettingsPage: React.FC = () => {
       await toggleOnlineStatus(botId);
       setOnline(prevOnline => !prevOnline);
       message.success(t('common.saveSuccess'));
+      notifyWebchatAppsChanged();
     } catch {
       message.error(t('common.saveFailed'));
     }
@@ -187,6 +189,7 @@ const StudioSettingsPage: React.FC = () => {
       if (isPublish) {
         setOnline(true);
       }
+      notifyWebchatAppsChanged();
     } catch (error) {
       console.error('Save failed', error);
       message.error(t('common.saveFailed'));

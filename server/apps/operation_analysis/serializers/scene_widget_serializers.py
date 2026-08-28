@@ -29,3 +29,35 @@ class NetworkStatusTopologyRequestSerializer(serializers.Serializer):
         if len(inst_uuids) > node_limit:
             raise serializers.ValidationError({"inst_uuids": f"不能超过 node_limit {node_limit}"})
         return attrs
+
+
+class _Application3DStrictSerializer(serializers.Serializer):
+    def to_internal_value(self, data):
+        if not isinstance(data, dict):
+            raise serializers.ValidationError("请求体必须为对象")
+        unknown = set(data) - set(self.fields)
+        if unknown:
+            raise serializers.ValidationError({key: "不支持的字段" for key in sorted(unknown)})
+        return super().to_internal_value(data)
+
+
+class Application3DWallRequestSerializer(_Application3DStrictSerializer):
+    applied_filters = serializers.DictField(
+        child=serializers.ListField(child=serializers.CharField(allow_blank=False)),
+        required=False,
+        allow_empty=True,
+    )
+
+
+class Application3DApplicationDetailRequestSerializer(_Application3DStrictSerializer):
+    application_id = serializers.UUIDField()
+    cursor = serializers.CharField(required=False, allow_blank=False, max_length=512)
+
+
+class Application3DAlarmDetailRequestSerializer(_Application3DStrictSerializer):
+    application_id = serializers.UUIDField()
+    alarm_id = serializers.CharField(allow_blank=False, max_length=100)
+
+
+class Application3DMetricRequestSerializer(Application3DAlarmDetailRequestSerializer):
+    pass

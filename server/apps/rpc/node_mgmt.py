@@ -222,6 +222,10 @@ class NodeMgmt(object):
         return_data = self.client.run("get_cloud_region_envconfig", cloud_region_id)
         return return_data
 
+    def get_cloud_region_public_config(self, cloud_region_id):
+        """获取允许跨业务模块读取的非敏感云区域配置。"""
+        return self.client.run("get_cloud_region_public_config", cloud_region_id)
+
     def install_collector(self, collector_package: int, nodes: list[str]):
         """通过 NATS 触发采集器安装"""
         return self.client.run(

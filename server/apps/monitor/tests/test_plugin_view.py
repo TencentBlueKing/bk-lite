@@ -298,7 +298,7 @@ class TestGetAccessGuide:
             display_name="API2",
         )
         plugin.monitor_object.add(obj)
-        mocker.patch("apps.monitor.services.template_access_guide.NodeMgmt").return_value.get_cloud_region_envconfig.return_value = {
+        mocker.patch("apps.monitor.services.template_access_guide.NodeMgmt").return_value.get_cloud_region_public_config.return_value = {
             "NODE_SERVER_URL": "https://node.example.com:8080"
         }
         resp = api_client.get(f"{BASE}/api/monitor_plugin/{plugin.id}/access_guide/?organization_id=1&cloud_region_id=2")

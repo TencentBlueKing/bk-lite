@@ -761,9 +761,111 @@ class ModelMigrate:
 
         return updated_group_count, created_group_count
 
+    # 单次初始化最多下线的内置模型数。超过则视为配置残缺，整批跳过，避免误删目录。
+    _MAX_STALE_BUILTIN_RETIRE_PER_RUN = 32
+
+    @staticmethod
+    def _normalize_model_id(value):
+        return str(value or "").strip()
+
+    @staticmethod
+    def _is_official_builtin_model(model):
+        value = model.get("is_pre")
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "1", "yes"}
+        return value is True or value == 1
+
+    @staticmethod
+    def _has_confirmed_zero_instances(instance_rows, instance_count):
+        if instance_rows:
+            return False
+        return isinstance(instance_count, int) and instance_count == 0
+
+    def _retire_stale_builtin_models(self, ag, exist_items, config_model_ids):
+        """下线 model_config 中已移除的内置模型；实例数未知或有实例时保留。"""
+        if not self.is_pre:
+            return {"deleted": [], "skipped_with_instances": []}
+
+        config_model_ids = {self._normalize_model_id(model_id) for model_id in (config_model_ids or set()) if self._normalize_model_id(model_id)}
+        if not config_model_ids:
+            return {"deleted": [], "skipped_with_instances": []}
+
+        candidates = []
+        for model in exist_items:
+            if not self._is_official_builtin_model(model):
+                continue
+            model_id = self._normalize_model_id(model.get("model_id"))
+            node_id = model.get("_id")
+            if not model_id or node_id is None or model_id in config_model_ids:
+                continue
+            candidates.append((model_id, node_id))
+
+        if not candidates:
+            return {"deleted": [], "skipped_with_instances": []}
+        if len(candidates) > self._MAX_STALE_BUILTIN_RETIRE_PER_RUN:
+            logger.warning(
+                "event=cmdb_stale_builtin_models_retire_aborted stale_count=%s max_per_run=%s failed_stage=%s",
+                len(candidates),
+                self._MAX_STALE_BUILTIN_RETIRE_PER_RUN,
+                "retire_stale_builtin_guard",
+            )
+            return {"deleted": [], "skipped_with_instances": []}
+
+        deleted = []
+        skipped = []
+        for model_id, node_id in candidates:
+            try:
+                try:
+                    instance_rows, instance_count = ag.query_entity(
+                        INSTANCE,
+                        [{"field": "model_id", "type": "str=", "value": model_id}],
+                        page={"skip": 0, "limit": 1},
+                        include_count=True,
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "event=cmdb_stale_builtin_model_retire_failed model_id=%s failed_stage=%s error_type=%s",
+                        model_id,
+                        "query_stale_builtin_instances",
+                        type(exc).__name__,
+                    )
+                    continue
+
+                if not self._has_confirmed_zero_instances(instance_rows, instance_count):
+                    if instance_rows or (isinstance(instance_count, int) and instance_count > 0):
+                        skipped.append(model_id)
+                    continue
+
+                ag.batch_delete_entity(MODEL, [node_id])
+                FIELD_GROUP_MANAGER.filter(model_id=model_id).delete()
+                deleted.append(model_id)
+            except Exception as exc:
+                logger.exception(
+                    "event=cmdb_stale_builtin_model_retire_failed model_id=%s failed_stage=%s error_type=%s",
+                    model_id,
+                    "delete_stale_builtin_model",
+                    type(exc).__name__,
+                )
+
+        if deleted:
+            ExcludeFieldsCache.refresh_cache()
+            logger.info(
+                "event=cmdb_stale_builtin_models_retired deleted_count=%s deleted_model_ids=%s",
+                len(deleted),
+                ",".join(deleted),
+            )
+        if skipped:
+            logger.warning(
+                "event=cmdb_stale_builtin_models_kept_with_instances skipped_count=%s skipped_model_ids=%s",
+                len(skipped),
+                ",".join(skipped),
+            )
+        return {"deleted": deleted, "skipped_with_instances": skipped}
+
     def migrate_models(self):
         """初始化模型"""
         models, attrs_by_model_id = self._build_model_payload()
+        config_model_ids = {self._normalize_model_id(item.get("model_id")) for item in models if self._normalize_model_id(item.get("model_id"))}
         self._validate_public_library_references(attrs_by_model_id)
 
         with GraphClient() as ag:
@@ -815,6 +917,18 @@ class ModelMigrate:
                 attrs_by_model_id=attrs_by_model_id,
                 existing_model_map=exist_model_map,
             )
+            try:
+                self._retire_stale_builtin_models(
+                    ag,
+                    exist_items=exist_items,
+                    config_model_ids=config_model_ids,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "event=cmdb_stale_builtin_models_retire_failed failed_stage=%s error_type=%s",
+                    "retire_stale_builtin_models",
+                    type(exc).__name__,
+                )
 
         if sync_result["updated_models"]:
             logger.info(

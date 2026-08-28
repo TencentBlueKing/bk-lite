@@ -2,11 +2,18 @@ import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { withDashboardReturnContext } from '@/app/monitor/dashboards/shared/utils';
 import { encodeInstanceIdValuesParam } from '@/app/monitor/dashboards/shared/utils/instance';
 
+import { resolveDashboardUrl } from '@/app/monitor/dashboards/registry';
+
 type DashboardUrlResolver = (
   objectName?: string | null,
   objectDisplayName?: string | null,
   queryString?: string
 ) => string;
+
+interface FlowDashboardPlugin {
+  collect_type?: string;
+  name?: string;
+}
 
 interface AssetViewMonitorItem {
   name?: string | null;
@@ -19,6 +26,7 @@ interface AssetViewRow {
   instance_id?: unknown;
   instance_name?: unknown;
   instance_id_values?: unknown;
+  plugins?: FlowDashboardPlugin[];
 }
 
 interface BuildAssetViewUrlOptions {
@@ -69,7 +77,13 @@ export const buildAssetViewUrl = ({
       monitorItem?.name,
       monitorItem?.display_name,
       queryString
-    ) || '';
+    ) ||
+    resolveDashboardUrl({
+      monitorObjectName: monitorItem?.name,
+      monitorObjectDisplayName: monitorItem?.display_name,
+      instancePlugins: row.plugins,
+      queryString,
+    });
 
   return professionalDashboardUrl || `/monitor/view/detail?${queryString}`;
 };

@@ -40,7 +40,7 @@ If both `platform` and `sseUrl` are provided, **platform mode wins** and `sseUrl
 
 ### Step 2b: Platform assistant (switch among permitted published skills)
 
-The host injects URLs. WebChat does not hardcode console paths. URL templates may include `{channelId}` and `{sessionId}`. Chat requests send `session_id` in the JSON body. Platform mode is a full-height right overlay that does not push page layout; it starts collapsed as a FAB. For OpsPilot, point `applicationsUrl` at the enabled **platform** skill channels the current team may use.
+The host injects URLs. WebChat does not hardcode console paths. URL templates may include `{channelId}` and `{sessionId}`. Chat requests send `session_id` in the JSON body. Platform mode is a full-height right overlay that does not push page layout; it starts collapsed as a FAB. For OpsPilot, point `applicationsUrl` at the enabled **platform** skill channels the current team may use. After the host publishes, disables, or toggles a platform channel, it should `window.dispatchEvent(new Event('bk-webchat:apps-changed'))` so the dock can refetch without a page reload. PlatformChat also refetches when the dock opens or the tab becomes visible.
 
 ```jsx
 <PlatformChat
