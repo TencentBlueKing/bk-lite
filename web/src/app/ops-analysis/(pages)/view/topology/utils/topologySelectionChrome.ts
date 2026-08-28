@@ -1,8 +1,8 @@
 import type { Node } from '@antv/x6';
 import { COLORS, SPACING } from '../constants/nodeDefaults';
 
-/** 与拓扑 SVG 节点 highlightCell 相同的选中描边。 */
-export const TOPOLOGY_SELECTED_STROKE = COLORS.PRIMARY;
+/** 选中描边锁定为语义主色，hover 不得换成别的蓝。 */
+export const TOPOLOGY_SELECTED_STROKE = 'var(--color-primary)';
 export const TOPOLOGY_SELECTED_STROKE_WIDTH = SPACING.STROKE_WIDTH.DEFAULT;
 export const TOPOLOGY_CHART_NODE_CLASS = 'ops-topology-chart-node';
 export const TOPOLOGY_CHART_NODE_SELECTED_CLASS =
@@ -14,13 +14,17 @@ interface TopologyNodeChromeData {
 }
 
 const normalizeStroke = (stroke: unknown): string =>
-  String(stroke ?? '').trim().toLowerCase();
+  String(stroke ?? '').trim().toLowerCase().replace(/\s+/g, '');
+
+const SELECTED_STROKE_VALUES = new Set([
+  normalizeStroke(TOPOLOGY_SELECTED_STROKE),
+  normalizeStroke(COLORS.PRIMARY),
+]);
 
 export const isTopologyNodeSelectionChrome = (
   node: Pick<Node, 'getAttrByPath'>,
 ): boolean =>
-  normalizeStroke(node.getAttrByPath('body/stroke')) ===
-  normalizeStroke(TOPOLOGY_SELECTED_STROKE);
+  SELECTED_STROKE_VALUES.has(normalizeStroke(node.getAttrByPath('body/stroke')));
 
 export const highlightTopologyNode = (node: Pick<Node, 'setAttrByPath'>): void => {
   node.setAttrByPath('body/stroke', TOPOLOGY_SELECTED_STROKE);
@@ -47,8 +51,7 @@ export const resetTopologyNodeChrome = (
 };
 
 /**
- * Unselected hover probe. Shares the selected stroke so hover is visible,
- * but must only be applied when the node is not selected.
+ * Unselected hover probe. Selected nodes must not receive a second outline.
  */
 const applyUnselectedHoverStroke = (
   node: Pick<Node, 'setAttrByPath'>,
@@ -57,16 +60,14 @@ const applyUnselectedHoverStroke = (
 };
 
 /**
- * Hover is a pass-over probe. Selected chrome is persistent and always wins:
- * hovering a selected node re-asserts the selected stroke instead of swapping
- * it for a hover-only style.
+ * Hover is a pass-over probe. Selected chrome is persistent `--color-primary`:
+ * hovering a selected node does not swap, restyle, or stack another outline.
  */
 export const applyTopologyNodeHoverChrome = (
   node: Pick<Node, 'setAttrByPath'>,
   isSelected: boolean,
 ): void => {
   if (isSelected) {
-    highlightTopologyNode(node);
     return;
   }
   applyUnselectedHoverStroke(node);

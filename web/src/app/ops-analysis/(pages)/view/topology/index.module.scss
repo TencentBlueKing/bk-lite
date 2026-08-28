@@ -47,26 +47,27 @@
   :global(.x6-node[data-shape='icon-node'].selected rect[selector='body']),
   :global(.x6-node-selected[data-shape='icon-node']:hover rect[selector='body']),
   :global(.x6-node[data-shape='icon-node'].selected:hover rect[selector='body']) {
-    stroke: #2d7df0 !important;
+    stroke: var(--color-primary) !important;
     stroke-width: 2 !important;
     filter:
-      drop-shadow(0 0 0 rgba(45, 125, 240, 0.1))
-      drop-shadow(0 16px 30px rgba(45, 125, 240, 0.18)) !important;
+      drop-shadow(0 0 0 color-mix(in srgb, var(--color-primary) 10%, transparent))
+      drop-shadow(0 16px 30px color-mix(in srgb, var(--color-primary) 18%, transparent)) !important;
   }
 
   :global(.x6-node-selected[data-shape='single-value-node'] rect[selector='body']),
   :global(.x6-node[data-shape='single-value-node'].selected rect[selector='body']),
   :global(.x6-node-selected[data-shape='single-value-node']:hover rect[selector='body']),
   :global(.x6-node[data-shape='single-value-node'].selected:hover rect[selector='body']) {
-    stroke: #2d7df0 !important;
+    stroke: var(--color-primary) !important;
     stroke-width: 2 !important;
   }
 
   :global(.ops-topology-chart-node.ops-topology-chart-node--selected),
   :global(.ops-topology-chart-node.ops-topology-chart-node--selected:hover) {
-    border-color: #1890ff !important;
+    border-color: var(--color-primary) !important;
     border-width: 2px !important;
     border-style: solid !important;
+    outline: none !important;
   }
 
   :global(.x6-node[data-shape='icon-node'] text[selector='label']) {

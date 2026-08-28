@@ -66,7 +66,7 @@ const expectSelectedChrome = (chrome: HTMLElement) => {
     true,
   );
   expect(chrome.getAttribute('data-topology-selected')).toBe('true');
-  expect(chrome.style.border).toBe('2px solid rgb(24, 144, 255)');
+  expect(chrome.style.border).toBe('2px solid var(--color-primary)');
 };
 
 const expectUnselectedChrome = (chrome: HTMLElement) => {
@@ -75,6 +75,7 @@ const expectUnselectedChrome = (chrome: HTMLElement) => {
   );
   expect(chrome.getAttribute('data-topology-selected')).toBe('false');
   expect(chrome.style.border).toMatch(/^1px solid /);
+  expect(chrome.style.border).not.toContain('var(--color-primary)');
   expect(chrome.style.border).not.toContain('rgb(24, 144, 255)');
 };
 
@@ -126,16 +127,19 @@ describe('ChartNode selection chrome', () => {
     const chrome = getChrome(container);
 
     expectSelectedChrome(chrome);
+    const selectedBorder = chrome.style.border;
 
     act(() => {
       applyTopologyNodeHoverChrome(node, true);
     });
     expectSelectedChrome(chrome);
+    expect(chrome.style.border).toBe(selectedBorder);
 
     act(() => {
       clearTopologyNodeHoverChrome(node, true);
     });
     expectSelectedChrome(chrome);
+    expect(chrome.style.border).toBe(selectedBorder);
   });
 
   it('shows hover chrome only while an unselected chart is hovered', () => {

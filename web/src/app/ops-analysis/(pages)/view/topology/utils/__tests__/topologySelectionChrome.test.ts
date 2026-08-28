@@ -8,6 +8,7 @@ import {
   highlightTopologyNode,
   isTopologyNodeSelectionChrome,
   resetTopologyNodeChrome,
+  TOPOLOGY_SELECTED_STROKE,
 } from '../topologySelectionChrome';
 
 interface AttrNode {
@@ -53,7 +54,7 @@ describe('topologySelectionChrome', () => {
 
     for (const node of [chart, text, icon, single]) {
       highlightTopologyNode(node);
-      expect(node.getAttrByPath('body/stroke')).toBe('#1890FF');
+      expect(node.getAttrByPath('body/stroke')).toBe('var(--color-primary)');
       expect(node.getAttrByPath('body/strokeWidth')).toBe(2);
       expect(isTopologyNodeSelectionChrome(node)).toBe(true);
     }
@@ -64,7 +65,14 @@ describe('topologySelectionChrome', () => {
     expect(isTopologyNodeSelectionChrome(chart)).toBe(false);
     resetTopologyNodeChrome(chart);
     expect(isTopologyNodeSelectionChrome(chart)).toBe(false);
+    expect(chart.getAttrByPath('body/stroke')).not.toBe('var(--color-primary)');
     expect(chart.getAttrByPath('body/stroke')).not.toBe('#1890FF');
+  });
+
+  it('treats the legacy primary hex as selected chrome', () => {
+    const node = createNode({ type: 'icon' });
+    node.setAttrByPath('body/stroke', '#1890FF');
+    expect(isTopologyNodeSelectionChrome(node)).toBe(true);
   });
 
   it('restores type-specific unselected strokes', () => {
@@ -88,15 +96,25 @@ describe('topologySelectionChrome', () => {
     (type) => {
       const node = createNode({ type });
       highlightTopologyNode(node);
+      const selectedStroke = node.getAttrByPath('body/stroke');
+      const selectedWidth = node.getAttrByPath('body/strokeWidth');
+      const writes: string[] = [];
+      const originalSet = node.setAttrByPath;
+      node.setAttrByPath = (path, value) => {
+        writes.push(path);
+        originalSet(path, value);
+      };
 
       applyTopologyNodeHoverChrome(node, true);
+      expect(writes).toEqual([]);
       expect(isTopologyNodeSelectionChrome(node)).toBe(true);
-      expect(node.getAttrByPath('body/stroke')).toBe('#1890FF');
-      expect(node.getAttrByPath('body/strokeWidth')).toBe(2);
+      expect(node.getAttrByPath('body/stroke')).toBe(selectedStroke);
+      expect(node.getAttrByPath('body/strokeWidth')).toBe(selectedWidth);
+      expect(node.getAttrByPath('body/stroke')).toBe(TOPOLOGY_SELECTED_STROKE);
 
       clearTopologyNodeHoverChrome(node, true);
       expect(isTopologyNodeSelectionChrome(node)).toBe(true);
-      expect(node.getAttrByPath('body/stroke')).toBe('#1890FF');
+      expect(node.getAttrByPath('body/stroke')).toBe(TOPOLOGY_SELECTED_STROKE);
       expect(node.getAttrByPath('body/strokeWidth')).toBe(2);
     },
   );
@@ -119,6 +137,9 @@ describe('topologySelectionChrome', () => {
       if (type === 'icon') {
         expect(node.getAttrByPath('body/stroke')).toBe('#e0ddddff');
       } else {
+        expect(node.getAttrByPath('body/stroke')).not.toBe(
+          TOPOLOGY_SELECTED_STROKE,
+        );
         expect(node.getAttrByPath('body/stroke')).not.toBe('#1890FF');
       }
     },
@@ -146,14 +167,34 @@ describe('topologySelectionChrome', () => {
     expect(source).toContain(
       ".x6-node[data-shape='icon-node']:hover:not(.x6-node-selected):not(.selected)",
     );
-    expect(source).toContain(
+    const iconSelectedBlock = source.slice(
+      source.indexOf(
+        ".x6-node-selected[data-shape='icon-node'] rect[selector='body']",
+      ),
+      source.indexOf(
+        ".x6-node-selected[data-shape='single-value-node'] rect[selector='body']",
+      ),
+    );
+    const chartSelectedBlock = source.slice(
+      source.indexOf(
+        '.ops-topology-chart-node.ops-topology-chart-node--selected',
+      ),
+      source.indexOf(".x6-node[data-shape='icon-node'] text[selector='label']"),
+    );
+    expect(iconSelectedBlock).toContain(
       ".x6-node-selected[data-shape='icon-node']:hover rect[selector='body']",
+    );
+    expect(iconSelectedBlock).toContain('stroke: var(--color-primary)');
+    expect(iconSelectedBlock).not.toContain('#2d7df0');
+    expect(iconSelectedBlock).not.toContain('#8dbcf2');
+    expect(chartSelectedBlock).toContain(
+      '.ops-topology-chart-node.ops-topology-chart-node--selected:hover',
+    );
+    expect(chartSelectedBlock).toContain(
+      'border-color: var(--color-primary)',
     );
     expect(source).toContain(
       ".x6-node-selected[data-shape='single-value-node']:hover rect[selector='body']",
-    );
-    expect(source).toContain(
-      '.ops-topology-chart-node.ops-topology-chart-node--selected:hover',
     );
   });
 });
