@@ -5,9 +5,14 @@ import {
   getPlatformApiFormInitialValues,
   getSnmpTopologyFormValues,
   recommendedTopologyIntervalMinutes,
+  SNMP_FORM_INITIAL_VALUES,
 } from '../professCollection';
 
 describe('SNMP topology interval seam', () => {
+  it('defaults the SNMP collection timeout to 30 seconds', () => {
+    expect(SNMP_FORM_INITIAL_VALUES.timeout).toBe(30);
+  });
+
   it('calculates the recommended topology interval', () => {
     expect(recommendedTopologyIntervalMinutes(30)).toBe(150);
   });

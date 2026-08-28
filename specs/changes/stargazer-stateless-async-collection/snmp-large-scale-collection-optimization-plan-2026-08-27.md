@@ -386,14 +386,14 @@ SNMP retries = 1
 | --- | ---: | --- |
 | Scheduler queue wait | 不并入阶段超时 | 单独记录排队耗时；Run 总 SLA 由 Run deadline 管理 |
 | SNMP access probe 外层 | 25s | 允许内部 10s + 1 retry 完整结束，并留出约 5s 调度/取消余量 |
-| SNMP formal collect 外层 | 默认 60s，最小 30s | 覆盖至少一个 PDU 的完整重试；大接口表设备可按健康设备 P99 调整为 120s |
+| SNMP formal collect 外层 | 新建表单默认 30s，最小 30s；表单值缺失时运行时回退 60s | 覆盖至少一个 PDU 的完整重试；大接口表设备可按健康设备 P99 调整为 120s |
 | Result publish | 维持现有独立预算 | 不占用 SNMP 采集预算 |
 
 实施规则：
 
 1. `network` 的 `probe_timeout` 明确设为 `25`，不继续使用全局默认 15 秒；
 2. `ExecutionPlanResolver` 对 `target_policy.mode=snmp` 的执行计划应用 `max(task_timeout, 30s)`；未设置仍回落现有 `COLLECTION_TIMEOUT=60s`；
-3. 前端/任务配置对 SNMP 新任务把最小值展示为 30 秒；存量低于 30 秒的任务由运行时兼容钳制，并以有界 WARNING 汇总和 metric 暴露，避免静默改变；
+3. 前端/任务配置对 SNMP 新任务默认展示 30 秒，并限制最小值为 30 秒；表单值缺失时运行时仍回退 `COLLECTION_TIMEOUT=60s`。存量低于 30 秒的任务由运行时兼容钳制，并以有界 WARNING 汇总和 metric 暴露，避免静默改变；
 4. 外层预算不是内部 PDU 重试次数的替代品，不用不断增大外层掩盖事件循环延迟；
 5. 正式上线后按健康设备 `collection_duration_seconds_p99` 调整默认值：建议预算不低于 `max(30s, P99 × 1.5)`。
 
@@ -521,7 +521,7 @@ async def collect(self):
 2. 锁外 `sleep(0)`；
 3. 调度与阶段时间指标；
 4. SNMP probe 外层 25 秒；
-5. SNMP collect 外层最小 30 秒、默认 60 秒；
+5. SNMP collect 外层最小 30 秒；新建表单默认 30 秒，表单值缺失时运行时回退 60 秒；
 6. 保持现有容量、拓扑借槽和结果契约。
 
 该阶段不改 SNMP PDU 参数和数据模型，风险最低，应优先上线。
