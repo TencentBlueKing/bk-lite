@@ -11531,8 +11531,8 @@
     "OID": "1.3.6.1.4.1.2011.10.1.25",
     "FirstTypeId": "Firewall",
     "FirstTypeName": "防火墙",
-    "SecondTypeId": "H3CFirewall",
-    "SecondTypeName": "H3C防火墙",
+    "SecondTypeId": "HuaweiFirewall",
+    "SecondTypeName": "华为防火墙",
     "model": "secpath100F",
     "brand": "Huawei",
     "source_id": "legacy-catalog-v1",
@@ -13690,7 +13690,7 @@
     "SecondTypeId": "BdcomSwitch",
     "SecondTypeName": "博达交换机",
     "model": "1.3.6.1.4.1.3320.1.0.0",
-    "brand": "博达",
+    "brand": "BDCOM",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -13701,7 +13701,7 @@
     "SecondTypeId": "BdcomSwitch",
     "SecondTypeName": "博达交换机",
     "model": "1.3.6.1.4.1.3320.1.22.0",
-    "brand": "博达",
+    "brand": "BDCOM",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -13712,7 +13712,7 @@
     "SecondTypeId": "BdcomSwitch",
     "SecondTypeName": "博达交换机",
     "model": "1.3.6.1.4.1.3320.1.85.0",
-    "brand": "博达",
+    "brand": "BDCOM",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -13723,7 +13723,7 @@
     "SecondTypeId": "BdcomSwitch",
     "SecondTypeName": "博达交换机",
     "model": "1.3.6.1.4.1.3320.1.93",
-    "brand": "博达",
+    "brand": "BDCOM",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -13734,7 +13734,7 @@
     "SecondTypeId": "BdcomSwitch",
     "SecondTypeName": "博达交换机",
     "model": "1.3.6.1.4.1.3320.1.93.0",
-    "brand": "博达",
+    "brand": "BDCOM",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -13745,7 +13745,7 @@
     "SecondTypeId": "BdcomSwitch",
     "SecondTypeName": "博达交换机",
     "model": "1.3.6.1.4.1.3320.1.117.0",
-    "brand": "博达",
+    "brand": "BDCOM",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -13987,7 +13987,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "Zhongxing TElecom (ZTE) Co., Ltd.",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -13998,7 +13998,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.1.1.0.0",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14009,7 +14009,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.1",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14020,7 +14020,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.2",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14031,7 +14031,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.3",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14042,7 +14042,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.4",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14053,7 +14053,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.5",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14064,7 +14064,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.6",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14075,7 +14075,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.7",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14086,7 +14086,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.8",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14097,7 +14097,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.9",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14108,7 +14108,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.10",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14119,7 +14119,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.11",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14130,7 +14130,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.12",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14141,7 +14141,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.13",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14152,7 +14152,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.14",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14163,7 +14163,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.15",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14174,7 +14174,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.16",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14185,7 +14185,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.17",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14196,7 +14196,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.18",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14207,7 +14207,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.19",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14218,7 +14218,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.20",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14229,7 +14229,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.21",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14240,7 +14240,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.22",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14251,7 +14251,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.23",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14262,7 +14262,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.24",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14273,7 +14273,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.25",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14284,7 +14284,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.26",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14295,7 +14295,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.27",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14306,7 +14306,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.28",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14317,7 +14317,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.29",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14328,7 +14328,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.30",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14339,7 +14339,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.32",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14350,7 +14350,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.100",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14361,7 +14361,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.101",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14372,7 +14372,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.102",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14383,7 +14383,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.103",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14394,7 +14394,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.104",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14405,7 +14405,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.105",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14416,7 +14416,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.106",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14427,7 +14427,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.107",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14438,7 +14438,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.108",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14449,7 +14449,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.109",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14460,7 +14460,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.110",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14471,7 +14471,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.111",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14482,7 +14482,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.112",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14493,7 +14493,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.113",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14504,7 +14504,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.114",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14515,7 +14515,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.115",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14526,7 +14526,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.132",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14537,7 +14537,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.133",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14548,7 +14548,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.134",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14559,7 +14559,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.135",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14570,7 +14570,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.136",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14581,7 +14581,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.137",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14592,7 +14592,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.138",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14603,7 +14603,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.139",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14614,7 +14614,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.140",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14625,7 +14625,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.141",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14636,7 +14636,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.142",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14647,7 +14647,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.143",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14658,7 +14658,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.144",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14669,7 +14669,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.145",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14680,7 +14680,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.146",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14691,7 +14691,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.147",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14702,7 +14702,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.148",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14713,7 +14713,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.149",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14724,7 +14724,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.150",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14735,7 +14735,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.151",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14746,7 +14746,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.152",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14757,7 +14757,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.153",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14768,7 +14768,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.154",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14779,7 +14779,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.155",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14790,7 +14790,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.172",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14801,7 +14801,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.173",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14812,7 +14812,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.174",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14823,7 +14823,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.175",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14834,7 +14834,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.176",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14845,7 +14845,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.177",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14856,7 +14856,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.178",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14867,7 +14867,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.179",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14878,7 +14878,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.180",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14889,7 +14889,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.181",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14900,7 +14900,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.182",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14911,7 +14911,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.183",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14922,7 +14922,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.184",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14933,7 +14933,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.185",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14944,7 +14944,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.186",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14955,7 +14955,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.187",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14966,7 +14966,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.188",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14977,7 +14977,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.189",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14988,7 +14988,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.190",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -14999,7 +14999,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.191",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15010,7 +15010,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.192",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15021,7 +15021,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.193",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15032,7 +15032,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.194",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15043,7 +15043,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.195",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15054,7 +15054,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.196",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15065,7 +15065,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.197",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15076,7 +15076,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.198",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15087,7 +15087,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.199",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15098,7 +15098,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.200",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15109,7 +15109,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.201",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15120,7 +15120,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.202",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15131,7 +15131,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.203",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15142,7 +15142,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.210",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15153,7 +15153,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.3.100.407",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15164,7 +15164,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.15.2.1.6",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15175,7 +15175,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.15.2.1.7",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15186,7 +15186,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.15.2.10.4",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15197,7 +15197,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.701.1",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15208,7 +15208,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.1001",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15219,7 +15219,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.1004.9806.2.1.1",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15230,7 +15230,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.1008.1.1.4",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -15241,7 +15241,7 @@
     "SecondTypeId": "ZTESwitch",
     "SecondTypeName": "中兴交换机",
     "model": "1.3.6.1.4.1.3902.1011.9800",
-    "brand": "中兴",
+    "brand": "ZTE",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -17940,17 +17940,6 @@
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
-  "1.3.6.1.4.1.8072.3.2.10": {
-    "OID": "1.3.6.1.4.1.8072.3.2.10",
-    "FirstTypeId": "Firewall",
-    "FirstTypeName": "防火墙",
-    "SecondTypeId": "SinforsFirewall",
-    "SecondTypeName": "深信服防火墙",
-    "model": "AF-1000",
-    "brand": "Sangfor",
-    "source_id": "legacy-catalog-v1",
-    "verification": "legacy-compatible"
-  },
   "1.3.6.1.4.1.8212.2.1.1": {
     "OID": "1.3.6.1.4.1.8212.2.1.1",
     "FirstTypeId": "Switch",
@@ -18738,7 +18727,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5500-28C-EI",
+    "model": "S5500-28C-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18749,7 +18738,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5500-52C-EI",
+    "model": "S5500-52C-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18760,7 +18749,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5500-28C-PWR-EI",
+    "model": "S5500-28C-PWR-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18771,7 +18760,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5500-52C-PWR-EI",
+    "model": "S5500-52C-PWR-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18782,7 +18771,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5500-28F-EI",
+    "model": "S5500-28F-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18793,7 +18782,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5500-28C-EI-DC",
+    "model": "S5500-28C-EI-DC",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18804,7 +18793,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S6100-20Q-SI",
+    "model": "S6100-20Q-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18815,7 +18804,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5500-28C-SI",
+    "model": "S5500-28C-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18826,7 +18815,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5500-52C-SI",
+    "model": "S5500-52C-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18837,7 +18826,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5500-28C-PWR-SI",
+    "model": "S5500-28C-PWR-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18848,7 +18837,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5500-52C-PWR-SI",
+    "model": "S5500-52C-PWR-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18859,7 +18848,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5510-24P",
+    "model": "S5510-24P",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18870,7 +18859,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5510-24F",
+    "model": "S5510-24F",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18881,7 +18870,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3610-28P",
+    "model": "S3610-28P",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18892,7 +18881,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3610-52P",
+    "model": "S3610-52P",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18903,7 +18892,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3610-28TP",
+    "model": "S3610-28TP",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18914,7 +18903,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3610-28F",
+    "model": "S3610-28F",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18925,7 +18914,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C E126",
+    "model": "E126",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18936,7 +18925,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C E328",
+    "model": "E328",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18947,7 +18936,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C E352",
+    "model": "E352",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18958,7 +18947,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-8C-SI",
+    "model": "S3100-8C-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18969,7 +18958,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-16C-SI",
+    "model": "S3100-16C-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18980,7 +18969,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-26C-SI",
+    "model": "S3100-26C-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -18991,7 +18980,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-8T-SI",
+    "model": "S3100-8T-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19002,7 +18991,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-16T-SI",
+    "model": "S3100-16T-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19013,7 +19002,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-26T-SI",
+    "model": "S3100-26T-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19024,7 +19013,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-26TP-SI",
+    "model": "S3100-26TP-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19035,7 +19024,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-24P-EI",
+    "model": "S5100-24P-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19046,7 +19035,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-26C-EI",
+    "model": "S5100-26C-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19057,7 +19046,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-50C-EI",
+    "model": "S5100-50C-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19068,7 +19057,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-48P-EI",
+    "model": "S5100-48P-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19079,7 +19068,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-28P-SI",
+    "model": "S3600-28P-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19090,7 +19079,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-52P-SI",
+    "model": "S3600-52P-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19101,7 +19090,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-28TP-SI",
+    "model": "S3600-28TP-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19112,7 +19101,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-28P-PWR-SI",
+    "model": "S3600-28P-PWR-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19123,7 +19112,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-52P-PWR-SI",
+    "model": "S3600-52P-PWR-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19134,7 +19123,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-28P-EI",
+    "model": "S3600-28P-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19145,7 +19134,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-52P-EI",
+    "model": "S3600-52P-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19156,7 +19145,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-28P-PWR-EI",
+    "model": "S3600-28P-PWR-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19167,7 +19156,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-52P-PWR-EI",
+    "model": "S3600-52P-PWR-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19178,7 +19167,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-28F-EI",
+    "model": "S3600-28F-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19189,7 +19178,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5600-26C",
+    "model": "S5600-26C",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19200,7 +19189,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5600-50C",
+    "model": "S5600-50C",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19211,7 +19200,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5600-26C-PWR",
+    "model": "S5600-26C-PWR",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19222,7 +19211,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5600-50C-PWR",
+    "model": "S5600-50C-PWR",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19233,7 +19222,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5600-26F",
+    "model": "S5600-26F",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19244,7 +19233,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-52G-HI",
+    "model": "S3600-52G-HI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19255,7 +19244,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-52P-HI",
+    "model": "S3600-52P-HI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19266,7 +19255,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-28G-HI",
+    "model": "S3600-28G-HI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19277,7 +19266,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-28P-HI",
+    "model": "S3600-28P-HI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19288,7 +19277,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3600-52M-HI",
+    "model": "S3600-52M-HI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19299,7 +19288,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S7502",
+    "model": "S7502",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19310,7 +19299,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S7503",
+    "model": "S7503",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19321,7 +19310,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S7506",
+    "model": "S7506",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19332,7 +19321,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S7506R",
+    "model": "S7506R",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19343,7 +19332,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR28-09",
+    "model": "AR28-09",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19354,7 +19343,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR28-10",
+    "model": "AR28-10",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19365,7 +19354,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR28-11",
+    "model": "AR28-11",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19376,7 +19365,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR28-12",
+    "model": "AR28-12",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19387,7 +19376,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR28-13",
+    "model": "AR28-13",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19398,7 +19387,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR28-14",
+    "model": "AR28-14",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19409,7 +19398,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR28-30",
+    "model": "AR28-30",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19420,7 +19409,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR28-31",
+    "model": "AR28-31",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19431,7 +19420,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR28-40",
+    "model": "AR28-40",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19442,7 +19431,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR28-80",
+    "model": "AR28-80",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19453,7 +19442,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR46-20",
+    "model": "AR46-20",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19464,7 +19453,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR46-40",
+    "model": "AR46-40",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19475,7 +19464,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR46-80",
+    "model": "AR46-80",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19486,7 +19475,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR20-20",
+    "model": "MSR20-20",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19497,7 +19486,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR20-21",
+    "model": "MSR20-21",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19508,7 +19497,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR20-40",
+    "model": "MSR20-40",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19519,7 +19508,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR30-20",
+    "model": "MSR30-20",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19530,7 +19519,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR30-40",
+    "model": "MSR30-40",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19541,7 +19530,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR30-60",
+    "model": "MSR30-60",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19552,7 +19541,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR50-40",
+    "model": "MSR50-40",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19563,7 +19552,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR50-60",
+    "model": "MSR50-60",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19574,7 +19563,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-21",
+    "model": "AR18-21",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19585,7 +19574,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-21A",
+    "model": "AR18-21A",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19596,7 +19585,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-21B",
+    "model": "AR18-21B",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19607,7 +19596,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-22",
+    "model": "AR18-22",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19618,7 +19607,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-22-8",
+    "model": "AR18-22-8",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19629,7 +19618,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-22S-8",
+    "model": "AR18-22S-8",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19640,7 +19629,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-22-24",
+    "model": "AR18-22-24",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19651,7 +19640,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-23-1",
+    "model": "AR18-23-1",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19662,7 +19651,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-23S-1",
+    "model": "AR18-23S-1",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19673,7 +19662,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-30E",
+    "model": "AR18-30E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19684,7 +19673,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-31E",
+    "model": "AR18-31E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19695,7 +19684,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-32E",
+    "model": "AR18-32E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19706,7 +19695,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-33",
+    "model": "AR18-33",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19717,7 +19706,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-33E",
+    "model": "AR18-33E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19728,7 +19717,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-34",
+    "model": "AR18-34",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19739,7 +19728,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-34E",
+    "model": "AR18-34E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19750,7 +19739,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-35E",
+    "model": "AR18-35E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19761,7 +19750,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C AR18-63-1",
+    "model": "AR18-63-1",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19772,7 +19761,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath F100-C",
+    "model": "SecPath F100-C",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19783,7 +19772,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath F100-A",
+    "model": "SecPath F100-A",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19794,7 +19783,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath F100-S",
+    "model": "SecPath F100-S",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19805,7 +19794,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath F100-E",
+    "model": "SecPath F100-E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19816,7 +19805,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath F1000-S",
+    "model": "SecPath F1000-S",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19827,7 +19816,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath F1000-A",
+    "model": "SecPath F1000-A",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19838,7 +19827,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath F1800-A",
+    "model": "SecPath F1800-A",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19849,7 +19838,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath V100-S",
+    "model": "SecPath V100-S",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19860,7 +19849,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath V1000-A",
+    "model": "SecPath V1000-A",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19871,7 +19860,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath F100-AW",
+    "model": "SecPath F100-AW",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19882,7 +19871,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath F1800-S",
+    "model": "SecPath F1800-S",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19893,7 +19882,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath F1800-E",
+    "model": "SecPath F1800-E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19904,7 +19893,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPoint",
+    "model": "SecPoint",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19915,7 +19904,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S9502",
+    "model": "S9502",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19926,7 +19915,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S9505",
+    "model": "S9505",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19937,7 +19926,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S9508",
+    "model": "S9508",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19948,7 +19937,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S9508V",
+    "model": "S9508V",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19959,7 +19948,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S9512",
+    "model": "S9512",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19970,7 +19959,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C SR8812",
+    "model": "SR8812",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19981,7 +19970,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C SR8808",
+    "model": "SR8808",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -19992,7 +19981,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C SR8805",
+    "model": "SR8805",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20003,7 +19992,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C SR8802",
+    "model": "SR8802",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20014,7 +20003,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C E126-SI",
+    "model": "E126-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20025,7 +20014,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C VG31-08",
+    "model": "VG31-08",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20036,7 +20025,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C DR834",
+    "model": "DR834",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20047,7 +20036,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S7510E",
+    "model": "S7510E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20058,7 +20047,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-24P-SI",
+    "model": "S5100-24P-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20069,7 +20058,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-48P-SI",
+    "model": "S5100-48P-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20080,7 +20069,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-8P-SI",
+    "model": "S5100-8P-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20091,7 +20080,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-16P-SI",
+    "model": "S5100-16P-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20102,7 +20091,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-8P-EI",
+    "model": "S5100-8P-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20113,7 +20102,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-16P-EI",
+    "model": "S5100-16P-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20124,7 +20113,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-8P-PWR-EI",
+    "model": "S5100-8P-PWR-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20135,7 +20124,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-16P-PWR-EI",
+    "model": "S5100-16P-PWR-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20146,7 +20135,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-26C-PWR-EI",
+    "model": "S5100-26C-PWR-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20157,7 +20146,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5100-50C-PWR-EI",
+    "model": "S5100-50C-PWR-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20168,7 +20157,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3108TP-EI",
+    "model": "S3108TP-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20179,7 +20168,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3116TP-EI",
+    "model": "S3116TP-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20190,7 +20179,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3126TP-EI",
+    "model": "S3126TP-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20201,7 +20190,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3108TP-EI-PWR",
+    "model": "S3108TP-EI-PWR",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20212,7 +20201,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3116TP-EI-PWR",
+    "model": "S3116TP-EI-PWR",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20223,7 +20212,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3126TP-EI-PWR",
+    "model": "S3126TP-EI-PWR",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20234,7 +20223,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei S7502M",
+    "model": "S7502M",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20245,7 +20234,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5500M-20C",
+    "model": "S5500M-20C",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20256,7 +20245,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5500M-20F",
+    "model": "S5500M-20F",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20267,7 +20256,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei Aolynk BR304+",
+    "model": "Aolynk BR304+",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20278,7 +20267,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S9505-V5",
+    "model": "S9505-V5",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20289,7 +20278,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S9512-V5",
+    "model": "S9512-V5",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20300,7 +20289,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S9508-V5",
+    "model": "S9508-V5",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20311,7 +20300,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S9508V-V5",
+    "model": "S9508V-V5",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20322,7 +20311,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S9502-V5",
+    "model": "S9502-V5",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20333,7 +20322,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C SR8802-V5",
+    "model": "SR8802-V5",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20344,7 +20333,7 @@
     "FirstTypeName": "路由器",
     "SecondTypeId": "H3CRouter",
     "SecondTypeName": "H3C路由器",
-    "model": "Huawei H3C SR8805-V5",
+    "model": "SR8805-V5",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20355,7 +20344,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C SR8812-V5",
+    "model": "SR8812-V5",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20366,7 +20355,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C SR8808-V5",
+    "model": "SR8808-V5",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20377,7 +20366,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-52P",
+    "model": "S3100-52P",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20388,7 +20377,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C E152",
+    "model": "E152",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20399,7 +20388,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S2008",
+    "model": "S2008",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20410,7 +20399,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S2026",
+    "model": "S2026",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20421,7 +20410,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C SR6602",
+    "model": "SR6602",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20432,7 +20421,7 @@
     "FirstTypeName": "路由器",
     "SecondTypeId": "H3CRouter",
     "SecondTypeName": "H3C路由器",
-    "model": "Huawei H3C SR6608",
+    "model": "SR6608",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20443,7 +20432,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-08TP-EI",
+    "model": "S3100-08TP-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20454,7 +20443,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-08TP-PWR-EI",
+    "model": "S3100-08TP-PWR-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20465,7 +20454,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-16TP-EI",
+    "model": "S3100-16TP-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20476,7 +20465,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-16TP-PWR-EI",
+    "model": "S3100-16TP-PWR-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20487,7 +20476,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-26TP-EI",
+    "model": "S3100-26TP-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20498,7 +20487,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-26TP-PWR-EI",
+    "model": "S3100-26TP-PWR-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20509,7 +20498,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S7502-v5",
+    "model": "S7502-v5",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20520,7 +20509,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR30-10",
+    "model": "MSR30-10",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20531,7 +20520,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S7502e",
+    "model": "S7502e",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20542,7 +20531,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S7503E",
+    "model": "S7503E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20553,7 +20542,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S7506E",
+    "model": "S7506E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20564,7 +20553,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S7506E-V",
+    "model": "S7506E-V",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20575,7 +20564,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecBlade-FW",
+    "model": "SecBlade-FW",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20586,7 +20575,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecBlade-IPSec",
+    "model": "SecBlade-IPSec",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20597,7 +20586,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-8TP-SI",
+    "model": "S3100-8TP-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20608,7 +20597,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-16TP-SI",
+    "model": "S3100-16TP-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20619,7 +20608,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C E126A",
+    "model": "E126A",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20630,7 +20619,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-26TP-SI-B",
+    "model": "S3100-26TP-SI-B",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20641,7 +20630,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR30-16",
+    "model": "MSR30-16",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20663,7 +20652,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S2126-EI",
+    "model": "S2126-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20674,7 +20663,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C E150-SI",
+    "model": "E150-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20685,7 +20674,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR30-11",
+    "model": "MSR30-11",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20696,7 +20685,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR20-10",
+    "model": "MSR20-10",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20707,7 +20696,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR20-11",
+    "model": "MSR20-11",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20718,7 +20707,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR20-13",
+    "model": "MSR20-13",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20729,7 +20718,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR20-15",
+    "model": "MSR20-15",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20740,7 +20729,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath F1000-E",
+    "model": "SecPath F1000-E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20751,7 +20740,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C LSQ1FWBSC0",
+    "model": "LSQ1FWBSC0",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20762,7 +20751,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C LSB1FW2A0",
+    "model": "LSB1FW2A0",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20773,7 +20762,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-16TP-EI",
+    "model": "S3100-16TP-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20784,7 +20773,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-26TP-EI",
+    "model": "S3100-26TP-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20795,7 +20784,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR20-15-N",
+    "model": "MSR20-15-N",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20806,7 +20795,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C WX6100 LSB",
+    "model": "WX6100 LSB",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20817,7 +20806,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S3100-52TP-SI",
+    "model": "S3100-52TP-SI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20828,7 +20817,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5800-56C",
+    "model": "S5800-56C",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20839,7 +20828,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5800-60C-PWR",
+    "model": "S5800-60C-PWR",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20850,7 +20839,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5800-32F",
+    "model": "S5800-32F",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20861,7 +20850,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C WX3024 WCM",
+    "model": "WX3024 WCM",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20872,7 +20861,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C WX3024 LSW",
+    "model": "WX3024 LSW",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20883,7 +20872,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S9512E",
+    "model": "S9512E",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20894,7 +20883,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S12518",
+    "model": "S12518",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20905,7 +20894,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C MSR3010",
+    "model": "MSR3010",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20916,7 +20905,7 @@
     "FirstTypeName": "防火墙",
     "SecondTypeId": "H3CFirewall",
     "SecondTypeName": "H3C防火墙",
-    "model": "Huawei H3C SecPath F100-C2",
+    "model": "SecPath F100-C2",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20927,7 +20916,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S7506E-S",
+    "model": "S7506E-S",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20938,7 +20927,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S1626",
+    "model": "S1626",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20949,7 +20938,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S1650",
+    "model": "S1650",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20960,7 +20949,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C LSWM1FW10",
+    "model": "LSWM1FW10",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20971,7 +20960,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5120-24P-EI",
+    "model": "S5120-24P-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20982,7 +20971,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5120-48P-EI",
+    "model": "S5120-48P-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -20993,7 +20982,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5120-28C-EI",
+    "model": "S5120-28C-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -21004,7 +20993,7 @@
     "FirstTypeName": "交换机",
     "SecondTypeId": "H3CSwitch",
     "SecondTypeName": "H3C交换机",
-    "model": "Huawei H3C S5120-52C-EI",
+    "model": "S5120-52C-EI",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
@@ -21101,8 +21090,8 @@
     "OID": "1.3.6.1.4.1.25506.1.885",
     "FirstTypeId": "Firewall",
     "FirstTypeName": "防火墙",
-    "SecondTypeId": "DPFirewall",
-    "SecondTypeName": "迪普防火墙",
+    "SecondTypeId": "H3CFirewall",
+    "SecondTypeName": "H3C防火墙",
     "model": "hh3csecpathF1000AG",
     "brand": "H3C",
     "source_id": "legacy-catalog-v1",
@@ -21319,10 +21308,10 @@
   },
   "1.3.6.1.4.1.28557.1.24": {
     "OID": "1.3.6.1.4.1.28557.1.24",
-    "FirstTypeId": "Switch",
-    "FirstTypeName": "交换机",
-    "SecondTypeId": "HillstoneSwitch",
-    "SecondTypeName": "山石交换机",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
     "model": "sg-6000-M3100",
     "brand": "Hillstone",
     "source_id": "legacy-catalog-v1",
@@ -21341,10 +21330,10 @@
   },
   "1.3.6.1.4.1.28557.1.28": {
     "OID": "1.3.6.1.4.1.28557.1.28",
-    "FirstTypeId": "Switch",
-    "FirstTypeName": "交换机",
-    "SecondTypeId": "HillstoneSwitch",
-    "SecondTypeName": "山石交换机",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
     "model": "sg-6000-G5150",
     "brand": "Hillstone",
     "source_id": "legacy-catalog-v1",
@@ -21352,10 +21341,10 @@
   },
   "1.3.6.1.4.1.28557.1.29": {
     "OID": "1.3.6.1.4.1.28557.1.29",
-    "FirstTypeId": "Switch",
-    "FirstTypeName": "交换机",
-    "SecondTypeId": "HillstoneSwitch",
-    "SecondTypeName": "山石交换机",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
     "model": "sg-6000-G3150",
     "brand": "Hillstone",
     "source_id": "legacy-catalog-v1",
@@ -21363,10 +21352,10 @@
   },
   "1.3.6.1.4.1.28557.1.34": {
     "OID": "1.3.6.1.4.1.28557.1.34",
-    "FirstTypeId": "Switch",
-    "FirstTypeName": "交换机",
-    "SecondTypeId": "HillstoneSwitch",
-    "SecondTypeName": "山石交换机",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
     "model": "sg-6000-NAV20",
     "brand": "Hillstone",
     "source_id": "legacy-catalog-v1",
@@ -21374,10 +21363,10 @@
   },
   "1.3.6.1.4.1.28557.1.43": {
     "OID": "1.3.6.1.4.1.28557.1.43",
-    "FirstTypeId": "Switch",
-    "FirstTypeName": "交换机",
-    "SecondTypeId": "HillstoneSwitch",
-    "SecondTypeName": "山石交换机",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
     "model": "sg-6000-X6150",
     "brand": "Hillstone",
     "source_id": "legacy-catalog-v1",
@@ -21385,10 +21374,10 @@
   },
   "1.3.6.1.4.1.28557.1.49": {
     "OID": "1.3.6.1.4.1.28557.1.49",
-    "FirstTypeId": "Switch",
-    "FirstTypeName": "交换机",
-    "SecondTypeId": "HillstoneSwitch",
-    "SecondTypeName": "山石交换机",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
     "model": "sg-6000-M6110",
     "brand": "Hillstone",
     "source_id": "legacy-catalog-v1",
@@ -21396,10 +21385,10 @@
   },
   "1.3.6.1.4.1.28557.1.50": {
     "OID": "1.3.6.1.4.1.28557.1.50",
-    "FirstTypeId": "Switch",
-    "FirstTypeName": "交换机",
-    "SecondTypeId": "HillstoneSwitch",
-    "SecondTypeName": "山石交换机",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
     "model": "sg-6000-M6115",
     "brand": "Hillstone",
     "source_id": "legacy-catalog-v1",
@@ -21473,10 +21462,10 @@
   },
   "1.3.6.1.4.1.28557.1.220": {
     "OID": "1.3.6.1.4.1.28557.1.220",
-    "FirstTypeId": "Switch",
-    "FirstTypeName": "交换机",
-    "SecondTypeId": "HillstoneSwitchSG6000",
-    "SecondTypeName": "山石交换机 SG-6000-AX1000S",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
     "model": "1.3.6.1.4.1.28557.1.220",
     "brand": "Hillstone",
     "source_id": "legacy-catalog-v1",
@@ -21489,7 +21478,7 @@
     "SecondTypeId": "DPSwitch",
     "SecondTypeName": "迪普交换机",
     "model": "1.3.6.1.4.1.31648.1.10301",
-    "brand": "DPTECH",
+    "brand": "DPtech",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -21500,7 +21489,7 @@
     "SecondTypeId": "DPSwitch",
     "SecondTypeName": "迪普交换机",
     "model": "1.3.6.1.4.1.31648.1.12019",
-    "brand": "DPTECH",
+    "brand": "DPtech",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -21511,7 +21500,7 @@
     "SecondTypeId": "DPFirewall",
     "SecondTypeName": "迪普防火墙",
     "model": "1.3.6.1.4.1.31648.1.12029",
-    "brand": "DPTECH",
+    "brand": "DPtech",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -21522,7 +21511,7 @@
     "SecondTypeId": "DPSwitch",
     "SecondTypeName": "迪普交换机",
     "model": "1.3.6.1.4.1.31648.1.12083",
-    "brand": "DPTECH",
+    "brand": "DPtech",
     "source_id": "legacy-catalog-v1",
     "verification": "legacy-compatible"
   },
@@ -21810,6 +21799,974 @@
     "model": "BIG-IP rSeries R5x00",
     "brand": "F5",
     "source_id": "f5os-rseries-system-settings-1-2-0",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.2011": {
+    "OID": "1.3.6.1.4.1.2011",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "HuaweiSwitch",
+    "SecondTypeName": "华为交换机",
+    "model": "未知",
+    "brand": "Huawei",
+    "source_id": "iana-pen-2011-huawei",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.25506": {
+    "OID": "1.3.6.1.4.1.25506",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "未知",
+    "brand": "H3C",
+    "source_id": "iana-pen-25506-h3c",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.61878": {
+    "OID": "1.3.6.1.4.1.61878",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "未知",
+    "brand": "H3C",
+    "source_id": "iana-pen-61878-h3c",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.4881": {
+    "OID": "1.3.6.1.4.1.4881",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "RuijieSwitch",
+    "SecondTypeName": "锐捷交换机",
+    "model": "未知",
+    "brand": "Ruijie",
+    "source_id": "iana-pen-4881-ruijie",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.5651": {
+    "OID": "1.3.6.1.4.1.5651",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "MaipuSwitch",
+    "SecondTypeName": "迈普交换机",
+    "model": "未知",
+    "brand": "Maipu",
+    "source_id": "iana-pen-5651-maipu",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.28557": {
+    "OID": "1.3.6.1.4.1.28557",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "未知",
+    "brand": "Hillstone",
+    "source_id": "iana-pen-28557-hillstone",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.28557.1": {
+    "OID": "1.3.6.1.4.1.28557.1",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "未知",
+    "brand": "Hillstone",
+    "source_id": "librenms-stoneos-28557-1",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.14331": {
+    "OID": "1.3.6.1.4.1.14331",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "TopsecFirewall",
+    "SecondTypeName": "天融信防火墙",
+    "model": "未知",
+    "brand": "Topsec",
+    "source_id": "iana-pen-14331-topsec",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.15227": {
+    "OID": "1.3.6.1.4.1.15227",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "VenusFirewall",
+    "SecondTypeName": "启明星辰防火墙",
+    "model": "未知",
+    "brand": "Venustech",
+    "source_id": "iana-pen-15227-venustech",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.31648": {
+    "OID": "1.3.6.1.4.1.31648",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "DPFirewall",
+    "SecondTypeName": "迪普防火墙",
+    "model": "未知",
+    "brand": "DPtech",
+    "source_id": "iana-pen-31648-dptech",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.3320": {
+    "OID": "1.3.6.1.4.1.3320",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "BdcomSwitch",
+    "SecondTypeName": "博达交换机",
+    "model": "未知",
+    "brand": "BDCOM",
+    "source_id": "iana-pen-3320-bdcom",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.10519": {
+    "OID": "1.3.6.1.4.1.10519",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "ZiGuangHengYueSwitch",
+    "SecondTypeName": "紫光恒越交换机",
+    "model": "未知",
+    "brand": "紫光恒越",
+    "source_id": "iana-pen-10519-unis",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.8212": {
+    "OID": "1.3.6.1.4.1.8212",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "HarbourSwitch",
+    "SecondTypeName": "港湾交换机",
+    "model": "未知",
+    "brand": "Harbour",
+    "source_id": "iana-pen-8212-harbour",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.32328": {
+    "OID": "1.3.6.1.4.1.32328",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "SecworldFirewall",
+    "SecondTypeName": "网御神州防火墙",
+    "model": "未知",
+    "brand": "LegendSec",
+    "source_id": "iana-pen-32328-legendsec",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.3807": {
+    "OID": "1.3.6.1.4.1.3807",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "FiberHomeSwitch",
+    "SecondTypeName": "烽火交换机",
+    "model": "未知",
+    "brand": "FiberHome",
+    "source_id": "wri-smi-3807-fiberhome",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.3807.1": {
+    "OID": "1.3.6.1.4.1.3807.1",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "FiberHomeSwitch",
+    "SecondTypeName": "烽火交换机",
+    "model": "未知",
+    "brand": "FiberHome",
+    "source_id": "wri-smi-3807-fiberhome",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.11408": {
+    "OID": "1.3.6.1.4.1.11408",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "FiberHomeSwitch",
+    "SecondTypeName": "烽火交换机",
+    "model": "未知",
+    "brand": "FiberHome",
+    "source_id": "wri-smi-11408-fiberhome",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.8886": {
+    "OID": "1.3.6.1.4.1.8886",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "RaisecomSwitch",
+    "SecondTypeName": "瑞斯康达交换机",
+    "model": "未知",
+    "brand": "Raisecom",
+    "source_id": "iana-pen-8886-raisecom",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.8886.6": {
+    "OID": "1.3.6.1.4.1.8886.6",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "RaisecomSwitch",
+    "SecondTypeName": "瑞斯康达交换机",
+    "model": "未知",
+    "brand": "Raisecom",
+    "source_id": "iana-pen-8886-raisecom",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.8886.6.1": {
+    "OID": "1.3.6.1.4.1.8886.6.1",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "RaisecomSwitch",
+    "SecondTypeName": "瑞斯康达交换机",
+    "model": "未知",
+    "brand": "Raisecom",
+    "source_id": "iana-pen-8886-raisecom",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.8886.18": {
+    "OID": "1.3.6.1.4.1.8886.18",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "RaisecomSwitch",
+    "SecondTypeName": "瑞斯康达交换机",
+    "model": "未知",
+    "brand": "Raisecom",
+    "source_id": "iana-pen-8886-raisecom",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.8886.23": {
+    "OID": "1.3.6.1.4.1.8886.23",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "RaisecomRouter",
+    "SecondTypeName": "瑞斯康达路由器",
+    "model": "未知",
+    "brand": "Raisecom",
+    "source_id": "iana-pen-8886-raisecom",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.8886.26": {
+    "OID": "1.3.6.1.4.1.8886.26",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "RaisecomSwitch",
+    "SecondTypeName": "瑞斯康达交换机",
+    "model": "未知",
+    "brand": "Raisecom",
+    "source_id": "iana-pen-8886-raisecom",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.8886.28": {
+    "OID": "1.3.6.1.4.1.8886.28",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "RaisecomRouter",
+    "SecondTypeName": "瑞斯康达路由器",
+    "model": "未知",
+    "brand": "Raisecom",
+    "source_id": "iana-pen-8886-raisecom",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.27975": {
+    "OID": "1.3.6.1.4.1.27975",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "CentecSwitch",
+    "SecondTypeName": "盛科交换机",
+    "model": "未知",
+    "brand": "Centec",
+    "source_id": "iana-pen-27975-centec",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.19849": {
+    "OID": "1.3.6.1.4.1.19849",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "NSFOCUSFirewall",
+    "SecondTypeName": "绿盟防火墙",
+    "model": "未知",
+    "brand": "NSFOCUS",
+    "source_id": "iana-pen-19849-nsfocus",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.47646": {
+    "OID": "1.3.6.1.4.1.47646",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "QiAnxinFirewall",
+    "SecondTypeName": "奇安信防火墙",
+    "model": "未知",
+    "brand": "Qi-Anxin",
+    "source_id": "iana-pen-47646-qianxin",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.62722": {
+    "OID": "1.3.6.1.4.1.62722",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "QiAnxinFirewall",
+    "SecondTypeName": "奇安信防火墙",
+    "model": "未知",
+    "brand": "Qi-Anxin",
+    "source_id": "iana-pen-62722-qianxin",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.38384": {
+    "OID": "1.3.6.1.4.1.38384",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "DBAPPFirewall",
+    "SecondTypeName": "安恒防火墙",
+    "model": "未知",
+    "brand": "DBAPP",
+    "source_id": "iana-pen-38384-dbapp",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.37157": {
+    "OID": "1.3.6.1.4.1.37157",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "NetentsecFirewall",
+    "SecondTypeName": "网御星云防火墙",
+    "model": "未知",
+    "brand": "Netentsec",
+    "source_id": "iana-pen-37157-netentsec",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.31762": {
+    "OID": "1.3.6.1.4.1.31762",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "StarnetSwitch",
+    "SecondTypeName": "星网锐捷交换机",
+    "model": "未知",
+    "brand": "Star-net",
+    "source_id": "iana-pen-31762-starnet",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.6339.1.1.1": {
+    "OID": "1.3.6.1.4.1.6339.1.1.1",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "DigitalChinaSwitch",
+    "SecondTypeName": "神州数码交换机",
+    "model": "未知",
+    "brand": "DigitalChina",
+    "source_id": "iana-pen-6339-digitalchina",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.6339.1.1.2": {
+    "OID": "1.3.6.1.4.1.6339.1.1.2",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "DigitalChinaSwitch",
+    "SecondTypeName": "神州数码交换机",
+    "model": "未知",
+    "brand": "DigitalChina",
+    "source_id": "iana-pen-6339-digitalchina",
+    "verification": "legacy-compatible"
+  },
+  "1.3.6.1.4.1.25506.1.2369": {
+    "OID": "1.3.6.1.4.1.25506.1.2369",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5590-28T8XC-HI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2370": {
+    "OID": "1.3.6.1.4.1.25506.1.2370",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5590-28S8XC-HI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2371": {
+    "OID": "1.3.6.1.4.1.25506.1.2371",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5590-48T4XC-HI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2372": {
+    "OID": "1.3.6.1.4.1.25506.1.2372",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5590-48S4XC-HI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2431": {
+    "OID": "1.3.6.1.4.1.25506.1.2431",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5590-48T4XC-EI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2432": {
+    "OID": "1.3.6.1.4.1.25506.1.2432",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5590-28T8XC-EI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2433": {
+    "OID": "1.3.6.1.4.1.25506.1.2433",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5590-48S4XC-EI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2434": {
+    "OID": "1.3.6.1.4.1.25506.1.2434",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5590-28S8XC-EI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2450": {
+    "OID": "1.3.6.1.4.1.25506.1.2450",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5500V3-28T8XC-HI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2451": {
+    "OID": "1.3.6.1.4.1.25506.1.2451",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5500V3-28S8XC-HI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2452": {
+    "OID": "1.3.6.1.4.1.25506.1.2452",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5500V3-48T4XC-HI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2881": {
+    "OID": "1.3.6.1.4.1.25506.1.2881",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5538F-EI-D",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2882": {
+    "OID": "1.3.6.1.4.1.25506.1.2882",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5554C-EI-D-AC",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2915": {
+    "OID": "1.3.6.1.4.1.25506.1.2915",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5590-28P8XC-EI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.2916": {
+    "OID": "1.3.6.1.4.1.25506.1.2916",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S5590-48P6XC-EI",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.3259": {
+    "OID": "1.3.6.1.4.1.25506.1.3259",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S6530X-48Y8C",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.3260": {
+    "OID": "1.3.6.1.4.1.25506.1.3260",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S6530X-48X8C",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.3261": {
+    "OID": "1.3.6.1.4.1.25506.1.3261",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S6530X-24Y8C",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.3262": {
+    "OID": "1.3.6.1.4.1.25506.1.3262",
+    "FirstTypeId": "Switch",
+    "FirstTypeName": "交换机",
+    "SecondTypeId": "H3CSwitch",
+    "SecondTypeName": "新华三交换机",
+    "model": "S6530X-24X8C",
+    "brand": "H3C",
+    "source_id": "h3c-s5590-s6530x-mib-6w101",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.764": {
+    "OID": "1.3.6.1.4.1.25506.1.764",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "H3CRouter",
+    "SecondTypeName": "新华三路由器",
+    "model": "MSR3610AC",
+    "brand": "H3C",
+    "source_id": "h3c-msr-router-rfc1213-r6749",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.765": {
+    "OID": "1.3.6.1.4.1.25506.1.765",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "H3CRouter",
+    "SecondTypeName": "新华三路由器",
+    "model": "MSR3610DC",
+    "brand": "H3C",
+    "source_id": "h3c-msr-router-rfc1213-r6749",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.766": {
+    "OID": "1.3.6.1.4.1.25506.1.766",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "H3CRouter",
+    "SecondTypeName": "新华三路由器",
+    "model": "MSR3620AC",
+    "brand": "H3C",
+    "source_id": "h3c-msr-router-rfc1213-r6749",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.767": {
+    "OID": "1.3.6.1.4.1.25506.1.767",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "H3CRouter",
+    "SecondTypeName": "新华三路由器",
+    "model": "MSR3620DC",
+    "brand": "H3C",
+    "source_id": "h3c-msr-router-rfc1213-r6749",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.768": {
+    "OID": "1.3.6.1.4.1.25506.1.768",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "H3CRouter",
+    "SecondTypeName": "新华三路由器",
+    "model": "MSR3620POE",
+    "brand": "H3C",
+    "source_id": "h3c-msr-router-rfc1213-r6749",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.769": {
+    "OID": "1.3.6.1.4.1.25506.1.769",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "H3CRouter",
+    "SecondTypeName": "新华三路由器",
+    "model": "MSR3640",
+    "brand": "H3C",
+    "source_id": "h3c-msr-router-rfc1213-r6749",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.770": {
+    "OID": "1.3.6.1.4.1.25506.1.770",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "H3CRouter",
+    "SecondTypeName": "新华三路由器",
+    "model": "MSR3660",
+    "brand": "H3C",
+    "source_id": "h3c-msr-router-rfc1213-r6749",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.771": {
+    "OID": "1.3.6.1.4.1.25506.1.771",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "H3CRouter",
+    "SecondTypeName": "新华三路由器",
+    "model": "MSR5660",
+    "brand": "H3C",
+    "source_id": "h3c-msr-router-rfc1213-r6749",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.1260": {
+    "OID": "1.3.6.1.4.1.25506.1.1260",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "H3CRouter",
+    "SecondTypeName": "新华三路由器",
+    "model": "MSR810",
+    "brand": "H3C",
+    "source_id": "h3c-msr-router-rfc1213-r6749",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.1472": {
+    "OID": "1.3.6.1.4.1.25506.1.1472",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "H3CRouter",
+    "SecondTypeName": "新华三路由器",
+    "model": "MSR3610-X1",
+    "brand": "H3C",
+    "source_id": "h3c-msr-router-rfc1213-r6749",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.25506.1.937": {
+    "OID": "1.3.6.1.4.1.25506.1.937",
+    "FirstTypeId": "Router",
+    "FirstTypeName": "路由器",
+    "SecondTypeId": "H3CRouter",
+    "SecondTypeName": "新华三路由器",
+    "model": "VSR1000",
+    "brand": "H3C",
+    "source_id": "h3c-vsr-router-rfc1213",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.9": {
+    "OID": "1.3.6.1.4.1.28557.1.9",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SA2003",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.10": {
+    "OID": "1.3.6.1.4.1.28557.1.10",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SA2001",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.11": {
+    "OID": "1.3.6.1.4.1.28557.1.11",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SR320",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.13": {
+    "OID": "1.3.6.1.4.1.28557.1.13",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SR520",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.17": {
+    "OID": "1.3.6.1.4.1.28557.1.17",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SA5180",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.18": {
+    "OID": "1.3.6.1.4.1.28557.1.18",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SA5160",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.22": {
+    "OID": "1.3.6.1.4.1.28557.1.22",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-G6100",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.23": {
+    "OID": "1.3.6.1.4.1.28557.1.23",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-G3100",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.25": {
+    "OID": "1.3.6.1.4.1.28557.1.25",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-M2100",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.31": {
+    "OID": "1.3.6.1.4.1.28557.1.31",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-G2120",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.32": {
+    "OID": "1.3.6.1.4.1.28557.1.32",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "VR5600T",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.33": {
+    "OID": "1.3.6.1.4.1.28557.1.33",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-NAV10",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.35": {
+    "OID": "1.3.6.1.4.1.28557.1.35",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-NAV30",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.36": {
+    "OID": "1.3.6.1.4.1.28557.1.36",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-G2110",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.37": {
+    "OID": "1.3.6.1.4.1.28557.1.37",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-NAV50",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.38": {
+    "OID": "1.3.6.1.4.1.28557.1.38",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-NAV200",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.39": {
+    "OID": "1.3.6.1.4.1.28557.1.39",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-NAV300",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.40": {
+    "OID": "1.3.6.1.4.1.28557.1.40",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-NAV500",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.45": {
+    "OID": "1.3.6.1.4.1.28557.1.45",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-M2105",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.47": {
+    "OID": "1.3.6.1.4.1.28557.1.47",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SR-320",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.48": {
+    "OID": "1.3.6.1.4.1.28557.1.48",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SR-520",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.51": {
+    "OID": "1.3.6.1.4.1.28557.1.51",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-M3105",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.52": {
+    "OID": "1.3.6.1.4.1.28557.1.52",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SC-1000-M3108",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.54": {
+    "OID": "1.3.6.1.4.1.28557.1.54",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "SG-6000-BANFF",
+    "brand": "Hillstone",
+    "source_id": "hillstone-products-mib-v3",
+    "verification": "verified"
+  },
+  "1.3.6.1.4.1.28557.1.96": {
+    "OID": "1.3.6.1.4.1.28557.1.96",
+    "FirstTypeId": "Firewall",
+    "FirstTypeName": "防火墙",
+    "SecondTypeId": "HillstoneFirewall",
+    "SecondTypeName": "山石防火墙",
+    "model": "E5660-B",
+    "brand": "Hillstone",
+    "source_id": "hillstone-kb-sysobjectid-viewing",
     "verification": "verified"
   }
 }
