@@ -89,6 +89,7 @@ import {
 } from '@/app/ops-analysis/api/canvasDraft';
 import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
 import { normalizeStoredFilterState, buildFilterConfigConfirmSnapshot } from '@/app/ops-analysis/utils/unifiedFilterState';
+import { copyDashboardWidget } from '@/app/ops-analysis/utils/widgetCopy';
 import {
   migrateFilterBindings,
   migrateParamItemsFromStringList,
@@ -1338,6 +1339,35 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setAppliedFilterValues(snapshot.appliedFilterValues);
     };
 
+    const handleCopy = (id: string) => {
+      if (!isEditMode || shareMode) return;
+      const nextLayout = copyDashboardWidget(layout, id);
+      if (nextLayout === layout) return;
+
+      const nextDefinitions = buildFiltersFromLayout(nextLayout, definitions);
+      const syncedLayout = syncLayoutFilterBindings(
+        nextLayout,
+        nextDefinitions,
+      );
+      const nextFilterValues = syncFilterValuesWithDefinitions(
+        nextDefinitions,
+        filterValues,
+      );
+      const nextAppliedValues = syncFilterValuesWithDefinitions(
+        nextDefinitions,
+        appliedFilterValues,
+      );
+
+      setLayout(syncedLayout);
+      void syncDashboardCanvasResources(syncedLayout).then(() => {
+        syncFilterStateAfterLayoutChange(
+          nextDefinitions,
+          nextFilterValues,
+          nextAppliedValues,
+        );
+      });
+    };
+
     const handleDelete = (id: string) => {
       Modal.confirm({
         title: t('common.delConfirm'),
@@ -1430,6 +1460,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           appliedFilterDefinitions={appliedFilterDefinitions}
           appliedNamespaceId={appliedNamespaceId}
           selectedDashboardLocked={selectedDashboard?.is_build_in}
+          shareMode={shareMode}
           onOpenAddModal={openAddModal}
           onLayoutChange={handleLayoutCommit}
           onToggleCollapsedGroup={toggleCollapsedGroup}
@@ -1437,6 +1468,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           onRemoveGroup={handleRemoveGroup}
           onDeleteEntireGroup={handleDeleteEntireGroup}
           onEditWidget={handleEdit}
+          onCopyWidget={handleCopy}
           onDeleteWidget={handleDelete}
           onTopologyLayoutChange={
             isEditMode && !shareMode ? handleTopologyLayoutChange : undefined

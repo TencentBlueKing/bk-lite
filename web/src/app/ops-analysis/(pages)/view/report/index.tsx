@@ -31,6 +31,7 @@ import {
   syncReportFiltersFromSections,
   updateReportSection,
 } from '@/app/ops-analysis/utils/reportBuilder';
+import { copyReportSection } from '@/app/ops-analysis/utils/widgetCopy';
 import {
   buildFilterConfigConfirmSnapshot,
   buildResetFilterValues,
@@ -470,6 +471,28 @@ const Report = forwardRef<ReportRef, ReportProps>(({
     setAddingComponent(false);
   };
 
+  const copyComponent = (sectionId: string) => {
+    const withCopy = copyReportSection(draftViewSets, sectionId, {
+      createId: createSectionId,
+    });
+    if (withCopy === draftViewSets) return;
+    const synced = syncReportFiltersFromSections(withCopy, dataSourceManager.dataSources);
+    const nextIds = withCopy.sections
+      .map((section) => section.valueConfig.dataSource)
+      .filter((id): id is string | number => id !== undefined);
+
+    setDraftViewSets(synced);
+    setFilterValues((previous) => syncFilterValuesWithDefinitions(synced.filters, previous));
+
+    void loadCanvasDataSources(nextIds).then((loadedDataSources) => {
+      setDraftViewSets((previous) => {
+        const next = syncReportFiltersFromSections(previous, loadedDataSources);
+        setFilterValues((current) => syncFilterValuesWithDefinitions(next.filters, current));
+        return next;
+      });
+    });
+  };
+
   const deleteComponent = (sectionId: string) => {
     Modal.confirm({
       title: t('opsAnalysis.report.deleteComponentTitle'),
@@ -658,8 +681,11 @@ const Report = forwardRef<ReportRef, ReportProps>(({
                     refreshCause={refreshCause}
                     dataSource={dataSourceManager.findDataSource(section.valueConfig.dataSource)}
                     editing={editing}
+                    shareMode={shareMode}
+                    isBuiltIn={Boolean(selectedReport?.is_build_in)}
                     eagerRuntime={renderMode || pdfExportPreparing}
                     onEdit={editComponent}
+                    onCopy={copyComponent}
                     onDelete={deleteComponent}
                     onWidgetRenderStatus={handleWidgetRenderStatus}
                   />
