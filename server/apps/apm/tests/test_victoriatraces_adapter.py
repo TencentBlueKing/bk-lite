@@ -507,3 +507,137 @@ def test_search_spans_builds_controlled_logsql_and_maps_rows():
     assert "duration:>=1000000" in query
     assert "duration:<=50000000" in query
     assert session.get.call_args.kwargs["params"]["limit"] == 21
+
+
+def _sample_id_row(trace_id, now):
+    return json.dumps({"trace_id": trace_id, "matched_at": str(int(now.timestamp() * 1_000_000_000))})
+
+
+def test_sample_traces_slices_long_windows_and_round_robins_across_days():
+    now = timezone.now()
+    trace_a, trace_b = "a" * 32, "b" * 32
+    span_rows = "\n".join(
+        json.dumps(_span_row(trace_id, span_id, now))
+        for trace_id, span_id in ((trace_a, "1" * 16), (trace_b, "2" * 16))
+    )
+    session = Mock()
+    session.get.side_effect = [
+        _response({}, raw=_sample_id_row(trace_a, now).encode()),
+        _response({}, raw="\n".join([_sample_id_row(trace_b, now), _sample_id_row(trace_a, now)]).encode()),
+        *[_response({}, raw=b"") for _ in range(5)],
+        _response({}, raw=span_rows.encode()),
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    sample = store.sample_traces(
+        TopologySampleQuery(
+            started_at=now - timedelta(days=7),
+            ended_at=now,
+            service_names=("checkout",),
+            limit=50,
+        )
+    )
+
+    assert session.get.call_count == 8
+    first_slice = session.get.call_args_list[0].kwargs["params"]
+    assert first_slice["start"] == (now - timedelta(days=1)).isoformat()
+    assert first_slice["end"] == now.isoformat()
+    last_slice = session.get.call_args_list[6].kwargs["params"]
+    assert last_slice["start"] == (now - timedelta(days=7)).isoformat()
+    assert last_slice["end"] == (now - timedelta(days=6)).isoformat()
+    for call in session.get.call_args_list[:7]:
+        assert "stats by (trace_id)" in call.kwargs["params"]["query"]
+    span_query = session.get.call_args_list[7].kwargs["params"]["query"]
+    assert f'trace_id:in("{trace_a}","{trace_b}")' in span_query
+    assert {trace.trace_id for trace in sample.traces} == {trace_a, trace_b}
+    assert sample.truncated is False
+
+
+def test_red_long_window_skips_trace_dedup_and_streams_aggregates():
+    now = timezone.now()
+    matrix = {
+        "status": "success",
+        "data": {
+            "resultType": "matrix",
+            "result": [
+                {"metric": {"__name__": "requests"}, "values": [[1_785_888_000, "5"]]},
+                {"metric": {"__name__": "errors"}, "values": [[1_785_888_000, "1"]]},
+            ],
+        },
+    }
+    endpoint_vector = {
+        "status": "success",
+        "data": {
+            "resultType": "vector",
+            "result": [
+                {"metric": {"__name__": "requests", "name": "POST /checkout"}, "value": [1_785_888_000, "6"]},
+                {"metric": {"__name__": "errors", "name": "POST /checkout"}, "value": [1_785_888_000, "2"]},
+                {"metric": {"__name__": "p95", "name": "POST /checkout"}, "value": [1_785_888_000, "100000000"]},
+            ],
+        },
+    }
+    session = Mock()
+    session.get.side_effect = [
+        _response(_vector(requests=6, errors=2, p95=100_000_000, p99=250_000_000)),
+        _response(matrix),
+        _response(endpoint_vector),
+    ]
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    red = store.service_red(
+        ServiceMetricQuery(
+            service_namespace="shop",
+            service_name="checkout",
+            environment="prod",
+            started_at=now - timedelta(days=7),
+            ended_at=now,
+            include_breakdown=True,
+        )
+    )
+
+    assert session.get.call_count == 3
+    for call in session.get.call_args_list:
+        query = call.kwargs["params"]["query"]
+        assert "stats by (trace_id" not in query
+        assert 'kind:in("2","5")' in query
+    endpoint_query = session.get.call_args_list[2].kwargs["params"]["query"]
+    assert "stats by (name)" in endpoint_query
+    assert red.request_rate == pytest.approx(6 / (7 * 86400))
+    assert red.error_rate == pytest.approx(1 / 3)
+    assert red.p95_ms == 100
+    assert len(red.timeseries) == 1
+    assert red.top_endpoints[0].endpoint == "POST /checkout"
+    assert red.top_endpoints[0].error_rate == pytest.approx(1 / 3)
+
+
+def test_red_short_window_keeps_exact_trace_span_dedup():
+    now = timezone.now()
+    session = Mock()
+    session.get.return_value = _response(_vector(requests=6, errors=2, p95=100_000_000, p99=250_000_000))
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    store.service_red(
+        ServiceMetricQuery(
+            service_namespace="shop",
+            service_name="checkout",
+            environment="prod",
+            started_at=now - timedelta(days=1),
+            ended_at=now,
+        )
+    )
+
+    assert "stats by (trace_id, span_id)" in session.get.call_args.kwargs["params"]["query"]
+
+
+def test_vt_client_side_rejection_maps_to_capacity_hint_not_unavailable():
+    now = timezone.now()
+    session = Mock()
+    rejected = Mock()
+    rejected.status_code = 422
+    rejected.headers = {}
+    rejected.raise_for_status.side_effect = requests.HTTPError("422 Unprocessable Entity", response=rejected)
+    session.get.return_value = rejected
+    store = VictoriaTracesTelemetryStore(endpoint="http://traces.test", session=session)
+
+    with pytest.raises(TelemetryStoreUnavailable, match="超出单次查询容量"):
+        store.service_red(ServiceMetricQuery("shop", "checkout", "prod", now - timedelta(minutes=1), now))
