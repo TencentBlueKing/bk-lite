@@ -1,5 +1,6 @@
-from django_filters import FilterSet, CharFilter
+from django_filters import CharFilter, FilterSet
 
+from apps.monitor.filters.id_filters import filter_positive_int_field
 from apps.monitor.models import MonitorPlugin
 
 
@@ -25,10 +26,12 @@ class MonitorPluginFilter(FilterSet):
     template_id = CharFilter(field_name="template_id", lookup_expr="icontains", label="模板ID")
 
     def filter_monitor_object(self, queryset, name, value):
-        """自定义过滤方法：为空时返回全部，否则按监控对象ID过滤"""
-        if value:
-            return queryset.filter(monitor_object=value)
-        return queryset
+        """自定义过滤方法：为空时返回全部，否则按监控对象ID过滤。
+
+        monitor_object 主键为整型。非数字值（如误传分类 id「Network Device」）
+        不得落入 ORM，否则会 ValueError → 接口 500。
+        """
+        return filter_positive_int_field(queryset, "monitor_object", value)
 
     def filter_monitor_object_type(self, queryset, name, value):
         """按监控对象分类 ID 过滤（如 database），用于左侧树点一级分类看该类全部能力。"""

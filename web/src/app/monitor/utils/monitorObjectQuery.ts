@@ -21,6 +21,17 @@ export const isConcreteMonitorObjectId = (id: unknown): boolean => {
   return /^\d+$/.test(value);
 };
 
+/**
+ * 集成列表左侧树：一级分类 key 为 MonitorObjectType.id（非纯数字，
+ * 如 "Network Device"），叶子为监控对象数字 id。
+ * 判定不得依赖 objects 已加载，否则 URL 回退竞态会把分类 id 当成对象 id。
+ */
+export const isMonitorObjectTypeQueryKey = (id: unknown): boolean => {
+  const value = toMonitorIdString(id).trim();
+  if (!value || value === 'all') return false;
+  return !isConcreteMonitorObjectId(value);
+};
+
 export const readMonitorObjectQueryId = (
   params: Pick<URLSearchParams, 'get'> | null | undefined,
   preferredParam?: string
