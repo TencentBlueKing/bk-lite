@@ -59,4 +59,5 @@ export interface AiPageContextPilot {
 
 export const PAGE_CONTEXT_TEXT_BUDGET = 8000;
 export const PAGE_CONTEXT_MAX_IMAGES = 6;
-export const PAGE_CONTEXT_PROVIDER_TIMEOUT_MS = 8000;
+/** 所有页面共用的采集总 deadline；截图超时回退只发生在有 getTextContext 的 pilot，不把仪表盘 8s 套到全局。 */
+export const PAGE_CONTEXT_PROVIDER_TIMEOUT_MS = 2000;
