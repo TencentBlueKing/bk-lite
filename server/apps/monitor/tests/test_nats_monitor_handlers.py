@@ -36,8 +36,6 @@ EXPECTED_MONITOR_NATS_HANDLER_NAMES = frozenset(
         "get_host_resource_top",
         "get_monitor_statistics",
         "get_network_device_resource_top",
-        "mm_query",
-        "mm_query_range",
         "monitor_ingest_from_source",
         "monitor_instance_metrics",
         "monitor_metrics",
@@ -48,6 +46,7 @@ EXPECTED_MONITOR_NATS_HANDLER_NAMES = frozenset(
         "query_latest_interface_metrics",
         "query_monitor_alert_segments",
         "query_monitor_data_by_metric",
+        "query_metric_range_scoped",
         "search_monitor_policies",
     }
 )
@@ -84,10 +83,7 @@ def test_monitor_nats_handler_contract_matches_runtime_registry():
         for registration in default_registry.registry.values()
         if registration["func"].__module__.startswith("apps.monitor.nats.")
     }
-    expected_subjects = {
-        f"{settings.NATS_NAMESPACE}.{handler_name}"
-        for handler_name in MONITOR_NATS_HANDLER_NAMES
-    }
+    expected_subjects = {f"{settings.NATS_NAMESPACE}.{handler_name}" for handler_name in MONITOR_NATS_HANDLER_NAMES}
 
     assert runtime_handler_names - MONITOR_NATS_PERMISSION_HANDLER_NAMES == MONITOR_NATS_HANDLER_NAMES
     assert expected_subjects <= default_registry.registry.keys()
@@ -174,31 +170,6 @@ class TestMonitorObjectInstancesHandler:
         assert out["data"][0]["permission"] == ["View"]
 
 
-class TestMmQuery:
-    def test_success(self, mocker):
-        vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
-        vm.return_value.query.return_value = {
-            "status": "success",
-            "data": {"result": [{"value": [1700000000, "42"]}]},
-        }
-        out = nm.mm_query("up")
-        assert out["result"] is True
-        assert out["data"] == [{"name": 1700000000, "value": "42"}]
-
-    def test_empty_result(self, mocker):
-        vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
-        vm.return_value.query.return_value = {"status": "success", "data": {"result": []}}
-        out = nm.mm_query("up")
-        assert out["result"] is True and out["data"] == []
-
-    def test_failure(self, mocker):
-        vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
-        vm.return_value.query.return_value = {"status": "error", "error": "boom"}
-        out = nm.mm_query("up")
-        assert out["result"] is False
-        assert "boom" in out["message"]
-
-
 class TestHostResourceTop:
     def test_returns_ranked_rows_for_metric_type(self, mocker):
         instance = SimpleNamespace(id="host-1", name="host-1", ip="10.0.0.1", interval=300)
@@ -230,33 +201,34 @@ class TestHostResourceTop:
         vm.assert_not_called()
 
 
-class TestMmQueryRange:
+class TestQueryMetricRangeScoped:
     def test_success(self, mocker):
-        vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
-        vm.return_value.query_range.return_value = {
+        service = mocker.patch("apps.monitor.nats.monitor.AuthorizedMetricQueryService")
+        service.return_value.query_range.return_value = {
             "status": "success",
             "data": {"result": [{"values": [[1, "10"], [2, "20"]]}]},
         }
-        out = nm.mm_query_range(
-            "up",
+        out = nm.query_metric_range_scoped(
+            8,
+            42,
+            ["host-1"],
             ["2026-01-01T00:00:00.000Z", "2026-01-01T00:10:00.000Z"],
+            user_info={"user": "viewer", "domain": "domain.com", "team": 1},
         )
 
         assert out["result"] is True
         assert out["data"] == [{"name": 1, "value": "10"}, {"name": 2, "value": "20"}]
-        vm.return_value.query_range.assert_called_once_with(
-            "up",
-            "1767225600",
-            "1767226200",
-            "5m",
-        )
+        service.return_value.query_range.assert_called_once()
 
     def test_failure(self, mocker):
-        vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
-        vm.return_value.query_range.return_value = {"status": "error", "message": "down"}
-        out = nm.mm_query_range(
-            "up",
+        service = mocker.patch("apps.monitor.nats.monitor.AuthorizedMetricQueryService")
+        service.return_value.query_range.return_value = {"status": "error", "message": "down"}
+        out = nm.query_metric_range_scoped(
+            8,
+            42,
+            ["host-1"],
             ["2026-01-01T00:00:00.000Z", "2026-01-01T00:10:00.000Z"],
+            user_info={"user": "viewer", "domain": "domain.com", "team": 1},
         )
         assert out["result"] is False
 
@@ -269,14 +241,14 @@ class TestMmQueryRange:
         ],
     )
     def test_invalid_time_range_returns_error_without_query(self, mocker, time_range):
-        vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
+        service = mocker.patch("apps.monitor.nats.monitor.AuthorizedMetricQueryService")
 
-        result = nm.mm_query_range("up", time_range)
+        result = nm.query_metric_range_scoped(8, 42, ["host-1"], time_range)
 
         assert result["result"] is False
         assert result["data"] == []
         assert "time range" in result["message"]
-        vm.assert_not_called()
+        service.assert_not_called()
 
 
 class TestQueryMonitorDataByMetric:
@@ -309,15 +281,25 @@ class TestQueryMonitorDataByMetric:
 
     def test_missing_user_info(self):
         out = nm.query_monitor_data_by_metric(
-            {"monitor_obj_id": 1, "metric": "cpu", "start": 1, "end": 2},
+            {"monitor_obj_id": 1, "metric": "cpu", "start": 1, "end": 2, "instance_ids": ["host-1"]},
             user_info={},
         )
         assert out["result"] is False
 
+    def test_empty_instance_ids_fail_closed(self, mocker):
+        vm = mocker.patch("apps.monitor.nats.monitor.Metrics.get_metrics_range")
+        out = nm.query_monitor_data_by_metric(
+            {"monitor_obj_id": 1, "metric": "cpu", "start": 1, "end": 2, "instance_ids": []},
+            user_info={"user": "viewer", "team": 1},
+        )
+        assert out["result"] is False
+        assert "instance_ids" in out["message"]
+        vm.assert_not_called()
+
     def test_object_or_metric_not_found(self, mocker):
         mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
         out = nm.query_monitor_data_by_metric(
-            {"monitor_obj_id": 999999, "metric": "cpu", "start": 1, "end": 2},
+            {"monitor_obj_id": 999999, "metric": "cpu", "start": 1, "end": 2, "instance_ids": ["host-1"]},
             user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
         )
         assert out["result"] is False
@@ -343,7 +325,7 @@ class TestQueryMonitorDataByMetric:
             },
         )
         out = nm.query_monitor_data_by_metric(
-            {"monitor_obj_id": obj.id, "metric": "cpu", "start": 1, "end": 2},
+            {"monitor_obj_id": obj.id, "metric": "cpu", "start": 1, "end": 2, "instance_ids": ["('h1',)"]},
             user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
         )
         assert out["result"] is True
@@ -414,7 +396,7 @@ class TestQueryMonitorDataByMetric:
         )
 
         out = nm.query_monitor_data_by_metric(
-            {"monitor_obj_id": obj.id, "metric": "cpu", "start": 1, "end": 2},
+            {"monitor_obj_id": obj.id, "metric": "cpu", "start": 1, "end": 2, "instance_ids": ["('h1',)"]},
             user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
         )
 

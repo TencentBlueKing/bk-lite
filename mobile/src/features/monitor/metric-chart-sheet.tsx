@@ -9,7 +9,7 @@ import { useTranslation } from '@/utils/i18n';
 import { getMonitorUnitList, queryMetricRange } from './adapter';
 import type { GapInterval } from './gap-intervals';
 import MetricSheetEcharts from './metric-sheet-echarts';
-import { buildMetricQuery, metricSeriesPoints, type MonitorMetric } from './model';
+import { metricSeriesPoints, type MonitorMetric } from './model';
 import { resolveMonitorUnitLabel } from './unit-label';
 import styles from './monitor.module.css';
 
@@ -17,7 +17,8 @@ interface Props {
   open: boolean;
   metrics: MonitorMetric[];
   activeIndex: number;
-  idValues: string[];
+  monitorObjectId: number;
+  instanceId: string;
   rangeMinutes: number;
   interval: number | null;
   onClose: () => void;
@@ -26,13 +27,15 @@ interface Props {
 
 function MetricSheetPane({
   metric,
-  idValues,
+  monitorObjectId,
+  instanceId,
   rangeMinutes,
   interval,
   onUnitChange,
 }: {
   metric: MonitorMetric;
-  idValues: string[];
+  monitorObjectId: number;
+  instanceId: string;
   rangeMinutes: number;
   interval: number | null;
   onUnitChange?: (unit: string) => void;
@@ -53,7 +56,7 @@ function MetricSheetPane({
   useEffect(() => {
     const controller = new AbortController();
     setStatus('loading');
-    queryMetricRange(buildMetricQuery(metric, idValues), metric.unit, rangeMinutes, interval, controller.signal)
+    queryMetricRange(monitorObjectId, metric.id, instanceId, metric.unit, rangeMinutes, interval, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
         setSeries(metricSeriesPoints(result));
@@ -67,7 +70,7 @@ function MetricSheetPane({
         if (error instanceof Error && error.name !== 'AbortError') setStatus('error');
       });
     return () => controller.abort();
-  }, [idValues, interval, metric, onUnitChange, rangeMinutes, retryToken]);
+  }, [instanceId, interval, metric, monitorObjectId, onUnitChange, rangeMinutes, retryToken]);
 
   if (status === 'loading') {
     return <MobileSkeleton label={t('common.loading')} variant="metrics" rows={1} compact />;
@@ -118,7 +121,8 @@ export default function MetricChartSheet({
   open,
   metrics,
   activeIndex,
-  idValues,
+  monitorObjectId,
+  instanceId,
   rangeMinutes,
   interval,
   onClose,
@@ -203,7 +207,8 @@ export default function MetricChartSheet({
             <MetricSheetPane
               key={`${metric.id}-${rangeMinutes}-${interval ?? 'na'}`}
               metric={metric}
-              idValues={idValues}
+              monitorObjectId={monitorObjectId}
+              instanceId={instanceId}
               rangeMinutes={rangeMinutes}
               interval={interval}
               onUnitChange={handleUnitChange}
