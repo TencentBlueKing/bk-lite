@@ -2,7 +2,6 @@ import React from 'react';
 import { render } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import Application3DDetail from '../application3DDetail';
-import { DETAIL_STATUS_ACCENT } from '../application3DDetailChrome';
 import type {
   Application3DDetailData,
   Application3DHealth,
@@ -121,7 +120,7 @@ describe('application3D detail panels', () => {
     expect(right?.querySelector('.ant-spin')).not.toBeNull();
   });
 
-  it('uses frosted glass accent from wall health while detail is still loading', () => {
+  it('keeps left panel border uncolored while detail is still loading', () => {
     const view = render(
       <Application3DDetail
         selected={selected}
@@ -134,11 +133,8 @@ describe('application3D detail panels', () => {
     const left = view.container.querySelector('.app3d-biz-panel');
     const style = left?.getAttribute('style') ?? '';
     expect(left?.getAttribute('data-status-tone')).toBe('critical');
-    expect(style).toContain('255, 92, 84');
-    expect(style).toContain(DETAIL_STATUS_ACCENT.critical.glow);
-    expect(style).not.toMatch(/rgb\(\s*206,\s*220,\s*232/);
+    expect(style).toBe('');
     expect(left?.textContent).toContain('运营门户');
-    expect(style.toLowerCase()).not.toContain('linear-gradient(180deg, #862012');
   });
 
   it('shows critical/error/warning cells and omits info when count is zero', () => {
@@ -159,6 +155,7 @@ describe('application3D detail panels', () => {
     expect(left).toContain('基本信息');
     expect(left).toContain('维护信息');
     expect(left).toContain('描述');
+    expect(view.container.querySelector('.app3d-alarm-row')?.getAttribute('data-severity')).toBe('critical');
   });
 
   it('shows a defensive info row only when severityCounts.info > 0', () => {
@@ -194,7 +191,8 @@ describe('application3D detail panels', () => {
     const left = view.container.querySelector('.app3d-biz-panel');
     expect(left?.textContent).toContain('dashboard.application3DSeverity_info');
     expect(left?.getAttribute('data-status-tone')).toBe('info');
-    expect(left?.getAttribute('style') ?? '').toContain('96, 176, 250');
+    expect(left?.getAttribute('style') ?? '').toBe('');
+    expect(view.container.querySelector('.app3d-alarm-row')?.getAttribute('data-severity')).toBe('info');
   });
 
   it('omits no-data tags from both panels while keeping severity badge on alarm rows', () => {
@@ -230,7 +228,7 @@ describe('application3D detail panels', () => {
     expect(view.container.querySelector('.app3d-severity-badge')).not.toBeNull();
   });
 
-  it('keeps critical glass accent for no_data critical while detail is loading', () => {
+  it('keeps left panel border uncolored for no_data critical while detail is loading', () => {
     const noDataSelected: Application3DWallItem = {
       ...selected,
       health: { ...criticalHealth, noDataAlarmCount: 1 },
@@ -246,8 +244,7 @@ describe('application3D detail panels', () => {
 
     const left = view.container.querySelector('.app3d-biz-panel');
     expect(left?.getAttribute('data-status-tone')).toBe('critical');
-    expect(left?.getAttribute('style') ?? '').toContain('255, 92, 84');
-    expect(left?.getAttribute('style') ?? '').toContain(DETAIL_STATUS_ACCENT.critical.glow);
+    expect(left?.getAttribute('style') ?? '').toBe('');
   });
 
   it('uses secondary glass close button below panels', () => {

@@ -17,11 +17,13 @@ const CompactEmptyState: React.FC<CompactEmptyStateProps> = ({
       <Empty
         className="!my-0"
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        imageStyle={{
-          height: 28,
-          marginBottom: 2,
-          filter: 'grayscale(1)',
-          opacity: 0.78,
+        styles={{
+          image: {
+            height: 28,
+            marginBottom: 2,
+            filter: 'grayscale(1)',
+            opacity: 0.78,
+          },
         }}
         description={
           <span className="text-xs leading-4 text-[var(--color-text-3)]">
