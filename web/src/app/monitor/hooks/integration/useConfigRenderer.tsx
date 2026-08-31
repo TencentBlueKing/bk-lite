@@ -64,7 +64,8 @@ export const useConfigRenderer = () => {
       description,
       editable,
       guide_short,
-      tooltip
+      tooltip,
+      warning
     } = fieldConfig;
     const guideTip = guide_short || tooltip || description;
     const hasGuideTip = Boolean(guideTip);
@@ -519,6 +520,11 @@ export const useConfigRenderer = () => {
                     {mutexPeerOccupiedTip}
                   </span>
                 ) : null}
+                {!showMutexConflict && warning ? (
+                  <span className="align-middle text-[12px] leading-[18px] text-[var(--color-fail)]">
+                    {warning}
+                  </span>
+                ) : null}
                 {!showMutexConflict ? renderValueWarning(getFieldValue) : null}
                 {showInlineDescription && !showMutexConflict && (
                   <span className="align-middle text-[12px] text-[var(--color-text-3)]">
@@ -543,6 +549,11 @@ export const useConfigRenderer = () => {
         >
           {renderWidget()}
         </Form.Item>
+        {warning ? (
+          <span className="align-middle text-[12px] leading-[18px] text-[var(--color-fail)]">
+            {warning}
+          </span>
+        ) : null}
         {showInlineDescription && (
           <span className="align-middle text-[12px] text-[var(--color-text-3)]">
             {description}

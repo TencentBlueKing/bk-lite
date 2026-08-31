@@ -125,6 +125,8 @@
       "type": "input",
       "required": true,
       "description": "开启后必须填包含规则，不填不能保存，避免全量拉取 /api/queues",
+      "warning": "填写 * 或过宽规则仍会请求全表 /api/queues，只少写时序；要停这次 HTTP 只能关掉采集队列。",
+      "warning_en": "A * or overly broad rule still requests the full /api/queues table and only writes fewer series; turn Collect Queues off to stop this HTTP.",
       "guide_short": "开启后必须填包含规则，不填不能保存，避免全量拉取 /api/queues。名称过滤仍会先拉全表 /api/queues，只减少入库；要减轻 Management API 压力请关闭「采集队列」。",
       "guide_short_en": "When Collect Queues is on, include rules are required. Empty values cannot be saved, to avoid fetching all of /api/queues. Name filters still fetch the full /api/queues table and only reduce stored series; turn Collect Queues off to stop Management API pressure.",
       "dependency": {
