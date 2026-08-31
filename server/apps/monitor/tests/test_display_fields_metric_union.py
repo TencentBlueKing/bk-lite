@@ -399,10 +399,11 @@ def test_get_monitor_instance_fills_metric_and_field_columns_with_metric_query(m
     # 回归远程主机采集:展示名(cpu_usage_total)与 VM 真实指标(host_cpu_usage_percent_gauge)不同,
     # 列表页必须用 metric.query 同时回填指标值列和字段展示列,且展示列不主动放大查询窗口。
     def fake_query(query, **kwargs):
-        if "any({instance_type='UTRemoteHost'})" in query:
+        if "instance_type='UTRemoteHost'" in query:
+            assert "tlast_over_time" in query
             assert kwargs.get("step") == "20m"
             return {"data": {"result": [
-                {"metric": {"instance_id": "i1", "agent_id": "stargazer-i1"}, "value": [100, "1"]},
+                {"metric": {"instance_id": "i1", "agent_id": "stargazer-i1"}, "value": [1782888110, "1782888000"]},
             ]}}
         if query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1"}':
             assert "step" not in kwargs
