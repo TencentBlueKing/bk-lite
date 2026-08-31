@@ -11,6 +11,7 @@ from django.db.models import Q
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import WikiKnowledgeBase
+from apps.opspilot.services.llm_context_budget import working_budget_for_model_id
 from apps.opspilot.services.wiki.active_generation_query_service import (
     ActiveGenerationReadError,
     assert_read_scope_current,
@@ -336,8 +337,10 @@ def build_context(
 
     retrieval_mode = _normalize_retrieval_mode(retrieval_mode)
     config = load_wiki_budget_config()
-    requested_budget = int(token_budget) if token_budget is not None and int(token_budget) > 0 else config.qa_max_knowledge_tokens
-    effective_budget = min(requested_budget, config.qa_max_knowledge_tokens)
+    derived = working_budget_for_model_id(llm_model_id, scene_output_default=config.qa_max_output_tokens)
+    knowledge_cap = derived.knowledge_inject_tokens
+    requested_budget = int(token_budget) if token_budget is not None and int(token_budget) > 0 else knowledge_cap
+    effective_budget = min(requested_budget, knowledge_cap)
     call_budget = new_query_call_budget()
     hits = []
     scopes = []
@@ -426,7 +429,7 @@ def build_context(
     lines, citations, budget = _render_context(hits, token_budget=remaining_budget)
     budget.update(
         {
-            "configured_token_budget": config.qa_max_knowledge_tokens,
+            "configured_token_budget": knowledge_cap,
             "effective_token_budget": effective_budget,
             "overview_tokens": route.knowledge_tokens,
             "overview_status": route.status,

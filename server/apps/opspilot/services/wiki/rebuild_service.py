@@ -12,6 +12,7 @@ from django.db import transaction
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import BuildRecord, KnowledgePage, Material, MaterialVersion
+from apps.opspilot.services.llm_context_budget import window_tokens_for_model_id
 from apps.opspilot.services.wiki.build_service import (
     _canonical_title,
     _create_ai_page,
@@ -190,7 +191,7 @@ def _generate_pages(
         return generator(material) or [], None, []
     source_metadata = material_source_metadata(material)
     if structure_revision is not None:
-        budget = new_material_call_budget(material.pk)
+        budget = new_material_call_budget(material.pk, window_tokens=window_tokens_for_model_id(llm_model_id))
         generation = as_material_page_generation(
             generate_material_pages_with_budget(
                 kb,
