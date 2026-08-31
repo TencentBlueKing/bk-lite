@@ -53,6 +53,13 @@
           "url": "/cmdb/views/rack-room",
           "name": "asset_views_rack_room",
           "withParentPermission": true
+        },
+        {
+          "title": "标签视图",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/scene",
+          "name": "asset_views_scene",
+          "withParentPermission": true
         }
       ]
     },
@@ -250,6 +257,13 @@
           "icon": "shujumoxingguanli",
           "url": "/cmdb/views/rack-room",
           "name": "asset_views_rack_room",
+          "withParentPermission": true
+        },
+        {
+          "title": "Tag View",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/views/scene",
+          "name": "asset_views_scene",
           "withParentPermission": true
         }
       ]

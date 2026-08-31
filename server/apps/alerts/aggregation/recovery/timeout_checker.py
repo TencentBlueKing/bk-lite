@@ -1,7 +1,8 @@
 from django.db import transaction
 from django.utils import timezone
-from apps.alerts.models.models import Alert
+
 from apps.alerts.constants.constants import AlertStatus, SessionStatus
+from apps.alerts.models.models import Alert
 from apps.core.logger import alert_logger as logger
 
 
@@ -57,7 +58,9 @@ class TimeoutChecker:
 
         logger.info(
             "[AlertRecovery] 会话窗口超时确认: alert_id=%s, fingerprint=%s, session_end_time=%s",
-            alert.alert_id, alert.fingerprint, alert.session_end_time.isoformat(),
+            alert.alert_id,
+            alert.fingerprint,
+            alert.session_end_time.isoformat(),
         )
 
     @staticmethod
@@ -121,16 +124,17 @@ class TimeoutChecker:
 
                     logger.info(
                         "[AlertRecovery] 策略变更确认告警: strategy_id=%s, alert_id=%s, fingerprint=%s",
-                        strategy_id, alert.alert_id, alert.fingerprint,
+                        strategy_id,
+                        alert.alert_id,
+                        alert.fingerprint,
                     )
 
-            TimeoutChecker._trigger_auto_assignment_for_alert_ids(
-                confirmed_alert_ids
-            )
+            TimeoutChecker._trigger_auto_assignment_for_alert_ids(confirmed_alert_ids)
 
         logger.info(
             "[AlertRecovery] 策略变更确认完成: strategy_id=%s, 确认告警数=%s",
-            strategy_id, confirmed_count,
+            strategy_id,
+            confirmed_count,
         )
 
         return confirmed_count
@@ -163,17 +167,22 @@ class TimeoutChecker:
                 original_status = alert.status
                 alert.status = AlertStatus.CLOSED
                 alert.session_status = SessionStatus.RECOVERED
-                alert.save(update_fields=["status", "updated_at", "session_status"])
+                Alert.stamp_closed_at(alert)
+                alert.save(update_fields=["status", "updated_at", "session_status", "closed_at"])
                 closed_count += 1
 
                 logger.info(
                     "[AlertRecovery] 会话策略删除关闭告警: strategy_id=%s, alert_id=%s, fingerprint=%s, 原状态=%s, session_status=OBSERVING",
-                    strategy_id, alert.alert_id, alert.fingerprint, original_status,
+                    strategy_id,
+                    alert.alert_id,
+                    alert.fingerprint,
+                    original_status,
                 )
 
         logger.info(
             "[AlertRecovery] 会话策略删除关闭完成: strategy_id=%s, 关闭观察中告警数=%s",
-            strategy_id, closed_count,
+            strategy_id,
+            closed_count,
         )
 
         return closed_count

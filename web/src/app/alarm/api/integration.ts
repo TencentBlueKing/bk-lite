@@ -1,8 +1,10 @@
 import useApiClient from '@/utils/request';
 import {
+  AlertSourceOption,
   AlertSourceIntegrationGuide,
   K8sRenderParams,
   SnmpTrapNodeListResponse,
+  SourceItem,
   TeamSecretsResponse,
   TeamSecretResponse,
 } from '@/app/alarm/types/integration';
@@ -10,13 +12,22 @@ import {
 export const useSourceApi = () => {
   const { get, post } = useApiClient();
 
-  const getAlertSources = async () => get('/alerts/api/alert_source/');
+  const getAlertSources = async (): Promise<SourceItem[]> => get('/alerts/api/alert_source/');
 
-  const getAlertSourcesDetail = async (id: number | string) =>
+  const getAlertSourceOptions = async (): Promise<AlertSourceOption[]> =>
+    get('/alerts/api/alert_source/options/');
+
+  const getAlertSourcesDetail = async (id: number | string): Promise<SourceItem> =>
     get(`/alerts/api/alert_source/${id}`);
 
   const getAlertSourceIntegrationGuide = async (id: number | string): Promise<AlertSourceIntegrationGuide> =>
     get(`/alerts/api/alert_source/${id}/integration-guide/`);
+
+  const getAlertSourceIntegrationMaterial = async (
+    id: number | string,
+    teamId: string,
+  ): Promise<AlertSourceIntegrationGuide> =>
+    post(`/alerts/api/alert_source/${id}/integration-material/`, { team_id: teamId });
 
   const getK8sMeta = async () => get('/alerts/api/alert_source/k8s_meta/');
 
@@ -39,6 +50,9 @@ export const useSourceApi = () => {
   const addTeamSecret = async (sourceId: number | string, teamId: string): Promise<TeamSecretResponse> =>
     post(`/alerts/api/alert_source/${sourceId}/team_secrets/add/`, { team_id: teamId });
 
+  const revealTeamSecret = async (sourceId: number | string, teamId: string): Promise<TeamSecretResponse> =>
+    post(`/alerts/api/alert_source/${sourceId}/team_secrets/reveal/`, { team_id: teamId });
+
   const regenerateTeamSecret = async (sourceId: number | string, teamId: string): Promise<TeamSecretResponse> =>
     post(`/alerts/api/alert_source/${sourceId}/team_secrets/regenerate/`, { team_id: teamId });
 
@@ -49,13 +63,16 @@ export const useSourceApi = () => {
 
   return {
     getAlertSources,
+    getAlertSourceOptions,
     getAlertSourcesDetail,
     getAlertSourceIntegrationGuide,
+    getAlertSourceIntegrationMaterial,
     getK8sMeta,
     getAlertSnmpTrapNodeList,
     downloadK8sFile,
     listTeamSecrets,
     addTeamSecret,
+    revealTeamSecret,
     regenerateTeamSecret,
     removeTeamSecret,
     getDailyEventStats,

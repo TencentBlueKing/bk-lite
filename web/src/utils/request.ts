@@ -15,6 +15,7 @@ import {
 } from '@/utils/sessionExpiry';
 import { forceLogoutAndRedirect } from '@/utils/forceLogout';
 import {
+  extractRequestErrorMessage,
   getRequestErrorPresentation,
   renderRequestErrorPresentation,
   type RequestErrorPresentation,
@@ -74,9 +75,10 @@ export class HandledRequestError extends Error {
 }
 
 const handleResponse = (response: AxiosResponse) => {
-  const { result, message: msg, data } = response.data;
+  const payload = response.data;
+  const { result, data } = payload || {};
   if (!result) {
-    throw new Error(msg);
+    throw new Error(extractRequestErrorMessage(payload) || 'Request failed');
   }
   return data;
 };
@@ -116,11 +118,7 @@ apiClient.interceptors.response.use(
     if (error.response) {
       const { status } = error.response;
       const payload = error.response?.data;
-      const messageText =
-        payload?.message ??
-        payload?.error ??
-        payload?.detail ??
-        `Request failed (${status})`;
+      const messageText = extractRequestErrorMessage(payload, status);
       const presentation = getRequestErrorPresentation(payload);
       const suppressErrorNotification = Boolean(error.config?.suppressErrorNotification);
       const handledError = new HandledRequestError(messageText, {
@@ -142,15 +140,15 @@ apiClient.interceptors.response.use(
             content: renderRequestErrorPresentation(presentation),
             duration: 8,
           });
-        } else if (!suppressErrorNotification) {
+        } else if (!suppressErrorNotification && messageText) {
           message.error(messageText);
         }
         return Promise.reject(handledError);
       } else if (status === 500) {
-        if (!suppressErrorNotification) message.error(messageText);
+        if (!suppressErrorNotification && messageText) message.error(messageText);
         return Promise.reject(handledError);
       } else {
-        if (!suppressErrorNotification) message.error(messageText);
+        if (!suppressErrorNotification && messageText) message.error(messageText);
         return Promise.reject(handledError);
       }
     }

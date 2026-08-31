@@ -19,6 +19,8 @@ from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.viewset_utils import build_json_membership_query
 
 ALLOWED_ACTIONS = {"assign", "acknowledge", "reassign", "close"}
+GATEWAY_MAX_PAGE_SIZE = 500
+LEGACY_OPENAPI_MAX_PAGE_SIZE = 100
 
 
 class AlertsOpenAPIService:
@@ -87,7 +89,7 @@ class AlertsOpenAPIService:
         payload = parse_operator_payload(action, data)
         if not self._base_alert_qs().filter(alert_id=alert_id).exists():
             self._not_found()
-        operator = AlertOperator(user=self.context.username, allowed_alert_ids={alert_id})
+        operator = AlertOperator(user=self.context.username, allowed_alert_ids={alert_id}, api_close=True)
         result = operator.operate(action=action, alert_id=alert_id, data=payload)
         return self._map_operator_result(alert_id, result)
 
@@ -106,20 +108,20 @@ class AlertsOpenAPIService:
                 failed.append({"alert_id": alert_id, "code": exc.code, "message": exc.message})
         return {"succeeded": succeeded, "failed": failed}
 
-    def _paginate(self, queryset, query_params):
-        page, page_size = parse_pagination(query_params)
+    def _paginate(self, queryset, query_params, *, max_page_size=LEGACY_OPENAPI_MAX_PAGE_SIZE):
+        page, page_size = parse_pagination(query_params, max_page_size=max_page_size)
         count = queryset.count()
         start = (page - 1) * page_size
         items = queryset[start : start + page_size]
         return count, page, page_size, items
 
-    def list_alerts(self, query_params):
+    def list_alerts(self, query_params, *, max_page_size=LEGACY_OPENAPI_MAX_PAGE_SIZE):
         self.context.require_feature("Alarms-View")
         queryset = self._base_alert_qs()
         request = SimpleNamespace(user=self.context.user)
         filterset = AlertModelFilter(data=query_params, queryset=queryset, request=request)
         queryset = filterset.qs.order_by(parse_ordering(query_params))
-        count, page, page_size, page_items = self._paginate(queryset, query_params)
+        count, page, page_size, page_items = self._paginate(queryset, query_params, max_page_size=max_page_size)
         return {
             "count": count,
             "page": page,
@@ -135,14 +137,14 @@ class AlertsOpenAPIService:
             self._not_found()
         return serialize_alert(alert, detail=True)
 
-    def list_alert_events(self, alert_id, query_params):
+    def list_alert_events(self, alert_id, query_params, *, max_page_size=LEGACY_OPENAPI_MAX_PAGE_SIZE):
         self.context.require_feature("Alarms-View")
         try:
             alert = self._base_alert_qs().get(alert_id=alert_id)
         except Alert.DoesNotExist:
             self._not_found()
         events_qs = Event.objects.select_related("source").filter(alert=alert).order_by("-received_at")
-        count, page, page_size, page_items = self._paginate(events_qs, query_params)
+        count, page, page_size, page_items = self._paginate(events_qs, query_params, max_page_size=max_page_size)
         return {
             "count": count,
             "page": page,

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from typing import TypeVar
 
 from apps.apm.models import ApmService, ApmServiceInstance
 from apps.apm.services.contracts import SpanSummary, TraceDetail, TraceSummary
 from apps.apm.services.identity import normalize_identity
+
+T = TypeVar("T")
+_MAX_VISIBILITY_FETCHES = 8
 
 
 @dataclass(frozen=True)
@@ -13,6 +17,34 @@ class _TraceIdentity:
     service_namespace: str
     service_name: str
     instance_id: str | None
+
+
+def collect_visible_page(
+    *,
+    fetch_page: Callable[[str | None], tuple[Sequence[T], str | None]],
+    filter_items: Callable[[Sequence[T]], Sequence[T]],
+    cursor: str | None,
+    limit: int,
+    encode_cursor: Callable[[T], str],
+    max_fetches: int = _MAX_VISIBILITY_FETCHES,
+) -> tuple[tuple[T, ...], str | None]:
+    """先做组织可见性过滤，再计算 next_cursor，避免 VT 页游标越过隐藏行后漏掉可见行。"""
+
+    collected: list[T] = []
+    current = cursor
+    next_store_cursor: str | None = None
+    for _ in range(max_fetches):
+        items, next_store_cursor = fetch_page(current)
+        for item in filter_items(items):
+            collected.append(item)
+            if len(collected) > limit:
+                return tuple(collected[:limit]), encode_cursor(collected[limit - 1])
+        if next_store_cursor is None:
+            return tuple(collected), None
+        if len(collected) >= limit:
+            return tuple(collected[:limit]), next_store_cursor
+        current = next_store_cursor
+    return tuple(collected[:limit]), next_store_cursor
 
 
 class TraceAccessResolver:
@@ -118,9 +150,7 @@ class TraceAccessResolver:
                 organization_links__organization=organization_id,
             )
         }
-        service_names_without_instance = {
-            normalize_identity(item.service_name) for item in items if item.instance_id is None
-        }
+        service_names_without_instance = {normalize_identity(item.service_name) for item in items if item.instance_id is None}
         allowed_services = {
             (service.normalized_namespace, service.normalized_name)
             for service in ApmService.objects.filter(

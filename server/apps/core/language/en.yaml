@@ -23,6 +23,23 @@ error:
   username_empty: Username cannot be empty
   otp_empty: Username or OTP code cannot be empty
 
+# Built-in application display names
+app_name:
+  monitor: Monitor Center
+  log: Log Center
+  cmdb: CMDB
+  alarm: Alert Center
+  job: Job Management
+  ops-analysis: Ops Analysis
+  ops-console: Console
+  system-manager: System Management
+  node: Node Management
+  opspilot: OpsPilot
+  mlops: MLOps
+  patch: Patch Management
+  apm: APM
+  playground: Playground
+
 # App descriptions (for built-in apps)
 app:
   ops-analysis: Integrate operation and maintenance data, analyze potential risks and optimization space from multiple dimensions through dashboards and canvases, provide data support for decision-making, and help improve operation and maintenance quality and business continuity

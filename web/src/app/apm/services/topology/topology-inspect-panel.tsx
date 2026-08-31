@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Button, Empty, Tag, Typography } from 'antd';
-import { formatDateTime, formatErrorRate, formatLatency, formatNumber, formatRequestRate } from '@/app/apm/components/metric-format';
+import { formatDateTime, formatLatency, formatNumber, formatRequestRate } from '@/app/apm/components/metric-format';
 import type { ApmTopologyEdge, ApmTopologyNode, ApmTopologySampleTrace, ApmTraceSummary } from '@/app/apm/types';
 import type { TopologyCanvasSelection } from '@/app/apm/services/topology/topology-canvas';
 import { isInferredTopologyNode } from '@/app/apm/services/topology/topology-layout';
@@ -123,12 +123,12 @@ export default function TopologyInspectPanel({
         {selectedNode ? (
           <>
             <dl className="grid grid-cols-1 gap-2 text-sm">
+              <MetricRow label={t('apm.topology.errorCount', '错误数')} value={formatNumber(selectedNode.error_spans)} />
+              <MetricRow label={t('apm.topology.totalCount', '总数')} value={formatNumber(selectedNode.sampled_spans)} />
               <MetricRow label={t('apm.common.p95', 'P95')} value={formatLatency(selectedNode.p95_ms ?? null, false, t)} />
-              <MetricRow label={t('apm.common.errorRate', '错误率')} value={formatErrorRate(selectedNode.error_rate ?? null, false, t)} />
               {isInferredTopologyNode(selectedNode) ? null : (
                 <MetricRow label={t('apm.common.throughput', '吞吐量')} value={formatRequestRate(selectedNode.request_rate ?? null, false, t)} />
               )}
-              <MetricRow label={t('apm.topology.observedCalls', '观测调用')} value={formatNumber(selectedNode.sampled_spans)} />
               {isInferredTopologyNode(selectedNode) && selectedNode.peer_address ? (
                 <MetricRow label={t('apm.topology.peerAddress', '地址')} value={selectedNode.peer_address} />
               ) : null}
@@ -169,9 +169,9 @@ export default function TopologyInspectPanel({
         {selectedEdge && source && target ? (
           <>
             <dl className="grid grid-cols-1 gap-2 text-sm">
-              <MetricRow label={t('apm.topology.observedCalls', '观测调用')} value={formatNumber(selectedEdge.sampled_calls)} />
+              <MetricRow label={t('apm.topology.errorCount', '错误数')} value={formatNumber(selectedEdge.error_calls)} />
+              <MetricRow label={t('apm.topology.totalCount', '总数')} value={formatNumber(selectedEdge.sampled_calls)} />
               <MetricRow label={t('apm.common.p95', 'P95')} value={formatLatency(selectedEdge.p95_ms ?? null, false, t)} />
-              <MetricRow label={t('apm.common.errorRate', '错误率')} value={formatErrorRate(selectedEdge.error_rate ?? null, false, t)} />
             </dl>
             {exploreNode ? (
               <Link href={topologyExploreHref(exploreNode, startedAt, endedAt, slice)}>

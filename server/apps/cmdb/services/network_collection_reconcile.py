@@ -74,31 +74,34 @@ def reconcile_network_collection_configs(instance, *, delete: bool = False) -> d
     result = {"device_id": device_id, "topology_id": topo_id, "pushed": [], "deleted": []}
 
     if delete:
-        for config_id in (device_id, topo_id):
-            try:
-                node_mgmt.delete_child_configs([{"id": config_id}])
-                result["deleted"].append(config_id)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "[NetworkReconcile] 删除节点配置失败 task_id=%s config_id=%s error=%s",
-                    task_id,
-                    config_id,
-                    type(exc).__name__,
-                )
+        config_ids = [device_id, topo_id]
+        try:
+            node_mgmt.delete_child_configs(config_ids)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "[NetworkReconcile] 删除节点配置失败 task_id=%s config_ids=%s error_type=%s",
+                task_id,
+                config_ids,
+                type(exc).__name__,
+            )
+            raise
+        result["deleted"].extend(config_ids)
         return result
 
     # 先删拓扑配置再整体推送，避免关拓扑后残留。
     contract = normalize_topology_contract(ensure_topology_interval_defaults(instance))
     if not contract["has_network_topo"]:
         try:
-            node_mgmt.delete_child_configs([{"id": topo_id}])
-            result["deleted"].append(topo_id)
+            node_mgmt.delete_child_configs([topo_id])
         except Exception as exc:  # noqa: BLE001
             logger.warning(
-                "[NetworkReconcile] 清理拓扑配置失败 task_id=%s error=%s",
+                "[NetworkReconcile] 清理拓扑配置失败 task_id=%s config_id=%s error_type=%s",
                 task_id,
+                topo_id,
                 type(exc).__name__,
             )
+            raise
+        result["deleted"].append(topo_id)
 
     nodes = expected_network_node_configs(instance)
     if nodes:

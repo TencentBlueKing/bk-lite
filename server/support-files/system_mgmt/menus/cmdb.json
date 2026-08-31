@@ -29,6 +29,11 @@
             "Add Associate",
             "Delete Associate"
           ]
+        },
+        {
+          "id": "asset_views_scene",
+          "name": "Tag View",
+          "operation": ["Org Share"]
         }
       ]
     },

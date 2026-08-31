@@ -102,10 +102,13 @@ describe('APM 服务拓扑画布', () => {
     const result = renderWithApmIntl(
       <TopologyCanvas edges={edges} keyword="" nodes={nodes} zoom={1} />,
     );
+    expect(result.container.querySelector('[data-topology-layout-pending="true"]')).not.toBeNull();
+    expect(result.container.querySelector('[aria-busy="true"]')).not.toBeNull();
 
     await waitFor(() => {
       expect(edgePairs(result.container)).toEqual(['catalog>inventory', 'storefront>catalog']);
     });
+    expect(result.container.querySelector('[data-topology-layout-pending="true"]')).toBeNull();
     result.container.querySelectorAll<SVGPathElement>('g[data-source] > path').forEach((path) => {
       expect(path.getAttribute('marker-end')).toBe('url(#apm-arrow)');
       expect(path.getAttribute('marker-start')).toBeNull();
@@ -137,13 +140,16 @@ describe('APM 服务拓扑画布', () => {
     });
   });
 
-  it('连线只展示观测调用量，不把缺失的边级错误画成红色', async () => {
+  it('连线展示总数 / P95 / 错误数，不把缺失的边级错误画成红色', async () => {
     const result = renderWithApmIntl(
       <TopologyCanvas edges={[edge('catalog', 'inventory')]} keyword="" nodes={nodes.slice(0, 2)} zoom={1} />,
     );
 
     await waitFor(() => expect(edgePairs(result.container)).toEqual(['catalog>inventory']));
-    expect(screen.getByText(formatTopologyEdgeMetrics(edge('catalog', 'inventory')))).not.toBeNull();
+    const edgeMetrics = result.container.querySelector('g[data-source="catalog"] [data-topology-metrics]');
+    expect(edgeMetrics?.textContent).toBe(formatTopologyEdgeMetrics(edge('catalog', 'inventory')));
+    expect(edgeMetrics?.getAttribute('data-has-errors')).toBe('false');
+    expect(edgeMetrics?.querySelector('[data-error-count]')?.getAttribute('fill')).toBe('var(--color-success)');
     const path = result.container.querySelector<SVGPathElement>('g[data-source] > path');
     expect(path?.getAttribute('stroke')).not.toBe('var(--color-fail)');
     expect(path?.getAttribute('marker-end')).toBe('url(#apm-arrow)');
@@ -166,25 +172,63 @@ describe('APM 服务拓扑画布', () => {
     expect(result.container.querySelector('[data-node-id="catalog"] circle[fill="var(--color-fail)"]')).not.toBeNull();
   });
 
-  it('页面提供层次/力导向布局，并以总调用数替代观测 Trace', async () => {
+  it('全局拓扑请求推断下游，且不打开用户请求入口', async () => {
     renderWithApmIntl(<ApmTopologyPage />);
+
+    await waitFor(() => expect(api.getTopology).toHaveBeenCalled());
+    expect(api.getTopology).toHaveBeenCalledWith(expect.objectContaining({
+      include_inferred: true,
+    }));
+    expect(api.getTopology.mock.calls[0][0].include_user_request).toBeUndefined();
+  });
+
+  it('层次布局仍在，力导向不是互斥硬切', async () => {
+    const result = renderWithApmIntl(<ApmTopologyPage />);
 
     await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
     expect(screen.getByRole('radiogroup', { name: '拓扑布局' })).not.toBeNull();
     expect(screen.getByRole('radio', { name: '层次' })).not.toBeNull();
     expect(screen.getByRole('radio', { name: '力导向' })).not.toBeNull();
-    expect(screen.queryByRole('radio', { name: '图形' })).toBeNull();
-    expect(screen.queryByRole('radio', { name: '列表' })).toBeNull();
-    expect(screen.getByText('总调用数')).not.toBeNull();
+    expect(result.container.querySelector('svg[data-layout="layered"]')).not.toBeNull();
+
+    fireEvent.click(screen.getByRole('radio', { name: '力导向' }).closest('label')!);
+    await waitFor(() => {
+      expect(result.container.querySelector('svg[data-layout="force"]')).not.toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole('radio', { name: '层次' }).closest('label')!);
+    await waitFor(() => {
+      expect(result.container.querySelector('svg[data-layout="layered"]')).not.toBeNull();
+    });
+    expect(screen.getByText('服务调用')).not.toBeNull();
+    expect(screen.queryByText('总调用数')).toBeNull();
     expect(screen.queryByText('观测 Trace')).toBeNull();
-    expect(screen.getByRole('list', { name: '节点健康图例' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: '收起拓扑图例' })).toBeNull();
+    expect(screen.queryByText('数字为错误数 / 总数')).toBeNull();
     expect(screen.getByRole('complementary', { name: '拓扑调查栏' })).not.toBeNull();
   });
 
-  it('点选节点停在图上打开调查栏并加载样本 Trace', async () => {
+  it('截断时说明拓扑按 Trace 抽样聚合而不是全量流量', async () => {
+    api.getTopology.mockResolvedValue({
+      nodes,
+      edges,
+      sampled_traces: 200,
+      truncated: true,
+      data_state: 'available',
+    });
     renderWithApmIntl(<ApmTopologyPage />);
+
+    expect(await screen.findByText('当前拓扑按最多 200 条 Trace 抽样聚合，指标不代表所选时间窗的全量流量。')).not.toBeNull();
+    expect(screen.getByText('服务调用')).not.toBeNull();
+    expect(screen.queryByText('图上数字来自最多 200 条 Trace 样本，不是时间窗全量。')).toBeNull();
+    expect(screen.queryByText('当前拓扑仅聚合查询上限内的最近 Trace，调用量不代表全量流量。')).toBeNull();
+  });
+
+  it('点选节点停在图上打开调查栏并加载样本 Trace', async () => {
+    const result = renderWithApmIntl(<ApmTopologyPage />);
     await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
-    fireEvent.click(screen.getByRole('button', { name: /catalog/ }));
+    await waitFor(() => expect(result.container.querySelector('[data-node-id="catalog"]')).not.toBeNull());
+    fireEvent.click(result.container.querySelector('[data-node-id="catalog"]') as Element);
     expect(await screen.findByRole('button', { name: '隔离一跳' })).not.toBeNull();
     expect(screen.getByRole('link', { name: '更多调用链' })).not.toBeNull();
     await waitFor(() => expect(api.getTraces).toHaveBeenCalled());
@@ -194,7 +238,8 @@ describe('APM 服务拓扑画布', () => {
   it('隔离一跳后只保留目标服务的直接邻居', async () => {
     const result = renderWithApmIntl(<ApmTopologyPage />);
     await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
-    fireEvent.click(screen.getByRole('button', { name: /storefront/ }));
+    await waitFor(() => expect(result.container.querySelector('[data-node-id="storefront"]')).not.toBeNull());
+    fireEvent.click(result.container.querySelector('[data-node-id="storefront"]') as Element);
     fireEvent.click(await screen.findByRole('button', { name: '隔离一跳' }));
     await waitFor(() => {
       expect(result.container.querySelector('[data-node-id="inventory"]')).toBeNull();
@@ -291,6 +336,53 @@ describe('APM 服务拓扑画布', () => {
     expect(screen.getAllByText('推断').length).toBeGreaterThan(0);
   });
 
+  it('用户请求入口节点使用用户图标、本地化标签与虚线入口边', async () => {
+    const result = renderWithApmIntl(
+      <TopologyCanvas
+        edges={[edge('user_request:local', 'storefront'), edge('storefront', 'catalog')]}
+        keyword=""
+        nodes={[
+          node('storefront'),
+          node('catalog'),
+          node('user_request:local', {
+            service_name: 'user_request',
+            service_namespace: '',
+            kind: 'user_request',
+            health: 'unknown',
+            language: '',
+            request_rate: null,
+            error_rate: null,
+            p95_ms: null,
+            sampled_spans: 12,
+          }),
+        ]}
+        zoom={1}
+      />,
+    );
+
+    await waitFor(() => expect(result.container.querySelector('[data-node-kind="user_request"]')).not.toBeNull());
+    const entry = result.container.querySelector('[data-node-kind="user_request"]') as SVGGElement;
+    expect(entry.querySelector('[data-service-icon="user-request"]')).not.toBeNull();
+    expect(entry.querySelector('[data-node-label]')?.textContent).toBe('用户请求');
+    const entryPill = entry.querySelector('rect[data-node-shape="entry-pill"]');
+    expect(entryPill).not.toBeNull();
+    expect(entryPill?.getAttribute('height')).toBe('32');
+    expect(entryPill?.getAttribute('rx')).toBe('16');
+    expect(entryPill?.getAttribute('fill')).toBe('var(--color-fill-2)');
+    expect(Number(entryPill?.getAttribute('width'))).toBeLessThan(176);
+    expect(entry.querySelector('circle')).toBeNull();
+    const entryMetrics = entry.querySelector('[data-topology-metrics]');
+    expect(entryMetrics?.textContent).toBe('12');
+    expect(entryMetrics?.textContent).not.toContain('/');
+    expect(entry.textContent).not.toContain('12 / — / 0');
+    expect(entry.textContent).not.toContain('观测请求 12 次');
+    expect(entry.textContent).not.toContain('无数据');
+    const entryEdge = result.container.querySelector('g[data-source="user_request:local"] > path');
+    expect(entryEdge?.getAttribute('stroke-dasharray')).toBe('5 4');
+    const serviceEdge = result.container.querySelector('g[data-source="storefront"] > path');
+    expect(serviceEdge?.getAttribute('stroke-dasharray')).toBeNull();
+  });
+
   it('仅错误请求与只看异常可同时存在且语义不同', async () => {
     renderWithApmIntl(<ApmTopologyPage />);
     await screen.findByRole('img', { name: 'APM 服务调用拓扑' });
@@ -300,6 +392,111 @@ describe('APM 服务拓扑画布', () => {
     const callsBeforeAnomaly = api.getTopology.mock.calls.length;
     fireEvent.click(screen.getByRole('button', { name: '只看异常' }));
     expect(api.getTopology.mock.calls.length).toBe(callsBeforeAnomaly);
+  });
+
+  it('节点与连线展示总数 / P95 / 错误数，错误数按有无着色', async () => {
+    const result = renderWithApmIntl(
+      <TopologyCanvas
+        edges={[{ ...edge('catalog', 'inventory'), error_calls: 12, sampled_calls: 100, p95_ms: 40 }]}
+        keyword=""
+        nodes={[node('catalog', { error_spans: 20, sampled_spans: 100, error_rate: 0.2 }), node('inventory')]}
+        zoom={1}
+      />,
+    );
+
+    await waitFor(() => expect(result.container.querySelector('[data-node-id="catalog"]')).not.toBeNull());
+    const catalogMetrics = result.container.querySelector('[data-node-id="catalog"] [data-topology-metrics]');
+    expect(catalogMetrics?.textContent).toBe('100 / 42ms / 20');
+    expect(catalogMetrics?.getAttribute('data-has-errors')).toBe('true');
+    expect(catalogMetrics?.querySelector('[data-error-count]')?.getAttribute('fill')).toBe('var(--color-fail)');
+    expect(catalogMetrics?.querySelector('[data-error-count]')?.getAttribute('font-weight')).toBe('700');
+    expect(result.container.querySelector('[data-node-id="catalog"]')?.textContent).not.toContain('20.0%');
+    const edgeMetrics = result.container.querySelector('g[data-source="catalog"] [data-topology-metrics]');
+    expect(edgeMetrics?.textContent).toBe('100 / 40ms / 12');
+    expect(edgeMetrics?.getAttribute('data-has-errors')).toBe('true');
+    const healthyMetrics = result.container.querySelector('[data-node-id="inventory"] [data-topology-metrics]');
+    expect(healthyMetrics?.textContent).toBe('100 / 42ms / 0');
+    expect(healthyMetrics?.getAttribute('data-has-errors')).toBe('false');
+    expect(healthyMetrics?.querySelector('[data-error-count]')?.getAttribute('fill')).toBe('var(--color-success)');
+  });
+
+  it('拖动服务节点会带动连线，且不平移整张画布', async () => {
+    const onSelect = vi.fn();
+    const result = renderWithApmIntl(
+      <TopologyCanvas edges={edges} keyword="" nodes={nodes} onSelect={onSelect} zoom={1} />,
+    );
+    await waitFor(() => expect(result.container.querySelector('[data-node-id="catalog"]')).not.toBeNull());
+    const catalog = result.container.querySelector('[data-node-id="catalog"]') as SVGGElement;
+    const beforeTransform = catalog.getAttribute('transform');
+    const beforePath = result.container.querySelector('g[data-source="catalog"] > path')?.getAttribute('d');
+    const beforeView = result.container.querySelector('[data-topology-view]')?.getAttribute('transform');
+
+    fireEvent.mouseDown(catalog, { button: 0, clientX: 100, clientY: 80 });
+    await waitFor(() => {
+      expect(result.container.querySelector('[data-node-id="catalog"]')?.getAttribute('data-node-dragging')).toBe('true');
+    });
+    fireEvent.mouseMove(window, { clientX: 180, clientY: 140 });
+    await waitFor(() => {
+      expect(result.container.querySelector('[data-node-id="catalog"]')?.getAttribute('transform')).not.toBe(beforeTransform);
+    });
+    expect(result.container.querySelector('g[data-source="catalog"] > path')?.getAttribute('d')).not.toBe(beforePath);
+    expect(result.container.querySelector('[data-topology-view]')?.getAttribute('transform')).toBe(beforeView);
+    fireEvent.mouseUp(window);
+    await waitFor(() => {
+      expect(result.container.querySelector('[data-node-dragging]')).toBeNull();
+    });
+    expect(onSelect).toHaveBeenCalledWith({ kind: 'node', id: 'catalog' });
+  });
+
+  it('短按节点仍是点选，不会当成拖动', async () => {
+    const onSelect = vi.fn();
+    const result = renderWithApmIntl(
+      <TopologyCanvas edges={edges} keyword="" nodes={nodes} onSelect={onSelect} zoom={1} />,
+    );
+    await waitFor(() => expect(result.container.querySelector('[data-node-id="catalog"]')).not.toBeNull());
+    const catalog = result.container.querySelector('[data-node-id="catalog"]') as SVGGElement;
+    const beforeTransform = catalog.getAttribute('transform');
+    fireEvent.mouseDown(catalog, { button: 0, clientX: 40, clientY: 40 });
+    fireEvent.mouseMove(window, { clientX: 42, clientY: 41 });
+    fireEvent.mouseUp(window);
+    expect(result.container.querySelector('[data-node-id="catalog"]')?.getAttribute('transform')).toBe(beforeTransform);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith({ kind: 'node', id: 'catalog' });
+  });
+
+  it('力导向同样展示总数 / P95 / 错误数，且可拖动节点', async () => {
+    const onSelect = vi.fn();
+    const result = renderWithApmIntl(
+      <TopologyCanvas
+        layout="force"
+        edges={[{ ...edge('catalog', 'inventory'), error_calls: 12, sampled_calls: 100, p95_ms: 40 }]}
+        keyword=""
+        nodes={[node('catalog', { error_spans: 20, sampled_spans: 100, error_rate: 0.2 }), node('inventory')]}
+        onSelect={onSelect}
+        zoom={1}
+      />,
+    );
+    await waitFor(() => expect(result.container.querySelector('svg[data-layout="force"]')).not.toBeNull());
+    await waitFor(() => expect(result.container.querySelector('[data-node-id="catalog"]')).not.toBeNull());
+    expect(result.container.querySelector('[data-node-id="catalog"] [data-topology-metrics]')?.textContent).toBe('100 / 42ms / 20');
+    expect(result.container.querySelector('[data-node-id="catalog"]')?.textContent).not.toContain('20.0%');
+    expect(result.container.querySelector('g[data-source="catalog"] [data-topology-metrics]')?.textContent).toBe('100 / 40ms / 12');
+    expect(screen.queryByText('可拖动节点整理布局')).toBeNull();
+
+    const catalog = result.container.querySelector('[data-node-id="catalog"]') as SVGGElement;
+    const beforeTransform = catalog.getAttribute('transform');
+    const beforePath = result.container.querySelector('g[data-source="catalog"] > path')?.getAttribute('d');
+    fireEvent.mouseDown(catalog, { button: 0, clientX: 100, clientY: 80 });
+    await waitFor(() => {
+      expect(result.container.querySelector('[data-node-id="catalog"]')?.getAttribute('data-node-dragging')).toBe('true');
+    });
+    fireEvent.mouseMove(window, { clientX: 180, clientY: 140 });
+    await waitFor(() => {
+      expect(result.container.querySelector('[data-node-id="catalog"]')?.getAttribute('transform')).not.toBe(beforeTransform);
+    });
+    expect(result.container.querySelector('g[data-source="catalog"] > path')?.getAttribute('d')).not.toBe(beforePath);
+    fireEvent.mouseUp(window);
+    expect(onSelect).toHaveBeenCalledWith({ kind: 'node', id: 'catalog' });
   });
 
   it('缩放按钮改变画布视图而不离开页面', async () => {

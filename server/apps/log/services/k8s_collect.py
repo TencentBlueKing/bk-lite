@@ -340,6 +340,13 @@ class K8sLogCollectService:
 
         return env_vars
 
+    @staticmethod
+    def get_cloud_region_public_config(cloud_region_id: str) -> dict:
+        env_vars = NodeMgmt().get_cloud_region_public_config(cloud_region_id)
+        if not env_vars.get("NODE_SERVER_URL"):
+            raise BaseAppException(f"Missing NODE_SERVER_URL in cloud region {cloud_region_id}")
+        return env_vars
+
     @classmethod
     def generate_install_command(
         cls,
@@ -350,7 +357,7 @@ class K8sLogCollectService:
         instance = cls.get_k8s_instance(instance_id)
         cls.load_setting_render_options(instance.id)
 
-        env_vars = cls.get_cloud_region_envconfig(cloud_region_id)
+        env_vars = cls.get_cloud_region_public_config(cloud_region_id)
         server_url = env_vars.get("NODE_SERVER_URL")
         token = cls.generate_install_token(instance.id, str(cloud_region_id), image_registry_prefix)
         api_url = f"{server_url.rstrip('/')}/api/v1/log/open_api/k8s/render/"

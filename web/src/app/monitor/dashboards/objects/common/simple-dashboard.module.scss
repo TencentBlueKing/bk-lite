@@ -28,6 +28,59 @@
   margin-bottom: 12px;
 }
 
+.protocolBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 16px;
+  padding: 0 2px;
+  // 切换路由/刷新插件时保留高度，避免采集视图条消失导致内容区跳动。
+  min-height: 32px;
+}
+
+.protocolBarLabel {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-3);
+  white-space: nowrap;
+}
+
+// 采集视图 Segmented：容器贴近页面渐变底，选中项白色高亮 + 主题色文字，弱化边框。
+.protocolSegmented {
+  height: 32px;
+  padding: 2px !important;
+  border-radius: 8px !important;
+  border: 1px solid var(--color-border);
+  background: var(--color-fill-1) !important;
+}
+
+.protocolSegmented :global(.ant-segmented-item) {
+  min-height: 26px;
+  line-height: 26px;
+  border-radius: 6px !important;
+  color: var(--color-text-3);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.protocolSegmented :global(.ant-segmented-item-selected) {
+  color: var(--color-primary) !important;
+  background: var(--color-bg) !important;
+  box-shadow: none;
+}
+
+.protocolSegmented :global(.ant-segmented-thumb) {
+  border-radius: 6px !important;
+  background: var(--color-bg) !important;
+  box-shadow: none;
+}
+
+.protocolSegmented :global(.ant-segmented-item:hover:not(.ant-segmented-item-selected)) {
+  color: var(--color-text-1);
+}
+
 .pageTitleRow {
   display: flex;
   align-items: center;

@@ -6,7 +6,8 @@ import json
 import os
 import time
 import uuid
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from typing import Any
 
 from django.db import IntegrityError, OperationalError, transaction
@@ -15,21 +16,15 @@ from django.utils import timezone
 from django.utils.timezone import localtime, now
 
 from apps.cmdb.constants.constants import CollectRunStatusType
-from apps.cmdb.models import (
-    NodeMgmtSyncConfig,
-    NodeMgmtSyncRegionSnapshot,
-    NodeMgmtSyncRegionState,
-    NodeMgmtSyncRun,
-    NodeMgmtSyncSnapshotRow,
-)
+from apps.cmdb.models import NodeMgmtSyncConfig, NodeMgmtSyncRegionSnapshot, NodeMgmtSyncRegionState, NodeMgmtSyncRun, NodeMgmtSyncSnapshotRow
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.services.host_sync_identity import (
     build_host_inst_name,
     host_lookup_key,
     is_node_mgmt_sidecar_id,
     is_unique_conflict,
-    normalize_link_id,
     node_id_to_write,
+    normalize_link_id,
     resolve_host_identity,
 )
 from apps.cmdb.services.instance import InstanceManage
@@ -409,10 +404,7 @@ class NodeMgmtSyncService:
 
         from apps.cmdb.services.node_mgmt_sync_reconciler import NodeMgmtSyncReconciler
 
-        switches_changed = (
-            old_auto_sync_enabled != task.auto_sync_enabled
-            or old_auto_collect_enabled != task.auto_collect_enabled
-        )
+        switches_changed = old_auto_sync_enabled != task.auto_sync_enabled or old_auto_collect_enabled != task.auto_collect_enabled
         has_delivery_intent = NodeMgmtSyncRegionState.objects.filter(
             config=task,
             node_config_status__in=(
@@ -731,18 +723,13 @@ class NodeMgmtSyncService:
                 run.save(update_fields=["expected_region_count", "updated_at"])
             for state in states:
                 snapshot = getattr(state, "snapshot", None)
-                if (
-                    snapshot is not None
-                    and snapshot.capture_status == NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE
-                ):
+                if snapshot is not None and snapshot.capture_status == NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE:
                     continue
                 state.status = NodeMgmtSyncRun.STATUS_FAILED
                 state.reason_code = cls.REASON_TIMEOUT
                 state.error_message = ""
                 state.finished_at = current_time
-                state.save(
-                    update_fields=["status", "reason_code", "error_message", "finished_at", "updated_at"]
-                )
+                state.save(update_fields=["status", "reason_code", "error_message", "finished_at", "updated_at"])
                 cls._capture_placeholder_snapshot(
                     state,
                     status=NodeMgmtSyncRun.STATUS_FAILED,
@@ -1725,10 +1712,15 @@ class NodeMgmtSyncService:
                     config=task_config,
                     scope_key=scope_key,
                 ).first()
-                needs_intent = collect_task.is_interval or state is None or state.node_config_status not in (
-                    "delete_pending",
-                    "delete_in_progress",
-                    "disabled",
+                needs_intent = (
+                    collect_task.is_interval
+                    or state is None
+                    or state.node_config_status
+                    not in (
+                        "delete_pending",
+                        "delete_in_progress",
+                        "disabled",
+                    )
                 )
                 if collect_task.is_interval:
                     collect_task.is_interval = False
@@ -1904,9 +1896,7 @@ class NodeMgmtSyncService:
 
         legacy_raw_rows = detail["raw_data"]["data"]
         message["raw_total"] = len(legacy_raw_rows)
-        message["raw_process"] = sum(
-            1 for row in legacy_raw_rows if isinstance(row, dict) and row.get("model_id") == "host_proc_usage"
-        )
+        message["raw_process"] = sum(1 for row in legacy_raw_rows if isinstance(row, dict) and row.get("model_id") == "host_proc_usage")
         message["raw_host"] = message["raw_total"] - message["raw_process"]
         message["raw_retained"] = message["raw_total"]
         message["raw_dropped"] = 0
@@ -2173,8 +2163,9 @@ class NodeMgmtSyncService:
         matched_retained_count = matched_query.count()
         offset = (parsed_page - 1) * parsed_page_size
         data = list(
-            matched_query.order_by("snapshot__cloud_region_id", "snapshot_id", "ordinal")
-            .values_list("payload_json", flat=True)[offset : offset + parsed_page_size]
+            matched_query.order_by("snapshot__cloud_region_id", "snapshot_id", "ordinal").values_list("payload_json", flat=True)[
+                offset : offset + parsed_page_size
+            ]
         )
         summary = current_run.summary_json if isinstance(current_run.summary_json, dict) else {}
         return {
@@ -2284,12 +2275,7 @@ class NodeMgmtSyncService:
         # _persist_hosts 会把本轮新增/更新写回该映射，区域任务因此能立即引用。
         existing_map = cls._load_existing_host_map(task_id=0, run=run)
         logger.debug("[NodeMgmtSync] 加载已有主机映射, existing_count=%d", len(existing_map))
-        live_node_ids = {
-            nid
-            for region_nodes in grouped_nodes.values()
-            for node in region_nodes
-            if (nid := normalize_link_id(node.get("id")))
-        }
+        live_node_ids = {nid for region_nodes in grouped_nodes.values() for node in region_nodes if (nid := normalize_link_id(node.get("id")))}
 
         for cloud_region_id, region_nodes in grouped_nodes.items():
             cls.heartbeat_run(run)
@@ -2770,25 +2756,18 @@ class NodeMgmtSyncService:
             occurrence = occurrences.get(canonical, 0)
             occurrences[canonical] = occurrence + 1
             row_key = hashlib.sha256(
-                (
-                    f"{run.generation}|{state.cloud_region_id}|{state.child_execution_id}|"
-                    f"raw_data|{canonical}|{occurrence}"
-                ).encode()
+                (f"{run.generation}|{state.cloud_region_id}|{state.child_execution_id}|" f"raw_data|{canonical}|{occurrence}").encode()
             ).hexdigest()
             row_payload = dict(payload)
             row_payload["_row_key"] = row_key
-            encoded_size = len(
-                json.dumps(row_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode()
-            )
+            encoded_size = len(json.dumps(row_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode())
             if retained_bytes + encoded_size > byte_quota:
                 break
             retained.append({"payload": row_payload, "row_type": row_type, "byte_size": encoded_size})
             retained_bytes += encoded_size
 
         task_digest = collect_task.collect_digest if isinstance(collect_task.collect_digest, dict) else {}
-        has_persisted_input_summary = all(
-            key in task_digest for key in ("raw_total", "raw_host", "raw_process", "raw_dropped")
-        )
+        has_persisted_input_summary = all(key in task_digest for key in ("raw_total", "raw_host", "raw_process", "raw_dropped"))
         if has_persisted_input_summary:
             raw_total = cls._safe_count(task_digest.get("raw_total"))
             raw_host = cls._safe_count(task_digest.get("raw_host"))
@@ -2804,8 +2783,7 @@ class NodeMgmtSyncService:
                 "raw_process": raw_process,
                 "raw_dropped": raw_dropped,
                 "raw_retained": len(retained),
-                "raw_truncated": task_digest.get("raw_input_truncated") is True
-                or len(retained) < raw_host + raw_process,
+                "raw_truncated": task_digest.get("raw_input_truncated") is True or len(retained) < raw_host + raw_process,
             }
         )
         return retained, summary, retained_bytes
@@ -2832,10 +2810,7 @@ class NodeMgmtSyncService:
                 or locked_run.deadline_at <= current_time
             ):
                 raise NodeMgmtSyncError("RUN_NOT_ACTIVE")
-            if (
-                locked_state.status != NodeMgmtSyncRun.STATUS_SUBMITTED
-                or str(collect_task.task_id or "") != locked_state.child_execution_id
-            ):
+            if locked_state.status != NodeMgmtSyncRun.STATUS_SUBMITTED or str(collect_task.task_id or "") != locked_state.child_execution_id:
                 raise NodeMgmtSyncError("COLLECT_EXECUTION_SUPERSEDED")
 
             row_quota, byte_quota = cls._region_snapshot_quota(locked_state)
@@ -2967,9 +2942,7 @@ class NodeMgmtSyncService:
             locked_state.reason_code = reason_code
             locked_state.error_message = ""
             locked_state.finished_at = current_time
-            locked_state.save(
-                update_fields=["status", "reason_code", "error_message", "finished_at", "updated_at"]
-            )
+            locked_state.save(update_fields=["status", "reason_code", "error_message", "finished_at", "updated_at"])
             return locked_state
 
     @classmethod
@@ -3012,6 +2985,24 @@ class NodeMgmtSyncService:
         return NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
 
     @classmethod
+    def _collect_snapshot_reason_code(
+        cls,
+        *,
+        status: str,
+        snapshots: list[NodeMgmtSyncRegionSnapshot],
+        explicit: str = "",
+    ) -> str:
+        if explicit:
+            return explicit
+        if status == NodeMgmtSyncRun.STATUS_SUCCESS:
+            return ""
+        codes = [snapshot.reason_code for snapshot in snapshots if snapshot.reason_code]
+        unique = list(dict.fromkeys(codes))
+        if len(unique) == 1:
+            return unique[0]
+        return ""
+
+    @classmethod
     def _finalize_collect_snapshot_run(
         cls,
         run: NodeMgmtSyncRun,
@@ -3024,6 +3015,11 @@ class NodeMgmtSyncService:
             snapshot.capture_status != NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE for snapshot in snapshots
         ):
             raise NodeMgmtSyncError("COLLECT_SNAPSHOT_INCOMPLETE")
+        reason_code = cls._collect_snapshot_reason_code(
+            status=status,
+            snapshots=snapshots,
+            explicit=reason_code,
+        )
 
         message = cls._empty_display_message()
         times = []
@@ -3428,9 +3424,7 @@ class NodeMgmtSyncService:
             reason_code = "COLLECT_ALREADY_RUNNING"
         else:
             reason_code = "COLLECT_SUBMISSION_BLOCKED"
-        if run.expected_region_count == run.region_snapshots.filter(
-            capture_status=NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE
-        ).count():
+        if run.expected_region_count == run.region_snapshots.filter(capture_status=NodeMgmtSyncRegionSnapshot.CAPTURE_COMPLETE).count():
             cls._finalize_collect_snapshot_run(
                 run,
                 status=NodeMgmtSyncRun.STATUS_BLOCKED,

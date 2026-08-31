@@ -359,6 +359,253 @@ def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
 # 业务上限：单次拉取最多返回 N 条机房记录。机房数业务上不会超过该值，
 # 不分页（避免前端分页复杂度）；如未来业务量超限再调整。
 _ROOM_LIST_PAGE_SIZE = 1000
+# 机柜选择器按机房分页；搜索命中窗口与机房列表上限对齐，避免无界拉取。
+_PICKER_ROOM_PAGE_MAX = 100
+_PICKER_SEARCH_MATCH_CAP = 1000
+
+
+def _inst_name_query(keyword: str) -> list:
+    return [{"field": "inst_name", "type": "str*", "value": keyword}]
+
+
+def _picker_uuid(item: dict | None) -> str | None:
+    if not item:
+        return None
+    return optional_inst_uuid(item.get("inst_uuid"))
+
+
+def _rack_picker_item(item: dict) -> dict | None:
+    inst_uuid = _picker_uuid(item)
+    if not inst_uuid:
+        return None
+    return {
+        "inst_uuid": inst_uuid,
+        "inst_name": item.get("inst_name") or inst_uuid,
+        "model_id": item.get("model_id") or "rack",
+    }
+
+
+def _visible_racks_by_room(
+    room_uuids: list[str],
+    rack_permission_map: dict | None,
+    user=None,
+) -> dict[str, list[dict]]:
+    grouped = {room_uuid: [] for room_uuid in room_uuids}
+    if not room_uuids:
+        return grouped
+
+    relation = InstanceManage.instance_association_map_by_uuids(
+        "server_room",
+        room_uuids,
+        related_model="rack",
+    )
+    rack_uuids: list[str] = []
+    seen: set[str] = set()
+    for room_uuid in room_uuids:
+        for rack_uuid in relation.get(room_uuid) or []:
+            normalized = optional_inst_uuid(rack_uuid)
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            rack_uuids.append(normalized)
+
+    entities = InstanceManage.query_entity_by_uuids(rack_uuids) if rack_uuids else []
+    by_uuid = {}
+    for item in entities:
+        inst_uuid = _picker_uuid(item)
+        if not inst_uuid:
+            continue
+        if not InstanceManage._has_topology_view_permission(item, rack_permission_map, user=user):
+            continue
+        packed = _rack_picker_item(item)
+        if packed:
+            by_uuid[inst_uuid] = packed
+
+    for room_uuid in room_uuids:
+        racks = []
+        for rack_uuid in relation.get(room_uuid) or []:
+            normalized = optional_inst_uuid(rack_uuid)
+            item = by_uuid.get(normalized) if normalized else None
+            if item:
+                racks.append(item)
+        racks.sort(key=lambda rack: (rack["inst_name"], rack["inst_uuid"]))
+        grouped[room_uuid] = racks
+    return grouped
+
+
+def _room_picker_group(room: dict, racks: list[dict]) -> dict | None:
+    room_uuid = _picker_uuid(room)
+    if not room_uuid:
+        return None
+    return {
+        "room_uuid": room_uuid,
+        "room_name": room.get("inst_name") or room_uuid,
+        "racks": racks,
+    }
+
+
+def _unassociated_picker_group(racks: list[dict]) -> dict:
+    return {"room_uuid": None, "room_name": "", "racks": racks}
+
+
+def _list_visible_instances(
+    model_id: str,
+    *,
+    keyword: str = "",
+    page: int = 1,
+    page_size: int = _PICKER_SEARCH_MATCH_CAP,
+    permission_map: dict | None = None,
+    creator: str | None = None,
+) -> tuple[list, int]:
+    params = list(_inst_name_query(keyword)) if keyword else []
+    inst_list, count = InstanceManage.instance_list(
+        model_id=model_id,
+        params=params,
+        page=page,
+        page_size=page_size,
+        order="inst_name",
+        permission_map=permission_map or {},
+        creator=creator,
+        case_sensitive=False,
+    )
+    return inst_list or [], int(count or 0)
+
+
+def _matching_rooms_for_rack_search(
+    *,
+    keyword: str,
+    room_permission_map: dict | None,
+    rack_permission_map: dict | None,
+    user=None,
+    creator: str | None = None,
+) -> tuple[list[dict], list[dict]]:
+    rooms_by_name, _ = _list_visible_instances(
+        "server_room",
+        keyword=keyword,
+        permission_map=room_permission_map,
+        creator=creator,
+    )
+    racks_by_name, _ = _list_visible_instances(
+        "rack",
+        keyword=keyword,
+        permission_map=rack_permission_map,
+        creator=creator,
+    )
+
+    rack_uuids = [uid for item in racks_by_name if (uid := _picker_uuid(item))]
+    parent_map = InstanceManage.instance_association_map_by_uuids("rack", rack_uuids, related_model="server_room") if rack_uuids else {}
+
+    rooms_by_uuid: dict[str, dict] = {}
+    for room in rooms_by_name:
+        room_uuid = _picker_uuid(room)
+        if room_uuid:
+            rooms_by_uuid[room_uuid] = room
+
+    parent_room_uuids: list[str] = []
+    unassociated: list[dict] = []
+    seen_parents: set[str] = set()
+    for rack in racks_by_name:
+        packed = _rack_picker_item(rack)
+        if not packed:
+            continue
+        parents = [optional_inst_uuid(value) for value in parent_map.get(packed["inst_uuid"]) or []]
+        parents = [value for value in parents if value]
+        if not parents:
+            unassociated.append(packed)
+            continue
+        for parent_uuid in parents:
+            if parent_uuid in seen_parents:
+                continue
+            seen_parents.add(parent_uuid)
+            parent_room_uuids.append(parent_uuid)
+
+    missing = [uid for uid in parent_room_uuids if uid not in rooms_by_uuid]
+    if missing:
+        for room in InstanceManage.query_entity_by_uuids(missing):
+            room_uuid = _picker_uuid(room)
+            if not room_uuid:
+                continue
+            if not InstanceManage._has_topology_view_permission(room, room_permission_map, user=user):
+                continue
+            rooms_by_uuid[room_uuid] = room
+
+    ordered: list[dict] = []
+    seen: set[str] = set()
+    for room in rooms_by_name:
+        room_uuid = _picker_uuid(room)
+        if not room_uuid or room_uuid in seen or room_uuid not in rooms_by_uuid:
+            continue
+        ordered.append(rooms_by_uuid[room_uuid])
+        seen.add(room_uuid)
+    rest = [rooms_by_uuid[uid] for uid in rooms_by_uuid if uid not in seen]
+    rest.sort(key=lambda item: (item.get("inst_name") or "", _picker_uuid(item) or ""))
+    ordered.extend(rest)
+    unassociated.sort(key=lambda item: (item["inst_name"], item["inst_uuid"]))
+    return ordered, unassociated
+
+
+def list_racks_grouped_by_room(
+    *,
+    room_permission_map: dict | None = None,
+    rack_permission_map: dict | None = None,
+    user=None,
+    creator: str | None = None,
+    search: str = "",
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    """机柜选择器选项：按机房分组，搜索同时匹配机房名与机柜名。
+
+    分页单位是机房（每个分组带出该机房下可见机柜），不是机柜行。
+    """
+    try:
+        page = int(page)
+        page_size = int(page_size)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("page 与 page_size 必须是整数") from exc
+    if page < 1:
+        raise ValueError("page 必须大于等于 1")
+    if page_size < 1 or page_size > _PICKER_ROOM_PAGE_MAX:
+        raise ValueError("page_size 必须在 1 到 100 之间")
+
+    keyword = (search or "").strip()
+    unassociated: list[dict] = []
+    if keyword:
+        rooms, unassociated = _matching_rooms_for_rack_search(
+            keyword=keyword,
+            room_permission_map=room_permission_map,
+            rack_permission_map=rack_permission_map,
+            user=user,
+            creator=creator,
+        )
+        count = len(rooms) + (1 if unassociated else 0)
+        start = (page - 1) * page_size
+        page_items: list = list(rooms)
+        if unassociated:
+            page_items.append({"_unassociated": True})
+        page_items = page_items[start : start + page_size]
+    else:
+        rooms, count = _list_visible_instances(
+            "server_room",
+            page=page,
+            page_size=page_size,
+            permission_map=room_permission_map,
+            creator=creator,
+        )
+        page_items = list(rooms)
+
+    room_uuids = [uid for item in page_items if not item.get("_unassociated") and (uid := _picker_uuid(item))]
+    racks_by_room = _visible_racks_by_room(room_uuids, rack_permission_map, user=user)
+
+    groups = []
+    for item in page_items:
+        if item.get("_unassociated"):
+            groups.append(_unassociated_picker_group(unassociated))
+            continue
+        group = _room_picker_group(item, racks_by_room.get(_picker_uuid(item) or "", []))
+        if group:
+            groups.append(group)
+    return {"groups": groups, "count": count}
 
 
 def list_server_rooms(permission_map: dict | None = None, user_info=None) -> list:

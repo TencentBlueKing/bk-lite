@@ -25,7 +25,7 @@ def _integration_region(monkeypatch):
     region = Mock()
     region.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
     region.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
-    region.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
+    region.get_cloud_region_public_config.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
     monkeypatch.setattr("apps.apm.views.control_plane.NodeMgmt", lambda: region)
     return region
 
@@ -142,7 +142,7 @@ def test_integration_config_is_stateless_and_maps_standard_resource_attributes(a
     region = Mock()
     region.cloud_region_list.return_value = [{"id": 7, "name": "华东一区"}]
     region.get_cloud_region_proxy_address.return_value = "apm-east.example.com"
-    region.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
+    region.get_cloud_region_public_config.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
 
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr("apps.apm.views.control_plane.NodeMgmt", lambda: region)
@@ -175,7 +175,7 @@ def test_integration_config_is_stateless_and_maps_standard_resource_attributes(a
     assert "http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-python-wheels.tar.gz" in response.data["code"]
     assert "pypi.org" not in response.data["code"]
     region.get_cloud_region_proxy_address.assert_called_once_with(7)
-    region.get_cloud_region_envconfig.assert_called_once_with(7)
+    region.get_cloud_region_public_config.assert_called_once_with(7)
     assert ApmApplication.objects.filter(is_builtin=False).count() == 1
 
 
@@ -337,7 +337,7 @@ def test_integration_config_falls_back_to_trusted_node_server_url_without_node_o
     region = Mock()
     region.cloud_region_list.return_value = [{"id": 7, "name": "直连区域"}]
     region.get_cloud_region_proxy_address.return_value = ""
-    region.get_cloud_region_envconfig.return_value = {
+    region.get_cloud_region_public_config.return_value = {
         "NODE_SERVER_URL": "http://10.10.10.1:8011",
     }
 
@@ -361,13 +361,13 @@ def test_integration_config_falls_back_to_trusted_node_server_url_without_node_o
     assert response.data["http_endpoint"] == "http://10.10.10.1:4318/v1/traces"
     assert response.data["environment"]["OTEL_EXPORTER_OTLP_ENDPOINT"] == "http://10.10.10.1:4318"
     region.get_cloud_region_proxy_address.assert_called_once_with(7)
-    region.get_cloud_region_envconfig.assert_called_once_with(7)
+    region.get_cloud_region_public_config.assert_called_once_with(7)
 
 
 def test_integration_config_java_snippet_uses_the_system_probe_download_address(apm_api_client, monkeypatch):
     create_application("shop", (10,))
     region = _integration_region(monkeypatch)
-    region.get_cloud_region_envconfig.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
+    region.get_cloud_region_public_config.return_value = {"NODE_SERVER_URL": "http://10.10.10.1:8011"}
 
     response = apm_api_client.post(
         "/api/v1/apm/integration-config/",
@@ -386,7 +386,7 @@ def test_integration_config_java_snippet_uses_the_system_probe_download_address(
     assert response.status_code == 200
     assert "http://10.10.10.1:8011/api/v1/apm/open_api/probe/download/opentelemetry-javaagent.jar" in response.data["code"]
     assert "github.com" not in response.data["code"]
-    region.get_cloud_region_envconfig.assert_called_once_with(7)
+    region.get_cloud_region_public_config.assert_called_once_with(7)
 
 
 @pytest.mark.parametrize(
@@ -429,7 +429,7 @@ def test_integration_config_snippets_use_system_probe_download_addresses(
 def test_integration_config_java_snippet_reports_missing_probe_download_address(apm_api_client, monkeypatch):
     create_application("shop", (10,))
     region = _integration_region(monkeypatch)
-    region.get_cloud_region_envconfig.return_value = {}
+    region.get_cloud_region_public_config.return_value = {}
 
     response = apm_api_client.post(
         "/api/v1/apm/integration-config/",

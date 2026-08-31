@@ -80,13 +80,13 @@ is_delete = models.BooleanField(default=False, db_index=True)
 建议 `kind` 取值：
 
 - `local`：本地手工归档 → `can_restore=true`，`can_permanently_delete=true`
-- `synced_active_source`：同步源仍存在 → 均为 `false`（等同步按 external_id 带回）
+- `synced_active_source`：同步源仍存在 → `can_restore=false`，`can_permanently_delete=true`（不静默改名；管理员永久删除以释放名称。仍归档时同一 `external_id` 再出现仍复用原 ID；永久删除后再出现则走新建）
 - `synced_deleted_source`：同步源已删且 `external_id` 符合 `user-sync:<source>:...` → `can_restore=false`，`can_permanently_delete=true`
 
 | 情形 | kind | 手工恢复 | 永久删除 |
 |---|---|---|---|
 | 本地归档 | `local` | 可 | 可 |
-| 同步源仍存在（对账自动归档） | `synced_active_source` | 否 | 否 |
+| 同步源仍存在（对账自动归档） | `synced_active_source` | 否 | 可 |
 | 同步源已删除且 external_id 匹配 | `synced_deleted_source` | 否 | 可 |
 
 操作粒度：仅对**归档根**恢复 / 永久删除；子节点只读展示。写接口须再次校验授权范围与「目标必须是归档根」。
@@ -101,7 +101,8 @@ is_delete = models.BooleanField(default=False, db_index=True)
 2. 在事务内锁定子树与关联用户后，按活动组织规则重新计算用户归属（去掉子树后须仍有活动组织）。
 3. 通过后从用户 `group_list` 移除子树 ID，再物理删除子树。
 4. `transaction.on_commit` 后清缓存（overlapping 成员 ∪ 当前操作者）。
-5. 确认文案提示管理员先自行处理业务资产。
+5. 确认文案提示管理员先自行处理业务资产。同步对账归档额外说明：删除后原 ID 不保留，外部目录再次出现该组织时同步走新建。
+6. 不静默给归档组织改占用名。同父级名称仍被归档占用时，同步继续 `group_name_conflict`，由管理员永久删除后再同步。
 
 ## 活动组织投影
 
@@ -196,6 +197,7 @@ is_delete = models.BooleanField(default=False, db_index=True)
 - 组织树顶部「添加根组织」改为下拉：添加根组织 / 恢复归档组织。
 - 原删除入口文案与行为改为归档（调用已改为归档的 `delete_groups`）。
 - 新建 `ArchivedGroupDrawer`：归档根 + 只读子树；操作由后端 capability 控制。
+- `synced_active_source` 归档根：不可手工恢复，展示永久删除；确认文案说明删除后若外部再出现则新建。子节点操作列留空。不展示 `--` 作为无操作占位。
 - 归档 / 恢复 / 永久删除成功后刷新正常树与登录组织上下文；若当前选中树节点被归档则清除选中。后端须使操作者 `token_info` 失效，以便随后的 `login_info` 重建活动组织树；其他已登录全量树用户不在本档范围内。
 - 永久删除确认必须含资产处理提示。
 - 独立归档类型与中英文文案，避免归档字段进入正常树 / 用户选择类型。
@@ -250,5 +252,6 @@ is_delete = models.BooleanField(default=False, db_index=True)
 - 恢复/永久删除权限复用 `user_group-Delete Group`；列表与写操作均按授权范围过滤/校验。
 - Drawer 仅对归档根可操作；归档根定义见上文接口契约。恢复归档根时递归恢复其完整归档子树为活动状态，并 on_commit 清缓存、写恢复日志。
 - 同步根与子树均须按 `sync_source + scoped external_id` 复用原 ID；根路径不得悄然绑错本地组织。
+- 对账归档占用名称直至永久删除；不静默改占用名。同步源仍在的归档根可永久删除、不可手工恢复。永久删除后外部再出现走新建。
 - `ArchiveService` 事务内加锁并在锁后重算用户活动组织；缓存等副作用放 `on_commit`。
 - 其他业务模块通过 NATS `get_archived_groups` 自行查询已归档组织并处理资产；系统管理不代为检查或迁移业务数据。

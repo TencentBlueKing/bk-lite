@@ -393,7 +393,10 @@ export class DataMapper {
       // 过滤掉 key 字段和所有 _error 字段，并处理加密字段
       const cleanedInstanceData = Object.keys(row)
         .filter(
-          (fieldKey) => fieldKey !== 'key' && !fieldKey.endsWith('_error')
+          (fieldKey) =>
+            fieldKey !== 'key' &&
+            !fieldKey.endsWith('_error') &&
+            !fieldKey.endsWith('_warning')
         )
         .reduce((acc, fieldKey) => {
           let fieldValue = row[fieldKey];

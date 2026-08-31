@@ -15,7 +15,14 @@ for (const locale of ['zh', 'en']) {
     'asset_views_network',
     'asset_views_ip',
     'asset_views_rack_room',
+    'asset_views_scene',
   ]);
+  const tagView = (views.children || []).find((c: { name: string }) => c.name === 'asset_views_scene');
+  assert.equal(
+    tagView.title,
+    locale === 'zh' ? '标签视图' : 'Tag View',
+    `${locale}: 标签视图菜单标题`
+  );
   const urls = (views.children || []).map((c: { url: string }) => c.url);
   assert.deepEqual(urls, [
     '/cmdb/assetOverview',
@@ -24,6 +31,7 @@ for (const locale of ['zh', 'en']) {
     '/cmdb/views/network',
     '/cmdb/views/ip',
     '/cmdb/views/rack-room',
+    '/cmdb/views/scene',
   ]);
   for (const child of views.children) {
     assert.equal(child.withParentPermission, true);

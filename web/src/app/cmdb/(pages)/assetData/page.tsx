@@ -78,6 +78,7 @@ import {
   updateCollapsedClassificationIds,
   writeCollapsedClassificationIds,
 } from './treeExpansionPreference';
+import { resetListPaginationToFirstPage } from './listPagination';
 
 const { confirm } = Modal;
 
@@ -832,6 +833,7 @@ const AssetDataContent = () => {
         ? storeQueryList[0]
         : storeQueryList;
     setQueryList(newQueryList);
+    setPagination((prev) => resetListPaginationToFirstPage(prev));
   }, [storeQueryList]);
 
   useEffect(() => {
@@ -870,6 +872,7 @@ const AssetDataContent = () => {
   const selectOrganization = (value: number | number[] | undefined) => {
     const orgArray = Array.isArray(value) ? value : (value ? [value] : []);
     setOrganization(orgArray);
+    setPagination((prev) => resetListPaginationToFirstPage(prev));
   };
 
   const showInstanceModal = (row = { inst_uuid: '' }) => {
@@ -1236,6 +1239,7 @@ const AssetDataContent = () => {
                   proxyOptions={proxyOptions}
                   userList={userList}
                   modelId={modelId}
+                  displayFieldKeys={displayFieldKeys}
                   attrList={propertyList.filter(
                     (item) => item.attr_type !== 'organization'
                   )}

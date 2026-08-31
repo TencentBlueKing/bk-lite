@@ -2,11 +2,15 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Modal, Menu, List, Input, Spin, Empty, Tag } from 'antd';
 import { ApartmentOutlined, DatabaseOutlined, LockOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { ComponentSelectorProps } from '@/app/ops-analysis/types/dashBoard';
+import {
+  ComponentSelectorProps,
+  type ComponentSelectorConfigItem,
+} from '@/app/ops-analysis/types/dashBoard';
 import { TagItem } from '@/app/ops-analysis/types/namespace';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import { SCENE_WIDGETS } from '@/app/ops-analysis/constants/sceneWidgets';
+import { isSceneWidgetAllowedOnSurface } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import {
   filterChartTypesForSurface,
   hasSupportedChartTypeForSurface,
@@ -168,7 +172,9 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     () =>
       Array.from(
         new Map(
-          SCENE_WIDGETS.map((item) => [
+          SCENE_WIDGETS.filter((item) =>
+            isSceneWidgetAllowedOnSurface(item.type, surface),
+          ).map((item) => [
             item.category,
             {
               key: item.category,
@@ -178,13 +184,17 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
           ]),
         ).values(),
       ),
-    [t],
+    [surface, t],
   );
 
   const filteredSceneWidgets = useMemo(
     () =>
-      SCENE_WIDGETS.filter((item) => item.category === selectedSceneCategory),
-    [selectedSceneCategory],
+      SCENE_WIDGETS.filter(
+        (item) =>
+          item.category === selectedSceneCategory &&
+          isSceneWidgetAllowedOnSurface(item.type, surface),
+      ),
+    [selectedSceneCategory, surface],
   );
 
   const visibleDataSources = useMemo(
@@ -300,7 +310,7 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                         sceneWidgetType: item.type,
                         defaultWidth: item.defaultWidth,
                         defaultHeight: item.defaultHeight,
-                      } as any)
+                      } as unknown as ComponentSelectorConfigItem)
                     }
                   >
                     <div className={styles.cardIcon}>

@@ -187,13 +187,24 @@
   border-radius: 0;
   background: transparent !important;
   box-shadow: none !important;
-  cursor: pointer;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
   line-height: 0;
   filter: drop-shadow(0 4px 10px color-mix(in srgb, var(--color-text-1, #1e252e) 16%, transparent));
 }
 
+#webchat-root .wc-fab-launcher.is-dragging {
+  cursor: grabbing;
+}
+
 #webchat-root .wc-fab-launcher:hover img {
   transform: scale(1.06);
+}
+
+#webchat-root .wc-fab-launcher.is-dragging:hover img,
+#webchat-root .wc-fab-launcher.is-dragging img {
+  transform: none;
 }
 
 #webchat-root .wc-fab-launcher:focus-visible {

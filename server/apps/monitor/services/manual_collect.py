@@ -123,7 +123,7 @@ class ManualCollectService:
         from apps.rpc.node_mgmt import NodeMgmt
 
         node_mgmt_rpc = NodeMgmt()
-        env_vars = node_mgmt_rpc.get_cloud_region_envconfig(cloud_region_id)
+        env_vars = node_mgmt_rpc.get_cloud_region_public_config(cloud_region_id)
 
         # 从云区域环境变量中获取服务器地址
         server_url = env_vars.get("NODE_SERVER_URL")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import re
 from typing import Any, Callable, Mapping
@@ -18,7 +19,7 @@ from core.collection.contracts import (
 )
 from core.collection.node_info_lookup import RunNodeInfoLookup
 from core.collection.runtime import CollectionRequest
-from core.logger import logger
+from core.logger import logger, safe_log_value
 from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
 
 
@@ -32,11 +33,45 @@ class ConfigurationCollectionPlugin:
         service_factory: Callable | None = None,
         *,
         node_info_lookup=None,
+        metrics=None,
     ) -> None:
         if service_factory is None:
             raise ValueError("configuration plugin requires service_factory " "(inject at composition root; core must not import service)")
         self._service_factory = service_factory
         self._node_info_lookup = node_info_lookup
+        self._metrics = metrics
+        self._prepared = False
+        self._prepared_executor_config = None
+
+    @property
+    def prepared_executor_config(self):
+        return self._prepared_executor_config
+
+    async def prepare(self, request: CollectionRequest) -> None:
+        """Run 生命周期准备：目标入队前解析静态 Service 执行计划。"""
+        if self._prepared:
+            return
+        prepare_factory = getattr(self._service_factory, "prepare", None)
+        if callable(prepare_factory):
+            try:
+                self._service_factory = await prepare_factory(dict(request.params))
+                self._prepared_executor_config = getattr(
+                    self._service_factory,
+                    "executor_config",
+                    None,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - 保持目标级历史错误结果语义
+                if self._metrics is not None:
+                    self._metrics.increment("run_preparation_fallback_total")
+                logger.warning(
+                    "event=collection_run_preparation_fallback task_id=%s " "plugin_ref=%s failed_stage=run_preparation error_type=%s",
+                    safe_log_value(request.task_id),
+                    safe_log_value(request.plugin_ref),
+                    type(exc).__name__,
+                )
+        self._prepared = True
 
     async def probe(
         self,
@@ -47,6 +82,8 @@ class ConfigurationCollectionPlugin:
         timeout_seconds: float,
     ) -> AccessProbeResult:
         params = _target_params(target, credential, context)
+        if self._metrics is not None:
+            params["_runtime_metrics"] = self._metrics
         await self._prepare_job_params(target, params)
         try:
             configured_timeout = float(params.get("timeout", timeout_seconds))
@@ -62,6 +99,8 @@ class ConfigurationCollectionPlugin:
         context: TargetCollectionContext,
     ) -> CollectOutcome:
         params = _target_params(target, credential, context)
+        if self._metrics is not None:
+            params["_runtime_metrics"] = self._metrics
         await self._prepare_job_params(target, params)
         params["_runtime_structured_metrics"] = True
         metrics = await self._service_factory(params).collect()
@@ -222,6 +261,7 @@ class UnifiedPluginFactory:
             return ConfigurationCollectionPlugin(
                 self._configuration_service_factory,
                 node_info_lookup=node_info_lookup,
+                metrics=self._metrics,
             )
         raise ValueError(f"unsupported plugin_family: {family}")
 

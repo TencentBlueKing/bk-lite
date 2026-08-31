@@ -774,7 +774,12 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
         )
 
     # 阶段 A: 同步组织 (单事务;不在此阶段删 stale 组织)
-    group_counters = {"created_groups": 0, "updated_groups": 0}
+    group_counters = {
+        "created_groups": 0,
+        "updated_groups": 0,
+        "unchanged_groups": 0,
+        "skipped_invalid_groups": 0,
+    }
     try:
         with transaction.atomic():
             if has_run:
@@ -790,11 +795,16 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
         logger.exception("User sync group stage failed: source=%s, error=%r", source.name, error)
         _record_error(PHASE_SYNC_GROUPS, current=0, total=len(group_list), error=error)
         raise
-    # 写 sync_groups 进度(扣 root)
+    # 写 sync_groups 进度(扣 root)。抬头 total 含跳过无效,与分项加总对账
     synced_groups = max(len(group_id_mapping) - 1, 0)
+    skipped_groups = group_counters["skipped_invalid_groups"]
+    group_counters["unchanged_groups"] = max(
+        synced_groups - group_counters["created_groups"] - group_counters["updated_groups"], 0
+    )
+    group_total = synced_groups + skipped_groups
     _record_progress(
         PHASE_SYNC_GROUPS,
-        current=synced_groups, total=synced_groups, status="finish",
+        current=group_total, total=group_total, status="finish",
         counters=group_counters,
     )
 
@@ -802,7 +812,13 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
     # per-phase counters 只写本阶段关心的字段,避免对账字段提前出现
     total = len(user_list)
     batch_size = _get_batch_size(total)
-    sync_counters = {"new_users": 0, "updated_users": 0, "conflict_users": 0}
+    sync_counters = {
+        "new_users": 0,
+        "updated_users": 0,
+        "unchanged_users": 0,
+        "skipped_invalid_users": 0,
+        "conflict_users": 0,
+    }
     all_synced_usernames: list[str] = []
     all_conflict_usernames: list[str] = []
 
@@ -845,6 +861,8 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
             all_conflict_usernames.extend(batch_result["conflict_usernames"])
             sync_counters["new_users"] += batch_result["new_users"]
             sync_counters["updated_users"] += batch_result["updated_users"]
+            sync_counters["unchanged_users"] += batch_result["unchanged_users"]
+            sync_counters["skipped_invalid_users"] += batch_result["skipped_invalid_users"]
             sync_counters["conflict_users"] = len(all_conflict_usernames)
 
             is_last = (batch_start + batch_size) >= total
@@ -853,7 +871,7 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict, current_run:
                 current=min(batch_start + batch_size, total),
                 total=total,
                 status="finish" if is_last else "process",
-                counters=dict(sync_counters),  # 只含 new/updated/conflict
+                counters=dict(sync_counters),
             )
 
     # 阶段 C: 全量对账 (单事务) - 依据完整同步名单删除 stale 用户和组织
@@ -943,12 +961,15 @@ def _process_user_batch(
     """处理单批用户:标准化、新建/更新、密码初始化(写入 locked_run.payload)。
 
     不执行 stale 用户禁用 - 那是全量对账阶段的工作。
-    返回 {synced_usernames, new_users, updated_users, conflict_usernames}。
+    返回 {synced_usernames, new_users, updated_users, unchanged_users,
+    skipped_invalid_users, conflict_usernames}。
     """
     field_mapping = {**DEFAULT_FIELD_MAPPING, **(source.field_mapping or {})}
     normalized_users = _normalize_user_batch(
         batch, field_mapping, group_id_mapping, root_group_id, root_department_id
     )
+    # normalize 只会因缺 username 丢弃条目;显式计数,避免数据质量问题不可见
+    skipped_invalid_users = len(batch) - len(normalized_users)
 
     usernames = [item["username"] for item in normalized_users]
     legacy_domain = "domain.com"
@@ -1066,10 +1087,15 @@ def _process_user_batch(
             [{"username": username, "domain": legacy_domain} for username in affected_usernames]
         )
 
+    # 同步成功但既非新建也非更新的用户 = 无变化(核验过、无需改动)
+    unchanged_users = max(len(synced_usernames) - len(new_users) - len(update_users), 0)
+
     return {
         "synced_usernames": synced_usernames,
         "new_users": len(new_users),
         "updated_users": len(update_users),
+        "unchanged_users": unchanged_users,
+        "skipped_invalid_users": skipped_invalid_users,
         "conflict_usernames": sorted(set(conflict_usernames)),
     }
 
@@ -1273,6 +1299,8 @@ def _sync_groups(
     for item in group_list:
         item_id = str(item.get("id", ""))
         if not item_id:
+            if counters is not None:
+                counters["skipped_invalid_groups"] = counters.get("skipped_invalid_groups", 0) + 1
             continue
         parent_id = str(item.get("parent_id") or "")
         child_map.setdefault(parent_id, []).append(item)

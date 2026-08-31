@@ -5,7 +5,6 @@ import importlib
 import json
 import ntpath
 import posixpath
-import time
 from typing import Any, Dict, Optional
 
 from core.collection.contracts import AccessProbeResult, StructuredMetricsPayload
@@ -14,6 +13,25 @@ from core.plugin.error_logging import log_plugin_exception, should_log_plugin_ex
 from core.plugin.executor import PluginExecutor
 from core.plugin.yaml_reader import yaml_reader
 from plugins.base_utils import convert_to_prometheus_format
+
+
+class PreparedCollectionServiceFactory:
+    """一次 Run 共享静态执行计划；调用时仍创建目标隔离的 Service。"""
+
+    def __init__(self, executor_factory) -> None:
+        self._executor_factory = executor_factory
+
+    @property
+    def executor_config(self):
+        """返回 Collector fallback 后最终采用的执行器配置。"""
+
+        return self._executor_factory.executor_config
+
+    def __call__(self, params: dict):
+        return CollectionService(
+            params,
+            prepared_executor_factory=self._executor_factory,
+        )
 
 
 class CollectionService:
@@ -37,6 +55,7 @@ class CollectionService:
         params: Optional[dict] = None,
         *,
         config_provider=None,
+        prepared_executor_factory=None,
     ):
         self.yaml_reader = config_provider or yaml_reader
         # 运行期会补充 node_info/script_path，不能污染 HTTP 请求或其他目标复用的参数。
@@ -44,6 +63,35 @@ class CollectionService:
         self.plugin_name = self.params.pop("plugin_name", None)
         self.model_id = self.params["model_id"]
         self.host = self.params.get("host")  # 可能为None（云采集）
+        self._prepared_executor_factory = prepared_executor_factory
+
+    @classmethod
+    async def prepare(
+        cls,
+        params: dict,
+        *,
+        config_provider=None,
+    ) -> PreparedCollectionServiceFactory:
+        """在目标入队前完成 YAML 来源解析和 Collector 类加载。"""
+        run_params = dict(params)
+        model_id = run_params["model_id"]
+        executor_type = run_params["executor_type"]
+        prefer_enterprise = cls._get_bool_param(run_params, "prefer_enterprise", True)
+        strict_enterprise = cls._get_bool_param(run_params, "strict_enterprise", False)
+        provider = config_provider or yaml_reader
+        resolved_executor = await provider.get_executor_config_with_resolution_async(
+            model_id,
+            executor_type,
+            prefer_enterprise=prefer_enterprise,
+        )
+        executor_factory = await PluginExecutor.prepare(
+            model_id,
+            resolved_executor.executor_config,
+            plugin_resolution=resolved_executor.plugin_resolution,
+            fallback_executor_config=resolved_executor.fallback_executor_config,
+            strict_enterprise=strict_enterprise,
+        )
+        return PreparedCollectionServiceFactory(executor_factory)
 
     @staticmethod
     def _get_bool_param(params: Dict[str, Any], key: str, default: bool) -> bool:
@@ -102,30 +150,29 @@ class CollectionService:
                 executor_type,
             )
 
-            prefer_enterprise = self._get_bool_param(self.params, "prefer_enterprise", True)
-            strict_enterprise = self._get_bool_param(self.params, "strict_enterprise", False)
+            if self._prepared_executor_factory is not None:
+                executor = self._prepared_executor_factory(self.params)
+            else:
+                prefer_enterprise = self._get_bool_param(self.params, "prefer_enterprise", True)
+                strict_enterprise = self._get_bool_param(self.params, "strict_enterprise", False)
 
-            # 插件来源解析入口：先判断 enterprise 能力是否可用，再按
-            # enterprise/plugins/inputs/{model}/plugin.yml -> plugins/inputs/{model}/plugin.yml
-            # 的顺序选中最终 plugin.yml；若命中 enterprise 且后续 import 失败，executor 会按 strict_enterprise
-            # 决定是直接报错还是回退到同名 oss 插件。
-            resolved_executor = await self.yaml_reader.get_executor_config_with_resolution_async(
-                self.model_id,
-                executor_type,
-                prefer_enterprise=prefer_enterprise,
-            )
-            executor_config = resolved_executor.executor_config
-            plugin_resolution = resolved_executor.plugin_resolution
-
-            # 执行单次采集
-            executor = PluginExecutor(
-                self.model_id,
-                executor_config,
-                self.params,
-                plugin_resolution=plugin_resolution,
-                fallback_executor_config=resolved_executor.fallback_executor_config,
-                strict_enterprise=strict_enterprise,
-            )
+                # 插件来源解析入口：先判断 enterprise 能力是否可用，再按
+                # enterprise/plugins/inputs/{model}/plugin.yml -> plugins/inputs/{model}/plugin.yml
+                # 的顺序选中最终 plugin.yml；若命中 enterprise 且后续 import 失败，executor 会按 strict_enterprise
+                # 决定是直接报错还是回退到同名 oss 插件。
+                resolved_executor = await self.yaml_reader.get_executor_config_with_resolution_async(
+                    self.model_id,
+                    executor_type,
+                    prefer_enterprise=prefer_enterprise,
+                )
+                executor = PluginExecutor(
+                    self.model_id,
+                    resolved_executor.executor_config,
+                    self.params,
+                    plugin_resolution=resolved_executor.plugin_resolution,
+                    fallback_executor_config=resolved_executor.fallback_executor_config,
+                    strict_enterprise=strict_enterprise,
+                )
             result = await executor.execute()
 
             if self.params.get("callback_subject"):
@@ -206,6 +253,8 @@ class CollectionService:
 
     async def probe(self) -> AccessProbeResult:
         """通过当前解析出的协议 Adapter 执行最小凭据感知预检。"""
+        if self._prepared_executor_factory is not None:
+            return await self._prepared_executor_factory(self.params).probe()
         executor_type = self.params["executor_type"]
         prefer_enterprise = self._get_bool_param(self.params, "prefer_enterprise", True)
         strict_enterprise = self._get_bool_param(self.params, "strict_enterprise", False)
@@ -317,6 +366,8 @@ class CollectionService:
                 )
 
     def _generate_error_response(self, error_message: str):
+        if self.params.get("_runtime_structured_metrics"):
+            return StructuredMetricsPayload(data={}, error=error_message)
         if self.model_id == "winsphere":
             processed = self._process_result(
                 {
@@ -327,25 +378,7 @@ class CollectionService:
                 }
             )
             return convert_to_prometheus_format(processed)
-        return self._generate_error_metrics(Exception(error_message), self.model_id)
-
-    def _generate_error_metrics(self, error: Exception, model: str) -> str:
-        """生成错误指标（Prometheus 格式）"""
-        current_timestamp = int(time.time() * 1000)
-        error_type = type(error).__name__
-        error_message = str(error).replace('"', '\\"')  # 转义双引号
-        plugin_label = f'plugin="{self.plugin_name}",' if self.plugin_name else ""
-        prometheus_lines = [
-            "# HELP collection_status Collection status indicator",
-            "# TYPE collection_status gauge",
-            f'collection_status{{{plugin_label}model="{model}",status="error",error_type="{error_type}"}} 1 {current_timestamp}',
-            "",
-            "# HELP collection_error Collection error details",
-            "# TYPE collection_error gauge",
-            f'collection_error{{{plugin_label}model="{model}",message="{error_message}"}} 1 {current_timestamp}',
-        ]
-
-        return "\n".join(prometheus_lines) + "\n"
+        return {"status": "failed", "error": error_message}
 
     async def list_regions(self):
         """异步边界：云 SDK 的区域查询整体在线程中执行。"""

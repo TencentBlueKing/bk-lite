@@ -11,13 +11,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.web_utils import WebUtils
-from apps.log.models.policy import (
-    Alert,
-    Event,
-    EventRawData,
-    Policy,
-    PolicyOrganization,
-)
+from apps.log.models.policy import Alert, Event, EventRawData, Policy, PolicyOrganization
 from apps.log.services.alert_lifecycle_notify import LogAlertLifecycleNotifier
 from apps.log.views.policy import AlertViewSet, PolicyViewSet
 from apps.system_mgmt.models.channel import Channel
@@ -183,10 +177,10 @@ def test_enable_returns_error_when_task_missing(api_client, authenticated_user, 
     api_client.cookies["current_team"] = "1"
     response = api_client.post(f"/api/v1/log/policy/{policy.id}/enable/", data={"enabled": True}, format="json")
 
-    # response_error 首位参数是 data，message 为空，状态 400
+    # 统一信封：错误文案在 message，而不是 data
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.json()["result"] is False
-    assert "定时任务不存在" in response.json()["data"]
+    assert "定时任务不存在" in response.json()["message"]
 
 
 # --------------------------- alert closed (成功路径) ---------------------------
@@ -415,7 +409,7 @@ def test_last_event_missing_alert_id_returns_error(api_client, authenticated_use
     response = api_client.get("/api/v1/log/alert/last_event/")
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.json()["result"] is False
-    assert "缺少告警ID" in response.json()["data"]
+    assert "缺少告警ID" in response.json()["message"]
 
 
 @pytest.mark.django_db
@@ -453,7 +447,7 @@ def test_last_event_no_event_returns_404(api_client, authenticated_user, mocker)
     response = api_client.get(f"/api/v1/log/alert/last_event/?alert_id={alert.id}")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert "未找到相关事件" in response.json()["data"]
+    assert "未找到相关事件" in response.json()["message"]
 
 
 # --------------------------- stats ---------------------------

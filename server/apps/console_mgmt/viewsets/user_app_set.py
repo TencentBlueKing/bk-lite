@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from apps.console_mgmt.models import UserAppSet
 from apps.console_mgmt.serializers import UserAppSetSerializer
 from apps.console_mgmt.serializers.user_app_set import AppConfigItemSerializer
+from apps.core.utils.builtin_app_i18n import translate_builtin_app_display_name
 from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import App
 
@@ -96,13 +97,11 @@ class UserAppSetViewSet(viewsets.ModelViewSet):
                 locale = getattr(request.user, "locale", "en")
                 loader = LanguageLoader(app="core", default_lang=locale)
                 # 预先加载内置应用的最新入口与 tags（用户快照可能仍是旧 url）
-                builtin_apps = {
-                    app["name"]: app
-                    for app in App.objects.filter(is_build_in=True).values("name", "url", "icon", "tags")
-                }
+                builtin_apps = {app["name"]: app for app in App.objects.filter(is_build_in=True).values("name", "url", "icon", "tags")}
                 for app_config in app_config_list:
                     if app_config.get("is_build_in"):
                         app_name = app_config.get("name")
+                        translate_builtin_app_display_name(app_config, loader)
                         # 翻译 description
                         if app_name:
                             translation_key = f"app.{app_name}"

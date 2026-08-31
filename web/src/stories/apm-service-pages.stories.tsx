@@ -2637,12 +2637,12 @@ function ServiceTopologyMock() {
             ]}
           />
 
-          {/* 布局切换 */}
+          {/* 布局切换：默认层次，力导向为额外选项 */}
           <Segmented
             value={layout}
             onChange={(v) => setLayout(v as 'layered' | 'force')}
             options={[
-              { value: 'layered', label: '分层' },
+              { value: 'layered', label: '层次' },
               { value: 'force', label: '力导向' },
             ]}
           />

@@ -24,10 +24,16 @@ def source(db):
 
 def _make_event(source, event_id, external_id="ext-1", action=EventAction.CREATED, start_minutes_ago=10, **over):
     defaults = dict(
-        source=source, raw_data={}, title="t", level="0",
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
         start_time=timezone.now() - timedelta(minutes=start_minutes_ago),
-        event_id=event_id, external_id=external_id, action=action,
-        item="cpu", resource_name="host1",
+        event_id=event_id,
+        external_id=external_id,
+        action=action,
+        item="cpu",
+        resource_name="host1",
     )
     defaults.update(over)
     return Event.objects.create(**defaults)
@@ -35,7 +41,11 @@ def _make_event(source, event_id, external_id="ext-1", action=EventAction.CREATE
 
 def _make_active_alert(*events, alert_id="A1"):
     alert = Alert.objects.create(
-        alert_id=alert_id, level="0", title="t", content="c", fingerprint="fp",
+        alert_id=alert_id,
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp",
         status=AlertStatus.PENDING,
     )
     for e in events:
@@ -92,18 +102,10 @@ def test_handle_recovery_associates_event_to_alert(source):
 
 @pytest.mark.django_db
 def test_handle_recovery_matches_source_push_source_and_team(source):
-    other_source = AlertSource.objects.create(
-        name="源2", source_id="s2", source_type="restful", secret="x"
-    )
-    created_expected = _make_event(
-        source, "E-created-expected", external_id="same-ext", push_source_id="p1", team=[1]
-    )
-    created_other_source = _make_event(
-        other_source, "E-created-source", external_id="same-ext", push_source_id="p1", team=[1]
-    )
-    created_other_team = _make_event(
-        source, "E-created-team", external_id="same-ext", push_source_id="p1", team=[2]
-    )
+    other_source = AlertSource.objects.create(name="源2", source_id="s2", source_type="restful", secret="x")
+    created_expected = _make_event(source, "E-created-expected", external_id="same-ext", push_source_id="p1", team=[1])
+    created_other_source = _make_event(other_source, "E-created-source", external_id="same-ext", push_source_id="p1", team=[1])
+    created_other_team = _make_event(source, "E-created-team", external_id="same-ext", push_source_id="p1", team=[2])
     expected_alert = _make_active_alert(created_expected, alert_id="A-expected")
     other_source_alert = _make_active_alert(created_other_source, alert_id="A-other-source")
     other_team_alert = _make_active_alert(created_other_team, alert_id="A-other-team")
@@ -128,8 +130,7 @@ def test_handle_recovery_matches_source_push_source_and_team(source):
 def test_handle_recovery_without_external_id_skipped(source):
     created = _make_event(source, "E1", external_id="ext-1", action=EventAction.CREATED)
     alert = _make_active_alert(created)
-    recovery = _make_event(source, "E2", external_id=None, action=EventAction.RECOVERY,
-                           resource_id="rid", resource_type="rt")
+    recovery = _make_event(source, "E2", external_id=None, action=EventAction.RECOVERY, resource_id="rid", resource_type="rt")
 
     RecoveryHandler.handle_recovery_events([recovery])
     assert not alert.events.filter(event_id="E2").exists()
@@ -137,8 +138,7 @@ def test_handle_recovery_without_external_id_skipped(source):
 
 @pytest.mark.django_db
 def test_handle_recovery_no_matching_alert(source):
-    recovery = _make_event(source, "E2", external_id="ext-unmatched", action=EventAction.RECOVERY,
-                           resource_id="rid", resource_type="rt")
+    recovery = _make_event(source, "E2", external_id="ext-unmatched", action=EventAction.RECOVERY, resource_id="rid", resource_type="rt")
     # 不抛异常
     RecoveryHandler.handle_recovery_events([recovery])
 
@@ -158,6 +158,7 @@ def test_check_and_recover_all_recovered(source):
     assert result is True
     alert.refresh_from_db()
     assert alert.status == AlertStatus.AUTO_RECOVERY
+    assert alert.closed_at is not None
 
 
 @pytest.mark.django_db
@@ -182,14 +183,12 @@ def test_check_and_recover_no_events(source):
 @pytest.mark.django_db
 def test_handle_recovery_via_fallback_key(source):
     # 恢复事件无 external_id 但有 item+resource_name（无 resource_id/type）→ 通过回退键匹配
-    created = _make_event(source, "E1", external_id="ext-1", action=EventAction.CREATED,
-                          start_minutes_ago=30)
+    created = _make_event(source, "E1", external_id="ext-1", action=EventAction.CREATED, start_minutes_ago=30)
     created.item = "cpu"
     created.resource_name = "host1"
     created.save()
     alert = _make_active_alert(created)
-    recovery = _make_event(source, "E2", external_id="ext-1", action=EventAction.RECOVERY,
-                           start_minutes_ago=5)
+    recovery = _make_event(source, "E2", external_id="ext-1", action=EventAction.RECOVERY, start_minutes_ago=5)
     RecoveryHandler.handle_recovery_events([recovery])
     assert alert.events.filter(event_id="E2").exists()
 
@@ -202,6 +201,7 @@ def test_check_and_recover_closed_action(source):
     assert AlertRecoveryChecker.check_and_recover_alert(alert) is True
     alert.refresh_from_db()
     assert alert.status == AlertStatus.AUTO_RECOVERY
+    assert alert.closed_at is not None
 
 
 @pytest.mark.django_db
@@ -212,3 +212,4 @@ def test_run_recovery_checks_recovers(source):
     RecoveryHandler._run_recovery_checks([alert], total_events=1, total_added=1, total_skipped=0)
     alert.refresh_from_db()
     assert alert.status == AlertStatus.AUTO_RECOVERY
+    assert alert.closed_at is not None

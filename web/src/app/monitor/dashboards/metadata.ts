@@ -55,6 +55,8 @@ const COMMUNITY_DASHBOARD_METADATA: ProfessionalDashboardMetaItem[] = [
   { key: 'firewall', aliases: ['防火墙'], groupKey: 'network', objectName: 'Firewall', objectDisplayName: '防火墙', inheritedPermissionPath: '/monitor/view' },
   { key: 'loadbalance', aliases: ['负载均衡'], groupKey: 'network', objectName: 'Loadbalance', objectDisplayName: '负载均衡', inheritedPermissionPath: '/monitor/view' },
   { key: 'router', aliases: ['路由器'], groupKey: 'network', objectName: 'Router', objectDisplayName: '路由器', inheritedPermissionPath: '/monitor/view' },
+  { key: 'netflow', aliases: ['NetFlow'], groupKey: 'network', objectName: 'NetFlow', objectDisplayName: 'NetFlow', inheritedPermissionPath: '/monitor/view' },
+  { key: 'sflow', aliases: ['sFlow'], groupKey: 'network', objectName: 'sFlow', objectDisplayName: 'sFlow', inheritedPermissionPath: '/monitor/view' },
   { key: 'wireless', aliases: ['无线设备'], groupKey: 'network', objectName: 'Wireless', objectDisplayName: '无线设备', inheritedPermissionPath: '/monitor/view' },
   { key: 'transmission', aliases: ['传输设备'], groupKey: 'network', objectName: 'Transmission', objectDisplayName: '传输设备', inheritedPermissionPath: '/monitor/view' },
   { key: 'access', aliases: ['接入设备'], groupKey: 'network', objectName: 'Access', objectDisplayName: '接入设备', inheritedPermissionPath: '/monitor/view' },

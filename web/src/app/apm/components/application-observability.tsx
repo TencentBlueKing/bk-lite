@@ -32,6 +32,7 @@ import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 
 type PageState = CatalogStateKind | 'ready';
+type TopologySurfaceState = CatalogStateKind | 'ready';
 
 interface KeyInfoItem {
   label: string;
@@ -63,6 +64,9 @@ export default function ApplicationObservability({
   const [services, setServices] = useState<ApmService[]>([]);
   const [state, setState] = useState<PageState>('loading');
   const [graph, setGraph] = useState<ApmTopologyGraph>({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
+  const [topologyState, setTopologyState] = useState<TopologySurfaceState>('loading');
+  const [topologyRefreshKey, setTopologyRefreshKey] = useState(0);
+  const [layout, setLayout] = useState<TopologyLayoutMode>('layered');
   const [redMetrics, setRedMetrics] = useState<Record<string, ApmServiceRed>>({});
   const [metricFailureKeys, setMetricFailureKeys] = useState<string[]>([]);
   const [events, setEvents] = useState<ApmEvent[]>([]);
@@ -71,7 +75,6 @@ export default function ApplicationObservability({
     const value = searchParams.get('window');
     return isTimeWindow(value) ? value : '1h';
   });
-  const [layout, setLayout] = useState<TopologyLayoutMode>('layered');
   const [organizationService, setOrganizationService] = useState<ApmService | null>(null);
   const [organizationSubmitting, setOrganizationSubmitting] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -104,14 +107,23 @@ export default function ApplicationObservability({
   useEffect(() => {
     if (!application) return;
     const { startedAt, endedAt } = timeWindowRange(timeWindow);
-    getTopology({ started_at: startedAt.toISOString(), ended_at: endedAt.toISOString() })
+    setTopologyState((current) => (current === 'ready' ? current : 'loading'));
+    getTopology({
+      started_at: startedAt.toISOString(),
+      ended_at: endedAt.toISOString(),
+      include_inferred: true,
+      include_user_request: true,
+    })
       .then((topology) => {
-        setGraph(focusApplicationTopology(topology, application.application_id).graph);
+        const focused = focusApplicationTopology(topology, application.application_id).graph;
+        setGraph(focused);
+        setTopologyState(focused.nodes.length ? 'ready' : 'empty');
       })
-      .catch(() => {
+      .catch((error) => {
         setGraph({ nodes: [], edges: [], sampled_traces: 0, truncated: false, data_state: 'no_data' });
+        setTopologyState(catalogErrorKind(error));
       });
-  }, [application, getTopology, timeWindow]);
+  }, [application, getTopology, timeWindow, topologyRefreshKey]);
 
   const rows = useMemo(() => expandServiceRows(services), [services]);
 
@@ -226,7 +238,7 @@ export default function ApplicationObservability({
                     aria-label={t('apm.topology.layout', '拓扑布局')}
                     options={[
                       { value: 'layered', label: t('apm.topology.layered', '层次') },
-                      { value: 'force', label: t('apm.topology.force', '力导向') },
+                      { value: 'force', label: t('apm.topology.layoutForce', '力导向') },
                     ]}
                     size="small"
                     value={layout}
@@ -239,7 +251,7 @@ export default function ApplicationObservability({
                   ) : null}
                 </div>
               </div>
-              {graph.nodes.length ? (
+              {topologyState === 'ready' ? (
                 <TopologyCanvas
                   edges={graph.edges}
                   focusNamespace={application.application_id}
@@ -249,7 +261,13 @@ export default function ApplicationObservability({
                   zoom={1}
                 />
               ) : (
-                <CatalogState kind="empty" description={t('apm.applications.noTopology', '当前时间窗暂无应用内调用关系。')} />
+                <div className="min-h-[640px]">
+                  <CatalogState
+                    kind={topologyState}
+                    description={topologyState === 'empty' ? t('apm.applications.noTopology', '当前时间窗暂无应用内调用关系。') : undefined}
+                    onRetry={topologyState === 'forbidden' ? undefined : () => setTopologyRefreshKey((value) => value + 1)}
+                  />
+                </div>
               )}
             </ApmSurface>
             <ApmSurface>

@@ -37,9 +37,7 @@ def _render(response):
 
 
 def _make_alert(alert_id="A1", team=None):
-    return Alert.objects.create(
-        alert_id=alert_id, level="0", title="t", content="c", fingerprint="fp", team=team or [1]
-    )
+    return Alert.objects.create(alert_id=alert_id, level="0", title="t", content="c", fingerprint="fp", team=team or [1])
 
 
 @pytest.fixture(autouse=True)
@@ -69,6 +67,44 @@ def test_alert_list(superuser):
     ids = {item["alert_id"] for item in items}
     assert "A1" in ids
     assert "A2" not in ids
+
+
+@pytest.mark.django_db
+def test_alert_list_duration_covers_active_and_closed_status(superuser):
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.alerts.constants.constants import AlertStatus
+
+    now = timezone.now()
+    active = _make_alert("A-active", team=[1])
+    closed = _make_alert("A-closed", team=[1])
+    Alert.objects.filter(id=active.id).update(
+        status=AlertStatus.PENDING,
+        first_event_time=now - timedelta(hours=2, minutes=3),
+        created_at=now - timedelta(hours=2, minutes=3),
+    )
+    Alert.objects.filter(id=closed.id).update(
+        status=AlertStatus.CLOSED,
+        first_event_time=now - timedelta(hours=2, minutes=3),
+        created_at=now - timedelta(hours=2, minutes=3),
+        last_event_time=now - timedelta(hours=2, minutes=3),
+        updated_at=now,
+        closed_at=now,
+    )
+
+    request = _request("get", "/alerts/", superuser, team="1")
+    response = AlertModelViewSet.as_view({"get": "list"})(request)
+    payload = _render(response)
+    data = payload["data"]
+    rows = data["items"] if isinstance(data, dict) else data
+    items = {item["alert_id"]: item for item in rows}
+
+    assert items["A-active"]["duration"].startswith("2h 3m")
+    assert items["A-closed"]["duration"].startswith("2h 3m")
+    assert items["A-closed"]["closed_at"]
+    assert not items["A-active"].get("closed_at")
 
 
 @pytest.mark.django_db
@@ -122,7 +158,7 @@ def test_alert_operator_action_no_permission(superuser):
     _make_alert("A1", team=[2])  # team 2，当前 team=1 无权
     request = _request("post", "/alerts/operator/acknowledge/", superuser, data={"alert_id": ["A1"]}, team="1")
     response = AlertModelViewSet.as_view({"post": "operator"})(request, operator_action="acknowledge")
-    payload = _render(response)
+    _render(response)
     # 全部失败 → 500
     assert response.status_code in (status.HTTP_200_OK, 500)
 
@@ -182,9 +218,7 @@ def test_alert_events_action(superuser):
 
     source = AlertSource.objects.create(name="源1", source_id="s1", source_type="restful", secret="x")
     alert = _make_alert("A1", team=[1])
-    event = Event.objects.create(
-        source=source, raw_data={}, title="e", level="0", start_time=timezone.now(), event_id="E1", team=[1]
-    )
+    event = Event.objects.create(source=source, raw_data={}, title="e", level="0", start_time=timezone.now(), event_id="E1", team=[1])
     alert.events.add(event)
     request = _request("get", f"/alerts/{alert.id}/events/", superuser, team="1")
     response = AlertModelViewSet.as_view({"get": "events"})(request, pk=str(alert.id))
@@ -257,7 +291,7 @@ def test_incident_create_with_alert(superuser):
     data = {"level": "0", "title": "新事故", "team": [1], "alert": [alert.id]}
     request = _request("post", "/incident/", superuser, data=data, team="1")
     response = IncidentModelViewSet.as_view({"post": "create"})(request)
-    payload = _render(response)
+    _render(response)
     assert response.status_code == status.HTTP_201_CREATED
     incident = Incident.objects.get(title="新事故")
     assert incident.alert.filter(id=alert.id).exists()
@@ -300,7 +334,7 @@ def test_incident_create_with_explicit_operator(superuser):
     data = {"level": "0", "title": "事故", "team": [1], "alert": [alert.id], "operator": ["op1"]}
     request = _request("post", "/incident/", superuser, data=data, team="1")
     response = IncidentModelViewSet.as_view({"post": "create"})(request)
-    payload = _render(response)
+    _render(response)
     assert response.status_code == status.HTTP_201_CREATED
     incident = Incident.objects.get(title="事故")
     assert incident.operator == ["op1"]
@@ -323,7 +357,7 @@ def test_incident_operator_action_acknowledge(superuser):
     Incident.objects.create(incident_id="I1", level="0", title="t", fingerprint="fp", team=[1], status=IncidentStatus.PENDING)
     request = _request("post", "/incident/operator/acknowledge/", superuser, data={"incident_id": ["I1"]}, team="1")
     response = IncidentModelViewSet.as_view({"post": "operator"})(request, operator_action="acknowledge")
-    payload = _render(response)
+    _render(response)
     assert response.status_code == status.HTTP_200_OK
     assert Incident.objects.get(incident_id="I1").status == IncidentStatus.PROCESSING
 
@@ -397,9 +431,7 @@ def test_incident_update(superuser):
 
 @pytest.mark.django_db
 def test_incident_update_can_replace_alerts_when_all_are_authorized(superuser):
-    incident = Incident.objects.create(
-        incident_id="I-update-alerts", level="0", title="事故", fingerprint="fp", team=[1]
-    )
+    incident = Incident.objects.create(incident_id="I-update-alerts", level="0", title="事故", fingerprint="fp", team=[1])
     alert = _make_alert("A-update", team=[1])
     request = _request(
         "patch",
@@ -409,9 +441,7 @@ def test_incident_update_can_replace_alerts_when_all_are_authorized(superuser):
         team="1",
     )
 
-    response = IncidentModelViewSet.as_view({"patch": "partial_update"})(
-        request, pk=str(incident.id)
-    )
+    response = IncidentModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(incident.id))
     _render(response)
 
     assert response.status_code == status.HTTP_200_OK

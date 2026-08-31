@@ -24,6 +24,7 @@ class TopologyQuerySerializer(serializers.Serializer):
     span_name = serializers.CharField(max_length=512, required=False, allow_blank=True)
     min_duration_ms = serializers.FloatField(required=False, min_value=0)
     include_inferred = serializers.BooleanField(required=False, default=False)
+    include_user_request = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
         unsupported = sorted(set(self.initial_data) - set(self.fields))
@@ -95,6 +96,7 @@ class ApmTopologyViewSet(viewsets.ViewSet):
                 span_name=data.get("span_name"),
                 min_duration_ms=data.get("min_duration_ms"),
                 include_inferred=bool(data.get("include_inferred")),
+                include_user_request=bool(data.get("include_user_request")),
             )
         except ValueError as exc:
             return Response({"code": "invalid_query", "detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)

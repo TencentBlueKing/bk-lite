@@ -3,10 +3,7 @@
 对照 specs/capabilities/legacy-prd-cmdb-搜索.md：查询参数按类型(str/int/list/id/time/bool)编译为 Cypher 条件片段。
 """
 
-import pytest
-
 from apps.cmdb.graph import format_type as ft
-
 
 # --------------------------------------------------------------------------
 # 直接拼接版本（FORMAT_TYPE）
@@ -76,8 +73,25 @@ def test_compile_tag_exact_match_query():
 
 
 def test_format_type_map_complete():
-    expected = {"bool", "time", "str=", "str<>", "str*", "str[]", "user[]",
-                "int=", "int>", "int<", "int<>", "int[]", "id=", "id[]", "list[]", "list_any[]", "list_none[]"}
+    expected = {
+        "bool",
+        "time",
+        "str=",
+        "str<>",
+        "str*",
+        "str[]",
+        "user[]",
+        "int=",
+        "int>",
+        "int<",
+        "int<>",
+        "int[]",
+        "id=",
+        "id[]",
+        "list[]",
+        "list_any[]",
+        "list_none[]",
+    }
     assert expected <= set(ft.FORMAT_TYPE.keys())
 
 
@@ -115,6 +129,15 @@ def test_format_list_in_params():
     c = ft.ParameterCollector()
     out = ft.format_list_in_params({"field": "tags", "value": [1, 2]}, c)
     assert "n.tags" in out
+    assert "CASE typeof(n.tags) WHEN 'List' THEN n.tags ELSE [n.tags] END" in out
+
+
+def test_format_list_any_params_accepts_string_or_list_field():
+    c = ft.ParameterCollector()
+    out = ft.format_list_any_params({"field": "tag", "value": ["env:test"]}, c)
+    assert out.startswith("ANY(")
+    assert "CASE typeof(n.tag) WHEN 'List' THEN n.tag ELSE [n.tag] END" in out
+    assert ["env:test"] in c.get_params().values()
 
 
 def test_format_id_eq_params():

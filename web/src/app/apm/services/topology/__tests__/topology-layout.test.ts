@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import type { ApmTopologyEdge, ApmTopologyGraph, ApmTopologyNode } from '@/app/apm/types';
 import {
@@ -7,9 +10,16 @@ import {
   isolateTopologyNeighborhood,
   layoutForceTopology,
   layoutLayeredTopology,
+  TOPOLOGY_CANVAS_SIZE,
+  topologyEntryPillWidth,
   topologyNodeNameWidth,
   truncateTopologyNodeLabel,
 } from '../topology-layout';
+
+const topologyLayoutSource = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '../topology-layout.ts'),
+  'utf8',
+);
 
 const node = (id: string): ApmTopologyNode => ({
   id,
@@ -70,6 +80,68 @@ describe('APM 服务拓扑布局', () => {
   });
 });
 
+describe('APM 服务拓扑力导向稳定性', () => {
+  const directedNodes: ApmTopologyNode[] = [
+    node('storefront'),
+    node('catalog'),
+    node('inventory'),
+    { ...node('user_request'), id: 'user_request:local', service_name: 'user_request', service_namespace: '', kind: 'user_request', health: 'unknown' },
+    { ...node('mysql'), id: 'inferred:local:mysql', kind: 'inferred', fold_key: 'mysql' },
+  ];
+  const directedEdges: ApmTopologyEdge[] = [
+    edge('user_request:local', 'storefront'),
+    edge('storefront', 'catalog'),
+    edge('catalog', 'inventory'),
+    edge('inventory', 'inferred:local:mysql'),
+  ];
+  const positionsById = (items: { id: string; x: number; y: number }[]) => (
+    Object.fromEntries(items.map((item) => [item.id, { x: item.x, y: item.y }]))
+  );
+  const distance = (
+    left: { x: number; y: number } | undefined,
+    right: { x: number; y: number } | undefined,
+  ) => Math.hypot((left?.x ?? 0) - (right?.x ?? 0), (left?.y ?? 0) - (right?.y ?? 0));
+
+  it('同一份拓扑数据布局两次，节点坐标一致', async () => {
+    const first = await layoutForceTopology(directedNodes, directedEdges);
+    const second = await layoutForceTopology(directedNodes, directedEdges);
+    expect(first).toHaveLength(directedNodes.length);
+    expect(Object.keys(positionsById(first)).sort()).toEqual(directedNodes.map((item) => item.id).sort());
+    expect(positionsById(first)).toEqual(positionsById(second));
+  });
+
+  it('layoutForceTopology 不得使用 Math.random', () => {
+    expect(topologyLayoutSource).not.toMatch(/Math\.random/);
+  });
+
+  it('用户请求入口和推断下游不会漂到任意层或角落', async () => {
+    const result = await layoutForceTopology(directedNodes, directedEdges);
+    const byId = new Map(result.map((item) => [item.id, item]));
+    const entry = byId.get('user_request:local');
+    const storefront = byId.get('storefront');
+    const inventory = byId.get('inventory');
+    const inferred = byId.get('inferred:local:mysql');
+    const ys = result.map((item) => item.y);
+
+    expect(entry?.y).toBe(Math.min(...ys));
+    expect(inferred?.y).toBe(Math.max(...ys));
+    expect(entry?.y).toBeLessThan(storefront?.y ?? 0);
+    expect(storefront?.y).toBeLessThan(byId.get('catalog')?.y ?? 0);
+    expect(byId.get('catalog')?.y).toBeLessThan(inventory?.y ?? 0);
+    expect(inventory?.y).toBeLessThan(inferred?.y ?? 0);
+    expect(distance(entry, storefront)).toBeLessThan(distance(entry, inferred));
+    expect(distance(inferred, inventory)).toBeLessThan(distance(inferred, entry));
+    result.forEach((item) => {
+      expect(item.x).toBeGreaterThanOrEqual(96);
+      expect(item.x).toBeLessThanOrEqual(TOPOLOGY_CANVAS_SIZE.width - 96);
+      expect(item.y).toBeGreaterThanOrEqual(52);
+      expect(item.y).toBeLessThanOrEqual(TOPOLOGY_CANVAS_SIZE.height - 52);
+    });
+    expect(Math.abs((entry?.x ?? 0) - (storefront?.x ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.width / 2);
+    expect(Math.abs((inferred?.x ?? 0) - (inventory?.x ?? 0))).toBeLessThan(TOPOLOGY_CANVAS_SIZE.width / 2);
+  });
+});
+
 describe('APM 服务拓扑连线', () => {
   it('层次布局使用折线连接上下层', () => {
     const geometry = buildTopologyEdgeGeometry(
@@ -105,7 +177,7 @@ describe('APM 服务拓扑连线', () => {
     expect(forward.controlY).not.toBe(reverse.controlY);
   });
 
-  it('力导向连线使用分离曲线', () => {
+  it('互为反向的曲线连线分离', () => {
     const forward = buildTopologyEdgeGeometry(
       { x: 100, y: 100, radius: 28 },
       { x: 300, y: 100, radius: 28 },
@@ -154,7 +226,7 @@ describe('APM 应用拓扑聚焦', () => {
     ]);
   });
 
-  it('应用聚焦不把推断下游算进一跳邻居', () => {
+  it('应用聚焦保留本应用已插桩服务的直接推断下游', () => {
     const graph: ApmTopologyGraph = {
       nodes: [
         { ...node('checkout'), id: 'checkout', service_namespace: 'shop' },
@@ -166,22 +238,41 @@ describe('APM 应用拓扑聚焦', () => {
       data_state: 'available',
     };
     const focused = focusApplicationTopology(graph, 'shop');
-    expect(focused.graph.nodes.map((item) => item.id)).toEqual(['checkout']);
-    expect(focused.graph.edges).toEqual([]);
+    expect(focused.graph.nodes.map((item) => item.id).sort()).toEqual(['checkout', 'inferred:prod:mysql']);
+    expect(focused.graph.edges.map((item) => `${item.source}>${item.target}`)).toEqual(['checkout>inferred:prod:mysql']);
   });
-});
 
-describe('APM 服务拓扑力导向布局', () => {
-  it('为每个节点生成画布内坐标', async () => {
-    const result = await layoutForceTopology(demoNodes, demoEdges);
-    expect(result).toHaveLength(demoNodes.length);
-    expect(new Set(result.map((item) => item.id)).size).toBe(demoNodes.length);
-    result.forEach((item) => {
-      expect(item.x).toBeGreaterThanOrEqual(90);
-      expect(item.x).toBeLessThanOrEqual(950);
-      expect(item.y).toBeGreaterThanOrEqual(90);
-      expect(item.y).toBeLessThanOrEqual(540);
-    });
+  it('应用聚焦不把一跳邻居的推断下游算进本应用图', () => {
+    const graph: ApmTopologyGraph = {
+      nodes: [
+        { ...node('checkout'), id: 'checkout', service_namespace: 'shop' },
+        { ...node('invoice'), id: 'invoice', service_namespace: 'billing' },
+        { ...node('mysql'), id: 'inferred:prod:mysql', kind: 'inferred', fold_key: 'mysql' },
+      ],
+      edges: [edge('checkout', 'invoice'), edge('invoice', 'inferred:prod:mysql')],
+      sampled_traces: 1,
+      truncated: false,
+      data_state: 'available',
+    };
+    const focused = focusApplicationTopology(graph, 'shop');
+    expect(focused.graph.nodes.map((item) => item.id).sort()).toEqual(['checkout', 'invoice']);
+    expect(focused.graph.edges.map((item) => `${item.source}>${item.target}`)).toEqual(['checkout>invoice']);
+  });
+
+  it('应用聚焦保留连入焦点服务的用户请求入口节点', () => {
+    const graph: ApmTopologyGraph = {
+      nodes: [
+        { ...node('checkout'), id: 'checkout', service_namespace: 'shop' },
+        { ...node('user_request'), id: 'user_request:prod', service_namespace: '', kind: 'user_request', health: 'unknown' },
+      ],
+      edges: [edge('user_request:prod', 'checkout')],
+      sampled_traces: 1,
+      truncated: false,
+      data_state: 'available',
+    };
+    const focused = focusApplicationTopology(graph, 'shop');
+    expect(focused.graph.nodes.map((item) => item.id).sort()).toEqual(['checkout', 'user_request:prod']);
+    expect(focused.graph.edges.map((item) => `${item.source}>${item.target}`)).toEqual(['user_request:prod>checkout']);
   });
 });
 
@@ -219,5 +310,14 @@ describe('APM 服务拓扑节点标签', () => {
     expect(truncateTopologyNodeLabel('demo-payment-gateway', 70)).toMatch(/^demo-.+…$/);
     expect(truncateTopologyNodeLabel('demo-payment-gateway', 70).length).toBeLessThan('demo-payment-gateway'.length);
     expect(truncateTopologyNodeLabel('demo-payment-gateway', 70)).not.toBe('demo-payment-gateway');
+  });
+
+  it('用户请求入口按内容收缩为胶囊宽度，不超过服务卡片下限', () => {
+    const zhWidth = topologyEntryPillWidth('用户请求', '12');
+    const enWidth = topologyEntryPillWidth('User requests', '155');
+    expect(zhWidth).toBeGreaterThanOrEqual(128);
+    expect(zhWidth).toBeLessThan(176);
+    expect(enWidth).toBeGreaterThan(zhWidth);
+    expect(enWidth).toBeLessThanOrEqual(176);
   });
 });

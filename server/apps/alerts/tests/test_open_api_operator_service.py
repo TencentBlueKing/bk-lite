@@ -92,3 +92,36 @@ def test_operate_alert_other_team_not_found():
 
     assert exc.value.code == "alerts.alert.not_found"
     assert exc.value.status_code == 404
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.action.engine.ActionEngine.dispatch_async")
+def test_operate_alert_api_close_pending_without_assignee(_mock_dispatch):
+    _create_alert(alert_id="A-api-close-pending", status=AlertStatus.PENDING, operator=["other-user"])
+
+    result = _service().operate_alert("A-api-close-pending", "close", {"reason": "自动化关闭"})
+
+    assert result["alert_id"] == "A-api-close-pending"
+    assert result["status"] == AlertStatus.CLOSED
+    assert Alert.objects.get(alert_id="A-api-close-pending").status == AlertStatus.CLOSED
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.action.engine.ActionEngine.dispatch_async")
+def test_operate_alert_api_close_processing_without_assignee(_mock_dispatch):
+    _create_alert(alert_id="A-api-close-processing", status=AlertStatus.PROCESSING, operator=["other-user"])
+
+    result = _service().operate_alert("A-api-close-processing", "close", {})
+
+    assert result["status"] == AlertStatus.CLOSED
+
+
+@pytest.mark.django_db
+def test_operate_alert_api_close_rejects_unassigned():
+    _create_alert(alert_id="A-api-close-unassigned", status=AlertStatus.UNASSIGNED, operator=["other-user"])
+
+    with pytest.raises(AlertsOpenAPIError) as exc:
+        _service().operate_alert("A-api-close-unassigned", "close", {})
+
+    assert exc.value.code == "alerts.operator.invalid_state"
+    assert exc.value.status_code == 409

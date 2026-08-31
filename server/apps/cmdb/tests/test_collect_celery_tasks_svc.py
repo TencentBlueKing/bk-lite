@@ -355,6 +355,7 @@ def test_sync_cmdb_display_fields_enters_global_lock_before_refreshing_authorita
 
 def test_sync_cmdb_display_fields_returns_compatible_failure_when_lock_fails(monkeypatch):
     from contextlib import contextmanager
+
     from celery.exceptions import Retry
 
     retry_calls = []
@@ -1275,3 +1276,50 @@ def test_config_file_pending不能覆盖同execution回调终态(monkeypatch):
     assert task.collect_data == {"owner": "callback"}
     assert task.collect_digest == {"owner": "callback"}
     assert task.execution_claim_token is None
+
+
+@pytest.mark.django_db
+def test_sync_collect_tasks_gate_skips_node_mgmt_pull_collect(monkeypatch):
+    node_mgmt = CollectModels.objects.create(
+        name="节点管理主机自动采集-default",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        driver_type="job",
+        cycle_value_type="cycle",
+        team=[],
+        instances=[{"ip_addr": "10.0.0.1"}],
+        is_system=True,
+        is_interval=True,
+        system_code="node_mgmt_sync_host_collect_1",
+        exec_status=CollectRunStatusType.ERROR,
+        collect_digest={},
+    )
+    user_task = CollectModels.objects.create(
+        name="user-host-collect",
+        task_type=CollectPluginTypes.HOST,
+        model_id="host",
+        driver_type="job",
+        cycle_value_type="cycle",
+        team=[1],
+        instances=[{"ip_addr": "10.0.0.2"}],
+        is_system=False,
+        exec_status=CollectRunStatusType.SUCCESS,
+        collect_digest={"last_synced_round": 100},
+    )
+    monkeypatch.setattr(ct, "query_latest_round_ts", lambda *_a, **_k: 200)
+    monkeypatch.setattr(ct, "has_instance_vm_data", lambda *_a, **_k: False)
+    monkeypatch.setattr(ct, "_purge_legacy_vm_sync_beats", lambda: 0)
+
+    dispatched = []
+
+    class _Delay:
+        @staticmethod
+        def delay(*args, **kwargs):
+            dispatched.append(args[0] if args else kwargs.get("instance_id"))
+
+    monkeypatch.setattr(ct, "sync_collect_task", _Delay)
+
+    ct.sync_collect_tasks_gate()
+
+    assert user_task.id in dispatched
+    assert node_mgmt.id not in dispatched

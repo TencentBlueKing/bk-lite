@@ -321,3 +321,61 @@ class TestGetAuthorizedMonitorInstancesSuperuser:
         qs = SVC._get_authorized_monitor_instances(_actor_context(), obj.id)
 
         assert set(qs.values_list("id", flat=True)) == {current.id}
+
+
+class TestDockerCollectConfigUniqueness:
+    def _setup(self):
+        obj = MonitorObject.objects.create(name="DockerUniqObj", level="base")
+        plugin = MonitorPlugin.objects.create(name="DockerUniqPlugin")
+        return obj, plugin
+
+    def test_second_host_with_different_instance_id_is_allowed(self):
+        obj, plugin = self._setup()
+        existing = MonitorInstance.objects.create(
+            id="('hash-host-a',)", name="docker-10-20-6-209", monitor_object=obj
+        )
+        CollectConfig.objects.create(
+            id="docker-cfg-a",
+            monitor_instance=existing,
+            monitor_plugin=plugin,
+            collector="Telegraf",
+            collect_type="docker",
+            config_type="docker",
+            file_type="toml",
+        )
+
+        new_instances, existing_instances, reclaimable_ids = SVC._prepare_instances_for_creation(
+            [{"instance_id": "hash-host-b", "instance_name": "docker-10.20.5.200", "group_ids": [1]}],
+            obj.id,
+            "docker",
+            "Telegraf",
+            [{"type": "docker"}],
+        )
+
+        assert [inst["instance_id"] for inst in new_instances] == ["('hash-host-b',)"]
+        assert existing_instances == []
+        assert reclaimable_ids == []
+
+    def test_same_instance_id_is_still_rejected(self):
+        obj, plugin = self._setup()
+        existing = MonitorInstance.objects.create(
+            id="('hash-host-a',)", name="docker-10-20-6-209", monitor_object=obj
+        )
+        CollectConfig.objects.create(
+            id="docker-cfg-dup",
+            monitor_instance=existing,
+            monitor_plugin=plugin,
+            collector="Telegraf",
+            collect_type="docker",
+            config_type="docker",
+            file_type="toml",
+        )
+
+        with pytest.raises(BaseAppException, match="已存在采集配置"):
+            SVC._prepare_instances_for_creation(
+                [{"instance_id": "hash-host-a", "instance_name": "docker-10.20.5.200", "group_ids": [1]}],
+                obj.id,
+                "docker",
+                "Telegraf",
+                [{"type": "docker"}],
+            )

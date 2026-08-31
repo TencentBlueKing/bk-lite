@@ -4,6 +4,25 @@ from apps.operation_analysis.constants.import_export import ObjectType
 from apps.operation_analysis.services.report_view_sets import normalize_report_view_sets
 from apps.operation_analysis.services.string_param_multiple_migrate import migrate_canvas_view_sets
 
+_SCENE_WIDGET_SURFACES = {
+    "networkStatusTopology": {ObjectType.DASHBOARD, ObjectType.SCREEN},
+    "application3D": {ObjectType.SCREEN},
+}
+
+
+def _validate_scene_widget_surfaces(value: Any, object_type: ObjectType) -> None:
+    if isinstance(value, list):
+        for item in value:
+            _validate_scene_widget_surfaces(item, object_type)
+        return
+    if not isinstance(value, dict):
+        return
+    scene_type = value.get("sceneWidgetType") or value.get("chartType")
+    if scene_type in _SCENE_WIDGET_SURFACES and object_type not in _SCENE_WIDGET_SURFACES[scene_type]:
+        raise ValueError(f"{scene_type} is not supported on {object_type.value}")
+    for item in value.values():
+        _validate_scene_widget_surfaces(item, object_type)
+
 
 def _rewrite_datasource_refs(value: Any, key_map: dict[Any, Any]) -> Any:
     if isinstance(value, list):
@@ -68,6 +87,7 @@ def _normalize_screen_view_sets(view_sets: Any) -> dict:
 
 
 def normalize_canvas_view_sets_for_storage(view_sets: Any, object_type: ObjectType) -> list | dict:
+    _validate_scene_widget_surfaces(view_sets, object_type)
     if object_type == ObjectType.DASHBOARD:
         base = view_sets if isinstance(view_sets, list) else []
         migrated, _ = migrate_canvas_view_sets(base)

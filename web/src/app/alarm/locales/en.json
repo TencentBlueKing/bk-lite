@@ -251,6 +251,7 @@
         "changes": "Timeline",
         "firstEventTime": "First Event Time",
         "lastEventTime": "Last Event Time",
+        "closeTime": "Close Time",
         "eventTitle": "Title",
         "eventCount": "Event Count",
         "incidentName": "Incident Name",

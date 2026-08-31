@@ -7,6 +7,7 @@ import re
 
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
+from apps.cmdb.collection.nic_inventory import is_ingestible_nic, normalize_nic_mac
 from apps.cmdb.collection.plugins import get_collection_plugin
 from apps.cmdb.collection.plugins.base import bind_collection_mapping
 from apps.cmdb.constants.constants import CollectPluginTypes
@@ -16,9 +17,13 @@ from apps.core.logger import cmdb_logger as logger
 class HostCollectMetrics(CollectBase):
     def __init__(self, inst_name, inst_id, task_id, *args, **kwargs):
         super().__init__(inst_name, inst_id, task_id, *args, **kwargs)
-        self.os_type_list = [{"id": "1", "name": "Linux"}, {"id": "2", "name": "Windows"},
-                             {"id": "3", "name": "AIX"},
-                             {"id": "4", "name": "Unix"}, {"id": "other", "name": "Other"}]
+        self.os_type_list = [
+            {"id": "1", "name": "Linux"},
+            {"id": "2", "name": "Windows"},
+            {"id": "3", "name": "AIX"},
+            {"id": "4", "name": "Unix"},
+            {"id": "other", "name": "Other"},
+        ]
         self.server_cpuarch_list = [
             {"name": "x86_64", "id": "x64"},
             {"name": "arm64", "id": "arm64"},
@@ -28,10 +33,15 @@ class HostCollectMetrics(CollectBase):
             {"name": "i586", "id": "x86"},
             {"name": "i686", "id": "x86"},
             {"name": "armv7l", "id": "arm"},
-            {"name": "armv8l", "id": "arm64"}
+            {"name": "armv8l", "id": "arm64"},
         ]
-        self.cup_arch_list = [{"id": "x86", "name": "x86"}, {"id": "x64", "name": "x64"}, {"id": "arm", "name": "ARM"},
-                               {"id": "arm64", "name": "ARM64"}, {"id": "other", "name": "Other"}]
+        self.cup_arch_list = [
+            {"id": "x86", "name": "x86"},
+            {"id": "x64", "name": "x64"},
+            {"id": "arm", "name": "ARM"},
+            {"id": "arm64", "name": "ARM64"},
+            {"id": "other", "name": "Other"},
+        ]
         self.host_proc_map = {}
 
     @property
@@ -52,9 +62,9 @@ class HostCollectMetrics(CollectBase):
         result = [
             {
                 "model_id": self.model_id,
-                "inst_name": data.get('self_device'),
+                "inst_name": data.get("self_device"),
                 "asst_id": "contains",
-                "model_asst_id": f"{self.model_id}_contains_{model_id}"
+                "model_asst_id": f"{self.model_id}_contains_{model_id}",
             }
         ]
         return result
@@ -187,15 +197,32 @@ class HostCollectMetrics(CollectBase):
             return self.inst_name
         result_data = data
         self_device = result_data.get("self_device", "")
-        if data['model_id'] == 'nic' and self_device:
+        if data["model_id"] == "nic" and self_device:
             return f"{result_data.get('nic_pci_addr', '')}-{self_device}"
-        elif data['model_id'] == 'disk' and self_device:
+        elif data["model_id"] == "disk" and self_device:
             return f"{result_data.get('disk_name', '')}-{self_device}"
-        elif data['model_id'] == 'memory' and self_device:
+        elif data["model_id"] == "memory" and self_device:
             return f"{result_data.get('mem_locator', '')}-{self_device}"
-        elif data['model_id'] == 'gpu' and self_device:
+        elif data["model_id"] == "gpu" and self_device:
             return f"{result_data.get('gpu_name', '')}-{self_device}"
         return ""
+
+    def set_nic_inst_name(self, data, *args, **kwargs):
+        return normalize_nic_mac(data.get("nic_mac"))
+
+    def set_nic_mac(self, data, *args, **kwargs):
+        return normalize_nic_mac(data.get("nic_mac"))
+
+    def set_nic_asso_instances(self, data, *args, **kwargs):
+        parent_name = self.inst_name or data.get("self_device")
+        return [
+            {
+                "model_id": self.model_id,
+                "inst_name": parent_name,
+                "asst_id": "contains",
+                "model_asst_id": f"{self.model_id}_contains_nic",
+            }
+        ]
 
     @staticmethod
     def transform_int(data):
@@ -290,7 +317,7 @@ class HostCollectMetrics(CollectBase):
             # 解析result字段中的JSON数据
             # VictoriaMetrics返回的JSON字符串包含转义字符（如\n），需要先反转义再解析
             result_data = {}
-            if index_data["metric"].get("collect_status", 'failed') == 'failed':
+            if index_data["metric"].get("collect_status", "failed") == "failed":
                 continue
             index_dict = dict(
                 index_key=metric_name,
@@ -312,17 +339,17 @@ class HostCollectMetrics(CollectBase):
             mapping = self.model_field_mapping.get(model_id, {})
             result = []
             for index_data in metrics:
+                if model_id == "nic" and not is_ingestible_nic(index_data.get("nic_iface"), index_data.get("nic_mac")):
+                    continue
                 data = {}
                 for field, key_or_func in mapping.items():
                     try:
                         if isinstance(key_or_func, tuple):
                             field_name = key_or_func[1]
                             if field_name in index_data:
-                                data[field] = key_or_func[0](
-                                    index_data[field_name])
+                                data[field] = key_or_func[0](index_data[field_name])
                             else:
-                                data[field] = 0 if field in [
-                                    "cpu_core", "memory", "disk"] else ""
+                                data[field] = 0 if field in ["cpu_core", "memory", "disk"] else ""
                         elif callable(key_or_func):
                             try:
                                 data[field] = key_or_func(index_data, model_id=model_id)
@@ -331,8 +358,7 @@ class HostCollectMetrics(CollectBase):
                         else:
                             data[field] = index_data.get(key_or_func, "")
                     except (KeyError, ValueError, TypeError):
-                        data[field] = 0 if field in [
-                            "cpu_core", "memory", "disk"] else ""
+                        data[field] = 0 if field in ["cpu_core", "memory", "disk"] else ""
                 if data:
                     result.append(data)
             self.result[model_id] = result

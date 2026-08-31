@@ -6,7 +6,7 @@ import { ClearOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { FiltersConfig } from '@/app/alarm/types/alarms';
 import { useSourceApi } from '@/app/alarm/api/integration';
-import { SourceItem } from '@/app/alarm/types/integration';
+import { AlertSourceOption } from '@/app/alarm/types/integration';
 import { useCommon } from '@/app/alarm/context/common';
 
 interface Props {
@@ -25,9 +25,9 @@ const AlarmFilters: React.FC<Props> = ({
   clearFilters,
 }) => {
   const { t } = useTranslation();
-  const { getAlertSources } = useSourceApi();
+  const { getAlertSourceOptions } = useSourceApi();
   const { levelList, levelMap } = useCommon();
-  const [sourceOptions, setSourcesOptions] = useState<SourceItem[]>([]);
+  const [sourceOptions, setSourcesOptions] = useState<AlertSourceOption[]>([]);
   const [loadingSources, setLoadingSources] = useState<boolean>(false);
 
   useEffect(() => {
@@ -35,7 +35,7 @@ const AlarmFilters: React.FC<Props> = ({
     const fetchSources = async () => {
       setLoadingSources(true);
       try {
-        const res = await getAlertSources();
+        const res = await getAlertSourceOptions();
         if (res) setSourcesOptions(res);
       } catch (err) {
         console.error(err);
@@ -130,7 +130,7 @@ const AlarmFilters: React.FC<Props> = ({
                   }
                 >
                   <Space direction="vertical">
-                    {sourceOptions.map((o: SourceItem) => (
+                    {sourceOptions.map((o: AlertSourceOption) => (
                       <Checkbox key={o.name} value={o.name}>
                         {o.name}
                       </Checkbox>

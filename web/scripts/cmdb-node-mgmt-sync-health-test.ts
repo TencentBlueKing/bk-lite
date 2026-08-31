@@ -57,6 +57,17 @@ for (const reasonCode of ['NODE_SOURCE_EMPTY', 'NO_VALID_NODES']) {
     `${reasonCode} 必须映射到稳定本地化错误文案`
   );
 }
+for (const reasonCode of [
+  'COLLECT_EXECUTION_SUPERSEDED',
+  'COLLECT_CHILD_FAILED',
+  '1:COLLECT_EXECUTION_SUPERSEDED',
+]) {
+  assert.notEqual(
+    getNodeMgmtSyncReasonTextKey(reasonCode),
+    'Collection.nodeMgmtSync.reason.unknown',
+    `${reasonCode} 必须映射到稳定本地化错误文案`
+  );
+}
 assert.equal(
   getNodeMgmtSyncEmptyStateKey({ status: 'partial_success', reasonCode: '', total: 0 }),
   'Collection.nodeMgmtSync.empty.partialFailure'

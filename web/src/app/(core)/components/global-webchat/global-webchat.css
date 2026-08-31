@@ -16,6 +16,12 @@ html {
   animation: none !important;
   overflow: visible !important;
   filter: none !important;
+  cursor: grab !important;
+  touch-action: none !important;
+}
+
+#webchat-root button[aria-label='打开对话'].is-dragging {
+  cursor: grabbing !important;
 }
 
 #webchat-root button[aria-label='打开对话']:hover {

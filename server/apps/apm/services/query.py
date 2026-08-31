@@ -13,7 +13,7 @@ from apps.apm.services.contracts import (
 )
 from apps.apm.services.trace_sanitizer import sanitize_trace_detail
 
-MAX_METRIC_WINDOW = timedelta(hours=24)
+MAX_METRIC_WINDOW = timedelta(days=7)
 MAX_TRACE_WINDOW = timedelta(days=7)
 MAX_TRACE_PAGE_SIZE = 100
 _VALID_STATUSES = frozenset({"ok", "error"})
@@ -31,7 +31,7 @@ class DjangoTelemetryQueryService:
         if query.ended_at <= query.started_at:
             raise ValueError("查询结束时间必须晚于开始时间")
         if query.ended_at - query.started_at > MAX_METRIC_WINDOW:
-            raise ValueError("RED 查询时间窗不能超过 24 小时")
+            raise ValueError("RED 查询时间窗不能超过 7 天")
         if not query.service_name.strip():
             raise ValueError("service.name 不能为空")
         if self.metric_store is None:

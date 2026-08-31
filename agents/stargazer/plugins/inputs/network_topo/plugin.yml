@@ -15,6 +15,7 @@ executors:
     type: protocol
     execution_mode: async
     capacity_group: network_topology
+    probe_timeout: 25
     collector:
       module: plugins.inputs.network_topo.snmp_topo
       class: SnmpTopo

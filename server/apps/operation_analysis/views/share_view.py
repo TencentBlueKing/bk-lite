@@ -83,6 +83,16 @@ def _canvas_data_source_ids(resource):
     return found
 
 
+def _view_sets_has_scene_widget(value, scene_widget_type: str) -> bool:
+    if isinstance(value, dict):
+        if any(value.get(key) == scene_widget_type for key in ("type", "chartType", "widgetType", "sceneWidgetType")):
+            return True
+        return any(_view_sets_has_scene_widget(child, scene_widget_type) for child in value.values())
+    if isinstance(value, list):
+        return any(_view_sets_has_scene_widget(child, scene_widget_type) for child in value)
+    return False
+
+
 def _serialize_shared_resource(principal):
     resource = principal.resource
     if principal.resource_type == "networkTopology":
@@ -356,6 +366,100 @@ class DashboardShareAccessViewSet(viewsets.ViewSet):
                 }
                 for item in data_sources
             ]
+        )
+
+    def _application3d_operation(self, request, session_id, *, action_name: str, view_action: str):
+        try:
+            principal = resolve_session(session_id=session_id, visitor=request.user)
+        except ShareRateLimited:
+            log_share_access(request, action=action_name, result="reject", reason="rate_limited")
+            return Response({"detail": "请求过于频繁"}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+        except ShareLinkInvalid:
+            log_share_access(request, action=action_name, result="reject", reason="invalid")
+            return Response(INVALID_SHARE_RESPONSE, status=status.HTTP_404_NOT_FOUND)
+
+        if principal.resource_type != "screen" or not _view_sets_has_scene_widget(
+            getattr(principal.resource, "view_sets", None),
+            "application3D",
+        ):
+            log_share_access(
+                request,
+                action=action_name,
+                principal=principal,
+                visitor=request.user,
+                result="reject",
+                reason="application3d_not_declared",
+            )
+            return Response({"detail": "分享大屏未声明 3D 应用组件"}, status=status.HTTP_403_FORBIDDEN)
+
+        factory = APIRequestFactory()
+        delegated_request = factory.post("/", request.data or {}, format="json")
+        delegated_request.COOKIES["current_team"] = str(principal.space_id)
+        delegated_request.COOKIES["include_children"] = "0"
+        force_authenticate(delegated_request, user=_delegated_sharer_user(principal.user))
+
+        from apps.operation_analysis.views.scene_widget_view import SceneWidgetViewSet
+
+        response = SceneWidgetViewSet.as_view({"post": view_action})(delegated_request)
+        log_share_access(
+            request,
+            action=action_name,
+            principal=principal,
+            visitor=request.user,
+            result="ok" if getattr(response, "status_code", 500) < 400 else "reject",
+        )
+        return response
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/application3d/wall",
+    )
+    def application3d_wall(self, request, session_id=None):
+        return self._application3d_operation(
+            request,
+            session_id,
+            action_name="application3d_wall",
+            view_action="application3d_wall",
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/application3d/application_detail",
+    )
+    def application3d_application_detail(self, request, session_id=None):
+        return self._application3d_operation(
+            request,
+            session_id,
+            action_name="application3d_application_detail",
+            view_action="application3d_application_detail",
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/application3d/alarm_detail",
+    )
+    def application3d_alarm_detail(self, request, session_id=None):
+        return self._application3d_operation(
+            request,
+            session_id,
+            action_name="application3d_alarm_detail",
+            view_action="application3d_alarm_detail",
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"session/(?P<session_id>[^/.]+)/application3d/metric",
+    )
+    def application3d_metric(self, request, session_id=None):
+        return self._application3d_operation(
+            request,
+            session_id,
+            action_name="application3d_metric",
+            view_action="application3d_metric",
         )
 
     def _resolve_network_topology_principal(self, request, session_id, *, action_name: str):

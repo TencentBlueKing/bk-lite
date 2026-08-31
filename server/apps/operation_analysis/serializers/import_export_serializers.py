@@ -1,16 +1,12 @@
 # -- coding: utf-8 --
 from rest_framework import serializers
 
-from apps.operation_analysis.constants.import_export import (
-    ObjectType,
-    ScopeType,
-    ConflictAction,
-    CANVAS_TYPES,
-    CONFIG_TYPES,
-)
+from apps.operation_analysis.constants.import_export import CANVAS_TYPES, CONFIG_TYPES, ConflictAction, ObjectType, ScopeType
 
 
 class ExportRequestSerializer(serializers.Serializer):
+    MAX_OBJECT_IDS = 1000
+
     object_type = serializers.ChoiceField(
         choices=[t.value for t in ObjectType],
         help_text="对象类型",
@@ -18,6 +14,7 @@ class ExportRequestSerializer(serializers.Serializer):
     object_ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1),
         min_length=1,
+        max_length=MAX_OBJECT_IDS,
         help_text="要导出的对象ID列表",
     )
 

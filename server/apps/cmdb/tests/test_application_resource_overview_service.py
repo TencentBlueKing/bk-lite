@@ -104,6 +104,60 @@ def test_build_application_topology_returns_center_and_expanded_children(monkeyp
     assert result["links"]
     assert {link["source"] for link in result["links"]} <= {"uuid-11", "uuid-21", "uuid-31", "uuid-41"}
     assert {link["target"] for link in result["links"]} <= {"uuid-11", "uuid-21", "uuid-31", "uuid-41"}
+    layer_by_id = {node["id"]: node["app_topo_layer"] for node in result["nodes"]}
+    assert layer_by_id == {
+        "uuid-11": "service",
+        "uuid-21": "host",
+        "uuid-31": "appService",
+        "uuid-41": "infrastructure",
+    }
+    assert result["center"]["app_topo_layer"] == "service"
+
+
+@pytest.mark.unit
+def test_build_application_topology_uses_stored_model_app_topo_layer(monkeypatch):
+    monkeypatch.setattr(
+        "apps.cmdb.services.application_resource_overview.ModelManage.search_model_info",
+        lambda model_id: {
+            "model_name": model_id,
+            "app_topo_layer": "host" if model_id == "mysql" else "",
+        },
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.application_resource_overview.InstanceManage.query_entity_by_id",
+        lambda inst_id: {
+            "_id": inst_id,
+            "inst_uuid": f"uuid-{inst_id}",
+            "model_id": "application",
+            "inst_name": "app-a",
+        },
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.application_resource_overview.InstanceManage.instance_association_instance_list",
+        lambda model_id, inst_id: (
+            [
+                {
+                    "src_model_id": "application",
+                    "dst_model_id": "mysql",
+                    "asst_id": "contains",
+                    "model_asst_id": "application_contains_mysql",
+                    "inst_list": [{"_id": 31, "inst_uuid": "uuid-31", "model_id": "mysql", "inst_name": "db-a"}],
+                }
+            ]
+            if (model_id, inst_id) == ("application", 11)
+            else []
+        ),
+    )
+
+    result = ApplicationResourceOverviewService.build_application_topology(
+        inst_id=11,
+        model_id="application",
+        depth=1,
+    )
+
+    layer_by_id = {node["id"]: node["app_topo_layer"] for node in result["nodes"]}
+    assert layer_by_id["uuid-31"] == "host"
+    assert layer_by_id["uuid-11"] == "service"
 
 
 @pytest.mark.unit

@@ -118,4 +118,44 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.job_mgmt.tests.test_openapi_job_execute::test_api_tenant_cannot_read_other_org_job_detail",
         "apps.job_mgmt.tests.test_openapi_job_execute::test_job_detail_forged_team_is_rejected",
     ],
+    "alerts/list": [
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_list_own_org_alerts",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_alerts",
+        "apps.alerts.tests.test_openapi_gateway::test_list_forged_team_is_rejected",
+    ],
+    "alerts/detail": [
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_read_own_alert",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_alert",
+        "apps.alerts.tests.test_openapi_gateway::test_detail_forged_team_is_rejected",
+    ],
+    "alerts/events": [
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_list_own_alert_events",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_alert_events",
+        "apps.alerts.tests.test_openapi_gateway::test_events_forged_team_is_rejected",
+    ],
+    "alerts/assign": [
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_assign_own_alert",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_assign_other_org_alert",
+        "apps.alerts.tests.test_openapi_gateway::test_assign_forged_team_is_rejected",
+    ],
+    "alerts/acknowledge": [
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_acknowledge_own_alert",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_acknowledge_other_org_alert",
+        "apps.alerts.tests.test_openapi_gateway::test_acknowledge_forged_team_is_rejected",
+    ],
+    "alerts/reassign": [
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_reassign_own_alert",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_reassign_other_org_alert",
+        "apps.alerts.tests.test_openapi_gateway::test_reassign_forged_team_is_rejected",
+    ],
+    "alerts/close": [
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_close_own_pending_alert_without_assignee",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_close_other_org_alert",
+        "apps.alerts.tests.test_openapi_gateway::test_close_forged_team_is_rejected",
+    ],
+    "alerts/batch-action": [
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_can_batch_close_own_alerts",
+        "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_batch_close_other_org_alerts",
+        "apps.alerts.tests.test_openapi_gateway::test_batch_action_forged_team_is_rejected",
+    ],
 }

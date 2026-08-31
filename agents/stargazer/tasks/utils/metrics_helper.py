@@ -11,30 +11,6 @@ import time
 from typing import Any, Dict
 
 
-def generate_plugin_error_metrics(params: Dict[str, Any], error: Exception) -> str:
-    """
-    生成插件采集错误指标（Prometheus 格式）
-
-    Args:
-        params: 采集参数
-        error: 异常对象
-
-    Returns:
-        Prometheus 格式的错误指标
-    """
-    current_timestamp = int(params.get("_publish_timestamp_ms") or time.time() * 1000)
-    error_type = type(error).__name__
-    plugin_name = params.get("plugin_name", "unknown")
-
-    prometheus_lines = [
-        "# HELP collection_status Auto-generated help for collection_status",
-        "# TYPE collection_status gauge",
-        f'collection_status{{plugin="{plugin_name}",status="error",error_type="{error_type}"}} 1 {current_timestamp}',
-    ]
-
-    return "\n".join(prometheus_lines) + "\n"
-
-
 def generate_monitor_error_metrics(params: Dict[str, Any], error: Exception) -> str:
     """
     生成监控采集错误指标（Prometheus 格式）
@@ -67,24 +43,23 @@ def generate_host_remote_state_metric(
     monitor_type: str = "host",
     extra_labels: Dict[str, Any] | None = None,
 ) -> str:
+    # task_id 保留在调用契约中用于 callback/发布关联，但不得进入指标标签。
+    _ = task_id
     current_timestamp = int(time.time() * 1000)
     labels = {
         "monitor_type": monitor_type,
         "event": event,
-        "task_id": str(task_id or ""),
         "status": status,
     }
     if isinstance(extra_labels, dict):
-        for key, label_value in extra_labels.items():
-            if label_value is not None:
-                labels[key] = label_value
+        reason = extra_labels.get("reason")
+        if reason is not None:
+            labels["reason"] = reason
 
     def escape_label(label_value: Any) -> str:
         return str(label_value).replace("\\", "\\\\").replace('"', '\\"')
 
-    rendered_labels = ",".join(
-        f'{key}="{escape_label(label_value)}"' for key, label_value in labels.items()
-    )
+    rendered_labels = ",".join(f'{key}="{escape_label(label_value)}"' for key, label_value in labels.items())
     return (
         "\n".join(
             [

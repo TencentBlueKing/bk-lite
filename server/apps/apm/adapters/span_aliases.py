@@ -11,8 +11,10 @@ RPC_SERVICE_KEYS = ("rpc.service",)
 PEER_SERVICE_KEYS = ("peer.service",)
 HOST_KEYS = ("server.address", "net.peer.name", "network.peer.address", "net.peer.ip")
 PORT_KEYS = ("server.port", "net.peer.port", "network.peer.port")
+HTTP_ENTRY_KEYS = ("http.request.method", "http.method", "http.route", "url.path")
 CLIENT_SPAN_KINDS = frozenset({"client", "producer"})
 ENTRY_SPAN_KINDS = frozenset({"server", "consumer"})
+SERVER_SPAN_KIND = "server"
 
 
 def span_attribute_text(attributes: Mapping[str, object], keys: tuple[str, ...]) -> str:
@@ -53,6 +55,21 @@ class InferredDownstream:
     @property
     def peer_address(self) -> str:
         return format_peer_endpoint(self.host, self.port)
+
+
+def is_user_request_entry(kind: str, attributes: Mapping[str, object]) -> bool:
+    """判定 Span 是否由外部 HTTP/RPC 请求触发（用户请求入口）。
+
+    只认 server 类 Span；消息消费（consumer）与无 HTTP/RPC 语义属性的
+    根 Span（定时任务等）不算用户请求。父 Span 归属由拓扑构图判断。
+    """
+
+    if kind != SERVER_SPAN_KIND:
+        return False
+    return bool(
+        span_attribute_text(attributes, HTTP_ENTRY_KEYS)
+        or span_attribute_text(attributes, RPC_SYSTEM_KEYS)
+    )
 
 
 def infer_downstream(attributes: Mapping[str, object]) -> InferredDownstream | None:

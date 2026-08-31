@@ -402,7 +402,7 @@ class DjangoIntegrationConfigurationService:
 
         def _node_server_url() -> object:
             if "value" not in env_config_cache:
-                env_config = node_mgmt.get_cloud_region_envconfig(cloud_region_id)
+                env_config = node_mgmt.get_cloud_region_public_config(cloud_region_id)
                 env_config_cache["value"] = env_config if isinstance(env_config, dict) else {}
             return env_config_cache["value"].get("NODE_SERVER_URL")
 

@@ -9,7 +9,7 @@ from apps.apm.adapters import InMemoryTraceStore, TelemetryStoreUnavailable
 from apps.apm.adapters.span_aliases import format_peer_endpoint, infer_downstream
 from apps.apm.models import ApmService
 from apps.apm.services import DjangoApmTopologyService, DjangoTelemetryCatalogService
-from apps.apm.services.contracts import CatalogDiscovery, SpanDetail, TopologySampleQuery, TopologyTarget, TraceDetail
+from apps.apm.services.contracts import CatalogDiscovery, SpanDetail, TopologyTarget, TraceDetail
 from apps.apm.tests.helpers import create_application
 
 
@@ -87,6 +87,21 @@ def _mysql_client_trace(now, *, attr_key="db.system", trace_id="b" * 32, status=
             ),
         ),
     )
+
+
+def test_topology_build_propagates_telemetry_unavailable_instead_of_no_data():
+    now = timezone.now()
+
+    class _UnavailableStore:
+        def sample_traces(self, query):
+            raise TelemetryStoreUnavailable("VictoriaTraces 查询不可用")
+
+    with pytest.raises(TelemetryStoreUnavailable, match="查询不可用"):
+        DjangoApmTopologyService(_UnavailableStore()).build(
+            [TopologyTarget("shop", "gateway", "prod", "go")],
+            started_at=now - timedelta(hours=1),
+            ended_at=now,
+        )
 
 
 def test_topology_builds_cross_service_edges_and_edge_red_from_the_same_sample():
@@ -272,6 +287,82 @@ def test_inferred_mysql_node_exists_only_in_topology_result():
 
     assert {node.service_name for node in graph.nodes if node.kind == "inferred"} == {"mysql"}
     assert {node.service_name for node in graph.nodes if node.kind == "instrumented"} == {"gateway"}
+
+
+def test_user_request_node_exists_only_in_topology_result():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_user_entry_trace(now)]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert {node.service_name for node in graph.nodes if node.kind == "user_request"} == {"user_request"}
+    assert {node.service_name for node in graph.nodes if node.kind == "instrumented"} == {"storefront"}
+    assert all(node.service_namespace == "" for node in graph.nodes if node.kind == "user_request")
+
+
+@pytest.mark.django_db
+def test_catalog_http_does_not_materialize_inferred_or_user_request_nodes(apm_api_client):
+    now = timezone.now()
+    create_application("shop", (10,))
+    catalog = DjangoTelemetryCatalogService()
+    catalog.discover(CatalogDiscovery("shop", "storefront", "storefront-1", "prod", seen_at=now))
+    catalog.discover(CatalogDiscovery("shop", "gateway", "gateway-1", "prod", seen_at=now))
+    graph = DjangoApmTopologyService(
+        InMemoryTraceStore(details=[_user_entry_trace(now), _mysql_client_trace(now)]),
+    ).build(
+        [TopologyTarget("shop", "storefront", "prod"), TopologyTarget("shop", "gateway", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_inferred=True,
+        include_user_request=True,
+    )
+
+    response = apm_api_client.get("/api/v1/apm/services/")
+    names = {item["name"] for item in response.data} if isinstance(response.data, list) else {item["name"] for item in response.data["items"]}
+
+    assert {node.service_name for node in graph.nodes if node.kind == "inferred"} == {"mysql"}
+    assert {node.service_name for node in graph.nodes if node.kind == "user_request"} == {"user_request"}
+    assert all(node.service_namespace == "" for node in graph.nodes if node.kind in {"inferred", "user_request"})
+    assert response.status_code == 200
+    assert names == {"storefront", "gateway"}
+    assert "mysql" not in names
+    assert "user_request" not in names
+    assert not ApmService.objects.filter(name__in=["mysql", "user_request"]).exists()
+
+
+def test_catalog_and_red_do_not_surface_topology_synthetic_nodes():
+    from apps.apm.services import catalog as catalog_module
+    from apps.apm.services import query as query_module
+
+    for module in (catalog_module, query_module):
+        source = Path(module.__file__).read_text(encoding="utf-8")
+        assert "include_inferred" not in source
+        assert "include_user_request" not in source
+        assert "user_request" not in source
+
+
+def test_topology_query_flag_defaults_match_global_and_app_detail_shapes():
+    from apps.apm.views.topology import TopologyQuerySerializer
+
+    defaults = TopologyQuerySerializer(data={})
+    assert defaults.is_valid(), defaults.errors
+    assert defaults.validated_data["include_inferred"] is False
+    assert defaults.validated_data["include_user_request"] is False
+
+    global_shape = TopologyQuerySerializer(data={"include_inferred": True})
+    assert global_shape.is_valid(), global_shape.errors
+    assert global_shape.validated_data["include_inferred"] is True
+    assert global_shape.validated_data["include_user_request"] is False
+
+    app_detail = TopologyQuerySerializer(data={"include_inferred": True, "include_user_request": True})
+    assert app_detail.is_valid(), app_detail.errors
+    assert app_detail.validated_data["include_inferred"] is True
+    assert app_detail.validated_data["include_user_request"] is True
 
 
 def test_inferred_node_requires_org_visible_caller():
@@ -476,6 +567,186 @@ def test_span_attr_prefixed_net_peer_still_surfaces_host_port():
     assert inferred.peer_address == "orders-db:3306"
 
 
+def _user_entry_trace(now, *, trace_id="d" * 32, attrs=None, kind="server", parent=None, status="ok"):
+    """根 Span 由外部请求触发的单服务 Trace；attrs/kind/parent 可调以覆盖判定边界。"""
+
+    return _trace(
+        trace_id,
+        (
+            _span(
+                "6" * 16,
+                parent,
+                "GET /checkout",
+                now,
+                service="storefront",
+                kind=kind,
+                duration=30,
+                status=status,
+                attrs=attrs if attrs is not None else {"http.route": "/checkout"},
+            ),
+        ),
+    )
+
+
+def test_user_request_node_and_edge_appear_for_root_server_span_with_http_attrs():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_user_entry_trace(now)]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    node = next(node for node in graph.nodes if node.kind == "user_request")
+    assert node.id == "user_request:prod"
+    assert node.service_name == "user_request"
+    assert node.health == "unknown"
+    assert node.request_rate is None
+    assert node.error_rate is None
+    assert node.p95_ms is None
+    edge = next(edge for edge in graph.edges if edge.source == "user_request:prod")
+    assert edge.target == "shop:storefront:prod"
+    assert edge.sampled_calls == 1
+    assert edge.p95_ms == 30
+    assert edge.error_rate == 0.0
+    assert graph.data_state == "available"
+
+
+def test_user_request_node_is_omitted_without_include_user_request_flag():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_user_entry_trace(now)]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_inferred=True,
+    )
+
+    assert all(node.kind != "user_request" for node in graph.nodes)
+    assert all(not edge.source.startswith("user_request:") for edge in graph.edges)
+
+
+def test_consumer_root_span_does_not_create_user_request_node():
+    now = timezone.now()
+    trace = _user_entry_trace(now, kind="consumer", attrs={"messaging.system": "kafka"})
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[trace]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert all(node.kind != "user_request" for node in graph.nodes)
+
+
+def test_root_server_span_without_http_or_rpc_attrs_does_not_create_user_request_node():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_user_entry_trace(now, attrs={})]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert all(node.kind != "user_request" for node in graph.nodes)
+
+
+def test_server_span_with_parent_outside_trace_still_counts_as_user_request_entry():
+    now = timezone.now()
+    trace = _user_entry_trace(now, parent="f" * 16, attrs={"span_attr:http.request.method": "GET"})
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[trace]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert any(node.kind == "user_request" for node in graph.nodes)
+
+
+def test_rpc_system_root_server_span_counts_as_user_request_entry():
+    now = timezone.now()
+    trace = _user_entry_trace(now, attrs={"rpc.system": "grpc"})
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[trace]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert any(node.kind == "user_request" for node in graph.nodes)
+
+
+def test_service_called_by_instrumented_upstream_gets_no_user_request_edge():
+    now = timezone.now()
+    trace = _trace(
+        "b" * 32,
+        (
+            _span("1" * 16, None, "GET /checkout", now, service="gateway", attrs={"http.route": "/checkout"}),
+            _span("2" * 16, "1" * 16, "POST /pay", now, service="gateway", kind="client", duration=20),
+            _span("3" * 16, "2" * 16, "POST /pay", now, service="payment", duration=18, attrs={"http.route": "/pay"}),
+        ),
+    )
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[trace]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "gateway", "prod"), TopologyTarget("shop", "payment", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    entry_edges = [edge for edge in graph.edges if edge.source.startswith("user_request:")]
+    assert {edge.target for edge in entry_edges} == {"shop:gateway:prod"}
+
+
+def test_user_request_entries_fold_into_one_node_per_environment():
+    now = timezone.now()
+    first = _user_entry_trace(now, trace_id="1" * 32)
+    second = _user_entry_trace(now - timedelta(seconds=1), trace_id="2" * 32, status="error")
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[first, second]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "storefront", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    nodes = [node for node in graph.nodes if node.kind == "user_request"]
+    assert len(nodes) == 1
+    edge = next(edge for edge in graph.edges if edge.source == "user_request:prod")
+    assert edge.sampled_calls == 2
+    assert edge.error_calls == 1
+    assert edge.error_rate == 0.5
+
+
+def test_user_request_node_is_omitted_when_entry_service_is_not_visible():
+    now = timezone.now()
+    service = DjangoApmTopologyService(InMemoryTraceStore(details=[_user_entry_trace(now)]))
+
+    graph = service.build(
+        [TopologyTarget("shop", "payment", "prod")],
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+        include_user_request=True,
+    )
+
+    assert graph.nodes == ()
+    assert graph.edges == ()
+
+
 @pytest.mark.django_db
 def test_topology_api_only_queries_targets_visible_to_current_organization(apm_api_client, mocker):
     now = timezone.now()
@@ -550,29 +821,31 @@ def test_topology_api_inferred_mysql_does_not_appear_in_service_catalog(apm_api_
     assert not ApmService.objects.filter(name="mysql").exists()
 
 
-def test_sample_traces_omitted_fetch_logs_template_without_leaking_payload(caplog):
+def test_sample_traces_span_fetch_failure_is_unavailable_not_empty(caplog):
     from apps.apm.adapters.victoriatraces import VictoriaTracesTelemetryStore
 
     class _Store(VictoriaTracesTelemetryStore):
         def __init__(self):
             super().__init__(endpoint="http://traces.test")
 
-        def sample_traces(self, query: TopologySampleQuery):
-            raise AssertionError("not used")
-
-        def get_trace(self, trace_id: str):
+        def _query_rows(self, query, started_at, ended_at, *, limit=None):
             raise TelemetryStoreUnavailable("VictoriaTraces 查询不可用")
 
     store = _Store()
     caplog.set_level("WARNING", logger="apm")
-    traces, omitted = store._fetch_topology_traces(["secret-token-should-not-appear", "a" * 32])
+    now = timezone.now()
 
-    assert traces == []
-    assert omitted == 2
+    with pytest.raises(TelemetryStoreUnavailable, match="查询不可用"):
+        store._fetch_topology_traces(
+            ["secret-token-should-not-appear", "a" * 32],
+            started_at=now - timedelta(hours=1),
+            ended_at=now,
+        )
+
     records = [
         record
         for record in caplog.records
-        if getattr(record, "msg", "") == "event=apm_topology_trace_fetch_failed failed_stage=get_trace error_type=%s"
+        if getattr(record, "msg", "") == "event=apm_topology_trace_fetch_failed failed_stage=sample_spans error_type=%s"
     ]
     assert records
     record: LogRecord = records[0]

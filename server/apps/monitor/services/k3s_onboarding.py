@@ -171,7 +171,7 @@ class K3SOnboardingService:
     @classmethod
     def generate_install_commands(cls, *, instance_id, cloud_region_id):
         instance = cls._get_cluster_instance(instance_id)
-        env = NodeMgmt().get_cloud_region_envconfig(cloud_region_id)
+        env = NodeMgmt().get_cloud_region_public_config(cloud_region_id)
         server_url = env.get("NODE_SERVER_URL")
         if not server_url:
             raise BaseAppException(

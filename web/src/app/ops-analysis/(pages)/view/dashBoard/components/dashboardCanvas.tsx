@@ -12,6 +12,7 @@ import { PlusOutlined } from '@ant-design/icons';
 import type {
   GridItemHTMLElement,
   GridStack as GridStackInstance,
+  GridStackNode,
   GridStackWidget,
 } from 'gridstack';
 
@@ -57,6 +58,10 @@ import type { RuntimeRequestPriority } from '@/app/ops-analysis/utils/dashboardR
 
 import 'gridstack/dist/gridstack.min.css';
 import type { DashboardWidgetRenderResult } from '@/app/ops-analysis/renderContract';
+import {
+  resolveAnalysisCanvasInteraction,
+  shouldShowAnalysisWidgetCopyAction,
+} from '@/app/ops-analysis/utils/widgetCopy';
 
 const DASHBOARD_GRID_COLS = 12;
 const DASHBOARD_GRID_ROW_HEIGHT = 60;
@@ -103,6 +108,7 @@ interface DashboardCanvasProps {
   appliedFilterDefinitions: UnifiedFilterDefinition[];
   appliedNamespaceId: number | undefined;
   selectedDashboardLocked?: boolean;
+  shareMode?: boolean;
   onLayoutChange: (newLayout: DashboardLayoutItem[]) => void;
   onOpenAddModal: (groupId?: string) => void;
   onToggleCollapsedGroup: (groupId: string) => void;
@@ -110,6 +116,7 @@ interface DashboardCanvasProps {
   onRemoveGroup: (groupId: string) => void;
   onDeleteEntireGroup: (groupId: string) => void;
   onEditWidget: (id: string) => void;
+  onCopyWidget?: (id: string) => void;
   onDeleteWidget: (id: string) => void;
   onTopologyLayoutChange?: (
     widgetId: string,
@@ -140,6 +147,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   appliedFilterDefinitions,
   appliedNamespaceId,
   selectedDashboardLocked,
+  shareMode = false,
   onOpenAddModal,
   onLayoutChange,
   onToggleCollapsedGroup,
@@ -147,6 +155,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   onRemoveGroup,
   onDeleteEntireGroup,
   onEditWidget,
+  onCopyWidget,
   onDeleteWidget,
   onTopologyLayoutChange,
   renderMode = false,
@@ -166,6 +175,10 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
   const groupBodyElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const commitFrameRef = useRef<number | null>(null);
   const syncingRef = useRef(false);
+  const preservedScrollTopRef = useRef(0);
+  const preservedScrollDashboardRef = useRef<string | number | undefined>(
+    dashboardId,
+  );
 
   const gridStackLayout = useMemo(
     () => buildDashboardGridStackLayout(layout),
@@ -249,6 +262,66 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
     collapsedGroupsRef.current = collapsedGroups;
     gridStackLayoutRef.current = gridStackLayout;
   }, [layout, collapsedGroups, gridStackLayout]);
+
+  useEffect(() => {
+    const root = scrollRootRef.current;
+    if (!root) {
+      return undefined;
+    }
+
+    const syncScrollPosition = () => {
+      if (syncingRef.current && root.scrollTop === 0) {
+        return;
+      }
+      preservedScrollTopRef.current = root.scrollTop;
+      preservedScrollDashboardRef.current = dashboardId;
+    };
+
+    syncScrollPosition();
+    root.addEventListener('scroll', syncScrollPosition, { passive: true });
+    return () => root.removeEventListener('scroll', syncScrollPosition);
+  }, [dashboardId, scrollRootRef]);
+
+  const restoreScrollPosition = useCallback(() => {
+    const root = scrollRootRef.current;
+    if (
+      !root ||
+      preservedScrollDashboardRef.current !== dashboardId ||
+      preservedScrollTopRef.current <= 0
+    ) {
+      return false;
+    }
+
+    const targetScrollTop = preservedScrollTopRef.current;
+    const maxScrollTop = Math.max(0, root.scrollHeight - root.clientHeight);
+    if (maxScrollTop < targetScrollTop) {
+      return false;
+    }
+
+    root.scrollTop = targetScrollTop;
+    return true;
+  }, [dashboardId, scrollRootRef]);
+
+  const scheduleScrollRestore = useCallback((isCancelled: () => boolean) => {
+    let attempts = 0;
+    const tryRestore = () => {
+      if (isCancelled()) {
+        return;
+      }
+      if (attempts >= 12) {
+        syncingRef.current = false;
+        return;
+      }
+      attempts += 1;
+      if (restoreScrollPosition()) {
+        syncingRef.current = false;
+        return;
+      }
+      requestAnimationFrame(tryRestore);
+    };
+
+    requestAnimationFrame(tryRestore);
+  }, [restoreScrollPosition]);
 
   const clearElementMaps = useCallback(() => {
     rootItemElementsRef.current.clear();
@@ -371,9 +444,38 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
 
       if (item.itemType === 'group') {
         const subGrid = subGridRefs.current.get(item.i);
-        const childWidgets = (subGrid?.save(false, false) ||
+        const subGridRoot = subGridRootElementsRef.current.get(item.i);
+        const savedChildren = (subGrid?.save(false, false) ||
           []) as GridStackWidget[];
-        const children = childWidgets.flatMap((child) => {
+        const childById = new Map<string, GridStackWidget>();
+
+        savedChildren.forEach((child) => {
+          const childId = String(child.id ?? '');
+          if (childId) {
+            childById.set(childId, child);
+          }
+        });
+
+        // Fall back to DOM when acceptWidgets has moved a node but save() is
+        // briefly incomplete during cross-grid drop.
+        subGridRoot
+          ?.querySelectorAll<HTMLElement>(':scope > .grid-stack-item[data-node-kind="widget"]')
+          .forEach((element) => {
+            const childId = element.dataset.nodeId ?? element.getAttribute('gs-id');
+            if (!childId || childById.has(childId)) {
+              return;
+            }
+            const node = (element as GridItemHTMLElement).gridstackNode;
+            childById.set(childId, {
+              id: childId,
+              x: node?.x,
+              y: node?.y,
+              w: node?.w,
+              h: node?.h,
+            });
+          });
+
+        const children = [...childById.values()].flatMap((child) => {
           const childId = String(child.id ?? '');
           const childItem = itemById.get(childId);
 
@@ -586,8 +688,24 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
 
   const renderWidgetCard = useCallback(
     (item: DashboardWidgetLayoutItem) => {
+      const copyMenuItem = shouldShowAnalysisWidgetCopyAction({
+        interaction: resolveAnalysisCanvasInteraction({
+          editMode: isEditMode,
+          shareMode,
+          isBuiltIn: selectedDashboardLocked,
+        }),
+        sceneWidgetType: item.valueConfig?.sceneWidgetType,
+        chartType: item.valueConfig?.chartType,
+      })
+        ? {
+          key: 'copy',
+          label: t('common.copy'),
+          onClick: () => onCopyWidget?.(item.i),
+        }
+        : null;
       const menuItems = [
         { key: 'edit', label: t('common.edit'), onClick: () => onEditWidget(item.i) },
+        ...(copyMenuItem ? [copyMenuItem] : []),
         { key: 'delete', label: t('common.delete'), danger: true, onClick: () => onDeleteWidget(item.i) },
       ];
 
@@ -633,6 +751,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
                 <WidgetWrapper
                   dashboardId={dashboardId}
                   widgetId={item.i}
+                  surface="dashboard"
                   key={`${dashboardId ?? 'dashboard'}:${item.i}`}
                   chartType={item.valueConfig?.chartType}
                   config={item.valueConfig}
@@ -671,8 +790,11 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
       dataSourceResolver,
       filterSearchVersion,
       isEditMode,
+      selectedDashboardLocked,
+      shareMode,
       namespaceSearchVersion,
       onDeleteWidget,
+      onCopyWidget,
       onEditWidget,
       onTopologyLayoutChange,
       t,
@@ -782,25 +904,62 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
           sizeToContent: node.kind === 'group' && !isCollapsedGroup,
         });
       });
-      rootGrid.on('dragstop', (_event: Event, element: GridItemHTMLElement) => {
-        if ((element as HTMLElement).dataset.nodeKind === 'widget') {
-          handleWidgetMutationStopRef.current(element as HTMLElement);
-          return;
-        }
-
-        emitLayoutChangeRef.current();
-      });
-      rootGrid.on(
-        'resizestop',
-        (_event: Event, element: GridItemHTMLElement) => {
+      const bindGridMutationEvents = (
+        grid: GridStackInstance,
+        options?: { rootGrid?: boolean },
+      ) => {
+        grid.on('dragstop', (_event: Event, element: GridItemHTMLElement) => {
           if ((element as HTMLElement).dataset.nodeKind === 'widget') {
             handleWidgetMutationStopRef.current(element as HTMLElement);
             return;
           }
 
+          if (options?.rootGrid) {
+            emitLayoutChangeRef.current();
+          }
+        });
+        grid.on(
+          'resizestop',
+          (_event: Event, element: GridItemHTMLElement) => {
+            if ((element as HTMLElement).dataset.nodeKind === 'widget') {
+              handleWidgetMutationStopRef.current(element as HTMLElement);
+              return;
+            }
+
+            if (options?.rootGrid) {
+              emitLayoutChangeRef.current();
+            }
+          },
+        );
+        // Cross-grid acceptWidgets may fire added/removed without a reliable
+        // dragstop on the destination; commit so React layout.groupId catches up.
+        grid.on('added', (_event: Event, items: GridStackNode[]) => {
+          if (syncingRef.current) {
+            return;
+          }
+          const nodes = Array.isArray(items) ? items : [items];
+          const widgetElement = nodes
+            .map((node) => node?.el)
+            .find(
+              (element): element is GridItemHTMLElement =>
+                element instanceof HTMLElement &&
+                element.dataset.nodeKind === 'widget',
+            );
+          if (widgetElement) {
+            handleWidgetMutationStopRef.current(widgetElement);
+            return;
+          }
           emitLayoutChangeRef.current();
-        },
-      );
+        });
+        grid.on('removed', () => {
+          if (syncingRef.current) {
+            return;
+          }
+          emitLayoutChangeRef.current();
+        });
+      };
+
+      bindGridMutationEvents(rootGrid, { rootGrid: true });
 
       nextGridStackLayout.groupNodes.forEach((node) => {
         const subGridRoot = subGridRootElementsRef.current.get(node.id);
@@ -846,27 +1005,12 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
             }
           });
         }
-        subGrid.on(
-          'dragstop',
-          (_event: Event, element: GridItemHTMLElement) => {
-            handleWidgetMutationStopRef.current(element as HTMLElement);
-          },
-        );
-        subGrid.on(
-          'resizestop',
-          (_event: Event, element: GridItemHTMLElement) => {
-            handleWidgetMutationStopRef.current(element as HTMLElement);
-          },
-        );
+        bindGridMutationEvents(subGrid);
       });
 
       setPortalVersion((previous) => previous + 1);
 
-      requestAnimationFrame(() => {
-        if (!cancelled) {
-          syncingRef.current = false;
-        }
-      });
+      scheduleScrollRestore(() => cancelled);
     };
 
     void initGrid();
@@ -886,6 +1030,7 @@ const DashboardCanvas: React.FC<DashboardCanvasProps> = ({
     createWidgetShell,
     dashboardInstanceKey,
     dashboardScopeKey,
+    scheduleScrollRestore,
     syncGroupPresentation,
   ]);
 
