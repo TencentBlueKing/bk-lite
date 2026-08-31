@@ -9,7 +9,13 @@ import {
   resolveApplication3DCardVisual,
   shouldShowApplication3DAlertBadge,
   UNKNOWN_STATUS_BADGE,
+  WALL_VIEW_COVERAGE,
 } from '../application3DLayout';
+import {
+  CARD_GAP,
+  CARD_WORLD_HEIGHT,
+  CARD_WORLD_WIDTH,
+} from '../application3DVisual';
 import {
   badgeRect,
   CARD_BADGE,
@@ -21,18 +27,22 @@ import {
 } from '../application3DCardStyle';
 
 describe('application3D layout', () => {
-  it('uses a continuous aspect-aware wall', () => {
-    const wide = buildApplication3DLayout(20, 2);
-    const tall = buildApplication3DLayout(20, 0.6);
-    expect(wide.columns).toBeGreaterThan(tall.columns);
-    expect(wide.columns * wide.rows).toBeGreaterThanOrEqual(20);
+  it('keeps a 4-column HUD wall through 16 cards and still fits denser walls', () => {
+    expect(buildApplication3DLayout(16, 2).columns).toBe(4);
+    expect(buildApplication3DLayout(16, 0.6).columns).toBe(4);
+    const denseWide = buildApplication3DLayout(20, 2);
+    const denseTall = buildApplication3DLayout(20, 0.6);
+    expect(denseWide.columns * denseWide.rows).toBeGreaterThanOrEqual(20);
+    expect(denseTall.columns * denseTall.rows).toBeGreaterThanOrEqual(20);
+    expect(denseWide.columns).toBeGreaterThanOrEqual(4);
+    expect(denseTall.columns).toBeGreaterThanOrEqual(4);
   });
 
-  it('selects a balanced centered composition instead of a sparse final row', () => {
+  it('uses a 4×4 wall for the design mock size', () => {
     const layout = buildApplication3DLayout(16, 1.84);
-    expect(layout.columns).toBe(6);
-    expect(layout.rowCardCounts).toEqual([6, 6, 4]);
-    expect(layout.rowCardCounts.at(-1)).toBeGreaterThanOrEqual(layout.columns / 2);
+    expect(layout.columns).toBe(4);
+    expect(layout.rows).toBe(4);
+    expect(layout.rowCardCounts).toEqual([4, 4, 4, 4]);
   });
 
   it('reduces card size for dense walls without dropping cards', () => {
@@ -51,9 +61,9 @@ describe('application3D layout', () => {
     expect(formatApplicationAlarmBadge(100)).toBe('99+');
   });
 
-  it('strips demo name prefix for wall titles', () => {
-    expect(formatApplication3DCardTitle('本地演示-运营门户')).toBe('运营门户');
-    expect(formatApplication3DCardTitle('运营门户')).toBe('运营门户');
+  it('keeps demo name prefix on wall titles', () => {
+    expect(formatApplication3DCardTitle('本地演示-运营门户')).toBe('本地演示-运营门户');
+    expect(formatApplication3DCardTitle('  运营门户  ')).toBe('运营门户');
   });
 
   it('differentiates health reasons and severities on wall cards', () => {
@@ -66,10 +76,10 @@ describe('application3D layout', () => {
         highestSeverity: { id: 'normal', label: '正常', color: 'success' },
       },
     });
-    expect(normal.statusLabel).toBe('无活跃告警');
+    expect(normal.statusLabel).toBe('运行正常');
     expect(normal.cardTone).toBe('normal');
     expect(normal.showBadge).toBe(false);
-    expect(normal.badgeText).toBe('');
+    expect(normal.badgeText).toBe('0');
 
     const critical = resolveApplication3DCardVisual({
       name: '本地演示-运营门户',
@@ -80,10 +90,10 @@ describe('application3D layout', () => {
         highestSeverity: { id: 'critical', label: '严重', color: 'critical' },
       },
     });
-    expect(critical.statusLabel).toBe('严重告警');
+    expect(critical.statusLabel).toBe('严重告警 2');
     expect(critical.cardTone).toBe('critical');
     expect(critical.badgeText).toBe('2');
-    expect(critical.showBadge).toBe(true);
+    expect(critical.showBadge).toBe(false);
     expect(critical.neonLevel).toBe('fatal');
 
     const warning = resolveApplication3DCardVisual({
@@ -95,9 +105,9 @@ describe('application3D layout', () => {
         highestSeverity: { id: 'warning', label: '警告', color: 'warning' },
       },
     });
-    expect(warning.statusLabel).toBe('警告');
+    expect(warning.statusLabel).toBe('警告 3');
     expect(warning.cardTone).toBe('warning');
-    expect(warning.showBadge).toBe(true);
+    expect(warning.showBadge).toBe(false);
     expect(warning.badgeText).toBe('3');
 
     const error = resolveApplication3DCardVisual({
@@ -109,9 +119,9 @@ describe('application3D layout', () => {
         highestSeverity: { id: 'error', label: '错误', color: 'danger' },
       },
     });
-    expect(error.statusLabel).toBe('错误告警');
+    expect(error.statusLabel).toBe('错误 4');
     expect(error.cardTone).toBe('error');
-    expect(error.showBadge).toBe(true);
+    expect(error.showBadge).toBe(false);
     expect(error.badgeText).toBe('4');
     expect(error.statusLabel).not.toBe('状态未知');
 
@@ -124,10 +134,10 @@ describe('application3D layout', () => {
         highestSeverity: { id: 'critical', label: '严重', color: 'critical' },
       },
     });
-    expect(noData.statusLabel).toBe('严重告警');
+    expect(noData.statusLabel).toBe('严重告警 1');
     expect(noData.cardTone).toBe('critical');
     expect(noData.neonLevel).toBe('fatal');
-    expect(noData.showBadge).toBe(true);
+    expect(noData.showBadge).toBe(false);
     expect(noData.badgeText).toBe('1');
     expect(noData.statusLabel).not.toBe('状态未知');
 
@@ -141,9 +151,9 @@ describe('application3D layout', () => {
       },
     });
     expect(info.cardTone).toBe('info');
-    expect(info.statusLabel).toBe('提示');
+    expect(info.statusLabel).toBe('提示 2');
     expect(info.statusLabel).not.toBe('状态未知');
-    expect(info.showBadge).toBe(true);
+    expect(info.showBadge).toBe(false);
     expect(info.badgeText).toBe('2');
 
     const emptyLevelAlarming = resolveApplication3DCardVisual({
@@ -155,12 +165,12 @@ describe('application3D layout', () => {
         highestSeverity: { id: 'warning', label: '警告', color: 'warning' },
       },
     });
-    expect(emptyLevelAlarming.statusLabel).toBe('警告');
+    expect(emptyLevelAlarming.statusLabel).toBe('警告 1');
     expect(emptyLevelAlarming.statusLabel).not.toBe('严重告警');
     expect(emptyLevelAlarming.statusLabel).not.toBe('状态未知');
     expect(emptyLevelAlarming.cardTone).toBe('warning');
     expect(emptyLevelAlarming.neonLevel).toBe('warning');
-    expect(emptyLevelAlarming.showBadge).toBe(true);
+    expect(emptyLevelAlarming.showBadge).toBe(false);
     expect(emptyLevelAlarming.badgeText).toBe('1');
 
     const unmappedLevelFallback = resolveApplication3DCardVisual({
@@ -172,7 +182,7 @@ describe('application3D layout', () => {
         highestSeverity: null,
       },
     });
-    expect(unmappedLevelFallback.statusLabel).toBe('警告');
+    expect(unmappedLevelFallback.statusLabel).toBe('警告 1');
     expect(unmappedLevelFallback.cardTone).toBe('warning');
     expect(unmappedLevelFallback.neonLevel).toBe('warning');
     expect(unmappedLevelFallback.statusLabel).not.toBe('严重告警');
@@ -188,7 +198,7 @@ describe('application3D layout', () => {
     });
     expect(unavailable.statusLabel).toBe('状态未知');
     expect(unavailable.cardTone).toBe('unknown');
-    expect(unavailable.showBadge).toBe(true);
+    expect(unavailable.showBadge).toBe(false);
     expect(unavailable.badgeText).toBe(UNKNOWN_STATUS_BADGE);
 
     const english = resolveApplication3DCardVisual(
@@ -208,69 +218,87 @@ describe('application3D layout', () => {
         return map[id] ?? fallback ?? id;
       },
     );
-    expect(english.statusLabel).toBe('Critical alarm');
+    expect(english.statusLabel).toBe('Critical alarm 1');
   });
 
-  it('uses a wider portrait card without becoming landscape', () => {
+  it('uses a landscape card matching the HUD mock', () => {
     const layout = buildApplication3DLayout(12, 1.6);
     const ratio = layout.cardWidth / layout.cardHeight;
-    expect(ratio).toBeGreaterThanOrEqual(0.78);
-    expect(ratio).toBeLessThanOrEqual(0.82);
-    expect(layout.gapX / layout.cardWidth).toBeCloseTo(0.4 / 3.2, 5);
+    expect(ratio).toBeCloseTo(CARD_WORLD_WIDTH / CARD_WORLD_HEIGHT, 5);
+    expect(ratio).toBeGreaterThan(1);
+    expect(layout.gapX / layout.cardWidth).toBeCloseTo(CARD_GAP / CARD_WORLD_WIDTH, 5);
   });
 
-  it('frames a 16-card wall closer than the legacy pad without filling the viewport', () => {
+  it('frames small walls like a 4×4 mock so cards do not become billboards', () => {
     const viewportAspect = 1.84;
-    const layout = buildApplication3DLayout(16, viewportAspect);
-    expect(layout.columns * layout.rows).toBeGreaterThanOrEqual(16);
-    const next = fitApplication3DCameraDistance(
-      layout.wallWidth,
-      layout.wallHeight,
+    const sixteen = buildApplication3DLayout(16, viewportAspect);
+    const four = buildApplication3DLayout(4, viewportAspect);
+    expect(sixteen.columns * sixteen.rows).toBe(16);
+    const sixteenDistance = fitApplication3DCameraDistance(
+      sixteen.wallWidth,
+      sixteen.wallHeight,
       viewportAspect,
     );
+    const fourDistance = fitApplication3DCameraDistance(
+      four.wallWidth,
+      four.wallHeight,
+      viewportAspect,
+    );
+    expect(fourDistance).toBe(sixteenDistance);
+
     const halfFov = ((APPLICATION3D_CAMERA_FOV * Math.PI) / 180) / 2;
     const tan = Math.tan(halfFov);
     const tight = Math.max(
-      layout.wallHeight / (2 * tan),
-      layout.wallWidth / (2 * tan * viewportAspect),
+      sixteen.wallHeight / (2 * tan),
+      sixteen.wallWidth / (2 * tan * viewportAspect),
     );
-    const legacy = Math.max(tight, 40 * 0.55) + 2;
-    expect(next).toBeLessThan(legacy * 0.8);
-    expect(next).toBeGreaterThan(tight);
-    const widthFill = tight > 0 ? (layout.wallWidth / (2 * tan * viewportAspect)) / next : 0;
-    const heightFill = (layout.wallHeight / (2 * tan)) / next;
-    expect(widthFill).toBeGreaterThan(0.6);
-    expect(widthFill).toBeLessThan(0.8);
-    expect(heightFill).toBeGreaterThan(0.48);
-    expect(heightFill).toBeLessThan(0.78);
+    expect(sixteenDistance).toBeGreaterThan(tight);
+    const widthFill = (sixteen.wallWidth / (2 * tan * viewportAspect)) / sixteenDistance;
+    const heightFill = (sixteen.wallHeight / (2 * tan)) / sixteenDistance;
+    expect(widthFill).toBeCloseTo(WALL_VIEW_COVERAGE, 5);
+    expect(heightFill).toBeLessThan(WALL_VIEW_COVERAGE);
+    expect(widthFill).toBeLessThan(1);
+  });
+
+  it('uses one world size for every card so a planar wall keeps them equal', () => {
+    const layout = buildApplication3DLayout(16, 1.84);
+    expect(layout.cardWidth).toBeGreaterThan(0);
+    expect(layout.cardHeight).toBeGreaterThan(0);
+    expect(layout.columns).toBe(4);
+    expect(layout.rows).toBe(4);
   });
 
   it('keeps title larger than status after the readability bump', () => {
-    expect(CARD_GLASS.titleSize).toBeGreaterThanOrEqual(53);
-    expect(CARD_GLASS.statusSize).toBeGreaterThanOrEqual(25);
-    expect(CARD_GLASS.titleSize / CARD_GLASS.statusSize).toBeGreaterThan(1.9);
+    expect(CARD_GLASS.titleSize).toBeGreaterThanOrEqual(48);
+    expect(CARD_GLASS.statusSize).toBeGreaterThanOrEqual(40);
+    expect(CARD_GLASS.iconSize).toBeGreaterThanOrEqual(68);
+    expect(CARD_GLASS.titleSize).toBeGreaterThan(CARD_GLASS.statusSize);
   });
 
   it('hides alarm-count badges for zero, unknown, and normal', () => {
     expect(shouldShowApplication3DAlertBadge({ state: 'normal', activeAlarmCount: 0 })).toBe(false);
     expect(shouldShowApplication3DAlertBadge({ state: 'unknown', activeAlarmCount: null })).toBe(false);
     expect(shouldShowApplication3DAlertBadge({ state: 'unknown', activeAlarmCount: 1 })).toBe(false);
-    expect(shouldShowApplication3DAlertBadge({ state: 'alarming', activeAlarmCount: 4 })).toBe(true);
+    expect(shouldShowApplication3DAlertBadge({ state: 'alarming', activeAlarmCount: 4 })).toBe(false);
   });
 
-  it('uses -- for unknown status badges instead of a fake count', () => {
+  it('never paints a corner count chip', () => {
     expect(resolveApplication3DBadge(
       { state: 'unknown', activeAlarmCount: 1 },
       'unknown',
-    )).toEqual({ showBadge: true, badgeText: '--' });
+    )).toEqual({ showBadge: false, badgeText: '--' });
     expect(resolveApplication3DBadge(
       { state: 'unknown', activeAlarmCount: null },
       'unknown',
-    )).toEqual({ showBadge: true, badgeText: '--' });
+    )).toEqual({ showBadge: false, badgeText: '--' });
     expect(resolveApplication3DBadge(
       { state: 'normal', activeAlarmCount: 0 },
       'normal',
-    )).toEqual({ showBadge: false, badgeText: '' });
+    )).toEqual({ showBadge: false, badgeText: '0' });
+    expect(resolveApplication3DBadge(
+      { state: 'alarming', activeAlarmCount: 3 },
+      'warning',
+    )).toEqual({ showBadge: false, badgeText: '3' });
   });
 
   it('ellipsizes long titles without wrapping', () => {
@@ -295,22 +323,20 @@ describe('application3D layout', () => {
     expect(edgeAlpha('critical')).toBeGreaterThan(edgeAlpha('warning'));
     expect(edgeAlpha('warning')).toBeGreaterThan(edgeAlpha('unknown'));
     expect(edgeAlpha('unknown')).toBeGreaterThan(edgeAlpha('normal'));
-    expect(CARD_TONE.normal.glow.width).toBe(0);
-    expect(CARD_TONE.unknown.glow.width).toBe(0);
-    expect(CARD_TONE.info.glow.width).toBe(0);
-    expect(CARD_TONE.warning.glow.width).toBeGreaterThan(0);
+    expect(CARD_TONE.normal.glow.width).toBeGreaterThan(0);
+    expect(CARD_TONE.info.glow.width).toBeGreaterThan(0);
+    expect(CARD_TONE.warning.glow.width).toBeGreaterThan(CARD_TONE.normal.glow.width);
     expect(CARD_TONE.critical.glow.width).toBeGreaterThan(CARD_TONE.warning.glow.width);
     expect(CARD_TONE.critical.glow.width).toBeLessThanOrEqual(28);
     expect(CARD_TONE.warning.glow.width).toBeLessThanOrEqual(16);
     expect(CARD_TONE.unknown.edge).toContain('118, 126, 136');
-    expect(CARD_TONE.normal.edge).toContain('206, 220, 232');
-    expect(CARD_BADGE.height).toBeGreaterThanOrEqual(44);
-    expect(CARD_GLASS.bodyRim).toContain('0.28');
-    expect(CARD_GLASS.frostAlpha).toBeLessThan(0.07);
-    expect(CARD_GLASS.frostAlpha).toBeGreaterThan(0.02);
+    expect(CARD_TONE.normal.edge).toContain('110, 210, 230');
+    expect(CARD_GLASS.bodyCenter).toContain('16, 32, 48');
+    expect(CARD_GLASS.bodyRim).toContain('8, 16, 28');
+    expect(CARD_GLASS.frostAlpha).toBe(0);
   });
 
-  it('paints a rectangular unknown badge as -- and omits front chrome on the back', () => {
+  it('paints unknown chrome without a corner chip', () => {
     const fillTexts: string[] = [];
     const ctx = {
       canvas: { width: 512, height: 640 },
@@ -319,6 +345,7 @@ describe('application3D layout', () => {
       restore: () => undefined,
       beginPath: () => undefined,
       moveTo: () => undefined,
+      lineTo: () => undefined,
       arcTo: () => undefined,
       closePath: () => undefined,
       clip: () => undefined,
@@ -346,7 +373,7 @@ describe('application3D layout', () => {
     paintApplication3DCard(ctx, visual, 'code-quality', 'front');
     expect(fillTexts).toContain('代码质量平台');
     expect(fillTexts).toContain('状态未知');
-    expect(fillTexts).toContain('--');
+    expect(fillTexts).not.toContain('--');
     expect(fillTexts).not.toContain('1');
     const badge = badgeRect('--', 512, 640);
     expect(badge.width).toBeGreaterThan(badge.height);
@@ -357,8 +384,9 @@ describe('application3D layout', () => {
     expect(fillTexts).toEqual([]);
   });
 
-  it('paints no outer glow for normal and unknown status edges', () => {
+  it('paints wall chrome on a clear plate so CSS glass can show through', () => {
     const shadows: number[] = [];
+    const fills: string[] = [];
     const makeCtx = () =>
       ({
         canvas: { width: 512, height: 640 },
@@ -367,6 +395,7 @@ describe('application3D layout', () => {
         restore: () => undefined,
         beginPath: () => undefined,
         moveTo: () => undefined,
+        lineTo: () => undefined,
         arcTo: () => undefined,
         closePath: () => undefined,
         clip: () => undefined,
@@ -378,6 +407,12 @@ describe('application3D layout', () => {
         arc: () => undefined,
         createRadialGradient: () => ({ addColorStop: () => undefined }),
         createLinearGradient: () => ({ addColorStop: () => undefined }),
+        set fillStyle(value: string) {
+          fills.push(String(value));
+        },
+        get fillStyle() {
+          return '';
+        },
         set shadowBlur(value: number) {
           shadows.push(value);
         },
@@ -386,15 +421,6 @@ describe('application3D layout', () => {
         },
       }) as unknown as CanvasRenderingContext2D;
 
-    const unknown = resolveApplication3DCardVisual({
-      name: '代码质量平台',
-      health: {
-        state: 'unknown',
-        reason: 'unavailable',
-        activeAlarmCount: 1,
-        highestSeverity: null,
-      },
-    });
     const normal = resolveApplication3DCardVisual({
       name: '运营门户',
       health: {
@@ -404,21 +430,9 @@ describe('application3D layout', () => {
         highestSeverity: { id: 'normal', label: '正常', color: 'success' },
       },
     });
-    paintApplication3DCard(makeCtx(), unknown, 'code-quality', 'front');
     paintApplication3DCard(makeCtx(), normal, 'ops-portal', 'front');
-    expect(shadows).toEqual([]);
-
-    const critical = resolveApplication3DCardVisual({
-      name: '计费服务',
-      health: {
-        state: 'alarming',
-        reason: 'active_alarm',
-        activeAlarmCount: 2,
-        highestSeverity: { id: 'critical', label: '严重', rank: 3, color: 'critical' },
-      },
-    });
-    paintApplication3DCard(makeCtx(), critical, 'billing', 'front');
-    expect(shadows).toContain(CARD_TONE.critical.glow.width);
+    expect(shadows).not.toContain(CARD_TONE.normal.glow.width);
+    expect(fills.some((value) => value.includes('16, 32, 48'))).toBe(false);
   });
 
   it('paints no_data critical and info as alarming visuals, not 状态未知', () => {
@@ -430,6 +444,7 @@ describe('application3D layout', () => {
       restore: () => undefined,
       beginPath: () => undefined,
       moveTo: () => undefined,
+      lineTo: () => undefined,
       arcTo: () => undefined,
       closePath: () => undefined,
       clip: () => undefined,
@@ -455,8 +470,8 @@ describe('application3D layout', () => {
       },
     });
     paintApplication3DCard(ctx, noDataCritical, 'mq', 'front');
-    expect(fillTexts).toContain('严重告警');
-    expect(fillTexts).toContain('1');
+    expect(fillTexts).toContain('严重告警 1');
+    expect(fillTexts).not.toContain('1');
     expect(fillTexts).not.toContain('状态未知');
     expect(fillTexts).not.toContain('--');
 
@@ -471,8 +486,8 @@ describe('application3D layout', () => {
       },
     });
     paintApplication3DCard(ctx, info, 'config', 'front');
-    expect(fillTexts).toContain('提示');
-    expect(fillTexts).toContain('1');
+    expect(fillTexts).toContain('提示 1');
+    expect(fillTexts).not.toContain('1');
     expect(fillTexts).not.toContain('状态未知');
     expect(fillTexts).not.toContain('--');
   });

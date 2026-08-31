@@ -12,6 +12,7 @@ import {
   fitApplication3DCameraDistance,
   formatApplication3DCardTitle,
   resolveApplication3DCardVisual,
+  WALL_CAMERA_HEIGHT_FACTOR,
   type Application3DCardTone,
   type Application3DTranslate,
 } from './application3DLayout';
@@ -19,6 +20,7 @@ import {
   CARD_GLASS,
   CARD_HOVER,
   CARD_THICKNESS,
+  CARD_TONE,
   paintApplication3DCard,
   paintApplication3DCardSide,
 } from './application3DCardStyle';
@@ -27,7 +29,6 @@ import {
   CARD_TEXTURE_HEIGHT,
   CARD_TEXTURE_WIDTH,
   LEGACY_PARTICLE,
-  durationFromSpeed,
   easeInOutCubic,
   prefersReducedMotion,
 } from './application3DVisual';
@@ -38,21 +39,12 @@ import {
   easeOutEntrance,
 } from './application3DMotion';
 
-export interface Application3DFocusChromeLayout {
-  centerX: number;
-  bottom: number;
-  width: number;
-}
-
 export interface Application3DSceneController {
   reconcile: (
     items: Application3DWallItem[],
     options?: { playIntro?: boolean; playFilter?: boolean; forceRepaint?: boolean },
   ) => void;
-  focus: (applicationId: string) => void;
-  restoreWall: () => void;
   resize: () => void;
-  getFocusChromeLayout: () => Application3DFocusChromeLayout | null;
   setActive: (active: boolean) => void;
   dispose: () => void;
 }
@@ -62,29 +54,39 @@ interface ApplicationCardVisual {
   root: THREE.Group;
   mesh: THREE.Mesh;
   frontPlane: THREE.Mesh;
-  material: THREE.MeshBasicMaterial;
+  material: THREE.ShaderMaterial;
   sideMaterial: THREE.MeshBasicMaterial;
   texture: THREE.CanvasTexture;
   sideTexture: THREE.CanvasTexture;
   homePosition: THREE.Vector3;
   homeScale: THREE.Vector3;
+  homeRotationY: number;
   cardTone: Application3DCardTone;
   hoverAmount: number;
+  glassEl: HTMLDivElement;
+  glassOpacity: number;
+  isBottomRow: boolean;
+  reflection: THREE.Mesh;
+  reflectionMaterial: THREE.ShaderMaterial;
+  floorGlow: THREE.Mesh;
+  floorGlowMaterial: THREE.ShaderMaterial;
 }
 
+const cardOpacity = (visual: ApplicationCardVisual) =>
+  (visual.material.uniforms.uOpacity.value as number);
+
 const setCardOpacity = (visual: ApplicationCardVisual, opacity: number) => {
-  visual.material.opacity = opacity;
-  visual.sideMaterial.opacity = opacity;
+  visual.glassOpacity = opacity;
+  visual.material.uniforms.uOpacity.value = 0;
+  visual.sideMaterial.opacity = opacity * 0.5;
+  visual.glassEl.style.opacity = String(opacity);
 };
 
 const setCardBrightness = (visual: ApplicationCardVisual, value: number) => {
-  visual.material.color.setScalar(value);
+  visual.material.uniforms.uBright.value = value;
 };
 
-const FOCUS_DISTANCE = 8.4;
-const FOCUS_SCALE = 0.78;
-
-type ScenePhase = 'initializing' | 'wall' | 'focusing' | 'focused' | 'returning';
+type ScenePhase = 'initializing' | 'wall';
 
 interface Tween {
   id: number;
@@ -126,15 +128,36 @@ const createCardTextures = (
   };
 };
 
+
 const createGlassFaceMaterial = (map: THREE.CanvasTexture) =>
-  new THREE.MeshBasicMaterial({
-    map,
-    color: 0xffffff,
+  new THREE.ShaderMaterial({
     transparent: true,
-    opacity: 1,
-    toneMapped: false,
     depthWrite: false,
+    toneMapped: false,
     side: THREE.DoubleSide,
+    uniforms: {
+      uMap: { value: map },
+      uOpacity: { value: 1 },
+      uBright: { value: 1 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D uMap;
+      uniform float uOpacity;
+      uniform float uBright;
+      varying vec2 vUv;
+      void main() {
+        vec4 tex = texture2D(uMap, vUv);
+        if (tex.a < 0.02) discard;
+        gl_FragColor = vec4(tex.rgb * uBright, tex.a * uOpacity);
+      }
+    `,
   });
 
 const paintCardSideTexture = (tone: Application3DCardTone) => {
@@ -157,7 +180,7 @@ const applyCardSideMaterial = (
   material.map = map;
   material.color.setScalar(1);
   material.transparent = true;
-  material.opacity = 1;
+  material.opacity = 0.5;
   material.toneMapped = false;
   material.side = THREE.DoubleSide;
   material.depthWrite = false;
@@ -169,6 +192,78 @@ const createGlassSideMaterial = (map: THREE.CanvasTexture) => {
   applyCardSideMaterial(material, map);
   return material;
 };
+
+const createFloorGlowMaterial = (tint: number) =>
+  new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uColor: { value: new THREE.Color(tint) },
+      uOpacity: { value: 0.12 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      varying vec2 vUv;
+      void main() {
+        vec2 p = vUv - 0.5;
+        float d = length(p * vec2(0.9, 1.85));
+        float glow = exp(-d * d * 8.0);
+        gl_FragColor = vec4(uColor, glow * uOpacity);
+      }
+    `,
+  });
+
+const FLOOR_HOVER_GAP = 0.38;
+
+const createCardReflectionMaterial = (map: THREE.CanvasTexture, tint: number) =>
+  new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    depthTest: false,
+    toneMapped: false,
+    uniforms: {
+      uMap: { value: map },
+      uOpacity: { value: 0.42 },
+      uTint: { value: new THREE.Color(tint) },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D uMap;
+      uniform float uOpacity;
+      uniform vec3 uTint;
+      varying vec2 vUv;
+      void main() {
+        vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
+        vec4 tex = texture2D(uMap, uv);
+        float fade = pow(clamp(vUv.y, 0.0, 1.0), 0.9);
+        vec3 glass = vec3(0.11, 0.24, 0.38);
+        vec3 color = mix(glass * mix(vec3(1.0), uTint, 0.2), tex.rgb, tex.a);
+        float edge = min(min(vUv.x, 1.0 - vUv.x), min(vUv.y, 1.0 - vUv.y));
+        float rim = 1.0 - smoothstep(0.008, 0.026, edge);
+        vec3 rimColor = mix(uTint, vec3(0.7, 0.9, 1.0), 0.4);
+        color = mix(color, rimColor, rim * 0.32);
+        float alpha = mix(0.28, max(0.28, tex.a * 0.68), tex.a);
+        alpha = max(alpha, rim * 0.26);
+        gl_FragColor = vec4(color, alpha * fade * uOpacity);
+      }
+    `,
+  });
 
 /**
  * Legacy ParticleSystem port:
@@ -228,10 +323,15 @@ const createLegacyParticleMaterial = (map: THREE.Texture, sizeScale: number) => 
 };
 
 const disposeVisual = (visual: ApplicationCardVisual) => {
+  visual.glassEl.remove();
   visual.texture.dispose();
   visual.sideTexture.dispose();
   visual.material.dispose();
   visual.sideMaterial.dispose();
+  visual.reflectionMaterial.dispose();
+  visual.reflection.removeFromParent();
+  visual.floorGlowMaterial.dispose();
+  visual.floorGlow.removeFromParent();
   visual.root.removeFromParent();
 };
 
@@ -310,6 +410,7 @@ const createRoundedCardFaceGeometry = (outline: Array<{ x: number; y: number }>)
     uv[i * 2 + 1] = position.getY(i) + 0.5;
   }
   geometry.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  geometry.computeVertexNormals();
   return geometry;
 };
 
@@ -320,26 +421,123 @@ export const createApplication3DScene = (
     active?: boolean;
     translate?: Application3DTranslate;
     onSelect: (item: Application3DWallItem) => void;
-    onFocusSettled?: (item: Application3DWallItem) => void;
-    onBackground?: () => void;
     onFirstRender?: () => void;
   },
 ): Application3DSceneController => {
   const reducedMotion = prefersReducedMotion();
   const translate = options.translate ?? defaultApplication3DTranslate;
   const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x0c2138, 0.0035);
 
   const camera = new THREE.PerspectiveCamera(APPLICATION3D_CAMERA_FOV, 1, 0.1, 500);
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setClearColor(0x000000, 0);
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    alpha: true,
+    preserveDrawingBuffer: true,
+  });
+  renderer.setClearColor(0x0c2138, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12;
+  renderer.toneMappingExposure = 1.0;
   renderer.domElement.style.display = 'block';
   renderer.domElement.style.width = '100%';
   renderer.domElement.style.height = '100%';
   renderer.domElement.style.touchAction = 'none';
   mountNode.appendChild(renderer.domElement);
+  if (getComputedStyle(mountNode).position === 'static') {
+    mountNode.style.position = 'relative';
+  }
+  const glassLayer = document.createElement('div');
+  glassLayer.className = 'app3d-wall-glass-layer';
+  const frostCanvas = document.createElement('canvas');
+  frostCanvas.className = 'app3d-wall-glass-frost';
+  glassLayer.appendChild(frostCanvas);
+  mountNode.appendChild(glassLayer);
+  const frostCtx = frostCanvas.getContext('2d');
+  if (!frostCtx) throw new Error('Canvas 2D context unavailable');
+  const glassCorners = [
+    new THREE.Vector3(-0.5, 0.5, 0),
+    new THREE.Vector3(0.5, 0.5, 0),
+    new THREE.Vector3(0.5, -0.5, 0),
+    new THREE.Vector3(-0.5, -0.5, 0),
+  ];
+  const glassProjected = [
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+    { x: 0, y: 0 },
+  ];
+  const glassWorld = new THREE.Vector3();
+
+  const createGlassOverlay = (tone: Application3DCardTone, canvas: HTMLCanvasElement) => {
+    const el = document.createElement('div');
+    el.className = 'app3d-wall-glass';
+    el.dataset.tone = tone;
+    canvas.className = 'app3d-wall-glass-chrome';
+    el.appendChild(canvas);
+    glassLayer.appendChild(el);
+    return el;
+  };
+
+  const syncGlassOverlays = () => {
+    const widthPx = viewportWidth;
+    const heightPx = viewportHeight;
+    if (widthPx <= 0 || heightPx <= 0) return;
+    camera.updateMatrixWorld();
+    visuals.forEach((visual) => {
+      visual.frontPlane.updateWorldMatrix(true, false);
+      for (let i = 0; i < 4; i += 1) {
+        glassWorld.copy(glassCorners[i]).applyMatrix4(visual.frontPlane.matrixWorld).project(camera);
+        glassProjected[i].x = (glassWorld.x * 0.5 + 0.5) * widthPx;
+        glassProjected[i].y = (-glassWorld.y * 0.5 + 0.5) * heightPx;
+      }
+      const [tl, tr, , bl] = glassProjected;
+      const width = Math.hypot(tr.x - tl.x, tr.y - tl.y);
+      const height = Math.hypot(bl.x - tl.x, bl.y - tl.y);
+      const cx = (glassProjected[0].x + glassProjected[1].x + glassProjected[2].x + glassProjected[3].x) / 4;
+      const cy = (glassProjected[0].y + glassProjected[1].y + glassProjected[2].y + glassProjected[3].y) / 4;
+      const el = visual.glassEl;
+      el.dataset.tone = visual.cardTone;
+      el.style.width = `${width}px`;
+      el.style.height = `${height}px`;
+      el.style.left = `${cx - width / 2}px`;
+      el.style.top = `${cy - height / 2}px`;
+      el.style.transform = 'none';
+      el.style.opacity = String(visual.glassOpacity);
+      el.hidden = width < 4 || height < 4 || visual.glassOpacity < 0.02;
+    });
+  };
+
+  const syncFrost = () => {
+    if (frostCanvas.width !== viewportWidth || frostCanvas.height !== viewportHeight) {
+      frostCanvas.width = Math.max(viewportWidth, 1);
+      frostCanvas.height = Math.max(viewportHeight, 1);
+    }
+    frostCtx.clearRect(0, 0, frostCanvas.width, frostCanvas.height);
+    frostCtx.filter = 'blur(24px) saturate(1.2)';
+    const dpr = renderer.getPixelRatio();
+    visuals.forEach((visual) => {
+      if (visual.glassEl.hidden || visual.glassOpacity < 0.02) return;
+      const x = Number.parseFloat(visual.glassEl.style.left);
+      const y = Number.parseFloat(visual.glassEl.style.top);
+      const width = Number.parseFloat(visual.glassEl.style.width);
+      const height = Number.parseFloat(visual.glassEl.style.height);
+      if (!(width > 2 && height > 2)) return;
+      const pad = 28;
+      frostCtx.drawImage(
+        renderer.domElement,
+        (x - pad) * dpr,
+        (y - pad) * dpr,
+        (width + pad * 2) * dpr,
+        (height + pad * 2) * dpr,
+        x - pad,
+        y - pad,
+        width + pad * 2,
+        height + pad * 2,
+      );
+    });
+    frostCtx.filter = 'none';
+  };
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -347,25 +545,173 @@ export const createApplication3DScene = (
   controls.enablePan = false;
   controls.minDistance = 6;
   controls.maxDistance = 80;
-  controls.minPolarAngle = Math.PI * 0.28;
-  controls.maxPolarAngle = Math.PI * 0.72;
+  controls.minPolarAngle = Math.PI * 0.44;
+  controls.maxPolarAngle = Math.PI * 0.56;
+  controls.minAzimuthAngle = -0.12;
+  controls.maxAzimuthAngle = 0.12;
   controls.enabled = false;
 
   const composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
+  const renderPass = new RenderPass(scene, camera);
+  renderPass.clearAlpha = 0;
+  composer.addPass(renderPass);
   // Legacy GlowLayer intensity ~0.8 — keep moderate for widget.
-  const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.34, 0.42, 0.86);
-  bloomPass.enabled = !reducedMotion;
+  const bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.1, 0.35, 0.96);
+  // Card neon is painted into the HUD texture. Full-frame bloom turns the
+  // perspective floor into a white slab, which the mock never has.
+  bloomPass.enabled = false;
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
 
   const textureLoader = new THREE.TextureLoader();
 
   // Legacy: HemisphericLight(direction 5,5,-9).
-  scene.add(new THREE.HemisphereLight(0xc8d6e6, 0x121820, 0.55));
-  const hemiKey = new THREE.DirectionalLight(0xe8f0f8, 0.18);
+  scene.add(new THREE.HemisphereLight(0x8aa0b4, 0x061018, 0.22));
+  const hemiKey = new THREE.DirectionalLight(0xd0dce8, 0.08);
   hemiKey.position.set(5, 5, 9);
   scene.add(hemiKey);
+
+  const stageRoot = new THREE.Group();
+  scene.add(stageRoot);
+  let floorY = -6;
+  const wallLookTarget = new THREE.Vector3();
+  const hoverLift = new THREE.Vector3();
+  const floorGridMaterial = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+    uniforms: {
+      uColor: { value: new THREE.Color(0x2a7ea0) },
+      uFade: { value: 28 },
+      uCamera: { value: new THREE.Vector3() },
+    },
+    vertexShader: `
+      varying vec3 vWorld;
+      void main() {
+        vec4 world = modelMatrix * vec4(position, 1.0);
+        vWorld = world.xyz;
+        gl_Position = projectionMatrix * viewMatrix * world;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vWorld;
+      uniform vec3 uColor;
+      uniform float uFade;
+      uniform vec3 uCamera;
+      float lineDist(float coord, float cell) {
+        return abs(fract(coord / cell + 0.5) - 0.5) * cell;
+      }
+      float axisLine(float coord, float cell, float width) {
+        float d = lineDist(coord, cell);
+        float aa = min(max(fwidth(coord) * 0.8, 0.01), cell * 0.045);
+        return 1.0 - smoothstep(width, width + aa, d);
+      }
+      float lineGrid(vec2 uv, float cell, float width) {
+        return max(axisLine(uv.x, cell, width), axisLine(uv.y, cell, width));
+      }
+      void main() {
+        vec2 xz = vWorld.xz;
+        float dist = length(xz);
+        float fade = (1.0 - smoothstep(uFade * 0.16, uFade * 1.02, dist)) * smoothstep(0.008, 0.14, dist);
+        vec3 viewDir = normalize(uCamera - vWorld);
+        float facing = mix(0.55, 1.0, smoothstep(0.008, 0.14, abs(viewDir.y)));
+        float fine = lineGrid(xz, 1.15, 0.0048);
+        float coarse = lineGrid(xz, 4.6, 0.01);
+        float line = max(fine * 0.42, coarse * 0.88);
+        vec3 color = uColor * mix(0.78, 1.12, coarse);
+        float wash = (1.0 - line) * fade * facing * 0.07;
+        float alpha = max(line * fade * facing * 0.82, wash);
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+  });
+  const floorPlateMaterial = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+    uniforms: {
+      uBase: { value: new THREE.Color(0x031018) },
+      uSpec: { value: new THREE.Color(0x1e4a64) },
+      uCamera: { value: new THREE.Vector3() },
+    },
+    vertexShader: `
+      varying vec3 vWorld;
+      void main() {
+        vec4 world = modelMatrix * vec4(position, 1.0);
+        vWorld = world.xyz;
+        gl_Position = projectionMatrix * viewMatrix * world;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vWorld;
+      uniform vec3 uBase;
+      uniform vec3 uSpec;
+      uniform vec3 uCamera;
+      void main() {
+        vec2 xz = vWorld.xz;
+        float dist = length(xz);
+        vec3 viewDir = normalize(uCamera - vWorld);
+        float fresnel = pow(1.0 - clamp(abs(viewDir.y), 0.0, 1.0), 3.2);
+        float streak = exp(-xz.x * xz.x * 0.012) * (1.0 - smoothstep(6.0, 40.0, dist));
+        vec3 color = mix(uBase, uSpec, fresnel * 0.28 + streak * 0.1);
+        float alpha = 0.86 + fresnel * 0.08;
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+  });
+  const floorPlate = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), floorPlateMaterial);
+  floorPlate.rotation.x = -Math.PI / 2;
+  floorPlate.renderOrder = 0;
+  const floorGrid = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), floorGridMaterial);
+  floorGrid.rotation.x = -Math.PI / 2;
+  floorGrid.position.y = 0.02;
+  floorGrid.renderOrder = 2;
+  const atmosphereMaterial = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+    uniforms: {
+      uInner: { value: new THREE.Color(0x143044) },
+      uOuter: { value: new THREE.Color(0x0c2138) },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uInner;
+      uniform vec3 uOuter;
+      varying vec2 vUv;
+      void main() {
+        vec2 p = vUv - vec2(0.5, 0.42);
+        float d = length(p * vec2(1.15, 1.35));
+        float t = smoothstep(0.08, 0.78, d);
+        vec3 color = mix(uInner, uOuter, t);
+        float alpha = mix(0.16, 0.0, smoothstep(0.55, 0.92, d));
+        gl_FragColor = vec4(color, alpha);
+      }
+    `,
+  });
+  const atmosphere = new THREE.Mesh(new THREE.PlaneGeometry(90, 48), atmosphereMaterial);
+  atmosphere.position.set(0, 10, -18);
+  atmosphere.visible = false;
+  stageRoot.add(floorPlate, floorGrid);
+
+  const applyHomePose = (visual: ApplicationCardVisual) => {
+    visual.root.position.copy(visual.homePosition);
+    visual.root.rotation.set(0, visual.homeRotationY, 0);
+  };
+
+  const syncReflection = (visual: ApplicationCardVisual) => {
+    const onWall = phase === 'wall' || phase === 'initializing';
+    visual.reflection.visible = onWall && visual.isBottomRow;
+    visual.reflection.position.set(0, -1 - FLOOR_HOVER_GAP * 2, 0.5);
+    visual.reflectionMaterial.uniforms.uOpacity.value = 0.42 * visual.glassOpacity;
+    visual.floorGlow.visible = false;
+  };
 
   const flareTexture = textureLoader.load(APPLICATION3D_ASSETS.flare);
   let particlePoints: THREE.Points | null = null;
@@ -440,6 +786,7 @@ export const createApplication3DScene = (
   const cardOutline = roundedRectOutline();
   const cardGeometry = createRoundedCardShellGeometry(cardOutline);
   const cardFaceGeometry = createRoundedCardFaceGeometry(cardOutline);
+  const floorGlowGeometry = new THREE.PlaneGeometry(1, 1);
   const visuals = new Map<string, ApplicationCardVisual>();
   const raycaster = new THREE.Raycaster();
   const pointer = new THREE.Vector2();
@@ -448,7 +795,6 @@ export const createApplication3DScene = (
   const desiredCameraPosition = wallCameraPosition.clone();
   const desiredTarget = new THREE.Vector3();
   let cameraAnimating = false;
-  let selectedId = '';
   let phase: ScenePhase = 'initializing';
   let frameId: number | null = null;
   let disposed = false;
@@ -518,15 +864,14 @@ export const createApplication3DScene = (
     cameraAnimating = false;
     desiredCameraPosition.copy(wallCameraPosition);
     camera.position.copy(wallCameraPosition);
-    controls.target.set(0, 0, 0);
+    controls.target.copy(wallLookTarget);
     controls.update();
     controls.saveState();
     setOrbitEnabled(true);
     renderer.domElement.style.opacity = '1';
     renderer.domElement.style.transition = '';
     visuals.forEach((visual) => {
-      visual.root.position.copy(visual.homePosition);
-      visual.root.rotation.set(0, 0, 0);
+      applyHomePose(visual);
       visual.root.scale.copy(visual.homeScale);
       setCardOpacity(visual, 1);
       setCardBrightness(visual, 1);
@@ -586,7 +931,7 @@ export const createApplication3DScene = (
     }
 
     const hoverEnabled =
-      phase === 'wall' && !selectedId && tweens.size === 0 && !pointerDown;
+      phase === 'wall' && tweens.size === 0 && !pointerDown;
     visuals.forEach((visual) => {
       const want = hoverEnabled && !reducedMotion && visual.item.id === hoveredId ? 1 : 0;
       visual.hoverAmount = THREE.MathUtils.lerp(visual.hoverAmount, want, CARD_HOVER.lerp);
@@ -595,7 +940,9 @@ export const createApplication3DScene = (
       if (!hoverEnabled) return;
       const lift = visual.hoverAmount * CARD_HOVER.liftZ;
       const scaleMul = 1 + visual.hoverAmount * (CARD_HOVER.scale - 1);
-      visual.root.position.z = visual.homePosition.z + lift;
+      hoverLift.set(0, 0, lift).applyAxisAngle(new THREE.Vector3(0, 1, 0), visual.homeRotationY);
+      visual.root.position.copy(visual.homePosition).add(hoverLift);
+      visual.root.rotation.set(0, visual.homeRotationY, 0);
       visual.root.scale.set(
         visual.homeScale.x * scaleMul,
         visual.homeScale.y * scaleMul,
@@ -605,6 +952,7 @@ export const createApplication3DScene = (
     });
 
     updateParticles(dt);
+    visuals.forEach(syncReflection);
 
     if (cameraAnimating) {
       camera.position.lerp(desiredCameraPosition, 0.12);
@@ -622,7 +970,11 @@ export const createApplication3DScene = (
       controls.update();
     }
 
+    (floorGridMaterial.uniforms.uCamera.value as THREE.Vector3).copy(camera.position);
+    (floorPlateMaterial.uniforms.uCamera.value as THREE.Vector3).copy(camera.position);
     composer.render();
+    syncGlassOverlays();
+    syncFrost();
     if (firstRender) {
       firstRender = false;
       options.onFirstRender?.();
@@ -659,9 +1011,9 @@ export const createApplication3DScene = (
     setOrbitEnabled(false);
     cameraAnimating = false;
     camera.position.copy(wallCameraPosition);
-    controls.target.set(0, 0, 0);
+    controls.target.copy(wallLookTarget);
     desiredCameraPosition.copy(wallCameraPosition);
-    desiredTarget.set(0, 0, 0);
+    desiredTarget.copy(wallLookTarget);
     controls.update();
 
     const entries = Array.from(visuals.values());
@@ -674,8 +1026,7 @@ export const createApplication3DScene = (
 
     if (reducedMotion) {
       entries.forEach((visual) => {
-        visual.root.position.copy(visual.homePosition);
-        visual.root.rotation.set(0, 0, 0);
+        applyHomePose(visual);
         visual.root.scale.copy(visual.homeScale);
         setCardOpacity(visual, 0);
         setCardBrightness(visual, 1);
@@ -703,7 +1054,7 @@ export const createApplication3DScene = (
         visual.homePosition.y + WALL_ENTRANCE.offsetY,
         visual.homePosition.z + WALL_ENTRANCE.offsetZ,
       );
-      visual.root.rotation.set(rotateX, 0, 0);
+      visual.root.rotation.set(rotateX, visual.homeRotationY, 0);
       visual.root.scale.copy(visual.homeScale).multiplyScalar(WALL_ENTRANCE.startScale);
       setCardOpacity(visual, 0);
       setCardBrightness(visual, 0.72);
@@ -728,7 +1079,7 @@ export const createApplication3DScene = (
         setCardBrightness(visual, fromGlow + (toGlow - fromGlow) * t);
       }, () => {
         visual.root.position.copy(visual.homePosition);
-        visual.root.rotation.set(0, 0, 0);
+        visual.root.rotation.set(0, visual.homeRotationY, 0);
         visual.root.scale.copy(visual.homeScale);
         setCardOpacity(visual, 1);
         setCardBrightness(visual, 1);
@@ -751,8 +1102,7 @@ export const createApplication3DScene = (
       : WALL_FILTER_MOTION.durationMs) / 1000;
     const startScale = reducedMotion ? 1 : WALL_FILTER_MOTION.startScale;
     entries.forEach((visual) => {
-      visual.root.position.copy(visual.homePosition);
-      visual.root.rotation.set(0, 0, 0);
+      applyHomePose(visual);
       visual.root.scale.copy(visual.homeScale).multiplyScalar(startScale);
       setCardOpacity(visual, 0);
       const fromScale = visual.root.scale.clone();
@@ -783,29 +1133,20 @@ export const createApplication3DScene = (
       visual.homeScale.set(layout.cardWidth, layout.cardHeight, CARD_THICKNESS);
       const rowWidth =
         rowCardCount * layout.cardWidth + Math.max(0, rowCardCount - 1) * layout.gapX;
-      const x = -rowWidth / 2 + layout.cardWidth / 2 + column * (layout.cardWidth + layout.gapX);
-      const y =
+      const planarX = -rowWidth / 2 + layout.cardWidth / 2 + column * (layout.cardWidth + layout.gapX);
+      const planarY =
         layout.wallHeight / 2 -
         row * (layout.cardHeight + layout.gapY) -
         layout.cardHeight / 2;
-      visual.homePosition.set(x, y, 0);
-      const isFocusedCard =
-        selectedId !== '' &&
-        visual.root.userData.applicationId === selectedId &&
-        (phase === 'focusing' || phase === 'focused');
-      if (!isFocusedCard) {
-        visual.root.scale.copy(visual.homeScale);
-      }
+      visual.homePosition.set(planarX, planarY, 0);
+      visual.homeRotationY = 0;
+      visual.root.scale.copy(visual.homeScale);
       if (
-        !selectedId &&
-        phase !== 'focusing' &&
-        phase !== 'focused' &&
         phase !== 'initializing' &&
         !layoutOptions?.playIntro &&
         !layoutOptions?.playFilter
       ) {
-        visual.root.position.copy(visual.homePosition);
-        visual.root.rotation.set(0, 0, 0);
+        applyHomePose(visual);
       }
       column += 1;
       if (column === rowCardCount) {
@@ -814,41 +1155,59 @@ export const createApplication3DScene = (
       }
     });
 
-    wallCameraPosition = new THREE.Vector3(0, 0, fitCameraDistance(layout));
+    let lowestY = Infinity;
+    visuals.forEach((visual) => {
+      lowestY = Math.min(lowestY, visual.homePosition.y);
+    });
+    visuals.forEach((visual) => {
+      visual.isBottomRow = Math.abs(visual.homePosition.y - lowestY) < 0.05;
+      syncReflection(visual);
+    });
+
+    floorY = -layout.wallHeight / 2 - layout.cardHeight * FLOOR_HOVER_GAP;
+    stageRoot.position.y = floorY;
+    floorGridMaterial.uniforms.uFade.value = Math.max(layout.wallWidth * 3.1, 32);
+    wallLookTarget.set(0, 0, 0);
+    wallCameraPosition = new THREE.Vector3(
+      0,
+      layout.wallHeight * WALL_CAMERA_HEIGHT_FACTOR,
+      fitCameraDistance(layout),
+    );
     controls.minDistance = Math.max(wallCameraPosition.z * 0.45, 6);
     controls.maxDistance = wallCameraPosition.z * 2.2;
     syncParticleScale();
 
-    if (!selectedId) {
-      desiredTarget.set(0, 0, 0);
-      if (layoutOptions?.playIntro) {
-        playEntrance();
-      } else if (layoutOptions?.playFilter) {
-        playFilterTransition();
-        desiredCameraPosition.copy(wallCameraPosition);
-        if (phase === 'initializing') {
-          phase = 'wall';
-          setOrbitEnabled(true);
-        }
-      } else {
-        desiredCameraPosition.copy(wallCameraPosition);
-        if (layoutOptions?.snapCamera) {
-          camera.position.copy(desiredCameraPosition);
-          controls.target.copy(desiredTarget);
-          cameraAnimating = false;
-        }
-        if (phase === 'initializing') {
-          phase = 'wall';
-          setOrbitEnabled(true);
-        }
+    desiredTarget.copy(wallLookTarget);
+    if (layoutOptions?.playIntro) {
+      playEntrance();
+    } else if (layoutOptions?.playFilter) {
+      playFilterTransition();
+      desiredCameraPosition.copy(wallCameraPosition);
+      if (phase === 'initializing') {
+        phase = 'wall';
+        setOrbitEnabled(true);
+      }
+    } else {
+      desiredCameraPosition.copy(wallCameraPosition);
+      if (layoutOptions?.snapCamera || phase === 'initializing') {
+        camera.position.copy(desiredCameraPosition);
+        controls.target.copy(desiredTarget);
+        camera.up.set(0, 1, 0);
+        camera.lookAt(controls.target);
+        controls.update();
+        controls.saveState();
+        cameraAnimating = false;
+      }
+      if (phase === 'initializing') {
+        phase = 'wall';
+        setOrbitEnabled(true);
       }
     }
     requestRender();
   };
 
-  const applyFaceMaterial = (material: THREE.MeshBasicMaterial) => {
-    material.color.setScalar(1);
-    material.toneMapped = false;
+  const applyFaceMaterial = (material: THREE.ShaderMaterial) => {
+    material.uniforms.uBright.value = 1;
     material.needsUpdate = true;
   };
 
@@ -859,12 +1218,10 @@ export const createApplication3DScene = (
     const playIntro =
       Boolean(reconcileOptions?.playIntro) &&
       items.length > 0 &&
-      !selectedId &&
       !entrancePlayed;
     const playFilter =
       Boolean(reconcileOptions?.playFilter) &&
       items.length > 0 &&
-      !selectedId &&
       !playIntro;
     const forceRepaint = Boolean(reconcileOptions?.forceRepaint);
     if (playIntro) {
@@ -897,15 +1254,23 @@ export const createApplication3DScene = (
           return;
         }
         previous.item = item;
-        previous.texture.dispose();
         const next = createCardTextures(item, translate);
+        previous.texture.dispose();
         previous.texture = next.texture;
         previous.cardTone = next.cardTone;
-        previous.material.map = previous.texture;
+        previous.material.uniforms.uMap.value = previous.texture;
         applyFaceMaterial(previous.material);
         previous.sideTexture.dispose();
         previous.sideTexture = paintCardSideTexture(next.cardTone);
         applyCardSideMaterial(previous.sideMaterial, previous.sideTexture);
+        previous.reflectionMaterial.uniforms.uMap.value = previous.texture;
+        previous.reflectionMaterial.uniforms.uTint.value.set(CARD_TONE[next.cardTone].tint);
+        previous.floorGlowMaterial.uniforms.uColor.value.set(CARD_TONE[next.cardTone].tint);
+        previous.glassEl.replaceChildren();
+        const chrome = next.texture.image as HTMLCanvasElement;
+        chrome.className = 'app3d-wall-glass-chrome';
+        previous.glassEl.dataset.tone = next.cardTone;
+        previous.glassEl.appendChild(chrome);
         return;
       }
       const painted = createCardTextures(item, translate);
@@ -923,6 +1288,21 @@ export const createApplication3DScene = (
       root.userData.applicationId = item.id;
       root.add(mesh);
       scene.add(root);
+      const chrome = painted.texture.image as HTMLCanvasElement;
+      const glassEl = createGlassOverlay(painted.cardTone, chrome);
+      const reflectionMaterial = createCardReflectionMaterial(
+        painted.texture,
+        CARD_TONE[painted.cardTone].tint,
+      );
+      const reflection = new THREE.Mesh(cardFaceGeometry, reflectionMaterial);
+      reflection.position.set(0, -1 - FLOOR_HOVER_GAP * 2, 0.5);
+      reflection.renderOrder = 1;
+      root.add(reflection);
+      const floorGlowMaterial = createFloorGlowMaterial(CARD_TONE[painted.cardTone].tint);
+      const floorGlow = new THREE.Mesh(floorGlowGeometry, floorGlowMaterial);
+      floorGlow.rotation.x = -Math.PI / 2;
+      floorGlow.renderOrder = 4;
+      floorGlow.visible = false;
       visuals.set(item.id, {
         item,
         root,
@@ -934,11 +1314,18 @@ export const createApplication3DScene = (
         sideTexture,
         homePosition: new THREE.Vector3(),
         homeScale: new THREE.Vector3(1, 1, CARD_THICKNESS),
+        homeRotationY: 0,
         cardTone: painted.cardTone,
         hoverAmount: 0,
+        glassEl,
+        glassOpacity: 1,
+        isBottomRow: false,
+        reflection,
+        reflectionMaterial,
+        floorGlow,
+        floorGlowMaterial,
       });
     });
-    if (selectedId && !nextIds.has(selectedId)) selectedId = '';
 
     if (!particlesBuilt) {
       rebuildParticles();
@@ -946,174 +1333,6 @@ export const createApplication3DScene = (
     }
     syncParticleScale();
     layoutVisuals({ playIntro, playFilter });
-  };
-
-  const getWallFacingFocusPosition = () => {
-    const dir = new THREE.Vector3().subVectors(new THREE.Vector3(0, 0, 0), wallCameraPosition);
-    if (dir.lengthSq() < 0.0001) dir.set(0, 0, -1);
-    dir.normalize();
-    return wallCameraPosition.clone().add(dir.multiplyScalar(FOCUS_DISTANCE));
-  };
-
-  const resetCameraToWall = (duration: number) => {
-    const fromPos = camera.position.clone();
-    const fromTarget = controls.target.clone();
-    const toPos = wallCameraPosition.clone();
-    const toTarget = new THREE.Vector3(0, 0, 0);
-    const fromOffset = fromPos.clone().sub(fromTarget);
-    const toOffset = toPos.clone().sub(toTarget);
-    const fromSph = new THREE.Spherical().setFromVector3(fromOffset);
-    const toSph = new THREE.Spherical().setFromVector3(toOffset);
-    let deltaTheta = toSph.theta - fromSph.theta;
-    while (deltaTheta > Math.PI) deltaTheta -= Math.PI * 2;
-    while (deltaTheta < -Math.PI) deltaTheta += Math.PI * 2;
-    const sph = new THREE.Spherical();
-    const offset = new THREE.Vector3();
-
-    cameraAnimating = false;
-    startTween(duration, (t) => {
-      sph.set(
-        fromSph.radius + (toSph.radius - fromSph.radius) * t,
-        fromSph.phi + (toSph.phi - fromSph.phi) * t,
-        fromSph.theta + deltaTheta * t,
-      );
-      controls.target.lerpVectors(fromTarget, toTarget, t);
-      camera.position.copy(controls.target).add(offset.setFromSpherical(sph));
-      camera.lookAt(controls.target);
-      desiredCameraPosition.copy(camera.position);
-      desiredTarget.copy(controls.target);
-    }, () => {
-      camera.position.copy(toPos);
-      controls.target.copy(toTarget);
-      camera.lookAt(controls.target);
-      desiredCameraPosition.copy(toPos);
-      desiredTarget.copy(toTarget);
-      controls.update();
-    });
-  };
-
-  const flyCardHome = (
-    visual: ApplicationCardVisual,
-    duration: number,
-    onComplete?: () => void,
-  ) => {
-    const fromPos = visual.root.position.clone();
-    const fromRot = visual.root.rotation.y;
-    const fromScale = visual.root.scale.clone();
-    startTween(duration, (t) => {
-      visual.root.position.lerpVectors(fromPos, visual.homePosition, t);
-      visual.root.rotation.y = fromRot * (1 - t);
-      visual.root.scale.lerpVectors(fromScale, visual.homeScale, t);
-    }, () => {
-      visual.root.position.copy(visual.homePosition);
-      visual.root.rotation.set(0, 0, 0);
-      visual.root.scale.copy(visual.homeScale);
-      onComplete?.();
-    });
-  };
-
-  const flyCardToFocus = (applicationId: string, returningId = '') => {
-    const selected = visuals.get(applicationId);
-    if (!selected) {
-      phase = 'wall';
-      setOrbitEnabled(true);
-      return;
-    }
-    selectedId = applicationId;
-    phase = 'focusing';
-    setOrbitEnabled(false);
-    cameraAnimating = false;
-    renderer.domElement.style.cursor = 'default';
-
-    const duration = durationFromSpeed(1);
-    resetCameraToWall(duration);
-    const focusPos = getWallFacingFocusPosition();
-    const fromPos = selected.root.position.clone();
-    const fromRot = selected.root.rotation.y;
-    const fromScale = selected.root.scale.clone();
-    const toScale = selected.homeScale.clone().multiplyScalar(FOCUS_SCALE);
-    setCardOpacity(selected, 1);
-    hoveredId = '';
-
-    visuals.forEach((visual, id) => {
-      if (id === applicationId || id === returningId) return;
-      const fromOpacity = visual.material.opacity;
-      startTween(duration * 0.55, (t) => {
-        setCardOpacity(visual, fromOpacity + (0.5 - fromOpacity) * t);
-      }, () => {
-        setCardOpacity(visual, 0.5);
-      });
-    });
-
-    startTween(duration, (t) => {
-      selected.root.position.lerpVectors(fromPos, focusPos, t);
-      selected.root.rotation.y = fromRot + Math.PI * 2 * t;
-      selected.root.scale.lerpVectors(fromScale, toScale, t);
-    }, () => {
-      selected.root.position.copy(focusPos);
-      selected.root.rotation.y = fromRot + Math.PI * 2;
-      selected.root.scale.copy(toScale);
-      phase = 'focused';
-      renderer.domElement.style.cursor = 'default';
-      options.onFocusSettled?.(selected.item);
-    });
-  };
-
-  const focus = (applicationId: string) => {
-    if (!visuals.has(applicationId)) return;
-    if (applicationId === selectedId && (phase === 'focused' || phase === 'focusing')) {
-      return;
-    }
-    clearIntroTimers();
-    const outgoingId = selectedId && selectedId !== applicationId ? selectedId : '';
-    const outgoing = outgoingId ? visuals.get(outgoingId) : undefined;
-    cancelTweens();
-
-    if (outgoing) {
-      setCardOpacity(outgoing, 1);
-      const duration = durationFromSpeed(1);
-      const fromOpacity = outgoing.material.opacity;
-      startTween(duration, (t) => {
-        setCardOpacity(outgoing, fromOpacity + (0.5 - fromOpacity) * t);
-      }, () => {
-        setCardOpacity(outgoing, 0.5);
-      });
-      flyCardHome(outgoing, duration);
-    }
-    flyCardToFocus(applicationId, outgoingId);
-  };
-
-  const restoreWall = () => {
-    cancelTweens();
-    const outgoingId = selectedId;
-    selectedId = '';
-    phase = 'returning';
-    setOrbitEnabled(false);
-    cameraAnimating = false;
-    renderer.domElement.style.cursor = 'default';
-    const duration = durationFromSpeed(1);
-    resetCameraToWall(duration);
-    const outgoing = outgoingId ? visuals.get(outgoingId) : undefined;
-
-    visuals.forEach((visual) => {
-      const fromOpacity = visual.material.opacity;
-      startTween(duration, (t) => {
-        setCardOpacity(visual, fromOpacity + (1 - fromOpacity) * t);
-      }, () => {
-        setCardOpacity(visual, 1);
-      });
-    });
-
-    const finish = () => {
-      phase = 'wall';
-      setOrbitEnabled(true);
-      renderer.domElement.style.cursor = 'grab';
-    };
-    if (outgoing) {
-      flyCardHome(outgoing, duration, finish);
-    } else {
-      finish();
-    }
   };
 
   const pickApplicationId = (clientX: number, clientY: number) => {
@@ -1131,10 +1350,7 @@ export const createApplication3DScene = (
     return hit?.object.userData.applicationId as string | undefined;
   };
 
-  const idleCursor = () => {
-    if (phase === 'focused' || phase === 'focusing' || phase === 'returning') return 'default';
-    return 'grab';
-  };
+  const idleCursor = () => 'grab';
 
   const syncCursor = (clientX: number, clientY: number) => {
     if (!active || !options.interactive) return;
@@ -1151,7 +1367,7 @@ export const createApplication3DScene = (
 
   const handlePointerMove = (event: PointerEvent) => {
     syncCursor(event.clientX, event.clientY);
-    if (!active || !options.interactive || pointerDown || phase !== 'wall' || selectedId) {
+    if (!active || !options.interactive || pointerDown || phase !== 'wall') {
       if (hoveredId) {
         hoveredId = '';
         requestRender();
@@ -1192,9 +1408,6 @@ export const createApplication3DScene = (
       renderer.domElement.style.cursor = 'pointer';
       return;
     }
-    if (phase === 'focused' || phase === 'focusing') {
-      options.onBackground?.();
-    }
     renderer.domElement.style.cursor = idleCursor();
   };
 
@@ -1229,8 +1442,8 @@ export const createApplication3DScene = (
     resizeLayoutTimer = window.setTimeout(() => {
       resizeLayoutTimer = null;
       if (disposed) return;
-      if (phase === 'initializing' || phase === 'focusing' || phase === 'returning') return;
-      layoutVisuals({ snapCamera: !selectedId });
+      if (phase === 'initializing') return;
+      layoutVisuals({ snapCamera: true });
     }, RESIZE_LAYOUT_DEBOUNCE_MS);
   };
 
@@ -1254,38 +1467,9 @@ export const createApplication3DScene = (
   resizeNow();
   requestRender();
 
-  const getFocusChromeLayout = (): Application3DFocusChromeLayout | null => {
-    if (phase !== 'focused' || !selectedId) return null;
-    const visual = visuals.get(selectedId);
-    if (!visual) return null;
-    const origin = visual.root.position;
-    const halfW = visual.root.scale.x / 2;
-    const halfH = visual.root.scale.y / 2;
-    const frontZ = origin.z + 0.51 * visual.root.scale.z;
-    const bottomLeft = new THREE.Vector3(origin.x - halfW, origin.y - halfH, frontZ);
-    const bottomRight = new THREE.Vector3(origin.x + halfW, origin.y - halfH, frontZ);
-    bottomLeft.project(camera);
-    bottomRight.project(camera);
-    const widthPx = renderer.domElement.clientWidth;
-    const heightPx = renderer.domElement.clientHeight;
-    if (widthPx <= 0 || heightPx <= 0) return null;
-    const toX = (ndc: THREE.Vector3) => ((ndc.x + 1) / 2) * widthPx;
-    const toY = (ndc: THREE.Vector3) => ((-ndc.y + 1) / 2) * heightPx;
-    const leftX = toX(bottomLeft);
-    const rightX = toX(bottomRight);
-    return {
-      centerX: (leftX + rightX) / 2,
-      bottom: Math.max(toY(bottomLeft), toY(bottomRight)),
-      width: Math.abs(rightX - leftX),
-    };
-  };
-
   return {
     reconcile,
-    focus,
-    restoreWall,
     resize,
-    getFocusChromeLayout,
     setActive: (nextActive) => {
       if (disposed || active === nextActive) return;
       active = nextActive;
@@ -1299,7 +1483,7 @@ export const createApplication3DScene = (
         return;
       }
       renderer.domElement.style.pointerEvents = options.interactive ? 'auto' : 'none';
-      setOrbitEnabled(phase === 'wall' && !selectedId);
+      setOrbitEnabled(phase === 'wall');
       resizeNow();
       requestRender();
     },
@@ -1318,6 +1502,14 @@ export const createApplication3DScene = (
       controls.dispose();
       visuals.forEach(disposeVisual);
       visuals.clear();
+      floorPlate.geometry.dispose();
+      floorPlateMaterial.dispose();
+      floorGrid.geometry.dispose();
+      floorGridMaterial.dispose();
+      atmosphere.geometry.dispose();
+      atmosphereMaterial.dispose();
+      atmosphere.removeFromParent();
+      stageRoot.removeFromParent();
       if (particlePoints) {
         scene.remove(particlePoints);
         particlePoints.geometry.dispose();
@@ -1327,10 +1519,12 @@ export const createApplication3DScene = (
       if (scene.background instanceof THREE.Texture) scene.background.dispose();
       cardGeometry.dispose();
       cardFaceGeometry.dispose();
+      floorGlowGeometry.dispose();
       composer.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();
+      glassLayer.remove();
     },
   };
 };

@@ -1,103 +1,134 @@
 import type { Application3DCardTone, Application3DCardVisual } from './application3DLayout';
 
 /**
- * Dark frosted glass for wall cards. Canvas cannot use CSS backdrop-filter,
- * so frost, rim light and translucency are painted. Faces use MeshBasicMaterial
- * so the painted glass is the on-screen truth; Physical lighting created a
- * metallic top-edge highlight at wall scale. Status is an edge accent, not a fill.
+ * The painted texture is the on-screen glass. Face shader only samples it.
+ * Plate is a dark translucent fill; status color lives in a soft bloom edge.
  */
-export const CARD_THICKNESS = 0.2;
+export const CARD_THICKNESS = 0.16;
 
 export type Application3DCardFace = 'front' | 'back';
 
 export const CARD_GLASS = {
-  radius: 32,
-  inset: 4,
-  bodyCenter: 'rgba(26, 36, 52, 0.62)',
-  body: 'rgba(30, 42, 60, 0.48)',
-  bodyRim: 'rgba(58, 78, 104, 0.28)',
-  unknownBodyCenter: 'rgba(26, 30, 38, 0.64)',
-  unknownBody: 'rgba(30, 34, 42, 0.50)',
-  unknownBodyRim: 'rgba(54, 62, 76, 0.30)',
-  innerShadow: 'rgba(0, 0, 0, 0.08)',
-  title: 'rgba(248, 250, 252, 0.98)',
-  titleUnknown: 'rgba(232, 236, 242, 0.96)',
-  frostAlpha: 0.045,
-  frostGain: 0.032,
-  frostStep: 3,
+  radius: 24,
+  inset: 10,
+  bodyCenter: 'rgba(16, 32, 48, 0.58)',
+  body: 'rgba(10, 22, 36, 0.64)',
+  bodyRim: 'rgba(8, 16, 28, 0.7)',
+  unknownBodyCenter: 'rgba(20, 24, 32, 0.56)',
+  unknownBody: 'rgba(14, 18, 26, 0.62)',
+  unknownBodyRim: 'rgba(10, 14, 20, 0.68)',
+  innerShadow: 'rgba(0, 0, 0, 0.16)',
+  sheen: 'rgba(255, 255, 255, 0.16)',
+  sheenFade: 'rgba(198, 214, 232, 0.06)',
+  title: 'rgba(248, 250, 252, 0.96)',
+  titleUnknown: 'rgba(198, 204, 214, 0.9)',
+  frostAlpha: 0,
+  frostGain: 0,
+  frostStep: 8,
   fontFamily: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
-  titleSize: 54,
-  statusSize: 27,
+  titleSize: 48,
+  statusSize: 42,
+  iconSize: 72,
 } as const;
 
 export const CARD_BADGE = {
-  height: 46,
-  radius: 6,
+  height: 44,
+  radius: 8,
   fontSize: 26,
-  inset: 20,
+  inset: 22,
 } as const;
 
 export const CARD_TONE = {
   normal: {
-    edge: 'rgba(206, 220, 232, 0.16)',
-    edgeWidth: 2.8,
-    glow: { color: 'rgba(0, 0, 0, 0)', width: 0 },
-    innerGlow: 'rgba(0, 0, 0, 0)',
-    dot: '#3cbcb0',
-    statusText: 'rgba(198, 222, 218, 0.96)',
-    badgeFill: 'rgba(176, 48, 44, 0.96)',
+    edge: 'rgba(110, 210, 230, 0.28)',
+    edgeWidth: 0.7,
+    glow: { color: 'rgba(70, 196, 220, 0.2)', width: 11 },
+    innerGlow: 'rgba(168, 230, 246, 0.12)',
+    wash: 'rgba(20, 90, 120, 0.05)',
+    statusFill: 'rgba(6, 12, 20, 0.72)',
+    statusStroke: 'rgba(150, 176, 194, 0.28)',
+    statusText: 'rgba(226, 232, 238, 0.96)',
+    icon: 'rgba(236, 240, 246, 0.96)',
+    badgeFill: 'rgba(4, 8, 14, 0.78)',
+    badgeBorder: 'rgba(0, 0, 0, 0)',
+    tint: 0x5ab4cc,
   },
   critical: {
-    edge: 'rgba(246, 86, 76, 1)',
-    edgeWidth: 5.8,
-    glow: { color: 'rgba(224, 44, 36, 0.38)', width: 22 },
-    innerGlow: 'rgba(255, 118, 108, 0.26)',
-    dot: '#e05650',
-    statusText: 'rgba(240, 198, 194, 0.96)',
-    badgeFill: 'rgba(188, 48, 44, 0.96)',
+    edge: 'rgba(255, 96, 86, 0.42)',
+    edgeWidth: 1.15,
+    glow: { color: 'rgba(255, 70, 58, 0.22)', width: 17 },
+    innerGlow: 'rgba(255, 170, 160, 0.14)',
+    wash: 'rgba(140, 22, 16, 0.07)',
+    statusFill: 'rgba(28, 8, 8, 0.74)',
+    statusStroke: 'rgba(255, 110, 96, 0.5)',
+    statusText: 'rgba(255, 168, 158, 0.96)',
+    icon: 'rgba(236, 240, 246, 0.96)',
+    badgeFill: 'rgba(10, 4, 4, 0.78)',
+    badgeBorder: 'rgba(0, 0, 0, 0)',
+    tint: 0xff5c4e,
   },
   warning: {
-    edge: 'rgba(236, 168, 74, 0.90)',
-    edgeWidth: 4.2,
-    glow: { color: 'rgba(210, 132, 48, 0.20)', width: 14 },
-    innerGlow: 'rgba(0, 0, 0, 0)',
-    dot: '#d9a05c',
-    statusText: 'rgba(230, 208, 176, 0.95)',
-    badgeFill: 'rgba(196, 126, 40, 0.96)',
+    edge: 'rgba(255, 176, 80, 0.36)',
+    edgeWidth: 0.95,
+    glow: { color: 'rgba(255, 160, 56, 0.18)', width: 13 },
+    innerGlow: 'rgba(255, 210, 150, 0.13)',
+    wash: 'rgba(150, 72, 16, 0.05)',
+    statusFill: 'rgba(26, 12, 4, 0.74)',
+    statusStroke: 'rgba(255, 172, 80, 0.48)',
+    statusText: 'rgba(255, 198, 126, 0.96)',
+    icon: 'rgba(236, 240, 246, 0.96)',
+    badgeFill: 'rgba(10, 6, 2, 0.78)',
+    badgeBorder: 'rgba(0, 0, 0, 0)',
+    tint: 0xffa848,
   },
   error: {
-    edge: 'rgba(232, 124, 52, 0.96)',
-    edgeWidth: 5.0,
-    glow: { color: 'rgba(217, 112, 7, 0.28)', width: 18 },
-    innerGlow: 'rgba(255, 160, 96, 0.18)',
-    dot: '#d97007',
-    statusText: 'rgba(240, 208, 176, 0.96)',
-    badgeFill: 'rgba(184, 96, 24, 0.96)',
+    edge: 'rgba(255, 110, 90, 0.4)',
+    edgeWidth: 1.05,
+    glow: { color: 'rgba(255, 80, 64, 0.2)', width: 15 },
+    innerGlow: 'rgba(255, 176, 164, 0.13)',
+    wash: 'rgba(132, 24, 18, 0.06)',
+    statusFill: 'rgba(26, 8, 8, 0.74)',
+    statusStroke: 'rgba(255, 118, 102, 0.48)',
+    statusText: 'rgba(255, 176, 164, 0.96)',
+    icon: 'rgba(236, 240, 246, 0.96)',
+    badgeFill: 'rgba(10, 4, 4, 0.78)',
+    badgeBorder: 'rgba(0, 0, 0, 0)',
+    tint: 0xff6050,
   },
   info: {
-    edge: 'rgba(96, 165, 250, 0.62)',
-    edgeWidth: 3.4,
-    glow: { color: 'rgba(0, 0, 0, 0)', width: 0 },
-    innerGlow: 'rgba(0, 0, 0, 0)',
-    dot: '#60a5fa',
-    statusText: 'rgba(186, 214, 242, 0.94)',
-    badgeFill: 'rgba(59, 112, 168, 0.96)',
+    edge: 'rgba(120, 190, 230, 0.32)',
+    edgeWidth: 0.85,
+    glow: { color: 'rgba(80, 170, 220, 0.16)', width: 9 },
+    innerGlow: 'rgba(176, 220, 246, 0.1)',
+    wash: 'rgba(24, 80, 120, 0.04)',
+    statusFill: 'rgba(6, 14, 22, 0.72)',
+    statusStroke: 'rgba(148, 184, 210, 0.3)',
+    statusText: 'rgba(220, 230, 238, 0.94)',
+    icon: 'rgba(236, 240, 246, 0.96)',
+    badgeFill: 'rgba(4, 8, 14, 0.76)',
+    badgeBorder: 'rgba(0, 0, 0, 0)',
+    tint: 0x80b4d2,
   },
   unknown: {
-    edge: 'rgba(118, 126, 136, 0.52)',
-    edgeWidth: 3.2,
-    glow: { color: 'rgba(0, 0, 0, 0)', width: 0 },
-    innerGlow: 'rgba(0, 0, 0, 0)',
-    dot: '#8b97a8',
-    statusText: 'rgba(188, 196, 206, 0.92)',
-    badgeFill: 'rgba(86, 98, 114, 0.96)',
+    edge: 'rgba(118, 126, 136, 0.34)',
+    edgeWidth: 0.78,
+    glow: { color: 'rgba(130, 140, 152, 0.1)', width: 7 },
+    innerGlow: 'rgba(186, 196, 210, 0.08)',
+    wash: 'rgba(16, 18, 24, 0.03)',
+    statusFill: 'rgba(10, 12, 16, 0.7)',
+    statusStroke: 'rgba(156, 166, 180, 0.24)',
+    statusText: 'rgba(206, 212, 220, 0.92)',
+    icon: 'rgba(220, 226, 234, 0.88)',
+    badgeFill: 'rgba(8, 10, 14, 0.74)',
+    badgeBorder: 'rgba(0, 0, 0, 0)',
+    tint: 0x96a0ae,
   },
 } as const;
 
 export const CARD_HOVER = {
-  liftZ: 0.2,
-  scale: 1.02,
-  emissiveBoost: 0.028,
+  liftZ: 0.28,
+  scale: 1.03,
+  emissiveBoost: 0.04,
   lerp: 0.16,
 } as const;
 
@@ -126,9 +157,9 @@ export const badgeRect = (
   canvasHeight: number,
 ) => {
   const width =
-    badgeText === '--' ? 58 : badgeText.length >= 3 ? 70 : 48;
+    badgeText === '--' ? 62 : badgeText.length >= 3 ? 66 : 50;
   const x = canvasWidth - CARD_BADGE.inset - width;
-  const y = CARD_BADGE.inset;
+  const y = CARD_BADGE.inset - 2;
   return {
     x,
     y,
@@ -159,137 +190,62 @@ const roundRectPath = (
   ctx.closePath();
 };
 
-const hash01 = (x: number, y: number, salt: number) => {
-  const n = Math.sin(x * 12.9898 + y * 78.233 + salt * 45.164) * 43758.5453;
-  return n - Math.floor(n);
-};
-
-const seedFromId = (id: string) => {
-  let seed = 0;
-  for (let i = 0; i < id.length; i += 1) seed = (seed * 31 + id.charCodeAt(i)) >>> 0;
-  return seed / 4294967295;
-};
-
-const paintFrost = (
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  seed: number,
-  inset: number,
-) => {
-  const frostAlpha = CARD_GLASS.frostAlpha;
-  const frostGain = CARD_GLASS.frostGain;
-  const frostStep = CARD_GLASS.frostStep;
-  for (let y = inset; y < h - inset; y += frostStep) {
-    for (let x = inset; x < w - inset; x += frostStep) {
-      const n = hash01(x, y, seed);
-      if (n > 0.46) {
-        ctx.fillStyle = `rgba(210, 224, 240, ${frostAlpha + n * frostGain})`;
-        const size = n > 0.88 ? 3 : n > 0.68 ? 2 : 1;
-        ctx.fillRect(x, y, size, size);
-      }
-    }
-  }
-};
-
 const rgbaAlpha = (value: string) => {
   const match = /,\s*([0-9.]+)\)$/.exec(value);
   return match ? Number(match[1]) : 0;
 };
 
-const paintGlassEdge = (
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-  tone: Application3DCardTone,
-) => {
-  const tokens = CARD_TONE[tone];
-  const inset = CARD_GLASS.inset;
-  const radius = CARD_GLASS.radius;
-
-  if (tokens.glow.width > 0 && rgbaAlpha(tokens.glow.color) > 0) {
-    ctx.save();
-    ctx.shadowColor = tokens.glow.color;
-    ctx.shadowBlur = tokens.glow.width;
-    roundRectPath(ctx, inset, inset, w - inset * 2, h - inset * 2, radius);
-    ctx.strokeStyle = tokens.glow.color;
-    ctx.lineWidth = tokens.edgeWidth + 1.5;
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  if (rgbaAlpha(tokens.innerGlow) > 0.01) {
-    roundRectPath(
-      ctx,
-      inset + 1.5,
-      inset + 1.5,
-      w - inset * 2 - 3,
-      h - inset * 2 - 3,
-      Math.max(radius - 1.5, 0),
-    );
-    ctx.strokeStyle = tokens.innerGlow;
-    ctx.lineWidth = Math.max(tokens.edgeWidth * 0.55, 2);
-    ctx.stroke();
-  }
-
-  roundRectPath(ctx, inset, inset, w - inset * 2, h - inset * 2, radius);
-  ctx.strokeStyle = tokens.edge;
-  ctx.lineWidth = tokens.edgeWidth;
-  ctx.stroke();
+const paintGlassBody = (ctx: CanvasRenderingContext2D) => {
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 };
 
-const paintGlassBody = (
+const paintCubeIcon = (
   ctx: CanvasRenderingContext2D,
-  visual: Application3DCardVisual,
-  seedId: string,
+  cx: number,
+  cy: number,
+  size: number,
+  color: string,
 ) => {
-  const w = ctx.canvas.width;
-  const h = ctx.canvas.height;
-  const tone = visual.cardTone;
-  const inset = CARD_GLASS.inset;
-  const radius = CARD_GLASS.radius;
-  const seed = seedFromId(seedId);
-
-  ctx.clearRect(0, 0, w, h);
-
-  const body = ctx.createRadialGradient(
-    w / 2,
-    h * 0.48,
-    Math.min(w, h) * 0.08,
-    w / 2,
-    h * 0.5,
-    Math.max(w, h) * 0.72,
-  );
-  if (tone === 'unknown') {
-    body.addColorStop(0, CARD_GLASS.unknownBodyCenter);
-    body.addColorStop(0.55, CARD_GLASS.unknownBody);
-    body.addColorStop(1, CARD_GLASS.unknownBodyRim);
-  } else {
-    body.addColorStop(0, CARD_GLASS.bodyCenter);
-    body.addColorStop(0.55, CARD_GLASS.body);
-    body.addColorStop(1, CARD_GLASS.bodyRim);
-  }
-
-  roundRectPath(ctx, 0, 0, w, h, 10);
-  ctx.fillStyle = body;
-  ctx.fill();
-
+  const dx = size * 0.46;
+  const dy = size * 0.26;
+  const drop = size * 0.46;
+  const x = cx;
+  const y = cy - drop / 2;
+  const top = { x, y: y - dy };
+  const right = { x: x + dx, y };
+  const bottom = { x, y: y + dy };
+  const left = { x: x - dx, y };
   ctx.save();
-  roundRectPath(ctx, inset, inset, w - inset * 2, h - inset * 2, radius);
-  ctx.clip();
-  ctx.fillStyle = body;
-  ctx.fillRect(0, 0, w, h);
-  paintFrost(ctx, w, h, seed, inset);
-
-  const inner = ctx.createRadialGradient(w / 2, h / 2, 8, w / 2, h / 2, Math.max(w, h) * 0.62);
-  inner.addColorStop(0, CARD_GLASS.innerShadow);
-  inner.addColorStop(0.7, 'rgba(0, 0, 0, 0)');
-  inner.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = inner;
-  ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = Math.max(2.4, size * 0.07);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(top.x, top.y);
+  ctx.lineTo(right.x, right.y);
+  ctx.lineTo(bottom.x, bottom.y);
+  ctx.lineTo(left.x, left.y);
+  ctx.closePath();
+  ctx.moveTo(left.x, left.y);
+  ctx.lineTo(left.x, left.y + drop);
+  ctx.lineTo(bottom.x, bottom.y + drop);
+  ctx.lineTo(right.x, right.y + drop);
+  ctx.lineTo(right.x, right.y);
+  ctx.moveTo(bottom.x, bottom.y);
+  ctx.lineTo(bottom.x, bottom.y + drop);
+  ctx.stroke();
+  const stemX = x - dx * 0.18;
+  const stemTop = y - dy * 0.08;
+  const stemBot = y + drop * 0.42;
+  ctx.beginPath();
+  ctx.moveTo(stemX, stemBot);
+  ctx.lineTo(stemX, stemTop);
+  ctx.moveTo(stemX, stemTop + size * 0.12);
+  ctx.lineTo(stemX - size * 0.12, stemTop + size * 0.02);
+  ctx.moveTo(stemX, stemTop + size * 0.2);
+  ctx.lineTo(stemX + size * 0.1, stemTop + size * 0.08);
+  ctx.stroke();
   ctx.restore();
-
-  paintGlassEdge(ctx, w, h, tone);
 };
 
 const paintFrontChrome = (
@@ -300,44 +256,62 @@ const paintFrontChrome = (
   const h = ctx.canvas.height;
   const tone = visual.cardTone;
   const tokens = CARD_TONE[tone];
+  const padX = 40;
+  const headerY = 108;
+  const iconSize = CARD_GLASS.iconSize;
+  const iconX = padX + iconSize * 0.46;
+  paintCubeIcon(ctx, iconX, headerY, iconSize, tokens.icon);
 
-  ctx.textAlign = 'center';
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  const textShade = ctx.createRadialGradient(w / 2, h * 0.52, 8, w / 2, h * 0.52, w * 0.42);
-  textShade.addColorStop(0, 'rgba(4, 8, 14, 0.16)');
-  textShade.addColorStop(1, 'rgba(4, 8, 14, 0)');
-  ctx.fillStyle = textShade;
-  ctx.fillRect(0, h * 0.28, w, h * 0.52);
   ctx.fillStyle = tone === 'unknown' ? CARD_GLASS.titleUnknown : CARD_GLASS.title;
   ctx.font = `600 ${CARD_GLASS.titleSize}px ${CARD_GLASS.fontFamily}`;
-  const title = ellipsizeText(visual.title, w - 88, (value) => ctx.measureText(value).width);
-  ctx.fillText(title, w / 2, h * 0.46);
+  const badge = visual.showBadge ? badgeRect(visual.badgeText, w, h) : null;
+  const titleX = iconX + iconSize * 0.46 + 18;
+  const titleMax = (badge ? badge.x - 16 : w - padX) - titleX;
+  const title = ellipsizeText(visual.title, titleMax, (value) => ctx.measureText(value).width);
+  ctx.fillText(title, titleX, headerY);
 
-  ctx.font = `400 ${CARD_GLASS.statusSize}px ${CARD_GLASS.fontFamily}`;
-  const statusY = h * 0.68;
-  const labelWidth = ctx.measureText(visual.statusLabel).width;
-  const dotR = 6.5;
-  const gap = 8;
-  const total = dotR * 2 + gap + labelWidth;
-  const startX = w / 2 - total / 2;
-  ctx.fillStyle = tokens.dot;
-  ctx.beginPath();
-  ctx.arc(startX + dotR, statusY, dotR, 0, Math.PI * 2);
+  ctx.font = `500 ${CARD_GLASS.statusSize}px ${CARD_GLASS.fontFamily}`;
+  const statusWidth = ctx.measureText(visual.statusLabel).width;
+  const tagPadX = 20;
+  const tagH = 56;
+  const tagW = statusWidth + tagPadX * 2;
+  const tagX = padX;
+  const tagY = headerY + 56;
+  const tagGlow = tone === 'normal' || tone === 'unknown' || tone === 'info' ? 0 : 4;
+  if (tagGlow > 0) {
+    ctx.save();
+    ctx.shadowColor = tokens.glow.color;
+    ctx.shadowBlur = tagGlow;
+    roundRectPath(ctx, tagX, tagY, tagW, tagH, 7);
+    ctx.fillStyle = tokens.statusFill;
+    ctx.fill();
+    ctx.restore();
+  }
+  roundRectPath(ctx, tagX, tagY, tagW, tagH, 7);
+  ctx.fillStyle = tokens.statusFill;
   ctx.fill();
+  ctx.strokeStyle = tokens.statusStroke;
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
   ctx.fillStyle = tokens.statusText;
-  ctx.textAlign = 'left';
-  ctx.fillText(visual.statusLabel, startX + dotR * 2 + gap, statusY);
+  ctx.fillText(visual.statusLabel, tagX + tagPadX, tagY + tagH / 2 + 1);
 
-  if (!visual.showBadge) return;
-  const rect = badgeRect(visual.badgeText, w, h);
-  roundRectPath(ctx, rect.x, rect.y, rect.width, rect.height, rect.radius);
+  if (!visual.showBadge || !badge) return;
+  roundRectPath(ctx, badge.x, badge.y, badge.width, badge.height, badge.radius);
   ctx.fillStyle = tokens.badgeFill;
   ctx.fill();
-  ctx.fillStyle = '#ffffff';
+  if (rgbaAlpha(tokens.badgeBorder) > 0.02) {
+    ctx.strokeStyle = tokens.badgeBorder;
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(236, 240, 246, 0.96)';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `600 ${CARD_BADGE.fontSize}px ${CARD_GLASS.fontFamily}`;
-  ctx.fillText(visual.badgeText, rect.centerX, rect.centerY + 1);
+  ctx.font = `500 ${CARD_BADGE.fontSize}px ${CARD_GLASS.fontFamily}`;
+  ctx.fillText(visual.badgeText, badge.centerX, badge.centerY + 1);
 };
 
 export const paintApplication3DCardSide = (
@@ -346,7 +320,6 @@ export const paintApplication3DCardSide = (
 ) => {
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
-  const tokens = CARD_TONE[tone];
   const bodyCenter =
     tone === 'unknown' ? CARD_GLASS.unknownBodyCenter : CARD_GLASS.bodyCenter;
   const body = tone === 'unknown' ? CARD_GLASS.unknownBody : CARD_GLASS.body;
@@ -355,20 +328,17 @@ export const paintApplication3DCardSide = (
   ctx.clearRect(0, 0, w, h);
 
   const across = ctx.createLinearGradient(0, 0, w, 0);
-  across.addColorStop(0, tokens.edge);
-  across.addColorStop(0.16, bodyRim);
+  across.addColorStop(0, bodyRim);
   across.addColorStop(0.5, bodyCenter);
-  across.addColorStop(0.84, body);
-  across.addColorStop(1, tokens.edge);
+  across.addColorStop(1, body);
   ctx.fillStyle = across;
   ctx.fillRect(0, 0, w, h);
 
-  const along = ctx.createLinearGradient(0, 0, 0, h);
-  along.addColorStop(0, tokens.glow.color);
-  along.addColorStop(0.08, 'rgba(0, 0, 0, 0)');
-  along.addColorStop(0.92, 'rgba(0, 0, 0, 0)');
-  along.addColorStop(1, tokens.glow.color);
-  ctx.fillStyle = along;
+  const lip = ctx.createLinearGradient(0, 0, 0, h);
+  lip.addColorStop(0, 'rgba(8, 16, 28, 0.2)');
+  lip.addColorStop(0.72, 'rgba(18, 40, 58, 0.08)');
+  lip.addColorStop(1, tone === 'unknown' ? 'rgba(186, 196, 210, 0.28)' : 'rgba(170, 224, 240, 0.42)');
+  ctx.fillStyle = lip;
   ctx.fillRect(0, 0, w, h);
 };
 
@@ -397,7 +367,7 @@ export const paintApplication3DCard = (
   seedId: string,
   face: Application3DCardFace = 'front',
 ) => {
-  paintGlassBody(ctx, visual, seedId);
+  paintGlassBody(ctx);
   if (face === 'back') {
     paintBackChrome(ctx);
     return;
