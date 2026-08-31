@@ -2,6 +2,7 @@
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import BuildRecord, KnowledgePage, Material, WikiGeneration, WikiStructureRevision
+from apps.opspilot.services.llm_context_budget import window_tokens_for_model_id
 from apps.opspilot.services.wiki.build_generation_service import (
     BuildGenerationError,
     begin_build_generation,
@@ -118,7 +119,7 @@ def build_material_with_generation(
     classification_root_id = frozen_identity.get("classification_root_id")
     frozen_source_fingerprints = list(frozen_identity.get("source_fingerprints") or [])
     context = None
-    budget = new_material_call_budget(material.pk)
+    budget = new_material_call_budget(material.pk, window_tokens=window_tokens_for_model_id(llm_model_id))
     try:
         material = Material.objects.select_related("knowledge_base", "current_version").get(pk=material.pk)
         knowledge_base = material.knowledge_base

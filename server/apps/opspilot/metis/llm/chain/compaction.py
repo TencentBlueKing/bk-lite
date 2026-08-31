@@ -26,7 +26,7 @@ class CompactionConfig(BaseModel):
     """Compaction 配置"""
 
     enabled: bool = Field(default=True, description="是否启用上下文压缩")
-    max_token_threshold: int = Field(default=80000, description="触发压缩的 token 阈值")
+    max_token_threshold: int = Field(default=0, description="触发压缩的 token 阈值；0 表示未注入模型派生值时不压缩")
     keep_recent_messages: int = Field(default=12, description="保留最近的消息数量（确保 tool_call 配对完整）")
     summary_max_tokens: int = Field(default=2000, description="摘要的最大 token 数")
 

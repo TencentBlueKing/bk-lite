@@ -154,6 +154,7 @@ def is_context_size_error(exc: BaseException | str) -> bool:
         "maximum context",
         "context window",
         "too many tokens",
+        "llm_context_window_exceeded",
     )
     return any(needle in text for needle in needles)
 

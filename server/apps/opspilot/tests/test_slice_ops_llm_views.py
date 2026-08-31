@@ -148,6 +148,21 @@ class TestLLMModelViewSet:
         obj = LLMModel.objects.get(name="model-x")
         assert obj.vendor_id == vendor.id
         assert obj.is_build_in is False
+        assert obj.context_window_tokens == 200_000
+
+    def test_create_拒绝越界上下文窗口(self, mocker):
+        mocker.patch(f"{LLM_MOD}.log_operation")
+        vendor = _vendor()
+        data = {
+            "name": "model-oob",
+            "team": [1],
+            "vendor": vendor.id,
+            "model": "gpt",
+            "context_window_tokens": 7999,
+        }
+        resp = _dispatch(LLMModelViewSet, "create", "post", data=data)
+        assert _body(resp)["result"] is False
+        assert not LLMModel.objects.filter(name="model-oob").exists()
 
     def test_create_同供应商同团队重名(self, mocker):
         mocker.patch(f"{LLM_MOD}.log_operation")
