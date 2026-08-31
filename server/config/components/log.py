@@ -16,6 +16,47 @@ if not os.path.exists(log_dir):
 # 根据 DEBUG 环境变量设置日志级别
 LOG_LEVEL = "DEBUG" if DEBUG else "INFO"
 
+DEFAULT_LOG_FILE_MAX_BYTES = 100 * 1024 * 1024
+DEFAULT_LOG_FILE_BACKUP_COUNT = 5
+
+
+def parse_positive_int(raw, default, *, name):
+    if raw is None or str(raw).strip() == "":
+        return default
+    value = int(raw)
+    if value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+LOG_FILE_MAX_BYTES = parse_positive_int(
+    os.getenv("LOG_FILE_MAX_BYTES"),
+    DEFAULT_LOG_FILE_MAX_BYTES,
+    name="LOG_FILE_MAX_BYTES",
+)
+LOG_FILE_BACKUP_COUNT = parse_positive_int(
+    os.getenv("LOG_FILE_BACKUP_COUNT"),
+    DEFAULT_LOG_FILE_BACKUP_COUNT,
+    name="LOG_FILE_BACKUP_COUNT",
+)
+
+
+def rotating_file_handler(filename, **overrides):
+    config = {
+        "class": "logging.handlers.RotatingFileHandler",
+        "formatter": "verbose",
+        "filename": os.path.join(log_dir, filename),
+        "maxBytes": LOG_FILE_MAX_BYTES,
+        "backupCount": LOG_FILE_BACKUP_COUNT,
+        "encoding": "utf-8",
+    }
+    config.update(overrides)
+    if config["maxBytes"] <= 0:
+        raise ValueError("rotating file handler maxBytes must be positive")
+    if config["backupCount"] <= 0:
+        raise ValueError("rotating file handler backupCount must be positive")
+    return config
+
 # 仅用于历史日志分组规则的迁移窗口。默认空集合保持 fail-closed；上线前通过
 # audit_log_group_rule_modes 盘点并只加入已明确需要短期保留旧 OR 语义的分组 ID。
 LOG_GROUP_LEGACY_OR_GROUP_IDS = frozenset(
@@ -131,86 +172,21 @@ LOGGING = {
             "filters": ["suppress_successful_sidecar_access_logs"],
         },
         "null": {"level": "DEBUG", "class": "logging.NullHandler"},
-        "root": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "%s.log" % APP_CODE),
-            "encoding": "utf-8",
-        },
-        "db": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "db.log"),
-            "encoding": "utf-8",
-        },
-        "alert": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "alert.log"),
-            "maxBytes": 100 * 1024 * 1024,  # 添加文件大小限制
-            "backupCount": 5,  # 添加备份文件数量
-            "encoding": "utf-8",  # 添加编码格式
-        },
-        "cmdb": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "cmdb.log"),
-            "encoding": "utf-8",
-        },
-        "operation_analysis": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "operation_analysis.log"),
-            "encoding": "utf-8",
-        },
-        "nats": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "nats.log"),
-            "encoding": "utf-8",
-        },
-        "monitor": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "monitor.log"),
-            "encoding": "utf-8",
-        },
-        "node": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "node.log"),
-            "encoding": "utf-8",
-        },
-        "ops-console": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "ops-console.log"),
-            "encoding": "utf-8",
-        },
-        "system-manager": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "system-manager.log"),
-            "encoding": "utf-8",
-        },
-        "opspilot": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "opspilot.log"),
-            "encoding": "utf-8",
-        },
-        "job": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "job.log"),
-            "encoding": "utf-8",
-        },
-        "playground": {
-            "class": "logging.handlers.RotatingFileHandler",
-            "formatter": "verbose",
-            "filename": os.path.join(log_dir, "playground.log"),
-            "encoding": "utf-8",
-        },
+        "root": rotating_file_handler("%s.log" % APP_CODE),
+        "db": rotating_file_handler("db.log"),
+        "alert": rotating_file_handler("alert.log"),
+        "cmdb": rotating_file_handler("cmdb.log"),
+        "operation_analysis": rotating_file_handler("operation_analysis.log"),
+        "nats": rotating_file_handler("nats.log"),
+        "monitor": rotating_file_handler("monitor.log"),
+        "log": rotating_file_handler("log.log"),
+        "apm": rotating_file_handler("apm.log"),
+        "node": rotating_file_handler("node.log"),
+        "ops-console": rotating_file_handler("ops-console.log"),
+        "system-manager": rotating_file_handler("system-manager.log"),
+        "opspilot": rotating_file_handler("opspilot.log"),
+        "job": rotating_file_handler("job.log"),
+        "playground": rotating_file_handler("playground.log"),
     },
     "loggers": {
         "django": {"handlers": ["null"], "level": "INFO", "propagate": True},
@@ -226,6 +202,8 @@ LOGGING = {
         "operation_analysis": {"handlers": ["operation_analysis", "console"], "level": LOG_LEVEL, "propagate": True},
         "nats": {"handlers": ["nats", "console"], "level": LOG_LEVEL, "propagate": True},
         "monitor": {"handlers": ["monitor", "console"], "level": LOG_LEVEL, "propagate": True},
+        "log": {"handlers": ["log", "console"], "level": LOG_LEVEL, "propagate": True},
+        "apm": {"handlers": ["apm", "console"], "level": LOG_LEVEL, "propagate": True},
         "node": {"handlers": ["node", "console"], "level": LOG_LEVEL, "propagate": True},
         "ops-console": {"handlers": ["ops-console", "console"], "level": LOG_LEVEL, "propagate": True},
         "system-manager": {"handlers": ["system-manager", "console"], "level": LOG_LEVEL, "propagate": True},
