@@ -21,7 +21,9 @@ from apps.opspilot.services.wiki.active_generation_query_service import (
     page_snapshot,
 )
 from apps.opspilot.services.wiki.embedding_service import cosine, embed_texts, rrf_fuse
+from apps.opspilot.services.llm_context_budget import working_budget_for_model
 from apps.opspilot.services.wiki.title_service import title_identity_key
+from apps.opspilot.services.wiki.wiki_budget_service import estimate_tokens
 from django.core.cache import cache
 
 
@@ -361,6 +363,7 @@ def hybrid_search(
 
 def _qa_basic_llm_request(llm, prompt, *, max_output_tokens):
     """Build a BasicLLMRequest with the same protocol/vendor wiring as wiki build."""
+    derived = working_budget_for_model(llm, scene_output_default=max_output_tokens)
     vendor_type = ""
     if getattr(llm, "vendor_id", None):
         vendor_type = str(getattr(llm.vendor, "vendor_type", "") or "")
@@ -370,10 +373,14 @@ def _qa_basic_llm_request(llm, prompt, *, max_output_tokens):
         openai_api_key=llm.openai_api_key,
         model=llm.model_name,
         temperature=0.2,
-        max_output_tokens=max_output_tokens,
+        max_output_tokens=derived.output_reserve_tokens,
         user_message=prompt,
         protocol_type=protocol_type,
         vendor_type=vendor_type,
+        extra_config={
+            "input_working_tokens": derived.input_working_tokens,
+            "context_window_tokens": derived.window_tokens,
+        },
     )
 
 
@@ -387,6 +394,9 @@ def _answer_with_llm(query, contexts, llm_model_id, *, max_output_tokens):
         # 否则 LLM 用 [引用: 标题] 时,前端按 title 模糊匹配容易因简化/缩写导致空列表。
         prompt = _build_qa_prompt(query, contexts)
         request = _qa_basic_llm_request(llm, prompt, max_output_tokens=max_output_tokens)
+        input_working = int((request.extra_config or {}).get("input_working_tokens") or 0)
+        if input_working and estimate_tokens(prompt) > input_working:
+            return None
         answer = (
             LLMClientFactory.invoke_isolated(
                 request,
@@ -433,7 +443,6 @@ def _prepare_answer_context(
         query,
         top_k=top_k,
         per_kb=top_k,
-        token_budget=config.qa_max_knowledge_tokens,
         directory_id=directory_id,
         include_descendants=include_descendants,
         llm_model_id=llm_model_id,

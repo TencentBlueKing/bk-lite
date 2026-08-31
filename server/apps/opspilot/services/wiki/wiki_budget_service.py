@@ -6,6 +6,8 @@ import os
 import threading
 from dataclasses import asdict, dataclass, field
 
+from apps.opspilot.services.llm_context_budget import DEFAULT_CONTEXT_WINDOW_TOKENS, derive_llm_working_budget
+
 _DEFAULTS = {
     "WIKI_QA_MAX_LLM_CALLS": 2,
     "WIKI_QA_MAX_KNOWLEDGE_TOKENS": 8000,
@@ -269,14 +271,18 @@ def new_query_call_budget():
     )
 
 
-def new_material_call_budget(material_id=None):
+def new_material_call_budget(material_id=None, *, window_tokens=None, scene_output_default=6000):
     config = load_wiki_budget_config()
     scope = "wiki_material" if material_id is None else f"wiki_material:{material_id}"
+    derived = derive_llm_working_budget(
+        DEFAULT_CONTEXT_WINDOW_TOKENS if window_tokens is None else int(window_tokens),
+        scene_output_default=scene_output_default,
+    )
     return LLMCallBudget(
         max_calls=config.build_max_llm_calls_per_material,
         max_total_tokens=None,
         soft_total_tokens=config.build_max_total_tokens_per_material,
-        max_context_tokens_per_call=16000,
+        max_context_tokens_per_call=derived.input_working_tokens + derived.output_reserve_tokens,
         scope=scope,
         config_snapshot=config.snapshot(),
     )

@@ -5,6 +5,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import AuthSerializer, TeamSerializer
 from apps.opspilot.models import LLMModel, LLMSkill, SkillPackage, SkillRequestLog, SkillTools, UserPin
 from apps.opspilot.serializers.model_vendor_serializer import CustomProviderSerializer
+from apps.opspilot.services.llm_context_budget import parse_context_window_tokens
 from apps.opspilot.utils.skill_package_params import mask_package_params
 
 
@@ -19,6 +20,12 @@ class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
             raise serializers.ValidationError({"model": "模型不能为空"})
         return attrs
 
+    def validate_context_window_tokens(self, value):
+        try:
+            return parse_context_window_tokens(value)
+        except ValueError as error:
+            raise serializers.ValidationError(str(error)) from error
+
     class Meta:
         model = LLMModel
         fields = [
@@ -29,6 +36,7 @@ class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
             "is_build_in",
             "is_demo",
             "is_multimodal",
+            "context_window_tokens",
             "vendor",
             "model",
             "label",

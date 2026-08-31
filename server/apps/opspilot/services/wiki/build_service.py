@@ -16,6 +16,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion, WikiKnowledgeBase
+from apps.opspilot.services.llm_context_budget import derive_llm_working_budget, window_tokens_for_model_id, working_budget_for_model
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.check_service import create_candidate
 from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
@@ -28,15 +29,21 @@ _WIKI_LLM_TIMEOUT_SECONDS = 300.0
 _CURRENT_MATERIAL_VERSION = object()
 _EVIDENCE_SNIPPET_CHARS = 500
 _SOURCE_CHUNK_PREVIEW_CHARS = 240
-_MATERIAL_DIRECT_INPUT_TOKENS = 9000
-_MATERIAL_MAP_INPUT_TOKENS = 12000
-_MATERIAL_MAP_SOURCE_TOKENS = 10000
-_MATERIAL_REDUCE_INPUT_TOKENS = 12000
 _MATERIAL_DIRECT_OUTPUT_TOKENS = 6000
 _MATERIAL_MAP_OUTPUT_TOKENS = 2500
 _MATERIAL_REDUCE_OUTPUT_TOKENS = 2500
 _MATERIAL_MAX_REDUCE_ROUNDS = 8
 _PROMPT_SAFETY_TOKENS = 256
+
+
+def _material_window_limits(llm_model_id):
+    window = window_tokens_for_model_id(llm_model_id)
+    primary = derive_llm_working_budget(window, scene_output_default=_MATERIAL_DIRECT_OUTPUT_TOKENS)
+    map_output = derive_llm_working_budget(window, scene_output_default=_MATERIAL_MAP_OUTPUT_TOKENS).output_reserve_tokens
+    reduce_output = derive_llm_working_budget(window, scene_output_default=_MATERIAL_REDUCE_OUTPUT_TOKENS).output_reserve_tokens
+    return primary, map_output, reduce_output
+
+
 _DERIVED_SYSTEM_PAGE_TYPES = frozenset({"index", "overview", "log"})
 _PARSE_LOG_PREVIEW_CHARS = 400
 _WIKI_LLM_TEMPERATURE = 0.0
@@ -117,18 +124,34 @@ def _invoke_llm(
     reservation = None
     request = None
     try:
+        llm = LLMModel.objects.select_related("vendor").get(id=llm_model_id)
+        derived = working_budget_for_model(llm, scene_output_default=output_reserve)
+        output_reserve = derived.output_reserve_tokens
         if budget is not None:
             reservation = budget.ensure_call(
                 stage,
                 prompt,
                 output_reserve=output_reserve,
             )
-        llm = LLMModel.objects.select_related("vendor").get(id=llm_model_id)
+        elif estimate_tokens(prompt) > derived.input_working_tokens:
+            raise WikiBudgetExceeded(
+                "wiki_llm_context_window_exceeded",
+                "单次 Wiki LLM 输入输出超过系统安全上下文上限",
+                details={
+                    "stage": stage,
+                    "input_working_tokens": derived.input_working_tokens,
+                    "context_window_tokens": derived.window_tokens,
+                },
+            )
         vendor_type = ""
         if getattr(llm, "vendor_id", None):
             vendor_type = str(getattr(llm.vendor, "vendor_type", "") or "")
         protocol_type = getattr(llm, "protocol_type", None) or "openai"
-        extra_config = {"timeout": _wiki_llm_timeout()}
+        extra_config = {
+            "timeout": _wiki_llm_timeout(),
+            "input_working_tokens": derived.input_working_tokens,
+            "context_window_tokens": derived.window_tokens,
+        }
         # OpenAI 兼容协议可请求 json_object；网关不支持时由 factory 自动降级。
         if force_json and protocol_type == "openai":
             extra_config["response_format"] = {"type": "json_object"}
@@ -181,7 +204,8 @@ def _llm_extract_facts(text, llm_model_id):
     """Stage1:从资料全文分块抽取结构化要点(每行一条事实)。"""
     if not llm_model_id or not (text or "").strip():
         return ""
-    chunks = _split_text_for_llm(text)
+    primary, _, _ = _material_window_limits(llm_model_id)
+    chunks = split_text_by_estimated_tokens(text, max_tokens=primary.build_chunk_tokens)
     facts = []
     for idx, chunk in enumerate(chunks, start=1):
         prompt = (
@@ -755,7 +779,8 @@ def _llm_generate_pages(
     directory_context = _directory_prompt_context(structure_revision, classification_root_id)
     page_contract = _generation_page_contract(structure_revision, source_metadata)
     source_context = json.dumps(_prompt_source_metadata(source_metadata), ensure_ascii=False, sort_keys=True)
-    chunks = _split_text_for_llm(source_text)
+    primary, _, _ = _material_window_limits(llm_model_id)
+    chunks = split_text_by_estimated_tokens(source_text, max_tokens=primary.build_chunk_tokens)
     existing_catalog = json.dumps(
         [
             {"id": page.id, "title": page.title, "page_type": page.page_type}
@@ -947,8 +972,9 @@ def _compact_mapped_outputs(
             )
 
         empty_prompt = _material_compact_prompt("", round_index, 99999, 99999)
+        primary, _map_output, reduce_output = _material_window_limits(llm_model_id)
         compact_source_limit = _source_token_limit(
-            _MATERIAL_REDUCE_INPUT_TOKENS,
+            primary.input_working_tokens,
             empty_prompt,
         )
         groups = _group_reduce_items(current, compact_source_limit)
@@ -967,7 +993,7 @@ def _compact_mapped_outputs(
                     prompt,
                     budget=budget,
                     stage=f"material_reduce_compact_{round_index}_{group_index}",
-                    output_reserve=_MATERIAL_REDUCE_OUTPUT_TOKENS,
+                    output_reserve=reduce_output,
                     force_json=True,
                 ).strip()
             except WikiBudgetExceeded as error:
@@ -1092,6 +1118,7 @@ def generate_material_pages_with_budget(
             raise BuildOutputInvalid("build_output_empty_pages: 资料缺少可构建正文或可用模型")
         return []
 
+    primary, map_output, _reduce_output = _material_window_limits(llm_model_id)
     empty_generation_prompt = _bounded_generation_prompt(
         kb,
         "",
@@ -1100,7 +1127,7 @@ def generate_material_pages_with_budget(
         source_metadata=source_metadata,
     )
     final_source_limit = _source_token_limit(
-        _MATERIAL_DIRECT_INPUT_TOKENS,
+        primary.input_working_tokens,
         empty_generation_prompt,
     )
     if estimate_tokens(source) <= final_source_limit:
@@ -1116,7 +1143,7 @@ def generate_material_pages_with_budget(
             prompt=prompt,
             budget=budget,
             stage="material_generate",
-            output_reserve=_MATERIAL_DIRECT_OUTPUT_TOKENS,
+            output_reserve=primary.output_reserve_tokens,
             kb=kb,
             structure_revision=structure_revision,
             source_metadata=source_metadata,
@@ -1125,12 +1152,12 @@ def generate_material_pages_with_budget(
 
     empty_map_prompt = _material_map_prompt("", 99999, 99999)
     map_source_limit = _source_token_limit(
-        _MATERIAL_MAP_INPUT_TOKENS,
+        primary.input_working_tokens,
         empty_map_prompt,
     )
     # Keep semantic source windows stable when prompt wording changes. Context
     # safety is still enforced above; this cap is based on source size alone.
-    map_source_limit = min(map_source_limit, _MATERIAL_MAP_SOURCE_TOKENS)
+    map_source_limit = min(map_source_limit, primary.build_chunk_tokens)
     chunks = split_text_by_estimated_tokens(
         source,
         max_tokens=map_source_limit,
@@ -1144,7 +1171,7 @@ def generate_material_pages_with_budget(
                 prompt,
                 budget=budget,
                 stage=f"material_map_{index}",
-                output_reserve=_MATERIAL_MAP_OUTPUT_TOKENS,
+                output_reserve=map_output,
                 force_json=True,
             ).strip()
         except WikiBudgetExceeded as error:
@@ -1190,7 +1217,7 @@ def generate_material_pages_with_budget(
             prompt=prompt,
             budget=budget,
             stage="material_reduce_generate",
-            output_reserve=_MATERIAL_DIRECT_OUTPUT_TOKENS,
+            output_reserve=primary.output_reserve_tokens,
             kb=kb,
             structure_revision=structure_revision,
             source_metadata=source_metadata,

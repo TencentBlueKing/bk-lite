@@ -101,6 +101,10 @@ class TestLLMModelProperties:
         m = LLMModel.objects.create(name="x", vendor=v)
         assert m.protocol_type == "openai"
 
+    def test_context_window_tokens_defaults_to_200k(self):
+        m = LLMModel.objects.create(name="window-default", model="gpt-4")
+        assert m.context_window_tokens == 200_000
+
 
 class TestEmbedRerankProviderProperties:
     def test_embed_无vendor默认值(self):

@@ -36,6 +36,7 @@ from apps.opspilot.services.wiki.decision_service import compute_schema_fingerpr
 from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
+from apps.opspilot.services.llm_context_budget import window_tokens_for_model_id
 from apps.opspilot.services.wiki.wiki_budget_service import new_material_call_budget
 from apps.opspilot.services.wiki.wikilink_enrichment_service import enrich_pages_wikilinks
 
@@ -189,7 +190,7 @@ def _generate_pages(
         return generator(material) or [], None
     source_metadata = material_source_metadata(material)
     if structure_revision is not None:
-        budget = new_material_call_budget(material.pk)
+        budget = new_material_call_budget(material.pk, window_tokens=window_tokens_for_model_id(llm_model_id))
         pages = generate_material_pages_with_budget(
             kb,
             text,

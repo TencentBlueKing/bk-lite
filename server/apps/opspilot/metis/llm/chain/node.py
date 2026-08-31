@@ -24,6 +24,7 @@ from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, DoneToolConfig, ExtraConfig
+from apps.opspilot.metis.llm.chain.prepare_llm_context import prepare_messages_for_llm
 
 # ---------------------------------------------------------------------------
 # Facade re-exports (structural refactor, no behavior change).
@@ -201,6 +202,17 @@ class BasicNode:
             BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
         """
         return LLMClientFactory.create_client(request, disable_stream=disable_stream, isolated=isolated)
+
+    async def _prepare_messages_for_llm(self, messages, graph_request, *, tools=None):
+        if graph_request is None:
+            return list(messages or [])
+        isolated_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
+        return await prepare_messages_for_llm(
+            list(messages or []),
+            request=graph_request,
+            isolated_llm=isolated_llm,
+            tools=tools,
+        )
 
     def prompt_message_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
         system_message_prompt = TemplateLoader.render_template(
@@ -3184,6 +3196,7 @@ class ToolsNodes(BasicNode):
             # 图前置节点已写入 SystemMessage，再前置 light_system 会变成
             # [system, system, user...]，触发 400 "System message must be at the beginning."
             light_messages = normalize_messages_for_llm([SystemMessage(content=light_system), *list(original_messages or [])])
+            light_messages = await self._prepare_messages_for_llm(light_messages, graph_request)
             response: AIMessage | None = None
             astream = getattr(llm, "astream", None)
             if callable(astream):
@@ -3268,8 +3281,12 @@ class ToolsNodes(BasicNode):
 
             llm = self.get_llm_client(graph_request)
             if getattr(graph_request, "max_model_calls", 0) == 1:
-                response = await llm.ainvoke(
+                prepared = await self._prepare_messages_for_llm(
                     normalize_messages_for_llm([SystemMessage(content=final_system_prompt), *list(state.get("messages") or [])]),
+                    graph_request,
+                )
+                response = await llm.ainvoke(
+                    prepared,
                     config=config,
                 )
                 return {"messages": [response]}
@@ -3333,7 +3350,11 @@ class ToolsNodes(BasicNode):
                     },
                 }
                 try:
-                    deep_input_messages = without_system_messages(original_messages)
+                    deep_input_messages = await self._prepare_messages_for_llm(
+                        without_system_messages(original_messages),
+                        graph_request,
+                        tools=registered_tools,
+                    )
                     result = await deep_agent.ainvoke({"messages": deep_input_messages}, config=deep_config)
                 except Exception as _await_exc:
                     try:
@@ -3343,7 +3364,10 @@ class ToolsNodes(BasicNode):
                             "并给出可执行的替代方案(例如改用白名单内的命令 uvx / python -m,"
                             "或换其他可用工具)。不要再尝试调同样的命令。"
                         )
-                        fallback_messages = original_messages + [HumanMessage(content=err_prompt)]
+                        fallback_messages = await self._prepare_messages_for_llm(
+                            original_messages + [HumanMessage(content=err_prompt)],
+                            graph_request,
+                        )
                         fallback_response = await llm.ainvoke(fallback_messages, config=config)
                         fallback_text = str(getattr(fallback_response, "content", "") or "").strip()
                         if not fallback_text:
@@ -3769,6 +3793,10 @@ class ToolsNodes(BasicNode):
 
                     while not step_finished:
                         try:
+                            step_payload["messages"] = await self._prepare_messages_for_llm(
+                                list(step_payload.get("messages") or []),
+                                graph_request,
+                            )
                             step_result = await deep_agent.ainvoke(
                                 step_payload,
                                 config=deep_config,
@@ -4007,6 +4035,10 @@ class ToolsNodes(BasicNode):
                         **agent_state,
                         "messages": list(agent_state.get("messages") or []) + [final_message],
                     }
+                    final_payload["messages"] = await self._prepare_messages_for_llm(
+                        list(final_payload.get("messages") or []),
+                        graph_request,
+                    )
                     result = await deep_agent.ainvoke(
                         final_payload,
                         config=deep_config,
@@ -4030,7 +4062,10 @@ class ToolsNodes(BasicNode):
                         "并给出可执行的替代方案(例如改用白名单内的命令 uvx / python -m,"
                         "或换其他可用工具)。不要再尝试调同样的命令。"
                     )
-                    fallback_messages = original_messages + [HumanMessage(content=err_prompt)]
+                    fallback_messages = await self._prepare_messages_for_llm(
+                        original_messages + [HumanMessage(content=err_prompt)],
+                        graph_request,
+                    )
                     fallback_response = await llm.ainvoke(fallback_messages, config=config)
                     fallback_text = str(getattr(fallback_response, "content", "") or "").strip()
                     if not fallback_text:

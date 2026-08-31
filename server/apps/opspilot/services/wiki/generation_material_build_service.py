@@ -31,6 +31,7 @@ from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.title_service import title_alias_terms_for_enrichment as _title_alias_terms_for_enrichment
 from apps.opspilot.services.wiki.title_service import title_identity_key
 from apps.opspilot.services.wiki.update_service import _validate_frozen_generation_identity
+from apps.opspilot.services.llm_context_budget import window_tokens_for_model_id
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, new_material_call_budget
 
 
@@ -114,7 +115,7 @@ def build_material_with_generation(
     classification_root_id = frozen_identity.get("classification_root_id")
     frozen_source_fingerprints = list(frozen_identity.get("source_fingerprints") or [])
     context = None
-    budget = new_material_call_budget(material.pk)
+    budget = new_material_call_budget(material.pk, window_tokens=window_tokens_for_model_id(llm_model_id))
     try:
         material = Material.objects.select_related("knowledge_base", "current_version").get(pk=material.pk)
         knowledge_base = material.knowledge_base

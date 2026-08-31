@@ -23,6 +23,7 @@ from apps.opspilot.services.wiki import decision_service
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
+from apps.opspilot.services.llm_context_budget import window_tokens_for_model_id
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, new_material_call_budget
 
 
@@ -369,7 +370,7 @@ def _propose_update_generation(
         stage="generating",
         status="running",
     )
-    budget = new_material_call_budget(material.pk)
+    budget = new_material_call_budget(material.pk, window_tokens=window_tokens_for_model_id(llm_model_id))
     context = None
     try:
         context = begin_build_generation(
