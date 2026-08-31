@@ -6,6 +6,9 @@ from config.components.enterprise import detect_enterprise_footprint, require_en
 
 install_apps = os.getenv("INSTALL_APPS", "")
 
+# 显式 INSTALL_APPS 裁剪时仍须装入的 always-on 业务 app（与 app.py 保持一致）
+_ALWAYS_ON_SCAN_APPS = frozenset({"system_mgmt", "console_mgmt"})
+
 # 企业版：检测 enterprise footprint，拒绝无 license_mgmt 时启动，按需注入显式列表
 _base_dir = Path(BASE_DIR)
 require_enterprise_license_management(_base_dir)
@@ -14,6 +17,7 @@ _enterprise_status = detect_enterprise_footprint(_base_dir)
 if install_apps:
     # Normalise the explicit list, then gate license_mgmt on enterprise status.
     _apps_set = {a.strip() for a in install_apps.split(",") if a.strip()}
+    _apps_set |= _ALWAYS_ON_SCAN_APPS
     if _enterprise_status.should_enable_license_mgmt:
         _apps_set.add("license_mgmt")
     else:

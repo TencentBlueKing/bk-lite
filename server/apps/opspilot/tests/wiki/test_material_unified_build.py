@@ -263,6 +263,120 @@ def test_invalid_generation_json_marks_material_as_build_failed(
     assert build.errors[0]["code"] == "build_output_invalid_json"
 
 
+def test_in_flight_task_does_not_revive_cancelled_build_record(monkeypatch, wiki_factory, caplog):
+    import logging
+
+    from apps.opspilot.models import BuildRecord, Material
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+    from apps.opspilot.tasks import wiki_build_material_task
+
+    knowledge_base = wiki_factory.knowledge_base()
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    material = Material.objects.create(
+        knowledge_base=knowledge_base,
+        name="cancelled.md",
+        material_type="text",
+        text_content="正文",
+        status="parse_failed",
+        error_message="构建已取消",
+    )
+    record = BuildRecord.objects.create(
+        knowledge_base=knowledge_base,
+        trigger="material",
+        status="cancelled",
+        stage="cancelled",
+        inputs={"material_id": material.pk},
+    )
+    caplog.set_level(logging.INFO, logger="opspilot")
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.generation_material_build_service.build_material_with_generation",
+        lambda *_args, **_kwargs: pytest.fail("cancelled build must not start generation"),
+    )
+
+    result = wiki_build_material_task.run(
+        material.pk,
+        operator="admin",
+        ensure_parsed=True,
+        source_status="building",
+        build_record_id=record.pk,
+    )
+
+    material.refresh_from_db()
+    record.refresh_from_db()
+    assert result is None
+    assert record.status == "cancelled"
+    assert material.status == "parse_failed"
+    assert material.error_message == "构建已取消"
+    assert not BuildRecord.objects.filter(
+        knowledge_base=knowledge_base,
+        trigger="material",
+        status="running",
+    ).exists()
+    assert any(
+        rec.msg == "wiki material build discarded cancelled record=%s material=%s" and rec.args == (record.pk, material.pk) for rec in caplog.records
+    )
+
+
+def test_generation_publish_discards_writes_when_build_cancelled(monkeypatch, wiki_factory):
+    from apps.opspilot.models import BuildRecord, Material, MaterialVersion
+    from apps.opspilot.services.wiki.build_service import MaterialPageGeneration
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+    from apps.opspilot.tasks import wiki_build_material_task
+
+    knowledge_base = wiki_factory.knowledge_base()
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    knowledge_base.refresh_from_db()
+    material = Material.objects.create(
+        knowledge_base=knowledge_base,
+        name="live.md",
+        material_type="text",
+        text_content="正文",
+        source_identity="text:live.md",
+        content_hash="d" * 64,
+        status="building",
+    )
+    version = MaterialVersion.objects.create(material=material, content_hash=material.content_hash)
+    material.current_version = version
+    material.save(update_fields=["current_version", "updated_at"])
+    record = BuildRecord.objects.create(
+        knowledge_base=knowledge_base,
+        trigger="material",
+        status="running",
+        stage="generating",
+        inputs={"material_id": material.pk},
+    )
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.generation_material_build_service.generate_material_pages_with_budget",
+        lambda *_args, **_kwargs: MaterialPageGeneration([], []),
+    )
+
+    def cancel_during_overview(*_args, **_kwargs):
+        BuildRecord.objects.filter(pk=record.pk).update(status="cancelled", stage="cancelled")
+        Material.objects.filter(pk=material.pk).update(status="parse_failed", error_message="构建已取消")
+        return {}
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.generation_navigation_service.enhance_generation_overviews",
+        cancel_during_overview,
+    )
+
+    result = wiki_build_material_task.run(
+        material.pk,
+        operator="admin",
+        ensure_parsed=True,
+        source_status="done",
+        build_record_id=record.pk,
+    )
+
+    material.refresh_from_db()
+    record.refresh_from_db()
+    assert result is None
+    assert record.status == "cancelled"
+    assert material.status == "parse_failed"
+    assert material.error_message == "构建已取消"
+
+
 def test_strict_page_output_rejects_invalid_json():
     from apps.opspilot.services.wiki.build_service import _parse_pages
 

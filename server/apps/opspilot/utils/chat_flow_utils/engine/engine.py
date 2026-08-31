@@ -26,7 +26,7 @@ from .execution_repository import ExecutionRepository
 from .flow_graph import FlowGraphMixin
 from .node_registry import node_registry  # noqa: F401  (保留以兼容历史 from .engine import node_registry)
 from .node_runner import NodeRunnerMixin
-from .sse_responder import SSEResponderMixin
+from .sse_responder import SSEResponderMixin, parse_sse_chunk_for_accumulation
 
 
 class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
@@ -479,14 +479,10 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
                             start_node.get("type", "") if start_node else None,
                         )
                         return
-                    # 累积内容用于记录对话历史
-                    if chunk.startswith("data: "):
-                        try:
-                            data_str = chunk[6:].strip()
-                            data_json = json.loads(data_str)
-                            accumulated_content.append(data_json)
-                        except (json.JSONDecodeError, ValueError):
-                            pass
+                    # 累积内容用于记录对话历史（仅解析对最终消息/浏览器步骤有用的事件）
+                    parsed_chunk = parse_sse_chunk_for_accumulation(chunk)
+                    if parsed_chunk is not None:
+                        accumulated_content.append(parsed_chunk)
 
                     yield chunk
 

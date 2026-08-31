@@ -10,8 +10,6 @@ import threading
 import time
 
 from asgiref.sync import sync_to_async
-from django.http import StreamingHttpResponse
-
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.common.llm_error_diagnostics import classify_llm_error, format_llm_failure_log, summarize_llm_endpoint
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
@@ -19,8 +17,8 @@ from apps.opspilot.models import LLMModel, SkillRequestLog
 from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
-from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers
-from apps.opspilot.utils.stream_common import is_interrupt_requested_async
+from apps.opspilot.utils.agent_factory import create_agent_instance
+from apps.opspilot.utils.stream_common import is_interrupt_requested_async, make_sse_response
 from apps.opspilot.utils.stream_common import process_think_content as _process_think_content
 from apps.opspilot.utils.stream_common import split_think_content as _split_think_content
 
@@ -678,8 +676,8 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
         "llm_call_count": 0,
         "usage_calls": [],
     }
-    response = StreamingHttpResponse(
-        _generate_agui_stream(
+    return make_sse_response(
+        lambda: _generate_agui_stream(
             params,
             skill_name,
             skill_type,
@@ -691,12 +689,11 @@ def stream_agui_chat(params, skill_name, kwargs, current_ip, user_message, skill
             skill_id,
             history_log,
         ),
-        content_type="text/event-stream",
+        extra_headers={
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "X-Execution-ID": params["execution_id"],
+            "Access-Control-Expose-Headers": "X-Execution-ID",
+            "Transfer-Encoding": "chunked",
+        },
     )
-    # 使用公共的 SSE 响应头
-    for key, value in create_sse_response_headers().items():
-        response[key] = value
-    response["X-Execution-ID"] = params["execution_id"]
-    response["Access-Control-Expose-Headers"] = "X-Execution-ID"
-
-    return response

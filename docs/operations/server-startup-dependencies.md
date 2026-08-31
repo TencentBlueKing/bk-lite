@@ -34,7 +34,11 @@
 5. 条件清理配置并设置进程数
 6. `supervisord -n`
 7. Supervisor 才启动 Django API、默认 Celery Worker、独立 Dashboard Report
-   Render Worker、Celery Beat、`nats_listener` 和 SNMP Bridge 等运行期进程
+   Render Worker、Celery Beat、`nats_listener` 和 SNMP Bridge 等运行期进程。
+   若 `INSTALL_APPS` 为空（全装）或包含 `opspilot`，另有独立 OpsPilot Celery
+   Worker 消费 `opspilot_channel` / `opspilot_wiki` / `opspilot_maintenance`；
+   未安装 opspilot 时 `startup.sh` 删除该 supervisor 配置，不拉起该进程。
+   默认 Celery Worker 只听默认队列，不消费上述 OpsPilot 队列。
 
 迁移失败时，启动脚本保留 `manage.py migrate` 的标准错误与退出码并停止容器，
 不会执行缓存表、静态资源、批量初始化或 Supervisor。运维应先按迁移原始错误修复

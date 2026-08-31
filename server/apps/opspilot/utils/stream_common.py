@@ -1,17 +1,12 @@
 """
 流式聊天共享内部逻辑（F056）。
-
-两套流式协议——OpenAI chunk 风格（sse_chat.stream_chat）与 AGUI 事件风格
-（agui_chat）——此前各自重复实现 think 标签解析、中断检查、token 记账等逻辑。
-
-本模块仅抽取这些“内部共享逻辑”，不涉及任何线缆帧编码：
-
-- OpenAI chunk 仍由 sse_chat 自己的 ``_create_stream_chunk`` / ``_create_error_chunk`` 编码；
-- AGUI 事件仍由 agui_chat 自己的 ``_build_sse_line`` / ``_build_thinking_event`` 编码。
-
-两种协议发往前端的字节序列保持与重构前完全一致；各自的错误事件形状
-（AGUI 的 ERROR/RUN_ERROR、OpenAI 的 error chunk）也不在此处改动。
 """
+
+import json
+from collections.abc import AsyncIterator, Callable, Iterator
+from typing import Any, Optional
+
+from django.http import StreamingHttpResponse
 
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 
@@ -20,7 +15,35 @@ __all__ = [
     "process_think_content",
     "split_think_content",
     "is_interrupt_requested_async",
+    "make_sse_response",
+    "make_sse_error_response",
+    "apply_sse_response_headers",
 ]
+
+
+def apply_sse_response_headers(response: StreamingHttpResponse, extra_headers: Optional[dict[str, str]] = None) -> StreamingHttpResponse:
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response["X-Accel-Buffering"] = "no"
+    response["Access-Control-Allow-Origin"] = "*"
+    response["Access-Control-Allow-Headers"] = "Cache-Control"
+    if extra_headers:
+        for key, value in extra_headers.items():
+            response[key] = value
+    return response
+
+
+def make_sse_response(stream: Callable[[], AsyncIterator | Iterator], *, extra_headers: Optional[dict[str, str]] = None) -> StreamingHttpResponse:
+    response = StreamingHttpResponse(stream(), content_type="text/event-stream")
+    return apply_sse_response_headers(response, extra_headers)
+
+
+def make_sse_error_response(error_message: str) -> StreamingHttpResponse:
+    async def error_generator():
+        error_data = {"result": False, "message": error_message, "error": True}
+        yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return make_sse_response(error_generator)
 
 
 def process_think_buffer(think_buffer, in_think_block):

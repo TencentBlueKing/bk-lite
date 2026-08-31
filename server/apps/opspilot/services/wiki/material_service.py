@@ -8,6 +8,7 @@ from django_minio_backend.models import MinioBackend
 from openai import OpenAI
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_log_value
 from apps.opspilot.models import MaterialVersion
 from apps.opspilot.services.wiki.parsed_media_service import persist_embedded_images, rewrite_media_urls_for_display
 from apps.opspilot.services.wiki.parsing import get_parser
@@ -59,16 +60,129 @@ def _vision_vendor_type(vision_model) -> str:
     return (getattr(vendor, "vendor_type", "") or "") if vendor is not None else ""
 
 
+def _vision_log_flag(value):
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    return "-"
+
+
+def _vision_messages_have_image(messages) -> bool:
+    for message in messages or []:
+        content = message.get("content") if isinstance(message, dict) else getattr(message, "content", None)
+        if not isinstance(content, list):
+            continue
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") in {"image_url", "image"}:
+                return True
+    return False
+
+
+def _vision_response_stats(response):
+    finish_reason = "-"
+    content_chars = 0
+    has_reasoning = False
+    try:
+        choice = (getattr(response, "choices", None) or [None])[0]
+        if choice is None:
+            return finish_reason, content_chars, has_reasoning
+        finish_reason = str(getattr(choice, "finish_reason", "") or "-")
+        message = getattr(choice, "message", None)
+        content = getattr(message, "content", None) if message is not None else None
+        if isinstance(content, str):
+            content_chars = len(content.strip())
+        if message is not None:
+            for attr in ("reasoning_content", "reasoning"):
+                raw = getattr(message, attr, None)
+                if isinstance(raw, str) and raw.strip():
+                    has_reasoning = True
+                    break
+    except (AttributeError, IndexError, TypeError):
+        return "-", 0, False
+    return finish_reason, content_chars, has_reasoning
+
+
+class _LoggingVisionCompletions:
+    def __init__(self, inner, *, material_id, model_name):
+        self._inner = inner
+        self._material_id = material_id
+        self._model_name = model_name
+
+    def create(self, *args, **kwargs):
+        model = kwargs.get("model") or self._model_name
+        has_image = _vision_messages_have_image(kwargs.get("messages"))
+        max_tokens = kwargs.get("max_tokens")
+        try:
+            response = self._inner.create(*args, **kwargs)
+        except Exception as exc:
+            logger.warning(
+                "wiki_vision_invoke material=%s model=%s has_image=%s max_tokens=%s " "status=error error_type=%s",
+                self._material_id,
+                safe_log_value(model or "-"),
+                _vision_log_flag(has_image),
+                max_tokens if max_tokens is not None else "-",
+                type(exc).__name__,
+            )
+            raise
+        finish_reason, content_chars, has_reasoning = _vision_response_stats(response)
+        logger.info(
+            "wiki_vision_invoke material=%s model=%s has_image=%s max_tokens=%s " "status=ok finish_reason=%s content_chars=%s has_reasoning=%s",
+            self._material_id,
+            safe_log_value(model or "-"),
+            _vision_log_flag(has_image),
+            max_tokens if max_tokens is not None else "-",
+            finish_reason,
+            content_chars,
+            _vision_log_flag(has_reasoning),
+        )
+        return response
+
+
+class _LoggingVisionChat:
+    def __init__(self, completions):
+        self.completions = completions
+
+
+class _LoggingVisionClient:
+    """Preserve OpenAI-shaped ``chat.completions.create`` while logging bounded stats."""
+
+    def __init__(self, client, *, material_id, model_name):
+        self._client = client
+        self.chat = _LoggingVisionChat(
+            _LoggingVisionCompletions(
+                client.chat.completions,
+                material_id=material_id,
+                model_name=model_name,
+            )
+        )
+
+    def __getattr__(self, name):
+        return getattr(self._client, name)
+
+
+def _wrap_vision_client(client, *, material_id, model_name):
+    completions = getattr(getattr(client, "chat", None), "completions", None)
+    if completions is None or not callable(getattr(completions, "create", None)):
+        return client
+    return _LoggingVisionClient(client, material_id=material_id, model_name=model_name)
+
+
 def _vision_options(material):
     """Return MarkItDown vision options when image enhancement is explicitly enabled.
 
     OpenAI 协议直接用 OpenAI 客户端；Anthropic 协议用兼容适配器，对上
     MarkItDown / PDF 整页描述所需的 ``chat.completions.create`` 接口。
     """
+    material_id = getattr(material, "id", None)
     if not getattr(material, "ocr_enhance", False):
+        logger.info("wiki_vision_skip material=%s reason=ocr_enhance_off", material_id)
         return None, None
     vision_model = getattr(material.knowledge_base, "vision_model", None)
     if not vision_model:
+        logger.info("wiki_vision_skip material=%s reason=no_vision_model", material_id)
         return None, None
     protocol = getattr(vision_model, "protocol_type", "openai") or "openai"
     if protocol not in _SUPPORTED_VISION_PROTOCOLS:
@@ -91,7 +205,14 @@ def _vision_options(material):
     except Exception:
         logger.exception("material %s 图片增强客户端初始化失败 vision_model=%s", material.id, vision_model.id)
         return None, None
-    return client, vision_model.model_name
+    model_name = vision_model.model_name
+    logger.info(
+        "wiki_vision_ready material=%s model=%s protocol=%s",
+        material_id,
+        safe_log_value(model_name or "-"),
+        protocol,
+    )
+    return _wrap_vision_client(client, material_id=material_id, model_name=model_name), model_name
 
 
 def _vision_parser_kwargs(vision_client, vision_model):

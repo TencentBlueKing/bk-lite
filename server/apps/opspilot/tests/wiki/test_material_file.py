@@ -209,6 +209,86 @@ def test_vision_options_builds_anthropic_compat_client(monkeypatch):
     }
 
 
+def test_vision_client_logs_image_call_without_payload(caplog):
+    import logging
+
+    secret = "data:image/png;base64,SECRET_VISION_PAYLOAD"
+    captured = {}
+
+    class Inner:
+        def create(self, **kwargs):
+            captured["kwargs"] = kwargs
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        finish_reason="length",
+                        message=SimpleNamespace(content="", reasoning_content="SECRET_THINKING"),
+                    )
+                ]
+            )
+
+    wrapped = material_service._wrap_vision_client(
+        SimpleNamespace(chat=SimpleNamespace(completions=Inner())),
+        material_id=18,
+        model_name="kimi-for-coding",
+    )
+    caplog.set_level(logging.INFO, logger="opspilot")
+
+    result = wrapped.chat.completions.create(
+        model="kimi-for-coding",
+        max_tokens=200,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "caption"},
+                    {"type": "image_url", "image_url": {"url": secret}},
+                ],
+            }
+        ],
+    )
+
+    assert result.choices[0].message.content == ""
+    assert captured["kwargs"]["messages"][0]["content"][1]["image_url"]["url"] == secret
+    records = [record for record in caplog.records if str(record.msg).startswith("wiki_vision_invoke ")]
+    assert len(records) == 1
+    record = records[0]
+    assert record.msg == (
+        "wiki_vision_invoke material=%s model=%s has_image=%s max_tokens=%s " "status=ok finish_reason=%s content_chars=%s has_reasoning=%s"
+    )
+    assert record.args == (18, "kimi-for-coding", "true", 200, "length", 0, "true")
+    rendered = record.getMessage()
+    assert secret not in rendered
+    assert "SECRET_THINKING" not in rendered
+    assert secret not in "".join(str(part) for part in record.args)
+
+
+def test_vision_client_logs_error_and_reraises(caplog):
+    import logging
+
+    class Inner:
+        def create(self, **kwargs):
+            raise RuntimeError("vision rejected image")
+
+    wrapped = material_service._wrap_vision_client(
+        SimpleNamespace(chat=SimpleNamespace(completions=Inner())),
+        material_id=18,
+        model_name="kimi-for-coding",
+    )
+    caplog.set_level(logging.WARNING, logger="opspilot")
+    messages = [{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "data:image/png;base64,x"}}]}]
+
+    with pytest.raises(RuntimeError, match="vision rejected image"):
+        wrapped.chat.completions.create(model="kimi-for-coding", messages=messages)
+
+    records = [record for record in caplog.records if str(record.msg).startswith("wiki_vision_invoke ")]
+    assert len(records) == 1
+    record = records[0]
+    assert record.msg == ("wiki_vision_invoke material=%s model=%s has_image=%s max_tokens=%s " "status=error error_type=%s")
+    assert record.args == (18, "kimi-for-coding", "true", "-", "RuntimeError")
+    assert "vision rejected image" not in record.getMessage()
+
+
 def test_extract_web_without_url_returns_empty_before_parser(monkeypatch):
     class Parser:
         def parse_url(self, url, *, vision_client=None, vision_model=None):

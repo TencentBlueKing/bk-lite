@@ -31,10 +31,12 @@ elif echo "$INSTALL_APPS" | grep -q "opspilot"; then
     opspilot_installed=true
 fi
 
-# 如果没有安装 opspilot 模块，删除 consumer.conf 文件
+# 未安装 opspilot 时不拉起专用 worker；consumer.conf 是历史文件，一并清掉
+SUPERVISOR_CONF_DIR=${SUPERVISOR_CONF_DIR:-/etc/supervisor/conf.d}
 if [ "$opspilot_installed" = false ]; then
-    echo "未安装 opspilot 模块，删除 consumer.conf 配置文件..."
-    rm -f /etc/supervisor/conf.d/consumer.conf
+    echo "未安装 opspilot 模块，删除 opspilot 专用 supervisor 配置..."
+    rm -f "$SUPERVISOR_CONF_DIR/consumer.conf"
+    rm -f "$SUPERVISOR_CONF_DIR/opspilot_celery.conf"
 fi
 
 
@@ -42,12 +44,14 @@ fi
 export APP_WORKERS=${APP_WORKERS:-8}
 export CELERY_CONCURRENCY=${CELERY_CONCURRENCY:-4}
 export DASHBOARD_REPORT_RENDER_CONCURRENCY=${DASHBOARD_REPORT_RENDER_CONCURRENCY:-2}
+export OPSPILOT_CELERY_CONCURRENCY=${OPSPILOT_CELERY_CONCURRENCY:-2}
 export NATS_NUMPROCS=${NATS_NUMPROCS:-4}
 
 echo "进程配置:"
 echo "  APP_WORKERS=$APP_WORKERS"
 echo "  CELERY_CONCURRENCY=$CELERY_CONCURRENCY"
 echo "  DASHBOARD_REPORT_RENDER_CONCURRENCY=$DASHBOARD_REPORT_RENDER_CONCURRENCY"
+echo "  OPSPILOT_CELERY_CONCURRENCY=$OPSPILOT_CELERY_CONCURRENCY"
 echo "  NATS_NUMPROCS=$NATS_NUMPROCS"
 
 supervisord -n

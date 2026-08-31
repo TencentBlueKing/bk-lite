@@ -28,8 +28,13 @@ from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_
 from apps.opspilot.services.wiki.material_build_queue_service import (
     QUEUE_ITEM_TRIGGER,
     RUNNER_TRIGGER,
+    MaterialBuildQueueError,
+    enqueue_material_builds,
+    kb_has_user_build_in_progress,
     reconcile_orphaned_material_builds,
+    release_idle_runner_lease,
     repair_queue_runner_status_from_counts,
+    unstick_material_for_cancelled_build,
 )
 from apps.opspilot.services.wiki.page_service import PageServiceError, create_manual_page, diff_versions, edit_page, restore_version, save_answer_page
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
@@ -1314,6 +1319,7 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
             )
 
         try:
+            enqueue_retry_material = None
             with transaction.atomic():
                 knowledge_base = WikiKnowledgeBase.objects.select_for_update().get(pk=record.knowledge_base_id)
                 record = BuildRecord.objects.select_for_update().select_related("knowledge_base").get(pk=record.pk, knowledge_base=knowledge_base)
@@ -1324,26 +1330,18 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
                         status_code=409,
                         retryable=True,
                     )
-                if (
-                    BuildRecord.objects.filter(
-                        knowledge_base=knowledge_base,
-                        status="running",
-                    )
-                    .exclude(pk=record.pk)
-                    .exists()
-                ):
+                if record.trigger in {"rebuild", "material_update"} and kb_has_user_build_in_progress(knowledge_base.pk, exclude_build_id=record.pk):
                     raise DirectoryServiceError(
                         "knowledge_base_build_in_progress",
                         "知识库存在运行中的构建任务，请等待完成后再重试",
                         status_code=409,
                         retryable=True,
                     )
+                release_idle_runner_lease(knowledge_base.pk, operator=operator, kick_if_queued=False)
 
                 task_identity = None
                 if record.trigger == "rebuild":
-                    materials = list(
-                        Material.objects.select_for_update().filter(knowledge_base=knowledge_base).select_related("current_version").order_by("id")
-                    )
+                    materials = list(Material.objects.select_for_update().filter(knowledge_base=knowledge_base).order_by("id"))
                     task_identity = _opspilot_tasks._freeze_wiki_task_identity(
                         knowledge_base,
                         materials,
@@ -1378,9 +1376,9 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
                     )
                 else:
                     material_id = (record.inputs or {}).get("material_id")
+                    # 可空 FK 不能和 FOR UPDATE 一起 select_related，PostgreSQL 会拒绝外连接空值边。
                     material = (
                         Material.objects.select_for_update()
-                        .select_related("current_version", "classification_root")
                         .filter(
                             pk=material_id,
                             knowledge_base=knowledge_base,
@@ -1398,25 +1396,69 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
                     classification_root_id = (record.inputs or {}).get("classification_root_id")
                     if classification_root_id in (None, ""):
                         classification_root_id = material.classification_root_id
-                    task_identity = _opspilot_tasks._freeze_wiki_task_identity(
-                        knowledge_base,
-                        [material],
-                        classification_root_id=classification_root_id,
-                    )
-                    task = (
-                        _opspilot_tasks.wiki_propose_update_task if record.trigger == "material_update" else _opspilot_tasks.wiki_build_material_task
-                    )
-                    task_args = (
-                        material.pk,
-                        knowledge_base.llm_model_id,
-                        operator,
-                        classification_root_id,
-                        task_identity,
-                    )
+                    if record.trigger == "material_update":
+                        task_identity = _opspilot_tasks._freeze_wiki_task_identity(
+                            knowledge_base,
+                            [material],
+                            classification_root_id=classification_root_id,
+                        )
+                        task = _opspilot_tasks.wiki_propose_update_task
+                        task_args = (
+                            material.pk,
+                            knowledge_base.llm_model_id,
+                            operator,
+                            classification_root_id,
+                            task_identity,
+                        )
+                    else:
+                        enqueue_retry_material = material
+                        task = None
+                        task_args = None
         except DirectoryServiceError as service_error:
             return _directory_service_error(service_error)
         except BuildGenerationError as error:
             return _build_generation_error(error)
+
+        if enqueue_retry_material is not None:
+            unstick_material_for_cancelled_build(record)
+            try:
+                queue_result = enqueue_material_builds(
+                    knowledge_base_id=record.knowledge_base_id,
+                    material_ids=[enqueue_retry_material.pk],
+                    operator=operator,
+                )
+            except MaterialBuildQueueError as error:
+                return JsonResponse(
+                    {
+                        "result": False,
+                        "code": error.code,
+                        "message": error.message,
+                        "details": error.details,
+                        "retryable": error.status_code >= 500,
+                    },
+                    status=error.status_code,
+                )
+            except Exception:  # noqa: BLE001 - traceback 由 kick 持有
+                return JsonResponse(
+                    {
+                        "result": False,
+                        "message": "构建任务下发失败，请重试",
+                        "code": "task_dispatch_failed",
+                        "retryable": True,
+                    },
+                    status=503,
+                )
+            if enqueue_retry_material.pk in (queue_result.get("in_progress") or []):
+                return JsonResponse(
+                    {
+                        "result": False,
+                        "code": "material_build_in_progress",
+                        "message": "资料正在构建中，请勿重复提交",
+                        "retryable": True,
+                    },
+                    status=409,
+                )
+            return JsonResponse({"result": True, "data": {"async": True, "queue": queue_result}})
 
         try:
             task.delay(*task_args)
@@ -1533,10 +1575,18 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
     @HasPermission("wiki_list-Edit")
     @action(methods=["POST"], detail=True)
     def cancel(self, request, pk=None):
-        """取消:运行中的构建记录置 cancelled(运行中的 Celery 任务尽力而为,记录先落终态)。"""
+        """取消:运行中的构建记录置 cancelled，并解开对应资料的构建中状态。"""
         record = self.get_object()
         if record.status == "running":
-            record.status = "cancelled"
-            record.stage = "cancelled"
-            record.save(update_fields=["status", "stage", "updated_at"])
+            with transaction.atomic():
+                record = BuildRecord.objects.select_for_update().get(pk=record.pk)
+                if record.status == "running":
+                    record.status = "cancelled"
+                    record.stage = "cancelled"
+                    record.save(update_fields=["status", "stage", "updated_at"])
+                    unstick_material_for_cancelled_build(record)
+                    release_idle_runner_lease(
+                        record.knowledge_base_id,
+                        operator=getattr(request.user, "username", "") or "",
+                    )
         return JsonResponse({"result": True, "data": self.get_serializer(record).data})
