@@ -48,6 +48,8 @@ export interface AiPageContextPilotModule {
     toolkit: PageContextToolkit,
     hint?: PageContextCollectHint,
   ) => Promise<Partial<AiPageContext>>;
+  /** 截图超时仍可先带上 KPI / 身份等文字，避免整轮变成无页面快照。 */
+  getTextContext?: () => Partial<AiPageContext> | Promise<Partial<AiPageContext>>;
 }
 
 export interface AiPageContextPilot {
@@ -57,4 +59,4 @@ export interface AiPageContextPilot {
 
 export const PAGE_CONTEXT_TEXT_BUDGET = 8000;
 export const PAGE_CONTEXT_MAX_IMAGES = 6;
-export const PAGE_CONTEXT_PROVIDER_TIMEOUT_MS = 2000;
+export const PAGE_CONTEXT_PROVIDER_TIMEOUT_MS = 8000;
