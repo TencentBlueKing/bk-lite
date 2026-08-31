@@ -1,6 +1,7 @@
 'use client';
 
 import { Alert, Button, Empty, Spin } from 'antd';
+import { CloseOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import type {
@@ -169,6 +170,7 @@ const MetricTrend = ({ metric }: { metric: Application3DMetricSeriesResult }) =>
               y2={y}
               stroke="var(--color-application3d-metric-marker)"
               strokeWidth="1.5"
+              strokeDasharray="5 4"
               data-testid="app3d-threshold-line"
               data-level={threshold.level}
               data-value={threshold.value}
@@ -185,22 +187,34 @@ const MetricTrend = ({ metric }: { metric: Application3DMetricSeriesResult }) =>
           </g>
         );
       })}
-      {series.map((item, seriesIndex) => (
-        <polyline
-          key={item.key}
-          points={item.numeric
-            .map((point) => {
-              const x = projectTrendX(point.timestampMs, xMin, xMax, plotLeft, plotWidth);
-              const y = projectTrendY(point.value, yMin, yMax, plotTop, plotHeight);
-              return `${x},${y}`;
-            })
-            .join(' ')}
-          fill="none"
-          stroke="var(--color-application3d-metric-stroke)"
-          strokeOpacity={Math.max(0.35, 1 - seriesIndex * 0.2)}
-          strokeWidth="2.5"
-        />
-      ))}
+      {series.map((item, seriesIndex) => {
+        const points = item.numeric.map((point) => {
+          const x = projectTrendX(point.timestampMs, xMin, xMax, plotLeft, plotWidth);
+          const y = projectTrendY(point.value, yMin, yMax, plotTop, plotHeight);
+          return { x, y };
+        });
+        const area = points.length
+          ? `${points.map((point) => `${point.x},${point.y}`).join(' ')} ${points[points.length - 1].x},${plotTop + plotHeight} ${points[0].x},${plotTop + plotHeight}`
+          : '';
+        return (
+          <g key={item.key}>
+            {area ? (
+              <polygon
+                points={area}
+                fill="var(--color-application3d-metric-fill)"
+                opacity={Math.max(0.25, 0.7 - seriesIndex * 0.2)}
+              />
+            ) : null}
+            <polyline
+              points={points.map((point) => `${point.x},${point.y}`).join(' ')}
+              fill="none"
+              stroke="var(--color-application3d-metric-stroke)"
+              strokeOpacity={Math.max(0.35, 1 - seriesIndex * 0.2)}
+              strokeWidth="2.5"
+            />
+          </g>
+        );
+      })}
       {markerX != null && (
         <line
           x1={markerX}
@@ -337,32 +351,34 @@ export default function Application3DDetail({
   const alarmCount =
     detail?.application.health.activeAlarmCount
     ?? selected.health.activeAlarmCount;
+  const alarmOpen = Boolean(alarmDetail || alarmLoading || alarmError);
+  const severityCounts = availableAlarms?.severityCounts
+    ?? selected.health.severityCounts;
 
   return (
     <>
       <div
-        className="absolute inset-0 z-40 bg-[var(--color-application3d-detail-mask)]"
+        className="app3d-detail-mask"
         onClick={onClose}
         aria-hidden="true"
       />
       <div
-        className="app3d-detail-shell absolute left-0 right-0 top-[5%] z-50 mx-auto h-[88%] w-[84%] max-w-[1480px] text-[var(--color-application3d-text)]"
+        className="app3d-detail-shell"
         role="dialog"
         aria-modal="true"
       >
         <div className="app3d-detail-panels min-h-0 flex-1">
           <div
-            className={`app3d-biz-panel z-[52] flex h-full flex-col overflow-hidden [perspective:500px]${leftPanelSettled ? ' is-settled' : ''}`}
+            className={`app3d-biz-panel z-[52] flex h-full flex-col overflow-hidden [perspective:500px]${leftPanelSettled ? ' is-settled' : ''}${alarmOpen ? ' is-alarm-open hidden' : ''}`}
             data-status-tone={status.tone}
-            style={status.leftPanelStyle}
             onAnimationEnd={(event) => {
               if (event.animationName === 'app3d-move-left') {
                 setLeftPanelSettled(true);
               }
             }}
           >
-            <div className="min-h-0 flex-1 space-y-5 overflow-y-auto [overflow-anchor:none] px-7 pt-7 pb-5">
-              <h2 className="m-0 text-[26px] font-semibold tracking-wide text-[rgba(248,250,252,0.98)]">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto [overflow-anchor:none] px-6 pt-6 pb-4">
+              <h2 className="app3d-detail-title">
                 {detail?.application.name || selected.name}
               </h2>
 
@@ -445,8 +461,21 @@ export default function Application3DDetail({
             </div>
           </div>
 
-          <div className="app3d-alarm-panel z-[51] flex flex-col overflow-hidden">
-            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
+          <div className={`app3d-alarm-panel z-[51] flex flex-col overflow-hidden${alarmOpen ? ' app3d-alarm-modal' : ''}`}>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              {alarmOpen && (
+                <div className="app3d-alarm-modal__head px-0 pt-0">
+                  <h2 className="app3d-alarm-modal__title">{t('dashboard.application3DAlarmDetail')}</h2>
+                  <button
+                    type="button"
+                    className="app3d-alarm-modal__close"
+                    onClick={onCloseAlarm}
+                    aria-label={t('common.close')}
+                  >
+                    <CloseOutlined />
+                  </button>
+                </div>
+              )}
               {(loading || alarmLoading) && (
                 <div className="flex h-full items-center justify-center"><Spin /></div>
               )}
@@ -460,31 +489,45 @@ export default function Application3DDetail({
               )}
               {!loading && !alarmLoading && !alarmError && alarmDetail && (
                 <div className="space-y-4">
-                  <div className="mb-1 flex items-center justify-between gap-3">
-                    <strong className="text-base">{t('dashboard.application3DAlarmDetail')}</strong>
-                    <Button size="small" className="app3d-close-cta !h-8 !min-w-0" onClick={onCloseAlarm}>
-                      {t('common.close')}
-                    </Button>
-                  </div>
-                  <div className="app3d-alarm-row !cursor-default hover:!bg-[var(--color-application3d-detail-row-bg)]">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="app3d-alarm-row__title">{alarmDetail.alarm.content}</div>
-                      <div className="app3d-alarm-row__meta">
-                        {`${alarmDetail.alarm.resource.name} · ${alarmDetail.alarm.policy.name}`}
+                    </div>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      <SeverityBadge
+                        severity={alarmDetail.alarm.severity}
+                        label={
+                          alarmDetail.alarm.severity
+                            ? t(
+                                `dashboard.application3DSeverity_${alarmDetail.alarm.severity.id}`,
+                                alarmDetail.alarm.severity.label,
+                            )
+                            : '-'
+                        }
+                      />
+                      {severityCounts && (
+                        <div className="app3d-alarm-modal__counts">
+                          {(['critical', 'error', 'warning'] as const).map((severity) => (
+                            <span
+                              key={severity}
+                              className="app3d-alarm-count"
+                              style={{ color: SEVERITY_DOT[severity] }}
+                            >
+                              {t(`dashboard.application3DSeverity_${severity}`)} {severityCounts[severity]}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="text-xs text-[var(--color-application3d-text-muted)]">
+                        {`${
+                          detail?.application.properties.find((item) => item.key === 'app_id')?.displayValue
+                          || detail?.application.id
+                          || selected.id
+                        } · ${t('dashboard.application3DSectionBasic', '业务应用')}`}
                       </div>
                     </div>
-                    <SeverityBadge
-                      severity={alarmDetail.alarm.severity}
-                      label={
-                        alarmDetail.alarm.severity
-                          ? t(
-                              `dashboard.application3DSeverity_${alarmDetail.alarm.severity.id}`,
-                              alarmDetail.alarm.severity.label,
-                          )
-                          : '-'
-                      }
-                    />
                   </div>
+                  <div className="app3d-alarm-modal__body">
                   <div className="space-y-2 rounded-[12px] border border-[var(--color-application3d-detail-stat-border)] bg-[var(--color-application3d-detail-stat-bg)] px-4 py-3">
                     {[
                       {
@@ -524,7 +567,7 @@ export default function Application3DDetail({
                         label: t('dashboard.application3DNotification'),
                         value: `${alarmDetail.alarm.notification.configured
                           ? t('dashboard.application3DNotificationConfigured')
-                          : t('dashboard.application3DNotificationNotConfigured')} · ${t(
+                          : t('dashboard.application3DNotificationNotConfigured')} / ${t(
                           `dashboard.application3DNotification_${alarmDetail.alarm.notification.state}`,
                           )}`,
                       },
@@ -581,7 +624,8 @@ export default function Application3DDetail({
                       />
                     )}
                   </section>
-                  <div className="flex justify-between gap-3 pt-1">
+                  </div>
+                  <div className="app3d-alarm-nav">
                     <Button
                       className="app3d-close-cta"
                       disabled={!alarmDetail.navigation.previousAlarmId}
@@ -591,7 +635,7 @@ export default function Application3DDetail({
                         }
                       }}
                     >
-                      {t('dashboard.application3DPreviousAlarm')}
+                      {`< ${t('dashboard.application3DPreviousAlarm')}`}
                     </Button>
                     <Button
                       className="app3d-close-cta"
@@ -602,18 +646,18 @@ export default function Application3DDetail({
                         }
                       }}
                     >
-                      {t('dashboard.application3DNextAlarm')}
+                      {`${t('dashboard.application3DNextAlarm')} >`}
                     </Button>
                   </div>
                 </div>
               )}
               {!loading && !alarmLoading && !alarmError && detail && !alarmDetail && (
                 <section>
-                  <div className="mb-5 flex items-end justify-between gap-3">
-                    <h3 className="m-0 text-[17px] font-semibold tracking-wide">
+                  <div className="mb-4 flex items-end justify-between gap-3">
+                    <h3 className="app3d-alarm-list__title">
                       {t('dashboard.application3DAlarmList')}
                     </h3>
-                    <span className="text-[13px] text-[var(--color-application3d-text-muted)]">
+                    <span className="app3d-alarm-list__total">
                       {t(
                         'dashboard.application3DAlarmTotal',
                         '共 {count} 条',
@@ -638,6 +682,7 @@ export default function Application3DDetail({
                         <div
                           key={alarm.id}
                           className="app3d-alarm-row"
+                          data-severity={alarm.severity?.id || undefined}
                           onClick={() => onOpenAlarm(alarm.id)}
                           onKeyDown={(event) => {
                             if (event.key === 'Enter' || event.key === ' ') {
@@ -686,9 +731,11 @@ export default function Application3DDetail({
           </div>
         </div>
 
-        <button type="button" className="app3d-close-cta" onClick={onClose}>
-          {t('common.close')}
-        </button>
+        {!alarmOpen && (
+          <button type="button" className="app3d-close-cta" onClick={onClose}>
+            {t('common.close')}
+          </button>
+        )}
       </div>
     </>
   );
