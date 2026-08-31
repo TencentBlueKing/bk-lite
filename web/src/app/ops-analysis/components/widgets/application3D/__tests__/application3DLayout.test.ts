@@ -27,22 +27,38 @@ import {
 } from '../application3DCardStyle';
 
 describe('application3D layout', () => {
-  it('keeps a 4-column HUD wall through 16 cards and still fits denser walls', () => {
-    expect(buildApplication3DLayout(16, 2).columns).toBe(4);
-    expect(buildApplication3DLayout(16, 0.6).columns).toBe(4);
+  it('picks columns from viewport aspect instead of a 16-card cap', () => {
+    const wide = buildApplication3DLayout(16, 2);
+    const tall = buildApplication3DLayout(16, 0.6);
+    expect(wide.columns * wide.rows).toBeGreaterThanOrEqual(16);
+    expect(tall.columns * tall.rows).toBeGreaterThanOrEqual(16);
+    expect(tall.columns).toBeLessThan(wide.columns);
     const denseWide = buildApplication3DLayout(20, 2);
     const denseTall = buildApplication3DLayout(20, 0.6);
     expect(denseWide.columns * denseWide.rows).toBeGreaterThanOrEqual(20);
     expect(denseTall.columns * denseTall.rows).toBeGreaterThanOrEqual(20);
-    expect(denseWide.columns).toBeGreaterThanOrEqual(4);
-    expect(denseTall.columns).toBeGreaterThanOrEqual(4);
   });
 
-  it('uses a 4×4 wall for the design mock size', () => {
+  it('lets a wide 16-card wall stay 4×4 when that matches the viewport', () => {
     const layout = buildApplication3DLayout(16, 1.84);
     expect(layout.columns).toBe(4);
     expect(layout.rows).toBe(4);
     expect(layout.rowCardCounts).toEqual([4, 4, 4, 4]);
+  });
+
+  it('keeps 8 cards on even rows instead of a 3-3-2 hole', () => {
+    const layout = buildApplication3DLayout(8, 1.84);
+    expect(layout.columns * layout.rows).toBe(8);
+    expect(layout.rowCardCounts.every((count) => count === layout.columns)).toBe(true);
+    expect(layout.columns).toBe(4);
+    expect(layout.rows).toBe(2);
+  });
+
+  it('prefers a fuller last row over a single leftover card', () => {
+    const layout = buildApplication3DLayout(7, 1.84);
+    const last = layout.rowCardCounts[layout.rowCardCounts.length - 1];
+    expect(last).toBeGreaterThan(1);
+    expect(last).toBeLessThanOrEqual(layout.columns);
   });
 
   it('reduces card size for dense walls without dropping cards', () => {
@@ -229,11 +245,12 @@ describe('application3D layout', () => {
     expect(layout.gapX / layout.cardWidth).toBeCloseTo(CARD_GAP / CARD_WORLD_WIDTH, 5);
   });
 
-  it('frames small walls like a 4×4 mock so cards do not become billboards', () => {
+  it('frames the actual wall so small grids stay readable', () => {
     const viewportAspect = 1.84;
     const sixteen = buildApplication3DLayout(16, viewportAspect);
     const four = buildApplication3DLayout(4, viewportAspect);
-    expect(sixteen.columns * sixteen.rows).toBe(16);
+    const one = buildApplication3DLayout(1, viewportAspect);
+    expect(sixteen.columns * sixteen.rows).toBeGreaterThanOrEqual(16);
     const sixteenDistance = fitApplication3DCameraDistance(
       sixteen.wallWidth,
       sixteen.wallHeight,
@@ -244,7 +261,13 @@ describe('application3D layout', () => {
       four.wallHeight,
       viewportAspect,
     );
-    expect(fourDistance).toBe(sixteenDistance);
+    const oneDistance = fitApplication3DCameraDistance(
+      one.wallWidth,
+      one.wallHeight,
+      viewportAspect,
+    );
+    expect(sixteenDistance).toBeGreaterThan(fourDistance);
+    expect(oneDistance).toBe(fourDistance);
 
     const halfFov = ((APPLICATION3D_CAMERA_FOV * Math.PI) / 180) / 2;
     const tan = Math.tan(halfFov);
@@ -264,14 +287,13 @@ describe('application3D layout', () => {
     const layout = buildApplication3DLayout(16, 1.84);
     expect(layout.cardWidth).toBeGreaterThan(0);
     expect(layout.cardHeight).toBeGreaterThan(0);
-    expect(layout.columns).toBe(4);
-    expect(layout.rows).toBe(4);
+    expect(layout.cardWidth).toBe(layout.cardHeight * (CARD_WORLD_WIDTH / CARD_WORLD_HEIGHT));
   });
 
   it('keeps title larger than status after the readability bump', () => {
     expect(CARD_GLASS.titleSize).toBeGreaterThanOrEqual(48);
     expect(CARD_GLASS.statusSize).toBeGreaterThanOrEqual(40);
-    expect(CARD_GLASS.iconSize).toBeGreaterThanOrEqual(68);
+    expect(CARD_GLASS.iconSize).toBeGreaterThanOrEqual(60);
     expect(CARD_GLASS.titleSize).toBeGreaterThan(CARD_GLASS.statusSize);
   });
 

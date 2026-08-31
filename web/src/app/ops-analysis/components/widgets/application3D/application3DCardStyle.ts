@@ -28,7 +28,7 @@ export const CARD_GLASS = {
   fontFamily: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
   titleSize: 48,
   statusSize: 42,
-  iconSize: 72,
+  iconSize: 64,
 } as const;
 
 export const CARD_BADGE = {
@@ -267,7 +267,7 @@ const paintFrontChrome = (
   ctx.fillStyle = tone === 'unknown' ? CARD_GLASS.titleUnknown : CARD_GLASS.title;
   ctx.font = `600 ${CARD_GLASS.titleSize}px ${CARD_GLASS.fontFamily}`;
   const badge = visual.showBadge ? badgeRect(visual.badgeText, w, h) : null;
-  const titleX = iconX + iconSize * 0.46 + 18;
+  const titleX = iconX + iconSize * 0.46 + 28;
   const titleMax = (badge ? badge.x - 16 : w - padX) - titleX;
   const title = ellipsizeText(visual.title, titleMax, (value) => ctx.measureText(value).width);
   ctx.fillText(title, titleX, headerY);
@@ -278,7 +278,7 @@ const paintFrontChrome = (
   const tagH = 56;
   const tagW = statusWidth + tagPadX * 2;
   const tagX = padX;
-  const tagY = headerY + 56;
+  const tagY = headerY + 72;
   const tagGlow = tone === 'normal' || tone === 'unknown' || tone === 'info' ? 0 : 4;
   if (tagGlow > 0) {
     ctx.save();

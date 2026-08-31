@@ -10,7 +10,7 @@ import {
 export interface Application3DLayout {
   columns: number;
   rows: number;
-  /** Number of cards in each row; the final row is centered independently. */
+  /** Cards per row; a short last row stays left-aligned to the wall. */
   rowCardCounts: number[];
   cardWidth: number;
   cardHeight: number;
@@ -54,30 +54,41 @@ const scoreColumnCandidate = (
   const width = columns * CARD_WORLD_WIDTH + (columns - 1) * CARD_GAP;
   const height = rows * CARD_WORLD_HEIGHT + (rows - 1) * CARD_GAP;
   const aspectCost = Math.abs(Math.log((width / Math.max(height, 0.01)) / viewportAspect));
-  const raggednessCost = rows > 1 ? (columns - lastRowCount) / columns : 0;
-  return aspectCost * 1.2 + raggednessCost * 0.4;
+  const incomplete = rows > 1 && lastRowCount !== columns;
+  const shortfall = incomplete ? (columns - lastRowCount) / columns : 0;
+  const orphan =
+    incomplete && lastRowCount <= Math.max(1, Math.floor(columns / 3)) ? 1.2 : 0;
+  const stackCost = viewportAspect >= 1.15 && columns < rows ? 0.55 : 0;
+  return aspectCost + (incomplete ? 1.6 : 0) + shortfall * 1.8 + orphan + stackCost;
 };
 
-/** Design mock is a 4×4 landscape HUD wall. Few cards stay short and wide. */
+const collectColumnCandidates = (count: number, ideal: number): number[] => {
+  const lo = Math.max(1, Math.floor(ideal) - 4);
+  const hi = Math.min(count, Math.ceil(ideal) + 4);
+  const candidates = new Set<number>();
+  for (let columns = lo; columns <= hi; columns += 1) candidates.add(columns);
+  for (let columns = 1; columns <= count; columns += 1) {
+    if (count % columns === 0 && Math.abs(columns - ideal) <= 6) {
+      candidates.add(columns);
+    }
+  }
+  return [...candidates];
+};
+
+/** Prefer even rows; fall back to a short last row only when count is not a rectangle. */
 export const resolveApplication3DColumns = (
   count: number,
   viewportAspect: number,
 ): number => {
   const safeCount = Math.max(0, Math.floor(count));
   const safeAspect = Math.max(viewportAspect, 0.1);
-  if (safeCount <= 1) return 1;
-  if (safeCount <= 3) return safeCount;
-  if (safeCount === 4) return 2;
-  if (safeCount <= 6) return 3;
-  if (safeCount <= 16) return 4;
+  if (!safeCount) return 1;
   const ideal = Math.sqrt((safeCount * safeAspect) / CARD_ASPECT);
-  const minColumns = Math.max(4, Math.floor(ideal) - 1);
-  const maxColumns = Math.min(safeCount, Math.max(minColumns, Math.ceil(ideal) + 1));
-  return Array.from({ length: maxColumns - minColumns + 1 }, (_, index) => minColumns + index)
+  return collectColumnCandidates(safeCount, ideal)
     .reduce((best, candidate) => {
       const score = scoreColumnCandidate(safeCount, candidate, safeAspect);
       return !best || score < best.score ? { columns: candidate, score } : best;
-    }, null as { columns: number; score: number } | null)?.columns || 4;
+    }, null as { columns: number; score: number } | null)?.columns || 1;
 };
 
 const resolveCardDensity = (count: number): number => {
@@ -121,9 +132,9 @@ export const buildApplication3DLayout = (
 /** Default wall occupies this fraction of the tighter viewport axis. */
 export const WALL_VIEW_COVERAGE = 0.68;
 export const APPLICATION3D_CAMERA_FOV = 34;
-/** 4×4 mock wall; fewer cards keep this framing so they do not become billboards. */
-export const REFERENCE_WALL_WIDTH = 4 * CARD_WORLD_WIDTH + 3 * CARD_GAP;
-export const REFERENCE_WALL_HEIGHT = 4 * CARD_WORLD_HEIGHT + 3 * CARD_GAP;
+/** Pad only 1-card walls; 2×2 and larger frame the actual wall so cards stay readable. */
+export const REFERENCE_WALL_WIDTH = 2 * CARD_WORLD_WIDTH + CARD_GAP;
+export const REFERENCE_WALL_HEIGHT = 2 * CARD_WORLD_HEIGHT + CARD_GAP;
 /** Keep a slight elevation so the floor stays visible without shrinking side cards. */
 export const WALL_CAMERA_HEIGHT_FACTOR = 0.04;
 

@@ -101,6 +101,17 @@ interface Tween {
 const CLICK_DRAG_THRESHOLD_PX = 6;
 const RESIZE_LAYOUT_DEBOUNCE_MS = 120;
 
+const cloneCardChromeCanvas = (source: HTMLCanvasElement) => {
+  const chrome = document.createElement('canvas');
+  chrome.width = source.width;
+  chrome.height = source.height;
+  chrome.className = 'app3d-wall-glass-chrome';
+  const context = chrome.getContext('2d');
+  if (!context) throw new Error('Canvas 2D context unavailable');
+  context.drawImage(source, 0, 0);
+  return chrome;
+};
+
 const paintCardTexture = (
   item: Application3DWallItem,
   visual: ReturnType<typeof resolveApplication3DCardVisual>,
@@ -473,8 +484,7 @@ export const createApplication3DScene = (
     const el = document.createElement('div');
     el.className = 'app3d-wall-glass';
     el.dataset.tone = tone;
-    canvas.className = 'app3d-wall-glass-chrome';
-    el.appendChild(canvas);
+    el.appendChild(cloneCardChromeCanvas(canvas));
     glassLayer.appendChild(el);
     return el;
   };
@@ -545,10 +555,8 @@ export const createApplication3DScene = (
   controls.enablePan = false;
   controls.minDistance = 6;
   controls.maxDistance = 80;
-  controls.minPolarAngle = Math.PI * 0.44;
-  controls.maxPolarAngle = Math.PI * 0.56;
-  controls.minAzimuthAngle = -0.12;
-  controls.maxAzimuthAngle = 0.12;
+  controls.minPolarAngle = Math.PI * 0.28;
+  controls.maxPolarAngle = Math.PI * 0.72;
   controls.enabled = false;
 
   const composer = new EffectComposer(renderer);
@@ -1131,9 +1139,10 @@ export const createApplication3DScene = (
     Array.from(visuals.values()).forEach((visual) => {
       const rowCardCount = layout.rowCardCounts[row];
       visual.homeScale.set(layout.cardWidth, layout.cardHeight, CARD_THICKNESS);
-      const rowWidth =
-        rowCardCount * layout.cardWidth + Math.max(0, rowCardCount - 1) * layout.gapX;
-      const planarX = -rowWidth / 2 + layout.cardWidth / 2 + column * (layout.cardWidth + layout.gapX);
+      const planarX =
+        -layout.wallWidth / 2 +
+        layout.cardWidth / 2 +
+        column * (layout.cardWidth + layout.gapX);
       const planarY =
         layout.wallHeight / 2 -
         row * (layout.cardHeight + layout.gapY) -
@@ -1267,10 +1276,8 @@ export const createApplication3DScene = (
         previous.reflectionMaterial.uniforms.uTint.value.set(CARD_TONE[next.cardTone].tint);
         previous.floorGlowMaterial.uniforms.uColor.value.set(CARD_TONE[next.cardTone].tint);
         previous.glassEl.replaceChildren();
-        const chrome = next.texture.image as HTMLCanvasElement;
-        chrome.className = 'app3d-wall-glass-chrome';
         previous.glassEl.dataset.tone = next.cardTone;
-        previous.glassEl.appendChild(chrome);
+        previous.glassEl.appendChild(cloneCardChromeCanvas(next.texture.image as HTMLCanvasElement));
         return;
       }
       const painted = createCardTextures(item, translate);
@@ -1288,8 +1295,7 @@ export const createApplication3DScene = (
       root.userData.applicationId = item.id;
       root.add(mesh);
       scene.add(root);
-      const chrome = painted.texture.image as HTMLCanvasElement;
-      const glassEl = createGlassOverlay(painted.cardTone, chrome);
+      const glassEl = createGlassOverlay(painted.cardTone, painted.texture.image as HTMLCanvasElement);
       const reflectionMaterial = createCardReflectionMaterial(
         painted.texture,
         CARD_TONE[painted.cardTone].tint,
