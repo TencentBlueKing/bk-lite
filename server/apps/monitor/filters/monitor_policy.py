@@ -5,11 +5,7 @@ from apps.monitor.models.monitor_policy import MonitorPolicy
 
 
 class MonitorPolicyFilter(FilterSet):
-    monitor_object_id = CharFilter(
-        label="监控对象",
-        required=False,
-        method="filter_monitor_object_id",
-    )
+    monitor_object_id = CharFilter(field_name="monitor_object", lookup_expr="exact", label="监控对象", method="filter_monitor_object_id")
     name = CharFilter(field_name="name", lookup_expr="icontains", label="策略名称")
 
     @staticmethod

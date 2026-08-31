@@ -15,11 +15,7 @@ class MonitorObjectFilter(FilterSet):
 
 
 class MonitorObjectOrganizationRuleFilter(FilterSet):
-    monitor_object_id = CharFilter(
-        label="监控对象id",
-        required=False,
-        method="filter_monitor_object_id",
-    )
+    monitor_object_id = CharFilter(field_name="monitor_object_id", lookup_expr="exact", label="监控对象id", method="filter_monitor_object_id")
     name = CharFilter(field_name="name", lookup_expr="icontains", label="分组规则名称")
 
     @staticmethod

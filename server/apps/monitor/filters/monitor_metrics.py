@@ -8,16 +8,8 @@ from apps.monitor.utils.snmp_ifmib_capability import get_ifmib_metric_names_matc
 
 class MetricGroupFilter(FilterSet):
     monitor_object_name = CharFilter(field_name="monitor_object__name", lookup_expr="exact", label="指标对象名称")
-    monitor_object_id = CharFilter(
-        label="指标对象ID",
-        required=False,
-        method="filter_monitor_object_id",
-    )
-    monitor_plugin_id = CharFilter(
-        label="插件ID",
-        required=False,
-        method="filter_monitor_plugin_id",
-    )
+    monitor_object_id = CharFilter(field_name="monitor_object_id", lookup_expr="exact", label="指标对象ID", method="filter_monitor_object_id")
+    monitor_plugin_id = CharFilter(field_name="monitor_plugin_id", lookup_expr="exact", label="插件ID", method="filter_monitor_plugin_id")
     name = CharFilter(field_name="name", lookup_expr="exact", label="指标分组名称")
     keyword = CharFilter(method="filter_keyword", label="指标分组关键字")
 
@@ -51,16 +43,8 @@ class CharInFilter(BaseInFilter, CharFilter):
 
 class MetricFilter(FilterSet):
     monitor_object_name = CharFilter(field_name="monitor_object__name", lookup_expr="exact", label="指标对象名称")
-    monitor_object_id = CharFilter(
-        label="指标对象ID",
-        required=False,
-        method="filter_monitor_object_id",
-    )
-    monitor_plugin_id = CharFilter(
-        label="插件ID",
-        required=False,
-        method="filter_monitor_plugin_id",
-    )
+    monitor_object_id = CharFilter(field_name="monitor_object_id", lookup_expr="exact", label="指标对象ID", method="filter_monitor_object_id")
+    monitor_plugin_id = CharFilter(field_name="monitor_plugin_id", lookup_expr="exact", label="插件ID", method="filter_monitor_plugin_id")
     id = NumberFilter(field_name="id", lookup_expr="exact", label="指标ID")
     id_in = NumberInFilter(field_name="id", lookup_expr="in", label="指标ID列表")
     name = CharFilter(field_name="name", lookup_expr="exact", label="指标名称")
