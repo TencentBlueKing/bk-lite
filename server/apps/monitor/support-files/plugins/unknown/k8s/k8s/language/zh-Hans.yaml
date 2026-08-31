@@ -45,7 +45,7 @@ monitor_object_metric:
       desc: 来自 kube_pod_info 的 Pod 元数据，用作 IP 展示列的载体指标。
     pod_status_phase:
       name: Pod 阶段
-      desc: Pod 当前的生命周期阶段。
+      desc: 生命周期阶段：0 Pending / 1 Running / 2 Succeeded / 3 Failed / 4 Unknown。
     pod_container_restarts_total:
       name: 容器重启次数
       desc: Pod 内各容器自启动以来的重启总次数。
