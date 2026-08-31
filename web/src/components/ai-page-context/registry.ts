@@ -145,10 +145,15 @@ export const createPageContextRegistry = (options?: {
     pilot: AiPageContextPilot,
     hint?: PageContextCollectHint,
   ): Promise<Partial<AiPageContext> | null> => {
-    const mod = await pilot.load();
-    const message = normalizeMessage(await mod.getMessage());
+    const deadlineAt = Date.now() + timeoutMs;
+    const remainingMs = () => Math.max(0, deadlineAt - Date.now());
+
+    const mod = await withTimeout(pilot.load(), remainingMs());
+    const message = normalizeMessage(
+      await withTimeout(Promise.resolve().then(() => mod.getMessage()), remainingMs()),
+    );
     if (!message) {
-      return mod.getContext(toolkit, hint);
+      return withTimeout(Promise.resolve().then(() => mod.getContext(toolkit, hint)), remainingMs());
     }
     const cached = cache.get(message.title);
     if (
@@ -165,7 +170,7 @@ export const createPageContextRegistry = (options?: {
     let next: Partial<AiPageContext>;
     let textFallback = false;
     try {
-      next = await withTimeout(loadFull(), timeoutMs);
+      next = await withTimeout(loadFull(), remainingMs());
     } catch (error) {
       console.warn('[ai-page-context] pilot timed out or failed', error);
       if (typeof mod.getTextContext !== 'function') {
