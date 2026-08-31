@@ -40,7 +40,6 @@ import {
   RESOURCE_IP_ROLE,
   buildInstanceViewColumns,
   buildReportTimeColumn,
-  buildReportingStatusColumn,
   displayFieldKey,
   displayFieldParamKey
 } from './instanceViewColumns';
@@ -94,7 +93,6 @@ const ViewList: React.FC<ViewListProps> = ({
   const [plugins, setPlugins] = useState<ViewPluginOption[]>([]);
   const columns: ColumnItem[] = [
     buildReportTimeColumn({ t, convertToLocalizedTime }),
-    buildReportingStatusColumn({ t, includeFilters: true }),
     {
       title: t('common.action'),
       key: INSTANCE_VIEW_ACTION_KEY,
@@ -590,7 +588,6 @@ const ViewList: React.FC<ViewListProps> = ({
             queryData: queryForm,
             ipFilterOptions: nextIpOptions,
             fieldFilterOptions: nextFieldOptions,
-            includeStatusFilters: true,
             includeDimensionTooltip: true
           }),
           ...(actionColumn ? [actionColumn] : [])

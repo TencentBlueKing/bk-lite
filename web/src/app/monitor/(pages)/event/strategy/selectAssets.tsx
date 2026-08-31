@@ -148,7 +148,6 @@ const SelectAssets = forwardRef<ModalRef, ModalConfig>(
           metrics,
           getEnumValueUnit,
           objectId: monitorObject as React.Key,
-          includeStatusFilters: false,
           includeDimensionTooltip: false,
         }),
       [
