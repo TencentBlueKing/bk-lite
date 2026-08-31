@@ -3,6 +3,7 @@
   "collect_type": "snmp_fs",
   "plugin": "Switch FS SNMP",
   "plugin_desc": "FS.com 交换机专用 SNMP 采集（FS-PROCESS/MEMORY/SYSTEM-MIB，IANA 私有企业号 52642）。在标准 IF-MIB 接口指标之外，额外采集 FS 私有 OID 的完整设备健康集：CPU 利用率（fsNodeCPUTotal5min）、系统内存（容量/已用，KB）、机箱温度（fsSystemMultipleTemperatureCurrent）、风扇状态（fsSystemFanStatus）与电源状态（fsSystemElectricalInformationStatus）。风扇/电源原始码经 telegraf processors.enum 归一为 1=正常 / 2=异常；内存利用率按 已用/总量 计算。适用品牌型号——FS.com S 系列数据中心/园区交换机（如 S5810/S5800/N8560 系列）。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_fs'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

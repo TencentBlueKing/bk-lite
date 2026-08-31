@@ -3,6 +3,7 @@
   "collect_type": "snmp_omniswitch",
   "plugin": "Switch Alcatel OmniSwitch SNMP",
   "plugin_desc": "Alcatel-Lucent Enterprise OmniSwitch (AOS) switch-specific SNMP collection (ALCATEL-IND1-HEALTH-MIB, IANA PEN 6486). In addition to standard IF-MIB interface metrics, it collects OmniSwitch private OIDs for device health: 1-minute average CPU utilization (healthDeviceCpu1MinAvg) and memory utilization (healthDeviceMemoryLatest), both reported directly as percentages. Temperature lives in the chassis hardware table and fan/power-supply state in the chasEntPhysical entity table with per-entity-type row filtering that telegraf inputs.snmp cannot do, so those are N/A. Supported brands/models — Alcatel-Lucent Enterprise OmniSwitch (OS6xxx/OS9xxx, AOS6/AOS8; enterprise 6486); distinct from Switch Alcatel-Lucent SNMP which covers Nokia/ALU 7750 SR service routers.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_omniswitch'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

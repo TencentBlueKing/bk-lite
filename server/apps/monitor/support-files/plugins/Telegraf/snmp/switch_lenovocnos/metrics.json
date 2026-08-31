@@ -3,6 +3,7 @@
   "collect_type": "snmp_lenovocnos",
   "plugin": "Switch Lenovo CNOS SNMP",
   "plugin_desc": "Lenovo CNOS (Cloud Network OS) switch SNMP collection (LENOVO-ENV-MIB, IANA PEN 19046). Beyond standard IF-MIB interface metrics, it collects device health: temperature sensors (lenovoEnvMibTempSensorTemperature, max), fan state (lenovoEnvMibFanState) and power-supply state (lenovoEnvMibPowerSupplyState), normalised to 1=normal / 2=abnormal, plus CPU utilisation via HOST-RESOURCES hrProcessorLoad where the platform exposes it. Memory is not exposed via a usable private OID, so it is N/A. Supported brands/models — Lenovo ThinkSystem / RackSwitch switches running CNOS (NE-series, e.g. NE1032/NE2572/NE10032; enterprise 19046).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_lenovocnos'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-router_路由器",

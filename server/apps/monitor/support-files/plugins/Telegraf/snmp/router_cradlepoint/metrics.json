@@ -3,6 +3,7 @@
   "collect_type": "snmp_cradlepoint",
   "plugin": "Router Cradlepoint SNMP",
   "plugin_desc": "Cradlepoint cellular (4G/5G) router SNMP collection (Cradlepoint private enterprise MIB, IANA PEN 20992). Beyond standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects Cradlepoint private scalar OIDs for device health: overall CPU utilization, memory utilization (both reported directly as percentages) and internal chassis temperature in degrees Celsius. Fan and power-supply sensors are not exposed as row-filter-free scalars by these compact cellular routers, so those are N/A. Supported brands/models — Cradlepoint NetCloud / COR / E-series and IBR-series 4G/5G enterprise routers (enterprise 20992).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_cradlepoint'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

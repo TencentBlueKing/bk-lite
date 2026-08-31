@@ -3,6 +3,7 @@
   "collect_type": "snmp_etherwan",
   "plugin": "Switch EtherWAN SNMP",
   "plugin_desc": "EtherWAN EX-series industrial managed switch-specific SNMP collection (IANA PEN 2736). In addition to standard IF-MIB interface metrics, it collects EtherWAN private OIDs for device health — chassis temperature (ewnSensorTempValue, a dedicated scalar whose raw value divided by 10 gives degrees Celsius) and the dual power-input status table (ewnPowerSupplyTable ewnPowerSupplyStatus, one row per power input named Power1/Power2). The power raw codes (0=up meaning OK, 1=down meaning input lost or absent) are normalized via telegraf processors.enum to 1=healthy / 2=fault, and the worst power input is taken per device. EtherWAN EX-series devices are fanless and expose no CPU, memory or fan OIDs, so those are not collected (N/A). Supported brands/models — EtherWAN EX-series hardened industrial Ethernet switches (EX63000/EX73000 etc.).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_etherwan'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

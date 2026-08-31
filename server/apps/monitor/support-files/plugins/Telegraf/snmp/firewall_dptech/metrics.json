@@ -3,6 +3,7 @@
   "collect_type": "snmp_dptech",
   "plugin": "Firewall DPtech SNMP",
   "plugin_desc": "DPtech (迪普科技) firewall-specific SNMP collection template (enterprise PEN 31648 private MIB). In addition to standard IF-MIB interface metrics, it collects DPtech private OIDs for device health — average CPU utilization (31648.3.15.1, reported directly as a percentage) and memory utilization (31648.3.15.5, reported directly as a percentage with no used/free bytes). Temperature, fan, power-supply and session metrics are not collected by this template (N/A). Supported brands/models — DPtech NGFW / UTM / network-security appliances (FW1000 and the like, enterprise PEN 31648).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_dptech'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

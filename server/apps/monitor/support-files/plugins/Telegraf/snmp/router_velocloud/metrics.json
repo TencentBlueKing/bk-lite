@@ -3,6 +3,7 @@
   "collect_type": "snmp_velocloud",
   "plugin": "Router VeloCloud SNMP",
   "plugin_desc": "VeloCloud/VMware SD-WAN Edge router SNMP collection (enterprise 45346). Beyond standard IF-MIB interface metrics, it collects VeloCloud private health OIDs for CPU utilisation (5-minute average, reported directly as a percentage) and memory usage (reported directly as a percentage). Temperature/fan/power are not collected here, so they are N/A. Supported brands/models - VeloCloud/VMware SD-WAN Edge routers.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_velocloud'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

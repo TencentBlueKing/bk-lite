@@ -3,6 +3,7 @@
   "collect_type": "snmp_acksys",
   "plugin": "Wireless ACKSYS SNMP",
   "plugin_desc": "ACKSYS industrial wireless SNMP baseline collection for AirLink and related WaveOS devices. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. No stable public private device-health leaf OIDs are collected in this pass.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_acksys'}) by (instance_id)",
   "name": "Wireless",
   "icon": "mm-wireless_无线设备",

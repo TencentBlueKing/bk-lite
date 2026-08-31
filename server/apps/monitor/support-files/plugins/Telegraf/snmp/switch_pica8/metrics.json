@@ -3,6 +3,7 @@
   "collect_type": "snmp_pica8",
   "plugin": "Switch Pica8 SNMP",
   "plugin_desc": "Pica8 PicOS white-box switch-specific SNMP collection (PICA-PRIVATE-MIB, IANA PEN 35098). PicOS exposes public IF-MIB plus its private MIB only (it does not use NET-SNMP UCD or HOST-RESOURCES MIBs). In addition to standard IF-MIB interface metrics, it collects the Pica8 private control-plane CPU utilization (cpuUsage), a clean integer percentage scalar. Memory (totalPhyMemory/usedPhyMemory/freePhyMemory) and temperature (switchTemperature) are exposed only as DisplayString text rather than numeric gauges, fan health is exposed as a speed string plus traps with no pollable fan-state enum, and the redundant power-supply table (rpsustatusTable) has no publicly documented status enum, so memory, temperature, fan and power-supply state are not collected (N/A) to avoid reporting unparseable or unverified values. Supported brands/models — Pica8 white-box switches running PicOS (PICA8-series and partner ODM hardware).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_pica8'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

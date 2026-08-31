@@ -3,6 +3,7 @@
   "collect_type": "snmp_wti",
   "plugin": "ConsoleServer WTI SNMP",
   "plugin_desc": "WTI console-server and remote-power SNMP collection for devices under WTI PEN 2634. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds verified environment-unit temperature and input-power status leaves from the WTI console tree, normalizing input-power states conservatively to 1=healthy and 2=fault. Serial-port rows, outlet power metering, users and trap objects are not promoted into shared device-health metrics.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='console_server', collect_type='snmp_wti'}) by (instance_id)",
   "name": "ConsoleServer",
   "icon": "mm-console_server_控制台服务器",

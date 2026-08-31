@@ -3,6 +3,7 @@
   "collect_type": "snmp_extreme",
   "plugin": "Switch Extreme SNMP",
   "plugin_desc": "Extreme Networks-specific SNMP collection for switches (EXOS). In addition to standard IF-MIB interface metrics, it collects EXTREME-SYSTEM-MIB private OIDs for device health: CPU utilization, system memory (total/free), temperature, fan and power-supply status. Memory utilization is computed from total and free; fan/psu states are normalized to the unified 1=normal convention. Supported brands/models — Extreme Networks ExtremeXOS (EXOS) switches (X440/X460/X670/X690, etc.).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_extreme'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

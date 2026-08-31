@@ -3,6 +3,7 @@
   "collect_type": "snmp_mellanox",
   "plugin": "Switch Mellanox SNMP",
   "plugin_desc": "Mellanox (NVIDIA) Spectrum Ethernet switch SNMP collection (Onyx / MLNX-OS). Beyond standard IF-MIB interface metrics, it adds device CPU utilization via HOST-RESOURCES hrProcessorLoad (averaged across cores), which the generic SNMP switch plugin does not provide. Memory is exposed only through the multi-row hrStorage table and temperature/fan/power only through the ENTITY-SENSOR table (sensor types mixed in one table), neither row/type-filterable by the SNMP input, so those are N/A. Supported brands/models — Mellanox/NVIDIA Spectrum Ethernet switches running Onyx or MLNX-OS (SN2000/SN3000/SN4000 series). InfiniBand-only fabrics are out of scope.",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_mellanox'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

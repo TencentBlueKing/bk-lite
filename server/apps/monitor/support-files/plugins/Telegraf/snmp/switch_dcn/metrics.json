@@ -3,6 +3,7 @@
   "collect_type": "snmp_dcn",
   "plugin": "Switch DCN SNMP",
   "plugin_desc": "神州数码（DCN）交换机专用 SNMP 采集（DCN-MIB，IANA 私有企业号 6339）。在标准 IF-MIB 接口指标之外，额外采集 DCN 私有 OID 的设备健康指标：CPU 利用率（switchCpuUsage，直接百分比）与系统内存（switchMemorySize 总量 / switchMemoryBusy 已用，单位为字节）。内存利用率按 已用/总量 计算。DCN-MIB 的 switchInfo 系统表仅提供 CPU 与内存标量，不暴露温度/风扇/电源传感器，故这些维度不采集（N/A）。适用品牌型号——神州数码 DCN DCS/DCRS/CS 系列园区交换机。",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_dcn'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",

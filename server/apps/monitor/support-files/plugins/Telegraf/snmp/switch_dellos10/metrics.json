@@ -3,6 +3,7 @@
   "collect_type": "snmp_dellos10",
   "plugin": "Switch Dell OS10 SNMP",
   "plugin_desc": "Dell EMC OS10 (SmartFabric OS10) switch SNMP collection (DELLEMC-OS10-CHASSIS-MIB, IANA PEN 674). Beyond standard IF-MIB interface metrics, it collects device health: CPU utilisation via HOST-RESOURCES hrProcessorLoad (averaged), card temperature sensors (os10CardTemp, max), and fan and power-supply operational status (os10FanOperStatus / os10PowerSupplyOperStatus, natively 1=normal / 2=abnormal). Memory is exposed only through the multi-row hrStorage table (RAM row index not fixed), so it is N/A. Distinct from the Force10/FTOS plugin. Supported brands/models — Dell EMC PowerSwitch running OS10 / SmartFabric OS10 (S-series / Z-series; enterprise 674).",
+  "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_dellos10'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-router_路由器",
