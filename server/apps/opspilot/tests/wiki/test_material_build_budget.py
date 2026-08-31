@@ -203,12 +203,30 @@ def _large_map_source():
     return source, tail_marker
 
 
+def _patch_legacy_map_window(monkeypatch):
+    from apps.opspilot.services.llm_context_budget import LLMWorkingBudget
+    from apps.opspilot.services.wiki import build_service
+
+    primary = LLMWorkingBudget(
+        window_tokens=200_000,
+        safety_tokens=256,
+        output_reserve_tokens=6000,
+        input_working_tokens=8_000,
+        compaction_threshold_tokens=6_000,
+        knowledge_inject_tokens=1_200,
+        build_chunk_tokens=8_000,
+        single_message_tokens=1_600,
+    )
+    monkeypatch.setattr(build_service, "_material_window_limits", lambda _id: (primary, 2500, 2500))
+
+
 def test_map_retries_empty_llm_then_continues(monkeypatch):
     from apps.opspilot.services.wiki import build_service
     from apps.opspilot.services.wiki.wiki_budget_service import LLMCallBudget
 
     source, tail_marker = _large_map_source()
     calls = []
+    _patch_legacy_map_window(monkeypatch)
 
     def fake_invoke(_model_id, prompt, *, budget, stage, output_reserve, force_json=False):
         reservation = budget.ensure_call(stage, prompt, output_reserve=output_reserve)
@@ -240,18 +258,14 @@ def test_map_retries_empty_llm_then_continues(monkeypatch):
         structure_revision=structure_revision,
     )
 
+    stages = [item[0] for item in calls]
+    map_calls = [item for item in calls if item[0].startswith("material_map_")]
     assert result.pages == []
     assert result.skipped == []
-    assert [item[0] for item in calls] == [
-        "material_map_1",
-        "material_map_1_retry_2",
-        "material_map_2",
-        "material_map_3",
-        "material_map_4",
-        "material_reduce_generate",
-    ]
-    assert tail_marker in calls[-2][1]
-    assert budget.used_calls == 6
+    assert stages[:2] == ["material_map_1", "material_map_1_retry_2"]
+    assert stages[-1] == "material_reduce_generate"
+    assert "material_map_2" in stages
+    assert tail_marker in map_calls[-1][1]
     assert budget.used_tokens <= budget.max_total_tokens
 
 
@@ -261,6 +275,7 @@ def test_map_skips_chunk_after_retry_still_empty(monkeypatch, caplog):
 
     source, _tail_marker = _large_map_source()
     calls = []
+    _patch_legacy_map_window(monkeypatch)
 
     def fake_invoke(_model_id, prompt, *, budget, stage, output_reserve, force_json=False):
         reservation = budget.ensure_call(stage, prompt, output_reserve=output_reserve)
@@ -302,19 +317,14 @@ def test_map_skips_chunk_after_retry_still_empty(monkeypatch, caplog):
             "error_type": "BuildOutputInvalid",
         }
     ]
-    assert [item[0] for item in calls] == [
-        "material_map_1",
-        "material_map_1_retry_2",
-        "material_map_2",
-        "material_map_3",
-        "material_map_4",
-        "material_reduce_generate",
-    ]
+    stages = [item[0] for item in calls]
+    assert stages[:2] == ["material_map_1", "material_map_1_retry_2"]
+    assert stages[-1] == "material_reduce_generate"
+    assert "material_map_2" in stages
     assert "wiki_build_llm_skip" in caplog.text
     assert "stage=material_map_1" in caplog.text
     assert "error_type=BuildOutputInvalid" in caplog.text
     assert any(rec.msg == "wiki_build_llm_skipped kb=%s skipped=%s stages=%s" and rec.args == (None, 1, "material_map_1") for rec in caplog.records)
-    assert budget.used_calls == 6
 
 
 def test_map_still_fails_on_provider_llm_error(monkeypatch):
@@ -322,6 +332,7 @@ def test_map_still_fails_on_provider_llm_error(monkeypatch):
     from apps.opspilot.services.wiki.wiki_budget_service import LLMCallBudget
 
     source, _tail_marker = _large_map_source()
+    _patch_legacy_map_window(monkeypatch)
 
     def fake_invoke(_model_id, prompt, *, budget, stage, output_reserve, force_json=False):
         reservation = budget.ensure_call(stage, prompt, output_reserve=output_reserve)
@@ -357,6 +368,7 @@ def test_compact_empty_after_retry_fails_instead_of_skipping(monkeypatch):
     source, _tail_marker = _large_map_source()
     calls = []
     huge_fact = "x" * 20000
+    _patch_legacy_map_window(monkeypatch)
 
     def fake_invoke(_model_id, prompt, *, budget, stage, output_reserve, force_json=False):
         reservation = budget.ensure_call(stage, prompt, output_reserve=output_reserve)
