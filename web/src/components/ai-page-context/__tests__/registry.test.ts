@@ -147,6 +147,30 @@ describe('ai-page-context registry', () => {
     expect(merged.images).toHaveLength(6);
   });
 
+  it('falls back to getTextContext when screenshots time out', async () => {
+    vi.useFakeTimers();
+    const registry = createPageContextRegistry({
+      getPathname: () => '/x',
+      timeoutMs: 20,
+      pilots: [
+        {
+          test: () => true,
+          load: async () => ({
+            getMessage: () => ({ title: 'k', currentTime: 't1' }),
+            getContext: () => new Promise(() => undefined),
+            getTextContext: () => ({
+              sections: [{ id: 'kpi', label: '时间筛选', content: '磁盘使用率: 82.9%', priority: 9 }],
+            }),
+          }),
+        },
+      ],
+    });
+    const pending = registry.collect();
+    await vi.advanceTimersByTimeAsync(30);
+    const snapshot = await pending;
+    expect(snapshot?.sections?.[0].content).toContain('磁盘使用率: 82.9%');
+  });
+
   it('skips timed-out providers and still returns other sources', async () => {
     vi.useFakeTimers();
     const registry = createPageContextRegistry({

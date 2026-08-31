@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   buildDashboardCaption,
   buildDashboardCurrentTime,
+  getTextContext,
   isDecorativeDashboardChart,
   labelFromDashboardCard,
+  readDashboardKpiReadings,
   readDashboardPageDataStamp,
 } from '../dashboard.pilot';
 
@@ -79,7 +81,23 @@ describe('dashboard.pilot page data stamp', () => {
     const stamp = readDashboardPageDataStamp();
     expect(stamp.timeRangeLabel).toBe('最近6小时');
     expect(stamp.kpiFingerprint).toBe('86.2%|79.1%');
+    expect(stamp.kpiReadings).toEqual([]);
     expect(buildDashboardCurrentTime(stamp)).toBe('最近6小时::86.2%|79.1%::正常::运行正常');
+  });
+
+  it('reads labeled KPI values from stat cards', () => {
+    document.body.innerHTML = `
+      <div class="statCard">
+        <div class="statLabel"><span class="titleWithGuide"><span>磁盘使用率</span></span></div>
+        <div class="statValue">82.9%</div>
+      </div>
+      <div class="statCard">
+        <div class="statLabel"><span class="titleWithGuide"><span>CPU 使用率</span></span></div>
+        <div class="statValue">86.0%</div>
+      </div>
+    `;
+    expect(readDashboardKpiReadings()).toEqual(['磁盘使用率: 82.9%', 'CPU 使用率: 86.0%']);
+    expect(getTextContext().sections?.some((section) => section.content.includes('磁盘使用率: 82.9%'))).toBe(true);
   });
 
   it('changes currentTime when time filter label changes', () => {

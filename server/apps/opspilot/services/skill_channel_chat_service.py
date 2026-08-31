@@ -34,7 +34,8 @@ PAGE_CONTEXT_FOCUSED_GUIDE = (
     "本轮用户问题是「{question}」，已定位到图表{names}。"
     "只根据本轮 <current_page> 中的截图与文字回答这一问，"
     "不要沿用上一问的结论、表格、图表名或时间范围。"
-    "截图上可能没有标题，以这段文字中的图表名与「时间筛选/横轴」说明为准。"
+    "截图上可能没有标题，以这段文字中的图表名、KPI 快照与「时间筛选/横轴」说明为准。"
+    "问使用率或容量时优先用 KPI 快照里的「指标名: 数值」，不要把吞吐、流量或错误速率图当成占用百分比。"
     "禁止回答、复述或续写历史对话里已经分析过的其它图表。"
 )
 # ~600px 截图按 OpenAI high-detail 估算：ceil(600/512)^2 * 170 + 85
@@ -150,7 +151,7 @@ def _is_generic_chart_title(title: str) -> bool:
     return (not text) or text == "图表" or bool(re.fullmatch(r"(value|series)\d*", text, re.I))
 
 
-# 标题与问法常共用的主题词；只匹配图名，不匹配图例，避免「CPU 使用时间」命中「资源使用趋势」里的 CPU 使用率。
+# 标题与问法常共用的主题词；图名级匹配不看图例，避免「CPU 使用时间」命中「资源使用趋势」里的 CPU 使用率。
 _CHART_TOPIC_MARKERS = (
     "时间分布",
     "使用时间",
@@ -163,10 +164,34 @@ _CHART_TOPIC_MARKERS = (
     "吞吐",
     "错误",
 )
+# 问法带了更细的度量词时，禁止只靠「磁盘/网络」这种粗主题命中另一类图（使用率 ≠ 吞吐）。
+_CHART_QUALIFIERS = (
+    "使用率",
+    "吞吐",
+    "错误",
+    "时间分布",
+    "使用时间",
+    "负载",
+)
 _QUESTION_TITLE_ALIASES = (
     ("使用时间", "时间分布"),
     ("时间分布", "使用时间"),
 )
+
+
+def _chart_qualifiers(text: str) -> set[str]:
+    found = {item for item in _CHART_QUALIFIERS if item in text}
+    if "使用时间" in found:
+        found.add("时间分布")
+    if "时间分布" in found:
+        found.add("使用时间")
+    return found
+
+
+def _qualifiers_conflict(left: str, right: str) -> bool:
+    left_quals = _chart_qualifiers(left)
+    right_quals = _chart_qualifiers(right)
+    return bool(left_quals and right_quals and left_quals.isdisjoint(right_quals))
 
 
 def chart_title_matches_question(title: str, question: str) -> bool:
@@ -185,24 +210,53 @@ def chart_title_matches_question(title: str, question: str) -> bool:
         return True
     if any(alias in q and target in t for alias, target in _QUESTION_TITLE_ALIASES):
         return True
+    if _qualifiers_conflict(t, q):
+        return False
+    question_quals = _chart_qualifiers(q)
+    if question_quals and not (question_quals & _chart_qualifiers(t)):
+        return False
     return any(marker in t and marker in q for marker in _CHART_TOPIC_MARKERS)
 
 
-def _visible_chart_titles(snapshot: dict) -> list[str]:
-    titles: list[str] = []
+def _caption_series_matches_question(caption: str, question: str) -> bool:
+    """序列里出现「磁盘使用率」这类完整度量时，允许命中综合趋势图。"""
+    cap = _normalize_chart_text(caption)
+    q = _normalize_chart_text(question)
+    if not cap or len(q) < 2:
+        return False
+    question_quals = _chart_qualifiers(q)
+    if not question_quals or not (question_quals & _chart_qualifiers(cap)):
+        return False
+    if _qualifiers_conflict(cap, q):
+        return False
+    return any(marker in cap and marker in q for marker in _CHART_TOPIC_MARKERS)
+
+
+def chart_matches_question(caption: str, question: str) -> bool:
+    title = _caption_title(caption)
+    if chart_title_matches_question(title, question):
+        return True
+    return _caption_series_matches_question(caption, question)
+
+
+def _visible_chart_captions(snapshot: dict) -> list[str]:
+    captions: list[str] = []
     for image in snapshot.get("images") or []:
-        title = _caption_title(str(image.get("caption") or ""))
-        if title and not _is_generic_chart_title(title):
-            titles.append(title)
+        caption = str(image.get("caption") or "").strip()
+        if caption and not _is_generic_chart_title(_caption_title(caption)):
+            captions.append(caption)
     for section in snapshot.get("sections") or []:
         if section.get("id") != "visible-charts":
             continue
         for line in str(section.get("content") or "").splitlines():
             text = line.split(".", 1)[-1].strip() if "." in line[:4] else line.strip()
-            title = _caption_title(text)
-            if title and not _is_generic_chart_title(title):
-                titles.append(title)
-    return titles
+            if text and not _is_generic_chart_title(_caption_title(text)):
+                captions.append(text)
+    return captions
+
+
+def _visible_chart_titles(snapshot: dict) -> list[str]:
+    return [_caption_title(caption) for caption in _visible_chart_captions(snapshot)]
 
 
 def _unique_titles(titles: list[str]) -> list[str]:
@@ -249,13 +303,14 @@ def _focus_page_context(question: str, snapshot: dict) -> dict:
     images = [item for item in (snapshot.get("images") or []) if isinstance(item, dict)]
     if not images or not str(question or "").strip():
         return snapshot
-    matched = _unique_titles([title for title in _visible_chart_titles(snapshot) if chart_title_matches_question(title, question)])
+    matched = _unique_titles([_caption_title(caption) for caption in _visible_chart_captions(snapshot) if chart_matches_question(caption, question)])
     if not matched:
         return snapshot
     kept = []
     for image in images:
-        title = _caption_title(str(image.get("caption") or ""))
-        if any(chart_title_matches_question(title, match) or chart_title_matches_question(match, title) or title == match for match in matched):
+        caption = str(image.get("caption") or "")
+        title = _caption_title(caption)
+        if title in matched or chart_matches_question(caption, question):
             kept.append(image)
     next_snapshot = {**snapshot, "images": kept, "_focused_titles": matched, "_focus_question": str(question or "").strip()}
     sections = []
@@ -864,6 +919,12 @@ def stream_skill_channel_chat(
         skill_prompt=params.get("skill_prompt") or "",
         chat_history=params.get("chat_history") or [],
     )
+    if not ingest_report:
+        logger.info(
+            "page_context absent: question=%s session_id=%s",
+            (persist_text or "")[:80],
+            session_id or "-",
+        )
     if ingest_report:
         log_page_context_ingest(ingest_report)
         ingest_kwargs["page_context_ingest"] = ingest_report
