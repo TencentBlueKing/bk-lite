@@ -21,6 +21,8 @@ from apps.monitor.services.host_container_asset_ip import fill_missing_host_cont
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.display_fields_metrics import display_field_key, extract_field_bindings, extract_metric_bindings
+from apps.monitor.utils.instance import list_reporting_status
+from apps.monitor.utils.last_sample import LAST_SAMPLE_LOOKBACK, last_sample_timestamp_query, last_sample_unix_seconds
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 
@@ -93,18 +95,20 @@ class MonitorObjectService:
 
         from apps.monitor.services.metrics import Metrics
 
-        query = metric
-        if not Metrics.query_already_limited(metric):
-            query = f"limitk({STATUS_QUERY_MAX_SERIES}, {metric})"
+        query = last_sample_timestamp_query(metric)
+        if not Metrics.query_already_limited(query):
+            query = f"limitk({STATUS_QUERY_MAX_SERIES}, {query})"
 
-        metrics = VictoriaMetricsAPI().query(query, step="20m")
+        metrics = VictoriaMetricsAPI().query(query, step=LAST_SAMPLE_LOOKBACK)
         instance_map = {}
         for metric_info in metrics.get("data", {}).get("result", []):
             instance_id = str(tuple(metric_info["metric"].get(i) for i in instance_id_keys))
             if not instance_id:
                 continue
+            _time = last_sample_unix_seconds(metric_info)
+            if _time is None:
+                continue
             agent_id = metric_info.get("metric", {}).get("agent_id")
-            _time = metric_info["value"][0]
 
             if instance_id not in instance_map:
                 instance_map[instance_id] = {
@@ -169,7 +173,7 @@ class MonitorObjectService:
             conf_info["organization"] = organizations
 
             if conf_info["time"]:
-                conf_info["status"] = "normal"
+                conf_info["status"] = list_reporting_status(conf_info["time"])
             else:
                 conf_info["status"] = "unavailable"
 
