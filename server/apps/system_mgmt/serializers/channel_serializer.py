@@ -39,20 +39,19 @@ class ChannelSerializer(UsernameSerializer):
                 raise serializers.ValidationError(self._loader().get("error.channel_team_required")) from exc
         return team_ids
 
-    @classmethod
-    def validate_nats_config(cls, config):
+    def validate_nats_config(self, config):
+        loader = self._loader()
         if not isinstance(config, dict):
-            raise serializers.ValidationError({"config": "NATS config must be an object"})
+            raise serializers.ValidationError({"config": loader.get("error.nats_config_must_be_object")})
         if "supports_notify_person" in config and not isinstance(config["supports_notify_person"], bool):
-            raise serializers.ValidationError({"config": {"supports_notify_person": "must be a boolean"}})
+            raise serializers.ValidationError({"config": {"supports_notify_person": loader.get("error.nats_supports_notify_person_boolean")}})
         if nats_notifications is not None and nats_notifications.handles_config(config):
             return nats_notifications.validate_config(config)
         if config.get("nats_mode") not in (None, "request_reply"):
-            raise serializers.ValidationError({"config": {"nats_mode": "unsupported NATS extension mode"}})
+            raise serializers.ValidationError({"config": {"nats_mode": loader.get("error.nats_mode_unsupported")}})
         return config
 
-    @classmethod
-    def validate_nats_subject_key_unique(cls, config, exclude_channel_id=None):
+    def validate_nats_subject_key_unique(self, config, exclude_channel_id=None):
         if nats_notifications is None or not nats_notifications.handles_config(config):
             return
 
@@ -65,7 +64,7 @@ class ChannelSerializer(UsernameSerializer):
         if exclude_channel_id is not None:
             channels = channels.exclude(pk=exclude_channel_id)
         if channels.exists():
-            raise serializers.ValidationError({"config": {"subject_key": "notification topic identifier is already in use"}})
+            raise serializers.ValidationError({"config": {"subject_key": self._loader().get("error.nats_subject_key_in_use")}})
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
