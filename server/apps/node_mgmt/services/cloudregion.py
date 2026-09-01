@@ -160,10 +160,21 @@ class RegionService:
         nats_url = hub_env_vars.get("NATS_SERVERS") or os.getenv(
             "DEFAULT_ZONE_VAR_NATS_SERVERS"
         )
-        nats_username = env_vars.get("NATS_USERNAME")
-        nats_password = env_vars.get(NodeConstants.NATS_PASSWORD_KEY)
-        nats_monitor_username = os.getenv("NATS_ADMIN_USERNAME") or os.getenv("DEFAULT_ZONE_VAR_NATS_ADMIN_USERNAME")
-        nats_monitor_password = os.getenv(NodeConstants.NATS_ADMIN_PASSWORD_KEY) or os.getenv("DEFAULT_ZONE_VAR_NATS_ADMIN_PASSWORD")
+        # NATS_USERNAME/NATS_PASSWORD 是区域内节点采集上报账号（受限，发 metrics.>/vector），
+        # 渲染进区域 NATS 的监控槽位；区域 NATS 的管理员槽位（nats-executor/stargazer/bootstrap
+        # 使用）必须取 NATS_ADMIN_USERNAME/NATS_ADMIN_PASSWORD。
+        nats_username = (
+            env_vars.get("NATS_ADMIN_USERNAME")
+            or os.getenv("NATS_ADMIN_USERNAME")
+            or os.getenv("DEFAULT_ZONE_VAR_NATS_ADMIN_USERNAME")
+        )
+        nats_password = (
+            env_vars.get(NodeConstants.NATS_ADMIN_PASSWORD_KEY)
+            or os.getenv(NodeConstants.NATS_ADMIN_PASSWORD_KEY)
+            or os.getenv("DEFAULT_ZONE_VAR_NATS_ADMIN_PASSWORD")
+        )
+        nats_monitor_username = env_vars.get("NATS_USERNAME")
+        nats_monitor_password = env_vars.get(NodeConstants.NATS_PASSWORD_KEY)
 
         missing_vars = []
         if not server_url:
@@ -171,13 +182,13 @@ class RegionService:
         if not nats_url:
             missing_vars.append("NATS_SERVERS")
         if not nats_username:
-            missing_vars.append("NATS_USERNAME")
-        if not nats_password:
-            missing_vars.append(NodeConstants.NATS_PASSWORD_KEY)
-        if not nats_monitor_username:
             missing_vars.append("NATS_ADMIN_USERNAME")
-        if not nats_monitor_password:
+        if not nats_password:
             missing_vars.append(NodeConstants.NATS_ADMIN_PASSWORD_KEY)
+        if not nats_monitor_username:
+            missing_vars.append("NATS_USERNAME")
+        if not nats_monitor_password:
+            missing_vars.append(NodeConstants.NATS_PASSWORD_KEY)
         if missing_vars:
             logger.error(
                 "Missing required environment variables in cloud region %s: %s",
@@ -185,6 +196,17 @@ class RegionService:
                 ", ".join(missing_vars),
             )
             raise BaseAppException("Cloud region environment configuration is incomplete")
+
+        # nats.conf 按用户名渲染独立槽位，重名会让区域 NATS 因 duplicate user 无法启动。
+        if nats_username == nats_monitor_username:
+            logger.error(
+                "Cloud region %s NATS accounts conflict: NATS_ADMIN_USERNAME and NATS_USERNAME are both %s",
+                cloud_region_id,
+                nats_username,
+            )
+            raise BaseAppException(
+                "NATS_ADMIN_USERNAME 与 NATS_USERNAME 不能相同：请为管理员和节点采集配置两个独立的 NATS 账号"
+            )
 
         if not proxy_ip:
             logger.error(f"Missing proxy_address for cloud region {cloud_region_id}")

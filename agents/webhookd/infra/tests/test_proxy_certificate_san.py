@@ -133,3 +133,15 @@ def test_proxy_compose_injects_zone_instance_id_for_region_services(
     assert "NATS_INSTANCE_ID=${ZONE_NAME}" in nats_executor["environment"]
 
     assert stargazer["restart"] == "always"
+
+
+def test_bootstrap_uses_rendered_nats_admin_user(certificate_authority):
+    """bootstrap.sh 必须用 .env 渲染出的管理员账号连 NATS，不能写死 admin。"""
+    with _generate_proxy_archive("10.0.0.8", certificate_authority) as archive:
+        bootstrap = archive.extractfile("./bootstrap.sh").read().decode()
+        generated_env = archive.extractfile("./.env").read().decode()
+
+    # payload nats_username 渲染为 .env 的 NATS_ADMIN_USERNAME
+    assert "NATS_ADMIN_USERNAME=user" in generated_env
+    assert '--user "${NATS_ADMIN_USERNAME}"' in bootstrap
+    assert "--user admin" not in bootstrap

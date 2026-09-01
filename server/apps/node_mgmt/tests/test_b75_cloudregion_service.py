@@ -432,6 +432,62 @@ def test_get_deploy_script_success_calls_webhook_and_returns_script():
 
 
 @pytest.mark.django_db
+def test_get_deploy_script_maps_admin_and_monitor_nats_accounts():
+    """管理员槽位取 NATS_ADMIN_*（区域变量优先），监控槽位取区域 NATS_USERNAME/PASSWORD。"""
+    _ensure_hub_env()
+    region = _create_custom_region(name="cr-deploy-nats-map", proxy_address="6.6.6.8")
+    _build_complete_env(region.id)
+    SidecarEnv.objects.filter(cloud_region=region, key="NATS_USERNAME").update(value="monitor")
+    SidecarEnv.objects.filter(
+        cloud_region=region, key=NodeConstants.NATS_PASSWORD_KEY
+    ).update(value="monitorpass")
+    SidecarEnv.objects.create(
+        cloud_region=region, key="NATS_ADMIN_USERNAME", value="region-admin", type="str"
+    )
+    SidecarEnv.objects.create(
+        cloud_region=region, key=NodeConstants.NATS_ADMIN_PASSWORD_KEY, value="region-adminpass", type="str"
+    )
+
+    def fake_getenv(key, default=None):
+        # 进程环境提供不同的值，验证区域变量优先。
+        return {"NATS_ADMIN_USERNAME": "env-admin", "NATS_ADMIN_PASSWORD": "env-adminpass"}.get(key, default)
+
+    response = MagicMock(status_code=200)
+    response.json.return_value = {"install_script": "echo ok"}
+
+    with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv), patch(
+        "apps.node_mgmt.services.cloudregion.requests.post", return_value=response
+    ) as post_mock, patch(
+        "apps.node_mgmt.services.cloudregion.generate_node_token", return_value="tok"
+    ):
+        RegionService.get_deploy_script({"cloud_region_id": region.id})
+
+    webhook_payload = post_mock.call_args.kwargs["json"]
+    assert webhook_payload["nats_username"] == "region-admin"
+    assert webhook_payload["nats_password"] == "region-adminpass"
+    assert webhook_payload["nats_monitor_username"] == "monitor"
+    assert webhook_payload["nats_monitor_password"] == "monitorpass"
+
+
+@pytest.mark.django_db
+def test_get_deploy_script_rejects_identical_admin_and_monitor_username():
+    """管理员与采集账号同名会让区域 NATS 因 duplicate user 无法启动，必须拒绝。"""
+    _ensure_hub_env()
+    region = _create_custom_region(name="cr-deploy-nats-dup", proxy_address="6.6.6.9")
+    _build_complete_env(region.id)  # NATS_USERNAME = "admin"
+
+    def fake_getenv(key, default=None):
+        return {"NATS_ADMIN_USERNAME": "admin", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
+
+    with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv), patch(
+        "apps.node_mgmt.services.cloudregion.requests.post"
+    ) as post_mock, pytest.raises(BaseAppException, match="不能相同"):
+        RegionService.get_deploy_script({"cloud_region_id": region.id})
+
+    post_mock.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_get_deploy_script_prefers_runtime_webhook_url():
     _ensure_hub_env()
     region = _create_custom_region(
